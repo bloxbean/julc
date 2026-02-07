@@ -1,0 +1,14 @@
+plugins {
+    id 'java-library'
+}
+
+description = 'On-chain standard library functions as pre-built PIR term builders'
+
+dependencies {
+    api project(':plutus-core')
+    api project(':plutus-ledger-api')
+    implementation project(':plutus-compiler')
+
+    testImplementation project(':plutus-vm')
+    testRuntimeOnly project(':plutus-vm-scalus')
+}

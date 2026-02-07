@@ -1,0 +1,14 @@
+plugins {
+    id 'java-library'
+}
+
+description = 'Java source to UPLC compiler for Cardano smart contracts'
+
+dependencies {
+    api project(':plutus-core')
+    api project(':plutus-ledger-api')
+    implementation 'com.github.javaparser:javaparser-core:3.26.3'
+
+    testImplementation project(':plutus-vm')
+    testRuntimeOnly project(':plutus-vm-scalus')
+}

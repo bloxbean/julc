@@ -1,0 +1,10 @@
+plugins {
+    id 'java-library'
+}
+
+description = 'Scalus VM backend - wraps Scalus PlutusVM behind the PlutusVmProvider SPI'
+
+dependencies {
+    api project(':plutus-vm')
+    implementation 'org.scalus:scalus_3:0.15.0'
+}

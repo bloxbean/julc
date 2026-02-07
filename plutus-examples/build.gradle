@@ -1,0 +1,15 @@
+plugins {
+    id 'java-library'
+}
+
+description = 'Example Plutus validators demonstrating all features'
+
+dependencies {
+    implementation project(':plutus-core')
+    implementation project(':plutus-compiler')
+    implementation project(':plutus-ledger-api')
+    implementation project(':plutus-stdlib')
+    testImplementation project(':plutus-testkit')
+    testImplementation project(':plutus-vm')
+    testRuntimeOnly project(':plutus-vm-scalus')
+}

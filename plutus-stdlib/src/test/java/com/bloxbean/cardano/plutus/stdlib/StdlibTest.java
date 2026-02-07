@@ -1,0 +1,1052 @@
+package com.bloxbean.cardano.plutus.stdlib;
+
+import com.bloxbean.cardano.plutus.compiler.pir.PirTerm;
+import com.bloxbean.cardano.plutus.compiler.pir.PirType;
+import com.bloxbean.cardano.plutus.compiler.uplc.UplcGenerator;
+import com.bloxbean.cardano.plutus.core.*;
+import com.bloxbean.cardano.plutus.vm.EvalResult;
+import com.bloxbean.cardano.plutus.vm.PlutusVm;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+
+import java.math.BigInteger;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+/**
+ * Tests for the plutus-stdlib module.
+ * <p>
+ * Each test builds PIR terms using the stdlib functions, lowers them to UPLC
+ * via UplcGenerator, and evaluates them via PlutusVm to verify correctness.
+ */
+class StdlibTest {
+
+    static PlutusVm vm;
+
+    @BeforeAll
+    static void setUp() {
+        vm = PlutusVm.create();
+    }
+
+    // ---- Helper methods ----
+
+    /**
+     * Evaluate a PIR term and return the result.
+     */
+    private EvalResult evalPir(PirTerm pir) {
+        var uplc = new UplcGenerator().generate(pir);
+        return vm.evaluate(Program.plutusV3(uplc));
+    }
+
+    /**
+     * Evaluate a PIR term and assert it returns an integer.
+     */
+    private BigInteger evalInteger(PirTerm pir) {
+        var result = evalPir(pir);
+        assertTrue(result.isSuccess(), "Expected success but got: " + result);
+        var term = ((EvalResult.Success) result).resultTerm();
+        assertInstanceOf(Term.Const.class, term);
+        var val = ((Term.Const) term).value();
+        assertInstanceOf(Constant.IntegerConst.class, val);
+        return ((Constant.IntegerConst) val).value();
+    }
+
+    /**
+     * Evaluate a PIR term and assert it returns a boolean.
+     */
+    private boolean evalBool(PirTerm pir) {
+        var result = evalPir(pir);
+        assertTrue(result.isSuccess(), "Expected success but got: " + result);
+        var term = ((EvalResult.Success) result).resultTerm();
+        assertInstanceOf(Term.Const.class, term);
+        var val = ((Term.Const) term).value();
+        assertInstanceOf(Constant.BoolConst.class, val);
+        return ((Constant.BoolConst) val).value();
+    }
+
+    /**
+     * Build an empty Data list: MkNilData(())
+     */
+    private PirTerm emptyDataList() {
+        return new PirTerm.App(
+                new PirTerm.Builtin(DefaultFun.MkNilData),
+                new PirTerm.Const(Constant.unit()));
+    }
+
+    /**
+     * Prepend a Data element to a Data list: MkCons(elem, list)
+     */
+    private PirTerm consData(PirTerm elem, PirTerm list) {
+        return new PirTerm.App(
+                new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkCons), elem),
+                list);
+    }
+
+    /**
+     * Wrap an integer as Data: IData(n)
+     */
+    private PirTerm iData(long n) {
+        return new PirTerm.App(
+                new PirTerm.Builtin(DefaultFun.IData),
+                new PirTerm.Const(Constant.integer(BigInteger.valueOf(n))));
+    }
+
+    /**
+     * Build a Data list of integers: [a, b, c, ...]
+     */
+    private PirTerm intDataList(long... values) {
+        PirTerm list = emptyDataList();
+        for (int i = values.length - 1; i >= 0; i--) {
+            list = consData(iData(values[i]), list);
+        }
+        return list;
+    }
+
+    /**
+     * Build a predicate that checks if UnIData(x) > threshold.
+     */
+    private PirTerm greaterThanPredicate(long threshold) {
+        // \x -> LessThanInteger(threshold, UnIData(x))
+        return new PirTerm.Lam("x", new PirType.DataType(),
+                new PirTerm.App(
+                        new PirTerm.App(
+                                new PirTerm.Builtin(DefaultFun.LessThanInteger),
+                                new PirTerm.Const(Constant.integer(BigInteger.valueOf(threshold)))),
+                        new PirTerm.App(
+                                new PirTerm.Builtin(DefaultFun.UnIData),
+                                new PirTerm.Var("x", new PirType.DataType()))));
+    }
+
+    /**
+     * Build a predicate that checks if UnIData(x) equals target.
+     */
+    private PirTerm equalsIntPredicate(long target) {
+        // \x -> EqualsInteger(target, UnIData(x))
+        return new PirTerm.Lam("x", new PirType.DataType(),
+                new PirTerm.App(
+                        new PirTerm.App(
+                                new PirTerm.Builtin(DefaultFun.EqualsInteger),
+                                new PirTerm.Const(Constant.integer(BigInteger.valueOf(target)))),
+                        new PirTerm.App(
+                                new PirTerm.Builtin(DefaultFun.UnIData),
+                                new PirTerm.Var("x", new PirType.DataType()))));
+    }
+
+    // =========================================================================
+    // ListsLib Tests
+    // =========================================================================
+
+    @Nested
+    class IsEmptyTests {
+        @Test
+        void isEmptyOnEmptyList() {
+            var pir = ListsLib.isEmpty(emptyDataList());
+            assertTrue(evalBool(pir));
+        }
+
+        @Test
+        void isEmptyOnNonEmptyList() {
+            var pir = ListsLib.isEmpty(intDataList(1, 2, 3));
+            assertFalse(evalBool(pir));
+        }
+
+        @Test
+        void isEmptyOnSingleElementList() {
+            var pir = ListsLib.isEmpty(intDataList(42));
+            assertFalse(evalBool(pir));
+        }
+    }
+
+    @Nested
+    class LengthTests {
+        @Test
+        void lengthOfEmptyList() {
+            var pir = ListsLib.length(emptyDataList());
+            assertEquals(BigInteger.ZERO, evalInteger(pir));
+        }
+
+        @Test
+        void lengthOfSingleElementList() {
+            var pir = ListsLib.length(intDataList(99));
+            assertEquals(BigInteger.ONE, evalInteger(pir));
+        }
+
+        @Test
+        void lengthOfThreeElementList() {
+            var pir = ListsLib.length(intDataList(10, 20, 30));
+            assertEquals(BigInteger.valueOf(3), evalInteger(pir));
+        }
+    }
+
+    @Nested
+    class FoldlTests {
+        @Test
+        void foldlSumEmptyList() {
+            // foldl (\acc x -> acc + UnIData(x)) 0 []
+            var f = sumFoldFn();
+            var pir = ListsLib.foldl(f, new PirTerm.Const(Constant.integer(BigInteger.ZERO)),
+                    emptyDataList());
+            assertEquals(BigInteger.ZERO, evalInteger(pir));
+        }
+
+        @Test
+        void foldlSumThreeElements() {
+            // foldl (\acc x -> acc + UnIData(x)) 0 [10, 20, 30]
+            var f = sumFoldFn();
+            var pir = ListsLib.foldl(f, new PirTerm.Const(Constant.integer(BigInteger.ZERO)),
+                    intDataList(10, 20, 30));
+            assertEquals(BigInteger.valueOf(60), evalInteger(pir));
+        }
+
+        @Test
+        void foldlWithInitialAccumulator() {
+            // foldl (\acc x -> acc + UnIData(x)) 100 [1, 2, 3]
+            var f = sumFoldFn();
+            var pir = ListsLib.foldl(f, new PirTerm.Const(Constant.integer(BigInteger.valueOf(100))),
+                    intDataList(1, 2, 3));
+            assertEquals(BigInteger.valueOf(106), evalInteger(pir));
+        }
+
+        @Test
+        void foldlProductOfElements() {
+            // foldl (\acc x -> acc * UnIData(x)) 1 [2, 3, 4]
+            var accVar = new PirTerm.Var("acc", new PirType.IntegerType());
+            var xVar = new PirTerm.Var("x", new PirType.DataType());
+            var mul = new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.MultiplyInteger), accVar),
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnIData), xVar));
+            var f = new PirTerm.Lam("acc", new PirType.IntegerType(),
+                    new PirTerm.Lam("x", new PirType.DataType(), mul));
+            var pir = ListsLib.foldl(f, new PirTerm.Const(Constant.integer(BigInteger.ONE)),
+                    intDataList(2, 3, 4));
+            assertEquals(BigInteger.valueOf(24), evalInteger(pir));
+        }
+
+        /**
+         * Build fold function: \acc x -> AddInteger(acc, UnIData(x))
+         */
+        private PirTerm sumFoldFn() {
+            var accVar = new PirTerm.Var("acc", new PirType.IntegerType());
+            var xVar = new PirTerm.Var("x", new PirType.DataType());
+            var add = new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.AddInteger), accVar),
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnIData), xVar));
+            return new PirTerm.Lam("acc", new PirType.IntegerType(),
+                    new PirTerm.Lam("x", new PirType.DataType(), add));
+        }
+    }
+
+    @Nested
+    class AnyTests {
+        @Test
+        void anyOnEmptyListReturnsFalse() {
+            var pred = greaterThanPredicate(0);
+            var pir = ListsLib.any(emptyDataList(), pred);
+            assertFalse(evalBool(pir));
+        }
+
+        @Test
+        void anyWithMatchReturnsTrue() {
+            // any [1, 5, 10] (x > 7) -> true (10 > 7)
+            var pred = greaterThanPredicate(7);
+            var pir = ListsLib.any(intDataList(1, 5, 10), pred);
+            assertTrue(evalBool(pir));
+        }
+
+        @Test
+        void anyWithNoMatchReturnsFalse() {
+            // any [1, 2, 3] (x > 10) -> false
+            var pred = greaterThanPredicate(10);
+            var pir = ListsLib.any(intDataList(1, 2, 3), pred);
+            assertFalse(evalBool(pir));
+        }
+
+        @Test
+        void anyAllMatch() {
+            // any [10, 20, 30] (x > 5) -> true
+            var pred = greaterThanPredicate(5);
+            var pir = ListsLib.any(intDataList(10, 20, 30), pred);
+            assertTrue(evalBool(pir));
+        }
+    }
+
+    @Nested
+    class AllTests {
+        @Test
+        void allOnEmptyListReturnsTrue() {
+            var pred = greaterThanPredicate(0);
+            var pir = ListsLib.all(emptyDataList(), pred);
+            assertTrue(evalBool(pir));
+        }
+
+        @Test
+        void allWhenAllMatchReturnsTrue() {
+            // all [10, 20, 30] (x > 5) -> true
+            var pred = greaterThanPredicate(5);
+            var pir = ListsLib.all(intDataList(10, 20, 30), pred);
+            assertTrue(evalBool(pir));
+        }
+
+        @Test
+        void allWhenSomeDontMatchReturnsFalse() {
+            // all [1, 20, 30] (x > 5) -> false (1 is not > 5)
+            var pred = greaterThanPredicate(5);
+            var pir = ListsLib.all(intDataList(1, 20, 30), pred);
+            assertFalse(evalBool(pir));
+        }
+
+        @Test
+        void allWhenNoneMatchReturnsFalse() {
+            // all [1, 2, 3] (x > 10) -> false
+            var pred = greaterThanPredicate(10);
+            var pir = ListsLib.all(intDataList(1, 2, 3), pred);
+            assertFalse(evalBool(pir));
+        }
+    }
+
+    @Nested
+    class FindTests {
+        @Test
+        void findOnEmptyListReturnsNone() {
+            var pred = equalsIntPredicate(42);
+            var result = evalPir(ListsLib.find(emptyDataList(), pred));
+            assertTrue(result.isSuccess(), "Expected success but got: " + result);
+            // None = Constr(1, [])
+            var term = ((EvalResult.Success) result).resultTerm();
+            assertInstanceOf(Term.Constr.class, term);
+            var constr = (Term.Constr) term;
+            assertEquals(1, constr.tag());
+            assertTrue(constr.fields().isEmpty());
+        }
+
+        @Test
+        void findExistingElementReturnsSome() {
+            // find [10, 20, 30] (x == 20) -> Some(IData(20))
+            var pred = equalsIntPredicate(20);
+            var result = evalPir(ListsLib.find(intDataList(10, 20, 30), pred));
+            assertTrue(result.isSuccess(), "Expected success but got: " + result);
+            // Some(x) = Constr(0, [x])
+            var term = ((EvalResult.Success) result).resultTerm();
+            assertInstanceOf(Term.Constr.class, term);
+            var constr = (Term.Constr) term;
+            assertEquals(0, constr.tag());
+            assertEquals(1, constr.fields().size());
+            // The value inside is IData(20) -> Const(DataConst(IntData(20)))
+            var inner = constr.fields().getFirst();
+            assertInstanceOf(Term.Const.class, inner);
+            var dataConst = ((Term.Const) inner).value();
+            assertInstanceOf(Constant.DataConst.class, dataConst);
+            var plutusData = ((Constant.DataConst) dataConst).value();
+            assertInstanceOf(PlutusData.IntData.class, plutusData);
+            assertEquals(BigInteger.valueOf(20), ((PlutusData.IntData) plutusData).value());
+        }
+
+        @Test
+        void findReturnsFirstMatch() {
+            // find [5, 10, 15, 20] (x > 7) -> Some(IData(10)) (first match)
+            var pred = greaterThanPredicate(7);
+            var result = evalPir(ListsLib.find(intDataList(5, 10, 15, 20), pred));
+            assertTrue(result.isSuccess(), "Expected success but got: " + result);
+            var term = ((EvalResult.Success) result).resultTerm();
+            assertInstanceOf(Term.Constr.class, term);
+            var constr = (Term.Constr) term;
+            assertEquals(0, constr.tag());
+            var inner = constr.fields().getFirst();
+            var plutusData = ((Constant.DataConst) ((Term.Const) inner).value()).value();
+            assertEquals(BigInteger.TEN, ((PlutusData.IntData) plutusData).value());
+        }
+
+        @Test
+        void findNoMatchReturnsNone() {
+            // find [1, 2, 3] (x == 99) -> None
+            var pred = equalsIntPredicate(99);
+            var result = evalPir(ListsLib.find(intDataList(1, 2, 3), pred));
+            assertTrue(result.isSuccess(), "Expected success but got: " + result);
+            var term = ((EvalResult.Success) result).resultTerm();
+            assertInstanceOf(Term.Constr.class, term);
+            assertEquals(1, ((Term.Constr) term).tag());
+        }
+    }
+
+    // =========================================================================
+    // CryptoLib Tests
+    // =========================================================================
+
+    @Nested
+    class CryptoTests {
+        @Test
+        void sha2_256ProducesHash() {
+            var input = new PirTerm.Const(Constant.byteString(new byte[]{1, 2, 3}));
+            var pir = CryptoLib.sha2_256(input);
+            var result = evalPir(pir);
+            assertTrue(result.isSuccess(), "Expected success but got: " + result);
+            var term = ((EvalResult.Success) result).resultTerm();
+            assertInstanceOf(Term.Const.class, term);
+            var val = ((Term.Const) term).value();
+            assertInstanceOf(Constant.ByteStringConst.class, val);
+            // SHA2-256 always produces 32 bytes
+            assertEquals(32, ((Constant.ByteStringConst) val).value().length);
+        }
+
+        @Test
+        void blake2b_256ProducesHash() {
+            var input = new PirTerm.Const(Constant.byteString(new byte[]{4, 5, 6}));
+            var pir = CryptoLib.blake2b_256(input);
+            var result = evalPir(pir);
+            assertTrue(result.isSuccess(), "Expected success but got: " + result);
+            var term = ((EvalResult.Success) result).resultTerm();
+            assertInstanceOf(Term.Const.class, term);
+            var val = ((Term.Const) term).value();
+            assertInstanceOf(Constant.ByteStringConst.class, val);
+            assertEquals(32, ((Constant.ByteStringConst) val).value().length);
+        }
+
+        @Test
+        void sha2_256EmptyInput() {
+            var input = new PirTerm.Const(Constant.byteString(new byte[]{}));
+            var pir = CryptoLib.sha2_256(input);
+            var result = evalPir(pir);
+            assertTrue(result.isSuccess(), "Expected success but got: " + result);
+            var val = ((Term.Const) ((EvalResult.Success) result).resultTerm()).value();
+            assertEquals(32, ((Constant.ByteStringConst) val).value().length);
+        }
+
+        @Test
+        void blake2b_256DifferentInputsDifferentHashes() {
+            var input1 = new PirTerm.Const(Constant.byteString(new byte[]{1}));
+            var input2 = new PirTerm.Const(Constant.byteString(new byte[]{2}));
+            var result1 = evalPir(CryptoLib.blake2b_256(input1));
+            var result2 = evalPir(CryptoLib.blake2b_256(input2));
+            assertTrue(result1.isSuccess());
+            assertTrue(result2.isSuccess());
+            var hash1 = ((Constant.ByteStringConst) ((Term.Const) ((EvalResult.Success) result1).resultTerm()).value()).value();
+            var hash2 = ((Constant.ByteStringConst) ((Term.Const) ((EvalResult.Success) result2).resultTerm()).value()).value();
+            assertFalse(java.util.Arrays.equals(hash1, hash2));
+        }
+    }
+
+    // =========================================================================
+    // ValuesLib Tests
+    // =========================================================================
+
+    @Nested
+    class ValuesTests {
+        @Test
+        void lovelaceOfSimpleValue() {
+            // Value: Map[ (B"", Map[ (B"", I(1000000)) ]) ]
+            // Encoded as Data: MapData(MkCons(MkPairData(BData(""), MapData(MkCons(MkPairData(BData(""), IData(1000000)), MkNilPairData()))), MkNilPairData()))
+            var lovelaceAmount = 1_000_000L;
+
+            // Build inner map: { "" -> 1000000 }
+            var innerPair = new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkPairData),
+                            new PirTerm.App(new PirTerm.Builtin(DefaultFun.BData),
+                                    new PirTerm.Const(Constant.byteString(new byte[]{})))),
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.IData),
+                            new PirTerm.Const(Constant.integer(BigInteger.valueOf(lovelaceAmount)))));
+            var emptyPairList = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilPairData),
+                    new PirTerm.Const(Constant.unit()));
+            var innerList = new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkCons), innerPair),
+                    emptyPairList);
+            var innerMap = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MapData), innerList);
+
+            // Build outer map: { "" -> innerMap }
+            var outerPair = new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkPairData),
+                            new PirTerm.App(new PirTerm.Builtin(DefaultFun.BData),
+                                    new PirTerm.Const(Constant.byteString(new byte[]{})))),
+                    innerMap);
+            var outerList = new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkCons), outerPair),
+                    emptyPairList);
+            var valueData = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MapData), outerList);
+
+            var pir = ValuesLib.lovelaceOf(valueData);
+            assertEquals(BigInteger.valueOf(lovelaceAmount), evalInteger(pir));
+        }
+
+        @Test
+        void lovelaceOfLargeAmount() {
+            // Value with 45 ADA = 45_000_000 lovelace
+            var lovelaceAmount = 45_000_000L;
+
+            var innerPair = new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkPairData),
+                            new PirTerm.App(new PirTerm.Builtin(DefaultFun.BData),
+                                    new PirTerm.Const(Constant.byteString(new byte[]{})))),
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.IData),
+                            new PirTerm.Const(Constant.integer(BigInteger.valueOf(lovelaceAmount)))));
+            var emptyPairList = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilPairData),
+                    new PirTerm.Const(Constant.unit()));
+            var innerList = new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkCons), innerPair),
+                    emptyPairList);
+            var innerMap = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MapData), innerList);
+
+            var outerPair = new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkPairData),
+                            new PirTerm.App(new PirTerm.Builtin(DefaultFun.BData),
+                                    new PirTerm.Const(Constant.byteString(new byte[]{})))),
+                    innerMap);
+            var outerList = new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkCons), outerPair),
+                    emptyPairList);
+            var valueData = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MapData), outerList);
+
+            var pir = ValuesLib.lovelaceOf(valueData);
+            assertEquals(BigInteger.valueOf(lovelaceAmount), evalInteger(pir));
+        }
+    }
+
+    // =========================================================================
+    // ContextsLib Tests
+    // =========================================================================
+
+    @Nested
+    class ContextsTests {
+
+        /**
+         * Build a mock TxInfo as Data with signatories list.
+         * TxInfo = Constr(0, [inputs, refInputs, outputs, fee, mint, certs, wdrawals, validRange, signatories, ...])
+         * We place placeholder Data for fields 0-7, then the signatories list at index 8.
+         */
+        private PirTerm mockTxInfoWithSignatories(PirTerm signatories) {
+            // Build the TxInfo fields list: 16 fields, signatories at index 8
+            // For simplicity, build ConstrData(0, [field0, ..., field8=signatories, ...field15])
+            // Use IData(0) for placeholder fields and ListData(signatories) for index 8
+            var zero = iData(0);
+            // Build fields list from right to left (fields 15..0)
+            PirTerm fieldsList = emptyDataList();
+            for (int i = 15; i >= 0; i--) {
+                PirTerm field;
+                if (i == 8) {
+                    // Signatories field: ListData(signatories)
+                    field = new PirTerm.App(new PirTerm.Builtin(DefaultFun.ListData), signatories);
+                } else {
+                    field = zero;
+                }
+                fieldsList = consData(field, fieldsList);
+            }
+            // ConstrData(0, fieldsList)
+            return new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.ConstrData),
+                            new PirTerm.Const(Constant.integer(BigInteger.ZERO))),
+                    fieldsList);
+        }
+
+        /**
+         * Build a PubKeyHash as Data: BData(bs) — raw BytesData in Cardano V3
+         */
+        private PirTerm pkhData(byte[] bs) {
+            return new PirTerm.App(new PirTerm.Builtin(DefaultFun.BData),
+                    new PirTerm.Const(Constant.byteString(bs)));
+        }
+
+        @Test
+        void getTxInfoExtractsFirstField() {
+            // ScriptContext = Constr(0, [txInfo, redeemer, scriptInfo])
+            // getTxInfo should return the first field
+            var txInfoData = iData(42);
+            var redeemer = iData(0);
+            var scriptInfo = iData(0);
+            PirTerm fields = consData(scriptInfo, emptyDataList());
+            fields = consData(redeemer, fields);
+            fields = consData(txInfoData, fields);
+            var ctx = new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.ConstrData),
+                            new PirTerm.Const(Constant.integer(BigInteger.ZERO))),
+                    fields);
+            var pir = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnIData),
+                    ContextsLib.getTxInfo(ctx));
+            assertEquals(BigInteger.valueOf(42), evalInteger(pir));
+        }
+
+        @Test
+        void getRedeemerExtractsSecondField() {
+            var txInfoData = iData(0);
+            var redeemer = iData(99);
+            var scriptInfo = iData(0);
+            PirTerm fields = consData(scriptInfo, emptyDataList());
+            fields = consData(redeemer, fields);
+            fields = consData(txInfoData, fields);
+            var ctx = new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.ConstrData),
+                            new PirTerm.Const(Constant.integer(BigInteger.ZERO))),
+                    fields);
+            var pir = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnIData),
+                    ContextsLib.getRedeemer(ctx));
+            assertEquals(BigInteger.valueOf(99), evalInteger(pir));
+        }
+
+        @Test
+        void txInfoSignatoriesExtractsList() {
+            // Build signatories list with 2 pkh entries
+            var pkh1 = pkhData(new byte[]{1, 2, 3});
+            var pkh2 = pkhData(new byte[]{4, 5, 6});
+            PirTerm sigsList = consData(pkh2, emptyDataList());
+            sigsList = consData(pkh1, sigsList);
+
+            var txInfo = mockTxInfoWithSignatories(sigsList);
+            var pir = ContextsLib.txInfoSignatories(txInfo);
+            // The result should be a list with 2 elements
+            var lengthPir = ListsLib.length(pir);
+            assertEquals(BigInteger.valueOf(2), evalInteger(lengthPir));
+        }
+
+        @Test
+        void signedByFindsMatchingSignatory() {
+            var targetPkh = new byte[]{1, 2, 3, 4, 5};
+            var otherPkh = new byte[]{9, 8, 7, 6, 5};
+
+            var pkh1 = pkhData(otherPkh);
+            var pkh2 = pkhData(targetPkh);
+            PirTerm sigsList = consData(pkh2, emptyDataList());
+            sigsList = consData(pkh1, sigsList);
+
+            var txInfo = mockTxInfoWithSignatories(sigsList);
+            var target = pkhData(targetPkh);
+
+            var pir = ContextsLib.signedBy(txInfo, target);
+            assertTrue(evalBool(pir));
+        }
+
+        @Test
+        void signedByReturnsFalseWhenNotFound() {
+            var targetPkh = new byte[]{1, 2, 3, 4, 5};
+            var otherPkh1 = new byte[]{9, 8, 7, 6, 5};
+            var otherPkh2 = new byte[]{10, 11, 12, 13, 14};
+
+            var pkh1 = pkhData(otherPkh1);
+            var pkh2 = pkhData(otherPkh2);
+            PirTerm sigsList = consData(pkh2, emptyDataList());
+            sigsList = consData(pkh1, sigsList);
+
+            var txInfo = mockTxInfoWithSignatories(sigsList);
+            var target = pkhData(targetPkh);
+
+            var pir = ContextsLib.signedBy(txInfo, target);
+            assertFalse(evalBool(pir));
+        }
+
+        @Test
+        void signedByOnEmptySignatoriesReturnsFalse() {
+            PirTerm sigsList = emptyDataList();
+            var txInfo = mockTxInfoWithSignatories(sigsList);
+            var target = pkhData(new byte[]{1, 2, 3});
+
+            var pir = ContextsLib.signedBy(txInfo, target);
+            assertFalse(evalBool(pir));
+        }
+    }
+
+    // =========================================================================
+    // IntervalLib Tests
+    // =========================================================================
+
+    @Nested
+    class IntervalTests {
+
+        /**
+         * Build a Finite IntervalBound as Data: Constr(0, [Constr(1, [IData(time)]), Bool])
+         */
+        private PirTerm finiteBound(long time, boolean inclusive) {
+            var timeData = iData(time);
+            // Finite = Constr(1, [IData(time)])
+            PirTerm finiteFields = consData(timeData, emptyDataList());
+            var finiteType = new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.ConstrData),
+                            new PirTerm.Const(Constant.integer(BigInteger.ONE))),
+                    finiteFields);
+            // Bool: True=Constr(1,[]), False=Constr(0,[])
+            var boolData = new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.ConstrData),
+                            new PirTerm.Const(Constant.integer(BigInteger.valueOf(inclusive ? 1 : 0)))),
+                    emptyDataList());
+            // IntervalBound = Constr(0, [boundType, isInclusive])
+            PirTerm boundFields = consData(boolData, emptyDataList());
+            boundFields = consData(finiteType, boundFields);
+            return new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.ConstrData),
+                            new PirTerm.Const(Constant.integer(BigInteger.ZERO))),
+                    boundFields);
+        }
+
+        /**
+         * Build an infinity bound: NegInf=Constr(0,[]) or PosInf=Constr(2,[])
+         */
+        private PirTerm infinityBound(boolean negInf, boolean inclusive) {
+            int tag = negInf ? 0 : 2;
+            var infType = new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.ConstrData),
+                            new PirTerm.Const(Constant.integer(BigInteger.valueOf(tag)))),
+                    emptyDataList());
+            var boolData = new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.ConstrData),
+                            new PirTerm.Const(Constant.integer(BigInteger.valueOf(inclusive ? 1 : 0)))),
+                    emptyDataList());
+            PirTerm boundFields = consData(boolData, emptyDataList());
+            boundFields = consData(infType, boundFields);
+            return new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.ConstrData),
+                            new PirTerm.Const(Constant.integer(BigInteger.ZERO))),
+                    boundFields);
+        }
+
+        /**
+         * Build an Interval as Data: Constr(0, [fromBound, toBound])
+         */
+        private PirTerm interval(PirTerm fromBound, PirTerm toBound) {
+            PirTerm fields = consData(toBound, emptyDataList());
+            fields = consData(fromBound, fields);
+            return new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.ConstrData),
+                            new PirTerm.Const(Constant.integer(BigInteger.ZERO))),
+                    fields);
+        }
+
+        @Test
+        void containsAlwaysIntervalReturnsTrue() {
+            // (-inf, +inf) contains any time
+            var alwaysInterval = interval(
+                    infinityBound(true, true),   // NegInf, inclusive
+                    infinityBound(false, true));  // PosInf, inclusive
+            var pir = IntervalLib.contains(alwaysInterval, iData(12345));
+            assertTrue(evalBool(pir));
+        }
+
+        @Test
+        void containsFiniteInclusiveIntervalInsideReturnsTrue() {
+            // [100, 200] contains 150
+            var ival = interval(finiteBound(100, true), finiteBound(200, true));
+            var pir = IntervalLib.contains(ival, iData(150));
+            assertTrue(evalBool(pir));
+        }
+
+        @Test
+        void containsFiniteInclusiveIntervalAtLowerBound() {
+            // [100, 200] contains 100
+            var ival = interval(finiteBound(100, true), finiteBound(200, true));
+            var pir = IntervalLib.contains(ival, iData(100));
+            assertTrue(evalBool(pir));
+        }
+
+        @Test
+        void containsFiniteInclusiveIntervalAtUpperBound() {
+            // [100, 200] contains 200
+            var ival = interval(finiteBound(100, true), finiteBound(200, true));
+            var pir = IntervalLib.contains(ival, iData(200));
+            assertTrue(evalBool(pir));
+        }
+
+        @Test
+        void containsFiniteInclusiveIntervalBelowReturnsTrue() {
+            // [100, 200] does NOT contain 99
+            var ival = interval(finiteBound(100, true), finiteBound(200, true));
+            var pir = IntervalLib.contains(ival, iData(99));
+            assertFalse(evalBool(pir));
+        }
+
+        @Test
+        void containsFiniteInclusiveIntervalAboveReturnsFalse() {
+            // [100, 200] does NOT contain 201
+            var ival = interval(finiteBound(100, true), finiteBound(200, true));
+            var pir = IntervalLib.contains(ival, iData(201));
+            assertFalse(evalBool(pir));
+        }
+
+        @Test
+        void containsExclusiveLowerBound() {
+            // (100, 200] does NOT contain 100
+            var ival = interval(finiteBound(100, false), finiteBound(200, true));
+            var pir = IntervalLib.contains(ival, iData(100));
+            assertFalse(evalBool(pir));
+        }
+
+        @Test
+        void containsExclusiveUpperBound() {
+            // [100, 200) does NOT contain 200
+            var ival = interval(finiteBound(100, true), finiteBound(200, false));
+            var pir = IntervalLib.contains(ival, iData(200));
+            assertFalse(evalBool(pir));
+        }
+
+        @Test
+        void containsAfterInterval() {
+            // [1000, +inf) contains 2000
+            var ival = interval(finiteBound(1000, true), infinityBound(false, true));
+            var pir = IntervalLib.contains(ival, iData(2000));
+            assertTrue(evalBool(pir));
+        }
+
+        @Test
+        void containsAfterIntervalBelowReturnsFalse() {
+            // [1000, +inf) does NOT contain 999
+            var ival = interval(finiteBound(1000, true), infinityBound(false, true));
+            var pir = IntervalLib.contains(ival, iData(999));
+            assertFalse(evalBool(pir));
+        }
+
+        @Test
+        void containsBeforeInterval() {
+            // (-inf, 1000] contains 500
+            var ival = interval(infinityBound(true, true), finiteBound(1000, true));
+            var pir = IntervalLib.contains(ival, iData(500));
+            assertTrue(evalBool(pir));
+        }
+
+        @Test
+        void containsBeforeIntervalAboveReturnsFalse() {
+            // (-inf, 1000] does NOT contain 1001
+            var ival = interval(infinityBound(true, true), finiteBound(1000, true));
+            var pir = IntervalLib.contains(ival, iData(1001));
+            assertFalse(evalBool(pir));
+        }
+    }
+
+    // =========================================================================
+    // Extended ValuesLib Tests
+    // =========================================================================
+
+    @Nested
+    class ExtendedValuesTests {
+
+        /**
+         * Build a simple Value with only lovelace.
+         */
+        private PirTerm simpleValue(long lovelaceAmount) {
+            var innerPair = new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkPairData),
+                            new PirTerm.App(new PirTerm.Builtin(DefaultFun.BData),
+                                    new PirTerm.Const(Constant.byteString(new byte[]{})))),
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.IData),
+                            new PirTerm.Const(Constant.integer(BigInteger.valueOf(lovelaceAmount)))));
+            var emptyPairList = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilPairData),
+                    new PirTerm.Const(Constant.unit()));
+            var innerList = new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkCons), innerPair),
+                    emptyPairList);
+            var innerMap = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MapData), innerList);
+
+            var outerPair = new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkPairData),
+                            new PirTerm.App(new PirTerm.Builtin(DefaultFun.BData),
+                                    new PirTerm.Const(Constant.byteString(new byte[]{})))),
+                    innerMap);
+            var outerList = new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkCons), outerPair),
+                    emptyPairList);
+            return new PirTerm.App(new PirTerm.Builtin(DefaultFun.MapData), outerList);
+        }
+
+        /**
+         * Build a multi-asset Value: { "" -> {"" -> lovelace}, policy -> {token -> amount} }
+         */
+        private PirTerm multiAssetValue(long lovelace, byte[] policy, byte[] token, long amount) {
+            var emptyPairList = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilPairData),
+                    new PirTerm.Const(Constant.unit()));
+
+            // Inner map for lovelace: { "" -> lovelace }
+            var lovelacePair = new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkPairData),
+                            new PirTerm.App(new PirTerm.Builtin(DefaultFun.BData),
+                                    new PirTerm.Const(Constant.byteString(new byte[]{})))),
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.IData),
+                            new PirTerm.Const(Constant.integer(BigInteger.valueOf(lovelace)))));
+            var lovelaceInner = new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkCons), lovelacePair),
+                    emptyPairList);
+            var lovelaceMap = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MapData), lovelaceInner);
+
+            // Inner map for token: { token -> amount }
+            var tokenPair = new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkPairData),
+                            new PirTerm.App(new PirTerm.Builtin(DefaultFun.BData),
+                                    new PirTerm.Const(Constant.byteString(token)))),
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.IData),
+                            new PirTerm.Const(Constant.integer(BigInteger.valueOf(amount)))));
+            var tokenInner = new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkCons), tokenPair),
+                    emptyPairList);
+            var tokenMap = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MapData), tokenInner);
+
+            // Outer map entries
+            var lovelaceEntry = new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkPairData),
+                            new PirTerm.App(new PirTerm.Builtin(DefaultFun.BData),
+                                    new PirTerm.Const(Constant.byteString(new byte[]{})))),
+                    lovelaceMap);
+            var tokenEntry = new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkPairData),
+                            new PirTerm.App(new PirTerm.Builtin(DefaultFun.BData),
+                                    new PirTerm.Const(Constant.byteString(policy)))),
+                    tokenMap);
+
+            // Build outer list: [lovelaceEntry, tokenEntry]
+            var outerList = new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkCons), tokenEntry),
+                    emptyPairList);
+            outerList = new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkCons), lovelaceEntry),
+                    outerList);
+            return new PirTerm.App(new PirTerm.Builtin(DefaultFun.MapData), outerList);
+        }
+
+        @Test
+        void geqWhenGreater() {
+            var a = simpleValue(2_000_000);
+            var b = simpleValue(1_000_000);
+            var pir = ValuesLib.geq(a, b);
+            assertTrue(evalBool(pir));
+        }
+
+        @Test
+        void geqWhenEqual() {
+            var a = simpleValue(1_000_000);
+            var b = simpleValue(1_000_000);
+            var pir = ValuesLib.geq(a, b);
+            assertTrue(evalBool(pir));
+        }
+
+        @Test
+        void geqWhenLess() {
+            var a = simpleValue(500_000);
+            var b = simpleValue(1_000_000);
+            var pir = ValuesLib.geq(a, b);
+            assertFalse(evalBool(pir));
+        }
+
+        @Test
+        void assetOfFindsToken() {
+            byte[] policy = {1, 2, 3};
+            byte[] token = {4, 5};
+            var value = multiAssetValue(2_000_000, policy, token, 100);
+            var pir = ValuesLib.assetOf(value,
+                    new PirTerm.Const(Constant.byteString(policy)),
+                    new PirTerm.Const(Constant.byteString(token)));
+            assertEquals(BigInteger.valueOf(100), evalInteger(pir));
+        }
+
+        @Test
+        void assetOfReturnsZeroForMissingPolicy() {
+            byte[] policy = {1, 2, 3};
+            byte[] token = {4, 5};
+            byte[] missingPolicy = {9, 9, 9};
+            var value = multiAssetValue(2_000_000, policy, token, 100);
+            var pir = ValuesLib.assetOf(value,
+                    new PirTerm.Const(Constant.byteString(missingPolicy)),
+                    new PirTerm.Const(Constant.byteString(token)));
+            assertEquals(BigInteger.ZERO, evalInteger(pir));
+        }
+
+        @Test
+        void assetOfReturnsZeroForMissingToken() {
+            byte[] policy = {1, 2, 3};
+            byte[] token = {4, 5};
+            byte[] missingToken = {9, 9};
+            var value = multiAssetValue(2_000_000, policy, token, 100);
+            var pir = ValuesLib.assetOf(value,
+                    new PirTerm.Const(Constant.byteString(policy)),
+                    new PirTerm.Const(Constant.byteString(missingToken)));
+            assertEquals(BigInteger.ZERO, evalInteger(pir));
+        }
+    }
+
+    // =========================================================================
+    // StdlibRegistry Tests
+    // =========================================================================
+
+    @Nested
+    class RegistryTests {
+        @Test
+        void defaultRegistryContainsAllEntries() {
+            var reg = StdlibRegistry.defaultRegistry();
+            // ListsLib: 6 methods
+            assertTrue(reg.contains("ListsLib", "any"));
+            assertTrue(reg.contains("ListsLib", "all"));
+            assertTrue(reg.contains("ListsLib", "find"));
+            assertTrue(reg.contains("ListsLib", "foldl"));
+            assertTrue(reg.contains("ListsLib", "length"));
+            assertTrue(reg.contains("ListsLib", "isEmpty"));
+            // ValuesLib: 3 methods
+            assertTrue(reg.contains("ValuesLib", "lovelaceOf"));
+            assertTrue(reg.contains("ValuesLib", "geq"));
+            assertTrue(reg.contains("ValuesLib", "assetOf"));
+            // CryptoLib: 6 methods
+            assertTrue(reg.contains("CryptoLib", "sha2_256"));
+            assertTrue(reg.contains("CryptoLib", "blake2b_256"));
+            assertTrue(reg.contains("CryptoLib", "verifyEd25519Signature"));
+            assertTrue(reg.contains("CryptoLib", "sha3_256"));
+            assertTrue(reg.contains("CryptoLib", "blake2b_224"));
+            assertTrue(reg.contains("CryptoLib", "keccak_256"));
+            // ContextsLib: 7 methods
+            assertTrue(reg.contains("ContextsLib", "signedBy"));
+            assertTrue(reg.contains("ContextsLib", "txInfoInputs"));
+            assertTrue(reg.contains("ContextsLib", "txInfoOutputs"));
+            assertTrue(reg.contains("ContextsLib", "txInfoSignatories"));
+            assertTrue(reg.contains("ContextsLib", "txInfoValidRange"));
+            assertTrue(reg.contains("ContextsLib", "getTxInfo"));
+            assertTrue(reg.contains("ContextsLib", "getRedeemer"));
+            assertTrue(reg.contains("ContextsLib", "getSpendingDatum"));
+            // IntervalLib: 4 methods
+            assertTrue(reg.contains("IntervalLib", "contains"));
+            assertTrue(reg.contains("IntervalLib", "always"));
+            assertTrue(reg.contains("IntervalLib", "after"));
+            assertTrue(reg.contains("IntervalLib", "before"));
+            // Total: 6 + 3 + 6 + 8 + 4 = 27
+            assertEquals(27, reg.size());
+        }
+
+        @Test
+        void lookupNonExistentReturnsEmpty() {
+            var reg = StdlibRegistry.defaultRegistry();
+            assertTrue(reg.lookup("Foo", "bar", List.of()).isEmpty());
+        }
+
+        @Test
+        void lookupIsEmptyViaRegistry() {
+            var reg = StdlibRegistry.defaultRegistry();
+            var term = reg.lookup("ListsLib", "isEmpty", List.of(emptyDataList()));
+            assertTrue(term.isPresent());
+            assertTrue(evalBool(term.get()));
+        }
+
+        @Test
+        void lookupWithWrongArgCountThrows() {
+            var reg = StdlibRegistry.defaultRegistry();
+            assertThrows(IllegalArgumentException.class,
+                    () -> reg.lookup("ListsLib", "isEmpty", List.of()));
+        }
+
+        @Test
+        void lookupCryptoViaRegistry() {
+            var reg = StdlibRegistry.defaultRegistry();
+            var input = new PirTerm.Const(Constant.byteString(new byte[]{1, 2, 3}));
+            var term = reg.lookup("CryptoLib", "sha2_256", List.of(input));
+            assertTrue(term.isPresent());
+            var result = evalPir(term.get());
+            assertTrue(result.isSuccess());
+        }
+
+        @Test
+        void lookupContextsViaRegistry() {
+            var reg = StdlibRegistry.defaultRegistry();
+            // getTxInfo expects 1 arg
+            assertTrue(reg.lookupBuilder("ContextsLib", "getTxInfo").isPresent());
+            // signedBy expects 2 args
+            assertTrue(reg.lookupBuilder("ContextsLib", "signedBy").isPresent());
+        }
+
+        @Test
+        void lookupIntervalViaRegistry() {
+            var reg = StdlibRegistry.defaultRegistry();
+            // always expects 0 args
+            var term = reg.lookup("IntervalLib", "always", List.of());
+            assertTrue(term.isPresent());
+            var result = evalPir(term.get());
+            assertTrue(result.isSuccess());
+        }
+    }
+}

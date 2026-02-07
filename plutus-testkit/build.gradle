@@ -1,0 +1,13 @@
+plugins {
+    id 'java-library'
+}
+
+description = 'Testing framework for unit-testing Plutus validators in JVM'
+
+dependencies {
+    api project(':plutus-core')
+    api project(':plutus-vm')
+    api project(':plutus-compiler')
+    api project(':plutus-ledger-api')
+    testImplementation project(':plutus-vm-scalus')
+}

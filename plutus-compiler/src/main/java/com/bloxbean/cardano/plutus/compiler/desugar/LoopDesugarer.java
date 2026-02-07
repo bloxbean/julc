@@ -1,0 +1,105 @@
+package com.bloxbean.cardano.plutus.compiler.desugar;
+
+import com.bloxbean.cardano.plutus.compiler.pir.PirTerm;
+import com.bloxbean.cardano.plutus.compiler.pir.PirType;
+import com.bloxbean.cardano.plutus.core.Constant;
+import com.bloxbean.cardano.plutus.core.DefaultFun;
+
+import java.util.List;
+
+/**
+ * Transforms loops into PIR recursive terms.
+ *
+ * For-each desugaring (accumulator fold pattern):
+ *   for (var item : items) { acc = f(acc, item); }
+ *   → LetRec(["loop" = \xs \acc -> IfThenElse(NullList(xs), acc, loop(TailList(xs), f(acc, HeadList(xs))))],
+ *            loop(items, initAcc))
+ *
+ * While desugaring:
+ *   while (cond) { body; }
+ *   → LetRec(["loop" = \_ -> IfThenElse(cond, Let("_", body, loop(Unit)), Unit)], loop(Unit))
+ */
+public class LoopDesugarer {
+
+    /**
+     * Desugar a for-each loop with an accumulator pattern.
+     *
+     * @param iterableExpr the list being iterated over
+     * @param itemName     the loop variable name
+     * @param accName      the accumulator variable name
+     * @param accInit      the initial accumulator value
+     * @param accType      the accumulator type
+     * @param loopBody     the body that computes new acc from (acc, item)
+     * @return LetRec term that folds over the list
+     */
+    public PirTerm desugarForEach(PirTerm iterableExpr, String itemName, String accName,
+                                   PirTerm accInit, PirType accType, PirTerm loopBody) {
+        var listType = new PirType.ListType(new PirType.DataType());
+        var loopName = "loop__forEach";
+        var xsName = "xs__";
+
+        // loop = \xs \acc -> IfThenElse(NullList(xs), acc, loop(TailList(xs), body))
+        // where body substitutes item = HeadList(xs)
+        var xsVar = new PirTerm.Var(xsName, listType);
+        var accVar = new PirTerm.Var(accName, accType);
+        var headExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), xsVar);
+        var tailExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), xsVar);
+        var nullCheck = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), xsVar);
+
+        // Bind item = HeadList(xs), then evaluate body to get new acc
+        var bodyWithItem = new PirTerm.Let(itemName, headExpr, loopBody);
+
+        // Recursive call: loop(TailList(xs), newAcc)
+        var recursiveCall = new PirTerm.App(
+                new PirTerm.App(
+                        new PirTerm.Var(loopName, new PirType.FunType(listType, new PirType.FunType(accType, accType))),
+                        tailExpr),
+                bodyWithItem);
+
+        // if NullList(xs) then acc else loop(TailList(xs), body)
+        var loopLambda = new PirTerm.Lam(xsName, listType,
+                new PirTerm.Lam(accName, accType,
+                        new PirTerm.IfThenElse(nullCheck, accVar, recursiveCall)));
+
+        // Initial call: loop(items, accInit)
+        var initialCall = new PirTerm.App(
+                new PirTerm.App(
+                        new PirTerm.Var(loopName, new PirType.FunType(listType, new PirType.FunType(accType, accType))),
+                        iterableExpr),
+                accInit);
+
+        return new PirTerm.LetRec(
+                List.of(new PirTerm.Binding(loopName, loopLambda)),
+                initialCall);
+    }
+
+    /**
+     * Desugar a while loop.
+     *
+     * @param condition the loop condition
+     * @param body      the loop body
+     * @return LetRec term that loops until condition is false
+     */
+    public PirTerm desugarWhile(PirTerm condition, PirTerm body) {
+        var unitType = new PirType.UnitType();
+        var loopName = "loop__while";
+
+        // loop = \_ -> IfThenElse(cond, Let("_", body, loop(Unit)), Unit)
+        var recursiveCall = new PirTerm.App(
+                new PirTerm.Var(loopName, new PirType.FunType(unitType, unitType)),
+                new PirTerm.Const(Constant.unit()));
+
+        var bodyThenContinue = new PirTerm.Let("_body", body, recursiveCall);
+
+        var loopLambda = new PirTerm.Lam("_u", unitType,
+                new PirTerm.IfThenElse(condition, bodyThenContinue, new PirTerm.Const(Constant.unit())));
+
+        var initialCall = new PirTerm.App(
+                new PirTerm.Var(loopName, new PirType.FunType(unitType, unitType)),
+                new PirTerm.Const(Constant.unit()));
+
+        return new PirTerm.LetRec(
+                List.of(new PirTerm.Binding(loopName, loopLambda)),
+                initialCall);
+    }
+}

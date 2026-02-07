@@ -1,0 +1,9 @@
+plugins {
+    id 'java-library'
+}
+
+description = 'On-chain API: annotations and stdlib stubs for IDE support'
+
+dependencies {
+    api project(':plutus-core')   // for PlutusData type (transitive to users)
+}

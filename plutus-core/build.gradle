@@ -1,0 +1,9 @@
+plugins {
+    id 'java-library'
+}
+
+description = 'UPLC AST, PlutusData, and serialization (FLAT, CBOR)'
+
+dependencies {
+    api 'co.nstant.in:cbor:0.9'
+}

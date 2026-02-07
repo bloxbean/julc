@@ -1,0 +1,35 @@
+plugins {
+    id 'java-gradle-plugin'
+}
+
+description = 'Gradle plugin for compiling Plutus validators at build time'
+
+dependencies {
+    implementation project(':plutus-compiler')
+    implementation project(':plutus-core')
+    implementation project(':plutus-stdlib')
+    implementation project(':plutus-cardano-client-lib')
+    implementation 'com.bloxbean.cardano:cardano-client-lib:0.7.1'
+
+    testImplementation platform('org.junit:junit-bom:5.11.4')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    testImplementation gradleTestKit()
+}
+
+gradlePlugin {
+    plugins {
+        plutus {
+            id = 'com.bloxbean.cardano.plutus'
+            implementationClass = 'com.bloxbean.cardano.plutus.gradle.PlutusPlugin'
+        }
+    }
+}
+
+test {
+    useJUnitPlatform()
+    testLogging {
+        events "passed", "skipped", "failed"
+        showStandardStreams = true
+    }
+}
