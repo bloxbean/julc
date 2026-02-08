@@ -218,17 +218,25 @@ public class PirGenerator {
     private PirTerm generateBinaryExpr(BinaryExpr be) {
         var left = generateExpression(be.getLeft());
         var right = generateExpression(be.getRight());
+
+        // Infer operand type for type-aware dispatching
+        var leftType = resolveExpressionType(be.getLeft());
+        if (leftType instanceof PirType.DataType) leftType = inferPirType(left);
+
         return switch (be.getOperator()) {
-            case PLUS -> builtinApp2(DefaultFun.AddInteger, left, right);
+            case PLUS -> {
+                if (leftType instanceof PirType.StringType)
+                    yield builtinApp2(DefaultFun.AppendString, left, right);
+                if (leftType instanceof PirType.ByteStringType)
+                    yield builtinApp2(DefaultFun.AppendByteString, left, right);
+                yield builtinApp2(DefaultFun.AddInteger, left, right);
+            }
             case MINUS -> builtinApp2(DefaultFun.SubtractInteger, left, right);
             case MULTIPLY -> builtinApp2(DefaultFun.MultiplyInteger, left, right);
             case DIVIDE -> builtinApp2(DefaultFun.DivideInteger, left, right);
             case REMAINDER -> builtinApp2(DefaultFun.RemainderInteger, left, right);
-            case EQUALS -> builtinApp2(DefaultFun.EqualsInteger, left, right);
-            case NOT_EQUALS -> new PirTerm.IfThenElse(
-                    builtinApp2(DefaultFun.EqualsInteger, left, right),
-                    new PirTerm.Const(Constant.bool(false)),
-                    new PirTerm.Const(Constant.bool(true)));
+            case EQUALS -> generateEquality(left, right, leftType, false);
+            case NOT_EQUALS -> generateEquality(left, right, leftType, true);
             case LESS -> builtinApp2(DefaultFun.LessThanInteger, left, right);
             case LESS_EQUALS -> builtinApp2(DefaultFun.LessThanEqualsInteger, left, right);
             case GREATER -> builtinApp2(DefaultFun.LessThanInteger, right, left); // swap
@@ -237,6 +245,40 @@ public class PirGenerator {
             case OR -> new PirTerm.IfThenElse(left, new PirTerm.Const(Constant.bool(true)), right);
             default -> throw new CompilerException("Unsupported operator: " + be.getOperator());
         };
+    }
+
+    /**
+     * Generate type-aware equality comparison.
+     * Dispatches to the correct builtin based on operand type.
+     */
+    private PirTerm generateEquality(PirTerm left, PirTerm right, PirType leftType, boolean negate) {
+        DefaultFun eqFun;
+        if (leftType instanceof PirType.ByteStringType) {
+            eqFun = DefaultFun.EqualsByteString;
+        } else if (leftType instanceof PirType.StringType) {
+            eqFun = DefaultFun.EqualsString;
+        } else if (leftType instanceof PirType.BoolType) {
+            // Bool equality: IfThenElse(a, b, !b)
+            var eq = new PirTerm.IfThenElse(left, right,
+                    new PirTerm.IfThenElse(right,
+                            new PirTerm.Const(Constant.bool(false)),
+                            new PirTerm.Const(Constant.bool(true))));
+            if (negate) return new PirTerm.IfThenElse(eq,
+                    new PirTerm.Const(Constant.bool(false)),
+                    new PirTerm.Const(Constant.bool(true)));
+            return eq;
+        } else if (leftType instanceof PirType.DataType
+                || leftType instanceof PirType.RecordType
+                || leftType instanceof PirType.SumType) {
+            eqFun = DefaultFun.EqualsData;
+        } else {
+            eqFun = DefaultFun.EqualsInteger; // default: integer
+        }
+        var result = builtinApp2(eqFun, left, right);
+        if (negate) return new PirTerm.IfThenElse(result,
+                new PirTerm.Const(Constant.bool(false)),
+                new PirTerm.Const(Constant.bool(true)));
+        return result;
     }
 
     private PirTerm generateUnaryExpr(UnaryExpr ue) {
@@ -295,7 +337,7 @@ public class PirGenerator {
                 return listMethodResult;
             }
 
-            // Handle .equals() on integer/bytestring types → EqualsInteger / EqualsByteString
+            // Handle .equals() on integer/bytestring/string/data types
             if (methodName.equals("equals") && args.size() == 1) {
                 var scopeType = resolveExpressionType(scopeExpr);
                 if (scopeType instanceof PirType.DataType) {
@@ -321,6 +363,94 @@ public class PirGenerator {
                         argPir = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnBData), argPir);
                     }
                     return builtinApp2(DefaultFun.EqualsByteString, scope, argPir);
+                }
+                if (scopeType instanceof PirType.StringType) {
+                    return builtinApp2(DefaultFun.EqualsString, scope, generateExpression(args.get(0)));
+                }
+                if (scopeType instanceof PirType.DataType
+                        || scopeType instanceof PirType.RecordType
+                        || scopeType instanceof PirType.SumType) {
+                    return builtinApp2(DefaultFun.EqualsData, scope, generateExpression(args.get(0)));
+                }
+            }
+
+            // Handle .length() on byte[] and String
+            if (methodName.equals("length") && args.isEmpty()) {
+                var scopeType = resolveExpressionType(scopeExpr);
+                if (scopeType instanceof PirType.DataType) scopeType = inferPirType(scope);
+                if (scopeType instanceof PirType.ByteStringType) {
+                    return new PirTerm.App(new PirTerm.Builtin(DefaultFun.LengthOfByteString), scope);
+                }
+                if (scopeType instanceof PirType.StringType) {
+                    return new PirTerm.App(new PirTerm.Builtin(DefaultFun.LengthOfByteString),
+                            new PirTerm.App(new PirTerm.Builtin(DefaultFun.EncodeUtf8), scope));
+                }
+            }
+
+            // Handle BigInteger.abs() and .negate()
+            if (methodName.equals("abs") && args.isEmpty()) {
+                var scopeType = resolveExpressionType(scopeExpr);
+                if (scopeType instanceof PirType.DataType) scopeType = inferPirType(scope);
+                if (scopeType instanceof PirType.IntegerType) {
+                    // abs(x) = if x < 0 then 0 - x else x
+                    return new PirTerm.IfThenElse(
+                            builtinApp2(DefaultFun.LessThanInteger, scope,
+                                    new PirTerm.Const(Constant.integer(BigInteger.ZERO))),
+                            builtinApp2(DefaultFun.SubtractInteger,
+                                    new PirTerm.Const(Constant.integer(BigInteger.ZERO)), scope),
+                            scope);
+                }
+            }
+            if (methodName.equals("negate") && args.isEmpty()) {
+                var scopeType = resolveExpressionType(scopeExpr);
+                if (scopeType instanceof PirType.DataType) scopeType = inferPirType(scope);
+                if (scopeType instanceof PirType.IntegerType) {
+                    return builtinApp2(DefaultFun.SubtractInteger,
+                            new PirTerm.Const(Constant.integer(BigInteger.ZERO)), scope);
+                }
+            }
+
+            // Handle BigInteger.max(b) and .min(b)
+            if ((methodName.equals("max") || methodName.equals("min")) && args.size() == 1) {
+                var scopeType = resolveExpressionType(scopeExpr);
+                if (scopeType instanceof PirType.DataType) scopeType = inferPirType(scope);
+                if (scopeType instanceof PirType.IntegerType) {
+                    var argPir = generateExpression(args.get(0));
+                    var cond = builtinApp2(
+                            methodName.equals("max") ? DefaultFun.LessThanInteger : DefaultFun.LessThanEqualsInteger,
+                            scope, argPir);
+                    return methodName.equals("max")
+                            ? new PirTerm.IfThenElse(cond, argPir, scope)   // max: if a < b then b else a
+                            : new PirTerm.IfThenElse(cond, scope, argPir);  // min: if a <= b then a else b
+                }
+            }
+
+            // Handle Optional.isPresent() / .isEmpty() / .get()
+            if (methodName.equals("isPresent") && args.isEmpty()) {
+                var scopeType = resolveExpressionType(scopeExpr);
+                if (scopeType instanceof PirType.OptionalType) {
+                    var tag = new PirTerm.App(new PirTerm.Builtin(DefaultFun.FstPair),
+                            new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnConstrData), scope));
+                    return builtinApp2(DefaultFun.EqualsInteger, tag,
+                            new PirTerm.Const(Constant.integer(BigInteger.ZERO)));
+                }
+            }
+            if (methodName.equals("isEmpty") && args.isEmpty()) {
+                var scopeType = resolveExpressionType(scopeExpr);
+                if (scopeType instanceof PirType.OptionalType) {
+                    var tag = new PirTerm.App(new PirTerm.Builtin(DefaultFun.FstPair),
+                            new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnConstrData), scope));
+                    return builtinApp2(DefaultFun.EqualsInteger, tag,
+                            new PirTerm.Const(Constant.integer(BigInteger.ONE)));
+                }
+            }
+            if (methodName.equals("get") && args.isEmpty()) {
+                var scopeType = resolveExpressionType(scopeExpr);
+                if (scopeType instanceof PirType.OptionalType opt) {
+                    var fields = new PirTerm.App(new PirTerm.Builtin(DefaultFun.SndPair),
+                            new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnConstrData), scope));
+                    var raw = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), fields);
+                    return wrapDecode(raw, opt.elemType());
                 }
             }
 
@@ -451,6 +581,7 @@ public class PirGenerator {
             case "head" -> wrapDecode(
                     new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), list),
                     listType.elemType());
+            case "tail" -> new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), list);
             case "contains" -> {
                 if (args.isEmpty()) throw new CompilerException("contains() requires one argument");
                 var targetExpr = args.get(0);
@@ -603,6 +734,55 @@ public class PirGenerator {
                     if (field.name().equals(methodName)) return field.type();
                 }
             }
+            // List methods that return a list
+            if (innerType instanceof PirType.ListType && methodName.equals("tail")) {
+                return innerType; // tail returns same list type
+            }
+        }
+
+        // Resolve list method return types
+        var scopeType = resolveExpressionType(scopeExpr);
+        if (scopeType instanceof PirType.ListType lt) {
+            return switch (methodName) {
+                case "tail" -> lt;
+                case "size" -> new PirType.IntegerType();
+                case "isEmpty" -> new PirType.BoolType();
+                case "head" -> lt.elemType();
+                default -> new PirType.DataType();
+            };
+        }
+
+        // Resolve Optional method return types
+        if (scopeType instanceof PirType.OptionalType opt) {
+            return switch (methodName) {
+                case "get" -> opt.elemType();
+                case "isPresent", "isEmpty" -> new PirType.BoolType();
+                default -> new PirType.DataType();
+            };
+        }
+
+        // Resolve integer method return types
+        if (scopeType instanceof PirType.IntegerType) {
+            return switch (methodName) {
+                case "abs", "negate", "max", "min" -> new PirType.IntegerType();
+                default -> new PirType.DataType();
+            };
+        }
+
+        // Resolve byte[] method return types
+        if (scopeType instanceof PirType.ByteStringType) {
+            return switch (methodName) {
+                case "length" -> new PirType.IntegerType();
+                default -> new PirType.DataType();
+            };
+        }
+
+        // Resolve String method return types
+        if (scopeType instanceof PirType.StringType) {
+            return switch (methodName) {
+                case "length" -> new PirType.IntegerType();
+                default -> new PirType.DataType();
+            };
         }
 
         return new PirType.DataType();
@@ -658,6 +838,16 @@ public class PirGenerator {
 
         var scope = generateExpression(fae.getScope());
         var fieldName = fae.getNameAsString();
+
+        // Handle byte[].length field access
+        if (fieldName.equals("length")) {
+            var scopeType = resolveExpressionType(fae.getScope());
+            if (scopeType instanceof PirType.DataType) scopeType = inferPirType(scope);
+            if (scopeType instanceof PirType.ByteStringType) {
+                return new PirTerm.App(new PirTerm.Builtin(DefaultFun.LengthOfByteString), scope);
+            }
+        }
+
         return new PirTerm.App(
                 new PirTerm.Var("." + fieldName, new PirType.DataType()),
                 scope);
@@ -910,7 +1100,12 @@ public class PirGenerator {
         if (term instanceof PirTerm.App app) {
             // For builtin applications, infer from the builtin function
             PirTerm fn = app.function();
+            // Two-arg builtins: App(App(Builtin(f), a), b)
             if (fn instanceof PirTerm.App innerApp && innerApp.function() instanceof PirTerm.Builtin b) {
+                return inferBuiltinReturnType(b.fun());
+            }
+            // One-arg builtins: App(Builtin(f), a)
+            if (fn instanceof PirTerm.Builtin b) {
                 return inferBuiltinReturnType(b.fun());
             }
         }
@@ -926,13 +1121,14 @@ public class PirGenerator {
     private PirType inferBuiltinReturnType(DefaultFun fun) {
         return switch (fun) {
             case AddInteger, SubtractInteger, MultiplyInteger, DivideInteger,
-                 QuotientInteger, RemainderInteger, ModInteger -> new PirType.IntegerType();
+                 QuotientInteger, RemainderInteger, ModInteger,
+                 LengthOfByteString -> new PirType.IntegerType();
             case EqualsInteger, LessThanInteger, LessThanEqualsInteger,
                  EqualsByteString, LessThanByteString, LessThanEqualsByteString,
-                 EqualsString, NullList -> new PirType.BoolType();
+                 EqualsString, EqualsData, NullList -> new PirType.BoolType();
             case AppendByteString, SliceByteString, ConsByteString,
-                 Sha2_256, Sha3_256, Blake2b_256 -> new PirType.ByteStringType();
-            case AppendString -> new PirType.StringType();
+                 Sha2_256, Sha3_256, Blake2b_256, EncodeUtf8 -> new PirType.ByteStringType();
+            case AppendString, DecodeUtf8 -> new PirType.StringType();
             default -> new PirType.DataType();
         };
     }
