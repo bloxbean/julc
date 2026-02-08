@@ -18,6 +18,10 @@ import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.body.RecordDeclaration;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -61,8 +65,9 @@ public class PlutusCompiler {
         var validatorClass = findAnnotatedClass(cu);
         boolean isMinting = isAnnotatedMinting(validatorClass);
 
-        // 4. Register record types and sealed interfaces
+        // 4. Register ledger types, then user-defined record types and sealed interfaces
         var typeResolver = new TypeResolver();
+        com.bloxbean.cardano.plutus.compiler.resolve.LedgerTypeRegistry.registerAll(typeResolver);
         for (var type : cu.findAll(RecordDeclaration.class)) {
             typeResolver.registerRecord(type);
         }
@@ -130,6 +135,20 @@ public class PlutusCompiler {
         var program = Program.plutusV3(uplcTerm);
 
         return new CompileResult(program, diagnostics);
+    }
+
+    /**
+     * Compile a validator from a source file.
+     */
+    public CompileResult compile(Path sourceFile) throws IOException {
+        return compile(Files.readString(sourceFile));
+    }
+
+    /**
+     * Compile a validator from a source file.
+     */
+    public CompileResult compile(File sourceFile) throws IOException {
+        return compile(sourceFile.toPath());
     }
 
     /**

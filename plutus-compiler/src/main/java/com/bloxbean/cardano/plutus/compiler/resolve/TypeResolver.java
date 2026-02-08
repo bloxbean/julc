@@ -26,11 +26,9 @@ public class TypeResolver {
     private static final Set<String> LEDGER_HASH_TYPES = Set.of(
             "PubKeyHash", "ScriptHash", "ValidatorHash", "PolicyId", "TokenName", "DatumHash", "TxId");
 
+    // Types not yet registered as RecordType/SumType — resolved as opaque DataType
     private static final Set<String> LEDGER_DATA_TYPES = Set.of(
-            "ScriptContext", "TxInfo", "TxInInfo", "TxOut", "TxOutRef",
-            "Address", "Credential", "StakingCredential",
-            "Value", "Interval", "OutputDatum",
-            "ScriptPurpose", "ScriptInfo",
+            "StakingCredential", "ScriptPurpose",
             "Vote", "Voter", "DRep", "Delegatee",
             "GovernanceActionId", "GovernanceAction", "ProposalProcedure",
             "TxCert", "Rational", "ProtocolVersion", "Committee");
@@ -42,6 +40,27 @@ public class TypeResolver {
         }
         var recordType = new PirType.RecordType(rd.getNameAsString(), fields);
         recordTypes.put(rd.getNameAsString(), recordType);
+    }
+
+    /**
+     * Register a ledger record type directly (not from a JavaParser RecordDeclaration).
+     * Used by {@link LedgerTypeRegistry} to pre-register ledger types with known schemas.
+     */
+    public void registerLedgerRecord(String name, List<PirType.Field> fields) {
+        var recordType = new PirType.RecordType(name, fields);
+        recordTypes.put(name, recordType);
+    }
+
+    /**
+     * Register a ledger sum type (sealed interface) directly.
+     * Used by {@link LedgerTypeRegistry} to pre-register ledger types with known schemas.
+     */
+    public void registerLedgerSumType(String name, List<PirType.Constructor> constructors) {
+        var sumType = new PirType.SumType(name, constructors);
+        sumTypes.put(name, sumType);
+        for (var ctor : constructors) {
+            variantToSumType.put(ctor.name(), sumType);
+        }
     }
 
     public void registerSealedInterface(ClassOrInterfaceDeclaration decl) {
@@ -140,12 +159,12 @@ public class TypeResolver {
             default -> {
                 // Check ledger hash types -> ByteStringType
                 if (LEDGER_HASH_TYPES.contains(name)) yield new PirType.ByteStringType();
-                // Check ledger data types -> DataType
-                if (LEDGER_DATA_TYPES.contains(name)) yield new PirType.DataType();
-                // Check registered record types
+                // Check registered record types (includes ledger records from LedgerTypeRegistry)
                 if (recordTypes.containsKey(name)) yield recordTypes.get(name);
-                // Check registered sum types (sealed interfaces)
+                // Check registered sum types (sealed interfaces, including ledger sum types)
                 if (sumTypes.containsKey(name)) yield sumTypes.get(name);
+                // Check remaining ledger data types -> opaque DataType
+                if (LEDGER_DATA_TYPES.contains(name)) yield new PirType.DataType();
                 throw new IllegalArgumentException("Unknown type: " + name);
             }
         };

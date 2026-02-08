@@ -68,8 +68,43 @@ class TypeResolverTest {
         assertEquals(new PirType.ByteStringType(), resolver.resolve(StaticJavaParser.parseClassOrInterfaceType("PubKeyHash")));
     }
 
-    @Test void resolveScriptContext() {
-        assertEquals(new PirType.DataType(), resolver.resolve(StaticJavaParser.parseClassOrInterfaceType("ScriptContext")));
+    @Test void resolveScriptContextAsRecordType() {
+        // ScriptContext resolves to RecordType after LedgerTypeRegistry registration
+        LedgerTypeRegistry.registerAll(resolver);
+        var result = resolver.resolve(StaticJavaParser.parseClassOrInterfaceType("ScriptContext"));
+        assertInstanceOf(PirType.RecordType.class, result);
+        var rt = (PirType.RecordType) result;
+        assertEquals("ScriptContext", rt.name());
+        assertEquals(3, rt.fields().size());
+        assertEquals("txInfo", rt.fields().get(0).name());
+        assertEquals("redeemer", rt.fields().get(1).name());
+        assertEquals("scriptInfo", rt.fields().get(2).name());
+    }
+
+    @Test void resolveTxInfoAsRecordType() {
+        LedgerTypeRegistry.registerAll(resolver);
+        var result = resolver.resolve(StaticJavaParser.parseClassOrInterfaceType("TxInfo"));
+        assertInstanceOf(PirType.RecordType.class, result);
+        var rt = (PirType.RecordType) result;
+        assertEquals("TxInfo", rt.name());
+        assertEquals(16, rt.fields().size());
+        assertEquals("signatories", rt.fields().get(8).name());
+        assertInstanceOf(PirType.ListType.class, rt.fields().get(8).type());
+    }
+
+    @Test void resolveCredentialAsSumType() {
+        LedgerTypeRegistry.registerAll(resolver);
+        var result = resolver.resolve(StaticJavaParser.parseClassOrInterfaceType("Credential"));
+        assertInstanceOf(PirType.SumType.class, result);
+        var st = (PirType.SumType) result;
+        assertEquals(2, st.constructors().size());
+        assertEquals("PubKeyCredential", st.constructors().get(0).name());
+        assertEquals("ScriptCredential", st.constructors().get(1).name());
+    }
+
+    @Test void resolveGovernanceTypeAsOpaque() {
+        // Governance types not yet registered still resolve as DataType
+        assertEquals(new PirType.DataType(), resolver.resolve(StaticJavaParser.parseClassOrInterfaceType("Vote")));
     }
 
     @Test void resolveUnknownTypeThrows() {

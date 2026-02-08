@@ -43,4 +43,14 @@ public final class ListsLib {
     public static boolean isEmpty(PlutusData list) {
         throw new UnsupportedOperationException("On-chain only");
     }
+
+    /** Return true if the list contains the given element. */
+    public static boolean contains(PlutusData list, PlutusData target) {
+        throw new UnsupportedOperationException("On-chain only");
+    }
+
+    /** Return the first element of the list. */
+    public static PlutusData head(PlutusData list) {
+        throw new UnsupportedOperationException("On-chain only");
+    }
 }

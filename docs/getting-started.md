@@ -471,6 +471,221 @@ plutus {
 }
 ```
 
+## Annotation Processor (Recommended)
+
+The annotation processor lets you write validators as **normal Java classes** in `src/main/java/` with full IDE support. Validators are compiled to UPLC during `javac` and loaded from the classpath at runtime. Works with both Gradle and Maven.
+
+### Gradle Setup
+
+```groovy
+plugins {
+    id 'java'
+}
+
+repositories {
+    mavenCentral()
+    mavenLocal()
+}
+
+dependencies {
+    // On-chain API — annotations, ledger types, and stdlib stubs for IDE support
+    implementation 'com.bloxbean.cardano:plutus-onchain-api:0.1.0-SNAPSHOT'
+
+    // Annotation processor — compiles validators during javac
+    annotationProcessor 'com.bloxbean.cardano:plutus-annotation-processor:0.1.0-SNAPSHOT'
+
+    // Runtime — load pre-compiled scripts from classpath
+    implementation 'com.bloxbean.cardano:plutus-annotation-processor:0.1.0-SNAPSHOT'
+
+    // cardano-client-lib — for off-chain transaction building
+    implementation 'com.bloxbean.cardano:cardano-client-lib:0.7.1'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.compilerArgs.addAll(['--enable-preview'])
+}
+```
+
+### Maven Setup
+
+```xml
+<dependencies>
+    <dependency>
+        <groupId>com.bloxbean.cardano</groupId>
+        <artifactId>plutus-onchain-api</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </dependency>
+    <dependency>
+        <groupId>com.bloxbean.cardano</groupId>
+        <artifactId>plutus-annotation-processor</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </dependency>
+    <dependency>
+        <groupId>com.bloxbean.cardano</groupId>
+        <artifactId>cardano-client-lib</artifactId>
+        <version>0.7.1</version>
+    </dependency>
+</dependencies>
+
+<build>
+    <plugins>
+        <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-compiler-plugin</artifactId>
+            <version>3.13.0</version>
+            <configuration>
+                <release>24</release>
+                <compilerArgs>
+                    <arg>--enable-preview</arg>
+                </compilerArgs>
+                <annotationProcessorPaths>
+                    <path>
+                        <groupId>com.bloxbean.cardano</groupId>
+                        <artifactId>plutus-annotation-processor</artifactId>
+                        <version>0.1.0-SNAPSHOT</version>
+                    </path>
+                </annotationProcessorPaths>
+            </configuration>
+        </plugin>
+    </plugins>
+</build>
+```
+
+### Writing a Validator
+
+Write your validator as a normal Java class in `src/main/java/`. You get full IDE support — autocomplete, type checking, refactoring, and navigation all work.
+
+```java
+// src/main/java/com/example/VestingValidator.java
+package com.example;
+
+import com.bloxbean.cardano.plutus.onchain.annotation.Validator;
+import com.bloxbean.cardano.plutus.onchain.annotation.Entrypoint;
+import com.bloxbean.cardano.plutus.onchain.ledger.ScriptContext;
+import com.bloxbean.cardano.plutus.onchain.ledger.TxInfo;
+import com.bloxbean.cardano.plutus.core.PlutusData;
+import java.math.BigInteger;
+
+@Validator
+public class VestingValidator {
+    record VestingDatum(byte[] beneficiary, BigInteger deadline) {}
+
+    @Entrypoint
+    static boolean validate(VestingDatum datum, PlutusData redeemer, ScriptContext ctx) {
+        TxInfo txInfo = ctx.txInfo();
+        boolean hasSigner = txInfo.signatories().contains(datum.beneficiary());
+        return hasSigner && datum.deadline() > 0;
+    }
+}
+```
+
+For a minting policy, use `@MintingPolicy` instead of `@Validator`:
+
+```java
+package com.example;
+
+import com.bloxbean.cardano.plutus.onchain.annotation.MintingPolicy;
+import com.bloxbean.cardano.plutus.onchain.annotation.Entrypoint;
+import com.bloxbean.cardano.plutus.onchain.ledger.ScriptContext;
+import com.bloxbean.cardano.plutus.onchain.ledger.TxInfo;
+import com.bloxbean.cardano.plutus.core.PlutusData;
+
+@MintingPolicy
+public class AuthorizedMinting {
+    @Entrypoint
+    static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+        TxInfo txInfo = ctx.txInfo();
+        return txInfo.signatories().contains(redeemer);
+    }
+}
+```
+
+### What Happens at Compile Time
+
+When you run `javac` (via `gradle build` or `mvn compile`), the annotation processor:
+
+1. Finds all classes annotated with `@Validator` or `@MintingPolicy`
+2. Reads the source file via the compiler's `Trees` API
+3. Compiles the validator to a UPLC program using `PlutusCompiler`
+4. FLAT-encodes and double-CBOR-wraps the program
+5. Writes the result to `META-INF/plutus/<ClassName>.plutus.json` in the class output directory
+
+The JSON file ends up on the classpath alongside the compiled `.class` files:
+
+```
+build/classes/java/main/
+    com/example/VestingValidator.class
+    META-INF/plutus/VestingValidator.plutus.json
+```
+
+The JSON file contains the compiled script in text envelope format:
+
+```json
+{
+  "type": "PlutusScriptV3",
+  "description": "VestingValidator",
+  "cborHex": "590194590191010100...",
+  "hash": "a1b2c3d4e5f6..."
+}
+```
+
+### Loading Scripts at Runtime
+
+Use `PlutusScriptLoader` to load pre-compiled scripts from the classpath:
+
+```java
+import com.bloxbean.cardano.plutus.processor.PlutusScriptLoader;
+import com.bloxbean.cardano.client.plutus.spec.PlutusV3Script;
+
+// Load the compiled script — ready for cardano-client-lib
+PlutusV3Script script = PlutusScriptLoader.load(VestingValidator.class);
+
+// Get the script hash (also the policy ID for minting policies)
+String hash = PlutusScriptLoader.scriptHash(VestingValidator.class);
+
+// Get the full output metadata
+ValidatorOutput output = PlutusScriptLoader.loadOutput(VestingValidator.class);
+```
+
+### Using the Loaded Script with cardano-client-lib
+
+```java
+import com.bloxbean.cardano.client.address.AddressProvider;
+import com.bloxbean.cardano.client.common.model.Networks;
+import com.bloxbean.cardano.client.quicktx.ScriptTx;
+
+// Load the pre-compiled script
+PlutusV3Script script = PlutusScriptLoader.load(VestingValidator.class);
+
+// Derive the script address
+String scriptAddress = AddressProvider
+    .getEntAddress(script, Networks.testnet())
+    .toBech32();
+
+// Lock ADA to the script
+var lockTx = new Tx()
+    .payToContract(scriptAddress, Amount.ada(5), datum)
+    .from(account.baseAddress());
+
+// Unlock from the script
+var unlockTx = new ScriptTx()
+    .collectFrom(scriptUtxo, redeemer)
+    .payToAddress(account.baseAddress(), Amount.ada(4))
+    .attachSpendingValidator(script);
+```
+
+### Annotation Processor vs Gradle Plugin
+
+| Feature | Annotation Processor | Gradle Plugin |
+|---------|---------------------|---------------|
+| IDE support | Full (validators in `src/main/java`) | Partial (files in `src/main/plutus`) |
+| Build tool | Gradle + Maven + any javac | Gradle only |
+| Validator loading | `PlutusScriptLoader.load(MyValidator.class)` | Manual JSON file reading |
+| Configuration | Zero-config (just add dependency) | `plutus { }` block |
+| File location | `src/main/java/` (normal Java) | `src/main/plutus/` (separate) |
+
+The annotation processor is recommended for new projects. The Gradle plugin is still available for projects that prefer to keep validator source separate from application code.
+
 ## Compiler Limitations
 
 The current compiler supports a safe Java subset for on-chain code:

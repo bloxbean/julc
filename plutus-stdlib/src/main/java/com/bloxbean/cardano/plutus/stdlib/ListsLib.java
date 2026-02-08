@@ -187,4 +187,101 @@ public final class ListsLib {
     public static PirTerm isEmpty(PirTerm list) {
         return new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), list);
     }
+
+    /**
+     * Returns the head element of a list.
+     * <p>
+     * Equivalent to HeadList(list). The result is raw Data.
+     *
+     * @param list PIR term representing a builtin list
+     * @return PIR term that evaluates to the first element
+     */
+    public static PirTerm head(PirTerm list) {
+        return new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), list);
+    }
+
+    /**
+     * Returns true if the list contains the given target element.
+     * <p>
+     * Uses a recursive search with element equality based on the element type:
+     * <ul>
+     *   <li>ByteStringType → EqualsByteString(UnBData(elem), UnBData(target))</li>
+     *   <li>IntegerType → EqualsInteger(UnIData(elem), UnIData(target))</li>
+     *   <li>DataType/RecordType/SumType → EqualsData(elem, target)</li>
+     * </ul>
+     *
+     * @param list     PIR term representing a builtin list
+     * @param target   PIR term representing the element to search for
+     * @param elemType the PIR type of list elements (determines equality comparison)
+     * @return PIR term that evaluates to Bool
+     */
+    public static PirTerm contains(PirTerm list, PirTerm target, PirType elemType) {
+        // contains(list, target) =
+        //   let target_c = target in
+        //   let list_c = list in
+        //   letrec go = \lst ->
+        //     IfThenElse(NullList(lst),
+        //       False,
+        //       let h = HeadList(lst) in
+        //         IfThenElse(eq(h, target_c),
+        //           True,
+        //           go(TailList(lst))))
+        //   in go(list_c)
+
+        var lstVar = new PirTerm.Var("lst_c", new PirType.ListType(new PirType.DataType()));
+        var goVar = new PirTerm.Var("go_c", new PirType.FunType(
+                new PirType.ListType(new PirType.DataType()),
+                new PirType.BoolType()));
+        var targetVar = new PirTerm.Var("target_c", new PirType.DataType());
+        var listVar = new PirTerm.Var("list_c", new PirType.ListType(new PirType.DataType()));
+
+        var nullCheck = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), lstVar);
+        var headExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), lstVar);
+        var tailExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), lstVar);
+        var hVar = new PirTerm.Var("h_c", new PirType.DataType());
+
+        // Build equality check based on element type
+        PirTerm equalCheck = buildEqualityCheck(hVar, targetVar, elemType);
+
+        var recurse = new PirTerm.App(goVar, tailExpr);
+        var innerIf = new PirTerm.IfThenElse(equalCheck,
+                new PirTerm.Const(Constant.bool(true)),
+                recurse);
+        var letHead = new PirTerm.Let("h_c", headExpr, innerIf);
+        var outerIf = new PirTerm.IfThenElse(nullCheck,
+                new PirTerm.Const(Constant.bool(false)),
+                letHead);
+
+        var goBody = new PirTerm.Lam("lst_c", new PirType.ListType(new PirType.DataType()), outerIf);
+        var binding = new PirTerm.Binding("go_c", goBody);
+
+        var search = new PirTerm.LetRec(List.of(binding),
+                new PirTerm.App(goVar, listVar));
+
+        return new PirTerm.Let("target_c", target,
+                new PirTerm.Let("list_c", list, search));
+    }
+
+    /**
+     * Build an equality check between two Data elements based on the expected element type.
+     */
+    private static PirTerm buildEqualityCheck(PirTerm a, PirTerm b, PirType elemType) {
+        if (elemType instanceof PirType.ByteStringType) {
+            // EqualsByteString(UnBData(a), UnBData(b))
+            return new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.EqualsByteString),
+                            new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnBData), a)),
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnBData), b));
+        }
+        if (elemType instanceof PirType.IntegerType) {
+            // EqualsInteger(UnIData(a), UnIData(b))
+            return new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.EqualsInteger),
+                            new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnIData), a)),
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnIData), b));
+        }
+        // Default: EqualsData(a, b)
+        return new PirTerm.App(
+                new PirTerm.App(new PirTerm.Builtin(DefaultFun.EqualsData), a), b);
+    }
 }
