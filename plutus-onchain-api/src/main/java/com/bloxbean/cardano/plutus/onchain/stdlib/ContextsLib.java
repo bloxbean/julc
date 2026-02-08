@@ -1,6 +1,9 @@
 package com.bloxbean.cardano.plutus.onchain.stdlib;
 
 import com.bloxbean.cardano.plutus.core.PlutusData;
+import com.bloxbean.cardano.plutus.onchain.ledger.Interval;
+import com.bloxbean.cardano.plutus.onchain.ledger.ScriptContext;
+import com.bloxbean.cardano.plutus.onchain.ledger.TxInfo;
 
 /**
  * On-chain ScriptContext and TxInfo field extraction functions.
@@ -13,42 +16,42 @@ public final class ContextsLib {
     private ContextsLib() {}
 
     /** Extract TxInfo (field 0) from ScriptContext. */
-    public static PlutusData getTxInfo(PlutusData ctx) {
+    public static TxInfo getTxInfo(ScriptContext ctx) {
         throw new UnsupportedOperationException("On-chain only");
     }
 
     /** Extract redeemer (field 1) from ScriptContext. */
-    public static PlutusData getRedeemer(PlutusData ctx) {
+    public static PlutusData getRedeemer(ScriptContext ctx) {
         throw new UnsupportedOperationException("On-chain only");
     }
 
     /** Extract optional datum from spending ScriptContext. */
-    public static PlutusData getSpendingDatum(PlutusData ctx) {
+    public static PlutusData getSpendingDatum(ScriptContext ctx) {
         throw new UnsupportedOperationException("On-chain only");
     }
 
     /** Check if a PubKeyHash is in TxInfo's signatories list. */
-    public static boolean signedBy(PlutusData txInfo, PlutusData pkh) {
+    public static boolean signedBy(TxInfo txInfo, byte[] pkh) {
         throw new UnsupportedOperationException("On-chain only");
     }
 
     /** Extract inputs list (field 0) from TxInfo. */
-    public static PlutusData txInfoInputs(PlutusData txInfo) {
+    public static PlutusData txInfoInputs(TxInfo txInfo) {
         throw new UnsupportedOperationException("On-chain only");
     }
 
     /** Extract outputs list (field 2) from TxInfo. */
-    public static PlutusData txInfoOutputs(PlutusData txInfo) {
+    public static PlutusData txInfoOutputs(TxInfo txInfo) {
         throw new UnsupportedOperationException("On-chain only");
     }
 
     /** Extract signatories list (field 8) from TxInfo. */
-    public static PlutusData txInfoSignatories(PlutusData txInfo) {
+    public static PlutusData txInfoSignatories(TxInfo txInfo) {
         throw new UnsupportedOperationException("On-chain only");
     }
 
     /** Extract valid range (field 7) from TxInfo. */
-    public static PlutusData txInfoValidRange(PlutusData txInfo) {
+    public static Interval txInfoValidRange(TxInfo txInfo) {
         throw new UnsupportedOperationException("On-chain only");
     }
 }

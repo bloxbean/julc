@@ -1,6 +1,8 @@
 package com.bloxbean.cardano.plutus.onchain.stdlib;
 
-import com.bloxbean.cardano.plutus.core.PlutusData;
+import com.bloxbean.cardano.plutus.onchain.ledger.Interval;
+
+import java.math.BigInteger;
 
 /**
  * On-chain time interval operations.
@@ -13,22 +15,22 @@ public final class IntervalLib {
     private IntervalLib() {}
 
     /** Check if a time point falls within the interval bounds. */
-    public static boolean contains(PlutusData interval, PlutusData time) {
+    public static boolean contains(Interval interval, BigInteger time) {
         throw new UnsupportedOperationException("On-chain only");
     }
 
     /** Return the "always" interval: (-inf, +inf). */
-    public static PlutusData always() {
+    public static Interval always() {
         throw new UnsupportedOperationException("On-chain only");
     }
 
     /** Return interval [time, +inf). */
-    public static PlutusData after(PlutusData time) {
+    public static Interval after(BigInteger time) {
         throw new UnsupportedOperationException("On-chain only");
     }
 
     /** Return interval (-inf, time]. */
-    public static PlutusData before(PlutusData time) {
+    public static Interval before(BigInteger time) {
         throw new UnsupportedOperationException("On-chain only");
     }
 }

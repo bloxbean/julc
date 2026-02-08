@@ -113,6 +113,57 @@ class BigIntegerCompatTest {
     }
 
     @Nested
+    class BigIntegerConstructor {
+        @Test
+        void newBigIntegerWithStringLiteral() {
+            var source = """
+                    import java.math.BigInteger;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            return new BigInteger("50000000000") == 50000000000L;
+                        }
+                    }
+                    """;
+            var compiler = new PlutusCompiler();
+            var program = compiler.compile(source).program();
+
+            var ctx = buildScriptContext(
+                    buildTxInfo(new PlutusData[0], alwaysInterval()),
+                    PlutusData.integer(0),
+                    PlutusData.constr(0, PlutusData.bytes(new byte[28])));
+            var result = vm.evaluateWithArgs(program, List.of(ctx));
+            assertTrue(result.isSuccess(), "new BigInteger(\"50000000000\") == 50000000000L should be true. Got: " + result);
+        }
+
+        @Test
+        void newBigIntegerInArithmetic() {
+            var source = """
+                    import java.math.BigInteger;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            return new BigInteger("100") + new BigInteger("200") == 300;
+                        }
+                    }
+                    """;
+            var compiler = new PlutusCompiler();
+            var program = compiler.compile(source).program();
+
+            var ctx = buildScriptContext(
+                    buildTxInfo(new PlutusData[0], alwaysInterval()),
+                    PlutusData.integer(0),
+                    PlutusData.constr(0, PlutusData.bytes(new byte[28])));
+            var result = vm.evaluateWithArgs(program, List.of(ctx));
+            assertTrue(result.isSuccess(), "new BigInteger(\"100\") + new BigInteger(\"200\") == 300 should be true. Got: " + result);
+        }
+    }
+
+    @Nested
     class BigIntegerConstants {
         @Test
         void bigIntegerZero() {

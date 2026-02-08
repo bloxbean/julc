@@ -25,6 +25,7 @@ public class PirGenerator {
     private final SymbolTable symbolTable;
     private final StdlibLookup stdlibLookup;
     private final TypeMethodRegistry typeMethodRegistry;
+    private String forEachAccumulatorVar; // non-null when compiling fold body
 
     public PirGenerator(TypeResolver typeResolver, SymbolTable symbolTable) {
         this(typeResolver, symbolTable, null, TypeMethodRegistry.defaultRegistry());
@@ -98,6 +99,14 @@ public class PirGenerator {
                 symbolTable.define(name, pirType);
                 var body = generateStatements(stmts, index + 1);
                 return new PirTerm.Let(name, value, body);
+            }
+            // Accumulator assignment in for-each fold: return value as the new accumulator
+            if (forEachAccumulatorVar != null
+                    && es.getExpression() instanceof AssignExpr ae
+                    && ae.getTarget() instanceof NameExpr ne
+                    && ne.getNameAsString().equals(forEachAccumulatorVar)
+                    && index + 1 >= stmts.size()) {
+                return generateExpression(ae.getValue());
             }
             // Non-declaration expression statement: evaluate and continue
             var expr = generateExpression(es.getExpression());
@@ -216,6 +225,11 @@ public class PirGenerator {
         }
         if (expr instanceof InstanceOfExpr ioe) {
             return generateInstanceOf(ioe);
+        }
+        if (expr instanceof AssignExpr ae && forEachAccumulatorVar != null
+                && ae.getTarget() instanceof NameExpr ne
+                && ne.getNameAsString().equals(forEachAccumulatorVar)) {
+            return generateExpression(ae.getValue());
         }
         throw new CompilerException("Unsupported expression: " + expr.getClass().getSimpleName() + " = " + expr);
     }
@@ -574,6 +588,15 @@ public class PirGenerator {
     private PirTerm generateObjectCreation(ObjectCreationExpr oce) {
         var typeName = oce.getType().getNameAsString();
 
+        // Handle new BigInteger("12345") → integer constant
+        if (typeName.equals("BigInteger") && oce.getArguments().size() == 1) {
+            var arg = oce.getArguments().get(0);
+            if (arg instanceof StringLiteralExpr sle) {
+                return new PirTerm.Const(Constant.integer(new BigInteger(sle.getValue())));
+            }
+            throw new CompilerException("new BigInteger() requires a string literal argument");
+        }
+
         // Check if this is a variant of a sealed interface (sum type)
         var sumType = typeResolver.lookupSumTypeForVariant(typeName);
         if (sumType.isPresent()) {
@@ -614,13 +637,41 @@ public class PirGenerator {
 
         var desugarer = new LoopDesugarer();
 
+        // Detect accumulator pattern: last statement assigns to a pre-loop variable
+        var accName = detectForEachAccumulator(fes.getBody());
+        if (accName != null) {
+            var accType = symbolTable.lookup(accName).orElse(new PirType.BoolType());
+            var accInit = new PirTerm.Var(accName, accType);
+
+            symbolTable.pushScope();
+            symbolTable.define(itemName, elemType);
+            symbolTable.define(accName, accType); // shadow as fold parameter
+
+            String prev = forEachAccumulatorVar;
+            forEachAccumulatorVar = accName;
+            var bodyTerm = generateStatement(fes.getBody());
+            forEachAccumulatorVar = prev;
+
+            symbolTable.popScope();
+
+            var foldResult = desugarer.desugarForEach(
+                    iterableExpr, itemName, accName, accInit, accType, bodyTerm);
+
+            // Rebind accumulator with fold result for following statements
+            if (followingIndex + 1 < followingStmts.size()) {
+                symbolTable.define(accName, accType);
+                var rest = generateStatements(followingStmts, followingIndex + 1);
+                return new PirTerm.Let(accName, foldResult, rest);
+            }
+            return foldResult;
+        }
+
+        // Unit-accumulator fallback: for-each with no accumulator
         symbolTable.pushScope();
         symbolTable.define(itemName, elemType);
         var bodyTerm = generateStatement(fes.getBody());
         symbolTable.popScope();
 
-        // Simple desugaring: for-each becomes fold that discards items
-        // The body becomes a function applied to each element
         var forEachResult = desugarer.desugarForEach(
                 iterableExpr, itemName, "acc__forEach",
                 new PirTerm.Const(Constant.unit()), new PirType.UnitType(),
@@ -631,6 +682,21 @@ public class PirGenerator {
             return new PirTerm.Let("_forEach", forEachResult, rest);
         }
         return forEachResult;
+    }
+
+    private String detectForEachAccumulator(Statement bodyStmt) {
+        List<Statement> stmts;
+        if (bodyStmt instanceof BlockStmt bs) stmts = bs.getStatements();
+        else stmts = List.of(bodyStmt);
+        if (stmts.isEmpty()) return null;
+        var last = stmts.get(stmts.size() - 1);
+        if (last instanceof ExpressionStmt es
+                && es.getExpression() instanceof AssignExpr ae
+                && ae.getTarget() instanceof NameExpr ne) {
+            var name = ne.getNameAsString();
+            if (symbolTable.lookup(name).isPresent()) return name;
+        }
+        return null;
     }
 
     private PirTerm generateWhileStmt(WhileStmt ws, List<Statement> followingStmts, int followingIndex) {
