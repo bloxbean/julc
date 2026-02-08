@@ -730,6 +730,712 @@ class TypeMethodsTest {
     }
 
     @Nested
+    class BigIntegerInstanceMethods {
+        @Test
+        void addMethod() {
+            var source = """
+                    import java.math.BigInteger;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            return BigInteger.valueOf(10).add(BigInteger.valueOf(5)) == 15;
+                        }
+                    }
+                    """;
+            var program = new PlutusCompiler().compile(source).program();
+            var result = vm.evaluateWithArgs(program, List.of(simpleCtx()));
+            assertTrue(result.isSuccess(), "10.add(5) should be 15. Got: " + result);
+        }
+
+        @Test
+        void subtractMethod() {
+            var source = """
+                    import java.math.BigInteger;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            return BigInteger.valueOf(10).subtract(BigInteger.valueOf(3)) == 7;
+                        }
+                    }
+                    """;
+            var program = new PlutusCompiler().compile(source).program();
+            var result = vm.evaluateWithArgs(program, List.of(simpleCtx()));
+            assertTrue(result.isSuccess(), "10.subtract(3) should be 7. Got: " + result);
+        }
+
+        @Test
+        void multiplyMethod() {
+            var source = """
+                    import java.math.BigInteger;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            return BigInteger.valueOf(6).multiply(BigInteger.valueOf(7)) == 42;
+                        }
+                    }
+                    """;
+            var program = new PlutusCompiler().compile(source).program();
+            var result = vm.evaluateWithArgs(program, List.of(simpleCtx()));
+            assertTrue(result.isSuccess(), "6.multiply(7) should be 42. Got: " + result);
+        }
+
+        @Test
+        void divideMethod() {
+            var source = """
+                    import java.math.BigInteger;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            return BigInteger.valueOf(17).divide(BigInteger.valueOf(5)) == 3;
+                        }
+                    }
+                    """;
+            var program = new PlutusCompiler().compile(source).program();
+            var result = vm.evaluateWithArgs(program, List.of(simpleCtx()));
+            assertTrue(result.isSuccess(), "17.divide(5) should be 3. Got: " + result);
+        }
+
+        @Test
+        void remainderMethod() {
+            var source = """
+                    import java.math.BigInteger;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            return BigInteger.valueOf(17).remainder(BigInteger.valueOf(5)) == 2;
+                        }
+                    }
+                    """;
+            var program = new PlutusCompiler().compile(source).program();
+            var result = vm.evaluateWithArgs(program, List.of(simpleCtx()));
+            assertTrue(result.isSuccess(), "17.remainder(5) should be 2. Got: " + result);
+        }
+
+        @Test
+        void modMethod() {
+            var source = """
+                    import java.math.BigInteger;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            return BigInteger.valueOf(17).mod(BigInteger.valueOf(5)) == 2;
+                        }
+                    }
+                    """;
+            var program = new PlutusCompiler().compile(source).program();
+            var result = vm.evaluateWithArgs(program, List.of(simpleCtx()));
+            assertTrue(result.isSuccess(), "17.mod(5) should be 2. Got: " + result);
+        }
+
+        @Test
+        void signumPositive() {
+            var source = """
+                    import java.math.BigInteger;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            return BigInteger.valueOf(42).signum() == 1;
+                        }
+                    }
+                    """;
+            var program = new PlutusCompiler().compile(source).program();
+            var result = vm.evaluateWithArgs(program, List.of(simpleCtx()));
+            assertTrue(result.isSuccess(), "signum(42) should be 1. Got: " + result);
+        }
+
+        @Test
+        void signumZero() {
+            var source = """
+                    import java.math.BigInteger;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            return BigInteger.ZERO.signum() == 0;
+                        }
+                    }
+                    """;
+            var program = new PlutusCompiler().compile(source).program();
+            var result = vm.evaluateWithArgs(program, List.of(simpleCtx()));
+            assertTrue(result.isSuccess(), "signum(0) should be 0. Got: " + result);
+        }
+
+        @Test
+        void signumNegative() {
+            var source = """
+                    import java.math.BigInteger;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            return BigInteger.valueOf(-7).signum() == -1;
+                        }
+                    }
+                    """;
+            var program = new PlutusCompiler().compile(source).program();
+            var result = vm.evaluateWithArgs(program, List.of(simpleCtx()));
+            assertTrue(result.isSuccess(), "signum(-7) should be -1. Got: " + result);
+        }
+
+        @Test
+        void compareToLess() {
+            var source = """
+                    import java.math.BigInteger;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            return BigInteger.valueOf(3).compareTo(BigInteger.valueOf(7)) == -1;
+                        }
+                    }
+                    """;
+            var program = new PlutusCompiler().compile(source).program();
+            var result = vm.evaluateWithArgs(program, List.of(simpleCtx()));
+            assertTrue(result.isSuccess(), "compareTo(3, 7) should be -1. Got: " + result);
+        }
+
+        @Test
+        void compareToEqual() {
+            var source = """
+                    import java.math.BigInteger;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            return BigInteger.valueOf(5).compareTo(BigInteger.valueOf(5)) == 0;
+                        }
+                    }
+                    """;
+            var program = new PlutusCompiler().compile(source).program();
+            var result = vm.evaluateWithArgs(program, List.of(simpleCtx()));
+            assertTrue(result.isSuccess(), "compareTo(5, 5) should be 0. Got: " + result);
+        }
+
+        @Test
+        void compareToGreater() {
+            var source = """
+                    import java.math.BigInteger;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            return BigInteger.valueOf(7).compareTo(BigInteger.valueOf(3)) == 1;
+                        }
+                    }
+                    """;
+            var program = new PlutusCompiler().compile(source).program();
+            var result = vm.evaluateWithArgs(program, List.of(simpleCtx()));
+            assertTrue(result.isSuccess(), "compareTo(7, 3) should be 1. Got: " + result);
+        }
+
+        @Test
+        void chainedArithmetic() {
+            var source = """
+                    import java.math.BigInteger;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            return BigInteger.valueOf(10).add(BigInteger.valueOf(5)).multiply(BigInteger.valueOf(2)) == 30;
+                        }
+                    }
+                    """;
+            var program = new PlutusCompiler().compile(source).program();
+            var result = vm.evaluateWithArgs(program, List.of(simpleCtx()));
+            assertTrue(result.isSuccess(), "(10 + 5) * 2 should be 30. Got: " + result);
+        }
+    }
+
+    // =========================================================================
+    // Edge-case tests for smart contract correctness (post-TypeMethodRegistry)
+    // =========================================================================
+
+    @Nested
+    class IntegerEdgeCases {
+        @Test
+        void absOfZero() {
+            var source = """
+                    import java.math.BigInteger;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            return BigInteger.ZERO.abs() == 0;
+                        }
+                    }
+                    """;
+            var program = new PlutusCompiler().compile(source).program();
+            var result = vm.evaluateWithArgs(program, List.of(simpleCtx()));
+            assertTrue(result.isSuccess(), "abs(0) should be 0. Got: " + result);
+        }
+
+        @Test
+        void negateZero() {
+            var source = """
+                    import java.math.BigInteger;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            return BigInteger.ZERO.negate() == 0;
+                        }
+                    }
+                    """;
+            var program = new PlutusCompiler().compile(source).program();
+            var result = vm.evaluateWithArgs(program, List.of(simpleCtx()));
+            assertTrue(result.isSuccess(), "negate(0) should be 0. Got: " + result);
+        }
+
+        @Test
+        void maxEqualValues() {
+            var source = """
+                    import java.math.BigInteger;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            return BigInteger.valueOf(5).max(BigInteger.valueOf(5)) == 5;
+                        }
+                    }
+                    """;
+            var program = new PlutusCompiler().compile(source).program();
+            var result = vm.evaluateWithArgs(program, List.of(simpleCtx()));
+            assertTrue(result.isSuccess(), "max(5, 5) should be 5. Got: " + result);
+        }
+
+        @Test
+        void minEqualValues() {
+            var source = """
+                    import java.math.BigInteger;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            return BigInteger.valueOf(5).min(BigInteger.valueOf(5)) == 5;
+                        }
+                    }
+                    """;
+            var program = new PlutusCompiler().compile(source).program();
+            var result = vm.evaluateWithArgs(program, List.of(simpleCtx()));
+            assertTrue(result.isSuccess(), "min(5, 5) should be 5. Got: " + result);
+        }
+
+        @Test
+        void absResultInArithmetic() {
+            var source = """
+                    import java.math.BigInteger;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            return BigInteger.valueOf(-3).abs() + BigInteger.valueOf(2) == 5;
+                        }
+                    }
+                    """;
+            var program = new PlutusCompiler().compile(source).program();
+            var result = vm.evaluateWithArgs(program, List.of(simpleCtx()));
+            assertTrue(result.isSuccess(), "abs(-3) + 2 should be 5. Got: " + result);
+        }
+
+        @Test
+        void negateResultInComparison() {
+            var source = """
+                    import java.math.BigInteger;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            return BigInteger.valueOf(5).negate() < 0;
+                        }
+                    }
+                    """;
+            var program = new PlutusCompiler().compile(source).program();
+            var result = vm.evaluateWithArgs(program, List.of(simpleCtx()));
+            assertTrue(result.isSuccess(), "negate(5) < 0 should be true. Got: " + result);
+        }
+    }
+
+    @Nested
+    class ListEdgeCases {
+        @Test
+        void sizeOfEmptyList() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            TxInfo txInfo = ctx.txInfo();
+                            var sigs = txInfo.signatories();
+                            return sigs.size() == 0;
+                        }
+                    }
+                    """;
+            var compiler = new PlutusCompiler();
+            var program = compiler.compile(source).program();
+
+            // 0 signatories
+            var txInfo = buildTxInfo(new PlutusData[0], alwaysInterval());
+            var ctx = buildScriptContext(txInfo, PlutusData.integer(0),
+                    PlutusData.constr(0, PlutusData.bytes(new byte[28])));
+            var result = vm.evaluateWithArgs(program, List.of(ctx));
+            assertTrue(result.isSuccess(), "Empty list size should be 0. Got: " + result);
+        }
+
+        @Test
+        void tailThenHead() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            TxInfo txInfo = ctx.txInfo();
+                            var sigs = txInfo.signatories();
+                            var second = sigs.tail().head();
+                            return second == second;
+                        }
+                    }
+                    """;
+            var compiler = new PlutusCompiler();
+            var program = compiler.compile(source).program();
+
+            // 2 signatories — tail().head() gets second element
+            var txInfo = buildTxInfo(
+                    new PlutusData[]{PlutusData.bytes(new byte[]{1}), PlutusData.bytes(new byte[]{2})},
+                    alwaysInterval());
+            var ctx = buildScriptContext(txInfo, PlutusData.integer(0),
+                    PlutusData.constr(0, PlutusData.bytes(new byte[28])));
+            var result = vm.evaluateWithArgs(program, List.of(ctx));
+            assertTrue(result.isSuccess(), "tail().head() should get second element. Got: " + result);
+        }
+    }
+
+    @Nested
+    class OptionalEdgeCases {
+        @Test
+        void getFromOptionalUsedInArithmetic() {
+            var source = """
+                    import java.math.BigInteger;
+                    import java.util.Optional;
+
+                    @Validator
+                    class TestValidator {
+                        record MyDatum(Optional<BigInteger> value) {}
+
+                        @Entrypoint
+                        static boolean validate(MyDatum datum, PlutusData redeemer, ScriptContext ctx) {
+                            return datum.value().get() + 10 == 52;
+                        }
+                    }
+                    """;
+            var compiler = new PlutusCompiler();
+            var program = compiler.compile(source).program();
+
+            // Some(42) = Constr(0, [IData(42)])
+            var optValue = PlutusData.constr(0, PlutusData.integer(42));
+            var datum = PlutusData.constr(0, optValue);
+            var optDatum = PlutusData.constr(0, datum);
+            var txOutRef = PlutusData.constr(0, PlutusData.bytes(new byte[32]), PlutusData.integer(0));
+            var scriptInfo = PlutusData.constr(1, txOutRef, optDatum);
+            var ctx = buildScriptContext(buildTxInfo(new PlutusData[0], alwaysInterval()),
+                    PlutusData.integer(0), scriptInfo);
+            var result = vm.evaluateWithArgs(program, List.of(ctx));
+            assertTrue(result.isSuccess(), "Some(42).get() + 10 should be 52. Got: " + result);
+        }
+    }
+
+    @Nested
+    class StringEdgeCases {
+        @Test
+        void emptyStringEquals() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            String a = "";
+                            String b = "";
+                            return a.equals(b);
+                        }
+                    }
+                    """;
+            var program = new PlutusCompiler().compile(source).program();
+            var result = vm.evaluateWithArgs(program, List.of(simpleCtx()));
+            assertTrue(result.isSuccess(), "Empty string .equals() should return true. Got: " + result);
+        }
+    }
+
+    @Nested
+    class ByteStringEdgeCases {
+        @Test
+        void emptyByteStringLength() {
+            var source = """
+                    import java.math.BigInteger;
+
+                    @Validator
+                    class TestValidator {
+                        record MyDatum(byte[] data) {}
+
+                        @Entrypoint
+                        static boolean validate(MyDatum datum, PlutusData redeemer, ScriptContext ctx) {
+                            return datum.data().length() == 0;
+                        }
+                    }
+                    """;
+            var compiler = new PlutusCompiler();
+            var program = compiler.compile(source).program();
+
+            var datum = PlutusData.constr(0, PlutusData.bytes(new byte[0]));
+            var optDatum = PlutusData.constr(0, datum);
+            var txOutRef = PlutusData.constr(0, PlutusData.bytes(new byte[32]), PlutusData.integer(0));
+            var scriptInfo = PlutusData.constr(1, txOutRef, optDatum);
+            var ctx = buildScriptContext(buildTxInfo(new PlutusData[0], alwaysInterval()),
+                    PlutusData.integer(0), scriptInfo);
+            var result = vm.evaluateWithArgs(program, List.of(ctx));
+            assertTrue(result.isSuccess(), "Empty byte[].length() should be 0. Got: " + result);
+        }
+    }
+
+    @Nested
+    class CrossTypeEdgeCases {
+        @Test
+        void equalsMethodOnRecordField() {
+            var source = """
+                    import java.math.BigInteger;
+
+                    @Validator
+                    class TestValidator {
+                        record MyDatum(BigInteger amount, byte[] owner) {}
+
+                        @Entrypoint
+                        static boolean validate(MyDatum datum, PlutusData redeemer, ScriptContext ctx) {
+                            return datum.amount().equals(BigInteger.valueOf(100)) && datum.owner().length() > 0;
+                        }
+                    }
+                    """;
+            var compiler = new PlutusCompiler();
+            var program = compiler.compile(source).program();
+
+            var datum = PlutusData.constr(0,
+                    PlutusData.integer(100),
+                    PlutusData.bytes(new byte[]{1, 2, 3}));
+            var optDatum = PlutusData.constr(0, datum);
+            var txOutRef = PlutusData.constr(0, PlutusData.bytes(new byte[32]), PlutusData.integer(0));
+            var scriptInfo = PlutusData.constr(1, txOutRef, optDatum);
+            var ctx = buildScriptContext(buildTxInfo(new PlutusData[0], alwaysInterval()),
+                    PlutusData.integer(0), scriptInfo);
+            var result = vm.evaluateWithArgs(program, List.of(ctx));
+            assertTrue(result.isSuccess(), "equals() on record field + length() chain should work. Got: " + result);
+        }
+    }
+
+    @Nested
+    class NestedRecordAccess {
+
+        PlutusData nestedCtx(PlutusData redeemer) {
+            return buildScriptContext(
+                    buildTxInfo(new PlutusData[0], alwaysInterval()),
+                    PlutusData.integer(0),
+                    PlutusData.constr(0, PlutusData.bytes(new byte[28])));
+        }
+
+        PlutusData datumCtx(PlutusData datum) {
+            var optDatum = PlutusData.constr(0, datum);
+            var txOutRef = PlutusData.constr(0, PlutusData.bytes(new byte[32]), PlutusData.integer(0));
+            var scriptInfo = PlutusData.constr(1, txOutRef, optDatum);
+            return buildScriptContext(
+                    buildTxInfo(new PlutusData[0], alwaysInterval()),
+                    PlutusData.integer(0), scriptInfo);
+        }
+
+        @Test
+        void nestedRecordFieldAccess() {
+            var source = """
+                    import java.math.BigInteger;
+
+                    @Validator
+                    class TestValidator {
+                        record Inner(BigInteger no, BigInteger amount) {}
+                        record Outer(Inner inner) {}
+
+                        @Entrypoint
+                        static boolean validate(Outer datum, PlutusData redeemer, ScriptContext ctx) {
+                            return datum.inner().amount() == 100;
+                        }
+                    }
+                    """;
+            var compiler = new PlutusCompiler();
+            var program = compiler.compile(source).program();
+
+            // Inner = Constr(0, [IData(42), IData(100)])
+            var inner = PlutusData.constr(0, PlutusData.integer(42), PlutusData.integer(100));
+            // Outer = Constr(0, [inner])
+            var datum = PlutusData.constr(0, inner);
+            var result = vm.evaluateWithArgs(program, List.of(datumCtx(datum)));
+            assertTrue(result.isSuccess(), "outer.inner().amount() should return 100. Got: " + result);
+        }
+
+        @Test
+        void nestedRecordInComparison() {
+            var source = """
+                    import java.math.BigInteger;
+
+                    @Validator
+                    class TestValidator {
+                        record Inner(BigInteger value) {}
+                        record Outer(Inner nested) {}
+
+                        @Entrypoint
+                        static boolean validate(Outer datum, PlutusData redeemer, ScriptContext ctx) {
+                            return datum.nested().value() == 42;
+                        }
+                    }
+                    """;
+            var compiler = new PlutusCompiler();
+            var program = compiler.compile(source).program();
+
+            var inner = PlutusData.constr(0, PlutusData.integer(42));
+            var datum = PlutusData.constr(0, inner);
+            var result = vm.evaluateWithArgs(program, List.of(datumCtx(datum)));
+            assertTrue(result.isSuccess(), "outer.nested().value() == 42 should be true. Got: " + result);
+        }
+
+        @Test
+        void nestedRecordWithHelperMethod() {
+            var source = """
+                    import java.math.BigInteger;
+
+                    @Validator
+                    class TestValidator {
+                        record Inner(BigInteger amount) {}
+                        record Outer(Inner inner) {}
+
+                        static boolean checkAmount(Outer o) {
+                            return o.inner().amount() > 50;
+                        }
+
+                        @Entrypoint
+                        static boolean validate(Outer datum, PlutusData redeemer, ScriptContext ctx) {
+                            return checkAmount(datum);
+                        }
+                    }
+                    """;
+            var compiler = new PlutusCompiler();
+            var program = compiler.compile(source).program();
+
+            var inner = PlutusData.constr(0, PlutusData.integer(100));
+            var datum = PlutusData.constr(0, inner);
+            var result = vm.evaluateWithArgs(program, List.of(datumCtx(datum)));
+            assertTrue(result.isSuccess(), "Helper method with nested field access should work. Got: " + result);
+        }
+
+        @Test
+        void deeplyNestedAccess() {
+            var source = """
+                    import java.math.BigInteger;
+
+                    @Validator
+                    class TestValidator {
+                        record Level3(BigInteger value) {}
+                        record Level2(Level3 c) {}
+                        record Level1(Level2 b) {}
+
+                        @Entrypoint
+                        static boolean validate(Level1 datum, PlutusData redeemer, ScriptContext ctx) {
+                            return datum.b().c().value() == 99;
+                        }
+                    }
+                    """;
+            var compiler = new PlutusCompiler();
+            var program = compiler.compile(source).program();
+
+            // Level3 = Constr(0, [IData(99)])
+            var level3 = PlutusData.constr(0, PlutusData.integer(99));
+            // Level2 = Constr(0, [level3])
+            var level2 = PlutusData.constr(0, level3);
+            // Level1 = Constr(0, [level2])
+            var datum = PlutusData.constr(0, level2);
+            var result = vm.evaluateWithArgs(program, List.of(datumCtx(datum)));
+            assertTrue(result.isSuccess(), "3-level deep nested access should work. Got: " + result);
+        }
+
+        @Test
+        void nestedRecordByteArrayField() {
+            var source = """
+                    import java.math.BigInteger;
+
+                    @Validator
+                    class TestValidator {
+                        record Inner(byte[] hash) {}
+                        record Outer(Inner inner) {}
+
+                        @Entrypoint
+                        static boolean validate(Outer datum, PlutusData redeemer, ScriptContext ctx) {
+                            return datum.inner().hash().length() == 3;
+                        }
+                    }
+                    """;
+            var compiler = new PlutusCompiler();
+            var program = compiler.compile(source).program();
+
+            var inner = PlutusData.constr(0, PlutusData.bytes(new byte[]{1, 2, 3}));
+            var datum = PlutusData.constr(0, inner);
+            var result = vm.evaluateWithArgs(program, List.of(datumCtx(datum)));
+            assertTrue(result.isSuccess(), "Nested record byte[] field length should be 3. Got: " + result);
+        }
+
+        @Test
+        void nestedRecordInBooleanExpression() {
+            var source = """
+                    import java.math.BigInteger;
+
+                    @Validator
+                    class TestValidator {
+                        record Inner(BigInteger amount, BigInteger limit) {}
+                        record Outer(Inner inner) {}
+
+                        @Entrypoint
+                        static boolean validate(Outer datum, PlutusData redeemer, ScriptContext ctx) {
+                            return datum.inner().amount() > 0 && datum.inner().limit() <= 1000;
+                        }
+                    }
+                    """;
+            var compiler = new PlutusCompiler();
+            var program = compiler.compile(source).program();
+
+            var inner = PlutusData.constr(0, PlutusData.integer(50), PlutusData.integer(500));
+            var datum = PlutusData.constr(0, inner);
+            var result = vm.evaluateWithArgs(program, List.of(datumCtx(datum)));
+            assertTrue(result.isSuccess(), "Nested fields in boolean expression should work. Got: " + result);
+        }
+    }
+
+    @Nested
     class IntegerEqualityStillWorks {
         @Test
         void integerEqualsStillWorks() {

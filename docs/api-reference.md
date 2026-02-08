@@ -25,24 +25,34 @@ This document covers all supported Java operations in the Plutus-Java compiler, 
 
 ### Arithmetic
 
-| Operator | Java Example | UPLC Builtin |
-|----------|-------------|-------------|
-| `+` | `a + b` | `AddInteger` |
-| `-` | `a - b` | `SubtractInteger` |
-| `*` | `a * b` | `MultiplyInteger` |
-| `/` | `a / b` | `DivideInteger` |
-| `%` | `a % b` | `RemainderInteger` |
+| Operator | Java Example | UPLC Builtin | Notes |
+|----------|-------------|-------------|-------|
+| `+` | `a + b` | `AddInteger` | For `BigInteger`/`int`/`long` operands |
+| `+` | `s1 + s2` | `AppendString` | For `String` operands |
+| `+` | `b1 + b2` | `AppendByteString` | For `byte[]` operands |
+| `-` | `a - b` | `SubtractInteger` | |
+| `*` | `a * b` | `MultiplyInteger` | |
+| `/` | `a / b` | `DivideInteger` | |
+| `%` | `a % b` | `RemainderInteger` | |
+
+The `+` operator is type-aware: the compiler infers the operand type and dispatches to the correct builtin.
 
 ### Comparison
 
-| Operator | Java Example | UPLC Builtin |
-|----------|-------------|-------------|
-| `==` | `a == b` | `EqualsInteger` / `EqualsByteString` / `EqualsData` |
-| `!=` | `a != b` | negated equality |
-| `<` | `a < b` | `LessThanInteger` |
-| `<=` | `a <= b` | `LessThanEqualsInteger` |
-| `>` | `a > b` | `LessThanInteger` (swapped) |
-| `>=` | `a >= b` | `LessThanEqualsInteger` (swapped) |
+| Operator | Java Example | UPLC Builtin | Notes |
+|----------|-------------|-------------|-------|
+| `==` | `a == b` | `EqualsInteger` | For `BigInteger`/`int`/`long` (default) |
+| `==` | `s1 == s2` | `EqualsString` | For `String` operands |
+| `==` | `b1 == b2` | `EqualsByteString` | For `byte[]` operands |
+| `==` | `d1 == d2` | `EqualsData` | For `PlutusData`, records, sealed interfaces |
+| `==` | `x == y` | `IfThenElse` | For `boolean` operands |
+| `!=` | `a != b` | negated equality | Same type dispatch as `==` |
+| `<` | `a < b` | `LessThanInteger` | |
+| `<=` | `a <= b` | `LessThanEqualsInteger` | |
+| `>` | `a > b` | `LessThanInteger` (swapped) | |
+| `>=` | `a >= b` | `LessThanEqualsInteger` (swapped) | |
+
+The `==` and `!=` operators are type-aware: the compiler infers the operand type from the expression and dispatches to the correct equality builtin.
 
 ### Boolean
 
@@ -220,14 +230,122 @@ boolean hasSigner = ctx.txInfo().signatories().contains(datum.beneficiary());
 
 When the compiler knows a variable is a `List<T>`, these methods are available:
 
-| Method | Description |
-|--------|-------------|
-| `.isEmpty()` | Returns true if empty |
-| `.size()` | Returns the number of elements |
-| `.head()` | Returns the first element |
-| `.contains(target)` | Returns true if target is in the list |
+| Method | Return Type | UPLC Builtin | Description |
+|--------|------------|-------------|-------------|
+| `.isEmpty()` | `boolean` | `NullList` | Returns true if empty |
+| `.size()` | `BigInteger` | foldl | Returns the number of elements |
+| `.head()` | `T` | `HeadList` + decode | Returns the first element (decoded) |
+| `.tail()` | `List<T>` | `TailList` | Returns the list without the first element |
+| `.contains(target)` | `boolean` | recursive search | Returns true if target is in the list |
 
 The element type is tracked for `.contains()` to generate the correct equality comparison (EqualsByteString for `byte[]`, EqualsInteger for integers, EqualsData for general Data).
+
+Chaining is supported: `sigs.tail().isEmpty()`, `sigs.tail().contains(pkh)`.
+
+### BigInteger Instance Methods
+
+| Method | Return Type | UPLC Translation | Description |
+|--------|------------|-----------------|-------------|
+| `.abs()` | `BigInteger` | `IfThenElse(x < 0, 0 - x, x)` | Absolute value |
+| `.negate()` | `BigInteger` | `SubtractInteger(0, x)` | Negation |
+| `.max(other)` | `BigInteger` | `IfThenElse(a < b, b, a)` | Maximum of two values |
+| `.min(other)` | `BigInteger` | `IfThenElse(a <= b, a, b)` | Minimum of two values |
+| `.equals(other)` | `boolean` | `EqualsInteger` | Equality check |
+| `.add(other)` | `BigInteger` | `AddInteger` | Addition |
+| `.subtract(other)` | `BigInteger` | `SubtractInteger` | Subtraction |
+| `.multiply(other)` | `BigInteger` | `MultiplyInteger` | Multiplication |
+| `.divide(other)` | `BigInteger` | `DivideInteger` | Integer division |
+| `.remainder(other)` | `BigInteger` | `RemainderInteger` | Remainder after division |
+| `.mod(other)` | `BigInteger` | `ModInteger` | Modulus (always non-negative) |
+| `.signum()` | `BigInteger` | `IfThenElse` chain | Returns -1, 0, or 1 |
+| `.compareTo(other)` | `BigInteger` | `IfThenElse` chain | Returns -1, 0, or 1 |
+
+```java
+BigInteger x = BigInteger.valueOf(-5);
+BigInteger absX = x.abs();          // 5
+BigInteger neg = x.negate();        // 5
+BigInteger m = x.max(BigInteger.ZERO); // 0
+BigInteger n = x.min(BigInteger.ZERO); // -5
+BigInteger sum = x.add(BigInteger.TEN);       // 5
+BigInteger diff = x.subtract(BigInteger.ONE);  // -6
+BigInteger prod = x.multiply(BigInteger.TWO);  // -10
+BigInteger quot = BigInteger.valueOf(17).divide(BigInteger.valueOf(5));    // 3
+BigInteger rem = BigInteger.valueOf(17).remainder(BigInteger.valueOf(5));  // 2
+BigInteger modVal = BigInteger.valueOf(17).mod(BigInteger.valueOf(5));     // 2
+BigInteger sign = x.signum();       // -1
+BigInteger cmp = x.compareTo(BigInteger.ZERO); // -1
+```
+
+### String Instance Methods
+
+| Method | Return Type | UPLC Translation | Description |
+|--------|------------|-----------------|-------------|
+| `.equals(other)` | `boolean` | `EqualsString` | String equality |
+| `.length()` | `BigInteger` | `LengthOfByteString(EncodeUtf8(s))` | String length in bytes |
+
+String operators `==`, `!=`, and `+` are also supported (see Operators section).
+
+```java
+String a = "hello";
+String b = "world";
+boolean eq = a.equals(b);     // false
+boolean same = a == "hello";   // true
+String c = a + b;              // "helloworld"
+BigInteger len = a.length();   // 5
+```
+
+### ByteString (byte[]) Instance Methods
+
+| Method | Return Type | UPLC Translation | Description |
+|--------|------------|-----------------|-------------|
+| `.equals(other)` | `boolean` | `EqualsByteString` | Byte array equality |
+| `.length()` | `BigInteger` | `LengthOfByteString` | Length in bytes |
+| `.length` | `BigInteger` | `LengthOfByteString` | Length as field access (Java array style) |
+
+ByteString operators `==`, `!=`, and `+` are also supported (see Operators section).
+
+```java
+byte[] hash = datum.hash();
+BigInteger len1 = hash.length();  // method call form
+BigInteger len2 = hash.length;    // field access form (both work)
+byte[] combined = hash1 + hash2;  // AppendByteString
+boolean same = hash1 == hash2;    // EqualsByteString
+```
+
+### Optional Instance Methods
+
+Optional is encoded as `Constr(0, [value])` (Some) or `Constr(1, [])` (None).
+
+| Method | Return Type | UPLC Translation | Description |
+|--------|------------|-----------------|-------------|
+| `.isPresent()` | `boolean` | `FstPair(UnConstrData(x)) == 0` | True if Some |
+| `.isEmpty()` | `boolean` | `FstPair(UnConstrData(x)) == 1` | True if None |
+| `.get()` | `T` | `HeadList(SndPair(UnConstrData(x)))` + decode | Unwrap the inner value |
+
+```java
+record MyDatum(Optional<BigInteger> reward) {}
+
+// In validator:
+if (datum.reward().isPresent()) {
+    BigInteger val = datum.reward().get();
+    return val > 0;
+}
+return datum.reward().isEmpty();
+```
+
+### PlutusData Equality
+
+Raw `PlutusData` variables support `.equals()` and `==`/`!=` operators using `EqualsData`:
+
+```java
+PlutusData a = redeemer;
+PlutusData b = redeemer;
+boolean eq1 = a.equals(b);  // EqualsData
+boolean eq2 = a == b;       // EqualsData
+boolean ne = a != b;         // negated EqualsData
+```
+
+Record and sealed interface instances also use `EqualsData` when compared with `==`/`!=`.
 
 ### Other Ledger Types
 

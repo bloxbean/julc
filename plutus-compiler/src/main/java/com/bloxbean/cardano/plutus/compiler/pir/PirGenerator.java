@@ -8,8 +8,6 @@ import com.bloxbean.cardano.plutus.compiler.resolve.TypeResolver;
 import com.bloxbean.cardano.plutus.core.Constant;
 import com.bloxbean.cardano.plutus.core.DefaultFun;
 import com.github.javaparser.ast.body.MethodDeclaration;
-import com.github.javaparser.ast.body.Parameter;
-import com.github.javaparser.ast.body.RecordDeclaration;
 import com.github.javaparser.ast.expr.*;
 import com.github.javaparser.ast.stmt.*;
 
@@ -26,15 +24,22 @@ public class PirGenerator {
     private final TypeResolver typeResolver;
     private final SymbolTable symbolTable;
     private final StdlibLookup stdlibLookup;
+    private final TypeMethodRegistry typeMethodRegistry;
 
     public PirGenerator(TypeResolver typeResolver, SymbolTable symbolTable) {
-        this(typeResolver, symbolTable, null);
+        this(typeResolver, symbolTable, null, TypeMethodRegistry.defaultRegistry());
     }
 
     public PirGenerator(TypeResolver typeResolver, SymbolTable symbolTable, StdlibLookup stdlibLookup) {
+        this(typeResolver, symbolTable, stdlibLookup, TypeMethodRegistry.defaultRegistry());
+    }
+
+    public PirGenerator(TypeResolver typeResolver, SymbolTable symbolTable,
+                        StdlibLookup stdlibLookup, TypeMethodRegistry typeMethodRegistry) {
         this.typeResolver = typeResolver;
         this.symbolTable = symbolTable;
         this.stdlibLookup = stdlibLookup;
+        this.typeMethodRegistry = typeMethodRegistry;
     }
 
     /**
@@ -331,127 +336,36 @@ public class PirGenerator {
                 }
             }
 
-            // Check if scope is a list variable for instance method dispatch
-            var listMethodResult = tryListMethodOnExpr(scopeExpr, scope, methodName, args);
-            if (listMethodResult != null) {
-                return listMethodResult;
-            }
-
-            // Handle .equals() on integer/bytestring/string/data types
-            if (methodName.equals("equals") && args.size() == 1) {
-                var scopeType = resolveExpressionType(scopeExpr);
-                if (scopeType instanceof PirType.DataType) {
-                    // Fallback: try inferring from the generated PIR
-                    scopeType = inferPirType(scope);
-                }
-                if (scopeType instanceof PirType.IntegerType) {
-                    var argPir = generateExpression(args.get(0));
-                    var argType = resolveExpressionType(args.get(0));
-                    if (argType instanceof PirType.DataType) argType = inferPirType(argPir);
-                    // Coerce Data argument to Integer if needed
-                    if (!(argType instanceof PirType.IntegerType)) {
-                        argPir = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnIData), argPir);
+            // Handle chained record field access: scope.innerRecord().field()
+            if (args.isEmpty() && scopeExpr instanceof MethodCallExpr innerMce) {
+                var scopeType = resolveMethodCallReturnType(innerMce);
+                if (scopeType instanceof PirType.RecordType rt) {
+                    for (int i = 0; i < rt.fields().size(); i++) {
+                        if (rt.fields().get(i).name().equals(methodName)) {
+                            return generateFieldExtraction(scope, i, rt.fields().get(i).type());
+                        }
                     }
-                    return builtinApp2(DefaultFun.EqualsInteger, scope, argPir);
                 }
-                if (scopeType instanceof PirType.ByteStringType) {
-                    var argPir = generateExpression(args.get(0));
-                    var argType = resolveExpressionType(args.get(0));
+            }
+
+            // Dispatch instance methods via TypeMethodRegistry
+            {
+                var scopeType = resolveExpressionType(scopeExpr);
+                if (scopeType instanceof PirType.DataType) scopeType = inferPirType(scope);
+
+                // Compile args and resolve arg types
+                var compiledArgs = new ArrayList<PirTerm>();
+                var argPirTypes = new ArrayList<PirType>();
+                for (var arg : args) {
+                    var argPir = generateExpression(arg);
+                    compiledArgs.add(argPir);
+                    var argType = resolveExpressionType(arg);
                     if (argType instanceof PirType.DataType) argType = inferPirType(argPir);
-                    // Coerce Data argument to ByteString if needed
-                    if (!(argType instanceof PirType.ByteStringType)) {
-                        argPir = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnBData), argPir);
-                    }
-                    return builtinApp2(DefaultFun.EqualsByteString, scope, argPir);
+                    argPirTypes.add(argType);
                 }
-                if (scopeType instanceof PirType.StringType) {
-                    return builtinApp2(DefaultFun.EqualsString, scope, generateExpression(args.get(0)));
-                }
-                if (scopeType instanceof PirType.DataType
-                        || scopeType instanceof PirType.RecordType
-                        || scopeType instanceof PirType.SumType) {
-                    return builtinApp2(DefaultFun.EqualsData, scope, generateExpression(args.get(0)));
-                }
-            }
 
-            // Handle .length() on byte[] and String
-            if (methodName.equals("length") && args.isEmpty()) {
-                var scopeType = resolveExpressionType(scopeExpr);
-                if (scopeType instanceof PirType.DataType) scopeType = inferPirType(scope);
-                if (scopeType instanceof PirType.ByteStringType) {
-                    return new PirTerm.App(new PirTerm.Builtin(DefaultFun.LengthOfByteString), scope);
-                }
-                if (scopeType instanceof PirType.StringType) {
-                    return new PirTerm.App(new PirTerm.Builtin(DefaultFun.LengthOfByteString),
-                            new PirTerm.App(new PirTerm.Builtin(DefaultFun.EncodeUtf8), scope));
-                }
-            }
-
-            // Handle BigInteger.abs() and .negate()
-            if (methodName.equals("abs") && args.isEmpty()) {
-                var scopeType = resolveExpressionType(scopeExpr);
-                if (scopeType instanceof PirType.DataType) scopeType = inferPirType(scope);
-                if (scopeType instanceof PirType.IntegerType) {
-                    // abs(x) = if x < 0 then 0 - x else x
-                    return new PirTerm.IfThenElse(
-                            builtinApp2(DefaultFun.LessThanInteger, scope,
-                                    new PirTerm.Const(Constant.integer(BigInteger.ZERO))),
-                            builtinApp2(DefaultFun.SubtractInteger,
-                                    new PirTerm.Const(Constant.integer(BigInteger.ZERO)), scope),
-                            scope);
-                }
-            }
-            if (methodName.equals("negate") && args.isEmpty()) {
-                var scopeType = resolveExpressionType(scopeExpr);
-                if (scopeType instanceof PirType.DataType) scopeType = inferPirType(scope);
-                if (scopeType instanceof PirType.IntegerType) {
-                    return builtinApp2(DefaultFun.SubtractInteger,
-                            new PirTerm.Const(Constant.integer(BigInteger.ZERO)), scope);
-                }
-            }
-
-            // Handle BigInteger.max(b) and .min(b)
-            if ((methodName.equals("max") || methodName.equals("min")) && args.size() == 1) {
-                var scopeType = resolveExpressionType(scopeExpr);
-                if (scopeType instanceof PirType.DataType) scopeType = inferPirType(scope);
-                if (scopeType instanceof PirType.IntegerType) {
-                    var argPir = generateExpression(args.get(0));
-                    var cond = builtinApp2(
-                            methodName.equals("max") ? DefaultFun.LessThanInteger : DefaultFun.LessThanEqualsInteger,
-                            scope, argPir);
-                    return methodName.equals("max")
-                            ? new PirTerm.IfThenElse(cond, argPir, scope)   // max: if a < b then b else a
-                            : new PirTerm.IfThenElse(cond, scope, argPir);  // min: if a <= b then a else b
-                }
-            }
-
-            // Handle Optional.isPresent() / .isEmpty() / .get()
-            if (methodName.equals("isPresent") && args.isEmpty()) {
-                var scopeType = resolveExpressionType(scopeExpr);
-                if (scopeType instanceof PirType.OptionalType) {
-                    var tag = new PirTerm.App(new PirTerm.Builtin(DefaultFun.FstPair),
-                            new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnConstrData), scope));
-                    return builtinApp2(DefaultFun.EqualsInteger, tag,
-                            new PirTerm.Const(Constant.integer(BigInteger.ZERO)));
-                }
-            }
-            if (methodName.equals("isEmpty") && args.isEmpty()) {
-                var scopeType = resolveExpressionType(scopeExpr);
-                if (scopeType instanceof PirType.OptionalType) {
-                    var tag = new PirTerm.App(new PirTerm.Builtin(DefaultFun.FstPair),
-                            new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnConstrData), scope));
-                    return builtinApp2(DefaultFun.EqualsInteger, tag,
-                            new PirTerm.Const(Constant.integer(BigInteger.ONE)));
-                }
-            }
-            if (methodName.equals("get") && args.isEmpty()) {
-                var scopeType = resolveExpressionType(scopeExpr);
-                if (scopeType instanceof PirType.OptionalType opt) {
-                    var fields = new PirTerm.App(new PirTerm.Builtin(DefaultFun.SndPair),
-                            new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnConstrData), scope));
-                    var raw = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), fields);
-                    return wrapDecode(raw, opt.elemType());
-                }
+                var registryResult = typeMethodRegistry.dispatch(scope, methodName, compiledArgs, scopeType, argPirTypes);
+                if (registryResult.isPresent()) return registryResult.get();
             }
 
             return generateFieldAccessFromMethod(scope, methodName, args);
@@ -526,175 +440,8 @@ public class PirGenerator {
         return wrapDecode(rawField, fieldType);
     }
 
-    /**
-     * Wrap a raw Data term with the appropriate decode builtin for the target type.
-     */
     private PirTerm wrapDecode(PirTerm data, PirType targetType) {
-        if (targetType instanceof PirType.IntegerType) {
-            return new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnIData), data);
-        }
-        if (targetType instanceof PirType.ByteStringType) {
-            return new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnBData), data);
-        }
-        if (targetType instanceof PirType.ListType) {
-            return new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnListData), data);
-        }
-        if (targetType instanceof PirType.MapType) {
-            return new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), data);
-        }
-        if (targetType instanceof PirType.BoolType) {
-            // Bool encoded as Constr: False=Constr(0,[]), True=Constr(1,[])
-            // Decode: FstPair(UnConstrData(data)) == 1
-            var tag = new PirTerm.App(new PirTerm.Builtin(DefaultFun.FstPair),
-                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnConstrData), data));
-            return builtinApp2(DefaultFun.EqualsInteger, tag,
-                    new PirTerm.Const(Constant.integer(BigInteger.ONE)));
-        }
-        // For Data, RecordType, SumType, etc., pass through as raw Data
-        return data;
-    }
-
-    /**
-     * Try to dispatch a list instance method on the given expression.
-     * Resolves the PirType of the scope expression and checks if it's a ListType.
-     * Returns null if the scope is not a list or the method is not a list method.
-     */
-    private PirTerm tryListMethodOnExpr(Expression scopeExpr, PirTerm scope, String methodName,
-                                         com.github.javaparser.ast.NodeList<Expression> args) {
-        var scopeType = resolveExpressionType(scopeExpr);
-        if (scopeType instanceof PirType.ListType lt) {
-            return generateListMethod(scope, methodName, args, lt);
-        }
-        return null;
-    }
-
-    /**
-     * Generate PIR for a list instance method call.
-     * Returns null if the method is not a recognized list method.
-     */
-    private PirTerm generateListMethod(PirTerm list, String method,
-                                        com.github.javaparser.ast.NodeList<Expression> args,
-                                        PirType.ListType listType) {
-        return switch (method) {
-            case "size" -> generateListLength(list);
-            case "isEmpty" -> new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), list);
-            case "head" -> wrapDecode(
-                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), list),
-                    listType.elemType());
-            case "tail" -> new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), list);
-            case "contains" -> {
-                if (args.isEmpty()) throw new CompilerException("contains() requires one argument");
-                var targetExpr = args.get(0);
-                var targetType = resolveExpressionType(targetExpr);
-                yield generateListContains(list, generateExpression(targetExpr), listType.elemType(), targetType);
-            }
-            default -> null;
-        };
-    }
-
-    /**
-     * Generate PIR for list.size() — foldl(\acc _ -> acc + 1, 0, list).
-     */
-    private PirTerm generateListLength(PirTerm list) {
-        var accVar = new PirTerm.Var("acc__len", new PirType.IntegerType());
-        var xVar = new PirTerm.Var("_x__len", new PirType.DataType());
-        var addOne = builtinApp2(DefaultFun.AddInteger, accVar,
-                new PirTerm.Const(Constant.integer(BigInteger.ONE)));
-        var foldFn = new PirTerm.Lam("acc__len", new PirType.IntegerType(),
-                new PirTerm.Lam("_x__len", new PirType.DataType(), addOne));
-        return generateFoldl(foldFn, new PirTerm.Const(Constant.integer(BigInteger.ZERO)), list);
-    }
-
-    /**
-     * Generate PIR for list.contains(target) — recursive search with typed equality.
-     *
-     * @param list       PIR term for the builtin list
-     * @param target     PIR term for the element to search for
-     * @param elemType   the element type of the list (determines equality comparison)
-     * @param targetType the actual type of the target argument (may be decoded already)
-     */
-    private PirTerm generateListContains(PirTerm list, PirTerm target,
-                                          PirType elemType, PirType targetType) {
-        var lstVar = new PirTerm.Var("lst_c", new PirType.ListType(new PirType.DataType()));
-        var goVar = new PirTerm.Var("go_c", new PirType.FunType(
-                new PirType.ListType(new PirType.DataType()), new PirType.BoolType()));
-        var targetVar = new PirTerm.Var("target_c", targetType);
-        var listVar = new PirTerm.Var("list_c", new PirType.ListType(new PirType.DataType()));
-
-        var nullCheck = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), lstVar);
-        var headExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), lstVar);
-        var tailExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), lstVar);
-        var hVar = new PirTerm.Var("h_c", new PirType.DataType());
-
-        // Build equality: decode list element, but only decode target if it's still Data
-        PirTerm equalCheck = buildContainsEquality(hVar, targetVar, elemType, targetType);
-
-        var recurse = new PirTerm.App(goVar, tailExpr);
-        var innerIf = new PirTerm.IfThenElse(equalCheck,
-                new PirTerm.Const(Constant.bool(true)), recurse);
-        var letHead = new PirTerm.Let("h_c", headExpr, innerIf);
-        var outerIf = new PirTerm.IfThenElse(nullCheck,
-                new PirTerm.Const(Constant.bool(false)), letHead);
-
-        var goBody = new PirTerm.Lam("lst_c", new PirType.ListType(new PirType.DataType()), outerIf);
-        var binding = new PirTerm.Binding("go_c", goBody);
-
-        var search = new PirTerm.LetRec(List.of(binding),
-                new PirTerm.App(goVar, listVar));
-
-        return new PirTerm.Let("target_c", target,
-                new PirTerm.Let("list_c", list, search));
-    }
-
-    /**
-     * Build equality check for contains(). Always decodes the list element (it's raw Data).
-     * Only decodes the target if it's still Data (not already decoded by field extraction).
-     */
-    private PirTerm buildContainsEquality(PirTerm listElem, PirTerm target,
-                                           PirType elemType, PirType targetType) {
-        if (elemType instanceof PirType.ByteStringType) {
-            var decodedElem = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnBData), listElem);
-            // If target is already decoded to ByteString, don't decode again
-            var decodedTarget = (targetType instanceof PirType.ByteStringType) ?
-                    target :
-                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnBData), target);
-            return builtinApp2(DefaultFun.EqualsByteString, decodedElem, decodedTarget);
-        }
-        if (elemType instanceof PirType.IntegerType) {
-            var decodedElem = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnIData), listElem);
-            var decodedTarget = (targetType instanceof PirType.IntegerType) ?
-                    target :
-                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnIData), target);
-            return builtinApp2(DefaultFun.EqualsInteger, decodedElem, decodedTarget);
-        }
-        // Default: EqualsData — both are Data
-        return builtinApp2(DefaultFun.EqualsData, listElem, target);
-    }
-
-    /**
-     * Generate PIR foldl using LetRec — same pattern as ListsLib.foldl.
-     */
-    private PirTerm generateFoldl(PirTerm f, PirTerm init, PirTerm list) {
-        var accVar = new PirTerm.Var("acc__f", new PirType.DataType());
-        var lstVar = new PirTerm.Var("lst__f", new PirType.ListType(new PirType.DataType()));
-        var goVar = new PirTerm.Var("go__f", new PirType.FunType(new PirType.DataType(),
-                new PirType.FunType(new PirType.ListType(new PirType.DataType()), new PirType.DataType())));
-
-        var nullCheck = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), lstVar);
-        var headExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), lstVar);
-        var tailExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), lstVar);
-
-        var fApp = new PirTerm.App(new PirTerm.App(f, accVar), headExpr);
-        var recurse = new PirTerm.App(new PirTerm.App(goVar, fApp), tailExpr);
-
-        var ifExpr = new PirTerm.IfThenElse(nullCheck, accVar, recurse);
-
-        var goBody = new PirTerm.Lam("acc__f", new PirType.DataType(),
-                new PirTerm.Lam("lst__f", new PirType.ListType(new PirType.DataType()), ifExpr));
-        var binding = new PirTerm.Binding("go__f", goBody);
-
-        return new PirTerm.LetRec(List.of(binding),
-                new PirTerm.App(new PirTerm.App(goVar, init), list));
+        return PirHelpers.wrapDecode(data, targetType);
     }
 
     /**
@@ -707,6 +454,17 @@ public class PirGenerator {
         }
         if (expr instanceof MethodCallExpr mce && mce.getScope().isPresent()) {
             return resolveMethodCallReturnType(mce);
+        }
+        // Handle scopeless method calls (static helper methods)
+        if (expr instanceof MethodCallExpr mce && mce.getScope().isEmpty()) {
+            var methodType = symbolTable.lookup(mce.getNameAsString());
+            if (methodType.isPresent()) {
+                PirType type = methodType.get();
+                while (type instanceof PirType.FunType ft) {
+                    type = ft.returnType();
+                }
+                return type;
+            }
         }
         return new PirType.DataType();
     }
@@ -740,50 +498,10 @@ public class PirGenerator {
             }
         }
 
-        // Resolve list method return types
+        // Delegate to TypeMethodRegistry for return type resolution
         var scopeType = resolveExpressionType(scopeExpr);
-        if (scopeType instanceof PirType.ListType lt) {
-            return switch (methodName) {
-                case "tail" -> lt;
-                case "size" -> new PirType.IntegerType();
-                case "isEmpty" -> new PirType.BoolType();
-                case "head" -> lt.elemType();
-                default -> new PirType.DataType();
-            };
-        }
-
-        // Resolve Optional method return types
-        if (scopeType instanceof PirType.OptionalType opt) {
-            return switch (methodName) {
-                case "get" -> opt.elemType();
-                case "isPresent", "isEmpty" -> new PirType.BoolType();
-                default -> new PirType.DataType();
-            };
-        }
-
-        // Resolve integer method return types
-        if (scopeType instanceof PirType.IntegerType) {
-            return switch (methodName) {
-                case "abs", "negate", "max", "min" -> new PirType.IntegerType();
-                default -> new PirType.DataType();
-            };
-        }
-
-        // Resolve byte[] method return types
-        if (scopeType instanceof PirType.ByteStringType) {
-            return switch (methodName) {
-                case "length" -> new PirType.IntegerType();
-                default -> new PirType.DataType();
-            };
-        }
-
-        // Resolve String method return types
-        if (scopeType instanceof PirType.StringType) {
-            return switch (methodName) {
-                case "length" -> new PirType.IntegerType();
-                default -> new PirType.DataType();
-            };
-        }
+        var returnType = typeMethodRegistry.resolveReturnType(scopeType, methodName);
+        if (returnType.isPresent()) return returnType.get();
 
         return new PirType.DataType();
     }
