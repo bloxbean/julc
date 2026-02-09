@@ -1,6 +1,7 @@
 package com.bloxbean.cardano.plutus.core;
 
 import java.util.Objects;
+import java.util.List;
 
 /**
  * A versioned UPLC program.
@@ -43,6 +44,31 @@ public record Program(int major, int minor, int patch, Term term) {
     /** Create a Plutus V3 program (version 1.1.0). */
     public static Program plutusV3(Term term) {
         return new Program(1, 1, 0, term);
+    }
+
+    /**
+     * Apply parameter values to a parameterized contract via UPLC partial application.
+     * Each parameter is wrapped as a Data constant and applied in order.
+     *
+     * @param params the parameter values to apply
+     * @return a new Program with parameters applied
+     */
+    public Program applyParams(PlutusData... params) {
+        Term current = this.term;
+        for (PlutusData param : params) {
+            current = new Term.Apply(current, new Term.Const(Constant.data(param)));
+        }
+        return new Program(major, minor, patch, current);
+    }
+
+    /**
+     * Apply parameter values from a list.
+     *
+     * @param params the parameter values to apply
+     * @return a new Program with parameters applied
+     */
+    public Program applyParams(List<PlutusData> params) {
+        return applyParams(params.toArray(new PlutusData[0]));
     }
 
     /** Return the version as a human-readable string "major.minor.patch". */

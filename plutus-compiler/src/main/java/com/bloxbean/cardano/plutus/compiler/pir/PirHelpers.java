@@ -10,7 +10,7 @@ import java.util.List;
  * Static utility methods for PIR term construction.
  * Used by both PirGenerator and TypeMethodRegistry.
  */
-final class PirHelpers {
+public final class PirHelpers {
 
     private PirHelpers() {}
 
@@ -23,7 +23,7 @@ final class PirHelpers {
     /**
      * Wrap a raw Data term with the appropriate decode builtin for the target type.
      */
-    static PirTerm wrapDecode(PirTerm data, PirType targetType) {
+    public static PirTerm wrapDecode(PirTerm data, PirType targetType) {
         if (targetType instanceof PirType.IntegerType) {
             return new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnIData), data);
         }
@@ -43,6 +43,11 @@ final class PirHelpers {
                     new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnConstrData), data));
             return builtinApp2(DefaultFun.EqualsInteger, tag,
                     new PirTerm.Const(Constant.integer(BigInteger.ONE)));
+        }
+        if (targetType instanceof PirType.StringType) {
+            // String encoded as BData(EncodeUtf8(s)) in Data. Decode: DecodeUtf8(UnBData(data))
+            var byteString = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnBData), data);
+            return new PirTerm.App(new PirTerm.Builtin(DefaultFun.DecodeUtf8), byteString);
         }
         // For Data, RecordType, SumType, etc., pass through as raw Data
         return data;

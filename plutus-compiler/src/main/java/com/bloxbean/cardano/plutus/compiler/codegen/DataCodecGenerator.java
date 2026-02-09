@@ -147,6 +147,10 @@ public class DataCodecGenerator {
             case PirType.DataType _ -> data;
             case PirType.ListType _ -> builtinApp1(DefaultFun.UnListData, data);
             case PirType.MapType _ -> builtinApp1(DefaultFun.UnMapData, data);
+            case PirType.StringType _ -> {
+                var byteString = builtinApp1(DefaultFun.UnBData, data);
+                yield builtinApp1(DefaultFun.DecodeUtf8, byteString);
+            }
             default -> data; // Pass through
         };
     }

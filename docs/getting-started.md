@@ -634,7 +634,7 @@ The JSON file contains the compiled script in text envelope format:
 Use `PlutusScriptLoader` to load pre-compiled scripts from the classpath:
 
 ```java
-import com.bloxbean.cardano.plutus.processor.PlutusScriptLoader;
+import com.bloxbean.cardano.plutus.clientlib.PlutusScriptLoader;
 import com.bloxbean.cardano.client.plutus.spec.PlutusV3Script;
 
 // Load the compiled script — ready for cardano-client-lib

@@ -2,13 +2,17 @@ package com.bloxbean.cardano.plutus.clientlib;
 
 import com.bloxbean.cardano.client.plutus.spec.PlutusV3Script;
 import com.bloxbean.cardano.plutus.core.Program;
+import com.bloxbean.cardano.plutus.core.flat.UplcFlatDecoder;
 import com.bloxbean.cardano.plutus.core.flat.UplcFlatEncoder;
 
 import co.nstant.in.cbor.CborBuilder;
+import co.nstant.in.cbor.CborDecoder;
 import co.nstant.in.cbor.CborEncoder;
 import co.nstant.in.cbor.model.ByteString;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.util.HexFormat;
 
 /**
  * Adapter for converting plutus-java {@link Program} to
@@ -55,6 +59,22 @@ public final class PlutusScriptAdapter {
     }
 
     /**
+     * Convert a double-CBOR-wrapped hex string back to a Program.
+     * <p>
+     * This is the reverse of {@link #fromProgram(Program)}:
+     * hex → outer CBOR unwrap → inner CBOR unwrap → FLAT decode → Program.
+     *
+     * @param doubleCborHex the double-CBOR-wrapped FLAT-encoded program as hex
+     * @return the decoded Program
+     */
+    public static Program toProgram(String doubleCborHex) {
+        byte[] outerBytes = HexFormat.of().parseHex(doubleCborHex);
+        byte[] innerBytes = cborUnwrapBytes(outerBytes);
+        byte[] flatBytes = cborUnwrapBytes(innerBytes);
+        return UplcFlatDecoder.decodeProgram(flatBytes);
+    }
+
+    /**
      * Get the script hash of a compiled program.
      */
     public static String scriptHash(Program program) {
@@ -63,6 +83,16 @@ public final class PlutusScriptAdapter {
             return bytesToHex(script.getScriptHash());
         } catch (Exception e) {
             throw new RuntimeException("Failed to compute script hash", e);
+        }
+    }
+
+    private static byte[] cborUnwrapBytes(byte[] cborData) {
+        try {
+            var stream = new ByteArrayInputStream(cborData);
+            var items = new CborDecoder(stream).decode();
+            return ((ByteString) items.getFirst()).getBytes();
+        } catch (Exception e) {
+            throw new RuntimeException("CBOR unwrapping failed", e);
         }
     }
 

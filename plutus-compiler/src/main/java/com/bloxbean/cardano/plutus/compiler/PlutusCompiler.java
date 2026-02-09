@@ -3,6 +3,7 @@ package com.bloxbean.cardano.plutus.compiler;
 import com.bloxbean.cardano.plutus.compiler.codegen.ValidatorWrapper;
 import com.bloxbean.cardano.plutus.compiler.error.CompilerDiagnostic;
 import com.bloxbean.cardano.plutus.compiler.pir.PirGenerator;
+import com.bloxbean.cardano.plutus.compiler.pir.PirHelpers;
 import com.bloxbean.cardano.plutus.compiler.pir.PirTerm;
 import com.bloxbean.cardano.plutus.compiler.pir.PirType;
 import com.bloxbean.cardano.plutus.compiler.resolve.SymbolTable;
@@ -15,6 +16,7 @@ import com.github.javaparser.ParserConfiguration;
 import com.github.javaparser.StaticJavaParser;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
+import com.github.javaparser.ast.body.FieldDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.body.RecordDeclaration;
 
@@ -30,6 +32,8 @@ import java.util.List;
  * parse -> validate -> resolve -> PIR generate -> UPLC generate -> Program
  */
 public class PlutusCompiler {
+
+    private record ParamField(String name, PirType pirType, String javaType) {}
 
     private final com.bloxbean.cardano.plutus.compiler.pir.StdlibLookup stdlibLookup;
 
@@ -77,11 +81,19 @@ public class PlutusCompiler {
             }
         }
 
-        // 5. Find @Entrypoint method
+        // 5. Detect @Param fields (in declaration order)
+        var paramFields = findParamFields(validatorClass, typeResolver);
+
+        // 6. Find @Entrypoint method
         var entrypointMethod = findEntrypoint(validatorClass);
 
-        // 6. Set up symbol table with method parameters
+        // 7. Set up symbol table with method parameters
         var symbolTable = new SymbolTable();
+
+        // Register @Param fields in global scope so they're available as variables
+        for (var pf : paramFields) {
+            symbolTable.define(pf.name, pf.pirType);
+        }
 
         // Register all methods (helpers + entrypoint) in the symbol table with their types
         for (var method : validatorClass.getMethods()) {
@@ -91,7 +103,7 @@ public class PlutusCompiler {
             }
         }
 
-        // 7. Generate PIR for helper methods (non-entrypoint static methods)
+        // 8. Generate PIR for helper methods (non-entrypoint static methods)
         var pirGenerator = new PirGenerator(typeResolver, symbolTable, stdlibLookup);
         for (var method : validatorClass.getMethods()) {
             if (method.isStatic() && method.getAnnotationByName("Entrypoint").isEmpty()) {
@@ -101,10 +113,10 @@ public class PlutusCompiler {
             }
         }
 
-        // 8. Generate PIR for the entrypoint method
+        // 9. Generate PIR for the entrypoint method
         var validateFn = pirGenerator.generateMethod(entrypointMethod);
 
-        // 9. Wrap helper methods as Let bindings around the entrypoint
+        // 10. Wrap helper methods as Let bindings around the entrypoint
         // Methods must be wrapped inner-first so earlier methods are in outer scope
         PirTerm body = validateFn;
         var methods = new ArrayList<>(symbolTable.allMethods());
@@ -113,7 +125,7 @@ public class PlutusCompiler {
             body = new PirTerm.Let(mi.name(), mi.body(), body);
         }
 
-        // 10. Wrap entrypoint for on-chain
+        // 11. Wrap entrypoint for on-chain
         var wrapper = new ValidatorWrapper();
         int paramCount = entrypointMethod.getParameters().size();
         PirTerm wrappedTerm;
@@ -123,18 +135,33 @@ public class PlutusCompiler {
             wrappedTerm = wrapper.wrapSpendingValidator(body, paramCount);
         }
 
-        // 11. Lower to UPLC
+        // 12. Wrap with outer param lambdas (last param innermost, first param outermost)
+        for (int i = paramFields.size() - 1; i >= 0; i--) {
+            var pf = paramFields.get(i);
+            var rawName = pf.name + "__raw";
+            var decoded = PirHelpers.wrapDecode(
+                    new PirTerm.Var(rawName, new PirType.DataType()), pf.pirType);
+            wrappedTerm = new PirTerm.Lam(rawName, new PirType.DataType(),
+                    new PirTerm.Let(pf.name, decoded, wrappedTerm));
+        }
+
+        // 13. Lower to UPLC
         var uplcGenerator = new UplcGenerator();
         var uplcTerm = uplcGenerator.generate(wrappedTerm);
 
-        // 12. Optimize UPLC
+        // 14. Optimize UPLC
         var optimizer = new UplcOptimizer();
         uplcTerm = optimizer.optimize(uplcTerm);
 
-        // 13. Create Program (version 1.1.0 for V3)
+        // 15. Create Program (version 1.1.0 for V3)
         var program = Program.plutusV3(uplcTerm);
 
-        return new CompileResult(program, diagnostics);
+        // 16. Build ParamInfo list
+        var paramInfos = paramFields.stream()
+                .map(pf -> new CompileResult.ParamInfo(pf.name, pf.javaType))
+                .toList();
+
+        return new CompileResult(program, diagnostics, paramInfos);
     }
 
     /**
@@ -181,6 +208,21 @@ public class PlutusCompiler {
             }
         }
         throw new CompilerException("No @Entrypoint method found in " + cls.getNameAsString());
+    }
+
+    private List<ParamField> findParamFields(ClassOrInterfaceDeclaration cls, TypeResolver typeResolver) {
+        var result = new ArrayList<ParamField>();
+        for (var field : cls.getFields()) {
+            if (field.getAnnotationByName("Param").isPresent()) {
+                for (var variable : field.getVariables()) {
+                    var name = variable.getNameAsString();
+                    var pirType = typeResolver.resolve(field.getCommonType());
+                    var javaType = field.getCommonType().asString();
+                    result.add(new ParamField(name, pirType, javaType));
+                }
+            }
+        }
+        return result;
     }
 
     private PirType computeMethodType(MethodDeclaration method, com.bloxbean.cardano.plutus.compiler.resolve.TypeResolver typeResolver) {

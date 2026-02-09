@@ -1,6 +1,8 @@
 package com.bloxbean.cardano.plutus.processor;
 
 import com.bloxbean.cardano.plutus.clientlib.PlutusScriptAdapter;
+import com.bloxbean.cardano.plutus.clientlib.ValidatorOutput;
+import com.bloxbean.cardano.plutus.compiler.CompileResult;
 import com.bloxbean.cardano.plutus.compiler.CompilerException;
 import com.bloxbean.cardano.plutus.compiler.PlutusCompiler;
 import com.bloxbean.cardano.plutus.stdlib.StdlibRegistry;
@@ -15,6 +17,7 @@ import javax.tools.StandardLocation;
 import java.io.IOException;
 import java.io.Writer;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Annotation processor that compiles {@code @Validator} and {@code @MintingPolicy}
@@ -79,13 +82,21 @@ public class PlutusAnnotationProcessor extends AbstractProcessor {
             // 3. Generate output
             var program = result.program();
             var script = PlutusScriptAdapter.fromProgram(program);
-            String scriptHash = PlutusScriptAdapter.scriptHash(program);
 
             boolean isMinting = annotation.getSimpleName().toString().equals("MintingPolicy");
             String scriptType = isMinting ? "PlutusScriptV3-Minting" : "PlutusScriptV3";
 
+            // Build params string from CompileResult
+            String paramsStr = result.params().stream()
+                    .map(p -> p.name() + ":" + p.type())
+                    .collect(Collectors.joining(","));
+
+            // For parameterized validators, hash depends on applied params — store empty
+            String scriptHash = result.isParameterized()
+                    ? "" : PlutusScriptAdapter.scriptHash(program);
+
             var output = new ValidatorOutput(scriptType, className,
-                    script.getCborHex(), scriptHash);
+                    script.getCborHex(), scriptHash, paramsStr);
 
             // 4. Write to META-INF/plutus/<ClassName>.plutus.json
             var filer = processingEnv.getFiler();
