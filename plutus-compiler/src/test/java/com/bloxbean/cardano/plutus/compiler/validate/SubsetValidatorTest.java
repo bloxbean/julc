@@ -40,6 +40,8 @@ class SubsetValidatorTest {
     @Test void rejectsSynchronized() { assertRejects("class X { void f() { synchronized(this) { } } }", "synchronized"); }
     @Test void rejectsForLoop() { assertRejects("class X { void f() { for (int i = 0; i < 10; i++) { } } }", "for loops"); }
     @Test void acceptsForEach() { assertAccepts("class X { void f(java.util.List<Integer> xs) { for (var x : xs) { } } }"); }
+    @Test void acceptsBreakInForEach() { assertAccepts("class X { void f(java.util.List<Integer> xs) { for (var x : xs) { break; } } }"); }
+    @Test void rejectsBreakOutsideForEach() { assertRejects("class X { void f() { break; } }", "break is only supported inside for-each"); }
     @Test void acceptsWhile() { assertAccepts("class X { void f() { while (true) { } } }"); }
     @Test void rejectsDoWhile() { assertRejects("class X { void f() { do { } while (true); } }", "do-while"); }
     @Test void acceptsLambda() { assertAccepts("class X { void f() { Runnable r = () -> {}; } }"); }

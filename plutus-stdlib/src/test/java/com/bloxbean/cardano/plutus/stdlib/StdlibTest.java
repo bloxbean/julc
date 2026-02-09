@@ -308,15 +308,23 @@ class StdlibTest {
 
     @Nested
     class FindTests {
+        private PlutusData extractResultData(EvalResult result) {
+            assertTrue(result.isSuccess(), "Expected success but got: " + result);
+            var term = ((EvalResult.Success) result).resultTerm();
+            assertInstanceOf(Term.Const.class, term);
+            var constant = ((Term.Const) term).value();
+            assertInstanceOf(Constant.DataConst.class, constant);
+            return ((Constant.DataConst) constant).value();
+        }
+
         @Test
         void findOnEmptyListReturnsNone() {
             var pred = equalsIntPredicate(42);
             var result = evalPir(ListsLib.find(emptyDataList(), pred));
-            assertTrue(result.isSuccess(), "Expected success but got: " + result);
-            // None = Constr(1, [])
-            var term = ((EvalResult.Success) result).resultTerm();
-            assertInstanceOf(Term.Constr.class, term);
-            var constr = (Term.Constr) term;
+            // None = ConstrData(1, [])
+            var data = extractResultData(result);
+            assertInstanceOf(PlutusData.Constr.class, data);
+            var constr = (PlutusData.Constr) data;
             assertEquals(1, constr.tag());
             assertTrue(constr.fields().isEmpty());
         }
@@ -326,21 +334,15 @@ class StdlibTest {
             // find [10, 20, 30] (x == 20) -> Some(IData(20))
             var pred = equalsIntPredicate(20);
             var result = evalPir(ListsLib.find(intDataList(10, 20, 30), pred));
-            assertTrue(result.isSuccess(), "Expected success but got: " + result);
-            // Some(x) = Constr(0, [x])
-            var term = ((EvalResult.Success) result).resultTerm();
-            assertInstanceOf(Term.Constr.class, term);
-            var constr = (Term.Constr) term;
+            // Some(x) = ConstrData(0, [x])
+            var data = extractResultData(result);
+            assertInstanceOf(PlutusData.Constr.class, data);
+            var constr = (PlutusData.Constr) data;
             assertEquals(0, constr.tag());
             assertEquals(1, constr.fields().size());
-            // The value inside is IData(20) -> Const(DataConst(IntData(20)))
             var inner = constr.fields().getFirst();
-            assertInstanceOf(Term.Const.class, inner);
-            var dataConst = ((Term.Const) inner).value();
-            assertInstanceOf(Constant.DataConst.class, dataConst);
-            var plutusData = ((Constant.DataConst) dataConst).value();
-            assertInstanceOf(PlutusData.IntData.class, plutusData);
-            assertEquals(BigInteger.valueOf(20), ((PlutusData.IntData) plutusData).value());
+            assertInstanceOf(PlutusData.IntData.class, inner);
+            assertEquals(BigInteger.valueOf(20), ((PlutusData.IntData) inner).value());
         }
 
         @Test
@@ -348,14 +350,12 @@ class StdlibTest {
             // find [5, 10, 15, 20] (x > 7) -> Some(IData(10)) (first match)
             var pred = greaterThanPredicate(7);
             var result = evalPir(ListsLib.find(intDataList(5, 10, 15, 20), pred));
-            assertTrue(result.isSuccess(), "Expected success but got: " + result);
-            var term = ((EvalResult.Success) result).resultTerm();
-            assertInstanceOf(Term.Constr.class, term);
-            var constr = (Term.Constr) term;
+            var data = extractResultData(result);
+            assertInstanceOf(PlutusData.Constr.class, data);
+            var constr = (PlutusData.Constr) data;
             assertEquals(0, constr.tag());
             var inner = constr.fields().getFirst();
-            var plutusData = ((Constant.DataConst) ((Term.Const) inner).value()).value();
-            assertEquals(BigInteger.TEN, ((PlutusData.IntData) plutusData).value());
+            assertEquals(BigInteger.TEN, ((PlutusData.IntData) inner).value());
         }
 
         @Test
@@ -363,10 +363,9 @@ class StdlibTest {
             // find [1, 2, 3] (x == 99) -> None
             var pred = equalsIntPredicate(99);
             var result = evalPir(ListsLib.find(intDataList(1, 2, 3), pred));
-            assertTrue(result.isSuccess(), "Expected success but got: " + result);
-            var term = ((EvalResult.Success) result).resultTerm();
-            assertInstanceOf(Term.Constr.class, term);
-            assertEquals(1, ((Term.Constr) term).tag());
+            var data = extractResultData(result);
+            assertInstanceOf(PlutusData.Constr.class, data);
+            assertEquals(1, ((PlutusData.Constr) data).tag());
         }
     }
 

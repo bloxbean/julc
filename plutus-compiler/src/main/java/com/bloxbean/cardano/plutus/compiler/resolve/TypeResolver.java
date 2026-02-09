@@ -34,12 +34,22 @@ public class TypeResolver {
             "TxCert", "Rational", "ProtocolVersion", "Committee");
 
     public void registerRecord(RecordDeclaration rd) {
+        var name = rd.getNameAsString();
+        if (recordTypes.containsKey(name)) {
+            throw new IllegalArgumentException("Duplicate record type: '" + name + "'. "
+                    + "A record with this name is already registered.");
+        }
         var fields = new ArrayList<PirType.Field>();
         for (var param : rd.getParameters()) {
             fields.add(new PirType.Field(param.getNameAsString(), resolve(param.getType())));
         }
-        var recordType = new PirType.RecordType(rd.getNameAsString(), fields);
-        recordTypes.put(rd.getNameAsString(), recordType);
+        var recordType = new PirType.RecordType(name, fields);
+        recordTypes.put(name, recordType);
+    }
+
+    /** Check if a type name is already registered (as record or sealed interface). */
+    public boolean isRegistered(String name) {
+        return recordTypes.containsKey(name) || sumTypes.containsKey(name);
     }
 
     /**
@@ -65,6 +75,10 @@ public class TypeResolver {
 
     public void registerSealedInterface(ClassOrInterfaceDeclaration decl) {
         var interfaceName = decl.getNameAsString();
+        if (sumTypes.containsKey(interfaceName)) {
+            throw new IllegalArgumentException("Duplicate sealed interface: '" + interfaceName + "'. "
+                    + "A sealed interface with this name is already registered.");
+        }
         var constructors = new ArrayList<PirType.Constructor>();
         int tag = 0;
         for (var permittedType : decl.getPermittedTypes()) {

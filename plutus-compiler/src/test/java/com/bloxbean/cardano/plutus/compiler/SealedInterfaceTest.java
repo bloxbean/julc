@@ -255,31 +255,32 @@ class SealedInterfaceTest {
     @Nested
     class UplcGenerationTests {
         @Test
-        void dataConstrLowersToUplcConstr() {
+        void dataConstrLowersToConstrData() {
+            var fields = List.of(new PirType.Field("x", new PirType.IntegerType()));
             var pir = new PirTerm.DataConstr(0,
-                    new PirType.RecordType("X", List.of()),
+                    new PirType.RecordType("X", fields),
                     List.of(new PirTerm.Const(Constant.integer(BigInteger.valueOf(42)))));
             var uplc = new UplcGenerator().generate(pir);
-            assertInstanceOf(Term.Constr.class, uplc);
-            var constr = (Term.Constr) uplc;
-            assertEquals(0, constr.tag());
-            assertEquals(1, constr.fields().size());
+            // DataConstr now lowers to ConstrData(tag, MkCons(IData(val), MkNilData()))
+            assertInstanceOf(Term.Apply.class, uplc);
         }
 
         @Test
         void dataConstrTag1LowersCorrectly() {
+            var fields = List.of(new PirType.Field("y", new PirType.IntegerType()));
             var pir = new PirTerm.DataConstr(1,
-                    new PirType.RecordType("Y", List.of()),
+                    new PirType.RecordType("Y", fields),
                     List.of(new PirTerm.Const(Constant.integer(BigInteger.valueOf(99)))));
             var uplc = new UplcGenerator().generate(pir);
-            assertInstanceOf(Term.Constr.class, uplc);
-            assertEquals(1, ((Term.Constr) uplc).tag());
+            // Should be ConstrData(1, ...) — an Apply chain
+            assertInstanceOf(Term.Apply.class, uplc);
         }
 
         @Test
         void dataConstrEvaluates() {
+            var fields = List.of(new PirType.Field("x", new PirType.IntegerType()));
             var pir = new PirTerm.DataConstr(0,
-                    new PirType.RecordType("X", List.of()),
+                    new PirType.RecordType("X", fields),
                     List.of(new PirTerm.Const(Constant.integer(BigInteger.valueOf(42)))));
             var uplc = new UplcGenerator().generate(pir);
             var result = vm.evaluate(com.bloxbean.cardano.plutus.core.Program.plutusV3(uplc));

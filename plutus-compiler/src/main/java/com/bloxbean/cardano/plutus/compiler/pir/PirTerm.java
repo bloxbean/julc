@@ -31,7 +31,11 @@ public sealed interface PirTerm {
     record Trace(PirTerm message, PirTerm body) implements PirTerm {}
 
     record Binding(String name, PirTerm value) {}
-    record MatchBranch(String constructorName, List<String> bindings, PirTerm body) {
-        public MatchBranch { bindings = List.copyOf(bindings); }
+    record MatchBranch(String constructorName, List<String> bindings, List<PirType> bindingTypes, PirTerm body) {
+        public MatchBranch { bindings = List.copyOf(bindings); bindingTypes = List.copyOf(bindingTypes); }
+        /** Backward-compatible constructor (no type info — fields treated as Data) */
+        public MatchBranch(String constructorName, List<String> bindings, PirTerm body) {
+            this(constructorName, bindings, bindings.stream().map(_ -> (PirType) new PirType.DataType()).toList(), body);
+        }
     }
 }

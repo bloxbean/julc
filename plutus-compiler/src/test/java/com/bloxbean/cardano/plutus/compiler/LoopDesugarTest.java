@@ -312,6 +312,354 @@ class LoopDesugarTest {
     }
 
     @Nested
+    class ForEachWithBreakDesugarerTests {
+
+        private PirTerm mkDataList(BigInteger... values) {
+            PirTerm list = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilData),
+                    new PirTerm.Const(Constant.unit()));
+            for (int i = values.length - 1; i >= 0; i--) {
+                list = new PirTerm.App(
+                        new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkCons),
+                                new PirTerm.App(new PirTerm.Builtin(DefaultFun.IData),
+                                        new PirTerm.Const(Constant.integer(values[i])))),
+                        list);
+            }
+            return list;
+        }
+
+        private boolean evalBool(Term term) {
+            var result = vm.evaluate(Program.plutusV3(term));
+            assertTrue(result.isSuccess(), "Expected success: " + result);
+            var val = ((Term.Const) ((EvalResult.Success) result).resultTerm()).value();
+            return ((Constant.BoolConst) val).value();
+        }
+
+        @Test
+        void breakOnFirstElement() {
+            // list [1, 2, 3], break when item == 1 → found = true
+            var desugarer = new LoopDesugarer();
+            var boolType = new PirType.BoolType();
+
+            var list = mkDataList(BigInteger.ONE, BigInteger.TWO, BigInteger.valueOf(3));
+
+            var pir = desugarer.desugarForEachWithBreak(
+                    list, "item", "found",
+                    new PirTerm.Const(Constant.bool(false)), boolType,
+                    (continueFn, accVar) -> {
+                        // if UnIData(item) == 1 then true else continueFn(found)
+                        var itemVal = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnIData),
+                                new PirTerm.Var("item", new PirType.DataType()));
+                        var cond = new PirTerm.App(
+                                new PirTerm.App(new PirTerm.Builtin(DefaultFun.EqualsInteger), itemVal),
+                                new PirTerm.Const(Constant.integer(BigInteger.ONE)));
+                        return new PirTerm.IfThenElse(cond,
+                                new PirTerm.Const(Constant.bool(true)),
+                                continueFn.apply(accVar));
+                    });
+
+            var uplc = new UplcGenerator().generate(pir);
+            assertTrue(evalBool(uplc));
+        }
+
+        @Test
+        void breakOnMiddleElement() {
+            // list [1, 2, 3], break when item == 2 → found = true
+            var desugarer = new LoopDesugarer();
+            var boolType = new PirType.BoolType();
+
+            var list = mkDataList(BigInteger.ONE, BigInteger.TWO, BigInteger.valueOf(3));
+
+            var pir = desugarer.desugarForEachWithBreak(
+                    list, "item", "found",
+                    new PirTerm.Const(Constant.bool(false)), boolType,
+                    (continueFn, accVar) -> {
+                        var itemVal = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnIData),
+                                new PirTerm.Var("item", new PirType.DataType()));
+                        var cond = new PirTerm.App(
+                                new PirTerm.App(new PirTerm.Builtin(DefaultFun.EqualsInteger), itemVal),
+                                new PirTerm.Const(Constant.integer(BigInteger.TWO)));
+                        return new PirTerm.IfThenElse(cond,
+                                new PirTerm.Const(Constant.bool(true)),
+                                continueFn.apply(accVar));
+                    });
+
+            var uplc = new UplcGenerator().generate(pir);
+            assertTrue(evalBool(uplc));
+        }
+
+        @Test
+        void breakNeverTriggered() {
+            // list [1, 2, 3], break when item == 5 → found = false (never breaks)
+            var desugarer = new LoopDesugarer();
+            var boolType = new PirType.BoolType();
+
+            var list = mkDataList(BigInteger.ONE, BigInteger.TWO, BigInteger.valueOf(3));
+
+            var pir = desugarer.desugarForEachWithBreak(
+                    list, "item", "found",
+                    new PirTerm.Const(Constant.bool(false)), boolType,
+                    (continueFn, accVar) -> {
+                        var itemVal = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnIData),
+                                new PirTerm.Var("item", new PirType.DataType()));
+                        var cond = new PirTerm.App(
+                                new PirTerm.App(new PirTerm.Builtin(DefaultFun.EqualsInteger), itemVal),
+                                new PirTerm.Const(Constant.integer(BigInteger.valueOf(5))));
+                        return new PirTerm.IfThenElse(cond,
+                                new PirTerm.Const(Constant.bool(true)),
+                                continueFn.apply(accVar));
+                    });
+
+            var uplc = new UplcGenerator().generate(pir);
+            assertFalse(evalBool(uplc));
+        }
+
+        @Test
+        void breakOnEmptyList() {
+            // empty list, break when item == 1 → found = false (initial acc)
+            var desugarer = new LoopDesugarer();
+            var boolType = new PirType.BoolType();
+
+            var emptyList = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilData),
+                    new PirTerm.Const(Constant.unit()));
+
+            var pir = desugarer.desugarForEachWithBreak(
+                    emptyList, "item", "found",
+                    new PirTerm.Const(Constant.bool(false)), boolType,
+                    (continueFn, accVar) -> {
+                        var itemVal = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnIData),
+                                new PirTerm.Var("item", new PirType.DataType()));
+                        var cond = new PirTerm.App(
+                                new PirTerm.App(new PirTerm.Builtin(DefaultFun.EqualsInteger), itemVal),
+                                new PirTerm.Const(Constant.integer(BigInteger.ONE)));
+                        return new PirTerm.IfThenElse(cond,
+                                new PirTerm.Const(Constant.bool(true)),
+                                continueFn.apply(accVar));
+                    });
+
+            var uplc = new UplcGenerator().generate(pir);
+            assertFalse(evalBool(uplc));
+        }
+
+        @Test
+        void breakWithIntegerAccumulator() {
+            // list [10, 20, 30], sum until item == 20 then break → acc = 10+20 = 30
+            var desugarer = new LoopDesugarer();
+            var intType = new PirType.IntegerType();
+
+            var list = mkDataList(BigInteger.TEN, BigInteger.valueOf(20), BigInteger.valueOf(30));
+
+            var pir = desugarer.desugarForEachWithBreak(
+                    list, "item", "sum",
+                    new PirTerm.Const(Constant.integer(BigInteger.ZERO)), intType,
+                    (continueFn, accVar) -> {
+                        var itemVal = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnIData),
+                                new PirTerm.Var("item", new PirType.DataType()));
+                        var newAcc = new PirTerm.App(
+                                new PirTerm.App(new PirTerm.Builtin(DefaultFun.AddInteger), accVar),
+                                itemVal);
+                        var isTarget = new PirTerm.App(
+                                new PirTerm.App(new PirTerm.Builtin(DefaultFun.EqualsInteger), itemVal),
+                                new PirTerm.Const(Constant.integer(BigInteger.valueOf(20))));
+                        // if item == 20 then (sum + item) [break] else continue(sum + item)
+                        return new PirTerm.IfThenElse(isTarget,
+                                newAcc,
+                                continueFn.apply(newAcc));
+                    });
+
+            var uplc = new UplcGenerator().generate(pir);
+            assertEquals(BigInteger.valueOf(30), evalInteger(uplc)); // 10 + 20 = 30 (skips 30)
+        }
+    }
+
+    @Nested
+    class BreakCompilerIntegrationTests {
+
+        private boolean evalBool(Term term) {
+            var result = vm.evaluate(Program.plutusV3(term));
+            assertTrue(result.isSuccess(), "Expected success: " + result);
+            var val = ((Term.Const) ((EvalResult.Success) result).resultTerm()).value();
+            return ((Constant.BoolConst) val).value();
+        }
+
+        @Test
+        void breakInForEachWithSignatories() {
+            // Validator that iterates over signatories with break
+            var source = """
+                import java.math.BigInteger;
+                import com.bloxbean.cardano.plutus.onchain.ledger.*;
+
+                @Validator
+                class BreakValidator {
+                    @Entrypoint
+                    static boolean validate(byte[] redeemer, ScriptContext ctx) {
+                        var txInfo = ctx.txInfo();
+                        boolean found = false;
+                        for (var sig : txInfo.signatories()) {
+                            if (sig == redeemer) {
+                                found = true;
+                                break;
+                            }
+                        }
+                        return found;
+                    }
+                }
+                """;
+            var result = new PlutusCompiler().compile(source);
+            assertNotNull(result.program());
+            assertFalse(result.hasErrors());
+        }
+
+        @Test
+        void breakInForEachWithInputs() {
+            // Validator that iterates over inputs with break
+            var source = """
+                import java.math.BigInteger;
+                import com.bloxbean.cardano.plutus.onchain.ledger.*;
+
+                @Validator
+                class BreakValidator2 {
+                    @Entrypoint
+                    static boolean validate(byte[] redeemer, ScriptContext ctx) {
+                        var txInfo = ctx.txInfo();
+                        boolean paid = false;
+                        for (var output : txInfo.outputs()) {
+                            if (output.value() == redeemer) {
+                                paid = true;
+                                break;
+                            }
+                        }
+                        return paid;
+                    }
+                }
+                """;
+            var result = new PlutusCompiler().compile(source);
+            assertNotNull(result.program());
+            assertFalse(result.hasErrors());
+        }
+    }
+
+    @Nested
+    class MultiAccumulatorTests {
+
+        @Test
+        void breakAfterSeparateAssignment() {
+            // Bug 1: found = expr; if (found) { break; }
+            var source = """
+                import java.math.BigInteger;
+                import com.bloxbean.cardano.plutus.onchain.ledger.*;
+
+                @Validator
+                class BreakAfterAssign {
+                    @Entrypoint
+                    static boolean validate(byte[] redeemer, ScriptContext ctx) {
+                        var txInfo = ctx.txInfo();
+                        boolean found = false;
+                        for (var sig : txInfo.signatories()) {
+                            found = sig == redeemer;
+                            if (found) {
+                                break;
+                            }
+                        }
+                        return found;
+                    }
+                }
+                """;
+            var result = new PlutusCompiler().compile(source);
+            assertNotNull(result.program());
+            assertFalse(result.hasErrors());
+        }
+
+        @Test
+        void twoAccumulatorsNoBreak() {
+            // Bug 2: two accumulators in a single loop body
+            var source = """
+                import java.math.BigInteger;
+                import com.bloxbean.cardano.plutus.onchain.ledger.*;
+
+                @Validator
+                class TwoAccNoBreak {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer, ScriptContext ctx) {
+                        var txInfo = ctx.txInfo();
+                        boolean found = false;
+                        BigInteger count = BigInteger.ZERO;
+                        for (var sig : txInfo.signatories()) {
+                            found = found || sig == redeemer;
+                            count = count + BigInteger.ONE;
+                        }
+                        return found;
+                    }
+                }
+                """;
+            var result = new PlutusCompiler().compile(source);
+            assertNotNull(result.program());
+            assertFalse(result.hasErrors());
+        }
+
+        @Test
+        void twoAccumulatorsWithBreak() {
+            // Two accumulators + break
+            var source = """
+                import java.math.BigInteger;
+                import com.bloxbean.cardano.plutus.onchain.ledger.*;
+
+                @Validator
+                class TwoAccWithBreak {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer, ScriptContext ctx) {
+                        var txInfo = ctx.txInfo();
+                        boolean found = false;
+                        BigInteger index = BigInteger.ZERO;
+                        for (var sig : txInfo.signatories()) {
+                            found = sig == redeemer;
+                            index = index + BigInteger.ONE;
+                            if (found) {
+                                break;
+                            }
+                        }
+                        return found;
+                    }
+                }
+                """;
+            var result = new PlutusCompiler().compile(source);
+            assertNotNull(result.program());
+            assertFalse(result.hasErrors());
+        }
+
+        @Test
+        void nestedForEachLoops() {
+            // Nested for-each regression test
+            var source = """
+                import java.math.BigInteger;
+                import com.bloxbean.cardano.plutus.onchain.ledger.*;
+
+                @Validator
+                class NestedLoops {
+                    @Entrypoint
+                    static boolean validate(byte[] redeemer, ScriptContext ctx) {
+                        var txInfo = ctx.txInfo();
+                        BigInteger total = BigInteger.ZERO;
+                        for (var output : txInfo.outputs()) {
+                            boolean match = false;
+                            for (var sig : txInfo.signatories()) {
+                                if (sig == redeemer) {
+                                    match = true;
+                                    break;
+                                }
+                            }
+                            total = total + BigInteger.ONE;
+                        }
+                        return total == BigInteger.ZERO;
+                    }
+                }
+                """;
+            var result = new PlutusCompiler().compile(source);
+            assertNotNull(result.program());
+            assertFalse(result.hasErrors());
+        }
+    }
+
+    @Nested
     class CompilerIntegrationTests {
         @Test
         void compilerAcceptsForEach() {

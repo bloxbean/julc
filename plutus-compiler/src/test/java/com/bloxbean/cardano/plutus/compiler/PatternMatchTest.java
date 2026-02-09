@@ -48,13 +48,14 @@ class PatternMatchTest {
     class DataMatchDeBruijnTests {
         @Test
         void simpleMatchWithOneField() {
-            // Match on Constr(0, [42]) -> extract field and return it
+            // Match on ConstrData(0, [IData(42)]) -> extract field and return it
             var intType = new PirType.IntegerType();
             var match = new PirTerm.DataMatch(
                     new PirTerm.DataConstr(0,
                             new PirType.RecordType("X", List.of(new PirType.Field("val", intType))),
                             List.of(new PirTerm.Const(Constant.integer(BigInteger.valueOf(42))))),
                     List.of(new PirTerm.MatchBranch("X", List.of("val"),
+                            List.of(intType),
                             new PirTerm.Var("val", intType))));
 
             var uplc = new UplcGenerator().generate(match);
@@ -63,7 +64,7 @@ class PatternMatchTest {
 
         @Test
         void matchWithTwoFields() {
-            // Match on Constr(0, [10, 20]) -> return field1 + field2
+            // Match on ConstrData(0, [IData(10), IData(20)]) -> return field1 + field2
             var intType = new PirType.IntegerType();
             var match = new PirTerm.DataMatch(
                     new PirTerm.DataConstr(0,
@@ -74,6 +75,7 @@ class PatternMatchTest {
                                     new PirTerm.Const(Constant.integer(BigInteger.TEN)),
                                     new PirTerm.Const(Constant.integer(BigInteger.valueOf(20))))),
                     List.of(new PirTerm.MatchBranch("Pair", List.of("a", "b"),
+                            List.of(intType, intType),
                             new PirTerm.App(
                                     new PirTerm.App(new PirTerm.Builtin(DefaultFun.AddInteger),
                                             new PirTerm.Var("a", intType)),
@@ -94,8 +96,8 @@ class PatternMatchTest {
                                     new PirType.Constructor("B", 1, List.of(new PirType.Field("y", intType))))),
                             List.of(new PirTerm.Const(Constant.integer(BigInteger.valueOf(99))))),
                     List.of(
-                            new PirTerm.MatchBranch("A", List.of("x"), new PirTerm.Var("x", intType)),
-                            new PirTerm.MatchBranch("B", List.of("y"), new PirTerm.Var("y", intType))));
+                            new PirTerm.MatchBranch("A", List.of("x"), List.of(intType), new PirTerm.Var("x", intType)),
+                            new PirTerm.MatchBranch("B", List.of("y"), List.of(intType), new PirTerm.Var("y", intType))));
 
             var uplc = new UplcGenerator().generate(match);
             assertEquals(BigInteger.valueOf(99), evalInteger(uplc));
@@ -111,8 +113,8 @@ class PatternMatchTest {
                                     new PirType.Constructor("B", 1, List.of(new PirType.Field("y", intType))))),
                             List.of(new PirTerm.Const(Constant.integer(BigInteger.valueOf(77))))),
                     List.of(
-                            new PirTerm.MatchBranch("A", List.of("x"), new PirTerm.Var("x", intType)),
-                            new PirTerm.MatchBranch("B", List.of("y"), new PirTerm.Var("y", intType))));
+                            new PirTerm.MatchBranch("A", List.of("x"), List.of(intType), new PirTerm.Var("x", intType)),
+                            new PirTerm.MatchBranch("B", List.of("y"), List.of(intType), new PirTerm.Var("y", intType))));
 
             var uplc = new UplcGenerator().generate(match);
             assertEquals(BigInteger.valueOf(77), evalInteger(uplc));
@@ -120,13 +122,14 @@ class PatternMatchTest {
 
         @Test
         void matchWithTransformation() {
-            // Match Constr(0, [5]) → val * 2
+            // Match ConstrData(0, [IData(5)]) → val * 2
             var intType = new PirType.IntegerType();
             var match = new PirTerm.DataMatch(
                     new PirTerm.DataConstr(0,
                             new PirType.RecordType("X", List.of(new PirType.Field("val", intType))),
                             List.of(new PirTerm.Const(Constant.integer(BigInteger.valueOf(5))))),
                     List.of(new PirTerm.MatchBranch("X", List.of("val"),
+                            List.of(intType),
                             new PirTerm.App(
                                     new PirTerm.App(new PirTerm.Builtin(DefaultFun.MultiplyInteger),
                                             new PirTerm.Var("val", intType)),
@@ -138,12 +141,12 @@ class PatternMatchTest {
 
         @Test
         void emptyFieldMatch() {
-            // Match on Constr(0, []) → return constant
+            // Match on ConstrData(0, []) → return constant
             var match = new PirTerm.DataMatch(
                     new PirTerm.DataConstr(0,
                             new PirType.RecordType("Unit", List.of()),
                             List.of()),
-                    List.of(new PirTerm.MatchBranch("Unit", List.of(),
+                    List.of(new PirTerm.MatchBranch("Unit", List.of(), List.of(),
                             new PirTerm.Const(Constant.integer(BigInteger.valueOf(42))))));
 
             var uplc = new UplcGenerator().generate(match);
@@ -152,7 +155,7 @@ class PatternMatchTest {
 
         @Test
         void matchInsideLet() {
-            // let x = Constr(0, [42]) in match x { X(val) -> val + 1 }
+            // let x = ConstrData(0, [IData(42)]) in match x { X(val) -> val + 1 }
             var intType = new PirType.IntegerType();
             var sumType = new PirType.RecordType("X", List.of(new PirType.Field("val", intType)));
 
@@ -162,6 +165,7 @@ class PatternMatchTest {
                     new PirTerm.DataMatch(
                             new PirTerm.Var("x", sumType),
                             List.of(new PirTerm.MatchBranch("X", List.of("val"),
+                                    List.of(intType),
                                     new PirTerm.App(
                                             new PirTerm.App(new PirTerm.Builtin(DefaultFun.AddInteger),
                                                     new PirTerm.Var("val", intType)),
@@ -184,13 +188,13 @@ class PatternMatchTest {
                     new PirTerm.DataConstr(2, sumType,
                             List.of(new PirTerm.Const(Constant.integer(BigInteger.valueOf(7))))),
                     List.of(
-                            new PirTerm.MatchBranch("A", List.of("x"), new PirTerm.Var("x", intType)),
-                            new PirTerm.MatchBranch("B", List.of("y"),
+                            new PirTerm.MatchBranch("A", List.of("x"), List.of(intType), new PirTerm.Var("x", intType)),
+                            new PirTerm.MatchBranch("B", List.of("y"), List.of(intType),
                                     new PirTerm.App(
                                             new PirTerm.App(new PirTerm.Builtin(DefaultFun.MultiplyInteger),
                                                     new PirTerm.Var("y", intType)),
                                             new PirTerm.Const(Constant.integer(BigInteger.TWO)))),
-                            new PirTerm.MatchBranch("C", List.of("z"),
+                            new PirTerm.MatchBranch("C", List.of("z"), List.of(intType),
                                     new PirTerm.App(
                                             new PirTerm.App(new PirTerm.Builtin(DefaultFun.MultiplyInteger),
                                                     new PirTerm.Var("z", intType)),
@@ -211,14 +215,12 @@ class PatternMatchTest {
                             new PirType.RecordType("X", List.of(new PirType.Field("v", intType))),
                             List.of(new PirTerm.Const(Constant.integer(BigInteger.ONE)))),
                     List.of(new PirTerm.MatchBranch("X", List.of("v"),
+                            List.of(intType),
                             new PirTerm.Var("v", intType))));
 
             var uplc = new UplcGenerator().generate(match);
-            assertInstanceOf(Term.Case.class, uplc);
-            var caseExpr = (Term.Case) uplc;
-            assertInstanceOf(Term.Constr.class, caseExpr.scrutinee());
-            assertEquals(1, caseExpr.branches().size());
-            assertInstanceOf(Term.Lam.class, caseExpr.branches().getFirst());
+            // DataMatch now lowers to UnConstrData + field extraction, not Case/Constr
+            assertInstanceOf(Term.Apply.class, uplc);
         }
     }
 

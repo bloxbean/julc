@@ -1,14 +1,16 @@
 package com.bloxbean.cardano.plutus.onchain.stdlib;
 
 import com.bloxbean.cardano.plutus.onchain.ledger.Interval;
+import com.bloxbean.cardano.plutus.onchain.ledger.IntervalBound;
+import com.bloxbean.cardano.plutus.onchain.ledger.IntervalBoundType;
 
 import java.math.BigInteger;
 
 /**
  * On-chain time interval operations.
  * <p>
- * These are compile-time stubs for IDE support. The actual on-chain implementation
- * is provided by the PlutusCompiler via {@code StdlibRegistry}.
+ * These methods are executable both on-chain (compiled to UPLC via StdlibRegistry)
+ * and off-chain (as plain Java for debugging and testing).
  */
 public final class IntervalLib {
 
@@ -16,21 +18,47 @@ public final class IntervalLib {
 
     /** Check if a time point falls within the interval bounds. */
     public static boolean contains(Interval interval, BigInteger time) {
-        throw new UnsupportedOperationException("On-chain only");
+        return checkLowerBound(interval.from(), time) && checkUpperBound(interval.to(), time);
+    }
+
+    private static boolean checkLowerBound(IntervalBound bound, BigInteger time) {
+        return switch (bound.boundType()) {
+            case IntervalBoundType.NegInf ignored -> true;
+            case IntervalBoundType.PosInf ignored -> false;
+            case IntervalBoundType.Finite f -> bound.isInclusive()
+                    ? time.compareTo(f.time()) >= 0
+                    : time.compareTo(f.time()) > 0;
+        };
+    }
+
+    private static boolean checkUpperBound(IntervalBound bound, BigInteger time) {
+        return switch (bound.boundType()) {
+            case IntervalBoundType.NegInf ignored -> false;
+            case IntervalBoundType.PosInf ignored -> true;
+            case IntervalBoundType.Finite f -> bound.isInclusive()
+                    ? time.compareTo(f.time()) <= 0
+                    : time.compareTo(f.time()) < 0;
+        };
     }
 
     /** Return the "always" interval: (-inf, +inf). */
     public static Interval always() {
-        throw new UnsupportedOperationException("On-chain only");
+        return new Interval(
+                new IntervalBound(new IntervalBoundType.NegInf(), true),
+                new IntervalBound(new IntervalBoundType.PosInf(), true));
     }
 
     /** Return interval [time, +inf). */
     public static Interval after(BigInteger time) {
-        throw new UnsupportedOperationException("On-chain only");
+        return new Interval(
+                new IntervalBound(new IntervalBoundType.Finite(time), true),
+                new IntervalBound(new IntervalBoundType.PosInf(), true));
     }
 
     /** Return interval (-inf, time]. */
     public static Interval before(BigInteger time) {
-        throw new UnsupportedOperationException("On-chain only");
+        return new Interval(
+                new IntervalBound(new IntervalBoundType.NegInf(), true),
+                new IntervalBound(new IntervalBoundType.Finite(time), true));
     }
 }

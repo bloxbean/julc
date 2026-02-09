@@ -166,16 +166,17 @@ class UplcGeneratorTest {
         @Test void emptyConstr() {
             var pir = new PirTerm.DataConstr(0, new PirType.RecordType("R", List.of()), List.of());
             var result = gen.generate(pir);
-            assertInstanceOf(Term.Constr.class, result);
-            assertEquals(0, ((Term.Constr) result).tag());
+            // DataConstr now lowers to ConstrData(tag, list) — an Apply chain
+            assertInstanceOf(Term.Apply.class, result);
         }
 
         @Test void constrWithFields() {
-            var pir = new PirTerm.DataConstr(1, new PirType.RecordType("R", List.of()),
+            var fields = List.of(new PirType.Field("x", new PirType.IntegerType()));
+            var pir = new PirTerm.DataConstr(1, new PirType.RecordType("R", fields),
                     List.of(new PirTerm.Const(Constant.integer(BigInteger.ONE))));
             var result = gen.generate(pir);
-            assertInstanceOf(Term.Constr.class, result);
-            assertEquals(1, ((Term.Constr) result).fields().size());
+            // DataConstr now lowers to ConstrData(tag, MkCons(IData(val), MkNilData()))
+            assertInstanceOf(Term.Apply.class, result);
         }
     }
 

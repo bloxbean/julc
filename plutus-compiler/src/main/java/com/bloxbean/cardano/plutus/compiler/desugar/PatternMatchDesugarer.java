@@ -35,13 +35,14 @@ public class PatternMatchDesugarer {
             var matchEntry = branches.stream()
                     .filter(b -> b.variantName.equals(ctor.name()))
                     .findFirst();
+            var fieldTypes = ctor.fields().stream().map(PirType.Field::type).toList();
             if (matchEntry.isPresent()) {
                 orderedBranches.add(new PirTerm.MatchBranch(
-                        ctor.name(), matchEntry.get().bindings, matchEntry.get().body));
+                        ctor.name(), matchEntry.get().bindings, fieldTypes, matchEntry.get().body));
             } else {
                 // Default branch or error
                 orderedBranches.add(new PirTerm.MatchBranch(
-                        ctor.name(), List.of(), new PirTerm.Error(new PirType.UnitType())));
+                        ctor.name(), List.of(), List.of(), new PirTerm.Error(new PirType.UnitType())));
             }
         }
         return new PirTerm.DataMatch(scrutinee, orderedBranches);

@@ -54,6 +54,40 @@ public final class PirHelpers {
     }
 
     /**
+     * Wrap a value with the appropriate encode builtin for the target type (inverse of wrapDecode).
+     */
+    public static PirTerm wrapEncode(PirTerm value, PirType type) {
+        if (type instanceof PirType.IntegerType) {
+            return new PirTerm.App(new PirTerm.Builtin(DefaultFun.IData), value);
+        }
+        if (type instanceof PirType.ByteStringType) {
+            return new PirTerm.App(new PirTerm.Builtin(DefaultFun.BData), value);
+        }
+        if (type instanceof PirType.BoolType) {
+            // Bool → ConstrData: False=Constr(0,[]), True=Constr(1,[])
+            var nilData = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilData),
+                    new PirTerm.Const(Constant.unit()));
+            var trueData = builtinApp2(DefaultFun.ConstrData,
+                    new PirTerm.Const(Constant.integer(BigInteger.ONE)), nilData);
+            var falseData = builtinApp2(DefaultFun.ConstrData,
+                    new PirTerm.Const(Constant.integer(BigInteger.ZERO)), nilData);
+            return new PirTerm.IfThenElse(value, trueData, falseData);
+        }
+        if (type instanceof PirType.StringType) {
+            return new PirTerm.App(new PirTerm.Builtin(DefaultFun.BData),
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.EncodeUtf8), value));
+        }
+        if (type instanceof PirType.ListType) {
+            return new PirTerm.App(new PirTerm.Builtin(DefaultFun.ListData), value);
+        }
+        if (type instanceof PirType.MapType) {
+            return new PirTerm.App(new PirTerm.Builtin(DefaultFun.MapData), value);
+        }
+        // For Data, RecordType, SumType, etc., already Data — pass through
+        return value;
+    }
+
+    /**
      * Generate PIR for list.size() — foldl(\acc _ -> acc + 1, 0, list).
      */
     static PirTerm generateListLength(PirTerm list) {

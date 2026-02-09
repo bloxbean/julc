@@ -20,6 +20,11 @@ import org.gradle.api.tasks.SourceSet;
  *     outputDir = file("${buildDir}/plutus")   // default
  * }
  * </pre>
+ * <p>
+ * The plugin also registers a {@code bundlePlutusSources} task that copies
+ * {@code @OnchainLibrary}-annotated source files into {@code META-INF/plutus-sources/}
+ * in the resources output, so they are included in the published JAR for downstream
+ * consumption by annotation processors.
  */
 public class PlutusPlugin implements Plugin<Project> {
 
@@ -39,7 +44,13 @@ public class PlutusPlugin implements Plugin<Project> {
             task.getOutputDir().set(extension.getOutputDir());
         });
 
-        // 3. Register plutus source directory so IDEs recognise the .java files.
+        // 3. Register bundlePlutusSources task
+        project.getTasks().register("bundlePlutusSources", BundlePlutusSourcesTask.class, task -> {
+            task.setGroup("plutus");
+            task.setDescription("Bundle @OnchainLibrary sources into META-INF/plutus-sources/");
+        });
+
+        // 4. Register plutus source directory so IDEs recognise the .java files.
         //    We add it to the main source set's java srcDirs, then exclude it from
         //    compileJava so javac doesn't try to compile the validator sources.
         project.afterEvaluate(p -> {
@@ -54,9 +65,21 @@ public class PlutusPlugin implements Plugin<Project> {
                         java.io.File file = fileTreeElement.getFile();
                         return isUnderDirectory(file, plutusSrcDir);
                     }));
+
+            // Configure bundlePlutusSources: source from main java srcDirs, output to resources
+            p.getTasks().named("bundlePlutusSources", BundlePlutusSourcesTask.class, task -> {
+                // Default: scan src/main/java for @OnchainLibrary files
+                task.getSourceDir().convention(
+                        p.getLayout().getProjectDirectory().dir("src/main/java"));
+                task.getOutputDir().convention(
+                        p.getLayout().getBuildDirectory().dir("resources/main"));
+            });
+
+            // Wire bundlePlutusSources to run before jar
+            p.getTasks().named("jar").configure(t -> t.dependsOn("bundlePlutusSources"));
         });
 
-        // 4. Wire into build lifecycle
+        // 5. Wire compilePlutus into build lifecycle
         project.getTasks().named("build")
                 .configure(t -> t.dependsOn("compilePlutus"));
     }

@@ -2,8 +2,15 @@ package com.bloxbean.cardano.plutus.testkit;
 
 import com.bloxbean.cardano.plutus.core.PlutusData;
 import com.bloxbean.cardano.plutus.core.Program;
+import com.bloxbean.cardano.plutus.ledger.PolicyId;
+import com.bloxbean.cardano.plutus.ledger.TxOutRef;
+import com.bloxbean.cardano.plutus.onchain.stdlib.CryptoLib;
 import com.bloxbean.cardano.plutus.vm.EvalResult;
 import com.bloxbean.cardano.plutus.vm.PlutusVm;
+
+import java.io.IOException;
+import java.nio.file.Path;
+import java.util.List;
 
 /**
  * Abstract base class for validator contract tests.
@@ -109,5 +116,100 @@ public abstract class ContractTest {
      */
     protected void assertBudgetUnder(EvalResult result, long maxCpu, long maxMem) {
         BudgetAssertions.assertBudgetUnder(result, maxCpu, maxMem);
+    }
+
+    // --- ScriptContext builder shortcuts ---
+
+    /**
+     * Create a ScriptContextTestBuilder for a spending script context.
+     *
+     * @param ref the transaction output reference being spent
+     * @return a new ScriptContextTestBuilder
+     */
+    protected ScriptContextTestBuilder spendingContext(TxOutRef ref) {
+        return ScriptContextTestBuilder.spending(ref);
+    }
+
+    /**
+     * Create a ScriptContextTestBuilder for a spending script context with a datum.
+     *
+     * @param ref   the transaction output reference being spent
+     * @param datum the datum attached to the spent output
+     * @return a new ScriptContextTestBuilder
+     */
+    protected ScriptContextTestBuilder spendingContext(TxOutRef ref, PlutusData datum) {
+        return ScriptContextTestBuilder.spending(ref, datum);
+    }
+
+    /**
+     * Create a ScriptContextTestBuilder for a minting script context.
+     *
+     * @param policyId the minting policy ID
+     * @return a new ScriptContextTestBuilder
+     */
+    protected ScriptContextTestBuilder mintingContext(PolicyId policyId) {
+        return ScriptContextTestBuilder.minting(policyId);
+    }
+
+    // --- Multi-file compilation ---
+
+    /**
+     * Compile a validator from a source file on disk.
+     *
+     * @param sourceFile path to the validator Java source file
+     * @return the compiled Program
+     * @throws RuntimeException if the file cannot be read
+     */
+    protected Program compile(Path sourceFile) {
+        try {
+            return ValidatorTest.compile(sourceFile);
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to read source file: " + sourceFile, e);
+        }
+    }
+
+    /**
+     * Compile a validator with library sources.
+     *
+     * @param validatorSource  the validator Java source code
+     * @param librarySources   the library Java source files
+     * @return the compiled Program
+     */
+    protected Program compile(String validatorSource, String... librarySources) {
+        return ValidatorTest.compile(validatorSource, librarySources);
+    }
+
+    /**
+     * Compile a validator with library sources and evaluate with the given arguments.
+     *
+     * @param validatorSource  the validator Java source code
+     * @param librarySources   the library Java source files
+     * @param args             the PlutusData arguments
+     * @return the evaluation result
+     */
+    protected EvalResult evaluate(String validatorSource, List<String> librarySources, PlutusData... args) {
+        return ValidatorTest.evaluate(validatorSource, librarySources, args);
+    }
+
+    /**
+     * Assert that a compiled program evaluates successfully with the given arguments.
+     *
+     * @param program the compiled UPLC program
+     * @param args    the PlutusData arguments
+     */
+    protected void assertValidates(Program program, PlutusData... args) {
+        ValidatorTest.assertValidates(program, args);
+    }
+
+    // --- Crypto initialization ---
+
+    /**
+     * Initialize the CryptoLib with the JVM-based crypto provider.
+     * <p>
+     * Call this in a {@code @BeforeAll} method in your test class, or invoke it
+     * directly before any test that uses CryptoLib functions.
+     */
+    protected static void initCrypto() {
+        CryptoLib.setProvider(new JvmCryptoProvider());
     }
 }

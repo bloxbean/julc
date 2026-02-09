@@ -12,8 +12,8 @@ import com.github.javaparser.ast.expr.*;
 import com.github.javaparser.ast.stmt.*;
 
 import java.math.BigInteger;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
+import java.util.function.Function;
 
 /**
  * Compiles JavaParser AST to PIR terms.
@@ -26,6 +26,8 @@ public class PirGenerator {
     private final StdlibLookup stdlibLookup;
     private final TypeMethodRegistry typeMethodRegistry;
     private String forEachAccumulatorVar; // non-null when compiling fold body
+    private Function<PirTerm, PirTerm> breakContinueFn; // non-null when compiling break-capable fold body
+    private Set<String> multiAccVars = Set.of(); // non-empty when compiling multi-acc fold body
 
     public PirGenerator(TypeResolver typeResolver, SymbolTable symbolTable) {
         this(typeResolver, symbolTable, null, TypeMethodRegistry.defaultRegistry());
@@ -121,6 +123,14 @@ public class PirGenerator {
         }
         if (stmt instanceof WhileStmt ws) {
             return generateWhileStmt(ws, stmts, index);
+        }
+        if (stmt instanceof BreakStmt) {
+            // break outside break-aware context: return current accumulator
+            if (forEachAccumulatorVar != null) {
+                var accType = symbolTable.lookup(forEachAccumulatorVar).orElse(new PirType.BoolType());
+                return new PirTerm.Var(forEachAccumulatorVar, accType);
+            }
+            throw new CompilerException("break statement outside of a loop");
         }
         throw new CompilerException("Unsupported statement: " + stmt.getClass().getSimpleName());
     }
@@ -226,10 +236,12 @@ public class PirGenerator {
         if (expr instanceof InstanceOfExpr ioe) {
             return generateInstanceOf(ioe);
         }
-        if (expr instanceof AssignExpr ae && forEachAccumulatorVar != null
-                && ae.getTarget() instanceof NameExpr ne
-                && ne.getNameAsString().equals(forEachAccumulatorVar)) {
-            return generateExpression(ae.getValue());
+        if (expr instanceof AssignExpr ae && ae.getTarget() instanceof NameExpr ne) {
+            var name = ne.getNameAsString();
+            if ((forEachAccumulatorVar != null && name.equals(forEachAccumulatorVar))
+                    || multiAccVars.contains(name)) {
+                return generateExpression(ae.getValue());
+            }
         }
         throw new CompilerException("Unsupported expression: " + expr.getClass().getSimpleName() + " = " + expr);
     }
@@ -394,7 +406,9 @@ public class PirGenerator {
             }
             return fn;
         }
-        throw new CompilerException("Unknown method: " + methodName);
+        throw new CompilerException("Unknown method: " + methodName
+                + ". Did you mean ClassName." + methodName + "()? "
+                + "Library methods require class qualification (e.g., MathUtils." + methodName + "(...)).");
     }
 
     /**
@@ -636,26 +650,56 @@ public class PirGenerator {
         }
 
         var desugarer = new LoopDesugarer();
+        boolean hasBreak = containsBreak(fes.getBody());
 
-        // Detect accumulator pattern: last statement assigns to a pre-loop variable
-        var accName = detectForEachAccumulator(fes.getBody());
-        if (accName != null) {
+        // Detect all accumulator assignments in the loop body
+        var accumulators = detectForEachAccumulators(fes.getBody());
+
+        if (accumulators.size() == 1) {
+            // --- Single-accumulator path (unchanged) ---
+            var accName = accumulators.get(0);
             var accType = symbolTable.lookup(accName).orElse(new PirType.BoolType());
             var accInit = new PirTerm.Var(accName, accType);
 
-            symbolTable.pushScope();
-            symbolTable.define(itemName, elemType);
-            symbolTable.define(accName, accType); // shadow as fold parameter
+            PirTerm foldResult;
+            if (hasBreak) {
+                // Break-aware fold: body controls recursion
+                final PirType finalElemType = elemType;
+                foldResult = desugarer.desugarForEachWithBreak(
+                        iterableExpr, itemName, accName, accInit, accType,
+                        (continueFn, accVar) -> {
+                            symbolTable.pushScope();
+                            symbolTable.define(itemName, finalElemType);
+                            symbolTable.define(accName, accType);
 
-            String prev = forEachAccumulatorVar;
-            forEachAccumulatorVar = accName;
-            var bodyTerm = generateStatement(fes.getBody());
-            forEachAccumulatorVar = prev;
+                            String prevAcc = forEachAccumulatorVar;
+                            Function<PirTerm, PirTerm> prevBreak = breakContinueFn;
+                            forEachAccumulatorVar = accName;
+                            breakContinueFn = continueFn;
 
-            symbolTable.popScope();
+                            var bodyTerm = generateBreakAwareBody(fes.getBody(), accName, accType, continueFn);
 
-            var foldResult = desugarer.desugarForEach(
-                    iterableExpr, itemName, accName, accInit, accType, bodyTerm);
+                            forEachAccumulatorVar = prevAcc;
+                            breakContinueFn = prevBreak;
+                            symbolTable.popScope();
+                            return bodyTerm;
+                        });
+            } else {
+                // Normal fold: no break
+                symbolTable.pushScope();
+                symbolTable.define(itemName, elemType);
+                symbolTable.define(accName, accType);
+
+                String prev = forEachAccumulatorVar;
+                forEachAccumulatorVar = accName;
+                var bodyTerm = generateStatement(fes.getBody());
+                forEachAccumulatorVar = prev;
+
+                symbolTable.popScope();
+
+                foldResult = desugarer.desugarForEach(
+                        iterableExpr, itemName, accName, accInit, accType, bodyTerm);
+            }
 
             // Rebind accumulator with fold result for following statements
             if (followingIndex + 1 < followingStmts.size()) {
@@ -664,39 +708,484 @@ public class PirGenerator {
                 return new PirTerm.Let(accName, foldResult, rest);
             }
             return foldResult;
+
+        } else if (accumulators.size() > 1) {
+            // --- Multi-accumulator path: pack into a Data list tuple ---
+            var accTypes = accumulators.stream()
+                    .map(n -> symbolTable.lookup(n).orElse(new PirType.DataType()))
+                    .toList();
+            var accInit = packAccumulators(accumulators, accTypes);
+            var tupleAccName = "__acc_tuple";
+            var tupleAccType = new PirType.ListType(new PirType.DataType()); // Data list
+
+            PirTerm foldResult;
+            if (hasBreak) {
+                final PirType finalElemType = elemType;
+                final List<String> accNames = accumulators;
+                final List<PirType> accTypesFinal = accTypes;
+                foldResult = desugarer.desugarForEachWithBreak(
+                        iterableExpr, itemName, tupleAccName, accInit, tupleAccType,
+                        (continueFn, tupleVar) -> {
+                            symbolTable.pushScope();
+                            symbolTable.define(itemName, finalElemType);
+
+                            var prevMultiAcc = multiAccVars;
+                            multiAccVars = new LinkedHashSet<>(accNames);
+
+                            var bodyTerm = unpackAccumulators(tupleVar, accNames, accTypesFinal,
+                                    generateMultiAccBreakAwareBody(fes.getBody(), accNames, accTypesFinal, continueFn));
+
+                            multiAccVars = prevMultiAcc;
+                            symbolTable.popScope();
+                            return bodyTerm;
+                        });
+            } else {
+                symbolTable.pushScope();
+                symbolTable.define(itemName, elemType);
+
+                var prevMultiAcc = multiAccVars;
+                multiAccVars = new LinkedHashSet<>(accumulators);
+
+                var tupleVar = new PirTerm.Var(tupleAccName, tupleAccType);
+                var bodyTerm = unpackAccumulators(tupleVar, accumulators, accTypes,
+                        generateMultiAccBody(fes.getBody(), accumulators, accTypes));
+
+                multiAccVars = prevMultiAcc;
+                symbolTable.popScope();
+
+                foldResult = desugarer.desugarForEach(
+                        iterableExpr, itemName, tupleAccName, accInit, tupleAccType, bodyTerm);
+            }
+
+            // After loop: unpack final tuple into individual vars for following statements
+            if (followingIndex + 1 < followingStmts.size()) {
+                for (int i = 0; i < accumulators.size(); i++) {
+                    symbolTable.define(accumulators.get(i), accTypes.get(i));
+                }
+                var rest = generateStatements(followingStmts, followingIndex + 1);
+                return unpackAccumulators(foldResult, accumulators, accTypes, rest);
+            }
+            return foldResult;
+
+        } else {
+            // --- Unit-accumulator fallback: for-each with no accumulator ---
+            symbolTable.pushScope();
+            symbolTable.define(itemName, elemType);
+            var bodyTerm = generateStatement(fes.getBody());
+            symbolTable.popScope();
+
+            var forEachResult = desugarer.desugarForEach(
+                    iterableExpr, itemName, "acc__forEach",
+                    new PirTerm.Const(Constant.unit()), new PirType.UnitType(),
+                    bodyTerm);
+
+            if (followingIndex + 1 < followingStmts.size()) {
+                var rest = generateStatements(followingStmts, followingIndex + 1);
+                return new PirTerm.Let("_forEach", forEachResult, rest);
+            }
+            return forEachResult;
         }
-
-        // Unit-accumulator fallback: for-each with no accumulator
-        symbolTable.pushScope();
-        symbolTable.define(itemName, elemType);
-        var bodyTerm = generateStatement(fes.getBody());
-        symbolTable.popScope();
-
-        var forEachResult = desugarer.desugarForEach(
-                iterableExpr, itemName, "acc__forEach",
-                new PirTerm.Const(Constant.unit()), new PirType.UnitType(),
-                bodyTerm);
-
-        if (followingIndex + 1 < followingStmts.size()) {
-            var rest = generateStatements(followingStmts, followingIndex + 1);
-            return new PirTerm.Let("_forEach", forEachResult, rest);
-        }
-        return forEachResult;
     }
 
-    private String detectForEachAccumulator(Statement bodyStmt) {
+    /**
+     * Generate PIR for a for-each loop body that contains break.
+     * The body decides whether to recurse (continue) or return the accumulator (break).
+     *
+     * Pattern: if (cond) { acc = val; break; } → IfThenElse(cond, val, continueFn(acc))
+     */
+    private PirTerm generateBreakAwareBody(Statement bodyStmt, String accName,
+                                            PirType accType, Function<PirTerm, PirTerm> continueFn) {
         List<Statement> stmts;
         if (bodyStmt instanceof BlockStmt bs) stmts = bs.getStatements();
         else stmts = List.of(bodyStmt);
-        if (stmts.isEmpty()) return null;
-        var last = stmts.get(stmts.size() - 1);
-        if (last instanceof ExpressionStmt es
-                && es.getExpression() instanceof AssignExpr ae
-                && ae.getTarget() instanceof NameExpr ne) {
-            var name = ne.getNameAsString();
-            if (symbolTable.lookup(name).isPresent()) return name;
+
+        return generateBreakAwareStatements(stmts, 0, accName, accType, continueFn);
+    }
+
+    private PirTerm generateBreakAwareStatements(List<Statement> stmts, int index,
+                                                  String accName, PirType accType,
+                                                  Function<PirTerm, PirTerm> continueFn) {
+        if (index >= stmts.size()) {
+            // End of body without break: continue with current acc
+            return continueFn.apply(new PirTerm.Var(accName, accType));
+        }
+
+        var stmt = stmts.get(index);
+
+        if (stmt instanceof BreakStmt) {
+            // break; → return current accumulator (no recursion)
+            return new PirTerm.Var(accName, accType);
+        }
+
+        if (stmt instanceof ExpressionStmt es) {
+            // Accumulator assignment: acc = val;
+            if (es.getExpression() instanceof AssignExpr ae
+                    && ae.getTarget() instanceof NameExpr ne
+                    && ne.getNameAsString().equals(accName)) {
+                var value = generateExpression(ae.getValue());
+                // Check if next statement is break
+                if (index + 1 < stmts.size() && stmts.get(index + 1) instanceof BreakStmt) {
+                    // acc = val; break; → return val (no recursion)
+                    return value;
+                }
+                // acc = val; ... more stmts → shadow acc with new value, continue
+                var rest = generateBreakAwareStatements(stmts, index + 1, accName, accType, continueFn);
+                return new PirTerm.Let(accName, value, rest);
+            }
+
+            // Variable declaration
+            if (es.getExpression() instanceof VariableDeclarationExpr vde) {
+                var decl = vde.getVariable(0);
+                var name = decl.getNameAsString();
+                var initExpr = decl.getInitializer().orElseThrow(
+                        () -> new CompilerException("Variable must be initialized: " + name));
+                var value = generateExpression(initExpr);
+                var pirType = inferType(decl.getType(), value, initExpr);
+                symbolTable.define(name, pirType);
+                var rest = generateBreakAwareStatements(stmts, index + 1, accName, accType, continueFn);
+                return new PirTerm.Let(name, value, rest);
+            }
+
+            // Other expression statement
+            var expr = generateExpression(es.getExpression());
+            var rest = generateBreakAwareStatements(stmts, index + 1, accName, accType, continueFn);
+            return new PirTerm.Let("_", expr, rest);
+        }
+
+        if (stmt instanceof IfStmt is) {
+            return generateBreakAwareIf(is, stmts, index, accName, accType, continueFn);
+        }
+
+        throw new CompilerException("Unsupported statement in break-aware loop body: " + stmt.getClass().getSimpleName());
+    }
+
+    private PirTerm generateBreakAwareIf(IfStmt is, List<Statement> followingStmts, int followingIndex,
+                                          String accName, PirType accType,
+                                          Function<PirTerm, PirTerm> continueFn) {
+        var cond = generateExpression(is.getCondition());
+        boolean thenBreaks = containsBreak(is.getThenStmt());
+        boolean elseBreaks = is.getElseStmt().map(this::containsBreak).orElse(false);
+
+        PirTerm thenTerm;
+        PirTerm elseTerm;
+
+        if (thenBreaks && elseBreaks) {
+            // Both branches break: neither recurses
+            thenTerm = generateBreakAwareBody(is.getThenStmt(), accName, accType, _ -> new PirTerm.Var(accName, accType));
+            elseTerm = generateBreakAwareBody(is.getElseStmt().get(), accName, accType, _ -> new PirTerm.Var(accName, accType));
+        } else if (thenBreaks) {
+            // Then breaks, else continues (or falls through to remaining stmts)
+            thenTerm = generateBreakAwareBody(is.getThenStmt(), accName, accType, _ -> new PirTerm.Var(accName, accType));
+            if (is.getElseStmt().isPresent()) {
+                elseTerm = generateBreakAwareBody(is.getElseStmt().get(), accName, accType, continueFn);
+            } else {
+                // No else: fall through to remaining statements
+                elseTerm = generateBreakAwareStatements(followingStmts, followingIndex + 1, accName, accType, continueFn);
+                // Remaining stmts already handled in else branch, so return directly
+                return new PirTerm.IfThenElse(cond, thenTerm, elseTerm);
+            }
+        } else if (elseBreaks) {
+            // Else breaks, then continues
+            thenTerm = generateBreakAwareBody(is.getThenStmt(), accName, accType, continueFn);
+            elseTerm = generateBreakAwareBody(is.getElseStmt().get(), accName, accType, _ -> new PirTerm.Var(accName, accType));
+        } else {
+            // Neither breaks: normal if
+            thenTerm = generateStatement(is.getThenStmt());
+            elseTerm = is.getElseStmt().map(this::generateStatement)
+                    .orElse(new PirTerm.Const(Constant.unit()));
+        }
+
+        var ifExpr = new PirTerm.IfThenElse(cond, thenTerm, elseTerm);
+
+        // If there are following statements and neither branch fully terminated
+        if (followingIndex + 1 < followingStmts.size()) {
+            if (thenBreaks && !elseBreaks && !is.getElseStmt().isPresent()) {
+                // Already handled: else path includes remaining stmts
+                return ifExpr;
+            }
+            var rest = generateBreakAwareStatements(followingStmts, followingIndex + 1, accName, accType, continueFn);
+            return new PirTerm.Let("_if", ifExpr, rest);
+        }
+
+        // Last statement: if neither breaks, wrap with continue
+        if (!thenBreaks && !elseBreaks) {
+            return continueFn.apply(ifExpr);
+        }
+
+        return ifExpr;
+    }
+
+    private boolean containsBreak(Statement stmt) {
+        if (stmt instanceof BreakStmt) return true;
+        if (stmt instanceof BlockStmt bs) {
+            return bs.getStatements().stream().anyMatch(this::containsBreak);
+        }
+        if (stmt instanceof IfStmt is) {
+            if (containsBreak(is.getThenStmt())) return true;
+            return is.getElseStmt().map(this::containsBreak).orElse(false);
+        }
+        return false;
+    }
+
+    /**
+     * Detect ALL accumulator assignments in a for-each loop body.
+     * Returns the list of pre-loop variable names that are assigned in the body.
+     */
+    private List<String> detectForEachAccumulators(Statement bodyStmt) {
+        List<Statement> stmts;
+        if (bodyStmt instanceof BlockStmt bs) stmts = bs.getStatements();
+        else stmts = List.of(bodyStmt);
+        if (stmts.isEmpty()) return List.of();
+        var accNames = new LinkedHashSet<String>();
+        collectAccumulatorAssignments(stmts, accNames);
+        return new ArrayList<>(accNames);
+    }
+
+    private void collectAccumulatorAssignments(List<Statement> stmts, LinkedHashSet<String> accNames) {
+        for (var stmt : stmts) {
+            if (stmt instanceof ExpressionStmt es && es.getExpression() instanceof AssignExpr ae
+                    && ae.getTarget() instanceof NameExpr ne) {
+                var name = ne.getNameAsString();
+                if (symbolTable.lookup(name).isPresent()) accNames.add(name);
+            }
+            if (stmt instanceof IfStmt is) {
+                collectAccumulatorAssignments(blockStmts(is.getThenStmt()), accNames);
+                is.getElseStmt().ifPresent(e -> collectAccumulatorAssignments(blockStmts(e), accNames));
+            }
+            if (stmt instanceof BlockStmt bs) {
+                collectAccumulatorAssignments(bs.getStatements(), accNames);
+            }
+        }
+    }
+
+    private static List<Statement> blockStmts(Statement stmt) {
+        if (stmt instanceof BlockStmt bs) return bs.getStatements();
+        return List.of(stmt);
+    }
+
+    /**
+     * Find accumulator name from break patterns:
+     *   1. Standalone assignment before if-with-break: acc = val; if (cond) { break; }
+     *   2. Assignment inside if-with-break: if (cond) { acc = val; break; }
+     */
+    private String findAccumulatorInBreakPattern(List<Statement> stmts) {
+        // Check for standalone assignment to a pre-loop variable (covers pattern: acc = expr; if (...) { break; })
+        for (var stmt : stmts) {
+            if (stmt instanceof ExpressionStmt es
+                    && es.getExpression() instanceof AssignExpr ae
+                    && ae.getTarget() instanceof NameExpr ne) {
+                var name = ne.getNameAsString();
+                if (symbolTable.lookup(name).isPresent()) return name;
+            }
+        }
+        // Check for assignment inside if-blocks with break
+        for (var stmt : stmts) {
+            if (stmt instanceof IfStmt is) {
+                var accName = findAccumulatorInBlock(is.getThenStmt());
+                if (accName != null) return accName;
+                if (is.getElseStmt().isPresent()) {
+                    accName = findAccumulatorInBlock(is.getElseStmt().get());
+                    if (accName != null) return accName;
+                }
+            }
         }
         return null;
+    }
+
+    private String findAccumulatorInBlock(Statement stmt) {
+        List<Statement> inner;
+        if (stmt instanceof BlockStmt bs) inner = bs.getStatements();
+        else inner = List.of(stmt);
+        // Look for pattern: acc = val; break;
+        for (int i = 0; i < inner.size() - 1; i++) {
+            if (inner.get(i) instanceof ExpressionStmt es
+                    && es.getExpression() instanceof AssignExpr ae
+                    && ae.getTarget() instanceof NameExpr ne
+                    && inner.get(i + 1) instanceof BreakStmt) {
+                var name = ne.getNameAsString();
+                if (symbolTable.lookup(name).isPresent()) return name;
+            }
+        }
+        return null;
+    }
+
+    // --- Multi-accumulator helpers ---
+
+    /** Pack accumulator values into a Data list: MkCons(encode(v1), MkCons(encode(v2), ...MkNilData)) */
+    private PirTerm packAccumulators(List<String> names, List<PirType> types) {
+        PirTerm result = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilData),
+                new PirTerm.Const(Constant.unit()));
+        for (int i = names.size() - 1; i >= 0; i--) {
+            var value = new PirTerm.Var(names.get(i), types.get(i));
+            var encoded = PirHelpers.wrapEncode(value, types.get(i));
+            result = new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkCons), encoded),
+                    result);
+        }
+        return result;
+    }
+
+    /** Wrap body with Let bindings that unpack each accumulator from a Data list tuple */
+    private PirTerm unpackAccumulators(PirTerm tuple, List<String> names, List<PirType> types, PirTerm body) {
+        var tupleVar = new PirTerm.Var("__t", new PirType.ListType(new PirType.DataType()));
+        PirTerm result = body;
+        for (int i = names.size() - 1; i >= 0; i--) {
+            PirTerm accessor = tupleVar;
+            for (int j = 0; j < i; j++) {
+                accessor = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), accessor);
+            }
+            accessor = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), accessor);
+            var decoded = PirHelpers.wrapDecode(accessor, types.get(i));
+            result = new PirTerm.Let(names.get(i), decoded, result);
+        }
+        return new PirTerm.Let("__t", tuple, result);
+    }
+
+    /** Compile multi-acc loop body: process stmts, acc assignments become Let shadows, pack at end */
+    private PirTerm generateMultiAccBody(Statement bodyStmt, List<String> accNames, List<PirType> accTypes) {
+        var stmts = blockStmts(bodyStmt);
+        return generateMultiAccStatements(stmts, 0, accNames, accTypes);
+    }
+
+    private PirTerm generateMultiAccStatements(List<Statement> stmts, int index,
+                                                List<String> accNames, List<PirType> accTypes) {
+        if (index >= stmts.size()) {
+            return packAccumulators(accNames, accTypes); // repack at body end
+        }
+        var stmt = stmts.get(index);
+
+        if (stmt instanceof ExpressionStmt es) {
+            if (es.getExpression() instanceof AssignExpr ae
+                    && ae.getTarget() instanceof NameExpr ne
+                    && accNames.contains(ne.getNameAsString())) {
+                var value = generateExpression(ae.getValue());
+                var rest = generateMultiAccStatements(stmts, index + 1, accNames, accTypes);
+                return new PirTerm.Let(ne.getNameAsString(), value, rest);
+            }
+            if (es.getExpression() instanceof VariableDeclarationExpr vde) {
+                var decl = vde.getVariable(0);
+                var name = decl.getNameAsString();
+                var initExpr = decl.getInitializer().orElseThrow(
+                        () -> new CompilerException("Variable must be initialized: " + name));
+                var value = generateExpression(initExpr);
+                var pirType = inferType(decl.getType(), value, initExpr);
+                symbolTable.define(name, pirType);
+                var rest = generateMultiAccStatements(stmts, index + 1, accNames, accTypes);
+                return new PirTerm.Let(name, value, rest);
+            }
+            // Other expression: evaluate, discard, continue
+            var expr = generateExpression(es.getExpression());
+            var rest = generateMultiAccStatements(stmts, index + 1, accNames, accTypes);
+            return new PirTerm.Let("_", expr, rest);
+        }
+        if (stmt instanceof IfStmt is) {
+            var cond = generateExpression(is.getCondition());
+            var thenTerm = generateMultiAccBody(is.getThenStmt(), accNames, accTypes);
+            var elseTerm = is.getElseStmt()
+                    .map(e -> generateMultiAccBody(e, accNames, accTypes))
+                    .orElse(packAccumulators(accNames, accTypes));
+            var ifExpr = new PirTerm.IfThenElse(cond, thenTerm, elseTerm);
+            if (index + 1 < stmts.size()) {
+                // After if, unpack the result back into acc vars, then continue
+                var rest = generateMultiAccStatements(stmts, index + 1, accNames, accTypes);
+                return unpackAccumulators(ifExpr, accNames, accTypes.stream().toList(), rest);
+            }
+            return ifExpr;
+        }
+        throw new CompilerException("Unsupported in multi-acc loop body: " + stmt.getClass().getSimpleName());
+    }
+
+    /** Compile multi-acc loop body with break support */
+    private PirTerm generateMultiAccBreakAwareBody(Statement bodyStmt, List<String> accNames,
+                                                     List<PirType> accTypes,
+                                                     Function<PirTerm, PirTerm> continueFn) {
+        var stmts = blockStmts(bodyStmt);
+        return generateMultiAccBreakAwareStmts(stmts, 0, accNames, accTypes, continueFn);
+    }
+
+    private PirTerm generateMultiAccBreakAwareStmts(List<Statement> stmts, int index,
+                                                      List<String> accNames, List<PirType> accTypes,
+                                                      Function<PirTerm, PirTerm> continueFn) {
+        if (index >= stmts.size()) {
+            // End of body without break: continue with repacked tuple
+            return continueFn.apply(packAccumulators(accNames, accTypes));
+        }
+
+        var stmt = stmts.get(index);
+
+        if (stmt instanceof BreakStmt) {
+            // break → return packed tuple (no recursion)
+            return packAccumulators(accNames, accTypes);
+        }
+
+        if (stmt instanceof ExpressionStmt es) {
+            if (es.getExpression() instanceof AssignExpr ae
+                    && ae.getTarget() instanceof NameExpr ne
+                    && accNames.contains(ne.getNameAsString())) {
+                var value = generateExpression(ae.getValue());
+                // Check if next statement is break
+                if (index + 1 < stmts.size() && stmts.get(index + 1) instanceof BreakStmt) {
+                    // acc = val; break; → shadow acc, pack and return
+                    var rest = packAccumulators(accNames, accTypes);
+                    return new PirTerm.Let(ne.getNameAsString(), value, rest);
+                }
+                var rest = generateMultiAccBreakAwareStmts(stmts, index + 1, accNames, accTypes, continueFn);
+                return new PirTerm.Let(ne.getNameAsString(), value, rest);
+            }
+            if (es.getExpression() instanceof VariableDeclarationExpr vde) {
+                var decl = vde.getVariable(0);
+                var name = decl.getNameAsString();
+                var initExpr = decl.getInitializer().orElseThrow(
+                        () -> new CompilerException("Variable must be initialized: " + name));
+                var value = generateExpression(initExpr);
+                var pirType = inferType(decl.getType(), value, initExpr);
+                symbolTable.define(name, pirType);
+                var rest = generateMultiAccBreakAwareStmts(stmts, index + 1, accNames, accTypes, continueFn);
+                return new PirTerm.Let(name, value, rest);
+            }
+            var expr = generateExpression(es.getExpression());
+            var rest = generateMultiAccBreakAwareStmts(stmts, index + 1, accNames, accTypes, continueFn);
+            return new PirTerm.Let("_", expr, rest);
+        }
+
+        if (stmt instanceof IfStmt is) {
+            var cond = generateExpression(is.getCondition());
+            boolean thenBreaks = containsBreak(is.getThenStmt());
+            boolean elseBreaks = is.getElseStmt().map(this::containsBreak).orElse(false);
+
+            PirTerm thenTerm;
+            PirTerm elseTerm;
+
+            if (thenBreaks) {
+                thenTerm = generateMultiAccBreakAwareBody(is.getThenStmt(), accNames, accTypes, _ -> packAccumulators(accNames, accTypes));
+            } else {
+                thenTerm = generateMultiAccBreakAwareBody(is.getThenStmt(), accNames, accTypes, continueFn);
+            }
+            if (is.getElseStmt().isPresent()) {
+                if (elseBreaks) {
+                    elseTerm = generateMultiAccBreakAwareBody(is.getElseStmt().get(), accNames, accTypes, _ -> packAccumulators(accNames, accTypes));
+                } else {
+                    elseTerm = generateMultiAccBreakAwareBody(is.getElseStmt().get(), accNames, accTypes, continueFn);
+                }
+            } else {
+                // No else: fall through
+                if (thenBreaks) {
+                    elseTerm = generateMultiAccBreakAwareStmts(stmts, index + 1, accNames, accTypes, continueFn);
+                    return new PirTerm.IfThenElse(cond, thenTerm, elseTerm);
+                }
+                elseTerm = packAccumulators(accNames, accTypes); // placeholder
+            }
+
+            var ifExpr = new PirTerm.IfThenElse(cond, thenTerm, elseTerm);
+            if (index + 1 < stmts.size() && !(thenBreaks && !is.getElseStmt().isPresent())) {
+                // After if: unpack and continue
+                var rest = generateMultiAccBreakAwareStmts(stmts, index + 1, accNames, accTypes, continueFn);
+                return unpackAccumulators(ifExpr, accNames, accTypes, rest);
+            }
+            return ifExpr;
+        }
+
+        throw new CompilerException("Unsupported in multi-acc break-aware body: " + stmt.getClass().getSimpleName());
     }
 
     private PirTerm generateWhileStmt(WhileStmt ws, List<Statement> followingStmts, int followingIndex) {
@@ -891,6 +1380,11 @@ public class PirGenerator {
             // One-arg builtins: App(Builtin(f), a)
             if (fn instanceof PirTerm.Builtin b) {
                 return inferBuiltinReturnType(b.fun());
+            }
+            // For applications of Var/lambda with known FunType, peel return type
+            var fnType = inferPirType(fn);
+            if (fnType instanceof PirType.FunType ft) {
+                return ft.returnType();
             }
         }
         if (term instanceof PirTerm.Var v) {

@@ -26,6 +26,9 @@ import java.util.List;
  * For each {@code .java} file in {@code sourceDir} annotated with {@code @Validator} or
  * {@code @MintingPolicy}, produces a JSON file in {@code outputDir} containing the
  * compiled CBOR hex and script hash.
+ * <p>
+ * Non-validator {@code .java} files (including those annotated with {@code @OnchainLibrary})
+ * are automatically treated as library sources and compiled alongside each validator.
  */
 public abstract class CompilePlutusTask extends DefaultTask {
 
@@ -47,20 +50,35 @@ public abstract class CompilePlutusTask extends DefaultTask {
         var compiler = new PlutusCompiler(stdlib::lookup);
 
         List<File> javaFiles = findJavaFiles(srcDir);
-        int compiled = 0;
+
+        // Separate validators from library files
+        var validatorFiles = new ArrayList<File>();
+        var libraryFiles = new ArrayList<File>();
 
         for (File javaFile : javaFiles) {
             String source = Files.readString(javaFile.toPath());
-
-            // Only compile files with validator annotations
-            if (!source.contains("@Validator") && !source.contains("@MintingPolicy")) {
-                continue;
+            if (source.contains("@Validator") || source.contains("@MintingPolicy")) {
+                validatorFiles.add(javaFile);
+            } else {
+                libraryFiles.add(javaFile);
             }
+        }
 
-            // Compile with PlutusCompiler
-            var result = compiler.compile(source);
+        // Read library sources once
+        var librarySources = new ArrayList<String>();
+        for (File libFile : libraryFiles) {
+            librarySources.add(Files.readString(libFile.toPath()));
+        }
+
+        int compiled = 0;
+
+        for (File validatorFile : validatorFiles) {
+            String validatorSource = Files.readString(validatorFile.toPath());
+
+            // Compile with multi-file support
+            var result = compiler.compile(validatorSource, librarySources);
             if (result.hasErrors()) {
-                throw new GradleException("Compilation failed for " + javaFile.getName()
+                throw new GradleException("Compilation failed for " + validatorFile.getName()
                         + ": " + result.diagnostics());
             }
 
@@ -68,9 +86,9 @@ public abstract class CompilePlutusTask extends DefaultTask {
             var program = result.program();
             var script = PlutusScriptAdapter.fromProgram(program);
             String scriptHash = PlutusScriptAdapter.scriptHash(program);
-            String validatorName = javaFile.getName().replace(".java", "");
+            String validatorName = validatorFile.getName().replace(".java", "");
 
-            String scriptType = source.contains("@MintingPolicy")
+            String scriptType = validatorSource.contains("@MintingPolicy")
                     ? "PlutusScriptV3-Minting" : "PlutusScriptV3";
 
             var output = new ValidatorOutput(scriptType, validatorName,
@@ -79,12 +97,15 @@ public abstract class CompilePlutusTask extends DefaultTask {
             File outputFile = new File(outDir, validatorName + ".json");
             Files.writeString(outputFile.toPath(), output.toJson());
             getLogger().lifecycle("Compiled {} → {} (hash: {})",
-                    javaFile.getName(), outputFile.getName(), scriptHash);
+                    validatorFile.getName(), outputFile.getName(), scriptHash);
             compiled++;
         }
 
         if (compiled == 0) {
             getLogger().lifecycle("No validators found in {}", srcDir);
+        } else if (!libraryFiles.isEmpty()) {
+            getLogger().lifecycle("Included {} library file(s) in compilation",
+                    libraryFiles.size());
         }
     }
 

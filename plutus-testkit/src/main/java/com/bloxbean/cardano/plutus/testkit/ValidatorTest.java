@@ -8,6 +8,8 @@ import com.bloxbean.cardano.plutus.vm.EvalResult;
 import com.bloxbean.cardano.plutus.vm.ExBudget;
 import com.bloxbean.cardano.plutus.vm.PlutusVm;
 
+import java.io.IOException;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 
@@ -192,6 +194,64 @@ public final class ValidatorTest {
     public static void assertRejects(String javaSource, PlutusData... args) {
         var program = compile(javaSource);
         assertRejects(program, args);
+    }
+
+    // --- Multi-file compilation ---
+
+    /**
+     * Compile a validator with library sources to a UPLC Program.
+     *
+     * @param validatorSource the validator Java source code (must contain @Validator or @MintingPolicy)
+     * @param librarySources  library Java source files (must NOT contain @Validator/@MintingPolicy)
+     * @return the compiled Program
+     * @throws com.bloxbean.cardano.plutus.compiler.CompilerException if compilation fails
+     */
+    public static Program compile(String validatorSource, String... librarySources) {
+        Objects.requireNonNull(validatorSource, "validatorSource must not be null");
+        var compiler = new PlutusCompiler();
+        CompileResult result = compiler.compile(validatorSource, List.of(librarySources));
+        if (result.hasErrors()) {
+            throw new AssertionError("Compilation produced errors: " + result.diagnostics());
+        }
+        return result.program();
+    }
+
+    /**
+     * Compile a validator from a source file on disk.
+     *
+     * @param sourceFile path to the validator Java source file
+     * @return the compiled Program
+     * @throws IOException if the file cannot be read
+     * @throws com.bloxbean.cardano.plutus.compiler.CompilerException if compilation fails
+     */
+    public static Program compile(Path sourceFile) throws IOException {
+        Objects.requireNonNull(sourceFile, "sourceFile must not be null");
+        var compiler = new PlutusCompiler();
+        CompileResult result = compiler.compile(sourceFile);
+        if (result.hasErrors()) {
+            throw new AssertionError("Compilation produced errors: " + result.diagnostics());
+        }
+        return result.program();
+    }
+
+    /**
+     * Compile a validator with library sources and evaluate with the given arguments.
+     *
+     * @param validatorSource the validator Java source code
+     * @param librarySources  library Java source files
+     * @param args            the arguments to apply (as PlutusData)
+     * @return the evaluation result
+     * @throws com.bloxbean.cardano.plutus.compiler.CompilerException if compilation fails
+     */
+    public static EvalResult evaluate(String validatorSource, List<String> librarySources, PlutusData... args) {
+        Objects.requireNonNull(validatorSource, "validatorSource must not be null");
+        Objects.requireNonNull(librarySources, "librarySources must not be null");
+        var compiler = new PlutusCompiler();
+        CompileResult result = compiler.compile(validatorSource, librarySources);
+        if (result.hasErrors()) {
+            throw new AssertionError("Compilation produced errors: " + result.diagnostics());
+        }
+        return evaluate(result.program(), args);
     }
 
     private static String formatResult(EvalResult result) {
