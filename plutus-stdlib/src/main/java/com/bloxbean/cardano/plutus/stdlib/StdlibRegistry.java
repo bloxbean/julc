@@ -238,6 +238,11 @@ public final class StdlibRegistry {
             requireArgs("ContextsLib.getSpendingDatum", args, 1);
             return ContextsLib.getSpendingDatum(args.get(0));
         });
+
+        reg.register("ContextsLib", "trace", args -> {
+            requireArgs("ContextsLib.trace", args, 1);
+            return ContextsLib.trace(args.get(0));
+        });
     }
 
     private static void registerIntervalLib(StdlibRegistry reg) {

@@ -182,6 +182,18 @@ public final class ContextsLib {
         return listIndex(scriptInfoFields, 1);
     }
 
+    /**
+     * Emits a UPLC Trace with the given message string, returning Unit.
+     * <p>
+     * The message must be a PIR term that evaluates to a UPLC string (Text).
+     *
+     * @param message PIR term representing the trace message (string/Text)
+     * @return PIR term that emits the trace and evaluates to Unit
+     */
+    public static PirTerm trace(PirTerm message) {
+        return new PirTerm.Trace(message, new PirTerm.Const(Constant.unit()));
+    }
+
     // ---- Internal helpers ----
 
     /**

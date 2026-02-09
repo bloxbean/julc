@@ -153,9 +153,10 @@ public class UplcOptimizer {
                 var optFn = deadCodeElimination(fn);
                 var optArg = deadCodeElimination(arg);
                 // Apply(Lam(x, body), val) where x not free in body → body
+                // BUT: preserve side-effecting expressions (Trace)
                 if (optFn instanceof Term.Lam(var name, var body)) {
-                    if (!isFree(1, body)) {
-                        // x is not used — drop the binding and shift indices
+                    if (!isFree(1, body) && !hasSideEffect(optArg)) {
+                        // x is not used and arg has no side effects — safe to drop
                         yield shiftDown(body, 1);
                     }
                 }
@@ -258,6 +259,26 @@ public class UplcOptimizer {
             case Term.Constr(var tag, var fields) ->
                     new Term.Constr(tag, fields.stream().map(this::constrCaseReduce).toList());
             default -> term;
+        };
+    }
+
+    // ---- Side-effect detection ----
+
+    /**
+     * Check if a term contains side-effecting operations (e.g., Trace).
+     * Side-effecting terms must not be eliminated by dead code elimination.
+     */
+    static boolean hasSideEffect(Term term) {
+        return switch (term) {
+            case Term.Builtin(var fun) -> fun == DefaultFun.Trace;
+            case Term.Apply(var fn, var arg) -> hasSideEffect(fn) || hasSideEffect(arg);
+            case Term.Force(var inner) -> hasSideEffect(inner);
+            case Term.Delay(var inner) -> hasSideEffect(inner);
+            case Term.Lam(_, var body) -> hasSideEffect(body);
+            case Term.Constr(_, var fields) -> fields.stream().anyMatch(UplcOptimizer::hasSideEffect);
+            case Term.Case(var scrutinee, var branches) ->
+                    hasSideEffect(scrutinee) || branches.stream().anyMatch(UplcOptimizer::hasSideEffect);
+            default -> false; // Var, Const, Error
         };
     }
 

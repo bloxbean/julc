@@ -108,13 +108,13 @@ public class UplcGenerator {
             case PirTerm.Error _ -> Term.error();
 
             case PirTerm.Trace(var message, var body) -> {
-                // Force(Apply(Apply(Force(Builtin(Trace)), msg), Delay(body)))
+                // Apply(Apply(Force(Builtin(Trace)), msg), body)
                 // Trace is polymorphic (1 Force), so: Force(Builtin(Trace))
+                // Unlike IfThenElse, Trace evaluates its second arg eagerly (no Delay/Force needed)
                 var traceBuiltin = Term.force(Term.builtin(DefaultFun.Trace));
-                yield Term.force(
-                        Term.apply(
-                                Term.apply(traceBuiltin, generate(message)),
-                                Term.delay(generate(body))));
+                yield Term.apply(
+                        Term.apply(traceBuiltin, generate(message)),
+                        generate(body));
             }
         };
     }

@@ -706,13 +706,17 @@ class StdlibTest {
                     fields);
         }
 
+        private PirTerm rawInt(long n) {
+            return new PirTerm.Const(Constant.integer(BigInteger.valueOf(n)));
+        }
+
         @Test
         void containsAlwaysIntervalReturnsTrue() {
             // (-inf, +inf) contains any time
             var alwaysInterval = interval(
                     infinityBound(true, true),   // NegInf, inclusive
                     infinityBound(false, true));  // PosInf, inclusive
-            var pir = IntervalLib.contains(alwaysInterval, iData(12345));
+            var pir = IntervalLib.contains(alwaysInterval, rawInt(12345));
             assertTrue(evalBool(pir));
         }
 
@@ -720,7 +724,7 @@ class StdlibTest {
         void containsFiniteInclusiveIntervalInsideReturnsTrue() {
             // [100, 200] contains 150
             var ival = interval(finiteBound(100, true), finiteBound(200, true));
-            var pir = IntervalLib.contains(ival, iData(150));
+            var pir = IntervalLib.contains(ival, rawInt(150));
             assertTrue(evalBool(pir));
         }
 
@@ -728,7 +732,7 @@ class StdlibTest {
         void containsFiniteInclusiveIntervalAtLowerBound() {
             // [100, 200] contains 100
             var ival = interval(finiteBound(100, true), finiteBound(200, true));
-            var pir = IntervalLib.contains(ival, iData(100));
+            var pir = IntervalLib.contains(ival, rawInt(100));
             assertTrue(evalBool(pir));
         }
 
@@ -736,7 +740,7 @@ class StdlibTest {
         void containsFiniteInclusiveIntervalAtUpperBound() {
             // [100, 200] contains 200
             var ival = interval(finiteBound(100, true), finiteBound(200, true));
-            var pir = IntervalLib.contains(ival, iData(200));
+            var pir = IntervalLib.contains(ival, rawInt(200));
             assertTrue(evalBool(pir));
         }
 
@@ -744,7 +748,7 @@ class StdlibTest {
         void containsFiniteInclusiveIntervalBelowReturnsTrue() {
             // [100, 200] does NOT contain 99
             var ival = interval(finiteBound(100, true), finiteBound(200, true));
-            var pir = IntervalLib.contains(ival, iData(99));
+            var pir = IntervalLib.contains(ival, rawInt(99));
             assertFalse(evalBool(pir));
         }
 
@@ -752,7 +756,7 @@ class StdlibTest {
         void containsFiniteInclusiveIntervalAboveReturnsFalse() {
             // [100, 200] does NOT contain 201
             var ival = interval(finiteBound(100, true), finiteBound(200, true));
-            var pir = IntervalLib.contains(ival, iData(201));
+            var pir = IntervalLib.contains(ival, rawInt(201));
             assertFalse(evalBool(pir));
         }
 
@@ -760,7 +764,7 @@ class StdlibTest {
         void containsExclusiveLowerBound() {
             // (100, 200] does NOT contain 100
             var ival = interval(finiteBound(100, false), finiteBound(200, true));
-            var pir = IntervalLib.contains(ival, iData(100));
+            var pir = IntervalLib.contains(ival, rawInt(100));
             assertFalse(evalBool(pir));
         }
 
@@ -768,7 +772,7 @@ class StdlibTest {
         void containsExclusiveUpperBound() {
             // [100, 200) does NOT contain 200
             var ival = interval(finiteBound(100, true), finiteBound(200, false));
-            var pir = IntervalLib.contains(ival, iData(200));
+            var pir = IntervalLib.contains(ival, rawInt(200));
             assertFalse(evalBool(pir));
         }
 
@@ -776,7 +780,7 @@ class StdlibTest {
         void containsAfterInterval() {
             // [1000, +inf) contains 2000
             var ival = interval(finiteBound(1000, true), infinityBound(false, true));
-            var pir = IntervalLib.contains(ival, iData(2000));
+            var pir = IntervalLib.contains(ival, rawInt(2000));
             assertTrue(evalBool(pir));
         }
 
@@ -784,7 +788,7 @@ class StdlibTest {
         void containsAfterIntervalBelowReturnsFalse() {
             // [1000, +inf) does NOT contain 999
             var ival = interval(finiteBound(1000, true), infinityBound(false, true));
-            var pir = IntervalLib.contains(ival, iData(999));
+            var pir = IntervalLib.contains(ival, rawInt(999));
             assertFalse(evalBool(pir));
         }
 
@@ -792,7 +796,7 @@ class StdlibTest {
         void containsBeforeInterval() {
             // (-inf, 1000] contains 500
             var ival = interval(infinityBound(true, true), finiteBound(1000, true));
-            var pir = IntervalLib.contains(ival, iData(500));
+            var pir = IntervalLib.contains(ival, rawInt(500));
             assertTrue(evalBool(pir));
         }
 
@@ -800,7 +804,7 @@ class StdlibTest {
         void containsBeforeIntervalAboveReturnsFalse() {
             // (-inf, 1000] does NOT contain 1001
             var ival = interval(infinityBound(true, true), finiteBound(1000, true));
-            var pir = IntervalLib.contains(ival, iData(1001));
+            var pir = IntervalLib.contains(ival, rawInt(1001));
             assertFalse(evalBool(pir));
         }
     }
@@ -989,13 +993,14 @@ class StdlibTest {
             assertTrue(reg.contains("ContextsLib", "getTxInfo"));
             assertTrue(reg.contains("ContextsLib", "getRedeemer"));
             assertTrue(reg.contains("ContextsLib", "getSpendingDatum"));
+            assertTrue(reg.contains("ContextsLib", "trace"));
             // IntervalLib: 4 methods
             assertTrue(reg.contains("IntervalLib", "contains"));
             assertTrue(reg.contains("IntervalLib", "always"));
             assertTrue(reg.contains("IntervalLib", "after"));
             assertTrue(reg.contains("IntervalLib", "before"));
-            // Total: 6 + 3 + 6 + 8 + 4 = 27
-            assertEquals(27, reg.size());
+            // Total: 6 + 3 + 6 + 9 + 4 = 28
+            assertEquals(28, reg.size());
         }
 
         @Test

@@ -46,8 +46,8 @@ public final class IntervalLib {
         var intervalVar = new PirTerm.Var("interval_", new PirType.DataType());
         var timeVar = new PirTerm.Var("time_", new PirType.IntegerType());
 
-        // Extract time integer from IData
-        var timeExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnIData), time);
+        // time is expected to be a raw integer (already decoded from Data by the compiler)
+        var timeExpr = time;
 
         // Interval = Constr(0, [from, to])
         var fields = sndPairUnconstData(intervalVar);

@@ -90,4 +90,9 @@ public final class ContextsLib {
     public static Interval txInfoValidRange(TxInfo txInfo) {
         return txInfo.validRange();
     }
+
+    /** On-chain: emits UPLC Trace. Off-chain: prints for debugging. */
+    public static void trace(String msg) {
+        System.out.println("[TRACE] " + msg);
+    }
 }
