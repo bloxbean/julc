@@ -6,15 +6,13 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Marks a class as a Plutus minting policy.
+ * Marks a class as a Plutus spending validator.
  * <p>
  * The class must contain exactly one {@link Entrypoint} method.
- * Minting policies receive {@code (redeemer, scriptContext)} parameters.
- *
- * @deprecated Use {@link MintingValidator} instead.
+ * Spending validators receive {@code (datum, redeemer, scriptContext)} or
+ * {@code (redeemer, scriptContext)} parameters.
  */
-@Deprecated
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
-public @interface MintingPolicy {
+public @interface SpendingValidator {
 }

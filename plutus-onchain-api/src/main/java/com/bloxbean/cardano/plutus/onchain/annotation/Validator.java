@@ -11,7 +11,10 @@ import java.lang.annotation.Target;
  * The class must contain exactly one {@link Entrypoint} method.
  * Spending validators receive {@code (datum, redeemer, scriptContext)} or
  * {@code (redeemer, scriptContext)} parameters.
+ *
+ * @deprecated Use {@link SpendingValidator} instead.
  */
+@Deprecated
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
 public @interface Validator {

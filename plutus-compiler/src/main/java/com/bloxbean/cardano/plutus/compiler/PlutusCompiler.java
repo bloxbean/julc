@@ -32,6 +32,21 @@ import java.util.stream.Stream;
  */
 public class PlutusCompiler {
 
+    /**
+     * The script purpose determined by the annotation on the validator class.
+     */
+    public enum ScriptPurpose {
+        SPENDING, MINTING, WITHDRAW, CERTIFYING, VOTING, PROPOSING
+    }
+
+    /** All annotation names recognized as validator annotations. */
+    private static final List<String> VALIDATOR_ANNOTATIONS = List.of(
+            "Validator", "SpendingValidator",
+            "MintingPolicy", "MintingValidator",
+            "WithdrawValidator", "CertifyingValidator",
+            "VotingValidator", "ProposingValidator"
+    );
+
     private record ParamField(String name, PirType pirType, String javaType) {}
 
     private final StdlibLookup stdlibLookup;
@@ -55,8 +70,8 @@ public class PlutusCompiler {
     /**
      * Compile a validator with library sources to a UPLC Program.
      *
-     * @param validatorSource the validator Java source (must contain @Validator or @MintingPolicy)
-     * @param librarySources  library Java sources (must NOT contain @Validator/@MintingPolicy)
+     * @param validatorSource the validator Java source (must contain a validator annotation)
+     * @param librarySources  library Java sources (must NOT contain validator annotations)
      * @return the compile result containing the UPLC Program
      */
     public CompileResult compile(String validatorSource, List<String> librarySources) {
@@ -79,20 +94,21 @@ public class PlutusCompiler {
             throw new CompilerException(diagnostics);
         }
 
-        // 3. Validate: library CUs must not contain @Validator/@MintingPolicy
+        // 3. Validate: library CUs must not contain validator annotations
         for (var libCu : libraryCus) {
             for (var type : libCu.findAll(ClassOrInterfaceDeclaration.class)) {
-                if (type.getAnnotationByName("Validator").isPresent() ||
-                        type.getAnnotationByName("MintingPolicy").isPresent()) {
-                    throw new CompilerException("Library source must not contain @Validator or @MintingPolicy: "
-                            + type.getNameAsString());
+                for (var ann : VALIDATOR_ANNOTATIONS) {
+                    if (type.getAnnotationByName(ann).isPresent()) {
+                        throw new CompilerException("Library source must not contain @" + ann + ": "
+                                + type.getNameAsString());
+                    }
                 }
             }
         }
 
-        // 4. Find @Validator or @MintingPolicy class
+        // 4. Find annotated validator class and determine purpose
         var validatorClass = findAnnotatedClass(validatorCu);
-        boolean isMinting = isAnnotatedMinting(validatorClass);
+        var scriptPurpose = getScriptPurpose(validatorClass);
 
         // 5. Register types from ALL sources (topo-sorted)
         var typeResolver = new TypeResolver();
@@ -107,6 +123,9 @@ public class PlutusCompiler {
 
         // 7. Find @Entrypoint method
         var entrypointMethod = findEntrypoint(validatorClass);
+
+        // 7b. Validate parameter count matches script purpose
+        validateEntrypointParams(entrypointMethod, scriptPurpose, validatorClass);
 
         // 8. Compile library static methods to PIR
         var libraryRegistry = new LibraryMethodRegistry();
@@ -161,10 +180,11 @@ public class PlutusCompiler {
         var wrapper = new ValidatorWrapper();
         int paramCount = entrypointMethod.getParameters().size();
         PirTerm wrappedTerm;
-        if (isMinting) {
-            wrappedTerm = wrapper.wrapMintingPolicy(body);
-        } else {
+        if (scriptPurpose == ScriptPurpose.SPENDING) {
             wrappedTerm = wrapper.wrapSpendingValidator(body, paramCount);
+        } else {
+            // Minting, Withdraw, Certifying, Voting, Proposing all use 2-param wrapper
+            wrappedTerm = wrapper.wrapMintingPolicy(body);
         }
 
         // 16. Wrap with outer param lambdas
@@ -291,16 +311,37 @@ public class PlutusCompiler {
 
     private ClassOrInterfaceDeclaration findAnnotatedClass(CompilationUnit cu) {
         for (var type : cu.findAll(ClassOrInterfaceDeclaration.class)) {
-            if (type.getAnnotationByName("Validator").isPresent() ||
-                    type.getAnnotationByName("MintingPolicy").isPresent()) {
-                return type;
+            for (var ann : VALIDATOR_ANNOTATIONS) {
+                if (type.getAnnotationByName(ann).isPresent()) {
+                    return type;
+                }
             }
         }
-        throw new CompilerException("No @Validator or @MintingPolicy class found");
+        throw new CompilerException("No validator annotation found (e.g. @SpendingValidator, @MintingValidator)");
     }
 
-    private boolean isAnnotatedMinting(ClassOrInterfaceDeclaration cls) {
-        return cls.getAnnotationByName("MintingPolicy").isPresent();
+    private ScriptPurpose getScriptPurpose(ClassOrInterfaceDeclaration cls) {
+        if (cls.getAnnotationByName("Validator").isPresent()
+                || cls.getAnnotationByName("SpendingValidator").isPresent()) {
+            return ScriptPurpose.SPENDING;
+        }
+        if (cls.getAnnotationByName("MintingPolicy").isPresent()
+                || cls.getAnnotationByName("MintingValidator").isPresent()) {
+            return ScriptPurpose.MINTING;
+        }
+        if (cls.getAnnotationByName("WithdrawValidator").isPresent()) {
+            return ScriptPurpose.WITHDRAW;
+        }
+        if (cls.getAnnotationByName("CertifyingValidator").isPresent()) {
+            return ScriptPurpose.CERTIFYING;
+        }
+        if (cls.getAnnotationByName("VotingValidator").isPresent()) {
+            return ScriptPurpose.VOTING;
+        }
+        if (cls.getAnnotationByName("ProposingValidator").isPresent()) {
+            return ScriptPurpose.PROPOSING;
+        }
+        throw new CompilerException("No validator annotation found on " + cls.getNameAsString());
     }
 
     private MethodDeclaration findEntrypoint(ClassOrInterfaceDeclaration cls) {
@@ -310,6 +351,36 @@ public class PlutusCompiler {
             }
         }
         throw new CompilerException("No @Entrypoint method found in " + cls.getNameAsString());
+    }
+
+    private void validateEntrypointParams(MethodDeclaration entrypoint, ScriptPurpose purpose,
+                                          ClassOrInterfaceDeclaration cls) {
+        int paramCount = entrypoint.getParameters().size();
+        if (purpose == ScriptPurpose.SPENDING) {
+            // Spending validators: 2 params (redeemer, ctx) or 3 params (datum, redeemer, ctx)
+            if (paramCount < 2 || paramCount > 3) {
+                throw new CompilerException("@SpendingValidator entrypoint must have 2 or 3 parameters "
+                        + "(datum, redeemer, scriptContext), found " + paramCount
+                        + " in " + cls.getNameAsString() + "." + entrypoint.getNameAsString() + "()");
+            }
+        } else {
+            // Non-spending validators: 2 params (redeemer, scriptContext)
+            if (paramCount != 2) {
+                String annotation = switch (purpose) {
+                    case MINTING -> "@MintingValidator/@MintingPolicy";
+                    case WITHDRAW -> "@WithdrawValidator";
+                    case CERTIFYING -> "@CertifyingValidator";
+                    case VOTING -> "@VotingValidator";
+                    case PROPOSING -> "@ProposingValidator";
+                    default -> "@" + purpose.name();
+                };
+                String hint = paramCount == 3 ? " Did you mean @SpendingValidator?" : "";
+                throw new CompilerException(annotation + " entrypoint must have 2 parameters "
+                        + "(redeemer, scriptContext), found " + paramCount
+                        + " in " + cls.getNameAsString() + "." + entrypoint.getNameAsString() + "()."
+                        + hint);
+            }
+        }
     }
 
     private List<ParamField> findParamFields(ClassOrInterfaceDeclaration cls, TypeResolver typeResolver) {

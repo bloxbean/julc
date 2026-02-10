@@ -40,7 +40,13 @@ import java.util.stream.Collectors;
  */
 @SupportedAnnotationTypes({
         "com.bloxbean.cardano.plutus.onchain.annotation.Validator",
-        "com.bloxbean.cardano.plutus.onchain.annotation.MintingPolicy"
+        "com.bloxbean.cardano.plutus.onchain.annotation.MintingPolicy",
+        "com.bloxbean.cardano.plutus.onchain.annotation.SpendingValidator",
+        "com.bloxbean.cardano.plutus.onchain.annotation.MintingValidator",
+        "com.bloxbean.cardano.plutus.onchain.annotation.WithdrawValidator",
+        "com.bloxbean.cardano.plutus.onchain.annotation.CertifyingValidator",
+        "com.bloxbean.cardano.plutus.onchain.annotation.VotingValidator",
+        "com.bloxbean.cardano.plutus.onchain.annotation.ProposingValidator"
 })
 @SupportedSourceVersion(SourceVersion.RELEASE_24)
 public class PlutusAnnotationProcessor extends AbstractProcessor {
@@ -69,6 +75,12 @@ public class PlutusAnnotationProcessor extends AbstractProcessor {
         return Set.of(
                 "com.bloxbean.cardano.plutus.onchain.annotation.Validator",
                 "com.bloxbean.cardano.plutus.onchain.annotation.MintingPolicy",
+                "com.bloxbean.cardano.plutus.onchain.annotation.SpendingValidator",
+                "com.bloxbean.cardano.plutus.onchain.annotation.MintingValidator",
+                "com.bloxbean.cardano.plutus.onchain.annotation.WithdrawValidator",
+                "com.bloxbean.cardano.plutus.onchain.annotation.CertifyingValidator",
+                "com.bloxbean.cardano.plutus.onchain.annotation.VotingValidator",
+                "com.bloxbean.cardano.plutus.onchain.annotation.ProposingValidator",
                 "com.bloxbean.cardano.plutus.onchain.annotation.OnchainLibrary"
         );
     }
@@ -157,8 +169,7 @@ public class PlutusAnnotationProcessor extends AbstractProcessor {
             var program = result.program();
             var script = PlutusScriptAdapter.fromProgram(program);
 
-            boolean isMinting = annotation.getSimpleName().toString().equals("MintingPolicy");
-            String scriptType = isMinting ? "PlutusScriptV3-Minting" : "PlutusScriptV3";
+            String scriptType = resolveScriptType(annotation.getSimpleName().toString());
 
             // Build params string from CompileResult
             String paramsStr = result.params().stream()
@@ -209,5 +220,17 @@ public class PlutusAnnotationProcessor extends AbstractProcessor {
         var pool = new LinkedHashMap<>(classpathLibraries);
         pool.putAll(sameProjectLibraries);
         return LibrarySourceResolver.resolve(validatorSource, pool);
+    }
+
+    private String resolveScriptType(String annotationSimpleName) {
+        return switch (annotationSimpleName) {
+            case "Validator", "SpendingValidator" -> "PlutusScriptV3";
+            case "MintingPolicy", "MintingValidator" -> "PlutusScriptV3-Minting";
+            case "WithdrawValidator" -> "PlutusScriptV3-Withdraw";
+            case "CertifyingValidator" -> "PlutusScriptV3-Certifying";
+            case "VotingValidator" -> "PlutusScriptV3-Voting";
+            case "ProposingValidator" -> "PlutusScriptV3-Proposing";
+            default -> "PlutusScriptV3";
+        };
     }
 }
