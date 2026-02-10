@@ -4,6 +4,7 @@ import com.bloxbean.cardano.plutus.clientlib.PlutusScriptAdapter;
 import com.bloxbean.cardano.plutus.clientlib.ValidatorOutput;
 import com.bloxbean.cardano.plutus.compiler.CompileResult;
 import com.bloxbean.cardano.plutus.compiler.CompilerException;
+import com.bloxbean.cardano.plutus.compiler.LibrarySourceResolver;
 import com.bloxbean.cardano.plutus.compiler.PlutusCompiler;
 import com.bloxbean.cardano.plutus.stdlib.StdlibRegistry;
 import com.sun.source.util.Trees;
@@ -14,15 +15,9 @@ import javax.lang.model.element.Element;
 import javax.lang.model.element.TypeElement;
 import javax.tools.Diagnostic;
 import javax.tools.StandardLocation;
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.io.Writer;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
 import java.util.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -49,10 +44,6 @@ import java.util.stream.Collectors;
 })
 @SupportedSourceVersion(SourceVersion.RELEASE_24)
 public class PlutusAnnotationProcessor extends AbstractProcessor {
-
-    private static final Pattern IMPORT_PATTERN = Pattern.compile(
-            "^\\s*import\\s+([a-zA-Z_][a-zA-Z0-9_.]*)\\.([A-Z][a-zA-Z0-9_]*)\\s*;",
-            Pattern.MULTILINE);
 
     private Trees trees;
     private StdlibRegistry stdlib;
@@ -132,48 +123,8 @@ public class PlutusAnnotationProcessor extends AbstractProcessor {
     }
 
     private void scanClasspathLibraries() {
-        try {
-            var classLoader = getClass().getClassLoader();
-            var resources = classLoader.getResources("META-INF/plutus-sources/");
-            while (resources.hasMoreElements()) {
-                URL resourceUrl = resources.nextElement();
-                scanPlutusSourcesDirectory(resourceUrl);
-            }
-        } catch (IOException e) {
-            processingEnv.getMessager().printMessage(Diagnostic.Kind.WARNING,
-                    "Could not scan classpath for plutus-sources: " + e.getMessage());
-        }
-    }
-
-    private void scanPlutusSourcesDirectory(URL baseUrl) {
-        // For JAR URLs and file URLs, we scan for .java files
-        // The actual scanning depends on the URL protocol
-        String protocol = baseUrl.getProtocol();
-        if ("file".equals(protocol)) {
-            scanFileSystemSources(new java.io.File(baseUrl.getPath()));
-        }
-        // JAR protocol scanning would require more complex handling;
-        // for now we rely on the classloader resource enumeration below
-    }
-
-    private void scanFileSystemSources(java.io.File dir) {
-        if (!dir.exists() || !dir.isDirectory()) return;
-        java.io.File[] files = dir.listFiles();
-        if (files == null) return;
-        for (java.io.File file : files) {
-            if (file.isDirectory()) {
-                scanFileSystemSources(file);
-            } else if (file.getName().endsWith(".java")) {
-                try {
-                    String source = java.nio.file.Files.readString(file.toPath());
-                    String simpleName = file.getName().replace(".java", "");
-                    classpathLibraries.putIfAbsent(simpleName, source);
-                } catch (IOException e) {
-                    processingEnv.getMessager().printMessage(Diagnostic.Kind.WARNING,
-                            "Could not read plutus-sources file: " + file);
-                }
-            }
-        }
+        classpathLibraries.putAll(
+                LibrarySourceResolver.scanClasspathSources(getClass().getClassLoader()));
     }
 
     private void processElement(Element element, TypeElement annotation) {
@@ -254,49 +205,9 @@ public class PlutusAnnotationProcessor extends AbstractProcessor {
      * then recursively resolves transitive imports.
      */
     private List<String> resolveLibrarySources(String validatorSource) {
-        var resolved = new LinkedHashMap<String, String>(); // simpleName → source
-        var toProcess = new ArrayDeque<>(extractImportedClassNames(validatorSource));
-        var seen = new HashSet<String>();
-
-        while (!toProcess.isEmpty()) {
-            String simpleName = toProcess.poll();
-            if (seen.contains(simpleName) || resolved.containsKey(simpleName)) {
-                continue;
-            }
-            seen.add(simpleName);
-
-            // Look up in same-project libraries first, then classpath
-            String libSource = sameProjectLibraries.get(simpleName);
-            if (libSource == null) {
-                libSource = classpathLibraries.get(simpleName);
-            }
-            if (libSource == null) {
-                continue; // Not an @OnchainLibrary — could be standard import
-            }
-
-            resolved.put(simpleName, libSource);
-
-            // Recursively resolve this library's imports
-            for (String transitiveName : extractImportedClassNames(libSource)) {
-                if (!seen.contains(transitiveName) && !resolved.containsKey(transitiveName)) {
-                    toProcess.add(transitiveName);
-                }
-            }
-        }
-
-        return new ArrayList<>(resolved.values());
-    }
-
-    /**
-     * Extract simple class names from import statements in Java source.
-     * Only returns the simple name (last segment after the last dot).
-     */
-    private Set<String> extractImportedClassNames(String source) {
-        var classNames = new LinkedHashSet<String>();
-        Matcher matcher = IMPORT_PATTERN.matcher(source);
-        while (matcher.find()) {
-            classNames.add(matcher.group(2));
-        }
-        return classNames;
+        // Merge same-project + classpath into one pool (same-project takes precedence)
+        var pool = new LinkedHashMap<>(classpathLibraries);
+        pool.putAll(sameProjectLibraries);
+        return LibrarySourceResolver.resolve(validatorSource, pool);
     }
 }

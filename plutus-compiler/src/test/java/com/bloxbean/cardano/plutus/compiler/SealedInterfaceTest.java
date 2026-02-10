@@ -33,7 +33,7 @@ class SealedInterfaceTest {
     @BeforeAll
     static void setUp() {
         vm = PlutusVm.create();
-        StaticJavaParser.getParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_17);
+        StaticJavaParser.getParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
     }
 
     @Nested

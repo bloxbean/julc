@@ -60,7 +60,7 @@ public class PlutusCompiler {
      * @return the compile result containing the UPLC Program
      */
     public CompileResult compile(String validatorSource, List<String> librarySources) {
-        StaticJavaParser.getParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_17);
+        StaticJavaParser.getParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
 
         // 1. Parse all sources
         var validatorCu = parseSource(validatorSource, "validator");

@@ -225,13 +225,23 @@ The inner loop compiles as a single-accumulator fold with break. The outer loop 
 
 ## While Loops
 
-While loops are also supported, compiled via recursive call:
+While loops use the same accumulator detection as for-each loops. The compiler analyzes the while body for assignments to pre-loop variables and threads them as functional accumulator parameters through the recursive call.
+
+| Accumulators Detected | Has `break` | Path |
+|-----------------------|-------------|------|
+| 0 | no | Side-effect only (unit recursion) |
+| 1 | no | Single-accumulator recursion |
+| 1 | yes | Single-accumulator with break |
+| 2+ | no | Multi-accumulator tuple recursion |
+| 2+ | yes | Multi-accumulator tuple with break |
+
+### While Pattern 1: Side-Effect Loop (No Accumulator)
+
+When the while body doesn't assign to any pre-loop variable, the compiler uses a unit-based recursion. The body is evaluated for side-effects and the loop returns unit.
 
 ```java
-// Note: while loops don't support mutable state —
-// they are side-effect only (e.g., trace logging)
 while (condition) {
-    body;
+    ContextsLib.trace(someValue);
 }
 ```
 
@@ -239,6 +249,107 @@ while (condition) {
 ```
 LetRec([loop = \_ -> if cond then Let(_, body, loop(Unit)) else Unit], loop(Unit))
 ```
+
+### While Pattern 2: Single Accumulator (No Break)
+
+The most common while loop pattern. A single pre-loop variable is updated inside the loop, and the condition typically references the same variable.
+
+#### Countdown
+
+```java
+BigInteger k = BigInteger.valueOf(10);
+while (k > BigInteger.ZERO) {
+    k = k - BigInteger.ONE;
+}
+// k is now 0
+```
+
+#### Boolean accumulator
+
+```java
+boolean done = false;
+while (!done) {
+    done = true;
+}
+return done;
+```
+
+**Compiles to:**
+```
+LetRec([loop = \acc -> if cond(acc) then loop(body(acc)) else acc], loop(initAcc))
+```
+
+Both `cond` and `body` reference `acc` as a free variable. When the desugarer wraps them in `\acc -> ...`, the variable references bind to the lambda parameter. Each recursive call passes the new accumulator value.
+
+After the loop, the accumulator is rebound to the loop result for use in subsequent statements:
+
+```java
+BigInteger k = BigInteger.valueOf(3);
+while (k > BigInteger.ZERO) {
+    k = k - BigInteger.ONE;
+}
+BigInteger result = k + BigInteger.valueOf(100);
+// result is 100 (k was rebound to 0 after the loop)
+```
+
+### While Pattern 3: Single Accumulator with Break
+
+`break` inside a while loop terminates iteration early. The compiler generates a break-aware loop where the body decides whether to recurse (continue) or return the accumulator directly (break).
+
+```java
+BigInteger k = BigInteger.valueOf(10);
+while (k > BigInteger.ZERO) {
+    if (k == BigInteger.valueOf(5)) {
+        break;
+    }
+    k = k - BigInteger.ONE;
+}
+// k is now 5
+```
+
+**Compiles to:**
+```
+LetRec([loop = \acc -> if cond(acc) then bodyTerm(loop, acc) else acc], loop(initAcc))
+```
+
+Where `bodyTerm` can either:
+- Call `loop(newAcc)` to continue iterating
+- Return `acc` directly to break out of the loop
+
+### While Pattern 4: Multiple Accumulators
+
+When two or more pre-loop variables are assigned inside the while body, the compiler packs them into a Data list tuple (same infrastructure as for-each multi-accumulator).
+
+```java
+BigInteger sum = BigInteger.ZERO;
+BigInteger k = BigInteger.valueOf(5);
+while (k > BigInteger.ZERO) {
+    sum = sum + k;
+    k = k - BigInteger.ONE;
+}
+// sum is 15, k is 0
+```
+
+The condition is wrapped with unpack logic so it can access individual accumulator values from the tuple. After the loop, the final tuple is unpacked back into the individual variables.
+
+### While Pattern 5: Multiple Accumulators with Break
+
+Combines multi-accumulator tuple packing with break-aware recursion.
+
+```java
+BigInteger sum = BigInteger.ZERO;
+BigInteger k = BigInteger.valueOf(10);
+while (k > BigInteger.ZERO) {
+    sum = sum + k;
+    if (sum > BigInteger.valueOf(20)) {
+        break;
+    }
+    k = k - BigInteger.ONE;
+}
+// sum > 20, k stopped early
+```
+
+At `break`, the current accumulator values are packed and returned (no recursion). At body end, they are packed and passed to the continue function (recursion).
 
 ## Supported Accumulator Types
 
@@ -256,11 +367,13 @@ Any type supported by the compiler can be used as a loop accumulator:
 | Pattern | Status | Notes |
 |---------|--------|-------|
 | `for (var x : list)` | Supported | Enhanced for-each only |
+| `while (cond) { ... }` | Supported | With accumulator threading |
 | `break` in for-each | Supported | Single and multi-accumulator |
+| `break` in while | Supported | Single and multi-accumulator |
 | `continue` | Not supported | Use conditional logic instead |
 | `for (int i = 0; ...)` | Rejected | C-style for loops not allowed |
 | `do { } while (cond)` | Rejected | Use `while` instead |
-| `break` outside for-each | Rejected | Compile-time error |
+| `break` outside loops | Rejected | Compile-time error |
 | Accumulator reassignment outside if | Supported | `acc = expr;` at any statement position |
 | Variable declaration inside loop | Supported | Local vars are scoped to the iteration |
 
@@ -288,7 +401,8 @@ Variables in Plutus-Java are immutable. The `acc = expr` syntax inside loops is 
 | Feature | Plutus-Java | Opshin (Python) | Aiken | Scalus (Scala) |
 |---------|-------------|-----------------|-------|----------------|
 | For-each | `for (var x : list)` | `for x in list:` | `list.fold(...)` | `list.foldLeft(...)` |
+| While with accumulator | Supported | Supported | N/A (no loops) | N/A (no loops) |
 | Multi-accumulator | Auto-detected tuple | Auto-detected tuple | Manual tuple | Manual tuple |
-| `break` | Supported | Not supported | N/A (no loops) | N/A (no loops) |
+| `break` in for-each | Supported | Not supported | N/A | N/A |
+| `break` in while | Supported | Not supported | N/A | N/A |
 | `continue` | Not supported | Not supported | N/A | N/A |
-| While | Supported | Supported | N/A | N/A |

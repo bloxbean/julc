@@ -135,6 +135,77 @@ public class LoopDesugarer {
     }
 
     /**
+     * Desugar a while loop with an accumulator.
+     * Pattern: loop = \acc -> IfThenElse(cond(acc), loop(body(acc)), acc)
+     *
+     * @param condition the loop condition (references acc as free variable)
+     * @param body      the body that computes the new accumulator value
+     * @param accName   the accumulator variable name
+     * @param accInit   the initial accumulator value
+     * @param accType   the accumulator type
+     * @return LetRec term that loops until condition is false
+     */
+    public PirTerm desugarWhileWithAccumulator(
+            PirTerm condition, PirTerm body,
+            String accName, PirTerm accInit, PirType accType) {
+        var loopName = "loop__while";
+        var funType = new PirType.FunType(accType, accType);
+        var accVar = new PirTerm.Var(accName, accType);
+
+        // loop(body) — body evaluates to the new accumulator value
+        var recursiveCall = new PirTerm.App(
+                new PirTerm.Var(loopName, funType), body);
+
+        // loop = \acc -> IfThenElse(cond, loop(body), acc)
+        var loopLambda = new PirTerm.Lam(accName, accType,
+                new PirTerm.IfThenElse(condition, recursiveCall, accVar));
+
+        var initialCall = new PirTerm.App(
+                new PirTerm.Var(loopName, funType), accInit);
+
+        return new PirTerm.LetRec(
+                List.of(new PirTerm.Binding(loopName, loopLambda)),
+                initialCall);
+    }
+
+    /**
+     * Desugar a while loop with an accumulator and break support.
+     * Pattern: loop = \acc -> IfThenElse(cond(acc), bodyTerm(loopFn, acc), acc)
+     * Where bodyTerm can either call loopFn(newAcc) to continue or return acc to break.
+     *
+     * @param condition   the loop condition (references acc as free variable)
+     * @param accName     the accumulator variable name
+     * @param accInit     the initial accumulator value
+     * @param accType     the accumulator type
+     * @param bodyBuilder (continueFn, accVar) → term. continueFn accepts newAcc and returns loop(newAcc).
+     * @return LetRec term that loops with break support
+     */
+    public PirTerm desugarWhileWithAccumulatorAndBreak(
+            PirTerm condition, String accName, PirTerm accInit, PirType accType,
+            BiFunction<java.util.function.Function<PirTerm, PirTerm>, PirTerm, PirTerm> bodyBuilder) {
+        var loopName = "loop__while";
+        var funType = new PirType.FunType(accType, accType);
+        var accVar = new PirTerm.Var(accName, accType);
+
+        // continueFn: given newAcc, produces loop(newAcc)
+        java.util.function.Function<PirTerm, PirTerm> continueFn = newAcc ->
+                new PirTerm.App(new PirTerm.Var(loopName, funType), newAcc);
+
+        var bodyTerm = bodyBuilder.apply(continueFn, accVar);
+
+        // loop = \acc -> IfThenElse(cond, bodyTerm, acc)
+        var loopLambda = new PirTerm.Lam(accName, accType,
+                new PirTerm.IfThenElse(condition, bodyTerm, accVar));
+
+        var initialCall = new PirTerm.App(
+                new PirTerm.Var(loopName, funType), accInit);
+
+        return new PirTerm.LetRec(
+                List.of(new PirTerm.Binding(loopName, loopLambda)),
+                initialCall);
+    }
+
+    /**
      * Desugar a while loop.
      *
      * @param condition the loop condition

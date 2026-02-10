@@ -90,6 +90,9 @@ public class PirGenerator {
             return rs.getExpression().map(this::generateExpression)
                     .orElse(new PirTerm.Const(Constant.unit()));
         }
+        if (stmt instanceof YieldStmt ys) {
+            return generateExpression(ys.getExpression());
+        }
         if (stmt instanceof ExpressionStmt es) {
             if (es.getExpression() instanceof VariableDeclarationExpr vde) {
                 var decl = vde.getVariable(0);
@@ -161,6 +164,9 @@ public class PirGenerator {
         if (stmt instanceof ReturnStmt rs) {
             return rs.getExpression().map(this::generateExpression)
                     .orElse(new PirTerm.Const(Constant.unit()));
+        }
+        if (stmt instanceof YieldStmt ys) {
+            return generateExpression(ys.getExpression());
         }
         if (stmt instanceof ExpressionStmt es) {
             return generateExpression(es.getExpression());
@@ -441,6 +447,14 @@ public class PirGenerator {
             }
         }
         if (fieldIndex < 0) return java.util.Optional.empty();
+
+        // If the field is already directly in scope (e.g. switch pattern destructuring),
+        // return a direct variable reference instead of generating field extraction PIR
+        var fieldInScope = symbolTable.lookup(fieldName);
+        if (fieldInScope.isPresent()) {
+            final PirType fType = fieldType;
+            return java.util.Optional.of(scope -> new PirTerm.Var(fieldName, fType));
+        }
 
         final int idx = fieldIndex;
         final PirType fType = fieldType;
@@ -1189,17 +1203,160 @@ public class PirGenerator {
     }
 
     private PirTerm generateWhileStmt(WhileStmt ws, List<Statement> followingStmts, int followingIndex) {
-        var condition = generateExpression(ws.getCondition());
-        var bodyTerm = generateStatement(ws.getBody());
-
         var desugarer = new LoopDesugarer();
-        var whileResult = desugarer.desugarWhile(condition, bodyTerm);
+        boolean hasBreak = containsBreak(ws.getBody());
+        var accumulators = detectForEachAccumulators(ws.getBody());
 
-        if (followingIndex + 1 < followingStmts.size()) {
-            var rest = generateStatements(followingStmts, followingIndex + 1);
-            return new PirTerm.Let("_while", whileResult, rest);
+        if (accumulators.size() == 1) {
+            // --- Single-accumulator while loop ---
+            var accName = accumulators.get(0);
+            var accType = symbolTable.lookup(accName).orElse(new PirType.BoolType());
+            var accInit = new PirTerm.Var(accName, accType);
+
+            PirTerm whileResult;
+            if (hasBreak) {
+                // Generate condition with acc in scope
+                symbolTable.pushScope();
+                symbolTable.define(accName, accType);
+                var condition = generateExpression(ws.getCondition());
+                symbolTable.popScope();
+
+                whileResult = desugarer.desugarWhileWithAccumulatorAndBreak(
+                        condition, accName, accInit, accType,
+                        (continueFn, accVar) -> {
+                            symbolTable.pushScope();
+                            symbolTable.define(accName, accType);
+
+                            String prevAcc = forEachAccumulatorVar;
+                            Function<PirTerm, PirTerm> prevBreak = breakContinueFn;
+                            forEachAccumulatorVar = accName;
+                            breakContinueFn = continueFn;
+
+                            var bodyTerm = generateBreakAwareBody(ws.getBody(), accName, accType, continueFn);
+
+                            forEachAccumulatorVar = prevAcc;
+                            breakContinueFn = prevBreak;
+                            symbolTable.popScope();
+                            return bodyTerm;
+                        });
+            } else {
+                // No break: generate condition and body with acc in scope
+                symbolTable.pushScope();
+                symbolTable.define(accName, accType);
+
+                String prev = forEachAccumulatorVar;
+                forEachAccumulatorVar = accName;
+                var condition = generateExpression(ws.getCondition());
+                var bodyTerm = generateStatement(ws.getBody());
+                forEachAccumulatorVar = prev;
+
+                symbolTable.popScope();
+
+                whileResult = desugarer.desugarWhileWithAccumulator(
+                        condition, bodyTerm, accName, accInit, accType);
+            }
+
+            // Rebind accumulator with while result for following statements
+            if (followingIndex + 1 < followingStmts.size()) {
+                symbolTable.define(accName, accType);
+                var rest = generateStatements(followingStmts, followingIndex + 1);
+                return new PirTerm.Let(accName, whileResult, rest);
+            }
+            return whileResult;
+
+        } else if (accumulators.size() > 1) {
+            // --- Multi-accumulator while loop ---
+            var accTypes = accumulators.stream()
+                    .map(n -> symbolTable.lookup(n).orElse(new PirType.DataType()))
+                    .toList();
+            var accInit = packAccumulators(accumulators, accTypes);
+            var tupleAccName = "__acc_tuple";
+            var tupleAccType = new PirType.ListType(new PirType.DataType());
+
+            PirTerm whileResult;
+            if (hasBreak) {
+                // Generate condition with accumulators in scope
+                symbolTable.pushScope();
+                for (int i = 0; i < accumulators.size(); i++) {
+                    symbolTable.define(accumulators.get(i), accTypes.get(i));
+                }
+                var condition = generateExpression(ws.getCondition());
+                symbolTable.popScope();
+
+                final List<String> accNames = accumulators;
+                final List<PirType> accTypesFinal = accTypes;
+                // Wrap condition in unpack so it can access individual acc vars from the tuple
+                var condWithUnpack = unpackAccumulators(
+                        new PirTerm.Var(tupleAccName, tupleAccType), accNames, accTypesFinal, condition);
+
+                whileResult = desugarer.desugarWhileWithAccumulatorAndBreak(
+                        condWithUnpack, tupleAccName, accInit, tupleAccType,
+                        (continueFn, tupleVar) -> {
+                            symbolTable.pushScope();
+
+                            var prevMultiAcc = multiAccVars;
+                            multiAccVars = new LinkedHashSet<>(accNames);
+
+                            var bodyTerm = unpackAccumulators(tupleVar, accNames, accTypesFinal,
+                                    generateMultiAccBreakAwareBody(ws.getBody(), accNames, accTypesFinal, continueFn));
+
+                            multiAccVars = prevMultiAcc;
+                            symbolTable.popScope();
+                            return bodyTerm;
+                        });
+            } else {
+                // Generate condition with accumulators in scope
+                symbolTable.pushScope();
+                for (int i = 0; i < accumulators.size(); i++) {
+                    symbolTable.define(accumulators.get(i), accTypes.get(i));
+                }
+                var condition = generateExpression(ws.getCondition());
+                symbolTable.popScope();
+
+                final List<String> accNames = accumulators;
+                // Wrap condition in unpack
+                var condWithUnpack = unpackAccumulators(
+                        new PirTerm.Var(tupleAccName, tupleAccType), accNames, accTypes, condition);
+
+                symbolTable.pushScope();
+
+                var prevMultiAcc = multiAccVars;
+                multiAccVars = new LinkedHashSet<>(accumulators);
+
+                var tupleVar = new PirTerm.Var(tupleAccName, tupleAccType);
+                var bodyTerm = unpackAccumulators(tupleVar, accumulators, accTypes,
+                        generateMultiAccBody(ws.getBody(), accumulators, accTypes));
+
+                multiAccVars = prevMultiAcc;
+                symbolTable.popScope();
+
+                whileResult = desugarer.desugarWhileWithAccumulator(
+                        condWithUnpack, bodyTerm, tupleAccName, accInit, tupleAccType);
+            }
+
+            // After loop: unpack final tuple into individual vars for following statements
+            if (followingIndex + 1 < followingStmts.size()) {
+                for (int i = 0; i < accumulators.size(); i++) {
+                    symbolTable.define(accumulators.get(i), accTypes.get(i));
+                }
+                var rest = generateStatements(followingStmts, followingIndex + 1);
+                return unpackAccumulators(whileResult, accumulators, accTypes, rest);
+            }
+            return whileResult;
+
+        } else {
+            // --- No accumulator: existing side-effect-only while loop ---
+            var condition = generateExpression(ws.getCondition());
+            var bodyTerm = generateStatement(ws.getBody());
+
+            var whileResult = desugarer.desugarWhile(condition, bodyTerm);
+
+            if (followingIndex + 1 < followingStmts.size()) {
+                var rest = generateStatements(followingStmts, followingIndex + 1);
+                return new PirTerm.Let("_while", whileResult, rest);
+            }
+            return whileResult;
         }
-        return whileResult;
     }
 
     private PirTerm generateSwitchExpr(SwitchExpr se) {
@@ -1238,6 +1395,10 @@ public class PirGenerator {
                     for (var field : ctor.fields()) {
                         symbolTable.define(field.name(), field.type());
                     }
+                    // Define the pattern variable (e.g. 'b' in 'case Bid b')
+                    // with RecordType so b.fieldName() redirects to the bound field
+                    var varRecordType = new PirType.RecordType(typeName, ctor.fields());
+                    symbolTable.define(varName, varRecordType);
 
                     // Generate body from the entry's statements
                     PirTerm bodyTerm = generateSwitchEntryBody(entry);

@@ -14,7 +14,7 @@ class SubsetValidatorTest {
 
     @BeforeAll
     static void configureParser() {
-        StaticJavaParser.getParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_17);
+        StaticJavaParser.getParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
     }
 
     private List<CompilerDiagnostic> validate(String code) {

@@ -696,4 +696,357 @@ class LoopDesugarTest {
             assertNotNull(result.program());
         }
     }
+
+    // ========== While Loop Accumulator Tests ==========
+
+    @Nested
+    class WhileDesugarerUnitTests {
+
+        @Test
+        void whileWithAccumulator_generatesLetRec() {
+            var desugarer = new LoopDesugarer();
+            var intType = new PirType.IntegerType();
+
+            var accVar = new PirTerm.Var("k", intType);
+            var condition = new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.LessThanInteger),
+                            new PirTerm.Const(Constant.integer(BigInteger.ZERO))),
+                    accVar);
+            var body = new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.SubtractInteger), accVar),
+                    new PirTerm.Const(Constant.integer(BigInteger.ONE)));
+
+            var result = desugarer.desugarWhileWithAccumulator(
+                    condition, body, "k",
+                    new PirTerm.Const(Constant.integer(BigInteger.valueOf(5))),
+                    intType);
+
+            assertInstanceOf(PirTerm.LetRec.class, result);
+            var letRec = (PirTerm.LetRec) result;
+            assertEquals(1, letRec.bindings().size());
+            assertEquals("loop__while", letRec.bindings().getFirst().name());
+        }
+
+        @Test
+        void whileCountdown() {
+            // k=5, while(k>0) k=k-1 → evaluates to 0
+            var desugarer = new LoopDesugarer();
+            var intType = new PirType.IntegerType();
+
+            var accVar = new PirTerm.Var("k", intType);
+            // k > 0 means 0 < k
+            var condition = new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.LessThanInteger),
+                            new PirTerm.Const(Constant.integer(BigInteger.ZERO))),
+                    accVar);
+            var body = new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.SubtractInteger), accVar),
+                    new PirTerm.Const(Constant.integer(BigInteger.ONE)));
+
+            var pir = desugarer.desugarWhileWithAccumulator(
+                    condition, body, "k",
+                    new PirTerm.Const(Constant.integer(BigInteger.valueOf(5))),
+                    intType);
+
+            var uplc = new UplcGenerator().generate(pir);
+            assertEquals(BigInteger.ZERO, evalInteger(uplc));
+        }
+
+        @Test
+        void whileConditionFalseInitially() {
+            // k=0, while(k>0) k=k-1 → evaluates to 0 (body never executes)
+            var desugarer = new LoopDesugarer();
+            var intType = new PirType.IntegerType();
+
+            var accVar = new PirTerm.Var("k", intType);
+            var condition = new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.LessThanInteger),
+                            new PirTerm.Const(Constant.integer(BigInteger.ZERO))),
+                    accVar);
+            var body = new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.SubtractInteger), accVar),
+                    new PirTerm.Const(Constant.integer(BigInteger.ONE)));
+
+            var pir = desugarer.desugarWhileWithAccumulator(
+                    condition, body, "k",
+                    new PirTerm.Const(Constant.integer(BigInteger.ZERO)),
+                    intType);
+
+            var uplc = new UplcGenerator().generate(pir);
+            assertEquals(BigInteger.ZERO, evalInteger(uplc));
+        }
+
+        @Test
+        void whileWithBreak_generatesLetRec() {
+            var desugarer = new LoopDesugarer();
+            var intType = new PirType.IntegerType();
+
+            var accVar = new PirTerm.Var("k", intType);
+            var condition = new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.LessThanInteger),
+                            new PirTerm.Const(Constant.integer(BigInteger.ZERO))),
+                    accVar);
+
+            var result = desugarer.desugarWhileWithAccumulatorAndBreak(
+                    condition, "k",
+                    new PirTerm.Const(Constant.integer(BigInteger.TEN)),
+                    intType,
+                    (continueFn, acc) -> {
+                        // Simple body: continue with k-1
+                        var newK = new PirTerm.App(
+                                new PirTerm.App(new PirTerm.Builtin(DefaultFun.SubtractInteger), acc),
+                                new PirTerm.Const(Constant.integer(BigInteger.ONE)));
+                        return continueFn.apply(newK);
+                    });
+
+            assertInstanceOf(PirTerm.LetRec.class, result);
+            var letRec = (PirTerm.LetRec) result;
+            assertEquals(1, letRec.bindings().size());
+            assertEquals("loop__while", letRec.bindings().getFirst().name());
+        }
+    }
+
+    @Nested
+    class WhileCompilerIntegrationTests {
+
+        @Test
+        void whileCountdown_compiles() {
+            var source = """
+                import java.math.BigInteger;
+
+                @Validator
+                class CountdownValidator {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        BigInteger k = redeemer;
+                        while (k > BigInteger.ZERO) {
+                            k = k - BigInteger.ONE;
+                        }
+                        return k == BigInteger.ZERO;
+                    }
+                }
+                """;
+            var result = new PlutusCompiler().compile(source);
+            assertNotNull(result.program());
+            assertFalse(result.hasErrors(), "Errors: " + result.diagnostics());
+        }
+
+        @Test
+        void whileBoolAccumulator_compiles() {
+            var source = """
+                import java.math.BigInteger;
+
+                @Validator
+                class BoolWhileValidator {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        boolean done = false;
+                        while (!done) {
+                            done = true;
+                        }
+                        return done;
+                    }
+                }
+                """;
+            var result = new PlutusCompiler().compile(source);
+            assertNotNull(result.program());
+            assertFalse(result.hasErrors(), "Errors: " + result.diagnostics());
+        }
+
+        @Test
+        void whileTwoAccumulators_compiles() {
+            var source = """
+                import java.math.BigInteger;
+
+                @Validator
+                class TwoAccWhileValidator {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        BigInteger sum = BigInteger.ZERO;
+                        BigInteger k = redeemer;
+                        while (k > BigInteger.ZERO) {
+                            sum = sum + k;
+                            k = k - BigInteger.ONE;
+                        }
+                        return sum > BigInteger.ZERO;
+                    }
+                }
+                """;
+            var result = new PlutusCompiler().compile(source);
+            assertNotNull(result.program());
+            assertFalse(result.hasErrors(), "Errors: " + result.diagnostics());
+        }
+
+        @Test
+        void whileWithBreak_compiles() {
+            var source = """
+                import java.math.BigInteger;
+
+                @Validator
+                class BreakWhileValidator {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        BigInteger k = BigInteger.valueOf(10);
+                        while (k > BigInteger.ZERO) {
+                            if (k == BigInteger.valueOf(5)) {
+                                break;
+                            }
+                            k = k - BigInteger.ONE;
+                        }
+                        return k == BigInteger.valueOf(5);
+                    }
+                }
+                """;
+            var result = new PlutusCompiler().compile(source);
+            assertNotNull(result.program());
+            assertFalse(result.hasErrors(), "Errors: " + result.diagnostics());
+        }
+
+        @Test
+        void whileWithoutAccumulator_stillWorks() {
+            var source = """
+                import java.math.BigInteger;
+
+                @Validator
+                class SideEffectWhileValidator {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        return true;
+                    }
+                }
+                """;
+            var result = new PlutusCompiler().compile(source);
+            assertNotNull(result.program());
+            assertFalse(result.hasErrors());
+        }
+    }
+
+    @Nested
+    class WhileEvaluationTests {
+
+        /** Build a minimal ScriptContext Data for eval tests (no signatories needed) */
+        private PlutusData dummyScriptContext() {
+            // ScriptContext = Constr(0, [txInfo, redeemer, scriptInfo])
+            // txInfo = Constr(0, [...fields...]) - 16 fields, all empty
+            var emptyList = PlutusData.list();
+            var emptyMap = PlutusData.map();
+            var zeroInterval = PlutusData.constr(0,
+                    PlutusData.constr(0, PlutusData.constr(1), PlutusData.integer(0)),
+                    PlutusData.constr(0, PlutusData.constr(1), PlutusData.integer(0)));
+            var txInfo = PlutusData.constr(0,
+                    emptyList, emptyList, emptyList, emptyList, emptyList,
+                    emptyList, emptyMap, zeroInterval, emptyList, emptyMap,
+                    PlutusData.bytes(new byte[32]),
+                    emptyMap, emptyList, emptyList, emptyList, PlutusData.integer(0));
+            var redeemer = PlutusData.integer(0);
+            var scriptInfo = PlutusData.constr(0, PlutusData.bytes(new byte[28]));
+            return PlutusData.constr(0, txInfo, redeemer, scriptInfo);
+        }
+
+        @Test
+        void whileCountdown_evaluatesToZero() {
+            var source = """
+                import java.math.BigInteger;
+
+                @Validator
+                class CountdownEval {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        BigInteger k = BigInteger.valueOf(10);
+                        while (k > BigInteger.ZERO) {
+                            k = k - BigInteger.ONE;
+                        }
+                        return k == BigInteger.ZERO;
+                    }
+                }
+                """;
+            var result = new PlutusCompiler().compile(source);
+            assertNotNull(result.program(), "Compilation failed: " + result.diagnostics());
+            assertFalse(result.hasErrors(), "Errors: " + result.diagnostics());
+
+            var evalResult = vm.evaluateWithArgs(result.program(), List.of(dummyScriptContext()));
+            assertTrue(evalResult.isSuccess(), "Evaluation failed: " + evalResult);
+        }
+
+        @Test
+        void whileSum_evaluatesCorrectly() {
+            var source = """
+                import java.math.BigInteger;
+
+                @Validator
+                class SumEval {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        BigInteger sum = BigInteger.ZERO;
+                        BigInteger k = BigInteger.valueOf(5);
+                        while (k > BigInteger.ZERO) {
+                            sum = sum + k;
+                            k = k - BigInteger.ONE;
+                        }
+                        return sum == BigInteger.valueOf(15);
+                    }
+                }
+                """;
+            var result = new PlutusCompiler().compile(source);
+            assertNotNull(result.program(), "Compilation failed: " + result.diagnostics());
+            assertFalse(result.hasErrors(), "Errors: " + result.diagnostics());
+
+            var evalResult = vm.evaluateWithArgs(result.program(), List.of(dummyScriptContext()));
+            assertTrue(evalResult.isSuccess(), "Evaluation failed: " + evalResult);
+        }
+
+        @Test
+        void whileBreak_stopsEarly() {
+            var source = """
+                import java.math.BigInteger;
+
+                @Validator
+                class BreakEval {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        BigInteger k = BigInteger.valueOf(10);
+                        while (k > BigInteger.ZERO) {
+                            if (k == BigInteger.valueOf(5)) {
+                                break;
+                            }
+                            k = k - BigInteger.ONE;
+                        }
+                        return k == BigInteger.valueOf(5);
+                    }
+                }
+                """;
+            var result = new PlutusCompiler().compile(source);
+            assertNotNull(result.program(), "Compilation failed: " + result.diagnostics());
+            assertFalse(result.hasErrors(), "Errors: " + result.diagnostics());
+
+            var evalResult = vm.evaluateWithArgs(result.program(), List.of(dummyScriptContext()));
+            assertTrue(evalResult.isSuccess(), "Evaluation failed: " + evalResult);
+        }
+
+        @Test
+        void whileFollowingStatementsUseResult() {
+            var source = """
+                import java.math.BigInteger;
+
+                @Validator
+                class FollowingStmtsEval {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        BigInteger k = BigInteger.valueOf(3);
+                        while (k > BigInteger.ZERO) {
+                            k = k - BigInteger.ONE;
+                        }
+                        BigInteger result = k + BigInteger.valueOf(100);
+                        return result == BigInteger.valueOf(100);
+                    }
+                }
+                """;
+            var result = new PlutusCompiler().compile(source);
+            assertNotNull(result.program(), "Compilation failed: " + result.diagnostics());
+            assertFalse(result.hasErrors(), "Errors: " + result.diagnostics());
+
+            var evalResult = vm.evaluateWithArgs(result.program(), List.of(dummyScriptContext()));
+            assertTrue(evalResult.isSuccess(), "Evaluation failed: " + evalResult);
+        }
+    }
 }

@@ -1,5 +1,6 @@
 package com.bloxbean.cardano.plutus.testkit;
 
+import com.bloxbean.cardano.plutus.compiler.CompileResult;
 import com.bloxbean.cardano.plutus.core.PlutusData;
 import com.bloxbean.cardano.plutus.core.Program;
 import com.bloxbean.cardano.plutus.ledger.PolicyId;
@@ -211,5 +212,29 @@ public abstract class ContractTest {
      */
     protected static void initCrypto() {
         CryptoLib.setProvider(new JvmCryptoProvider());
+    }
+
+    // --- Class-based compilation ---
+
+    /**
+     * Compile a validator class with auto-discovered library dependencies.
+     * Uses the default source root ({@code src/main/java}).
+     *
+     * @param validatorClass the validator class to compile
+     * @return the compilation result
+     */
+    protected CompileResult compileValidator(Class<?> validatorClass) {
+        return SourceDiscovery.compile(validatorClass, Path.of("src/main/java"));
+    }
+
+    /**
+     * Compile a validator class with auto-discovered library dependencies.
+     *
+     * @param validatorClass the validator class to compile
+     * @param sourceRoot     the root of the source tree
+     * @return the compilation result
+     */
+    protected CompileResult compileValidator(Class<?> validatorClass, Path sourceRoot) {
+        return SourceDiscovery.compile(validatorClass, sourceRoot);
     }
 }

@@ -21,6 +21,7 @@ public class SubsetValidator extends VoidVisitorAdapter<Void> {
     private final List<CompilerDiagnostic> diagnostics = new ArrayList<>();
     private String fileName = "<unknown>";
     private int forEachDepth = 0;
+    private int whileDepth = 0;
 
     public List<CompilerDiagnostic> validate(CompilationUnit cu) {
         diagnostics.clear();
@@ -87,9 +88,9 @@ public class SubsetValidator extends VoidVisitorAdapter<Void> {
 
     @Override
     public void visit(BreakStmt n, Void arg) {
-        if (forEachDepth == 0) {
-            error(n, "break is only supported inside for-each loops on-chain",
-                    "Use for-each with an accumulator and break to exit early");
+        if (forEachDepth == 0 && whileDepth == 0) {
+            error(n, "break is only supported inside for-each or while loops on-chain",
+                    "Use for-each or while with an accumulator and break to exit early");
         }
         super.visit(n, arg);
     }
@@ -97,7 +98,9 @@ public class SubsetValidator extends VoidVisitorAdapter<Void> {
     @Override
     public void visit(WhileStmt n, Void arg) {
         // while is now supported (desugared to recursion)
+        whileDepth++;
         super.visit(n, arg);
+        whileDepth--;
     }
 
     @Override

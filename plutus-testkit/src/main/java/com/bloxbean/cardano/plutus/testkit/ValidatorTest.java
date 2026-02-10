@@ -21,17 +21,14 @@ import java.util.Objects;
  * <p>
  * Usage:
  * <pre>{@code
+ * // Compile a validator class with auto-discovered deps
+ * CompileResult result = ValidatorTest.compileValidator(MyValidator.class);
+ *
  * // Evaluate a compiled program with data arguments
  * EvalResult result = ValidatorTest.evaluate(program, datum, redeemer, ctx);
  *
- * // Compile Java source and evaluate
- * EvalResult result = ValidatorTest.evaluate(javaSource, datum, redeemer, ctx);
- *
  * // Assert that a validator accepts
  * ValidatorTest.assertValidates(program, datum, redeemer, ctx);
- *
- * // Assert that a validator rejects
- * ValidatorTest.assertRejects(program, datum, redeemer, ctx);
  * }</pre>
  */
 public final class ValidatorTest {
@@ -252,6 +249,30 @@ public final class ValidatorTest {
             throw new AssertionError("Compilation produced errors: " + result.diagnostics());
         }
         return evaluate(result.program(), args);
+    }
+
+    // --- Class-based compilation ---
+
+    /**
+     * Compile a validator class with auto-discovered library dependencies.
+     * Uses the default source root ({@code src/main/java}).
+     *
+     * @param validatorClass the validator class to compile
+     * @return the compilation result
+     */
+    public static CompileResult compileValidator(Class<?> validatorClass) {
+        return SourceDiscovery.compile(validatorClass, java.nio.file.Path.of("src/main/java"));
+    }
+
+    /**
+     * Compile a validator class with auto-discovered library dependencies.
+     *
+     * @param validatorClass the validator class to compile
+     * @param sourceRoot     the root of the source tree
+     * @return the compilation result
+     */
+    public static CompileResult compileValidator(Class<?> validatorClass, java.nio.file.Path sourceRoot) {
+        return SourceDiscovery.compile(validatorClass, sourceRoot);
     }
 
     private static String formatResult(EvalResult result) {

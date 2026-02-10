@@ -15,7 +15,7 @@ class TypeResolverTest {
 
     @BeforeAll
     static void configureParser() {
-        StaticJavaParser.getParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_17);
+        StaticJavaParser.getParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
     }
 
     private final TypeResolver resolver = new TypeResolver();
