@@ -273,7 +273,7 @@ The `StdlibRegistry` already implements the registry pattern for static methods.
 
 ### Phase 1: Instance Method Registry -- IMPLEMENTED
 
-`TypeMethodRegistry` has been implemented in `plutus-compiler/src/main/java/.../pir/TypeMethodRegistry.java` with:
+`TypeMethodRegistry` has been implemented in `julc-compiler/src/main/java/.../pir/TypeMethodRegistry.java` with:
 
 - **20 method registrations** across 8 type keys (IntegerType, ByteStringType, StringType, DataType, RecordType, SumType, ListType, OptionalType)
 - **`InstanceMethodHandler`** functional interface: `(scope, args, scopeType, argTypes) -> PirTerm`

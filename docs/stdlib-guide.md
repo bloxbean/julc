@@ -6,9 +6,9 @@ This guide explains how to add new functions to the Plutus-Java standard library
 
 The standard library has three layers:
 
-1. **Implementation** (`plutus-stdlib`): PIR term builders that produce UPLC code
-2. **Registry** (`plutus-stdlib/StdlibRegistry`): Maps `(className, methodName)` to term builders
-3. **Stubs** (`plutus-onchain-api`): Java method signatures for IDE autocomplete
+1. **Implementation** (`julc-stdlib`): PIR term builders that produce UPLC code
+2. **Registry** (`julc-stdlib/StdlibRegistry`): Maps `(className, methodName)` to term builders
+3. **Stubs** (`julc-onchain-api`): Java method signatures for IDE autocomplete
 
 When a user writes `CryptoLib.sha2_256(data)` in their validator, the compiler:
 1. Recognizes the method call as a stdlib invocation
@@ -22,11 +22,11 @@ The key insight: **stdlib methods return PirTerm** -- they build UPLC code that 
 
 Every stdlib function requires changes in three places:
 
-### 1. Implementation (`plutus-stdlib/src/main/java/.../YourLib.java`)
+### 1. Implementation (`julc-stdlib/src/main/java/.../YourLib.java`)
 
 The actual term builder. This is where the UPLC logic lives.
 
-### 2. Registration (`plutus-stdlib/src/main/java/.../StdlibRegistry.java`)
+### 2. Registration (`julc-stdlib/src/main/java/.../StdlibRegistry.java`)
 
 Register the builder so the compiler can find it:
 
@@ -41,12 +41,12 @@ private static void registerYourLib(StdlibRegistry reg) {
 
 And add `registerYourLib(reg)` to `defaultRegistry()`.
 
-### 3. Stub (`plutus-onchain-api/src/main/java/.../YourLib.java`)
+### 3. Stub (`julc-onchain-api/src/main/java/.../YourLib.java`)
 
 A do-nothing Java class that provides IDE autocomplete:
 
 ```java
-package com.bloxbean.cardano.plutus.onchain.stdlib;
+package com.bloxbean.cardano.julc.onchain.stdlib;
 
 public final class YourLib {
     private YourLib() {}
@@ -263,7 +263,7 @@ Stdlib functions are tested by compiling a validator that calls the function, th
 @Test
 void testMyStdlibFunction() {
     var source = """
-        import com.bloxbean.cardano.plutus.onchain.stdlib.MyLib;
+        import com.bloxbean.cardano.julc.onchain.stdlib.MyLib;
 
         @Validator
         class TestValidator {
@@ -275,7 +275,7 @@ void testMyStdlibFunction() {
         """;
 
     var stdlib = StdlibRegistry.defaultRegistry();
-    var compiler = new PlutusCompiler(stdlib::lookup);
+    var compiler = new JulcCompiler(stdlib::lookup);
     var result = compiler.compile(source);
     assertFalse(result.hasErrors());
 
@@ -289,7 +289,7 @@ void testMyStdlibFunction() {
 }
 ```
 
-Use `ValidatorTest` from `plutus-testkit` for a simpler testing experience:
+Use `ValidatorTest` from `julc-testkit` for a simpler testing experience:
 
 ```java
 var test = new ValidatorTest(source);
@@ -298,11 +298,11 @@ test.evaluate(datum, redeemer, context);  // returns EvalResult
 
 ## Checklist for Adding a New Stdlib Function
 
-1. Add the method to your `*Lib.java` in `plutus-stdlib` (the PIR term builder)
+1. Add the method to your `*Lib.java` in `julc-stdlib` (the PIR term builder)
 2. Register it in `StdlibRegistry.defaultRegistry()` with `requireArgs` validation
-3. Add a stub method in `plutus-onchain-api` for IDE support
+3. Add a stub method in `julc-onchain-api` for IDE support
 4. Write a test that compiles a validator using the function and evaluates it
-5. Run `./gradlew :plutus-stdlib:test` to verify
+5. Run `./gradlew :julc-stdlib:test` to verify
 
 ## Tips
 

@@ -362,7 +362,7 @@ Record and sealed interface instances also use `EqualsData` when compared with `
 
 ## Standard Library Reference
 
-Import from `com.bloxbean.cardano.plutus.onchain.stdlib.*` in validators.
+Import from `com.bloxbean.cardano.julc.onchain.stdlib.*` in validators.
 
 ### ContextsLib
 
@@ -419,9 +419,9 @@ Import from `com.bloxbean.cardano.plutus.onchain.stdlib.*` in validators.
 ## Complete Example
 
 ```java
-import com.bloxbean.cardano.plutus.onchain.annotation.*;
-import com.bloxbean.cardano.plutus.onchain.ledger.*;
-import com.bloxbean.cardano.plutus.core.PlutusData;
+import com.bloxbean.cardano.julc.onchain.annotation.*;
+import com.bloxbean.cardano.julc.onchain.ledger.*;
+import com.bloxbean.cardano.julc.core.PlutusData;
 import java.math.BigInteger;
 
 @Validator

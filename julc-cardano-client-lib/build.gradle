@@ -1,0 +1,14 @@
+plugins {
+    id 'java-library'
+}
+
+description = 'Bridge to cardano-client-lib for deploying Plutus scripts'
+
+dependencies {
+    api project(':julc-core')
+    implementation project(':julc-compiler')
+    implementation 'com.bloxbean.cardano:cardano-client-lib:0.7.1'
+
+    testImplementation project(':julc-vm')
+    testRuntimeOnly project(':julc-vm-scalus')
+}

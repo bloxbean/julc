@@ -1,0 +1,16 @@
+plugins {
+    id 'java-library'
+}
+
+description = 'Testing framework for unit-testing Plutus validators in JVM'
+
+dependencies {
+    api project(':julc-core')
+    api project(':julc-vm')
+    api project(':julc-compiler')
+    api project(':julc-stdlib')
+    api project(':julc-ledger-api')
+    api project(':julc-onchain-api')
+    implementation 'org.bouncycastle:bcprov-jdk18on:1.83'
+    testImplementation project(':julc-vm-scalus')
+}

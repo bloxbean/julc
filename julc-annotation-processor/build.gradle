@@ -1,0 +1,17 @@
+plugins {
+    id 'java-library'
+}
+
+description = 'Annotation processor for compiling Plutus validators during javac'
+
+dependencies {
+    implementation project(':julc-compiler')
+    implementation project(':julc-core')
+    implementation project(':julc-stdlib')
+    implementation project(':julc-cardano-client-lib')
+    implementation project(':julc-onchain-api')
+    implementation 'com.bloxbean.cardano:cardano-client-lib:0.7.1'
+
+    testImplementation project(':julc-vm')
+    testRuntimeOnly project(':julc-vm-scalus')
+}

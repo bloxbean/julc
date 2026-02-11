@@ -1,9 +1,0 @@
-plugins {
-    id 'java-library'
-}
-
-description = 'Cardano V3 ledger types (ScriptContext, TxInfo, etc.) with PlutusData codec'
-
-dependencies {
-    api project(':plutus-core')
-}

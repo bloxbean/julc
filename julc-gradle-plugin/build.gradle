@@ -1,0 +1,35 @@
+plugins {
+    id 'java-gradle-plugin'
+}
+
+description = 'Gradle plugin for compiling julc validators at build time'
+
+dependencies {
+    implementation project(':julc-compiler')
+    implementation project(':julc-core')
+    implementation project(':julc-stdlib')
+    implementation project(':julc-cardano-client-lib')
+    implementation 'com.bloxbean.cardano:cardano-client-lib:0.7.1'
+
+    testImplementation platform('org.junit:junit-bom:5.11.4')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    testImplementation gradleTestKit()
+}
+
+gradlePlugin {
+    plugins {
+        julc {
+            id = 'com.bloxbean.cardano.julc'
+            implementationClass = 'com.bloxbean.cardano.julc.gradle.JulcPlugin'
+        }
+    }
+}
+
+test {
+    useJUnitPlatform()
+    testLogging {
+        events "passed", "skipped", "failed"
+        showStandardStreams = true
+    }
+}

@@ -1,4 +1,4 @@
-# Getting Started with plutus-java
+# Getting Started with julc
 
 Write Cardano smart contracts in Java and compile them to Plutus V3 UPLC.
 
@@ -10,7 +10,7 @@ Write Cardano smart contracts in Java and compile them to Plutus V3 UPLC.
 
 ## Project Setup
 
-Add the plutus-java modules to your `build.gradle`:
+Add the julc modules to your `build.gradle`:
 
 ```groovy
 repositories {
@@ -20,16 +20,16 @@ repositories {
 
 dependencies {
     // Core compiler + stdlib
-    implementation 'com.bloxbean.cardano:plutus-compiler:0.1.0-SNAPSHOT'
-    implementation 'com.bloxbean.cardano:plutus-stdlib:0.1.0-SNAPSHOT'
+    implementation 'com.bloxbean.cardano:julc-compiler:0.1.0-SNAPSHOT'
+    implementation 'com.bloxbean.cardano:julc-stdlib:0.1.0-SNAPSHOT'
 
     // VM for local evaluation (test only)
-    testImplementation 'com.bloxbean.cardano:plutus-testkit:0.1.0-SNAPSHOT'
-    testImplementation 'com.bloxbean.cardano:plutus-vm:0.1.0-SNAPSHOT'
-    testRuntimeOnly 'com.bloxbean.cardano:plutus-vm-scalus:0.1.0-SNAPSHOT'
+    testImplementation 'com.bloxbean.cardano:julc-testkit:0.1.0-SNAPSHOT'
+    testImplementation 'com.bloxbean.cardano:julc-vm:0.1.0-SNAPSHOT'
+    testRuntimeOnly 'com.bloxbean.cardano:julc-vm-scalus:0.1.0-SNAPSHOT'
 
     // cardano-client-lib integration (for on-chain deployment)
-    implementation 'com.bloxbean.cardano:plutus-cardano-client-lib:0.1.0-SNAPSHOT'
+    implementation 'com.bloxbean.cardano:julc-cardano-client-lib:0.1.0-SNAPSHOT'
     implementation 'com.bloxbean.cardano:cardano-client-lib:0.7.1'
 }
 ```
@@ -99,12 +99,12 @@ Minting policies always take 2 parameters: `(redeemer, scriptContext)`.
 ## Compiling
 
 ```java
-import com.bloxbean.cardano.plutus.compiler.PlutusCompiler;
-import com.bloxbean.cardano.plutus.stdlib.StdlibRegistry;
+import com.bloxbean.cardano.julc.compiler.JulcCompiler;
+import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
 
 // Create compiler with stdlib support
 var stdlib = StdlibRegistry.defaultRegistry();
-var compiler = new PlutusCompiler(stdlib::lookup);
+var compiler = new JulcCompiler(stdlib::lookup);
 
 // Compile Java source to UPLC Program
 var result = compiler.compile(javaSource);
@@ -119,19 +119,19 @@ if (result.hasErrors()) {
 Without stdlib (for simple validators that don't call library functions):
 
 ```java
-var compiler = new PlutusCompiler();
+var compiler = new JulcCompiler();
 var result = compiler.compile(javaSource);
 ```
 
 ## Testing Validators
 
-The `plutus-testkit` module provides test utilities for evaluating validators locally without a blockchain.
+The `julc-testkit` module provides test utilities for evaluating validators locally without a blockchain.
 
 ### Basic Evaluation
 
 ```java
-import com.bloxbean.cardano.plutus.testkit.ValidatorTest;
-import com.bloxbean.cardano.plutus.core.PlutusData;
+import com.bloxbean.cardano.julc.testkit.ValidatorTest;
+import com.bloxbean.cardano.julc.core.PlutusData;
 
 // Compile and evaluate in one step
 String source = """
@@ -158,7 +158,7 @@ assertTrue(result.isSuccess());
 ### With Stdlib
 
 ```java
-import com.bloxbean.cardano.plutus.stdlib.StdlibRegistry;
+import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
 
 var stdlib = StdlibRegistry.defaultRegistry();
 var program = ValidatorTest.compile(source, stdlib::lookup);
@@ -178,7 +178,7 @@ ValidatorTest.assertRejects(program, ctx);
 ### Budget Assertions
 
 ```java
-import com.bloxbean.cardano.plutus.testkit.BudgetAssertions;
+import com.bloxbean.cardano.julc.testkit.BudgetAssertions;
 
 var result = ValidatorTest.evaluate(program, ctx);
 
@@ -285,17 +285,17 @@ The standard library provides pre-compiled UPLC functions callable from validato
 
 ### Converting to PlutusV3Script
 
-Use `PlutusScriptAdapter` to convert a compiled Program to a cardano-client-lib `PlutusV3Script`:
+Use `JulcScriptAdapter` to convert a compiled Program to a cardano-client-lib `PlutusV3Script`:
 
 ```java
-import com.bloxbean.cardano.plutus.clientlib.PlutusScriptAdapter;
+import com.bloxbean.cardano.julc.clientlib.JulcScriptAdapter;
 import com.bloxbean.cardano.client.plutus.spec.PlutusV3Script;
 
 Program program = compiler.compile(source).program();
-PlutusV3Script script = PlutusScriptAdapter.fromProgram(program);
+PlutusV3Script script = JulcScriptAdapter.fromProgram(program);
 
 // Get the script hash (policy ID for minting policies)
-String scriptHash = PlutusScriptAdapter.scriptHash(program);
+String scriptHash = JulcScriptAdapter.scriptHash(program);
 ```
 
 ### Locking ADA to a Script Address
@@ -369,16 +369,16 @@ var result = quickTxBuilder.compose(mintTx)
 
 ### PlutusData Conversion
 
-Convert between plutus-java's `PlutusData` and cardano-client-lib's `PlutusData`:
+Convert between julc's `PlutusData` and cardano-client-lib's `PlutusData`:
 
 ```java
-import com.bloxbean.cardano.plutus.clientlib.PlutusDataAdapter;
+import com.bloxbean.cardano.julc.clientlib.PlutusDataAdapter;
 
-// plutus-java → cardano-client-lib
+// julc → cardano-client-lib
 var ourData = PlutusData.constr(0, PlutusData.integer(42));
 var clientData = PlutusDataAdapter.toClientLib(ourData);
 
-// cardano-client-lib → plutus-java
+// cardano-client-lib → julc
 var backToOurs = PlutusDataAdapter.fromClientLib(clientData);
 ```
 
@@ -393,12 +393,12 @@ Apply the Plutus Gradle plugin in your `build.gradle`:
 ```groovy
 plugins {
     id 'java'
-    id 'com.bloxbean.cardano.plutus' version '0.1.0-SNAPSHOT'
+    id 'com.bloxbean.cardano.julc' version '0.1.0-SNAPSHOT'
 }
 
 dependencies {
     // On-chain API for IDE support (annotations + stdlib stubs)
-    compileOnly 'com.bloxbean.cardano:plutus-onchain-api:0.1.0-SNAPSHOT'
+    compileOnly 'com.bloxbean.cardano:julc-onchain-api:0.1.0-SNAPSHOT'
 }
 ```
 
@@ -410,10 +410,10 @@ Create validator source files in `src/main/plutus/`:
 // src/main/plutus/VestingValidator.java
 package com.example.contracts;
 
-import com.bloxbean.cardano.plutus.onchain.annotation.Validator;
-import com.bloxbean.cardano.plutus.onchain.annotation.Entrypoint;
-import com.bloxbean.cardano.plutus.onchain.stdlib.ContextsLib;
-import com.bloxbean.cardano.plutus.core.PlutusData;
+import com.bloxbean.cardano.julc.onchain.annotation.Validator;
+import com.bloxbean.cardano.julc.onchain.annotation.Entrypoint;
+import com.bloxbean.cardano.julc.onchain.stdlib.ContextsLib;
+import com.bloxbean.cardano.julc.core.PlutusData;
 
 @Validator
 class VestingValidator {
@@ -489,13 +489,13 @@ repositories {
 
 dependencies {
     // On-chain API — annotations, ledger types, and stdlib stubs for IDE support
-    implementation 'com.bloxbean.cardano:plutus-onchain-api:0.1.0-SNAPSHOT'
+    implementation 'com.bloxbean.cardano:julc-onchain-api:0.1.0-SNAPSHOT'
 
     // Annotation processor — compiles validators during javac
-    annotationProcessor 'com.bloxbean.cardano:plutus-annotation-processor:0.1.0-SNAPSHOT'
+    annotationProcessor 'com.bloxbean.cardano:julc-annotation-processor:0.1.0-SNAPSHOT'
 
     // Runtime — load pre-compiled scripts from classpath
-    implementation 'com.bloxbean.cardano:plutus-annotation-processor:0.1.0-SNAPSHOT'
+    implementation 'com.bloxbean.cardano:julc-annotation-processor:0.1.0-SNAPSHOT'
 
     // cardano-client-lib — for off-chain transaction building
     implementation 'com.bloxbean.cardano:cardano-client-lib:0.7.1'
@@ -512,12 +512,12 @@ tasks.withType(JavaCompile).configureEach {
 <dependencies>
     <dependency>
         <groupId>com.bloxbean.cardano</groupId>
-        <artifactId>plutus-onchain-api</artifactId>
+        <artifactId>julc-onchain-api</artifactId>
         <version>0.1.0-SNAPSHOT</version>
     </dependency>
     <dependency>
         <groupId>com.bloxbean.cardano</groupId>
-        <artifactId>plutus-annotation-processor</artifactId>
+        <artifactId>julc-annotation-processor</artifactId>
         <version>0.1.0-SNAPSHOT</version>
     </dependency>
     <dependency>
@@ -541,7 +541,7 @@ tasks.withType(JavaCompile).configureEach {
                 <annotationProcessorPaths>
                     <path>
                         <groupId>com.bloxbean.cardano</groupId>
-                        <artifactId>plutus-annotation-processor</artifactId>
+                        <artifactId>julc-annotation-processor</artifactId>
                         <version>0.1.0-SNAPSHOT</version>
                     </path>
                 </annotationProcessorPaths>
@@ -559,11 +559,11 @@ Write your validator as a normal Java class in `src/main/java/`. You get full ID
 // src/main/java/com/example/VestingValidator.java
 package com.example;
 
-import com.bloxbean.cardano.plutus.onchain.annotation.Validator;
-import com.bloxbean.cardano.plutus.onchain.annotation.Entrypoint;
-import com.bloxbean.cardano.plutus.onchain.ledger.ScriptContext;
-import com.bloxbean.cardano.plutus.onchain.ledger.TxInfo;
-import com.bloxbean.cardano.plutus.core.PlutusData;
+import com.bloxbean.cardano.julc.onchain.annotation.Validator;
+import com.bloxbean.cardano.julc.onchain.annotation.Entrypoint;
+import com.bloxbean.cardano.julc.onchain.ledger.ScriptContext;
+import com.bloxbean.cardano.julc.onchain.ledger.TxInfo;
+import com.bloxbean.cardano.julc.core.PlutusData;
 import java.math.BigInteger;
 
 @Validator
@@ -584,11 +584,11 @@ For a minting policy, use `@MintingPolicy` instead of `@Validator`:
 ```java
 package com.example;
 
-import com.bloxbean.cardano.plutus.onchain.annotation.MintingPolicy;
-import com.bloxbean.cardano.plutus.onchain.annotation.Entrypoint;
-import com.bloxbean.cardano.plutus.onchain.ledger.ScriptContext;
-import com.bloxbean.cardano.plutus.onchain.ledger.TxInfo;
-import com.bloxbean.cardano.plutus.core.PlutusData;
+import com.bloxbean.cardano.julc.onchain.annotation.MintingPolicy;
+import com.bloxbean.cardano.julc.onchain.annotation.Entrypoint;
+import com.bloxbean.cardano.julc.onchain.ledger.ScriptContext;
+import com.bloxbean.cardano.julc.onchain.ledger.TxInfo;
+import com.bloxbean.cardano.julc.core.PlutusData;
 
 @MintingPolicy
 public class AuthorizedMinting {
@@ -606,7 +606,7 @@ When you run `javac` (via `gradle build` or `mvn compile`), the annotation proce
 
 1. Finds all classes annotated with `@Validator` or `@MintingPolicy`
 2. Reads the source file via the compiler's `Trees` API
-3. Compiles the validator to a UPLC program using `PlutusCompiler`
+3. Compiles the validator to a UPLC program using `JulcCompiler`
 4. FLAT-encodes and double-CBOR-wraps the program
 5. Writes the result to `META-INF/plutus/<ClassName>.plutus.json` in the class output directory
 
@@ -631,20 +631,20 @@ The JSON file contains the compiled script in text envelope format:
 
 ### Loading Scripts at Runtime
 
-Use `PlutusScriptLoader` to load pre-compiled scripts from the classpath:
+Use `JulcScriptLoader` to load pre-compiled scripts from the classpath:
 
 ```java
-import com.bloxbean.cardano.plutus.clientlib.PlutusScriptLoader;
+import com.bloxbean.cardano.julc.clientlib.JulcScriptLoader;
 import com.bloxbean.cardano.client.plutus.spec.PlutusV3Script;
 
 // Load the compiled script — ready for cardano-client-lib
-PlutusV3Script script = PlutusScriptLoader.load(VestingValidator.class);
+PlutusV3Script script = JulcScriptLoader.load(VestingValidator.class);
 
 // Get the script hash (also the policy ID for minting policies)
-String hash = PlutusScriptLoader.scriptHash(VestingValidator.class);
+String hash = JulcScriptLoader.scriptHash(VestingValidator.class);
 
 // Get the full output metadata
-ValidatorOutput output = PlutusScriptLoader.loadOutput(VestingValidator.class);
+ValidatorOutput output = JulcScriptLoader.loadOutput(VestingValidator.class);
 ```
 
 ### Using the Loaded Script with cardano-client-lib
@@ -655,7 +655,7 @@ import com.bloxbean.cardano.client.common.model.Networks;
 import com.bloxbean.cardano.client.quicktx.ScriptTx;
 
 // Load the pre-compiled script
-PlutusV3Script script = PlutusScriptLoader.load(VestingValidator.class);
+PlutusV3Script script = JulcScriptLoader.load(VestingValidator.class);
 
 // Derive the script address
 String scriptAddress = AddressProvider
@@ -680,7 +680,7 @@ var unlockTx = new ScriptTx()
 |---------|---------------------|---------------|
 | IDE support | Full (validators in `src/main/java`) | Partial (files in `src/main/plutus`) |
 | Build tool | Gradle + Maven + any javac | Gradle only |
-| Validator loading | `PlutusScriptLoader.load(MyValidator.class)` | Manual JSON file reading |
+| Validator loading | `JulcScriptLoader.load(MyValidator.class)` | Manual JSON file reading |
 | Configuration | Zero-config (just add dependency) | `plutus { }` block |
 | File location | `src/main/java/` (normal Java) | `src/main/plutus/` (separate) |
 
@@ -694,7 +694,7 @@ The current compiler supports a safe Java subset for on-chain code:
 - **No uninitialized variables**: All variables must be initialized at declaration
 - **No lambda `.apply()`**: Lambda expressions compile but calling methods on them is not yet supported
 - **Supported types**: `BigInteger`, `boolean`, `byte[]`, `PlutusData`, records, sealed interfaces
-- **No standard Java library**: Only `BigInteger` arithmetic and the plutus-java stdlib are available on-chain
+- **No standard Java library**: Only `BigInteger` arithmetic and the julc stdlib are available on-chain
 - **Supported control flow**: `if/else`, `switch` expressions, `for`/`while` loops (desugared to recursion), pattern matching
 - **Records**: Java records compile to Plutus Data constructors with field access support
 - **Sealed interfaces**: Sealed interfaces with record implementations compile to tagged union types

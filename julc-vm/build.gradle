@@ -1,0 +1,9 @@
+plugins {
+    id 'java-library'
+}
+
+description = 'Plutus VM SPI interface and facade (pure Java, no Scala dependency)'
+
+dependencies {
+    api project(':julc-core')
+}
