@@ -274,6 +274,307 @@ public final class ListsLib {
                 new PirTerm.Let("list_c", list, search));
     }
 
+    // =========================================================================
+    // New list operations: reverse, map, filter, concat, nth, take, drop, zip
+    // =========================================================================
+
+    /**
+     * Reverses a list.
+     * <p>
+     * Implemented as: foldl (\acc x -> MkCons(x, acc)) MkNilData list
+     *
+     * @param list PIR term representing a builtin list
+     * @return PIR term that evaluates to the reversed list
+     */
+    public static PirTerm reverse(PirTerm list) {
+        var accVar = new PirTerm.Var("acc_rev", new PirType.ListType(new PirType.DataType()));
+        var xVar = new PirTerm.Var("x_rev", new PirType.DataType());
+        var consExpr = new PirTerm.App(
+                new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkCons), xVar),
+                accVar);
+        var foldFn = new PirTerm.Lam("acc_rev", new PirType.ListType(new PirType.DataType()),
+                new PirTerm.Lam("x_rev", new PirType.DataType(), consExpr));
+        var emptyList = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilData),
+                new PirTerm.Const(Constant.unit()));
+        return foldl(foldFn, emptyList, list);
+    }
+
+    /**
+     * Maps a function over a list, returning a new list.
+     * <p>
+     * Implemented as: reverse(foldl (\acc x -> MkCons(f(x), acc)) MkNilData list)
+     *
+     * @param list PIR term representing a builtin list
+     * @param f    PIR term representing a function from element to element
+     * @return PIR term that evaluates to the mapped list
+     */
+    public static PirTerm map(PirTerm list, PirTerm f) {
+        var accVar = new PirTerm.Var("acc_map", new PirType.ListType(new PirType.DataType()));
+        var xVar = new PirTerm.Var("x_map", new PirType.DataType());
+        var mapped = new PirTerm.App(f, xVar);
+        var consExpr = new PirTerm.App(
+                new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkCons), mapped),
+                accVar);
+        var foldFn = new PirTerm.Lam("acc_map", new PirType.ListType(new PirType.DataType()),
+                new PirTerm.Lam("x_map", new PirType.DataType(), consExpr));
+        var emptyList = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilData),
+                new PirTerm.Const(Constant.unit()));
+        return reverse(foldl(foldFn, emptyList, list));
+    }
+
+    /**
+     * Filters a list, keeping only elements for which the predicate returns true.
+     * <p>
+     * Implemented as: reverse(foldl (\acc x -> if pred(x) then MkCons(x, acc) else acc) MkNilData list)
+     *
+     * @param list      PIR term representing a builtin list
+     * @param predicate PIR term representing a function from element to Bool
+     * @return PIR term that evaluates to the filtered list
+     */
+    public static PirTerm filter(PirTerm list, PirTerm predicate) {
+        var accVar = new PirTerm.Var("acc_flt", new PirType.ListType(new PirType.DataType()));
+        var xVar = new PirTerm.Var("x_flt", new PirType.DataType());
+        var predApp = new PirTerm.App(predicate, xVar);
+        var consExpr = new PirTerm.App(
+                new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkCons), xVar),
+                accVar);
+        var body = new PirTerm.IfThenElse(predApp, consExpr, accVar);
+        var foldFn = new PirTerm.Lam("acc_flt", new PirType.ListType(new PirType.DataType()),
+                new PirTerm.Lam("x_flt", new PirType.DataType(), body));
+        var emptyList = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilData),
+                new PirTerm.Const(Constant.unit()));
+        return reverse(foldl(foldFn, emptyList, list));
+    }
+
+    /**
+     * Concatenates two lists.
+     * <p>
+     * Implemented as: foldl (\acc x -> MkCons(x, acc)) b (reverse(a))
+     * i.e., reverse a, then prepend each element onto b.
+     *
+     * @param a PIR term representing the first list
+     * @param b PIR term representing the second list
+     * @return PIR term that evaluates to the concatenated list
+     */
+    public static PirTerm concat(PirTerm a, PirTerm b) {
+        var accVar = new PirTerm.Var("acc_cat", new PirType.ListType(new PirType.DataType()));
+        var xVar = new PirTerm.Var("x_cat", new PirType.DataType());
+        var consExpr = new PirTerm.App(
+                new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkCons), xVar),
+                accVar);
+        var foldFn = new PirTerm.Lam("acc_cat", new PirType.ListType(new PirType.DataType()),
+                new PirTerm.Lam("x_cat", new PirType.DataType(), consExpr));
+        return foldl(foldFn, b, reverse(a));
+    }
+
+    /**
+     * Returns the element at index n (0-based) in a list.
+     * <p>
+     * Implemented via LetRec: apply TailList n times, then HeadList.
+     * O(n) time complexity (linked list).
+     *
+     * @param list PIR term representing a builtin list
+     * @param n    PIR term representing an Integer index
+     * @return PIR term that evaluates to the element at index n
+     */
+    public static PirTerm nth(PirTerm list, PirTerm n) {
+        // letrec go = \lst -> \idx ->
+        //   IfThenElse(EqualsInteger(idx, 0),
+        //     HeadList(lst),
+        //     go(TailList(lst))(SubtractInteger(idx, 1)))
+        // in go(list)(n)
+        var lstVar = new PirTerm.Var("lst_nth", new PirType.ListType(new PirType.DataType()));
+        var idxVar = new PirTerm.Var("idx_nth", new PirType.IntegerType());
+        var goVar = new PirTerm.Var("go_nth", new PirType.FunType(
+                new PirType.ListType(new PirType.DataType()),
+                new PirType.FunType(new PirType.IntegerType(), new PirType.DataType())));
+
+        var isZero = new PirTerm.App(
+                new PirTerm.App(new PirTerm.Builtin(DefaultFun.EqualsInteger), idxVar),
+                new PirTerm.Const(Constant.integer(BigInteger.ZERO)));
+        var headExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), lstVar);
+        var tailExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), lstVar);
+        var decIdx = new PirTerm.App(
+                new PirTerm.App(new PirTerm.Builtin(DefaultFun.SubtractInteger), idxVar),
+                new PirTerm.Const(Constant.integer(BigInteger.ONE)));
+        var recurse = new PirTerm.App(new PirTerm.App(goVar, tailExpr), decIdx);
+
+        var body = new PirTerm.IfThenElse(isZero, headExpr, recurse);
+        var goBody = new PirTerm.Lam("lst_nth", new PirType.ListType(new PirType.DataType()),
+                new PirTerm.Lam("idx_nth", new PirType.IntegerType(), body));
+        var binding = new PirTerm.Binding("go_nth", goBody);
+
+        return new PirTerm.LetRec(List.of(binding),
+                new PirTerm.App(new PirTerm.App(goVar, list), n));
+    }
+
+    /**
+     * Takes the first n elements from a list.
+     * <p>
+     * Implemented via LetRec recursion, reversed at the end.
+     *
+     * @param list PIR term representing a builtin list
+     * @param n    PIR term representing the count (Integer)
+     * @return PIR term that evaluates to a list of the first n elements
+     */
+    public static PirTerm take(PirTerm list, PirTerm n) {
+        // letrec go = \lst -> \cnt -> \acc ->
+        //   IfThenElse(EqualsInteger(cnt, 0),
+        //     acc,
+        //     IfThenElse(NullList(lst),
+        //       acc,
+        //       go(TailList(lst))(SubtractInteger(cnt, 1))(MkCons(HeadList(lst), acc))))
+        // in reverse(go(list)(n)(MkNilData))
+        var lstVar = new PirTerm.Var("lst_tk", new PirType.ListType(new PirType.DataType()));
+        var cntVar = new PirTerm.Var("cnt_tk", new PirType.IntegerType());
+        var accVar = new PirTerm.Var("acc_tk", new PirType.ListType(new PirType.DataType()));
+        var goVar = new PirTerm.Var("go_tk", new PirType.FunType(
+                new PirType.ListType(new PirType.DataType()),
+                new PirType.FunType(new PirType.IntegerType(),
+                        new PirType.FunType(new PirType.ListType(new PirType.DataType()),
+                                new PirType.ListType(new PirType.DataType())))));
+
+        var isZero = new PirTerm.App(
+                new PirTerm.App(new PirTerm.Builtin(DefaultFun.EqualsInteger), cntVar),
+                new PirTerm.Const(Constant.integer(BigInteger.ZERO)));
+        var isNull = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), lstVar);
+        var headExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), lstVar);
+        var tailExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), lstVar);
+        var decCnt = new PirTerm.App(
+                new PirTerm.App(new PirTerm.Builtin(DefaultFun.SubtractInteger), cntVar),
+                new PirTerm.Const(Constant.integer(BigInteger.ONE)));
+        var consHead = new PirTerm.App(
+                new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkCons), headExpr), accVar);
+        var recurse = new PirTerm.App(new PirTerm.App(new PirTerm.App(goVar, tailExpr), decCnt), consHead);
+
+        var innerIf = new PirTerm.IfThenElse(isNull, accVar, recurse);
+        var body = new PirTerm.IfThenElse(isZero, accVar, innerIf);
+        var goBody = new PirTerm.Lam("lst_tk", new PirType.ListType(new PirType.DataType()),
+                new PirTerm.Lam("cnt_tk", new PirType.IntegerType(),
+                        new PirTerm.Lam("acc_tk", new PirType.ListType(new PirType.DataType()), body)));
+        var binding = new PirTerm.Binding("go_tk", goBody);
+
+        var emptyList = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilData),
+                new PirTerm.Const(Constant.unit()));
+        var collected = new PirTerm.LetRec(List.of(binding),
+                new PirTerm.App(new PirTerm.App(new PirTerm.App(goVar, list), n), emptyList));
+        return reverse(collected);
+    }
+
+    /**
+     * Drops the first n elements from a list.
+     * <p>
+     * Implemented via LetRec: apply TailList n times.
+     *
+     * @param list PIR term representing a builtin list
+     * @param n    PIR term representing the count (Integer)
+     * @return PIR term that evaluates to the remaining list after dropping n elements
+     */
+    public static PirTerm drop(PirTerm list, PirTerm n) {
+        // letrec go = \lst -> \cnt ->
+        //   IfThenElse(EqualsInteger(cnt, 0),
+        //     lst,
+        //     IfThenElse(NullList(lst),
+        //       lst,
+        //       go(TailList(lst))(SubtractInteger(cnt, 1))))
+        // in go(list)(n)
+        var lstVar = new PirTerm.Var("lst_drp", new PirType.ListType(new PirType.DataType()));
+        var cntVar = new PirTerm.Var("cnt_drp", new PirType.IntegerType());
+        var goVar = new PirTerm.Var("go_drp", new PirType.FunType(
+                new PirType.ListType(new PirType.DataType()),
+                new PirType.FunType(new PirType.IntegerType(),
+                        new PirType.ListType(new PirType.DataType()))));
+
+        var isZero = new PirTerm.App(
+                new PirTerm.App(new PirTerm.Builtin(DefaultFun.EqualsInteger), cntVar),
+                new PirTerm.Const(Constant.integer(BigInteger.ZERO)));
+        var isNull = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), lstVar);
+        var tailExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), lstVar);
+        var decCnt = new PirTerm.App(
+                new PirTerm.App(new PirTerm.Builtin(DefaultFun.SubtractInteger), cntVar),
+                new PirTerm.Const(Constant.integer(BigInteger.ONE)));
+        var recurse = new PirTerm.App(new PirTerm.App(goVar, tailExpr), decCnt);
+
+        var innerIf = new PirTerm.IfThenElse(isNull, lstVar, recurse);
+        var body = new PirTerm.IfThenElse(isZero, lstVar, innerIf);
+        var goBody = new PirTerm.Lam("lst_drp", new PirType.ListType(new PirType.DataType()),
+                new PirTerm.Lam("cnt_drp", new PirType.IntegerType(), body));
+        var binding = new PirTerm.Binding("go_drp", goBody);
+
+        return new PirTerm.LetRec(List.of(binding),
+                new PirTerm.App(new PirTerm.App(goVar, list), n));
+    }
+
+    /**
+     * Zips two lists into a list of pairs.
+     * <p>
+     * Each pair is encoded as ConstrData(0, [elemA, elemB]).
+     * Stops when either list is exhausted.
+     *
+     * @param a PIR term representing the first list
+     * @param b PIR term representing the second list
+     * @return PIR term that evaluates to a list of paired Data elements
+     */
+    public static PirTerm zip(PirTerm a, PirTerm b) {
+        // letrec go = \lstA -> \lstB -> \acc ->
+        //   IfThenElse(NullList(lstA),
+        //     acc,
+        //     IfThenElse(NullList(lstB),
+        //       acc,
+        //       let pair = MkPairData(HeadList(lstA), HeadList(lstB)) in
+        //       go(TailList(lstA))(TailList(lstB))(MkCons(pair, acc))))
+        // in reverse(go(a)(b)(MkNilData))
+        var lstAVar = new PirTerm.Var("lstA_zip", new PirType.ListType(new PirType.DataType()));
+        var lstBVar = new PirTerm.Var("lstB_zip", new PirType.ListType(new PirType.DataType()));
+        var accVar = new PirTerm.Var("acc_zip", new PirType.ListType(new PirType.DataType()));
+        var goVar = new PirTerm.Var("go_zip", new PirType.FunType(
+                new PirType.ListType(new PirType.DataType()),
+                new PirType.FunType(new PirType.ListType(new PirType.DataType()),
+                        new PirType.FunType(new PirType.ListType(new PirType.DataType()),
+                                new PirType.ListType(new PirType.DataType())))));
+
+        var nullA = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), lstAVar);
+        var nullB = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), lstBVar);
+        var headA = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), lstAVar);
+        var headB = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), lstBVar);
+        var tailA = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), lstAVar);
+        var tailB = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), lstBVar);
+
+        // Encode pair as MkPairData: creates a Pair<Data,Data>
+        // We wrap it as a list element using ListData([headA, headB]) to keep it as Data in the list
+        // Actually simpler: use ConstrData(0, [headA, headB]) — standard pair-as-record encoding
+        var emptyFieldsList = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilData),
+                new PirTerm.Const(Constant.unit()));
+        var pairFields = new PirTerm.App(
+                new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkCons), headB),
+                emptyFieldsList);
+        pairFields = new PirTerm.App(
+                new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkCons), headA),
+                pairFields);
+        var pairData = new PirTerm.App(
+                new PirTerm.App(new PirTerm.Builtin(DefaultFun.ConstrData),
+                        new PirTerm.Const(Constant.integer(BigInteger.ZERO))),
+                pairFields);
+
+        var consPair = new PirTerm.App(
+                new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkCons), pairData), accVar);
+        var recurse = new PirTerm.App(new PirTerm.App(new PirTerm.App(goVar, tailA), tailB), consPair);
+
+        var innerIf = new PirTerm.IfThenElse(nullB, accVar, recurse);
+        var body = new PirTerm.IfThenElse(nullA, accVar, innerIf);
+
+        var goBody = new PirTerm.Lam("lstA_zip", new PirType.ListType(new PirType.DataType()),
+                new PirTerm.Lam("lstB_zip", new PirType.ListType(new PirType.DataType()),
+                        new PirTerm.Lam("acc_zip", new PirType.ListType(new PirType.DataType()), body)));
+        var binding = new PirTerm.Binding("go_zip", goBody);
+
+        var emptyList = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilData),
+                new PirTerm.Const(Constant.unit()));
+        var collected = new PirTerm.LetRec(List.of(binding),
+                new PirTerm.App(new PirTerm.App(new PirTerm.App(goVar, a), b), emptyList));
+        return reverse(collected);
+    }
+
     /**
      * Build an equality check between two Data elements based on the expected element type.
      */

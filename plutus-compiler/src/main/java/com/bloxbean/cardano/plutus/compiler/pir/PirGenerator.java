@@ -147,6 +147,27 @@ public class PirGenerator {
     }
 
     private PirTerm generateIfStmt(IfStmt is, List<Statement> followingStmts, int followingIndex) {
+        boolean hasFollowing = followingIndex + 1 < followingStmts.size();
+        boolean noElse = is.getElseStmt().isEmpty();
+        boolean thenReturns = thenBranchReturns(is.getThenStmt());
+
+        // If-fallthrough optimization: when the then-branch returns, there is no else,
+        // and there are following statements, use the following statements as the else-branch
+        // of the IfThenElse instead of wrapping in a Let (where rest would always execute).
+        // This makes `if (cond) { return X; } return Y;` work correctly.
+        if (hasFollowing && noElse && thenReturns) {
+            var rest = generateStatements(followingStmts, followingIndex + 1);
+            if (is.getCondition() instanceof InstanceOfExpr ioe && ioe.getPattern().isPresent()
+                    && ioe.getPattern().get() instanceof TypePatternExpr tpe) {
+                // For instanceof pattern, generate with rest as the else-branch
+                return generateInstanceOfIf(ioe, tpe, is.getThenStmt(), rest);
+            } else {
+                var cond = generateExpression(is.getCondition());
+                var thenTerm = generateStatement(is.getThenStmt());
+                return new PirTerm.IfThenElse(cond, thenTerm, rest);
+            }
+        }
+
         PirTerm ifExpr;
         if (is.getCondition() instanceof InstanceOfExpr ioe && ioe.getPattern().isPresent()
                 && ioe.getPattern().get() instanceof TypePatternExpr tpe) {
@@ -161,11 +182,36 @@ public class PirGenerator {
         }
 
         // If there are statements following the if, wrap in a let
-        if (followingIndex + 1 < followingStmts.size()) {
+        if (hasFollowing) {
             var rest = generateStatements(followingStmts, followingIndex + 1);
             return new PirTerm.Let("_if", ifExpr, rest);
         }
         return ifExpr;
+    }
+
+    /**
+     * Check if a then-branch contains a return statement, meaning execution should not
+     * fall through to subsequent statements when the condition is true.
+     */
+    private boolean thenBranchReturns(Statement thenStmt) {
+        if (thenStmt instanceof ReturnStmt) {
+            return true;
+        }
+        if (thenStmt instanceof BlockStmt block) {
+            var stmts = block.getStatements();
+            if (!stmts.isEmpty()) {
+                var last = stmts.get(stmts.size() - 1);
+                if (last instanceof ReturnStmt) {
+                    return true;
+                }
+                // Also check for nested if with return (e.g., if (a) { if (b) { return X; } return Y; })
+                if (last instanceof IfStmt nestedIf) {
+                    return thenBranchReturns(nestedIf.getThenStmt())
+                            && nestedIf.getElseStmt().map(this::thenBranchReturns).orElse(false);
+                }
+            }
+        }
+        return false;
     }
 
     /**
@@ -175,6 +221,18 @@ public class PirGenerator {
      */
     private PirTerm generateInstanceOfIf(InstanceOfExpr ioe, TypePatternExpr tpe,
             Statement thenStmt, Optional<Statement> elseStmt) {
+        var elseTerm = elseStmt
+                .map(this::generateStatement)
+                .orElse(new PirTerm.Const(Constant.unit()));
+        return generateInstanceOfIf(ioe, tpe, thenStmt, elseTerm);
+    }
+
+    /**
+     * Generate an instanceof if-statement with a pre-computed else term.
+     * Used by the fallthrough optimization to pass following statements as the else-branch.
+     */
+    private PirTerm generateInstanceOfIf(InstanceOfExpr ioe, TypePatternExpr tpe,
+            Statement thenStmt, PirTerm elseTerm) {
         var condTerm = generateInstanceOf(ioe);
 
         var varName = tpe.getName().asString();
@@ -187,10 +245,6 @@ public class PirGenerator {
         var thenBody = generateStatement(thenStmt);
         var thenTerm = new PirTerm.Let(varName, scrutineeTerm, thenBody);
         symbolTable.popScope();
-
-        var elseTerm = elseStmt
-                .map(this::generateStatement)
-                .orElse(new PirTerm.Const(Constant.unit()));
 
         return new PirTerm.IfThenElse(condTerm, thenTerm, elseTerm);
     }

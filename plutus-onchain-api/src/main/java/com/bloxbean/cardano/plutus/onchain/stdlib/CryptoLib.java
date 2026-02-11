@@ -97,4 +97,19 @@ public final class CryptoLib {
     public static byte[] keccak_256(byte[] data) {
         return requireProvider().keccak_256(data);
     }
+
+    /** Verify ECDSA secp256k1 signature. Off-chain: not supported. */
+    public static boolean verifyEcdsaSecp256k1(byte[] vk, byte[] msg, byte[] sig) {
+        throw new UnsupportedOperationException("CryptoLib.verifyEcdsaSecp256k1() not supported off-chain.");
+    }
+
+    /** Verify Schnorr secp256k1 signature. Off-chain: not supported. */
+    public static boolean verifySchnorrSecp256k1(byte[] vk, byte[] msg, byte[] sig) {
+        throw new UnsupportedOperationException("CryptoLib.verifySchnorrSecp256k1() not supported off-chain.");
+    }
+
+    /** RIPEMD-160 hash. Off-chain: not supported. */
+    public static byte[] ripemd_160(byte[] bs) {
+        throw new UnsupportedOperationException("CryptoLib.ripemd_160() not supported off-chain.");
+    }
 }

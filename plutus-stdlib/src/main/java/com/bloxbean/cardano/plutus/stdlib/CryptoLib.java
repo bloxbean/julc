@@ -80,4 +80,46 @@ public final class CryptoLib {
     public static PirTerm keccak_256(PirTerm bs) {
         return new PirTerm.App(new PirTerm.Builtin(DefaultFun.Keccak_256), bs);
     }
+
+    /**
+     * Verify an ECDSA secp256k1 signature.
+     *
+     * @param vk  PIR term representing the verification key (ByteString)
+     * @param msg PIR term representing the message (ByteString)
+     * @param sig PIR term representing the signature (ByteString)
+     * @return PIR term that evaluates to Bool (true if signature is valid)
+     */
+    public static PirTerm verifyEcdsaSecp256k1(PirTerm vk, PirTerm msg, PirTerm sig) {
+        return new PirTerm.App(
+                new PirTerm.App(
+                        new PirTerm.App(new PirTerm.Builtin(DefaultFun.VerifyEcdsaSecp256k1Signature), vk),
+                        msg),
+                sig);
+    }
+
+    /**
+     * Verify a Schnorr secp256k1 signature.
+     *
+     * @param vk  PIR term representing the verification key (ByteString)
+     * @param msg PIR term representing the message (ByteString)
+     * @param sig PIR term representing the signature (ByteString)
+     * @return PIR term that evaluates to Bool (true if signature is valid)
+     */
+    public static PirTerm verifySchnorrSecp256k1(PirTerm vk, PirTerm msg, PirTerm sig) {
+        return new PirTerm.App(
+                new PirTerm.App(
+                        new PirTerm.App(new PirTerm.Builtin(DefaultFun.VerifySchnorrSecp256k1Signature), vk),
+                        msg),
+                sig);
+    }
+
+    /**
+     * RIPEMD-160 hash of a bytestring.
+     *
+     * @param bs PIR term representing a ByteString
+     * @return PIR term that evaluates to ByteString (20-byte hash)
+     */
+    public static PirTerm ripemd_160(PirTerm bs) {
+        return new PirTerm.App(new PirTerm.Builtin(DefaultFun.Ripemd_160), bs);
+    }
 }

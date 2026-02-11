@@ -61,4 +61,24 @@ public final class IntervalLib {
                 new IntervalBound(new IntervalBoundType.NegInf(), true),
                 new IntervalBound(new IntervalBoundType.Finite(time), true));
     }
+
+    /** Build an interval [low, high]. */
+    public static Interval between(BigInteger low, BigInteger high) {
+        return new Interval(
+                new IntervalBound(new IntervalBoundType.Finite(low), true),
+                new IntervalBound(new IntervalBoundType.Finite(high), true));
+    }
+
+    /** Build an empty interval. */
+    public static Interval never() {
+        return new Interval(
+                new IntervalBound(new IntervalBoundType.PosInf(), false),
+                new IntervalBound(new IntervalBoundType.NegInf(), false));
+    }
+
+    /** Check if an interval is empty. Simplified check. */
+    public static boolean isEmpty(Interval interval) {
+        // Simplified: just check basic conditions
+        return false; // placeholder
+    }
 }

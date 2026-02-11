@@ -63,6 +63,7 @@ public final class TypeMethodRegistry {
         registerDataEqualsMethods(reg);
         registerListMethods(reg);
         registerOptionalMethods(reg);
+        registerMapMethods(reg);
         return reg;
     }
 
@@ -264,6 +265,34 @@ public final class TypeMethodRegistry {
                         new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), scope),
                 scopeType -> scopeType);
 
+        // get(index): LetRec-based nth element access (O(n) linked list traversal)
+        reg.register("ListType", "get",
+                (scope, args, scopeType, argTypes) -> {
+                    if (args.isEmpty()) throw new CompilerException("get() requires an index argument");
+                    // LetRec pattern: go(lst, idx) = if idx == 0 then HeadList(lst) else go(TailList(lst), idx-1)
+                    var lstVar = new PirTerm.Var("lst_get", new PirType.ListType(new PirType.DataType()));
+                    var idxVar = new PirTerm.Var("idx_get", new PirType.IntegerType());
+                    var goVar = new PirTerm.Var("go_get", new PirType.FunType(
+                            new PirType.ListType(new PirType.DataType()),
+                            new PirType.FunType(new PirType.IntegerType(), new PirType.DataType())));
+
+                    var isZero = PirHelpers.builtinApp2(DefaultFun.EqualsInteger, idxVar,
+                            new PirTerm.Const(Constant.integer(BigInteger.ZERO)));
+                    var headExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), lstVar);
+                    var tailExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), lstVar);
+                    var decIdx = PirHelpers.builtinApp2(DefaultFun.SubtractInteger, idxVar,
+                            new PirTerm.Const(Constant.integer(BigInteger.ONE)));
+                    var recurse = new PirTerm.App(new PirTerm.App(goVar, tailExpr), decIdx);
+
+                    var body = new PirTerm.IfThenElse(isZero, headExpr, recurse);
+                    var goBody = new PirTerm.Lam("lst_get", new PirType.ListType(new PirType.DataType()),
+                            new PirTerm.Lam("idx_get", new PirType.IntegerType(), body));
+                    var binding = new PirTerm.Binding("go_get", goBody);
+                    return new PirTerm.LetRec(List.of(binding),
+                            new PirTerm.App(new PirTerm.App(goVar, scope), args.get(0)));
+                },
+                scopeType -> ((PirType.ListType) scopeType).elemType());
+
         // contains: recursive search with typed equality
         reg.register("ListType", "contains",
                 (scope, args, scopeType, argTypes) -> {
@@ -308,5 +337,118 @@ public final class TypeMethodRegistry {
                     return PirHelpers.wrapDecode(raw, opt.elemType());
                 },
                 scopeType -> ((PirType.OptionalType) scopeType).elemType());
+    }
+
+    // --- Map methods (3): get, containsKey, size ---
+
+    private static void registerMapMethods(TypeMethodRegistry reg) {
+        // get(key): LetRec lookup through association list pairs, returns Optional
+        reg.register("MapType", "get",
+                (scope, args, scopeType, argTypes) -> {
+                    if (args.isEmpty()) throw new CompilerException("map.get() requires a key argument");
+                    var mapVar = new PirTerm.Var("m_get", new PirType.MapType(new PirType.DataType(), new PirType.DataType()));
+                    var keyVar = new PirTerm.Var("k_get", new PirType.DataType());
+
+                    // UnMapData to get pair list
+                    var pairs = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), mapVar);
+                    var pairsVar = new PirTerm.Var("ps_get", new PirType.ListType(
+                            new PirType.PairType(new PirType.DataType(), new PirType.DataType())));
+
+                    // LetRec: go(pairs) = if NullList(pairs) then None else ...
+                    var lstVar = new PirTerm.Var("lst_get", new PirType.ListType(
+                            new PirType.PairType(new PirType.DataType(), new PirType.DataType())));
+                    var goVar = new PirTerm.Var("go_get", new PirType.FunType(
+                            new PirType.ListType(new PirType.PairType(new PirType.DataType(), new PirType.DataType())),
+                            new PirType.DataType()));
+
+                    var nullCheck = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), lstVar);
+                    // None = ConstrData(1, [])
+                    var mkNil = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilData),
+                            new PirTerm.Const(Constant.unit()));
+                    var none = new PirTerm.App(
+                            new PirTerm.App(new PirTerm.Builtin(DefaultFun.ConstrData),
+                                    new PirTerm.Const(Constant.integer(BigInteger.ONE))),
+                            mkNil);
+
+                    var headExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), lstVar);
+                    var hVar = new PirTerm.Var("h_get", new PirType.PairType(new PirType.DataType(), new PirType.DataType()));
+                    var fstH = new PirTerm.App(new PirTerm.Builtin(DefaultFun.FstPair), hVar);
+                    var sndH = new PirTerm.App(new PirTerm.Builtin(DefaultFun.SndPair), hVar);
+                    var eqCheck = PirHelpers.builtinApp2(DefaultFun.EqualsData, fstH, keyVar);
+
+                    // Some(value) = ConstrData(0, [value])
+                    var someFields = new PirTerm.App(
+                            new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkCons), sndH), mkNil);
+                    var some = new PirTerm.App(
+                            new PirTerm.App(new PirTerm.Builtin(DefaultFun.ConstrData),
+                                    new PirTerm.Const(Constant.integer(BigInteger.ZERO))),
+                            someFields);
+
+                    var tailExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), lstVar);
+                    var recurse = new PirTerm.App(goVar, tailExpr);
+                    var innerIf = new PirTerm.IfThenElse(eqCheck, some, recurse);
+                    var letHead = new PirTerm.Let("h_get", headExpr, innerIf);
+                    var outerIf = new PirTerm.IfThenElse(nullCheck, none, letHead);
+
+                    var goBody = new PirTerm.Lam("lst_get", new PirType.ListType(
+                            new PirType.PairType(new PirType.DataType(), new PirType.DataType())), outerIf);
+                    var binding = new PirTerm.Binding("go_get", goBody);
+                    var search = new PirTerm.LetRec(List.of(binding), new PirTerm.App(goVar, pairsVar));
+
+                    return new PirTerm.Let("m_get", scope,
+                            new PirTerm.Let("k_get", args.get(0),
+                                    new PirTerm.Let("ps_get", pairs, search)));
+                },
+                scopeType -> new PirType.OptionalType(((PirType.MapType) scopeType).valueType()));
+
+        // containsKey(key): LetRec search returning Bool
+        reg.register("MapType", "containsKey",
+                (scope, args, scopeType, argTypes) -> {
+                    if (args.isEmpty()) throw new CompilerException("map.containsKey() requires a key argument");
+                    var mapVar = new PirTerm.Var("m_ck", new PirType.MapType(new PirType.DataType(), new PirType.DataType()));
+                    var keyVar = new PirTerm.Var("k_ck", new PirType.DataType());
+
+                    var pairs = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), mapVar);
+                    var pairsVar = new PirTerm.Var("ps_ck", new PirType.ListType(
+                            new PirType.PairType(new PirType.DataType(), new PirType.DataType())));
+
+                    var lstVar = new PirTerm.Var("lst_ck", new PirType.ListType(
+                            new PirType.PairType(new PirType.DataType(), new PirType.DataType())));
+                    var goVar = new PirTerm.Var("go_ck", new PirType.FunType(
+                            new PirType.ListType(new PirType.PairType(new PirType.DataType(), new PirType.DataType())),
+                            new PirType.BoolType()));
+
+                    var nullCheck = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), lstVar);
+                    var headExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), lstVar);
+                    var hVar = new PirTerm.Var("h_ck", new PirType.PairType(new PirType.DataType(), new PirType.DataType()));
+                    var fstH = new PirTerm.App(new PirTerm.Builtin(DefaultFun.FstPair), hVar);
+                    var eqCheck = PirHelpers.builtinApp2(DefaultFun.EqualsData, fstH, keyVar);
+
+                    var tailExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), lstVar);
+                    var recurse = new PirTerm.App(goVar, tailExpr);
+                    var innerIf = new PirTerm.IfThenElse(eqCheck,
+                            new PirTerm.Const(Constant.bool(true)), recurse);
+                    var letHead = new PirTerm.Let("h_ck", headExpr, innerIf);
+                    var outerIf = new PirTerm.IfThenElse(nullCheck,
+                            new PirTerm.Const(Constant.bool(false)), letHead);
+
+                    var goBody = new PirTerm.Lam("lst_ck", new PirType.ListType(
+                            new PirType.PairType(new PirType.DataType(), new PirType.DataType())), outerIf);
+                    var binding = new PirTerm.Binding("go_ck", goBody);
+                    var search = new PirTerm.LetRec(List.of(binding), new PirTerm.App(goVar, pairsVar));
+
+                    return new PirTerm.Let("m_ck", scope,
+                            new PirTerm.Let("k_ck", args.get(0),
+                                    new PirTerm.Let("ps_ck", pairs, search)));
+                },
+                scopeType -> new PirType.BoolType());
+
+        // size(): foldl-based count of map pairs
+        reg.register("MapType", "size",
+                (scope, args, scopeType, argTypes) -> {
+                    var pairs = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), scope);
+                    return PirHelpers.generateListLength(pairs);
+                },
+                scopeType -> new PirType.IntegerType());
     }
 }

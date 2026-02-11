@@ -113,4 +113,45 @@ public final class ByteStringLib {
     public static boolean equals(byte[] a, byte[] b) {
         return java.util.Arrays.equals(a, b);
     }
+
+    /** Take first n bytes from a bytestring. */
+    public static byte[] take(byte[] bs, java.math.BigInteger n) {
+        int count = Math.min(n.intValueExact(), bs.length);
+        return java.util.Arrays.copyOf(bs, count);
+    }
+
+    /** Compare bytestrings: a < b. */
+    public static boolean lessThan(byte[] a, byte[] b) {
+        return java.util.Arrays.compare(a, b) < 0;
+    }
+
+    /** Compare bytestrings: a <= b. */
+    public static boolean lessThanEquals(byte[] a, byte[] b) {
+        return java.util.Arrays.compare(a, b) <= 0;
+    }
+
+    /** Convert integer to bytestring. Off-chain: not supported. */
+    public static byte[] integerToByteString(boolean endianness, java.math.BigInteger width, java.math.BigInteger i) {
+        throw new UnsupportedOperationException("ByteStringLib.integerToByteString() not fully supported off-chain.");
+    }
+
+    /** Convert bytestring to integer. Off-chain: not supported. */
+    public static java.math.BigInteger byteStringToInteger(boolean endianness, byte[] bs) {
+        throw new UnsupportedOperationException("ByteStringLib.byteStringToInteger() not fully supported off-chain.");
+    }
+
+    /** Encode string as UTF-8. */
+    public static byte[] encodeUtf8(String s) {
+        return s.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    /** Decode UTF-8 bytestring to string. */
+    public static String decodeUtf8(byte[] bs) {
+        return new String(bs, java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    /** Serialise Data to CBOR bytestring. Off-chain: not supported. */
+    public static byte[] serialiseData(com.bloxbean.cardano.plutus.core.PlutusData d) {
+        throw new UnsupportedOperationException("ByteStringLib.serialiseData() not supported off-chain.");
+    }
 }

@@ -69,6 +69,7 @@ class TypeMethodRegistryTest {
         assertTrue(registry.contains("ListType", "head"));
         assertTrue(registry.contains("ListType", "tail"));
         assertTrue(registry.contains("ListType", "contains"));
+        assertTrue(registry.contains("ListType", "get"));
     }
 
     @Test
@@ -76,6 +77,13 @@ class TypeMethodRegistryTest {
         assertTrue(registry.contains("OptionalType", "isPresent"));
         assertTrue(registry.contains("OptionalType", "isEmpty"));
         assertTrue(registry.contains("OptionalType", "get"));
+    }
+
+    @Test
+    void containsMapMethods() {
+        assertTrue(registry.contains("MapType", "get"));
+        assertTrue(registry.contains("MapType", "containsKey"));
+        assertTrue(registry.contains("MapType", "size"));
     }
 
     @Test
@@ -378,6 +386,83 @@ class TypeMethodRegistryTest {
                 new PirType.IntegerType(), List.of(new PirType.IntegerType()));
         assertTrue(result.isPresent());
         assertInstanceOf(PirTerm.IfThenElse.class, result.get());
+    }
+
+    @Test
+    void dispatchListGetReturnsPresent() {
+        var scope = new PirTerm.Var("myList", new PirType.ListType(new PirType.DataType()));
+        var idx = new PirTerm.Const(Constant.integer(BigInteger.valueOf(2)));
+        var result = registry.dispatch(scope, "get", List.of(idx),
+                new PirType.ListType(new PirType.DataType()), List.of(new PirType.IntegerType()));
+        assertTrue(result.isPresent());
+        assertInstanceOf(PirTerm.LetRec.class, result.get());
+    }
+
+    @Test
+    void dispatchMapGetReturnsPresent() {
+        var scope = new PirTerm.Var("myMap",
+                new PirType.MapType(new PirType.DataType(), new PirType.DataType()));
+        var key = new PirTerm.Const(Constant.integer(BigInteger.ONE));
+        var result = registry.dispatch(scope, "get", List.of(key),
+                new PirType.MapType(new PirType.DataType(), new PirType.DataType()),
+                List.of(new PirType.DataType()));
+        assertTrue(result.isPresent());
+        assertInstanceOf(PirTerm.Let.class, result.get());
+    }
+
+    @Test
+    void dispatchMapContainsKeyReturnsPresent() {
+        var scope = new PirTerm.Var("myMap",
+                new PirType.MapType(new PirType.DataType(), new PirType.DataType()));
+        var key = new PirTerm.Const(Constant.integer(BigInteger.ONE));
+        var result = registry.dispatch(scope, "containsKey", List.of(key),
+                new PirType.MapType(new PirType.DataType(), new PirType.DataType()),
+                List.of(new PirType.DataType()));
+        assertTrue(result.isPresent());
+        assertInstanceOf(PirTerm.Let.class, result.get());
+    }
+
+    @Test
+    void dispatchMapSizeReturnsPresent() {
+        var scope = new PirTerm.Var("myMap",
+                new PirType.MapType(new PirType.DataType(), new PirType.DataType()));
+        var result = registry.dispatch(scope, "size", List.of(),
+                new PirType.MapType(new PirType.DataType(), new PirType.DataType()), List.of());
+        assertTrue(result.isPresent());
+    }
+
+    @Test
+    void resolveReturnTypeListGet() {
+        var rt = registry.resolveReturnType(
+                new PirType.ListType(new PirType.ByteStringType()), "get");
+        assertTrue(rt.isPresent());
+        assertInstanceOf(PirType.ByteStringType.class, rt.get());
+    }
+
+    @Test
+    void resolveReturnTypeMapGet() {
+        var rt = registry.resolveReturnType(
+                new PirType.MapType(new PirType.ByteStringType(), new PirType.IntegerType()), "get");
+        assertTrue(rt.isPresent());
+        assertInstanceOf(PirType.OptionalType.class, rt.get());
+        var opt = (PirType.OptionalType) rt.get();
+        assertInstanceOf(PirType.IntegerType.class, opt.elemType());
+    }
+
+    @Test
+    void resolveReturnTypeMapContainsKey() {
+        var rt = registry.resolveReturnType(
+                new PirType.MapType(new PirType.DataType(), new PirType.DataType()), "containsKey");
+        assertTrue(rt.isPresent());
+        assertInstanceOf(PirType.BoolType.class, rt.get());
+    }
+
+    @Test
+    void resolveReturnTypeMapSize() {
+        var rt = registry.resolveReturnType(
+                new PirType.MapType(new PirType.DataType(), new PirType.DataType()), "size");
+        assertTrue(rt.isPresent());
+        assertInstanceOf(PirType.IntegerType.class, rt.get());
     }
 
     // --- Type key derivation ---

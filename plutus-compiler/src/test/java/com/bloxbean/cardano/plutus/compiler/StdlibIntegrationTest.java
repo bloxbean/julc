@@ -4,6 +4,7 @@ import com.bloxbean.cardano.plutus.compiler.pir.PirTerm;
 import com.bloxbean.cardano.plutus.compiler.pir.StdlibLookup;
 import com.bloxbean.cardano.plutus.compiler.pir.PirType;
 import com.bloxbean.cardano.plutus.core.*;
+import com.bloxbean.cardano.plutus.stdlib.StdlibRegistry;
 import com.bloxbean.cardano.plutus.vm.EvalResult;
 import com.bloxbean.cardano.plutus.vm.PlutusVm;
 import org.junit.jupiter.api.BeforeAll;
@@ -403,6 +404,114 @@ class StdlibIntegrationTest {
                     PlutusData.integer(0));
             var result = vm.evaluateWithArgs(program, List.of(ctx));
             assertTrue(result.isSuccess(), "Always-true minting should succeed: " + result);
+        }
+    }
+
+    @Nested
+    class JavaApiDelegation {
+
+        private static final StdlibRegistry STDLIB = StdlibRegistry.defaultRegistry();
+        private final PlutusCompiler stdlibCompiler = new PlutusCompiler(STDLIB::lookup);
+
+        private PlutusData mockCtx(PlutusData redeemer) {
+            return PlutusData.constr(0,
+                    PlutusData.integer(0),  // txInfo
+                    redeemer,               // redeemer
+                    PlutusData.integer(0)); // scriptInfo
+        }
+
+        @Test
+        void mathAbsPositive() {
+            var source = """
+                    import java.math.BigInteger;
+
+                    @Validator
+                    class TestValidator {
+                        record Datum(BigInteger value) {}
+
+                        @Entrypoint
+                        static boolean validate(Datum datum, PlutusData ctx) {
+                            BigInteger v = datum.value();
+                            BigInteger result = Math.abs(v);
+                            return result == 5;
+                        }
+                    }
+                    """;
+            var program = stdlibCompiler.compile(source).program();
+            var datum = PlutusData.constr(0, PlutusData.integer(5));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(datum)));
+            assertTrue(result.isSuccess(), "abs(5) should be 5: " + result);
+        }
+
+        @Test
+        void mathAbsNegative() {
+            var source = """
+                    import java.math.BigInteger;
+
+                    @Validator
+                    class TestValidator {
+                        record Datum(BigInteger value) {}
+
+                        @Entrypoint
+                        static boolean validate(Datum datum, PlutusData ctx) {
+                            BigInteger v = datum.value();
+                            BigInteger result = Math.abs(v);
+                            return result == 7;
+                        }
+                    }
+                    """;
+            var program = stdlibCompiler.compile(source).program();
+            var datum = PlutusData.constr(0, PlutusData.integer(-7));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(datum)));
+            assertTrue(result.isSuccess(), "abs(-7) should be 7: " + result);
+        }
+
+        @Test
+        void mathMax() {
+            var source = """
+                    import java.math.BigInteger;
+
+                    @Validator
+                    class TestValidator {
+                        record Datum(BigInteger a, BigInteger b) {}
+
+                        @Entrypoint
+                        static boolean validate(Datum datum, PlutusData ctx) {
+                            BigInteger a = datum.a();
+                            BigInteger b = datum.b();
+                            BigInteger result = Math.max(a, b);
+                            return result == 10;
+                        }
+                    }
+                    """;
+            var program = stdlibCompiler.compile(source).program();
+            var datum = PlutusData.constr(0, PlutusData.integer(3), PlutusData.integer(10));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(datum)));
+            assertTrue(result.isSuccess(), "max(3, 10) should be 10: " + result);
+        }
+
+        @Test
+        void mathMin() {
+            var source = """
+                    import java.math.BigInteger;
+
+                    @Validator
+                    class TestValidator {
+                        record Datum(BigInteger a, BigInteger b) {}
+
+                        @Entrypoint
+                        static boolean validate(Datum datum, PlutusData ctx) {
+                            BigInteger a = datum.a();
+                            BigInteger b = datum.b();
+                            BigInteger result = Math.min(a, b);
+                            return result == 3;
+                        }
+                    }
+                    """;
+            var program = stdlibCompiler.compile(source).program();
+            var datum = PlutusData.constr(0, PlutusData.integer(3), PlutusData.integer(10));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(datum)));
+            assertTrue(result.isSuccess(), "min(3, 10) should be 3: " + result);
         }
     }
 }

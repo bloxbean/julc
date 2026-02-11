@@ -95,4 +95,54 @@ public final class ContextsLib {
     public static void trace(String msg) {
         System.out.println("[TRACE] " + msg);
     }
+
+    /** Extract mint field from TxInfo. */
+    public static PlutusData txInfoMint(TxInfo txInfo) {
+        return PlutusData.UNIT; // placeholder
+    }
+
+    /** Extract fee from TxInfo. */
+    public static java.math.BigInteger txInfoFee(TxInfo txInfo) {
+        return txInfo.fee() != null ? txInfo.fee() : java.math.BigInteger.ZERO;
+    }
+
+    /** Extract txId from TxInfo. */
+    public static PlutusData txInfoId(TxInfo txInfo) {
+        return PlutusData.UNIT; // placeholder
+    }
+
+    /** Find the input being spent (for spending validators). */
+    public static PlutusData findOwnInput(ScriptContext ctx) {
+        return PlutusData.UNIT; // complex off-chain impl not needed
+    }
+
+    /** Get outputs continuing to the same script address. */
+    public static PlutusData getContinuingOutputs(ScriptContext ctx) {
+        return new PlutusData.ListData(new java.util.ArrayList<>());
+    }
+
+    /** Find a datum by its hash in the txInfo datums map. */
+    public static PlutusData findDatum(TxInfo txInfo, PlutusData hash) {
+        return PlutusData.UNIT; // placeholder
+    }
+
+    /** Get list of input values. */
+    public static PlutusData valueSpent(TxInfo txInfo) {
+        return new PlutusData.ListData(new java.util.ArrayList<>());
+    }
+
+    /** Get list of values paid to a given address. */
+    public static PlutusData valuePaid(TxInfo txInfo, PlutusData addr) {
+        return new PlutusData.ListData(new java.util.ArrayList<>());
+    }
+
+    /** Extract own script hash from ScriptContext. */
+    public static PlutusData ownHash(ScriptContext ctx) {
+        return PlutusData.UNIT; // placeholder
+    }
+
+    /** Filter outputs by script credential hash. */
+    public static PlutusData scriptOutputsAt(TxInfo txInfo, PlutusData scriptHash) {
+        return new PlutusData.ListData(new java.util.ArrayList<>());
+    }
 }

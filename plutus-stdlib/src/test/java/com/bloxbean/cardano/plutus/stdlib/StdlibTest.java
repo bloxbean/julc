@@ -979,13 +979,16 @@ class StdlibTest {
             assertTrue(reg.contains("ValuesLib", "lovelaceOf"));
             assertTrue(reg.contains("ValuesLib", "geq"));
             assertTrue(reg.contains("ValuesLib", "assetOf"));
-            // CryptoLib: 6 methods
+            // CryptoLib: 9 methods
             assertTrue(reg.contains("CryptoLib", "sha2_256"));
             assertTrue(reg.contains("CryptoLib", "blake2b_256"));
             assertTrue(reg.contains("CryptoLib", "verifyEd25519Signature"));
             assertTrue(reg.contains("CryptoLib", "sha3_256"));
             assertTrue(reg.contains("CryptoLib", "blake2b_224"));
             assertTrue(reg.contains("CryptoLib", "keccak_256"));
+            assertTrue(reg.contains("CryptoLib", "verifyEcdsaSecp256k1"));
+            assertTrue(reg.contains("CryptoLib", "verifySchnorrSecp256k1"));
+            assertTrue(reg.contains("CryptoLib", "ripemd_160"));
             // ContextsLib: 7 methods
             assertTrue(reg.contains("ContextsLib", "signedBy"));
             assertTrue(reg.contains("ContextsLib", "txInfoInputs"));
@@ -996,12 +999,25 @@ class StdlibTest {
             assertTrue(reg.contains("ContextsLib", "getRedeemer"));
             assertTrue(reg.contains("ContextsLib", "getSpendingDatum"));
             assertTrue(reg.contains("ContextsLib", "trace"));
-            // IntervalLib: 4 methods
+            assertTrue(reg.contains("ContextsLib", "txInfoMint"));
+            assertTrue(reg.contains("ContextsLib", "txInfoFee"));
+            assertTrue(reg.contains("ContextsLib", "txInfoId"));
+            assertTrue(reg.contains("ContextsLib", "findOwnInput"));
+            assertTrue(reg.contains("ContextsLib", "getContinuingOutputs"));
+            assertTrue(reg.contains("ContextsLib", "findDatum"));
+            assertTrue(reg.contains("ContextsLib", "valueSpent"));
+            assertTrue(reg.contains("ContextsLib", "valuePaid"));
+            assertTrue(reg.contains("ContextsLib", "ownHash"));
+            assertTrue(reg.contains("ContextsLib", "scriptOutputsAt"));
+            // IntervalLib: 7 methods
             assertTrue(reg.contains("IntervalLib", "contains"));
             assertTrue(reg.contains("IntervalLib", "always"));
             assertTrue(reg.contains("IntervalLib", "after"));
             assertTrue(reg.contains("IntervalLib", "before"));
-            // ByteStringLib: 9 methods
+            assertTrue(reg.contains("IntervalLib", "between"));
+            assertTrue(reg.contains("IntervalLib", "never"));
+            assertTrue(reg.contains("IntervalLib", "isEmpty"));
+            // ByteStringLib: 17 methods
             assertTrue(reg.contains("ByteStringLib", "at"));
             assertTrue(reg.contains("ByteStringLib", "cons"));
             assertTrue(reg.contains("ByteStringLib", "slice"));
@@ -1011,8 +1027,50 @@ class StdlibTest {
             assertTrue(reg.contains("ByteStringLib", "empty"));
             assertTrue(reg.contains("ByteStringLib", "zeros"));
             assertTrue(reg.contains("ByteStringLib", "equals"));
-            // Total: 8 + 3 + 6 + 9 + 4 + 9 = 39
-            assertEquals(39, reg.size());
+            assertTrue(reg.contains("ByteStringLib", "take"));
+            assertTrue(reg.contains("ByteStringLib", "lessThan"));
+            assertTrue(reg.contains("ByteStringLib", "lessThanEquals"));
+            assertTrue(reg.contains("ByteStringLib", "integerToByteString"));
+            assertTrue(reg.contains("ByteStringLib", "byteStringToInteger"));
+            assertTrue(reg.contains("ByteStringLib", "encodeUtf8"));
+            assertTrue(reg.contains("ByteStringLib", "decodeUtf8"));
+            assertTrue(reg.contains("ByteStringLib", "serialiseData"));
+            // MapLib: 9 methods
+            assertTrue(reg.contains("MapLib", "lookup"));
+            assertTrue(reg.contains("MapLib", "member"));
+            assertTrue(reg.contains("MapLib", "insert"));
+            assertTrue(reg.contains("MapLib", "delete"));
+            assertTrue(reg.contains("MapLib", "keys"));
+            assertTrue(reg.contains("MapLib", "values"));
+            assertTrue(reg.contains("MapLib", "toList"));
+            assertTrue(reg.contains("MapLib", "fromList"));
+            assertTrue(reg.contains("MapLib", "size"));
+            // MathLib: 8 methods
+            assertTrue(reg.contains("MathLib", "abs"));
+            assertTrue(reg.contains("MathLib", "max"));
+            assertTrue(reg.contains("MathLib", "min"));
+            assertTrue(reg.contains("MathLib", "divMod"));
+            assertTrue(reg.contains("MathLib", "quotRem"));
+            assertTrue(reg.contains("MathLib", "pow"));
+            assertTrue(reg.contains("MathLib", "sign"));
+            assertTrue(reg.contains("MathLib", "expMod"));
+            // BitwiseLib: 10 methods
+            assertTrue(reg.contains("BitwiseLib", "andByteString"));
+            assertTrue(reg.contains("BitwiseLib", "orByteString"));
+            assertTrue(reg.contains("BitwiseLib", "xorByteString"));
+            assertTrue(reg.contains("BitwiseLib", "complementByteString"));
+            assertTrue(reg.contains("BitwiseLib", "readBit"));
+            assertTrue(reg.contains("BitwiseLib", "writeBits"));
+            assertTrue(reg.contains("BitwiseLib", "shiftByteString"));
+            assertTrue(reg.contains("BitwiseLib", "rotateByteString"));
+            assertTrue(reg.contains("BitwiseLib", "countSetBits"));
+            assertTrue(reg.contains("BitwiseLib", "findFirstSetBit"));
+            // Java API delegates (Math.abs/max/min -> MathLib)
+            assertTrue(reg.contains("Math", "abs"));
+            assertTrue(reg.contains("Math", "max"));
+            assertTrue(reg.contains("Math", "min"));
+            // Total should match the number of reg.register() calls in StdlibRegistry
+            assertEquals(110, reg.size());
         }
 
         @Test

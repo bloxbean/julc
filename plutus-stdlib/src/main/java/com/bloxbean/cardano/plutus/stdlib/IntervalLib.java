@@ -124,6 +124,74 @@ public final class IntervalLib {
         return constrData(0, List.of(fromBound, toBound));
     }
 
+    /**
+     * Builds a PIR term representing the interval [low, high] (both inclusive).
+     */
+    public static PirTerm between(PirTerm low, PirTerm high) {
+        // Interval(Bound(Finite(low), True), Bound(Finite(high), True))
+        var lowData = new PirTerm.App(new PirTerm.Builtin(DefaultFun.IData), low);
+        var highData = new PirTerm.App(new PirTerm.Builtin(DefaultFun.IData), high);
+        var finiteLow = constrData(1, List.of(lowData));
+        var finiteHigh = constrData(1, List.of(highData));
+        var trueData = constrData(1, List.of());
+        var fromBound = constrData(0, List.of(finiteLow, trueData));
+        var toBound = constrData(0, List.of(finiteHigh, trueData));
+        return constrData(0, List.of(fromBound, toBound));
+    }
+
+    /**
+     * Builds a PIR term representing the empty interval (PosInf, NegInf).
+     */
+    public static PirTerm never() {
+        // Interval(Bound(PosInf, False), Bound(NegInf, False))
+        var posInf = constrData(2, List.of());
+        var negInf = constrData(0, List.of());
+        var falseData = constrData(0, List.of());
+        var fromBound = constrData(0, List.of(posInf, falseData));
+        var toBound = constrData(0, List.of(negInf, falseData));
+        return constrData(0, List.of(fromBound, toBound));
+    }
+
+    /**
+     * Checks if an interval is empty (no time satisfies both bounds).
+     * Simplified: checks if lower bound is PosInf or upper bound is NegInf.
+     */
+    public static PirTerm isEmpty(PirTerm interval) {
+        var intervalVar = new PirTerm.Var("iv_ie", new PirType.DataType());
+        var fields = sndPairUnconstData(intervalVar);
+        var fromBound = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), fields);
+        var toBound = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList),
+                new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), fields));
+
+        // Extract from bound type tag
+        var fromFields = sndPairUnconstData(fromBound);
+        var fromType = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), fromFields);
+        var fromTypeTag = new PirTerm.App(new PirTerm.Builtin(DefaultFun.FstPair),
+                new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnConstrData), fromType));
+
+        // Extract to bound type tag
+        var toFields = sndPairUnconstData(toBound);
+        var toType = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), toFields);
+        var toTypeTag = new PirTerm.App(new PirTerm.Builtin(DefaultFun.FstPair),
+                new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnConstrData), toType));
+
+        // If from-tag == 2 (PosInf): empty
+        var fromIsPosInf = new PirTerm.App(
+                new PirTerm.App(new PirTerm.Builtin(DefaultFun.EqualsInteger), fromTypeTag),
+                new PirTerm.Const(Constant.integer(BigInteger.valueOf(2))));
+        // If to-tag == 0 (NegInf): empty
+        var toIsNegInf = new PirTerm.App(
+                new PirTerm.App(new PirTerm.Builtin(DefaultFun.EqualsInteger), toTypeTag),
+                new PirTerm.Const(Constant.integer(BigInteger.ZERO)));
+
+        // Result: fromIsPosInf OR toIsNegInf
+        var result = new PirTerm.IfThenElse(fromIsPosInf,
+                new PirTerm.Const(Constant.bool(true)),
+                toIsNegInf);
+
+        return new PirTerm.Let("iv_ie", interval, result);
+    }
+
     // ---- Internal helpers ----
 
     /**
