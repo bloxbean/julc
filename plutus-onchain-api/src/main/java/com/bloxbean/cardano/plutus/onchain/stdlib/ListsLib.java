@@ -82,4 +82,15 @@ public final class ListsLib {
         }
         return items.getFirst();
     }
+
+    /** Return the first element of a typed list. */
+    @SuppressWarnings("unchecked")
+    public static <T> T head(java.util.List<T> list) {
+        return list.getFirst();
+    }
+
+    /** Return the tail (all elements except the first) of a typed list. */
+    public static <T> java.util.List<T> tail(java.util.List<T> list) {
+        return list.subList(1, list.size());
+    }
 }

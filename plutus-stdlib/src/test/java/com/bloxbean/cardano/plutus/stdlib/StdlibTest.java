@@ -966,13 +966,15 @@ class StdlibTest {
         @Test
         void defaultRegistryContainsAllEntries() {
             var reg = StdlibRegistry.defaultRegistry();
-            // ListsLib: 6 methods
+            // ListsLib: 8 methods
             assertTrue(reg.contains("ListsLib", "any"));
             assertTrue(reg.contains("ListsLib", "all"));
             assertTrue(reg.contains("ListsLib", "find"));
             assertTrue(reg.contains("ListsLib", "foldl"));
             assertTrue(reg.contains("ListsLib", "length"));
             assertTrue(reg.contains("ListsLib", "isEmpty"));
+            assertTrue(reg.contains("ListsLib", "head"));
+            assertTrue(reg.contains("ListsLib", "tail"));
             // ValuesLib: 3 methods
             assertTrue(reg.contains("ValuesLib", "lovelaceOf"));
             assertTrue(reg.contains("ValuesLib", "geq"));
@@ -999,8 +1001,18 @@ class StdlibTest {
             assertTrue(reg.contains("IntervalLib", "always"));
             assertTrue(reg.contains("IntervalLib", "after"));
             assertTrue(reg.contains("IntervalLib", "before"));
-            // Total: 6 + 3 + 6 + 9 + 4 = 28
-            assertEquals(28, reg.size());
+            // ByteStringLib: 9 methods
+            assertTrue(reg.contains("ByteStringLib", "at"));
+            assertTrue(reg.contains("ByteStringLib", "cons"));
+            assertTrue(reg.contains("ByteStringLib", "slice"));
+            assertTrue(reg.contains("ByteStringLib", "length"));
+            assertTrue(reg.contains("ByteStringLib", "drop"));
+            assertTrue(reg.contains("ByteStringLib", "append"));
+            assertTrue(reg.contains("ByteStringLib", "empty"));
+            assertTrue(reg.contains("ByteStringLib", "zeros"));
+            assertTrue(reg.contains("ByteStringLib", "equals"));
+            // Total: 8 + 3 + 6 + 9 + 4 + 9 = 39
+            assertEquals(39, reg.size());
         }
 
         @Test

@@ -25,24 +25,32 @@ public class PirGenerator {
     private final SymbolTable symbolTable;
     private final StdlibLookup stdlibLookup;
     private final TypeMethodRegistry typeMethodRegistry;
+    private final String libraryClassName; // non-null when compiling library class methods
     private String forEachAccumulatorVar; // non-null when compiling fold body
     private Function<PirTerm, PirTerm> breakContinueFn; // non-null when compiling break-capable fold body
     private Set<String> multiAccVars = Set.of(); // non-empty when compiling multi-acc fold body
 
     public PirGenerator(TypeResolver typeResolver, SymbolTable symbolTable) {
-        this(typeResolver, symbolTable, null, TypeMethodRegistry.defaultRegistry());
+        this(typeResolver, symbolTable, null, TypeMethodRegistry.defaultRegistry(), null);
     }
 
     public PirGenerator(TypeResolver typeResolver, SymbolTable symbolTable, StdlibLookup stdlibLookup) {
-        this(typeResolver, symbolTable, stdlibLookup, TypeMethodRegistry.defaultRegistry());
+        this(typeResolver, symbolTable, stdlibLookup, TypeMethodRegistry.defaultRegistry(), null);
     }
 
     public PirGenerator(TypeResolver typeResolver, SymbolTable symbolTable,
                         StdlibLookup stdlibLookup, TypeMethodRegistry typeMethodRegistry) {
+        this(typeResolver, symbolTable, stdlibLookup, typeMethodRegistry, null);
+    }
+
+    public PirGenerator(TypeResolver typeResolver, SymbolTable symbolTable,
+                        StdlibLookup stdlibLookup, TypeMethodRegistry typeMethodRegistry,
+                        String libraryClassName) {
         this.typeResolver = typeResolver;
         this.symbolTable = symbolTable;
         this.stdlibLookup = stdlibLookup;
         this.typeMethodRegistry = typeMethodRegistry;
+        this.libraryClassName = libraryClassName;
     }
 
     /**
@@ -139,12 +147,18 @@ public class PirGenerator {
     }
 
     private PirTerm generateIfStmt(IfStmt is, List<Statement> followingStmts, int followingIndex) {
-        var cond = generateExpression(is.getCondition());
-        var thenTerm = generateStatement(is.getThenStmt());
-        var elseTerm = is.getElseStmt()
-                .map(this::generateStatement)
-                .orElse(new PirTerm.Const(Constant.unit()));
-        var ifExpr = new PirTerm.IfThenElse(cond, thenTerm, elseTerm);
+        PirTerm ifExpr;
+        if (is.getCondition() instanceof InstanceOfExpr ioe && ioe.getPattern().isPresent()
+                && ioe.getPattern().get() instanceof TypePatternExpr tpe) {
+            ifExpr = generateInstanceOfIf(ioe, tpe, is.getThenStmt(), is.getElseStmt());
+        } else {
+            var cond = generateExpression(is.getCondition());
+            var thenTerm = generateStatement(is.getThenStmt());
+            var elseTerm = is.getElseStmt()
+                    .map(this::generateStatement)
+                    .orElse(new PirTerm.Const(Constant.unit()));
+            ifExpr = new PirTerm.IfThenElse(cond, thenTerm, elseTerm);
+        }
 
         // If there are statements following the if, wrap in a let
         if (followingIndex + 1 < followingStmts.size()) {
@@ -152,6 +166,33 @@ public class PirGenerator {
             return new PirTerm.Let("_if", ifExpr, rest);
         }
         return ifExpr;
+    }
+
+    /**
+     * Generate an if-statement where the condition is instanceof with pattern binding.
+     * For {@code if (x instanceof Foo f) { ... } else { ... }}, binds {@code f} to {@code x}
+     * with the variant's RecordType in the then-block scope.
+     */
+    private PirTerm generateInstanceOfIf(InstanceOfExpr ioe, TypePatternExpr tpe,
+            Statement thenStmt, Optional<Statement> elseStmt) {
+        var condTerm = generateInstanceOf(ioe);
+
+        var varName = tpe.getName().asString();
+        var varType = typeResolver.resolve(tpe.getType());
+
+        // Generate then-block with pattern variable bound to scrutinee
+        symbolTable.pushScope();
+        symbolTable.define(varName, varType);
+        var scrutineeTerm = generateExpression(ioe.getExpression());
+        var thenBody = generateStatement(thenStmt);
+        var thenTerm = new PirTerm.Let(varName, scrutineeTerm, thenBody);
+        symbolTable.popScope();
+
+        var elseTerm = elseStmt
+                .map(this::generateStatement)
+                .orElse(new PirTerm.Const(Constant.unit()));
+
+        return new PirTerm.IfThenElse(condTerm, thenTerm, elseTerm);
     }
 
     private PirTerm generateStatement(Statement stmt) {
@@ -172,6 +213,10 @@ public class PirGenerator {
             return generateExpression(es.getExpression());
         }
         if (stmt instanceof IfStmt is) {
+            if (is.getCondition() instanceof InstanceOfExpr ioe && ioe.getPattern().isPresent()
+                    && ioe.getPattern().get() instanceof TypePatternExpr tpe) {
+                return generateInstanceOfIf(ioe, tpe, is.getThenStmt(), is.getElseStmt());
+            }
             var cond = generateExpression(is.getCondition());
             var thenTerm = generateStatement(is.getThenStmt());
             var elseTerm = is.getElseStmt()
@@ -190,7 +235,18 @@ public class PirGenerator {
 
     public PirTerm generateExpression(Expression expr) {
         if (expr instanceof IntegerLiteralExpr ile) {
-            return new PirTerm.Const(Constant.integer(new BigInteger(ile.getValue())));
+            var val = ile.getValue();
+            BigInteger intVal;
+            if (val.startsWith("0x") || val.startsWith("0X")) {
+                intVal = new BigInteger(val.substring(2), 16);
+            } else if (val.startsWith("0b") || val.startsWith("0B")) {
+                intVal = new BigInteger(val.substring(2), 2);
+            } else if (val.length() > 1 && val.startsWith("0") && !val.equals("0")) {
+                intVal = new BigInteger(val.substring(1), 8);
+            } else {
+                intVal = new BigInteger(val);
+            }
+            return new PirTerm.Const(Constant.integer(intVal));
         }
         if (expr instanceof LongLiteralExpr lle) {
             var val = lle.getValue();
@@ -241,6 +297,10 @@ public class PirGenerator {
         }
         if (expr instanceof InstanceOfExpr ioe) {
             return generateInstanceOf(ioe);
+        }
+        if (expr instanceof CastExpr ce) {
+            // Casts are no-ops at UPLC level — everything is Data
+            return generateExpression(ce.getExpression());
         }
         if (expr instanceof AssignExpr ae && ae.getTarget() instanceof NameExpr ne) {
             var name = ne.getNameAsString();
@@ -403,10 +463,15 @@ public class PirGenerator {
             return generateFieldAccessFromMethod(scope, methodName, args);
         }
 
-        // Static method call
+        // Static method call — try simple name first, then qualified name for library methods
+        var resolvedName = methodName;
         var funType = symbolTable.lookup(methodName);
+        if (funType.isEmpty() && libraryClassName != null) {
+            resolvedName = libraryClassName + "." + methodName;
+            funType = symbolTable.lookup(resolvedName);
+        }
         if (funType.isPresent()) {
-            PirTerm fn = new PirTerm.Var(methodName, funType.get());
+            PirTerm fn = new PirTerm.Var(resolvedName, funType.get());
             for (var arg : args) {
                 fn = new PirTerm.App(fn, generateExpression(arg));
             }

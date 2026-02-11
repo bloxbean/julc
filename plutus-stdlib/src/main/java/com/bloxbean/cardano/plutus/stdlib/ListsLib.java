@@ -201,6 +201,18 @@ public final class ListsLib {
     }
 
     /**
+     * Returns the tail of a list (all elements except the head).
+     * <p>
+     * Equivalent to TailList(list).
+     *
+     * @param list PIR term representing a builtin list
+     * @return PIR term that evaluates to the tail list
+     */
+    public static PirTerm tail(PirTerm list) {
+        return new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), list);
+    }
+
+    /**
      * Returns true if the list contains the given target element.
      * <p>
      * Uses a recursive search with element equality based on the element type:

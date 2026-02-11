@@ -171,9 +171,18 @@ public class PlutusCompiler {
             body = new PirTerm.Let(mi.name(), mi.body(), body);
         }
 
-        // 14. Wrap library methods as outermost Let bindings
-        for (var libMethod : libraryRegistry.allMethods()) {
-            body = new PirTerm.Let(libMethod.qualifiedName(), libMethod.body(), body);
+        // 14. Wrap library methods as Let bindings (reversed order: leaf methods outermost)
+        var allLibMethods = new ArrayList<>(libraryRegistry.allMethods());
+        java.util.Collections.reverse(allLibMethods);
+        for (var libMethod : allLibMethods) {
+            if (containsVarRef(libMethod.body(), libMethod.qualifiedName())) {
+                // Self-recursive method: wrap in LetRec (Z-combinator)
+                body = new PirTerm.LetRec(
+                        List.of(new PirTerm.Binding(libMethod.qualifiedName(), libMethod.body())),
+                        body);
+            } else {
+                body = new PirTerm.Let(libMethod.qualifiedName(), libMethod.body(), body);
+            }
         }
 
         // 15. Wrap entrypoint for on-chain
@@ -277,17 +286,18 @@ public class PlutusCompiler {
                 if (cls.isInterface()) continue;
                 var className = cls.getNameAsString();
 
-                // Set up a local symbol table for methods within this library class
+                // Set up a local symbol table with qualified names for intra-library calls
                 var libSymbolTable = new SymbolTable();
                 for (var method : cls.getMethods()) {
                     if (method.isStatic()) {
                         var mType = computeMethodType(method, typeResolver);
-                        libSymbolTable.define(method.getNameAsString(), mType);
+                        libSymbolTable.define(className + "." + method.getNameAsString(), mType);
                     }
                 }
 
-                // Compile each static method
-                var libPirGenerator = new PirGenerator(typeResolver, libSymbolTable, stdlibLookup);
+                // Compile each static method (pass className for qualified name resolution)
+                var libPirGenerator = new PirGenerator(typeResolver, libSymbolTable, stdlibLookup,
+                        TypeMethodRegistry.defaultRegistry(), className);
                 for (var method : cls.getMethods()) {
                     if (method.isStatic()) {
                         var pirBody = libPirGenerator.generateMethod(method);
@@ -297,6 +307,25 @@ public class PlutusCompiler {
                 }
             }
         }
+    }
+
+    /** Check if a PIR term contains a Var reference with the given name (for self-recursion detection). */
+    private static boolean containsVarRef(PirTerm term, String name) {
+        return switch (term) {
+            case PirTerm.Var v -> v.name().equals(name);
+            case PirTerm.Let l -> containsVarRef(l.value(), name) || containsVarRef(l.body(), name);
+            case PirTerm.LetRec lr -> lr.bindings().stream().anyMatch(b -> containsVarRef(b.value(), name))
+                    || containsVarRef(lr.body(), name);
+            case PirTerm.Lam lam -> containsVarRef(lam.body(), name);
+            case PirTerm.App app -> containsVarRef(app.function(), name) || containsVarRef(app.argument(), name);
+            case PirTerm.IfThenElse ite -> containsVarRef(ite.cond(), name)
+                    || containsVarRef(ite.thenBranch(), name) || containsVarRef(ite.elseBranch(), name);
+            case PirTerm.DataConstr dc -> dc.fields().stream().anyMatch(f -> containsVarRef(f, name));
+            case PirTerm.DataMatch dm -> containsVarRef(dm.scrutinee(), name)
+                    || dm.branches().stream().anyMatch(b -> containsVarRef(b.body(), name));
+            case PirTerm.Trace t -> containsVarRef(t.message(), name) || containsVarRef(t.body(), name);
+            case PirTerm.Const _, PirTerm.Builtin _, PirTerm.Error _ -> false;
+        };
     }
 
     // --- Helper methods ---

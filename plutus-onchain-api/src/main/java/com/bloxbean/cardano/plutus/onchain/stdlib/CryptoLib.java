@@ -70,4 +70,31 @@ public final class CryptoLib {
     public static boolean verifyEd25519Signature(PlutusData pubKey, PlutusData msg, PlutusData sig) {
         return requireProvider().verifyEd25519Signature(toBytes(pubKey), toBytes(msg), toBytes(sig));
     }
+
+    // --- byte[] convenience overloads (used by @OnchainLibrary code) ---
+
+    /** Blake2b-256 hash (byte[] overload). */
+    public static byte[] blake2b_256(byte[] data) {
+        return requireProvider().blake2b_256(data);
+    }
+
+    /** SHA2-256 hash (byte[] overload). */
+    public static byte[] sha2_256(byte[] data) {
+        return requireProvider().sha2_256(data);
+    }
+
+    /** Blake2b-224 hash (byte[] overload). */
+    public static byte[] blake2b_224(byte[] data) {
+        return requireProvider().blake2b_224(data);
+    }
+
+    /** SHA3-256 hash (byte[] overload). */
+    public static byte[] sha3_256(byte[] data) {
+        return requireProvider().sha3_256(data);
+    }
+
+    /** Keccak-256 hash (byte[] overload). */
+    public static byte[] keccak_256(byte[] data) {
+        return requireProvider().keccak_256(data);
+    }
 }

@@ -144,7 +144,8 @@ public final class FlatWriter {
 
     /**
      * Encode a byte array using FLAT's pre-aligned chunked format.
-     * Writes a filler for alignment, then 255-byte chunks, then a 0x00 terminator.
+     * Writes a filler for alignment, then chunks (max 255 bytes each per FLAT spec),
+     * then a 0x00 terminator.
      */
     public void byteString(byte[] data) {
         filler(); // align to byte boundary

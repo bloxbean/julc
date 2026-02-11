@@ -114,6 +114,7 @@ public final class StdlibRegistry {
         registerCryptoLib(reg);
         registerContextsLib(reg);
         registerIntervalLib(reg);
+        registerByteStringLib(reg);
         return reg;
     }
 
@@ -146,6 +147,16 @@ public final class StdlibRegistry {
         reg.register("ListsLib", "isEmpty", args -> {
             requireArgs("ListsLib.isEmpty", args, 1);
             return ListsLib.isEmpty(args.get(0));
+        });
+
+        reg.register("ListsLib", "head", args -> {
+            requireArgs("ListsLib.head", args, 1);
+            return ListsLib.head(args.get(0));
+        });
+
+        reg.register("ListsLib", "tail", args -> {
+            requireArgs("ListsLib.tail", args, 1);
+            return ListsLib.tail(args.get(0));
         });
     }
 
@@ -264,6 +275,53 @@ public final class StdlibRegistry {
         reg.register("IntervalLib", "before", args -> {
             requireArgs("IntervalLib.before", args, 1);
             return IntervalLib.before(args.get(0));
+        });
+    }
+
+    private static void registerByteStringLib(StdlibRegistry reg) {
+        reg.register("ByteStringLib", "at", args -> {
+            requireArgs("ByteStringLib.at", args, 2);
+            return ByteStringLib.at(args.get(0), args.get(1));
+        });
+
+        reg.register("ByteStringLib", "cons", args -> {
+            requireArgs("ByteStringLib.cons", args, 2);
+            return ByteStringLib.cons(args.get(0), args.get(1));
+        });
+
+        reg.register("ByteStringLib", "slice", args -> {
+            requireArgs("ByteStringLib.slice", args, 3);
+            return ByteStringLib.slice(args.get(0), args.get(1), args.get(2));
+        });
+
+        reg.register("ByteStringLib", "length", args -> {
+            requireArgs("ByteStringLib.length", args, 1);
+            return ByteStringLib.length(args.get(0));
+        });
+
+        reg.register("ByteStringLib", "drop", args -> {
+            requireArgs("ByteStringLib.drop", args, 2);
+            return ByteStringLib.drop(args.get(0), args.get(1));
+        });
+
+        reg.register("ByteStringLib", "append", args -> {
+            requireArgs("ByteStringLib.append", args, 2);
+            return ByteStringLib.append(args.get(0), args.get(1));
+        });
+
+        reg.register("ByteStringLib", "empty", args -> {
+            requireArgs("ByteStringLib.empty", args, 0);
+            return ByteStringLib.empty();
+        });
+
+        reg.register("ByteStringLib", "zeros", args -> {
+            requireArgs("ByteStringLib.zeros", args, 1);
+            return ByteStringLib.zeros(args.get(0));
+        });
+
+        reg.register("ByteStringLib", "equals", args -> {
+            requireArgs("ByteStringLib.equals", args, 2);
+            return ByteStringLib.equals(args.get(0), args.get(1));
         });
     }
 

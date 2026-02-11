@@ -34,13 +34,26 @@ public class ScalusVmProvider implements PlutusVmProvider {
     @Override
     public EvalResult evaluateWithArgs(Program program, PlutusLanguage language,
                                        List<PlutusData> args, ExBudget budget) {
-        // Apply each argument as a Data constant to the program term
-        Term applied = program.term();
-        for (var arg : args) {
-            applied = Term.apply(applied, Term.const_(Constant.data(arg)));
+        try {
+            // FLAT-encode the base program (without args) to bridge to Scalus types
+            byte[] flatBytes = UplcFlatEncoder.encodeProgram(program);
+            var dbProgram = ProgramFlatCodec$.MODULE$.decodeFlat(flatBytes);
+
+            // Apply each argument directly as a Scalus Data constant.
+            // This bypasses CBOR encoding, avoiding Scalus's 64-byte bytestring limit.
+            scalus.uplc.Term scalusTerm = dbProgram.term();
+            for (var arg : args) {
+                scalus.uplc.builtin.Data scalusData = DataConverter.toScalus(arg);
+                scalus.uplc.Constant dataConst = new scalus.uplc.Constant.Data(scalusData);
+                scalusTerm = scalus.uplc.Term.Apply.apply(
+                        scalusTerm, scalus.uplc.Term.Const.apply(dataConst));
+            }
+
+            return evaluateScalusTerm(scalusTerm, language);
+        } catch (Exception e) {
+            String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+            return new EvalResult.Failure(errorMsg, ExBudget.ZERO, List.of());
         }
-        var appliedProgram = new Program(program.major(), program.minor(), program.patch(), applied);
-        return evaluateInternal(appliedProgram, language);
     }
 
     private EvalResult evaluateInternal(Program program, PlutusLanguage language) {
@@ -51,17 +64,25 @@ public class ScalusVmProvider implements PlutusVmProvider {
             // Decode via Scalus FLAT codec -> DeBruijnedProgram
             var dbProgram = ProgramFlatCodec$.MODULE$.decodeFlat(flatBytes);
 
+            return evaluateScalusTerm(dbProgram.term(), language);
+        } catch (Exception e) {
+            String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+            return new EvalResult.Failure(errorMsg, ExBudget.ZERO, List.of());
+        }
+    }
+
+    private EvalResult evaluateScalusTerm(scalus.uplc.Term scalusTerm, PlutusLanguage language) {
+        // Create budget/logger outside try so we can capture partial budget on error
+        var budgetSpender = new CountingBudgetSpender();
+        var logger = new Log();
+        try {
             // Create the appropriate VM
             PlutusVM vm = createVm(language);
-
-            // Set up budget tracking and logging
-            var budgetSpender = new CountingBudgetSpender();
-            var logger = new Log();
 
             // Evaluate using evaluateDeBruijnedTerm (general evaluation,
             // does not enforce script return-value semantics like evaluateScriptDebug)
             scalus.uplc.Term scalusResult = vm.evaluateDeBruijnedTerm(
-                    dbProgram.term(), budgetSpender, logger);
+                    scalusTerm, budgetSpender, logger);
 
             // Convert result
             Term resultTerm = TermConverter.fromScalus(scalusResult);
@@ -72,7 +93,10 @@ public class ScalusVmProvider implements PlutusVmProvider {
             return new EvalResult.Success(resultTerm, consumed, traces);
         } catch (Exception e) {
             String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
-            return new EvalResult.Failure(errorMsg, ExBudget.ZERO, List.of());
+            var budget = budgetSpender.getSpentBudget();
+            var consumed = new ExBudget(budget.steps(), budget.memory());
+            var traces = List.of(logger.getLogs());
+            return new EvalResult.Failure(errorMsg, consumed, traces);
         }
     }
 
