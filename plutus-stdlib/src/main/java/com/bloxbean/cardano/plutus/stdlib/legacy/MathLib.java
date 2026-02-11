@@ -1,4 +1,4 @@
-package com.bloxbean.cardano.plutus.stdlib;
+package com.bloxbean.cardano.plutus.stdlib.legacy;
 
 import com.bloxbean.cardano.plutus.compiler.pir.PirTerm;
 import com.bloxbean.cardano.plutus.compiler.pir.PirType;

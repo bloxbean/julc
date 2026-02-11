@@ -116,6 +116,26 @@ public final class SourceDiscovery {
             }
         }
 
+        // Tier 1b: Same-package sources (no import needed in Java)
+        String pkg = LibrarySourceResolver.extractPackageName(validatorSource);
+        if (!pkg.isEmpty()) {
+            Path pkgDir = sourceRoot.resolve(pkg.replace('.', '/'));
+            if (Files.isDirectory(pkgDir)) {
+                try (var stream = Files.list(pkgDir)) {
+                    stream.filter(p -> p.toString().endsWith(".java"))
+                            .forEach(p -> {
+                                try {
+                                    String src = Files.readString(p);
+                                    if (src.contains("@OnchainLibrary")) {
+                                        String name = p.getFileName().toString().replace(".java", "");
+                                        pool.putIfAbsent(name, src);
+                                    }
+                                } catch (IOException ignored) {}
+                            });
+                } catch (IOException ignored) {}
+            }
+        }
+
         // Also scan transitive imports from already-found sources
         // (LibrarySourceResolver.resolve handles this, but we need to add
         //  same-project sources for transitive deps too)

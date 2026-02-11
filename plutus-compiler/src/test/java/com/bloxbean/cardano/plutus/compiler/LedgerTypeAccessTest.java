@@ -3,6 +3,7 @@ package com.bloxbean.cardano.plutus.compiler;
 import com.bloxbean.cardano.plutus.compiler.pir.PirTerm;
 import com.bloxbean.cardano.plutus.compiler.pir.StdlibLookup;
 import com.bloxbean.cardano.plutus.core.*;
+import com.bloxbean.cardano.plutus.stdlib.StdlibRegistry;
 import com.bloxbean.cardano.plutus.vm.PlutusVm;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Nested;
@@ -517,7 +518,7 @@ class LedgerTypeAccessTest {
                         }
                     }
                     """;
-            var compiler = new PlutusCompiler(testStdlibLookup());
+            var compiler = new PlutusCompiler(StdlibRegistry.defaultRegistry()::lookup);
             var program = compiler.compile(source).program();
 
             var pkh = new byte[]{1, 2, 3, 4, 5};

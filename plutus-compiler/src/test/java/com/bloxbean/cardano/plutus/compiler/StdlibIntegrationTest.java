@@ -57,6 +57,11 @@ class StdlibIntegrationTest {
 
     @Nested
     class StdlibCallCompilation {
+
+        // Use the full StdlibRegistry so that @OnchainLibrary sources (ContextsLib, etc.)
+        // can be compiled from Java source with Builtins available.
+        private static final StdlibRegistry STDLIB = StdlibRegistry.defaultRegistry();
+
         @Test
         void compileValidatorWithGetTxInfo() {
             var source = """
@@ -69,7 +74,7 @@ class StdlibIntegrationTest {
                         }
                     }
                     """;
-            var compiler = new PlutusCompiler(testStdlibLookup());
+            var compiler = new PlutusCompiler(STDLIB::lookup);
             var result = compiler.compile(source);
             assertNotNull(result.program());
             assertFalse(result.hasErrors());
@@ -87,7 +92,7 @@ class StdlibIntegrationTest {
                         }
                     }
                     """;
-            var compiler = new PlutusCompiler(testStdlibLookup());
+            var compiler = new PlutusCompiler(STDLIB::lookup);
             var result = compiler.compile(source);
             assertNotNull(result.program());
         }
@@ -105,7 +110,7 @@ class StdlibIntegrationTest {
                         }
                     }
                     """;
-            var compiler = new PlutusCompiler(testStdlibLookup());
+            var compiler = new PlutusCompiler(STDLIB::lookup);
             var program = compiler.compile(source).program();
 
             // Build a valid ScriptContext: Constr(0, [txInfo, redeemer, scriptInfo])

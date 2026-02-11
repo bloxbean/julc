@@ -1097,6 +1097,57 @@ public class PirGenerator {
     }
 
     /**
+     * Refine accumulator types for multi-accumulator while loops.
+     * In UPLC, List(Data) and Data are distinct types. When an accumulator holds a list value
+     * (e.g., a list cursor advanced via tailList), it must be typed as ListType so that
+     * wrapEncode/wrapDecode apply ListData/UnListData during pack/unpack.
+     * Detects list/map types by scanning assignments in the while body for known patterns.
+     */
+    private List<PirType> refineAccumulatorTypes(WhileStmt ws, List<String> accNames, List<PirType> initialTypes) {
+        var result = new ArrayList<>(initialTypes);
+        for (int i = 0; i < accNames.size(); i++) {
+            if (!(result.get(i) instanceof PirType.DataType)) continue;
+            String accName = accNames.get(i);
+            boolean hasMkNilPairData = hasBuiltinAssignment(ws.getBody(), accName, "mkNilPairData");
+            if (hasMkNilPairData) {
+                result.set(i, new PirType.MapType(new PirType.DataType(), new PirType.DataType()));
+                continue;
+            }
+            boolean hasTailList = hasBuiltinAssignment(ws.getBody(), accName, "tailList");
+            boolean hasMkNilData = hasBuiltinAssignment(ws.getBody(), accName, "mkNilData");
+            boolean hasMkCons = hasBuiltinAssignment(ws.getBody(), accName, "mkCons");
+            if (hasTailList || hasMkNilData || hasMkCons) {
+                result.set(i, new PirType.ListType(new PirType.DataType()));
+            }
+        }
+        return result;
+    }
+
+    /** Check if any assignment to varName in the statement tree uses a specific Builtins method. */
+    private static boolean hasBuiltinAssignment(Statement body, String varName, String builtinMethod) {
+        var stmts = blockStmts(body);
+        for (var stmt : stmts) {
+            if (stmt instanceof ExpressionStmt es
+                    && es.getExpression() instanceof AssignExpr ae
+                    && ae.getTarget() instanceof NameExpr ne
+                    && ne.getNameAsString().equals(varName)
+                    && ae.getValue() instanceof MethodCallExpr mce
+                    && mce.getNameAsString().equals(builtinMethod)) {
+                return true;
+            }
+            if (stmt instanceof IfStmt is) {
+                if (hasBuiltinAssignment(is.getThenStmt(), varName, builtinMethod)) return true;
+                if (is.getElseStmt().isPresent()
+                        && hasBuiltinAssignment(is.getElseStmt().get(), varName, builtinMethod)) return true;
+            }
+            if (stmt instanceof BlockStmt bs) {
+                if (hasBuiltinAssignment(bs, varName, builtinMethod)) return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Find accumulator name from break patterns:
      *   1. Standalone assignment before if-with-break: acc = val; if (cond) { break; }
      *   2. Assignment inside if-with-break: if (cond) { acc = val; break; }
@@ -1195,6 +1246,13 @@ public class PirGenerator {
                 var rest = generateMultiAccStatements(stmts, index + 1, accNames, accTypes);
                 return new PirTerm.Let(ne.getNameAsString(), value, rest);
             }
+            // Non-accumulator assignment: shadow with Let binding
+            if (es.getExpression() instanceof AssignExpr ae
+                    && ae.getTarget() instanceof NameExpr ne) {
+                var value = generateExpression(ae.getValue());
+                var rest = generateMultiAccStatements(stmts, index + 1, accNames, accTypes);
+                return new PirTerm.Let(ne.getNameAsString(), value, rest);
+            }
             if (es.getExpression() instanceof VariableDeclarationExpr vde) {
                 var decl = vde.getVariable(0);
                 var name = decl.getNameAsString();
@@ -1262,6 +1320,13 @@ public class PirGenerator {
                     var rest = packAccumulators(accNames, accTypes);
                     return new PirTerm.Let(ne.getNameAsString(), value, rest);
                 }
+                var rest = generateMultiAccBreakAwareStmts(stmts, index + 1, accNames, accTypes, continueFn);
+                return new PirTerm.Let(ne.getNameAsString(), value, rest);
+            }
+            // Non-accumulator assignment: shadow with Let binding
+            if (es.getExpression() instanceof AssignExpr ae
+                    && ae.getTarget() instanceof NameExpr ne) {
+                var value = generateExpression(ae.getValue());
                 var rest = generateMultiAccBreakAwareStmts(stmts, index + 1, accNames, accTypes, continueFn);
                 return new PirTerm.Let(ne.getNameAsString(), value, rest);
             }
@@ -1385,9 +1450,11 @@ public class PirGenerator {
 
         } else if (accumulators.size() > 1) {
             // --- Multi-accumulator while loop ---
-            var accTypes = accumulators.stream()
+            var rawAccTypes = accumulators.stream()
                     .map(n -> symbolTable.lookup(n).orElse(new PirType.DataType()))
                     .toList();
+            // Refine types: detect List(Data) and Map accumulators from assignment patterns
+            var accTypes = refineAccumulatorTypes(ws, accumulators, rawAccTypes);
             var accInit = packAccumulators(accumulators, accTypes);
             var tupleAccName = "__acc_tuple";
             var tupleAccType = new PirType.ListType(new PirType.DataType());
@@ -1659,6 +1726,13 @@ public class PirGenerator {
             }
             // One-arg builtins: App(Builtin(f), a)
             if (fn instanceof PirTerm.Builtin b) {
+                // FstPair(UnConstrData(x)) → IntegerType (constr tag)
+                if (b.fun() == DefaultFun.FstPair
+                        && app.argument() instanceof PirTerm.App argApp
+                        && argApp.function() instanceof PirTerm.Builtin argB
+                        && argB.fun() == DefaultFun.UnConstrData) {
+                    return new PirType.IntegerType();
+                }
                 return inferBuiltinReturnType(b.fun());
             }
             // For applications of Var/lambda with known FunType, peel return type
@@ -1680,13 +1754,17 @@ public class PirGenerator {
         return switch (fun) {
             case AddInteger, SubtractInteger, MultiplyInteger, DivideInteger,
                  QuotientInteger, RemainderInteger, ModInteger,
-                 LengthOfByteString -> new PirType.IntegerType();
+                 LengthOfByteString, ByteStringToInteger -> new PirType.IntegerType();
             case EqualsInteger, LessThanInteger, LessThanEqualsInteger,
                  EqualsByteString, LessThanByteString, LessThanEqualsByteString,
                  EqualsString, EqualsData, NullList -> new PirType.BoolType();
             case AppendByteString, SliceByteString, ConsByteString,
                  Sha2_256, Sha3_256, Blake2b_256, EncodeUtf8 -> new PirType.ByteStringType();
             case AppendString, DecodeUtf8 -> new PirType.StringType();
+            // List-returning builtins: these return List(Data) in UPLC
+            case UnListData, TailList, MkCons, MkNilData -> new PirType.ListType(new PirType.DataType());
+            // Map-returning builtins: these return List(Pair(Data,Data)) in UPLC
+            case UnMapData, MkNilPairData -> new PirType.MapType(new PirType.DataType(), new PirType.DataType());
             default -> new PirType.DataType();
         };
     }

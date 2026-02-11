@@ -212,13 +212,25 @@ public class PlutusAnnotationProcessor extends AbstractProcessor {
 
     /**
      * Resolve library sources needed by the given validator source.
-     * Uses import statements to find matching @OnchainLibrary classes,
-     * then recursively resolves transitive imports.
+     * Uses import statements and same-package references to find matching
+     * {@code @OnchainLibrary} classes, then recursively resolves transitive imports.
      */
     private List<String> resolveLibrarySources(String validatorSource) {
         // Merge same-project + classpath into one pool (same-project takes precedence)
         var pool = new LinkedHashMap<>(classpathLibraries);
         pool.putAll(sameProjectLibraries);
+
+        // Add same-package libraries that aren't explicitly imported
+        String validatorPkg = LibrarySourceResolver.extractPackageName(validatorSource);
+        if (!validatorPkg.isEmpty()) {
+            for (var entry : sameProjectLibraries.entrySet()) {
+                String libPkg = LibrarySourceResolver.extractPackageName(entry.getValue());
+                if (validatorPkg.equals(libPkg)) {
+                    pool.put(entry.getKey(), entry.getValue());
+                }
+            }
+        }
+
         return LibrarySourceResolver.resolve(validatorSource, pool);
     }
 

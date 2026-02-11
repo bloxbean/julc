@@ -61,10 +61,16 @@ public class PlutusCompiler {
 
     /**
      * Compile a single-file validator to a UPLC Program.
-     * Delegates to multi-file compile with no library sources.
+     * Auto-discovers @OnchainLibrary sources from classpath (META-INF/plutus-sources/).
      */
     public CompileResult compile(String javaSource) {
-        return compile(javaSource, List.of());
+        var availableLibs = LibrarySourceResolver.scanClasspathSources(
+                Thread.currentThread().getContextClassLoader());
+        if (availableLibs.isEmpty()) {
+            return compile(javaSource, List.of());
+        }
+        var resolvedLibs = LibrarySourceResolver.resolve(javaSource, availableLibs);
+        return compile(javaSource, resolvedLibs);
     }
 
     /**
@@ -127,10 +133,10 @@ public class PlutusCompiler {
         // 7b. Validate parameter count matches script purpose
         validateEntrypointParams(entrypointMethod, scriptPurpose, validatorClass);
 
-        // 8. Compile library static methods to PIR
+        // 8. Compile library static methods to PIR (progressive lookup: each library sees previous)
         var libraryRegistry = new LibraryMethodRegistry();
         if (!libraryCus.isEmpty()) {
-            compileLibraryMethods(libraryCus, typeResolver, libraryRegistry);
+            compileLibraryMethods(libraryCus, typeResolver, libraryRegistry, stdlibLookup);
         }
 
         // 9. Compose lookup: stdlib + library methods
@@ -171,10 +177,9 @@ public class PlutusCompiler {
             body = new PirTerm.Let(mi.name(), mi.body(), body);
         }
 
-        // 14. Wrap library methods as Let bindings (reversed order: leaf methods outermost)
-        var allLibMethods = new ArrayList<>(libraryRegistry.allMethods());
-        java.util.Collections.reverse(allLibMethods);
-        for (var libMethod : allLibMethods) {
+        // 14. Wrap library methods as Let bindings (topologically sorted: dependencies outermost)
+        var sortedLibMethods = topoSortLibraryMethods(libraryRegistry.allMethods());
+        for (var libMethod : sortedLibMethods) {
             if (containsVarRef(libMethod.body(), libMethod.qualifiedName())) {
                 // Self-recursive method: wrap in LetRec (Z-combinator)
                 body = new PirTerm.LetRec(
@@ -280,30 +285,57 @@ public class PlutusCompiler {
     // --- Library compilation ---
 
     private void compileLibraryMethods(List<CompilationUnit> libCus, TypeResolver typeResolver,
-                                       LibraryMethodRegistry registry) {
-        for (var libCu : libCus) {
-            for (var cls : libCu.findAll(ClassOrInterfaceDeclaration.class)) {
-                if (cls.isInterface()) continue;
-                var className = cls.getNameAsString();
-
-                // Set up a local symbol table with qualified names for intra-library calls
-                var libSymbolTable = new SymbolTable();
-                for (var method : cls.getMethods()) {
-                    if (method.isStatic()) {
-                        var mType = computeMethodType(method, typeResolver);
-                        libSymbolTable.define(className + "." + method.getNameAsString(), mType);
-                    }
+                                       LibraryMethodRegistry registry, StdlibLookup effectiveLookup) {
+        // Multi-pass compilation: retry CUs that fail due to unresolved cross-library references.
+        // Each pass compiles CUs whose dependencies are already available, progressively growing
+        // the registry until all CUs are compiled or no further progress can be made.
+        var remaining = new ArrayList<>(libCus);
+        boolean progress = true;
+        while (progress && !remaining.isEmpty()) {
+            progress = false;
+            var nextRemaining = new ArrayList<CompilationUnit>();
+            for (var libCu : remaining) {
+                try {
+                    compileSingleLibraryCu(libCu, typeResolver, registry, effectiveLookup);
+                    progress = true;
+                } catch (Exception e) {
+                    nextRemaining.add(libCu);
                 }
+            }
+            remaining = nextRemaining;
+        }
+        // Final pass: compile any remaining CUs (will throw with proper error if unresolvable)
+        for (var libCu : remaining) {
+            compileSingleLibraryCu(libCu, typeResolver, registry, effectiveLookup);
+        }
+    }
 
-                // Compile each static method (pass className for qualified name resolution)
-                var libPirGenerator = new PirGenerator(typeResolver, libSymbolTable, stdlibLookup,
-                        TypeMethodRegistry.defaultRegistry(), className);
-                for (var method : cls.getMethods()) {
-                    if (method.isStatic()) {
-                        var pirBody = libPirGenerator.generateMethod(method);
-                        var mType = computeMethodType(method, typeResolver);
-                        registry.register(className, method.getNameAsString(), mType, pirBody);
-                    }
+    private void compileSingleLibraryCu(CompilationUnit libCu, TypeResolver typeResolver,
+                                         LibraryMethodRegistry registry, StdlibLookup effectiveLookup) {
+        for (var cls : libCu.findAll(ClassOrInterfaceDeclaration.class)) {
+            if (cls.isInterface()) continue;
+            var className = cls.getNameAsString();
+
+            // Set up a local symbol table with qualified names for intra-library calls
+            var libSymbolTable = new SymbolTable();
+            for (var method : cls.getMethods()) {
+                if (method.isStatic()) {
+                    var mType = computeMethodType(method, typeResolver);
+                    libSymbolTable.define(className + "." + method.getNameAsString(), mType);
+                }
+            }
+
+            // Use progressive lookup: stdlib + already-compiled libraries from previous CUs
+            var composedLookup = new CompositeStdlibLookup(effectiveLookup, registry);
+
+            // Compile each static method (pass className for qualified name resolution)
+            var libPirGenerator = new PirGenerator(typeResolver, libSymbolTable, composedLookup,
+                    TypeMethodRegistry.defaultRegistry(), className);
+            for (var method : cls.getMethods()) {
+                if (method.isStatic()) {
+                    var pirBody = libPirGenerator.generateMethod(method);
+                    var mType = computeMethodType(method, typeResolver);
+                    registry.register(className, method.getNameAsString(), mType, pirBody);
                 }
             }
         }
@@ -326,6 +358,65 @@ public class PlutusCompiler {
             case PirTerm.Trace t -> containsVarRef(t.message(), name) || containsVarRef(t.body(), name);
             case PirTerm.Const _, PirTerm.Builtin _, PirTerm.Error _ -> false;
         };
+    }
+
+    /**
+     * Topologically sort library methods so dependencies are outermost in the Let chain.
+     * Methods with no library dependencies come last (outermost); dependent methods come first (innermost).
+     * The iteration order of the result is suitable for direct use in the Let wrapping loop:
+     * first item = innermost, last item = outermost.
+     */
+    private static List<LibraryMethodRegistry.LibraryMethod> topoSortLibraryMethods(
+            java.util.Collection<LibraryMethodRegistry.LibraryMethod> methods) {
+        var methodList = new ArrayList<>(methods);
+        var methodMap = new java.util.LinkedHashMap<String, LibraryMethodRegistry.LibraryMethod>();
+        for (var m : methodList) methodMap.put(m.qualifiedName(), m);
+
+        // Build dependency graph: name -> set of library method names referenced in body
+        var deps = new java.util.LinkedHashMap<String, java.util.Set<String>>();
+        for (var m : methodList) {
+            var myDeps = new java.util.LinkedHashSet<String>();
+            for (var other : methodList) {
+                if (!other.qualifiedName().equals(m.qualifiedName())
+                        && containsVarRef(m.body(), other.qualifiedName())) {
+                    myDeps.add(other.qualifiedName());
+                }
+            }
+            deps.put(m.qualifiedName(), myDeps);
+        }
+
+        // Kahn's algorithm: emit methods whose dependencies are already emitted
+        var emitted = new java.util.LinkedHashSet<String>();
+        var result = new ArrayList<LibraryMethodRegistry.LibraryMethod>();
+        var remaining = new java.util.LinkedHashSet<>(deps.keySet());
+        while (!remaining.isEmpty()) {
+            String next = null;
+            for (String name : remaining) {
+                var d = new java.util.LinkedHashSet<>(deps.get(name));
+                d.removeAll(emitted);
+                if (d.isEmpty()) {
+                    next = name;
+                    break;
+                }
+            }
+            if (next == null) {
+                // Cycle — add remaining in original order
+                for (var m : methodList) {
+                    if (remaining.contains(m.qualifiedName())) {
+                        result.add(m);
+                    }
+                }
+                break;
+            }
+            remaining.remove(next);
+            emitted.add(next);
+            result.add(methodMap.get(next));
+        }
+
+        // Kahn's produces dependencies-first order (leaves first).
+        // For Let wrapping, we need dependents first (innermost), dependencies last (outermost).
+        java.util.Collections.reverse(result);
+        return result;
     }
 
     // --- Helper methods ---

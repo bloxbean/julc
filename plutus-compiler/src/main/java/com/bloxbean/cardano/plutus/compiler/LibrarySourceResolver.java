@@ -1,8 +1,8 @@
 package com.bloxbean.cardano.plutus.compiler;
 
-import java.io.File;
-import java.io.IOException;
+import java.io.*;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.*;
 import java.util.regex.Matcher;
@@ -32,6 +32,13 @@ public final class LibrarySourceResolver {
             "^\\s*import\\s+([a-zA-Z_][a-zA-Z0-9_.]*)\\.([A-Z][a-zA-Z0-9_]*)\\s*;",
             Pattern.MULTILINE);
 
+    /**
+     * Regex matching Java package declarations.
+     * Group 1 = the package name (e.g. {@code com.example.util}).
+     */
+    private static final Pattern PACKAGE_PATTERN = Pattern.compile(
+            "^\\s*package\\s+([a-zA-Z_][a-zA-Z0-9_.]*);", Pattern.MULTILINE);
+
     private LibrarySourceResolver() {}
 
     /**
@@ -47,6 +54,34 @@ public final class LibrarySourceResolver {
             classNames.add(matcher.group(2));
         }
         return classNames;
+    }
+
+    /**
+     * Extract the package name from a Java source file.
+     *
+     * @param source the Java source code
+     * @return the package name, or empty string if no package declaration
+     */
+    public static String extractPackageName(String source) {
+        Matcher m = PACKAGE_PATTERN.matcher(source);
+        return m.find() ? m.group(1) : "";
+    }
+
+    /**
+     * Extract class names referenced via {@code ClassName.method(} patterns.
+     * This catches same-package references that don't require imports.
+     *
+     * @param source the Java source code
+     * @return set of simple class names referenced in static-call patterns
+     */
+    public static Set<String> extractReferencedClassNames(String source) {
+        var pattern = Pattern.compile("\\b([A-Z][a-zA-Z0-9_]*)\\s*\\.\\s*[a-z][a-zA-Z0-9_]*\\s*\\(");
+        var result = new LinkedHashSet<String>();
+        var matcher = pattern.matcher(source);
+        while (matcher.find()) {
+            result.add(matcher.group(1));
+        }
+        return result;
     }
 
     /**
@@ -68,14 +103,41 @@ public final class LibrarySourceResolver {
     }
 
     /**
-     * Scan classpath for {@code META-INF/plutus-sources/} directories and collect
+     * Scan classpath for {@code META-INF/plutus-sources/} entries and collect
      * all {@code .java} files found within them.
+     * <p>
+     * Uses an {@code index.txt} manifest to discover sources reliably from both
+     * file-system directories and JAR archives.
      *
      * @param classLoader the classloader to scan
      * @return map of simpleName to source code
      */
     public static Map<String, String> scanClasspathSources(ClassLoader classLoader) {
         var result = new LinkedHashMap<String, String>();
+        // Primary: use index.txt manifest (works with both file: and jar: protocols)
+        try (var indexStream = classLoader.getResourceAsStream("META-INF/plutus-sources/index.txt")) {
+            if (indexStream != null) {
+                var indexContent = new String(indexStream.readAllBytes(), StandardCharsets.UTF_8);
+                for (String entry : indexContent.split("\n")) {
+                    entry = entry.strip();
+                    if (entry.isEmpty() || !entry.endsWith(".java")) continue;
+                    var resourcePath = "META-INF/plutus-sources/" + entry;
+                    try (var sourceStream = classLoader.getResourceAsStream(resourcePath)) {
+                        if (sourceStream != null) {
+                            var source = new String(sourceStream.readAllBytes(), StandardCharsets.UTF_8);
+                            var fileName = entry.contains("/")
+                                    ? entry.substring(entry.lastIndexOf('/') + 1) : entry;
+                            var simpleName = fileName.replace(".java", "");
+                            result.putIfAbsent(simpleName, source);
+                        }
+                    }
+                }
+                return result;
+            }
+        } catch (IOException e) {
+            // Fall through to directory scan
+        }
+        // Fallback: file-system directory scan (for development/IDE usage)
         try {
             var resources = classLoader.getResources("META-INF/plutus-sources/");
             while (resources.hasMoreElements()) {
@@ -85,7 +147,7 @@ public final class LibrarySourceResolver {
                 }
             }
         } catch (IOException e) {
-            // Silently ignore — caller can log if needed
+            // Silently ignore
         }
         return result;
     }
@@ -123,6 +185,8 @@ public final class LibrarySourceResolver {
     public static List<String> resolve(String source, Map<String, String> availableLibraries) {
         var resolved = new LinkedHashMap<String, String>();
         var toProcess = new ArrayDeque<>(extractImportedClassNames(source));
+        // Also seed from ClassName.method() references (same-package, no import needed)
+        toProcess.addAll(extractReferencedClassNames(source));
         var seen = new HashSet<String>();
 
         while (!toProcess.isEmpty()) {
@@ -139,7 +203,13 @@ public final class LibrarySourceResolver {
 
             resolved.put(simpleName, libSource);
 
+            // Transitively resolve both imports and referenced class names
             for (String transitiveName : extractImportedClassNames(libSource)) {
+                if (!seen.contains(transitiveName) && !resolved.containsKey(transitiveName)) {
+                    toProcess.add(transitiveName);
+                }
+            }
+            for (String transitiveName : extractReferencedClassNames(libSource)) {
                 if (!seen.contains(transitiveName) && !resolved.containsKey(transitiveName)) {
                     toProcess.add(transitiveName);
                 }

@@ -152,6 +152,123 @@ class LibrarySourceResolverTest {
     }
 
     @Test
+    void extractPackageName_findsPackage() {
+        String source = """
+                package com.example.validators;
+
+                @Validator
+                class MyValidator {}
+                """;
+
+        assertEquals("com.example.validators", LibrarySourceResolver.extractPackageName(source));
+    }
+
+    @Test
+    void extractPackageName_emptyForNoPackage() {
+        String source = """
+                @Validator
+                class MyValidator {}
+                """;
+
+        assertEquals("", LibrarySourceResolver.extractPackageName(source));
+    }
+
+    @Test
+    void extractReferencedClassNames_findsStaticCalls() {
+        String source = """
+                package com.example;
+
+                class MyValidator {
+                    static boolean validate() {
+                        var x = MathLib.abs(y);
+                        var z = ListsLib.length(list);
+                        return true;
+                    }
+                }
+                """;
+
+        Set<String> names = LibrarySourceResolver.extractReferencedClassNames(source);
+
+        assertTrue(names.contains("MathLib"));
+        assertTrue(names.contains("ListsLib"));
+    }
+
+    @Test
+    void extractReferencedClassNames_ignoresLowerCaseStarting() {
+        String source = """
+                var x = someVar.method(args);
+                """;
+
+        Set<String> names = LibrarySourceResolver.extractReferencedClassNames(source);
+        assertFalse(names.contains("someVar"));
+    }
+
+    @Test
+    void resolve_findsSamePackageReferences() {
+        // Validator calls MathLib.abs() without import (same package)
+        String validatorSource = """
+                package com.example;
+
+                @Validator
+                class MyValidator {
+                    static boolean validate() {
+                        var x = MathLib.abs(y);
+                        return true;
+                    }
+                }
+                """;
+
+        String mathLibSource = """
+                package com.example;
+
+                @OnchainLibrary
+                class MathLib {
+                    static long abs(long x) { if (x < 0) { return 0 - x; } else { return x; } }
+                }
+                """;
+
+        Map<String, String> pool = new LinkedHashMap<>();
+        pool.put("MathLib", mathLibSource);
+
+        var resolved = LibrarySourceResolver.resolve(validatorSource, pool);
+
+        assertEquals(1, resolved.size());
+        assertEquals(mathLibSource, resolved.get(0));
+    }
+
+    @Test
+    void resolve_findsTransitiveSamePackageRef() {
+        // Validator imports A, and A calls B.helper() without importing B (same package)
+        String validatorSource = """
+                import com.example.A;
+
+                class MyValidator {}
+                """;
+
+        String aSource = """
+                package com.example;
+                class A {
+                    static int calc() { return B.helper(42); }
+                }
+                """;
+
+        String bSource = """
+                package com.example;
+                class B {
+                    static int helper(int x) { return x; }
+                }
+                """;
+
+        Map<String, String> pool = new LinkedHashMap<>();
+        pool.put("A", aSource);
+        pool.put("B", bSource);
+
+        var resolved = LibrarySourceResolver.resolve(validatorSource, pool);
+
+        assertEquals(2, resolved.size());
+    }
+
+    @Test
     void scanClasspathSources_returnsEmptyWhenNothingOnClasspath() {
         // Use a classloader that has no META-INF/plutus-sources/
         var result = LibrarySourceResolver.scanClasspathSources(

@@ -4,6 +4,7 @@ import com.bloxbean.cardano.plutus.compiler.pir.PirTerm;
 import com.bloxbean.cardano.plutus.compiler.pir.PirType;
 import com.bloxbean.cardano.plutus.compiler.uplc.UplcGenerator;
 import com.bloxbean.cardano.plutus.core.*;
+import com.bloxbean.cardano.plutus.stdlib.legacy.*;
 import com.bloxbean.cardano.plutus.vm.EvalResult;
 import com.bloxbean.cardano.plutus.vm.PlutusVm;
 import org.junit.jupiter.api.BeforeAll;
@@ -966,111 +967,80 @@ class StdlibTest {
         @Test
         void defaultRegistryContainsAllEntries() {
             var reg = StdlibRegistry.defaultRegistry();
-            // ListsLib: 8 methods
+            // ListsLib HOF: 7 methods (non-HOF now compiled from Java source)
             assertTrue(reg.contains("ListsLib", "any"));
             assertTrue(reg.contains("ListsLib", "all"));
             assertTrue(reg.contains("ListsLib", "find"));
             assertTrue(reg.contains("ListsLib", "foldl"));
-            assertTrue(reg.contains("ListsLib", "length"));
-            assertTrue(reg.contains("ListsLib", "isEmpty"));
-            assertTrue(reg.contains("ListsLib", "head"));
-            assertTrue(reg.contains("ListsLib", "tail"));
-            // ValuesLib: 3 methods
-            assertTrue(reg.contains("ValuesLib", "lovelaceOf"));
-            assertTrue(reg.contains("ValuesLib", "geq"));
-            assertTrue(reg.contains("ValuesLib", "assetOf"));
-            // CryptoLib: 9 methods
-            assertTrue(reg.contains("CryptoLib", "sha2_256"));
-            assertTrue(reg.contains("CryptoLib", "blake2b_256"));
-            assertTrue(reg.contains("CryptoLib", "verifyEd25519Signature"));
-            assertTrue(reg.contains("CryptoLib", "sha3_256"));
-            assertTrue(reg.contains("CryptoLib", "blake2b_224"));
-            assertTrue(reg.contains("CryptoLib", "keccak_256"));
-            assertTrue(reg.contains("CryptoLib", "verifyEcdsaSecp256k1"));
-            assertTrue(reg.contains("CryptoLib", "verifySchnorrSecp256k1"));
-            assertTrue(reg.contains("CryptoLib", "ripemd_160"));
-            // ContextsLib: 7 methods
-            assertTrue(reg.contains("ContextsLib", "signedBy"));
-            assertTrue(reg.contains("ContextsLib", "txInfoInputs"));
-            assertTrue(reg.contains("ContextsLib", "txInfoOutputs"));
-            assertTrue(reg.contains("ContextsLib", "txInfoSignatories"));
-            assertTrue(reg.contains("ContextsLib", "txInfoValidRange"));
-            assertTrue(reg.contains("ContextsLib", "getTxInfo"));
-            assertTrue(reg.contains("ContextsLib", "getRedeemer"));
-            assertTrue(reg.contains("ContextsLib", "getSpendingDatum"));
+            assertTrue(reg.contains("ListsLib", "map"));
+            assertTrue(reg.contains("ListsLib", "filter"));
+            assertTrue(reg.contains("ListsLib", "zip"));
+            // Migrated to Java source: length, isEmpty, head, tail, reverse, concat, nth, take, drop
+            assertFalse(reg.contains("ListsLib", "length"));
+            assertFalse(reg.contains("ListsLib", "isEmpty"));
+            // ContextsLib: only trace stays as PIR (uses UPLC Text type)
             assertTrue(reg.contains("ContextsLib", "trace"));
-            assertTrue(reg.contains("ContextsLib", "txInfoMint"));
-            assertTrue(reg.contains("ContextsLib", "txInfoFee"));
-            assertTrue(reg.contains("ContextsLib", "txInfoId"));
-            assertTrue(reg.contains("ContextsLib", "findOwnInput"));
-            assertTrue(reg.contains("ContextsLib", "getContinuingOutputs"));
-            assertTrue(reg.contains("ContextsLib", "findDatum"));
-            assertTrue(reg.contains("ContextsLib", "valueSpent"));
-            assertTrue(reg.contains("ContextsLib", "valuePaid"));
-            assertTrue(reg.contains("ContextsLib", "ownHash"));
-            assertTrue(reg.contains("ContextsLib", "scriptOutputsAt"));
-            // IntervalLib: 7 methods
-            assertTrue(reg.contains("IntervalLib", "contains"));
-            assertTrue(reg.contains("IntervalLib", "always"));
-            assertTrue(reg.contains("IntervalLib", "after"));
-            assertTrue(reg.contains("IntervalLib", "before"));
-            assertTrue(reg.contains("IntervalLib", "between"));
-            assertTrue(reg.contains("IntervalLib", "never"));
-            assertTrue(reg.contains("IntervalLib", "isEmpty"));
-            // ByteStringLib: 17 methods
-            assertTrue(reg.contains("ByteStringLib", "at"));
-            assertTrue(reg.contains("ByteStringLib", "cons"));
-            assertTrue(reg.contains("ByteStringLib", "slice"));
-            assertTrue(reg.contains("ByteStringLib", "length"));
-            assertTrue(reg.contains("ByteStringLib", "drop"));
-            assertTrue(reg.contains("ByteStringLib", "append"));
-            assertTrue(reg.contains("ByteStringLib", "empty"));
-            assertTrue(reg.contains("ByteStringLib", "zeros"));
-            assertTrue(reg.contains("ByteStringLib", "equals"));
-            assertTrue(reg.contains("ByteStringLib", "take"));
-            assertTrue(reg.contains("ByteStringLib", "lessThan"));
-            assertTrue(reg.contains("ByteStringLib", "lessThanEquals"));
-            assertTrue(reg.contains("ByteStringLib", "integerToByteString"));
-            assertTrue(reg.contains("ByteStringLib", "byteStringToInteger"));
-            assertTrue(reg.contains("ByteStringLib", "encodeUtf8"));
-            assertTrue(reg.contains("ByteStringLib", "decodeUtf8"));
-            assertTrue(reg.contains("ByteStringLib", "serialiseData"));
-            // MapLib: 9 methods
-            assertTrue(reg.contains("MapLib", "lookup"));
-            assertTrue(reg.contains("MapLib", "member"));
-            assertTrue(reg.contains("MapLib", "insert"));
-            assertTrue(reg.contains("MapLib", "delete"));
-            assertTrue(reg.contains("MapLib", "keys"));
-            assertTrue(reg.contains("MapLib", "values"));
-            assertTrue(reg.contains("MapLib", "toList"));
-            assertTrue(reg.contains("MapLib", "fromList"));
-            assertTrue(reg.contains("MapLib", "size"));
-            // MathLib: 8 methods
-            assertTrue(reg.contains("MathLib", "abs"));
-            assertTrue(reg.contains("MathLib", "max"));
-            assertTrue(reg.contains("MathLib", "min"));
-            assertTrue(reg.contains("MathLib", "divMod"));
-            assertTrue(reg.contains("MathLib", "quotRem"));
-            assertTrue(reg.contains("MathLib", "pow"));
-            assertTrue(reg.contains("MathLib", "sign"));
-            assertTrue(reg.contains("MathLib", "expMod"));
-            // BitwiseLib: 10 methods
-            assertTrue(reg.contains("BitwiseLib", "andByteString"));
-            assertTrue(reg.contains("BitwiseLib", "orByteString"));
-            assertTrue(reg.contains("BitwiseLib", "xorByteString"));
-            assertTrue(reg.contains("BitwiseLib", "complementByteString"));
-            assertTrue(reg.contains("BitwiseLib", "readBit"));
-            assertTrue(reg.contains("BitwiseLib", "writeBits"));
-            assertTrue(reg.contains("BitwiseLib", "shiftByteString"));
-            assertTrue(reg.contains("BitwiseLib", "rotateByteString"));
-            assertTrue(reg.contains("BitwiseLib", "countSetBits"));
-            assertTrue(reg.contains("BitwiseLib", "findFirstSetBit"));
-            // Java API delegates (Math.abs/max/min -> MathLib)
+            // All other ContextsLib methods migrated to Java source
+            assertFalse(reg.contains("ContextsLib", "signedBy"));
+            assertFalse(reg.contains("ContextsLib", "getTxInfo"));
+            // ValuesLib: all migrated to Java source
+            assertFalse(reg.contains("ValuesLib", "lovelaceOf"));
+            assertFalse(reg.contains("ValuesLib", "geq"));
+            assertFalse(reg.contains("ValuesLib", "assetOf"));
+            // CryptoLib: all migrated to Java source
+            assertFalse(reg.contains("CryptoLib", "sha2_256"));
+            assertFalse(reg.contains("CryptoLib", "blake2b_256"));
+            // IntervalLib: all migrated to Java source
+            assertFalse(reg.contains("IntervalLib", "contains"));
+            assertFalse(reg.contains("IntervalLib", "always"));
+            // ByteStringLib: all migrated to Java source
+            assertFalse(reg.contains("ByteStringLib", "at"));
+            assertFalse(reg.contains("ByteStringLib", "length"));
+            // MapLib: all migrated to Java source
+            assertFalse(reg.contains("MapLib", "lookup"));
+            // MathLib: all migrated to Java source (including expMod)
+            assertFalse(reg.contains("MathLib", "abs"));
+            assertFalse(reg.contains("MathLib", "expMod"));
+            // BitwiseLib: all migrated to Java source
+            assertFalse(reg.contains("BitwiseLib", "andByteString"));
+            assertFalse(reg.contains("BitwiseLib", "countSetBits"));
+            // Java API delegates (Math.abs/max/min -> inline PIR)
             assertTrue(reg.contains("Math", "abs"));
             assertTrue(reg.contains("Math", "max"));
             assertTrue(reg.contains("Math", "min"));
-            // Total should match the number of reg.register() calls in StdlibRegistry
-            assertEquals(110, reg.size());
+            // Builtins: 59 raw UPLC builtins (22 original + 15 bytestring + 9 crypto
+            //   + 10 bitwise + 2 constrTag/constrFields + 1 expModInteger)
+            assertTrue(reg.contains("Builtins", "headList"));
+            assertTrue(reg.contains("Builtins", "tailList"));
+            assertTrue(reg.contains("Builtins", "nullList"));
+            assertTrue(reg.contains("Builtins", "mkCons"));
+            assertTrue(reg.contains("Builtins", "mkNilData"));
+            assertTrue(reg.contains("Builtins", "fstPair"));
+            assertTrue(reg.contains("Builtins", "sndPair"));
+            assertTrue(reg.contains("Builtins", "mkPairData"));
+            assertTrue(reg.contains("Builtins", "mkNilPairData"));
+            assertTrue(reg.contains("Builtins", "constrData"));
+            assertTrue(reg.contains("Builtins", "iData"));
+            assertTrue(reg.contains("Builtins", "bData"));
+            assertTrue(reg.contains("Builtins", "listData"));
+            assertTrue(reg.contains("Builtins", "mapData"));
+            assertTrue(reg.contains("Builtins", "unConstrData"));
+            assertTrue(reg.contains("Builtins", "unIData"));
+            assertTrue(reg.contains("Builtins", "unBData"));
+            assertTrue(reg.contains("Builtins", "unListData"));
+            assertTrue(reg.contains("Builtins", "unMapData"));
+            assertTrue(reg.contains("Builtins", "equalsData"));
+            assertTrue(reg.contains("Builtins", "error"));
+            assertTrue(reg.contains("Builtins", "trace"));
+            // New builtins from Milestone 10
+            assertTrue(reg.contains("Builtins", "indexByteString"));
+            assertTrue(reg.contains("Builtins", "sha2_256"));
+            assertTrue(reg.contains("Builtins", "andByteString"));
+            assertTrue(reg.contains("Builtins", "constrTag"));
+            assertTrue(reg.contains("Builtins", "constrFields"));
+            assertTrue(reg.contains("Builtins", "expModInteger"));
+            // Total: 59 Builtins + 7 ListsLib HOF + 1 ContextsLib.trace + 3 Math delegates = 70
+            assertEquals(70, reg.size());
         }
 
         @Test
@@ -1080,44 +1050,56 @@ class StdlibTest {
         }
 
         @Test
-        void lookupIsEmptyViaRegistry() {
+        void lookupListsLibAnyViaRegistry() {
             var reg = StdlibRegistry.defaultRegistry();
-            var term = reg.lookup("ListsLib", "isEmpty", List.of(emptyDataList()));
-            assertTrue(term.isPresent());
-            assertTrue(evalBool(term.get()));
+            // ListsLib.any is still in the registry (HOF method)
+            assertTrue(reg.lookupBuilder("ListsLib", "any").isPresent());
+        }
+
+        @Test
+        void lookupMigratedMethodReturnsEmpty() {
+            var reg = StdlibRegistry.defaultRegistry();
+            // ListsLib.isEmpty was migrated to Java source, no longer in registry
+            assertTrue(reg.lookup("ListsLib", "isEmpty", List.of(emptyDataList())).isEmpty());
         }
 
         @Test
         void lookupWithWrongArgCountThrows() {
             var reg = StdlibRegistry.defaultRegistry();
+            // ListsLib.any expects 2 args, call with 0
             assertThrows(IllegalArgumentException.class,
-                    () -> reg.lookup("ListsLib", "isEmpty", List.of()));
+                    () -> reg.lookup("ListsLib", "any", List.of()));
         }
 
         @Test
-        void lookupCryptoViaRegistry() {
+        void lookupMigratedCryptoReturnsEmpty() {
+            var reg = StdlibRegistry.defaultRegistry();
+            // CryptoLib methods are now compiled from Java source, not in registry
+            assertFalse(reg.contains("CryptoLib", "sha2_256"));
+        }
+
+        @Test
+        void lookupContextsTraceViaRegistry() {
+            var reg = StdlibRegistry.defaultRegistry();
+            // Only trace stays in registry (uses UPLC Text type)
+            assertTrue(reg.lookupBuilder("ContextsLib", "trace").isPresent());
+            // Other ContextsLib methods migrated
+            assertFalse(reg.contains("ContextsLib", "getTxInfo"));
+            assertFalse(reg.contains("ContextsLib", "signedBy"));
+        }
+
+        @Test
+        void lookupMigratedIntervalReturnsEmpty() {
+            var reg = StdlibRegistry.defaultRegistry();
+            // IntervalLib methods are now compiled from Java source, not in registry
+            assertFalse(reg.contains("IntervalLib", "always"));
+        }
+
+        @Test
+        void lookupBuiltinViaRegistry() {
             var reg = StdlibRegistry.defaultRegistry();
             var input = new PirTerm.Const(Constant.byteString(new byte[]{1, 2, 3}));
-            var term = reg.lookup("CryptoLib", "sha2_256", List.of(input));
-            assertTrue(term.isPresent());
-            var result = evalPir(term.get());
-            assertTrue(result.isSuccess());
-        }
-
-        @Test
-        void lookupContextsViaRegistry() {
-            var reg = StdlibRegistry.defaultRegistry();
-            // getTxInfo expects 1 arg
-            assertTrue(reg.lookupBuilder("ContextsLib", "getTxInfo").isPresent());
-            // signedBy expects 2 args
-            assertTrue(reg.lookupBuilder("ContextsLib", "signedBy").isPresent());
-        }
-
-        @Test
-        void lookupIntervalViaRegistry() {
-            var reg = StdlibRegistry.defaultRegistry();
-            // always expects 0 args
-            var term = reg.lookup("IntervalLib", "always", List.of());
+            var term = reg.lookup("Builtins", "sha2_256", List.of(input));
             assertTrue(term.isPresent());
             var result = evalPir(term.get());
             assertTrue(result.isSuccess());
