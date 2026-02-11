@@ -13,6 +13,11 @@ allprojects {
 }
 
 subprojects {
+    // The BOM module uses java-platform, which is incompatible with java-library
+    if (project.name == 'julc-bom') {
+        return
+    }
+
     apply plugin: 'java-library'
     apply plugin: 'maven-publish'
 

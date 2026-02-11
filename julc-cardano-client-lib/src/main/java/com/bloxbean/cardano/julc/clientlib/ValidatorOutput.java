@@ -11,14 +11,22 @@ import java.util.List;
  * @param cborHex     double-CBOR-wrapped FLAT-encoded UPLC program
  * @param hash        script hash (28 bytes hex), empty for parameterized validators
  * @param params      comma-separated param metadata, e.g. "owner:byte[],deadline:BigInteger"
+ * @param sizeBytes   FLAT-encoded script size in bytes, or -1 if unknown
  */
-public record ValidatorOutput(String type, String description, String cborHex, String hash, String params) {
+public record ValidatorOutput(String type, String description, String cborHex, String hash, String params, int sizeBytes) {
+
+    /**
+     * Backward-compatible constructor without sizeBytes.
+     */
+    public ValidatorOutput(String type, String description, String cborHex, String hash, String params) {
+        this(type, description, cborHex, hash, params, -1);
+    }
 
     /**
      * Backward-compatible constructor for non-parameterized validators.
      */
     public ValidatorOutput(String type, String description, String cborHex, String hash) {
-        this(type, description, cborHex, hash, "");
+        this(type, description, cborHex, hash, "", -1);
     }
 
     /**
@@ -51,6 +59,18 @@ public record ValidatorOutput(String type, String description, String cborHex, S
     }
 
     /**
+     * Human-readable script size, e.g. "342 B" or "14.2 KB".
+     * Returns "unknown" if sizeBytes is -1.
+     */
+    public String sizeFormatted() {
+        if (sizeBytes < 0) return "unknown";
+        if (sizeBytes < 1024) return sizeBytes + " B";
+        double kb = sizeBytes / 1024.0;
+        if (kb < 10) return String.format("%.1f KB", kb);
+        return String.format("%.0f KB", kb);
+    }
+
+    /**
      * Serialize to JSON text envelope format.
      */
     public String toJson() {
@@ -60,9 +80,10 @@ public record ValidatorOutput(String type, String description, String cborHex, S
                   "description": "%s",
                   "cborHex": "%s",
                   "hash": "%s",
-                  "params": "%s"
+                  "params": "%s",
+                  "sizeBytes": %d
                 }
-                """.formatted(type, description, cborHex, hash, params != null ? params : "");
+                """.formatted(type, description, cborHex, hash, params != null ? params : "", sizeBytes);
     }
 
     /**
@@ -75,7 +96,8 @@ public record ValidatorOutput(String type, String description, String cborHex, S
         String cborHex = extractField(json, "cborHex");
         String hash = extractField(json, "hash");
         String params = extractFieldOptional(json, "params");
-        return new ValidatorOutput(type, description, cborHex, hash, params);
+        int sizeBytes = extractIntFieldOptional(json, "sizeBytes", -1);
+        return new ValidatorOutput(type, description, cborHex, hash, params, sizeBytes);
     }
 
     private static String extractField(String json, String field) {
@@ -100,6 +122,26 @@ public record ValidatorOutput(String type, String description, String cborHex, S
         int quoteStart = json.indexOf('"', colonIdx + 1);
         int quoteEnd = json.indexOf('"', quoteStart + 1);
         return json.substring(quoteStart + 1, quoteEnd);
+    }
+
+    private static int extractIntFieldOptional(String json, String field, int defaultValue) {
+        String key = "\"" + field + "\"";
+        int keyIdx = json.indexOf(key);
+        if (keyIdx < 0) {
+            return defaultValue;
+        }
+        int colonIdx = json.indexOf(':', keyIdx + key.length());
+        // Skip whitespace after colon, then read digits (possibly with leading minus)
+        int start = colonIdx + 1;
+        while (start < json.length() && Character.isWhitespace(json.charAt(start))) start++;
+        int end = start;
+        if (end < json.length() && json.charAt(end) == '-') end++;
+        while (end < json.length() && Character.isDigit(json.charAt(end))) end++;
+        try {
+            return Integer.parseInt(json.substring(start, end));
+        } catch (NumberFormatException e) {
+            return defaultValue;
+        }
     }
 
     /**

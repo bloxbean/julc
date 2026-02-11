@@ -53,7 +53,7 @@ public class ListsLib {
     /** Concatenate two lists. */
     public static PlutusData concat(PlutusData a, PlutusData b) {
         var result = b;
-        var reversed = reverse(a);
+    var reversed = reverse(a);
         var current = reversed;
         while (!Builtins.nullList(current)) {
             result = Builtins.mkCons(Builtins.headList(current), result);

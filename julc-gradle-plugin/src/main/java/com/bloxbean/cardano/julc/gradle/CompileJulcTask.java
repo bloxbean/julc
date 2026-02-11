@@ -57,7 +57,7 @@ public abstract class CompileJulcTask extends DefaultTask {
 
         for (File javaFile : javaFiles) {
             String source = Files.readString(javaFile.toPath());
-            if (source.contains("@Validator") || source.contains("@MintingPolicy")) {
+            if (isValidatorSource(source)) {
                 validatorFiles.add(javaFile);
             } else {
                 libraryFiles.add(javaFile);
@@ -88,16 +88,18 @@ public abstract class CompileJulcTask extends DefaultTask {
             String scriptHash = JulcScriptAdapter.scriptHash(program);
             String validatorName = validatorFile.getName().replace(".java", "");
 
-            String scriptType = validatorSource.contains("@MintingPolicy")
-                    ? "PlutusScriptV3-Minting" : "PlutusScriptV3";
+            String scriptType = resolveScriptType(validatorSource);
+
+            int sizeBytes = result.scriptSizeBytes();
+            String sizeStr = result.scriptSizeFormatted();
 
             var output = new ValidatorOutput(scriptType, validatorName,
-                    script.getCborHex(), scriptHash);
+                    script.getCborHex(), scriptHash, sizeBytes);
 
             File outputFile = new File(outDir, validatorName + ".json");
             Files.writeString(outputFile.toPath(), output.toJson());
-            getLogger().lifecycle("Compiled {} → {} (hash: {})",
-                    validatorFile.getName(), outputFile.getName(), scriptHash);
+            getLogger().lifecycle("Compiled {} → {} (hash: {}, size: {})",
+                    validatorFile.getName(), outputFile.getName(), scriptHash, sizeStr);
             compiled++;
         }
 
@@ -126,5 +128,22 @@ public abstract class CompileJulcTask extends DefaultTask {
                 result.add(child);
             }
         }
+    }
+
+    private static boolean isValidatorSource(String source) {
+        return source.contains("@Validator") || source.contains("@MintingPolicy")
+                || source.contains("@SpendingValidator") || source.contains("@MintingValidator")
+                || source.contains("@WithdrawValidator") || source.contains("@CertifyingValidator")
+                || source.contains("@VotingValidator") || source.contains("@ProposingValidator");
+    }
+
+    private static String resolveScriptType(String source) {
+        if (source.contains("@MintingPolicy") || source.contains("@MintingValidator"))
+            return "PlutusScriptV3-Minting";
+        if (source.contains("@WithdrawValidator")) return "PlutusScriptV3-Withdraw";
+        if (source.contains("@CertifyingValidator")) return "PlutusScriptV3-Certifying";
+        if (source.contains("@VotingValidator")) return "PlutusScriptV3-Voting";
+        if (source.contains("@ProposingValidator")) return "PlutusScriptV3-Proposing";
+        return "PlutusScriptV3";
     }
 }

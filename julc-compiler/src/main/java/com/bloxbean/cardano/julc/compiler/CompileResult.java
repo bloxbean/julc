@@ -2,6 +2,7 @@ package com.bloxbean.cardano.julc.compiler;
 
 import com.bloxbean.cardano.julc.compiler.error.CompilerDiagnostic;
 import com.bloxbean.cardano.julc.core.Program;
+import com.bloxbean.cardano.julc.core.flat.UplcFlatEncoder;
 
 import java.util.List;
 
@@ -39,5 +40,28 @@ public record CompileResult(Program program, List<CompilerDiagnostic> diagnostic
      * @param name the parameter field name
      * @param type the Java type name (e.g. "byte[]", "BigInteger")
      */
+    /**
+     * The FLAT-encoded script size in bytes.
+     * This is the on-chain size — the number that matters for the 16 KB script size limit.
+     */
+    public int scriptSizeBytes() {
+        return UplcFlatEncoder.encodeProgram(program).length;
+    }
+
+    /**
+     * Human-readable script size, e.g. "342 B" or "14.2 KB".
+     */
+    public String scriptSizeFormatted() {
+        int bytes = scriptSizeBytes();
+        if (bytes < 1024) {
+            return bytes + " B";
+        }
+        double kb = bytes / 1024.0;
+        if (kb < 10) {
+            return String.format("%.1f KB", kb);
+        }
+        return String.format("%.0f KB", kb);
+    }
+
     public record ParamInfo(String name, String type) {}
 }

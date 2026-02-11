@@ -1,0 +1,34 @@
+plugins {
+    id 'java-platform'
+    id 'maven-publish'
+}
+
+description = 'JuLC Bill of Materials — import this platform to align all JuLC module versions'
+
+javaPlatform {
+    allowDependencies()
+}
+
+dependencies {
+    constraints {
+        api project(':julc-core')
+        api project(':julc-vm')
+        api project(':julc-vm-scalus')
+        api project(':julc-ledger-api')
+        api project(':julc-compiler')
+        api project(':julc-stdlib')
+        api project(':julc-testkit')
+        api project(':julc-cardano-client-lib')
+        api project(':julc-onchain-api')
+        api project(':julc-gradle-plugin')
+        api project(':julc-annotation-processor')
+    }
+}
+
+publishing {
+    publications {
+        bom(MavenPublication) {
+            from components.javaPlatform
+        }
+    }
+}

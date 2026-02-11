@@ -3,10 +3,12 @@ package com.bloxbean.cardano.julc.compiler.pir;
 import com.bloxbean.cardano.julc.compiler.CompilerException;
 import com.bloxbean.cardano.julc.compiler.desugar.LoopDesugarer;
 import com.bloxbean.cardano.julc.compiler.desugar.PatternMatchDesugarer;
+import com.bloxbean.cardano.julc.compiler.error.CompilerDiagnostic;
 import com.bloxbean.cardano.julc.compiler.resolve.SymbolTable;
 import com.bloxbean.cardano.julc.compiler.resolve.TypeResolver;
 import com.bloxbean.cardano.julc.core.Constant;
 import com.bloxbean.cardano.julc.core.DefaultFun;
+import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.expr.*;
 import com.github.javaparser.ast.stmt.*;
@@ -26,6 +28,7 @@ public class PirGenerator {
     private final StdlibLookup stdlibLookup;
     private final TypeMethodRegistry typeMethodRegistry;
     private final String libraryClassName; // non-null when compiling library class methods
+    private final List<CompilerDiagnostic> collectedErrors = new ArrayList<>();
     private String forEachAccumulatorVar; // non-null when compiling fold body
     private Function<PirTerm, PirTerm> breakContinueFn; // non-null when compiling break-capable fold body
     private Set<String> multiAccVars = Set.of(); // non-empty when compiling multi-acc fold body
@@ -51,6 +54,38 @@ public class PirGenerator {
         this.stdlibLookup = stdlibLookup;
         this.typeMethodRegistry = typeMethodRegistry;
         this.libraryClassName = libraryClassName;
+    }
+
+    /**
+     * Return collected (non-fatal) errors from PIR generation.
+     * These are errors where generation could continue with an Error placeholder.
+     */
+    public List<CompilerDiagnostic> getCollectedErrors() {
+        return List.copyOf(collectedErrors);
+    }
+
+    /**
+     * Record a non-fatal error and return a PirTerm.Error placeholder
+     * so compilation can continue and report multiple errors.
+     */
+    private PirTerm collectError(String msg, String suggestion, Node node) {
+        var location = extractLocation(node);
+        String fileName = "<source>";
+        int line = 0, col = 0;
+        if (node != null) {
+            var range = node.getRange();
+            if (range.isPresent()) {
+                line = range.get().begin.line;
+                col = range.get().begin.column;
+            }
+            var cu = node.findCompilationUnit();
+            fileName = cu.flatMap(c -> c.getStorage())
+                    .map(s -> s.getFileName())
+                    .orElse("<source>");
+        }
+        collectedErrors.add(new CompilerDiagnostic(
+                CompilerDiagnostic.Level.ERROR, msg, fileName, line, col, suggestion));
+        return new PirTerm.Error(new PirType.DataType());
     }
 
     /**
@@ -106,7 +141,8 @@ public class PirGenerator {
                 var decl = vde.getVariable(0);
                 var name = decl.getNameAsString();
                 var initExpr = decl.getInitializer().orElseThrow(
-                        () -> new CompilerException("Variable must be initialized: " + name));
+                        () -> new CompilerException("Variable must be initialized: " + name
+                                + ". Hint: On-chain variables need initial values, e.g. var " + name + " = BigInteger.ZERO;"));
                 var value = generateExpression(initExpr);
                 var pirType = inferType(decl.getType(), value, initExpr);
                 symbolTable.define(name, pirType);
@@ -141,9 +177,14 @@ public class PirGenerator {
                 var accType = symbolTable.lookup(forEachAccumulatorVar).orElse(new PirType.BoolType());
                 return new PirTerm.Var(forEachAccumulatorVar, accType);
             }
-            throw new CompilerException("break statement outside of a loop");
+            throw enrichedError("break statement outside of a loop",
+                    "break can only be used inside for-each or while loops.", stmt);
         }
-        throw new CompilerException("Unsupported statement: " + stmt.getClass().getSimpleName());
+        collectError("Unsupported statement: " + stmt.getClass().getSimpleName(),
+                "Only variable declarations, if/else, for-each, while, return, and expression statements are supported on-chain.",
+                stmt);
+        // Skip unsupported statement and continue with remaining statements
+        return generateStatements(stmts, index + 1);
     }
 
     private PirTerm generateIfStmt(IfStmt is, List<Statement> followingStmts, int followingIndex) {
@@ -284,7 +325,9 @@ public class PirGenerator {
         if (stmt instanceof WhileStmt ws) {
             return generateWhileStmt(ws, List.of(stmt), 0);
         }
-        throw new CompilerException("Unsupported statement: " + stmt.getClass().getSimpleName());
+        throw enrichedError("Unsupported statement: " + stmt.getClass().getSimpleName(),
+                "Only variable declarations, if/else, for-each, while, return, and expression statements are supported on-chain.",
+                stmt);
     }
 
     public PirTerm generateExpression(Expression expr) {
@@ -363,7 +406,15 @@ public class PirGenerator {
                 return generateExpression(ae.getValue());
             }
         }
-        throw new CompilerException("Unsupported expression: " + expr.getClass().getSimpleName() + " = " + expr);
+        String suggestion;
+        if (expr instanceof AssignExpr) {
+            suggestion = "Variables are immutable on-chain. Use the accumulator pattern in for-each/while loops for mutable state.";
+        } else if (expr instanceof ArrayAccessExpr) {
+            suggestion = "Array access is not supported on-chain. Use ByteStringLib.at() for byte arrays or ListsLib methods for lists.";
+        } else {
+            suggestion = "This expression type is not supported in on-chain code.";
+        }
+        return collectError("Unsupported expression: " + expr.getClass().getSimpleName(), suggestion, expr);
     }
 
     private PirTerm generateBinaryExpr(BinaryExpr be) {
@@ -394,7 +445,8 @@ public class PirGenerator {
             case GREATER_EQUALS -> builtinApp2(DefaultFun.LessThanEqualsInteger, right, left); // swap
             case AND -> new PirTerm.IfThenElse(left, right, new PirTerm.Const(Constant.bool(false)));
             case OR -> new PirTerm.IfThenElse(left, new PirTerm.Const(Constant.bool(true)), right);
-            default -> throw new CompilerException("Unsupported operator: " + be.getOperator());
+            default -> collectError("Unsupported operator: " + be.getOperator(),
+                    "Supported operators: +, -, *, /, %, ==, !=, <, <=, >, >=, &&, ||", be);
         };
     }
 
@@ -441,7 +493,8 @@ public class PirGenerator {
                     new PirTerm.Const(Constant.bool(true)));
             case MINUS -> builtinApp2(DefaultFun.SubtractInteger,
                     new PirTerm.Const(Constant.integer(BigInteger.ZERO)), operand);
-            default -> throw new CompilerException("Unsupported unary operator: " + ue.getOperator());
+            default -> collectError("Unsupported unary operator: " + ue.getOperator(),
+                    "Supported unary operators: ! (logical NOT) and - (negation)", ue);
         };
     }
 
@@ -531,9 +584,10 @@ public class PirGenerator {
             }
             return fn;
         }
-        throw new CompilerException("Unknown method: " + methodName
-                + ". Did you mean ClassName." + methodName + "()? "
-                + "Library methods require class qualification (e.g., MathUtils." + methodName + "(...)).");
+        String fuzzyHint = suggestSimilarMethod(methodName);
+        String suggestion = !fuzzyHint.isEmpty() ? fuzzyHint
+                : "Library methods require class qualification (e.g., MathLib." + methodName + "(...)).";
+        return collectError("Unknown method: " + methodName, suggestion, mce);
     }
 
     /**
@@ -711,7 +765,8 @@ public class PirGenerator {
                 case "ONE" -> new PirTerm.Const(Constant.integer(BigInteger.ONE));
                 case "TWO" -> new PirTerm.Const(Constant.integer(BigInteger.TWO));
                 case "TEN" -> new PirTerm.Const(Constant.integer(BigInteger.TEN));
-                default -> throw new CompilerException("Unsupported BigInteger field: " + fae.getNameAsString());
+                default -> throw enrichedError("Unsupported BigInteger field: " + fae.getNameAsString(),
+                        "Supported BigInteger fields: ZERO, ONE, TWO, TEN. Use new BigInteger(\"value\") for other constants.", fae);
             };
         }
 
@@ -741,7 +796,8 @@ public class PirGenerator {
             if (arg instanceof StringLiteralExpr sle) {
                 return new PirTerm.Const(Constant.integer(new BigInteger(sle.getValue())));
             }
-            throw new CompilerException("new BigInteger() requires a string literal argument");
+            throw enrichedError("new BigInteger() requires a string literal argument",
+                    "Use new BigInteger(\"12345\") or BigInteger.valueOf(n) for integer constants.", oce);
         }
 
         // Check if this is a variant of a sealed interface (sum type)
@@ -767,7 +823,9 @@ public class PirGenerator {
             }
             return new PirTerm.DataConstr(0, recordType.get(), fields);
         }
-        throw new CompilerException("Cannot construct non-record type: " + typeName);
+        throw enrichedError("Cannot construct non-record type: " + typeName,
+                "Only record types can be constructed on-chain. Define " + typeName + " as a record.",
+                oce);
     }
 
     private PirTerm generateForEachStmt(ForEachStmt fes, List<Statement> followingStmts, int followingIndex) {
@@ -971,7 +1029,8 @@ public class PirGenerator {
                 var decl = vde.getVariable(0);
                 var name = decl.getNameAsString();
                 var initExpr = decl.getInitializer().orElseThrow(
-                        () -> new CompilerException("Variable must be initialized: " + name));
+                        () -> new CompilerException("Variable must be initialized: " + name
+                                + ". Hint: On-chain variables need initial values, e.g. var " + name + " = BigInteger.ZERO;"));
                 var value = generateExpression(initExpr);
                 var pirType = inferType(decl.getType(), value, initExpr);
                 symbolTable.define(name, pirType);
@@ -989,7 +1048,9 @@ public class PirGenerator {
             return generateBreakAwareIf(is, stmts, index, accName, accType, continueFn);
         }
 
-        throw new CompilerException("Unsupported statement in break-aware loop body: " + stmt.getClass().getSimpleName());
+        throw enrichedError("Unsupported statement in break-aware loop body: " + stmt.getClass().getSimpleName(),
+                "Inside loops with break, only variable declarations, assignments, if/else, and break are supported.",
+                stmt);
     }
 
     private PirTerm generateBreakAwareIf(IfStmt is, List<Statement> followingStmts, int followingIndex,
@@ -1257,7 +1318,8 @@ public class PirGenerator {
                 var decl = vde.getVariable(0);
                 var name = decl.getNameAsString();
                 var initExpr = decl.getInitializer().orElseThrow(
-                        () -> new CompilerException("Variable must be initialized: " + name));
+                        () -> new CompilerException("Variable must be initialized: " + name
+                                + ". Hint: On-chain variables need initial values, e.g. var " + name + " = BigInteger.ZERO;"));
                 var value = generateExpression(initExpr);
                 var pirType = inferType(decl.getType(), value, initExpr);
                 symbolTable.define(name, pirType);
@@ -1283,7 +1345,9 @@ public class PirGenerator {
             }
             return ifExpr;
         }
-        throw new CompilerException("Unsupported in multi-acc loop body: " + stmt.getClass().getSimpleName());
+        throw enrichedError("Unsupported in multi-acc loop body: " + stmt.getClass().getSimpleName(),
+                "Inside multi-accumulator loops, only variable declarations, assignments, and if/else are supported.",
+                stmt);
     }
 
     /** Compile multi-acc loop body with break support */
@@ -1334,7 +1398,8 @@ public class PirGenerator {
                 var decl = vde.getVariable(0);
                 var name = decl.getNameAsString();
                 var initExpr = decl.getInitializer().orElseThrow(
-                        () -> new CompilerException("Variable must be initialized: " + name));
+                        () -> new CompilerException("Variable must be initialized: " + name
+                                + ". Hint: On-chain variables need initial values, e.g. var " + name + " = BigInteger.ZERO;"));
                 var value = generateExpression(initExpr);
                 var pirType = inferType(decl.getType(), value, initExpr);
                 symbolTable.define(name, pirType);
@@ -1383,7 +1448,9 @@ public class PirGenerator {
             return ifExpr;
         }
 
-        throw new CompilerException("Unsupported in multi-acc break-aware body: " + stmt.getClass().getSimpleName());
+        throw enrichedError("Unsupported in multi-acc break-aware body: " + stmt.getClass().getSimpleName(),
+                "Inside multi-accumulator loops with break, only variable declarations, assignments, if/else, and break are supported.",
+                stmt);
     }
 
     private PirTerm generateWhileStmt(WhileStmt ws, List<Statement> followingStmts, int followingIndex) {
@@ -1550,7 +1617,8 @@ public class PirGenerator {
         // Determine the sum type from the selector's type
         var selectorType = inferPirType(selector);
         if (!(selectorType instanceof PirType.SumType sumType)) {
-            throw new CompilerException("switch expression requires a sealed interface type, got: " + selectorType);
+            throw enrichedError("switch expression requires a sealed interface type, got: " + selectorType,
+                    "Ensure the switch variable's type is a sealed interface with record variants.", se);
         }
 
         var desugarer = new PatternMatchDesugarer(typeResolver);
@@ -1572,7 +1640,11 @@ public class PirGenerator {
                             .filter(c -> c.name().equals(typeName))
                             .findFirst();
                     if (ctorOpt.isEmpty()) {
-                        throw new CompilerException("Unknown variant in switch: " + typeName);
+                        String available = sumType.constructors().stream()
+                                .map(PirType.Constructor::name)
+                                .reduce((a, b) -> a + ", " + b).orElse("none");
+                        throw enrichedError("Unknown variant in switch: " + typeName,
+                                "Available variants: " + available, se);
                     }
                     var ctor = ctorOpt.get();
 
@@ -1646,7 +1718,9 @@ public class PirGenerator {
                 }
             }
         }
-        throw new CompilerException("Unsupported instanceof pattern: " + ioe);
+        throw enrichedError("Unsupported instanceof pattern: " + ioe,
+                "instanceof is supported only with sealed interface variants: if (x instanceof Variant v) { ... }",
+                ioe);
     }
 
     private PirTerm generateLambda(LambdaExpr le) {
@@ -1667,7 +1741,8 @@ public class PirGenerator {
         } else if (lambdaBody instanceof com.github.javaparser.ast.stmt.BlockStmt block) {
             bodyTerm = generateBlock(block);
         } else {
-            throw new CompilerException("Unsupported lambda body: " + lambdaBody.getClass().getSimpleName());
+            throw enrichedError("Unsupported lambda body: " + lambdaBody.getClass().getSimpleName(),
+                    "Lambda bodies must be a single expression or a block statement.", le);
         }
 
         symbolTable.popScope();
@@ -1773,5 +1848,112 @@ public class PirGenerator {
         return new PirTerm.App(
                 new PirTerm.App(new PirTerm.Builtin(fun), a),
                 b);
+    }
+
+    // --- Error enrichment helpers ---
+
+    /**
+     * Create an enriched compiler error with source location and a suggestion.
+     *
+     * @param msg        the error message
+     * @param suggestion a helpful suggestion for fixing the error, or null
+     * @param node       the AST node for source location extraction
+     */
+    private static CompilerException enrichedError(String msg, String suggestion, Node node) {
+        var location = extractLocation(node);
+        var fullMsg = new StringBuilder();
+        if (!location.isEmpty()) {
+            fullMsg.append(location).append(": ");
+        }
+        fullMsg.append(msg);
+        if (suggestion != null && !suggestion.isEmpty()) {
+            fullMsg.append("\n  Hint: ").append(suggestion);
+        }
+        return new CompilerException(fullMsg.toString());
+    }
+
+    private static String extractLocation(Node node) {
+        if (node == null) return "";
+        var range = node.getRange();
+        if (range.isEmpty()) return "";
+        var begin = range.get().begin;
+        // Try to get the file name from the compilation unit
+        var cu = node.findCompilationUnit();
+        String file = cu.flatMap(c -> c.getStorage())
+                .map(s -> s.getFileName())
+                .orElse("<source>");
+        return file + ":" + begin.line + ":" + begin.column;
+    }
+
+    /**
+     * Compute the edit distance between two strings (Levenshtein distance).
+     * Used for fuzzy matching in error suggestions.
+     */
+    private static int editDistance(String a, String b) {
+        int m = a.length(), n = b.length();
+        int[] prev = new int[n + 1];
+        int[] curr = new int[n + 1];
+        for (int j = 0; j <= n; j++) prev[j] = j;
+        for (int i = 1; i <= m; i++) {
+            curr[0] = i;
+            for (int j = 1; j <= n; j++) {
+                int cost = a.charAt(i - 1) == b.charAt(j - 1) ? 0 : 1;
+                curr[j] = Math.min(Math.min(curr[j - 1] + 1, prev[j] + 1), prev[j - 1] + cost);
+            }
+            var tmp = prev; prev = curr; curr = tmp;
+        }
+        return prev[n];
+    }
+
+    /**
+     * Find the closest method name from available stdlib methods.
+     * Returns a suggestion string like "Did you mean 'ListsLib.contains()'?" or empty if no close match.
+     */
+    private String suggestSimilarMethod(String methodName) {
+        if (stdlibLookup == null) return "";
+
+        // Known stdlib class names and their methods
+        var knownMethods = List.of(
+                "Builtins.headList", "Builtins.tailList", "Builtins.nullList", "Builtins.mkCons",
+                "Builtins.mkNilData", "Builtins.fstPair", "Builtins.sndPair", "Builtins.mkPairData",
+                "Builtins.constrData", "Builtins.iData", "Builtins.bData", "Builtins.listData",
+                "Builtins.mapData", "Builtins.unConstrData", "Builtins.unIData", "Builtins.unBData",
+                "Builtins.unListData", "Builtins.unMapData", "Builtins.equalsData",
+                "Builtins.sha2_256", "Builtins.blake2b_256", "Builtins.verifyEd25519Signature",
+                "Builtins.trace", "Builtins.error",
+                "ListsLib.contains", "ListsLib.length", "ListsLib.reverse", "ListsLib.map",
+                "ListsLib.filter", "ListsLib.foldl", "ListsLib.any", "ListsLib.all",
+                "ListsLib.find", "ListsLib.concat", "ListsLib.nth", "ListsLib.take",
+                "ListsLib.drop", "ListsLib.zip",
+                "MathLib.abs", "MathLib.max", "MathLib.min", "MathLib.pow",
+                "MathLib.divMod", "MathLib.quotRem", "MathLib.sign", "MathLib.expMod",
+                "MapLib.lookup", "MapLib.member", "MapLib.insert", "MapLib.delete",
+                "MapLib.keys", "MapLib.values", "MapLib.size", "MapLib.fromList", "MapLib.toList",
+                "ValuesLib.geqMultiAsset", "ValuesLib.leq", "ValuesLib.eq", "ValuesLib.isZero",
+                "ValuesLib.singleton", "ValuesLib.negate", "ValuesLib.flatten",
+                "ContextsLib.getTxInfo", "ContextsLib.signedBy", "ContextsLib.findOwnInput",
+                "ContextsLib.getContinuingOutputs", "ContextsLib.findDatum",
+                "ContextsLib.valueSpent", "ContextsLib.valuePaid", "ContextsLib.ownHash",
+                "ByteStringLib.length", "ByteStringLib.append", "ByteStringLib.equals",
+                "CryptoLib.sha2_256", "CryptoLib.blake2b_256",
+                "IntervalLib.between", "IntervalLib.never", "IntervalLib.isEmpty"
+        );
+
+        String bestMatch = null;
+        int bestDist = Integer.MAX_VALUE;
+
+        for (String qualified : knownMethods) {
+            String simpleName = qualified.substring(qualified.indexOf('.') + 1);
+            int dist = editDistance(methodName.toLowerCase(), simpleName.toLowerCase());
+            if (dist < bestDist && dist <= Math.max(2, methodName.length() / 3)) {
+                bestDist = dist;
+                bestMatch = qualified;
+            }
+        }
+
+        if (bestMatch != null) {
+            return "Did you mean '" + bestMatch + "()'?";
+        }
+        return "";
     }
 }

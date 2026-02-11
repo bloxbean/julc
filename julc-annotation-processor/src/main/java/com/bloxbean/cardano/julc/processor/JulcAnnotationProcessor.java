@@ -180,8 +180,11 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
             String scriptHash = result.isParameterized()
                     ? "" : JulcScriptAdapter.scriptHash(program);
 
+            int sizeBytes = result.scriptSizeBytes();
+            String sizeStr = result.scriptSizeFormatted();
+
             var output = new ValidatorOutput(scriptType, className,
-                    script.getCborHex(), scriptHash, paramsStr);
+                    script.getCborHex(), scriptHash, paramsStr, sizeBytes);
 
             // 5. Write to META-INF/plutus/<ClassName>.plutus.json
             var filer = processingEnv.getFiler();
@@ -197,7 +200,7 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
 
             String libMsg = librarySources.isEmpty() ? "" : " (with " + librarySources.size() + " library file(s))";
             processingEnv.getMessager().printMessage(Diagnostic.Kind.NOTE,
-                    "Compiled Plutus validator: " + className + " (hash: " + scriptHash + ")" + libMsg,
+                    "Compiled Plutus validator: " + className + " (hash: " + scriptHash + ", size: " + sizeStr + ")" + libMsg,
                     element);
 
         } catch (CompilerException e) {

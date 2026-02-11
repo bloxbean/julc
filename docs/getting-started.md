@@ -46,12 +46,27 @@ tasks.withType(Test).configureEach {
 }
 ```
 
+## Conway Validator Types
+
+JuLC supports all six Plutus V3 (Conway era) validator types:
+
+| Annotation | Purpose | Parameters |
+|------------|---------|------------|
+| `@SpendingValidator` | Guards spending UTxOs from a script address | `(datum, redeemer, scriptContext)` |
+| `@MintingValidator` | Controls minting/burning of native tokens | `(redeemer, scriptContext)` |
+| `@WithdrawValidator` | Authorizes staking reward withdrawals | `(redeemer, scriptContext)` |
+| `@CertifyingValidator` | Authorizes delegation certificates | `(redeemer, scriptContext)` |
+| `@VotingValidator` | Authorizes governance votes (DRep) | `(redeemer, scriptContext)` |
+| `@ProposingValidator` | Authorizes governance proposals | `(redeemer, scriptContext)` |
+
+> **Deprecation note**: The old `@Validator` and `@MintingPolicy` annotations still work but are deprecated. Use `@SpendingValidator` and `@MintingValidator` for new code.
+
 ## Writing a Spending Validator
 
 A spending validator locks ADA at a script address and controls who can spend it.
 
 ```java
-@Validator
+@SpendingValidator
 class VestingValidator {
     record VestingDatum(PlutusData beneficiary, BigInteger deadline) {}
 
@@ -64,7 +79,7 @@ class VestingValidator {
 ```
 
 Key annotations:
-- **`@Validator`** marks the class as a spending validator
+- **`@SpendingValidator`** marks the class as a spending validator
 - **`@Entrypoint`** marks the validation function (must be `static`, return `boolean`)
 - Parameters: `(datum, redeemer, scriptContext)` for spending, `(redeemer, scriptContext)` for 2-param
 
@@ -81,10 +96,10 @@ Where `n` is the zero-based field index. Fields decode automatically based on ty
 - `byte[]` fields → `UnBData`
 - `PlutusData` fields → pass-through (no unwrap)
 
-## Writing a Minting Policy
+## Writing a Minting Validator
 
 ```java
-@MintingPolicy
+@MintingValidator
 class AuthorizedMinting {
     @Entrypoint
     static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -94,7 +109,7 @@ class AuthorizedMinting {
 }
 ```
 
-Minting policies always take 2 parameters: `(redeemer, scriptContext)`.
+Minting validators always take 2 parameters: `(redeemer, scriptContext)`.
 
 ## Compiling
 
@@ -113,6 +128,9 @@ if (result.hasErrors()) {
 } else {
     Program program = result.program();
     // program is a Plutus V3 UPLC program ready for serialization
+
+    // Check script size (16 KB on-chain limit)
+    System.out.println("Script size: " + result.scriptSizeFormatted());
 }
 ```
 
@@ -135,7 +153,7 @@ import com.bloxbean.cardano.julc.core.PlutusData;
 
 // Compile and evaluate in one step
 String source = """
-    @Validator
+    @SpendingValidator
     class AlwaysTrue {
         @Entrypoint
         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -415,7 +433,7 @@ import com.bloxbean.cardano.julc.onchain.annotation.Entrypoint;
 import com.bloxbean.cardano.julc.onchain.stdlib.ContextsLib;
 import com.bloxbean.cardano.julc.core.PlutusData;
 
-@Validator
+@SpendingValidator
 class VestingValidator {
     @Entrypoint
     static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -559,14 +577,14 @@ Write your validator as a normal Java class in `src/main/java/`. You get full ID
 // src/main/java/com/example/VestingValidator.java
 package com.example;
 
-import com.bloxbean.cardano.julc.onchain.annotation.Validator;
+import com.bloxbean.cardano.julc.onchain.annotation.SpendingValidator;
 import com.bloxbean.cardano.julc.onchain.annotation.Entrypoint;
 import com.bloxbean.cardano.julc.onchain.ledger.ScriptContext;
 import com.bloxbean.cardano.julc.onchain.ledger.TxInfo;
 import com.bloxbean.cardano.julc.core.PlutusData;
 import java.math.BigInteger;
 
-@Validator
+@SpendingValidator
 public class VestingValidator {
     record VestingDatum(byte[] beneficiary, BigInteger deadline) {}
 
@@ -579,18 +597,18 @@ public class VestingValidator {
 }
 ```
 
-For a minting policy, use `@MintingPolicy` instead of `@Validator`:
+For a minting validator, use `@MintingValidator` instead of `@SpendingValidator`:
 
 ```java
 package com.example;
 
-import com.bloxbean.cardano.julc.onchain.annotation.MintingPolicy;
+import com.bloxbean.cardano.julc.onchain.annotation.MintingValidator;
 import com.bloxbean.cardano.julc.onchain.annotation.Entrypoint;
 import com.bloxbean.cardano.julc.onchain.ledger.ScriptContext;
 import com.bloxbean.cardano.julc.onchain.ledger.TxInfo;
 import com.bloxbean.cardano.julc.core.PlutusData;
 
-@MintingPolicy
+@MintingValidator
 public class AuthorizedMinting {
     @Entrypoint
     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -604,7 +622,7 @@ public class AuthorizedMinting {
 
 When you run `javac` (via `gradle build` or `mvn compile`), the annotation processor:
 
-1. Finds all classes annotated with `@Validator` or `@MintingPolicy`
+1. Finds all classes annotated with `@SpendingValidator`, `@MintingValidator`, or other validator annotations
 2. Reads the source file via the compiler's `Trees` API
 3. Compiles the validator to a UPLC program using `JulcCompiler`
 4. FLAT-encodes and double-CBOR-wraps the program

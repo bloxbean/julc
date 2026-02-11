@@ -169,6 +169,12 @@ public class JulcCompiler {
         // 12. Generate PIR for the entrypoint method
         var validateFn = pirGenerator.generateMethod(entrypointMethod);
 
+        // 12b. Collect non-fatal errors from PIR generation
+        diagnostics.addAll(pirGenerator.getCollectedErrors());
+        if (hasErrors(diagnostics)) {
+            throw new CompilerException(diagnostics);
+        }
+
         // 13. Wrap helper methods as Let bindings
         PirTerm body = validateFn;
         var methods = new ArrayList<>(symbolTable.allMethods());

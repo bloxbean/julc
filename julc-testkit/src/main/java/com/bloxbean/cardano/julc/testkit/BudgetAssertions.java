@@ -1,5 +1,6 @@
 package com.bloxbean.cardano.julc.testkit;
 
+import com.bloxbean.cardano.julc.compiler.CompileResult;
 import com.bloxbean.cardano.julc.vm.EvalResult;
 
 import java.util.ArrayList;
@@ -134,6 +135,22 @@ public final class BudgetAssertions {
         Objects.requireNonNull(result, "result must not be null");
         if (!result.traces().isEmpty()) {
             throw new AssertionError("Expected no trace messages but got: " + result.traces());
+        }
+    }
+
+    /**
+     * Assert that the FLAT-encoded script size is at or below the given limit.
+     *
+     * @param result   the compilation result
+     * @param maxBytes the maximum allowed script size in bytes
+     * @throws AssertionError if the script exceeds the limit
+     */
+    public static void assertScriptSizeUnder(CompileResult result, int maxBytes) {
+        Objects.requireNonNull(result, "result must not be null");
+        int actual = result.scriptSizeBytes();
+        if (actual > maxBytes) {
+            throw new AssertionError("Script size " + actual + " bytes exceeds maximum "
+                    + maxBytes + " bytes (formatted: " + result.scriptSizeFormatted() + ")");
         }
     }
 

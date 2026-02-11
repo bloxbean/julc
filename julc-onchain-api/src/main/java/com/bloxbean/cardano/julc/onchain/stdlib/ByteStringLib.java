@@ -130,14 +130,97 @@ public final class ByteStringLib {
         return java.util.Arrays.compare(a, b) <= 0;
     }
 
-    /** Convert integer to bytestring. Off-chain: not supported. */
+    /**
+     * Convert integer to bytestring.
+     * <p>
+     * Endianness: false = big-endian, true = little-endian.
+     * Width: the target byte width. If 0, use minimal encoding (no leading/trailing zeros
+     * beyond what is needed). If positive, pad to exactly that width.
+     *
+     * @param endianness false = big-endian, true = little-endian
+     * @param width      target width in bytes (0 = minimal)
+     * @param i          the integer to convert (must be non-negative)
+     * @return the byte array representation
+     * @throws IllegalArgumentException if i is negative or result exceeds width
+     */
     public static byte[] integerToByteString(boolean endianness, java.math.BigInteger width, java.math.BigInteger i) {
-        throw new UnsupportedOperationException("ByteStringLib.integerToByteString() not fully supported off-chain.");
+        if (i.signum() < 0) {
+            throw new IllegalArgumentException("integerToByteString: input must be non-negative, got " + i);
+        }
+        int targetWidth = width.intValueExact();
+
+        if (i.signum() == 0) {
+            // Zero: if width is 0, return empty bytestring; otherwise return zeros of target width
+            if (targetWidth == 0) {
+                return new byte[0];
+            }
+            return new byte[targetWidth];
+        }
+
+        // Get the big-endian minimal representation
+        byte[] raw = i.toByteArray();
+        // BigInteger.toByteArray() may have a leading 0x00 for sign; strip it
+        int offset = 0;
+        if (raw.length > 1 && raw[0] == 0) {
+            offset = 1;
+        }
+        int minLen = raw.length - offset;
+
+        byte[] bigEndian;
+        if (targetWidth == 0) {
+            // Minimal encoding
+            bigEndian = new byte[minLen];
+            System.arraycopy(raw, offset, bigEndian, 0, minLen);
+        } else {
+            if (minLen > targetWidth) {
+                throw new IllegalArgumentException(
+                        "integerToByteString: value requires " + minLen + " bytes but width is " + targetWidth);
+            }
+            // Pad with leading zeros (big-endian)
+            bigEndian = new byte[targetWidth];
+            System.arraycopy(raw, offset, bigEndian, targetWidth - minLen, minLen);
+        }
+
+        if (endianness) {
+            // Little-endian: reverse the big-endian bytes
+            reverse(bigEndian);
+        }
+        return bigEndian;
     }
 
-    /** Convert bytestring to integer. Off-chain: not supported. */
+    /**
+     * Convert bytestring to integer.
+     * <p>
+     * Endianness: false = big-endian, true = little-endian.
+     * The result is always non-negative (unsigned interpretation).
+     *
+     * @param endianness false = big-endian, true = little-endian
+     * @param bs         the byte array
+     * @return the integer value (non-negative)
+     */
     public static java.math.BigInteger byteStringToInteger(boolean endianness, byte[] bs) {
-        throw new UnsupportedOperationException("ByteStringLib.byteStringToInteger() not fully supported off-chain.");
+        if (bs.length == 0) {
+            return java.math.BigInteger.ZERO;
+        }
+        byte[] bigEndian;
+        if (endianness) {
+            // Little-endian input: reverse to get big-endian
+            bigEndian = bs.clone();
+            reverse(bigEndian);
+        } else {
+            bigEndian = bs;
+        }
+        // Interpret as unsigned (positive) big-endian
+        return new java.math.BigInteger(1, bigEndian);
+    }
+
+    /** Reverse a byte array in place. */
+    private static void reverse(byte[] arr) {
+        for (int left = 0, right = arr.length - 1; left < right; left++, right--) {
+            byte tmp = arr[left];
+            arr[left] = arr[right];
+            arr[right] = tmp;
+        }
     }
 
     /** Encode string as UTF-8. */
@@ -150,8 +233,15 @@ public final class ByteStringLib {
         return new String(bs, java.nio.charset.StandardCharsets.UTF_8);
     }
 
-    /** Serialise Data to CBOR bytestring. Off-chain: not supported. */
+    /**
+     * Serialise Data to CBOR bytestring.
+     * <p>
+     * Delegates to {@link com.bloxbean.cardano.julc.core.cbor.PlutusDataCborEncoder#encode(com.bloxbean.cardano.julc.core.PlutusData)}.
+     *
+     * @param d the PlutusData to serialise
+     * @return CBOR-encoded byte array
+     */
     public static byte[] serialiseData(com.bloxbean.cardano.julc.core.PlutusData d) {
-        throw new UnsupportedOperationException("ByteStringLib.serialiseData() not supported off-chain.");
+        return com.bloxbean.cardano.julc.core.cbor.PlutusDataCborEncoder.encode(d);
     }
 }
