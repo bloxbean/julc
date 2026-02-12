@@ -29,23 +29,16 @@ public class PirGenerator {
     private final TypeMethodRegistry typeMethodRegistry;
     private final String libraryClassName; // non-null when compiling library class methods
     private final List<CompilerDiagnostic> collectedErrors = new ArrayList<>();
+    private final LoopDesugarer loopDesugarer = new LoopDesugarer();
     private String forEachAccumulatorVar; // non-null when compiling fold body
     private Function<PirTerm, PirTerm> breakContinueFn; // non-null when compiling break-capable fold body
     private Set<String> multiAccVars = Set.of(); // non-empty when compiling multi-acc fold body
-    private boolean insideLoopBody = false; // true while compiling a loop body, to reject nested loops
-
     /**
-     * Execute a body-generation action with the insideLoopBody flag set.
-     * Ensures nested loop detection works correctly by restoring the flag after the action.
+     * Execute a body-generation action within a loop body context.
+     * Previously used to reject nested loops; now a simple pass-through since nested loops are supported.
      */
     private <T> T withLoopBodyFlag(java.util.function.Supplier<T> action) {
-        boolean prev = insideLoopBody;
-        insideLoopBody = true;
-        try {
-            return action.get();
-        } finally {
-            insideLoopBody = prev;
-        }
+        return action.get();
     }
 
     public PirGenerator(TypeResolver typeResolver, SymbolTable symbolTable) {
@@ -851,10 +844,6 @@ public class PirGenerator {
     }
 
     private PirTerm generateForEachStmt(ForEachStmt fes, List<Statement> followingStmts, int followingIndex) {
-        if (insideLoopBody) {
-            throw enrichedError("Nested loops are not supported on-chain",
-                    "Extract the inner loop into a separate static helper method and call it from the outer loop.", fes);
-        }
         var iterableExpr = generateExpression(fes.getIterable());
         var itemName = fes.getVariable().getVariables().get(0).getNameAsString();
 
@@ -866,7 +855,7 @@ public class PirGenerator {
             elemType = lt.elemType();
         }
 
-        var desugarer = new LoopDesugarer();
+        var desugarer = loopDesugarer;
         boolean hasBreak = containsBreak(fes.getBody());
 
         // Detect all accumulator assignments in the loop body
@@ -1179,6 +1168,13 @@ public class PirGenerator {
             if (stmt instanceof BlockStmt bs) {
                 collectAccumulatorAssignments(bs.getStatements(), accNames);
             }
+            // Recurse into nested loop bodies to find shared accumulators
+            if (stmt instanceof WhileStmt ws) {
+                collectAccumulatorAssignments(blockStmts(ws.getBody()), accNames);
+            }
+            if (stmt instanceof ForEachStmt fes) {
+                collectAccumulatorAssignments(blockStmts(fes.getBody()), accNames);
+            }
         }
     }
 
@@ -1418,6 +1414,47 @@ public class PirGenerator {
             }
             return ifExpr;
         }
+        if (stmt instanceof WhileStmt ws) {
+            // Nested while inside multi-acc body: generate the inner loop standalone,
+            // then rebind any accumulators it modified, and continue multi-acc processing.
+            var innerAccs = detectForEachAccumulators(ws.getBody());
+            var innerResult = generateWhileStmt(ws, List.of(ws), 0);
+
+            if (innerAccs.size() == 1) {
+                // Single-acc inner loop returns the scalar accumulator value
+                var rest = generateMultiAccStatements(stmts, index + 1, accNames, accTypes);
+                return new PirTerm.Let(innerAccs.get(0), innerResult, rest);
+            } else if (innerAccs.size() > 1) {
+                // Multi-acc inner loop returns a tuple — unpack into individual vars
+                var innerTypes = innerAccs.stream()
+                        .map(n -> symbolTable.lookup(n).orElse(new PirType.DataType()))
+                        .toList();
+                var rest = generateMultiAccStatements(stmts, index + 1, accNames, accTypes);
+                return unpackAccumulators(innerResult, innerAccs, innerTypes, rest);
+            } else {
+                // No-acc inner loop (side-effect only)
+                var rest = generateMultiAccStatements(stmts, index + 1, accNames, accTypes);
+                return new PirTerm.Let("_nested", innerResult, rest);
+            }
+        }
+        if (stmt instanceof ForEachStmt fes) {
+            var innerAccs = detectForEachAccumulators(fes.getBody());
+            var innerResult = generateForEachStmt(fes, List.of(fes), 0);
+
+            if (innerAccs.size() == 1) {
+                var rest = generateMultiAccStatements(stmts, index + 1, accNames, accTypes);
+                return new PirTerm.Let(innerAccs.get(0), innerResult, rest);
+            } else if (innerAccs.size() > 1) {
+                var innerTypes = innerAccs.stream()
+                        .map(n -> symbolTable.lookup(n).orElse(new PirType.DataType()))
+                        .toList();
+                var rest = generateMultiAccStatements(stmts, index + 1, accNames, accTypes);
+                return unpackAccumulators(innerResult, innerAccs, innerTypes, rest);
+            } else {
+                var rest = generateMultiAccStatements(stmts, index + 1, accNames, accTypes);
+                return new PirTerm.Let("_nested", innerResult, rest);
+            }
+        }
         throw enrichedError("Unsupported in multi-acc loop body: " + stmt.getClass().getSimpleName(),
                 "Inside multi-accumulator loops, only variable declarations, assignments, and if/else are supported.",
                 stmt);
@@ -1521,17 +1558,49 @@ public class PirGenerator {
             return ifExpr;
         }
 
+        if (stmt instanceof WhileStmt ws) {
+            var innerAccs = detectForEachAccumulators(ws.getBody());
+            var innerResult = generateWhileStmt(ws, List.of(ws), 0);
+
+            if (innerAccs.size() == 1) {
+                var rest = generateMultiAccBreakAwareStmts(stmts, index + 1, accNames, accTypes, continueFn);
+                return new PirTerm.Let(innerAccs.get(0), innerResult, rest);
+            } else if (innerAccs.size() > 1) {
+                var innerTypes = innerAccs.stream()
+                        .map(n -> symbolTable.lookup(n).orElse(new PirType.DataType()))
+                        .toList();
+                var rest = generateMultiAccBreakAwareStmts(stmts, index + 1, accNames, accTypes, continueFn);
+                return unpackAccumulators(innerResult, innerAccs, innerTypes, rest);
+            } else {
+                var rest = generateMultiAccBreakAwareStmts(stmts, index + 1, accNames, accTypes, continueFn);
+                return new PirTerm.Let("_nested", innerResult, rest);
+            }
+        }
+        if (stmt instanceof ForEachStmt fes) {
+            var innerAccs = detectForEachAccumulators(fes.getBody());
+            var innerResult = generateForEachStmt(fes, List.of(fes), 0);
+
+            if (innerAccs.size() == 1) {
+                var rest = generateMultiAccBreakAwareStmts(stmts, index + 1, accNames, accTypes, continueFn);
+                return new PirTerm.Let(innerAccs.get(0), innerResult, rest);
+            } else if (innerAccs.size() > 1) {
+                var innerTypes = innerAccs.stream()
+                        .map(n -> symbolTable.lookup(n).orElse(new PirType.DataType()))
+                        .toList();
+                var rest = generateMultiAccBreakAwareStmts(stmts, index + 1, accNames, accTypes, continueFn);
+                return unpackAccumulators(innerResult, innerAccs, innerTypes, rest);
+            } else {
+                var rest = generateMultiAccBreakAwareStmts(stmts, index + 1, accNames, accTypes, continueFn);
+                return new PirTerm.Let("_nested", innerResult, rest);
+            }
+        }
         throw enrichedError("Unsupported in multi-acc break-aware body: " + stmt.getClass().getSimpleName(),
                 "Inside multi-accumulator loops with break, only variable declarations, assignments, if/else, and break are supported.",
                 stmt);
     }
 
     private PirTerm generateWhileStmt(WhileStmt ws, List<Statement> followingStmts, int followingIndex) {
-        if (insideLoopBody) {
-            throw enrichedError("Nested loops are not supported on-chain",
-                    "Extract the inner loop into a separate static helper method and call it from the outer loop.", ws);
-        }
-        var desugarer = new LoopDesugarer();
+        var desugarer = loopDesugarer;
         boolean hasBreak = containsBreak(ws.getBody());
         var accumulators = detectForEachAccumulators(ws.getBody());
 

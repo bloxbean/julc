@@ -22,6 +22,12 @@ import java.util.function.BiFunction;
  */
 public class LoopDesugarer {
 
+    private int loopCounter = 0;
+
+    private String nextLoopName(String prefix) {
+        return prefix + "__" + (loopCounter++);
+    }
+
     /**
      * Desugar a for-each loop with an accumulator pattern.
      *
@@ -36,7 +42,7 @@ public class LoopDesugarer {
     public PirTerm desugarForEach(PirTerm iterableExpr, String itemName, String accName,
                                    PirTerm accInit, PirType accType, PirTerm loopBody) {
         var listType = new PirType.ListType(new PirType.DataType());
-        var loopName = "loop__forEach";
+        var loopName = nextLoopName("loop__forEach");
         var xsName = "xs__";
 
         // loop = \xs \acc -> IfThenElse(NullList(xs), acc, loop(TailList(xs), body))
@@ -98,7 +104,7 @@ public class LoopDesugarer {
                                             PirTerm accInit, PirType accType,
                                             BiFunction<java.util.function.Function<PirTerm, PirTerm>, PirTerm, PirTerm> bodyBuilder) {
         var listType = new PirType.ListType(new PirType.DataType());
-        var loopName = "loop__forEach";
+        var loopName = nextLoopName("loop__forEach");
         var xsName = "xs__";
 
         var xsVar = new PirTerm.Var(xsName, listType);
@@ -148,7 +154,7 @@ public class LoopDesugarer {
     public PirTerm desugarWhileWithAccumulator(
             PirTerm condition, PirTerm body,
             String accName, PirTerm accInit, PirType accType) {
-        var loopName = "loop__while";
+        var loopName = nextLoopName("loop__while");
         var funType = new PirType.FunType(accType, accType);
         var accVar = new PirTerm.Var(accName, accType);
 
@@ -183,7 +189,7 @@ public class LoopDesugarer {
     public PirTerm desugarWhileWithAccumulatorAndBreak(
             PirTerm condition, String accName, PirTerm accInit, PirType accType,
             BiFunction<java.util.function.Function<PirTerm, PirTerm>, PirTerm, PirTerm> bodyBuilder) {
-        var loopName = "loop__while";
+        var loopName = nextLoopName("loop__while");
         var funType = new PirType.FunType(accType, accType);
         var accVar = new PirTerm.Var(accName, accType);
 
@@ -214,7 +220,7 @@ public class LoopDesugarer {
      */
     public PirTerm desugarWhile(PirTerm condition, PirTerm body) {
         var unitType = new PirType.UnitType();
-        var loopName = "loop__while";
+        var loopName = nextLoopName("loop__while");
 
         // loop = \_ -> IfThenElse(cond, Let("_", body, loop(Unit)), Unit)
         var recursiveCall = new PirTerm.App(

@@ -55,7 +55,7 @@ class LoopDesugarTest {
             assertInstanceOf(PirTerm.LetRec.class, result);
             var letRec = (PirTerm.LetRec) result;
             assertEquals(1, letRec.bindings().size());
-            assertEquals("loop__forEach", letRec.bindings().getFirst().name());
+            assertTrue(letRec.bindings().getFirst().name().startsWith("loop__forEach__"));
         }
 
         @Test
@@ -68,7 +68,22 @@ class LoopDesugarTest {
             assertInstanceOf(PirTerm.LetRec.class, result);
             var letRec = (PirTerm.LetRec) result;
             assertEquals(1, letRec.bindings().size());
-            assertEquals("loop__while", letRec.bindings().getFirst().name());
+            assertTrue(letRec.bindings().getFirst().name().startsWith("loop__while__"));
+        }
+
+        @Test
+        void eachLoopGetsUniqueName() {
+            var desugarer = new LoopDesugarer();
+            var r1 = desugarer.desugarWhile(
+                    new PirTerm.Const(Constant.bool(false)),
+                    new PirTerm.Const(Constant.unit()));
+            var r2 = desugarer.desugarWhile(
+                    new PirTerm.Const(Constant.bool(false)),
+                    new PirTerm.Const(Constant.unit()));
+
+            var name1 = ((PirTerm.LetRec) r1).bindings().getFirst().name();
+            var name2 = ((PirTerm.LetRec) r2).bindings().getFirst().name();
+            assertNotEquals(name1, name2, "Each loop should get a unique name");
         }
     }
 
@@ -627,8 +642,8 @@ class LoopDesugarTest {
         }
 
         @Test
-        void nestedForEachLoopsRejected() {
-            // Nested for-each loops are rejected with a clear error message
+        void nestedForEachLoopsCompile() {
+            // Nested for-each loops now compile successfully
             var source = """
                 import java.math.BigInteger;
                 import com.bloxbean.cardano.julc.onchain.ledger.*;
@@ -653,13 +668,13 @@ class LoopDesugarTest {
                     }
                 }
                 """;
-            var ex = assertThrows(CompilerException.class, () -> new JulcCompiler().compile(source));
-            assertTrue(ex.getMessage().contains("Nested loops"),
-                    "Error should mention nested loops: " + ex.getMessage());
+            var result = new JulcCompiler().compile(source);
+            assertNotNull(result.program());
+            assertFalse(result.hasErrors(), "Errors: " + result.diagnostics());
         }
 
         @Test
-        void nestedWhileInsideForEachRejected() {
+        void nestedWhileInsideForEachCompiles() {
             var source = """
                 import java.math.BigInteger;
                 import com.bloxbean.cardano.julc.onchain.ledger.*;
@@ -681,13 +696,13 @@ class LoopDesugarTest {
                     }
                 }
                 """;
-            var ex = assertThrows(CompilerException.class, () -> new JulcCompiler().compile(source));
-            assertTrue(ex.getMessage().contains("Nested loops"),
-                    "Error should mention nested loops: " + ex.getMessage());
+            var result = new JulcCompiler().compile(source);
+            assertNotNull(result.program());
+            assertFalse(result.hasErrors(), "Errors: " + result.diagnostics());
         }
 
         @Test
-        void nestedWhileInsideWhileRejected() {
+        void nestedWhileInsideWhileCompiles() {
             var source = """
                 import java.math.BigInteger;
 
@@ -707,9 +722,9 @@ class LoopDesugarTest {
                     }
                 }
                 """;
-            var ex = assertThrows(CompilerException.class, () -> new JulcCompiler().compile(source));
-            assertTrue(ex.getMessage().contains("Nested loops"),
-                    "Error should mention nested loops: " + ex.getMessage());
+            var result = new JulcCompiler().compile(source);
+            assertNotNull(result.program());
+            assertFalse(result.hasErrors(), "Errors: " + result.diagnostics());
         }
     }
 
@@ -778,7 +793,7 @@ class LoopDesugarTest {
             assertInstanceOf(PirTerm.LetRec.class, result);
             var letRec = (PirTerm.LetRec) result;
             assertEquals(1, letRec.bindings().size());
-            assertEquals("loop__while", letRec.bindings().getFirst().name());
+            assertTrue(letRec.bindings().getFirst().name().startsWith("loop__while__"));
         }
 
         @Test
@@ -856,7 +871,7 @@ class LoopDesugarTest {
             assertInstanceOf(PirTerm.LetRec.class, result);
             var letRec = (PirTerm.LetRec) result;
             assertEquals(1, letRec.bindings().size());
-            assertEquals("loop__while", letRec.bindings().getFirst().name());
+            assertTrue(letRec.bindings().getFirst().name().startsWith("loop__while__"));
         }
     }
 
@@ -1163,6 +1178,432 @@ class LoopDesugarTest {
 
             var evalResult = vm.evaluateWithArgs(result.program(), List.of(dummyScriptContext()));
             assertTrue(evalResult.isSuccess(), "Boolean multi-acc with break should find 3: " + evalResult);
+        }
+    }
+
+    // ========== Nested Loop Tests ==========
+
+    @Nested
+    class NestedLoopEvaluationTests {
+
+        /** Build a minimal ScriptContext Data for eval tests */
+        private PlutusData dummyScriptContext() {
+            var emptyList = PlutusData.list();
+            var emptyMap = PlutusData.map();
+            var zeroInterval = PlutusData.constr(0,
+                    PlutusData.constr(0, PlutusData.constr(1), PlutusData.integer(0)),
+                    PlutusData.constr(0, PlutusData.constr(1), PlutusData.integer(0)));
+            var txInfo = PlutusData.constr(0,
+                    emptyList, emptyList, emptyList, emptyList, emptyList,
+                    emptyList, emptyMap, zeroInterval, emptyList, emptyMap,
+                    PlutusData.bytes(new byte[32]),
+                    emptyMap, emptyList, emptyList, emptyList, PlutusData.integer(0));
+            var redeemer = PlutusData.integer(0);
+            var scriptInfo = PlutusData.constr(0, PlutusData.bytes(new byte[28]));
+            return PlutusData.constr(0, txInfo, redeemer, scriptInfo);
+        }
+
+        @Test
+        void nestedWhileInWhile_independentAccumulators() {
+            // Outer i=0..2, inner j=0..2, sum += i*10+j. Result = 0+1+2+10+11+12+20+21+22 = 99
+            var source = """
+                import java.math.BigInteger;
+
+                @Validator
+                class NestedWhileSum {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        BigInteger sum = BigInteger.ZERO;
+                        BigInteger i = BigInteger.ZERO;
+                        while (i < BigInteger.valueOf(3)) {
+                            BigInteger j = BigInteger.ZERO;
+                            while (j < BigInteger.valueOf(3)) {
+                                sum = sum + i * BigInteger.valueOf(10) + j;
+                                j = j + BigInteger.ONE;
+                            }
+                            i = i + BigInteger.ONE;
+                        }
+                        return sum == BigInteger.valueOf(99);
+                    }
+                }
+                """;
+            var result = new JulcCompiler().compile(source);
+            assertNotNull(result.program(), "Compilation failed: " + result.diagnostics());
+            assertFalse(result.hasErrors(), "Errors: " + result.diagnostics());
+
+            var evalResult = vm.evaluateWithArgs(result.program(), List.of(dummyScriptContext()));
+            assertTrue(evalResult.isSuccess(), "Nested while-in-while should evaluate correctly: " + evalResult);
+        }
+
+        @Test
+        void nestedForEachInForEach_compiles() {
+            // Nested for-each iterating over signatories twice
+            var source = """
+                import java.math.BigInteger;
+                import com.bloxbean.cardano.julc.onchain.ledger.*;
+
+                @Validator
+                class NestedForEach {
+                    @Entrypoint
+                    static boolean validate(byte[] redeemer, ScriptContext ctx) {
+                        var txInfo = ctx.txInfo();
+                        BigInteger count = BigInteger.ZERO;
+                        for (var sig1 : txInfo.signatories()) {
+                            BigInteger innerCount = BigInteger.ZERO;
+                            for (var sig2 : txInfo.signatories()) {
+                                innerCount = innerCount + BigInteger.ONE;
+                            }
+                            count = count + innerCount;
+                        }
+                        return count >= BigInteger.ZERO;
+                    }
+                }
+                """;
+            var result = new JulcCompiler().compile(source);
+            assertNotNull(result.program(), "Compilation failed: " + result.diagnostics());
+            assertFalse(result.hasErrors(), "Errors: " + result.diagnostics());
+        }
+
+        @Test
+        void mixedNesting_whileInForEach_compiles() {
+            var source = """
+                import java.math.BigInteger;
+                import com.bloxbean.cardano.julc.onchain.ledger.*;
+
+                @Validator
+                class WhileInForEach {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer, ScriptContext ctx) {
+                        var txInfo = ctx.txInfo();
+                        BigInteger total = BigInteger.ZERO;
+                        for (var sig : txInfo.signatories()) {
+                            BigInteger k = BigInteger.ZERO;
+                            while (k < BigInteger.valueOf(3)) {
+                                k = k + BigInteger.ONE;
+                            }
+                            total = total + k;
+                        }
+                        return total >= BigInteger.ZERO;
+                    }
+                }
+                """;
+            var result = new JulcCompiler().compile(source);
+            assertNotNull(result.program(), "Compilation failed: " + result.diagnostics());
+            assertFalse(result.hasErrors(), "Errors: " + result.diagnostics());
+        }
+
+        @Test
+        void mixedNesting_forEachInWhile_compiles() {
+            var source = """
+                import java.math.BigInteger;
+                import com.bloxbean.cardano.julc.onchain.ledger.*;
+
+                @Validator
+                class ForEachInWhile {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer, ScriptContext ctx) {
+                        var txInfo = ctx.txInfo();
+                        BigInteger rounds = BigInteger.ZERO;
+                        BigInteger total = BigInteger.ZERO;
+                        while (rounds < BigInteger.valueOf(2)) {
+                            BigInteger count = BigInteger.ZERO;
+                            for (var sig : txInfo.signatories()) {
+                                count = count + BigInteger.ONE;
+                            }
+                            total = total + count;
+                            rounds = rounds + BigInteger.ONE;
+                        }
+                        return total >= BigInteger.ZERO;
+                    }
+                }
+                """;
+            var result = new JulcCompiler().compile(source);
+            assertNotNull(result.program(), "Compilation failed: " + result.diagnostics());
+            assertFalse(result.hasErrors(), "Errors: " + result.diagnostics());
+        }
+
+        @Test
+        void booleanFlagEarlyExit_nestedWhile() {
+            // containsDuplicate equivalent using boolean flag pattern
+            // List [1,2,3,2] → has duplicate → found = true
+            var source = """
+                import java.math.BigInteger;
+
+                @Validator
+                class ContainsDuplicate {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        BigInteger size = BigInteger.valueOf(4);
+                        boolean found = false;
+                        BigInteger i = BigInteger.ZERO;
+                        while (i < size && !found) {
+                            BigInteger j = i + BigInteger.ONE;
+                            while (j < size && !found) {
+                                if (i == j) {
+                                    found = true;
+                                }
+                                j = j + BigInteger.ONE;
+                            }
+                            i = i + BigInteger.ONE;
+                        }
+                        return !found;
+                    }
+                }
+                """;
+            var result = new JulcCompiler().compile(source);
+            assertNotNull(result.program(), "Compilation failed: " + result.diagnostics());
+            assertFalse(result.hasErrors(), "Errors: " + result.diagnostics());
+
+            var evalResult = vm.evaluateWithArgs(result.program(), List.of(dummyScriptContext()));
+            assertTrue(evalResult.isSuccess(), "Boolean flag nested while should evaluate: " + evalResult);
+        }
+
+        @Test
+        void nestedWhileWithBreak_innerBreakOnly() {
+            // Inner loop breaks at j==2, outer loop continues. Verify break only exits inner.
+            var source = """
+                import java.math.BigInteger;
+
+                @Validator
+                class InnerBreakOnly {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        BigInteger outerSum = BigInteger.ZERO;
+                        BigInteger i = BigInteger.ZERO;
+                        while (i < BigInteger.valueOf(3)) {
+                            BigInteger j = BigInteger.ZERO;
+                            while (j < BigInteger.valueOf(5)) {
+                                if (j == BigInteger.valueOf(2)) {
+                                    break;
+                                }
+                                j = j + BigInteger.ONE;
+                            }
+                            outerSum = outerSum + j;
+                            i = i + BigInteger.ONE;
+                        }
+                        return outerSum == BigInteger.valueOf(6);
+                    }
+                }
+                """;
+            var result = new JulcCompiler().compile(source);
+            assertNotNull(result.program(), "Compilation failed: " + result.diagnostics());
+            assertFalse(result.hasErrors(), "Errors: " + result.diagnostics());
+
+            var evalResult = vm.evaluateWithArgs(result.program(), List.of(dummyScriptContext()));
+            assertTrue(evalResult.isSuccess(), "Inner break should not exit outer loop: " + evalResult);
+        }
+    }
+
+    // ========== Deep Nested Loop Tests (3-4 levels) ==========
+
+    @Nested
+    class DeepNestedLoopTests {
+
+        /** Build a minimal ScriptContext Data for eval tests */
+        private PlutusData dummyScriptContext() {
+            var emptyList = PlutusData.list();
+            var emptyMap = PlutusData.map();
+            var zeroInterval = PlutusData.constr(0,
+                    PlutusData.constr(0, PlutusData.constr(1), PlutusData.integer(0)),
+                    PlutusData.constr(0, PlutusData.constr(1), PlutusData.integer(0)));
+            var txInfo = PlutusData.constr(0,
+                    emptyList, emptyList, emptyList, emptyList, emptyList,
+                    emptyList, emptyMap, zeroInterval, emptyList, emptyMap,
+                    PlutusData.bytes(new byte[32]),
+                    emptyMap, emptyList, emptyList, emptyList, PlutusData.integer(0));
+            var redeemer = PlutusData.integer(0);
+            var scriptInfo = PlutusData.constr(0, PlutusData.bytes(new byte[28]));
+            return PlutusData.constr(0, txInfo, redeemer, scriptInfo);
+        }
+
+        @Test
+        void tripleWhile_sumComputation() {
+            // i=0..1, j=0..1, k=0..1 → sum += i*100 + j*10 + k
+            // Expected: 0+1+10+11+100+101+110+111 = 444
+            var source = """
+                import java.math.BigInteger;
+
+                @Validator
+                class TripleWhile {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        BigInteger sum = BigInteger.ZERO;
+                        BigInteger i = BigInteger.ZERO;
+                        while (i < BigInteger.valueOf(2)) {
+                            BigInteger j = BigInteger.ZERO;
+                            while (j < BigInteger.valueOf(2)) {
+                                BigInteger k = BigInteger.ZERO;
+                                while (k < BigInteger.valueOf(2)) {
+                                    sum = sum + i * BigInteger.valueOf(100) + j * BigInteger.valueOf(10) + k;
+                                    k = k + BigInteger.ONE;
+                                }
+                                j = j + BigInteger.ONE;
+                            }
+                            i = i + BigInteger.ONE;
+                        }
+                        return sum == BigInteger.valueOf(444);
+                    }
+                }
+                """;
+            var result = new JulcCompiler().compile(source);
+            assertNotNull(result.program(), "Compilation failed: " + result.diagnostics());
+            assertFalse(result.hasErrors(), "Errors: " + result.diagnostics());
+
+            var evalResult = vm.evaluateWithArgs(result.program(), List.of(dummyScriptContext()));
+            assertTrue(evalResult.isSuccess(), "Triple while sum should be 444: " + evalResult);
+        }
+
+        @Test
+        void quadWhile_countIterations() {
+            // i,j,k,l each 0..1 → count increments each innermost iteration
+            // Expected: 2^4 = 16 iterations
+            var source = """
+                import java.math.BigInteger;
+
+                @Validator
+                class QuadWhile {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        BigInteger count = BigInteger.ZERO;
+                        BigInteger i = BigInteger.ZERO;
+                        while (i < BigInteger.valueOf(2)) {
+                            BigInteger j = BigInteger.ZERO;
+                            while (j < BigInteger.valueOf(2)) {
+                                BigInteger k = BigInteger.ZERO;
+                                while (k < BigInteger.valueOf(2)) {
+                                    BigInteger l = BigInteger.ZERO;
+                                    while (l < BigInteger.valueOf(2)) {
+                                        count = count + BigInteger.ONE;
+                                        l = l + BigInteger.ONE;
+                                    }
+                                    k = k + BigInteger.ONE;
+                                }
+                                j = j + BigInteger.ONE;
+                            }
+                            i = i + BigInteger.ONE;
+                        }
+                        return count == BigInteger.valueOf(16);
+                    }
+                }
+                """;
+            var result = new JulcCompiler().compile(source);
+            assertNotNull(result.program(), "Compilation failed: " + result.diagnostics());
+            assertFalse(result.hasErrors(), "Errors: " + result.diagnostics());
+
+            var evalResult = vm.evaluateWithArgs(result.program(), List.of(dummyScriptContext()));
+            assertTrue(evalResult.isSuccess(), "Quad while count should be 16: " + evalResult);
+        }
+
+        @Test
+        void tripleMixed_forEachWhileWhile_compiles() {
+            // for-each over signatories, while inside while — 3 levels, mixed loop types
+            var source = """
+                import java.math.BigInteger;
+                import com.bloxbean.cardano.julc.onchain.ledger.*;
+
+                @Validator
+                class TripleMixed {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer, ScriptContext ctx) {
+                        var txInfo = ctx.txInfo();
+                        BigInteger total = BigInteger.ZERO;
+                        for (var sig : txInfo.signatories()) {
+                            BigInteger j = BigInteger.ZERO;
+                            while (j < BigInteger.valueOf(2)) {
+                                BigInteger k = BigInteger.ZERO;
+                                while (k < BigInteger.valueOf(2)) {
+                                    k = k + BigInteger.ONE;
+                                }
+                                total = total + k;
+                                j = j + BigInteger.ONE;
+                            }
+                        }
+                        return total >= BigInteger.ZERO;
+                    }
+                }
+                """;
+            var result = new JulcCompiler().compile(source);
+            assertNotNull(result.program(), "Compilation failed: " + result.diagnostics());
+            assertFalse(result.hasErrors(), "Errors: " + result.diagnostics());
+        }
+
+        @Test
+        void tripleWhileWithBreakAtInnermost() {
+            // Outer i=0..2, mid j=0..4, inner k=0..9 breaks at k==3
+            // After inner break: k==3. outerSum += k per mid iteration, so outerSum += 3*5 per outer = 15*3 = 45
+            var source = """
+                import java.math.BigInteger;
+
+                @Validator
+                class TripleBreak {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        BigInteger outerSum = BigInteger.ZERO;
+                        BigInteger i = BigInteger.ZERO;
+                        while (i < BigInteger.valueOf(3)) {
+                            BigInteger j = BigInteger.ZERO;
+                            while (j < BigInteger.valueOf(5)) {
+                                BigInteger k = BigInteger.ZERO;
+                                while (k < BigInteger.valueOf(10)) {
+                                    if (k == BigInteger.valueOf(3)) {
+                                        break;
+                                    }
+                                    k = k + BigInteger.ONE;
+                                }
+                                outerSum = outerSum + k;
+                                j = j + BigInteger.ONE;
+                            }
+                            i = i + BigInteger.ONE;
+                        }
+                        return outerSum == BigInteger.valueOf(45);
+                    }
+                }
+                """;
+            var result = new JulcCompiler().compile(source);
+            assertNotNull(result.program(), "Compilation failed: " + result.diagnostics());
+            assertFalse(result.hasErrors(), "Errors: " + result.diagnostics());
+
+            var evalResult = vm.evaluateWithArgs(result.program(), List.of(dummyScriptContext()));
+            assertTrue(evalResult.isSuccess(), "Triple break should give outerSum=45: " + evalResult);
+        }
+
+        @Test
+        void tripleWhile_sharedAccumulatorAtAllLevels() {
+            // `total` is modified at ALL 3 levels — verifies accumulator threading
+            // 2*(100 + 2*(10 + 2*1)) = 2*(100 + 2*12) = 2*124 = 248
+            var source = """
+                import java.math.BigInteger;
+
+                @Validator
+                class TripleSharedAcc {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        BigInteger total = BigInteger.ZERO;
+                        BigInteger i = BigInteger.ZERO;
+                        while (i < BigInteger.valueOf(2)) {
+                            total = total + BigInteger.valueOf(100);
+                            BigInteger j = BigInteger.ZERO;
+                            while (j < BigInteger.valueOf(2)) {
+                                total = total + BigInteger.valueOf(10);
+                                BigInteger k = BigInteger.ZERO;
+                                while (k < BigInteger.valueOf(2)) {
+                                    total = total + BigInteger.ONE;
+                                    k = k + BigInteger.ONE;
+                                }
+                                j = j + BigInteger.ONE;
+                            }
+                            i = i + BigInteger.ONE;
+                        }
+                        return total == BigInteger.valueOf(248);
+                    }
+                }
+                """;
+            var result = new JulcCompiler().compile(source);
+            assertNotNull(result.program(), "Compilation failed: " + result.diagnostics());
+            assertFalse(result.hasErrors(), "Errors: " + result.diagnostics());
+
+            var evalResult = vm.evaluateWithArgs(result.program(), List.of(dummyScriptContext()));
+            assertTrue(evalResult.isSuccess(), "Triple shared accumulator should give total=248: " + evalResult);
         }
     }
 }
