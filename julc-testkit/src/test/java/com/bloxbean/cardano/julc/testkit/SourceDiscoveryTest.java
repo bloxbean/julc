@@ -1,5 +1,6 @@
 package com.bloxbean.cardano.julc.testkit;
 
+import com.bloxbean.cardano.julc.compiler.CompileResult;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
@@ -43,5 +44,28 @@ class SourceDiscoveryTest {
         assertEquals(
                 Path.of("custom/src/java/lang/String.java"),
                 result);
+    }
+
+    // --- FQCN-based compilation tests ---
+
+    private static final Path TEST_SOURCE_ROOT = Path.of("src/test/resources/testdata");
+
+    @Test
+    void compileFqcn_compilesSimpleValidator() {
+        CompileResult result = SourceDiscovery.compile(
+                "com.example.validators.SimpleValidator", TEST_SOURCE_ROOT);
+        assertNotNull(result);
+        assertFalse(result.hasErrors(), "Expected no errors: " + result.diagnostics());
+        assertNotNull(result.program());
+    }
+
+    @Test
+    void compileFqcn_nonExistentClassGivesClearError() {
+        var error = assertThrows(AssertionError.class, () ->
+                SourceDiscovery.compile("com.example.NonExistent", TEST_SOURCE_ROOT));
+        assertTrue(error.getMessage().contains("Cannot read validator source"),
+                "Expected clear error about missing source, got: " + error.getMessage());
+        assertTrue(error.getMessage().contains("com.example.NonExistent"),
+                "Error should mention the FQCN, got: " + error.getMessage());
     }
 }

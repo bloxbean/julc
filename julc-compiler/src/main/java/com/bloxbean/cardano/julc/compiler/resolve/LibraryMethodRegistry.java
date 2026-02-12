@@ -1,5 +1,6 @@
 package com.bloxbean.cardano.julc.compiler.resolve;
 
+import com.bloxbean.cardano.julc.compiler.pir.PirHelpers;
 import com.bloxbean.cardano.julc.compiler.pir.PirTerm;
 import com.bloxbean.cardano.julc.compiler.pir.PirType;
 import com.bloxbean.cardano.julc.compiler.pir.StdlibLookup;
@@ -51,6 +52,74 @@ public class LibraryMethodRegistry implements StdlibLookup {
             result = new PirTerm.App(result, arg);
         }
         return Optional.of(result);
+    }
+
+    @Override
+    public Optional<PirTerm> lookup(String className, String methodName,
+                                      List<PirTerm> args, List<PirType> argTypes) {
+        var key = className + "." + methodName;
+        var method = methods.get(key);
+        if (method == null) {
+            return Optional.empty();
+        }
+
+        // Extract expected parameter types from the FunType chain
+        var expectedTypes = extractParamTypes(method.type());
+
+        // Apply coercions where caller type differs from callee's expected type
+        var coercedArgs = new ArrayList<PirTerm>(args.size());
+        for (int i = 0; i < args.size(); i++) {
+            var arg = args.get(i);
+            var callerType = i < argTypes.size() ? argTypes.get(i) : new PirType.DataType();
+            var calleeType = i < expectedTypes.size() ? expectedTypes.get(i) : new PirType.DataType();
+            coercedArgs.add(coerceArg(arg, callerType, calleeType));
+        }
+
+        PirTerm result = new PirTerm.Var(key, method.type());
+        for (var arg : coercedArgs) {
+            result = new PirTerm.App(result, arg);
+        }
+        return Optional.of(result);
+    }
+
+    /**
+     * Extract parameter types from a FunType chain.
+     * E.g., FunType(ByteStringType, FunType(ListType, BoolType)) → [ByteStringType, ListType]
+     */
+    private static List<PirType> extractParamTypes(PirType type) {
+        var params = new ArrayList<PirType>();
+        while (type instanceof PirType.FunType ft) {
+            params.add(ft.paramType());
+            type = ft.returnType();
+        }
+        return params;
+    }
+
+    /**
+     * Coerce an argument from caller type to callee's expected type.
+     * <p>
+     * Only decodes when callee expects a specific primitive type and caller has DataType.
+     * When callee expects DataType, no coercion is applied because DataType means
+     * "pass-through value" — the library body handles its own decode/encode.
+     */
+    private static PirTerm coerceArg(PirTerm arg, PirType callerType, PirType calleeType) {
+        if (callerType.equals(calleeType)) return arg;
+
+        // Caller has Data, callee expects specific decoded type → decode
+        if (callerType instanceof PirType.DataType && isPrimitiveType(calleeType)) {
+            return PirHelpers.wrapDecode(arg, calleeType);
+        }
+
+        return arg;
+    }
+
+    private static boolean isPrimitiveType(PirType type) {
+        return type instanceof PirType.IntegerType
+                || type instanceof PirType.ByteStringType
+                || type instanceof PirType.BoolType
+                || type instanceof PirType.StringType
+                || type instanceof PirType.ListType
+                || type instanceof PirType.MapType;
     }
 
     /**

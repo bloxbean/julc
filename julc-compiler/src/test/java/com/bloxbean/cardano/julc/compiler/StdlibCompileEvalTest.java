@@ -949,7 +949,106 @@ class StdlibCompileEvalTest {
     }
 
     // =========================================================================
-    // 9. TransitiveDependencies — user @OnchainLibrary calling stdlib methods
+    // 9. ContextsLibExtendedEval — txInfoRefInputs, txInfoWithdrawals, txInfoRedeemers
+    // =========================================================================
+
+    @Nested
+    class ContextsLibExtendedEval {
+
+        /** Build a full TxInfo with all 16 fields populated for field extraction testing. */
+        static PlutusData buildFullTxInfo() {
+            return PlutusData.constr(0,
+                    PlutusData.list(PlutusData.integer(1)),               // 0: inputs
+                    PlutusData.list(PlutusData.integer(2)),               // 1: referenceInputs
+                    PlutusData.list(PlutusData.integer(3)),               // 2: outputs
+                    PlutusData.integer(2000000),                           // 3: fee
+                    PlutusData.map(),                                      // 4: mint
+                    PlutusData.list(),                                     // 5: certificates
+                    PlutusData.map(new PlutusData.Pair(                   // 6: withdrawals
+                            PlutusData.constr(0, PlutusData.bytes(new byte[]{7})),
+                            PlutusData.integer(0))),
+                    alwaysInterval(),                                      // 7: validRange
+                    PlutusData.list(PlutusData.bytes(new byte[]{8})),     // 8: signatories
+                    PlutusData.map(new PlutusData.Pair(                   // 9: redeemers
+                            PlutusData.constr(0, PlutusData.bytes(new byte[]{9})),
+                            PlutusData.integer(42))),
+                    PlutusData.map(),                                      // 10: datums
+                    PlutusData.bytes(new byte[32]),                        // 11: txId
+                    PlutusData.map(),                                      // 12: votes
+                    PlutusData.list(),                                     // 13: proposalProcedures
+                    PlutusData.constr(1),                                  // 14: currentTreasuryAmount (None)
+                    PlutusData.constr(1)                                   // 15: treasuryDonation (None)
+            );
+        }
+
+        @Test
+        void txInfoRefInputsExtractsField1() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            PlutusData txInfo = ContextsLib.getTxInfo(ctx);
+                            PlutusData refInputs = ContextsLib.txInfoRefInputs(txInfo);
+                            // refInputs should be a list; check it's non-empty
+                            return !Builtins.nullList(refInputs);
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var txInfo = buildFullTxInfo();
+            var ctx = PlutusData.constr(0, txInfo, PlutusData.integer(0), PlutusData.integer(0));
+            var result = vm.evaluateWithArgs(program, List.of(ctx));
+            assertTrue(result.isSuccess(), "txInfoRefInputs should extract non-empty list. Got: " + result);
+        }
+
+        @Test
+        void txInfoWithdrawalsExtractsField6() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            PlutusData txInfo = ContextsLib.getTxInfo(ctx);
+                            PlutusData withdrawals = ContextsLib.txInfoWithdrawals(txInfo);
+                            // withdrawals should be a map; check it's non-empty
+                            PlutusData pairs = Builtins.unMapData(withdrawals);
+                            return !Builtins.nullList(pairs);
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var txInfo = buildFullTxInfo();
+            var ctx = PlutusData.constr(0, txInfo, PlutusData.integer(0), PlutusData.integer(0));
+            var result = vm.evaluateWithArgs(program, List.of(ctx));
+            assertTrue(result.isSuccess(), "txInfoWithdrawals should extract non-empty map. Got: " + result);
+        }
+
+        @Test
+        void txInfoRedeemersExtractsField9() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            PlutusData txInfo = ContextsLib.getTxInfo(ctx);
+                            PlutusData redeemers = ContextsLib.txInfoRedeemers(txInfo);
+                            // redeemers should be a map; check it's non-empty
+                            PlutusData pairs = Builtins.unMapData(redeemers);
+                            return !Builtins.nullList(pairs);
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var txInfo = buildFullTxInfo();
+            var ctx = PlutusData.constr(0, txInfo, PlutusData.integer(0), PlutusData.integer(0));
+            var result = vm.evaluateWithArgs(program, List.of(ctx));
+            assertTrue(result.isSuccess(), "txInfoRedeemers should extract non-empty map. Got: " + result);
+        }
+    }
+
+    // =========================================================================
+    // 10. TransitiveDependencies — user @OnchainLibrary calling stdlib methods
     // =========================================================================
 
     @Nested

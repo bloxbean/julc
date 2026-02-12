@@ -56,6 +56,51 @@ public final class SourceDiscovery {
     }
 
     /**
+     * Compile a validator by fully-qualified class name with auto-discovered library dependencies.
+     * <p>
+     * Useful when {@code -proc:only} prevents {@code .class} file generation.
+     *
+     * @param fqcn       the fully-qualified class name (e.g., "com.example.MyValidator")
+     * @param sourceRoot the root of the source tree
+     * @return the compilation result
+     * @throws AssertionError if the source file cannot be read or compilation fails
+     */
+    public static CompileResult compile(String fqcn, Path sourceRoot) {
+        Path sourceFile = sourceRoot.resolve(fqcn.replace('.', '/') + ".java");
+        String validatorSource;
+        try {
+            validatorSource = Files.readString(sourceFile);
+        } catch (IOException e) {
+            throw new AssertionError("Cannot read validator source for " + fqcn + ": " + sourceFile, e);
+        }
+
+        // Build library pool and resolve dependencies
+        Map<String, String> pool = buildLibraryPool(validatorSource, sourceRoot);
+        List<String> libSources = LibrarySourceResolver.resolve(validatorSource, pool);
+
+        // Compile with stdlib
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry()::lookup);
+        var result = compiler.compile(validatorSource, libSources);
+
+        if (result.hasErrors()) {
+            throw new AssertionError("Compilation failed for " + fqcn + ": " + result.diagnostics());
+        }
+
+        return result;
+    }
+
+    /**
+     * Compile a validator by fully-qualified class name.
+     * Uses the default source root ({@code src/main/java}).
+     *
+     * @param fqcn the fully-qualified class name
+     * @return the compilation result
+     */
+    public static CompileResult compile(String fqcn) {
+        return compile(fqcn, DEFAULT_SOURCE_ROOT);
+    }
+
+    /**
      * Compile a validator class with auto-discovered library dependencies.
      *
      * @param validatorClass the validator class to compile

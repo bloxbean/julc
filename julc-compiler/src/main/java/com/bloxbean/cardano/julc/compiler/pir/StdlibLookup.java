@@ -20,4 +20,20 @@ public interface StdlibLookup {
      * @return the PIR term if found, empty otherwise
      */
     Optional<PirTerm> lookup(String className, String methodName, List<PirTerm> args);
+
+    /**
+     * Look up a stdlib method with arg type information for proper coercion.
+     * Default delegates to untyped lookup. Override to insert decode/encode coercions
+     * when caller arg types don't match callee parameter types.
+     *
+     * @param className  the simple class name
+     * @param methodName the method name
+     * @param args       the compiled argument PIR terms
+     * @param argTypes   the PIR types of each argument at the call site
+     * @return the PIR term if found, empty otherwise
+     */
+    default Optional<PirTerm> lookup(String className, String methodName,
+                                      List<PirTerm> args, List<PirType> argTypes) {
+        return lookup(className, methodName, args);
+    }
 }

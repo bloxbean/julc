@@ -81,6 +81,10 @@ public class SubsetValidator extends VoidVisitorAdapter<Void> {
     @Override
     public void visit(ForEachStmt n, Void arg) {
         // for-each is now supported (desugared to fold); break is allowed inside
+        if (forEachDepth > 0 || whileDepth > 0) {
+            error(n, "Nested loops are not supported on-chain",
+                    "Extract the inner loop into a separate static helper method and call it from the outer loop");
+        }
         forEachDepth++;
         super.visit(n, arg);
         forEachDepth--;
@@ -98,6 +102,10 @@ public class SubsetValidator extends VoidVisitorAdapter<Void> {
     @Override
     public void visit(WhileStmt n, Void arg) {
         // while is now supported (desugared to recursion)
+        if (forEachDepth > 0 || whileDepth > 0) {
+            error(n, "Nested loops are not supported on-chain",
+                    "Extract the inner loop into a separate static helper method and call it from the outer loop");
+        }
         whileDepth++;
         super.visit(n, arg);
         whileDepth--;

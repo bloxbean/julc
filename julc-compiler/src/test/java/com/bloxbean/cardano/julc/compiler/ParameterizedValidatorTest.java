@@ -446,4 +446,119 @@ class ParameterizedValidatorTest {
         var evalResult = vm.evaluateWithArgs(concrete, List.of(ctx));
         assertTrue(evalResult.isSuccess(), "BigInteger + String params should succeed: " + evalResult);
     }
+
+    // --- @Param passed to library methods (Fix 2: type coercion) ---
+
+    @Test
+    void paramByteArrayPassedToDataLibMethod() {
+        // @Param byte[] is decoded to ByteStringType. Library method expects PlutusData (DataType).
+        // The compiler should insert BData coercion to encode ByteString → Data.
+        var libSource = """
+                @OnchainLibrary
+                class DataLib {
+                    static boolean isNonEmpty(PlutusData x) {
+                        return true;
+                    }
+                }
+                """;
+        var validatorSource = """
+                @Validator
+                class ParamLibValidator {
+                    @Param byte[] owner;
+
+                    @Entrypoint
+                    static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                        return DataLib.isNonEmpty(owner);
+                    }
+                }
+                """;
+        var result = new JulcCompiler().compile(validatorSource, java.util.List.of(libSource));
+        assertTrue(result.isParameterized());
+
+        var concrete = result.program().applyParams(PlutusData.bytes(new byte[]{1, 2, 3}));
+        var ctx = buildScriptContext(
+                buildTxInfo(new PlutusData[0]),
+                PlutusData.integer(0),
+                PlutusData.constr(0, PlutusData.bytes(new byte[28])));
+        var evalResult = vm.evaluateWithArgs(concrete, java.util.List.of(ctx));
+        assertTrue(evalResult.isSuccess(), "@Param byte[] passed to PlutusData lib method should succeed: " + evalResult);
+    }
+
+    @Test
+    void paramIntegerPassedToIntegerLibMethodDirectly() {
+        // @Param BigInteger is decoded to IntegerType. Library also expects BigInteger (IntegerType).
+        // Types match — no coercion needed. This verifies @Param decode + library call round-trip.
+        var libSource = """
+                import java.math.BigInteger;
+
+                @OnchainLibrary
+                class IntLib {
+                    static boolean checkThreshold(BigInteger x, BigInteger min) {
+                        return x >= min;
+                    }
+                }
+                """;
+        var validatorSource = """
+                import java.math.BigInteger;
+
+                @Validator
+                class ParamLibValidator2 {
+                    @Param BigInteger threshold;
+
+                    @Entrypoint
+                    static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                        return IntLib.checkThreshold(threshold, 10);
+                    }
+                }
+                """;
+        var result = new JulcCompiler().compile(validatorSource, java.util.List.of(libSource));
+        assertTrue(result.isParameterized());
+
+        var concrete = result.program().applyParams(PlutusData.integer(42));
+        var ctx = buildScriptContext(
+                buildTxInfo(new PlutusData[0]),
+                PlutusData.integer(0),
+                PlutusData.constr(0, PlutusData.bytes(new byte[28])));
+        var evalResult = vm.evaluateWithArgs(concrete, java.util.List.of(ctx));
+        assertTrue(evalResult.isSuccess(), "@Param BigInteger passed to BigInteger lib method should succeed: " + evalResult);
+    }
+
+    @Test
+    void paramIntegerPassedToIntegerLibMethod() {
+        // @Param BigInteger decoded to IntegerType. Library also expects BigInteger (IntegerType).
+        // No coercion needed — types match.
+        var libSource = """
+                import java.math.BigInteger;
+
+                @OnchainLibrary
+                class IntCheckLib {
+                    static boolean isPositive(BigInteger x) {
+                        return x > 0;
+                    }
+                }
+                """;
+        var validatorSource = """
+                import java.math.BigInteger;
+
+                @Validator
+                class ParamIntLibValidator {
+                    @Param BigInteger threshold;
+
+                    @Entrypoint
+                    static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                        return IntCheckLib.isPositive(threshold);
+                    }
+                }
+                """;
+        var result = new JulcCompiler().compile(validatorSource, java.util.List.of(libSource));
+        assertTrue(result.isParameterized());
+
+        var concrete = result.program().applyParams(PlutusData.integer(100));
+        var ctx = buildScriptContext(
+                buildTxInfo(new PlutusData[0]),
+                PlutusData.integer(0),
+                PlutusData.constr(0, PlutusData.bytes(new byte[28])));
+        var evalResult = vm.evaluateWithArgs(concrete, java.util.List.of(ctx));
+        assertTrue(evalResult.isSuccess(), "@Param BigInteger passed to BigInteger lib method should succeed: " + evalResult);
+    }
 }

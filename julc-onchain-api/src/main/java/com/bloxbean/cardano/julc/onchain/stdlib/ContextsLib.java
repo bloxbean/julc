@@ -111,6 +111,21 @@ public final class ContextsLib {
         return PlutusData.UNIT; // placeholder
     }
 
+    /** Extract reference inputs list (field 1) from TxInfo. */
+    public static PlutusData txInfoRefInputs(TxInfo txInfo) {
+        return new PlutusData.ListData(new java.util.ArrayList<>()); // placeholder
+    }
+
+    /** Extract withdrawals map (field 6) from TxInfo. */
+    public static PlutusData txInfoWithdrawals(TxInfo txInfo) {
+        return PlutusData.UNIT; // placeholder
+    }
+
+    /** Extract redeemers map (field 9) from TxInfo. */
+    public static PlutusData txInfoRedeemers(TxInfo txInfo) {
+        return PlutusData.UNIT; // placeholder
+    }
+
     /** Find the input being spent (for spending validators). */
     public static PlutusData findOwnInput(ScriptContext ctx) {
         return PlutusData.UNIT; // complex off-chain impl not needed

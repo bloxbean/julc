@@ -627,8 +627,8 @@ class LoopDesugarTest {
         }
 
         @Test
-        void nestedForEachLoops() {
-            // Nested for-each regression test
+        void nestedForEachLoopsRejected() {
+            // Nested for-each loops are rejected with a clear error message
             var source = """
                 import java.math.BigInteger;
                 import com.bloxbean.cardano.julc.onchain.ledger.*;
@@ -653,9 +653,63 @@ class LoopDesugarTest {
                     }
                 }
                 """;
-            var result = new JulcCompiler().compile(source);
-            assertNotNull(result.program());
-            assertFalse(result.hasErrors());
+            var ex = assertThrows(CompilerException.class, () -> new JulcCompiler().compile(source));
+            assertTrue(ex.getMessage().contains("Nested loops"),
+                    "Error should mention nested loops: " + ex.getMessage());
+        }
+
+        @Test
+        void nestedWhileInsideForEachRejected() {
+            var source = """
+                import java.math.BigInteger;
+                import com.bloxbean.cardano.julc.onchain.ledger.*;
+
+                @Validator
+                class NestedLoops {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer, ScriptContext ctx) {
+                        var txInfo = ctx.txInfo();
+                        BigInteger total = BigInteger.ZERO;
+                        for (var output : txInfo.outputs()) {
+                            BigInteger count = BigInteger.ZERO;
+                            while (count < redeemer) {
+                                count = count + BigInteger.ONE;
+                            }
+                            total = total + count;
+                        }
+                        return total == BigInteger.ZERO;
+                    }
+                }
+                """;
+            var ex = assertThrows(CompilerException.class, () -> new JulcCompiler().compile(source));
+            assertTrue(ex.getMessage().contains("Nested loops"),
+                    "Error should mention nested loops: " + ex.getMessage());
+        }
+
+        @Test
+        void nestedWhileInsideWhileRejected() {
+            var source = """
+                import java.math.BigInteger;
+
+                @Validator
+                class NestedWhile {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        BigInteger outer = BigInteger.ZERO;
+                        while (outer < redeemer) {
+                            BigInteger inner = BigInteger.ZERO;
+                            while (inner < ctx) {
+                                inner = inner + BigInteger.ONE;
+                            }
+                            outer = outer + BigInteger.ONE;
+                        }
+                        return outer == redeemer;
+                    }
+                }
+                """;
+            var ex = assertThrows(CompilerException.class, () -> new JulcCompiler().compile(source));
+            assertTrue(ex.getMessage().contains("Nested loops"),
+                    "Error should mention nested loops: " + ex.getMessage());
         }
     }
 
@@ -1047,6 +1101,68 @@ class LoopDesugarTest {
 
             var evalResult = vm.evaluateWithArgs(result.program(), List.of(dummyScriptContext()));
             assertTrue(evalResult.isSuccess(), "Evaluation failed: " + evalResult);
+        }
+
+        @Test
+        void booleanAndCounterMultiAcc_evaluates() {
+            // Multi-acc while: boolean found + BigInteger count.
+            // Iterate from 5 down to 0, set found=true when k==3.
+            var source = """
+                import java.math.BigInteger;
+
+                @Validator
+                class BoolMultiAccEval {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        boolean found = false;
+                        BigInteger k = BigInteger.valueOf(5);
+                        while (k > BigInteger.ZERO) {
+                            if (k == BigInteger.valueOf(3)) {
+                                found = true;
+                            }
+                            k = k - BigInteger.ONE;
+                        }
+                        return found;
+                    }
+                }
+                """;
+            var result = new JulcCompiler().compile(source);
+            assertNotNull(result.program(), "Compilation failed: " + result.diagnostics());
+            assertFalse(result.hasErrors(), "Errors: " + result.diagnostics());
+
+            var evalResult = vm.evaluateWithArgs(result.program(), List.of(dummyScriptContext()));
+            assertTrue(evalResult.isSuccess(), "Boolean multi-acc should find target: " + evalResult);
+        }
+
+        @Test
+        void booleanAndCounterMultiAccWithBreak_evaluates() {
+            // Multi-acc with boolean + break.
+            var source = """
+                import java.math.BigInteger;
+
+                @Validator
+                class BoolBreakMultiAccEval {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        boolean found = false;
+                        BigInteger k = BigInteger.valueOf(5);
+                        while (k > BigInteger.ZERO) {
+                            found = k == BigInteger.valueOf(3);
+                            if (found) {
+                                break;
+                            }
+                            k = k - BigInteger.ONE;
+                        }
+                        return found && k == BigInteger.valueOf(3);
+                    }
+                }
+                """;
+            var result = new JulcCompiler().compile(source);
+            assertNotNull(result.program(), "Compilation failed: " + result.diagnostics());
+            assertFalse(result.hasErrors(), "Errors: " + result.diagnostics());
+
+            var evalResult = vm.evaluateWithArgs(result.program(), List.of(dummyScriptContext()));
+            assertTrue(evalResult.isSuccess(), "Boolean multi-acc with break should find 3: " + evalResult);
         }
     }
 }

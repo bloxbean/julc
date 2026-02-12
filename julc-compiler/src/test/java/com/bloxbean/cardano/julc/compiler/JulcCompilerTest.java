@@ -343,4 +343,91 @@ class JulcCompilerTest {
         assertTrue(ex.getMessage().contains("2 parameters"));
         assertTrue(ex.getMessage().contains("@SpendingValidator"));
     }
+
+    // --- Static field initializer tests ---
+
+    @Test
+    void compilesStaticFieldInitializer() {
+        var source = """
+            import java.math.BigInteger;
+
+            @Validator
+            class StaticFieldValidator {
+                static BigInteger THRESHOLD = BigInteger.valueOf(42);
+
+                @Entrypoint
+                static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    return redeemer == THRESHOLD;
+                }
+            }
+            """;
+        var result = compiler.compile(source);
+        assertNotNull(result.program());
+        assertFalse(result.hasErrors());
+    }
+
+    @Test
+    void compilesStaticBooleanField() {
+        var source = """
+            import java.math.BigInteger;
+
+            @Validator
+            class StaticBoolValidator {
+                static boolean ALLOW = true;
+
+                @Entrypoint
+                static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    return ALLOW;
+                }
+            }
+            """;
+        var result = compiler.compile(source);
+        assertNotNull(result.program());
+        assertFalse(result.hasErrors());
+    }
+
+    @Test
+    void compilesMultipleStaticFields() {
+        var source = """
+            import java.math.BigInteger;
+
+            @Validator
+            class MultiStaticValidator {
+                static BigInteger MIN = BigInteger.valueOf(10);
+                static BigInteger MAX = BigInteger.valueOf(100);
+
+                @Entrypoint
+                static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    return redeemer >= MIN && redeemer <= MAX;
+                }
+            }
+            """;
+        var result = compiler.compile(source);
+        assertNotNull(result.program());
+        assertFalse(result.hasErrors());
+    }
+
+    @Test
+    void staticFieldUsedInHelperMethod() {
+        var source = """
+            import java.math.BigInteger;
+
+            @Validator
+            class HelperStaticValidator {
+                static BigInteger LIMIT = BigInteger.valueOf(50);
+
+                static boolean isWithinLimit(BigInteger x) {
+                    return x <= LIMIT;
+                }
+
+                @Entrypoint
+                static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    return isWithinLimit(redeemer);
+                }
+            }
+            """;
+        var result = compiler.compile(source);
+        assertNotNull(result.program());
+        assertFalse(result.hasErrors());
+    }
 }

@@ -28,4 +28,16 @@ public class CompositeStdlibLookup implements StdlibLookup {
         }
         return Optional.empty();
     }
+
+    @Override
+    public Optional<PirTerm> lookup(String className, String methodName,
+                                      List<PirTerm> args, List<PirType> argTypes) {
+        for (var lookup : lookups) {
+            var result = lookup.lookup(className, methodName, args, argTypes);
+            if (result.isPresent()) {
+                return result;
+            }
+        }
+        return Optional.empty();
+    }
 }

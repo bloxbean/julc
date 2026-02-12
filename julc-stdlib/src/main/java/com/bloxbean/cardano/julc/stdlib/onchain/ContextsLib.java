@@ -88,6 +88,24 @@ public class ContextsLib {
         return (PlutusData.ConstrData) listIndex(fields, 11);
     }
 
+    /** Extracts reference inputs (field 1) from TxInfo. */
+    public static PlutusData.ListData txInfoRefInputs(PlutusData.ConstrData txInfo) {
+        var fields = Builtins.constrFields(txInfo);
+        return Builtins.unListData(listIndex(fields, 1));
+    }
+
+    /** Extracts withdrawals map (field 6) from TxInfo. */
+    public static PlutusData.MapData txInfoWithdrawals(PlutusData.ConstrData txInfo) {
+        var fields = Builtins.constrFields(txInfo);
+        return (PlutusData.MapData) listIndex(fields, 6);
+    }
+
+    /** Extracts redeemers map (field 9) from TxInfo. */
+    public static PlutusData.MapData txInfoRedeemers(PlutusData.ConstrData txInfo) {
+        var fields = Builtins.constrFields(txInfo);
+        return (PlutusData.MapData) listIndex(fields, 9);
+    }
+
     // Note: trace(message) stays as PIR in StdlibRegistry because it uses UPLC Text type.
 
     // =========================================================================

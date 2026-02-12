@@ -275,6 +275,30 @@ public final class ValidatorTest {
         return SourceDiscovery.compile(validatorClass, sourceRoot);
     }
 
+    /**
+     * Compile a validator by fully-qualified class name with auto-discovered library dependencies.
+     * Uses the default source root ({@code src/main/java}).
+     * <p>
+     * Useful when {@code -proc:only} prevents {@code .class} file generation.
+     *
+     * @param fqcn the fully-qualified class name (e.g., "com.example.MyValidator")
+     * @return the compilation result
+     */
+    public static CompileResult compileValidatorByName(String fqcn) {
+        return SourceDiscovery.compile(fqcn);
+    }
+
+    /**
+     * Compile a validator by fully-qualified class name with auto-discovered library dependencies.
+     *
+     * @param fqcn       the fully-qualified class name
+     * @param sourceRoot the root of the source tree
+     * @return the compilation result
+     */
+    public static CompileResult compileValidatorByName(String fqcn, java.nio.file.Path sourceRoot) {
+        return SourceDiscovery.compile(fqcn, sourceRoot);
+    }
+
     private static String formatResult(EvalResult result) {
         return switch (result) {
             case EvalResult.Success s ->

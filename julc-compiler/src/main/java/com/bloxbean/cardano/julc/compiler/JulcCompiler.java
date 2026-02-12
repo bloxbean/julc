@@ -48,6 +48,7 @@ public class JulcCompiler {
     );
 
     private record ParamField(String name, PirType pirType, String javaType) {}
+    private record StaticField(String name, PirType pirType, com.github.javaparser.ast.expr.Expression initExpr) {}
 
     private final StdlibLookup stdlibLookup;
 
@@ -127,6 +128,9 @@ public class JulcCompiler {
         // 6. Detect @Param fields
         var paramFields = findParamFields(validatorClass, typeResolver);
 
+        // 6b. Detect static fields with initializers (non-@Param)
+        var staticFields = findStaticFields(validatorClass, typeResolver);
+
         // 7. Find @Entrypoint method
         var entrypointMethod = findEntrypoint(validatorClass);
 
@@ -149,6 +153,9 @@ public class JulcCompiler {
         for (var pf : paramFields) {
             symbolTable.define(pf.name, pf.pirType);
         }
+        for (var sf : staticFields) {
+            symbolTable.define(sf.name, sf.pirType);
+        }
         for (var method : validatorClass.getMethods()) {
             if (method.isStatic()) {
                 var mType = computeMethodType(method, typeResolver);
@@ -158,6 +165,15 @@ public class JulcCompiler {
 
         // 11. Generate PIR for helper methods
         var pirGenerator = new PirGenerator(typeResolver, symbolTable, effectiveLookup);
+
+        // 11b. Compile static field initializers
+        record CompiledStaticField(String name, PirTerm initPir) {}
+        var compiledStaticFields = new ArrayList<CompiledStaticField>();
+        for (var sf : staticFields) {
+            var initPir = pirGenerator.generateExpression(sf.initExpr);
+            compiledStaticFields.add(new CompiledStaticField(sf.name, initPir));
+        }
+
         for (var method : validatorClass.getMethods()) {
             if (method.isStatic() && method.getAnnotationByName("Entrypoint").isEmpty()) {
                 var helperPir = pirGenerator.generateMethod(method);
@@ -181,6 +197,12 @@ public class JulcCompiler {
         for (int i = methods.size() - 1; i >= 0; i--) {
             var mi = methods.get(i);
             body = new PirTerm.Let(mi.name(), mi.body(), body);
+        }
+
+        // 13b. Wrap static field initializers as Let bindings (reverse order for correct scoping)
+        for (int i = compiledStaticFields.size() - 1; i >= 0; i--) {
+            var sf = compiledStaticFields.get(i);
+            body = new PirTerm.Let(sf.name(), sf.initPir(), body);
         }
 
         // 14. Wrap library methods as Let bindings (topologically sorted: dependencies outermost)
@@ -322,8 +344,14 @@ public class JulcCompiler {
             if (cls.isInterface()) continue;
             var className = cls.getNameAsString();
 
+            // Detect static fields with initializers in library classes
+            var libStaticFields = findStaticFields(cls, typeResolver);
+
             // Set up a local symbol table with qualified names for intra-library calls
             var libSymbolTable = new SymbolTable();
+            for (var sf : libStaticFields) {
+                libSymbolTable.define(sf.name, sf.pirType);
+            }
             for (var method : cls.getMethods()) {
                 if (method.isStatic()) {
                     var mType = computeMethodType(method, typeResolver);
@@ -337,9 +365,23 @@ public class JulcCompiler {
             // Compile each static method (pass className for qualified name resolution)
             var libPirGenerator = new PirGenerator(typeResolver, libSymbolTable, composedLookup,
                     TypeMethodRegistry.defaultRegistry(), className);
+
+            // Compile static field initializers
+            record LibCompiledField(String name, PirTerm initPir) {}
+            var compiledLibFields = new ArrayList<LibCompiledField>();
+            for (var sf : libStaticFields) {
+                var initPir = libPirGenerator.generateExpression(sf.initExpr);
+                compiledLibFields.add(new LibCompiledField(sf.name, initPir));
+            }
+
             for (var method : cls.getMethods()) {
                 if (method.isStatic()) {
                     var pirBody = libPirGenerator.generateMethod(method);
+                    // Wrap method body with static field Let bindings
+                    for (int i = compiledLibFields.size() - 1; i >= 0; i--) {
+                        var sf = compiledLibFields.get(i);
+                        pirBody = new PirTerm.Let(sf.name(), sf.initPir(), pirBody);
+                    }
                     var mType = computeMethodType(method, typeResolver);
                     registry.register(className, method.getNameAsString(), mType, pirBody);
                 }
@@ -519,6 +561,25 @@ public class JulcCompiler {
                     var javaType = field.getCommonType().asString();
                     result.add(new ParamField(name, pirType, javaType));
                 }
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Find static fields with initializers that are NOT @Param.
+     * These are compiled as Let bindings around the body.
+     */
+    private List<StaticField> findStaticFields(ClassOrInterfaceDeclaration cls, TypeResolver typeResolver) {
+        var result = new ArrayList<StaticField>();
+        for (var field : cls.getFields()) {
+            if (!field.isStatic()) continue;
+            if (field.getAnnotationByName("Param").isPresent()) continue;
+            for (var variable : field.getVariables()) {
+                if (variable.getInitializer().isEmpty()) continue;
+                var name = variable.getNameAsString();
+                var pirType = typeResolver.resolve(field.getCommonType());
+                result.add(new StaticField(name, pirType, variable.getInitializer().get()));
             }
         }
         return result;

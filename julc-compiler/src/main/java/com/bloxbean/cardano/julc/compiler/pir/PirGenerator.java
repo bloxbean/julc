@@ -32,6 +32,21 @@ public class PirGenerator {
     private String forEachAccumulatorVar; // non-null when compiling fold body
     private Function<PirTerm, PirTerm> breakContinueFn; // non-null when compiling break-capable fold body
     private Set<String> multiAccVars = Set.of(); // non-empty when compiling multi-acc fold body
+    private boolean insideLoopBody = false; // true while compiling a loop body, to reject nested loops
+
+    /**
+     * Execute a body-generation action with the insideLoopBody flag set.
+     * Ensures nested loop detection works correctly by restoring the flag after the action.
+     */
+    private <T> T withLoopBodyFlag(java.util.function.Supplier<T> action) {
+        boolean prev = insideLoopBody;
+        insideLoopBody = true;
+        try {
+            return action.get();
+        } finally {
+            insideLoopBody = prev;
+        }
+    }
 
     public PirGenerator(TypeResolver typeResolver, SymbolTable symbolTable) {
         this(typeResolver, symbolTable, null, TypeMethodRegistry.defaultRegistry(), null);
@@ -516,10 +531,15 @@ public class PirGenerator {
             if (scopeExpr instanceof NameExpr ne && stdlibLookup != null) {
                 var className = ne.getNameAsString();
                 var compiledArgs = new ArrayList<PirTerm>();
+                var argPirTypes = new ArrayList<PirType>();
                 for (var arg : args) {
-                    compiledArgs.add(generateExpression(arg));
+                    var argPir = generateExpression(arg);
+                    compiledArgs.add(argPir);
+                    var argType = resolveExpressionType(arg);
+                    if (argType instanceof PirType.DataType) argType = inferPirType(argPir);
+                    argPirTypes.add(argType);
                 }
-                var result = stdlibLookup.lookup(className, methodName, compiledArgs);
+                var result = stdlibLookup.lookup(className, methodName, compiledArgs, argPirTypes);
                 if (result.isPresent()) {
                     return result.get();
                 }
@@ -831,6 +851,10 @@ public class PirGenerator {
     }
 
     private PirTerm generateForEachStmt(ForEachStmt fes, List<Statement> followingStmts, int followingIndex) {
+        if (insideLoopBody) {
+            throw enrichedError("Nested loops are not supported on-chain",
+                    "Extract the inner loop into a separate static helper method and call it from the outer loop.", fes);
+        }
         var iterableExpr = generateExpression(fes.getIterable());
         var itemName = fes.getVariable().getVariables().get(0).getNameAsString();
 
@@ -870,7 +894,8 @@ public class PirGenerator {
                             forEachAccumulatorVar = accName;
                             breakContinueFn = continueFn;
 
-                            var bodyTerm = generateBreakAwareBody(fes.getBody(), accName, accType, continueFn);
+                            var bodyTerm = withLoopBodyFlag(() ->
+                                    generateBreakAwareBody(fes.getBody(), accName, accType, continueFn));
 
                             forEachAccumulatorVar = prevAcc;
                             breakContinueFn = prevBreak;
@@ -885,7 +910,7 @@ public class PirGenerator {
 
                 String prev = forEachAccumulatorVar;
                 forEachAccumulatorVar = accName;
-                var bodyTerm = generateStatement(fes.getBody());
+                var bodyTerm = withLoopBodyFlag(() -> generateStatement(fes.getBody()));
                 forEachAccumulatorVar = prev;
 
                 symbolTable.popScope();
@@ -926,7 +951,8 @@ public class PirGenerator {
                             multiAccVars = new LinkedHashSet<>(accNames);
 
                             var bodyTerm = unpackAccumulators(tupleVar, accNames, accTypesFinal,
-                                    generateMultiAccBreakAwareBody(fes.getBody(), accNames, accTypesFinal, continueFn));
+                                    withLoopBodyFlag(() ->
+                                            generateMultiAccBreakAwareBody(fes.getBody(), accNames, accTypesFinal, continueFn)));
 
                             multiAccVars = prevMultiAcc;
                             symbolTable.popScope();
@@ -941,7 +967,7 @@ public class PirGenerator {
 
                 var tupleVar = new PirTerm.Var(tupleAccName, tupleAccType);
                 var bodyTerm = unpackAccumulators(tupleVar, accumulators, accTypes,
-                        generateMultiAccBody(fes.getBody(), accumulators, accTypes));
+                        withLoopBodyFlag(() -> generateMultiAccBody(fes.getBody(), accumulators, accTypes)));
 
                 multiAccVars = prevMultiAcc;
                 symbolTable.popScope();
@@ -964,7 +990,7 @@ public class PirGenerator {
             // --- Unit-accumulator fallback: for-each with no accumulator ---
             symbolTable.pushScope();
             symbolTable.define(itemName, elemType);
-            var bodyTerm = generateStatement(fes.getBody());
+            var bodyTerm = withLoopBodyFlag(() -> generateStatement(fes.getBody()));
             symbolTable.popScope();
 
             var forEachResult = desugarer.desugarForEach(
@@ -1113,6 +1139,8 @@ public class PirGenerator {
 
     private boolean containsBreak(Statement stmt) {
         if (stmt instanceof BreakStmt) return true;
+        // Do not walk into nested loops — a break inside a nested loop belongs to that loop
+        if (stmt instanceof WhileStmt || stmt instanceof ForEachStmt) return false;
         if (stmt instanceof BlockStmt bs) {
             return bs.getStatements().stream().anyMatch(this::containsBreak);
         }
@@ -1499,6 +1527,10 @@ public class PirGenerator {
     }
 
     private PirTerm generateWhileStmt(WhileStmt ws, List<Statement> followingStmts, int followingIndex) {
+        if (insideLoopBody) {
+            throw enrichedError("Nested loops are not supported on-chain",
+                    "Extract the inner loop into a separate static helper method and call it from the outer loop.", ws);
+        }
         var desugarer = new LoopDesugarer();
         boolean hasBreak = containsBreak(ws.getBody());
         var accumulators = detectForEachAccumulators(ws.getBody());
@@ -1528,7 +1560,8 @@ public class PirGenerator {
                             forEachAccumulatorVar = accName;
                             breakContinueFn = continueFn;
 
-                            var bodyTerm = generateBreakAwareBody(ws.getBody(), accName, accType, continueFn);
+                            var bodyTerm = withLoopBodyFlag(() ->
+                                    generateBreakAwareBody(ws.getBody(), accName, accType, continueFn));
 
                             forEachAccumulatorVar = prevAcc;
                             breakContinueFn = prevBreak;
@@ -1543,7 +1576,7 @@ public class PirGenerator {
                 String prev = forEachAccumulatorVar;
                 forEachAccumulatorVar = accName;
                 var condition = generateExpression(ws.getCondition());
-                var bodyTerm = generateStatement(ws.getBody());
+                var bodyTerm = withLoopBodyFlag(() -> generateStatement(ws.getBody()));
                 forEachAccumulatorVar = prev;
 
                 symbolTable.popScope();
@@ -1597,7 +1630,8 @@ public class PirGenerator {
                             multiAccVars = new LinkedHashSet<>(accNames);
 
                             var bodyTerm = unpackAccumulators(tupleVar, accNames, accTypesFinal,
-                                    generateMultiAccBreakAwareBody(ws.getBody(), accNames, accTypesFinal, continueFn));
+                                    withLoopBodyFlag(() ->
+                                            generateMultiAccBreakAwareBody(ws.getBody(), accNames, accTypesFinal, continueFn)));
 
                             multiAccVars = prevMultiAcc;
                             symbolTable.popScope();
@@ -1624,7 +1658,7 @@ public class PirGenerator {
 
                 var tupleVar = new PirTerm.Var(tupleAccName, tupleAccType);
                 var bodyTerm = unpackAccumulators(tupleVar, accumulators, accTypes,
-                        generateMultiAccBody(ws.getBody(), accumulators, accTypes));
+                        withLoopBodyFlag(() -> generateMultiAccBody(ws.getBody(), accumulators, accTypes)));
 
                 multiAccVars = prevMultiAcc;
                 symbolTable.popScope();
@@ -1646,7 +1680,7 @@ public class PirGenerator {
         } else {
             // --- No accumulator: existing side-effect-only while loop ---
             var condition = generateExpression(ws.getCondition());
-            var bodyTerm = generateStatement(ws.getBody());
+            var bodyTerm = withLoopBodyFlag(() -> generateStatement(ws.getBody()));
 
             var whileResult = desugarer.desugarWhile(condition, bodyTerm);
 
