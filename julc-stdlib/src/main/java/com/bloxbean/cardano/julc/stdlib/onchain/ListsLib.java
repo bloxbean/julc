@@ -111,4 +111,70 @@ public class ListsLib {
         }
         return found;
     }
+
+    /** Check if a list of integers contains the given value. Uses EqualsInteger. */
+    public static boolean containsInt(PlutusData.ListData list, long target) {
+        var found = false;
+        var current = list;
+        while (!Builtins.nullList(current)) {
+            if (Builtins.unIData(Builtins.headList(current)) == target) {
+                found = true;
+                current = Builtins.mkNilData();
+            } else {
+                current = Builtins.tailList(current);
+            }
+        }
+        return found;
+    }
+
+    /** Check if a list of integers contains any duplicate. O(n^2).
+     *  For each element, wraps it as IData and searches the tail using EqualsData. */
+    public static boolean hasDuplicateInts(PlutusData.ListData list) {
+        var found = false;
+        var outer = list;
+        while (!Builtins.nullList(outer)) {
+            var head = Builtins.headList(outer);
+            var tail = Builtins.tailList(outer);
+            if (contains(tail, head)) {
+                found = true;
+                outer = Builtins.mkNilData();
+            } else {
+                outer = Builtins.tailList(outer);
+            }
+        }
+        return found;
+    }
+
+    /** Check if a list of bytestrings contains any duplicate. O(n^2).
+     *  For each element, searches the tail using EqualsData. */
+    public static boolean hasDuplicateBytes(PlutusData.ListData list) {
+        var found = false;
+        var outer = list;
+        while (!Builtins.nullList(outer)) {
+            var head = Builtins.headList(outer);
+            var tail = Builtins.tailList(outer);
+            if (contains(tail, head)) {
+                found = true;
+                outer = Builtins.mkNilData();
+            } else {
+                outer = Builtins.tailList(outer);
+            }
+        }
+        return found;
+    }
+
+    /** Check if a list of bytestrings contains the given target. Uses EqualsByteString. */
+    public static boolean containsBytes(PlutusData.ListData list, PlutusData.BytesData target) {
+        var found = false;
+        var current = list;
+        while (!Builtins.nullList(current)) {
+            if (Builtins.equalsByteString(Builtins.unBData(Builtins.headList(current)), target)) {
+                found = true;
+                current = Builtins.mkNilData();
+            } else {
+                current = Builtins.tailList(current);
+            }
+        }
+        return found;
+    }
 }

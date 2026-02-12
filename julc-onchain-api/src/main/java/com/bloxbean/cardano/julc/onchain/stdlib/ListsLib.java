@@ -147,4 +147,52 @@ public final class ListsLib {
         }
         return new PlutusData.ListData(result);
     }
+
+    /** Check if a list of integers contains the given value. */
+    public static boolean containsInt(PlutusData.ListData list, BigInteger target) {
+        for (PlutusData item : toList(list)) {
+            if (((PlutusData.IntData) item).value().equals(target)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Check if a list of integers contains any duplicate. O(n^2). */
+    public static boolean hasDuplicateInts(PlutusData.ListData list) {
+        var items = toList(list);
+        for (int i = 0; i < items.size(); i++) {
+            var val = ((PlutusData.IntData) items.get(i)).value();
+            for (int j = i + 1; j < items.size(); j++) {
+                if (val.equals(((PlutusData.IntData) items.get(j)).value())) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /** Check if a list of bytestrings contains any duplicate. O(n^2). */
+    public static boolean hasDuplicateBytes(PlutusData.ListData list) {
+        var items = toList(list);
+        for (int i = 0; i < items.size(); i++) {
+            var val = ((PlutusData.BytesData) items.get(i)).value();
+            for (int j = i + 1; j < items.size(); j++) {
+                if (java.util.Arrays.equals(val, ((PlutusData.BytesData) items.get(j)).value())) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /** Check if a list of bytestrings contains the given target. Uses byte-level equality. */
+    public static boolean containsBytes(PlutusData.ListData list, byte[] target) {
+        for (PlutusData item : toList(list)) {
+            if (java.util.Arrays.equals(((PlutusData.BytesData) item).value(), target)) {
+                return true;
+            }
+        }
+        return false;
+    }
 }

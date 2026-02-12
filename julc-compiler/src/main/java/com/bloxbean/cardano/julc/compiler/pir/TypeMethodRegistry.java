@@ -180,6 +180,14 @@ public final class TypeMethodRegistry {
                                     one));
                 },
                 scopeType -> new PirType.IntegerType());
+
+        // intValue / longValue: identity (int, long, BigInteger are all IntegerType on-chain)
+        reg.register("IntegerType", "intValue",
+                (scope, args, scopeType, argTypes) -> scope,
+                scopeType -> new PirType.IntegerType());
+        reg.register("IntegerType", "longValue",
+                (scope, args, scopeType, argTypes) -> scope,
+                scopeType -> new PirType.IntegerType());
     }
 
     // --- ByteString methods (2) ---
@@ -288,8 +296,10 @@ public final class TypeMethodRegistry {
                     var goBody = new PirTerm.Lam("lst_get", new PirType.ListType(new PirType.DataType()),
                             new PirTerm.Lam("idx_get", new PirType.IntegerType(), body));
                     var binding = new PirTerm.Binding("go_get", goBody);
-                    return new PirTerm.LetRec(List.of(binding),
+                    var lt = (PirType.ListType) scopeType;
+                    var raw = new PirTerm.LetRec(List.of(binding),
                             new PirTerm.App(new PirTerm.App(goVar, scope), args.get(0)));
+                    return PirHelpers.wrapDecode(raw, lt.elemType());
                 },
                 scopeType -> ((PirType.ListType) scopeType).elemType());
 

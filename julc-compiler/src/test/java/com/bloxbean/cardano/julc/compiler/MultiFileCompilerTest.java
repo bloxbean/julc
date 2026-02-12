@@ -409,6 +409,103 @@ class MultiFileCompilerTest {
         }
     }
 
+    // --- Shared types across multiple validators via library ---
+
+    @Nested
+    class SharedTypesAcrossValidators {
+
+        /** Library defining shared record types + utility methods.
+         *  Both validators use the same OrderDatum record and OrderUtils class. */
+        static final String SHARED_TYPES_LIB = """
+                import java.math.BigInteger;
+
+                record OrderDatum(BigInteger amount, BigInteger directionTag) {}
+
+                class OrderUtils {
+                    static boolean isBuyOrder(OrderDatum datum) {
+                        return datum.directionTag() == 0;
+                    }
+
+                    static BigInteger orderAmount(OrderDatum datum) {
+                        return datum.amount();
+                    }
+                }
+                """;
+
+        /** First validator using shared types — receives datum as redeemer. */
+        static final String VALIDATOR_A = """
+                import java.math.BigInteger;
+
+                @Validator
+                class OrderValidator {
+                    @Entrypoint
+                    static boolean validate(OrderDatum redeemer, BigInteger ctx) {
+                        return OrderUtils.isBuyOrder(redeemer) && redeemer.amount() > 0;
+                    }
+                }
+                """;
+
+        /** Second validator using the same shared types. */
+        static final String VALIDATOR_B = """
+                import java.math.BigInteger;
+
+                @Validator
+                class SettlementValidator {
+                    @Entrypoint
+                    static boolean validate(OrderDatum redeemer, BigInteger ctx) {
+                        return OrderUtils.orderAmount(redeemer) == 100
+                            && !OrderUtils.isBuyOrder(redeemer);
+                    }
+                }
+                """;
+
+        @Test
+        void compilesFirstValidatorWithSharedTypes() {
+            var program = compile(VALIDATOR_A, SHARED_TYPES_LIB);
+            assertNotNull(program);
+        }
+
+        @Test
+        void compilesSecondValidatorWithSharedTypes() {
+            var program = compile(VALIDATOR_B, SHARED_TYPES_LIB);
+            assertNotNull(program);
+        }
+
+        @Test
+        void evaluatesFirstValidatorWithBuyOrder() {
+            var program = compile(VALIDATOR_A, SHARED_TYPES_LIB);
+            // OrderDatum(100, 0) -> Constr(0, [I(100), I(0)])  — directionTag=0 means Buy
+            var datum = PlutusData.constr(0, PlutusData.integer(100), PlutusData.integer(0));
+            var ctx = mockCtx(datum);
+            assertSuccess(evaluate(program, ctx));
+        }
+
+        @Test
+        void evaluatesFirstValidatorRejectsZeroAmount() {
+            var program = compile(VALIDATOR_A, SHARED_TYPES_LIB);
+            var datum = PlutusData.constr(0, PlutusData.integer(0), PlutusData.integer(0));
+            var ctx = mockCtx(datum);
+            assertFailure(evaluate(program, ctx));
+        }
+
+        @Test
+        void evaluatesSecondValidatorWithSellOrder() {
+            var program = compile(VALIDATOR_B, SHARED_TYPES_LIB);
+            // OrderDatum(100, 1) -> Constr(0, [I(100), I(1)])  — directionTag=1 means Sell
+            var datum = PlutusData.constr(0, PlutusData.integer(100), PlutusData.integer(1));
+            var ctx = mockCtx(datum);
+            assertSuccess(evaluate(program, ctx));
+        }
+
+        @Test
+        void evaluatesSecondValidatorRejectsBuyOrder() {
+            var program = compile(VALIDATOR_B, SHARED_TYPES_LIB);
+            var datum = PlutusData.constr(0, PlutusData.integer(100), PlutusData.integer(0));
+            var ctx = mockCtx(datum);
+            assertFailure(evaluate(program, ctx));
+        }
+    }
+
     // --- Boolean and conditional logic in libraries ---
 
     @Nested

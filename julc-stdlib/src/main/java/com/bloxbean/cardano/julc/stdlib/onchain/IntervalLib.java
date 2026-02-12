@@ -161,4 +161,36 @@ public class IntervalLib {
         var fields = Builtins.mkCons(fromBound, Builtins.mkCons(toBound, Builtins.mkNilData()));
         return Builtins.constrData(0, fields);
     }
+
+    /** Extract the finite upper bound time, or return -1 if not finite.
+     *  Useful for checking validity range deadlines. */
+    public static long finiteUpperBound(PlutusData.ConstrData interval) {
+        var fields = Builtins.constrFields(interval);
+        var toBound = Builtins.headList(Builtins.tailList(fields));
+        var boundFields = Builtins.constrFields(toBound);
+        var boundType = Builtins.headList(boundFields);
+        var typeTag = Builtins.constrTag(boundType);
+        if (typeTag == 1) {
+            var typeFields = Builtins.constrFields(boundType);
+            return Builtins.unIData(Builtins.headList(typeFields));
+        } else {
+            return -1;
+        }
+    }
+
+    /** Extract the finite lower bound time, or return -1 if not finite.
+     *  Useful for checking validity range start times. */
+    public static long finiteLowerBound(PlutusData.ConstrData interval) {
+        var fields = Builtins.constrFields(interval);
+        var fromBound = Builtins.headList(fields);
+        var boundFields = Builtins.constrFields(fromBound);
+        var boundType = Builtins.headList(boundFields);
+        var typeTag = Builtins.constrTag(boundType);
+        if (typeTag == 1) {
+            var typeFields = Builtins.constrFields(boundType);
+            return Builtins.unIData(Builtins.headList(typeFields));
+        } else {
+            return -1;
+        }
+    }
 }

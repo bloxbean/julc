@@ -38,6 +38,16 @@ public class SymbolTable {
         return Optional.empty();
     }
 
+    /**
+     * Look up a name in the current (innermost) scope only.
+     * Used to check if a variable was defined in the current scope level
+     * (e.g., by switch pattern destructuring) rather than an outer scope.
+     */
+    public Optional<PirType> lookupCurrentScope(String name) {
+        var type = scopes.peek().get(name);
+        return type != null ? Optional.of(type) : Optional.empty();
+    }
+
     public PirType require(String name) {
         return lookup(name).orElseThrow(
                 () -> new NoSuchElementException("Undefined variable: " + name));

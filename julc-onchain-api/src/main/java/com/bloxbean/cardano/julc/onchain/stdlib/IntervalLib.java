@@ -81,4 +81,22 @@ public final class IntervalLib {
         // Simplified: just check basic conditions
         return false; // placeholder
     }
+
+    /** Extract the finite upper bound time, or return -1 if not finite.
+     *  Useful for checking validity range deadlines. */
+    public static BigInteger finiteUpperBound(Interval interval) {
+        return switch (interval.to().boundType()) {
+            case IntervalBoundType.Finite f -> f.time();
+            default -> BigInteger.valueOf(-1);
+        };
+    }
+
+    /** Extract the finite lower bound time, or return -1 if not finite.
+     *  Useful for checking validity range start times. */
+    public static BigInteger finiteLowerBound(Interval interval) {
+        return switch (interval.from().boundType()) {
+            case IntervalBoundType.Finite f -> f.time();
+            default -> BigInteger.valueOf(-1);
+        };
+    }
 }

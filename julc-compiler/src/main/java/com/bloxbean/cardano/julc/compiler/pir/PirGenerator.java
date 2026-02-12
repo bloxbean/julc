@@ -621,9 +621,11 @@ public class PirGenerator {
         }
         if (fieldIndex < 0) return java.util.Optional.empty();
 
-        // If the field is already directly in scope (e.g. switch pattern destructuring),
-        // return a direct variable reference instead of generating field extraction PIR
-        var fieldInScope = symbolTable.lookup(fieldName);
+        // If the field is already directly in the current scope (e.g. switch pattern destructuring),
+        // return a direct variable reference instead of generating field extraction PIR.
+        // Use lookupCurrentScope to avoid collisions with outer-scope variables of the same name
+        // (e.g. an entrypoint parameter named "datum" conflicting with TxOut.datum() field access).
+        var fieldInScope = symbolTable.lookupCurrentScope(fieldName);
         if (fieldInScope.isPresent()) {
             final PirType fType = fieldType;
             return java.util.Optional.of(scope -> new PirTerm.Var(fieldName, fType));

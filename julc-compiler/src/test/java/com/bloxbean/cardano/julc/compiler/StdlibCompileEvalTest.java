@@ -576,7 +576,380 @@ class StdlibCompileEvalTest {
     }
 
     // =========================================================================
-    // 6. TransitiveDependencies — user @OnchainLibrary calling stdlib methods
+    // 6. AddressLibEval — Address utility operations
+    // =========================================================================
+
+    @Nested
+    class AddressLibEval {
+
+        @Test
+        void credentialHashExtractsFromScriptAddress() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            byte[] hash = AddressLib.credentialHash(redeemer);
+                            return Builtins.equalsByteString(hash, Builtins.unBData(Builtins.headList(
+                                Builtins.constrFields(Builtins.headList(Builtins.constrFields(redeemer))))));
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var scriptCred = PlutusData.constr(1, PlutusData.bytes(new byte[]{10, 20, 30}));
+            var address = PlutusData.constr(0, scriptCred, PlutusData.constr(1));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(address)));
+            assertTrue(result.isSuccess(), "credentialHash on ScriptCredential should extract hash. Got: " + result);
+        }
+
+        @Test
+        void credentialHashExtractsFromPubKeyAddress() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            byte[] hash = AddressLib.credentialHash(redeemer);
+                            return Builtins.equalsByteString(hash, Builtins.unBData(Builtins.headList(
+                                Builtins.constrFields(Builtins.headList(Builtins.constrFields(redeemer))))));
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var pubKeyCred = PlutusData.constr(0, PlutusData.bytes(new byte[]{1, 2, 3, 4}));
+            var address = PlutusData.constr(0, pubKeyCred, PlutusData.constr(1));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(address)));
+            assertTrue(result.isSuccess(), "credentialHash on PubKeyCredential should extract hash. Got: " + result);
+        }
+
+        @Test
+        void isScriptAddressReturnsTrue() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            return AddressLib.isScriptAddress(redeemer);
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var scriptCred = PlutusData.constr(1, PlutusData.bytes(new byte[]{1, 2, 3}));
+            var address = PlutusData.constr(0, scriptCred, PlutusData.constr(1));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(address)));
+            assertTrue(result.isSuccess(), "isScriptAddress on ScriptCredential should be true. Got: " + result);
+        }
+
+        @Test
+        void isScriptAddressReturnsFalseForPubKey() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            return AddressLib.isScriptAddress(redeemer);
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var pubKeyCred = PlutusData.constr(0, PlutusData.bytes(new byte[]{1, 2, 3}));
+            var address = PlutusData.constr(0, pubKeyCred, PlutusData.constr(1));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(address)));
+            assertFalse(result.isSuccess(), "isScriptAddress on PubKeyCredential should be false. Got: " + result);
+        }
+
+        @Test
+        void isPubKeyAddressReturnsTrue() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            return AddressLib.isPubKeyAddress(redeemer);
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var pubKeyCred = PlutusData.constr(0, PlutusData.bytes(new byte[]{1, 2, 3}));
+            var address = PlutusData.constr(0, pubKeyCred, PlutusData.constr(1));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(address)));
+            assertTrue(result.isSuccess(), "isPubKeyAddress on PubKeyCredential should be true. Got: " + result);
+        }
+
+        @Test
+        void paymentCredentialExtractsCredential() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            PlutusData cred = AddressLib.paymentCredential(redeemer);
+                            return Builtins.constrTag(cred) == 1;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var scriptCred = PlutusData.constr(1, PlutusData.bytes(new byte[]{10, 20}));
+            var address = PlutusData.constr(0, scriptCred, PlutusData.constr(1));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(address)));
+            assertTrue(result.isSuccess(), "paymentCredential should extract ScriptCredential (tag=1). Got: " + result);
+        }
+    }
+
+    // =========================================================================
+    // 7. IntervalLibBoundEval — finiteUpperBound / finiteLowerBound
+    // =========================================================================
+
+    @Nested
+    class IntervalLibBoundEval {
+
+        @Test
+        void finiteUpperBoundExtractsTime() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            PlutusData interval = IntervalLib.between(100, 500);
+                            return IntervalLib.finiteUpperBound(interval) == 500;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
+            assertTrue(result.isSuccess(), "finiteUpperBound(between(100,500)) should be 500. Got: " + result);
+        }
+
+        @Test
+        void finiteLowerBoundExtractsTime() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            PlutusData interval = IntervalLib.between(100, 500);
+                            return IntervalLib.finiteLowerBound(interval) == 100;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
+            assertTrue(result.isSuccess(), "finiteLowerBound(between(100,500)) should be 100. Got: " + result);
+        }
+
+        @Test
+        void finiteUpperBoundOnAlwaysReturnsMinus1() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            PlutusData interval = IntervalLib.always();
+                            return IntervalLib.finiteUpperBound(interval) + 1 == 0;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
+            assertTrue(result.isSuccess(), "finiteUpperBound(always()) should be -1. Got: " + result);
+        }
+
+        @Test
+        void finiteLowerBoundOnAlwaysReturnsMinus1() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            PlutusData interval = IntervalLib.always();
+                            return IntervalLib.finiteLowerBound(interval) + 1 == 0;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
+            assertTrue(result.isSuccess(), "finiteLowerBound(always()) should be -1. Got: " + result);
+        }
+
+        @Test
+        void finiteUpperBoundOnAfterReturnsMinus1() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            PlutusData interval = IntervalLib.after(1000);
+                            return IntervalLib.finiteUpperBound(interval) + 1 == 0;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
+            assertTrue(result.isSuccess(), "finiteUpperBound(after(1000)) should be -1 (PosInf). Got: " + result);
+        }
+
+        @Test
+        void finiteLowerBoundOnAfterExtractsTime() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            PlutusData interval = IntervalLib.after(1000);
+                            return IntervalLib.finiteLowerBound(interval) == 1000;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
+            assertTrue(result.isSuccess(), "finiteLowerBound(after(1000)) should be 1000. Got: " + result);
+        }
+    }
+
+    // =========================================================================
+    // 8. ListsLibExtendedEval — hasDuplicateInts, hasDuplicateBytes, containsBytes
+    // =========================================================================
+
+    @Nested
+    class ListsLibExtendedEval {
+
+        @Test
+        void hasDuplicateIntsFindsExactDuplicate() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            return ListsLib.hasDuplicateInts(Builtins.unListData(redeemer));
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            // list: [1, 2, 3, 2]  — has duplicate 2
+            var list = PlutusData.list(PlutusData.integer(1), PlutusData.integer(2),
+                    PlutusData.integer(3), PlutusData.integer(2));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(list)));
+            assertTrue(result.isSuccess(), "hasDuplicateInts([1,2,3,2]) should be true. Got: " + result);
+        }
+
+        @Test
+        void hasDuplicateIntsReturnsFalseForNoDups() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            return ListsLib.hasDuplicateInts(Builtins.unListData(redeemer));
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var list = PlutusData.list(PlutusData.integer(1), PlutusData.integer(2), PlutusData.integer(3));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(list)));
+            assertFalse(result.isSuccess(), "hasDuplicateInts([1,2,3]) should be false. Got: " + result);
+        }
+
+        @Test
+        void hasDuplicateIntsOnEmptyList() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            return ListsLib.hasDuplicateInts(Builtins.unListData(redeemer));
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var list = PlutusData.list();
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(list)));
+            assertFalse(result.isSuccess(), "hasDuplicateInts([]) should be false. Got: " + result);
+        }
+
+        @Test
+        void hasDuplicateBytesFindsExactDuplicate() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            return ListsLib.hasDuplicateBytes(Builtins.unListData(redeemer));
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var list = PlutusData.list(PlutusData.bytes(new byte[]{1, 2}), PlutusData.bytes(new byte[]{3, 4}),
+                    PlutusData.bytes(new byte[]{1, 2}));  // duplicate
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(list)));
+            assertTrue(result.isSuccess(), "hasDuplicateBytes with duplicate should be true. Got: " + result);
+        }
+
+        @Test
+        void hasDuplicateBytesReturnsFalseForNoDups() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            return ListsLib.hasDuplicateBytes(Builtins.unListData(redeemer));
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var list = PlutusData.list(PlutusData.bytes(new byte[]{1}), PlutusData.bytes(new byte[]{2}),
+                    PlutusData.bytes(new byte[]{3}));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(list)));
+            assertFalse(result.isSuccess(), "hasDuplicateBytes without duplicates should be false. Got: " + result);
+        }
+
+        @Test
+        void containsBytesFindsTarget() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            PlutusData fields = Builtins.constrFields(redeemer);
+                            PlutusData listData = Builtins.headList(fields);
+                            byte[] target = Builtins.unBData(Builtins.headList(Builtins.tailList(fields)));
+                            return ListsLib.containsBytes(Builtins.unListData(listData), target);
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            // redeemer = Constr(0, [ListData([B"abc", B"def"]), BData("def")])
+            var list = PlutusData.list(PlutusData.bytes(new byte[]{1, 2, 3}), PlutusData.bytes(new byte[]{4, 5, 6}));
+            var target = PlutusData.bytes(new byte[]{4, 5, 6});
+            var redeemer = PlutusData.constr(0, list, target);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "containsBytes should find target. Got: " + result);
+        }
+
+        @Test
+        void containsBytesReturnsFalseWhenNotFound() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            PlutusData fields = Builtins.constrFields(redeemer);
+                            PlutusData listData = Builtins.headList(fields);
+                            byte[] target = Builtins.unBData(Builtins.headList(Builtins.tailList(fields)));
+                            return ListsLib.containsBytes(Builtins.unListData(listData), target);
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var list = PlutusData.list(PlutusData.bytes(new byte[]{1, 2, 3}), PlutusData.bytes(new byte[]{4, 5, 6}));
+            var target = PlutusData.bytes(new byte[]{7, 8, 9});
+            var redeemer = PlutusData.constr(0, list, target);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertFalse(result.isSuccess(), "containsBytes should not find missing target. Got: " + result);
+        }
+    }
+
+    // =========================================================================
+    // 9. TransitiveDependencies — user @OnchainLibrary calling stdlib methods
     // =========================================================================
 
     @Nested
