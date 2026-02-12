@@ -12,15 +12,15 @@ public sealed interface StakingCredential extends PlutusDataConvertible {
 
     record StakingHash(Credential credential) implements StakingCredential {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(0, List.of(credential.toPlutusData()));
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(0, List.of(credential.toPlutusData()));
         }
     }
 
     record StakingPtr(BigInteger slot, BigInteger txIndex, BigInteger certIndex) implements StakingCredential {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(1, List.of(
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(1, List.of(
                     new PlutusData.IntData(slot),
                     new PlutusData.IntData(txIndex),
                     new PlutusData.IntData(certIndex)));

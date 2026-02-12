@@ -11,17 +11,17 @@ public sealed interface Vote extends PlutusDataConvertible {
 
     record VoteNo() implements Vote {
         @Override
-        public PlutusData toPlutusData() { return new PlutusData.Constr(0, List.of()); }
+        public PlutusData.ConstrData toPlutusData() { return new PlutusData.ConstrData(0, List.of()); }
     }
 
     record VoteYes() implements Vote {
         @Override
-        public PlutusData toPlutusData() { return new PlutusData.Constr(1, List.of()); }
+        public PlutusData.ConstrData toPlutusData() { return new PlutusData.ConstrData(1, List.of()); }
     }
 
     record Abstain() implements Vote {
         @Override
-        public PlutusData toPlutusData() { return new PlutusData.Constr(2, List.of()); }
+        public PlutusData.ConstrData toPlutusData() { return new PlutusData.ConstrData(2, List.of()); }
     }
 
     static Vote fromPlutusData(PlutusData data) {

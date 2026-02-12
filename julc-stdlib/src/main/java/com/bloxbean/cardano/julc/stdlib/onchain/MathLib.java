@@ -38,7 +38,7 @@ public class MathLib {
     }
 
     /** Returns division and modulo as a pair: ConstrData(0, [IData(div), IData(mod)]). */
-    public static PlutusData divMod(long a, long b) {
+    public static PlutusData.ConstrData divMod(long a, long b) {
         var div = a / b;
         var mod = a % b;
         var fields = Builtins.mkCons(Builtins.iData(div), Builtins.mkCons(Builtins.iData(mod), Builtins.mkNilData()));
@@ -46,7 +46,7 @@ public class MathLib {
     }
 
     /** Returns quotient and remainder as a pair: ConstrData(0, [IData(quot), IData(rem)]). */
-    public static PlutusData quotRem(long a, long b) {
+    public static PlutusData.ConstrData quotRem(long a, long b) {
         var quot = a / b;
         var rem = a % b;
         var fields = Builtins.mkCons(Builtins.iData(quot), Builtins.mkCons(Builtins.iData(rem), Builtins.mkNilData()));

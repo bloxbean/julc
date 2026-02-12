@@ -25,7 +25,7 @@ public record TokenName(byte[] name) implements PlutusDataConvertible {
     public byte[] name() { return name.clone(); }
 
     @Override
-    public PlutusData toPlutusData() {
+    public PlutusData.BytesData toPlutusData() {
         return new PlutusData.BytesData(name);
     }
 

@@ -12,8 +12,8 @@ public record TxOut(Address address, Value value, OutputDatum datum, Optional<Sc
         implements PlutusDataConvertible {
 
     @Override
-    public PlutusData toPlutusData() {
-        return new PlutusData.Constr(0, List.of(
+    public PlutusData.ConstrData toPlutusData() {
+        return new PlutusData.ConstrData(0, List.of(
                 address.toPlutusData(),
                 value.toPlutusData(),
                 datum.toPlutusData(),

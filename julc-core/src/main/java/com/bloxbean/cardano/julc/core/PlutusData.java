@@ -12,8 +12,8 @@ import java.util.Objects;
  * <p>
  * PlutusData has exactly 5 constructors matching the Cardano specification:
  * <ul>
- *   <li>{@link Constr} — constructor application (tag + fields)</li>
- *   <li>{@link Map} — association list of key-value pairs</li>
+ *   <li>{@link ConstrData} — constructor application (tag + fields)</li>
+ *   <li>{@link MapData} — association list of key-value pairs</li>
  *   <li>{@link ListData} — list of data values</li>
  *   <li>{@link IntData} — arbitrary-precision integer</li>
  *   <li>{@link BytesData} — byte string</li>
@@ -25,9 +25,9 @@ public sealed interface PlutusData {
      * A constructor application with a tag and list of fields.
      * Used to encode sum types (tagged unions) and product types.
      */
-    record Constr(int tag, List<PlutusData> fields) implements PlutusData {
-        public Constr {
-            if (tag < 0) throw new IllegalArgumentException("Constr tag must be non-negative: " + tag);
+    record ConstrData(int tag, List<PlutusData> fields) implements PlutusData {
+        public ConstrData {
+            if (tag < 0) throw new IllegalArgumentException("ConstrData tag must be non-negative: " + tag);
             fields = List.copyOf(fields);
         }
     }
@@ -35,8 +35,8 @@ public sealed interface PlutusData {
     /**
      * An association list of key-value pairs.
      */
-    record Map(List<Pair> entries) implements PlutusData {
-        public Map {
+    record MapData(List<Pair> entries) implements PlutusData {
+        public MapData {
             entries = List.copyOf(entries);
         }
     }
@@ -93,7 +93,7 @@ public sealed interface PlutusData {
     }
 
     /**
-     * A key-value pair used in {@link Map}.
+     * A key-value pair used in {@link MapData}.
      */
     record Pair(PlutusData key, PlutusData value) {
         public Pair { Objects.requireNonNull(key); Objects.requireNonNull(value); }
@@ -102,7 +102,7 @@ public sealed interface PlutusData {
     // Convenience factory methods
 
     static PlutusData constr(int tag, PlutusData... fields) {
-        return new Constr(tag, List.of(fields));
+        return new ConstrData(tag, List.of(fields));
     }
 
     static PlutusData integer(long value) {
@@ -122,9 +122,9 @@ public sealed interface PlutusData {
     }
 
     static PlutusData map(Pair... entries) {
-        return new Map(List.of(entries));
+        return new MapData(List.of(entries));
     }
 
     /** The unit value: Constr 0 [] */
-    PlutusData UNIT = new Constr(0, List.of());
+    PlutusData UNIT = new ConstrData(0, List.of());
 }

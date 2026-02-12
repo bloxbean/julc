@@ -167,8 +167,8 @@ class PlutusDataAdapterTest {
                     .build();
             var result = PlutusDataAdapter.fromClientLib(clientData);
 
-            assertInstanceOf(PlutusData.Constr.class, result);
-            var constr = (PlutusData.Constr) result;
+            assertInstanceOf(PlutusData.ConstrData.class, result);
+            var constr = (PlutusData.ConstrData) result;
             assertEquals(2, constr.tag());
             assertEquals(1, constr.fields().size());
         }
@@ -180,8 +180,8 @@ class PlutusDataAdapterTest {
                     .build();
             var result = PlutusDataAdapter.fromClientLib(clientData);
 
-            assertInstanceOf(PlutusData.Constr.class, result);
-            assertEquals(0, ((PlutusData.Constr) result).fields().size());
+            assertInstanceOf(PlutusData.ConstrData.class, result);
+            assertEquals(0, ((PlutusData.ConstrData) result).fields().size());
         }
 
         @Test
@@ -202,8 +202,8 @@ class PlutusDataAdapterTest {
                     new com.bloxbean.cardano.client.plutus.spec.BytesPlutusData(new byte[]{0x01}));
             var result = PlutusDataAdapter.fromClientLib(map);
 
-            assertInstanceOf(PlutusData.Map.class, result);
-            assertEquals(1, ((PlutusData.Map) result).entries().size());
+            assertInstanceOf(PlutusData.MapData.class, result);
+            assertEquals(1, ((PlutusData.MapData) result).entries().size());
         }
     }
 

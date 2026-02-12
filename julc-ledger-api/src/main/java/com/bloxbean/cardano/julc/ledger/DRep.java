@@ -11,19 +11,19 @@ public sealed interface DRep extends PlutusDataConvertible {
 
     record DRepCredential(Credential credential) implements DRep {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(0, List.of(credential.toPlutusData()));
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(0, List.of(credential.toPlutusData()));
         }
     }
 
     record AlwaysAbstain() implements DRep {
         @Override
-        public PlutusData toPlutusData() { return new PlutusData.Constr(1, List.of()); }
+        public PlutusData.ConstrData toPlutusData() { return new PlutusData.ConstrData(1, List.of()); }
     }
 
     record AlwaysNoConfidence() implements DRep {
         @Override
-        public PlutusData toPlutusData() { return new PlutusData.Constr(2, List.of()); }
+        public PlutusData.ConstrData toPlutusData() { return new PlutusData.ConstrData(2, List.of()); }
     }
 
     static DRep fromPlutusData(PlutusData data) {

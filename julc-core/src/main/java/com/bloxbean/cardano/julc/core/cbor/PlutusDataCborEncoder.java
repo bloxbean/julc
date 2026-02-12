@@ -36,8 +36,8 @@ public final class PlutusDataCborEncoder {
 
     private static void writeData(ByteArrayOutputStream out, PlutusData data) {
         switch (data) {
-            case PlutusData.Constr c -> writeConstr(out, c);
-            case PlutusData.Map m -> writeMap(out, m);
+            case PlutusData.ConstrData c -> writeConstr(out, c);
+            case PlutusData.MapData m -> writeMap(out, m);
             case PlutusData.ListData l -> writeList(out, l);
             case PlutusData.IntData i -> writeInteger(out, i.value());
             case PlutusData.BytesData b -> writeByteString(out, b.value());
@@ -46,7 +46,7 @@ public final class PlutusDataCborEncoder {
 
     // --- Constr ---
 
-    private static void writeConstr(ByteArrayOutputStream out, PlutusData.Constr c) {
+    private static void writeConstr(ByteArrayOutputStream out, PlutusData.ConstrData c) {
         int tag = c.tag();
         if (tag >= 0 && tag <= 6) {
             writeTag(out, 121 + tag);
@@ -70,7 +70,7 @@ public final class PlutusDataCborEncoder {
 
     // --- Map ---
 
-    private static void writeMap(ByteArrayOutputStream out, PlutusData.Map m) {
+    private static void writeMap(ByteArrayOutputStream out, PlutusData.MapData m) {
         var entries = m.entries();
         writeMajorTypeLen(out, 5, entries.size());
         for (var entry : entries) {

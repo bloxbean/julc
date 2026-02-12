@@ -11,22 +11,22 @@ public sealed interface OutputDatum extends PlutusDataConvertible {
 
     record NoOutputDatum() implements OutputDatum {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(0, List.of());
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(0, List.of());
         }
     }
 
     record OutputDatumHash(DatumHash datumHash) implements OutputDatum {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(1, List.of(datumHash.toPlutusData()));
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(1, List.of(datumHash.toPlutusData()));
         }
     }
 
     record OutputDatumInline(PlutusData datum) implements OutputDatum {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(2, List.of(datum));
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(2, List.of(datum));
         }
     }
 

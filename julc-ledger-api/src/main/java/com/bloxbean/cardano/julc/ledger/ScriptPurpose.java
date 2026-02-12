@@ -12,29 +12,29 @@ public sealed interface ScriptPurpose extends PlutusDataConvertible {
 
     record Minting(PolicyId policyId) implements ScriptPurpose {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(0, List.of(policyId.toPlutusData()));
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(0, List.of(policyId.toPlutusData()));
         }
     }
 
     record Spending(TxOutRef txOutRef) implements ScriptPurpose {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(1, List.of(txOutRef.toPlutusData()));
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(1, List.of(txOutRef.toPlutusData()));
         }
     }
 
     record Rewarding(Credential credential) implements ScriptPurpose {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(2, List.of(credential.toPlutusData()));
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(2, List.of(credential.toPlutusData()));
         }
     }
 
     record Certifying(BigInteger index, TxCert cert) implements ScriptPurpose {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(3, List.of(
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(3, List.of(
                     new PlutusData.IntData(index),
                     cert.toPlutusData()));
         }
@@ -42,15 +42,15 @@ public sealed interface ScriptPurpose extends PlutusDataConvertible {
 
     record Voting(Voter voter) implements ScriptPurpose {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(4, List.of(voter.toPlutusData()));
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(4, List.of(voter.toPlutusData()));
         }
     }
 
     record Proposing(BigInteger index, ProposalProcedure procedure) implements ScriptPurpose {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(5, List.of(
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(5, List.of(
                     new PlutusData.IntData(index),
                     procedure.toPlutusData()));
         }

@@ -13,15 +13,15 @@ public sealed interface ScriptInfo extends PlutusDataConvertible {
 
     record MintingScript(PolicyId policyId) implements ScriptInfo {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(0, List.of(policyId.toPlutusData()));
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(0, List.of(policyId.toPlutusData()));
         }
     }
 
     record SpendingScript(TxOutRef txOutRef, Optional<PlutusData> datum) implements ScriptInfo {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(1, List.of(
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(1, List.of(
                     txOutRef.toPlutusData(),
                     PlutusDataHelper.encodeOptional(datum, d -> d)));
         }
@@ -29,15 +29,15 @@ public sealed interface ScriptInfo extends PlutusDataConvertible {
 
     record RewardingScript(Credential credential) implements ScriptInfo {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(2, List.of(credential.toPlutusData()));
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(2, List.of(credential.toPlutusData()));
         }
     }
 
     record CertifyingScript(BigInteger index, TxCert cert) implements ScriptInfo {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(3, List.of(
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(3, List.of(
                     new PlutusData.IntData(index),
                     cert.toPlutusData()));
         }
@@ -45,15 +45,15 @@ public sealed interface ScriptInfo extends PlutusDataConvertible {
 
     record VotingScript(Voter voter) implements ScriptInfo {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(4, List.of(voter.toPlutusData()));
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(4, List.of(voter.toPlutusData()));
         }
     }
 
     record ProposingScript(BigInteger index, ProposalProcedure procedure) implements ScriptInfo {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(5, List.of(
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(5, List.of(
                     new PlutusData.IntData(index),
                     procedure.toPlutusData()));
         }

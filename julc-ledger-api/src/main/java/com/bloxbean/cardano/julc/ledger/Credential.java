@@ -11,15 +11,15 @@ public sealed interface Credential extends PlutusDataConvertible {
 
     record PubKeyCredential(PubKeyHash hash) implements Credential {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(0, List.of(hash.toPlutusData()));
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(0, List.of(hash.toPlutusData()));
         }
     }
 
     record ScriptCredential(ScriptHash hash) implements Credential {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(1, List.of(hash.toPlutusData()));
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(1, List.of(hash.toPlutusData()));
         }
     }
 

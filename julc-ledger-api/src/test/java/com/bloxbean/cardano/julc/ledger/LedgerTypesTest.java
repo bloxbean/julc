@@ -44,21 +44,21 @@ class LedgerTypesTest {
         @Test
         void pubKeyCredentialTag() {
             var data = new Credential.PubKeyCredential(pkh()).toPlutusData();
-            assertInstanceOf(PlutusData.Constr.class, data);
-            assertEquals(0, ((PlutusData.Constr) data).tag());
+            assertInstanceOf(PlutusData.ConstrData.class, data);
+            assertEquals(0, ((PlutusData.ConstrData) data).tag());
         }
 
         @Test
         void scriptCredentialTag() {
             var data = new Credential.ScriptCredential(sh()).toPlutusData();
-            assertInstanceOf(PlutusData.Constr.class, data);
-            assertEquals(1, ((PlutusData.Constr) data).tag());
+            assertInstanceOf(PlutusData.ConstrData.class, data);
+            assertEquals(1, ((PlutusData.ConstrData) data).tag());
         }
 
         @Test
         void invalidTag() {
             assertThrows(IllegalArgumentException.class,
-                    () -> Credential.fromPlutusData(new PlutusData.Constr(2, List.of())));
+                    () -> Credential.fromPlutusData(new PlutusData.ConstrData(2, List.of())));
         }
     }
 
@@ -101,8 +101,8 @@ class LedgerTypesTest {
         void encodingStructure() {
             var addr = new Address(new Credential.PubKeyCredential(pkh()), Optional.empty());
             var data = addr.toPlutusData();
-            assertInstanceOf(PlutusData.Constr.class, data);
-            var constr = (PlutusData.Constr) data;
+            assertInstanceOf(PlutusData.ConstrData.class, data);
+            var constr = (PlutusData.ConstrData) data;
             assertEquals(0, constr.tag());
             assertEquals(2, constr.fields().size());
         }
@@ -179,7 +179,7 @@ class LedgerTypesTest {
         @Test
         void encodingIsMap() {
             var data = Value.lovelace(BigInteger.ONE).toPlutusData();
-            assertInstanceOf(PlutusData.Map.class, data);
+            assertInstanceOf(PlutusData.MapData.class, data);
         }
     }
 
@@ -207,9 +207,9 @@ class LedgerTypesTest {
 
         @Test
         void constrTags() {
-            assertEquals(0, ((PlutusData.Constr) new OutputDatum.NoOutputDatum().toPlutusData()).tag());
-            assertEquals(1, ((PlutusData.Constr) new OutputDatum.OutputDatumHash(dh()).toPlutusData()).tag());
-            assertEquals(2, ((PlutusData.Constr) new OutputDatum.OutputDatumInline(PlutusData.integer(1)).toPlutusData()).tag());
+            assertEquals(0, ((PlutusData.ConstrData) new OutputDatum.NoOutputDatum().toPlutusData()).tag());
+            assertEquals(1, ((PlutusData.ConstrData) new OutputDatum.OutputDatumHash(dh()).toPlutusData()).tag());
+            assertEquals(2, ((PlutusData.ConstrData) new OutputDatum.OutputDatumInline(PlutusData.integer(1)).toPlutusData()).tag());
         }
     }
 
@@ -497,11 +497,11 @@ class LedgerTypesTest {
         @Test
         void allTagsDistinct() {
             // Verify each constructor maps to its expected Constr tag
-            assertEquals(0, ((PlutusData.Constr) new TxCert.RegStaking(new Credential.PubKeyCredential(pkh()), Optional.empty()).toPlutusData()).tag());
-            assertEquals(1, ((PlutusData.Constr) new TxCert.UnRegStaking(new Credential.PubKeyCredential(pkh()), Optional.empty()).toPlutusData()).tag());
-            assertEquals(2, ((PlutusData.Constr) new TxCert.DelegStaking(new Credential.PubKeyCredential(pkh()), new Delegatee.Stake(pkh())).toPlutusData()).tag());
-            assertEquals(7, ((PlutusData.Constr) new TxCert.PoolRegister(pkh(), pkh()).toPlutusData()).tag());
-            assertEquals(10, ((PlutusData.Constr) new TxCert.ResignColdCommittee(new Credential.PubKeyCredential(pkh())).toPlutusData()).tag());
+            assertEquals(0, ((PlutusData.ConstrData) new TxCert.RegStaking(new Credential.PubKeyCredential(pkh()), Optional.empty()).toPlutusData()).tag());
+            assertEquals(1, ((PlutusData.ConstrData) new TxCert.UnRegStaking(new Credential.PubKeyCredential(pkh()), Optional.empty()).toPlutusData()).tag());
+            assertEquals(2, ((PlutusData.ConstrData) new TxCert.DelegStaking(new Credential.PubKeyCredential(pkh()), new Delegatee.Stake(pkh())).toPlutusData()).tag());
+            assertEquals(7, ((PlutusData.ConstrData) new TxCert.PoolRegister(pkh(), pkh()).toPlutusData()).tag());
+            assertEquals(10, ((PlutusData.ConstrData) new TxCert.ResignColdCommittee(new Credential.PubKeyCredential(pkh())).toPlutusData()).tag());
         }
     }
 
@@ -733,8 +733,8 @@ class LedgerTypesTest {
         @Test
         void encodingIs16FieldConstr() {
             var data = minimalTxInfo().toPlutusData();
-            assertInstanceOf(PlutusData.Constr.class, data);
-            assertEquals(16, ((PlutusData.Constr) data).fields().size());
+            assertInstanceOf(PlutusData.ConstrData.class, data);
+            assertEquals(16, ((PlutusData.ConstrData) data).fields().size());
         }
     }
 
@@ -779,8 +779,8 @@ class LedgerTypesTest {
             var ctx = new ScriptContext(ti, PlutusData.UNIT,
                     new ScriptInfo.MintingScript(pid()));
             var data = ctx.toPlutusData();
-            assertInstanceOf(PlutusData.Constr.class, data);
-            var constr = (PlutusData.Constr) data;
+            assertInstanceOf(PlutusData.ConstrData.class, data);
+            var constr = (PlutusData.ConstrData) data;
             assertEquals(0, constr.tag());
             assertEquals(3, constr.fields().size());
         }

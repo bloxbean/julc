@@ -142,7 +142,7 @@ public class TypeResolver {
             case "BigInteger" -> new PirType.IntegerType();
             case "String" -> new PirType.StringType();
             case "Boolean" -> new PirType.BoolType();
-            case "PlutusData" -> new PirType.DataType();
+            case "PlutusData", "ConstrData", "MapData", "ListData", "IntData", "BytesData" -> new PirType.DataType();
             case "List" -> {
                 PirType elemType = new PirType.DataType();
                 var listArgs = ct.getTypeArguments();

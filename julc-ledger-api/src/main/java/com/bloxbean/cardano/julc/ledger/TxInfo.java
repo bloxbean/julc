@@ -30,8 +30,8 @@ public record TxInfo(
 ) implements PlutusDataConvertible {
 
     @Override
-    public PlutusData toPlutusData() {
-        return new PlutusData.Constr(0, List.of(
+    public PlutusData.ConstrData toPlutusData() {
+        return new PlutusData.ConstrData(0, List.of(
                 PlutusDataHelper.encodeList(inputs, TxInInfo::toPlutusData),
                 PlutusDataHelper.encodeList(referenceInputs, TxInInfo::toPlutusData),
                 PlutusDataHelper.encodeList(outputs, TxOut::toPlutusData),
@@ -53,7 +53,7 @@ public record TxInfo(
                 PlutusDataHelper.encodeOptional(treasuryDonation, PlutusDataHelper::encodeInteger)));
     }
 
-    private static PlutusData encodeVotes(Map<Voter, Map<GovernanceActionId, Vote>> votes) {
+    private static PlutusData.MapData encodeVotes(Map<Voter, Map<GovernanceActionId, Vote>> votes) {
         return PlutusDataHelper.encodeMap(votes,
                 Voter::toPlutusData,
                 innerMap -> PlutusDataHelper.encodeMap(innerMap,

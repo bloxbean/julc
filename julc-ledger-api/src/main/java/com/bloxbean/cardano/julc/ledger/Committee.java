@@ -12,8 +12,8 @@ import java.util.Map;
 public record Committee(Map<Credential, BigInteger> members, Rational quorum) implements PlutusDataConvertible {
 
     @Override
-    public PlutusData toPlutusData() {
-        return new PlutusData.Constr(0, List.of(
+    public PlutusData.ConstrData toPlutusData() {
+        return new PlutusData.ConstrData(0, List.of(
                 PlutusDataHelper.encodeMap(members,
                         Credential::toPlutusData, PlutusDataHelper::encodeInteger),
                 quorum.toPlutusData()));

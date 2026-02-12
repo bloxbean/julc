@@ -19,23 +19,23 @@ class PlutusDataHelperTest {
         @Test
         void encodeTrue() {
             var data = PlutusDataHelper.encodeBool(true);
-            assertEquals(new PlutusData.Constr(1, List.of()), data);
+            assertEquals(new PlutusData.ConstrData(1, List.of()), data);
         }
 
         @Test
         void encodeFalse() {
             var data = PlutusDataHelper.encodeBool(false);
-            assertEquals(new PlutusData.Constr(0, List.of()), data);
+            assertEquals(new PlutusData.ConstrData(0, List.of()), data);
         }
 
         @Test
         void decodeTrue() {
-            assertTrue(PlutusDataHelper.decodeBool(new PlutusData.Constr(1, List.of())));
+            assertTrue(PlutusDataHelper.decodeBool(new PlutusData.ConstrData(1, List.of())));
         }
 
         @Test
         void decodeFalse() {
-            assertFalse(PlutusDataHelper.decodeBool(new PlutusData.Constr(0, List.of())));
+            assertFalse(PlutusDataHelper.decodeBool(new PlutusData.ConstrData(0, List.of())));
         }
 
         @Test
@@ -51,7 +51,7 @@ class PlutusDataHelperTest {
         @Test
         void decodeInvalidTag() {
             assertThrows(IllegalArgumentException.class,
-                    () -> PlutusDataHelper.decodeBool(new PlutusData.Constr(2, List.of())));
+                    () -> PlutusDataHelper.decodeBool(new PlutusData.ConstrData(2, List.of())));
         }
 
         @Test
@@ -71,18 +71,18 @@ class PlutusDataHelperTest {
         @Test
         void encodeSome() {
             var data = PlutusDataHelper.encodeOptional(Optional.of(BigInteger.TEN), intEncoder);
-            assertEquals(new PlutusData.Constr(0, List.of(new PlutusData.IntData(BigInteger.TEN))), data);
+            assertEquals(new PlutusData.ConstrData(0, List.of(new PlutusData.IntData(BigInteger.TEN))), data);
         }
 
         @Test
         void encodeNone() {
             var data = PlutusDataHelper.encodeOptional(Optional.empty(), intEncoder);
-            assertEquals(new PlutusData.Constr(1, List.of()), data);
+            assertEquals(new PlutusData.ConstrData(1, List.of()), data);
         }
 
         @Test
         void decodeSome() {
-            var data = new PlutusData.Constr(0, List.of(new PlutusData.IntData(42)));
+            var data = new PlutusData.ConstrData(0, List.of(new PlutusData.IntData(42)));
             var result = PlutusDataHelper.decodeOptional(data, intDecoder);
             assertTrue(result.isPresent());
             assertEquals(BigInteger.valueOf(42), result.get());
@@ -90,7 +90,7 @@ class PlutusDataHelperTest {
 
         @Test
         void decodeNone() {
-            var data = new PlutusData.Constr(1, List.of());
+            var data = new PlutusData.ConstrData(1, List.of());
             var result = PlutusDataHelper.decodeOptional(data, intDecoder);
             assertTrue(result.isEmpty());
         }
@@ -114,7 +114,7 @@ class PlutusDataHelperTest {
         @Test
         void decodeInvalidTag() {
             assertThrows(IllegalArgumentException.class,
-                    () -> PlutusDataHelper.decodeOptional(new PlutusData.Constr(2, List.of()), intDecoder));
+                    () -> PlutusDataHelper.decodeOptional(new PlutusData.ConstrData(2, List.of()), intDecoder));
         }
     }
 
@@ -172,7 +172,7 @@ class PlutusDataHelperTest {
                     Map.of(),
                     PlutusDataHelper::encodeInteger,
                     PlutusDataHelper::encodeInteger);
-            assertEquals(new PlutusData.Map(List.of()), data);
+            assertEquals(new PlutusData.MapData(List.of()), data);
         }
 
         @Test
@@ -182,14 +182,14 @@ class PlutusDataHelperTest {
             var data = PlutusDataHelper.encodeMap(map,
                     PlutusDataHelper::encodeInteger,
                     PlutusDataHelper::encodeInteger);
-            assertEquals(new PlutusData.Map(List.of(
+            assertEquals(new PlutusData.MapData(List.of(
                     new PlutusData.Pair(new PlutusData.IntData(1), new PlutusData.IntData(10))
             )), data);
         }
 
         @Test
         void decodeMap() {
-            var data = new PlutusData.Map(List.of(
+            var data = new PlutusData.MapData(List.of(
                     new PlutusData.Pair(new PlutusData.IntData(1), new PlutusData.IntData(100))));
             var result = PlutusDataHelper.decodeMap(data,
                     PlutusDataHelper::decodeInteger,
@@ -271,7 +271,7 @@ class PlutusDataHelperTest {
         @Test
         void expectConstrWithTag() {
             var fields = PlutusDataHelper.expectConstr(
-                    new PlutusData.Constr(0, List.of(new PlutusData.IntData(1))), 0);
+                    new PlutusData.ConstrData(0, List.of(new PlutusData.IntData(1))), 0);
             assertEquals(1, fields.size());
             assertEquals(new PlutusData.IntData(1), fields.getFirst());
         }
@@ -279,7 +279,7 @@ class PlutusDataHelperTest {
         @Test
         void expectConstrWrongTag() {
             assertThrows(IllegalArgumentException.class,
-                    () -> PlutusDataHelper.expectConstr(new PlutusData.Constr(1, List.of()), 0));
+                    () -> PlutusDataHelper.expectConstr(new PlutusData.ConstrData(1, List.of()), 0));
         }
 
         @Test
@@ -290,7 +290,7 @@ class PlutusDataHelperTest {
 
         @Test
         void expectConstrAny() {
-            var c = PlutusDataHelper.expectConstr(new PlutusData.Constr(5, List.of()));
+            var c = PlutusDataHelper.expectConstr(new PlutusData.ConstrData(5, List.of()));
             assertEquals(5, c.tag());
         }
     }

@@ -12,8 +12,8 @@ public record Address(Credential credential, Optional<StakingCredential> staking
         implements PlutusDataConvertible {
 
     @Override
-    public PlutusData toPlutusData() {
-        return new PlutusData.Constr(0, List.of(
+    public PlutusData.ConstrData toPlutusData() {
+        return new PlutusData.ConstrData(0, List.of(
                 credential.toPlutusData(),
                 PlutusDataHelper.encodeOptional(stakingCredential, StakingCredential::toPlutusData)));
     }

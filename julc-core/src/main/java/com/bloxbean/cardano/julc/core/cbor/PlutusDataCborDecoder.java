@@ -95,7 +95,7 @@ public final class PlutusDataCborDecoder {
                     var value = map.get(key);
                     entries.add(new PlutusData.Pair(fromDataItem(key), fromDataItem(value)));
                 }
-                yield new PlutusData.Map(entries);
+                yield new PlutusData.MapData(entries);
             }
             default -> throw new CborDecodingException(
                     "Unsupported CBOR major type for PlutusData: " + item.getMajorType());
@@ -108,7 +108,7 @@ public final class PlutusDataCborDecoder {
             for (var elem : array.getDataItems()) {
                 fields.add(fromDataItem(elem));
             }
-            return new PlutusData.Constr(constrTag, fields);
+            return new PlutusData.ConstrData(constrTag, fields);
         }
         throw new CborDecodingException("Expected array for Constr fields, got: " + item.getMajorType());
     }
@@ -134,7 +134,7 @@ public final class PlutusDataCborDecoder {
                 for (var elem : fieldsArray.getDataItems()) {
                     fields.add(fromDataItem(elem));
                 }
-                return new PlutusData.Constr(tagValue.intValueExact(), fields);
+                return new PlutusData.ConstrData(tagValue.intValueExact(), fields);
             }
             throw new CborDecodingException("Expected array for Constr fields in general encoding");
         }

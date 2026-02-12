@@ -113,7 +113,7 @@ public final class ValuesLib {
         if (value == null || value.inner() == null) return result;
         for (Map.Entry<byte[], Map<byte[], BigInteger>> pe : value.inner().entrySet()) {
             for (Map.Entry<byte[], BigInteger> te : pe.getValue().entrySet()) {
-                result.add(new PlutusData.Constr(0, java.util.List.of(
+                result.add(new PlutusData.ConstrData(0, java.util.List.of(
                         new PlutusData.BytesData(pe.getKey()),
                         new PlutusData.BytesData(te.getKey()),
                         new PlutusData.IntData(te.getValue()))));

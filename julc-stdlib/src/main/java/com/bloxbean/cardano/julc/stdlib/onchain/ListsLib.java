@@ -14,7 +14,7 @@ import com.bloxbean.cardano.julc.onchain.stdlib.Builtins;
 public class ListsLib {
 
     /** Return the number of elements in the list. */
-    public static long length(PlutusData list) {
+    public static long length(PlutusData.ListData list) {
         var count = 0L;
         var current = list;
         while (!Builtins.nullList(current)) {
@@ -25,22 +25,22 @@ public class ListsLib {
     }
 
     /** Return true if the list is empty. */
-    public static boolean isEmpty(PlutusData list) {
+    public static boolean isEmpty(PlutusData.ListData list) {
         return Builtins.nullList(list);
     }
 
     /** Return the first element of the list. */
-    public static PlutusData head(PlutusData list) {
+    public static PlutusData head(PlutusData.ListData list) {
         return Builtins.headList(list);
     }
 
     /** Return all elements except the first. */
-    public static PlutusData tail(PlutusData list) {
+    public static PlutusData.ListData tail(PlutusData.ListData list) {
         return Builtins.tailList(list);
     }
 
     /** Reverse a list. */
-    public static PlutusData reverse(PlutusData list) {
+    public static PlutusData.ListData reverse(PlutusData.ListData list) {
         var acc = Builtins.mkNilData();
         var current = list;
         while (!Builtins.nullList(current)) {
@@ -51,9 +51,9 @@ public class ListsLib {
     }
 
     /** Concatenate two lists. */
-    public static PlutusData concat(PlutusData a, PlutusData b) {
-        var result = b;
-    var reversed = reverse(a);
+    public static PlutusData.ListData concat(PlutusData.ListData a, PlutusData.ListData b) {
+        PlutusData.ListData result = b;
+        var reversed = reverse(a);
         var current = reversed;
         while (!Builtins.nullList(current)) {
             result = Builtins.mkCons(Builtins.headList(current), result);
@@ -63,7 +63,7 @@ public class ListsLib {
     }
 
     /** Get element at index n (0-based). */
-    public static PlutusData nth(PlutusData list, long n) {
+    public static PlutusData nth(PlutusData.ListData list, long n) {
         var current = list;
         var idx = n;
         while (idx > 0) {
@@ -74,7 +74,7 @@ public class ListsLib {
     }
 
     /** Take the first n elements from a list. */
-    public static PlutusData take(PlutusData list, long n) {
+    public static PlutusData.ListData take(PlutusData.ListData list, long n) {
         var acc = Builtins.mkNilData();
         var current = list;
         var cnt = n;
@@ -87,7 +87,7 @@ public class ListsLib {
     }
 
     /** Drop the first n elements from a list. */
-    public static PlutusData drop(PlutusData list, long n) {
+    public static PlutusData.ListData drop(PlutusData.ListData list, long n) {
         var current = list;
         var cnt = n;
         while (cnt > 0 && !Builtins.nullList(current)) {
@@ -98,7 +98,7 @@ public class ListsLib {
     }
 
     /** Return true if list contains target (using EqualsData). */
-    public static boolean contains(PlutusData list, PlutusData target) {
+    public static boolean contains(PlutusData.ListData list, PlutusData target) {
         var found = false;
         var current = list;
         while (!Builtins.nullList(current)) {

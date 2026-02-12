@@ -11,8 +11,8 @@ public record ScriptContext(TxInfo txInfo, PlutusData redeemer, ScriptInfo scrip
         implements PlutusDataConvertible {
 
     @Override
-    public PlutusData toPlutusData() {
-        return new PlutusData.Constr(0, List.of(
+    public PlutusData.ConstrData toPlutusData() {
+        return new PlutusData.ConstrData(0, List.of(
                 txInfo.toPlutusData(),
                 redeemer,
                 scriptInfo.toPlutusData()));

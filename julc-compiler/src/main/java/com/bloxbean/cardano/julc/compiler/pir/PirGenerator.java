@@ -1162,9 +1162,11 @@ public class PirGenerator {
      * In UPLC, List(Data) and Data are distinct types. When an accumulator holds a list value
      * (e.g., a list cursor advanced via tailList), it must be typed as ListType so that
      * wrapEncode/wrapDecode apply ListData/UnListData during pack/unpack.
-     * Detects list/map types by scanning assignments in the while body for known patterns.
+     * Detects list/map types by scanning assignments in the while body for known patterns,
+     * and also checks initial declarations for unMapData to distinguish MapType cursors.
      */
-    private List<PirType> refineAccumulatorTypes(WhileStmt ws, List<String> accNames, List<PirType> initialTypes) {
+    private List<PirType> refineAccumulatorTypes(WhileStmt ws, List<String> accNames, List<PirType> initialTypes,
+                                                  List<Statement> precedingStmts) {
         var result = new ArrayList<>(initialTypes);
         for (int i = 0; i < accNames.size(); i++) {
             if (!(result.get(i) instanceof PirType.DataType)) continue;
@@ -1178,10 +1180,51 @@ public class PirGenerator {
             boolean hasMkNilData = hasBuiltinAssignment(ws.getBody(), accName, "mkNilData");
             boolean hasMkCons = hasBuiltinAssignment(ws.getBody(), accName, "mkCons");
             if (hasTailList || hasMkNilData || hasMkCons) {
-                result.set(i, new PirType.ListType(new PirType.DataType()));
+                // If the accumulator is a cursor with only tailList (no mkNilData/mkCons),
+                // check if it was initialized from a MapType source (unMapData).
+                // tailList on List(Pair(Data,Data)) stays List(Pair(Data,Data)), so MapType is correct.
+                if (hasTailList && !hasMkNilData && !hasMkCons && isInitializedFromMapType(accName, precedingStmts)) {
+                    result.set(i, new PirType.MapType(new PirType.DataType(), new PirType.DataType()));
+                } else {
+                    result.set(i, new PirType.ListType(new PirType.DataType()));
+                }
             }
         }
         return result;
+    }
+
+    /**
+     * Check if a variable's initial declaration is assigned from a MapType source.
+     * This traces through variable aliases (e.g., current = pairs where pairs = unMapData(x)).
+     */
+    private boolean isInitializedFromMapType(String varName, List<Statement> precedingStmts) {
+        // Find the declaration of varName in the preceding statements
+        for (int i = precedingStmts.size() - 1; i >= 0; i--) {
+            var stmt = precedingStmts.get(i);
+            if (stmt instanceof ExpressionStmt es
+                    && es.getExpression() instanceof VariableDeclarationExpr vde) {
+                var decl = vde.getVariable(0);
+                if (decl.getNameAsString().equals(varName) && decl.getInitializer().isPresent()) {
+                    return exprResolvesToMapType(decl.getInitializer().get(), precedingStmts);
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Check if an expression resolves to a MapType value — either a direct unMapData call,
+     * or a variable reference to one.
+     */
+    private boolean exprResolvesToMapType(Expression expr, List<Statement> precedingStmts) {
+        if (expr instanceof MethodCallExpr mce && mce.getNameAsString().equals("unMapData")) {
+            return true;
+        }
+        // Trace through variable aliases: if expr is a variable reference, check its declaration
+        if (expr instanceof NameExpr ne) {
+            return isInitializedFromMapType(ne.getNameAsString(), precedingStmts);
+        }
+        return false;
     }
 
     /** Check if any assignment to varName in the statement tree uses a specific Builtins method. */
@@ -1521,7 +1564,8 @@ public class PirGenerator {
                     .map(n -> symbolTable.lookup(n).orElse(new PirType.DataType()))
                     .toList();
             // Refine types: detect List(Data) and Map accumulators from assignment patterns
-            var accTypes = refineAccumulatorTypes(ws, accumulators, rawAccTypes);
+            var precedingStmts = followingStmts.subList(0, followingIndex);
+            var accTypes = refineAccumulatorTypes(ws, accumulators, rawAccTypes, precedingStmts);
             var accInit = packAccumulators(accumulators, accTypes);
             var tupleAccName = "__acc_tuple";
             var tupleAccType = new PirType.ListType(new PirType.DataType());

@@ -13,28 +13,28 @@ class PlutusDataTest {
 
     @Test
     void constrWithTagAndFields() {
-        var c = new PlutusData.Constr(0, List.of(PlutusData.integer(42)));
+        var c = new PlutusData.ConstrData(0, List.of(PlutusData.integer(42)));
         assertEquals(0, c.tag());
         assertEquals(1, c.fields().size());
     }
 
     @Test
     void constrFieldsAreImmutable() {
-        var c = (PlutusData.Constr) PlutusData.constr(1, PlutusData.integer(1), PlutusData.integer(2));
+        var c = (PlutusData.ConstrData) PlutusData.constr(1, PlutusData.integer(1), PlutusData.integer(2));
         assertThrows(UnsupportedOperationException.class, () -> c.fields().add(PlutusData.integer(3)));
     }
 
     @Test
     void constrEmptyFields() {
         var c = PlutusData.constr(0);
-        assertTrue(c instanceof PlutusData.Constr);
-        assertEquals(0, ((PlutusData.Constr) c).fields().size());
+        assertTrue(c instanceof PlutusData.ConstrData);
+        assertEquals(0, ((PlutusData.ConstrData) c).fields().size());
     }
 
     @Test
     void constrFactoryMethod() {
         var c = PlutusData.constr(2, PlutusData.integer(10), PlutusData.bytes(new byte[]{1, 2}));
-        var constr = (PlutusData.Constr) c;
+        var constr = (PlutusData.ConstrData) c;
         assertEquals(2, constr.tag());
         assertEquals(2, constr.fields().size());
     }
@@ -160,20 +160,20 @@ class PlutusDataTest {
     @Test
     void mapData() {
         var entry = new PlutusData.Pair(PlutusData.integer(1), PlutusData.bytes(new byte[]{0x0A}));
-        var m = new PlutusData.Map(List.of(entry));
+        var m = new PlutusData.MapData(List.of(entry));
         assertEquals(1, m.entries().size());
         assertEquals(PlutusData.integer(1), m.entries().getFirst().key());
     }
 
     @Test
     void mapDataEmpty() {
-        var m = new PlutusData.Map(List.of());
+        var m = new PlutusData.MapData(List.of());
         assertTrue(m.entries().isEmpty());
     }
 
     @Test
     void mapDataImmutable() {
-        var m = new PlutusData.Map(List.of());
+        var m = new PlutusData.MapData(List.of());
         assertThrows(UnsupportedOperationException.class,
                 () -> m.entries().add(new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(2))));
     }
@@ -183,16 +183,16 @@ class PlutusDataTest {
     @Test
     void unitConstant() {
         var u = PlutusData.UNIT;
-        assertInstanceOf(PlutusData.Constr.class, u);
-        assertEquals(0, ((PlutusData.Constr) u).tag());
-        assertTrue(((PlutusData.Constr) u).fields().isEmpty());
+        assertInstanceOf(PlutusData.ConstrData.class, u);
+        assertEquals(0, ((PlutusData.ConstrData) u).tag());
+        assertTrue(((PlutusData.ConstrData) u).fields().isEmpty());
     }
 
     // --- Constr negative tag ---
 
     @Test
     void constrNegativeTagRejected() {
-        assertThrows(IllegalArgumentException.class, () -> new PlutusData.Constr(-1, List.of()));
+        assertThrows(IllegalArgumentException.class, () -> new PlutusData.ConstrData(-1, List.of()));
     }
 
     // --- Pair null validation ---
@@ -214,8 +214,8 @@ class PlutusDataTest {
         var m = PlutusData.map(
                 new PlutusData.Pair(PlutusData.integer(1), PlutusData.bytes(new byte[]{0x0A})),
                 new PlutusData.Pair(PlutusData.integer(2), PlutusData.bytes(new byte[]{0x0B})));
-        assertInstanceOf(PlutusData.Map.class, m);
-        assertEquals(2, ((PlutusData.Map) m).entries().size());
+        assertInstanceOf(PlutusData.MapData.class, m);
+        assertEquals(2, ((PlutusData.MapData) m).entries().size());
     }
 
     // --- Sealed interface exhaustiveness ---
@@ -224,8 +224,8 @@ class PlutusDataTest {
     void sealedInterfacePatternMatch() {
         PlutusData data = PlutusData.integer(42);
         String result = switch (data) {
-            case PlutusData.Constr c -> "constr";
-            case PlutusData.Map m -> "map";
+            case PlutusData.ConstrData c -> "constr";
+            case PlutusData.MapData m -> "map";
             case PlutusData.ListData l -> "list";
             case PlutusData.IntData i -> "int:" + i.value();
             case PlutusData.BytesData b -> "bytes";
@@ -240,12 +240,12 @@ class PlutusDataTest {
         // Constr(0, [List([Int(1), Int(2)]), Map([(Int(3), Bytes(0xAB))])])
         var inner = PlutusData.list(PlutusData.integer(1), PlutusData.integer(2));
         var mapEntry = new PlutusData.Pair(PlutusData.integer(3), PlutusData.bytes(new byte[]{(byte) 0xAB}));
-        var map = new PlutusData.Map(List.of(mapEntry));
+        var map = new PlutusData.MapData(List.of(mapEntry));
         var outer = PlutusData.constr(0, inner, map);
 
-        var constr = (PlutusData.Constr) outer;
+        var constr = (PlutusData.ConstrData) outer;
         assertEquals(2, constr.fields().size());
         assertInstanceOf(PlutusData.ListData.class, constr.fields().get(0));
-        assertInstanceOf(PlutusData.Map.class, constr.fields().get(1));
+        assertInstanceOf(PlutusData.MapData.class, constr.fields().get(1));
     }
 }

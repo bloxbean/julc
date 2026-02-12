@@ -257,14 +257,14 @@ class PlutusConformanceTest {
                     && ia.value().equals(ib.value());
             case PlutusData.BytesData bsa -> b instanceof PlutusData.BytesData bsb
                     && Arrays.equals(bsa.value(), bsb.value());
-            case PlutusData.Constr ca -> b instanceof PlutusData.Constr cb
+            case PlutusData.ConstrData ca -> b instanceof PlutusData.ConstrData cb
                     && ca.tag() == cb.tag()
                     && ca.fields().size() == cb.fields().size()
                     && dataListsEqual(ca.fields(), cb.fields());
             case PlutusData.ListData la -> b instanceof PlutusData.ListData lb
                     && la.items().size() == lb.items().size()
                     && dataListsEqual(la.items(), lb.items());
-            case PlutusData.Map ma -> b instanceof PlutusData.Map mb
+            case PlutusData.MapData ma -> b instanceof PlutusData.MapData mb
                     && ma.entries().size() == mb.entries().size()
                     && mapEntriesEqual(ma.entries(), mb.entries());
         };

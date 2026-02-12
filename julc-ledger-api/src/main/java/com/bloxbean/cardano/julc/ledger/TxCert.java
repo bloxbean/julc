@@ -13,8 +13,8 @@ public sealed interface TxCert extends PlutusDataConvertible {
 
     record RegStaking(Credential credential, Optional<BigInteger> deposit) implements TxCert {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(0, List.of(
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(0, List.of(
                     credential.toPlutusData(),
                     PlutusDataHelper.encodeOptional(deposit, PlutusDataHelper::encodeInteger)));
         }
@@ -22,8 +22,8 @@ public sealed interface TxCert extends PlutusDataConvertible {
 
     record UnRegStaking(Credential credential, Optional<BigInteger> refund) implements TxCert {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(1, List.of(
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(1, List.of(
                     credential.toPlutusData(),
                     PlutusDataHelper.encodeOptional(refund, PlutusDataHelper::encodeInteger)));
         }
@@ -31,8 +31,8 @@ public sealed interface TxCert extends PlutusDataConvertible {
 
     record DelegStaking(Credential credential, Delegatee delegatee) implements TxCert {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(2, List.of(
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(2, List.of(
                     credential.toPlutusData(),
                     delegatee.toPlutusData()));
         }
@@ -40,8 +40,8 @@ public sealed interface TxCert extends PlutusDataConvertible {
 
     record RegDeleg(Credential credential, Delegatee delegatee, BigInteger deposit) implements TxCert {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(3, List.of(
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(3, List.of(
                     credential.toPlutusData(),
                     delegatee.toPlutusData(),
                     new PlutusData.IntData(deposit)));
@@ -50,8 +50,8 @@ public sealed interface TxCert extends PlutusDataConvertible {
 
     record RegDRep(Credential credential, BigInteger deposit) implements TxCert {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(4, List.of(
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(4, List.of(
                     credential.toPlutusData(),
                     new PlutusData.IntData(deposit)));
         }
@@ -59,15 +59,15 @@ public sealed interface TxCert extends PlutusDataConvertible {
 
     record UpdateDRep(Credential credential) implements TxCert {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(5, List.of(credential.toPlutusData()));
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(5, List.of(credential.toPlutusData()));
         }
     }
 
     record UnRegDRep(Credential credential, BigInteger refund) implements TxCert {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(6, List.of(
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(6, List.of(
                     credential.toPlutusData(),
                     new PlutusData.IntData(refund)));
         }
@@ -75,8 +75,8 @@ public sealed interface TxCert extends PlutusDataConvertible {
 
     record PoolRegister(PubKeyHash poolId, PubKeyHash poolVfr) implements TxCert {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(7, List.of(
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(7, List.of(
                     poolId.toPlutusData(),
                     poolVfr.toPlutusData()));
         }
@@ -84,8 +84,8 @@ public sealed interface TxCert extends PlutusDataConvertible {
 
     record PoolRetire(PubKeyHash pubKeyHash, BigInteger epoch) implements TxCert {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(8, List.of(
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(8, List.of(
                     pubKeyHash.toPlutusData(),
                     new PlutusData.IntData(epoch)));
         }
@@ -93,8 +93,8 @@ public sealed interface TxCert extends PlutusDataConvertible {
 
     record AuthHotCommittee(Credential cold, Credential hot) implements TxCert {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(9, List.of(
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(9, List.of(
                     cold.toPlutusData(),
                     hot.toPlutusData()));
         }
@@ -102,8 +102,8 @@ public sealed interface TxCert extends PlutusDataConvertible {
 
     record ResignColdCommittee(Credential cold) implements TxCert {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(10, List.of(cold.toPlutusData()));
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(10, List.of(cold.toPlutusData()));
         }
     }
 

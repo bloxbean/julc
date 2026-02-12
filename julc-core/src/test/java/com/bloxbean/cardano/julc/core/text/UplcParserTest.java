@@ -242,7 +242,7 @@ class UplcParserTest {
         var term = UplcParser.parseTerm("(con data Constr 0 [I 1, B #ff])");
         var c = (Term.Const) term;
         var d = (Constant.DataConst) c.value();
-        var constr = (PlutusData.Constr) d.value();
+        var constr = (PlutusData.ConstrData) d.value();
         assertEquals(0, constr.tag());
         assertEquals(2, constr.fields().size());
     }
@@ -270,7 +270,7 @@ class UplcParserTest {
         var term = UplcParser.parseTerm("(con data Map [(I 1, B #ff), (I 2, B #00)])");
         var c = (Term.Const) term;
         var d = (Constant.DataConst) c.value();
-        var map = (PlutusData.Map) d.value();
+        var map = (PlutusData.MapData) d.value();
         assertEquals(2, map.entries().size());
     }
 
@@ -279,7 +279,7 @@ class UplcParserTest {
         var term = UplcParser.parseTerm("(con data Map [])");
         var c = (Term.Const) term;
         var d = (Constant.DataConst) c.value();
-        var map = (PlutusData.Map) d.value();
+        var map = (PlutusData.MapData) d.value();
         assertEquals(0, map.entries().size());
     }
 
@@ -288,9 +288,9 @@ class UplcParserTest {
         var term = UplcParser.parseTerm("(con data Constr 0 [Constr 1 [I 42]])");
         var c = (Term.Const) term;
         var d = (Constant.DataConst) c.value();
-        var outer = (PlutusData.Constr) d.value();
+        var outer = (PlutusData.ConstrData) d.value();
         assertEquals(0, outer.tag());
-        var inner = (PlutusData.Constr) outer.fields().getFirst();
+        var inner = (PlutusData.ConstrData) outer.fields().getFirst();
         assertEquals(1, inner.tag());
         assertEquals(PlutusData.integer(42), inner.fields().getFirst());
     }

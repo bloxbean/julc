@@ -25,7 +25,7 @@ public record PolicyId(byte[] hash) implements PlutusDataConvertible {
     public byte[] hash() { return hash.clone(); }
 
     @Override
-    public PlutusData toPlutusData() {
+    public PlutusData.BytesData toPlutusData() {
         return new PlutusData.BytesData(hash);
     }
 

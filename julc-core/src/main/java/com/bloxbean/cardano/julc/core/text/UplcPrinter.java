@@ -248,7 +248,7 @@ public final class UplcPrinter {
                 sb.append("B #");
                 sb.append(HEX.formatHex(bs.value()));
             }
-            case PlutusData.Constr c -> {
+            case PlutusData.ConstrData c -> {
                 sb.append("Constr ");
                 sb.append(c.tag());
                 sb.append(" [");
@@ -266,7 +266,7 @@ public final class UplcPrinter {
                 }
                 sb.append(']');
             }
-            case PlutusData.Map m -> {
+            case PlutusData.MapData m -> {
                 sb.append("Map [");
                 for (int i = 0; i < m.entries().size(); i++) {
                     if (i > 0) sb.append(", ");

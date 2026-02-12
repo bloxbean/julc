@@ -11,22 +11,22 @@ public sealed interface Voter extends PlutusDataConvertible {
 
     record CommitteeVoter(Credential credential) implements Voter {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(0, List.of(credential.toPlutusData()));
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(0, List.of(credential.toPlutusData()));
         }
     }
 
     record DRepVoter(Credential credential) implements Voter {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(1, List.of(credential.toPlutusData()));
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(1, List.of(credential.toPlutusData()));
         }
     }
 
     record StakePoolVoter(PubKeyHash pubKeyHash) implements Voter {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(2, List.of(pubKeyHash.toPlutusData()));
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(2, List.of(pubKeyHash.toPlutusData()));
         }
     }
 

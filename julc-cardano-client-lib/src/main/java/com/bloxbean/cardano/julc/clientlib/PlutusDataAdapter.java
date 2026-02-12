@@ -25,7 +25,7 @@ public final class PlutusDataAdapter {
             case PlutusData.BytesData(var value) ->
                     new com.bloxbean.cardano.client.plutus.spec.BytesPlutusData(value);
 
-            case PlutusData.Constr(var tag, var fields) -> {
+            case PlutusData.ConstrData(var tag, var fields) -> {
                 var clientFields = new com.bloxbean.cardano.client.plutus.spec.ListPlutusData();
                 for (var field : fields) {
                     clientFields.add(toClientLib(field));
@@ -44,7 +44,7 @@ public final class PlutusDataAdapter {
                 yield clientList;
             }
 
-            case PlutusData.Map(var entries) -> {
+            case PlutusData.MapData(var entries) -> {
                 var clientMap = new com.bloxbean.cardano.client.plutus.spec.MapPlutusData();
                 for (var entry : entries) {
                     clientMap.put(toClientLib(entry.key()), toClientLib(entry.value()));

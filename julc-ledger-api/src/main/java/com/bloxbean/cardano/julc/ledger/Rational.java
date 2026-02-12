@@ -11,8 +11,8 @@ import java.util.List;
 public record Rational(BigInteger numerator, BigInteger denominator) implements PlutusDataConvertible {
 
     @Override
-    public PlutusData toPlutusData() {
-        return new PlutusData.Constr(0, List.of(
+    public PlutusData.ConstrData toPlutusData() {
+        return new PlutusData.ConstrData(0, List.of(
                 new PlutusData.IntData(numerator),
                 new PlutusData.IntData(denominator)));
     }

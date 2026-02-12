@@ -13,86 +13,86 @@ import java.util.Optional;
  * These methods are executable both on-chain (compiled to UPLC via StdlibRegistry)
  * and off-chain (as plain Java for debugging and testing).
  * <p>
- * Maps are represented as {@code List<Pair<Data, Data>>} association lists.
+ * Maps are represented as {@link PlutusData.MapData} with {@link PlutusData.Pair} entries.
  */
 public final class MapLib {
 
     private MapLib() {}
 
     /** Look up a key in the map, returning Optional. */
-    public static Optional<PlutusData> lookup(PlutusData map, PlutusData key) {
-        for (var pair : toEntries(map)) {
-            if (pair.fields().get(0).equals(key)) {
-                return Optional.of(pair.fields().get(1));
+    public static Optional<PlutusData> lookup(PlutusData.MapData map, PlutusData key) {
+        for (var pair : map.entries()) {
+            if (pair.key().equals(key)) {
+                return Optional.of(pair.value());
             }
         }
         return Optional.empty();
     }
 
     /** Check if a key exists in the map. */
-    public static boolean member(PlutusData map, PlutusData key) {
+    public static boolean member(PlutusData.MapData map, PlutusData key) {
         return lookup(map, key).isPresent();
     }
 
     /** Insert a key-value pair (prepends, shadows existing). */
-    public static PlutusData insert(PlutusData map, PlutusData key, PlutusData value) {
-        var entries = new ArrayList<>(toEntries(map));
-        entries.addFirst(new PlutusData.Constr(0, List.of(key, value)));
-        return new PlutusData.ListData(new ArrayList<>(entries));
+    public static PlutusData.MapData insert(PlutusData.MapData map, PlutusData key, PlutusData value) {
+        var entries = new ArrayList<PlutusData.Pair>();
+        entries.add(new PlutusData.Pair(key, value));
+        entries.addAll(map.entries());
+        return new PlutusData.MapData(entries);
     }
 
     /** Delete a key from the map. */
-    public static PlutusData delete(PlutusData map, PlutusData key) {
-        var result = new ArrayList<PlutusData>();
-        for (var pair : toEntries(map)) {
-            if (!pair.fields().get(0).equals(key)) {
+    public static PlutusData.MapData delete(PlutusData.MapData map, PlutusData key) {
+        var result = new ArrayList<PlutusData.Pair>();
+        for (var pair : map.entries()) {
+            if (!pair.key().equals(key)) {
                 result.add(pair);
             }
         }
-        return new PlutusData.ListData(result);
+        return new PlutusData.MapData(result);
     }
 
     /** Extract all keys. */
-    public static PlutusData keys(PlutusData map) {
+    public static PlutusData.ListData keys(PlutusData.MapData map) {
         var result = new ArrayList<PlutusData>();
-        for (var pair : toEntries(map)) {
-            result.add(pair.fields().get(0));
+        for (var pair : map.entries()) {
+            result.add(pair.key());
         }
         return new PlutusData.ListData(result);
     }
 
     /** Extract all values. */
-    public static PlutusData values(PlutusData map) {
+    public static PlutusData.ListData values(PlutusData.MapData map) {
         var result = new ArrayList<PlutusData>();
-        for (var pair : toEntries(map)) {
-            result.add(pair.fields().get(1));
+        for (var pair : map.entries()) {
+            result.add(pair.value());
         }
         return new PlutusData.ListData(result);
     }
 
-    /** Convert map to its underlying pair list. */
-    public static PlutusData toList(PlutusData map) {
-        return map; // maps ARE pair lists
+    /** Convert map to pair list as ListData of ConstrData pairs. */
+    public static PlutusData.ListData toList(PlutusData.MapData map) {
+        var items = new ArrayList<PlutusData>();
+        for (var pair : map.entries()) {
+            items.add(new PlutusData.ConstrData(0, List.of(pair.key(), pair.value())));
+        }
+        return new PlutusData.ListData(items);
     }
 
-    /** Construct a map from a pair list. */
-    public static PlutusData fromList(PlutusData list) {
-        return list; // pair lists ARE maps
+    /** Construct a map from a pair list (ListData of ConstrData pairs). */
+    public static PlutusData.MapData fromList(PlutusData.ListData list) {
+        var entries = new ArrayList<PlutusData.Pair>();
+        for (var item : list.items()) {
+            if (item instanceof PlutusData.ConstrData c && c.fields().size() >= 2) {
+                entries.add(new PlutusData.Pair(c.fields().get(0), c.fields().get(1)));
+            }
+        }
+        return new PlutusData.MapData(entries);
     }
 
     /** Number of entries in the map. */
-    public static BigInteger size(PlutusData map) {
-        return BigInteger.valueOf(toEntries(map).size());
-    }
-
-    private static List<PlutusData.Constr> toEntries(PlutusData map) {
-        if (map instanceof PlutusData.ListData ld) {
-            var result = new ArrayList<PlutusData.Constr>();
-            for (var item : ld.items()) {
-                if (item instanceof PlutusData.Constr c) result.add(c);
-            }
-            return result;
-        }
-        throw new IllegalArgumentException("Expected ListData (map as pair list), got: " + map.getClass().getSimpleName());
+    public static BigInteger size(PlutusData.MapData map) {
+        return BigInteger.valueOf(map.entries().size());
     }
 }

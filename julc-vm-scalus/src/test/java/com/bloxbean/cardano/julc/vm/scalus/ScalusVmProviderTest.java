@@ -577,8 +577,8 @@ class ScalusVmProviderTest {
             assertTrue(result.isSuccess());
             var c = (Term.Const) ((EvalResult.Success) result).resultTerm();
             var data = ((Constant.DataConst) c.value()).value();
-            assertInstanceOf(PlutusData.Constr.class, data);
-            var constr = (PlutusData.Constr) data;
+            assertInstanceOf(PlutusData.ConstrData.class, data);
+            var constr = (PlutusData.ConstrData) data;
             assertEquals(0, constr.tag());
             assertTrue(constr.fields().isEmpty());
         }

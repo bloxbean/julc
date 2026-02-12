@@ -34,41 +34,34 @@ public final class CryptoLib {
         return p;
     }
 
-    private static byte[] toBytes(PlutusData data) {
-        if (data instanceof PlutusData.BytesData bd) {
-            return bd.value();
-        }
-        throw new IllegalArgumentException("Expected BytesData, got: " + data.getClass().getSimpleName());
-    }
-
     /** SHA2-256 hash. */
-    public static PlutusData sha2_256(PlutusData data) {
-        return new PlutusData.BytesData(requireProvider().sha2_256(toBytes(data)));
+    public static PlutusData.BytesData sha2_256(PlutusData.BytesData data) {
+        return new PlutusData.BytesData(requireProvider().sha2_256(data.value()));
     }
 
     /** Blake2b-256 hash. */
-    public static PlutusData blake2b_256(PlutusData data) {
-        return new PlutusData.BytesData(requireProvider().blake2b_256(toBytes(data)));
+    public static PlutusData.BytesData blake2b_256(PlutusData.BytesData data) {
+        return new PlutusData.BytesData(requireProvider().blake2b_256(data.value()));
     }
 
     /** Blake2b-224 hash (commonly used for key hashes). */
-    public static PlutusData blake2b_224(PlutusData data) {
-        return new PlutusData.BytesData(requireProvider().blake2b_224(toBytes(data)));
+    public static PlutusData.BytesData blake2b_224(PlutusData.BytesData data) {
+        return new PlutusData.BytesData(requireProvider().blake2b_224(data.value()));
     }
 
     /** SHA3-256 hash. */
-    public static PlutusData sha3_256(PlutusData data) {
-        return new PlutusData.BytesData(requireProvider().sha3_256(toBytes(data)));
+    public static PlutusData.BytesData sha3_256(PlutusData.BytesData data) {
+        return new PlutusData.BytesData(requireProvider().sha3_256(data.value()));
     }
 
     /** Keccak-256 hash. */
-    public static PlutusData keccak_256(PlutusData data) {
-        return new PlutusData.BytesData(requireProvider().keccak_256(toBytes(data)));
+    public static PlutusData.BytesData keccak_256(PlutusData.BytesData data) {
+        return new PlutusData.BytesData(requireProvider().keccak_256(data.value()));
     }
 
     /** Verify an Ed25519 signature. */
-    public static boolean verifyEd25519Signature(PlutusData pubKey, PlutusData msg, PlutusData sig) {
-        return requireProvider().verifyEd25519Signature(toBytes(pubKey), toBytes(msg), toBytes(sig));
+    public static boolean verifyEd25519Signature(PlutusData.BytesData pubKey, PlutusData.BytesData msg, PlutusData.BytesData sig) {
+        return requireProvider().verifyEd25519Signature(pubKey.value(), msg.value(), sig.value());
     }
 
     // --- byte[] convenience overloads (used by @OnchainLibrary code) ---

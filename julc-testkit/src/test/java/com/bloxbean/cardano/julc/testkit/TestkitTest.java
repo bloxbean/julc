@@ -200,13 +200,13 @@ class TestkitTest {
         @Test
         void randomTxOutRefProducesValidConstr() {
             var ref = TestDataBuilder.randomTxOutRef();
-            assertInstanceOf(PlutusData.Constr.class, ref);
-            var constr = (PlutusData.Constr) ref;
+            assertInstanceOf(PlutusData.ConstrData.class, ref);
+            var constr = (PlutusData.ConstrData) ref;
             assertEquals(0, constr.tag());
             assertEquals(2, constr.fields().size());
             // First field is Constr(0, [txId])
-            assertInstanceOf(PlutusData.Constr.class, constr.fields().get(0));
-            var txIdConstr = (PlutusData.Constr) constr.fields().get(0);
+            assertInstanceOf(PlutusData.ConstrData.class, constr.fields().get(0));
+            var txIdConstr = (PlutusData.ConstrData) constr.fields().get(0);
             assertEquals(0, txIdConstr.tag());
             assertInstanceOf(PlutusData.BytesData.class, txIdConstr.fields().get(0));
             // Second field is IntData (the index)
@@ -316,8 +316,8 @@ class TestkitTest {
         void scriptContextBuildsValidConstr() {
             var ct = new TestableContract();
             var ctx = ct.scriptContext(PlutusData.integer(42));
-            assertInstanceOf(PlutusData.Constr.class, ctx);
-            var constr = (PlutusData.Constr) ctx;
+            assertInstanceOf(PlutusData.ConstrData.class, ctx);
+            var constr = (PlutusData.ConstrData) ctx;
             assertEquals(0, constr.tag());
             assertEquals(3, constr.fields().size());
             // field 1 is the redeemer

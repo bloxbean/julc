@@ -68,8 +68,8 @@ public final class TestDataBuilder {
         var index = intData(RANDOM.nextInt(10));
         // TxOutRef is Constr(0, [Constr(0, [txId]), index])
         // The inner Constr(0, [txId]) wraps TxId
-        return new PlutusData.Constr(0, List.of(
-                new PlutusData.Constr(0, List.of(txId)),
+        return new PlutusData.ConstrData(0, List.of(
+                new PlutusData.ConstrData(0, List.of(txId)),
                 index
         ));
     }
@@ -83,8 +83,8 @@ public final class TestDataBuilder {
      */
     public static PlutusData txOutRef(byte[] txIdBytes, int index) {
         Objects.requireNonNull(txIdBytes, "txIdBytes must not be null");
-        return new PlutusData.Constr(0, List.of(
-                new PlutusData.Constr(0, List.of(bytesData(txIdBytes))),
+        return new PlutusData.ConstrData(0, List.of(
+                new PlutusData.ConstrData(0, List.of(bytesData(txIdBytes))),
                 intData(index)
         ));
     }
@@ -139,7 +139,7 @@ public final class TestDataBuilder {
      * @return a Constr with the given tag and fields
      */
     public static PlutusData constrData(int tag, PlutusData... fields) {
-        return new PlutusData.Constr(tag, List.of(fields));
+        return new PlutusData.ConstrData(tag, List.of(fields));
     }
 
     /**
@@ -158,7 +158,7 @@ public final class TestDataBuilder {
         for (int i = 0; i < keysAndValues.length; i += 2) {
             entries.add(new PlutusData.Pair(keysAndValues[i], keysAndValues[i + 1]));
         }
-        return new PlutusData.Map(entries);
+        return new PlutusData.MapData(entries);
     }
 
     /**
@@ -176,7 +176,7 @@ public final class TestDataBuilder {
      * @return PlutusData encoding of true
      */
     public static PlutusData boolData(boolean value) {
-        return value ? new PlutusData.Constr(1, List.of()) : new PlutusData.Constr(0, List.of());
+        return value ? new PlutusData.ConstrData(1, List.of()) : new PlutusData.ConstrData(0, List.of());
     }
 
     /**

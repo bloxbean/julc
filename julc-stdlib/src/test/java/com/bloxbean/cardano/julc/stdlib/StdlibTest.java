@@ -324,8 +324,8 @@ class StdlibTest {
             var result = evalPir(ListsLib.find(emptyDataList(), pred));
             // None = ConstrData(1, [])
             var data = extractResultData(result);
-            assertInstanceOf(PlutusData.Constr.class, data);
-            var constr = (PlutusData.Constr) data;
+            assertInstanceOf(PlutusData.ConstrData.class, data);
+            var constr = (PlutusData.ConstrData) data;
             assertEquals(1, constr.tag());
             assertTrue(constr.fields().isEmpty());
         }
@@ -337,8 +337,8 @@ class StdlibTest {
             var result = evalPir(ListsLib.find(intDataList(10, 20, 30), pred));
             // Some(x) = ConstrData(0, [x])
             var data = extractResultData(result);
-            assertInstanceOf(PlutusData.Constr.class, data);
-            var constr = (PlutusData.Constr) data;
+            assertInstanceOf(PlutusData.ConstrData.class, data);
+            var constr = (PlutusData.ConstrData) data;
             assertEquals(0, constr.tag());
             assertEquals(1, constr.fields().size());
             var inner = constr.fields().getFirst();
@@ -352,8 +352,8 @@ class StdlibTest {
             var pred = greaterThanPredicate(7);
             var result = evalPir(ListsLib.find(intDataList(5, 10, 15, 20), pred));
             var data = extractResultData(result);
-            assertInstanceOf(PlutusData.Constr.class, data);
-            var constr = (PlutusData.Constr) data;
+            assertInstanceOf(PlutusData.ConstrData.class, data);
+            var constr = (PlutusData.ConstrData) data;
             assertEquals(0, constr.tag());
             var inner = constr.fields().getFirst();
             assertEquals(BigInteger.TEN, ((PlutusData.IntData) inner).value());
@@ -365,8 +365,8 @@ class StdlibTest {
             var pred = equalsIntPredicate(99);
             var result = evalPir(ListsLib.find(intDataList(1, 2, 3), pred));
             var data = extractResultData(result);
-            assertInstanceOf(PlutusData.Constr.class, data);
-            assertEquals(1, ((PlutusData.Constr) data).tag());
+            assertInstanceOf(PlutusData.ConstrData.class, data);
+            assertEquals(1, ((PlutusData.ConstrData) data).tag());
         }
     }
 

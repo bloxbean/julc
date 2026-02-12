@@ -37,6 +37,26 @@ class TypeResolverTest {
         assertEquals(new PirType.DataType(), resolver.resolve(StaticJavaParser.parseClassOrInterfaceType("PlutusData")));
     }
 
+    @Test void resolveConstrData() {
+        assertEquals(new PirType.DataType(), resolver.resolve(StaticJavaParser.parseClassOrInterfaceType("ConstrData")));
+    }
+
+    @Test void resolveMapData() {
+        assertEquals(new PirType.DataType(), resolver.resolve(StaticJavaParser.parseClassOrInterfaceType("MapData")));
+    }
+
+    @Test void resolveListData() {
+        assertEquals(new PirType.DataType(), resolver.resolve(StaticJavaParser.parseClassOrInterfaceType("ListData")));
+    }
+
+    @Test void resolveIntData() {
+        assertEquals(new PirType.DataType(), resolver.resolve(StaticJavaParser.parseClassOrInterfaceType("IntData")));
+    }
+
+    @Test void resolveBytesData() {
+        assertEquals(new PirType.DataType(), resolver.resolve(StaticJavaParser.parseClassOrInterfaceType("BytesData")));
+    }
+
     @Test void resolveByteArray() {
         var arrayType = StaticJavaParser.parseType("byte[]");
         assertEquals(new PirType.ByteStringType(), resolver.resolve(arrayType));

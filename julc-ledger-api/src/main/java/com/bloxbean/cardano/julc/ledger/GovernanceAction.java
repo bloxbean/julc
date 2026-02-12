@@ -15,8 +15,8 @@ public sealed interface GovernanceAction extends PlutusDataConvertible {
     record ParameterChange(Optional<GovernanceActionId> id, PlutusData parameters,
                            Optional<ScriptHash> constitutionScript) implements GovernanceAction {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(0, List.of(
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(0, List.of(
                     PlutusDataHelper.encodeOptional(id, GovernanceActionId::toPlutusData),
                     parameters,
                     PlutusDataHelper.encodeOptional(constitutionScript, ScriptHash::toPlutusData)));
@@ -26,8 +26,8 @@ public sealed interface GovernanceAction extends PlutusDataConvertible {
     record HardForkInitiation(Optional<GovernanceActionId> id,
                               ProtocolVersion protocolVersion) implements GovernanceAction {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(1, List.of(
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(1, List.of(
                     PlutusDataHelper.encodeOptional(id, GovernanceActionId::toPlutusData),
                     protocolVersion.toPlutusData()));
         }
@@ -36,8 +36,8 @@ public sealed interface GovernanceAction extends PlutusDataConvertible {
     record TreasuryWithdrawals(Map<Credential, BigInteger> withdrawals,
                                Optional<ScriptHash> constitutionScript) implements GovernanceAction {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(2, List.of(
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(2, List.of(
                     PlutusDataHelper.encodeMap(withdrawals,
                             Credential::toPlutusData, PlutusDataHelper::encodeInteger),
                     PlutusDataHelper.encodeOptional(constitutionScript, ScriptHash::toPlutusData)));
@@ -46,8 +46,8 @@ public sealed interface GovernanceAction extends PlutusDataConvertible {
 
     record NoConfidence(Optional<GovernanceActionId> id) implements GovernanceAction {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(3, List.of(
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(3, List.of(
                     PlutusDataHelper.encodeOptional(id, GovernanceActionId::toPlutusData)));
         }
     }
@@ -55,8 +55,8 @@ public sealed interface GovernanceAction extends PlutusDataConvertible {
     record UpdateCommittee(Optional<GovernanceActionId> id, List<Credential> removedMembers,
                            Map<Credential, BigInteger> addedMembers, Rational newQuorum) implements GovernanceAction {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(4, List.of(
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(4, List.of(
                     PlutusDataHelper.encodeOptional(id, GovernanceActionId::toPlutusData),
                     PlutusDataHelper.encodeList(removedMembers, Credential::toPlutusData),
                     PlutusDataHelper.encodeMap(addedMembers,
@@ -68,8 +68,8 @@ public sealed interface GovernanceAction extends PlutusDataConvertible {
     record NewConstitution(Optional<GovernanceActionId> id,
                            Optional<ScriptHash> constitution) implements GovernanceAction {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(5, List.of(
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(5, List.of(
                     PlutusDataHelper.encodeOptional(id, GovernanceActionId::toPlutusData),
                     PlutusDataHelper.encodeOptional(constitution, ScriptHash::toPlutusData)));
         }
@@ -77,8 +77,8 @@ public sealed interface GovernanceAction extends PlutusDataConvertible {
 
     record InfoAction() implements GovernanceAction {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(6, List.of());
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(6, List.of());
         }
     }
 

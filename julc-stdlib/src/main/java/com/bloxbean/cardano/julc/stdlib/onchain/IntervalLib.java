@@ -22,26 +22,26 @@ import com.bloxbean.cardano.julc.onchain.stdlib.Builtins;
 public class IntervalLib {
 
     /** Checks whether a point in time is contained within an interval. */
-    public static boolean contains(PlutusData interval, long time) {
+    public static boolean contains(PlutusData.ConstrData interval, long time) {
         var fields = Builtins.constrFields(interval);
         var fromBound = Builtins.headList(fields);
         var toBound = Builtins.headList(Builtins.tailList(fields));
-        if (checkLowerBound(fromBound, time)) {
-            return checkUpperBound(toBound, time);
+        if (checkLowerBound((PlutusData.ConstrData) fromBound, time)) {
+            return checkUpperBound((PlutusData.ConstrData) toBound, time);
         } else {
             return false;
         }
     }
 
     /** Builds the "always" interval: (-inf, +inf). */
-    public static PlutusData always() {
+    public static PlutusData.ConstrData always() {
         var fromBound = inclusiveBound(Builtins.constrData(0, Builtins.mkNilData()));
         var toBound = inclusiveBound(Builtins.constrData(2, Builtins.mkNilData()));
         return makeInterval(fromBound, toBound);
     }
 
     /** Builds the interval [time, +inf). */
-    public static PlutusData after(long time) {
+    public static PlutusData.ConstrData after(long time) {
         var finiteFields = Builtins.mkCons(Builtins.iData(time), Builtins.mkNilData());
         var finite = Builtins.constrData(1, finiteFields);
         var fromBound = inclusiveBound(finite);
@@ -50,7 +50,7 @@ public class IntervalLib {
     }
 
     /** Builds the interval (-inf, time]. */
-    public static PlutusData before(long time) {
+    public static PlutusData.ConstrData before(long time) {
         var finiteFields = Builtins.mkCons(Builtins.iData(time), Builtins.mkNilData());
         var finite = Builtins.constrData(1, finiteFields);
         var fromBound = inclusiveBound(Builtins.constrData(0, Builtins.mkNilData()));
@@ -59,7 +59,7 @@ public class IntervalLib {
     }
 
     /** Builds the interval [low, high] (both inclusive). */
-    public static PlutusData between(long low, long high) {
+    public static PlutusData.ConstrData between(long low, long high) {
         var lowFields = Builtins.mkCons(Builtins.iData(low), Builtins.mkNilData());
         var lowFinite = Builtins.constrData(1, lowFields);
         var highFields = Builtins.mkCons(Builtins.iData(high), Builtins.mkNilData());
@@ -70,14 +70,14 @@ public class IntervalLib {
     }
 
     /** Builds the empty interval (PosInf, NegInf). */
-    public static PlutusData never() {
+    public static PlutusData.ConstrData never() {
         var fromBound = exclusiveBound(Builtins.constrData(2, Builtins.mkNilData()));
         var toBound = exclusiveBound(Builtins.constrData(0, Builtins.mkNilData()));
         return makeInterval(fromBound, toBound);
     }
 
     /** Checks if an interval is empty (lower is PosInf or upper is NegInf). */
-    public static boolean isEmpty(PlutusData interval) {
+    public static boolean isEmpty(PlutusData.ConstrData interval) {
         var fields = Builtins.constrFields(interval);
         var fromBound = Builtins.headList(fields);
         var toBound = Builtins.headList(Builtins.tailList(fields));
@@ -95,7 +95,7 @@ public class IntervalLib {
     }
 
     /** Check lower bound: time >= fromBound. NegInf=true, Finite=compare, PosInf=false. */
-    public static boolean checkLowerBound(PlutusData bound, long time) {
+    public static boolean checkLowerBound(PlutusData.ConstrData bound, long time) {
         var boundFields = Builtins.constrFields(bound);
         var boundType = Builtins.headList(boundFields);
         var isInclusiveData = Builtins.headList(Builtins.tailList(boundFields));
@@ -119,7 +119,7 @@ public class IntervalLib {
     }
 
     /** Check upper bound: time <= toBound. NegInf=false, Finite=compare, PosInf=true. */
-    public static boolean checkUpperBound(PlutusData bound, long time) {
+    public static boolean checkUpperBound(PlutusData.ConstrData bound, long time) {
         var boundFields = Builtins.constrFields(bound);
         var boundType = Builtins.headList(boundFields);
         var isInclusiveData = Builtins.headList(Builtins.tailList(boundFields));
@@ -143,21 +143,21 @@ public class IntervalLib {
     }
 
     /** Build an inclusive IntervalBound: Constr(0, [boundType, True]). */
-    public static PlutusData inclusiveBound(PlutusData boundType) {
+    public static PlutusData.ConstrData inclusiveBound(PlutusData.ConstrData boundType) {
         var trueVal = Builtins.constrData(1, Builtins.mkNilData());
         var fields = Builtins.mkCons(boundType, Builtins.mkCons(trueVal, Builtins.mkNilData()));
         return Builtins.constrData(0, fields);
     }
 
     /** Build an exclusive IntervalBound: Constr(0, [boundType, False]). */
-    public static PlutusData exclusiveBound(PlutusData boundType) {
+    public static PlutusData.ConstrData exclusiveBound(PlutusData.ConstrData boundType) {
         var falseVal = Builtins.constrData(0, Builtins.mkNilData());
         var fields = Builtins.mkCons(boundType, Builtins.mkCons(falseVal, Builtins.mkNilData()));
         return Builtins.constrData(0, fields);
     }
 
     /** Build an Interval from two IntervalBounds. */
-    public static PlutusData makeInterval(PlutusData fromBound, PlutusData toBound) {
+    public static PlutusData.ConstrData makeInterval(PlutusData.ConstrData fromBound, PlutusData.ConstrData toBound) {
         var fields = Builtins.mkCons(fromBound, Builtins.mkCons(toBound, Builtins.mkNilData()));
         return Builtins.constrData(0, fields);
     }

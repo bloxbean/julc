@@ -53,7 +53,7 @@ final class DataConverter {
     static Data toScalus(PlutusData data) {
         try {
             return switch (data) {
-                case PlutusData.Constr c -> {
+                case PlutusData.ConstrData c -> {
                     var scalusArgs = new ArrayList<Data>();
                     for (var field : c.fields()) {
                         scalusArgs.add(toScalus(field));
@@ -72,7 +72,7 @@ final class DataConverter {
                     Object scalusList = LIST_FROM.invoke(LIST_COMPANION, (Iterable<Data>) scalusItems);
                     yield (Data.List) DATA_LIST_CTOR.newInstance(scalusList);
                 }
-                case PlutusData.Map m -> {
+                case PlutusData.MapData m -> {
                     var scalusPairs = new ArrayList<scala.Tuple2<Data, Data>>();
                     for (var entry : m.entries()) {
                         scalusPairs.add(new scala.Tuple2<>(toScalus(entry.key()), toScalus(entry.value())));

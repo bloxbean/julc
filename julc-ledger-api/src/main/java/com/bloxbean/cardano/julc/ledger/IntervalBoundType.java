@@ -12,22 +12,22 @@ public sealed interface IntervalBoundType extends PlutusDataConvertible {
 
     record NegInf() implements IntervalBoundType {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(0, List.of());
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(0, List.of());
         }
     }
 
     record Finite(BigInteger time) implements IntervalBoundType {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(1, List.of(new PlutusData.IntData(time)));
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(1, List.of(new PlutusData.IntData(time)));
         }
     }
 
     record PosInf() implements IntervalBoundType {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(2, List.of());
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(2, List.of());
         }
     }
 

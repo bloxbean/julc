@@ -48,7 +48,7 @@ public final class LedgerTypeAdapter {
                 txInfo.fee(),
                 toOnchain(txInfo.mint()),
                 txInfo.certificates().stream()
-                        .map(com.bloxbean.cardano.julc.ledger.TxCert::toPlutusData).toList(),
+                        .<PlutusData>map(com.bloxbean.cardano.julc.ledger.TxCert::toPlutusData).toList(),
                 convertWithdrawals(txInfo.withdrawals()),
                 toOnchain(txInfo.validRange()),
                 txInfo.signatories().stream()
@@ -58,7 +58,7 @@ public final class LedgerTypeAdapter {
                 txInfo.id().hash(),
                 convertVotes(txInfo.votes()),
                 txInfo.proposalProcedures().stream()
-                        .map(com.bloxbean.cardano.julc.ledger.ProposalProcedure::toPlutusData).toList(),
+                        .<PlutusData>map(com.bloxbean.cardano.julc.ledger.ProposalProcedure::toPlutusData).toList(),
                 txInfo.currentTreasuryAmount(),
                 txInfo.treasuryDonation());
     }
@@ -100,12 +100,12 @@ public final class LedgerTypeAdapter {
             for (var inner : entry.getValue().entrySet()) {
                 innerMap.put(inner.getKey().toPlutusData(), inner.getValue().toPlutusData());
             }
-            // Encode the inner map as PlutusData.Map
+            // Encode the inner map as PlutusData.MapData
             var pairs = new ArrayList<PlutusData.Pair>();
             for (var ie : innerMap.entrySet()) {
                 pairs.add(new PlutusData.Pair(ie.getKey(), ie.getValue()));
             }
-            result.put(entry.getKey().toPlutusData(), new PlutusData.Map(pairs));
+            result.put(entry.getKey().toPlutusData(), new PlutusData.MapData(pairs));
         }
         return result;
     }

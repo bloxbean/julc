@@ -11,22 +11,22 @@ public sealed interface Delegatee extends PlutusDataConvertible {
 
     record Stake(PubKeyHash poolId) implements Delegatee {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(0, List.of(poolId.toPlutusData()));
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(0, List.of(poolId.toPlutusData()));
         }
     }
 
     record Vote(DRep dRep) implements Delegatee {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(1, List.of(dRep.toPlutusData()));
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(1, List.of(dRep.toPlutusData()));
         }
     }
 
     record StakeVote(PubKeyHash poolId, DRep dRep) implements Delegatee {
         @Override
-        public PlutusData toPlutusData() {
-            return new PlutusData.Constr(2, List.of(poolId.toPlutusData(), dRep.toPlutusData()));
+        public PlutusData.ConstrData toPlutusData() {
+            return new PlutusData.ConstrData(2, List.of(poolId.toPlutusData(), dRep.toPlutusData()));
         }
     }
 

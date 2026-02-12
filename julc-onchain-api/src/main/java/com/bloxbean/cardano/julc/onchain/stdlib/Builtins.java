@@ -32,7 +32,7 @@ public final class Builtins {
     }
 
     /** Return all elements except the first. */
-    public static PlutusData tailList(PlutusData list) {
+    public static PlutusData.ListData tailList(PlutusData list) {
         var items = toList(list);
         return new PlutusData.ListData(new ArrayList<>(items.subList(1, items.size())));
     }
@@ -43,7 +43,7 @@ public final class Builtins {
     }
 
     /** Prepend an element to a Data list. */
-    public static PlutusData mkCons(PlutusData elem, PlutusData list) {
+    public static PlutusData.ListData mkCons(PlutusData elem, PlutusData list) {
         var items = new ArrayList<PlutusData>();
         items.add(elem);
         items.addAll(toList(list));
@@ -51,7 +51,7 @@ public final class Builtins {
     }
 
     /** Create an empty Data list. */
-    public static PlutusData mkNilData() {
+    public static PlutusData.ListData mkNilData() {
         return new PlutusData.ListData(List.of());
     }
 
@@ -59,9 +59,9 @@ public final class Builtins {
     // Pair operations
     // =========================================================================
 
-    /** Return the first element of a pair (encoded as Constr(0, [fst, snd])). */
+    /** Return the first element of a pair (encoded as ConstrData(0, [fst, snd])). */
     public static PlutusData fstPair(PlutusData pair) {
-        if (pair instanceof PlutusData.Constr c && c.fields().size() >= 2) {
+        if (pair instanceof PlutusData.ConstrData c && c.fields().size() >= 2) {
             return c.fields().get(0);
         }
         throw new IllegalArgumentException("fstPair: expected pair, got " + pair);
@@ -69,19 +69,19 @@ public final class Builtins {
 
     /** Return the second element of a pair. */
     public static PlutusData sndPair(PlutusData pair) {
-        if (pair instanceof PlutusData.Constr c && c.fields().size() >= 2) {
+        if (pair instanceof PlutusData.ConstrData c && c.fields().size() >= 2) {
             return c.fields().get(1);
         }
         throw new IllegalArgumentException("sndPair: expected pair, got " + pair);
     }
 
     /** Create a pair of Data values as a Map entry. */
-    public static PlutusData mkPairData(PlutusData fst, PlutusData snd) {
-        return new PlutusData.Constr(0, List.of(fst, snd)); // Pair encoding
+    public static PlutusData.ConstrData mkPairData(PlutusData fst, PlutusData snd) {
+        return new PlutusData.ConstrData(0, List.of(fst, snd)); // Pair encoding
     }
 
     /** Create an empty list of pairs (for map construction). */
-    public static PlutusData mkNilPairData() {
+    public static PlutusData.ListData mkNilPairData() {
         return new PlutusData.ListData(List.of()); // Empty pair list
     }
 
@@ -90,41 +90,41 @@ public final class Builtins {
     // =========================================================================
 
     /** Construct a Data value from tag and fields. */
-    public static PlutusData constrData(long tag, PlutusData fields) {
-        return new PlutusData.Constr((int) tag, toList(fields));
+    public static PlutusData.ConstrData constrData(long tag, PlutusData fields) {
+        return new PlutusData.ConstrData((int) tag, toList(fields));
     }
 
     /** Wrap an integer as IntData. */
-    public static PlutusData iData(long value) {
+    public static PlutusData.IntData iData(long value) {
         return new PlutusData.IntData(BigInteger.valueOf(value));
     }
 
     /** Wrap a byte string as BytesData. */
-    public static PlutusData bData(PlutusData bs) {
-        if (bs instanceof PlutusData.BytesData) {
-            return bs;
+    public static PlutusData.BytesData bData(PlutusData.BytesData bs) {
+        if (bs instanceof PlutusData.BytesData bd) {
+            return bd;
         }
         throw new IllegalArgumentException("bData: expected BytesData, got " + bs);
     }
 
     /** Wrap a list as ListData. */
-    public static PlutusData listData(PlutusData list) {
-        return list; // already a ListData
+    public static PlutusData.ListData listData(PlutusData list) {
+        return (PlutusData.ListData) list; // already a ListData
     }
 
     /** Wrap a map as MapData. */
-    public static PlutusData mapData(PlutusData map) {
-        return map; // already a Map
+    public static PlutusData.MapData mapData(PlutusData map) {
+        return (PlutusData.MapData) map; // already a MapData
     }
 
     // =========================================================================
     // Data decode
     // =========================================================================
 
-    /** Deconstruct a Constr into (tag, fields). Returns Constr(0, [IntData(tag), ListData(fields)]). */
-    public static PlutusData unConstrData(PlutusData data) {
-        if (data instanceof PlutusData.Constr c) {
-            return new PlutusData.Constr(0, List.of(
+    /** Deconstruct a Constr into (tag, fields). Returns ConstrData(0, [IntData(tag), ListData(fields)]). */
+    public static PlutusData.ConstrData unConstrData(PlutusData data) {
+        if (data instanceof PlutusData.ConstrData c) {
+            return new PlutusData.ConstrData(0, List.of(
                     new PlutusData.IntData(BigInteger.valueOf(c.tag())),
                     new PlutusData.ListData(c.fields())));
         }
@@ -140,25 +140,25 @@ public final class Builtins {
     }
 
     /** Extract byte string from BytesData. */
-    public static PlutusData unBData(PlutusData data) {
-        if (data instanceof PlutusData.BytesData) {
-            return data;
+    public static PlutusData.BytesData unBData(PlutusData data) {
+        if (data instanceof PlutusData.BytesData bd) {
+            return bd;
         }
         throw new IllegalArgumentException("unBData: expected BytesData, got " + data);
     }
 
     /** Extract list from ListData. */
-    public static PlutusData unListData(PlutusData data) {
-        if (data instanceof PlutusData.ListData) {
-            return data;
+    public static PlutusData.ListData unListData(PlutusData data) {
+        if (data instanceof PlutusData.ListData ld) {
+            return ld;
         }
         throw new IllegalArgumentException("unListData: expected ListData, got " + data);
     }
 
-    /** Extract map from Map. */
-    public static PlutusData unMapData(PlutusData data) {
-        if (data instanceof PlutusData.Map) {
-            return data;
+    /** Extract map from MapData. */
+    public static PlutusData.MapData unMapData(PlutusData data) {
+        if (data instanceof PlutusData.MapData md) {
+            return md;
         }
         throw new IllegalArgumentException("unMapData: expected Map, got " + data);
     }
@@ -197,8 +197,8 @@ public final class Builtins {
     }
 
     /** Extract the constructor fields list from a Constr Data value. On-chain: SndPair(UnConstrData(data)). */
-    public static PlutusData constrFields(PlutusData data) {
-        return sndPair(unConstrData(data));
+    public static PlutusData.ListData constrFields(PlutusData data) {
+        return (PlutusData.ListData) sndPair(unConstrData(data));
     }
 
     // =========================================================================
@@ -206,12 +206,12 @@ public final class Builtins {
     // =========================================================================
 
     /** Get the byte at a given index in a bytestring. Returns 0-255. */
-    public static long indexByteString(PlutusData bs, long index) {
+    public static long indexByteString(PlutusData.BytesData bs, long index) {
         return toBytes(bs)[(int) index] & 0xFF;
     }
 
     /** Prepend a byte (0-255) to a bytestring. */
-    public static PlutusData consByteString(long byte_, PlutusData bs) {
+    public static PlutusData.BytesData consByteString(long byte_, PlutusData.BytesData bs) {
         var bytes = toBytes(bs);
         var result = new byte[bytes.length + 1];
         result[0] = (byte) byte_;
@@ -220,7 +220,7 @@ public final class Builtins {
     }
 
     /** Extract a slice of a bytestring: slice(start, length, bs). */
-    public static PlutusData sliceByteString(long start, long length, PlutusData bs) {
+    public static PlutusData.BytesData sliceByteString(long start, long length, PlutusData.BytesData bs) {
         var bytes = toBytes(bs);
         int s = Math.max(0, (int) start);
         int len = Math.max(0, Math.min((int) length, bytes.length - s));
@@ -230,12 +230,12 @@ public final class Builtins {
     }
 
     /** Get the length of a bytestring. */
-    public static long lengthOfByteString(PlutusData bs) {
+    public static long lengthOfByteString(PlutusData.BytesData bs) {
         return toBytes(bs).length;
     }
 
     /** Concatenate two bytestrings. */
-    public static PlutusData appendByteString(PlutusData a, PlutusData b) {
+    public static PlutusData.BytesData appendByteString(PlutusData.BytesData a, PlutusData.BytesData b) {
         var ba = toBytes(a);
         var bb = toBytes(b);
         var result = new byte[ba.length + bb.length];
@@ -245,22 +245,22 @@ public final class Builtins {
     }
 
     /** Compare two bytestrings for equality. */
-    public static boolean equalsByteString(PlutusData a, PlutusData b) {
+    public static boolean equalsByteString(PlutusData.BytesData a, PlutusData.BytesData b) {
         return Arrays.equals(toBytes(a), toBytes(b));
     }
 
     /** Lexicographic comparison: a < b. */
-    public static boolean lessThanByteString(PlutusData a, PlutusData b) {
+    public static boolean lessThanByteString(PlutusData.BytesData a, PlutusData.BytesData b) {
         return Arrays.compare(toBytes(a), toBytes(b)) < 0;
     }
 
     /** Lexicographic comparison: a <= b. */
-    public static boolean lessThanEqualsByteString(PlutusData a, PlutusData b) {
+    public static boolean lessThanEqualsByteString(PlutusData.BytesData a, PlutusData.BytesData b) {
         return Arrays.compare(toBytes(a), toBytes(b)) <= 0;
     }
 
     /** Convert integer to bytestring with given endianness and width. */
-    public static PlutusData integerToByteString(boolean bigEndian, long width, long i) {
+    public static PlutusData.BytesData integerToByteString(boolean bigEndian, long width, long i) {
         var bi = BigInteger.valueOf(i);
         byte[] raw = bi.toByteArray();
         // Strip leading zero sign byte if present
@@ -280,7 +280,7 @@ public final class Builtins {
     }
 
     /** Convert bytestring to integer with given endianness. */
-    public static long byteStringToInteger(boolean bigEndian, PlutusData bs) {
+    public static long byteStringToInteger(boolean bigEndian, PlutusData.BytesData bs) {
         byte[] bytes = toBytes(bs).clone();
         if (!bigEndian) {
             reverseInPlace(bytes);
@@ -289,29 +289,29 @@ public final class Builtins {
     }
 
     /** Encode a string as UTF-8 bytestring. */
-    public static PlutusData encodeUtf8(PlutusData s) {
+    public static PlutusData.BytesData encodeUtf8(PlutusData s) {
         throw new UnsupportedOperationException("Builtins.encodeUtf8() not supported in JVM mode");
     }
 
     /** Decode a UTF-8 bytestring to a string. */
-    public static PlutusData decodeUtf8(PlutusData bs) {
+    public static PlutusData decodeUtf8(PlutusData.BytesData bs) {
         throw new UnsupportedOperationException("Builtins.decodeUtf8() not supported in JVM mode");
     }
 
     /** Serialise a Data value to its CBOR-encoded bytestring. */
-    public static PlutusData serialiseData(PlutusData d) {
+    public static PlutusData.BytesData serialiseData(PlutusData d) {
         throw new UnsupportedOperationException("Builtins.serialiseData() not supported in JVM mode");
     }
 
     /** Create a bytestring of n copies of a given byte value. */
-    public static PlutusData replicateByte(long n, long byte_) {
+    public static PlutusData.BytesData replicateByte(long n, long byte_) {
         byte[] result = new byte[(int) n];
         Arrays.fill(result, (byte) byte_);
         return new PlutusData.BytesData(result);
     }
 
     /** Return an empty bytestring. */
-    public static PlutusData emptyByteString() {
+    public static PlutusData.BytesData emptyByteString() {
         return new PlutusData.BytesData(new byte[0]);
     }
 
@@ -320,47 +320,47 @@ public final class Builtins {
     // =========================================================================
 
     /** SHA2-256 hash. Delegates to CryptoLib provider. */
-    public static PlutusData sha2_256(PlutusData bs) {
+    public static PlutusData.BytesData sha2_256(PlutusData.BytesData bs) {
         return CryptoLib.sha2_256(bs);
     }
 
     /** Blake2b-256 hash. Delegates to CryptoLib provider. */
-    public static PlutusData blake2b_256(PlutusData bs) {
+    public static PlutusData.BytesData blake2b_256(PlutusData.BytesData bs) {
         return CryptoLib.blake2b_256(bs);
     }
 
     /** Verify an Ed25519 signature. Delegates to CryptoLib provider. */
-    public static boolean verifyEd25519Signature(PlutusData key, PlutusData msg, PlutusData sig) {
+    public static boolean verifyEd25519Signature(PlutusData.BytesData key, PlutusData.BytesData msg, PlutusData.BytesData sig) {
         return CryptoLib.verifyEd25519Signature(key, msg, sig);
     }
 
     /** SHA3-256 hash. Delegates to CryptoLib provider. */
-    public static PlutusData sha3_256(PlutusData bs) {
+    public static PlutusData.BytesData sha3_256(PlutusData.BytesData bs) {
         return CryptoLib.sha3_256(bs);
     }
 
     /** Blake2b-224 hash. Delegates to CryptoLib provider. */
-    public static PlutusData blake2b_224(PlutusData bs) {
+    public static PlutusData.BytesData blake2b_224(PlutusData.BytesData bs) {
         return CryptoLib.blake2b_224(bs);
     }
 
     /** Keccak-256 hash. Delegates to CryptoLib provider. */
-    public static PlutusData keccak_256(PlutusData bs) {
+    public static PlutusData.BytesData keccak_256(PlutusData.BytesData bs) {
         return CryptoLib.keccak_256(bs);
     }
 
     /** Verify ECDSA secp256k1 signature. */
-    public static boolean verifyEcdsaSecp256k1Signature(PlutusData key, PlutusData msg, PlutusData sig) {
+    public static boolean verifyEcdsaSecp256k1Signature(PlutusData.BytesData key, PlutusData.BytesData msg, PlutusData.BytesData sig) {
         throw new UnsupportedOperationException("Builtins.verifyEcdsaSecp256k1Signature() not supported in JVM mode");
     }
 
     /** Verify Schnorr secp256k1 signature. */
-    public static boolean verifySchnorrSecp256k1Signature(PlutusData key, PlutusData msg, PlutusData sig) {
+    public static boolean verifySchnorrSecp256k1Signature(PlutusData.BytesData key, PlutusData.BytesData msg, PlutusData.BytesData sig) {
         throw new UnsupportedOperationException("Builtins.verifySchnorrSecp256k1Signature() not supported in JVM mode");
     }
 
     /** RIPEMD-160 hash. */
-    public static PlutusData ripemd_160(PlutusData bs) {
+    public static PlutusData.BytesData ripemd_160(PlutusData.BytesData bs) {
         throw new UnsupportedOperationException("Builtins.ripemd_160() not supported in JVM mode");
     }
 
@@ -369,22 +369,22 @@ public final class Builtins {
     // =========================================================================
 
     /** Bitwise AND of two bytestrings with padding semantics. */
-    public static PlutusData andByteString(boolean padding, PlutusData a, PlutusData b) {
+    public static PlutusData.BytesData andByteString(boolean padding, PlutusData.BytesData a, PlutusData.BytesData b) {
         return bitwiseBinaryOp(padding, toBytes(a), toBytes(b), (x, y) -> (byte)(x & y));
     }
 
     /** Bitwise OR of two bytestrings with padding semantics. */
-    public static PlutusData orByteString(boolean padding, PlutusData a, PlutusData b) {
+    public static PlutusData.BytesData orByteString(boolean padding, PlutusData.BytesData a, PlutusData.BytesData b) {
         return bitwiseBinaryOp(padding, toBytes(a), toBytes(b), (x, y) -> (byte)(x | y));
     }
 
     /** Bitwise XOR of two bytestrings with padding semantics. */
-    public static PlutusData xorByteString(boolean padding, PlutusData a, PlutusData b) {
+    public static PlutusData.BytesData xorByteString(boolean padding, PlutusData.BytesData a, PlutusData.BytesData b) {
         return bitwiseBinaryOp(padding, toBytes(a), toBytes(b), (x, y) -> (byte)(x ^ y));
     }
 
     /** Bitwise complement of a bytestring. */
-    public static PlutusData complementByteString(PlutusData bs) {
+    public static PlutusData.BytesData complementByteString(PlutusData.BytesData bs) {
         var bytes = toBytes(bs);
         var result = new byte[bytes.length];
         for (int i = 0; i < bytes.length; i++) result[i] = (byte) ~bytes[i];
@@ -392,7 +392,7 @@ public final class Builtins {
     }
 
     /** Read a bit at a given index. */
-    public static boolean readBit(PlutusData bs, long index) {
+    public static boolean readBit(PlutusData.BytesData bs, long index) {
         var bytes = toBytes(bs);
         int byteIdx = (int)(index / 8);
         int bitIdx = (int)(index % 8);
@@ -400,9 +400,9 @@ public final class Builtins {
     }
 
     /** Write bits at given indices. */
-    public static PlutusData writeBits(PlutusData bs, PlutusData indices, boolean value) {
+    public static PlutusData.BytesData writeBits(PlutusData.BytesData bs, PlutusData.ListData indices, boolean value) {
         var bytes = toBytes(bs).clone();
-        var idxList = toList(indices);
+        var idxList = indices.items();
         for (var idx : idxList) {
             long i = ((PlutusData.IntData) idx).value().longValue();
             int byteIdx = (int)(i / 8);
@@ -418,24 +418,24 @@ public final class Builtins {
     }
 
     /** Shift a bytestring by n bits. */
-    public static PlutusData shiftByteString(PlutusData bs, long n) {
+    public static PlutusData.BytesData shiftByteString(PlutusData.BytesData bs, long n) {
         throw new UnsupportedOperationException("Builtins.shiftByteString() not fully supported in JVM mode");
     }
 
     /** Rotate a bytestring by n bits. */
-    public static PlutusData rotateByteString(PlutusData bs, long n) {
+    public static PlutusData.BytesData rotateByteString(PlutusData.BytesData bs, long n) {
         throw new UnsupportedOperationException("Builtins.rotateByteString() not fully supported in JVM mode");
     }
 
     /** Count the number of set bits (1s) in a bytestring. */
-    public static long countSetBits(PlutusData bs) {
+    public static long countSetBits(PlutusData.BytesData bs) {
         long count = 0;
         for (byte b : toBytes(bs)) count += Integer.bitCount(b & 0xFF);
         return count;
     }
 
     /** Find the index of the first set bit, or -1 if none. */
-    public static long findFirstSetBit(PlutusData bs) {
+    public static long findFirstSetBit(PlutusData.BytesData bs) {
         var bytes = toBytes(bs);
         for (int i = bytes.length - 1; i >= 0; i--) {
             if (bytes[i] != 0) {
@@ -486,7 +486,7 @@ public final class Builtins {
         byte apply(byte a, byte b);
     }
 
-    private static PlutusData bitwiseBinaryOp(boolean padding, byte[] a, byte[] b, ByteOp op) {
+    private static PlutusData.BytesData bitwiseBinaryOp(boolean padding, byte[] a, byte[] b, ByteOp op) {
         int maxLen = Math.max(a.length, b.length);
         int minLen = Math.min(a.length, b.length);
         int resultLen = padding ? maxLen : minLen;

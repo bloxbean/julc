@@ -8,7 +8,7 @@ import java.util.*;
 /**
  * A multi-asset value: Map<PolicyId, Map<TokenName, BigInteger>>.
  * <p>
- * Encoding: PlutusData.Map of (BytesData(policyId) -> Map of (BytesData(tokenName) -> IntData(quantity)))
+ * Encoding: PlutusData.MapData of (BytesData(policyId) -> Map of (BytesData(tokenName) -> IntData(quantity)))
  */
 public record Value(Map<PolicyId, Map<TokenName, BigInteger>> inner) implements PlutusDataConvertible {
 
@@ -54,7 +54,7 @@ public record Value(Map<PolicyId, Map<TokenName, BigInteger>> inner) implements 
     }
 
     @Override
-    public PlutusData toPlutusData() {
+    public PlutusData.MapData toPlutusData() {
         List<PlutusData.Pair> outerEntries = new ArrayList<>();
         for (var entry : inner.entrySet()) {
             List<PlutusData.Pair> innerEntries = new ArrayList<>();
@@ -65,17 +65,17 @@ public record Value(Map<PolicyId, Map<TokenName, BigInteger>> inner) implements 
             }
             outerEntries.add(new PlutusData.Pair(
                     entry.getKey().toPlutusData(),
-                    new PlutusData.Map(innerEntries)));
+                    new PlutusData.MapData(innerEntries)));
         }
-        return new PlutusData.Map(outerEntries);
+        return new PlutusData.MapData(outerEntries);
     }
 
     public static Value fromPlutusData(PlutusData data) {
-        if (data instanceof PlutusData.Map m) {
+        if (data instanceof PlutusData.MapData m) {
             var result = new LinkedHashMap<PolicyId, Map<TokenName, BigInteger>>();
             for (var pair : m.entries()) {
                 var policyId = PolicyId.fromPlutusData(pair.key());
-                if (pair.value() instanceof PlutusData.Map innerMap) {
+                if (pair.value() instanceof PlutusData.MapData innerMap) {
                     var tokens = new LinkedHashMap<TokenName, BigInteger>();
                     for (var innerPair : innerMap.entries()) {
                         tokens.put(TokenName.fromPlutusData(innerPair.key()),

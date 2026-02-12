@@ -53,12 +53,12 @@ public final class MathLib {
      *
      * @param a the dividend
      * @param b the divisor
-     * @return PlutusData.Constr representing (div, mod)
+     * @return PlutusData.ConstrData representing (div, mod)
      */
-    public static PlutusData divMod(BigInteger a, BigInteger b) {
+    public static PlutusData.ConstrData divMod(BigInteger a, BigInteger b) {
         var div = a.divide(b);
         var mod = a.mod(b);
-        return new PlutusData.Constr(0, java.util.List.of(
+        return new PlutusData.ConstrData(0, java.util.List.of(
                 new PlutusData.IntData(div),
                 new PlutusData.IntData(mod)));
     }
@@ -70,12 +70,12 @@ public final class MathLib {
      *
      * @param a the dividend
      * @param b the divisor
-     * @return PlutusData.Constr representing (quot, rem)
+     * @return PlutusData.ConstrData representing (quot, rem)
      */
-    public static PlutusData quotRem(BigInteger a, BigInteger b) {
+    public static PlutusData.ConstrData quotRem(BigInteger a, BigInteger b) {
         var quot = a.divide(b);
         var rem = a.remainder(b);
-        return new PlutusData.Constr(0, java.util.List.of(
+        return new PlutusData.ConstrData(0, java.util.List.of(
                 new PlutusData.IntData(quot),
                 new PlutusData.IntData(rem)));
     }
