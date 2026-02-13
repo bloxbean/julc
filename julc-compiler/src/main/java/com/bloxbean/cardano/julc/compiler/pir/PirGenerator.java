@@ -1193,7 +1193,12 @@ public class PirGenerator {
      */
     private List<PirType> refineAccumulatorTypes(WhileStmt ws, List<String> accNames, List<PirType> initialTypes,
                                                   List<Statement> precedingStmts) {
+        // Collect names declared/known as pair-list types from context:
+        // method parameters declared as MapData, and local variables initialized from mkNilPairData/unMapData
+        var pairListNames = collectPairListNames(ws, precedingStmts);
+
         var result = new ArrayList<>(initialTypes);
+        // Pass 1: Detect MapType from direct evidence
         for (int i = 0; i < accNames.size(); i++) {
             if (!(result.get(i) instanceof PirType.DataType)) continue;
             String accName = accNames.get(i);
@@ -1206,17 +1211,129 @@ public class PirGenerator {
             boolean hasMkNilData = hasBuiltinAssignment(ws.getBody(), accName, "mkNilData");
             boolean hasMkCons = hasBuiltinAssignment(ws.getBody(), accName, "mkCons");
             if (hasTailList || hasMkNilData || hasMkCons) {
-                // If the accumulator is a cursor with only tailList (no mkNilData/mkCons),
-                // check if it was initialized from a MapType source (unMapData).
-                // tailList on List(Pair(Data,Data)) stays List(Pair(Data,Data)), so MapType is correct.
-                if (hasTailList && !hasMkNilData && !hasMkCons && isInitializedFromMapType(accName, precedingStmts)) {
+                if (hasTailList && !hasMkNilData && !hasMkCons
+                        && isInitializedFromPairListSource(accName, precedingStmts, pairListNames)) {
+                    // Cursor initialized from unMapData or MapData-typed parameter → MapType
+                    result.set(i, new PirType.MapType(new PirType.DataType(), new PirType.DataType()));
+                } else if (hasMkCons && isInitializedFromPairListSource(accName, precedingStmts, pairListNames)) {
+                    // mkCons building a pair list (initialized from mkNilPairData/MapData param) → MapType
+                    result.set(i, new PirType.MapType(new PirType.DataType(), new PirType.DataType()));
+                } else if (hasMkCons && bodyUsesMkPairDataForCons(ws.getBody(), accName)) {
+                    // mkCons with mkPairData items in loop body → building a pair list → MapType
+                    result.set(i, new PirType.MapType(new PirType.DataType(), new PirType.DataType()));
+                } else if (hasTailList && !hasMkNilData && !hasMkCons
+                        && bodyUsesPairOpsOnCursor(ws.getBody(), accName)) {
+                    // tailList cursor where body extracts pair elements via fstPair/sndPair → MapType
                     result.set(i, new PirType.MapType(new PirType.DataType(), new PirType.DataType()));
                 } else {
                     result.set(i, new PirType.ListType(new PirType.DataType()));
                 }
             }
         }
+        // Pass 2: Propagate MapType to sibling cursors when one accumulator is proven MapType.
+        // Only promote tailList-only cursors (not mkCons builders, to avoid mistyping list-data builders).
+        boolean changed = true;
+        while (changed) {
+            changed = false;
+            boolean anyMapType = result.stream().anyMatch(t -> t instanceof PirType.MapType);
+            if (!anyMapType) break;
+            for (int i = 0; i < accNames.size(); i++) {
+                if (result.get(i) instanceof PirType.ListType) {
+                    String accName = accNames.get(i);
+                    boolean hasTailList = hasBuiltinAssignment(ws.getBody(), accName, "tailList");
+                    boolean hasMkCons = hasBuiltinAssignment(ws.getBody(), accName, "mkCons");
+                    // Only promote pure cursors (tailList without mkCons) to MapType
+                    if (hasTailList && !hasMkCons) {
+                        result.set(i, new PirType.MapType(new PirType.DataType(), new PirType.DataType()));
+                        changed = true;
+                    }
+                }
+            }
+        }
         return result;
+    }
+
+    /**
+     * Collect variable/parameter names known to hold pair lists (MapType).
+     * Sources: method parameters declared as MapData, and local variables initialized
+     * from mkNilPairData() or unMapData().
+     */
+    private Set<String> collectPairListNames(WhileStmt ws, List<Statement> precedingStmts) {
+        var names = new HashSet<String>();
+        // 1. Check method parameters for MapData type declarations
+        var methodDecl = ws.findAncestor(com.github.javaparser.ast.body.MethodDeclaration.class);
+        if (methodDecl.isPresent()) {
+            for (var param : methodDecl.get().getParameters()) {
+                if (isDeclaredAsMapData(param.getType())) {
+                    names.add(param.getNameAsString());
+                }
+            }
+        }
+        // 2. Check preceding variable declarations for pair-list initializers
+        for (var stmt : precedingStmts) {
+            if (stmt instanceof ExpressionStmt es
+                    && es.getExpression() instanceof VariableDeclarationExpr vde) {
+                var decl = vde.getVariable(0);
+                if (decl.getInitializer().isPresent()) {
+                    var init = decl.getInitializer().get();
+                    if (exprIsPairListSource(init)) {
+                        names.add(decl.getNameAsString());
+                    } else if (isDeclaredAsMapData(decl.getType())) {
+                        names.add(decl.getNameAsString());
+                    } else if (init instanceof NameExpr ne && names.contains(ne.getNameAsString())) {
+                        // Alias: var current = outerPairs (where outerPairs is a pair list)
+                        names.add(decl.getNameAsString());
+                    }
+                }
+            }
+        }
+        return names;
+    }
+
+    /** Check if a Java type declaration is MapData (PlutusData.MapData or just MapData). */
+    private static boolean isDeclaredAsMapData(com.github.javaparser.ast.type.Type type) {
+        if (type instanceof com.github.javaparser.ast.type.ClassOrInterfaceType ct) {
+            var name = ct.getNameAsString();
+            return name.equals("MapData");
+        }
+        return false;
+    }
+
+    /** Check if an expression is a direct pair-list source: mkNilPairData() or unMapData(). */
+    private static boolean exprIsPairListSource(Expression expr) {
+        if (expr instanceof MethodCallExpr mce) {
+            var name = mce.getNameAsString();
+            return name.equals("mkNilPairData") || name.equals("unMapData");
+        }
+        return false;
+    }
+
+    /**
+     * Check if accumulator is initialized from a pair-list source.
+     * Uses both preceding variable declarations and the collected pairListNames set
+     * (which includes MapData-typed method parameters).
+     */
+    private boolean isInitializedFromPairListSource(String varName, List<Statement> precedingStmts,
+                                                     Set<String> pairListNames) {
+        // First check existing logic (declarations in preceding stmts)
+        if (isInitializedFromPairList(varName, precedingStmts)) return true;
+        if (isInitializedFromMapType(varName, precedingStmts)) return true;
+        // Check if initialized from a known pair-list name (e.g., MapData parameter)
+        for (int i = precedingStmts.size() - 1; i >= 0; i--) {
+            var stmt = precedingStmts.get(i);
+            if (stmt instanceof ExpressionStmt es
+                    && es.getExpression() instanceof VariableDeclarationExpr vde) {
+                var decl = vde.getVariable(0);
+                if (decl.getNameAsString().equals(varName) && decl.getInitializer().isPresent()) {
+                    var init = decl.getInitializer().get();
+                    if (init instanceof NameExpr ne && pairListNames.contains(ne.getNameAsString())) {
+                        return true;
+                    }
+                }
+            }
+        }
+        // Check if the varName itself is a pair-list name (e.g., directly a MapData parameter)
+        return pairListNames.contains(varName);
     }
 
     /**
@@ -1234,6 +1351,42 @@ public class PirGenerator {
                     return exprResolvesToMapType(decl.getInitializer().get(), precedingStmts);
                 }
             }
+        }
+        return false;
+    }
+
+    /**
+     * Check if a variable's initial declaration is assigned from a pair list source (mkNilPairData).
+     * When an accumulator is initialized with mkNilPairData() and built with mkCons in the loop body,
+     * it should be typed as MapType (list (pair data data)), not ListType (list data).
+     */
+    private boolean isInitializedFromPairList(String varName, List<Statement> precedingStmts) {
+        for (int i = precedingStmts.size() - 1; i >= 0; i--) {
+            var stmt = precedingStmts.get(i);
+            if (stmt instanceof ExpressionStmt es
+                    && es.getExpression() instanceof VariableDeclarationExpr vde) {
+                var decl = vde.getVariable(0);
+                if (decl.getNameAsString().equals(varName) && decl.getInitializer().isPresent()) {
+                    return exprResolvesToPairList(decl.getInitializer().get(), precedingStmts);
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Check if an expression resolves to a pair list type — mkNilPairData(), unMapData(...), or a
+     * variable reference to one.
+     */
+    private boolean exprResolvesToPairList(Expression expr, List<Statement> precedingStmts) {
+        if (expr instanceof MethodCallExpr mce) {
+            String name = mce.getNameAsString();
+            if (name.equals("mkNilPairData") || name.equals("unMapData")) {
+                return true;
+            }
+        }
+        if (expr instanceof NameExpr ne) {
+            return isInitializedFromPairList(ne.getNameAsString(), precedingStmts);
         }
         return false;
     }
@@ -1273,6 +1426,117 @@ public class PirGenerator {
             if (stmt instanceof BlockStmt bs) {
                 if (hasBuiltinAssignment(bs, varName, builtinMethod)) return true;
             }
+        }
+        return false;
+    }
+
+    /**
+     * Check if mkCons assignments to accName in the loop body use mkPairData items.
+     * Pattern: accName = mkCons(expr, accName) where expr traces to mkPairData.
+     * This indicates the accumulator is building a pair list (MapType).
+     */
+    private static boolean bodyUsesMkPairDataForCons(Statement body, String accName) {
+        return bodyContainsMethodCall(body, "mkPairData");
+    }
+
+    /**
+     * Check if a tailList cursor's elements are treated as pairs in the loop body.
+     * Specifically checks for fstPair/sndPair applied to the direct headList result of the cursor,
+     * NOT just any fstPair/sndPair anywhere in the body.
+     * Pattern: var x = headList(cursor); fstPair(x) / sndPair(x)
+     */
+    private static boolean bodyUsesPairOpsOnCursor(Statement body, String cursorName) {
+        // Find the variable that holds headList(cursorName)
+        String headVar = findHeadListVar(body, cursorName);
+        if (headVar == null) return false;
+        // Check if fstPair or sndPair is called with that variable as argument
+        return bodyCallsPairOpOn(body, headVar);
+    }
+
+    /** Find the variable name assigned from headList(cursorName), e.g. "var pair = Builtins.headList(cursor)". */
+    private static String findHeadListVar(Statement body, String cursorName) {
+        var stmts = blockStmts(body);
+        for (var stmt : stmts) {
+            var found = findHeadListVarInStmt(stmt, cursorName);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    private static String findHeadListVarInStmt(Statement stmt, String cursorName) {
+        if (stmt instanceof ExpressionStmt es
+                && es.getExpression() instanceof VariableDeclarationExpr vde) {
+            var decl = vde.getVariable(0);
+            if (decl.getInitializer().isPresent()) {
+                var init = decl.getInitializer().get();
+                if (init instanceof MethodCallExpr mce
+                        && mce.getNameAsString().equals("headList")
+                        && !mce.getArguments().isEmpty()
+                        && mce.getArgument(0) instanceof NameExpr ne
+                        && ne.getNameAsString().equals(cursorName)) {
+                    return decl.getNameAsString();
+                }
+            }
+        }
+        // Recurse into if-else blocks
+        if (stmt instanceof IfStmt is) {
+            var found = findHeadListVar(is.getThenStmt(), cursorName);
+            if (found != null) return found;
+            if (is.getElseStmt().isPresent()) {
+                found = findHeadListVar(is.getElseStmt().get(), cursorName);
+                if (found != null) return found;
+            }
+        }
+        if (stmt instanceof BlockStmt bs) {
+            for (var s : bs.getStatements()) {
+                var found = findHeadListVarInStmt(s, cursorName);
+                if (found != null) return found;
+            }
+        }
+        return null;
+    }
+
+    /** Check if fstPair(varName) or sndPair(varName) appears in the body. */
+    private static boolean bodyCallsPairOpOn(Statement body, String varName) {
+        var stmts = blockStmts(body);
+        for (var stmt : stmts) {
+            if (containsPairOpOnVar(stmt, varName)) return true;
+        }
+        return false;
+    }
+
+    private static boolean containsPairOpOnVar(com.github.javaparser.ast.Node node, String varName) {
+        if (node instanceof MethodCallExpr mce) {
+            var name = mce.getNameAsString();
+            if ((name.equals("fstPair") || name.equals("sndPair"))
+                    && !mce.getArguments().isEmpty()
+                    && mce.getArgument(0) instanceof NameExpr ne
+                    && ne.getNameAsString().equals(varName)) {
+                return true;
+            }
+        }
+        for (var child : node.getChildNodes()) {
+            if (containsPairOpOnVar(child, varName)) return true;
+        }
+        return false;
+    }
+
+    /** Check if a statement tree contains any call to the given method name. */
+    private static boolean bodyContainsMethodCall(Statement body, String methodName) {
+        var stmts = blockStmts(body);
+        for (var stmt : stmts) {
+            if (containsMethodCallExpr(stmt, methodName)) return true;
+        }
+        return false;
+    }
+
+    /** Recursively check if a node tree contains a MethodCallExpr with the given name. */
+    private static boolean containsMethodCallExpr(com.github.javaparser.ast.Node node, String methodName) {
+        if (node instanceof MethodCallExpr mce && mce.getNameAsString().equals(methodName)) {
+            return true;
+        }
+        for (var child : node.getChildNodes()) {
+            if (containsMethodCallExpr(child, methodName)) return true;
         }
         return false;
     }

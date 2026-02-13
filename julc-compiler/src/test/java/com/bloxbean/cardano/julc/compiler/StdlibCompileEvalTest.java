@@ -433,6 +433,93 @@ class StdlibCompileEvalTest {
             var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
             assertTrue(result.isSuccess(), "geq(v, v) should be true. Got: " + result);
         }
+
+        @Test
+        void addTwoValues() {
+            // Test ValuesLib.add with two singleton values for different policies.
+            // This exercises adjustOuterForAdd + extraOuterEntries which have mkNilPairData+mkCons patterns.
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            PlutusData policyA = Builtins.bData(Builtins.emptyByteString());
+                            PlutusData tokenA = Builtins.bData(Builtins.emptyByteString());
+                            PlutusData.MapData valA = ValuesLib.singleton(policyA, tokenA, 2000000);
+                            var fields = Builtins.constrFields(redeemer);
+                            PlutusData policyB = Builtins.headList(fields);
+                            PlutusData tokenB = Builtins.headList(Builtins.tailList(fields));
+                            PlutusData.MapData valB = ValuesLib.singleton(policyB, tokenB, 1000000);
+                            PlutusData.MapData sum = ValuesLib.add(valA, valB);
+                            long amtA = ValuesLib.assetOf(sum, policyA, tokenA);
+                            long amtB = ValuesLib.assetOf(sum, policyB, tokenB);
+                            return amtA == 2000000 && amtB == 1000000;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.constr(0,
+                    PlutusData.bytes(new byte[]{1, 2, 3}),
+                    PlutusData.bytes(new byte[]{4, 5, 6}));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "add(valA, valB) should work. Got: " + result);
+        }
+
+        /**
+         * Regression: while loop over outputs (list data) with boolean+list multi-acc.
+         * Inner body uses fstPair/sndPair on map entries but the cursor should remain ListType.
+         * Simulates IssuanceMint.findMintOutput pattern.
+         */
+        @Test
+        void findMintOutputPattern() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            // Build 2 outputs as list of Constrs, each containing a Value
+                            PlutusData.MapData val1 = ValuesLib.singleton(
+                                Builtins.bData(Builtins.emptyByteString()),
+                                Builtins.bData(Builtins.emptyByteString()), 2000000);
+                            PlutusData.MapData val2 = ValuesLib.singleton(
+                                Builtins.bData(Builtins.emptyByteString()),
+                                Builtins.bData(Builtins.emptyByteString()), 1000000);
+                            // Outputs as list of Constr(0, [addr, value])
+                            PlutusData out1 = Builtins.constrData(0, Builtins.mkCons(Builtins.iData(1),
+                                Builtins.mkCons(val1, Builtins.mkNilData())));
+                            PlutusData out2 = Builtins.constrData(0, Builtins.mkCons(Builtins.iData(2),
+                                Builtins.mkCons(val2, Builtins.mkNilData())));
+                            PlutusData.ListData outputs = Builtins.mkCons(out1, Builtins.mkCons(out2, Builtins.mkNilData()));
+
+                            // Multi-acc while loop: boolean found + list remaining
+                            boolean found = false;
+                            PlutusData remaining = outputs;
+                            while (!Builtins.nullList(remaining)) {
+                                PlutusData output = Builtins.headList(remaining);
+                                PlutusData fields = Builtins.constrFields(output);
+                                PlutusData valueData = Builtins.headList(Builtins.tailList(fields));
+                                // Extract from inner map: uses unMapData, fstPair, sndPair
+                                PlutusData outerPairs = Builtins.unMapData(valueData);
+                                if (!Builtins.nullList(outerPairs)) {
+                                    PlutusData pair = Builtins.headList(outerPairs);
+                                    PlutusData tokenMap = Builtins.sndPair(pair);
+                                    PlutusData innerPairs = Builtins.unMapData(tokenMap);
+                                    PlutusData firstTokenPair = Builtins.headList(innerPairs);
+                                    long amt = Builtins.unIData(Builtins.sndPair(firstTokenPair));
+                                    if (amt == 2000000) {
+                                        found = true;
+                                    }
+                                }
+                                remaining = Builtins.tailList(remaining);
+                            }
+                            return found;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
+            assertTrue(result.isSuccess(), "findMintOutput pattern should work. Got: " + result);
+        }
     }
 
     // =========================================================================

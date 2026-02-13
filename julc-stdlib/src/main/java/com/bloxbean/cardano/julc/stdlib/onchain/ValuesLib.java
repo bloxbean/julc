@@ -41,8 +41,8 @@ public class ValuesLib {
         while (!Builtins.nullList(current)) {
             var outerPair = Builtins.headList(current);
             if (Builtins.equalsData(Builtins.fstPair(outerPair), policyId)) {
-                var innerPairs = Builtins.unMapData(Builtins.sndPair(outerPair));
-                result = findTokenAmount(innerPairs, tokenName);
+                PlutusData.MapData innerMap = (PlutusData.MapData) Builtins.sndPair(outerPair);
+                result = findTokenAmount(innerMap, tokenName);
                 current = Builtins.mkNilPairData();
             } else {
                 current = Builtins.tailList(current);
@@ -52,9 +52,9 @@ public class ValuesLib {
     }
 
     /** Search inner token map for a token name, return amount or 0. */
-    public static long findTokenAmount(PlutusData innerPairs, PlutusData.BytesData tokenName) {
+    public static long findTokenAmount(PlutusData.MapData innerPairs, PlutusData.BytesData tokenName) {
         var result = 0L;
-        PlutusData current = innerPairs;
+        PlutusData current = Builtins.unMapData(innerPairs);
         while (!Builtins.nullList(current)) {
             var pair = Builtins.headList(current);
             if (Builtins.equalsData(Builtins.fstPair(pair), tokenName)) {
@@ -126,7 +126,7 @@ public class ValuesLib {
         PlutusData current = outerPairs;
         while (!Builtins.nullList(current)) {
             var outerPair = Builtins.headList(current);
-            if (isTokenMapZero(Builtins.unMapData(Builtins.sndPair(outerPair)))) {
+            if (isTokenMapZero((PlutusData.MapData) Builtins.sndPair(outerPair))) {
                 current = Builtins.tailList(current);
             } else {
                 result = false;
@@ -137,9 +137,9 @@ public class ValuesLib {
     }
 
     /** Check if all amounts in a token map pair list are zero. */
-    public static boolean isTokenMapZero(PlutusData innerPairs) {
+    public static boolean isTokenMapZero(PlutusData.MapData innerPairs) {
         var result = true;
-        PlutusData current = innerPairs;
+        PlutusData current = Builtins.unMapData(innerPairs);
         while (!Builtins.nullList(current)) {
             var pair = Builtins.headList(current);
             var amt = Builtins.unIData(Builtins.sndPair(pair));
@@ -172,10 +172,9 @@ public class ValuesLib {
         while (!Builtins.nullList(current)) {
             var outerPair = Builtins.headList(current);
             var policyKey = Builtins.fstPair(outerPair);
-            var innerPairs = Builtins.unMapData(Builtins.sndPair(outerPair));
-            var negatedInner = negateTokenMap(innerPairs);
-            var newInnerMap = Builtins.mapData(negatedInner);
-            var newOuterPair = Builtins.mkPairData(policyKey, newInnerMap);
+            PlutusData.MapData innerMap = (PlutusData.MapData) Builtins.sndPair(outerPair);
+            var negatedInnerMap = negateTokenMap(innerMap);
+            var newOuterPair = Builtins.mkPairData(policyKey, negatedInnerMap);
             result = Builtins.mkCons(newOuterPair, result);
             current = Builtins.tailList(current);
         }
@@ -183,9 +182,9 @@ public class ValuesLib {
     }
 
     /** Negate all amounts in a token map pair list. */
-    public static PlutusData negateTokenMap(PlutusData innerPairs) {
+    public static PlutusData.MapData negateTokenMap(PlutusData.MapData innerPairs) {
         PlutusData result = Builtins.mkNilPairData();
-        PlutusData current = innerPairs;
+        PlutusData current = Builtins.unMapData(innerPairs);
         while (!Builtins.nullList(current)) {
             var pair = Builtins.headList(current);
             var tokenKey = Builtins.fstPair(pair);
@@ -195,7 +194,7 @@ public class ValuesLib {
             result = Builtins.mkCons(newPair, result);
             current = Builtins.tailList(current);
         }
-        return result;
+        return Builtins.mapData(result);
     }
 
     /** Flattens a Value into a list of (policy, token, amount) triples as ConstrData(0, [p, t, amt]). */
@@ -206,17 +205,17 @@ public class ValuesLib {
         while (!Builtins.nullList(current)) {
             var outerPair = Builtins.headList(current);
             var policyData = Builtins.fstPair(outerPair);
-            var innerPairs = Builtins.unMapData(Builtins.sndPair(outerPair));
-            result = flattenPolicy(policyData, innerPairs, result);
+            PlutusData.MapData innerMap = (PlutusData.MapData) Builtins.sndPair(outerPair);
+            result = flattenPolicy(policyData, innerMap, result);
             current = Builtins.tailList(current);
         }
         return ListsLib.reverse(result);
     }
 
     /** Flatten a single policy's token entries into the accumulator list. */
-    public static PlutusData.ListData flattenPolicy(PlutusData policyData, PlutusData innerPairs, PlutusData.ListData acc) {
+    public static PlutusData.ListData flattenPolicy(PlutusData policyData, PlutusData.MapData innerPairs, PlutusData.ListData acc) {
         PlutusData.ListData result = acc;
-        PlutusData current = innerPairs;
+        PlutusData current = Builtins.unMapData(innerPairs);
         while (!Builtins.nullList(current)) {
             var pair = Builtins.headList(current);
             var tokenData = Builtins.fstPair(pair);
@@ -231,34 +230,39 @@ public class ValuesLib {
 
     /** Adds two Values together (union, adding amounts for matching policy/token). */
     public static PlutusData.MapData add(PlutusData.MapData a, PlutusData.MapData b) {
-        var adjustedPairs = adjustOuterForAdd(a, b);
-        var extraPairs = extraOuterEntries(b, a);
-        var combined = concatPairLists(adjustedPairs, extraPairs);
-        return Builtins.mapData(combined);
+        PlutusData.MapData adjustedMap = adjustOuterForAdd(a, b);
+        PlutusData.MapData extraMap = extraOuterEntries(b, a);
+        // Concat the two pair lists: prepend all of extraMap onto adjustedMap
+        PlutusData result = Builtins.unMapData(adjustedMap);
+        PlutusData current = Builtins.unMapData(extraMap);
+        while (!Builtins.nullList(current)) {
+            result = Builtins.mkCons(Builtins.headList(current), result);
+            current = Builtins.tailList(current);
+        }
+        return Builtins.mapData(result);
     }
 
     /** Walk a's outer map, adjust each token amount by adding assetOf(other). */
-    public static PlutusData adjustOuterForAdd(PlutusData.MapData a, PlutusData.MapData other) {
+    public static PlutusData.MapData adjustOuterForAdd(PlutusData.MapData a, PlutusData.MapData other) {
         var outerPairs = Builtins.unMapData(a);
         PlutusData result = Builtins.mkNilPairData();
         PlutusData current = outerPairs;
         while (!Builtins.nullList(current)) {
             var outerPair = Builtins.headList(current);
             var policyKey = Builtins.fstPair(outerPair);
-            var innerPairs = Builtins.unMapData(Builtins.sndPair(outerPair));
-            var adjustedInner = adjustInnerForAdd(innerPairs, other, policyKey);
-            var newInnerMap = Builtins.mapData(adjustedInner);
-            var newOuterPair = Builtins.mkPairData(policyKey, newInnerMap);
+            PlutusData.MapData innerMap = (PlutusData.MapData) Builtins.sndPair(outerPair);
+            var adjustedInnerMap = adjustInnerForAdd(innerMap, other, policyKey);
+            var newOuterPair = Builtins.mkPairData(policyKey, adjustedInnerMap);
             result = Builtins.mkCons(newOuterPair, result);
             current = Builtins.tailList(current);
         }
-        return result;
+        return Builtins.mapData(result);
     }
 
     /** Adjust each token amount: new_amt = amt + assetOf(other, policy, token). */
-    public static PlutusData adjustInnerForAdd(PlutusData innerPairs, PlutusData.MapData other, PlutusData policyKey) {
+    public static PlutusData.MapData adjustInnerForAdd(PlutusData.MapData innerPairs, PlutusData.MapData other, PlutusData policyKey) {
         PlutusData result = Builtins.mkNilPairData();
-        PlutusData current = innerPairs;
+        PlutusData current = Builtins.unMapData(innerPairs);
         while (!Builtins.nullList(current)) {
             var pair = Builtins.headList(current);
             var tokenKey = Builtins.fstPair(pair);
@@ -269,35 +273,34 @@ public class ValuesLib {
             result = Builtins.mkCons(newPair, result);
             current = Builtins.tailList(current);
         }
-        return result;
+        return Builtins.mapData(result);
     }
 
     /** Walk b's outer map, collect entries where assetOf(base) == 0 (not in base). */
-    public static PlutusData extraOuterEntries(PlutusData.MapData b, PlutusData.MapData base) {
+    public static PlutusData.MapData extraOuterEntries(PlutusData.MapData b, PlutusData.MapData base) {
         var outerPairs = Builtins.unMapData(b);
         PlutusData result = Builtins.mkNilPairData();
         PlutusData current = outerPairs;
         while (!Builtins.nullList(current)) {
             var outerPair = Builtins.headList(current);
             var policyKey = Builtins.fstPair(outerPair);
-            var innerPairs = Builtins.unMapData(Builtins.sndPair(outerPair));
-            var extraInner = extraInnerEntries(innerPairs, base, policyKey);
-            if (Builtins.nullList(extraInner)) {
+            PlutusData.MapData innerMap = (PlutusData.MapData) Builtins.sndPair(outerPair);
+            var extraInnerMap = extraInnerEntries(innerMap, base, policyKey);
+            if (Builtins.nullList(Builtins.unMapData(extraInnerMap))) {
                 result = result;
             } else {
-                var newInnerMap = Builtins.mapData(extraInner);
-                var newOuterPair = Builtins.mkPairData(policyKey, newInnerMap);
+                var newOuterPair = Builtins.mkPairData(policyKey, extraInnerMap);
                 result = Builtins.mkCons(newOuterPair, result);
             }
             current = Builtins.tailList(current);
         }
-        return result;
+        return Builtins.mapData(result);
     }
 
     /** Collect inner entries where assetOf(base, policy, token) == 0. */
-    public static PlutusData extraInnerEntries(PlutusData innerPairs, PlutusData.MapData base, PlutusData policyKey) {
+    public static PlutusData.MapData extraInnerEntries(PlutusData.MapData innerPairs, PlutusData.MapData base, PlutusData policyKey) {
         PlutusData result = Builtins.mkNilPairData();
-        PlutusData current = innerPairs;
+        PlutusData current = Builtins.unMapData(innerPairs);
         while (!Builtins.nullList(current)) {
             var pair = Builtins.headList(current);
             var tokenKey = Builtins.fstPair(pair);
@@ -309,22 +312,11 @@ public class ValuesLib {
             }
             current = Builtins.tailList(current);
         }
-        return result;
+        return Builtins.mapData(result);
     }
 
     /** Subtracts value b from value a: add(a, negate(b)). */
     public static PlutusData.MapData subtract(PlutusData.MapData a, PlutusData.MapData b) {
         return add(a, negate(b));
-    }
-
-    /** Concatenate two pair lists (prepends all of listB onto listA). */
-    public static PlutusData concatPairLists(PlutusData listA, PlutusData listB) {
-        PlutusData result = listA;
-        PlutusData current = listB;
-        while (!Builtins.nullList(current)) {
-            result = Builtins.mkCons(Builtins.headList(current), result);
-            current = Builtins.tailList(current);
-        }
-        return result;
     }
 }
