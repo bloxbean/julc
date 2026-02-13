@@ -456,6 +456,68 @@ public final class Builtins {
     }
 
     // =========================================================================
+    // Object-accepting overloads for IDE compatibility
+    // =========================================================================
+    // On-chain types (ScriptInfo, TxInfo, etc.) don't extend PlutusData in
+    // IDE stubs. The compiler matches by method name via StdlibRegistry and
+    // ignores parameter types, so these overloads simply satisfy the IDE.
+
+    /** @see #constrFields(PlutusData) */
+    public static PlutusData.ListData constrFields(Object data) {
+        return constrFields((PlutusData) data);
+    }
+
+    /** @see #constrTag(PlutusData) */
+    public static long constrTag(Object data) {
+        return constrTag((PlutusData) data);
+    }
+
+    /** @see #headList(PlutusData) */
+    public static PlutusData headList(Object list) {
+        return headList((PlutusData) list);
+    }
+
+    /** @see #tailList(PlutusData) */
+    public static PlutusData.ListData tailList(Object list) {
+        return tailList((PlutusData) list);
+    }
+
+    /** @see #nullList(PlutusData) */
+    public static boolean nullList(Object list) {
+        return nullList((PlutusData) list);
+    }
+
+    /** @see #unBData(PlutusData) */
+    public static PlutusData.BytesData unBData(Object data) {
+        return unBData((PlutusData) data);
+    }
+
+    /** @see #unIData(PlutusData) */
+    public static long unIData(Object data) {
+        return unIData((PlutusData) data);
+    }
+
+    /** @see #unConstrData(PlutusData) */
+    public static PlutusData.ConstrData unConstrData(Object data) {
+        return unConstrData((PlutusData) data);
+    }
+
+    /** @see #unListData(PlutusData) */
+    public static PlutusData.ListData unListData(Object data) {
+        return unListData((PlutusData) data);
+    }
+
+    /** @see #unMapData(PlutusData) */
+    public static PlutusData.MapData unMapData(Object data) {
+        return unMapData((PlutusData) data);
+    }
+
+    /** @see #equalsData(PlutusData, PlutusData) */
+    public static boolean equalsData(Object a, Object b) {
+        return equalsData((PlutusData) a, (PlutusData) b);
+    }
+
+    // =========================================================================
     // Helpers
     // =========================================================================
 
