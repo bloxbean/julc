@@ -11,6 +11,7 @@ import com.bloxbean.cardano.julc.compiler.uplc.UplcGenerator;
 import com.bloxbean.cardano.julc.compiler.uplc.UplcOptimizer;
 import com.bloxbean.cardano.julc.compiler.validate.SubsetValidator;
 import com.bloxbean.cardano.julc.core.Program;
+import com.bloxbean.cardano.julc.core.Term;
 import com.github.javaparser.ParserConfiguration;
 import com.github.javaparser.StaticJavaParser;
 import com.github.javaparser.ast.CompilationUnit;
@@ -24,6 +25,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Stream;
 
 /**
@@ -50,14 +52,28 @@ public class JulcCompiler {
     private record ParamField(String name, PirType pirType, String javaType) {}
     private record StaticField(String name, PirType pirType, com.github.javaparser.ast.expr.Expression initExpr) {}
 
+    /** Typed Data subtypes that must not be used with @Param. */
+    private static final Set<String> BANNED_PARAM_TYPES = Set.of(
+            "PlutusData.BytesData", "BytesData",
+            "PlutusData.MapData", "MapData",
+            "PlutusData.ListData", "ListData",
+            "PlutusData.IntData", "IntData"
+    );
+
     private final StdlibLookup stdlibLookup;
+    private final CompilerOptions options;
 
     public JulcCompiler() {
-        this(null);
+        this(null, new CompilerOptions());
     }
 
     public JulcCompiler(StdlibLookup stdlibLookup) {
+        this(stdlibLookup, new CompilerOptions());
+    }
+
+    public JulcCompiler(StdlibLookup stdlibLookup, CompilerOptions options) {
         this.stdlibLookup = stdlibLookup;
+        this.options = options != null ? options : new CompilerOptions();
     }
 
     /**
@@ -75,6 +91,27 @@ public class JulcCompiler {
     }
 
     /**
+     * Compile a single-file validator, capturing PIR and UPLC intermediate representations.
+     * The returned {@link CompileResult} will have non-null {@code pirTerm()} and {@code uplcTerm()}.
+     */
+    public CompileResult compileWithDetails(String javaSource) {
+        var availableLibs = LibrarySourceResolver.scanClasspathSources(
+                Thread.currentThread().getContextClassLoader());
+        if (availableLibs.isEmpty()) {
+            return compileWithDetails(javaSource, List.of());
+        }
+        var resolvedLibs = LibrarySourceResolver.resolve(javaSource, availableLibs);
+        return compileWithDetails(javaSource, resolvedLibs);
+    }
+
+    /**
+     * Compile a validator with library sources, capturing PIR and UPLC intermediate representations.
+     */
+    public CompileResult compileWithDetails(String validatorSource, List<String> librarySources) {
+        return doCompile(validatorSource, librarySources, true);
+    }
+
+    /**
      * Compile a validator with library sources to a UPLC Program.
      *
      * @param validatorSource the validator Java source (must contain a validator annotation)
@@ -82,9 +119,15 @@ public class JulcCompiler {
      * @return the compile result containing the UPLC Program
      */
     public CompileResult compile(String validatorSource, List<String> librarySources) {
+        return doCompile(validatorSource, librarySources, false);
+    }
+
+    private CompileResult doCompile(String validatorSource, List<String> librarySources, boolean captureDetails) {
         StaticJavaParser.getParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
 
         // 1. Parse all sources
+        options.logf("Parsing %d source(s) (1 validator + %d libraries)",
+                1 + librarySources.size(), librarySources.size());
         var validatorCu = parseSource(validatorSource, "validator");
         var libraryCus = new ArrayList<CompilationUnit>();
         for (int i = 0; i < librarySources.size(); i++) {
@@ -100,6 +143,7 @@ public class JulcCompiler {
         if (hasErrors(diagnostics)) {
             throw new CompilerException(diagnostics);
         }
+        options.log("Subset validation passed");
 
         // 3. Validate: library CUs must not contain validator annotations
         for (var libCu : libraryCus) {
@@ -116,6 +160,8 @@ public class JulcCompiler {
         // 4. Find annotated validator class and determine purpose
         var validatorClass = findAnnotatedClass(validatorCu);
         var scriptPurpose = getScriptPurpose(validatorClass);
+        options.logf("Found @%sValidator: %s", scriptPurpose.name().charAt(0)
+                + scriptPurpose.name().substring(1).toLowerCase(), validatorClass.getNameAsString());
 
         // 5. Register types from ALL sources (topo-sorted)
         var typeResolver = new TypeResolver();
@@ -124,9 +170,18 @@ public class JulcCompiler {
         allCus.addAll(libraryCus);
         allCus.add(validatorCu);
         new TypeRegistrar().registerAll(allCus, typeResolver);
+        options.logf("Registered types from %d compilation unit(s)", allCus.size());
 
         // 6. Detect @Param fields
-        var paramFields = findParamFields(validatorClass, typeResolver);
+        var paramFields = findParamFields(validatorClass, typeResolver, diagnostics);
+        if (hasErrors(diagnostics)) {
+            throw new CompilerException(diagnostics);
+        }
+
+        if (!paramFields.isEmpty()) {
+            options.logf("Found %d @Param field(s): %s", paramFields.size(),
+                    paramFields.stream().map(pf -> pf.name + ": " + pf.javaType).toList());
+        }
 
         // 6b. Detect static fields with initializers (non-@Param)
         var staticFields = findStaticFields(validatorClass, typeResolver);
@@ -138,9 +193,11 @@ public class JulcCompiler {
         validateEntrypointParams(entrypointMethod, scriptPurpose, validatorClass);
 
         // 8. Compile library static methods to PIR (progressive lookup: each library sees previous)
-        var libraryRegistry = new LibraryMethodRegistry();
+        var libraryRegistry = new LibraryMethodRegistry(options);
         if (!libraryCus.isEmpty()) {
+            options.logf("Compiling %d library source(s)", libraryCus.size());
             compileLibraryMethods(libraryCus, typeResolver, libraryRegistry, stdlibLookup);
+            options.logf("Compiled %d library method(s)", libraryRegistry.allMethods().size());
         }
 
         // 9. Compose lookup: stdlib + library methods
@@ -164,7 +221,8 @@ public class JulcCompiler {
         }
 
         // 11. Generate PIR for helper methods
-        var pirGenerator = new PirGenerator(typeResolver, symbolTable, effectiveLookup);
+        var pirGenerator = new PirGenerator(typeResolver, symbolTable, effectiveLookup,
+                TypeMethodRegistry.defaultRegistry(), null, options);
 
         // 11b. Compile static field initializers
         record CompiledStaticField(String name, PirTerm initPir) {}
@@ -184,6 +242,7 @@ public class JulcCompiler {
 
         // 12. Generate PIR for the entrypoint method
         var validateFn = pirGenerator.generateMethod(entrypointMethod);
+        options.log("PIR generation complete");
 
         // 12b. Collect non-fatal errors from PIR generation
         diagnostics.addAll(pirGenerator.getCollectedErrors());
@@ -239,23 +298,32 @@ public class JulcCompiler {
                     new PirTerm.Let(pf.name, decoded, wrappedTerm));
         }
 
-        // 17. Lower to UPLC
+        // 17. Capture PIR if details requested
+        PirTerm capturedPir = captureDetails ? wrappedTerm : null;
+
+        // 18. Lower to UPLC
         var uplcGenerator = new UplcGenerator();
         var uplcTerm = uplcGenerator.generate(wrappedTerm);
 
-        // 18. Optimize UPLC
+        // 19. Optimize UPLC
         var optimizer = new UplcOptimizer();
         uplcTerm = optimizer.optimize(uplcTerm);
+        options.log("UPLC optimization complete");
 
-        // 19. Create Program
+        // 20. Capture UPLC if details requested
+        Term capturedUplc = captureDetails ? uplcTerm : null;
+
+        // 21. Create Program
         var program = Program.plutusV3(uplcTerm);
 
-        // 20. Build ParamInfo list
+        // 22. Build ParamInfo list
         var paramInfos = paramFields.stream()
                 .map(pf -> new CompileResult.ParamInfo(pf.name, pf.javaType))
                 .toList();
 
-        return new CompileResult(program, diagnostics, paramInfos);
+        var result = new CompileResult(program, diagnostics, paramInfos, capturedPir, capturedUplc);
+        options.logf("Compilation complete: %s", result.scriptSizeFormatted());
+        return result;
     }
 
     /**
@@ -551,14 +619,31 @@ public class JulcCompiler {
         }
     }
 
-    private List<ParamField> findParamFields(ClassOrInterfaceDeclaration cls, TypeResolver typeResolver) {
+    private List<ParamField> findParamFields(ClassOrInterfaceDeclaration cls, TypeResolver typeResolver,
+                                              List<CompilerDiagnostic> diagnostics) {
         var result = new ArrayList<ParamField>();
         for (var field : cls.getFields()) {
             if (field.getAnnotationByName("Param").isPresent()) {
+                var javaType = field.getCommonType().asString();
+                if (BANNED_PARAM_TYPES.contains(javaType)) {
+                    int line = 0, col = 0;
+                    var range = field.getRange();
+                    if (range.isPresent()) {
+                        line = range.get().begin.line;
+                        col = range.get().begin.column;
+                    }
+                    diagnostics.add(new CompilerDiagnostic(
+                            CompilerDiagnostic.Level.ERROR,
+                            "@Param type '" + javaType + "' is not allowed. "
+                                    + "@Param values are always raw Data at runtime; using a typed Data subtype "
+                                    + "causes the compiler to misinterpret the runtime representation.",
+                            "<source>", line, col,
+                            "Use @Param PlutusData instead of @Param " + javaType));
+                    continue;
+                }
                 for (var variable : field.getVariables()) {
                     var name = variable.getNameAsString();
                     var pirType = typeResolver.resolve(field.getCommonType());
-                    var javaType = field.getCommonType().asString();
                     result.add(new ParamField(name, pirType, javaType));
                 }
             }

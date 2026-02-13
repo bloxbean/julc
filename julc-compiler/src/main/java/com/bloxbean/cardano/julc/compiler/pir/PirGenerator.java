@@ -13,6 +13,9 @@ import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.expr.*;
 import com.github.javaparser.ast.stmt.*;
 
+import com.bloxbean.cardano.julc.compiler.CompilerOptions;
+import com.bloxbean.cardano.julc.compiler.resolve.LibraryMethodRegistry;
+
 import java.math.BigInteger;
 import java.util.*;
 import java.util.function.Function;
@@ -28,6 +31,7 @@ public class PirGenerator {
     private final StdlibLookup stdlibLookup;
     private final TypeMethodRegistry typeMethodRegistry;
     private final String libraryClassName; // non-null when compiling library class methods
+    private final CompilerOptions options;
     private final List<CompilerDiagnostic> collectedErrors = new ArrayList<>();
     private final LoopDesugarer loopDesugarer = new LoopDesugarer();
     private String forEachAccumulatorVar; // non-null when compiling fold body
@@ -42,26 +46,33 @@ public class PirGenerator {
     }
 
     public PirGenerator(TypeResolver typeResolver, SymbolTable symbolTable) {
-        this(typeResolver, symbolTable, null, TypeMethodRegistry.defaultRegistry(), null);
+        this(typeResolver, symbolTable, null, TypeMethodRegistry.defaultRegistry(), null, new CompilerOptions());
     }
 
     public PirGenerator(TypeResolver typeResolver, SymbolTable symbolTable, StdlibLookup stdlibLookup) {
-        this(typeResolver, symbolTable, stdlibLookup, TypeMethodRegistry.defaultRegistry(), null);
+        this(typeResolver, symbolTable, stdlibLookup, TypeMethodRegistry.defaultRegistry(), null, new CompilerOptions());
     }
 
     public PirGenerator(TypeResolver typeResolver, SymbolTable symbolTable,
                         StdlibLookup stdlibLookup, TypeMethodRegistry typeMethodRegistry) {
-        this(typeResolver, symbolTable, stdlibLookup, typeMethodRegistry, null);
+        this(typeResolver, symbolTable, stdlibLookup, typeMethodRegistry, null, new CompilerOptions());
     }
 
     public PirGenerator(TypeResolver typeResolver, SymbolTable symbolTable,
                         StdlibLookup stdlibLookup, TypeMethodRegistry typeMethodRegistry,
                         String libraryClassName) {
+        this(typeResolver, symbolTable, stdlibLookup, typeMethodRegistry, libraryClassName, new CompilerOptions());
+    }
+
+    public PirGenerator(TypeResolver typeResolver, SymbolTable symbolTable,
+                        StdlibLookup stdlibLookup, TypeMethodRegistry typeMethodRegistry,
+                        String libraryClassName, CompilerOptions options) {
         this.typeResolver = typeResolver;
         this.symbolTable = symbolTable;
         this.stdlibLookup = stdlibLookup;
         this.typeMethodRegistry = typeMethodRegistry;
         this.libraryClassName = libraryClassName;
+        this.options = options != null ? options : new CompilerOptions();
     }
 
     /**
@@ -94,6 +105,82 @@ public class PirGenerator {
         collectedErrors.add(new CompilerDiagnostic(
                 CompilerDiagnostic.Level.ERROR, msg, fileName, line, col, suggestion));
         return new PirTerm.Error(new PirType.DataType());
+    }
+
+    /**
+     * Record a non-fatal warning diagnostic. Does not produce a placeholder term.
+     */
+    private void collectWarning(String msg, String suggestion, Node node) {
+        String fileName = "<source>";
+        int line = 0, col = 0;
+        if (node != null) {
+            var range = node.getRange();
+            if (range.isPresent()) {
+                line = range.get().begin.line;
+                col = range.get().begin.column;
+            }
+            var cu = node.findCompilationUnit();
+            fileName = cu.flatMap(c -> c.getStorage())
+                    .map(s -> s.getFileName())
+                    .orElse("<source>");
+        }
+        collectedErrors.add(new CompilerDiagnostic(
+                CompilerDiagnostic.Level.WARNING, msg, fileName, line, col, suggestion));
+    }
+
+    /**
+     * Check for type mismatches when calling a library method where the caller
+     * passes a specific primitive type but the library expects DataType.
+     * This produces a WARNING (not an error) since it doesn't block compilation.
+     */
+    private void checkCrossLibraryTypeWarnings(String className, String methodName,
+                                                MethodCallExpr mce, List<PirType> argPirTypes) {
+        // Find the LibraryMethodRegistry from the stdlibLookup chain
+        LibraryMethodRegistry registry = findLibraryRegistry(stdlibLookup);
+        if (registry == null) return;
+
+        var key = className + "." + methodName;
+        var method = registry.lookupMethod(key);
+        if (method.isEmpty()) return;
+
+        var expectedTypes = LibraryMethodRegistry.getParamTypes(method.get().type());
+        var args = mce.getArguments();
+        for (int i = 0; i < argPirTypes.size() && i < expectedTypes.size(); i++) {
+            var callerType = argPirTypes.get(i);
+            var calleeType = expectedTypes.get(i);
+            if (isSpecificPrimitiveType(callerType) && calleeType instanceof PirType.DataType) {
+                var argNode = i < args.size() ? args.get(i) : mce;
+                collectWarning(
+                        "Argument " + (i + 1) + " to " + key + "() has type "
+                                + LibraryMethodRegistry.pirTypeName(callerType)
+                                + " but the library method expects Data. "
+                                + "The library will receive a decoded primitive instead of raw Data, "
+                                + "which may cause runtime errors.",
+                        "Use PlutusData instead of "
+                                + LibraryMethodRegistry.pirTypeName(callerType)
+                                + " for this argument, or change the library method parameter type.",
+                        argNode);
+            }
+        }
+    }
+
+    private static LibraryMethodRegistry findLibraryRegistry(StdlibLookup lookup) {
+        if (lookup instanceof LibraryMethodRegistry r) return r;
+        if (lookup instanceof CompositeStdlibLookup composite) {
+            for (var inner : composite.getLookups()) {
+                if (inner instanceof LibraryMethodRegistry r) return r;
+            }
+        }
+        return null;
+    }
+
+    private static boolean isSpecificPrimitiveType(PirType type) {
+        return type instanceof PirType.ByteStringType
+                || type instanceof PirType.IntegerType
+                || type instanceof PirType.BoolType
+                || type instanceof PirType.StringType
+                || type instanceof PirType.ListType
+                || type instanceof PirType.MapType;
     }
 
     /**
@@ -534,6 +621,8 @@ public class PirGenerator {
                 }
                 var result = stdlibLookup.lookup(className, methodName, compiledArgs, argPirTypes);
                 if (result.isPresent()) {
+                    options.logf("Resolved stdlib: %s.%s", className, methodName);
+                    checkCrossLibraryTypeWarnings(className, methodName, mce, argPirTypes);
                     return result.get();
                 }
             }

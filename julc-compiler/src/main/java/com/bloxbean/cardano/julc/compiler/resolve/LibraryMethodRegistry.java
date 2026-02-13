@@ -1,5 +1,6 @@
 package com.bloxbean.cardano.julc.compiler.resolve;
 
+import com.bloxbean.cardano.julc.compiler.CompilerOptions;
 import com.bloxbean.cardano.julc.compiler.pir.PirHelpers;
 import com.bloxbean.cardano.julc.compiler.pir.PirTerm;
 import com.bloxbean.cardano.julc.compiler.pir.PirType;
@@ -25,6 +26,15 @@ public class LibraryMethodRegistry implements StdlibLookup {
     }
 
     private final Map<String, LibraryMethod> methods = new LinkedHashMap<>();
+    private final CompilerOptions options;
+
+    public LibraryMethodRegistry() {
+        this(new CompilerOptions());
+    }
+
+    public LibraryMethodRegistry(CompilerOptions options) {
+        this.options = options != null ? options : new CompilerOptions();
+    }
 
     /**
      * Register a compiled library method.
@@ -67,11 +77,15 @@ public class LibraryMethodRegistry implements StdlibLookup {
         var expectedTypes = extractParamTypes(method.type());
 
         // Apply coercions where caller type differs from callee's expected type
+        options.logf("Resolving library method: %s.%s", className, methodName);
         var coercedArgs = new ArrayList<PirTerm>(args.size());
         for (int i = 0; i < args.size(); i++) {
             var arg = args.get(i);
             var callerType = i < argTypes.size() ? argTypes.get(i) : new PirType.DataType();
             var calleeType = i < expectedTypes.size() ? expectedTypes.get(i) : new PirType.DataType();
+            if (!callerType.equals(calleeType) && callerType instanceof PirType.DataType && isPrimitiveType(calleeType)) {
+                options.logf("Coercing arg %d: Data -> %s", i, pirTypeName(calleeType));
+            }
             coercedArgs.add(coerceArg(arg, callerType, calleeType));
         }
 
@@ -129,7 +143,39 @@ public class LibraryMethodRegistry implements StdlibLookup {
         return Collections.unmodifiableCollection(methods.values());
     }
 
+    /**
+     * Look up a library method by qualified name (className.methodName).
+     */
+    public Optional<LibraryMethod> lookupMethod(String qualifiedName) {
+        return Optional.ofNullable(methods.get(qualifiedName));
+    }
+
     public boolean isEmpty() {
         return methods.isEmpty();
+    }
+
+    /**
+     * Extract parameter types from a FunType chain (public for cross-library warning checks).
+     */
+    public static List<PirType> getParamTypes(PirType type) {
+        return extractParamTypes(type);
+    }
+
+    public static String pirTypeName(PirType type) {
+        return switch (type) {
+            case PirType.IntegerType _ -> "Integer";
+            case PirType.ByteStringType _ -> "ByteString";
+            case PirType.BoolType _ -> "Bool";
+            case PirType.StringType _ -> "String";
+            case PirType.DataType _ -> "Data";
+            case PirType.UnitType _ -> "Unit";
+            case PirType.ListType lt -> "List[" + pirTypeName(lt.elemType()) + "]";
+            case PirType.MapType mt -> "Map[" + pirTypeName(mt.keyType()) + "," + pirTypeName(mt.valueType()) + "]";
+            case PirType.PairType pt -> "Pair[" + pirTypeName(pt.first()) + "," + pirTypeName(pt.second()) + "]";
+            case PirType.FunType ft -> pirTypeName(ft.paramType()) + " -> " + pirTypeName(ft.returnType());
+            case PirType.RecordType rt -> rt.name();
+            case PirType.SumType st -> st.name();
+            case PirType.OptionalType ot -> "Optional[" + pirTypeName(ot.elemType()) + "]";
+        };
     }
 }

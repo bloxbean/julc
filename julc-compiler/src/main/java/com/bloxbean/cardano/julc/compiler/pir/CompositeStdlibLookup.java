@@ -18,6 +18,13 @@ public class CompositeStdlibLookup implements StdlibLookup {
                 .toList();
     }
 
+    /**
+     * Return the underlying lookups for inspection (e.g., to find LibraryMethodRegistry).
+     */
+    public List<StdlibLookup> getLookups() {
+        return lookups;
+    }
+
     @Override
     public Optional<PirTerm> lookup(String className, String methodName, List<PirTerm> args) {
         for (var lookup : lookups) {

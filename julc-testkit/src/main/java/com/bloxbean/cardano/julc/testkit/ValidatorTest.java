@@ -193,6 +193,42 @@ public final class ValidatorTest {
         assertRejects(program, args);
     }
 
+    // --- Detailed compilation (with PIR/UPLC inspection) ---
+
+    /**
+     * Compile Java source to a CompileResult with PIR and UPLC terms captured.
+     *
+     * @param javaSource the Java source code
+     * @return the compile result with non-null pirTerm() and uplcTerm()
+     */
+    public static CompileResult compileWithDetails(String javaSource) {
+        Objects.requireNonNull(javaSource, "javaSource must not be null");
+        var compiler = new JulcCompiler();
+        CompileResult result = compiler.compileWithDetails(javaSource);
+        if (result.hasErrors()) {
+            throw new AssertionError("Compilation produced errors: " + result.diagnostics());
+        }
+        return result;
+    }
+
+    /**
+     * Compile Java source to a CompileResult with PIR and UPLC terms captured, with stdlib support.
+     *
+     * @param javaSource    the Java source code
+     * @param stdlibLookup  the stdlib lookup for resolving stdlib calls
+     * @return the compile result with non-null pirTerm() and uplcTerm()
+     */
+    public static CompileResult compileWithDetails(String javaSource,
+                                                    com.bloxbean.cardano.julc.compiler.pir.StdlibLookup stdlibLookup) {
+        Objects.requireNonNull(javaSource, "javaSource must not be null");
+        var compiler = new JulcCompiler(stdlibLookup);
+        CompileResult result = compiler.compileWithDetails(javaSource);
+        if (result.hasErrors()) {
+            throw new AssertionError("Compilation produced errors: " + result.diagnostics());
+        }
+        return result;
+    }
+
     // --- Multi-file compilation ---
 
     /**
