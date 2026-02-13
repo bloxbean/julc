@@ -396,6 +396,164 @@ for (var item : items) {
 
 Variables in Plutus-Java are immutable. The `acc = expr` syntax inside loops is special — the compiler recognizes it as a fold accumulator update, not a true mutation. Outside of loop bodies, assignment (`x = x + 1`) is not supported.
 
+### Post-Loop Variable Access in Multi-Accumulator Loops
+
+Variables defined **before** a multi-accumulator while or for-each loop may be corrupted when accessed **after** the loop completes. The compiler's LetRec transformation restructures the variable binding environment, and outer-scope bindings may not survive the transformation.
+
+**Failing pattern:**
+
+```java
+byte[] key1 = Builtins.unBData(someData);
+byte[] next1 = Builtins.unBData(otherData);
+
+// Multi-accumulator while loop (2+ accumulators)
+long burnQty = 0;
+PlutusData cursor = tokenList;
+while (!Builtins.nullList(cursor)) {
+    burnQty = burnQty + extractAmount(cursor);
+    cursor = Builtins.tailList(cursor);
+}
+
+// key1 is CORRUPTED here — runtime builtin error
+if (Builtins.equalsByteString(key1, expected)) { ... }
+```
+
+This only affects **multi-accumulator** loops (2+ accumulators). Single-accumulator loops preserve outer bindings correctly.
+
+**Workaround:** Extract post-loop logic into a separate helper method that receives the needed values as parameters:
+
+```java
+// Pass all pre-loop variables explicitly to a helper
+return checkAfterLoop(key1, next1, burnQty, expected);
+
+static boolean checkAfterLoop(byte[] key1, byte[] next1, long burnQty, byte[] expected) {
+    // key1 is fresh here — passed as a method parameter
+    if (Builtins.equalsByteString(key1, expected)) { ... }
+    return true;
+}
+```
+
+By passing variables as method parameters, they are freshly bound in the helper's scope, avoiding the LetRec corruption.
+
+### No `return` Inside Multi-Accumulator Loop Body
+
+The compiler does not support `return` statements inside the body of a multi-accumulator loop. The LetRec transformation wraps the loop body into a fold function, and an early `return` would exit the fold lambda rather than the enclosing method.
+
+**Not supported:**
+
+```java
+BigInteger sum = BigInteger.ZERO;
+boolean found = false;
+for (var item : items) {
+    sum = sum + item;
+    if (sum > BigInteger.valueOf(100)) {
+        found = true;
+        return found;  // ERROR: return inside multi-acc loop body
+    }
+}
+```
+
+**Workaround:** Use `break` to exit the loop early, then `return` after the loop:
+
+```java
+BigInteger sum = BigInteger.ZERO;
+boolean found = false;
+for (var item : items) {
+    sum = sum + item;
+    if (sum > BigInteger.valueOf(100)) {
+        found = true;
+        break;
+    }
+}
+return found;
+```
+
+### Cross-Method Type Inference for Primitives
+
+When a method calls a helper that accepts a `long` parameter, the compiler may generate `EqualsData` instead of `EqualsInteger` for comparisons inside the helper. This happens because at the UPLC level, cross-method values are passed as generic Data, and the compiler does not always recover the primitive type.
+
+**Problem pattern:**
+
+```java
+boolean validate(PlutusData datum, PlutusData redeemer) {
+    long amount = Builtins.unIData(Builtins.headList(Builtins.constrFields(datum)));
+    return checkAmount(amount);
+}
+
+static boolean checkAmount(long amount) {
+    // May generate EqualsData instead of EqualsInteger
+    return amount > 0;
+}
+```
+
+**Workaround:** Keep primitive comparisons in the same method, or use Data-level equality when crossing method boundaries:
+
+```java
+boolean validate(PlutusData datum, PlutusData redeemer) {
+    long amount = Builtins.unIData(Builtins.headList(Builtins.constrFields(datum)));
+    // Compare directly here — same method, correct type inference
+    return amount > 0;
+}
+```
+
+### `@Param` Fields Must Use `PlutusData` Type
+
+`@Param` values are **always** raw Data at runtime, regardless of the declared type. Using `PlutusData.BytesData` (or `PlutusData.MapData`, etc.) on a `@Param` field tells the compiler the value is already a ByteString, which causes double-wrapping and incorrect cross-library calls.
+
+**Broken pattern:**
+
+```java
+@Param PlutusData.BytesData myPolicyId;  // WRONG — compiler thinks it's a ByteString
+
+boolean validate(PlutusData datum, PlutusData redeemer) {
+    // Builtins.bData(myPolicyId) double-wraps: bData applied to Data, not ByteString
+    byte[] pid = Builtins.unBData(myPolicyId);  // Also fails — unBData on raw Data
+    return true;
+}
+```
+
+**Correct pattern:**
+
+```java
+@Param PlutusData myPolicyId;  // CORRECT — raw Data, as it actually is at runtime
+
+boolean validate(PlutusData datum, PlutusData redeemer) {
+    byte[] pid = Builtins.unBData(myPolicyId);  // Works — unBData on Data
+    return true;
+}
+```
+
+Always use `@Param PlutusData` for parameterized fields.
+
+### Cross-Library `BytesData`/`MapData` Parameter Bug
+
+When calling a stdlib library method that accepts `BytesData` or `MapData` typed parameters from user code, the compiler may skip the necessary Data encoding at the call boundary. This happens because the compiler sees matching types and assumes no conversion is needed, but compiled libraries always expect raw Data arguments at the UPLC boundary.
+
+**Problem pattern:**
+
+```java
+PlutusData.BytesData myPolicy = ...;  // typed as BytesData in user code
+// ValuesLib.assetOf expects BytesData, compiler sees matching types, skips encoding
+// But at UPLC level, the library expects raw Data -> type mismatch
+long amount = ValuesLib.assetOf(value, myPolicy, tokenName);
+```
+
+**Workaround:** Use `PlutusData` typed variables (not `BytesData`/`MapData`) when passing arguments to stdlib library methods, so the compiler passes Data as-is:
+
+```java
+PlutusData myPolicy = ...;  // typed as PlutusData — compiler passes raw Data
+long amount = ValuesLib.assetOf(value, myPolicy, tokenName);  // Works correctly
+```
+
+Alternatively, create a local wrapper method in the same project that calls the stdlib method:
+
+```java
+// Local wrapper — same compilation unit, no cross-library boundary
+static long localAssetOf(PlutusData value, PlutusData policyId, PlutusData tokenName) {
+    return ValuesLib.assetOf(value, policyId, tokenName);
+}
+```
+
 ## Comparison with Other Cardano Languages
 
 | Feature | Plutus-Java | Opshin (Python) | Aiken | Scalus (Scala) |
