@@ -48,6 +48,21 @@ public class SymbolTable {
         return type != null ? Optional.of(type) : Optional.empty();
     }
 
+    /**
+     * Returns all variables visible across all scopes (name → type).
+     * If a name is defined in multiple scopes, the innermost (most recent) wins.
+     * Used to snapshot pre-loop variables for re-binding after while loop compilation.
+     */
+    public Map<String, PirType> allVisibleVariables() {
+        var result = new LinkedHashMap<String, PirType>();
+        // Iterate from outermost to innermost so inner scopes override outer
+        var scopeList = new ArrayList<>(scopes);
+        for (int i = scopeList.size() - 1; i >= 0; i--) {
+            result.putAll(scopeList.get(i));
+        }
+        return result;
+    }
+
     public PirType require(String name) {
         return lookup(name).orElseThrow(
                 () -> new NoSuchElementException("Undefined variable: " + name));

@@ -4,6 +4,7 @@ import com.bloxbean.cardano.julc.compiler.error.CompilerDiagnostic;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.NodeList;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
+import com.github.javaparser.ast.body.VariableDeclarator;
 import com.github.javaparser.ast.expr.*;
 import com.github.javaparser.ast.stmt.*;
 import com.github.javaparser.ast.type.PrimitiveType;
@@ -11,6 +12,7 @@ import com.github.javaparser.ast.visitor.VoidVisitorAdapter;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Validates that Java source uses only the supported subset for on-chain compilation.
@@ -42,10 +44,19 @@ public class SubsetValidator extends VoidVisitorAdapter<Void> {
     }
 
     private void warning(com.github.javaparser.ast.Node node, String message) {
+        warning(node, message, null);
+    }
+
+    private void warning(com.github.javaparser.ast.Node node, String message, String suggestion) {
         int line = node.getBegin().map(p -> p.line).orElse(0);
         int col = node.getBegin().map(p -> p.column).orElse(0);
-        diagnostics.add(new CompilerDiagnostic(
-                CompilerDiagnostic.Level.WARNING, message, fileName, line, col));
+        if (suggestion != null) {
+            diagnostics.add(new CompilerDiagnostic(
+                    CompilerDiagnostic.Level.WARNING, message, fileName, line, col, suggestion));
+        } else {
+            diagnostics.add(new CompilerDiagnostic(
+                    CompilerDiagnostic.Level.WARNING, message, fileName, line, col));
+        }
     }
 
     // --- Rejected statements ---
@@ -112,6 +123,48 @@ public class SubsetValidator extends VoidVisitorAdapter<Void> {
 
     // --- Rejected expressions ---
 
+    private static final Set<String> FUNCTIONAL_TYPES = Set.of(
+            "Function", "BiFunction", "UnaryOperator", "BinaryOperator",
+            "Predicate", "BiPredicate", "Consumer", "BiConsumer",
+            "Supplier", "Runnable");
+
+    private static final Set<String> FUNCTIONAL_METHODS = Set.of(
+            "apply", "test", "accept", "get", "run");
+
+    @Override
+    public void visit(MethodReferenceExpr n, Void arg) {
+        error(n, "Method references (::) are not supported on-chain",
+                "Use a regular static method call instead");
+        super.visit(n, arg);
+    }
+
+    @Override
+    public void visit(MethodCallExpr n, Void arg) {
+        if (FUNCTIONAL_METHODS.contains(n.getNameAsString())
+                && n.getScope().isPresent()
+                && isLikelyFunctionalVariable(n)) {
+            error(n, "Functional interface ." + n.getNameAsString()
+                            + "() is not supported on-chain",
+                    "Call the method directly instead of through a function reference");
+        }
+        super.visit(n, arg);
+    }
+
+    private boolean isLikelyFunctionalVariable(MethodCallExpr call) {
+        if (!(call.getScope().get() instanceof NameExpr nameExpr)) return false;
+        String varName = nameExpr.getNameAsString();
+        return call.findAncestor(com.github.javaparser.ast.body.MethodDeclaration.class)
+                .map(method -> method.findAll(VariableDeclarator.class).stream()
+                        .anyMatch(v -> v.getNameAsString().equals(varName)
+                                && FUNCTIONAL_TYPES.contains(rawTypeName(v.getTypeAsString()))))
+                .orElse(false);
+    }
+
+    private static String rawTypeName(String typeStr) {
+        int idx = typeStr.indexOf('<');
+        return idx >= 0 ? typeStr.substring(0, idx) : typeStr;
+    }
+
     @Override
     public void visit(NullLiteralExpr n, Void arg) {
         error(n, "null is not supported on-chain",
@@ -164,6 +217,43 @@ public class SubsetValidator extends VoidVisitorAdapter<Void> {
                     "Use BigInteger for integer arithmetic or Rational for fractions");
         }
         super.visit(n, arg);
+    }
+
+    // --- Unreachable code detection ---
+
+    @Override
+    public void visit(BlockStmt n, Void arg) {
+        checkUnreachableCode(n.getStatements());
+        super.visit(n, arg);
+    }
+
+    private void checkUnreachableCode(NodeList<Statement> statements) {
+        for (int i = 0; i < statements.size() - 1; i++) {
+            if (isTerminal(statements.get(i))) {
+                warning(statements.get(i + 1),
+                        "Unreachable code after " + describeTerminal(statements.get(i))
+                                + ". This code will never execute.");
+                break; // only warn once per block
+            }
+        }
+    }
+
+    private boolean isTerminal(Statement stmt) {
+        if (stmt instanceof ReturnStmt) return true;
+        if (stmt instanceof BreakStmt) return true;
+        if (stmt instanceof ExpressionStmt es
+                && es.getExpression() instanceof MethodCallExpr mce
+                && "error".equals(mce.getNameAsString())
+                && mce.getScope().filter(s -> s.toString().equals("Builtins")).isPresent()) {
+            return true;
+        }
+        return false;
+    }
+
+    private String describeTerminal(Statement stmt) {
+        if (stmt instanceof ReturnStmt) return "return";
+        if (stmt instanceof BreakStmt) return "break";
+        return "Builtins.error()";
     }
 
     // --- Rejected class features ---

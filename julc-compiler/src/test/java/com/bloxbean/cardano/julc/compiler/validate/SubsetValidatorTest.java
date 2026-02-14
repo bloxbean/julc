@@ -31,7 +31,22 @@ class SubsetValidatorTest {
 
     private void assertAccepts(String code) {
         var diags = validate(code);
-        assertTrue(diags.isEmpty(), "Expected no errors but got: " + diags);
+        var errors = diags.stream().filter(CompilerDiagnostic::isError).toList();
+        assertTrue(errors.isEmpty(), "Expected no errors but got: " + errors);
+    }
+
+    private void assertWarns(String code, String expectedMessage) {
+        var diags = validate(code);
+        assertTrue(diags.stream().anyMatch(d -> d.level() == CompilerDiagnostic.Level.WARNING
+                        && d.message().contains(expectedMessage)),
+                "Expected warning containing '" + expectedMessage + "' but got: " + diags);
+    }
+
+    private void assertNoWarnings(String code) {
+        var diags = validate(code);
+        var warnings = diags.stream()
+                .filter(d -> d.level() == CompilerDiagnostic.Level.WARNING).toList();
+        assertTrue(warnings.isEmpty(), "Expected no warnings but got: " + warnings);
     }
 
     @Test void rejectsTryCatch() { assertRejects("class X { void f() { try { } catch (Exception e) { } } }", "try/catch"); }
@@ -123,5 +138,156 @@ class SubsetValidatorTest {
             record Mint(int amt) implements Action {}
             record Burn(int amt) implements Action {}
             """);
+    }
+
+    // --- Item 2: Method references and lambda .apply() ---
+
+    @Test
+    void rejectsMethodReference() {
+        assertRejects("""
+            import java.util.List;
+            class X { void f(List<Integer> list) { list.forEach(Foo::bar); } }
+            """, "Method references (::)");
+    }
+
+    @Test
+    void rejectsLambdaApply() {
+        assertRejects("""
+            import java.util.function.Function;
+            class X {
+                long f() {
+                    Function<Long, Long> fn = x -> x + 1;
+                    return fn.apply(42L);
+                }
+            }
+            """, "Functional interface .apply()");
+    }
+
+    @Test
+    void acceptsNormalMethodCall() {
+        assertAccepts("""
+            class X {
+                static long bar(long x) { return x; }
+                long f() { return bar(42L); }
+            }
+            """);
+    }
+
+    @Test
+    void acceptsRecordApply() {
+        // A user record with an apply() method should not be flagged
+        assertAccepts("""
+            class X {
+                record MyAction(int value) {
+                    int apply() { return value; }
+                }
+                int f() {
+                    MyAction a = new MyAction(1);
+                    return a.apply();
+                }
+            }
+            """);
+    }
+
+    @Test
+    void methodReferenceErrorHasSuggestion() {
+        var diags = validate("""
+            class X { void f() { java.util.List.of(1).forEach(Foo::bar); } }
+            """);
+        assertFalse(diags.isEmpty());
+        var d = diags.stream().filter(diag -> diag.message().contains("Method references")).findFirst().orElseThrow();
+        assertTrue(d.hasSuggestion(), "Expected suggestion but got none");
+        assertTrue(d.suggestion().contains("static method call"), "Expected suggestion about static method call");
+    }
+
+    // --- Item 3: Unreachable code warnings ---
+
+    @Test
+    void warnsCodeAfterReturn() {
+        assertWarns("""
+            class X {
+                int f() {
+                    return 1;
+                    int x = 2;
+                }
+            }
+            """, "Unreachable code after return");
+    }
+
+    @Test
+    void warnsCodeAfterBreak() {
+        assertWarns("""
+            class X {
+                void f(java.util.List<Integer> xs) {
+                    for (var x : xs) {
+                        break;
+                        int y = 1;
+                    }
+                }
+            }
+            """, "Unreachable code after break");
+    }
+
+    @Test
+    void warnsCodeAfterBuiltinsError() {
+        assertWarns("""
+            class X {
+                int f() {
+                    Builtins.error();
+                    return 0;
+                }
+            }
+            """, "Unreachable code after Builtins.error()");
+    }
+
+    @Test
+    void noWarningForNormalFlow() {
+        assertNoWarnings("""
+            class X {
+                int f(int a) {
+                    int x = a + 1;
+                    int y = x + 2;
+                    return y;
+                }
+            }
+            """);
+    }
+
+    @Test
+    void warningDoesNotBlockCompilation() {
+        // Unreachable code should produce a warning, not an error
+        var diags = validate("""
+            class X {
+                int f() {
+                    return 1;
+                    int x = 2;
+                }
+            }
+            """);
+        var errors = diags.stream().filter(CompilerDiagnostic::isError).toList();
+        assertTrue(errors.isEmpty(), "Expected no errors (only warnings) but got: " + errors);
+        var warnings = diags.stream()
+                .filter(d -> d.level() == CompilerDiagnostic.Level.WARNING).toList();
+        assertFalse(warnings.isEmpty(), "Expected at least one warning");
+    }
+
+    @Test
+    void onlyFirstUnreachableWarns() {
+        // Multiple statements after return should produce only 1 warning
+        var diags = validate("""
+            class X {
+                int f() {
+                    return 1;
+                    int x = 2;
+                    int y = 3;
+                    int z = 4;
+                }
+            }
+            """);
+        var warnings = diags.stream()
+                .filter(d -> d.level() == CompilerDiagnostic.Level.WARNING
+                        && d.message().contains("Unreachable"))
+                .toList();
+        assertEquals(1, warnings.size(), "Expected exactly 1 unreachable warning but got: " + warnings);
     }
 }

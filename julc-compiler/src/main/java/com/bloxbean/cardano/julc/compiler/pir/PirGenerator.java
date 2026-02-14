@@ -191,6 +191,14 @@ public class PirGenerator {
         var body = method.getBody().orElseThrow(
                 () -> new CompilerException("Method must have a body: " + method.getNameAsString()));
 
+        // Check for missing return paths in non-void methods
+        var returnType = method.getTypeAsString();
+        boolean isVoid = returnType.equals("void");
+        if (!isVoid && !allPathsReturn(body.getStatements())) {
+            collectError("Method '" + method.getNameAsString() + "' may not return a value on all execution paths",
+                    "Ensure all code paths end with a 'return' statement.", method);
+        }
+
         // Register parameters in scope
         symbolTable.pushScope();
         for (var param : params) {
@@ -347,6 +355,58 @@ public class PirGenerator {
                 }
             }
         }
+        return false;
+    }
+
+    /**
+     * Check if all execution paths through a list of statements end with a return.
+     * Used to detect methods with missing return paths.
+     */
+    private static boolean allPathsReturn(List<Statement> stmts) {
+        if (stmts.isEmpty()) return false;
+
+        // Check from the end of the list for terminal statements
+        for (int i = 0; i < stmts.size(); i++) {
+            var stmt = stmts.get(i);
+            if (stmt instanceof ReturnStmt) return true;
+
+            if (stmt instanceof IfStmt ifStmt) {
+                boolean thenReturns = allPathsReturn(blockStmts(ifStmt.getThenStmt()));
+                boolean elseReturns = ifStmt.getElseStmt().isPresent()
+                        && allPathsReturn(blockStmts(ifStmt.getElseStmt().get()));
+                if (thenReturns && elseReturns) return true;
+                // if-without-else or partial: check if remaining stmts after this provide a return
+                if (thenReturns && i + 1 < stmts.size()) {
+                    // Fallthrough case: if (cond) return X; ... return Y;
+                    if (allPathsReturn(stmts.subList(i + 1, stmts.size()))) return true;
+                }
+            }
+
+            // While and for-each loops with accumulators are desugared into fold results.
+            // They always produce a value, but they are not "return" statements themselves.
+            // A while loop as the last statement is fine as a loop-accumulator return pattern,
+            // but we conservatively consider it a return path since the desugaring handles it.
+            if (stmt instanceof WhileStmt || stmt instanceof ForEachStmt) {
+                // The loop produces a value via accumulator desugaring — treat as return path
+                // only when it's the last statement (the accumulator IS the return value)
+                if (i == stmts.size() - 1) return true;
+            }
+
+            // SwitchExpr used as a statement — if all branches return
+            if (stmt instanceof ExpressionStmt es && es.getExpression() instanceof SwitchExpr) {
+                // Switch expressions always produce a value, but not necessarily a "return"
+                // They only count as terminal if used as a return value
+                continue;
+            }
+        }
+
+        // Check if the last statement itself is terminal
+        var last = stmts.get(stmts.size() - 1);
+        if (last instanceof ExpressionStmt es) {
+            // Variable declarations, assignments, etc. are not returns
+            return false;
+        }
+
         return false;
     }
 
@@ -951,7 +1011,10 @@ public class PirGenerator {
         var accumulators = detectForEachAccumulators(fes.getBody());
 
         if (accumulators.size() == 1) {
-            // --- Single-accumulator path (unchanged) ---
+            // --- Single-accumulator path ---
+            // Snapshot pre-loop variables for re-binding after the loop (fixes LetRec scope corruption)
+            var preLoopVars = symbolTable.allVisibleVariables();
+
             var accName = accumulators.get(0);
             var accType = symbolTable.lookup(accName).orElse(new PirType.BoolType());
             var accInit = new PirTerm.Var(accName, accType);
@@ -1001,12 +1064,17 @@ public class PirGenerator {
             if (followingIndex + 1 < followingStmts.size()) {
                 symbolTable.define(accName, accType);
                 var rest = generateStatements(followingStmts, followingIndex + 1);
+                // Re-bind pre-loop variables to fix scope corruption from LetRec boundary
+                rest = rebindPreLoopVars(rest, preLoopVars, Set.of(accName));
                 return new PirTerm.Let(accName, foldResult, rest);
             }
             return foldResult;
 
         } else if (accumulators.size() > 1) {
             // --- Multi-accumulator path: pack into a Data list tuple ---
+            // Snapshot pre-loop variables for re-binding after the loop (fixes LetRec scope corruption)
+            var preLoopVars = symbolTable.allVisibleVariables();
+
             var accTypes = accumulators.stream()
                     .map(n -> symbolTable.lookup(n).orElse(new PirType.DataType()))
                     .toList();
@@ -1060,6 +1128,8 @@ public class PirGenerator {
                     symbolTable.define(accumulators.get(i), accTypes.get(i));
                 }
                 var rest = generateStatements(followingStmts, followingIndex + 1);
+                // Re-bind pre-loop variables to fix scope corruption from LetRec boundary
+                rest = rebindPreLoopVars(rest, preLoopVars, new LinkedHashSet<>(accumulators));
                 return unpackAccumulators(foldResult, accumulators, accTypes, rest);
             }
             return foldResult;
@@ -1959,6 +2029,9 @@ public class PirGenerator {
 
         if (accumulators.size() == 1) {
             // --- Single-accumulator while loop ---
+            // Snapshot pre-loop variables for re-binding after the loop (fixes LetRec scope corruption)
+            var preLoopVars = symbolTable.allVisibleVariables();
+
             var accName = accumulators.get(0);
             var accType = symbolTable.lookup(accName).orElse(new PirType.BoolType());
             var accInit = new PirTerm.Var(accName, accType);
@@ -2011,12 +2084,17 @@ public class PirGenerator {
             if (followingIndex + 1 < followingStmts.size()) {
                 symbolTable.define(accName, accType);
                 var rest = generateStatements(followingStmts, followingIndex + 1);
+                // Re-bind pre-loop variables to fix scope corruption from LetRec boundary
+                rest = rebindPreLoopVars(rest, preLoopVars, Set.of(accName));
                 return new PirTerm.Let(accName, whileResult, rest);
             }
             return whileResult;
 
         } else if (accumulators.size() > 1) {
             // --- Multi-accumulator while loop ---
+            // Snapshot pre-loop variables for re-binding after the loop (fixes LetRec scope corruption)
+            var preLoopVars = symbolTable.allVisibleVariables();
+
             var rawAccTypes = accumulators.stream()
                     .map(n -> symbolTable.lookup(n).orElse(new PirType.DataType()))
                     .toList();
@@ -2095,6 +2173,8 @@ public class PirGenerator {
                     symbolTable.define(accumulators.get(i), accTypes.get(i));
                 }
                 var rest = generateStatements(followingStmts, followingIndex + 1);
+                // Re-bind pre-loop variables to fix scope corruption from LetRec boundary
+                rest = rebindPreLoopVars(rest, preLoopVars, new LinkedHashSet<>(accumulators));
                 return unpackAccumulators(whileResult, accumulators, accTypes, rest);
             }
             return whileResult;
@@ -2168,6 +2248,26 @@ public class PirGenerator {
                     matchEntries.add(new PatternMatchDesugarer.MatchEntry(
                             typeName, ctor.fields().stream().map(PirType.Field::name).toList(), bodyTerm));
                 }
+            }
+        }
+
+        // Exhaustiveness check: verify all constructors are covered or a default branch exists
+        boolean hasDefault = se.getEntries().stream().anyMatch(
+                com.github.javaparser.ast.stmt.SwitchEntry::isDefault);
+        if (!hasDefault) {
+            var coveredCases = matchEntries.stream()
+                    .map(PatternMatchDesugarer.MatchEntry::variantName)
+                    .collect(java.util.stream.Collectors.toSet());
+            var missingCases = new LinkedHashSet<String>();
+            for (var ctor : sumType.constructors()) {
+                if (!coveredCases.contains(ctor.name())) {
+                    missingCases.add(ctor.name());
+                }
+            }
+            if (!missingCases.isEmpty()) {
+                collectError("Switch on sealed interface '" + sumType.name()
+                                + "' is not exhaustive. Missing cases: " + String.join(", ", missingCases),
+                        "Add the missing cases or a 'default' branch.", se);
             }
         }
 
@@ -2457,5 +2557,76 @@ public class PirGenerator {
             return "Did you mean '" + bestMatch + "()'?";
         }
         return "";
+    }
+
+    /**
+     * Find which variable names from `candidates` are referenced in a PIR term.
+     * Used to determine which pre-loop variables need to be re-bound after a while loop.
+     */
+    private static Set<String> findReferencedVars(PirTerm term, Map<String, PirType> candidates) {
+        var result = new LinkedHashSet<String>();
+        collectReferencedVars(term, candidates, result);
+        return result;
+    }
+
+    private static void collectReferencedVars(PirTerm term, Map<String, PirType> candidates, Set<String> result) {
+        switch (term) {
+            case PirTerm.Var v -> { if (candidates.containsKey(v.name())) result.add(v.name()); }
+            case PirTerm.Let l -> {
+                collectReferencedVars(l.value(), candidates, result);
+                collectReferencedVars(l.body(), candidates, result);
+            }
+            case PirTerm.LetRec lr -> {
+                for (var b : lr.bindings()) collectReferencedVars(b.value(), candidates, result);
+                collectReferencedVars(lr.body(), candidates, result);
+            }
+            case PirTerm.Lam lam -> collectReferencedVars(lam.body(), candidates, result);
+            case PirTerm.App app -> {
+                collectReferencedVars(app.function(), candidates, result);
+                collectReferencedVars(app.argument(), candidates, result);
+            }
+            case PirTerm.IfThenElse ite -> {
+                collectReferencedVars(ite.cond(), candidates, result);
+                collectReferencedVars(ite.thenBranch(), candidates, result);
+                collectReferencedVars(ite.elseBranch(), candidates, result);
+            }
+            case PirTerm.DataConstr dc -> { for (var f : dc.fields()) collectReferencedVars(f, candidates, result); }
+            case PirTerm.DataMatch dm -> {
+                collectReferencedVars(dm.scrutinee(), candidates, result);
+                for (var b : dm.branches()) collectReferencedVars(b.body(), candidates, result);
+            }
+            case PirTerm.Trace t -> {
+                collectReferencedVars(t.message(), candidates, result);
+                collectReferencedVars(t.body(), candidates, result);
+            }
+            case PirTerm.Const _, PirTerm.Builtin _, PirTerm.Error _ -> {}
+        }
+    }
+
+    /**
+     * Wrap a PIR term with Let re-bindings for pre-loop variables that are referenced in the term.
+     * This fixes the post-while-loop variable corruption bug where LetRec scope boundaries
+     * from while loop desugaring block access to outer Let bindings.
+     */
+    private static PirTerm rebindPreLoopVars(PirTerm rest, Map<String, PirType> preLoopVars, Set<String> accumulatorNames) {
+        // Filter out accumulator names — they are already rebound by unpackAccumulators
+        var candidates = new LinkedHashMap<>(preLoopVars);
+        for (var accName : accumulatorNames) {
+            candidates.remove(accName);
+        }
+        if (candidates.isEmpty()) return rest;
+
+        var referenced = findReferencedVars(rest, candidates);
+        if (referenced.isEmpty()) return rest;
+
+        // Wrap rest with Let re-bindings: Let(name, Var(name, type), rest)
+        // This creates a fresh binding that captures the pre-loop variable value
+        // inside the scope that the LetRec transformation produces.
+        PirTerm result = rest;
+        for (var name : referenced) {
+            var type = candidates.get(name);
+            result = new PirTerm.Let(name, new PirTerm.Var(name, type), result);
+        }
+        return result;
     }
 }
