@@ -53,6 +53,18 @@ public final class ListsLib {
                 + "Use typed list access for debugging.");
     }
 
+    /** Return an empty list. */
+    public static PlutusData.ListData empty() {
+        return new PlutusData.ListData(java.util.Collections.emptyList());
+    }
+
+    /** Prepend an element to the front of a list. */
+    public static PlutusData.ListData prepend(PlutusData.ListData list, PlutusData element) {
+        var items = new java.util.ArrayList<>(toList(list));
+        items.addFirst(element);
+        return new PlutusData.ListData(items);
+    }
+
     /** Return the number of elements in the list. */
     public static BigInteger length(PlutusData.ListData list) {
         return BigInteger.valueOf(toList(list).size());

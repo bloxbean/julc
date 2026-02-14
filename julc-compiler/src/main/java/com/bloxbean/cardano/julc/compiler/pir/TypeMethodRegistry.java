@@ -210,6 +210,18 @@ public final class TypeMethodRegistry {
                     return PirHelpers.builtinApp2(DefaultFun.EqualsByteString, scope, argPir);
                 },
                 scopeType -> new PirType.BoolType());
+
+        // append: AppendByteString(bs1, bs2) — concatenate two bytestrings
+        reg.register("ByteStringType", "append",
+                (scope, args, scopeType, argTypes) ->
+                        PirHelpers.builtinApp2(DefaultFun.AppendByteString, scope, args.get(0)),
+                scopeType -> new PirType.ByteStringType());
+
+        // prepend: ConsByteString(byte, bs) — prepend a single byte (integer 0-255) to bytestring
+        reg.register("ByteStringType", "prepend",
+                (scope, args, scopeType, argTypes) ->
+                        PirHelpers.builtinApp2(DefaultFun.ConsByteString, args.get(0), scope),
+                scopeType -> new PirType.ByteStringType());
     }
 
     // --- String methods (2) ---
@@ -302,6 +314,12 @@ public final class TypeMethodRegistry {
                     return PirHelpers.wrapDecode(raw, lt.elemType());
                 },
                 scopeType -> ((PirType.ListType) scopeType).elemType());
+
+        // prepend: MkCons(element, list) — prepend element to front of list
+        reg.register("ListType", "prepend",
+                (scope, args, scopeType, argTypes) ->
+                        PirHelpers.builtinApp2(DefaultFun.MkCons, args.get(0), scope),
+                scopeType -> scopeType);
 
         // contains: recursive search with typed equality
         reg.register("ListType", "contains",

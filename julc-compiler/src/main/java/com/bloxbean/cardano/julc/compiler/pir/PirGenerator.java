@@ -2198,6 +2198,14 @@ public class PirGenerator {
         var selector = generateExpression(se.getSelector());
         // Determine the sum type from the selector's type
         var selectorType = inferPirType(selector);
+        // Fallback: if PIR-level inference returns DataType, try resolving from the Java AST.
+        // This handles cases like txOut.datum() where field extraction PIR loses the SumType info.
+        if (!(selectorType instanceof PirType.SumType) && se.getSelector() instanceof Expression selectorExpr) {
+            var astType = resolveExpressionType(selectorExpr);
+            if (astType instanceof PirType.SumType) {
+                selectorType = astType;
+            }
+        }
         if (!(selectorType instanceof PirType.SumType sumType)) {
             throw enrichedError("switch expression requires a sealed interface type, got: " + selectorType,
                     "Ensure the switch variable's type is a sealed interface with record variants.", se);
@@ -2431,12 +2439,12 @@ public class PirGenerator {
         return switch (fun) {
             case AddInteger, SubtractInteger, MultiplyInteger, DivideInteger,
                  QuotientInteger, RemainderInteger, ModInteger,
-                 LengthOfByteString, ByteStringToInteger -> new PirType.IntegerType();
+                 LengthOfByteString, ByteStringToInteger, UnIData -> new PirType.IntegerType();
             case EqualsInteger, LessThanInteger, LessThanEqualsInteger,
                  EqualsByteString, LessThanByteString, LessThanEqualsByteString,
                  EqualsString, EqualsData, NullList -> new PirType.BoolType();
             case AppendByteString, SliceByteString, ConsByteString,
-                 Sha2_256, Sha3_256, Blake2b_256, EncodeUtf8 -> new PirType.ByteStringType();
+                 Sha2_256, Sha3_256, Blake2b_256, EncodeUtf8, UnBData -> new PirType.ByteStringType();
             case AppendString, DecodeUtf8 -> new PirType.StringType();
             // List-returning builtins: these return List(Data) in UPLC
             case UnListData, TailList, MkCons, MkNilData -> new PirType.ListType(new PirType.DataType());

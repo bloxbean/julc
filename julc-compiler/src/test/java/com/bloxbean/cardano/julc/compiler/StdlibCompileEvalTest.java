@@ -1135,7 +1135,399 @@ class StdlibCompileEvalTest {
     }
 
     // =========================================================================
-    // 10. TransitiveDependencies — user @OnchainLibrary calling stdlib methods
+    // 10. OutputLibEval — Output utility library (ledger types)
+    // =========================================================================
+
+    @Nested
+    class OutputLibEval {
+
+        /**
+         * Build Address: Constr(0, [PubKeyCredential(pkh), noStaking]).
+         * PubKeyCredential = Constr(0, [pkh_bytes])
+         * noStaking = Constr(1, []) (None)
+         */
+        static PlutusData buildAddress(byte[] pkh) {
+            var pubKeyCred = PlutusData.constr(0, PlutusData.bytes(pkh));
+            var noStaking = PlutusData.constr(1);
+            return PlutusData.constr(0, pubKeyCred, noStaking);
+        }
+
+        /**
+         * Build a TxOut: Constr(0, [address, value, datum, refScript]).
+         */
+        static PlutusData buildTxOut(PlutusData address, PlutusData value, PlutusData datum) {
+            var noRefScript = PlutusData.constr(1);    // None
+            return PlutusData.constr(0, address, value, datum, noRefScript);
+        }
+
+        /** Build TxOut with NoOutputDatum. */
+        static PlutusData buildTxOut(PlutusData address, PlutusData value) {
+            return buildTxOut(address, value, PlutusData.constr(0)); // NoOutputDatum
+        }
+
+        /** Build a Value with only lovelace. */
+        static PlutusData lovelaceValue(long lovelace) {
+            return simpleValue(lovelace);
+        }
+
+        /** Build a Value with lovelace + one token. */
+        static PlutusData tokenValue(long lovelace, byte[] policy, byte[] token, long amount) {
+            return multiAssetValue(lovelace, policy, token, amount);
+        }
+
+        @Test
+        void txOutAddressExtractsCorrectField() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            // redeemer = Constr(0, [txOut, expectedAddress])
+                            PlutusData fields = Builtins.constrFields(redeemer);
+                            TxOut txOut = Builtins.headList(fields);
+                            Address expected = Builtins.headList(Builtins.tailList(fields));
+                            Address actual = OutputLib.txOutAddress(txOut);
+                            return actual == expected;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+
+            var pkh = new byte[]{1, 2, 3, 4, 5};
+            var address = buildAddress(pkh);
+            var txOut = buildTxOut(address, lovelaceValue(2000000));
+            var redeemer = PlutusData.constr(0, txOut, address);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "txOutAddress should extract address. Got: " + result);
+        }
+
+        @Test
+        void txOutValueExtractsLovelace() {
+            var source = """
+                    import java.math.BigInteger;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            // redeemer = a TxOut
+                            Value val = OutputLib.txOutValue(redeemer);
+                            // Extract lovelace from Value using Builtins
+                            var pairs = Builtins.unMapData(val);
+                            var firstPair = Builtins.headList(pairs);
+                            var tokenMap = Builtins.sndPair(firstPair);
+                            var tokenPairs = Builtins.unMapData(tokenMap);
+                            var firstToken = Builtins.headList(tokenPairs);
+                            long lovelace = Builtins.unIData(Builtins.sndPair(firstToken));
+                            return lovelace == 3000000;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+
+            var txOut = buildTxOut(buildAddress(new byte[]{1}), lovelaceValue(3000000));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(txOut)));
+            assertTrue(result.isSuccess(), "txOutValue should extract value with 3M lovelace. Got: " + result);
+        }
+
+        @Test
+        void txOutDatumExtractsTag() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            // redeemer = TxOut with InlineDatum
+                            OutputDatum d = OutputLib.txOutDatum(redeemer);
+                            // InlineDatum is Constr(2, [datum]) — check tag == 2
+                            return Builtins.constrTag(d) == 2;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+
+            var inlineDatum = PlutusData.constr(2, PlutusData.integer(42)); // OutputDatumInline(42)
+            var txOut = buildTxOut(buildAddress(new byte[]{1}), lovelaceValue(2000000), inlineDatum);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(txOut)));
+            assertTrue(result.isSuccess(), "txOutDatum should extract InlineDatum tag=2. Got: " + result);
+        }
+
+        @Test
+        void outputsAtFiltersMatchingAddress() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            // redeemer = Constr(0, [outputs_list, target_address])
+                            PlutusData fields = Builtins.constrFields(redeemer);
+                            List<TxOut> outputs = Builtins.unListData(Builtins.headList(fields));
+                            Address addr = Builtins.headList(Builtins.tailList(fields));
+                            List<TxOut> matched = OutputLib.outputsAt(outputs, addr);
+                            return ListsLib.length(matched) == 2;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+
+            var addr1 = buildAddress(new byte[]{1, 2, 3});
+            var addr2 = buildAddress(new byte[]{4, 5, 6});
+            var out1 = buildTxOut(addr1, lovelaceValue(1000000));
+            var out2 = buildTxOut(addr1, lovelaceValue(2000000));
+            var out3 = buildTxOut(addr2, lovelaceValue(3000000));
+            var outputs = PlutusData.list(out1, out2, out3);
+            var redeemer = PlutusData.constr(0, outputs, addr1);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "outputsAt should return 2 matching outputs. Got: " + result);
+        }
+
+        @Test
+        void countOutputsAtReturnsCorrect() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            PlutusData fields = Builtins.constrFields(redeemer);
+                            List<TxOut> outputs = Builtins.unListData(Builtins.headList(fields));
+                            Address addr = Builtins.headList(Builtins.tailList(fields));
+                            return OutputLib.countOutputsAt(outputs, addr) == 3;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+
+            var addr = buildAddress(new byte[]{1, 2, 3});
+            var out1 = buildTxOut(addr, lovelaceValue(1000000));
+            var out2 = buildTxOut(addr, lovelaceValue(2000000));
+            var out3 = buildTxOut(addr, lovelaceValue(3000000));
+            var outputs = PlutusData.list(out1, out2, out3);
+            var redeemer = PlutusData.constr(0, outputs, addr);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "countOutputsAt should return 3. Got: " + result);
+        }
+
+        @Test
+        void uniqueOutputAtSucceeds() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            PlutusData fields = Builtins.constrFields(redeemer);
+                            List<TxOut> outputs = Builtins.unListData(Builtins.headList(fields));
+                            Address addr = Builtins.headList(Builtins.tailList(fields));
+                            TxOut unique = OutputLib.uniqueOutputAt(outputs, addr);
+                            // Verify it's the expected output by checking address equality
+                            return OutputLib.txOutAddress(unique) == addr;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+
+            var addr1 = buildAddress(new byte[]{1, 2, 3});
+            var addr2 = buildAddress(new byte[]{4, 5, 6});
+            var out1 = buildTxOut(addr1, lovelaceValue(1000000));
+            var out2 = buildTxOut(addr2, lovelaceValue(2000000));
+            var outputs = PlutusData.list(out1, out2);
+            var redeemer = PlutusData.constr(0, outputs, addr1);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "uniqueOutputAt should succeed with 1 match. Got: " + result);
+        }
+
+        @Test
+        void uniqueOutputAtErrorsNoMatch() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            PlutusData fields = Builtins.constrFields(redeemer);
+                            List<TxOut> outputs = Builtins.unListData(Builtins.headList(fields));
+                            Address addr = Builtins.headList(Builtins.tailList(fields));
+                            TxOut unique = OutputLib.uniqueOutputAt(outputs, addr);
+                            // Force evaluation of unique by comparing its address field
+                            return unique.address() == addr;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+
+            var addr1 = buildAddress(new byte[]{1, 2, 3});
+            var addr2 = buildAddress(new byte[]{4, 5, 6});
+            var out1 = buildTxOut(addr2, lovelaceValue(1000000));
+            var outputs = PlutusData.list(out1);
+            var redeemer = PlutusData.constr(0, outputs, addr1);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertFalse(result.isSuccess(), "uniqueOutputAt should abort with 0 matches. Got: " + result);
+        }
+
+        @Test
+        void outputsWithTokenFindsMatch() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            PlutusData fields = Builtins.constrFields(redeemer);
+                            List<TxOut> outputs = Builtins.unListData(Builtins.headList(fields));
+                            PlutusData policyId = Builtins.headList(Builtins.tailList(fields));
+                            PlutusData tokenName = Builtins.headList(Builtins.tailList(Builtins.tailList(fields)));
+                            List<TxOut> matched = OutputLib.outputsWithToken(outputs, policyId, tokenName);
+                            return ListsLib.length(matched) == 1;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+
+            var addr = buildAddress(new byte[]{1, 2, 3});
+            var policy = new byte[]{10, 20, 30};
+            var token = new byte[]{40, 50, 60};
+            var out1 = buildTxOut(addr, tokenValue(2000000, policy, token, 100));
+            var out2 = buildTxOut(addr, lovelaceValue(3000000)); // no token
+            var outputs = PlutusData.list(out1, out2);
+            var redeemer = PlutusData.constr(0, outputs, PlutusData.bytes(policy), PlutusData.bytes(token));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "outputsWithToken should find 1 match. Got: " + result);
+        }
+
+        @Test
+        void outputsWithTokenEmptyNoMatch() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            PlutusData fields = Builtins.constrFields(redeemer);
+                            List<TxOut> outputs = Builtins.unListData(Builtins.headList(fields));
+                            PlutusData policyId = Builtins.headList(Builtins.tailList(fields));
+                            PlutusData tokenName = Builtins.headList(Builtins.tailList(Builtins.tailList(fields)));
+                            List<TxOut> matched = OutputLib.outputsWithToken(outputs, policyId, tokenName);
+                            return ListsLib.length(matched) == 0;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+
+            var addr = buildAddress(new byte[]{1, 2, 3});
+            var policy = new byte[]{10, 20, 30};
+            var token = new byte[]{40, 50, 60};
+            var out1 = buildTxOut(addr, lovelaceValue(2000000)); // no token
+            var out2 = buildTxOut(addr, lovelaceValue(3000000)); // no token
+            var outputs = PlutusData.list(out1, out2);
+            var redeemer = PlutusData.constr(0, outputs, PlutusData.bytes(policy), PlutusData.bytes(token));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "outputsWithToken should find 0 matches. Got: " + result);
+        }
+
+        @Test
+        void lovelacePaidToSumsCorrectly() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            PlutusData fields = Builtins.constrFields(redeemer);
+                            List<TxOut> outputs = Builtins.unListData(Builtins.headList(fields));
+                            Address addr = Builtins.headList(Builtins.tailList(fields));
+                            return OutputLib.lovelacePaidTo(outputs, addr).longValue() == 10000000;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+
+            var addr1 = buildAddress(new byte[]{1, 2, 3});
+            var addr2 = buildAddress(new byte[]{4, 5, 6});
+            var out1 = buildTxOut(addr1, lovelaceValue(2000000));
+            var out2 = buildTxOut(addr1, lovelaceValue(3000000));
+            var out3 = buildTxOut(addr2, lovelaceValue(4000000));
+            var out4 = buildTxOut(addr1, lovelaceValue(5000000));
+            var outputs = PlutusData.list(out1, out2, out3, out4);
+            var redeemer = PlutusData.constr(0, outputs, addr1);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "lovelacePaidTo should sum 2M+3M+5M=10M. Got: " + result);
+        }
+
+        @Test
+        void paidAtLeastSucceeds() {
+            var source = """
+                    import java.math.BigInteger;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            PlutusData fields = Builtins.constrFields(redeemer);
+                            List<TxOut> outputs = Builtins.unListData(Builtins.headList(fields));
+                            Address addr = Builtins.headList(Builtins.tailList(fields));
+                            return OutputLib.paidAtLeast(outputs, addr, BigInteger.valueOf(4000000));
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+
+            var addr = buildAddress(new byte[]{1, 2, 3});
+            var out1 = buildTxOut(addr, lovelaceValue(2000000));
+            var out2 = buildTxOut(addr, lovelaceValue(3000000));
+            var outputs = PlutusData.list(out1, out2);
+            var redeemer = PlutusData.constr(0, outputs, addr);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "paidAtLeast(5M >= 4M) should be true. Got: " + result);
+        }
+
+        @Test
+        void getInlineDatumExtractsValue() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            // redeemer = TxOut with InlineDatum(IData(42))
+                            PlutusData datum = OutputLib.getInlineDatum(redeemer);
+                            return Builtins.unIData(datum) == 42;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+
+            var inlineDatum = PlutusData.constr(2, PlutusData.integer(42)); // OutputDatumInline(42)
+            var txOut = buildTxOut(buildAddress(new byte[]{1}), lovelaceValue(2000000), inlineDatum);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(txOut)));
+            assertTrue(result.isSuccess(), "getInlineDatum should extract 42. Got: " + result);
+        }
+
+        @Test
+        void resolveDatumLooksUpHash() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            // redeemer = Constr(0, [txOut, datumsMap])
+                            PlutusData fields = Builtins.constrFields(redeemer);
+                            TxOut txOut = Builtins.headList(fields);
+                            PlutusData.MapData datumsMap = Builtins.headList(Builtins.tailList(fields));
+                            PlutusData datum = OutputLib.resolveDatum(txOut, datumsMap);
+                            return Builtins.unIData(datum) == 99;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+
+            var hashBytes = new byte[]{(byte) 0xAA, (byte) 0xBB, (byte) 0xCC};
+            var datumHash = PlutusData.constr(1, PlutusData.bytes(hashBytes)); // OutputDatumHash
+            var txOut = buildTxOut(buildAddress(new byte[]{1}), lovelaceValue(2000000), datumHash);
+            // datumsMap: Map[(BData(hashBytes), IData(99))]
+            var datumsMap = PlutusData.map(
+                    new PlutusData.Pair(PlutusData.bytes(hashBytes), PlutusData.integer(99)));
+            var redeemer = PlutusData.constr(0, txOut, datumsMap);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "resolveDatum should look up hash and return 99. Got: " + result);
+        }
+    }
+
+    // =========================================================================
+    // 11. TransitiveDependencies — user @OnchainLibrary calling stdlib methods
     // =========================================================================
 
     @Nested

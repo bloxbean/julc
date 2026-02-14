@@ -13,6 +13,16 @@ import com.bloxbean.cardano.julc.onchain.stdlib.Builtins;
 @OnchainLibrary
 public class ListsLib {
 
+    /** Return an empty list. */
+    public static PlutusData.ListData empty() {
+        return Builtins.mkNilData();
+    }
+
+    /** Prepend an element to the front of a list. */
+    public static PlutusData.ListData prepend(PlutusData.ListData list, PlutusData element) {
+        return Builtins.mkCons(element, list);
+    }
+
     /** Return the number of elements in the list. */
     public static long length(PlutusData.ListData list) {
         var count = 0L;

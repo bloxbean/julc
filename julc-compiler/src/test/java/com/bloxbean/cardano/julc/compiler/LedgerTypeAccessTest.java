@@ -1,6 +1,7 @@
 package com.bloxbean.cardano.julc.compiler;
 
 import com.bloxbean.cardano.julc.compiler.pir.PirTerm;
+import com.bloxbean.cardano.julc.compiler.pir.PirType;
 import com.bloxbean.cardano.julc.compiler.pir.StdlibLookup;
 import com.bloxbean.cardano.julc.core.*;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
@@ -529,6 +530,194 @@ class LedgerTypeAccessTest {
                     PlutusData.constr(0, PlutusData.bytes(new byte[28])));
             var result = vm.evaluateWithArgs(program, List.of(ctx));
             assertTrue(result.isSuccess(), "ContextsLib.signedBy should work with typed TxInfo. Got: " + result);
+        }
+    }
+
+    @Nested
+    class LibraryLedgerTypes {
+
+        static final StdlibRegistry STDLIB = StdlibRegistry.defaultRegistry();
+
+        /**
+         * Build a TxOut: Constr(0, [address, value, datum, refScript]).
+         */
+        static PlutusData buildTxOut(PlutusData address, PlutusData value) {
+            var noOutputDatum = PlutusData.constr(0);  // NoOutputDatum
+            var noRefScript = PlutusData.constr(1);    // None
+            return PlutusData.constr(0, address, value, noOutputDatum, noRefScript);
+        }
+
+        /**
+         * Build Address: Constr(0, [PubKeyCredential(pkh), noStaking]).
+         */
+        static PlutusData buildAddress(byte[] pkh) {
+            var pubKeyCred = PlutusData.constr(0, PlutusData.bytes(pkh));
+            var noStaking = PlutusData.constr(1);
+            return PlutusData.constr(0, pubKeyCred, noStaking);
+        }
+
+        /**
+         * Build a simple Value with only lovelace.
+         */
+        static PlutusData simpleValue(long lovelace) {
+            return PlutusData.map(
+                    new PlutusData.Pair(
+                            PlutusData.bytes(new byte[0]),
+                            PlutusData.map(
+                                    new PlutusData.Pair(PlutusData.bytes(new byte[0]), PlutusData.integer(lovelace))
+                            )
+                    )
+            );
+        }
+
+        @Test
+        void libraryWithTxOutFieldAccess() {
+            // Library method takes TxOut, accesses .address()
+            var libSource = """
+                    package com.example;
+                    import com.bloxbean.cardano.julc.core.PlutusData;
+                    import com.bloxbean.cardano.julc.onchain.annotation.OnchainLibrary;
+
+                    @OnchainLibrary
+                    public class TestOutputLib {
+                        public static boolean matchesAddress(TxOut txOut, Address expected) {
+                            Address addr = txOut.address();
+                            return addr == expected;
+                        }
+                    }
+                    """;
+            var validator = """
+                    import com.example.TestOutputLib;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            // redeemer = Constr(0, [txOut, address])
+                            var fields = Builtins.constrFields(redeemer);
+                            TxOut txOut = Builtins.headList(fields);
+                            Address addr = Builtins.headList(Builtins.tailList(fields));
+                            return TestOutputLib.matchesAddress(txOut, addr);
+                        }
+                    }
+                    """;
+            var compiler = new JulcCompiler(STDLIB::lookup);
+            var result = compiler.compile(validator, List.of(libSource));
+            assertFalse(result.hasErrors(), "Compilation should succeed: " + result);
+
+            // Build test data: TxOut with address, then compare to same address
+            var pkh = new byte[]{1, 2, 3, 4, 5};
+            var address = buildAddress(pkh);
+            var value = simpleValue(2000000);
+            var txOut = buildTxOut(address, value);
+            var redeemer = PlutusData.constr(0, txOut, address);
+            var ctx = PlutusData.constr(0, PlutusData.integer(0), redeemer,
+                    PlutusData.constr(0, PlutusData.bytes(new byte[28])));
+
+            var evalResult = vm.evaluateWithArgs(result.program(), List.of(ctx));
+            assertTrue(evalResult.isSuccess(),
+                    "Library TxOut field access should work. Got: " + evalResult);
+        }
+
+        @Test
+        void libraryWithListTxOutForEach() {
+            // Library method takes List<TxOut>, uses for-each to count
+            var libSource = """
+                    package com.example;
+                    import com.bloxbean.cardano.julc.core.PlutusData;
+                    import com.bloxbean.cardano.julc.onchain.annotation.OnchainLibrary;
+                    import java.util.List;
+
+                    @OnchainLibrary
+                    public class TestOutputLib {
+                        public static long countOutputs(List<TxOut> outputs) {
+                            long count = 0;
+                            for (TxOut out : outputs) {
+                                count = count + 1;
+                            }
+                            return count;
+                        }
+                    }
+                    """;
+            var validator = """
+                    import com.example.TestOutputLib;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            // redeemer = ListData of TxOuts
+                            long count = TestOutputLib.countOutputs(Builtins.unListData(redeemer));
+                            return count == 2;
+                        }
+                    }
+                    """;
+            var compiler = new JulcCompiler(STDLIB::lookup);
+            var result = compiler.compile(validator, List.of(libSource));
+            assertFalse(result.hasErrors(), "Compilation should succeed: " + result);
+
+            var pkh = new byte[]{1, 2, 3};
+            var address = buildAddress(pkh);
+            var value = simpleValue(2000000);
+            var txOut1 = buildTxOut(address, value);
+            var txOut2 = buildTxOut(address, simpleValue(3000000));
+            var redeemer = PlutusData.list(txOut1, txOut2);
+            var ctx = PlutusData.constr(0, PlutusData.integer(0), redeemer,
+                    PlutusData.constr(0, PlutusData.bytes(new byte[28])));
+
+            var evalResult = vm.evaluateWithArgs(result.program(), List.of(ctx));
+            assertTrue(evalResult.isSuccess(),
+                    "Library for-each over List<TxOut> should work. Got: " + evalResult);
+        }
+
+        @Test
+        void libraryAccessingValueField() {
+            // Library method accesses TxOut.value() and extracts lovelace via Builtins
+            var libSource = """
+                    package com.example;
+                    import com.bloxbean.cardano.julc.core.PlutusData;
+                    import com.bloxbean.cardano.julc.onchain.annotation.OnchainLibrary;
+
+                    @OnchainLibrary
+                    public class TestOutputLib {
+                        public static long getLovelace(TxOut txOut) {
+                            Value val = txOut.value();
+                            var pairs = Builtins.unMapData(val);
+                            var firstPair = Builtins.headList(pairs);
+                            var tokenMapData = Builtins.sndPair(firstPair);
+                            var tokenPairs = Builtins.unMapData(tokenMapData);
+                            var firstTokenPair = Builtins.headList(tokenPairs);
+                            return Builtins.unIData(Builtins.sndPair(firstTokenPair));
+                        }
+                    }
+                    """;
+            var validator = """
+                    import com.example.TestOutputLib;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            // redeemer = a TxOut
+                            long lovelace = TestOutputLib.getLovelace(redeemer);
+                            return lovelace == 5000000;
+                        }
+                    }
+                    """;
+            var compiler = new JulcCompiler(STDLIB::lookup);
+            var result = compiler.compile(validator, List.of(libSource));
+            assertFalse(result.hasErrors(), "Compilation should succeed: " + result);
+
+            var pkh = new byte[]{1, 2, 3};
+            var address = buildAddress(pkh);
+            var value = simpleValue(5000000);
+            var txOut = buildTxOut(address, value);
+            var ctx = PlutusData.constr(0, PlutusData.integer(0), txOut,
+                    PlutusData.constr(0, PlutusData.bytes(new byte[28])));
+
+            var evalResult = vm.evaluateWithArgs(result.program(), List.of(ctx));
+            assertTrue(evalResult.isSuccess(),
+                    "Library accessing txOut.value() and extracting lovelace should work. Got: " + evalResult);
         }
     }
 
