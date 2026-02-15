@@ -1,6 +1,7 @@
-package com.bloxbean.cardano.julc.stdlib.onchain;
+package com.bloxbean.cardano.julc.stdlib.lib;
 
 import com.bloxbean.cardano.julc.core.PlutusData;
+import com.bloxbean.cardano.julc.core.types.Tuple2;
 import com.bloxbean.cardano.julc.onchain.annotation.OnchainLibrary;
 import com.bloxbean.cardano.julc.onchain.stdlib.Builtins;
 
@@ -39,20 +40,18 @@ public class MathLib {
         }
     }
 
-    /** Returns division and modulo as a pair: ConstrData(0, [IData(div), IData(mod)]). */
-    public static PlutusData.ConstrData divMod(BigInteger a, BigInteger b) {
+    /** Returns division and modulo as a Tuple2. */
+    public static Tuple2 divMod(BigInteger a, BigInteger b) {
         var div = a.divide(b);
         var mod = a.remainder(b);
-        var fields = Builtins.mkCons(Builtins.iData(div), Builtins.mkCons(Builtins.iData(mod), Builtins.mkNilData()));
-        return Builtins.constrData(0, fields);
+        return new Tuple2(Builtins.iData(div), Builtins.iData(mod));
     }
 
-    /** Returns quotient and remainder as a pair: ConstrData(0, [IData(quot), IData(rem)]). */
-    public static PlutusData.ConstrData quotRem(BigInteger a, BigInteger b) {
+    /** Returns quotient and remainder as a Tuple2. */
+    public static Tuple2 quotRem(BigInteger a, BigInteger b) {
         var quot = a.divide(b);
         var rem = a.remainder(b);
-        var fields = Builtins.mkCons(Builtins.iData(quot), Builtins.mkCons(Builtins.iData(rem), Builtins.mkNilData()));
-        return Builtins.constrData(0, fields);
+        return new Tuple2(Builtins.iData(quot), Builtins.iData(rem));
     }
 
     /** Returns base raised to the power of exp. */

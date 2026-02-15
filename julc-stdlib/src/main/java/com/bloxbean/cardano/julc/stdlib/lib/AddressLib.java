@@ -1,8 +1,8 @@
-package com.bloxbean.cardano.julc.stdlib.onchain;
+package com.bloxbean.cardano.julc.stdlib.lib;
 
 import com.bloxbean.cardano.julc.onchain.annotation.OnchainLibrary;
-import com.bloxbean.cardano.julc.onchain.ledger.Address;
-import com.bloxbean.cardano.julc.onchain.ledger.Credential;
+import com.bloxbean.cardano.julc.ledger.Address;
+import com.bloxbean.cardano.julc.ledger.Credential;
 
 /**
  * Address operations compiled from Java source to UPLC.
@@ -20,10 +20,11 @@ public class AddressLib {
 
     /** Extract the hash from the payment credential of an address.
      *  Works for both PubKeyCredential and ScriptCredential. */
+    @SuppressWarnings("unchecked")
     public static byte[] credentialHash(Address address) {
         return switch (address.credential()) {
-            case Credential.PubKeyCredential pk -> pk.hash();
-            case Credential.ScriptCredential sc -> sc.hash();
+            case Credential.PubKeyCredential pk -> (byte[])(Object) pk.hash();
+            case Credential.ScriptCredential sc -> (byte[])(Object) sc.hash();
         };
     }
 

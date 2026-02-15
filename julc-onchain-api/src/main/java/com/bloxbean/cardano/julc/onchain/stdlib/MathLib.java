@@ -1,6 +1,7 @@
 package com.bloxbean.cardano.julc.onchain.stdlib;
 
 import com.bloxbean.cardano.julc.core.PlutusData;
+import com.bloxbean.cardano.julc.core.types.Tuple2;
 
 import java.math.BigInteger;
 
@@ -47,37 +48,29 @@ public final class MathLib {
     }
 
     /**
-     * Returns division and modulo as a pair: (div, mod).
-     * <p>
-     * Result is encoded as ConstrData(0, [IData(div), IData(mod)]).
+     * Returns division and modulo as a Tuple2.
      *
      * @param a the dividend
      * @param b the divisor
-     * @return PlutusData.ConstrData representing (div, mod)
+     * @return Tuple2(IData(div), IData(mod))
      */
-    public static PlutusData.ConstrData divMod(BigInteger a, BigInteger b) {
+    public static Tuple2 divMod(BigInteger a, BigInteger b) {
         var div = a.divide(b);
         var mod = a.mod(b);
-        return new PlutusData.ConstrData(0, java.util.List.of(
-                new PlutusData.IntData(div),
-                new PlutusData.IntData(mod)));
+        return new Tuple2(new PlutusData.IntData(div), new PlutusData.IntData(mod));
     }
 
     /**
-     * Returns quotient and remainder as a pair: (quot, rem).
-     * <p>
-     * Result is encoded as ConstrData(0, [IData(quot), IData(rem)]).
+     * Returns quotient and remainder as a Tuple2.
      *
      * @param a the dividend
      * @param b the divisor
-     * @return PlutusData.ConstrData representing (quot, rem)
+     * @return Tuple2(IData(quot), IData(rem))
      */
-    public static PlutusData.ConstrData quotRem(BigInteger a, BigInteger b) {
+    public static Tuple2 quotRem(BigInteger a, BigInteger b) {
         var quot = a.divide(b);
         var rem = a.remainder(b);
-        return new PlutusData.ConstrData(0, java.util.List.of(
-                new PlutusData.IntData(quot),
-                new PlutusData.IntData(rem)));
+        return new Tuple2(new PlutusData.IntData(quot), new PlutusData.IntData(rem));
     }
 
     /**

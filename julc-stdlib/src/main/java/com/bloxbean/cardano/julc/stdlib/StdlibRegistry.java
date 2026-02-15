@@ -116,6 +116,7 @@ public final class StdlibRegistry {
         registerListsLibHof(reg);
         registerContextsTrace(reg);
         registerJavaMathDelegates(reg);
+        registerCollectionFactories(reg);
         return reg;
     }
 
@@ -477,6 +478,31 @@ public final class StdlibRegistry {
             requireArgs("Math.min", args, 2);
             var lte = builtinApp2(DefaultFun.LessThanEqualsInteger, args.get(0), args.get(1));
             return new PirTerm.IfThenElse(lte, args.get(0), args.get(1));
+        });
+    }
+
+    /**
+     * Register JulcList factory methods as compiler intrinsics.
+     * These allow on-chain code to create lists without going through ListsLib.
+     */
+    private static void registerCollectionFactories(StdlibRegistry reg) {
+        // JulcList.empty() → MkNilData(unit)
+        reg.register("JulcList", "empty", args -> {
+            requireArgs("JulcList.empty", args, 0);
+            return new PirTerm.App(
+                    new PirTerm.Builtin(DefaultFun.MkNilData),
+                    new PirTerm.Const(Constant.unit()));
+        });
+
+        // JulcList.of(a, b, c) → MkCons(a, MkCons(b, MkCons(c, MkNilData(unit))))
+        reg.register("JulcList", "of", args -> {
+            PirTerm result = new PirTerm.App(
+                    new PirTerm.Builtin(DefaultFun.MkNilData),
+                    new PirTerm.Const(Constant.unit()));
+            for (int i = args.size() - 1; i >= 0; i--) {
+                result = builtinApp2(DefaultFun.MkCons, args.get(i), result);
+            }
+            return result;
         });
     }
 

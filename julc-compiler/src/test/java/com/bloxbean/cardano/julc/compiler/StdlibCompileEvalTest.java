@@ -1864,7 +1864,7 @@ class StdlibCompileEvalTest {
         @Test
         void valueLovelaceOf() {
             var source = """
-                    import com.bloxbean.cardano.julc.onchain.ledger.*;
+                    import com.bloxbean.cardano.julc.ledger.*;
 
                     @Validator
                     class TestValidator {
@@ -1884,7 +1884,7 @@ class StdlibCompileEvalTest {
         @Test
         void valueIsEmptyTrue() {
             var source = """
-                    import com.bloxbean.cardano.julc.onchain.ledger.*;
+                    import com.bloxbean.cardano.julc.ledger.*;
 
                     @Validator
                     class TestValidator {
@@ -1903,7 +1903,7 @@ class StdlibCompileEvalTest {
         @Test
         void valueIsEmptyFalse() {
             var source = """
-                    import com.bloxbean.cardano.julc.onchain.ledger.*;
+                    import com.bloxbean.cardano.julc.ledger.*;
 
                     @Validator
                     class TestValidator {
@@ -1924,7 +1924,7 @@ class StdlibCompileEvalTest {
         void valueAssetOfFound() {
             // Pass value and policy/token as a ConstrData tuple in the redeemer
             var source = """
-                    import com.bloxbean.cardano.julc.onchain.ledger.*;
+                    import com.bloxbean.cardano.julc.ledger.*;
 
                     @Validator
                     class TestValidator {
@@ -1950,7 +1950,7 @@ class StdlibCompileEvalTest {
         @Test
         void valueAssetOfNotFound() {
             var source = """
-                    import com.bloxbean.cardano.julc.onchain.ledger.*;
+                    import com.bloxbean.cardano.julc.ledger.*;
 
                     @Validator
                     class TestValidator {
@@ -1972,6 +1972,496 @@ class StdlibCompileEvalTest {
                     PlutusData.bytes(new byte[]{9, 9, 9}), PlutusData.bytes(new byte[]{8, 8}));
             var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
             assertTrue(result.isSuccess(), "value.assetOf() with non-existent policy should return 0. Got: " + result);
+        }
+    }
+
+    // ====================================================================
+    // Tuple2 / Tuple3 tests
+    // ====================================================================
+
+    @Nested
+    class Tuple2Tests {
+
+        @Test
+        void constructAndAccessFirst() {
+            var source = """
+                    import com.bloxbean.cardano.julc.core.types.Tuple2;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            Tuple2 t = new Tuple2(Builtins.iData(BigInteger.valueOf(10)), Builtins.iData(BigInteger.valueOf(20)));
+                            return Builtins.unIData(t.first()) == 10;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
+            assertTrue(result.isSuccess(), "Tuple2.first() should return first element. Got: " + result);
+        }
+
+        @Test
+        void constructAndAccessSecond() {
+            var source = """
+                    import com.bloxbean.cardano.julc.core.types.Tuple2;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            Tuple2 t = new Tuple2(Builtins.iData(BigInteger.valueOf(10)), Builtins.iData(BigInteger.valueOf(20)));
+                            return Builtins.unIData(t.second()) == 20;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
+            assertTrue(result.isSuccess(), "Tuple2.second() should return second element. Got: " + result);
+        }
+
+        @Test
+        void fieldAccessBothFields() {
+            var source = """
+                    import com.bloxbean.cardano.julc.core.types.Tuple2;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            Tuple2 t = new Tuple2(Builtins.iData(BigInteger.valueOf(3)), Builtins.iData(BigInteger.valueOf(7)));
+                            return Builtins.unIData(t.first()) + Builtins.unIData(t.second()) == 10;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
+            assertTrue(result.isSuccess(), "Tuple2 field access should sum to 10. Got: " + result);
+        }
+
+        @Test
+        void mathLibDivMod() {
+            var source = """
+                    import com.bloxbean.cardano.julc.core.types.Tuple2;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            Tuple2 result = MathLib.divMod(BigInteger.valueOf(17), BigInteger.valueOf(5));
+                            long div = Builtins.unIData(result.first());
+                            long rem = Builtins.unIData(result.second());
+                            return div == 3 && rem == 2;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
+            assertTrue(result.isSuccess(), "MathLib.divMod should return Tuple2(3, 2) for 17/5. Got: " + result);
+        }
+
+        @Test
+        void mathLibQuotRem() {
+            var source = """
+                    import com.bloxbean.cardano.julc.core.types.Tuple2;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            Tuple2 result = MathLib.quotRem(BigInteger.valueOf(17), BigInteger.valueOf(5));
+                            long q = Builtins.unIData(result.first());
+                            long r = Builtins.unIData(result.second());
+                            return q == 3 && r == 2;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
+            assertTrue(result.isSuccess(), "MathLib.quotRem should return Tuple2(3, 2) for 17/5. Got: " + result);
+        }
+    }
+
+    @Nested
+    class Tuple3Tests {
+
+        @Test
+        void constructAndAccessFields() {
+            var source = """
+                    import com.bloxbean.cardano.julc.core.types.Tuple3;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            Tuple3 t = new Tuple3(Builtins.iData(BigInteger.valueOf(1)),
+                                                  Builtins.iData(BigInteger.valueOf(2)),
+                                                  Builtins.iData(BigInteger.valueOf(3)));
+                            return Builtins.unIData(t.first()) == 1
+                                && Builtins.unIData(t.second()) == 2
+                                && Builtins.unIData(t.third()) == 3;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
+            assertTrue(result.isSuccess(), "Tuple3 field access should work. Got: " + result);
+        }
+
+        @Test
+        void fieldAccessAllThree() {
+            var source = """
+                    import com.bloxbean.cardano.julc.core.types.Tuple3;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            Tuple3 t = new Tuple3(Builtins.iData(BigInteger.valueOf(10)),
+                                                  Builtins.iData(BigInteger.valueOf(20)),
+                                                  Builtins.iData(BigInteger.valueOf(30)));
+                            return Builtins.unIData(t.first()) + Builtins.unIData(t.second()) + Builtins.unIData(t.third()) == 60;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
+            assertTrue(result.isSuccess(), "Tuple3 field access should sum to 60. Got: " + result);
+        }
+    }
+
+    // ====================================================================
+    // JulcList tests
+    // ====================================================================
+
+    @Nested
+    class JulcListTests {
+
+        @Test
+        void julcListResolvesAsListType() {
+            var source = """
+                    import com.bloxbean.cardano.julc.core.types.JulcList;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            JulcList<PlutusData> items = Builtins.unListData(redeemer);
+                            return items.size() == 3;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.list(PlutusData.integer(1), PlutusData.integer(2), PlutusData.integer(3));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "JulcList should resolve same as List. Got: " + result);
+        }
+
+        @Test
+        void julcListHeadAndTail() {
+            var source = """
+                    import com.bloxbean.cardano.julc.core.types.JulcList;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            JulcList<PlutusData> items = Builtins.unListData(redeemer);
+                            PlutusData first = items.head();
+                            JulcList<PlutusData> rest = items.tail();
+                            return Builtins.unIData(first) == 10 && rest.size() == 2;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.list(PlutusData.integer(10), PlutusData.integer(20), PlutusData.integer(30));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "JulcList head/tail should work. Got: " + result);
+        }
+
+        @Test
+        void listReverse() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            List<PlutusData> items = Builtins.unListData(redeemer);
+                            List<PlutusData> rev = items.reverse();
+                            return Builtins.unIData(rev.head()) == 3;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.list(PlutusData.integer(1), PlutusData.integer(2), PlutusData.integer(3));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "list.reverse() should put 3 at head. Got: " + result);
+        }
+
+        @Test
+        void listConcat() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            PlutusData fields = Builtins.constrFields(redeemer);
+                            List<PlutusData> a = Builtins.unListData(Builtins.headList(fields));
+                            List<PlutusData> b = Builtins.unListData(Builtins.headList(Builtins.tailList(fields)));
+                            List<PlutusData> combined = a.concat(b);
+                            return combined.size() == 5;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var a = PlutusData.list(PlutusData.integer(1), PlutusData.integer(2), PlutusData.integer(3));
+            var b = PlutusData.list(PlutusData.integer(4), PlutusData.integer(5));
+            var redeemer = PlutusData.constr(0, a, b);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "list.concat() should produce 5 elements. Got: " + result);
+        }
+
+        @Test
+        void listConcatPreservesOrder() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            PlutusData fields = Builtins.constrFields(redeemer);
+                            List<PlutusData> a = Builtins.unListData(Builtins.headList(fields));
+                            List<PlutusData> b = Builtins.unListData(Builtins.headList(Builtins.tailList(fields)));
+                            List<PlutusData> combined = a.concat(b);
+                            // [1,2] ++ [3,4] -> [1,2,3,4], head should be 1
+                            long first = Builtins.unIData(combined.head());
+                            long last = Builtins.unIData(combined.get(3));
+                            return first == 1 && last == 4;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var a = PlutusData.list(PlutusData.integer(1), PlutusData.integer(2));
+            var b = PlutusData.list(PlutusData.integer(3), PlutusData.integer(4));
+            var redeemer = PlutusData.constr(0, a, b);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "concat should preserve order: [1,2]++[3,4] -> head=1, idx3=4. Got: " + result);
+        }
+
+        @Test
+        void listTake() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            List<PlutusData> items = Builtins.unListData(redeemer);
+                            List<PlutusData> first2 = items.take(2);
+                            return first2.size() == 2 && Builtins.unIData(first2.head()) == 10;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.list(PlutusData.integer(10), PlutusData.integer(20), PlutusData.integer(30));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "list.take(2) should return first 2 elements. Got: " + result);
+        }
+
+        @Test
+        void listDrop() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            List<PlutusData> items = Builtins.unListData(redeemer);
+                            List<PlutusData> rest = items.drop(2);
+                            return rest.size() == 1 && Builtins.unIData(rest.head()) == 30;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.list(PlutusData.integer(10), PlutusData.integer(20), PlutusData.integer(30));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "list.drop(2) should skip first 2 elements. Got: " + result);
+        }
+
+        @Test
+        void listPrependAutoWrap() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            List<BigInteger> items = Builtins.unListData(redeemer);
+                            List<BigInteger> prepended = items.prepend(BigInteger.valueOf(99));
+                            return prepended.size() == 4 && prepended.head() == 99;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.list(PlutusData.integer(1), PlutusData.integer(2), PlutusData.integer(3));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "list.prepend(BigInteger) should auto-wrap with IData. Got: " + result);
+        }
+
+        @Test
+        void julcListEmpty() {
+            var source = """
+                    import com.bloxbean.cardano.julc.core.types.JulcList;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            JulcList<PlutusData> empty = JulcList.empty();
+                            return empty.isEmpty() && empty.size() == 0;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
+            assertTrue(result.isSuccess(), "JulcList.empty() should create empty list. Got: " + result);
+        }
+
+        @Test
+        void julcListOfSingleElement() {
+            var source = """
+                    import com.bloxbean.cardano.julc.core.types.JulcList;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            JulcList<PlutusData> items = JulcList.of(Builtins.iData(BigInteger.valueOf(42)));
+                            return items.size() == 1 && Builtins.unIData(items.head()) == 42;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
+            assertTrue(result.isSuccess(), "JulcList.of(one) should create single-element list. Got: " + result);
+        }
+
+        @Test
+        void julcListOfMultipleElements() {
+            var source = """
+                    import com.bloxbean.cardano.julc.core.types.JulcList;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            PlutusData a = Builtins.iData(BigInteger.valueOf(10));
+                            PlutusData b = Builtins.iData(BigInteger.valueOf(20));
+                            PlutusData c = Builtins.iData(BigInteger.valueOf(30));
+                            JulcList<PlutusData> items = JulcList.of(a, b, c);
+                            return items.size() == 3
+                                && Builtins.unIData(items.head()) == 10
+                                && Builtins.unIData(items.get(2)) == 30;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
+            assertTrue(result.isSuccess(), "JulcList.of(a,b,c) should create 3-element list in order. Got: " + result);
+        }
+
+        @Test
+        void julcListEmptyThenPrepend() {
+            var source = """
+                    import com.bloxbean.cardano.julc.core.types.JulcList;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            JulcList<PlutusData> items = JulcList.<PlutusData>empty().prepend(Builtins.iData(BigInteger.valueOf(99)));
+                            return items.size() == 1 && Builtins.unIData(items.head()) == 99;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
+            assertTrue(result.isSuccess(), "JulcList.empty().prepend() should create single-element list. Got: " + result);
+        }
+    }
+
+    // ====================================================================
+    // JulcMap instance method tests
+    // ====================================================================
+
+    @Nested
+    class JulcMapTests {
+
+        @Test
+        void julcMapResolvesAsMapType() {
+            var source = """
+                    import com.bloxbean.cardano.julc.core.types.JulcMap;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            JulcMap<PlutusData, PlutusData> m = (JulcMap<PlutusData, PlutusData>)(Object) redeemer;
+                            return m.size() == 2;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.map(
+                    new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(10)),
+                    new PlutusData.Pair(PlutusData.integer(2), PlutusData.integer(20)));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "JulcMap should resolve same as Map. Got: " + result);
+        }
+
+        @Test
+        void mapInsert() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
+                            Map<PlutusData, PlutusData> updated = m.insert(Builtins.iData(BigInteger.valueOf(3)), Builtins.iData(BigInteger.valueOf(30)));
+                            return updated.size() == 3;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.map(
+                    new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(10)),
+                    new PlutusData.Pair(PlutusData.integer(2), PlutusData.integer(20)));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "map.insert() should add element. Got: " + result);
+        }
+
+        @Test
+        void mapDelete() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
+                            Map<PlutusData, PlutusData> updated = m.delete(Builtins.iData(BigInteger.valueOf(1)));
+                            return updated.size() == 1;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.map(
+                    new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(10)),
+                    new PlutusData.Pair(PlutusData.integer(2), PlutusData.integer(20)));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "map.delete() should remove element. Got: " + result);
+        }
+
+        @Test
+        void mapDeleteNonExistent() {
+            var source = """
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
+                            Map<PlutusData, PlutusData> updated = m.delete(Builtins.iData(BigInteger.valueOf(99)));
+                            return updated.size() == 2;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.map(
+                    new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(10)),
+                    new PlutusData.Pair(PlutusData.integer(2), PlutusData.integer(20)));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "map.delete() non-existent key should keep original size. Got: " + result);
         }
     }
 }

@@ -1,7 +1,7 @@
 package com.bloxbean.cardano.julc.examples;
 
 import com.bloxbean.cardano.julc.core.PlutusData;
-import com.bloxbean.cardano.julc.onchain.ledger.*;
+import com.bloxbean.cardano.julc.ledger.*;
 import com.bloxbean.cardano.julc.onchain.stdlib.*;
 import com.bloxbean.cardano.julc.testkit.ContractTest;
 import com.bloxbean.cardano.julc.testkit.JvmCryptoProvider;
@@ -50,8 +50,9 @@ class DebugVestingTest extends ContractTest {
         return isSigned && isPast;
     }
 
-    // Helper to build a ScriptContext with onchain types directly
+    // Helper to build a ScriptContext with ledger-api types
     private ScriptContext buildCtx(byte[][] signatories, Interval validRange) {
+        var sigs = Arrays.stream(signatories).map(PubKeyHash::new).toList();
         var txInfo = new TxInfo(
                 List.of(),              // inputs
                 List.of(),              // referenceInputs
@@ -61,17 +62,18 @@ class DebugVestingTest extends ContractTest {
                 List.of(),              // certificates
                 Map.of(),               // withdrawals
                 validRange,             // validRange
-                Arrays.asList(signatories),   // signatories
+                sigs,                   // signatories
                 Map.of(),               // redeemers
                 Map.of(),               // datums
-                new byte[32],           // id
+                new TxId(new byte[32]), // id
                 Map.of(),               // votes
                 List.of(),              // proposalProcedures
                 Optional.empty(),       // currentTreasuryAmount
                 Optional.empty()        // treasuryDonation
         );
+        var dummyRef = new TxOutRef(new TxId(new byte[32]), BigInteger.ZERO);
         return new ScriptContext(txInfo, PlutusData.UNIT,
-                new ScriptInfo.SpendingScript(PlutusData.UNIT, PlutusData.UNIT));
+                new ScriptInfo.SpendingScript(dummyRef, Optional.empty()));
     }
 
     // --- Direct Java debugging tests ---
@@ -146,11 +148,12 @@ class DebugVestingTest extends ContractTest {
 
         @Test
         void nativeAssetLookupWorks() {
-            var policyId = new byte[]{1, 2, 3};
+            var policyId = new byte[28]; // PolicyId must be 0 or 28 bytes
+            policyId[0] = 1; policyId[1] = 2; policyId[2] = 3;
             var tokenName = new byte[]{65, 66, 67}; // "ABC"
-            var value = Value.withLovelace(
-                    BigInteger.valueOf(2_000_000),
-                    policyId, tokenName, BigInteger.valueOf(100));
+            var value = Value.lovelace(BigInteger.valueOf(2_000_000))
+                    .merge(Value.singleton(new PolicyId(policyId), new TokenName(tokenName),
+                            BigInteger.valueOf(100)));
 
             assertEquals(BigInteger.valueOf(2_000_000), ValuesLib.lovelaceOf(value));
             assertEquals(BigInteger.valueOf(100),

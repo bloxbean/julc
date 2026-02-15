@@ -1,7 +1,7 @@
 package com.bloxbean.cardano.julc.onchain.stdlib;
 
-import com.bloxbean.cardano.julc.onchain.ledger.Address;
-import com.bloxbean.cardano.julc.onchain.ledger.Credential;
+import com.bloxbean.cardano.julc.ledger.Address;
+import com.bloxbean.cardano.julc.ledger.Credential;
 
 /**
  * On-chain address operations.
@@ -17,8 +17,8 @@ public final class AddressLib {
      *  Works for both PubKeyCredential and ScriptCredential. */
     public static byte[] credentialHash(Address address) {
         return switch (address.credential()) {
-            case Credential.PubKeyCredential pk -> pk.hash();
-            case Credential.ScriptCredential sc -> sc.hash();
+            case Credential.PubKeyCredential pk -> pk.hash().hash();
+            case Credential.ScriptCredential sc -> sc.hash().hash();
         };
     }
 

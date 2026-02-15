@@ -1,4 +1,4 @@
-package com.bloxbean.cardano.julc.stdlib.onchain;
+package com.bloxbean.cardano.julc.stdlib.lib;
 
 import com.bloxbean.cardano.julc.onchain.annotation.OnchainLibrary;
 import com.bloxbean.cardano.julc.onchain.stdlib.Builtins;

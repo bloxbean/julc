@@ -1,13 +1,13 @@
 package com.bloxbean.cardano.julc.onchain.stdlib;
 
 import com.bloxbean.cardano.julc.core.PlutusData;
-import com.bloxbean.cardano.julc.onchain.ledger.*;
+import com.bloxbean.cardano.julc.core.types.JulcArrayList;
+import com.bloxbean.cardano.julc.core.types.JulcList;
+import com.bloxbean.cardano.julc.ledger.*;
 
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
-import java.util.Objects;
 
 /**
  * On-chain output utility operations.
@@ -42,18 +42,18 @@ public final class OutputLib {
     // --- Output Filtering ---
 
     /** Return all outputs sent to the given address. */
-    public static List<TxOut> outputsAt(List<TxOut> outputs, Address address) {
+    public static JulcList<TxOut> outputsAt(JulcList<TxOut> outputs, Address address) {
         var result = new ArrayList<TxOut>();
         for (TxOut out : outputs) {
             if (addressEquals(out.address(), address)) {
                 result.add(out);
             }
         }
-        return result;
+        return new JulcArrayList<>(result);
     }
 
     /** Count the number of outputs sent to the given address. */
-    public static long countOutputsAt(List<TxOut> outputs, Address address) {
+    public static long countOutputsAt(JulcList<TxOut> outputs, Address address) {
         long count = 0;
         for (TxOut out : outputs) {
             if (addressEquals(out.address(), address)) {
@@ -64,46 +64,36 @@ public final class OutputLib {
     }
 
     /** Return the unique output at the given address. Throws if not exactly one match. */
-    public static TxOut uniqueOutputAt(List<TxOut> outputs, Address address) {
+    public static TxOut uniqueOutputAt(JulcList<TxOut> outputs, Address address) {
         var matched = outputsAt(outputs, address);
         if (matched.size() == 1) {
-            return matched.get(0);
+            return matched.head();
         }
         throw new RuntimeException("Expected exactly 1 output at address, found " + matched.size());
     }
 
     // --- Token Filtering ---
 
-    /**
-     * Return all outputs containing the specified token (amount &gt; 0).
-     * policyId and tokenName are PlutusData (BytesData-wrapped bytestrings).
-     */
-    public static List<TxOut> outputsWithToken(List<TxOut> outputs, PlutusData policyId, PlutusData tokenName) {
-        byte[] policy = ((PlutusData.BytesData) policyId).value();
-        byte[] token = ((PlutusData.BytesData) tokenName).value();
+    /** Return all outputs containing the specified token (amount > 0). */
+    public static JulcList<TxOut> outputsWithToken(JulcList<TxOut> outputs, byte[] policyId, byte[] tokenName) {
         var result = new ArrayList<TxOut>();
         for (TxOut out : outputs) {
-            if (ValuesLib.assetOf(out.value(), policy, token).compareTo(BigInteger.ZERO) > 0) {
+            if (ValuesLib.assetOf(out.value(), policyId, tokenName).compareTo(BigInteger.ZERO) > 0) {
                 result.add(out);
             }
         }
-        return result;
+        return new JulcArrayList<>(result);
     }
 
-    /**
-     * Check if a value contains any amount of the specified token.
-     * policyId and tokenName are PlutusData (BytesData-wrapped bytestrings).
-     */
-    public static boolean valueHasToken(Value value, PlutusData policyId, PlutusData tokenName) {
-        byte[] policy = ((PlutusData.BytesData) policyId).value();
-        byte[] token = ((PlutusData.BytesData) tokenName).value();
-        return ValuesLib.assetOf(value, policy, token).compareTo(BigInteger.ZERO) > 0;
+    /** Check if a value contains any amount of the specified token. */
+    public static boolean valueHasToken(Value value, byte[] policyId, byte[] tokenName) {
+        return ValuesLib.assetOf(value, policyId, tokenName).compareTo(BigInteger.ZERO) > 0;
     }
 
     // --- Value Summation ---
 
     /** Sum the lovelace in all outputs sent to the given address. */
-    public static BigInteger lovelacePaidTo(List<TxOut> outputs, Address address) {
+    public static BigInteger lovelacePaidTo(JulcList<TxOut> outputs, Address address) {
         BigInteger total = BigInteger.ZERO;
         for (TxOut out : outputs) {
             if (addressEquals(out.address(), address)) {
@@ -114,7 +104,7 @@ public final class OutputLib {
     }
 
     /** Check if the total lovelace paid to the address meets the minimum threshold. */
-    public static boolean paidAtLeast(List<TxOut> outputs, Address address, BigInteger minLovelace) {
+    public static boolean paidAtLeast(JulcList<TxOut> outputs, Address address, BigInteger minLovelace) {
         return lovelacePaidTo(outputs, address).compareTo(minLovelace) >= 0;
     }
 
@@ -139,7 +129,7 @@ public final class OutputLib {
         if (txOut.datum() instanceof OutputDatum.OutputDatumHash h) {
             for (var pair : datumsMap.entries()) {
                 if (pair.key() instanceof PlutusData.BytesData kb
-                        && Arrays.equals(kb.value(), h.hash())) {
+                        && Arrays.equals(kb.value(), h.hash().hash())) {
                     return pair.value();
                 }
             }
@@ -162,9 +152,9 @@ public final class OutputLib {
         if (a.getClass() != b.getClass()) return false;
         return switch (a) {
             case Credential.PubKeyCredential pk ->
-                    Arrays.equals(pk.hash(), ((Credential.PubKeyCredential) b).hash());
+                    Arrays.equals(pk.hash().hash(), ((Credential.PubKeyCredential) b).hash().hash());
             case Credential.ScriptCredential sc ->
-                    Arrays.equals(sc.hash(), ((Credential.ScriptCredential) b).hash());
+                    Arrays.equals(sc.hash().hash(), ((Credential.ScriptCredential) b).hash().hash());
         };
     }
 }

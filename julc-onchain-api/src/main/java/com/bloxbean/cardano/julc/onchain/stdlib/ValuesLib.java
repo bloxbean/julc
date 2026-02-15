@@ -1,7 +1,9 @@
 package com.bloxbean.cardano.julc.onchain.stdlib;
 
 import com.bloxbean.cardano.julc.core.PlutusData;
-import com.bloxbean.cardano.julc.onchain.ledger.Value;
+import com.bloxbean.cardano.julc.ledger.PolicyId;
+import com.bloxbean.cardano.julc.ledger.TokenName;
+import com.bloxbean.cardano.julc.ledger.Value;
 
 import java.math.BigInteger;
 import java.util.Arrays;
@@ -12,9 +14,6 @@ import java.util.Map;
  * <p>
  * These methods are executable both on-chain (compiled to UPLC via StdlibRegistry)
  * and off-chain (as plain Java for debugging and testing).
- * <p>
- * Note: byte[] keys in Map don't have correct equals()/hashCode().
- * All lookups must iterate with Arrays.equals(), never use Map.get().
  */
 public final class ValuesLib {
 
@@ -35,12 +34,12 @@ public final class ValuesLib {
     /** Extract the amount of a specific asset from a Value. */
     public static BigInteger assetOf(Value value, byte[] policyId, byte[] tokenName) {
         if (value == null || value.inner() == null) return BigInteger.ZERO;
-        for (Map.Entry<byte[], Map<byte[], BigInteger>> policyEntry : value.inner().entrySet()) {
-            if (Arrays.equals(policyEntry.getKey(), policyId)) {
-                Map<byte[], BigInteger> tokens = policyEntry.getValue();
+        for (var policyEntry : value.inner().entrySet()) {
+            if (Arrays.equals(policyEntry.getKey().hash(), policyId)) {
+                var tokens = policyEntry.getValue();
                 if (tokens != null) {
-                    for (Map.Entry<byte[], BigInteger> tokenEntry : tokens.entrySet()) {
-                        if (Arrays.equals(tokenEntry.getKey(), tokenName)) {
+                    for (var tokenEntry : tokens.entrySet()) {
+                        if (Arrays.equals(tokenEntry.getKey().name(), tokenName)) {
                             return tokenEntry.getValue() != null ? tokenEntry.getValue() : BigInteger.ZERO;
                         }
                     }
@@ -54,9 +53,9 @@ public final class ValuesLib {
     /** Check if value a >= value b for ALL policy/token pairs (multi-asset). */
     public static boolean geqMultiAsset(Value a, Value b) {
         if (b == null || b.inner() == null) return true;
-        for (Map.Entry<byte[], Map<byte[], BigInteger>> policyEntry : b.inner().entrySet()) {
-            for (Map.Entry<byte[], BigInteger> tokenEntry : policyEntry.getValue().entrySet()) {
-                BigInteger aAmount = assetOf(a, policyEntry.getKey(), tokenEntry.getKey());
+        for (var policyEntry : b.inner().entrySet()) {
+            for (var tokenEntry : policyEntry.getValue().entrySet()) {
+                BigInteger aAmount = assetOf(a, policyEntry.getKey().hash(), tokenEntry.getKey().name());
                 if (aAmount.compareTo(tokenEntry.getValue()) < 0) return false;
             }
         }
@@ -76,8 +75,8 @@ public final class ValuesLib {
     /** Check if a value is zero (all amounts == 0). */
     public static boolean isZero(Value value) {
         if (value == null || value.inner() == null) return true;
-        for (Map.Entry<byte[], Map<byte[], BigInteger>> policyEntry : value.inner().entrySet()) {
-            for (Map.Entry<byte[], BigInteger> tokenEntry : policyEntry.getValue().entrySet()) {
+        for (var policyEntry : value.inner().entrySet()) {
+            for (var tokenEntry : policyEntry.getValue().entrySet()) {
                 if (tokenEntry.getValue().compareTo(BigInteger.ZERO) != 0) return false;
             }
         }
@@ -86,20 +85,20 @@ public final class ValuesLib {
 
     /** Construct a Value containing a single asset. */
     public static Value singleton(byte[] policyId, byte[] tokenName, BigInteger amount) {
-        var inner = new java.util.LinkedHashMap<byte[], Map<byte[], BigInteger>>();
-        var tokens = new java.util.LinkedHashMap<byte[], BigInteger>();
-        tokens.put(tokenName, amount);
-        inner.put(policyId, tokens);
+        var inner = new java.util.LinkedHashMap<PolicyId, Map<TokenName, BigInteger>>();
+        var tokens = new java.util.LinkedHashMap<TokenName, BigInteger>();
+        tokens.put(new TokenName(tokenName), amount);
+        inner.put(new PolicyId(policyId), tokens);
         return new Value(inner);
     }
 
     /** Negate all amounts in a value. */
     public static Value negate(Value value) {
         if (value == null || value.inner() == null) return value;
-        var inner = new java.util.LinkedHashMap<byte[], Map<byte[], BigInteger>>();
-        for (Map.Entry<byte[], Map<byte[], BigInteger>> pe : value.inner().entrySet()) {
-            var tokens = new java.util.LinkedHashMap<byte[], BigInteger>();
-            for (Map.Entry<byte[], BigInteger> te : pe.getValue().entrySet()) {
+        var inner = new java.util.LinkedHashMap<PolicyId, Map<TokenName, BigInteger>>();
+        for (var pe : value.inner().entrySet()) {
+            var tokens = new java.util.LinkedHashMap<TokenName, BigInteger>();
+            for (var te : pe.getValue().entrySet()) {
                 tokens.put(te.getKey(), te.getValue().negate());
             }
             inner.put(pe.getKey(), tokens);
@@ -111,11 +110,11 @@ public final class ValuesLib {
     public static java.util.List<PlutusData> flatten(Value value) {
         var result = new java.util.ArrayList<PlutusData>();
         if (value == null || value.inner() == null) return result;
-        for (Map.Entry<byte[], Map<byte[], BigInteger>> pe : value.inner().entrySet()) {
-            for (Map.Entry<byte[], BigInteger> te : pe.getValue().entrySet()) {
+        for (var pe : value.inner().entrySet()) {
+            for (var te : pe.getValue().entrySet()) {
                 result.add(new PlutusData.ConstrData(0, java.util.List.of(
-                        new PlutusData.BytesData(pe.getKey()),
-                        new PlutusData.BytesData(te.getKey()),
+                        new PlutusData.BytesData(pe.getKey().hash()),
+                        new PlutusData.BytesData(te.getKey().name()),
                         new PlutusData.IntData(te.getValue()))));
             }
         }
@@ -124,12 +123,12 @@ public final class ValuesLib {
 
     /** Add two Values together. */
     public static Value add(Value a, Value b) {
-        var inner = new java.util.LinkedHashMap<byte[], Map<byte[], BigInteger>>();
+        var inner = new java.util.LinkedHashMap<PolicyId, Map<TokenName, BigInteger>>();
         // Copy all from a
         if (a != null && a.inner() != null) {
-            for (Map.Entry<byte[], Map<byte[], BigInteger>> pe : a.inner().entrySet()) {
-                var tokens = new java.util.LinkedHashMap<byte[], BigInteger>();
-                for (Map.Entry<byte[], BigInteger> te : pe.getValue().entrySet()) {
+            for (var pe : a.inner().entrySet()) {
+                var tokens = new java.util.LinkedHashMap<TokenName, BigInteger>();
+                for (var te : pe.getValue().entrySet()) {
                     tokens.put(te.getKey(), te.getValue());
                 }
                 inner.put(pe.getKey(), tokens);
@@ -137,27 +136,26 @@ public final class ValuesLib {
         }
         // Add all from b
         if (b != null && b.inner() != null) {
-            for (Map.Entry<byte[], Map<byte[], BigInteger>> pe : b.inner().entrySet()) {
-                byte[] policy = pe.getKey();
-                Map<byte[], BigInteger> existing = null;
-                // Find existing policy by array equality
-                for (Map.Entry<byte[], Map<byte[], BigInteger>> ie : inner.entrySet()) {
-                    if (Arrays.equals(ie.getKey(), policy)) {
+            for (var pe : b.inner().entrySet()) {
+                PolicyId policy = pe.getKey();
+                Map<TokenName, BigInteger> existing = null;
+                for (var ie : inner.entrySet()) {
+                    if (Arrays.equals(ie.getKey().hash(), policy.hash())) {
                         existing = ie.getValue();
                         break;
                     }
                 }
                 if (existing == null) {
-                    var tokens = new java.util.LinkedHashMap<byte[], BigInteger>();
-                    for (Map.Entry<byte[], BigInteger> te : pe.getValue().entrySet()) {
+                    var tokens = new java.util.LinkedHashMap<TokenName, BigInteger>();
+                    for (var te : pe.getValue().entrySet()) {
                         tokens.put(te.getKey(), te.getValue());
                     }
                     inner.put(policy, tokens);
                 } else {
-                    for (Map.Entry<byte[], BigInteger> te : pe.getValue().entrySet()) {
+                    for (var te : pe.getValue().entrySet()) {
                         boolean found = false;
-                        for (Map.Entry<byte[], BigInteger> et : existing.entrySet()) {
-                            if (Arrays.equals(et.getKey(), te.getKey())) {
+                        for (var et : existing.entrySet()) {
+                            if (Arrays.equals(et.getKey().name(), te.getKey().name())) {
                                 et.setValue(et.getValue().add(te.getValue()));
                                 found = true;
                                 break;

@@ -16,10 +16,10 @@ public sealed interface OutputDatum extends PlutusDataConvertible {
         }
     }
 
-    record OutputDatumHash(DatumHash datumHash) implements OutputDatum {
+    record OutputDatumHash(DatumHash hash) implements OutputDatum {
         @Override
         public PlutusData.ConstrData toPlutusData() {
-            return new PlutusData.ConstrData(1, List.of(datumHash.toPlutusData()));
+            return new PlutusData.ConstrData(1, List.of(hash.toPlutusData()));
         }
     }
 

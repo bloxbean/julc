@@ -1,10 +1,10 @@
 package com.bloxbean.cardano.julc.onchain.stdlib;
 
 import com.bloxbean.cardano.julc.core.PlutusData;
-import com.bloxbean.cardano.julc.onchain.ledger.Interval;
-import com.bloxbean.cardano.julc.onchain.ledger.ScriptContext;
-import com.bloxbean.cardano.julc.onchain.ledger.ScriptInfo;
-import com.bloxbean.cardano.julc.onchain.ledger.TxInfo;
+import com.bloxbean.cardano.julc.ledger.Interval;
+import com.bloxbean.cardano.julc.ledger.ScriptContext;
+import com.bloxbean.cardano.julc.ledger.ScriptInfo;
+import com.bloxbean.cardano.julc.ledger.TxInfo;
 
 import java.util.Arrays;
 import java.util.List;
@@ -33,17 +33,17 @@ public final class ContextsLib {
     public static PlutusData getSpendingDatum(ScriptContext ctx) {
         var scriptInfo = ctx.scriptInfo();
         if (scriptInfo instanceof ScriptInfo.SpendingScript ss) {
-            return ss.datum() != null ? ss.datum() : PlutusData.UNIT;
+            return ss.datum().orElse(PlutusData.UNIT);
         }
         return PlutusData.UNIT;
     }
 
     /** Check if a PubKeyHash is in TxInfo's signatories list. */
     public static boolean signedBy(TxInfo txInfo, byte[] pkh) {
-        List<byte[]> signatories = txInfo.signatories();
+        var signatories = txInfo.signatories();
         if (signatories == null) return false;
-        for (byte[] sig : signatories) {
-            if (Arrays.equals(sig, pkh)) {
+        for (var sig : signatories) {
+            if (Arrays.equals(sig.hash(), pkh)) {
                 return true;
             }
         }
@@ -79,8 +79,8 @@ public final class ContextsLib {
         var sigs = txInfo.signatories();
         var items = new java.util.ArrayList<PlutusData>();
         if (sigs != null) {
-            for (byte[] sig : sigs) {
-                items.add(new PlutusData.BytesData(sig));
+            for (var sig : sigs) {
+                items.add(new PlutusData.BytesData(sig.hash()));
             }
         }
         return new PlutusData.ListData(items);

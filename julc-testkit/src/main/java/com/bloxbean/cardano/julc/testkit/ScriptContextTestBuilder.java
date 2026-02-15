@@ -263,7 +263,7 @@ public class ScriptContextTestBuilder {
      *
      * @return an onchain-api ScriptContext
      */
-    public com.bloxbean.cardano.julc.onchain.ledger.ScriptContext buildOnchain() {
+    public com.bloxbean.cardano.julc.ledger.ScriptContext buildOnchain() {
         return LedgerTypeAdapter.toOnchain(inner.build());
     }
 

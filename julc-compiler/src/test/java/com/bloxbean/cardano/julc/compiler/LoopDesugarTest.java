@@ -501,7 +501,7 @@ class LoopDesugarTest {
             // Validator that iterates over signatories with break
             var source = """
                 import java.math.BigInteger;
-                import com.bloxbean.cardano.julc.onchain.ledger.*;
+                import com.bloxbean.cardano.julc.ledger.*;
 
                 @Validator
                 class BreakValidator {
@@ -529,7 +529,7 @@ class LoopDesugarTest {
             // Validator that iterates over inputs with break
             var source = """
                 import java.math.BigInteger;
-                import com.bloxbean.cardano.julc.onchain.ledger.*;
+                import com.bloxbean.cardano.julc.ledger.*;
 
                 @Validator
                 class BreakValidator2 {
@@ -561,7 +561,7 @@ class LoopDesugarTest {
             // Bug 1: found = expr; if (found) { break; }
             var source = """
                 import java.math.BigInteger;
-                import com.bloxbean.cardano.julc.onchain.ledger.*;
+                import com.bloxbean.cardano.julc.ledger.*;
 
                 @Validator
                 class BreakAfterAssign {
@@ -589,7 +589,7 @@ class LoopDesugarTest {
             // Bug 2: two accumulators in a single loop body
             var source = """
                 import java.math.BigInteger;
-                import com.bloxbean.cardano.julc.onchain.ledger.*;
+                import com.bloxbean.cardano.julc.ledger.*;
 
                 @Validator
                 class TwoAccNoBreak {
@@ -616,7 +616,7 @@ class LoopDesugarTest {
             // Two accumulators + break
             var source = """
                 import java.math.BigInteger;
-                import com.bloxbean.cardano.julc.onchain.ledger.*;
+                import com.bloxbean.cardano.julc.ledger.*;
 
                 @Validator
                 class TwoAccWithBreak {
@@ -646,7 +646,7 @@ class LoopDesugarTest {
             // Nested for-each loops now compile successfully
             var source = """
                 import java.math.BigInteger;
-                import com.bloxbean.cardano.julc.onchain.ledger.*;
+                import com.bloxbean.cardano.julc.ledger.*;
 
                 @Validator
                 class NestedLoops {
@@ -677,7 +677,7 @@ class LoopDesugarTest {
         void nestedWhileInsideForEachCompiles() {
             var source = """
                 import java.math.BigInteger;
-                import com.bloxbean.cardano.julc.onchain.ledger.*;
+                import com.bloxbean.cardano.julc.ledger.*;
 
                 @Validator
                 class NestedLoops {
@@ -1240,7 +1240,7 @@ class LoopDesugarTest {
             // Nested for-each iterating over signatories twice
             var source = """
                 import java.math.BigInteger;
-                import com.bloxbean.cardano.julc.onchain.ledger.*;
+                import com.bloxbean.cardano.julc.ledger.*;
 
                 @Validator
                 class NestedForEach {
@@ -1268,7 +1268,7 @@ class LoopDesugarTest {
         void mixedNesting_whileInForEach_compiles() {
             var source = """
                 import java.math.BigInteger;
-                import com.bloxbean.cardano.julc.onchain.ledger.*;
+                import com.bloxbean.cardano.julc.ledger.*;
 
                 @Validator
                 class WhileInForEach {
@@ -1296,7 +1296,7 @@ class LoopDesugarTest {
         void mixedNesting_forEachInWhile_compiles() {
             var source = """
                 import java.math.BigInteger;
-                import com.bloxbean.cardano.julc.onchain.ledger.*;
+                import com.bloxbean.cardano.julc.ledger.*;
 
                 @Validator
                 class ForEachInWhile {
@@ -1499,7 +1499,7 @@ class LoopDesugarTest {
             // for-each over signatories, while inside while — 3 levels, mixed loop types
             var source = """
                 import java.math.BigInteger;
-                import com.bloxbean.cardano.julc.onchain.ledger.*;
+                import com.bloxbean.cardano.julc.ledger.*;
 
                 @Validator
                 class TripleMixed {

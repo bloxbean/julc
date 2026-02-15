@@ -1,8 +1,8 @@
 package com.bloxbean.cardano.julc.onchain.stdlib;
 
-import com.bloxbean.cardano.julc.onchain.ledger.Interval;
-import com.bloxbean.cardano.julc.onchain.ledger.IntervalBound;
-import com.bloxbean.cardano.julc.onchain.ledger.IntervalBoundType;
+import com.bloxbean.cardano.julc.ledger.Interval;
+import com.bloxbean.cardano.julc.ledger.IntervalBound;
+import com.bloxbean.cardano.julc.ledger.IntervalBoundType;
 
 import java.math.BigInteger;
 

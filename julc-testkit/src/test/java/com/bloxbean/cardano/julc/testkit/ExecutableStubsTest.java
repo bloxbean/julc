@@ -1,7 +1,7 @@
 package com.bloxbean.cardano.julc.testkit;
 
 import com.bloxbean.cardano.julc.core.PlutusData;
-import com.bloxbean.cardano.julc.onchain.ledger.*;
+import com.bloxbean.cardano.julc.ledger.*;
 import com.bloxbean.cardano.julc.onchain.stdlib.*;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Nested;
@@ -27,12 +27,19 @@ class ExecutableStubsTest {
         CryptoLib.setProvider(new JvmCryptoProvider());
     }
 
+    /** Pad a short byte array to 28 bytes (required by PolicyId and PubKeyHash). */
+    private static byte[] padTo28(byte[] src) {
+        var result = new byte[28];
+        System.arraycopy(src, 0, result, 0, Math.min(src.length, 28));
+        return result;
+    }
+
     // --- ContextsLib ---
 
     @Nested
     class ContextsLibTests {
 
-        private TxInfo sampleTxInfo(byte[]... signatories) {
+        private TxInfo sampleTxInfo(PubKeyHash... signatories) {
             return new TxInfo(
                     List.of(),              // inputs
                     List.of(),              // referenceInputs
@@ -45,7 +52,7 @@ class ExecutableStubsTest {
                     List.of(signatories),   // signatories
                     Map.of(),               // redeemers
                     Map.of(),               // datums
-                    new byte[32],           // id
+                    new TxId(new byte[32]), // id
                     Map.of(),               // votes
                     List.of(),              // proposalProcedures
                     Optional.empty(),       // currentTreasuryAmount
@@ -57,7 +64,7 @@ class ExecutableStubsTest {
         void getTxInfoExtractsTxInfo() {
             var txInfo = sampleTxInfo();
             var ctx = new ScriptContext(txInfo, PlutusData.UNIT,
-                    new ScriptInfo.MintingScript(new byte[28]));
+                    new ScriptInfo.MintingScript(new PolicyId(new byte[28])));
             assertEquals(txInfo, ContextsLib.getTxInfo(ctx));
         }
 
@@ -65,32 +72,32 @@ class ExecutableStubsTest {
         void getRedeemerExtractsRedeemer() {
             var redeemer = PlutusData.integer(42);
             var ctx = new ScriptContext(sampleTxInfo(), redeemer,
-                    new ScriptInfo.MintingScript(new byte[28]));
+                    new ScriptInfo.MintingScript(new PolicyId(new byte[28])));
             assertEquals(redeemer, ContextsLib.getRedeemer(ctx));
         }
 
         @Test
         void signedByReturnsTrueWhenPresent() {
             var pkh = new byte[]{1, 2, 3, 4, 5};
-            var txInfo = sampleTxInfo(pkh);
-            assertTrue(ContextsLib.signedBy(txInfo, pkh));
+            var txInfo = sampleTxInfo(new PubKeyHash(padTo28(pkh)));
+            assertTrue(ContextsLib.signedBy(txInfo, padTo28(pkh)));
         }
 
         @Test
         void signedByReturnsFalseWhenAbsent() {
-            var pkh = new byte[]{1, 2, 3, 4, 5};
-            var other = new byte[]{9, 8, 7, 6, 5};
-            var txInfo = sampleTxInfo(other);
+            var pkh = padTo28(new byte[]{1, 2, 3, 4, 5});
+            var other = padTo28(new byte[]{9, 8, 7, 6, 5});
+            var txInfo = sampleTxInfo(new PubKeyHash(other));
             assertFalse(ContextsLib.signedBy(txInfo, pkh));
         }
 
         @Test
         void signedByHandlesMultipleSignatories() {
-            var pkh1 = new byte[]{1, 2, 3};
-            var pkh2 = new byte[]{4, 5, 6};
-            var pkh3 = new byte[]{7, 8, 9};
+            var pkh1 = new PubKeyHash(padTo28(new byte[]{1, 2, 3}));
+            var pkh2 = new PubKeyHash(padTo28(new byte[]{4, 5, 6}));
+            var pkh3 = new PubKeyHash(padTo28(new byte[]{7, 8, 9}));
             var txInfo = sampleTxInfo(pkh1, pkh2, pkh3);
-            assertTrue(ContextsLib.signedBy(txInfo, pkh2));
+            assertTrue(ContextsLib.signedBy(txInfo, padTo28(new byte[]{4, 5, 6})));
         }
 
         @Test
@@ -99,7 +106,7 @@ class ExecutableStubsTest {
             var txInfo = new TxInfo(
                     List.of(), List.of(), List.of(), BigInteger.ZERO,
                     Value.zero(), List.of(), Map.of(), range,
-                    List.of(), Map.of(), Map.of(), new byte[32],
+                    List.of(), Map.of(), Map.of(), new TxId(new byte[32]),
                     Map.of(), List.of(), Optional.empty(), Optional.empty());
             assertEquals(range, ContextsLib.txInfoValidRange(txInfo));
         }
@@ -108,16 +115,19 @@ class ExecutableStubsTest {
         void getSpendingDatumReturnsForSpending() {
             var datum = PlutusData.integer(99);
             var ctx = new ScriptContext(sampleTxInfo(), PlutusData.UNIT,
-                    new ScriptInfo.SpendingScript(PlutusData.UNIT, datum));
+                    new ScriptInfo.SpendingScript(
+                            new TxOutRef(new TxId(new byte[32]), BigInteger.ZERO),
+                            Optional.of(datum)));
             assertEquals(datum, ContextsLib.getSpendingDatum(ctx));
         }
 
         @Test
         void getSpendingDatumReturnsUnitForMinting() {
             var ctx = new ScriptContext(sampleTxInfo(), PlutusData.UNIT,
-                    new ScriptInfo.MintingScript(new byte[28]));
+                    new ScriptInfo.MintingScript(new PolicyId(new byte[28])));
             assertEquals(PlutusData.UNIT, ContextsLib.getSpendingDatum(ctx));
         }
+
     }
 
     // --- ValuesLib ---
@@ -139,9 +149,9 @@ class ExecutableStubsTest {
 
         @Test
         void assetOfExtractsNativeToken() {
-            var policyId = new byte[]{1, 2, 3};
+            var policyId = padTo28(new byte[]{1, 2, 3});
             var tokenName = new byte[]{4, 5, 6};
-            var value = Value.of(policyId, tokenName, BigInteger.valueOf(100));
+            var value = Value.singleton(new PolicyId(policyId), new TokenName(tokenName), BigInteger.valueOf(100));
             assertEquals(BigInteger.valueOf(100), ValuesLib.assetOf(value, policyId, tokenName));
         }
 
@@ -174,10 +184,10 @@ class ExecutableStubsTest {
 
         @Test
         void assetOfWithMixedValue() {
-            var policyId = new byte[]{10, 20, 30};
+            var policyId = padTo28(new byte[]{10, 20, 30});
             var tokenName = new byte[]{40, 50};
-            var value = Value.withLovelace(BigInteger.valueOf(2_000_000),
-                    policyId, tokenName, BigInteger.valueOf(50));
+            var value = Value.lovelace(BigInteger.valueOf(2_000_000))
+                    .merge(Value.singleton(new PolicyId(policyId), new TokenName(tokenName), BigInteger.valueOf(50)));
 
             assertEquals(BigInteger.valueOf(2_000_000), ValuesLib.lovelaceOf(value));
             assertEquals(BigInteger.valueOf(50), ValuesLib.assetOf(value, policyId, tokenName));
@@ -356,19 +366,18 @@ class ExecutableStubsTest {
 
         @Test
         void ofCreatesNativeAssetValue() {
-            var pid = new byte[]{1, 2, 3};
+            var pid = padTo28(new byte[]{1, 2, 3});
             var tn = new byte[]{4, 5, 6};
-            var value = Value.of(pid, tn, BigInteger.valueOf(100));
+            var value = Value.singleton(new PolicyId(pid), new TokenName(tn), BigInteger.valueOf(100));
             assertEquals(BigInteger.valueOf(100), ValuesLib.assetOf(value, pid, tn));
         }
 
         @Test
         void withLovelaceCreatesMixedValue() {
-            var pid = new byte[]{10, 20};
+            var pid = padTo28(new byte[]{10, 20});
             var tn = new byte[]{30, 40};
-            var value = Value.withLovelace(
-                    BigInteger.valueOf(2_000_000),
-                    pid, tn, BigInteger.valueOf(50));
+            var value = Value.lovelace(BigInteger.valueOf(2_000_000))
+                    .merge(Value.singleton(new PolicyId(pid), new TokenName(tn), BigInteger.valueOf(50)));
             assertEquals(BigInteger.valueOf(2_000_000), ValuesLib.lovelaceOf(value));
             assertEquals(BigInteger.valueOf(50), ValuesLib.assetOf(value, pid, tn));
         }

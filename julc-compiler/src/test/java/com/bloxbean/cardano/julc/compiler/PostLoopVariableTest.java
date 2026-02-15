@@ -354,7 +354,7 @@ class PostLoopVariableTest {
         // Pre-loop var x=5, for-each single-acc over signatories, then use x + count
         var source = """
             import java.math.BigInteger;
-            import com.bloxbean.cardano.julc.onchain.ledger.*;
+            import com.bloxbean.cardano.julc.ledger.*;
 
             @Validator
             class TestValidator {
@@ -386,7 +386,7 @@ class PostLoopVariableTest {
         // Pre-loop var x=5, for-each multi-acc over signatories, then use x + count + doubled
         var source = """
             import java.math.BigInteger;
-            import com.bloxbean.cardano.julc.onchain.ledger.*;
+            import com.bloxbean.cardano.julc.ledger.*;
 
             @Validator
             class TestValidator {
@@ -420,7 +420,7 @@ class PostLoopVariableTest {
         // Pre-loop var x=5, for-each with no accumulator (unit-acc), then use x
         var source = """
             import java.math.BigInteger;
-            import com.bloxbean.cardano.julc.onchain.ledger.*;
+            import com.bloxbean.cardano.julc.ledger.*;
 
             @Validator
             class TestValidator {
@@ -517,7 +517,7 @@ class PostLoopVariableTest {
         // Pre-loop var x=5, while loop then for-each over signatories, use x + both accumulators
         var source = """
             import java.math.BigInteger;
-            import com.bloxbean.cardano.julc.onchain.ledger.*;
+            import com.bloxbean.cardano.julc.ledger.*;
 
             @Validator
             class TestValidator {
@@ -555,7 +555,7 @@ class PostLoopVariableTest {
         // Pre-loop var x=5, for-each over signatories then while loop, use x + both accumulators
         var source = """
             import java.math.BigInteger;
-            import com.bloxbean.cardano.julc.onchain.ledger.*;
+            import com.bloxbean.cardano.julc.ledger.*;
 
             @Validator
             class TestValidator {
@@ -622,7 +622,7 @@ class PostLoopVariableTest {
         // Three pre-loop vars a=1, b=2, c=3, for-each single-acc over signatories, use all after
         var source = """
             import java.math.BigInteger;
-            import com.bloxbean.cardano.julc.onchain.ledger.*;
+            import com.bloxbean.cardano.julc.ledger.*;
 
             @Validator
             class TestValidator {

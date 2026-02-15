@@ -46,6 +46,19 @@ public final class LedgerTypeRegistry {
                 new PirType.Field("isInclusive", new PirType.BoolType())
         ));
 
+        // Tuple2: first (Data), second (Data)
+        typeResolver.registerLedgerRecord("Tuple2", List.of(
+                new PirType.Field("first", new PirType.DataType()),
+                new PirType.Field("second", new PirType.DataType())
+        ));
+
+        // Tuple3: first (Data), second (Data), third (Data)
+        typeResolver.registerLedgerRecord("Tuple3", List.of(
+                new PirType.Field("first", new PirType.DataType()),
+                new PirType.Field("second", new PirType.DataType()),
+                new PirType.Field("third", new PirType.DataType())
+        ));
+
         // Value: inner (Map<ByteString, Map<ByteString, Integer>>)
         typeResolver.registerLedgerRecord("Value", List.of(
                 new PirType.Field("inner", new PirType.MapType(

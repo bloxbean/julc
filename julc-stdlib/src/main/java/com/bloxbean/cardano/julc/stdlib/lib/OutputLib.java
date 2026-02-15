@@ -1,14 +1,14 @@
-package com.bloxbean.cardano.julc.stdlib.onchain;
+package com.bloxbean.cardano.julc.stdlib.lib;
 
 import com.bloxbean.cardano.julc.core.PlutusData;
+import com.bloxbean.cardano.julc.core.types.JulcList;
 import com.bloxbean.cardano.julc.onchain.annotation.OnchainLibrary;
-import com.bloxbean.cardano.julc.onchain.ledger.Address;
-import com.bloxbean.cardano.julc.onchain.ledger.OutputDatum;
-import com.bloxbean.cardano.julc.onchain.ledger.TxOut;
-import com.bloxbean.cardano.julc.onchain.ledger.Value;
+import com.bloxbean.cardano.julc.ledger.Address;
+import com.bloxbean.cardano.julc.ledger.OutputDatum;
+import com.bloxbean.cardano.julc.ledger.TxOut;
+import com.bloxbean.cardano.julc.ledger.Value;
 import com.bloxbean.cardano.julc.onchain.stdlib.Builtins;
 import java.math.BigInteger;
-import java.util.List;
 
 /**
  * Transaction output utility operations compiled from Java source to UPLC.
@@ -45,20 +45,20 @@ public class OutputLib {
     // --- Output Filtering ---
 
     /** Return all outputs sent to the given address. */
-    public static List<TxOut> outputsAt(List<TxOut> outputs, Address address) {
-        List<TxOut> result = (List<TxOut>)(Object) ListsLib.empty();
+    public static JulcList<TxOut> outputsAt(JulcList<TxOut> outputs, Address address) {
+        JulcList<TxOut> result = (JulcList<TxOut>)(Object) ListsLib.empty();
         for (TxOut out : outputs) {
             if (out.address() == address) {
-                result = (List<TxOut>)(Object) ListsLib.prepend((PlutusData.ListData)(Object) result, (PlutusData)(Object) out);
+                result = (JulcList<TxOut>)(Object) ListsLib.prepend((PlutusData.ListData)(Object) result, (PlutusData)(Object) out);
             } else {
                 result = result;
             }
         }
-        return (List<TxOut>)(Object) ListsLib.reverse((PlutusData.ListData)(Object) result);
+        return (JulcList<TxOut>)(Object) ListsLib.reverse((PlutusData.ListData)(Object) result);
     }
 
     /** Count the number of outputs sent to the given address. */
-    public static long countOutputsAt(List<TxOut> outputs, Address address) {
+    public static long countOutputsAt(JulcList<TxOut> outputs, Address address) {
         long count = 0;
         for (TxOut out : outputs) {
             if (out.address() == address) {
@@ -71,8 +71,8 @@ public class OutputLib {
     }
 
     /** Return the unique output at the given address. Aborts if not exactly one match. */
-    public static TxOut uniqueOutputAt(List<TxOut> outputs, Address address) {
-        List<TxOut> matched = outputsAt(outputs, address);
+    public static TxOut uniqueOutputAt(JulcList<TxOut> outputs, Address address) {
+        JulcList<TxOut> matched = outputsAt(outputs, address);
         PlutusData.ListData matchedData = (PlutusData.ListData)(Object) matched;
         if (ListsLib.length(matchedData) == 1) {
             return (TxOut)(Object) ListsLib.head(matchedData);
@@ -89,42 +89,30 @@ public class OutputLib {
         return ValuesLib.lovelaceOf(value);
     }
 
-    /**
-     * Extract the amount of a specific asset from a Value via ValuesLib.
-     * policyId and tokenName are Data (BData-wrapped bytestrings).
-     * Returns 0 if not found.
-     */
-    private static BigInteger extractAssetAmount(Value value, PlutusData policyId, PlutusData tokenName) {
-        return ValuesLib._assetOf(value,
-                (PlutusData.BytesData) policyId, (PlutusData.BytesData) tokenName);
-    }
-
     // --- Token Filtering ---
 
-    /** Return all outputs containing the specified token (amount > 0).
-     *  policyId and tokenName must be Data (BData-wrapped bytestrings). */
-    public static List<TxOut> outputsWithToken(List<TxOut> outputs, PlutusData policyId, PlutusData tokenName) {
-        List<TxOut> result = (List<TxOut>)(Object) ListsLib.empty();
+    /** Return all outputs containing the specified token (amount > 0). */
+    public static JulcList<TxOut> outputsWithToken(JulcList<TxOut> outputs, byte[] policyId, byte[] tokenName) {
+        JulcList<TxOut> result = (JulcList<TxOut>)(Object) ListsLib.empty();
         for (TxOut out : outputs) {
-            if (extractAssetAmount(out.value(), policyId, tokenName).compareTo(BigInteger.ZERO) > 0) {
-                result = (List<TxOut>)(Object) ListsLib.prepend((PlutusData.ListData)(Object) result, (PlutusData)(Object) out);
+            if (ValuesLib.assetOf(out.value(), policyId, tokenName).compareTo(BigInteger.ZERO) > 0) {
+                result = (JulcList<TxOut>)(Object) ListsLib.prepend((PlutusData.ListData)(Object) result, (PlutusData)(Object) out);
             } else {
                 result = result;
             }
         }
-        return (List<TxOut>)(Object) ListsLib.reverse((PlutusData.ListData)(Object) result);
+        return (JulcList<TxOut>)(Object) ListsLib.reverse((PlutusData.ListData)(Object) result);
     }
 
-    /** Check if a value contains any amount of the specified token.
-     *  policyId and tokenName must be Data (BData-wrapped bytestrings). */
-    public static boolean valueHasToken(Value value, PlutusData policyId, PlutusData tokenName) {
-        return extractAssetAmount(value, policyId, tokenName).compareTo(BigInteger.ZERO) > 0;
+    /** Check if a value contains any amount of the specified token. */
+    public static boolean valueHasToken(Value value, byte[] policyId, byte[] tokenName) {
+        return ValuesLib.assetOf(value, policyId, tokenName).compareTo(BigInteger.ZERO) > 0;
     }
 
     // --- Value Summation ---
 
     /** Sum the lovelace in all outputs sent to the given address. */
-    public static BigInteger lovelacePaidTo(List<TxOut> outputs, Address address) {
+    public static BigInteger lovelacePaidTo(JulcList<TxOut> outputs, Address address) {
         BigInteger total = BigInteger.ZERO;
         for (TxOut out : outputs) {
             if (out.address() == address) {
@@ -137,7 +125,7 @@ public class OutputLib {
     }
 
     /** Check if the total lovelace paid to the address meets the minimum threshold. */
-    public static boolean paidAtLeast(List<TxOut> outputs, Address address, BigInteger minLovelace) {
+    public static boolean paidAtLeast(JulcList<TxOut> outputs, Address address, BigInteger minLovelace) {
         return lovelacePaidTo(outputs, address).compareTo(minLovelace) >= 0;
     }
 

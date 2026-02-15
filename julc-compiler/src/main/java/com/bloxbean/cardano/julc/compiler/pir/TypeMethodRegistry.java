@@ -327,10 +327,13 @@ public final class TypeMethodRegistry {
                 },
                 scopeType -> ((PirType.ListType) scopeType).elemType());
 
-        // prepend: MkCons(element, list) — prepend element to front of list
+        // prepend: MkCons(wrapEncode(element), list) — prepend element to front of list
         reg.register("ListType", "prepend",
-                (scope, args, scopeType, argTypes) ->
-                        PirHelpers.builtinApp2(DefaultFun.MkCons, args.get(0), scope),
+                (scope, args, scopeType, argTypes) -> {
+                    var elemType = argTypes.isEmpty() ? new PirType.DataType() : argTypes.get(0);
+                    var wrappedArg = PirHelpers.wrapEncode(args.get(0), elemType);
+                    return PirHelpers.builtinApp2(DefaultFun.MkCons, wrappedArg, scope);
+                },
                 scopeType -> scopeType);
 
         // contains: recursive search with typed equality
@@ -342,6 +345,128 @@ public final class TypeMethodRegistry {
                     return PirHelpers.generateListContains(scope, args.get(0), lt.elemType(), targetType);
                 },
                 scopeType -> new PirType.BoolType());
+
+        // reverse: LetRec go(lst, acc) = if null(lst) then acc else go(tail(lst), mkCons(head(lst), acc))
+        reg.register("ListType", "reverse",
+                (scope, args, scopeType, argTypes) -> {
+                    var lstVar = new PirTerm.Var("lst_rev", new PirType.ListType(new PirType.DataType()));
+                    var accVar = new PirTerm.Var("acc_rev", new PirType.ListType(new PirType.DataType()));
+                    var goVar = new PirTerm.Var("go_rev", new PirType.FunType(
+                            new PirType.ListType(new PirType.DataType()),
+                            new PirType.FunType(new PirType.ListType(new PirType.DataType()),
+                                    new PirType.ListType(new PirType.DataType()))));
+
+                    var nullCheck = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), lstVar);
+                    var headExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), lstVar);
+                    var tailExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), lstVar);
+                    var consExpr = PirHelpers.builtinApp2(DefaultFun.MkCons, headExpr, accVar);
+                    var recurse = new PirTerm.App(new PirTerm.App(goVar, tailExpr), consExpr);
+                    var body = new PirTerm.IfThenElse(nullCheck, accVar, recurse);
+                    var goBody = new PirTerm.Lam("lst_rev", new PirType.ListType(new PirType.DataType()),
+                            new PirTerm.Lam("acc_rev", new PirType.ListType(new PirType.DataType()), body));
+                    var binding = new PirTerm.Binding("go_rev", goBody);
+                    var nilData = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilData),
+                            new PirTerm.Const(Constant.unit()));
+                    return new PirTerm.LetRec(List.of(binding),
+                            new PirTerm.App(new PirTerm.App(goVar, scope), nilData));
+                },
+                scopeType -> scopeType);
+
+        // concat: reverse self, then fold-prepend onto other
+        // go(reversed, other) = if null(reversed) then other else go(tail(reversed), mkCons(head(reversed), other))
+        reg.register("ListType", "concat",
+                (scope, args, scopeType, argTypes) -> {
+                    if (args.isEmpty()) throw new CompilerException("concat() requires one argument");
+                    // First reverse the source list
+                    var revLstVar = new PirTerm.Var("lst_crev", new PirType.ListType(new PirType.DataType()));
+                    var revAccVar = new PirTerm.Var("acc_crev", new PirType.ListType(new PirType.DataType()));
+                    var revGoVar = new PirTerm.Var("go_crev", new PirType.FunType(
+                            new PirType.ListType(new PirType.DataType()),
+                            new PirType.FunType(new PirType.ListType(new PirType.DataType()),
+                                    new PirType.ListType(new PirType.DataType()))));
+                    var revNull = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), revLstVar);
+                    var revHead = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), revLstVar);
+                    var revTail = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), revLstVar);
+                    var revCons = PirHelpers.builtinApp2(DefaultFun.MkCons, revHead, revAccVar);
+                    var revRecurse = new PirTerm.App(new PirTerm.App(revGoVar, revTail), revCons);
+                    var revBody = new PirTerm.IfThenElse(revNull, revAccVar, revRecurse);
+                    var revGoBody = new PirTerm.Lam("lst_crev", new PirType.ListType(new PirType.DataType()),
+                            new PirTerm.Lam("acc_crev", new PirType.ListType(new PirType.DataType()), revBody));
+                    var revBinding = new PirTerm.Binding("go_crev", revGoBody);
+                    // reversed = go_crev(self, [])  then go_crev(reversed, other)
+                    // Actually: go(reversed_self, other) does fold-prepend of reversed onto other, giving self ++ other
+                    var nilData = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilData),
+                            new PirTerm.Const(Constant.unit()));
+                    var reversed = new PirTerm.App(new PirTerm.App(revGoVar, scope), nilData);
+                    var result = new PirTerm.App(new PirTerm.App(revGoVar, reversed), args.get(0));
+                    return new PirTerm.LetRec(List.of(revBinding), result);
+                },
+                scopeType -> scopeType);
+
+        // take(n): LetRec go(lst, n) = if n<=0 || null(lst) then nil else mkCons(head(lst), go(tail(lst), n-1))
+        reg.register("ListType", "take",
+                (scope, args, scopeType, argTypes) -> {
+                    if (args.isEmpty()) throw new CompilerException("take() requires a count argument");
+                    var lstVar = new PirTerm.Var("lst_take", new PirType.ListType(new PirType.DataType()));
+                    var nVar = new PirTerm.Var("n_take", new PirType.IntegerType());
+                    var goVar = new PirTerm.Var("go_take", new PirType.FunType(
+                            new PirType.ListType(new PirType.DataType()),
+                            new PirType.FunType(new PirType.IntegerType(),
+                                    new PirType.ListType(new PirType.DataType()))));
+
+                    var zero = new PirTerm.Const(Constant.integer(BigInteger.ZERO));
+                    var nIsZero = PirHelpers.builtinApp2(DefaultFun.LessThanEqualsInteger, nVar, zero);
+                    var nullCheck = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), lstVar);
+                    var nilData = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilData),
+                            new PirTerm.Const(Constant.unit()));
+
+                    var headExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), lstVar);
+                    var tailExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), lstVar);
+                    var decN = PirHelpers.builtinApp2(DefaultFun.SubtractInteger, nVar,
+                            new PirTerm.Const(Constant.integer(BigInteger.ONE)));
+                    var recurse = new PirTerm.App(new PirTerm.App(goVar, tailExpr), decN);
+                    var consExpr = PirHelpers.builtinApp2(DefaultFun.MkCons, headExpr, recurse);
+
+                    // if n<=0 then nil else if null(lst) then nil else mkCons(head, go(tail, n-1))
+                    var body = new PirTerm.IfThenElse(nIsZero, nilData,
+                            new PirTerm.IfThenElse(nullCheck, nilData, consExpr));
+                    var goBody = new PirTerm.Lam("lst_take", new PirType.ListType(new PirType.DataType()),
+                            new PirTerm.Lam("n_take", new PirType.IntegerType(), body));
+                    var binding = new PirTerm.Binding("go_take", goBody);
+
+                    return new PirTerm.LetRec(List.of(binding),
+                            new PirTerm.App(new PirTerm.App(goVar, scope), args.get(0)));
+                },
+                scopeType -> scopeType);
+
+        // drop(n): LetRec go(lst, n) = if n<=0 || null(lst) then lst else go(tail(lst), n-1)
+        reg.register("ListType", "drop",
+                (scope, args, scopeType, argTypes) -> {
+                    if (args.isEmpty()) throw new CompilerException("drop() requires a count argument");
+                    var lstVar = new PirTerm.Var("lst_drop", new PirType.ListType(new PirType.DataType()));
+                    var nVar = new PirTerm.Var("n_drop", new PirType.IntegerType());
+                    var goVar = new PirTerm.Var("go_drop", new PirType.FunType(
+                            new PirType.ListType(new PirType.DataType()),
+                            new PirType.FunType(new PirType.IntegerType(),
+                                    new PirType.ListType(new PirType.DataType()))));
+
+                    var zero = new PirTerm.Const(Constant.integer(BigInteger.ZERO));
+                    var nIsZero = PirHelpers.builtinApp2(DefaultFun.LessThanEqualsInteger, nVar, zero);
+                    var nullCheck = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), lstVar);
+                    var tailExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), lstVar);
+                    var decN = PirHelpers.builtinApp2(DefaultFun.SubtractInteger, nVar,
+                            new PirTerm.Const(Constant.integer(BigInteger.ONE)));
+                    var recurse = new PirTerm.App(new PirTerm.App(goVar, tailExpr), decN);
+
+                    var body = new PirTerm.IfThenElse(nIsZero, lstVar,
+                            new PirTerm.IfThenElse(nullCheck, lstVar, recurse));
+                    var goBody = new PirTerm.Lam("lst_drop", new PirType.ListType(new PirType.DataType()),
+                            new PirTerm.Lam("n_drop", new PirType.IntegerType(), body));
+                    var binding = new PirTerm.Binding("go_drop", goBody);
+                    return new PirTerm.LetRec(List.of(binding),
+                            new PirTerm.App(new PirTerm.App(goVar, scope), args.get(0)));
+                },
+                scopeType -> scopeType);
     }
 
     // --- Optional methods (3) ---
@@ -535,6 +660,70 @@ public final class TypeMethodRegistry {
                     return PirHelpers.generateFoldl(foldFn, nilData, pairs);
                 },
                 scopeType -> new PirType.ListType(((PirType.MapType) scopeType).valueType()));
+
+        // insert(key, value): MapData(MkCons(MkPairData(wrapEncode(key), wrapEncode(value)), UnMapData(map)))
+        reg.register("MapType", "insert",
+                (scope, args, scopeType, argTypes) -> {
+                    if (args.size() < 2) throw new CompilerException("map.insert() requires key and value arguments");
+                    var mt = (PirType.MapType) scopeType;
+                    var keyArg = PirHelpers.wrapEncode(args.get(0), argTypes.size() >= 1 ? argTypes.get(0) : new PirType.DataType());
+                    var valArg = PirHelpers.wrapEncode(args.get(1), argTypes.size() >= 2 ? argTypes.get(1) : new PirType.DataType());
+                    var pair = PirHelpers.builtinApp2(DefaultFun.MkPairData, keyArg, valArg);
+                    var pairs = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), scope);
+                    var newPairs = PirHelpers.builtinApp2(DefaultFun.MkCons, pair, pairs);
+                    return new PirTerm.App(new PirTerm.Builtin(DefaultFun.MapData), newPairs);
+                },
+                scopeType -> scopeType);
+
+        // delete(key): LetRec filter out matching key, wrap with MapData
+        // Uses direct recursion (no accumulate-and-reverse) to avoid multi-binding LetRec
+        reg.register("MapType", "delete",
+                (scope, args, scopeType, argTypes) -> {
+                    if (args.isEmpty()) throw new CompilerException("map.delete() requires a key argument");
+                    var keyArg = PirHelpers.wrapEncode(args.get(0), argTypes.isEmpty() ? new PirType.DataType() : argTypes.get(0));
+                    var mapVar = new PirTerm.Var("m_del", new PirType.DataType());
+                    var keyVar = new PirTerm.Var("k_del", new PirType.DataType());
+                    var pairs = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), mapVar);
+                    var pairListType = new PirType.ListType(
+                            new PirType.PairType(new PirType.DataType(), new PirType.DataType()));
+                    var pairsVar = new PirTerm.Var("ps_del", pairListType);
+
+                    // LetRec: go(lst) = if null(lst) then MkNilPairData()
+                    //                   else let h = head(lst) in
+                    //                     if fst(h) == key then go(tail(lst))     -- skip match
+                    //                     else MkCons(h, go(tail(lst)))           -- keep
+                    var lstVar = new PirTerm.Var("lst_del", pairListType);
+                    var goVar = new PirTerm.Var("go_del", new PirType.FunType(pairListType, pairListType));
+
+                    var nullCheck = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), lstVar);
+                    var nilPairs = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilPairData),
+                            new PirTerm.Const(Constant.unit()));
+
+                    var headExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), lstVar);
+                    var hVar = new PirTerm.Var("h_del", new PirType.PairType(new PirType.DataType(), new PirType.DataType()));
+                    var fstH = new PirTerm.App(new PirTerm.Builtin(DefaultFun.FstPair), hVar);
+                    var eqCheck = PirHelpers.builtinApp2(DefaultFun.EqualsData, fstH, keyVar);
+                    var tailExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), lstVar);
+                    // If key matches: skip this pair, recurse on tail
+                    var skipRecurse = new PirTerm.App(goVar, tailExpr);
+                    // If key doesn't match: keep this pair, cons onto recursion result
+                    var keepRecurse = PirHelpers.builtinApp2(DefaultFun.MkCons, hVar,
+                            new PirTerm.App(goVar, tailExpr));
+                    var innerIf = new PirTerm.IfThenElse(eqCheck, skipRecurse, keepRecurse);
+                    var letHead = new PirTerm.Let("h_del", headExpr, innerIf);
+                    var outerIf = new PirTerm.IfThenElse(nullCheck, nilPairs, letHead);
+
+                    var goBody = new PirTerm.Lam("lst_del", pairListType, outerIf);
+                    var binding = new PirTerm.Binding("go_del", goBody);
+                    var filtered = new PirTerm.LetRec(List.of(binding),
+                            new PirTerm.App(goVar, pairsVar));
+                    var result = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MapData), filtered);
+
+                    return new PirTerm.Let("m_del", scope,
+                            new PirTerm.Let("k_del", keyArg,
+                                    new PirTerm.Let("ps_del", pairs, result)));
+                },
+                scopeType -> scopeType);
     }
 
     // --- Pair methods (2): key, value ---

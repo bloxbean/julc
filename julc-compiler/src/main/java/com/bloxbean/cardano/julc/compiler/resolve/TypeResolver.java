@@ -143,7 +143,7 @@ public class TypeResolver {
             case "String" -> new PirType.StringType();
             case "Boolean" -> new PirType.BoolType();
             case "PlutusData", "ConstrData", "MapData", "ListData", "IntData", "BytesData" -> new PirType.DataType();
-            case "List" -> {
+            case "List", "JulcList" -> {
                 PirType elemType = new PirType.DataType();
                 var listArgs = ct.getTypeArguments();
                 if (listArgs.isPresent() && !listArgs.get().isEmpty()) {
@@ -151,7 +151,7 @@ public class TypeResolver {
                 }
                 yield new PirType.ListType(elemType);
             }
-            case "Map" -> {
+            case "Map", "JulcMap" -> {
                 PirType keyType = new PirType.DataType();
                 PirType valType = new PirType.DataType();
                 var mapArgs = ct.getTypeArguments();
