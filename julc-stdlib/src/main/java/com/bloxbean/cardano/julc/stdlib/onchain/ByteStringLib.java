@@ -11,88 +11,88 @@ import com.bloxbean.cardano.julc.onchain.stdlib.Builtins;
 public class ByteStringLib {
 
     /** Get the byte at a given index (0-255). */
-    public static long at(PlutusData.BytesData bs, long index) {
+    public static long at(byte[] bs, long index) {
         return Builtins.indexByteString(bs, index);
     }
 
     /** Prepend a byte (0-255) to a bytestring. */
-    public static PlutusData.BytesData cons(long byte_, PlutusData.BytesData bs) {
+    public static byte[] cons(long byte_, byte[] bs) {
         return Builtins.consByteString(byte_, bs);
     }
 
     /** Extract a slice: slice(bs, start, length). */
-    public static PlutusData.BytesData slice(PlutusData.BytesData bs, long start, long length) {
+    public static byte[] slice(byte[] bs, long start, long length) {
         return Builtins.sliceByteString(start, length, bs);
     }
 
     /** Get the length of a bytestring. */
-    public static long length(PlutusData.BytesData bs) {
+    public static long length(byte[] bs) {
         return Builtins.lengthOfByteString(bs);
     }
 
     /** Drop the first n bytes from a bytestring. */
-    public static PlutusData.BytesData drop(PlutusData.BytesData bs, long n) {
+    public static byte[] drop(byte[] bs, long n) {
         var len = Builtins.lengthOfByteString(bs);
         return Builtins.sliceByteString(n, len - n, bs);
     }
 
     /** Take the first n bytes from a bytestring. */
-    public static PlutusData.BytesData take(PlutusData.BytesData bs, long n) {
+    public static byte[] take(byte[] bs, long n) {
         return Builtins.sliceByteString(0, n, bs);
     }
 
     /** Concatenate two bytestrings. */
-    public static PlutusData.BytesData append(PlutusData.BytesData a, PlutusData.BytesData b) {
+    public static byte[] append(byte[] a, byte[] b) {
         return Builtins.appendByteString(a, b);
     }
 
     /** An empty bytestring. */
-    public static PlutusData.BytesData empty() {
-        return Builtins.emptyByteString();
+    public static byte[] empty() {
+        return (byte[])(Object) Builtins.emptyByteString();
     }
 
     /** Create a bytestring of n zero bytes. */
-    public static PlutusData.BytesData zeros(long n) {
-        return Builtins.replicateByte(n, 0);
+    public static byte[] zeros(long n) {
+        return (byte[])(Object) Builtins.replicateByte(n, 0);
     }
 
     /** Compare two bytestrings for equality. */
-    public static boolean equals(PlutusData.BytesData a, PlutusData.BytesData b) {
+    public static boolean equals(byte[] a, byte[] b) {
         return Builtins.equalsByteString(a, b);
     }
 
     /** Lexicographic comparison: a < b. */
-    public static boolean lessThan(PlutusData.BytesData a, PlutusData.BytesData b) {
+    public static boolean lessThan(byte[] a, byte[] b) {
         return Builtins.lessThanByteString(a, b);
     }
 
     /** Lexicographic comparison: a <= b. */
-    public static boolean lessThanEquals(PlutusData.BytesData a, PlutusData.BytesData b) {
+    public static boolean lessThanEquals(byte[] a, byte[] b) {
         return Builtins.lessThanEqualsByteString(a, b);
     }
 
     /** Convert integer to bytestring. */
-    public static PlutusData.BytesData integerToByteString(boolean endian, long width, long i) {
-        return Builtins.integerToByteString(endian, width, i);
+    public static byte[] integerToByteString(boolean endian, long width, long i) {
+        return (byte[])(Object) Builtins.integerToByteString(endian, width, i);
     }
 
     /** Convert bytestring to integer. */
-    public static long byteStringToInteger(boolean endian, PlutusData.BytesData bs) {
+    public static long byteStringToInteger(boolean endian, byte[] bs) {
         return Builtins.byteStringToInteger(endian, bs);
     }
 
     /** Encode a string as UTF-8 bytestring. */
-    public static PlutusData.BytesData encodeUtf8(PlutusData s) {
-        return Builtins.encodeUtf8(s);
+    public static byte[] encodeUtf8(PlutusData s) {
+        return (byte[])(Object) Builtins.encodeUtf8(s);
     }
 
     /** Decode a UTF-8 bytestring. */
-    public static PlutusData decodeUtf8(PlutusData.BytesData bs) {
+    public static PlutusData decodeUtf8(byte[] bs) {
         return Builtins.decodeUtf8(bs);
     }
 
     /** Serialise a Data value to CBOR bytes. */
-    public static PlutusData.BytesData serialiseData(PlutusData d) {
-        return Builtins.serialiseData(d);
+    public static byte[] serialiseData(PlutusData d) {
+        return (byte[])(Object) Builtins.serialiseData(d);
     }
 }

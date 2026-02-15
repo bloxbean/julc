@@ -1000,7 +1000,11 @@ public class PirGenerator {
         PirType elemType = new PirType.DataType(); // default
         var iterableJavaExpr = fes.getIterable();
         var iterableType = resolveExpressionType(iterableJavaExpr);
-        if (iterableType instanceof PirType.ListType lt) {
+        if (iterableType instanceof PirType.MapType mt) {
+            // For-each on map: convert to pair list via UnMapData, element is PairType
+            elemType = new PirType.PairType(mt.keyType(), mt.valueType());
+            iterableExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), iterableExpr);
+        } else if (iterableType instanceof PirType.ListType lt) {
             elemType = lt.elemType();
         }
 

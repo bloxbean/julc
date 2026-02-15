@@ -66,6 +66,11 @@ public final class CryptoLib {
 
     // --- byte[] convenience overloads (used by @OnchainLibrary code) ---
 
+    /** Verify an Ed25519 signature (byte[] overload). */
+    public static boolean verifyEd25519Signature(byte[] key, byte[] msg, byte[] sig) {
+        return requireProvider().verifyEd25519Signature(key, msg, sig);
+    }
+
     /** Blake2b-256 hash (byte[] overload). */
     public static byte[] blake2b_256(byte[] data) {
         return requireProvider().blake2b_256(data);

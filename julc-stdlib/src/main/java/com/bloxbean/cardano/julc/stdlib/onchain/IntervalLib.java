@@ -4,6 +4,8 @@ import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.onchain.annotation.OnchainLibrary;
 import com.bloxbean.cardano.julc.onchain.stdlib.Builtins;
 
+import java.math.BigInteger;
+
 /**
  * Interval / POSIXTimeRange operations compiled from Java source to UPLC.
  * <p>
@@ -22,7 +24,7 @@ import com.bloxbean.cardano.julc.onchain.stdlib.Builtins;
 public class IntervalLib {
 
     /** Checks whether a point in time is contained within an interval. */
-    public static boolean contains(PlutusData.ConstrData interval, long time) {
+    public static boolean contains(PlutusData.ConstrData interval, BigInteger time) {
         var fields = Builtins.constrFields(interval);
         var fromBound = Builtins.headList(fields);
         var toBound = Builtins.headList(Builtins.tailList(fields));
@@ -41,7 +43,7 @@ public class IntervalLib {
     }
 
     /** Builds the interval [time, +inf). */
-    public static PlutusData.ConstrData after(long time) {
+    public static PlutusData.ConstrData after(BigInteger time) {
         var finiteFields = Builtins.mkCons(Builtins.iData(time), Builtins.mkNilData());
         var finite = Builtins.constrData(1, finiteFields);
         var fromBound = inclusiveBound(finite);
@@ -50,7 +52,7 @@ public class IntervalLib {
     }
 
     /** Builds the interval (-inf, time]. */
-    public static PlutusData.ConstrData before(long time) {
+    public static PlutusData.ConstrData before(BigInteger time) {
         var finiteFields = Builtins.mkCons(Builtins.iData(time), Builtins.mkNilData());
         var finite = Builtins.constrData(1, finiteFields);
         var fromBound = inclusiveBound(Builtins.constrData(0, Builtins.mkNilData()));
@@ -59,7 +61,7 @@ public class IntervalLib {
     }
 
     /** Builds the interval [low, high] (both inclusive). */
-    public static PlutusData.ConstrData between(long low, long high) {
+    public static PlutusData.ConstrData between(BigInteger low, BigInteger high) {
         var lowFields = Builtins.mkCons(Builtins.iData(low), Builtins.mkNilData());
         var lowFinite = Builtins.constrData(1, lowFields);
         var highFields = Builtins.mkCons(Builtins.iData(high), Builtins.mkNilData());
@@ -95,7 +97,7 @@ public class IntervalLib {
     }
 
     /** Check lower bound: time >= fromBound. NegInf=true, Finite=compare, PosInf=false. */
-    public static boolean checkLowerBound(PlutusData.ConstrData bound, long time) {
+    public static boolean checkLowerBound(PlutusData.ConstrData bound, BigInteger time) {
         var boundFields = Builtins.constrFields(bound);
         var boundType = Builtins.headList(boundFields);
         var isInclusiveData = Builtins.headList(Builtins.tailList(boundFields));
@@ -108,9 +110,9 @@ public class IntervalLib {
                 var t = Builtins.unIData(Builtins.headList(typeFields));
                 var isInclusiveTag = Builtins.constrTag(isInclusiveData);
                 if (isInclusiveTag == 1) {
-                    return t <= time;
+                    return time.compareTo(t) >= 0;
                 } else {
-                    return t < time;
+                    return time.compareTo(t) > 0;
                 }
             } else {
                 return false;
@@ -119,7 +121,7 @@ public class IntervalLib {
     }
 
     /** Check upper bound: time <= toBound. NegInf=false, Finite=compare, PosInf=true. */
-    public static boolean checkUpperBound(PlutusData.ConstrData bound, long time) {
+    public static boolean checkUpperBound(PlutusData.ConstrData bound, BigInteger time) {
         var boundFields = Builtins.constrFields(bound);
         var boundType = Builtins.headList(boundFields);
         var isInclusiveData = Builtins.headList(Builtins.tailList(boundFields));
@@ -132,9 +134,9 @@ public class IntervalLib {
                 var t = Builtins.unIData(Builtins.headList(typeFields));
                 var isInclusiveTag = Builtins.constrTag(isInclusiveData);
                 if (isInclusiveTag == 1) {
-                    return time <= t;
+                    return time.compareTo(t) <= 0;
                 } else {
-                    return time < t;
+                    return time.compareTo(t) < 0;
                 }
             } else {
                 return true;
@@ -164,7 +166,7 @@ public class IntervalLib {
 
     /** Extract the finite upper bound time, or return -1 if not finite.
      *  Useful for checking validity range deadlines. */
-    public static long finiteUpperBound(PlutusData.ConstrData interval) {
+    public static BigInteger finiteUpperBound(PlutusData.ConstrData interval) {
         var fields = Builtins.constrFields(interval);
         var toBound = Builtins.headList(Builtins.tailList(fields));
         var boundFields = Builtins.constrFields(toBound);
@@ -174,13 +176,13 @@ public class IntervalLib {
             var typeFields = Builtins.constrFields(boundType);
             return Builtins.unIData(Builtins.headList(typeFields));
         } else {
-            return -1;
+            return BigInteger.valueOf(-1);
         }
     }
 
     /** Extract the finite lower bound time, or return -1 if not finite.
      *  Useful for checking validity range start times. */
-    public static long finiteLowerBound(PlutusData.ConstrData interval) {
+    public static BigInteger finiteLowerBound(PlutusData.ConstrData interval) {
         var fields = Builtins.constrFields(interval);
         var fromBound = Builtins.headList(fields);
         var boundFields = Builtins.constrFields(fromBound);
@@ -190,7 +192,7 @@ public class IntervalLib {
             var typeFields = Builtins.constrFields(boundType);
             return Builtins.unIData(Builtins.headList(typeFields));
         } else {
-            return -1;
+            return BigInteger.valueOf(-1);
         }
     }
 }

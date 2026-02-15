@@ -82,53 +82,21 @@ public class OutputLib {
         }
     }
 
-    // --- Internal Value Helpers ---
+    // --- Internal Value Helpers (delegated to ValuesLib) ---
 
-    /** Extract lovelace from a Value using Builtins (avoids cross-library coercion). */
+    /** Extract lovelace from a Value via ValuesLib. */
     private static BigInteger extractLovelace(Value value) {
-        var pairs = Builtins.unMapData((PlutusData.MapData)(Object) value);
-        var firstPair = Builtins.headList(pairs);
-        var tokenMapData = Builtins.sndPair(firstPair);
-        var tokenPairs = Builtins.unMapData(tokenMapData);
-        var firstTokenPair = Builtins.headList(tokenPairs);
-        return BigInteger.valueOf(Builtins.unIData(Builtins.sndPair(firstTokenPair)));
+        return ValuesLib.lovelaceOf(value);
     }
 
     /**
-     * Extract the amount of a specific asset from a Value.
+     * Extract the amount of a specific asset from a Value via ValuesLib.
      * policyId and tokenName are Data (BData-wrapped bytestrings).
      * Returns 0 if not found.
      */
     private static BigInteger extractAssetAmount(Value value, PlutusData policyId, PlutusData tokenName) {
-        var outerPairs = Builtins.unMapData((PlutusData.MapData)(Object) value);
-        BigInteger result = BigInteger.ZERO;
-        PlutusData current = outerPairs;
-        while (!Builtins.nullList(current)) {
-            var outerPair = Builtins.headList(current);
-            if (Builtins.equalsData(Builtins.fstPair(outerPair), policyId)) {
-                result = findTokenInInnerMap(Builtins.sndPair(outerPair), tokenName);
-                current = Builtins.mkNilPairData();
-            } else {
-                current = Builtins.tailList(current);
-            }
-        }
-        return result;
-    }
-
-    /** Search inner token map for a token name, return amount or 0. */
-    private static BigInteger findTokenInInnerMap(PlutusData innerMap, PlutusData tokenName) {
-        BigInteger result = BigInteger.ZERO;
-        PlutusData current = Builtins.unMapData(innerMap);
-        while (!Builtins.nullList(current)) {
-            var pair = Builtins.headList(current);
-            if (Builtins.equalsData(Builtins.fstPair(pair), tokenName)) {
-                result = BigInteger.valueOf(Builtins.unIData(Builtins.sndPair(pair)));
-                current = Builtins.mkNilPairData();
-            } else {
-                current = Builtins.tailList(current);
-            }
-        }
-        return result;
+        return ValuesLib._assetOf(value,
+                (PlutusData.BytesData) policyId, (PlutusData.BytesData) tokenName);
     }
 
     // --- Token Filtering ---

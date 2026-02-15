@@ -4,6 +4,8 @@ import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.onchain.annotation.OnchainLibrary;
 import com.bloxbean.cardano.julc.onchain.stdlib.Builtins;
 
+import java.math.BigInteger;
+
 /**
  * List operations compiled from Java source to UPLC.
  * <p>
@@ -123,11 +125,11 @@ public class ListsLib {
     }
 
     /** Check if a list of integers contains the given value. Uses EqualsInteger. */
-    public static boolean containsInt(PlutusData.ListData list, long target) {
+    public static boolean containsInt(PlutusData.ListData list, BigInteger target) {
         var found = false;
         var current = list;
         while (!Builtins.nullList(current)) {
-            if (Builtins.unIData(Builtins.headList(current)) == target) {
+            if (Builtins.unIData(Builtins.headList(current)).equals(target)) {
                 found = true;
                 current = Builtins.mkNilData();
             } else {

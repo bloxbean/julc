@@ -4,6 +4,8 @@ import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.onchain.annotation.OnchainLibrary;
 import com.bloxbean.cardano.julc.onchain.stdlib.Builtins;
 
+import java.math.BigInteger;
+
 /**
  * Mathematical operations compiled from Java source to UPLC.
  */
@@ -11,17 +13,17 @@ import com.bloxbean.cardano.julc.onchain.stdlib.Builtins;
 public class MathLib {
 
     /** Returns the absolute value of an integer. */
-    public static long abs(long x) {
-        if (x < 0) {
-            return 0 - x;
+    public static BigInteger abs(BigInteger x) {
+        if (x.compareTo(BigInteger.ZERO) < 0) {
+            return x.negate();
         } else {
             return x;
         }
     }
 
     /** Returns the maximum of two integers. */
-    public static long max(long a, long b) {
-        if (a < b) {
+    public static BigInteger max(BigInteger a, BigInteger b) {
+        if (a.compareTo(b) < 0) {
             return b;
         } else {
             return a;
@@ -29,8 +31,8 @@ public class MathLib {
     }
 
     /** Returns the minimum of two integers. */
-    public static long min(long a, long b) {
-        if (a <= b) {
+    public static BigInteger min(BigInteger a, BigInteger b) {
+        if (a.compareTo(b) <= 0) {
             return a;
         } else {
             return b;
@@ -38,46 +40,46 @@ public class MathLib {
     }
 
     /** Returns division and modulo as a pair: ConstrData(0, [IData(div), IData(mod)]). */
-    public static PlutusData.ConstrData divMod(long a, long b) {
-        var div = a / b;
-        var mod = a % b;
+    public static PlutusData.ConstrData divMod(BigInteger a, BigInteger b) {
+        var div = a.divide(b);
+        var mod = a.remainder(b);
         var fields = Builtins.mkCons(Builtins.iData(div), Builtins.mkCons(Builtins.iData(mod), Builtins.mkNilData()));
         return Builtins.constrData(0, fields);
     }
 
     /** Returns quotient and remainder as a pair: ConstrData(0, [IData(quot), IData(rem)]). */
-    public static PlutusData.ConstrData quotRem(long a, long b) {
-        var quot = a / b;
-        var rem = a % b;
+    public static PlutusData.ConstrData quotRem(BigInteger a, BigInteger b) {
+        var quot = a.divide(b);
+        var rem = a.remainder(b);
         var fields = Builtins.mkCons(Builtins.iData(quot), Builtins.mkCons(Builtins.iData(rem), Builtins.mkNilData()));
         return Builtins.constrData(0, fields);
     }
 
     /** Returns base raised to the power of exp. */
-    public static long pow(long base, long exp) {
-        var result = 1L;
+    public static BigInteger pow(BigInteger base, BigInteger exp) {
+        BigInteger result = BigInteger.ONE;
         var e = exp;
-        while (e > 0) {
-            result = result * base;
-            e = e - 1;
+        while (e.compareTo(BigInteger.ZERO) > 0) {
+            result = result.multiply(base);
+            e = e.subtract(BigInteger.ONE);
         }
         return result;
     }
 
     /** Returns (base^exp) mod modulus using the builtin ExpModInteger operation. */
-    public static long expMod(long base, long exp, long mod) {
+    public static BigInteger expMod(BigInteger base, BigInteger exp, BigInteger mod) {
         return Builtins.expModInteger(base, exp, mod);
     }
 
     /** Returns -1 if negative, 0 if zero, 1 if positive. */
-    public static long sign(long x) {
-        if (x < 0) {
-            return 0 - 1;
+    public static BigInteger sign(BigInteger x) {
+        if (x.compareTo(BigInteger.ZERO) < 0) {
+            return BigInteger.valueOf(-1);
         } else {
-            if (x == 0) {
-                return 0;
+            if (x.equals(BigInteger.ZERO)) {
+                return BigInteger.ZERO;
             } else {
-                return 1;
+                return BigInteger.ONE;
             }
         }
     }

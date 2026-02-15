@@ -1,8 +1,8 @@
 package com.bloxbean.cardano.julc.stdlib.onchain;
 
-import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.onchain.annotation.OnchainLibrary;
-import com.bloxbean.cardano.julc.onchain.stdlib.Builtins;
+import com.bloxbean.cardano.julc.onchain.ledger.Address;
+import com.bloxbean.cardano.julc.onchain.ledger.Credential;
 
 /**
  * Address operations compiled from Java source to UPLC.
@@ -20,30 +20,31 @@ public class AddressLib {
 
     /** Extract the hash from the payment credential of an address.
      *  Works for both PubKeyCredential and ScriptCredential. */
-    public static PlutusData.BytesData credentialHash(PlutusData address) {
-        var addrFields = Builtins.constrFields(address);
-        var credential = Builtins.headList(addrFields);
-        var credFields = Builtins.constrFields(credential);
-        return Builtins.unBData(Builtins.headList(credFields));
+    public static byte[] credentialHash(Address address) {
+        return switch (address.credential()) {
+            case Credential.PubKeyCredential pk -> pk.hash();
+            case Credential.ScriptCredential sc -> sc.hash();
+        };
     }
 
     /** Check if an address has a ScriptCredential (tag == 1). */
-    public static boolean isScriptAddress(PlutusData address) {
-        var addrFields = Builtins.constrFields(address);
-        var credential = Builtins.headList(addrFields);
-        return Builtins.constrTag(credential) == 1;
+    public static boolean isScriptAddress(Address address) {
+        return switch (address.credential()) {
+            case Credential.ScriptCredential sc -> true;
+            default -> false;
+        };
     }
 
     /** Check if an address has a PubKeyCredential (tag == 0). */
-    public static boolean isPubKeyAddress(PlutusData address) {
-        var addrFields = Builtins.constrFields(address);
-        var credential = Builtins.headList(addrFields);
-        return Builtins.constrTag(credential) == 0;
+    public static boolean isPubKeyAddress(Address address) {
+        return switch (address.credential()) {
+            case Credential.PubKeyCredential pk -> true;
+            default -> false;
+        };
     }
 
-    /** Extract the payment credential from an address (field 0). */
-    public static PlutusData paymentCredential(PlutusData address) {
-        var addrFields = Builtins.constrFields(address);
-        return Builtins.headList(addrFields);
+    /** Extract the payment credential from an address. */
+    public static Credential paymentCredential(Address address) {
+        return address.credential();
     }
 }

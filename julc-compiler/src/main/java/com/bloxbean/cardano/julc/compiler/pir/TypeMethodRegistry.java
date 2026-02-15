@@ -35,6 +35,11 @@ public final class TypeMethodRegistry {
 
     public Optional<PirTerm> dispatch(PirTerm scope, String method,
                                        List<PirTerm> args, PirType scopeType, List<PirType> argTypes) {
+        // Try named key first for RecordType (e.g., "Value.lovelaceOf" before "RecordType.lovelaceOf")
+        if (scopeType instanceof PirType.RecordType rt) {
+            var namedReg = registry.get(rt.name() + "." + method);
+            if (namedReg != null) return Optional.of(namedReg.handler().handle(scope, args, scopeType, argTypes));
+        }
         String key = scopeType.getClass().getSimpleName() + "." + method;
         var reg = registry.get(key);
         if (reg == null) return Optional.empty();
@@ -42,6 +47,11 @@ public final class TypeMethodRegistry {
     }
 
     public Optional<PirType> resolveReturnType(PirType scopeType, String method) {
+        // Try named key first for RecordType (e.g., "Value.lovelaceOf" before "RecordType.lovelaceOf")
+        if (scopeType instanceof PirType.RecordType rt) {
+            var namedReg = registry.get(rt.name() + "." + method);
+            if (namedReg != null) return Optional.of(namedReg.returnType().resolve(scopeType));
+        }
         String key = scopeType.getClass().getSimpleName() + "." + method;
         var reg = registry.get(key);
         if (reg == null) return Optional.empty();
@@ -64,6 +74,8 @@ public final class TypeMethodRegistry {
         registerListMethods(reg);
         registerOptionalMethods(reg);
         registerMapMethods(reg);
+        registerPairMethods(reg);
+        registerValueMethods(reg);
         return reg;
     }
 
@@ -367,7 +379,7 @@ public final class TypeMethodRegistry {
                 scopeType -> ((PirType.OptionalType) scopeType).elemType());
     }
 
-    // --- Map methods (3): get, containsKey, size ---
+    // --- Map methods (6): get, containsKey, size, isEmpty, keys, values ---
 
     private static void registerMapMethods(TypeMethodRegistry reg) {
         // get(key): LetRec lookup through association list pairs, returns Optional
@@ -476,6 +488,179 @@ public final class TypeMethodRegistry {
                 (scope, args, scopeType, argTypes) -> {
                     var pairs = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), scope);
                     return PirHelpers.generateListLength(pairs);
+                },
+                scopeType -> new PirType.IntegerType());
+
+        // isEmpty(): NullList(UnMapData(map))
+        reg.register("MapType", "isEmpty",
+                (scope, args, scopeType, argTypes) ->
+                        new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList),
+                                new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), scope)),
+                scopeType -> new PirType.BoolType());
+
+        // keys(): foldl collecting fstPair from each pair
+        reg.register("MapType", "keys",
+                (scope, args, scopeType, argTypes) -> {
+                    var mt = (PirType.MapType) scopeType;
+                    var pairs = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), scope);
+
+                    // foldl(\acc pair -> MkCons(FstPair(pair), acc), MkNilData, pairs)
+                    var accVar = new PirTerm.Var("acc__keys", new PirType.ListType(new PirType.DataType()));
+                    var pairVar = new PirTerm.Var("p__keys", new PirType.DataType());
+                    var fstExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.FstPair), pairVar);
+                    var consExpr = PirHelpers.builtinApp2(DefaultFun.MkCons, fstExpr, accVar);
+                    var foldFn = new PirTerm.Lam("acc__keys", new PirType.ListType(new PirType.DataType()),
+                            new PirTerm.Lam("p__keys", new PirType.DataType(), consExpr));
+                    var nilData = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilData),
+                            new PirTerm.Const(Constant.unit()));
+                    return PirHelpers.generateFoldl(foldFn, nilData, pairs);
+                },
+                scopeType -> new PirType.ListType(((PirType.MapType) scopeType).keyType()));
+
+        // values(): foldl collecting sndPair from each pair
+        reg.register("MapType", "values",
+                (scope, args, scopeType, argTypes) -> {
+                    var mt = (PirType.MapType) scopeType;
+                    var pairs = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), scope);
+
+                    // foldl(\acc pair -> MkCons(SndPair(pair), acc), MkNilData, pairs)
+                    var accVar = new PirTerm.Var("acc__vals", new PirType.ListType(new PirType.DataType()));
+                    var pairVar = new PirTerm.Var("p__vals", new PirType.DataType());
+                    var sndExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.SndPair), pairVar);
+                    var consExpr = PirHelpers.builtinApp2(DefaultFun.MkCons, sndExpr, accVar);
+                    var foldFn = new PirTerm.Lam("acc__vals", new PirType.ListType(new PirType.DataType()),
+                            new PirTerm.Lam("p__vals", new PirType.DataType(), consExpr));
+                    var nilData = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilData),
+                            new PirTerm.Const(Constant.unit()));
+                    return PirHelpers.generateFoldl(foldFn, nilData, pairs);
+                },
+                scopeType -> new PirType.ListType(((PirType.MapType) scopeType).valueType()));
+    }
+
+    // --- Pair methods (2): key, value ---
+
+    private static void registerPairMethods(TypeMethodRegistry reg) {
+        // key(): FstPair(pair) + wrapDecode
+        reg.register("PairType", "key",
+                (scope, args, scopeType, argTypes) -> {
+                    var pt = (PirType.PairType) scopeType;
+                    var raw = new PirTerm.App(new PirTerm.Builtin(DefaultFun.FstPair), scope);
+                    return PirHelpers.wrapDecode(raw, pt.first());
+                },
+                scopeType -> ((PirType.PairType) scopeType).first());
+
+        // value(): SndPair(pair) + wrapDecode
+        reg.register("PairType", "value",
+                (scope, args, scopeType, argTypes) -> {
+                    var pt = (PirType.PairType) scopeType;
+                    var raw = new PirTerm.App(new PirTerm.Builtin(DefaultFun.SndPair), scope);
+                    return PirHelpers.wrapDecode(raw, pt.second());
+                },
+                scopeType -> ((PirType.PairType) scopeType).second());
+    }
+
+    // --- Value instance methods (3): lovelaceOf, assetOf, isEmpty ---
+    // Registered under named key "Value" so they only match RecordType(name="Value", ...)
+
+    private static void registerValueMethods(TypeMethodRegistry reg) {
+        // lovelaceOf(): extract lovelace from Value (Map<BS, Map<BS, Int>>)
+        // Value → UnMapData → HeadList → SndPair → UnMapData → HeadList → SndPair → UnIData
+        reg.register("Value", "lovelaceOf",
+                (scope, args, scopeType, argTypes) -> {
+                    var innerMap = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), scope);
+                    var firstPair = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), innerMap);
+                    var tokenMapData = new PirTerm.App(new PirTerm.Builtin(DefaultFun.SndPair), firstPair);
+                    var tokenPairs = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), tokenMapData);
+                    var firstTokenPair = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), tokenPairs);
+                    var amountData = new PirTerm.App(new PirTerm.Builtin(DefaultFun.SndPair), firstTokenPair);
+                    return new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnIData), amountData);
+                },
+                scopeType -> new PirType.IntegerType());
+
+        // isEmpty(): NullList(UnMapData(value))
+        reg.register("Value", "isEmpty",
+                (scope, args, scopeType, argTypes) ->
+                        new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList),
+                                new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), scope)),
+                scopeType -> new PirType.BoolType());
+
+        // assetOf(policyId, tokenName): LetRec search in nested maps
+        reg.register("Value", "assetOf",
+                (scope, args, scopeType, argTypes) -> {
+                    if (args.size() < 2) throw new CompilerException("value.assetOf() requires policyId and tokenName arguments");
+                    var policyArg = args.get(0);
+                    var tokenArg = args.get(1);
+
+                    // Let-bind value, policyId, tokenName
+                    var valVar = new PirTerm.Var("v__ao", new PirType.DataType());
+                    var polVar = new PirTerm.Var("pol__ao", new PirType.DataType());
+                    var tokVar = new PirTerm.Var("tok__ao", new PirType.DataType());
+
+                    // Outer loop: search for matching policy in UnMapData(value)
+                    var outerPairs = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), valVar);
+                    var outerPairsVar = new PirTerm.Var("ops__ao", new PirType.ListType(
+                            new PirType.PairType(new PirType.DataType(), new PirType.DataType())));
+
+                    // Inner loop: search for matching token in the inner map
+                    var innerLstVar = new PirTerm.Var("ils__ao", new PirType.ListType(
+                            new PirType.PairType(new PirType.DataType(), new PirType.DataType())));
+                    var innerGoVar = new PirTerm.Var("igo__ao", new PirType.FunType(
+                            new PirType.ListType(new PirType.PairType(new PirType.DataType(), new PirType.DataType())),
+                            new PirType.IntegerType()));
+
+                    var innerNull = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), innerLstVar);
+                    var innerHead = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), innerLstVar);
+                    var innerHVar = new PirTerm.Var("ih__ao", new PirType.PairType(new PirType.DataType(), new PirType.DataType()));
+                    var innerFst = new PirTerm.App(new PirTerm.Builtin(DefaultFun.FstPair), innerHVar);
+                    var innerSnd = new PirTerm.App(new PirTerm.Builtin(DefaultFun.SndPair), innerHVar);
+                    var innerEq = PirHelpers.builtinApp2(DefaultFun.EqualsData, innerFst, tokVar);
+                    var innerTail = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), innerLstVar);
+                    var innerRecurse = new PirTerm.App(innerGoVar, innerTail);
+                    var innerAmount = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnIData), innerSnd);
+                    var innerIf = new PirTerm.IfThenElse(innerEq, innerAmount, innerRecurse);
+                    var innerLet = new PirTerm.Let("ih__ao", innerHead, innerIf);
+                    var innerOuter = new PirTerm.IfThenElse(innerNull,
+                            new PirTerm.Const(Constant.integer(BigInteger.ZERO)), innerLet);
+                    var innerBody = new PirTerm.Lam("ils__ao", new PirType.ListType(
+                            new PirType.PairType(new PirType.DataType(), new PirType.DataType())), innerOuter);
+                    var innerBinding = new PirTerm.Binding("igo__ao", innerBody);
+
+                    // Outer loop
+                    var outerLstVar = new PirTerm.Var("ols__ao", new PirType.ListType(
+                            new PirType.PairType(new PirType.DataType(), new PirType.DataType())));
+                    var outerGoVar = new PirTerm.Var("ogo__ao", new PirType.FunType(
+                            new PirType.ListType(new PirType.PairType(new PirType.DataType(), new PirType.DataType())),
+                            new PirType.IntegerType()));
+
+                    var outerNull = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), outerLstVar);
+                    var outerHead = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), outerLstVar);
+                    var outerHVar = new PirTerm.Var("oh__ao", new PirType.PairType(new PirType.DataType(), new PirType.DataType()));
+                    var outerFst = new PirTerm.App(new PirTerm.Builtin(DefaultFun.FstPair), outerHVar);
+                    var outerSnd = new PirTerm.App(new PirTerm.Builtin(DefaultFun.SndPair), outerHVar);
+                    var outerEq = PirHelpers.builtinApp2(DefaultFun.EqualsData, outerFst, polVar);
+                    var outerTail = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), outerLstVar);
+                    var outerRecurse = new PirTerm.App(outerGoVar, outerTail);
+
+                    // When policy matches, search inner map
+                    var innerMapPairs = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), outerSnd);
+                    var innerSearch = new PirTerm.LetRec(List.of(innerBinding),
+                            new PirTerm.App(innerGoVar, innerMapPairs));
+
+                    var outerIf = new PirTerm.IfThenElse(outerEq, innerSearch, outerRecurse);
+                    var outerLet = new PirTerm.Let("oh__ao", outerHead, outerIf);
+                    var outerOuter = new PirTerm.IfThenElse(outerNull,
+                            new PirTerm.Const(Constant.integer(BigInteger.ZERO)), outerLet);
+                    var outerBody = new PirTerm.Lam("ols__ao", new PirType.ListType(
+                            new PirType.PairType(new PirType.DataType(), new PirType.DataType())), outerOuter);
+                    var outerBinding = new PirTerm.Binding("ogo__ao", outerBody);
+
+                    var search = new PirTerm.LetRec(List.of(outerBinding),
+                            new PirTerm.App(outerGoVar, outerPairsVar));
+
+                    return new PirTerm.Let("v__ao", scope,
+                            new PirTerm.Let("pol__ao", policyArg,
+                                    new PirTerm.Let("tok__ao", tokenArg,
+                                            new PirTerm.Let("ops__ao", outerPairs, search))));
                 },
                 scopeType -> new PirType.IntegerType());
     }

@@ -177,4 +177,14 @@ public final class ValuesLib {
     public static Value subtract(Value a, Value b) {
         return add(a, negate(b));
     }
+
+    /** Internal zero-overhead singleton for cost-sensitive on-chain use. */
+    public static Value _singleton(PlutusData.BytesData policyId, PlutusData.BytesData tokenName, BigInteger amount) {
+        return singleton(policyId.value(), tokenName.value(), amount);
+    }
+
+    /** Internal zero-overhead assetOf for cost-sensitive on-chain use. */
+    public static BigInteger _assetOf(Value value, PlutusData.BytesData policyId, PlutusData.BytesData tokenName) {
+        return assetOf(value, policyId.value(), tokenName.value());
+    }
 }

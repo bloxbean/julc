@@ -4,6 +4,8 @@ import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.onchain.annotation.OnchainLibrary;
 import com.bloxbean.cardano.julc.onchain.stdlib.Builtins;
 
+import java.math.BigInteger;
+
 /**
  * Script context operations compiled from Java source to UPLC.
  * <p>
@@ -33,7 +35,7 @@ public class ContextsLib {
     /** Extracts the optional datum from a spending ScriptContext. */
     public static PlutusData getSpendingDatum(PlutusData.ConstrData ctx) {
         var ctxFields = Builtins.constrFields(ctx);
-        var scriptInfoData = listIndex(ctxFields, 2);
+        var scriptInfoData = listIndex(ctxFields, BigInteger.valueOf(2));
         var scriptInfoFields = Builtins.constrFields(scriptInfoData);
         return Builtins.headList(Builtins.tailList(scriptInfoFields));
     }
@@ -52,58 +54,58 @@ public class ContextsLib {
     /** Extracts the list of outputs (field 2) from a TxInfo. */
     public static PlutusData.ListData txInfoOutputs(PlutusData.ConstrData txInfo) {
         var fields = Builtins.constrFields(txInfo);
-        var outputsData = listIndex(fields, 2);
+        var outputsData = listIndex(fields, BigInteger.valueOf(2));
         return Builtins.unListData(outputsData);
     }
 
     /** Extracts the signatories list (field 8) from a TxInfo. */
     public static PlutusData.ListData txInfoSignatories(PlutusData.ConstrData txInfo) {
         var fields = Builtins.constrFields(txInfo);
-        var sigsData = listIndex(fields, 8);
+        var sigsData = listIndex(fields, BigInteger.valueOf(8));
         return Builtins.unListData(sigsData);
     }
 
     /** Extracts the valid range (field 7) from a TxInfo. */
     public static PlutusData.ConstrData txInfoValidRange(PlutusData.ConstrData txInfo) {
         var fields = Builtins.constrFields(txInfo);
-        return (PlutusData.ConstrData) listIndex(fields, 7);
+        return (PlutusData.ConstrData) listIndex(fields, BigInteger.valueOf(7));
     }
 
     /** Extracts the mint field (field 4) from a TxInfo as MapData. */
     public static PlutusData.MapData txInfoMint(PlutusData.ConstrData txInfo) {
         var fields = Builtins.constrFields(txInfo);
-        return (PlutusData.MapData) listIndex(fields, 4);
+        return (PlutusData.MapData) listIndex(fields, BigInteger.valueOf(4));
     }
 
     /** Extracts the fee (field 3) from a TxInfo as Integer. */
-    public static long txInfoFee(PlutusData.ConstrData txInfo) {
+    public static BigInteger txInfoFee(PlutusData.ConstrData txInfo) {
         var fields = Builtins.constrFields(txInfo);
-        var feeData = listIndex(fields, 3);
+        var feeData = listIndex(fields, BigInteger.valueOf(3));
         return Builtins.unIData(feeData);
     }
 
     /** Extracts the txId (field 11) from a TxInfo. */
     public static PlutusData.ConstrData txInfoId(PlutusData.ConstrData txInfo) {
         var fields = Builtins.constrFields(txInfo);
-        return (PlutusData.ConstrData) listIndex(fields, 11);
+        return (PlutusData.ConstrData) listIndex(fields, BigInteger.valueOf(11));
     }
 
     /** Extracts reference inputs (field 1) from TxInfo. */
     public static PlutusData.ListData txInfoRefInputs(PlutusData.ConstrData txInfo) {
         var fields = Builtins.constrFields(txInfo);
-        return Builtins.unListData(listIndex(fields, 1));
+        return Builtins.unListData(listIndex(fields, BigInteger.ONE));
     }
 
     /** Extracts withdrawals map (field 6) from TxInfo. */
     public static PlutusData.MapData txInfoWithdrawals(PlutusData.ConstrData txInfo) {
         var fields = Builtins.constrFields(txInfo);
-        return (PlutusData.MapData) listIndex(fields, 6);
+        return (PlutusData.MapData) listIndex(fields, BigInteger.valueOf(6));
     }
 
     /** Extracts redeemers map (field 9) from TxInfo. */
     public static PlutusData.MapData txInfoRedeemers(PlutusData.ConstrData txInfo) {
         var fields = Builtins.constrFields(txInfo);
-        return (PlutusData.MapData) listIndex(fields, 9);
+        return (PlutusData.MapData) listIndex(fields, BigInteger.valueOf(9));
     }
 
     // Note: trace(message) stays as PIR in StdlibRegistry because it uses UPLC Text type.
@@ -133,7 +135,7 @@ public class ContextsLib {
     /** Finds the own input for a spending validator. Returns Optional TxInInfo. */
     public static PlutusData.ConstrData findOwnInput(PlutusData.ConstrData ctx) {
         var ctxFields = Builtins.constrFields(ctx);
-        var scriptInfoData = listIndex(ctxFields, 2);
+        var scriptInfoData = listIndex(ctxFields, BigInteger.valueOf(2));
         var scriptInfoFields = Builtins.constrFields(scriptInfoData);
         var targetTxOutRef = Builtins.headList(scriptInfoFields);
         var txInfoData = Builtins.headList(ctxFields);
@@ -163,7 +165,7 @@ public class ContextsLib {
         var optFields = Builtins.constrFields(ownInputOpt);
         var ownInput = Builtins.headList(optFields);
         var ownInFields = Builtins.constrFields(ownInput);
-        var ownTxOut = listIndex(ownInFields, 1);
+        var ownTxOut = listIndex(ownInFields, BigInteger.ONE);
         var ownTxOutFields = Builtins.constrFields(ownTxOut);
         var ownAddress = Builtins.headList(ownTxOutFields);
         var ctxFields = Builtins.constrFields(ctx);
@@ -188,7 +190,7 @@ public class ContextsLib {
     /** Searches the txInfo datums map for a datum matching the given hash. Returns Optional. */
     public static PlutusData.ConstrData findDatum(PlutusData.ConstrData txInfo, PlutusData.BytesData hash) {
         var fields = Builtins.constrFields(txInfo);
-        var datumsData = listIndex(fields, 10);
+        var datumsData = listIndex(fields, BigInteger.valueOf(10));
         var datumsPairs = Builtins.unMapData(datumsData);
         PlutusData.ConstrData result = Builtins.constrData(1, Builtins.mkNilData());
         PlutusData current = datumsPairs;
@@ -213,9 +215,9 @@ public class ContextsLib {
         while (!Builtins.nullList(current)) {
             var input = Builtins.headList(current);
             var inputFields = Builtins.constrFields(input);
-            var txOut = listIndex(inputFields, 1);
+            var txOut = listIndex(inputFields, BigInteger.ONE);
             var txOutFields = Builtins.constrFields(txOut);
-            var value = listIndex(txOutFields, 1);
+            var value = listIndex(txOutFields, BigInteger.ONE);
             result = Builtins.mkCons(value, result);
             current = Builtins.tailList(current);
         }
@@ -231,7 +233,7 @@ public class ContextsLib {
             var out = Builtins.headList(current);
             var outFields = Builtins.constrFields(out);
             var outAddr = Builtins.headList(outFields);
-            var outValue = listIndex(outFields, 1);
+            var outValue = listIndex(outFields, BigInteger.ONE);
             if (Builtins.equalsData(outAddr, addr)) {
                 result = Builtins.mkCons(outValue, result);
             } else {
@@ -246,7 +248,7 @@ public class ContextsLib {
      *  Minting (tag 0) -> policyId. Spending (tag 1) -> script credential hash. */
     public static PlutusData.BytesData ownHash(PlutusData.ConstrData ctx) {
         var ctxFields = Builtins.constrFields(ctx);
-        var scriptInfoData = listIndex(ctxFields, 2);
+        var scriptInfoData = listIndex(ctxFields, BigInteger.valueOf(2));
         var siTag = Builtins.constrTag(scriptInfoData);
         var siFields = Builtins.constrFields(scriptInfoData);
         if (siTag == 0) {
@@ -256,7 +258,7 @@ public class ContextsLib {
             var optFields = Builtins.constrFields(ownInputOpt);
             var ownInput = Builtins.headList(optFields);
             var ownInFields = Builtins.constrFields(ownInput);
-            var ownTxOut = listIndex(ownInFields, 1);
+            var ownTxOut = listIndex(ownInFields, BigInteger.ONE);
             var ownTxOutFields = Builtins.constrFields(ownTxOut);
             var ownAddress = Builtins.headList(ownTxOutFields);
             var addrFields = Builtins.constrFields(ownAddress);
@@ -299,12 +301,12 @@ public class ContextsLib {
     // =========================================================================
 
     /** Get the nth element from a list by chaining tailList/headList. */
-    public static PlutusData listIndex(PlutusData.ListData list, long n) {
+    public static PlutusData listIndex(PlutusData.ListData list, BigInteger n) {
         var current = list;
         var idx = n;
-        while (idx > 0) {
+        while (idx.compareTo(BigInteger.ZERO) > 0) {
             current = Builtins.tailList(current);
-            idx = idx - 1;
+            idx = idx.subtract(BigInteger.ONE);
         }
         return Builtins.headList(current);
     }

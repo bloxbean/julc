@@ -1646,4 +1646,332 @@ class StdlibCompileEvalTest {
             assertTrue(evalResult.isSuccess(), "3-level transitive user lib chain should work. Got: " + evalResult);
         }
     }
+
+    // =========================================================================
+    // High-Level Abstractions — pair.key/value, value.lovelaceOf/assetOf/isEmpty,
+    // map.isEmpty/keys/values, for-each over map
+    // =========================================================================
+
+    @Nested
+    class HighLevelAbstractions {
+
+        // --- Pair instance methods ---
+
+        @Test
+        void pairKeyOnMapEntry() {
+            var source = """
+                    import java.util.Map;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
+                            long total = 0;
+                            for (var entry : m) {
+                                total = total + Builtins.unIData(entry.key());
+                            }
+                            return total == 3;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            // Map with keys 1 and 2 → total = 3
+            var mapData = PlutusData.map(
+                    new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(10)),
+                    new PlutusData.Pair(PlutusData.integer(2), PlutusData.integer(20))
+            );
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(mapData)));
+            assertTrue(result.isSuccess(), "pair.key() in for-each over map should work. Got: " + result);
+        }
+
+        @Test
+        void pairValueOnMapEntry() {
+            var source = """
+                    import java.util.Map;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
+                            long total = 0;
+                            for (var entry : m) {
+                                total = total + Builtins.unIData(entry.value());
+                            }
+                            return total == 30;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var mapData = PlutusData.map(
+                    new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(10)),
+                    new PlutusData.Pair(PlutusData.integer(2), PlutusData.integer(20))
+            );
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(mapData)));
+            assertTrue(result.isSuccess(), "pair.value() in for-each over map should work. Got: " + result);
+        }
+
+        // --- Map instance methods ---
+
+        @Test
+        void mapIsEmptyTrue() {
+            var source = """
+                    import java.util.Map;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
+                            return m.isEmpty();
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.map())));
+            assertTrue(result.isSuccess(), "Empty map.isEmpty() should return true. Got: " + result);
+        }
+
+        @Test
+        void mapIsEmptyFalse() {
+            var source = """
+                    import java.util.Map;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
+                            return !m.isEmpty();
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var mapData = PlutusData.map(
+                    new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(10))
+            );
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(mapData)));
+            assertTrue(result.isSuccess(), "Non-empty map.isEmpty() should return false. Got: " + result);
+        }
+
+        @Test
+        void mapKeysCollectsKeys() {
+            var source = """
+                    import java.util.Map;
+                    import java.util.List;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
+                            List<PlutusData> ks = (List<PlutusData>)(Object) m.keys();
+                            return ks.size() == 2;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var mapData = PlutusData.map(
+                    new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(10)),
+                    new PlutusData.Pair(PlutusData.integer(2), PlutusData.integer(20))
+            );
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(mapData)));
+            assertTrue(result.isSuccess(), "map.keys().size() should be 2. Got: " + result);
+        }
+
+        @Test
+        void mapValuesCollectsValues() {
+            var source = """
+                    import java.util.Map;
+                    import java.util.List;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
+                            List<PlutusData> vs = (List<PlutusData>)(Object) m.values();
+                            return vs.size() == 3;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var mapData = PlutusData.map(
+                    new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(10)),
+                    new PlutusData.Pair(PlutusData.integer(2), PlutusData.integer(20)),
+                    new PlutusData.Pair(PlutusData.integer(3), PlutusData.integer(30))
+            );
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(mapData)));
+            assertTrue(result.isSuccess(), "map.values().size() should be 3. Got: " + result);
+        }
+
+        // --- For-each over Map ---
+
+        @Test
+        void forEachOverMapAccumulates() {
+            var source = """
+                    import java.util.Map;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
+                            long sum = 0;
+                            for (var entry : m) {
+                                sum = sum + Builtins.unIData(entry.key()) + Builtins.unIData(entry.value());
+                            }
+                            return sum == 33;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            // keys: 1,2  values: 10,20 → sum = 1+10+2+20 = 33
+            var mapData = PlutusData.map(
+                    new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(10)),
+                    new PlutusData.Pair(PlutusData.integer(2), PlutusData.integer(20))
+            );
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(mapData)));
+            assertTrue(result.isSuccess(), "for-each over map with accumulator should work. Got: " + result);
+        }
+
+        @Test
+        void forEachOverEmptyMap() {
+            var source = """
+                    import java.util.Map;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
+                            long count = 0;
+                            for (var entry : m) {
+                                count = count + 1;
+                            }
+                            return count == 0;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.map())));
+            assertTrue(result.isSuccess(), "for-each over empty map should yield 0. Got: " + result);
+        }
+
+        // --- Value instance methods ---
+
+        @Test
+        void valueLovelaceOf() {
+            var source = """
+                    import com.bloxbean.cardano.julc.onchain.ledger.*;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            Value v = (Value)(Object) redeemer;
+                            return v.lovelaceOf() == 5000000;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var value = simpleValue(5000000);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(value)));
+            assertTrue(result.isSuccess(), "value.lovelaceOf() should return 5000000. Got: " + result);
+        }
+
+        @Test
+        void valueIsEmptyTrue() {
+            var source = """
+                    import com.bloxbean.cardano.julc.onchain.ledger.*;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            Value v = (Value)(Object) redeemer;
+                            return v.isEmpty();
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.map())));
+            assertTrue(result.isSuccess(), "Empty value.isEmpty() should return true. Got: " + result);
+        }
+
+        @Test
+        void valueIsEmptyFalse() {
+            var source = """
+                    import com.bloxbean.cardano.julc.onchain.ledger.*;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            Value v = (Value)(Object) redeemer;
+                            return !v.isEmpty();
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var value = simpleValue(1000000);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(value)));
+            assertTrue(result.isSuccess(), "Non-empty value.isEmpty() should return false. Got: " + result);
+        }
+
+        @Test
+        void valueAssetOfFound() {
+            // Pass value and policy/token as a ConstrData tuple in the redeemer
+            var source = """
+                    import com.bloxbean.cardano.julc.onchain.ledger.*;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            var fields = Builtins.constrFields(redeemer);
+                            Value v = (Value)(Object) Builtins.headList(fields);
+                            PlutusData policyId = Builtins.headList(Builtins.tailList(fields));
+                            PlutusData tokenName = Builtins.headList(Builtins.tailList(Builtins.tailList(fields)));
+                            long amount = v.assetOf(policyId, tokenName);
+                            return amount == 42;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var value = multiAssetValue(2000000, new byte[]{1, 2, 3}, new byte[]{4, 5}, 42);
+            var redeemer = PlutusData.constr(0, value,
+                    PlutusData.bytes(new byte[]{1, 2, 3}), PlutusData.bytes(new byte[]{4, 5}));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "value.assetOf() should return 42. Got: " + result);
+        }
+
+        @Test
+        void valueAssetOfNotFound() {
+            var source = """
+                    import com.bloxbean.cardano.julc.onchain.ledger.*;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            var fields = Builtins.constrFields(redeemer);
+                            Value v = (Value)(Object) Builtins.headList(fields);
+                            PlutusData policyId = Builtins.headList(Builtins.tailList(fields));
+                            PlutusData tokenName = Builtins.headList(Builtins.tailList(Builtins.tailList(fields)));
+                            long amount = v.assetOf(policyId, tokenName);
+                            return amount == 0;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var value = multiAssetValue(2000000, new byte[]{1, 2, 3}, new byte[]{4, 5}, 42);
+            // Pass non-matching policy/token
+            var redeemer = PlutusData.constr(0, value,
+                    PlutusData.bytes(new byte[]{9, 9, 9}), PlutusData.bytes(new byte[]{8, 8}));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "value.assetOf() with non-existent policy should return 0. Got: " + result);
+        }
+    }
 }

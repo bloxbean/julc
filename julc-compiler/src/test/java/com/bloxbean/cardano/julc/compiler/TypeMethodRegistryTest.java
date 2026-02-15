@@ -84,6 +84,22 @@ class TypeMethodRegistryTest {
         assertTrue(registry.contains("MapType", "get"));
         assertTrue(registry.contains("MapType", "containsKey"));
         assertTrue(registry.contains("MapType", "size"));
+        assertTrue(registry.contains("MapType", "isEmpty"));
+        assertTrue(registry.contains("MapType", "keys"));
+        assertTrue(registry.contains("MapType", "values"));
+    }
+
+    @Test
+    void containsPairMethods() {
+        assertTrue(registry.contains("PairType", "key"));
+        assertTrue(registry.contains("PairType", "value"));
+    }
+
+    @Test
+    void containsValueMethods() {
+        assertTrue(registry.contains("Value", "lovelaceOf"));
+        assertTrue(registry.contains("Value", "isEmpty"));
+        assertTrue(registry.contains("Value", "assetOf"));
     }
 
     @Test
@@ -463,6 +479,162 @@ class TypeMethodRegistryTest {
                 new PirType.MapType(new PirType.DataType(), new PirType.DataType()), "size");
         assertTrue(rt.isPresent());
         assertInstanceOf(PirType.IntegerType.class, rt.get());
+    }
+
+    // --- Pair method tests ---
+
+    @Test
+    void dispatchPairKeyReturnsPresent() {
+        var scope = new PirTerm.Var("myPair",
+                new PirType.PairType(new PirType.ByteStringType(), new PirType.IntegerType()));
+        var result = registry.dispatch(scope, "key", List.of(),
+                new PirType.PairType(new PirType.ByteStringType(), new PirType.IntegerType()), List.of());
+        assertTrue(result.isPresent());
+    }
+
+    @Test
+    void dispatchPairValueReturnsPresent() {
+        var scope = new PirTerm.Var("myPair",
+                new PirType.PairType(new PirType.ByteStringType(), new PirType.IntegerType()));
+        var result = registry.dispatch(scope, "value", List.of(),
+                new PirType.PairType(new PirType.ByteStringType(), new PirType.IntegerType()), List.of());
+        assertTrue(result.isPresent());
+    }
+
+    @Test
+    void resolveReturnTypePairKey() {
+        var rt = registry.resolveReturnType(
+                new PirType.PairType(new PirType.ByteStringType(), new PirType.IntegerType()), "key");
+        assertTrue(rt.isPresent());
+        assertInstanceOf(PirType.ByteStringType.class, rt.get());
+    }
+
+    @Test
+    void resolveReturnTypePairValue() {
+        var rt = registry.resolveReturnType(
+                new PirType.PairType(new PirType.ByteStringType(), new PirType.IntegerType()), "value");
+        assertTrue(rt.isPresent());
+        assertInstanceOf(PirType.IntegerType.class, rt.get());
+    }
+
+    // --- Map isEmpty/keys/values tests ---
+
+    @Test
+    void dispatchMapIsEmptyReturnsPresent() {
+        var scope = new PirTerm.Var("myMap",
+                new PirType.MapType(new PirType.DataType(), new PirType.DataType()));
+        var result = registry.dispatch(scope, "isEmpty", List.of(),
+                new PirType.MapType(new PirType.DataType(), new PirType.DataType()), List.of());
+        assertTrue(result.isPresent());
+    }
+
+    @Test
+    void resolveReturnTypeMapIsEmpty() {
+        var rt = registry.resolveReturnType(
+                new PirType.MapType(new PirType.DataType(), new PirType.DataType()), "isEmpty");
+        assertTrue(rt.isPresent());
+        assertInstanceOf(PirType.BoolType.class, rt.get());
+    }
+
+    @Test
+    void dispatchMapKeysReturnsPresent() {
+        var scope = new PirTerm.Var("myMap",
+                new PirType.MapType(new PirType.ByteStringType(), new PirType.IntegerType()));
+        var result = registry.dispatch(scope, "keys", List.of(),
+                new PirType.MapType(new PirType.ByteStringType(), new PirType.IntegerType()), List.of());
+        assertTrue(result.isPresent());
+    }
+
+    @Test
+    void resolveReturnTypeMapKeys() {
+        var rt = registry.resolveReturnType(
+                new PirType.MapType(new PirType.ByteStringType(), new PirType.IntegerType()), "keys");
+        assertTrue(rt.isPresent());
+        assertInstanceOf(PirType.ListType.class, rt.get());
+        assertEquals(new PirType.ByteStringType(), ((PirType.ListType) rt.get()).elemType());
+    }
+
+    @Test
+    void dispatchMapValuesReturnsPresent() {
+        var scope = new PirTerm.Var("myMap",
+                new PirType.MapType(new PirType.ByteStringType(), new PirType.IntegerType()));
+        var result = registry.dispatch(scope, "values", List.of(),
+                new PirType.MapType(new PirType.ByteStringType(), new PirType.IntegerType()), List.of());
+        assertTrue(result.isPresent());
+    }
+
+    @Test
+    void resolveReturnTypeMapValues() {
+        var rt = registry.resolveReturnType(
+                new PirType.MapType(new PirType.ByteStringType(), new PirType.IntegerType()), "values");
+        assertTrue(rt.isPresent());
+        assertInstanceOf(PirType.ListType.class, rt.get());
+        assertEquals(new PirType.IntegerType(), ((PirType.ListType) rt.get()).elemType());
+    }
+
+    // --- Value named dispatch tests ---
+
+    @Test
+    void dispatchValueLovelaceOfReturnsPresent() {
+        // Value is a RecordType with name "Value"
+        var valueType = new PirType.RecordType("Value", List.of(
+                new PirType.Field("inner", new PirType.MapType(new PirType.ByteStringType(), new PirType.MapType(new PirType.ByteStringType(), new PirType.IntegerType())))));
+        var scope = new PirTerm.Var("myValue", valueType);
+        var result = registry.dispatch(scope, "lovelaceOf", List.of(), valueType, List.of());
+        assertTrue(result.isPresent());
+    }
+
+    @Test
+    void dispatchValueIsEmptyReturnsPresent() {
+        var valueType = new PirType.RecordType("Value", List.of());
+        var scope = new PirTerm.Var("myValue", valueType);
+        var result = registry.dispatch(scope, "isEmpty", List.of(), valueType, List.of());
+        assertTrue(result.isPresent());
+    }
+
+    @Test
+    void dispatchValueAssetOfReturnsPresent() {
+        var valueType = new PirType.RecordType("Value", List.of());
+        var scope = new PirTerm.Var("myValue", valueType);
+        var pol = new PirTerm.Var("pol", new PirType.ByteStringType());
+        var tok = new PirTerm.Var("tok", new PirType.ByteStringType());
+        var result = registry.dispatch(scope, "assetOf", List.of(pol, tok),
+                valueType, List.of(new PirType.ByteStringType(), new PirType.ByteStringType()));
+        assertTrue(result.isPresent());
+    }
+
+    @Test
+    void resolveReturnTypeValueLovelaceOf() {
+        var valueType = new PirType.RecordType("Value", List.of());
+        var rt = registry.resolveReturnType(valueType, "lovelaceOf");
+        assertTrue(rt.isPresent());
+        assertInstanceOf(PirType.IntegerType.class, rt.get());
+    }
+
+    @Test
+    void resolveReturnTypeValueIsEmpty() {
+        var valueType = new PirType.RecordType("Value", List.of());
+        var rt = registry.resolveReturnType(valueType, "isEmpty");
+        assertTrue(rt.isPresent());
+        assertInstanceOf(PirType.BoolType.class, rt.get());
+    }
+
+    @Test
+    void resolveReturnTypeValueAssetOf() {
+        var valueType = new PirType.RecordType("Value", List.of());
+        var rt = registry.resolveReturnType(valueType, "assetOf");
+        assertTrue(rt.isPresent());
+        assertInstanceOf(PirType.IntegerType.class, rt.get());
+    }
+
+    // --- Named RecordType dispatch only matches correct name ---
+
+    @Test
+    void nonValueRecordDoesNotDispatchValueMethods() {
+        var otherType = new PirType.RecordType("Foo", List.of());
+        var scope = new PirTerm.Var("myFoo", otherType);
+        var result = registry.dispatch(scope, "lovelaceOf", List.of(), otherType, List.of());
+        assertTrue(result.isEmpty(), "Non-Value RecordType should not dispatch Value.lovelaceOf");
     }
 
     // --- Type key derivation ---
