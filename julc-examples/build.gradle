@@ -9,7 +9,6 @@ dependencies {
     implementation project(':julc-compiler')
     implementation project(':julc-ledger-api')
     implementation project(':julc-stdlib')
-    implementation project(':julc-onchain-api')
     testImplementation project(':julc-testkit')
     testImplementation project(':julc-vm')
     testRuntimeOnly project(':julc-vm-scalus')

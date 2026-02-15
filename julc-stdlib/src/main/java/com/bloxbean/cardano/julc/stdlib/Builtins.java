@@ -1,8 +1,9 @@
-package com.bloxbean.cardano.julc.onchain.stdlib;
+package com.bloxbean.cardano.julc.stdlib;
 
 import com.bloxbean.cardano.julc.core.PlutusData;
 
 import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -21,6 +22,29 @@ import java.util.List;
 public final class Builtins {
 
     private Builtins() {}
+
+    // =========================================================================
+    // CryptoProvider SPI
+    // =========================================================================
+
+    private static volatile CryptoProvider cryptoProvider;
+
+    /** Set the crypto provider for off-chain execution. */
+    public static void setCryptoProvider(CryptoProvider provider) {
+        cryptoProvider = provider;
+    }
+
+    /** Get the current crypto provider, or throw if not set. */
+    private static CryptoProvider requireCryptoProvider() {
+        CryptoProvider p = cryptoProvider;
+        if (p == null) {
+            throw new UnsupportedOperationException(
+                    "Builtins crypto operations require a CryptoProvider for off-chain use. "
+                    + "Call Builtins.setCryptoProvider(new JvmCryptoProvider()) in test setup, "
+                    + "or extend ContractTest which sets it up automatically.");
+        }
+        return p;
+    }
 
     // =========================================================================
     // List operations
@@ -295,17 +319,33 @@ public final class Builtins {
 
     /** Encode a string as UTF-8 bytestring. */
     public static PlutusData.BytesData encodeUtf8(PlutusData s) {
-        throw new UnsupportedOperationException("Builtins.encodeUtf8() not supported in JVM mode");
+        if (s instanceof PlutusData.BytesData bd) {
+            // On-chain, strings are ByteStrings; off-chain treat as pass-through
+            return bd;
+        }
+        throw new IllegalArgumentException("encodeUtf8: expected BytesData (string), got " + s);
+    }
+
+    /** Encode a Java string as UTF-8 bytestring. */
+    public static PlutusData.BytesData encodeUtf8(String s) {
+        return new PlutusData.BytesData(s.getBytes(StandardCharsets.UTF_8));
     }
 
     /** Decode a UTF-8 bytestring to a string. */
     public static PlutusData decodeUtf8(PlutusData.BytesData bs) {
-        throw new UnsupportedOperationException("Builtins.decodeUtf8() not supported in JVM mode");
+        // Return as BytesData — on-chain strings are ByteStrings
+        return bs;
+    }
+
+    /** Decode a UTF-8 bytestring to a Java String. */
+    public static String decodeUtf8String(PlutusData.BytesData bs) {
+        return new String(toBytes(bs), StandardCharsets.UTF_8);
     }
 
     /** Serialise a Data value to its CBOR-encoded bytestring. */
     public static PlutusData.BytesData serialiseData(PlutusData d) {
-        throw new UnsupportedOperationException("Builtins.serialiseData() not supported in JVM mode");
+        return new PlutusData.BytesData(
+                com.bloxbean.cardano.julc.core.cbor.PlutusDataCborEncoder.encode(d));
     }
 
     /** Create a bytestring of n copies of a given byte value. */
@@ -378,49 +418,49 @@ public final class Builtins {
     // Crypto operations
     // =========================================================================
 
-    /** SHA2-256 hash. Delegates to CryptoLib provider. */
+    /** SHA2-256 hash. */
     public static PlutusData.BytesData sha2_256(PlutusData.BytesData bs) {
-        return CryptoLib.sha2_256(bs);
+        return new PlutusData.BytesData(requireCryptoProvider().sha2_256(toBytes(bs)));
     }
 
-    /** Blake2b-256 hash. Delegates to CryptoLib provider. */
+    /** Blake2b-256 hash. */
     public static PlutusData.BytesData blake2b_256(PlutusData.BytesData bs) {
-        return CryptoLib.blake2b_256(bs);
+        return new PlutusData.BytesData(requireCryptoProvider().blake2b_256(toBytes(bs)));
     }
 
-    /** Verify an Ed25519 signature. Delegates to CryptoLib provider. */
+    /** Verify an Ed25519 signature. */
     public static boolean verifyEd25519Signature(PlutusData.BytesData key, PlutusData.BytesData msg, PlutusData.BytesData sig) {
-        return CryptoLib.verifyEd25519Signature(key, msg, sig);
+        return requireCryptoProvider().verifyEd25519Signature(toBytes(key), toBytes(msg), toBytes(sig));
     }
 
-    /** SHA3-256 hash. Delegates to CryptoLib provider. */
+    /** SHA3-256 hash. */
     public static PlutusData.BytesData sha3_256(PlutusData.BytesData bs) {
-        return CryptoLib.sha3_256(bs);
+        return new PlutusData.BytesData(requireCryptoProvider().sha3_256(toBytes(bs)));
     }
 
-    /** Blake2b-224 hash. Delegates to CryptoLib provider. */
+    /** Blake2b-224 hash. */
     public static PlutusData.BytesData blake2b_224(PlutusData.BytesData bs) {
-        return CryptoLib.blake2b_224(bs);
+        return new PlutusData.BytesData(requireCryptoProvider().blake2b_224(toBytes(bs)));
     }
 
-    /** Keccak-256 hash. Delegates to CryptoLib provider. */
+    /** Keccak-256 hash. */
     public static PlutusData.BytesData keccak_256(PlutusData.BytesData bs) {
-        return CryptoLib.keccak_256(bs);
+        return new PlutusData.BytesData(requireCryptoProvider().keccak_256(toBytes(bs)));
     }
 
     /** Verify ECDSA secp256k1 signature. */
     public static boolean verifyEcdsaSecp256k1Signature(PlutusData.BytesData key, PlutusData.BytesData msg, PlutusData.BytesData sig) {
-        throw new UnsupportedOperationException("Builtins.verifyEcdsaSecp256k1Signature() not supported in JVM mode");
+        return requireCryptoProvider().verifyEcdsaSecp256k1Signature(toBytes(key), toBytes(msg), toBytes(sig));
     }
 
     /** Verify Schnorr secp256k1 signature. */
     public static boolean verifySchnorrSecp256k1Signature(PlutusData.BytesData key, PlutusData.BytesData msg, PlutusData.BytesData sig) {
-        throw new UnsupportedOperationException("Builtins.verifySchnorrSecp256k1Signature() not supported in JVM mode");
+        return requireCryptoProvider().verifySchnorrSecp256k1Signature(toBytes(key), toBytes(msg), toBytes(sig));
     }
 
     /** RIPEMD-160 hash. */
     public static PlutusData.BytesData ripemd_160(PlutusData.BytesData bs) {
-        throw new UnsupportedOperationException("Builtins.ripemd_160() not supported in JVM mode");
+        return new PlutusData.BytesData(requireCryptoProvider().ripemd_160(toBytes(bs)));
     }
 
     // =========================================================================
@@ -525,14 +565,61 @@ public final class Builtins {
         return new PlutusData.BytesData(bytes);
     }
 
-    /** Shift a bytestring by n bits. */
+    /** Shift a bytestring by n bits. Positive = left shift, negative = right shift. Zero bits fill. */
     public static PlutusData.BytesData shiftByteString(PlutusData.BytesData bs, long n) {
-        throw new UnsupportedOperationException("Builtins.shiftByteString() not fully supported in JVM mode");
+        var bytes = toBytes(bs);
+        if (bytes.length == 0) return bs;
+        int totalBits = bytes.length * 8;
+        var result = new byte[bytes.length];
+        if (Math.abs(n) >= totalBits) {
+            return new PlutusData.BytesData(result); // all zeros
+        }
+        if (n > 0) {
+            // Left shift by n bits
+            int byteShift = (int)(n / 8);
+            int bitShift = (int)(n % 8);
+            for (int i = 0; i < bytes.length - byteShift; i++) {
+                int val = (bytes[i + byteShift] & 0xFF) << bitShift;
+                if (bitShift > 0 && i + byteShift + 1 < bytes.length) {
+                    val |= (bytes[i + byteShift + 1] & 0xFF) >>> (8 - bitShift);
+                }
+                result[i] = (byte) val;
+            }
+        } else {
+            // Right shift by |n| bits
+            long absN = -n;
+            int byteShift = (int)(absN / 8);
+            int bitShift = (int)(absN % 8);
+            for (int i = bytes.length - 1; i >= byteShift; i--) {
+                int val = (bytes[i - byteShift] & 0xFF) >>> bitShift;
+                if (bitShift > 0 && i - byteShift - 1 >= 0) {
+                    val |= (bytes[i - byteShift - 1] & 0xFF) << (8 - bitShift);
+                }
+                result[i] = (byte) val;
+            }
+        }
+        return new PlutusData.BytesData(result);
     }
 
-    /** Rotate a bytestring by n bits. */
+    /** Rotate a bytestring by n bits. Positive = left rotate, negative = right rotate. */
     public static PlutusData.BytesData rotateByteString(PlutusData.BytesData bs, long n) {
-        throw new UnsupportedOperationException("Builtins.rotateByteString() not fully supported in JVM mode");
+        var bytes = toBytes(bs);
+        if (bytes.length == 0) return bs;
+        int totalBits = bytes.length * 8;
+        // Normalize rotation amount to [0, totalBits)
+        int rot = (int)(n % totalBits);
+        if (rot < 0) rot += totalBits;
+        if (rot == 0) return new PlutusData.BytesData(bytes.clone());
+        // Rotate left by rot: result = (bs << rot) | (bs >>> (totalBits - rot))
+        var left = shiftByteString(bs, rot);
+        var right = shiftByteString(bs, -(totalBits - rot));
+        var leftBytes = left.value();
+        var rightBytes = right.value();
+        var result = new byte[bytes.length];
+        for (int i = 0; i < bytes.length; i++) {
+            result[i] = (byte)(leftBytes[i] | rightBytes[i]);
+        }
+        return new PlutusData.BytesData(result);
     }
 
     /** Count the number of set bits (1s) in a bytestring. */

@@ -1,7 +1,7 @@
 package com.bloxbean.cardano.julc.stdlib.lib;
 
-import com.bloxbean.cardano.julc.onchain.annotation.OnchainLibrary;
-import com.bloxbean.cardano.julc.onchain.stdlib.Builtins;
+import com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary;
+import com.bloxbean.cardano.julc.stdlib.Builtins;
 
 /**
  * Cryptographic hash and signature verification operations compiled from Java source to UPLC.

@@ -1,6 +1,6 @@
 package com.bloxbean.cardano.julc.stdlib.lib;
 
-import com.bloxbean.cardano.julc.onchain.annotation.OnchainLibrary;
+import com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary;
 import com.bloxbean.cardano.julc.ledger.Address;
 import com.bloxbean.cardano.julc.ledger.Credential;
 

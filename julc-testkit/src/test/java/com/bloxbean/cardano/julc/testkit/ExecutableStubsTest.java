@@ -4,8 +4,7 @@ import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.core.types.JulcList;
 import com.bloxbean.cardano.julc.core.types.JulcMap;
 import com.bloxbean.cardano.julc.ledger.*;
-import com.bloxbean.cardano.julc.onchain.stdlib.CryptoLib;
-import com.bloxbean.cardano.julc.onchain.stdlib.ValuesLib;
+import com.bloxbean.cardano.julc.stdlib.Builtins;
 import com.bloxbean.cardano.julc.stdlib.lib.ContextsLib;
 import com.bloxbean.cardano.julc.stdlib.lib.IntervalLib;
 import com.bloxbean.cardano.julc.stdlib.lib.ListsLib;
@@ -30,7 +29,7 @@ class ExecutableStubsTest {
 
     @BeforeAll
     static void setup() {
-        CryptoLib.setProvider(new JvmCryptoProvider());
+        Builtins.setCryptoProvider(new JvmCryptoProvider());
     }
 
     /** Pad a short byte array to 28 bytes (required by PolicyId and PubKeyHash). */
@@ -146,67 +145,67 @@ class ExecutableStubsTest {
 
     }
 
-    // --- ValuesLib ---
+    // --- Value ---
 
     @Nested
-    class ValuesLibTests {
+    class ValueTests {
 
         @Test
         void lovelaceOfExtractsAda() {
             var value = Value.lovelace(BigInteger.valueOf(5_000_000));
-            assertEquals(BigInteger.valueOf(5_000_000), ValuesLib.lovelaceOf(value));
+            assertEquals(BigInteger.valueOf(5_000_000), value.getLovelace());
         }
 
         @Test
         void lovelaceOfReturnsZeroForEmpty() {
             var value = Value.zero();
-            assertEquals(BigInteger.ZERO, ValuesLib.lovelaceOf(value));
+            assertEquals(BigInteger.ZERO, value.getLovelace());
         }
 
         @Test
         void assetOfExtractsNativeToken() {
-            var policyId = padTo28(new byte[]{1, 2, 3});
-            var tokenName = new byte[]{4, 5, 6};
-            var value = Value.singleton(new PolicyId(policyId), new TokenName(tokenName), BigInteger.valueOf(100));
-            assertEquals(BigInteger.valueOf(100), ValuesLib.assetOf(value, policyId, tokenName));
+            var policyId = new PolicyId(padTo28(new byte[]{1, 2, 3}));
+            var tokenName = new TokenName(new byte[]{4, 5, 6});
+            var value = Value.singleton(policyId, tokenName, BigInteger.valueOf(100));
+            assertEquals(BigInteger.valueOf(100), value.getAsset(policyId, tokenName));
         }
 
         @Test
         void assetOfReturnsZeroForMissing() {
             var value = Value.lovelace(BigInteger.valueOf(1000));
             assertEquals(BigInteger.ZERO,
-                    ValuesLib.assetOf(value, new byte[]{1, 2, 3}, new byte[]{4, 5}));
+                    value.getAsset(new PolicyId(padTo28(new byte[]{1, 2, 3})), new TokenName(new byte[]{4, 5})));
         }
 
         @Test
         void geqReturnsTrueWhenGreater() {
             var a = Value.lovelace(BigInteger.valueOf(5_000_000));
             var b = Value.lovelace(BigInteger.valueOf(2_000_000));
-            assertTrue(ValuesLib.geq(a, b));
+            assertTrue(a.getLovelace().compareTo(b.getLovelace()) >= 0);
         }
 
         @Test
         void geqReturnsTrueWhenEqual() {
             var v = Value.lovelace(BigInteger.valueOf(5_000_000));
-            assertTrue(ValuesLib.geq(v, v));
+            assertTrue(v.getLovelace().compareTo(v.getLovelace()) >= 0);
         }
 
         @Test
         void geqReturnsFalseWhenLess() {
             var a = Value.lovelace(BigInteger.valueOf(2_000_000));
             var b = Value.lovelace(BigInteger.valueOf(5_000_000));
-            assertFalse(ValuesLib.geq(a, b));
+            assertFalse(a.getLovelace().compareTo(b.getLovelace()) >= 0);
         }
 
         @Test
         void assetOfWithMixedValue() {
-            var policyId = padTo28(new byte[]{10, 20, 30});
-            var tokenName = new byte[]{40, 50};
+            var policyId = new PolicyId(padTo28(new byte[]{10, 20, 30}));
+            var tokenName = new TokenName(new byte[]{40, 50});
             var value = Value.lovelace(BigInteger.valueOf(2_000_000))
-                    .merge(Value.singleton(new PolicyId(policyId), new TokenName(tokenName), BigInteger.valueOf(50)));
+                    .merge(Value.singleton(policyId, tokenName, BigInteger.valueOf(50)));
 
-            assertEquals(BigInteger.valueOf(2_000_000), ValuesLib.lovelaceOf(value));
-            assertEquals(BigInteger.valueOf(50), ValuesLib.assetOf(value, policyId, tokenName));
+            assertEquals(BigInteger.valueOf(2_000_000), value.getLovelace());
+            assertEquals(BigInteger.valueOf(50), value.getAsset(policyId, tokenName));
         }
     }
 
@@ -319,47 +318,43 @@ class ExecutableStubsTest {
         }
     }
 
-    // --- CryptoLib ---
+    // --- Builtins Crypto ---
 
     @Nested
-    class CryptoLibTests {
+    class BuiltinsCryptoTests {
 
         @Test
         void sha2_256ProducesHash() {
             var data = new PlutusData.BytesData(new byte[]{1, 2, 3});
-            var hash = CryptoLib.sha2_256(data);
+            var hash = Builtins.sha2_256(data);
             assertInstanceOf(PlutusData.BytesData.class, hash);
-            assertEquals(32, ((PlutusData.BytesData) hash).value().length);
+            assertEquals(32, hash.value().length);
         }
 
         @Test
         void blake2b_256ProducesHash() {
             var data = new PlutusData.BytesData(new byte[]{1, 2, 3});
-            var hash = CryptoLib.blake2b_256(data);
+            var hash = Builtins.blake2b_256(data);
             assertInstanceOf(PlutusData.BytesData.class, hash);
-            assertEquals(32, ((PlutusData.BytesData) hash).value().length);
+            assertEquals(32, hash.value().length);
         }
 
         @Test
         void sameInputProducesSameHash() {
             var data1 = new PlutusData.BytesData(new byte[]{1, 2, 3});
             var data2 = new PlutusData.BytesData(new byte[]{1, 2, 3});
-            var hash1 = CryptoLib.sha2_256(data1);
-            var hash2 = CryptoLib.sha2_256(data2);
-            assertArrayEquals(
-                    ((PlutusData.BytesData) hash1).value(),
-                    ((PlutusData.BytesData) hash2).value());
+            var hash1 = Builtins.sha2_256(data1);
+            var hash2 = Builtins.sha2_256(data2);
+            assertArrayEquals(hash1.value(), hash2.value());
         }
 
         @Test
         void differentInputProducesDifferentHash() {
             var data1 = new PlutusData.BytesData(new byte[]{1, 2, 3});
             var data2 = new PlutusData.BytesData(new byte[]{4, 5, 6});
-            var hash1 = CryptoLib.sha2_256(data1);
-            var hash2 = CryptoLib.sha2_256(data2);
-            assertFalse(java.util.Arrays.equals(
-                    ((PlutusData.BytesData) hash1).value(),
-                    ((PlutusData.BytesData) hash2).value()));
+            var hash1 = Builtins.sha2_256(data1);
+            var hash2 = Builtins.sha2_256(data2);
+            assertFalse(java.util.Arrays.equals(hash1.value(), hash2.value()));
         }
     }
 
@@ -371,31 +366,31 @@ class ExecutableStubsTest {
         @Test
         void lovelaceCreatesCorrectValue() {
             var value = Value.lovelace(BigInteger.valueOf(5_000_000));
-            assertEquals(BigInteger.valueOf(5_000_000), ValuesLib.lovelaceOf(value));
+            assertEquals(BigInteger.valueOf(5_000_000), value.getLovelace());
         }
 
         @Test
         void zeroCreatesEmptyValue() {
             var value = Value.zero();
-            assertEquals(BigInteger.ZERO, ValuesLib.lovelaceOf(value));
+            assertEquals(BigInteger.ZERO, value.getLovelace());
         }
 
         @Test
         void ofCreatesNativeAssetValue() {
-            var pid = padTo28(new byte[]{1, 2, 3});
-            var tn = new byte[]{4, 5, 6};
-            var value = Value.singleton(new PolicyId(pid), new TokenName(tn), BigInteger.valueOf(100));
-            assertEquals(BigInteger.valueOf(100), ValuesLib.assetOf(value, pid, tn));
+            var pid = new PolicyId(padTo28(new byte[]{1, 2, 3}));
+            var tn = new TokenName(new byte[]{4, 5, 6});
+            var value = Value.singleton(pid, tn, BigInteger.valueOf(100));
+            assertEquals(BigInteger.valueOf(100), value.getAsset(pid, tn));
         }
 
         @Test
         void withLovelaceCreatesMixedValue() {
-            var pid = padTo28(new byte[]{10, 20});
-            var tn = new byte[]{30, 40};
+            var pid = new PolicyId(padTo28(new byte[]{10, 20}));
+            var tn = new TokenName(new byte[]{30, 40});
             var value = Value.lovelace(BigInteger.valueOf(2_000_000))
-                    .merge(Value.singleton(new PolicyId(pid), new TokenName(tn), BigInteger.valueOf(50)));
-            assertEquals(BigInteger.valueOf(2_000_000), ValuesLib.lovelaceOf(value));
-            assertEquals(BigInteger.valueOf(50), ValuesLib.assetOf(value, pid, tn));
+                    .merge(Value.singleton(pid, tn, BigInteger.valueOf(50)));
+            assertEquals(BigInteger.valueOf(2_000_000), value.getLovelace());
+            assertEquals(BigInteger.valueOf(50), value.getAsset(pid, tn));
         }
     }
 

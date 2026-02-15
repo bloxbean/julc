@@ -1,4 +1,4 @@
-package com.bloxbean.cardano.julc.onchain.annotation;
+package com.bloxbean.cardano.julc.stdlib.annotation;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;

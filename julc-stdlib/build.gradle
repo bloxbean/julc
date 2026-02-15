@@ -8,7 +8,6 @@ dependencies {
     api project(':julc-core')
     api project(':julc-ledger-api')
     implementation project(':julc-compiler')
-    implementation project(':julc-onchain-api')
 
     testImplementation project(':julc-vm')
     testRuntimeOnly project(':julc-vm-scalus')

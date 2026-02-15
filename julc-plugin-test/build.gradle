@@ -5,8 +5,8 @@ plugins {
 description = 'Plugin test project: demonstrates offchain QuickTx usage for compiled validators'
 
 dependencies {
-    // On-chain API for validator source reference
-    implementation project(':julc-onchain-api')
+    // Stdlib for validator source reference
+    implementation project(':julc-stdlib')
 
     // Test dependencies for E2E offchain tests
     testImplementation project(':julc-core')

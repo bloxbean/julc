@@ -25,7 +25,7 @@ class JulcAnnotationProcessorTest {
     @Test
     void compilesValidatorAndGeneratesJson() throws Exception {
         var source = """
-                import com.bloxbean.cardano.julc.onchain.annotation.*;
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
                 import java.math.BigInteger;
 
                 @Validator
@@ -58,7 +58,7 @@ class JulcAnnotationProcessorTest {
     @Test
     void compilesMintingPolicyAndGeneratesJson() throws Exception {
         var source = """
-                import com.bloxbean.cardano.julc.onchain.annotation.*;
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
                 import java.math.BigInteger;
 
                 @MintingPolicy
@@ -84,7 +84,7 @@ class JulcAnnotationProcessorTest {
     @Test
     void compilesParameterizedValidator() throws Exception {
         var source = """
-                import com.bloxbean.cardano.julc.onchain.annotation.*;
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
                 import java.math.BigInteger;
 
                 @Validator

@@ -1,4 +1,4 @@
-package com.bloxbean.cardano.julc.onchain.annotation;
+package com.bloxbean.cardano.julc.stdlib.annotation;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
@@ -6,12 +6,15 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Marks a class as a Plutus minting policy validator.
+ * Marks a class as a Plutus minting policy.
  * <p>
  * The class must contain exactly one {@link Entrypoint} method.
- * Minting validators receive {@code (redeemer, scriptContext)} parameters.
+ * Minting policies receive {@code (redeemer, scriptContext)} parameters.
+ *
+ * @deprecated Use {@link MintingValidator} instead.
  */
+@Deprecated
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
-public @interface MintingValidator {
+public @interface MintingPolicy {
 }

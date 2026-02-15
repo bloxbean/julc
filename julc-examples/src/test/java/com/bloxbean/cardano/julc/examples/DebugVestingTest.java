@@ -4,11 +4,9 @@ import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.core.types.JulcList;
 import com.bloxbean.cardano.julc.core.types.JulcMap;
 import com.bloxbean.cardano.julc.ledger.*;
-import com.bloxbean.cardano.julc.onchain.stdlib.ValuesLib;
 import com.bloxbean.cardano.julc.stdlib.lib.ContextsLib;
 import com.bloxbean.cardano.julc.stdlib.lib.IntervalLib;
 import com.bloxbean.cardano.julc.testkit.ContractTest;
-import com.bloxbean.cardano.julc.testkit.JvmCryptoProvider;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -146,7 +144,7 @@ class DebugVestingTest extends ContractTest {
         @Test
         void valueOperationsWork() {
             var value = Value.lovelace(BigInteger.valueOf(10_000_000));
-            BigInteger lovelace = ValuesLib.lovelaceOf(value);
+            BigInteger lovelace = value.getLovelace();
             assertEquals(BigInteger.valueOf(10_000_000), lovelace);
         }
 
@@ -159,9 +157,9 @@ class DebugVestingTest extends ContractTest {
                     .merge(Value.singleton(new PolicyId(policyId), new TokenName(tokenName),
                             BigInteger.valueOf(100)));
 
-            assertEquals(BigInteger.valueOf(2_000_000), ValuesLib.lovelaceOf(value));
+            assertEquals(BigInteger.valueOf(2_000_000), value.getLovelace());
             assertEquals(BigInteger.valueOf(100),
-                    ValuesLib.assetOf(value, policyId, tokenName));
+                    value.getAsset(new PolicyId(policyId), new TokenName(tokenName)));
         }
 
         @Test

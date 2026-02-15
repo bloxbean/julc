@@ -39,14 +39,14 @@ import java.util.stream.Collectors;
  * {@link JulcCompiler} for the actual compilation.
  */
 @SupportedAnnotationTypes({
-        "com.bloxbean.cardano.julc.onchain.annotation.Validator",
-        "com.bloxbean.cardano.julc.onchain.annotation.MintingPolicy",
-        "com.bloxbean.cardano.julc.onchain.annotation.SpendingValidator",
-        "com.bloxbean.cardano.julc.onchain.annotation.MintingValidator",
-        "com.bloxbean.cardano.julc.onchain.annotation.WithdrawValidator",
-        "com.bloxbean.cardano.julc.onchain.annotation.CertifyingValidator",
-        "com.bloxbean.cardano.julc.onchain.annotation.VotingValidator",
-        "com.bloxbean.cardano.julc.onchain.annotation.ProposingValidator"
+        "com.bloxbean.cardano.julc.stdlib.annotation.Validator",
+        "com.bloxbean.cardano.julc.stdlib.annotation.MintingPolicy",
+        "com.bloxbean.cardano.julc.stdlib.annotation.SpendingValidator",
+        "com.bloxbean.cardano.julc.stdlib.annotation.MintingValidator",
+        "com.bloxbean.cardano.julc.stdlib.annotation.WithdrawValidator",
+        "com.bloxbean.cardano.julc.stdlib.annotation.CertifyingValidator",
+        "com.bloxbean.cardano.julc.stdlib.annotation.VotingValidator",
+        "com.bloxbean.cardano.julc.stdlib.annotation.ProposingValidator"
 })
 @SupportedSourceVersion(SourceVersion.RELEASE_24)
 public class JulcAnnotationProcessor extends AbstractProcessor {
@@ -73,15 +73,15 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
     @Override
     public Set<String> getSupportedAnnotationTypes() {
         return Set.of(
-                "com.bloxbean.cardano.julc.onchain.annotation.Validator",
-                "com.bloxbean.cardano.julc.onchain.annotation.MintingPolicy",
-                "com.bloxbean.cardano.julc.onchain.annotation.SpendingValidator",
-                "com.bloxbean.cardano.julc.onchain.annotation.MintingValidator",
-                "com.bloxbean.cardano.julc.onchain.annotation.WithdrawValidator",
-                "com.bloxbean.cardano.julc.onchain.annotation.CertifyingValidator",
-                "com.bloxbean.cardano.julc.onchain.annotation.VotingValidator",
-                "com.bloxbean.cardano.julc.onchain.annotation.ProposingValidator",
-                "com.bloxbean.cardano.julc.onchain.annotation.OnchainLibrary"
+                "com.bloxbean.cardano.julc.stdlib.annotation.Validator",
+                "com.bloxbean.cardano.julc.stdlib.annotation.MintingPolicy",
+                "com.bloxbean.cardano.julc.stdlib.annotation.SpendingValidator",
+                "com.bloxbean.cardano.julc.stdlib.annotation.MintingValidator",
+                "com.bloxbean.cardano.julc.stdlib.annotation.WithdrawValidator",
+                "com.bloxbean.cardano.julc.stdlib.annotation.CertifyingValidator",
+                "com.bloxbean.cardano.julc.stdlib.annotation.VotingValidator",
+                "com.bloxbean.cardano.julc.stdlib.annotation.ProposingValidator",
+                "com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary"
         );
     }
 
@@ -111,7 +111,7 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
 
     private void collectSameProjectLibraries(RoundEnvironment roundEnv) {
         for (Element element : roundEnv.getElementsAnnotatedWith(
-                findTypeElement("com.bloxbean.cardano.julc.onchain.annotation.OnchainLibrary"))) {
+                findTypeElement("com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary"))) {
             String simpleName = element.getSimpleName().toString();
             if (sameProjectLibraries.containsKey(simpleName)) {
                 continue;

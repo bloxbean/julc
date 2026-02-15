@@ -5,7 +5,7 @@ import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.core.Program;
 import com.bloxbean.cardano.julc.ledger.PolicyId;
 import com.bloxbean.cardano.julc.ledger.TxOutRef;
-import com.bloxbean.cardano.julc.onchain.stdlib.CryptoLib;
+import com.bloxbean.cardano.julc.stdlib.Builtins;
 import com.bloxbean.cardano.julc.vm.EvalResult;
 import com.bloxbean.cardano.julc.vm.JulcVm;
 
@@ -211,7 +211,7 @@ public abstract class ContractTest {
      * directly before any test that uses CryptoLib functions.
      */
     protected static void initCrypto() {
-        CryptoLib.setProvider(new JvmCryptoProvider());
+        Builtins.setCryptoProvider(new JvmCryptoProvider());
     }
 
     // --- Class-based compilation ---

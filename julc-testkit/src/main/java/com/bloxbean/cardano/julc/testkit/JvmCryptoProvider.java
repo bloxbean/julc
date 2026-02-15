@@ -1,7 +1,8 @@
 package com.bloxbean.cardano.julc.testkit;
 
-import com.bloxbean.cardano.julc.onchain.stdlib.CryptoProvider;
+import com.bloxbean.cardano.julc.stdlib.CryptoProvider;
 import org.bouncycastle.crypto.digests.Blake2bDigest;
+import org.bouncycastle.crypto.digests.RIPEMD160Digest;
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters;
 import org.bouncycastle.crypto.signers.Ed25519Signer;
 
@@ -54,6 +55,15 @@ public class JvmCryptoProvider implements CryptoProvider {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    @Override
+    public byte[] ripemd_160(byte[] data) {
+        var digest = new RIPEMD160Digest();
+        digest.update(data, 0, data.length);
+        byte[] result = new byte[digest.getDigestSize()];
+        digest.doFinal(result, 0);
+        return result;
     }
 
     private static byte[] digest(String algorithm, byte[] data) {

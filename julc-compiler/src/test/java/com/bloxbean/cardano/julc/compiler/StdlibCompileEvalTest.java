@@ -1537,7 +1537,7 @@ class StdlibCompileEvalTest {
             var userLib = """
                     package com.example;
                     import com.bloxbean.cardano.julc.core.PlutusData;
-                    import com.bloxbean.cardano.julc.onchain.annotation.OnchainLibrary;
+                    import com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary;
 
                     @OnchainLibrary
                     public class MyDataLib {
@@ -1571,7 +1571,7 @@ class StdlibCompileEvalTest {
             var userLib = """
                     package com.example;
                     import com.bloxbean.cardano.julc.core.PlutusData;
-                    import com.bloxbean.cardano.julc.onchain.annotation.OnchainLibrary;
+                    import com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary;
 
                     @OnchainLibrary
                     public class MyMathLib {
@@ -1604,7 +1604,7 @@ class StdlibCompileEvalTest {
             var helperLib = """
                     package com.example;
                     import com.bloxbean.cardano.julc.core.PlutusData;
-                    import com.bloxbean.cardano.julc.onchain.annotation.OnchainLibrary;
+                    import com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary;
 
                     @OnchainLibrary
                     public class MathHelper {
@@ -1616,7 +1616,7 @@ class StdlibCompileEvalTest {
             var middleLib = """
                     package com.example;
                     import com.bloxbean.cardano.julc.core.PlutusData;
-                    import com.bloxbean.cardano.julc.onchain.annotation.OnchainLibrary;
+                    import com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary;
 
                     @OnchainLibrary
                     public class MiddleLib {

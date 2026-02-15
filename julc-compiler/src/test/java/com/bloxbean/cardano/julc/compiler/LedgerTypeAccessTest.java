@@ -576,7 +576,7 @@ class LedgerTypeAccessTest {
             var libSource = """
                     package com.example;
                     import com.bloxbean.cardano.julc.core.PlutusData;
-                    import com.bloxbean.cardano.julc.onchain.annotation.OnchainLibrary;
+                    import com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary;
 
                     @OnchainLibrary
                     public class TestOutputLib {
@@ -625,7 +625,7 @@ class LedgerTypeAccessTest {
             var libSource = """
                     package com.example;
                     import com.bloxbean.cardano.julc.core.PlutusData;
-                    import com.bloxbean.cardano.julc.onchain.annotation.OnchainLibrary;
+                    import com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary;
                     import java.util.List;
 
                     @OnchainLibrary
@@ -676,7 +676,7 @@ class LedgerTypeAccessTest {
             var libSource = """
                     package com.example;
                     import com.bloxbean.cardano.julc.core.PlutusData;
-                    import com.bloxbean.cardano.julc.onchain.annotation.OnchainLibrary;
+                    import com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary;
 
                     @OnchainLibrary
                     public class TestOutputLib {

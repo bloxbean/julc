@@ -1,8 +1,8 @@
 package com.bloxbean.cardano.julc.stdlib.lib;
 
 import com.bloxbean.cardano.julc.core.PlutusData;
-import com.bloxbean.cardano.julc.onchain.annotation.OnchainLibrary;
-import com.bloxbean.cardano.julc.onchain.stdlib.Builtins;
+import com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary;
+import com.bloxbean.cardano.julc.stdlib.Builtins;
 
 /**
  * Map (association list) operations compiled from Java source to UPLC.

@@ -2,8 +2,8 @@ package com.bloxbean.cardano.julc.stdlib.lib;
 
 import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.core.types.Tuple2;
-import com.bloxbean.cardano.julc.onchain.annotation.OnchainLibrary;
-import com.bloxbean.cardano.julc.onchain.stdlib.Builtins;
+import com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary;
+import com.bloxbean.cardano.julc.stdlib.Builtins;
 
 import java.math.BigInteger;
 

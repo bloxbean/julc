@@ -1,4 +1,4 @@
-package com.bloxbean.cardano.julc.onchain.annotation;
+package com.bloxbean.cardano.julc.stdlib.annotation;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
@@ -6,13 +6,13 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Marks a class as a Plutus proposing validator.
+ * Marks a class as a Plutus certifying validator.
  * <p>
  * The class must contain exactly one {@link Entrypoint} method.
- * Proposing validators receive {@code (redeemer, scriptContext)} parameters
- * and validate governance proposals.
+ * Certifying validators receive {@code (redeemer, scriptContext)} parameters
+ * and validate delegation certificate operations.
  */
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
-public @interface ProposingValidator {
+public @interface CertifyingValidator {
 }
