@@ -1,6 +1,8 @@
 package com.bloxbean.cardano.julc.examples;
 
 import com.bloxbean.cardano.julc.core.PlutusData;
+import com.bloxbean.cardano.julc.core.types.JulcList;
+import com.bloxbean.cardano.julc.core.types.JulcMap;
 import com.bloxbean.cardano.julc.ledger.*;
 import com.bloxbean.cardano.julc.onchain.stdlib.*;
 import com.bloxbean.cardano.julc.testkit.ContractTest;
@@ -52,24 +54,24 @@ class DebugVestingTest extends ContractTest {
 
     // Helper to build a ScriptContext with ledger-api types
     private ScriptContext buildCtx(byte[][] signatories, Interval validRange) {
-        var sigs = Arrays.stream(signatories).map(PubKeyHash::new).toList();
+        var sigs = JulcList.of(Arrays.stream(signatories).map(PubKeyHash::new).toArray(PubKeyHash[]::new));
         var txInfo = new TxInfo(
-                List.of(),              // inputs
-                List.of(),              // referenceInputs
-                List.of(),              // outputs
+                JulcList.of(),              // inputs
+                JulcList.of(),              // referenceInputs
+                JulcList.of(),              // outputs
                 BigInteger.valueOf(200000), // fee
-                Value.zero(),           // mint
-                List.of(),              // certificates
-                Map.of(),               // withdrawals
-                validRange,             // validRange
-                sigs,                   // signatories
-                Map.of(),               // redeemers
-                Map.of(),               // datums
-                new TxId(new byte[32]), // id
-                Map.of(),               // votes
-                List.of(),              // proposalProcedures
-                Optional.empty(),       // currentTreasuryAmount
-                Optional.empty()        // treasuryDonation
+                Value.zero(),               // mint
+                JulcList.of(),              // certificates
+                JulcMap.empty(),            // withdrawals
+                validRange,                 // validRange
+                sigs,                       // signatories
+                JulcMap.empty(),            // redeemers
+                JulcMap.empty(),            // datums
+                new TxId(new byte[32]),     // id
+                JulcMap.empty(),            // votes
+                JulcList.of(),              // proposalProcedures
+                Optional.empty(),           // currentTreasuryAmount
+                Optional.empty()            // treasuryDonation
         );
         var dummyRef = new TxOutRef(new TxId(new byte[32]), BigInteger.ZERO);
         return new ScriptContext(txInfo, PlutusData.UNIT,

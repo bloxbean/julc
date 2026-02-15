@@ -2,6 +2,11 @@ package com.bloxbean.cardano.julc.ledger;
 
 import com.bloxbean.cardano.julc.core.PlutusData;
 
+import com.bloxbean.cardano.julc.core.types.JulcArrayList;
+import com.bloxbean.cardano.julc.core.types.JulcAssocMap;
+import com.bloxbean.cardano.julc.core.types.JulcList;
+import com.bloxbean.cardano.julc.core.types.JulcMap;
+
 import java.math.BigInteger;
 import java.util.*;
 import java.util.function.Function;
@@ -80,6 +85,60 @@ public final class PlutusDataHelper {
             return List.copyOf(result);
         }
         throw new IllegalArgumentException("Expected ListData, got: " + data.getClass().getSimpleName());
+    }
+
+    // --- JulcList encoding ---
+
+    public static <T> PlutusData.ListData encodeList(Iterable<T> items, Function<T, PlutusData> encoder) {
+        List<PlutusData> result = new ArrayList<>();
+        for (T elem : items) {
+            result.add(encoder.apply(elem));
+        }
+        return new PlutusData.ListData(result);
+    }
+
+    public static <T> JulcList<T> decodeJulcList(PlutusData data, Function<PlutusData, T> decoder) {
+        if (data instanceof PlutusData.ListData ld) {
+            List<T> result = new ArrayList<>(ld.items().size());
+            for (PlutusData item : ld.items()) {
+                result.add(decoder.apply(item));
+            }
+            return new JulcArrayList<>(result);
+        }
+        throw new IllegalArgumentException("Expected ListData, got: " + data.getClass().getSimpleName());
+    }
+
+    // --- JulcMap encoding ---
+
+    public static <K, V> PlutusData.MapData encodeJulcMap(
+            JulcMap<K, V> map,
+            Function<K, PlutusData> keyEncoder,
+            Function<V, PlutusData> valueEncoder) {
+        List<PlutusData.Pair> entries = new ArrayList<>();
+        for (K key : map.keys()) {
+            entries.add(new PlutusData.Pair(
+                    keyEncoder.apply(key),
+                    valueEncoder.apply(map.get(key))));
+        }
+        return new PlutusData.MapData(entries);
+    }
+
+    public static <K, V> JulcMap<K, V> decodeJulcMap(
+            PlutusData data,
+            Function<PlutusData, K> keyDecoder,
+            Function<PlutusData, V> valueDecoder) {
+        if (data instanceof PlutusData.MapData m) {
+            // Build by inserting in reverse order to preserve original entry order
+            // (since JulcAssocMap.insert prepends)
+            JulcMap<K, V> result = JulcAssocMap.empty();
+            var pairs = m.entries();
+            for (int i = pairs.size() - 1; i >= 0; i--) {
+                var pair = pairs.get(i);
+                result = result.insert(keyDecoder.apply(pair.key()), valueDecoder.apply(pair.value()));
+            }
+            return result;
+        }
+        throw new IllegalArgumentException("Expected Map, got: " + data.getClass().getSimpleName());
     }
 
     // --- Map encoding ---

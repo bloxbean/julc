@@ -1,6 +1,8 @@
 package com.bloxbean.cardano.julc.ledger;
 
 import com.bloxbean.cardano.julc.core.PlutusData;
+import com.bloxbean.cardano.julc.core.types.JulcList;
+import com.bloxbean.cardano.julc.core.types.JulcMap;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
@@ -414,9 +416,9 @@ class LedgerTypesTest {
 
         @Test
         void committeeRoundTrip() {
-            var members = new LinkedHashMap<Credential, BigInteger>();
-            members.put(new Credential.PubKeyCredential(pkh()), BigInteger.valueOf(100));
-            var c = new Committee(members, new Rational(BigInteger.TWO, BigInteger.valueOf(3)));
+            var c = new Committee(
+                    JulcMap.of(new Credential.PubKeyCredential(pkh()), BigInteger.valueOf(100)),
+                    new Rational(BigInteger.TWO, BigInteger.valueOf(3)));
             assertEquals(c, Committee.fromPlutusData(c.toPlutusData()));
         }
     }
@@ -525,9 +527,9 @@ class LedgerTypesTest {
 
         @Test
         void treasuryWithdrawalsRoundTrip() {
-            var w = new LinkedHashMap<Credential, BigInteger>();
-            w.put(new Credential.PubKeyCredential(pkh()), BigInteger.valueOf(1_000_000));
-            var ga = new GovernanceAction.TreasuryWithdrawals(w, Optional.empty());
+            var ga = new GovernanceAction.TreasuryWithdrawals(
+                    JulcMap.of(new Credential.PubKeyCredential(pkh()), BigInteger.valueOf(1_000_000)),
+                    Optional.empty());
             assertEquals(ga, GovernanceAction.fromPlutusData(ga.toPlutusData()));
         }
 
@@ -541,8 +543,8 @@ class LedgerTypesTest {
         void updateCommitteeRoundTrip() {
             var ga = new GovernanceAction.UpdateCommittee(
                     Optional.empty(),
-                    List.of(new Credential.PubKeyCredential(pkh())),
-                    Map.of(),
+                    JulcList.of(new Credential.PubKeyCredential(pkh())),
+                    JulcMap.empty(),
                     new Rational(BigInteger.TWO, BigInteger.valueOf(3)));
             assertEquals(ga, GovernanceAction.fromPlutusData(ga.toPlutusData()));
         }
@@ -671,11 +673,11 @@ class LedgerTypesTest {
     class TxInfoTests {
         TxInfo minimalTxInfo() {
             return new TxInfo(
-                    List.of(), List.of(), List.of(),
-                    BigInteger.valueOf(200_000), Value.zero(), List.of(),
-                    Map.of(), Interval.always(), List.of(),
-                    Map.of(), Map.of(), txId(),
-                    Map.of(), List.of(), Optional.empty(), Optional.empty());
+                    JulcList.of(), JulcList.of(), JulcList.of(),
+                    BigInteger.valueOf(200_000), Value.zero(), JulcList.of(),
+                    JulcMap.empty(), Interval.always(), JulcList.of(),
+                    JulcMap.empty(), JulcMap.empty(), txId(),
+                    JulcMap.empty(), JulcList.of(), Optional.empty(), Optional.empty());
         }
 
         @Test
@@ -691,11 +693,11 @@ class LedgerTypesTest {
                     new OutputDatum.NoOutputDatum(), Optional.empty());
             var input = new TxInInfo(new TxOutRef(txId(), BigInteger.ZERO), out);
             var ti = new TxInfo(
-                    List.of(input), List.of(), List.of(out),
-                    BigInteger.valueOf(200_000), Value.zero(), List.of(),
-                    Map.of(), Interval.always(), List.of(pkh()),
-                    Map.of(), Map.of(), txId(),
-                    Map.of(), List.of(), Optional.empty(), Optional.empty());
+                    JulcList.of(input), JulcList.of(), JulcList.of(out),
+                    BigInteger.valueOf(200_000), Value.zero(), JulcList.of(),
+                    JulcMap.empty(), Interval.always(), JulcList.of(pkh()),
+                    JulcMap.empty(), JulcMap.empty(), txId(),
+                    JulcMap.empty(), JulcList.of(), Optional.empty(), Optional.empty());
             assertEquals(ti, TxInfo.fromPlutusData(ti.toPlutusData()));
         }
 
@@ -707,24 +709,23 @@ class LedgerTypesTest {
             var input = new TxInInfo(new TxOutRef(txId(), BigInteger.ZERO), out);
             var voter = new Voter.DRepVoter(new Credential.PubKeyCredential(pkh()));
             var gaId = new GovernanceActionId(txId(), BigInteger.ZERO);
-            var votes = new LinkedHashMap<Voter, Map<GovernanceActionId, Vote>>();
-            votes.put(voter, Map.of(gaId, new Vote.VoteYes()));
+            JulcMap<Voter, JulcMap<GovernanceActionId, Vote>> votes = JulcMap.of(voter, JulcMap.of(gaId, (Vote) new Vote.VoteYes()));
 
             var ti = new TxInfo(
-                    List.of(input),
-                    List.of(),
-                    List.of(out),
+                    JulcList.of(input),
+                    JulcList.of(),
+                    JulcList.of(out),
                     BigInteger.valueOf(200_000),
                     Value.zero(),
-                    List.of(new TxCert.RegDRep(new Credential.PubKeyCredential(pkh()), BigInteger.ONE)),
-                    Map.of(),
+                    JulcList.of(new TxCert.RegDRep(new Credential.PubKeyCredential(pkh()), BigInteger.ONE)),
+                    JulcMap.empty(),
                     Interval.between(BigInteger.valueOf(1000), BigInteger.valueOf(2000)),
-                    List.of(pkh()),
-                    Map.of(),
-                    Map.of(),
+                    JulcList.of(pkh()),
+                    JulcMap.empty(),
+                    JulcMap.empty(),
                     txId(),
                     votes,
-                    List.of(),
+                    JulcList.of(),
                     Optional.of(BigInteger.valueOf(1_000_000_000)),
                     Optional.of(BigInteger.ZERO));
             assertEquals(ti, TxInfo.fromPlutusData(ti.toPlutusData()));
@@ -745,11 +746,11 @@ class LedgerTypesTest {
         @Test
         void spendingContextRoundTrip() {
             var ti = new TxInfo(
-                    List.of(), List.of(), List.of(),
-                    BigInteger.ZERO, Value.zero(), List.of(),
-                    Map.of(), Interval.always(), List.of(),
-                    Map.of(), Map.of(), txId(),
-                    Map.of(), List.of(), Optional.empty(), Optional.empty());
+                    JulcList.of(), JulcList.of(), JulcList.of(),
+                    BigInteger.ZERO, Value.zero(), JulcList.of(),
+                    JulcMap.empty(), Interval.always(), JulcList.of(),
+                    JulcMap.empty(), JulcMap.empty(), txId(),
+                    JulcMap.empty(), JulcList.of(), Optional.empty(), Optional.empty());
             var ctx = new ScriptContext(ti, PlutusData.UNIT,
                     new ScriptInfo.SpendingScript(new TxOutRef(txId(), BigInteger.ZERO), Optional.empty()));
             assertEquals(ctx, ScriptContext.fromPlutusData(ctx.toPlutusData()));
@@ -758,11 +759,11 @@ class LedgerTypesTest {
         @Test
         void mintingContextRoundTrip() {
             var ti = new TxInfo(
-                    List.of(), List.of(), List.of(),
-                    BigInteger.ZERO, Value.zero(), List.of(),
-                    Map.of(), Interval.always(), List.of(),
-                    Map.of(), Map.of(), txId(),
-                    Map.of(), List.of(), Optional.empty(), Optional.empty());
+                    JulcList.of(), JulcList.of(), JulcList.of(),
+                    BigInteger.ZERO, Value.zero(), JulcList.of(),
+                    JulcMap.empty(), Interval.always(), JulcList.of(),
+                    JulcMap.empty(), JulcMap.empty(), txId(),
+                    JulcMap.empty(), JulcList.of(), Optional.empty(), Optional.empty());
             var ctx = new ScriptContext(ti, PlutusData.integer(42),
                     new ScriptInfo.MintingScript(pid()));
             assertEquals(ctx, ScriptContext.fromPlutusData(ctx.toPlutusData()));
@@ -771,11 +772,11 @@ class LedgerTypesTest {
         @Test
         void encodingStructure() {
             var ti = new TxInfo(
-                    List.of(), List.of(), List.of(),
-                    BigInteger.ZERO, Value.zero(), List.of(),
-                    Map.of(), Interval.always(), List.of(),
-                    Map.of(), Map.of(), txId(),
-                    Map.of(), List.of(), Optional.empty(), Optional.empty());
+                    JulcList.of(), JulcList.of(), JulcList.of(),
+                    BigInteger.ZERO, Value.zero(), JulcList.of(),
+                    JulcMap.empty(), Interval.always(), JulcList.of(),
+                    JulcMap.empty(), JulcMap.empty(), txId(),
+                    JulcMap.empty(), JulcList.of(), Optional.empty(), Optional.empty());
             var ctx = new ScriptContext(ti, PlutusData.UNIT,
                     new ScriptInfo.MintingScript(pid()));
             var data = ctx.toPlutusData();

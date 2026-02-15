@@ -14,10 +14,38 @@ package com.bloxbean.cardano.julc.core.types;
  */
 public interface JulcMap<K, V> {
 
+    // --- Factory methods (off-chain only — on-chain use compiler intrinsics) ---
+
+    /** Create an empty map. */
+    static <K, V> JulcMap<K, V> empty() {
+        return JulcAssocMap.empty();
+    }
+
+    /** Create a map with one entry. */
+    static <K, V> JulcMap<K, V> of(K k1, V v1) {
+        return JulcAssocMap.of(k1, v1);
+    }
+
+    /** Create a map with two entries. */
+    static <K, V> JulcMap<K, V> of(K k1, V v1, K k2, V v2) {
+        return JulcAssocMap.of(k1, v1, k2, v2);
+    }
+
+    /** Create a map with three entries. */
+    static <K, V> JulcMap<K, V> of(K k1, V v1, K k2, V v2, K k3, V v3) {
+        return JulcAssocMap.of(k1, v1, k2, v2, k3, v3);
+    }
+
     // --- Lookup ---
 
     /** Look up a value by key. Returns null if not found. */
     V get(K key);
+
+    /** Look up a value by key, returning defaultValue if not found. */
+    default V getOrDefault(K key, V defaultValue) {
+        V v = get(key);
+        return v != null ? v : defaultValue;
+    }
 
     /** Check if the map contains the given key. */
     boolean containsKey(K key);

@@ -1,23 +1,22 @@
 package com.bloxbean.cardano.julc.ledger;
 
 import com.bloxbean.cardano.julc.core.PlutusData;
+import com.bloxbean.cardano.julc.core.types.JulcAssocMap;
+import com.bloxbean.cardano.julc.core.types.JulcMap;
 
 import java.math.BigInteger;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
- * A multi-asset value: Map<PolicyId, Map<TokenName, BigInteger>>.
+ * A multi-asset value: JulcMap&lt;PolicyId, JulcMap&lt;TokenName, BigInteger&gt;&gt;.
  * <p>
- * Encoding: PlutusData.MapData of (BytesData(policyId) -> Map of (BytesData(tokenName) -> IntData(quantity)))
+ * Encoding: PlutusData.MapData of (BytesData(policyId) -&gt; Map of (BytesData(tokenName) -&gt; IntData(quantity)))
  */
-public record Value(Map<PolicyId, Map<TokenName, BigInteger>> inner) implements PlutusDataConvertible {
-
-    public Value {
-        inner = Collections.unmodifiableMap(new LinkedHashMap<>(inner));
-    }
+public record Value(JulcMap<PolicyId, JulcMap<TokenName, BigInteger>> inner) implements PlutusDataConvertible {
 
     public static Value zero() {
-        return new Value(Map.of());
+        return new Value(JulcMap.empty());
     }
 
     public static Value lovelace(BigInteger amount) {
@@ -25,7 +24,7 @@ public record Value(Map<PolicyId, Map<TokenName, BigInteger>> inner) implements 
     }
 
     public static Value singleton(PolicyId policyId, TokenName tokenName, BigInteger quantity) {
-        return new Value(Map.of(policyId, Map.of(tokenName, quantity)));
+        return new Value(JulcMap.of(policyId, JulcMap.of(tokenName, quantity)));
     }
 
     public BigInteger getLovelace() {
@@ -33,21 +32,35 @@ public record Value(Map<PolicyId, Map<TokenName, BigInteger>> inner) implements 
     }
 
     public BigInteger getAsset(PolicyId policyId, TokenName tokenName) {
-        var tokens = inner.getOrDefault(policyId, Map.of());
-        return tokens.getOrDefault(tokenName, BigInteger.ZERO);
+        JulcMap<TokenName, BigInteger> tokens = inner.get(policyId);
+        if (tokens == null) return BigInteger.ZERO;
+        BigInteger amount = tokens.get(tokenName);
+        return amount != null ? amount : BigInteger.ZERO;
     }
 
     public Value merge(Value other) {
-        var result = new LinkedHashMap<PolicyId, Map<TokenName, BigInteger>>();
-        // Copy this
-        for (var entry : inner.entrySet()) {
-            result.put(entry.getKey(), new LinkedHashMap<>(entry.getValue()));
-        }
-        // Merge other
-        for (var entry : other.inner.entrySet()) {
-            var existing = result.computeIfAbsent(entry.getKey(), _ -> new LinkedHashMap<>());
-            for (var tokenEntry : entry.getValue().entrySet()) {
-                existing.merge(tokenEntry.getKey(), tokenEntry.getValue(), BigInteger::add);
+        // Start with a mutable copy of this value's entries
+        JulcMap<PolicyId, JulcMap<TokenName, BigInteger>> result = inner;
+
+        for (PolicyId policy : other.inner.keys()) {
+            JulcMap<TokenName, BigInteger> otherTokens = other.inner.get(policy);
+            JulcMap<TokenName, BigInteger> existing = result.get(policy);
+
+            if (existing == null) {
+                result = result.insert(policy, otherTokens);
+            } else {
+                // Merge token maps
+                JulcMap<TokenName, BigInteger> merged = existing;
+                for (TokenName tn : otherTokens.keys()) {
+                    BigInteger otherAmount = otherTokens.get(tn);
+                    BigInteger existingAmount = merged.get(tn);
+                    if (existingAmount == null) {
+                        merged = merged.insert(tn, otherAmount);
+                    } else {
+                        merged = merged.delete(tn).insert(tn, existingAmount.add(otherAmount));
+                    }
+                }
+                result = result.delete(policy).insert(policy, merged);
             }
         }
         return new Value(result);
@@ -56,15 +69,16 @@ public record Value(Map<PolicyId, Map<TokenName, BigInteger>> inner) implements 
     @Override
     public PlutusData.MapData toPlutusData() {
         List<PlutusData.Pair> outerEntries = new ArrayList<>();
-        for (var entry : inner.entrySet()) {
+        for (PolicyId policyId : inner.keys()) {
+            JulcMap<TokenName, BigInteger> tokens = inner.get(policyId);
             List<PlutusData.Pair> innerEntries = new ArrayList<>();
-            for (var tokenEntry : entry.getValue().entrySet()) {
+            for (TokenName tokenName : tokens.keys()) {
                 innerEntries.add(new PlutusData.Pair(
-                        tokenEntry.getKey().toPlutusData(),
-                        new PlutusData.IntData(tokenEntry.getValue())));
+                        tokenName.toPlutusData(),
+                        new PlutusData.IntData(tokens.get(tokenName))));
             }
             outerEntries.add(new PlutusData.Pair(
-                    entry.getKey().toPlutusData(),
+                    policyId.toPlutusData(),
                     new PlutusData.MapData(innerEntries)));
         }
         return new PlutusData.MapData(outerEntries);
@@ -72,16 +86,22 @@ public record Value(Map<PolicyId, Map<TokenName, BigInteger>> inner) implements 
 
     public static Value fromPlutusData(PlutusData data) {
         if (data instanceof PlutusData.MapData m) {
-            var result = new LinkedHashMap<PolicyId, Map<TokenName, BigInteger>>();
-            for (var pair : m.entries()) {
+            // Build by inserting in reverse order to preserve entry order
+            JulcMap<PolicyId, JulcMap<TokenName, BigInteger>> result = JulcAssocMap.empty();
+            var pairs = m.entries();
+            for (int i = pairs.size() - 1; i >= 0; i--) {
+                var pair = pairs.get(i);
                 var policyId = PolicyId.fromPlutusData(pair.key());
                 if (pair.value() instanceof PlutusData.MapData innerMap) {
-                    var tokens = new LinkedHashMap<TokenName, BigInteger>();
-                    for (var innerPair : innerMap.entries()) {
-                        tokens.put(TokenName.fromPlutusData(innerPair.key()),
+                    JulcMap<TokenName, BigInteger> tokens = JulcAssocMap.empty();
+                    var innerPairs = innerMap.entries();
+                    for (int j = innerPairs.size() - 1; j >= 0; j--) {
+                        var innerPair = innerPairs.get(j);
+                        tokens = tokens.insert(
+                                TokenName.fromPlutusData(innerPair.key()),
                                 PlutusDataHelper.decodeInteger(innerPair.value()));
                     }
-                    result.put(policyId, tokens);
+                    result = result.insert(policyId, tokens);
                 } else {
                     throw new IllegalArgumentException("Expected inner Map for Value, got: " + pair.value().getClass().getSimpleName());
                 }

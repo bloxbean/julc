@@ -28,9 +28,19 @@ public final class JulcAssocMap<K, V> implements JulcMap<K, V> {
         return new JulcAssocMap<>(List.of());
     }
 
-    /** Create a map from key-value pairs. */
+    /** Create a map with one entry. */
     public static <K, V> JulcAssocMap<K, V> of(K k1, V v1) {
         return new JulcAssocMap<>(List.of(new Entry<>(k1, v1)));
+    }
+
+    /** Create a map with two entries. */
+    public static <K, V> JulcAssocMap<K, V> of(K k1, V v1, K k2, V v2) {
+        return new JulcAssocMap<>(List.of(new Entry<>(k1, v1), new Entry<>(k2, v2)));
+    }
+
+    /** Create a map with three entries. */
+    public static <K, V> JulcAssocMap<K, V> of(K k1, V v1, K k2, V v2, K k3, V v3) {
+        return new JulcAssocMap<>(List.of(new Entry<>(k1, v1), new Entry<>(k2, v2), new Entry<>(k3, v3)));
     }
 
     @Override

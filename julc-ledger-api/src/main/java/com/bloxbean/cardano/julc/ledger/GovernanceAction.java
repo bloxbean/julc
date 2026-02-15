@@ -1,10 +1,11 @@
 package com.bloxbean.cardano.julc.ledger;
 
 import com.bloxbean.cardano.julc.core.PlutusData;
+import com.bloxbean.cardano.julc.core.types.JulcList;
+import com.bloxbean.cardano.julc.core.types.JulcMap;
 
 import java.math.BigInteger;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -33,12 +34,12 @@ public sealed interface GovernanceAction extends PlutusDataConvertible {
         }
     }
 
-    record TreasuryWithdrawals(Map<Credential, BigInteger> withdrawals,
+    record TreasuryWithdrawals(JulcMap<Credential, BigInteger> withdrawals,
                                Optional<ScriptHash> constitutionScript) implements GovernanceAction {
         @Override
         public PlutusData.ConstrData toPlutusData() {
             return new PlutusData.ConstrData(2, List.of(
-                    PlutusDataHelper.encodeMap(withdrawals,
+                    PlutusDataHelper.encodeJulcMap(withdrawals,
                             Credential::toPlutusData, PlutusDataHelper::encodeInteger),
                     PlutusDataHelper.encodeOptional(constitutionScript, ScriptHash::toPlutusData)));
         }
@@ -52,14 +53,14 @@ public sealed interface GovernanceAction extends PlutusDataConvertible {
         }
     }
 
-    record UpdateCommittee(Optional<GovernanceActionId> id, List<Credential> removedMembers,
-                           Map<Credential, BigInteger> addedMembers, Rational newQuorum) implements GovernanceAction {
+    record UpdateCommittee(Optional<GovernanceActionId> id, JulcList<Credential> removedMembers,
+                           JulcMap<Credential, BigInteger> addedMembers, Rational newQuorum) implements GovernanceAction {
         @Override
         public PlutusData.ConstrData toPlutusData() {
             return new PlutusData.ConstrData(4, List.of(
                     PlutusDataHelper.encodeOptional(id, GovernanceActionId::toPlutusData),
                     PlutusDataHelper.encodeList(removedMembers, Credential::toPlutusData),
-                    PlutusDataHelper.encodeMap(addedMembers,
+                    PlutusDataHelper.encodeJulcMap(addedMembers,
                             Credential::toPlutusData, PlutusDataHelper::encodeInteger),
                     newQuorum.toPlutusData()));
         }
@@ -94,14 +95,14 @@ public sealed interface GovernanceAction extends PlutusDataConvertible {
                     PlutusDataHelper.decodeOptional(f.get(0), GovernanceActionId::fromPlutusData),
                     ProtocolVersion.fromPlutusData(f.get(1)));
             case 2 -> new TreasuryWithdrawals(
-                    PlutusDataHelper.decodeMap(f.get(0), Credential::fromPlutusData, PlutusDataHelper::decodeInteger),
+                    PlutusDataHelper.decodeJulcMap(f.get(0), Credential::fromPlutusData, PlutusDataHelper::decodeInteger),
                     PlutusDataHelper.decodeOptional(f.get(1), ScriptHash::fromPlutusData));
             case 3 -> new NoConfidence(
                     PlutusDataHelper.decodeOptional(f.get(0), GovernanceActionId::fromPlutusData));
             case 4 -> new UpdateCommittee(
                     PlutusDataHelper.decodeOptional(f.get(0), GovernanceActionId::fromPlutusData),
-                    PlutusDataHelper.decodeList(f.get(1), Credential::fromPlutusData),
-                    PlutusDataHelper.decodeMap(f.get(2), Credential::fromPlutusData, PlutusDataHelper::decodeInteger),
+                    PlutusDataHelper.decodeJulcList(f.get(1), Credential::fromPlutusData),
+                    PlutusDataHelper.decodeJulcMap(f.get(2), Credential::fromPlutusData, PlutusDataHelper::decodeInteger),
                     Rational.fromPlutusData(f.get(3)));
             case 5 -> new NewConstitution(
                     PlutusDataHelper.decodeOptional(f.get(0), GovernanceActionId::fromPlutusData),

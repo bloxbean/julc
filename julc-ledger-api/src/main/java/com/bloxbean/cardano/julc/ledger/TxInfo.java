@@ -1,30 +1,31 @@
 package com.bloxbean.cardano.julc.ledger;
 
 import com.bloxbean.cardano.julc.core.PlutusData;
+import com.bloxbean.cardano.julc.core.types.JulcList;
+import com.bloxbean.cardano.julc.core.types.JulcMap;
 
 import java.math.BigInteger;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 /**
  * V3 (Conway) transaction info with 16 fields.
  */
 public record TxInfo(
-        List<TxInInfo> inputs,
-        List<TxInInfo> referenceInputs,
-        List<TxOut> outputs,
+        JulcList<TxInInfo> inputs,
+        JulcList<TxInInfo> referenceInputs,
+        JulcList<TxOut> outputs,
         BigInteger fee,
         Value mint,
-        List<TxCert> certificates,
-        Map<Credential, BigInteger> withdrawals,
+        JulcList<TxCert> certificates,
+        JulcMap<Credential, BigInteger> withdrawals,
         Interval validRange,
-        List<PubKeyHash> signatories,
-        Map<ScriptPurpose, PlutusData> redeemers,
-        Map<DatumHash, PlutusData> datums,
+        JulcList<PubKeyHash> signatories,
+        JulcMap<ScriptPurpose, PlutusData> redeemers,
+        JulcMap<DatumHash, PlutusData> datums,
         TxId id,
-        Map<Voter, Map<GovernanceActionId, Vote>> votes,
-        List<ProposalProcedure> proposalProcedures,
+        JulcMap<Voter, JulcMap<GovernanceActionId, Vote>> votes,
+        JulcList<ProposalProcedure> proposalProcedures,
         Optional<BigInteger> currentTreasuryAmount,
         Optional<BigInteger> treasuryDonation
 ) implements PlutusDataConvertible {
@@ -38,13 +39,13 @@ public record TxInfo(
                 new PlutusData.IntData(fee),
                 mint.toPlutusData(),
                 PlutusDataHelper.encodeList(certificates, TxCert::toPlutusData),
-                PlutusDataHelper.encodeMap(withdrawals,
+                PlutusDataHelper.encodeJulcMap(withdrawals,
                         Credential::toPlutusData, PlutusDataHelper::encodeInteger),
                 validRange.toPlutusData(),
                 PlutusDataHelper.encodeList(signatories, PubKeyHash::toPlutusData),
-                PlutusDataHelper.encodeMap(redeemers,
+                PlutusDataHelper.encodeJulcMap(redeemers,
                         ScriptPurpose::toPlutusData, d -> d),
-                PlutusDataHelper.encodeMap(datums,
+                PlutusDataHelper.encodeJulcMap(datums,
                         DatumHash::toPlutusData, d -> d),
                 id.toPlutusData(),
                 encodeVotes(votes),
@@ -53,41 +54,41 @@ public record TxInfo(
                 PlutusDataHelper.encodeOptional(treasuryDonation, PlutusDataHelper::encodeInteger)));
     }
 
-    private static PlutusData.MapData encodeVotes(Map<Voter, Map<GovernanceActionId, Vote>> votes) {
-        return PlutusDataHelper.encodeMap(votes,
+    private static PlutusData.MapData encodeVotes(JulcMap<Voter, JulcMap<GovernanceActionId, Vote>> votes) {
+        return PlutusDataHelper.encodeJulcMap(votes,
                 Voter::toPlutusData,
-                innerMap -> PlutusDataHelper.encodeMap(innerMap,
+                innerMap -> PlutusDataHelper.encodeJulcMap(innerMap,
                         GovernanceActionId::toPlutusData, Vote::toPlutusData));
     }
 
     public static TxInfo fromPlutusData(PlutusData data) {
         var f = PlutusDataHelper.expectConstr(data, 0);
         return new TxInfo(
-                PlutusDataHelper.decodeList(f.get(0), TxInInfo::fromPlutusData),
-                PlutusDataHelper.decodeList(f.get(1), TxInInfo::fromPlutusData),
-                PlutusDataHelper.decodeList(f.get(2), TxOut::fromPlutusData),
+                PlutusDataHelper.decodeJulcList(f.get(0), TxInInfo::fromPlutusData),
+                PlutusDataHelper.decodeJulcList(f.get(1), TxInInfo::fromPlutusData),
+                PlutusDataHelper.decodeJulcList(f.get(2), TxOut::fromPlutusData),
                 PlutusDataHelper.decodeInteger(f.get(3)),
                 Value.fromPlutusData(f.get(4)),
-                PlutusDataHelper.decodeList(f.get(5), TxCert::fromPlutusData),
-                PlutusDataHelper.decodeMap(f.get(6),
+                PlutusDataHelper.decodeJulcList(f.get(5), TxCert::fromPlutusData),
+                PlutusDataHelper.decodeJulcMap(f.get(6),
                         Credential::fromPlutusData, PlutusDataHelper::decodeInteger),
                 Interval.fromPlutusData(f.get(7)),
-                PlutusDataHelper.decodeList(f.get(8), PubKeyHash::fromPlutusData),
-                PlutusDataHelper.decodeMap(f.get(9),
+                PlutusDataHelper.decodeJulcList(f.get(8), PubKeyHash::fromPlutusData),
+                PlutusDataHelper.decodeJulcMap(f.get(9),
                         ScriptPurpose::fromPlutusData, d -> d),
-                PlutusDataHelper.decodeMap(f.get(10),
+                PlutusDataHelper.decodeJulcMap(f.get(10),
                         DatumHash::fromPlutusData, d -> d),
                 TxId.fromPlutusData(f.get(11)),
                 decodeVotes(f.get(12)),
-                PlutusDataHelper.decodeList(f.get(13), ProposalProcedure::fromPlutusData),
+                PlutusDataHelper.decodeJulcList(f.get(13), ProposalProcedure::fromPlutusData),
                 PlutusDataHelper.decodeOptional(f.get(14), PlutusDataHelper::decodeInteger),
                 PlutusDataHelper.decodeOptional(f.get(15), PlutusDataHelper::decodeInteger));
     }
 
-    private static Map<Voter, Map<GovernanceActionId, Vote>> decodeVotes(PlutusData data) {
-        return PlutusDataHelper.decodeMap(data,
+    private static JulcMap<Voter, JulcMap<GovernanceActionId, Vote>> decodeVotes(PlutusData data) {
+        return PlutusDataHelper.decodeJulcMap(data,
                 Voter::fromPlutusData,
-                innerData -> PlutusDataHelper.decodeMap(innerData,
+                innerData -> PlutusDataHelper.decodeJulcMap(innerData,
                         GovernanceActionId::fromPlutusData, Vote::fromPlutusData));
     }
 }

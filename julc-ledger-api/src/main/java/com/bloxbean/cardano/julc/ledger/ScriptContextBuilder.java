@@ -1,6 +1,9 @@
 package com.bloxbean.cardano.julc.ledger;
 
 import com.bloxbean.cardano.julc.core.PlutusData;
+import com.bloxbean.cardano.julc.core.types.JulcArrayList;
+import com.bloxbean.cardano.julc.core.types.JulcAssocMap;
+import com.bloxbean.cardano.julc.core.types.JulcMap;
 
 import java.math.BigInteger;
 import java.util.*;
@@ -122,22 +125,44 @@ public class ScriptContextBuilder {
 
     public ScriptContext build() {
         var txInfo = new TxInfo(
-                List.copyOf(inputs),
-                List.copyOf(referenceInputs),
-                List.copyOf(outputs),
+                new JulcArrayList<>(List.copyOf(inputs)),
+                new JulcArrayList<>(List.copyOf(referenceInputs)),
+                new JulcArrayList<>(List.copyOf(outputs)),
                 fee,
                 mint,
-                List.copyOf(certificates),
-                Collections.unmodifiableMap(new LinkedHashMap<>(withdrawals)),
+                new JulcArrayList<>(List.copyOf(certificates)),
+                buildJulcMap(withdrawals),
                 validRange,
-                List.copyOf(signatories),
-                Collections.unmodifiableMap(new LinkedHashMap<>(redeemers)),
-                Collections.unmodifiableMap(new LinkedHashMap<>(datums)),
+                new JulcArrayList<>(List.copyOf(signatories)),
+                buildJulcMap(redeemers),
+                buildJulcMap(datums),
                 txId,
-                Collections.unmodifiableMap(new LinkedHashMap<>(votes)),
-                List.copyOf(proposalProcedures),
+                buildVotesJulcMap(votes),
+                new JulcArrayList<>(List.copyOf(proposalProcedures)),
                 currentTreasuryAmount,
                 treasuryDonation);
         return new ScriptContext(txInfo, redeemer, scriptInfo);
+    }
+
+    private static <K, V> JulcMap<K, V> buildJulcMap(Map<K, V> source) {
+        JulcMap<K, V> result = JulcAssocMap.empty();
+        // Insert in reverse order to preserve iteration order
+        var entries = new ArrayList<>(source.entrySet());
+        for (int i = entries.size() - 1; i >= 0; i--) {
+            var e = entries.get(i);
+            result = result.insert(e.getKey(), e.getValue());
+        }
+        return result;
+    }
+
+    private static JulcMap<Voter, JulcMap<GovernanceActionId, Vote>> buildVotesJulcMap(
+            Map<Voter, Map<GovernanceActionId, Vote>> source) {
+        JulcMap<Voter, JulcMap<GovernanceActionId, Vote>> result = JulcAssocMap.empty();
+        var entries = new ArrayList<>(source.entrySet());
+        for (int i = entries.size() - 1; i >= 0; i--) {
+            var e = entries.get(i);
+            result = result.insert(e.getKey(), buildJulcMap(e.getValue()));
+        }
+        return result;
     }
 }

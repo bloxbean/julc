@@ -3,6 +3,8 @@ package com.bloxbean.cardano.julc.ledger;
 import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.core.cbor.PlutusDataCborDecoder;
 import com.bloxbean.cardano.julc.core.cbor.PlutusDataCborEncoder;
+import com.bloxbean.cardano.julc.core.types.JulcList;
+import com.bloxbean.cardano.julc.core.types.JulcMap;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
@@ -139,11 +141,11 @@ class PlutusDataCborConformanceTest {
         @Test
         void minimalSpendingContext() {
             var txInfo = new TxInfo(
-                    List.of(), List.of(), List.of(),
-                    BigInteger.ZERO, Value.zero(), List.of(),
-                    Map.of(), Interval.always(), List.of(),
-                    Map.of(), Map.of(), new TxId(bytes32()),
-                    Map.of(), List.of(), Optional.empty(), Optional.empty());
+                    JulcList.of(), JulcList.of(), JulcList.of(),
+                    BigInteger.ZERO, Value.zero(), JulcList.of(),
+                    JulcMap.empty(), Interval.always(), JulcList.of(),
+                    JulcMap.empty(), JulcMap.empty(), new TxId(bytes32()),
+                    JulcMap.empty(), JulcList.of(), Optional.empty(), Optional.empty());
             var ctx = new ScriptContext(txInfo, PlutusData.UNIT,
                     new ScriptInfo.SpendingScript(new TxOutRef(new TxId(bytes32()), BigInteger.ZERO), Optional.empty()));
             assertCborRoundTrip(ctx);
@@ -160,15 +162,15 @@ class PlutusDataCborConformanceTest {
             var input = new TxInInfo(new TxOutRef(txId, BigInteger.ZERO), out);
 
             var txInfo = new TxInfo(
-                    List.of(input), List.of(), List.of(out),
+                    JulcList.of(input), JulcList.of(), JulcList.of(out),
                     BigInteger.valueOf(200_000),
                     Value.zero(),
-                    List.of(new TxCert.RegStaking(new Credential.PubKeyCredential(pkh), Optional.of(BigInteger.valueOf(2_000_000)))),
-                    Map.of(),
+                    JulcList.of(new TxCert.RegStaking(new Credential.PubKeyCredential(pkh), Optional.of(BigInteger.valueOf(2_000_000)))),
+                    JulcMap.empty(),
                     Interval.between(BigInteger.valueOf(1000), BigInteger.valueOf(2000)),
-                    List.of(pkh),
-                    Map.of(), Map.of(), txId,
-                    Map.of(), List.of(),
+                    JulcList.of(pkh),
+                    JulcMap.empty(), JulcMap.empty(), txId,
+                    JulcMap.empty(), JulcList.of(),
                     Optional.of(BigInteger.valueOf(1_000_000_000)),
                     Optional.of(BigInteger.ZERO));
             var ctx = new ScriptContext(txInfo, PlutusData.UNIT,

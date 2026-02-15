@@ -1,6 +1,8 @@
 package com.bloxbean.cardano.julc.testkit;
 
 import com.bloxbean.cardano.julc.core.PlutusData;
+import com.bloxbean.cardano.julc.core.types.JulcList;
+import com.bloxbean.cardano.julc.core.types.JulcMap;
 import com.bloxbean.cardano.julc.ledger.*;
 import com.bloxbean.cardano.julc.onchain.stdlib.*;
 import org.junit.jupiter.api.BeforeAll;
@@ -41,22 +43,22 @@ class ExecutableStubsTest {
 
         private TxInfo sampleTxInfo(PubKeyHash... signatories) {
             return new TxInfo(
-                    List.of(),              // inputs
-                    List.of(),              // referenceInputs
-                    List.of(),              // outputs
+                    JulcList.of(),              // inputs
+                    JulcList.of(),              // referenceInputs
+                    JulcList.of(),              // outputs
                     BigInteger.valueOf(200000), // fee
-                    Value.zero(),           // mint
-                    List.of(),              // certificates
-                    Map.of(),               // withdrawals
-                    Interval.always(),      // validRange
-                    List.of(signatories),   // signatories
-                    Map.of(),               // redeemers
-                    Map.of(),               // datums
-                    new TxId(new byte[32]), // id
-                    Map.of(),               // votes
-                    List.of(),              // proposalProcedures
-                    Optional.empty(),       // currentTreasuryAmount
-                    Optional.empty()        // treasuryDonation
+                    Value.zero(),               // mint
+                    JulcList.of(),              // certificates
+                    JulcMap.empty(),            // withdrawals
+                    Interval.always(),          // validRange
+                    JulcList.of(signatories),   // signatories
+                    JulcMap.empty(),            // redeemers
+                    JulcMap.empty(),            // datums
+                    new TxId(new byte[32]),     // id
+                    JulcMap.empty(),            // votes
+                    JulcList.of(),              // proposalProcedures
+                    Optional.empty(),           // currentTreasuryAmount
+                    Optional.empty()            // treasuryDonation
             );
         }
 
@@ -104,10 +106,10 @@ class ExecutableStubsTest {
         void txInfoValidRangeReturnsRange() {
             var range = Interval.after(BigInteger.valueOf(1000));
             var txInfo = new TxInfo(
-                    List.of(), List.of(), List.of(), BigInteger.ZERO,
-                    Value.zero(), List.of(), Map.of(), range,
-                    List.of(), Map.of(), Map.of(), new TxId(new byte[32]),
-                    Map.of(), List.of(), Optional.empty(), Optional.empty());
+                    JulcList.of(), JulcList.of(), JulcList.of(), BigInteger.ZERO,
+                    Value.zero(), JulcList.of(), JulcMap.empty(), range,
+                    JulcList.of(), JulcMap.empty(), JulcMap.empty(), new TxId(new byte[32]),
+                    JulcMap.empty(), JulcList.of(), Optional.empty(), Optional.empty());
             assertEquals(range, ContextsLib.txInfoValidRange(txInfo));
         }
 
