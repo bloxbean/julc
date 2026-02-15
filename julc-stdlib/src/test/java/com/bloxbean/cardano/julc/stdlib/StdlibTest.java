@@ -1039,8 +1039,8 @@ class StdlibTest {
             assertTrue(reg.contains("Builtins", "constrTag"));
             assertTrue(reg.contains("Builtins", "constrFields"));
             assertTrue(reg.contains("Builtins", "expModInteger"));
-            // Total: 59 Builtins + 7 ListsLib HOF + 1 ContextsLib.trace + 3 Math delegates = 70
-            assertEquals(70, reg.size());
+            // Total: 59 Builtins + 7 ListsLib HOF + 1 ContextsLib.trace + 3 Math delegates + 2 JulcList factories = 72
+            assertEquals(72, reg.size());
         }
 
         @Test
