@@ -202,9 +202,18 @@ public final class TypeMethodRegistry {
                 scopeType -> new PirType.IntegerType());
     }
 
-    // --- ByteString methods (2) ---
+    // --- ByteString methods ---
 
     private static void registerByteStringMethods(TypeMethodRegistry reg) {
+        // hash: UnBData — for hash wrapper types (PubKeyHash.hash(), TxId.hash(), etc.)
+        // On-chain, ByteStringType vars from list iteration hold Data-wrapped values.
+        // UnBData extracts the ByteString. For field-access paths (e.g. pk.hash() in switch),
+        // the compiler uses resolveRecordFieldAccess with wrapDecode, not TypeMethodRegistry.
+        reg.register("ByteStringType", "hash",
+                (scope, args, scopeType, argTypes) ->
+                        new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnBData), scope),
+                scopeType -> new PirType.ByteStringType());
+
         // length: LengthOfByteString
         reg.register("ByteStringType", "length",
                 (scope, args, scopeType, argTypes) ->

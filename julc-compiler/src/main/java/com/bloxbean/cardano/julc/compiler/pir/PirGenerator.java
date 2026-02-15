@@ -934,6 +934,19 @@ public class PirGenerator {
             };
         }
 
+        // Handle PlutusData.UNIT
+        if (fae.getScope() instanceof NameExpr ne && ne.getNameAsString().equals("PlutusData")) {
+            if (fae.getNameAsString().equals("UNIT")) {
+                // PlutusData.UNIT = Constr(0, [])
+                return new PirTerm.App(
+                        new PirTerm.App(
+                                new PirTerm.Builtin(DefaultFun.ConstrData),
+                                new PirTerm.Const(Constant.integer(BigInteger.ZERO))),
+                        new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilData),
+                                new PirTerm.Const(Constant.unit())));
+            }
+        }
+
         var scope = generateExpression(fae.getScope());
         var fieldName = fae.getNameAsString();
 

@@ -2,7 +2,6 @@ package com.bloxbean.cardano.julc.onchain.stdlib;
 
 import com.bloxbean.cardano.julc.core.PlutusData;
 
-import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -91,8 +90,8 @@ public final class MapLib {
         return new PlutusData.MapData(entries);
     }
 
-    /** Number of entries in the map. */
-    public static BigInteger size(PlutusData.MapData map) {
-        return BigInteger.valueOf(map.entries().size());
+    /** Number of entries in the map. Aligned with on-chain return type (long). */
+    public static long size(PlutusData.MapData map) {
+        return map.entries().size();
     }
 }

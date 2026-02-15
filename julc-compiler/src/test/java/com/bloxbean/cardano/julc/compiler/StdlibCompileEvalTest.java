@@ -1098,9 +1098,8 @@ class StdlibCompileEvalTest {
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
                             PlutusData txInfo = ContextsLib.getTxInfo(ctx);
                             PlutusData withdrawals = ContextsLib.txInfoWithdrawals(txInfo);
-                            // withdrawals should be a map; check it's non-empty
-                            PlutusData pairs = Builtins.unMapData(withdrawals);
-                            return !Builtins.nullList(pairs);
+                            // withdrawals returns JulcMap (already unwrapped pair list); check non-empty
+                            return !Builtins.nullList(withdrawals);
                         }
                     }
                     """;
@@ -1120,9 +1119,8 @@ class StdlibCompileEvalTest {
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
                             PlutusData txInfo = ContextsLib.getTxInfo(ctx);
                             PlutusData redeemers = ContextsLib.txInfoRedeemers(txInfo);
-                            // redeemers should be a map; check it's non-empty
-                            PlutusData pairs = Builtins.unMapData(redeemers);
-                            return !Builtins.nullList(pairs);
+                            // redeemers returns JulcMap (already unwrapped pair list); check non-empty
+                            return !Builtins.nullList(redeemers);
                         }
                     }
                     """;

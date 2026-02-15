@@ -7,20 +7,15 @@ import com.bloxbean.cardano.julc.ledger.Credential;
 /**
  * Address operations compiled from Java source to UPLC.
  * <p>
- * Address encoding in Plutus Data:
- * <pre>
- * Address = Constr(0, [credential: Credential, stakingCredential: Data])
- * Credential:
- *   PubKeyCredential  = Constr(0, [hash: ByteString])
- *   ScriptCredential  = Constr(1, [hash: ByteString])
- * </pre>
+ * Uses ledger types (Address, Credential) for readability.
+ * Works both on-chain (compiled to UPLC) and off-chain (as plain Java).
  */
 @OnchainLibrary
 public class AddressLib {
 
     /** Extract the hash from the payment credential of an address.
-     *  Works for both PubKeyCredential and ScriptCredential. */
-    @SuppressWarnings("unchecked")
+     *  Works for both PubKeyCredential and ScriptCredential.
+     *  Uses chained field access: Credential variant -> hash wrapper -> byte[]. */
     public static byte[] credentialHash(Address address) {
         return switch (address.credential()) {
             case Credential.PubKeyCredential pk -> (byte[])(Object) pk.hash();

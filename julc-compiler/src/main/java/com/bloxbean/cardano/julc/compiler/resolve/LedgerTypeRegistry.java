@@ -80,6 +80,14 @@ public final class LedgerTypeRegistry {
                 new PirType.Constructor("PosInf", 2, List.of())
         ));
 
+        // Re-register IntervalBound now that IntervalBoundType SumType is available
+        var intervalBoundTypeSumType = typeResolver.lookupSumType("IntervalBoundType")
+                .orElseThrow(() -> new IllegalStateException("IntervalBoundType must be registered first"));
+        typeResolver.registerLedgerRecord("IntervalBound", List.of(
+                new PirType.Field("boundType", intervalBoundTypeSumType),
+                new PirType.Field("isInclusive", new PirType.BoolType())
+        ));
+
         // Credential: PubKeyCredential(0), ScriptCredential(1)
         typeResolver.registerLedgerSumType("Credential", List.of(
                 new PirType.Constructor("PubKeyCredential", 0, List.of(

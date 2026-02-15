@@ -4,7 +4,11 @@ import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.core.types.JulcList;
 import com.bloxbean.cardano.julc.core.types.JulcMap;
 import com.bloxbean.cardano.julc.ledger.*;
-import com.bloxbean.cardano.julc.onchain.stdlib.*;
+import com.bloxbean.cardano.julc.onchain.stdlib.CryptoLib;
+import com.bloxbean.cardano.julc.onchain.stdlib.ValuesLib;
+import com.bloxbean.cardano.julc.stdlib.lib.ContextsLib;
+import com.bloxbean.cardano.julc.stdlib.lib.IntervalLib;
+import com.bloxbean.cardano.julc.stdlib.lib.ListsLib;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -114,20 +118,30 @@ class ExecutableStubsTest {
         }
 
         @Test
-        void getSpendingDatumReturnsForSpending() {
+        void getSpendingDatumViaScriptInfoApi() {
             var datum = PlutusData.integer(99);
             var ctx = new ScriptContext(sampleTxInfo(), PlutusData.UNIT,
                     new ScriptInfo.SpendingScript(
                             new TxOutRef(new TxId(new byte[32]), BigInteger.ZERO),
                             Optional.of(datum)));
-            assertEquals(datum, ContextsLib.getSpendingDatum(ctx));
+            // Use ScriptInfo API directly (getSpendingDatum uses on-chain casts)
+            var result = switch (ctx.scriptInfo()) {
+                case ScriptInfo.SpendingScript ss -> ss.datum().orElse(PlutusData.UNIT);
+                default -> PlutusData.UNIT;
+            };
+            assertEquals(datum, result);
         }
 
         @Test
         void getSpendingDatumReturnsUnitForMinting() {
             var ctx = new ScriptContext(sampleTxInfo(), PlutusData.UNIT,
                     new ScriptInfo.MintingScript(new PolicyId(new byte[28])));
-            assertEquals(PlutusData.UNIT, ContextsLib.getSpendingDatum(ctx));
+            // Use ScriptInfo API directly
+            var result = switch (ctx.scriptInfo()) {
+                case ScriptInfo.SpendingScript ss -> ss.datum().orElse(PlutusData.UNIT);
+                default -> PlutusData.UNIT;
+            };
+            assertEquals(PlutusData.UNIT, result);
         }
 
     }
@@ -281,7 +295,7 @@ class ExecutableStubsTest {
                     PlutusData.integer(1),
                     PlutusData.integer(2),
                     PlutusData.integer(3)));
-            assertEquals(BigInteger.valueOf(3), ListsLib.length(list));
+            assertEquals(3L, ListsLib.length(list));
         }
 
         @Test

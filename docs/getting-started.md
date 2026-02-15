@@ -430,7 +430,7 @@ package com.example.contracts;
 
 import com.bloxbean.cardano.julc.onchain.annotation.Validator;
 import com.bloxbean.cardano.julc.onchain.annotation.Entrypoint;
-import com.bloxbean.cardano.julc.onchain.stdlib.ContextsLib;
+import com.bloxbean.cardano.julc.stdlib.lib.ContextsLib;
 import com.bloxbean.cardano.julc.core.PlutusData;
 
 @SpendingValidator

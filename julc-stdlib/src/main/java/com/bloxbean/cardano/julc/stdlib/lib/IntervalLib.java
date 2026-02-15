@@ -1,198 +1,123 @@
 package com.bloxbean.cardano.julc.stdlib.lib;
 
-import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.onchain.annotation.OnchainLibrary;
-import com.bloxbean.cardano.julc.onchain.stdlib.Builtins;
+import com.bloxbean.cardano.julc.ledger.Interval;
+import com.bloxbean.cardano.julc.ledger.IntervalBound;
+import com.bloxbean.cardano.julc.ledger.IntervalBoundType;
 
 import java.math.BigInteger;
 
 /**
  * Interval / POSIXTimeRange operations compiled from Java source to UPLC.
  * <p>
- * Interval encoding in Plutus Data:
- * <pre>
- * Interval = Constr(0, [from: IntervalBound, to: IntervalBound])
- * IntervalBound = Constr(0, [boundType: IntervalBoundType, isInclusive: Bool])
- * IntervalBoundType:
- *   NegInf  = Constr(0, [])
- *   Finite  = Constr(1, [time: Integer])
- *   PosInf  = Constr(2, [])
- * Bool: False = Constr(0, []), True = Constr(1, [])
- * </pre>
+ * Uses typed records (Interval, IntervalBound, IntervalBoundType) for readability.
+ * Works both on-chain (compiled to UPLC) and off-chain (as plain Java).
+ * <p>
+ * Note: Parameter names must NOT collide with constructor field names (e.g. "time"
+ * in IntervalBoundType.Finite) because the compiler's switch pattern binding shadows
+ * outer-scope variables of the same name.
  */
 @OnchainLibrary
 public class IntervalLib {
 
     /** Checks whether a point in time is contained within an interval. */
-    public static boolean contains(PlutusData.ConstrData interval, BigInteger time) {
-        var fields = Builtins.constrFields(interval);
-        var fromBound = Builtins.headList(fields);
-        var toBound = Builtins.headList(Builtins.tailList(fields));
-        if (checkLowerBound((PlutusData.ConstrData) fromBound, time)) {
-            return checkUpperBound((PlutusData.ConstrData) toBound, time);
-        } else {
-            return false;
-        }
+    public static boolean contains(Interval interval, BigInteger point) {
+        return checkLowerBound(interval.from(), point) && checkUpperBound(interval.to(), point);
+    }
+
+    /** Check lower bound: point >= fromBound. */
+    private static boolean checkLowerBound(IntervalBound bound, BigInteger point) {
+        // Extract isInclusive before the switch to avoid scoping issues in match arms
+        boolean inclusive = bound.isInclusive();
+        return switch (bound.boundType()) {
+            case IntervalBoundType.NegInf ignored -> true;
+            case IntervalBoundType.PosInf ignored -> false;
+            case IntervalBoundType.Finite f -> inclusive
+                    ? point.compareTo(f.time()) >= 0
+                    : point.compareTo(f.time()) > 0;
+        };
+    }
+
+    /** Check upper bound: point <= toBound. */
+    private static boolean checkUpperBound(IntervalBound bound, BigInteger point) {
+        // Extract isInclusive before the switch to avoid scoping issues in match arms
+        boolean inclusive = bound.isInclusive();
+        return switch (bound.boundType()) {
+            case IntervalBoundType.NegInf ignored -> false;
+            case IntervalBoundType.PosInf ignored -> true;
+            case IntervalBoundType.Finite f -> inclusive
+                    ? point.compareTo(f.time()) <= 0
+                    : point.compareTo(f.time()) < 0;
+        };
     }
 
     /** Builds the "always" interval: (-inf, +inf). */
-    public static PlutusData.ConstrData always() {
-        var fromBound = inclusiveBound(Builtins.constrData(0, Builtins.mkNilData()));
-        var toBound = inclusiveBound(Builtins.constrData(2, Builtins.mkNilData()));
-        return makeInterval(fromBound, toBound);
+    public static Interval always() {
+        return new Interval(
+                new IntervalBound(new IntervalBoundType.NegInf(), true),
+                new IntervalBound(new IntervalBoundType.PosInf(), true));
     }
 
-    /** Builds the interval [time, +inf). */
-    public static PlutusData.ConstrData after(BigInteger time) {
-        var finiteFields = Builtins.mkCons(Builtins.iData(time), Builtins.mkNilData());
-        var finite = Builtins.constrData(1, finiteFields);
-        var fromBound = inclusiveBound(finite);
-        var toBound = inclusiveBound(Builtins.constrData(2, Builtins.mkNilData()));
-        return makeInterval(fromBound, toBound);
+    /** Builds the interval [t, +inf). */
+    public static Interval after(BigInteger t) {
+        return new Interval(
+                new IntervalBound(new IntervalBoundType.Finite(t), true),
+                new IntervalBound(new IntervalBoundType.PosInf(), true));
     }
 
-    /** Builds the interval (-inf, time]. */
-    public static PlutusData.ConstrData before(BigInteger time) {
-        var finiteFields = Builtins.mkCons(Builtins.iData(time), Builtins.mkNilData());
-        var finite = Builtins.constrData(1, finiteFields);
-        var fromBound = inclusiveBound(Builtins.constrData(0, Builtins.mkNilData()));
-        var toBound = inclusiveBound(finite);
-        return makeInterval(fromBound, toBound);
+    /** Builds the interval (-inf, t]. */
+    public static Interval before(BigInteger t) {
+        return new Interval(
+                new IntervalBound(new IntervalBoundType.NegInf(), true),
+                new IntervalBound(new IntervalBoundType.Finite(t), true));
     }
 
     /** Builds the interval [low, high] (both inclusive). */
-    public static PlutusData.ConstrData between(BigInteger low, BigInteger high) {
-        var lowFields = Builtins.mkCons(Builtins.iData(low), Builtins.mkNilData());
-        var lowFinite = Builtins.constrData(1, lowFields);
-        var highFields = Builtins.mkCons(Builtins.iData(high), Builtins.mkNilData());
-        var highFinite = Builtins.constrData(1, highFields);
-        var fromBound = inclusiveBound(lowFinite);
-        var toBound = inclusiveBound(highFinite);
-        return makeInterval(fromBound, toBound);
+    public static Interval between(BigInteger low, BigInteger high) {
+        return new Interval(
+                new IntervalBound(new IntervalBoundType.Finite(low), true),
+                new IntervalBound(new IntervalBoundType.Finite(high), true));
     }
 
     /** Builds the empty interval (PosInf, NegInf). */
-    public static PlutusData.ConstrData never() {
-        var fromBound = exclusiveBound(Builtins.constrData(2, Builtins.mkNilData()));
-        var toBound = exclusiveBound(Builtins.constrData(0, Builtins.mkNilData()));
-        return makeInterval(fromBound, toBound);
+    public static Interval never() {
+        return new Interval(
+                new IntervalBound(new IntervalBoundType.PosInf(), false),
+                new IntervalBound(new IntervalBoundType.NegInf(), false));
     }
 
     /** Checks if an interval is empty (lower is PosInf or upper is NegInf). */
-    public static boolean isEmpty(PlutusData.ConstrData interval) {
-        var fields = Builtins.constrFields(interval);
-        var fromBound = Builtins.headList(fields);
-        var toBound = Builtins.headList(Builtins.tailList(fields));
-        var fromFields = Builtins.constrFields(fromBound);
-        var fromType = Builtins.headList(fromFields);
-        var fromTypeTag = Builtins.constrTag(fromType);
-        var toFields = Builtins.constrFields(toBound);
-        var toType = Builtins.headList(toFields);
-        var toTypeTag = Builtins.constrTag(toType);
-        if (fromTypeTag == 2) {
+    public static boolean isEmpty(Interval interval) {
+        boolean fromIsPosInf = switch (interval.from().boundType()) {
+            case IntervalBoundType.PosInf ignored -> true;
+            case IntervalBoundType.NegInf ignored -> false;
+            case IntervalBoundType.Finite ignored -> false;
+        };
+        if (fromIsPosInf) {
             return true;
-        } else {
-            return toTypeTag == 0;
         }
+        return switch (interval.to().boundType()) {
+            case IntervalBoundType.NegInf ignored -> true;
+            case IntervalBoundType.PosInf ignored -> false;
+            case IntervalBoundType.Finite ignored -> false;
+        };
     }
 
-    /** Check lower bound: time >= fromBound. NegInf=true, Finite=compare, PosInf=false. */
-    public static boolean checkLowerBound(PlutusData.ConstrData bound, BigInteger time) {
-        var boundFields = Builtins.constrFields(bound);
-        var boundType = Builtins.headList(boundFields);
-        var isInclusiveData = Builtins.headList(Builtins.tailList(boundFields));
-        var typeTag = Builtins.constrTag(boundType);
-        if (typeTag == 0) {
-            return true;
-        } else {
-            if (typeTag == 1) {
-                var typeFields = Builtins.constrFields(boundType);
-                var t = Builtins.unIData(Builtins.headList(typeFields));
-                var isInclusiveTag = Builtins.constrTag(isInclusiveData);
-                if (isInclusiveTag == 1) {
-                    return time.compareTo(t) >= 0;
-                } else {
-                    return time.compareTo(t) > 0;
-                }
-            } else {
-                return false;
-            }
-        }
+    /** Extract the finite upper bound time, or return -1 if not finite. */
+    public static BigInteger finiteUpperBound(Interval interval) {
+        return switch (interval.to().boundType()) {
+            case IntervalBoundType.Finite f -> f.time();
+            case IntervalBoundType.NegInf ignored -> BigInteger.valueOf(-1);
+            case IntervalBoundType.PosInf ignored -> BigInteger.valueOf(-1);
+        };
     }
 
-    /** Check upper bound: time <= toBound. NegInf=false, Finite=compare, PosInf=true. */
-    public static boolean checkUpperBound(PlutusData.ConstrData bound, BigInteger time) {
-        var boundFields = Builtins.constrFields(bound);
-        var boundType = Builtins.headList(boundFields);
-        var isInclusiveData = Builtins.headList(Builtins.tailList(boundFields));
-        var typeTag = Builtins.constrTag(boundType);
-        if (typeTag == 0) {
-            return false;
-        } else {
-            if (typeTag == 1) {
-                var typeFields = Builtins.constrFields(boundType);
-                var t = Builtins.unIData(Builtins.headList(typeFields));
-                var isInclusiveTag = Builtins.constrTag(isInclusiveData);
-                if (isInclusiveTag == 1) {
-                    return time.compareTo(t) <= 0;
-                } else {
-                    return time.compareTo(t) < 0;
-                }
-            } else {
-                return true;
-            }
-        }
-    }
-
-    /** Build an inclusive IntervalBound: Constr(0, [boundType, True]). */
-    public static PlutusData.ConstrData inclusiveBound(PlutusData.ConstrData boundType) {
-        var trueVal = Builtins.constrData(1, Builtins.mkNilData());
-        var fields = Builtins.mkCons(boundType, Builtins.mkCons(trueVal, Builtins.mkNilData()));
-        return Builtins.constrData(0, fields);
-    }
-
-    /** Build an exclusive IntervalBound: Constr(0, [boundType, False]). */
-    public static PlutusData.ConstrData exclusiveBound(PlutusData.ConstrData boundType) {
-        var falseVal = Builtins.constrData(0, Builtins.mkNilData());
-        var fields = Builtins.mkCons(boundType, Builtins.mkCons(falseVal, Builtins.mkNilData()));
-        return Builtins.constrData(0, fields);
-    }
-
-    /** Build an Interval from two IntervalBounds. */
-    public static PlutusData.ConstrData makeInterval(PlutusData.ConstrData fromBound, PlutusData.ConstrData toBound) {
-        var fields = Builtins.mkCons(fromBound, Builtins.mkCons(toBound, Builtins.mkNilData()));
-        return Builtins.constrData(0, fields);
-    }
-
-    /** Extract the finite upper bound time, or return -1 if not finite.
-     *  Useful for checking validity range deadlines. */
-    public static BigInteger finiteUpperBound(PlutusData.ConstrData interval) {
-        var fields = Builtins.constrFields(interval);
-        var toBound = Builtins.headList(Builtins.tailList(fields));
-        var boundFields = Builtins.constrFields(toBound);
-        var boundType = Builtins.headList(boundFields);
-        var typeTag = Builtins.constrTag(boundType);
-        if (typeTag == 1) {
-            var typeFields = Builtins.constrFields(boundType);
-            return Builtins.unIData(Builtins.headList(typeFields));
-        } else {
-            return BigInteger.valueOf(-1);
-        }
-    }
-
-    /** Extract the finite lower bound time, or return -1 if not finite.
-     *  Useful for checking validity range start times. */
-    public static BigInteger finiteLowerBound(PlutusData.ConstrData interval) {
-        var fields = Builtins.constrFields(interval);
-        var fromBound = Builtins.headList(fields);
-        var boundFields = Builtins.constrFields(fromBound);
-        var boundType = Builtins.headList(boundFields);
-        var typeTag = Builtins.constrTag(boundType);
-        if (typeTag == 1) {
-            var typeFields = Builtins.constrFields(boundType);
-            return Builtins.unIData(Builtins.headList(typeFields));
-        } else {
-            return BigInteger.valueOf(-1);
-        }
+    /** Extract the finite lower bound time, or return -1 if not finite. */
+    public static BigInteger finiteLowerBound(Interval interval) {
+        return switch (interval.from().boundType()) {
+            case IntervalBoundType.Finite f -> f.time();
+            case IntervalBoundType.NegInf ignored -> BigInteger.valueOf(-1);
+            case IntervalBoundType.PosInf ignored -> BigInteger.valueOf(-1);
+        };
     }
 }
