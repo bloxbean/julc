@@ -36,4 +36,15 @@ public interface StdlibLookup {
                                       List<PirTerm> args, List<PirType> argTypes) {
         return lookup(className, methodName, args);
     }
+
+    /**
+     * Check if this lookup has any methods registered for the given class name.
+     * Used to detect when a user-defined library class shadows a stdlib class.
+     *
+     * @param className the simple class name (e.g., "ListsLib")
+     * @return true if any methods are registered for this class
+     */
+    default boolean hasMethodsForClass(String className) {
+        return false;
+    }
 }

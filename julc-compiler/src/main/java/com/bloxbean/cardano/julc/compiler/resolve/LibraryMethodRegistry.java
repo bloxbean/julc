@@ -1,5 +1,6 @@
 package com.bloxbean.cardano.julc.compiler.resolve;
 
+import com.bloxbean.cardano.julc.compiler.CompilerException;
 import com.bloxbean.cardano.julc.compiler.CompilerOptions;
 import com.bloxbean.cardano.julc.compiler.pir.PirHelpers;
 import com.bloxbean.cardano.julc.compiler.pir.PirTerm;
@@ -15,6 +16,9 @@ import java.util.*;
  * are resolved during compilation. Each method is stored as a named PIR lambda.
  * When looked up, returns a {@code Var} reference applied to the provided arguments.
  * The actual PIR bodies are emitted as outermost Let bindings around the validator.
+ * <p>
+ * Methods are keyed by FQCN.methodName (e.g., "com.thirdparty.TokenLib.foo").
+ * A classNameIndex provides simple-name-to-FQCN resolution for backward compatibility.
  */
 public class LibraryMethodRegistry implements StdlibLookup {
 
@@ -26,6 +30,8 @@ public class LibraryMethodRegistry implements StdlibLookup {
     }
 
     private final Map<String, LibraryMethod> methods = new LinkedHashMap<>();
+    // Simple class name -> set of FQCNs (for backward-compat lookup)
+    private final Map<String, Set<String>> classNameIndex = new LinkedHashMap<>();
     private final CompilerOptions options;
 
     public LibraryMethodRegistry() {
@@ -39,7 +45,7 @@ public class LibraryMethodRegistry implements StdlibLookup {
     /**
      * Register a compiled library method.
      *
-     * @param className  the simple class name
+     * @param className  the class name (FQCN or simple name)
      * @param methodName the method name
      * @param type       the method's PIR function type
      * @param body       the compiled PIR lambda for the method body
@@ -47,17 +53,19 @@ public class LibraryMethodRegistry implements StdlibLookup {
     public void register(String className, String methodName, PirType type, PirTerm body) {
         var key = className + "." + methodName;
         methods.put(key, new LibraryMethod(className, methodName, type, body));
+        var simpleName = className.contains(".")
+                ? className.substring(className.lastIndexOf('.') + 1) : className;
+        classNameIndex.computeIfAbsent(simpleName, k -> new LinkedHashSet<>()).add(className);
     }
 
     @Override
     public Optional<PirTerm> lookup(String className, String methodName, List<PirTerm> args) {
-        var key = className + "." + methodName;
-        var method = methods.get(key);
+        var method = resolveMethod(className, methodName);
         if (method == null) {
             return Optional.empty();
         }
         // Return a Var reference applied to args — the actual body is a Let binding elsewhere
-        PirTerm result = new PirTerm.Var(key, method.type());
+        PirTerm result = new PirTerm.Var(method.qualifiedName(), method.type());
         for (var arg : args) {
             result = new PirTerm.App(result, arg);
         }
@@ -67,8 +75,7 @@ public class LibraryMethodRegistry implements StdlibLookup {
     @Override
     public Optional<PirTerm> lookup(String className, String methodName,
                                       List<PirTerm> args, List<PirType> argTypes) {
-        var key = className + "." + methodName;
-        var method = methods.get(key);
+        var method = resolveMethod(className, methodName);
         if (method == null) {
             return Optional.empty();
         }
@@ -89,7 +96,7 @@ public class LibraryMethodRegistry implements StdlibLookup {
             coercedArgs.add(coerceArg(arg, callerType, calleeType));
         }
 
-        PirTerm result = new PirTerm.Var(key, method.type());
+        PirTerm result = new PirTerm.Var(method.qualifiedName(), method.type());
         for (var arg : coercedArgs) {
             result = new PirTerm.App(result, arg);
         }
@@ -97,8 +104,33 @@ public class LibraryMethodRegistry implements StdlibLookup {
     }
 
     /**
+     * Resolve a method by className (FQCN or simple name) and methodName.
+     * Returns null if not found.
+     */
+    private LibraryMethod resolveMethod(String className, String methodName) {
+        // Try direct lookup (works if className is FQCN)
+        var key = className + "." + methodName;
+        var method = methods.get(key);
+        if (method != null) return method;
+
+        // Resolve simple name -> FQCN via index
+        if (!className.contains(".")) {
+            var fqcns = classNameIndex.get(className);
+            if (fqcns != null && fqcns.size() == 1) {
+                var resolvedKey = fqcns.iterator().next() + "." + methodName;
+                return methods.get(resolvedKey);
+            } else if (fqcns != null && fqcns.size() > 1) {
+                throw new CompilerException("Ambiguous library class '" + className
+                        + "'. Could be: " + String.join(", ", fqcns)
+                        + ". Use an explicit import to disambiguate.");
+            }
+        }
+        return null;
+    }
+
+    /**
      * Extract parameter types from a FunType chain.
-     * E.g., FunType(ByteStringType, FunType(ListType, BoolType)) → [ByteStringType, ListType]
+     * E.g., FunType(ByteStringType, FunType(ListType, BoolType)) -> [ByteStringType, ListType]
      */
     private static List<PirType> extractParamTypes(PirType type) {
         var params = new ArrayList<PirType>();
@@ -119,7 +151,7 @@ public class LibraryMethodRegistry implements StdlibLookup {
     private static PirTerm coerceArg(PirTerm arg, PirType callerType, PirType calleeType) {
         if (callerType.equals(calleeType)) return arg;
 
-        // Caller has Data, callee expects specific decoded type → decode
+        // Caller has Data, callee expects specific decoded type -> decode
         if (callerType instanceof PirType.DataType && isPrimitiveType(calleeType)) {
             return PirHelpers.wrapDecode(arg, calleeType);
         }

@@ -670,6 +670,8 @@ public class PirGenerator {
             // Check if scope is a class name for static stdlib call (e.g., ContextsLib.signedBy)
             if (scopeExpr instanceof NameExpr ne && stdlibLookup != null) {
                 var className = ne.getNameAsString();
+                // Resolve to FQCN for library class lookup
+                var resolvedClassName = typeResolver.resolveClassName(className);
                 var compiledArgs = new ArrayList<PirTerm>();
                 var argPirTypes = new ArrayList<PirType>();
                 for (var arg : args) {
@@ -679,7 +681,12 @@ public class PirGenerator {
                     if (argType instanceof PirType.DataType) argType = inferPirType(argPir);
                     argPirTypes.add(argType);
                 }
-                var result = stdlibLookup.lookup(className, methodName, compiledArgs, argPirTypes);
+                // Try with FQCN first (for disambiguated library calls), then simple name (for stdlib)
+                var result = stdlibLookup.lookup(resolvedClassName, methodName, compiledArgs, argPirTypes);
+                if (result.isEmpty() && !resolvedClassName.equals(className)) {
+                    // FQCN didn't match — try simple name (for stdlib like Builtins, ListsLib, etc.)
+                    result = stdlibLookup.lookup(className, methodName, compiledArgs, argPirTypes);
+                }
                 if (result.isPresent()) {
                     options.logf("Resolved stdlib: %s.%s", className, methodName);
                     checkCrossLibraryTypeWarnings(className, methodName, mce, argPirTypes);

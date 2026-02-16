@@ -10,35 +10,58 @@ import com.github.javaparser.ast.type.VarType;
 import com.github.javaparser.ast.type.VoidType;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Resolves Java types to PIR types.
+ * <p>
+ * Maps are keyed by FQCN (e.g., "com.bloxbean.cardano.julc.ledger.Value").
+ * A simpleNameIndex provides fallback resolution for packageless inline code
+ * and ambiguity detection when multiple types share the same simple name.
  */
 public class TypeResolver {
 
-    // Map of known record types (name -> PirType.RecordType)
+    private static final String LEDGER_PKG = "com.bloxbean.cardano.julc.ledger";
+
+    // Map of known record types (FQCN -> PirType.RecordType)
     private final Map<String, PirType.RecordType> recordTypes = new LinkedHashMap<>();
-    // Map of known sum types (sealed interface name -> PirType.SumType)
+    // Map of known sum types (sealed interface FQCN -> PirType.SumType)
     private final Map<String, PirType.SumType> sumTypes = new LinkedHashMap<>();
-    // Map of variant name -> its enclosing SumType (for constructor tag lookup)
+    // Map of variant FQCN -> its enclosing SumType (for constructor tag lookup)
     private final Map<String, PirType.SumType> variantToSumType = new LinkedHashMap<>();
-    // Map of @NewType names -> their underlying PIR type
+    // Map of @NewType FQCNs -> their underlying PIR type
     private final Map<String, PirType> newTypes = new LinkedHashMap<>();
 
-    private static final Set<String> LEDGER_HASH_TYPES = Set.of(
+    // Simple name -> set of FQCNs (for ambiguity detection + fallback)
+    private final Map<String, Set<String>> simpleNameIndex = new LinkedHashMap<>();
+
+    // Current import resolver (set per-CU during compilation)
+    private ImportResolver currentImportResolver;
+
+    private static final Set<String> LEDGER_HASH_NAMES = Set.of(
             "PubKeyHash", "ScriptHash", "ValidatorHash", "PolicyId", "TokenName", "DatumHash", "TxId");
 
+    private static final Set<String> LEDGER_HASH_FQCNS = LEDGER_HASH_NAMES.stream()
+            .map(n -> LEDGER_PKG + "." + n).collect(Collectors.toUnmodifiableSet());
+
     // Types not yet registered as RecordType/SumType — resolved as opaque DataType
-    private static final Set<String> LEDGER_DATA_TYPES = Set.of(
+    private static final Set<String> LEDGER_DATA_NAMES = Set.of(
             "StakingCredential", "ScriptPurpose",
             "Vote", "Voter", "DRep", "Delegatee",
             "GovernanceActionId", "GovernanceAction", "ProposalProcedure",
             "TxCert", "Rational", "ProtocolVersion", "Committee");
 
-    public void registerRecord(RecordDeclaration rd) {
+    private static final Set<String> LEDGER_DATA_FQCNS = LEDGER_DATA_NAMES.stream()
+            .map(n -> LEDGER_PKG + "." + n).collect(Collectors.toUnmodifiableSet());
+
+    public void setCurrentImportResolver(ImportResolver resolver) {
+        this.currentImportResolver = resolver;
+    }
+
+    public void registerRecord(RecordDeclaration rd, String fqcn) {
         var name = rd.getNameAsString();
-        if (recordTypes.containsKey(name)) {
-            throw new IllegalArgumentException("Duplicate record type: '" + name + "'. "
+        if (recordTypes.containsKey(fqcn)) {
+            throw new IllegalArgumentException("Duplicate record type: '" + fqcn + "'. "
                     + "A record with this name is already registered.");
         }
         var fields = new ArrayList<PirType.Field>();
@@ -46,32 +69,45 @@ public class TypeResolver {
             fields.add(new PirType.Field(param.getNameAsString(), resolve(param.getType())));
         }
         var recordType = new PirType.RecordType(name, fields);
-        recordTypes.put(name, recordType);
+        recordTypes.put(fqcn, recordType);
+        simpleNameIndex.computeIfAbsent(name, k -> new LinkedHashSet<>()).add(fqcn);
     }
 
     /** Check if a type name is already registered (as record, sealed interface, or newtype). */
-    public boolean isRegistered(String name) {
-        return recordTypes.containsKey(name) || sumTypes.containsKey(name) || newTypes.containsKey(name);
+    public boolean isRegistered(String fqcnOrSimpleName) {
+        // Direct FQCN check
+        if (recordTypes.containsKey(fqcnOrSimpleName) || sumTypes.containsKey(fqcnOrSimpleName)
+                || newTypes.containsKey(fqcnOrSimpleName) || variantToSumType.containsKey(fqcnOrSimpleName)) {
+            return true;
+        }
+        // Simple name check via index
+        return simpleNameIndex.containsKey(fqcnOrSimpleName)
+                || LEDGER_HASH_NAMES.contains(fqcnOrSimpleName)
+                || LEDGER_DATA_NAMES.contains(fqcnOrSimpleName);
     }
 
     /**
      * Register a ledger record type directly (not from a JavaParser RecordDeclaration).
      * Used by {@link LedgerTypeRegistry} to pre-register ledger types with known schemas.
      */
-    public void registerLedgerRecord(String name, List<PirType.Field> fields) {
+    public void registerLedgerRecord(String name, String fqcn, List<PirType.Field> fields) {
         var recordType = new PirType.RecordType(name, fields);
-        recordTypes.put(name, recordType);
+        recordTypes.put(fqcn, recordType);
+        simpleNameIndex.computeIfAbsent(name, k -> new LinkedHashSet<>()).add(fqcn);
     }
 
     /**
      * Register a ledger sum type (sealed interface) directly.
      * Used by {@link LedgerTypeRegistry} to pre-register ledger types with known schemas.
      */
-    public void registerLedgerSumType(String name, List<PirType.Constructor> constructors) {
+    public void registerLedgerSumType(String name, String fqcn, List<PirType.Constructor> constructors) {
         var sumType = new PirType.SumType(name, constructors);
-        sumTypes.put(name, sumType);
+        sumTypes.put(fqcn, sumType);
+        simpleNameIndex.computeIfAbsent(name, k -> new LinkedHashSet<>()).add(fqcn);
         for (var ctor : constructors) {
-            variantToSumType.put(ctor.name(), sumType);
+            var variantFqcn = fqcn.substring(0, fqcn.lastIndexOf('.') + 1) + ctor.name();
+            variantToSumType.put(variantFqcn, sumType);
+            simpleNameIndex.computeIfAbsent(ctor.name(), k -> new LinkedHashSet<>()).add(variantFqcn);
         }
     }
 
@@ -79,24 +115,33 @@ public class TypeResolver {
      * Register a @NewType record. On-chain, it resolves to the underlying type
      * and its constructor/of() are identity operations.
      */
-    public void registerNewType(String name, PirType underlyingType) {
-        newTypes.put(name, underlyingType);
+    public void registerNewType(String name, String fqcn, PirType underlyingType) {
+        newTypes.put(fqcn, underlyingType);
+        simpleNameIndex.computeIfAbsent(name, k -> new LinkedHashSet<>()).add(fqcn);
     }
 
     /** Check if a type name is a registered @NewType. */
-    public boolean isNewType(String name) {
-        return newTypes.containsKey(name);
+    public boolean isNewType(String fqcnOrSimpleName) {
+        if (newTypes.containsKey(fqcnOrSimpleName)) return true;
+        String resolved = resolveName(fqcnOrSimpleName);
+        return newTypes.containsKey(resolved);
     }
 
-    /** Get all registered @NewType names. */
+    /** Get all registered @NewType names (returns simple names for backward compat). */
     public Set<String> getNewTypeNames() {
-        return Collections.unmodifiableSet(newTypes.keySet());
+        // Return simple names for backward compatibility with wrapWithNewTypeLookup
+        var simpleNames = new LinkedHashSet<String>();
+        for (var fqcn : newTypes.keySet()) {
+            var dot = fqcn.lastIndexOf('.');
+            simpleNames.add(dot >= 0 ? fqcn.substring(dot + 1) : fqcn);
+        }
+        return Collections.unmodifiableSet(simpleNames);
     }
 
-    public void registerSealedInterface(ClassOrInterfaceDeclaration decl) {
+    public void registerSealedInterface(ClassOrInterfaceDeclaration decl, String fqcn) {
         var interfaceName = decl.getNameAsString();
-        if (sumTypes.containsKey(interfaceName)) {
-            throw new IllegalArgumentException("Duplicate sealed interface: '" + interfaceName + "'. "
+        if (sumTypes.containsKey(fqcn)) {
+            throw new IllegalArgumentException("Duplicate sealed interface: '" + fqcn + "'. "
                     + "A sealed interface with this name is already registered.");
         }
         var constructors = new ArrayList<PirType.Constructor>();
@@ -104,25 +149,36 @@ public class TypeResolver {
         for (var permittedType : decl.getPermittedTypes()) {
             var variantName = permittedType.getNameAsString();
             // Look up the record type for this variant (must already be registered)
-            var recordType = recordTypes.get(variantName);
+            // Try resolving variant name to FQCN
+            var variantFqcn = resolveName(variantName);
+            var recordType = recordTypes.get(variantFqcn);
             List<PirType.Field> fields = recordType != null ? recordType.fields() : List.of();
             constructors.add(new PirType.Constructor(variantName, tag, fields));
             tag++;
         }
         var sumType = new PirType.SumType(interfaceName, constructors);
-        sumTypes.put(interfaceName, sumType);
-        // Register each variant → sum type mapping
+        sumTypes.put(fqcn, sumType);
+        simpleNameIndex.computeIfAbsent(interfaceName, k -> new LinkedHashSet<>()).add(fqcn);
+        // Register each variant -> sum type mapping (variant FQCNs share same package as interface)
         for (var ctor : constructors) {
-            variantToSumType.put(ctor.name(), sumType);
+            var variantFqcn = fqcn.substring(0, fqcn.lastIndexOf('.') + 1) + ctor.name();
+            variantToSumType.put(variantFqcn, sumType);
+            simpleNameIndex.computeIfAbsent(ctor.name(), k -> new LinkedHashSet<>()).add(variantFqcn);
         }
     }
 
-    public Optional<PirType.SumType> lookupSumType(String name) {
-        return Optional.ofNullable(sumTypes.get(name));
+    public Optional<PirType.SumType> lookupSumType(String fqcnOrSimpleName) {
+        var result = sumTypes.get(fqcnOrSimpleName);
+        if (result != null) return Optional.of(result);
+        String resolved = resolveName(fqcnOrSimpleName);
+        return Optional.ofNullable(sumTypes.get(resolved));
     }
 
-    public Optional<PirType.SumType> lookupSumTypeForVariant(String variantName) {
-        return Optional.ofNullable(variantToSumType.get(variantName));
+    public Optional<PirType.SumType> lookupSumTypeForVariant(String fqcnOrSimpleName) {
+        var result = variantToSumType.get(fqcnOrSimpleName);
+        if (result != null) return Optional.of(result);
+        String resolved = resolveName(fqcnOrSimpleName);
+        return Optional.ofNullable(variantToSumType.get(resolved));
     }
 
     public PirType resolve(Type type) {
@@ -157,7 +213,7 @@ public class TypeResolver {
     private PirType resolveClassType(ClassOrInterfaceType ct) {
         var name = ct.getNameAsString();
 
-        // Built-in Java types
+        // Built-in Java types: always by simple name (these never have FQCN variants)
         return switch (name) {
             case "BigInteger" -> new PirType.IntegerType();
             case "String" -> new PirType.StringType();
@@ -191,22 +247,77 @@ public class TypeResolver {
                 yield new PirType.OptionalType(elemType);
             }
             default -> {
+                // Resolve simple name to FQCN
+                String fqcn = resolveName(name);
+
                 // Check ledger hash types -> ByteStringType
-                if (LEDGER_HASH_TYPES.contains(name)) yield new PirType.ByteStringType();
+                if (LEDGER_HASH_FQCNS.contains(fqcn) || LEDGER_HASH_NAMES.contains(name)) yield new PirType.ByteStringType();
                 // Check @NewType records -> resolve to underlying type
-                if (newTypes.containsKey(name)) yield newTypes.get(name);
+                if (newTypes.containsKey(fqcn)) yield newTypes.get(fqcn);
                 // Check registered record types (includes ledger records from LedgerTypeRegistry)
-                if (recordTypes.containsKey(name)) yield recordTypes.get(name);
+                if (recordTypes.containsKey(fqcn)) yield recordTypes.get(fqcn);
                 // Check registered sum types (sealed interfaces, including ledger sum types)
-                if (sumTypes.containsKey(name)) yield sumTypes.get(name);
+                if (sumTypes.containsKey(fqcn)) yield sumTypes.get(fqcn);
                 // Check remaining ledger data types -> opaque DataType
-                if (LEDGER_DATA_TYPES.contains(name)) yield new PirType.DataType();
-                throw new IllegalArgumentException("Unknown type: " + name);
+                if (LEDGER_DATA_FQCNS.contains(fqcn) || LEDGER_DATA_NAMES.contains(name)) yield new PirType.DataType();
+                throw new IllegalArgumentException("Unknown type: " + name
+                        + (fqcn.equals(name) ? "" : " (resolved to " + fqcn + ")"));
             }
         };
     }
 
-    public Optional<PirType.RecordType> lookupRecord(String name) {
-        return Optional.ofNullable(recordTypes.get(name));
+    /**
+     * Central name resolution: simple name -> FQCN.
+     */
+    String resolveName(String simpleName) {
+        // If it already looks like a FQCN, return as-is
+        if (simpleName.contains(".")) return simpleName;
+
+        // 1. Try ImportResolver (if set)
+        if (currentImportResolver != null) {
+            var resolved = currentImportResolver.resolve(simpleName);
+            if (!resolved.equals(simpleName)) {
+                // ImportResolver found a match
+                return resolved;
+            }
+            // ImportResolver returned unresolved — fall through to simpleNameIndex
+        }
+        // 2. Fallback: check simpleNameIndex (covers inner classes, packageless types)
+        var fqcns = simpleNameIndex.get(simpleName);
+        if (fqcns != null && fqcns.size() == 1) return fqcns.iterator().next();
+        if (fqcns != null && fqcns.size() > 1) {
+            throw new IllegalArgumentException("Ambiguous type '" + simpleName
+                    + "'. Could be: " + String.join(", ", fqcns)
+                    + ". Use an explicit import to disambiguate.");
+        }
+        // 3. No match: return simple name (for packageless code)
+        return simpleName;
+    }
+
+    /**
+     * Resolve a class name for library/stdlib lookup.
+     */
+    public String resolveClassName(String simpleName) {
+        if (currentImportResolver != null) {
+            return currentImportResolver.resolve(simpleName);
+        }
+        return simpleName;
+    }
+
+    public Optional<PirType.RecordType> lookupRecord(String fqcnOrSimpleName) {
+        var result = recordTypes.get(fqcnOrSimpleName);
+        if (result != null) return Optional.of(result);
+        String resolved = resolveName(fqcnOrSimpleName);
+        return Optional.ofNullable(recordTypes.get(resolved));
+    }
+
+    /** Return all registered FQCNs (for building knownFqcns sets). */
+    public Set<String> allRegisteredFqcns() {
+        var all = new LinkedHashSet<String>();
+        all.addAll(recordTypes.keySet());
+        all.addAll(sumTypes.keySet());
+        all.addAll(variantToSumType.keySet());
+        all.addAll(newTypes.keySet());
+        return all;
     }
 }

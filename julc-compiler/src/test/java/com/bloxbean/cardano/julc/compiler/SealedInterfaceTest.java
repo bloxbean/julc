@@ -47,11 +47,11 @@ class SealedInterfaceTest {
                 record Burn(int amt) implements Action {}
                 """);
             for (var rd : cu.findAll(RecordDeclaration.class)) {
-                typeResolver.registerRecord(rd);
+                typeResolver.registerRecord(rd, rd.getFullyQualifiedName().orElse(rd.getNameAsString()));
             }
             for (var iface : cu.findAll(ClassOrInterfaceDeclaration.class)) {
                 if (iface.isInterface() && !iface.getPermittedTypes().isEmpty()) {
-                    typeResolver.registerSealedInterface(iface);
+                    typeResolver.registerSealedInterface(iface, iface.getFullyQualifiedName().orElse(iface.getNameAsString()));
                 }
             }
             var sumType = typeResolver.lookupSumType("Action");
@@ -73,11 +73,11 @@ class SealedInterfaceTest {
                 record Triangle(int a, int b, int c) implements Shape {}
                 """);
             for (var rd : cu.findAll(RecordDeclaration.class)) {
-                typeResolver.registerRecord(rd);
+                typeResolver.registerRecord(rd, rd.getFullyQualifiedName().orElse(rd.getNameAsString()));
             }
             for (var iface : cu.findAll(ClassOrInterfaceDeclaration.class)) {
                 if (iface.isInterface() && !iface.getPermittedTypes().isEmpty()) {
-                    typeResolver.registerSealedInterface(iface);
+                    typeResolver.registerSealedInterface(iface, iface.getFullyQualifiedName().orElse(iface.getNameAsString()));
                 }
             }
             var sumType = typeResolver.lookupSumType("Shape");
@@ -98,11 +98,11 @@ class SealedInterfaceTest {
                 record Burn(int amt) implements Action {}
                 """);
             for (var rd : cu.findAll(RecordDeclaration.class)) {
-                typeResolver.registerRecord(rd);
+                typeResolver.registerRecord(rd, rd.getFullyQualifiedName().orElse(rd.getNameAsString()));
             }
             for (var iface : cu.findAll(ClassOrInterfaceDeclaration.class)) {
                 if (iface.isInterface() && !iface.getPermittedTypes().isEmpty()) {
-                    typeResolver.registerSealedInterface(iface);
+                    typeResolver.registerSealedInterface(iface, iface.getFullyQualifiedName().orElse(iface.getNameAsString()));
                 }
             }
             var sumType = typeResolver.lookupSumType("Action").orElseThrow();
@@ -121,11 +121,11 @@ class SealedInterfaceTest {
                 record Burn(int amt) implements Action {}
                 """);
             for (var rd : cu.findAll(RecordDeclaration.class)) {
-                typeResolver.registerRecord(rd);
+                typeResolver.registerRecord(rd, rd.getFullyQualifiedName().orElse(rd.getNameAsString()));
             }
             for (var iface : cu.findAll(ClassOrInterfaceDeclaration.class)) {
                 if (iface.isInterface() && !iface.getPermittedTypes().isEmpty()) {
-                    typeResolver.registerSealedInterface(iface);
+                    typeResolver.registerSealedInterface(iface, iface.getFullyQualifiedName().orElse(iface.getNameAsString()));
                 }
             }
             var sumForMint = typeResolver.lookupSumTypeForVariant("Mint");
@@ -146,11 +146,11 @@ class SealedInterfaceTest {
                 record Burn(int amt) implements Action {}
                 """);
             for (var rd : cu.findAll(RecordDeclaration.class)) {
-                typeResolver.registerRecord(rd);
+                typeResolver.registerRecord(rd, rd.getFullyQualifiedName().orElse(rd.getNameAsString()));
             }
             for (var iface : cu.findAll(ClassOrInterfaceDeclaration.class)) {
                 if (iface.isInterface() && !iface.getPermittedTypes().isEmpty()) {
-                    typeResolver.registerSealedInterface(iface);
+                    typeResolver.registerSealedInterface(iface, iface.getFullyQualifiedName().orElse(iface.getNameAsString()));
                 }
             }
             // Parse a method param type
@@ -178,11 +178,11 @@ class SealedInterfaceTest {
                 }
                 """);
             for (var rd : cu.findAll(RecordDeclaration.class)) {
-                typeResolver.registerRecord(rd);
+                typeResolver.registerRecord(rd, rd.getFullyQualifiedName().orElse(rd.getNameAsString()));
             }
             for (var iface : cu.findAll(ClassOrInterfaceDeclaration.class)) {
                 if (iface.isInterface() && !iface.getPermittedTypes().isEmpty()) {
-                    typeResolver.registerSealedInterface(iface);
+                    typeResolver.registerSealedInterface(iface, iface.getFullyQualifiedName().orElse(iface.getNameAsString()));
                 }
             }
             var symbolTable = new SymbolTable();
@@ -205,11 +205,11 @@ class SealedInterfaceTest {
                 record Burn(int amt) implements Action {}
                 """);
             for (var rd : cu.findAll(RecordDeclaration.class)) {
-                typeResolver.registerRecord(rd);
+                typeResolver.registerRecord(rd, rd.getFullyQualifiedName().orElse(rd.getNameAsString()));
             }
             for (var iface : cu.findAll(ClassOrInterfaceDeclaration.class)) {
                 if (iface.isInterface() && !iface.getPermittedTypes().isEmpty()) {
-                    typeResolver.registerSealedInterface(iface);
+                    typeResolver.registerSealedInterface(iface, iface.getFullyQualifiedName().orElse(iface.getNameAsString()));
                 }
             }
             var symbolTable = new SymbolTable();
@@ -232,11 +232,11 @@ class SealedInterfaceTest {
                 record Rect(int w, int h) implements Shape {}
                 """);
             for (var rd : cu.findAll(RecordDeclaration.class)) {
-                typeResolver.registerRecord(rd);
+                typeResolver.registerRecord(rd, rd.getFullyQualifiedName().orElse(rd.getNameAsString()));
             }
             for (var iface : cu.findAll(ClassOrInterfaceDeclaration.class)) {
                 if (iface.isInterface() && !iface.getPermittedTypes().isEmpty()) {
-                    typeResolver.registerSealedInterface(iface);
+                    typeResolver.registerSealedInterface(iface, iface.getFullyQualifiedName().orElse(iface.getNameAsString()));
                 }
             }
             var symbolTable = new SymbolTable();

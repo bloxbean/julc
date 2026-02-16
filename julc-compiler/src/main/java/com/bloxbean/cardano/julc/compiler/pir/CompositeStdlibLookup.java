@@ -47,4 +47,9 @@ public class CompositeStdlibLookup implements StdlibLookup {
         }
         return Optional.empty();
     }
+
+    @Override
+    public boolean hasMethodsForClass(String className) {
+        return lookups.stream().anyMatch(l -> l.hasMethodsForClass(className));
+    }
 }

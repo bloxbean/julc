@@ -140,7 +140,7 @@ class TypeResolverTest {
     @Test void resolveRecord() {
         var cu = StaticJavaParser.parse("record MyDatum(java.math.BigInteger value, byte[] hash) {}");
         var rd = cu.findFirst(com.github.javaparser.ast.body.RecordDeclaration.class).orElseThrow();
-        resolver.registerRecord(rd);
+        resolver.registerRecord(rd, rd.getFullyQualifiedName().orElse(rd.getNameAsString()));
 
         var result = resolver.lookupRecord("MyDatum");
         assertTrue(result.isPresent());

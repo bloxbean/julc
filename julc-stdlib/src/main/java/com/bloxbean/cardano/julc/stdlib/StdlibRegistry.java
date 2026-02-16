@@ -1,6 +1,8 @@
 package com.bloxbean.cardano.julc.stdlib;
 
 import com.bloxbean.cardano.julc.compiler.pir.PirTerm;
+import com.bloxbean.cardano.julc.compiler.pir.PirType;
+import com.bloxbean.cardano.julc.compiler.pir.StdlibLookup;
 import com.bloxbean.cardano.julc.core.Constant;
 import com.bloxbean.cardano.julc.core.DefaultFun;
 
@@ -23,7 +25,7 @@ import java.util.Optional;
  * Optional<PirTerm> term = registry.lookup("ListsLib", "isEmpty", List.of(listTerm));
  * }</pre>
  */
-public final class StdlibRegistry {
+public final class StdlibRegistry implements StdlibLookup {
 
     /**
      * Functional interface for building PIR terms from argument terms.
@@ -66,6 +68,7 @@ public final class StdlibRegistry {
      * @param args       the argument PIR terms
      * @return the built PIR term, or empty if no builder is registered
      */
+    @Override
     public Optional<PirTerm> lookup(String className, String methodName, List<PirTerm> args) {
         String key = className + "." + methodName;
         PirTermBuilder builder = registry.get(key);
@@ -96,6 +99,12 @@ public final class StdlibRegistry {
      */
     public boolean contains(String className, String methodName) {
         return registry.containsKey(className + "." + methodName);
+    }
+
+    @Override
+    public boolean hasMethodsForClass(String className) {
+        String prefix = className + ".";
+        return registry.keySet().stream().anyMatch(k -> k.startsWith(prefix));
     }
 
     /**

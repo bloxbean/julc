@@ -17,6 +17,9 @@ import java.util.*;
  * {@code B} is registered before {@code A}. Sealed interfaces that are
  * referenced as field types (e.g., {@code List<ProofStep>}) are also
  * registered before the records that use them.
+ * <p>
+ * Types are keyed by FQCN (fully qualified class name). For packageless inline
+ * code, the FQCN equals the simple name.
  */
 public class TypeRegistrar {
 
@@ -28,77 +31,122 @@ public class TypeRegistrar {
      * @param typeResolver  the type resolver to register into
      */
     public void registerAll(List<CompilationUnit> cus, TypeResolver typeResolver) {
-        // 1. Collect all type declarations
-        var allRecords = new LinkedHashMap<String, RecordDeclaration>();
-        var allSealed = new LinkedHashMap<String, ClassOrInterfaceDeclaration>();
+        // PASS 1: Collect all type declarations with FQCNs
+        var allRecords = new LinkedHashMap<String, RecordDeclaration>();  // FQCN -> RD
+        var allSealed = new LinkedHashMap<String, ClassOrInterfaceDeclaration>(); // FQCN -> CD
+        var typeToCu = new LinkedHashMap<String, CompilationUnit>(); // FQCN -> source CU
 
         for (var cu : cus) {
             for (var rd : cu.findAll(RecordDeclaration.class)) {
-                var name = rd.getNameAsString();
-                if (allRecords.containsKey(name)) {
-                    throw new CompilerException("Duplicate record type '" + name + "' found across compilation units");
+                var simpleName = rd.getNameAsString();
+                var fqcn = rd.getFullyQualifiedName().orElse(simpleName);
+
+                if (allRecords.containsKey(fqcn)) {
+                    throw new CompilerException("Duplicate record type '" + fqcn + "' found across compilation units");
                 }
-                allRecords.put(name, rd);
+                allRecords.put(fqcn, rd);
+                typeToCu.put(fqcn, cu);
             }
             for (var cd : cu.findAll(ClassOrInterfaceDeclaration.class)) {
                 if (cd.isInterface() && !cd.getPermittedTypes().isEmpty()) {
-                    var name = cd.getNameAsString();
-                    if (allSealed.containsKey(name)) {
-                        throw new CompilerException("Duplicate sealed interface '" + name + "' found across compilation units");
+                    var simpleName = cd.getNameAsString();
+                    var fqcn = cd.getFullyQualifiedName().orElse(simpleName);
+
+                    if (allSealed.containsKey(fqcn)) {
+                        throw new CompilerException("Duplicate sealed interface '" + fqcn + "' found across compilation units");
                     }
-                    allSealed.put(name, cd);
+                    allSealed.put(fqcn, cd);
+                    typeToCu.put(fqcn, cu);
                 }
             }
         }
 
-        // 2. Build unified dependency graph (records AND sealed interfaces)
+        // PASS 1b: Build knownFqcns = user FQCNs + ledger FQCNs
+        var knownFqcns = new LinkedHashSet<String>();
+        knownFqcns.addAll(allRecords.keySet());
+        knownFqcns.addAll(allSealed.keySet());
+        knownFqcns.addAll(LedgerTypeRegistry.allLedgerFqcns());
+
+        // 2. Build unified dependency graph (records AND sealed interfaces) using FQCNs
         var allTypeNames = new LinkedHashSet<String>();
         allTypeNames.addAll(allRecords.keySet());
         allTypeNames.addAll(allSealed.keySet());
+
+        // Also build a simple-name-to-FQCN index for dependency extraction
+        var simpleToFqcn = new LinkedHashMap<String, Set<String>>();
+        for (var fqcn : allTypeNames) {
+            var simpleName = simpleName(fqcn);
+            simpleToFqcn.computeIfAbsent(simpleName, k -> new LinkedHashSet<>()).add(fqcn);
+        }
 
         var deps = new LinkedHashMap<String, Set<String>>();
 
         // Record dependencies: field types that are other records or sealed interfaces
         for (var entry : allRecords.entrySet()) {
+            var fqcn = entry.getKey();
+            var cu = typeToCu.get(fqcn);
+            var importResolver = new ImportResolver(cu, knownFqcns);
             var typeDeps = new LinkedHashSet<String>();
             for (var param : entry.getValue().getParameters()) {
-                extractTypeDependencies(param.getType().asString(), allTypeNames, typeDeps);
+                extractTypeDependencies(param.getType().asString(), allTypeNames, simpleToFqcn, importResolver, typeDeps);
             }
-            typeDeps.remove(entry.getKey());
-            deps.put(entry.getKey(), typeDeps);
+            typeDeps.remove(fqcn);
+            deps.put(fqcn, typeDeps);
         }
 
         // Sealed interface dependencies: their variant records must be registered first
         for (var entry : allSealed.entrySet()) {
+            var fqcn = entry.getKey();
+            var cu = typeToCu.get(fqcn);
+            var importResolver = new ImportResolver(cu, knownFqcns);
             var typeDeps = new LinkedHashSet<String>();
             for (var permitted : entry.getValue().getPermittedTypes()) {
                 var variantName = permitted.getNameAsString();
-                if (allRecords.containsKey(variantName)) {
+                // Resolve variant name to FQCN
+                var resolvedVariant = importResolver.resolve(variantName);
+                if (allRecords.containsKey(resolvedVariant)) {
+                    typeDeps.add(resolvedVariant);
+                } else if (allRecords.containsKey(variantName)) {
+                    // Fallback for packageless code
                     typeDeps.add(variantName);
                 }
             }
-            deps.put(entry.getKey(), typeDeps);
+            deps.put(fqcn, typeDeps);
         }
 
         // 3. Topological sort the combined graph
         var sorted = topologicalSort(deps);
 
         // 4. Register in dependency order (skip already-registered ledger types)
-        for (var name : sorted) {
-            if (typeResolver.isRegistered(name)) continue;
-            if (allRecords.containsKey(name)) {
-                var rd = allRecords.get(name);
+        for (var fqcn : sorted) {
+            if (typeResolver.isRegistered(fqcn)) continue;
+
+            // Set import context for field type resolution
+            var cu = typeToCu.get(fqcn);
+            if (cu != null) {
+                typeResolver.setCurrentImportResolver(new ImportResolver(cu, knownFqcns));
+            }
+
+            if (allRecords.containsKey(fqcn)) {
+                var rd = allRecords.get(fqcn);
                 if (hasNewTypeAnnotation(rd)) {
                     validateNewType(rd);
                     PirType underlying = resolveUnderlyingType(rd);
-                    typeResolver.registerNewType(name, underlying);
+                    var simpleName = rd.getNameAsString();
+                    typeResolver.registerNewType(simpleName, fqcn, underlying);
                 } else {
-                    typeResolver.registerRecord(rd);
+                    typeResolver.registerRecord(rd, fqcn);
                 }
-            } else if (allSealed.containsKey(name)) {
-                typeResolver.registerSealedInterface(allSealed.get(name));
+            } else if (allSealed.containsKey(fqcn)) {
+                typeResolver.registerSealedInterface(allSealed.get(fqcn), fqcn);
             }
         }
+        typeResolver.setCurrentImportResolver(null); // clean up
+    }
+
+    private static String simpleName(String fqcn) {
+        var dot = fqcn.lastIndexOf('.');
+        return dot >= 0 ? fqcn.substring(dot + 1) : fqcn;
     }
 
     /** Check if a record has the @NewType annotation. */
@@ -148,26 +196,54 @@ public class TypeRegistrar {
 
     /**
      * Extract type dependencies from a type string, including generic type arguments.
-     * For example, {@code List<ProofStep>} yields dependency on {@code ProofStep}.
+     * Uses ImportResolver to resolve simple names to FQCNs.
      */
-    private void extractTypeDependencies(String typeName, Set<String> knownTypes, Set<String> deps) {
+    private void extractTypeDependencies(String typeName, Set<String> knownFqcns,
+                                          Map<String, Set<String>> simpleToFqcn,
+                                          ImportResolver importResolver,
+                                          Set<String> deps) {
         if (typeName.contains("<")) {
             // Check base type
             String base = typeName.substring(0, typeName.indexOf('<'));
-            if (knownTypes.contains(base)) deps.add(base);
+            resolveAndAddDep(base, knownFqcns, simpleToFqcn, importResolver, deps);
             // Extract and check generic arguments
             String argsStr = typeName.substring(typeName.indexOf('<') + 1, typeName.lastIndexOf('>'));
             for (String arg : splitTypeArgs(argsStr)) {
-                extractTypeDependencies(arg.trim(), knownTypes, deps);
+                extractTypeDependencies(arg.trim(), knownFqcns, simpleToFqcn, importResolver, deps);
             }
         } else {
-            if (knownTypes.contains(typeName)) deps.add(typeName);
+            resolveAndAddDep(typeName, knownFqcns, simpleToFqcn, importResolver, deps);
+        }
+    }
+
+    private void resolveAndAddDep(String name, Set<String> knownFqcns,
+                                   Map<String, Set<String>> simpleToFqcn,
+                                   ImportResolver importResolver, Set<String> deps) {
+        // Try as FQCN first
+        if (knownFqcns.contains(name)) {
+            deps.add(name);
+            return;
+        }
+        // Try resolving via ImportResolver
+        try {
+            var resolved = importResolver.resolve(name);
+            if (knownFqcns.contains(resolved)) {
+                deps.add(resolved);
+                return;
+            }
+        } catch (CompilerException ignored) {
+            // Ambiguity — will be caught later during type resolution
+        }
+        // Try simple name index (for packageless code)
+        var fqcns = simpleToFqcn.get(name);
+        if (fqcns != null && fqcns.size() == 1) {
+            deps.add(fqcns.iterator().next());
         }
     }
 
     /**
      * Split generic type arguments, respecting nested angle brackets.
-     * E.g., "A, Map<B, C>" → ["A", "Map<B, C>"]
+     * E.g., "A, Map<B, C>" -> ["A", "Map<B, C>"]
      */
     private List<String> splitTypeArgs(String argsStr) {
         var result = new ArrayList<String>();
@@ -192,7 +268,7 @@ public class TypeRegistrar {
         for (var name : deps.keySet()) inDegree.put(name, 0);
         for (var entry : deps.entrySet()) {
             for (var dep : entry.getValue()) {
-                // entry depends on dep → entry has incoming edge
+                // entry depends on dep -> entry has incoming edge
                 inDegree.merge(entry.getKey(), 1, Integer::sum);
             }
         }

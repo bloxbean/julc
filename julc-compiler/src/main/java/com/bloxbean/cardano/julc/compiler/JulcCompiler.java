@@ -3,6 +3,8 @@ package com.bloxbean.cardano.julc.compiler;
 import com.bloxbean.cardano.julc.compiler.codegen.ValidatorWrapper;
 import com.bloxbean.cardano.julc.compiler.error.CompilerDiagnostic;
 import com.bloxbean.cardano.julc.compiler.pir.*;
+import com.bloxbean.cardano.julc.compiler.resolve.ImportResolver;
+import com.bloxbean.cardano.julc.compiler.resolve.LedgerTypeRegistry;
 import com.bloxbean.cardano.julc.compiler.resolve.LibraryMethodRegistry;
 import com.bloxbean.cardano.julc.compiler.resolve.SymbolTable;
 import com.bloxbean.cardano.julc.compiler.resolve.TypeRegistrar;
@@ -23,9 +25,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Stream;
 
 /**
@@ -165,18 +165,34 @@ public class JulcCompiler {
 
         // 5. Register types from ALL sources (topo-sorted)
         var typeResolver = new TypeResolver();
-        com.bloxbean.cardano.julc.compiler.resolve.LedgerTypeRegistry.registerAll(typeResolver);
+        LedgerTypeRegistry.registerAll(typeResolver);
         var allCus = new ArrayList<CompilationUnit>();
         allCus.addAll(libraryCus);
         allCus.add(validatorCu);
         new TypeRegistrar().registerAll(allCus, typeResolver);
         options.logf("Registered types from %d compilation unit(s)", allCus.size());
 
+        // 5c. Build knownFqcns for ImportResolver (types + library classes)
+        var knownFqcns = new LinkedHashSet<String>();
+        knownFqcns.addAll(LedgerTypeRegistry.allLedgerFqcns());
+        knownFqcns.addAll(typeResolver.allRegisteredFqcns());
+        for (var libCu : libraryCus) {
+            for (var cls : libCu.findAll(ClassOrInterfaceDeclaration.class)) {
+                if (!cls.isInterface()) {
+                    knownFqcns.add(cls.getFullyQualifiedName().orElse(cls.getNameAsString()));
+                }
+            }
+        }
+
         // 5b. Auto-register .of() for @NewType records as identity lookups
         var newTypeNames = typeResolver.getNewTypeNames();
         StdlibLookup effectiveStdlibLookup = newTypeNames.isEmpty()
                 ? stdlibLookup
                 : wrapWithNewTypeLookup(stdlibLookup, newTypeNames);
+
+        // 5d. Set import resolver for validator CU (used for type resolution)
+        var validatorImportResolver = new ImportResolver(validatorCu, knownFqcns);
+        typeResolver.setCurrentImportResolver(validatorImportResolver);
 
         // 6. Detect @Param fields
         var paramFields = findParamFields(validatorClass, typeResolver, diagnostics);
@@ -202,9 +218,12 @@ public class JulcCompiler {
         var libraryRegistry = new LibraryMethodRegistry(options);
         if (!libraryCus.isEmpty()) {
             options.logf("Compiling %d library source(s)", libraryCus.size());
-            compileLibraryMethods(libraryCus, typeResolver, libraryRegistry, effectiveStdlibLookup);
+            compileLibraryMethods(libraryCus, typeResolver, libraryRegistry, effectiveStdlibLookup, knownFqcns);
             options.logf("Compiled %d library method(s)", libraryRegistry.allMethods().size());
         }
+
+        // Restore validator's import resolver after library compilation
+        typeResolver.setCurrentImportResolver(validatorImportResolver);
 
         // 9. Compose lookup: stdlib + library methods
         var effectiveLookup = libraryRegistry.isEmpty()
@@ -387,7 +406,8 @@ public class JulcCompiler {
     // --- Library compilation ---
 
     private void compileLibraryMethods(List<CompilationUnit> libCus, TypeResolver typeResolver,
-                                       LibraryMethodRegistry registry, StdlibLookup effectiveLookup) {
+                                       LibraryMethodRegistry registry, StdlibLookup effectiveLookup,
+                                       Set<String> knownFqcns) {
         // Multi-pass compilation: retry CUs that fail due to unresolved cross-library references.
         // Each pass compiles CUs whose dependencies are already available, progressively growing
         // the registry until all CUs are compiled or no further progress can be made.
@@ -398,7 +418,7 @@ public class JulcCompiler {
             var nextRemaining = new ArrayList<CompilationUnit>();
             for (var libCu : remaining) {
                 try {
-                    compileSingleLibraryCu(libCu, typeResolver, registry, effectiveLookup);
+                    compileSingleLibraryCu(libCu, typeResolver, registry, effectiveLookup, knownFqcns);
                     progress = true;
                 } catch (Exception e) {
                     nextRemaining.add(libCu);
@@ -408,15 +428,29 @@ public class JulcCompiler {
         }
         // Final pass: compile any remaining CUs (will throw with proper error if unresolvable)
         for (var libCu : remaining) {
-            compileSingleLibraryCu(libCu, typeResolver, registry, effectiveLookup);
+            compileSingleLibraryCu(libCu, typeResolver, registry, effectiveLookup, knownFqcns);
         }
     }
 
     private void compileSingleLibraryCu(CompilationUnit libCu, TypeResolver typeResolver,
-                                         LibraryMethodRegistry registry, StdlibLookup effectiveLookup) {
+                                         LibraryMethodRegistry registry, StdlibLookup effectiveLookup,
+                                         Set<String> knownFqcns) {
+        // Set ImportResolver for this library CU
+        var libImportResolver = new ImportResolver(libCu, knownFqcns);
+        typeResolver.setCurrentImportResolver(libImportResolver);
+
         for (var cls : libCu.findAll(ClassOrInterfaceDeclaration.class)) {
             if (cls.isInterface()) continue;
             var className = cls.getNameAsString();
+            // Use FQCN for library class name
+            var classNameFqcn = cls.getFullyQualifiedName().orElse(className);
+
+            // Check if this library class name collides with a stdlib class
+            if (effectiveLookup != null && effectiveLookup.hasMethodsForClass(className)) {
+                throw new CompilerException("Library class '" + classNameFqcn
+                        + "' has the same simple name as a built-in stdlib class '" + className
+                        + "'. This would shadow the stdlib methods. Use a different class name.");
+            }
 
             // Detect static fields with initializers in library classes
             var libStaticFields = findStaticFields(cls, typeResolver);
@@ -429,16 +463,16 @@ public class JulcCompiler {
             for (var method : cls.getMethods()) {
                 if (method.isStatic()) {
                     var mType = computeMethodType(method, typeResolver);
-                    libSymbolTable.define(className + "." + method.getNameAsString(), mType);
+                    libSymbolTable.define(classNameFqcn + "." + method.getNameAsString(), mType);
                 }
             }
 
             // Use progressive lookup: stdlib + already-compiled libraries from previous CUs
             var composedLookup = new CompositeStdlibLookup(effectiveLookup, registry);
 
-            // Compile each static method (pass className for qualified name resolution)
+            // Compile each static method (pass FQCN className for qualified name resolution)
             var libPirGenerator = new PirGenerator(typeResolver, libSymbolTable, composedLookup,
-                    TypeMethodRegistry.defaultRegistry(), className);
+                    TypeMethodRegistry.defaultRegistry(), classNameFqcn);
 
             // Compile static field initializers
             record LibCompiledField(String name, PirTerm initPir) {}
@@ -457,7 +491,7 @@ public class JulcCompiler {
                         pirBody = new PirTerm.Let(sf.name(), sf.initPir(), pirBody);
                     }
                     var mType = computeMethodType(method, typeResolver);
-                    registry.register(className, method.getNameAsString(), mType, pirBody);
+                    registry.register(classNameFqcn, method.getNameAsString(), mType, pirBody);
                 }
             }
         }
@@ -555,14 +589,22 @@ public class JulcCompiler {
      * Wrap a StdlibLookup with identity handlers for @NewType .of() calls.
      */
     private static StdlibLookup wrapWithNewTypeLookup(StdlibLookup base, Set<String> newTypeNames) {
-        return (className, methodName, args) -> {
-            if (methodName.equals("of") && newTypeNames.contains(className)) {
-                if (args.size() != 1) {
-                    throw new CompilerException(className + ".of() requires exactly 1 argument, got " + args.size());
+        return new StdlibLookup() {
+            @Override
+            public java.util.Optional<PirTerm> lookup(String className, String methodName, java.util.List<PirTerm> args) {
+                if (methodName.equals("of") && newTypeNames.contains(className)) {
+                    if (args.size() != 1) {
+                        throw new CompilerException(className + ".of() requires exactly 1 argument, got " + args.size());
+                    }
+                    return java.util.Optional.of(args.get(0));
                 }
-                return java.util.Optional.of(args.get(0));
+                return base != null ? base.lookup(className, methodName, args) : java.util.Optional.empty();
             }
-            return base != null ? base.lookup(className, methodName, args) : java.util.Optional.empty();
+
+            @Override
+            public boolean hasMethodsForClass(String className) {
+                return base != null && base.hasMethodsForClass(className);
+            }
         };
     }
 
