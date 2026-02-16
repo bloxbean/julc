@@ -22,6 +22,8 @@ public class TypeResolver {
     private final Map<String, PirType.SumType> sumTypes = new LinkedHashMap<>();
     // Map of variant name -> its enclosing SumType (for constructor tag lookup)
     private final Map<String, PirType.SumType> variantToSumType = new LinkedHashMap<>();
+    // Map of @NewType names -> their underlying PIR type
+    private final Map<String, PirType> newTypes = new LinkedHashMap<>();
 
     private static final Set<String> LEDGER_HASH_TYPES = Set.of(
             "PubKeyHash", "ScriptHash", "ValidatorHash", "PolicyId", "TokenName", "DatumHash", "TxId");
@@ -47,9 +49,9 @@ public class TypeResolver {
         recordTypes.put(name, recordType);
     }
 
-    /** Check if a type name is already registered (as record or sealed interface). */
+    /** Check if a type name is already registered (as record, sealed interface, or newtype). */
     public boolean isRegistered(String name) {
-        return recordTypes.containsKey(name) || sumTypes.containsKey(name);
+        return recordTypes.containsKey(name) || sumTypes.containsKey(name) || newTypes.containsKey(name);
     }
 
     /**
@@ -71,6 +73,24 @@ public class TypeResolver {
         for (var ctor : constructors) {
             variantToSumType.put(ctor.name(), sumType);
         }
+    }
+
+    /**
+     * Register a @NewType record. On-chain, it resolves to the underlying type
+     * and its constructor/of() are identity operations.
+     */
+    public void registerNewType(String name, PirType underlyingType) {
+        newTypes.put(name, underlyingType);
+    }
+
+    /** Check if a type name is a registered @NewType. */
+    public boolean isNewType(String name) {
+        return newTypes.containsKey(name);
+    }
+
+    /** Get all registered @NewType names. */
+    public Set<String> getNewTypeNames() {
+        return Collections.unmodifiableSet(newTypes.keySet());
     }
 
     public void registerSealedInterface(ClassOrInterfaceDeclaration decl) {
@@ -173,6 +193,8 @@ public class TypeResolver {
             default -> {
                 // Check ledger hash types -> ByteStringType
                 if (LEDGER_HASH_TYPES.contains(name)) yield new PirType.ByteStringType();
+                // Check @NewType records -> resolve to underlying type
+                if (newTypes.containsKey(name)) yield newTypes.get(name);
                 // Check registered record types (includes ledger records from LedgerTypeRegistry)
                 if (recordTypes.containsKey(name)) yield recordTypes.get(name);
                 // Check registered sum types (sealed interfaces, including ledger sum types)

@@ -967,6 +967,15 @@ public class PirGenerator {
     private PirTerm generateObjectCreation(ObjectCreationExpr oce) {
         var typeName = oce.getType().getNameAsString();
 
+        // @NewType constructor is identity — no ConstrData wrapping
+        if (typeResolver.isNewType(typeName)) {
+            if (oce.getArguments().size() != 1) {
+                throw enrichedError("@NewType constructor must have exactly 1 argument",
+                        "@NewType records have a single field, so the constructor takes 1 argument.", oce);
+            }
+            return generateExpression(oce.getArguments().get(0));
+        }
+
         // Handle new BigInteger("12345") → integer constant
         if (typeName.equals("BigInteger") && oce.getArguments().size() == 1) {
             var arg = oce.getArguments().get(0);

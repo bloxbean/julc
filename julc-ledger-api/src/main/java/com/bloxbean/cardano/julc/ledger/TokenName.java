@@ -29,6 +29,8 @@ public record TokenName(byte[] name) implements PlutusDataConvertible {
         return new PlutusData.BytesData(name);
     }
 
+    public static TokenName of(byte[] name) { return new TokenName(name); }
+
     public static TokenName fromPlutusData(PlutusData data) {
         return new TokenName(PlutusDataHelper.decodeBytes(data));
     }

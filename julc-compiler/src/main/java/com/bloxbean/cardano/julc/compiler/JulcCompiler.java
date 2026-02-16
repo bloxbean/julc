@@ -172,6 +172,12 @@ public class JulcCompiler {
         new TypeRegistrar().registerAll(allCus, typeResolver);
         options.logf("Registered types from %d compilation unit(s)", allCus.size());
 
+        // 5b. Auto-register .of() for @NewType records as identity lookups
+        var newTypeNames = typeResolver.getNewTypeNames();
+        StdlibLookup effectiveStdlibLookup = newTypeNames.isEmpty()
+                ? stdlibLookup
+                : wrapWithNewTypeLookup(stdlibLookup, newTypeNames);
+
         // 6. Detect @Param fields
         var paramFields = findParamFields(validatorClass, typeResolver, diagnostics);
         if (hasErrors(diagnostics)) {
@@ -196,14 +202,14 @@ public class JulcCompiler {
         var libraryRegistry = new LibraryMethodRegistry(options);
         if (!libraryCus.isEmpty()) {
             options.logf("Compiling %d library source(s)", libraryCus.size());
-            compileLibraryMethods(libraryCus, typeResolver, libraryRegistry, stdlibLookup);
+            compileLibraryMethods(libraryCus, typeResolver, libraryRegistry, effectiveStdlibLookup);
             options.logf("Compiled %d library method(s)", libraryRegistry.allMethods().size());
         }
 
         // 9. Compose lookup: stdlib + library methods
         var effectiveLookup = libraryRegistry.isEmpty()
-                ? stdlibLookup
-                : new CompositeStdlibLookup(stdlibLookup, libraryRegistry);
+                ? effectiveStdlibLookup
+                : new CompositeStdlibLookup(effectiveStdlibLookup, libraryRegistry);
 
         // 10. Set up symbol table
         var symbolTable = new SymbolTable();
@@ -543,6 +549,21 @@ public class JulcCompiler {
         } catch (Exception e) {
             throw new CompilerException("Failed to parse " + label + " source: " + e.getMessage());
         }
+    }
+
+    /**
+     * Wrap a StdlibLookup with identity handlers for @NewType .of() calls.
+     */
+    private static StdlibLookup wrapWithNewTypeLookup(StdlibLookup base, Set<String> newTypeNames) {
+        return (className, methodName, args) -> {
+            if (methodName.equals("of") && newTypeNames.contains(className)) {
+                if (args.size() != 1) {
+                    throw new CompilerException(className + ".of() requires exactly 1 argument, got " + args.size());
+                }
+                return java.util.Optional.of(args.get(0));
+            }
+            return base != null ? base.lookup(className, methodName, args) : java.util.Optional.empty();
+        };
     }
 
     private ClassOrInterfaceDeclaration findAnnotatedClass(CompilationUnit cu) {

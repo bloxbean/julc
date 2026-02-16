@@ -26,6 +26,8 @@ public record ValidatorHash(byte[] hash) implements PlutusDataConvertible {
         return new PlutusData.BytesData(hash);
     }
 
+    public static ValidatorHash of(byte[] hash) { return new ValidatorHash(hash); }
+
     public static ValidatorHash fromPlutusData(PlutusData data) {
         return new ValidatorHash(PlutusDataHelper.decodeBytes(data));
     }

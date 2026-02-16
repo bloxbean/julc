@@ -26,6 +26,8 @@ public record PubKeyHash(byte[] hash) implements PlutusDataConvertible {
         return new PlutusData.BytesData(hash);
     }
 
+    public static PubKeyHash of(byte[] hash) { return new PubKeyHash(hash); }
+
     public static PubKeyHash fromPlutusData(PlutusData data) {
         return new PubKeyHash(PlutusDataHelper.decodeBytes(data));
     }

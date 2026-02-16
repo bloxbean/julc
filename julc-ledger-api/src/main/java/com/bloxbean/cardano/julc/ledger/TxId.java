@@ -26,6 +26,8 @@ public record TxId(byte[] hash) implements PlutusDataConvertible {
         return new PlutusData.BytesData(hash);
     }
 
+    public static TxId of(byte[] hash) { return new TxId(hash); }
+
     public static TxId fromPlutusData(PlutusData data) {
         return new TxId(PlutusDataHelper.decodeBytes(data));
     }

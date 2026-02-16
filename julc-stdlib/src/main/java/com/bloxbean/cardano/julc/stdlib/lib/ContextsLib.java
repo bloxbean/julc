@@ -22,6 +22,16 @@ import java.math.BigInteger;
 public class ContextsLib {
 
     // =========================================================================
+    // Trace (on-chain: emits UPLC Trace; off-chain: prints to stdout)
+    // =========================================================================
+
+    /** Emits a trace message. On-chain becomes UPLC Trace builtin.
+     *  Body is a no-op — the compiler uses the PIR-registered version. */
+    public static void trace(String message) {
+        // no-op off-chain; on-chain the StdlibRegistry generates PIR Trace
+    }
+
+    // =========================================================================
     // ScriptContext field accessors (off-chain compatible)
     // =========================================================================
 

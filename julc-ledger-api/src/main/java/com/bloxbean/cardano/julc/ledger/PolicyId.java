@@ -29,6 +29,8 @@ public record PolicyId(byte[] hash) implements PlutusDataConvertible {
         return new PlutusData.BytesData(hash);
     }
 
+    public static PolicyId of(byte[] hash) { return new PolicyId(hash); }
+
     public static PolicyId fromPlutusData(PlutusData data) {
         return new PolicyId(PlutusDataHelper.decodeBytes(data));
     }

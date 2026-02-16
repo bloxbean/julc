@@ -1,9 +1,11 @@
 package com.bloxbean.cardano.julc.compiler.resolve;
 
 import com.bloxbean.cardano.julc.compiler.CompilerException;
+import com.bloxbean.cardano.julc.compiler.pir.PirType;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.RecordDeclaration;
+import com.github.javaparser.ast.expr.MarkerAnnotationExpr;
 
 import java.util.*;
 
@@ -85,11 +87,63 @@ public class TypeRegistrar {
         for (var name : sorted) {
             if (typeResolver.isRegistered(name)) continue;
             if (allRecords.containsKey(name)) {
-                typeResolver.registerRecord(allRecords.get(name));
+                var rd = allRecords.get(name);
+                if (hasNewTypeAnnotation(rd)) {
+                    validateNewType(rd);
+                    PirType underlying = resolveUnderlyingType(rd);
+                    typeResolver.registerNewType(name, underlying);
+                } else {
+                    typeResolver.registerRecord(rd);
+                }
             } else if (allSealed.containsKey(name)) {
                 typeResolver.registerSealedInterface(allSealed.get(name));
             }
         }
+    }
+
+    /** Check if a record has the @NewType annotation. */
+    private boolean hasNewTypeAnnotation(RecordDeclaration rd) {
+        for (var ann : rd.getAnnotations()) {
+            if (ann instanceof MarkerAnnotationExpr mae
+                    && mae.getNameAsString().equals("NewType")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Validate that a @NewType record has exactly 1 field with a supported primitive type. */
+    private void validateNewType(RecordDeclaration rd) {
+        var params = rd.getParameters();
+        if (params.size() != 1) {
+            throw new CompilerException("@NewType record '" + rd.getNameAsString()
+                    + "' must have exactly 1 field, got " + params.size());
+        }
+        var fieldType = params.get(0).getType().asString();
+        if (!isSupportedNewTypeField(fieldType)) {
+            throw new CompilerException("@NewType record '" + rd.getNameAsString()
+                    + "' field type '" + fieldType + "' is not supported. "
+                    + "Supported types: byte[], BigInteger, String, boolean");
+        }
+    }
+
+    /** Resolve the underlying PIR type for a @NewType record's single field. */
+    private PirType resolveUnderlyingType(RecordDeclaration rd) {
+        var fieldType = rd.getParameters().get(0).getType().asString();
+        return switch (fieldType) {
+            case "byte[]" -> new PirType.ByteStringType();
+            case "BigInteger" -> new PirType.IntegerType();
+            case "String" -> new PirType.StringType();
+            case "boolean" -> new PirType.BoolType();
+            default -> throw new CompilerException("Unsupported @NewType field type: " + fieldType);
+        };
+    }
+
+    private boolean isSupportedNewTypeField(String typeName) {
+        return switch (typeName) {
+            case "byte[]", "BigInteger", "String", "boolean" -> true;
+            default -> false;
+        };
     }
 
     /**

@@ -1039,8 +1039,16 @@ class StdlibTest {
             assertTrue(reg.contains("Builtins", "constrTag"));
             assertTrue(reg.contains("Builtins", "constrFields"));
             assertTrue(reg.contains("Builtins", "expModInteger"));
-            // Total: 59 Builtins + 7 ListsLib HOF + 1 ContextsLib.trace + 3 Math delegates + 2 JulcList factories = 72
-            assertEquals(72, reg.size());
+            // Ledger type .of() factories (identity on-chain)
+            assertTrue(reg.contains("PubKeyHash", "of"));
+            assertTrue(reg.contains("ScriptHash", "of"));
+            assertTrue(reg.contains("ValidatorHash", "of"));
+            assertTrue(reg.contains("PolicyId", "of"));
+            assertTrue(reg.contains("TokenName", "of"));
+            assertTrue(reg.contains("DatumHash", "of"));
+            assertTrue(reg.contains("TxId", "of"));
+            // Total: 59 Builtins + 7 ListsLib HOF + 1 ContextsLib.trace + 3 Math delegates + 2 JulcList factories + 7 ledger .of() = 79
+            assertEquals(79, reg.size());
         }
 
         @Test

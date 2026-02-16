@@ -26,6 +26,8 @@ public record ScriptHash(byte[] hash) implements PlutusDataConvertible {
         return new PlutusData.BytesData(hash);
     }
 
+    public static ScriptHash of(byte[] hash) { return new ScriptHash(hash); }
+
     public static ScriptHash fromPlutusData(PlutusData data) {
         return new ScriptHash(PlutusDataHelper.decodeBytes(data));
     }

@@ -26,6 +26,8 @@ public record DatumHash(byte[] hash) implements PlutusDataConvertible {
         return new PlutusData.BytesData(hash);
     }
 
+    public static DatumHash of(byte[] hash) { return new DatumHash(hash); }
+
     public static DatumHash fromPlutusData(PlutusData data) {
         return new DatumHash(PlutusDataHelper.decodeBytes(data));
     }

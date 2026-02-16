@@ -117,6 +117,7 @@ public final class StdlibRegistry {
         registerContextsTrace(reg);
         registerJavaMathDelegates(reg);
         registerCollectionFactories(reg);
+        registerLedgerTypeFactories(reg);
         return reg;
     }
 
@@ -504,6 +505,20 @@ public final class StdlibRegistry {
             }
             return result;
         });
+    }
+
+    /**
+     * Register .of() factory methods for ledger hash types.
+     * On-chain, these are identity — the byte[] is already the underlying data.
+     */
+    private static void registerLedgerTypeFactories(StdlibRegistry reg) {
+        for (String type : List.of("PubKeyHash", "ScriptHash", "ValidatorHash",
+                                    "PolicyId", "TokenName", "DatumHash", "TxId")) {
+            reg.register(type, "of", args -> {
+                requireArgs(type + ".of", args, 1);
+                return args.get(0);
+            });
+        }
     }
 
     private static void requireArgs(String method, List<PirTerm> args, int expected) {
