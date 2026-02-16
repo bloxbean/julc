@@ -532,11 +532,8 @@ public final class TypeMethodRegistry {
         reg.register("MapType", "get",
                 (scope, args, scopeType, argTypes) -> {
                     if (args.isEmpty()) throw new CompilerException("map.get() requires a key argument");
-                    var mapVar = new PirTerm.Var("m_get", new PirType.MapType(new PirType.DataType(), new PirType.DataType()));
+                    // scope is already a pair list (UnMapData applied at extraction/cast time)
                     var keyVar = new PirTerm.Var("k_get", new PirType.DataType());
-
-                    // UnMapData to get pair list
-                    var pairs = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), mapVar);
                     var pairsVar = new PirTerm.Var("ps_get", new PirType.ListType(
                             new PirType.PairType(new PirType.DataType(), new PirType.DataType())));
 
@@ -581,9 +578,8 @@ public final class TypeMethodRegistry {
                     var binding = new PirTerm.Binding("go_get", goBody);
                     var search = new PirTerm.LetRec(List.of(binding), new PirTerm.App(goVar, pairsVar));
 
-                    return new PirTerm.Let("m_get", scope,
-                            new PirTerm.Let("k_get", args.get(0),
-                                    new PirTerm.Let("ps_get", pairs, search)));
+                    return new PirTerm.Let("ps_get", scope,
+                            new PirTerm.Let("k_get", args.get(0), search));
                 },
                 scopeType -> new PirType.OptionalType(((PirType.MapType) scopeType).valueType()));
 
@@ -591,10 +587,8 @@ public final class TypeMethodRegistry {
         reg.register("MapType", "containsKey",
                 (scope, args, scopeType, argTypes) -> {
                     if (args.isEmpty()) throw new CompilerException("map.containsKey() requires a key argument");
-                    var mapVar = new PirTerm.Var("m_ck", new PirType.MapType(new PirType.DataType(), new PirType.DataType()));
+                    // scope is already a pair list
                     var keyVar = new PirTerm.Var("k_ck", new PirType.DataType());
-
-                    var pairs = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), mapVar);
                     var pairsVar = new PirTerm.Var("ps_ck", new PirType.ListType(
                             new PirType.PairType(new PirType.DataType(), new PirType.DataType())));
 
@@ -623,34 +617,29 @@ public final class TypeMethodRegistry {
                     var binding = new PirTerm.Binding("go_ck", goBody);
                     var search = new PirTerm.LetRec(List.of(binding), new PirTerm.App(goVar, pairsVar));
 
-                    return new PirTerm.Let("m_ck", scope,
-                            new PirTerm.Let("k_ck", args.get(0),
-                                    new PirTerm.Let("ps_ck", pairs, search)));
+                    return new PirTerm.Let("ps_ck", scope,
+                            new PirTerm.Let("k_ck", args.get(0), search));
                 },
                 scopeType -> new PirType.BoolType());
 
-        // size(): foldl-based count of map pairs
+        // size(): foldl-based count of pair list
         reg.register("MapType", "size",
-                (scope, args, scopeType, argTypes) -> {
-                    var pairs = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), scope);
-                    return PirHelpers.generateListLength(pairs);
-                },
+                (scope, args, scopeType, argTypes) ->
+                        PirHelpers.generateListLength(scope),
                 scopeType -> new PirType.IntegerType());
 
-        // isEmpty(): NullList(UnMapData(map))
+        // isEmpty(): NullList(pairList)
         reg.register("MapType", "isEmpty",
                 (scope, args, scopeType, argTypes) ->
-                        new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList),
-                                new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), scope)),
+                        new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), scope),
                 scopeType -> new PirType.BoolType());
 
         // keys(): foldl collecting fstPair from each pair
         reg.register("MapType", "keys",
                 (scope, args, scopeType, argTypes) -> {
                     var mt = (PirType.MapType) scopeType;
-                    var pairs = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), scope);
-
-                    // foldl(\acc pair -> MkCons(FstPair(pair), acc), MkNilData, pairs)
+                    // scope is already a pair list
+                    // foldl(\acc pair -> MkCons(FstPair(pair), acc), MkNilData, scope)
                     var accVar = new PirTerm.Var("acc__keys", new PirType.ListType(new PirType.DataType()));
                     var pairVar = new PirTerm.Var("p__keys", new PirType.DataType());
                     var fstExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.FstPair), pairVar);
@@ -659,7 +648,7 @@ public final class TypeMethodRegistry {
                             new PirTerm.Lam("p__keys", new PirType.DataType(), consExpr));
                     var nilData = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilData),
                             new PirTerm.Const(Constant.unit()));
-                    return PirHelpers.generateFoldl(foldFn, nilData, pairs);
+                    return PirHelpers.generateFoldl(foldFn, nilData, scope);
                 },
                 scopeType -> new PirType.ListType(((PirType.MapType) scopeType).keyType()));
 
@@ -667,9 +656,8 @@ public final class TypeMethodRegistry {
         reg.register("MapType", "values",
                 (scope, args, scopeType, argTypes) -> {
                     var mt = (PirType.MapType) scopeType;
-                    var pairs = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), scope);
-
-                    // foldl(\acc pair -> MkCons(SndPair(pair), acc), MkNilData, pairs)
+                    // scope is already a pair list
+                    // foldl(\acc pair -> MkCons(SndPair(pair), acc), MkNilData, scope)
                     var accVar = new PirTerm.Var("acc__vals", new PirType.ListType(new PirType.DataType()));
                     var pairVar = new PirTerm.Var("p__vals", new PirType.DataType());
                     var sndExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.SndPair), pairVar);
@@ -678,11 +666,11 @@ public final class TypeMethodRegistry {
                             new PirTerm.Lam("p__vals", new PirType.DataType(), consExpr));
                     var nilData = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilData),
                             new PirTerm.Const(Constant.unit()));
-                    return PirHelpers.generateFoldl(foldFn, nilData, pairs);
+                    return PirHelpers.generateFoldl(foldFn, nilData, scope);
                 },
                 scopeType -> new PirType.ListType(((PirType.MapType) scopeType).valueType()));
 
-        // insert(key, value): MapData(MkCons(MkPairData(wrapEncode(key), wrapEncode(value)), UnMapData(map)))
+        // insert(key, value): MkCons(MkPairData(key, value), pairList) — returns pair list
         reg.register("MapType", "insert",
                 (scope, args, scopeType, argTypes) -> {
                     if (args.size() < 2) throw new CompilerException("map.insert() requires key and value arguments");
@@ -690,23 +678,21 @@ public final class TypeMethodRegistry {
                     var keyArg = PirHelpers.wrapEncode(args.get(0), argTypes.size() >= 1 ? argTypes.get(0) : new PirType.DataType());
                     var valArg = PirHelpers.wrapEncode(args.get(1), argTypes.size() >= 2 ? argTypes.get(1) : new PirType.DataType());
                     var pair = PirHelpers.builtinApp2(DefaultFun.MkPairData, keyArg, valArg);
-                    var pairs = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), scope);
-                    var newPairs = PirHelpers.builtinApp2(DefaultFun.MkCons, pair, pairs);
-                    return new PirTerm.App(new PirTerm.Builtin(DefaultFun.MapData), newPairs);
+                    // scope is already a pair list — cons directly
+                    return PirHelpers.builtinApp2(DefaultFun.MkCons, pair, scope);
                 },
                 scopeType -> scopeType);
 
-        // delete(key): LetRec filter out matching key, wrap with MapData
+        // delete(key): LetRec filter out matching key — returns pair list
         // Uses direct recursion (no accumulate-and-reverse) to avoid multi-binding LetRec
         reg.register("MapType", "delete",
                 (scope, args, scopeType, argTypes) -> {
                     if (args.isEmpty()) throw new CompilerException("map.delete() requires a key argument");
                     var keyArg = PirHelpers.wrapEncode(args.get(0), argTypes.isEmpty() ? new PirType.DataType() : argTypes.get(0));
-                    var mapVar = new PirTerm.Var("m_del", new PirType.DataType());
                     var keyVar = new PirTerm.Var("k_del", new PirType.DataType());
-                    var pairs = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), mapVar);
                     var pairListType = new PirType.ListType(
                             new PirType.PairType(new PirType.DataType(), new PirType.DataType()));
+                    // scope is already a pair list
                     var pairsVar = new PirTerm.Var("ps_del", pairListType);
 
                     // LetRec: go(lst) = if null(lst) then MkNilPairData()
@@ -738,11 +724,9 @@ public final class TypeMethodRegistry {
                     var binding = new PirTerm.Binding("go_del", goBody);
                     var filtered = new PirTerm.LetRec(List.of(binding),
                             new PirTerm.App(goVar, pairsVar));
-                    var result = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MapData), filtered);
 
-                    return new PirTerm.Let("m_del", scope,
-                            new PirTerm.Let("k_del", keyArg,
-                                    new PirTerm.Let("ps_del", pairs, result)));
+                    return new PirTerm.Let("ps_del", scope,
+                            new PirTerm.Let("k_del", keyArg, filtered));
                 },
                 scopeType -> scopeType);
     }

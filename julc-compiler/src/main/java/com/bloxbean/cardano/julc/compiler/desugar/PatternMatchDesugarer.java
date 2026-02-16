@@ -38,7 +38,7 @@ public class PatternMatchDesugarer {
             var fieldTypes = ctor.fields().stream().map(PirType.Field::type).toList();
             if (matchEntry.isPresent()) {
                 orderedBranches.add(new PirTerm.MatchBranch(
-                        ctor.name(), matchEntry.get().bindings, fieldTypes, matchEntry.get().body));
+                        ctor.name(), matchEntry.get().bindings, fieldTypes, matchEntry.get().body, matchEntry.get().patternVar()));
             } else {
                 // Default branch or error
                 orderedBranches.add(new PirTerm.MatchBranch(
@@ -69,6 +69,11 @@ public class PatternMatchDesugarer {
         return buildDataMatch(scrutinee, sumType, matchEntries);
     }
 
-    public record MatchEntry(String variantName, List<String> bindings, PirTerm body) {}
+    public record MatchEntry(String variantName, List<String> bindings, PirTerm body, String patternVar) {
+        /** Backward-compatible constructor (no pattern var) */
+        public MatchEntry(String variantName, List<String> bindings, PirTerm body) {
+            this(variantName, bindings, body, null);
+        }
+    }
     public record InstanceOfBranch(String variantName, List<String> bindings, PirTerm body) {}
 }

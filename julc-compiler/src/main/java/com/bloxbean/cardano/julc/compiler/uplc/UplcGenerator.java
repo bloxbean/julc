@@ -176,6 +176,7 @@ public class UplcGenerator {
      * then generates UPLC from that PIR.
      */
     private Term generateDataMatch(PirTerm scrutinee, List<PirTerm.MatchBranch> branches) {
+        var dataName = "__match_data";
         var pairName = "__match_pair";
         var tagName = "__match_tag";
         var fieldsName = "__match_fields";
@@ -183,11 +184,11 @@ public class UplcGenerator {
         // Build the dispatch chain: IfThenElse(tag==0, branch0, IfThenElse(tag==1, branch1, ...Error))
         PirTerm dispatch;
         if (branches.size() == 1) {
-            dispatch = buildBranchFieldExtraction(branches.get(0), fieldsName);
+            dispatch = buildBranchFieldExtraction(branches.get(0), fieldsName, dataName);
         } else {
             dispatch = new PirTerm.Error(new PirType.UnitType());
             for (int i = branches.size() - 1; i >= 0; i--) {
-                var branchBody = buildBranchFieldExtraction(branches.get(i), fieldsName);
+                var branchBody = buildBranchFieldExtraction(branches.get(i), fieldsName, dataName);
                 var tagCheck = new PirTerm.App(
                         new PirTerm.App(new PirTerm.Builtin(DefaultFun.EqualsInteger),
                                 new PirTerm.Var(tagName, new PirType.IntegerType())),
@@ -196,18 +197,21 @@ public class UplcGenerator {
             }
         }
 
-        // Wrap in: let pair = UnConstrData(scrutinee)
+        // Wrap in: let data = scrutinee
+        //          let pair = UnConstrData(data)
         //          let tag = FstPair(pair)
         //          let fields = SndPair(pair)
         //          dispatch
+        var dataVar = new PirTerm.Var(dataName, new PirType.DataType());
         var pairVar = new PirTerm.Var(pairName, new PirType.DataType());
-        var matchPir = new PirTerm.Let(pairName,
-                pirApp1(DefaultFun.UnConstrData, scrutinee),
-                new PirTerm.Let(tagName,
-                        pirApp1(DefaultFun.FstPair, pairVar),
-                        new PirTerm.Let(fieldsName,
-                                pirApp1(DefaultFun.SndPair, pairVar),
-                                dispatch)));
+        var matchPir = new PirTerm.Let(dataName, scrutinee,
+                new PirTerm.Let(pairName,
+                        pirApp1(DefaultFun.UnConstrData, dataVar),
+                        new PirTerm.Let(tagName,
+                                pirApp1(DefaultFun.FstPair, pairVar),
+                                new PirTerm.Let(fieldsName,
+                                        pirApp1(DefaultFun.SndPair, pairVar),
+                                        dispatch))));
         return generate(matchPir);
     }
 
@@ -215,38 +219,44 @@ public class UplcGenerator {
      * Build PIR for extracting fields from a Data list and binding them in the branch body.
      * HeadList/TailList for extraction, UnIData/UnBData for decoding.
      */
-    private PirTerm buildBranchFieldExtraction(PirTerm.MatchBranch branch, String fieldsName) {
+    private PirTerm buildBranchFieldExtraction(PirTerm.MatchBranch branch, String fieldsName, String dataName) {
         var bindings = branch.bindings();
         var bindingTypes = branch.bindingTypes();
 
-        if (bindings.isEmpty()) {
-            return branch.body();
-        }
-
-        // Build Let chain for field extractions
         PirTerm result = branch.body();
-        var lets = new ArrayList<PirTerm.Let>();
 
-        for (int j = 0; j < bindings.size(); j++) {
-            var listVar = (j == 0) ? fieldsName : "__rest_" + (j - 1);
-            var listRef = new PirTerm.Var(listVar, new PirType.DataType());
+        if (!bindings.isEmpty()) {
+            // Build Let chain for field extractions
+            var lets = new ArrayList<PirTerm.Let>();
 
-            // Decode field: UnIData(HeadList(fields)) for Integer, etc.
-            var headExpr = pirApp1(DefaultFun.HeadList, listRef);
-            var decodedExpr = pirWrapDecode(headExpr, bindingTypes.get(j));
-            lets.add(new PirTerm.Let(bindings.get(j), decodedExpr, null)); // body filled later
+            for (int j = 0; j < bindings.size(); j++) {
+                var listVar = (j == 0) ? fieldsName : "__rest_" + (j - 1);
+                var listRef = new PirTerm.Var(listVar, new PirType.DataType());
 
-            if (j + 1 < bindings.size()) {
-                var tailExpr = pirApp1(DefaultFun.TailList, listRef);
-                lets.add(new PirTerm.Let("__rest_" + j, tailExpr, null)); // body filled later
+                // Decode field: UnIData(HeadList(fields)) for Integer, etc.
+                var headExpr = pirApp1(DefaultFun.HeadList, listRef);
+                var decodedExpr = pirWrapDecode(headExpr, bindingTypes.get(j));
+                lets.add(new PirTerm.Let(bindings.get(j), decodedExpr, null)); // body filled later
+
+                if (j + 1 < bindings.size()) {
+                    var tailExpr = pirApp1(DefaultFun.TailList, listRef);
+                    lets.add(new PirTerm.Let("__rest_" + j, tailExpr, null)); // body filled later
+                }
+            }
+
+            // Build nested Let chain from inside out
+            for (int j = lets.size() - 1; j >= 0; j--) {
+                var let = lets.get(j);
+                result = new PirTerm.Let(let.name(), let.value(), result);
             }
         }
 
-        // Build nested Let chain from inside out
-        for (int j = lets.size() - 1; j >= 0; j--) {
-            var let = lets.get(j);
-            result = new PirTerm.Let(let.name(), let.value(), result);
+        // If pattern variable exists, wrap with Let binding to the scrutinee data
+        if (branch.patternVar() != null && dataName != null) {
+            result = new PirTerm.Let(branch.patternVar(),
+                    new PirTerm.Var(dataName, new PirType.DataType()), result);
         }
+
         return result;
     }
 

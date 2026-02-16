@@ -551,8 +551,18 @@ public class PirGenerator {
             return generateInstanceOf(ioe);
         }
         if (expr instanceof CastExpr ce) {
-            // Casts are no-ops at UPLC level — everything is Data
-            return generateExpression(ce.getExpression());
+            var inner = generateExpression(ce.getExpression());
+            // Most casts are no-ops at UPLC level. But casting to MapType needs UnMapData
+            // so that MapType variables always hold pair lists (consistent with field access).
+            try {
+                var castTargetType = typeResolver.resolve(ce.getType());
+                if (castTargetType instanceof PirType.MapType) {
+                    return new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), inner);
+                }
+            } catch (IllegalArgumentException _) {
+                // Unknown cast target type (e.g., Object) — treat as no-op
+            }
+            return inner;
         }
         if (expr instanceof AssignExpr ae && ae.getTarget() instanceof NameExpr ne) {
             var name = ne.getNameAsString();
@@ -1027,9 +1037,8 @@ public class PirGenerator {
         var iterableJavaExpr = fes.getIterable();
         var iterableType = resolveExpressionType(iterableJavaExpr);
         if (iterableType instanceof PirType.MapType mt) {
-            // For-each on map: convert to pair list via UnMapData, element is PairType
+            // For-each on map: scope is already a pair list (UnMapData applied at extraction/cast time)
             elemType = new PirType.PairType(mt.keyType(), mt.valueType());
-            iterableExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), iterableExpr);
         } else if (iterableType instanceof PirType.ListType lt) {
             elemType = lt.elemType();
         }
@@ -2284,7 +2293,7 @@ public class PirGenerator {
                     symbolTable.popScope();
                     // For DataMatch, we bind the constructor fields
                     matchEntries.add(new PatternMatchDesugarer.MatchEntry(
-                            typeName, ctor.fields().stream().map(PirType.Field::name).toList(), bodyTerm));
+                            typeName, ctor.fields().stream().map(PirType.Field::name).toList(), bodyTerm, varName));
                 }
             }
         }

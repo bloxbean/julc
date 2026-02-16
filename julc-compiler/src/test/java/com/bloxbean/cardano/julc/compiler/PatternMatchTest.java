@@ -251,4 +251,103 @@ class PatternMatchTest {
             assertEquals("B", dm.branches().get(1).constructorName());
         }
     }
+
+    @Nested
+    class PatternVarBindingTests {
+
+        @Test
+        void patternVarAsBody() {
+            // case A a -> a (return whole ConstrData via pattern var)
+            var intType = new PirType.IntegerType();
+            var dataType = new PirType.DataType();
+            var scrutinee = new PirTerm.DataConstr(0,
+                    new PirType.RecordType("A", List.of(new PirType.Field("x", intType))),
+                    List.of(new PirTerm.Const(Constant.integer(BigInteger.valueOf(42)))));
+
+            var match = new PirTerm.DataMatch(scrutinee, List.of(
+                    new PirTerm.MatchBranch("A", List.of("x"), List.of(intType),
+                            // Body: IData(patternVar) — wrapping the raw ConstrData in IData would fail,
+                            // so instead we use FstPair(UnConstrData(a)) to get the tag = 0
+                            new PirTerm.App(new PirTerm.Builtin(DefaultFun.FstPair),
+                                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnConstrData),
+                                            new PirTerm.Var("a", dataType))),
+                            "a")));
+
+            var uplc = new UplcGenerator().generate(match);
+            // ConstrData(0, [IData(42)]) — tag is 0
+            assertEquals(BigInteger.ZERO, evalInteger(uplc));
+        }
+
+        @Test
+        void patternVarCoexistsWithFieldAccess() {
+            // case A a -> x + FstPair(UnConstrData(a))
+            // where x is a field extracted to 10, and a is the pattern var (ConstrData with tag 0)
+            var intType = new PirType.IntegerType();
+            var dataType = new PirType.DataType();
+            var scrutinee = new PirTerm.DataConstr(0,
+                    new PirType.RecordType("A", List.of(new PirType.Field("x", intType))),
+                    List.of(new PirTerm.Const(Constant.integer(BigInteger.TEN))));
+
+            var body = new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.AddInteger),
+                            new PirTerm.Var("x", intType)),
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.FstPair),
+                            new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnConstrData),
+                                    new PirTerm.Var("a", dataType))));
+
+            var match = new PirTerm.DataMatch(scrutinee, List.of(
+                    new PirTerm.MatchBranch("A", List.of("x"), List.of(intType), body, "a")));
+
+            var uplc = new UplcGenerator().generate(match);
+            // x=10, tag=0 → 10 + 0 = 10
+            assertEquals(BigInteger.TEN, evalInteger(uplc));
+        }
+
+        @Test
+        void patternVarNullDoesNotAffectExisting() {
+            // MatchBranch with patternVar=null — existing field-only match still works
+            var intType = new PirType.IntegerType();
+            var match = new PirTerm.DataMatch(
+                    new PirTerm.DataConstr(0,
+                            new PirType.RecordType("X", List.of(new PirType.Field("val", intType))),
+                            List.of(new PirTerm.Const(Constant.integer(BigInteger.valueOf(42))))),
+                    List.of(new PirTerm.MatchBranch("X", List.of("val"),
+                            List.of(intType),
+                            new PirTerm.Var("val", intType), null)));
+
+            var uplc = new UplcGenerator().generate(match);
+            assertEquals(BigInteger.valueOf(42), evalInteger(uplc));
+        }
+
+        @Test
+        void patternVarWithMultiFieldConstructor() {
+            // case Pair(a,b) p -> FstPair(UnConstrData(p)) + a + b
+            var intType = new PirType.IntegerType();
+            var dataType = new PirType.DataType();
+            var scrutinee = new PirTerm.DataConstr(0,
+                    new PirType.RecordType("Pair", List.of(
+                            new PirType.Field("a", intType),
+                            new PirType.Field("b", intType))),
+                    List.of(
+                            new PirTerm.Const(Constant.integer(BigInteger.valueOf(3))),
+                            new PirTerm.Const(Constant.integer(BigInteger.valueOf(7)))));
+
+            // Body: a + b + tag (tag=0, so result = 3 + 7 + 0 = 10)
+            var body = new PirTerm.App(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.AddInteger),
+                            new PirTerm.App(
+                                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.AddInteger),
+                                            new PirTerm.Var("a", intType)),
+                                    new PirTerm.Var("b", intType))),
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.FstPair),
+                            new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnConstrData),
+                                    new PirTerm.Var("p", dataType))));
+
+            var match = new PirTerm.DataMatch(scrutinee, List.of(
+                    new PirTerm.MatchBranch("Pair", List.of("a", "b"), List.of(intType, intType), body, "p")));
+
+            var uplc = new UplcGenerator().generate(match);
+            assertEquals(BigInteger.TEN, evalInteger(uplc));
+        }
+    }
 }
