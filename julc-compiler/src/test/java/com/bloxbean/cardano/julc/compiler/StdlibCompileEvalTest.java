@@ -153,6 +153,7 @@ class StdlibCompileEvalTest {
         void constrTagEqualsAccepts() {
             var source = """
                     import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
 
                     @Validator
                     class TestValidator {
@@ -173,6 +174,7 @@ class StdlibCompileEvalTest {
         void constrTagEqualsRejects() {
             var source = """
                     import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
 
                     @Validator
                     class TestValidator {
@@ -193,6 +195,7 @@ class StdlibCompileEvalTest {
         void constrTagMultiBranch() {
             var source = """
                     import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
 
                     @Validator
                     class TestValidator {
@@ -221,6 +224,7 @@ class StdlibCompileEvalTest {
         void constrTagInArithmetic() {
             var source = """
                     import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
 
                     @Validator
                     class TestValidator {
@@ -241,6 +245,7 @@ class StdlibCompileEvalTest {
         void constrTagInlineComparison() {
             var source = """
                     import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
 
                     @Validator
                     class TestValidator {
@@ -271,6 +276,8 @@ class StdlibCompileEvalTest {
         @Test
         void containsInAlwaysInterval() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -288,6 +295,8 @@ class StdlibCompileEvalTest {
         @Test
         void betweenThenContains() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -305,6 +314,8 @@ class StdlibCompileEvalTest {
         @Test
         void isEmptyOnNever() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -322,6 +333,8 @@ class StdlibCompileEvalTest {
         @Test
         void betweenDoesNotContainOutside() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -348,6 +361,7 @@ class StdlibCompileEvalTest {
         void lovelaceOfExtractsAmount() {
             var source = """
                     import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
 
                     @Validator
                     class TestValidator {
@@ -370,6 +384,8 @@ class StdlibCompileEvalTest {
             // Policy and token are passed via the redeemer as a Constr(0, [BData(policy), BData(token)]).
             var source = """
                     import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
 
                     @Validator
                     class TestValidator {
@@ -397,6 +413,9 @@ class StdlibCompileEvalTest {
         void geqComparesLargerVsSmaller() {
             // Test geq(larger, smaller) = true using singleton values with different amounts
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -418,6 +437,9 @@ class StdlibCompileEvalTest {
         void geqMultiAssetCompares() {
             // Build a Value inside the validator using singleton, then test geq(v, v) = true.
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -439,6 +461,9 @@ class StdlibCompileEvalTest {
             // Test ValuesLib.add with two singleton values for different policies.
             // This exercises adjustOuterForAdd + extraOuterEntries which have mkNilPairData+mkCons patterns.
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -473,6 +498,9 @@ class StdlibCompileEvalTest {
         @Test
         void findMintOutputPattern() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -533,6 +561,8 @@ class StdlibCompileEvalTest {
         void divModReturnsConstr() {
             var source = """
                     import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
 
                     @Validator
                     class TestValidator {
@@ -559,6 +589,7 @@ class StdlibCompileEvalTest {
         void powWithWhileLoop() {
             var source = """
                     import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
 
                     @Validator
                     class TestValidator {
@@ -578,6 +609,7 @@ class StdlibCompileEvalTest {
         void absAndSign() {
             var source = """
                     import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
 
                     @Validator
                     class TestValidator {
@@ -606,6 +638,8 @@ class StdlibCompileEvalTest {
         void lookupFound() {
             var source = """
                     import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
 
                     @Validator
                     class TestValidator {
@@ -628,6 +662,8 @@ class StdlibCompileEvalTest {
         void memberTrue() {
             var source = """
                     import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
 
                     @Validator
                     class TestValidator {
@@ -646,6 +682,9 @@ class StdlibCompileEvalTest {
         @Test
         void keysReturnsNonEmpty() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -672,6 +711,9 @@ class StdlibCompileEvalTest {
         @Test
         void credentialHashExtractsFromScriptAddress() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -692,6 +734,9 @@ class StdlibCompileEvalTest {
         @Test
         void credentialHashExtractsFromPubKeyAddress() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -712,6 +757,8 @@ class StdlibCompileEvalTest {
         @Test
         void isScriptAddressReturnsTrue() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -730,6 +777,8 @@ class StdlibCompileEvalTest {
         @Test
         void isScriptAddressReturnsFalseForPubKey() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -748,6 +797,8 @@ class StdlibCompileEvalTest {
         @Test
         void isPubKeyAddressReturnsTrue() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -766,6 +817,9 @@ class StdlibCompileEvalTest {
         @Test
         void paymentCredentialExtractsCredential() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -793,6 +847,8 @@ class StdlibCompileEvalTest {
         @Test
         void finiteUpperBoundExtractsTime() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -810,6 +866,8 @@ class StdlibCompileEvalTest {
         @Test
         void finiteLowerBoundExtractsTime() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -827,6 +885,8 @@ class StdlibCompileEvalTest {
         @Test
         void finiteUpperBoundOnAlwaysReturnsMinus1() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -844,6 +904,8 @@ class StdlibCompileEvalTest {
         @Test
         void finiteLowerBoundOnAlwaysReturnsMinus1() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -861,6 +923,8 @@ class StdlibCompileEvalTest {
         @Test
         void finiteUpperBoundOnAfterReturnsMinus1() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -878,6 +942,8 @@ class StdlibCompileEvalTest {
         @Test
         void finiteLowerBoundOnAfterExtractsTime() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -903,6 +969,9 @@ class StdlibCompileEvalTest {
         @Test
         void hasDuplicateIntsFindsExactDuplicate() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -922,6 +991,9 @@ class StdlibCompileEvalTest {
         @Test
         void hasDuplicateIntsReturnsFalseForNoDups() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -939,6 +1011,9 @@ class StdlibCompileEvalTest {
         @Test
         void hasDuplicateIntsOnEmptyList() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -956,6 +1031,9 @@ class StdlibCompileEvalTest {
         @Test
         void hasDuplicateBytesFindsExactDuplicate() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -974,6 +1052,9 @@ class StdlibCompileEvalTest {
         @Test
         void hasDuplicateBytesReturnsFalseForNoDups() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -992,6 +1073,9 @@ class StdlibCompileEvalTest {
         @Test
         void containsBytesFindsTarget() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -1015,6 +1099,9 @@ class StdlibCompileEvalTest {
         @Test
         void containsBytesReturnsFalseWhenNotFound() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -1071,6 +1158,9 @@ class StdlibCompileEvalTest {
         @Test
         void txInfoRefInputsExtractsField1() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -1092,6 +1182,9 @@ class StdlibCompileEvalTest {
         @Test
         void txInfoWithdrawalsExtractsField6() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -1113,6 +1206,9 @@ class StdlibCompileEvalTest {
         @Test
         void txInfoRedeemersExtractsField9() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -1176,6 +1272,9 @@ class StdlibCompileEvalTest {
         @Test
         void txOutAddressExtractsCorrectField() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -1203,6 +1302,8 @@ class StdlibCompileEvalTest {
         void txOutValueExtractsLovelace() {
             var source = """
                     import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
 
                     @Validator
                     class TestValidator {
@@ -1231,6 +1332,9 @@ class StdlibCompileEvalTest {
         @Test
         void txOutDatumExtractsTag() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -1253,6 +1357,9 @@ class StdlibCompileEvalTest {
         @Test
         void outputsAtFiltersMatchingAddress() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -1282,6 +1389,9 @@ class StdlibCompileEvalTest {
         @Test
         void countOutputsAtReturnsCorrect() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -1308,6 +1418,9 @@ class StdlibCompileEvalTest {
         @Test
         void uniqueOutputAtSucceeds() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -1336,6 +1449,9 @@ class StdlibCompileEvalTest {
         @Test
         void uniqueOutputAtErrorsNoMatch() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -1363,6 +1479,9 @@ class StdlibCompileEvalTest {
         @Test
         void outputsWithTokenFindsMatch() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -1392,6 +1511,9 @@ class StdlibCompileEvalTest {
         @Test
         void outputsWithTokenEmptyNoMatch() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -1421,6 +1543,9 @@ class StdlibCompileEvalTest {
         @Test
         void lovelacePaidToSumsCorrectly() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -1450,6 +1575,8 @@ class StdlibCompileEvalTest {
         void paidAtLeastSucceeds() {
             var source = """
                     import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
 
                     @Validator
                     class TestValidator {
@@ -1476,6 +1603,9 @@ class StdlibCompileEvalTest {
         @Test
         void getInlineDatumExtractsValue() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -1497,6 +1627,9 @@ class StdlibCompileEvalTest {
         @Test
         void resolveDatumLooksUpHash() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -1538,6 +1671,7 @@ class StdlibCompileEvalTest {
                     package com.example;
                     import com.bloxbean.cardano.julc.core.PlutusData;
                     import com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
 
                     @OnchainLibrary
                     public class MyDataLib {
@@ -1659,6 +1793,7 @@ class StdlibCompileEvalTest {
         void pairKeyOnMapEntry() {
             var source = """
                     import java.util.Map;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
 
                     @Validator
                     class TestValidator {
@@ -1687,6 +1822,7 @@ class StdlibCompileEvalTest {
         void pairValueOnMapEntry() {
             var source = """
                     import java.util.Map;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
 
                     @Validator
                     class TestValidator {
@@ -1810,6 +1946,7 @@ class StdlibCompileEvalTest {
         void forEachOverMapAccumulates() {
             var source = """
                     import java.util.Map;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
 
                     @Validator
                     class TestValidator {
@@ -1923,6 +2060,7 @@ class StdlibCompileEvalTest {
             // Pass value and policy/token as a ConstrData tuple in the redeemer
             var source = """
                     import com.bloxbean.cardano.julc.ledger.*;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
 
                     @Validator
                     class TestValidator {
@@ -1949,6 +2087,7 @@ class StdlibCompileEvalTest {
         void valueAssetOfNotFound() {
             var source = """
                     import com.bloxbean.cardano.julc.ledger.*;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
 
                     @Validator
                     class TestValidator {
@@ -1984,6 +2123,7 @@ class StdlibCompileEvalTest {
         void constructAndAccessFirst() {
             var source = """
                     import com.bloxbean.cardano.julc.core.types.Tuple2;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -2002,6 +2142,7 @@ class StdlibCompileEvalTest {
         void constructAndAccessSecond() {
             var source = """
                     import com.bloxbean.cardano.julc.core.types.Tuple2;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -2020,6 +2161,7 @@ class StdlibCompileEvalTest {
         void fieldAccessBothFields() {
             var source = """
                     import com.bloxbean.cardano.julc.core.types.Tuple2;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -2038,6 +2180,8 @@ class StdlibCompileEvalTest {
         void mathLibDivMod() {
             var source = """
                     import com.bloxbean.cardano.julc.core.types.Tuple2;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -2058,6 +2202,8 @@ class StdlibCompileEvalTest {
         void mathLibQuotRem() {
             var source = """
                     import com.bloxbean.cardano.julc.core.types.Tuple2;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -2082,6 +2228,7 @@ class StdlibCompileEvalTest {
         void constructAndAccessFields() {
             var source = """
                     import com.bloxbean.cardano.julc.core.types.Tuple3;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -2104,6 +2251,7 @@ class StdlibCompileEvalTest {
         void fieldAccessAllThree() {
             var source = """
                     import com.bloxbean.cardano.julc.core.types.Tuple3;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -2132,6 +2280,7 @@ class StdlibCompileEvalTest {
         void julcListResolvesAsListType() {
             var source = """
                     import com.bloxbean.cardano.julc.core.types.JulcList;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -2151,6 +2300,7 @@ class StdlibCompileEvalTest {
         void julcListHeadAndTail() {
             var source = """
                     import com.bloxbean.cardano.julc.core.types.JulcList;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -2171,6 +2321,8 @@ class StdlibCompileEvalTest {
         @Test
         void listReverse() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -2190,6 +2342,8 @@ class StdlibCompileEvalTest {
         @Test
         void listConcat() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -2213,6 +2367,8 @@ class StdlibCompileEvalTest {
         @Test
         void listConcatPreservesOrder() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -2239,6 +2395,8 @@ class StdlibCompileEvalTest {
         @Test
         void listTake() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -2258,6 +2416,8 @@ class StdlibCompileEvalTest {
         @Test
         void listDrop() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -2277,6 +2437,8 @@ class StdlibCompileEvalTest {
         @Test
         void listPrependAutoWrap() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -2315,6 +2477,7 @@ class StdlibCompileEvalTest {
         void julcListOfSingleElement() {
             var source = """
                     import com.bloxbean.cardano.julc.core.types.JulcList;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -2333,6 +2496,7 @@ class StdlibCompileEvalTest {
         void julcListOfMultipleElements() {
             var source = """
                     import com.bloxbean.cardano.julc.core.types.JulcList;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -2356,6 +2520,7 @@ class StdlibCompileEvalTest {
         void julcListEmptyThenPrepend() {
             var source = """
                     import com.bloxbean.cardano.julc.core.types.JulcList;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -2402,6 +2567,8 @@ class StdlibCompileEvalTest {
         @Test
         void mapInsert() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -2423,6 +2590,8 @@ class StdlibCompileEvalTest {
         @Test
         void mapDelete() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -2444,6 +2613,8 @@ class StdlibCompileEvalTest {
         @Test
         void mapDeleteNonExistent() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint

@@ -681,12 +681,7 @@ public class PirGenerator {
                     if (argType instanceof PirType.DataType) argType = inferPirType(argPir);
                     argPirTypes.add(argType);
                 }
-                // Try with FQCN first (for disambiguated library calls), then simple name (for stdlib)
                 var result = stdlibLookup.lookup(resolvedClassName, methodName, compiledArgs, argPirTypes);
-                if (result.isEmpty() && !resolvedClassName.equals(className)) {
-                    // FQCN didn't match — try simple name (for stdlib like Builtins, ListsLib, etc.)
-                    result = stdlibLookup.lookup(className, methodName, compiledArgs, argPirTypes);
-                }
                 if (result.isPresent()) {
                     options.logf("Resolved stdlib: %s.%s", className, methodName);
                     checkCrossLibraryTypeWarnings(className, methodName, mce, argPirTypes);
@@ -972,10 +967,12 @@ public class PirGenerator {
     }
 
     private PirTerm generateObjectCreation(ObjectCreationExpr oce) {
-        var typeName = oce.getType().getNameAsString();
+        var ct = oce.getType();
+        var typeName = ct.getNameAsString(); // simple name for constructor matching
+        var resolvedTypeName = typeResolver.resolveTypeWithScope(ct); // FQCN for lookups
 
         // @NewType constructor is identity — no ConstrData wrapping
-        if (typeResolver.isNewType(typeName)) {
+        if (typeResolver.isNewType(resolvedTypeName)) {
             if (oce.getArguments().size() != 1) {
                 throw enrichedError("@NewType constructor must have exactly 1 argument",
                         "@NewType records have a single field, so the constructor takes 1 argument.", oce);
@@ -994,7 +991,7 @@ public class PirGenerator {
         }
 
         // Check if this is a variant of a sealed interface (sum type)
-        var sumType = typeResolver.lookupSumTypeForVariant(typeName);
+        var sumType = typeResolver.lookupSumTypeForVariant(resolvedTypeName);
         if (sumType.isPresent()) {
             for (var ctor : sumType.get().constructors()) {
                 if (ctor.name().equals(typeName)) {
@@ -1008,7 +1005,7 @@ public class PirGenerator {
         }
 
         // Check standalone record type
-        var recordType = typeResolver.lookupRecord(typeName);
+        var recordType = typeResolver.lookupRecord(resolvedTypeName);
         if (recordType.isPresent()) {
             var fields = new ArrayList<PirTerm>();
             for (var arg : oce.getArguments()) {

@@ -924,4 +924,83 @@ class MultiFileCompilerTest {
             assertSuccess(evaluate(program, ctx));
         }
     }
+
+    @Nested
+    class ScopeAwareInnerRecords {
+
+        @Test
+        void sameNamedInnerRecordsInDifferentPackagesCompileAndEval() {
+            // Two libraries define sealed interfaces with same-named inner record "Branch"
+            var libA = """
+                    package com.a;
+                    import java.math.BigInteger;
+                    sealed interface ProofStep permits ProofStep.Branch, ProofStep.Leaf {}
+                    record Branch(BigInteger left, BigInteger right) implements ProofStep {}
+                    record Leaf(BigInteger value) implements ProofStep {}
+                    """;
+            var libB = """
+                    package com.b;
+                    import java.math.BigInteger;
+                    sealed interface Tree permits Tree.Branch, Tree.Leaf {}
+                    record Branch(BigInteger data) implements Tree {}
+                    record Leaf() implements Tree {}
+                    """;
+            var validator = """
+                    import java.math.BigInteger;
+                    import com.a.ProofStep;
+                    import com.a.Branch;
+
+                    @Validator
+                    class ScopeValidator {
+                        @Entrypoint
+                        static boolean validate(ProofStep redeemer, PlutusData ctx) {
+                            BigInteger result = switch (redeemer) {
+                                case Branch b -> b.left() + b.right();
+                                case com.a.Leaf l -> l.value();
+                            };
+                            return result > 0;
+                        }
+                    }
+                    """;
+            var program = compile(validator, libA, libB);
+            // Branch(3, 7) = Constr(0, [IData(3), IData(7)])
+            var branchRedeemer = PlutusData.constr(0, PlutusData.integer(3), PlutusData.integer(7));
+            var ctx = mockCtx(branchRedeemer);
+            assertSuccess(evaluate(program, ctx));
+        }
+
+        @Test
+        void scopedConstructorCreation() {
+            // Validator creates inner record using scoped name (ProofStep.Branch)
+            var libSource = """
+                    package com.a;
+                    import java.math.BigInteger;
+                    sealed interface Action permits Action.Mint, Action.Burn {}
+                    record Mint(BigInteger amount) implements Action {}
+                    record Burn(BigInteger amount) implements Action {}
+                    """;
+            var validator = """
+                    import java.math.BigInteger;
+                    import com.a.Action;
+                    import com.a.Mint;
+
+                    @Validator
+                    class MintValidator {
+                        @Entrypoint
+                        static boolean validate(Action redeemer, PlutusData ctx) {
+                            BigInteger result = switch (redeemer) {
+                                case Mint m -> m.amount();
+                                case com.a.Burn b -> b.amount();
+                            };
+                            return result > 0;
+                        }
+                    }
+                    """;
+            var program = compile(validator, libSource);
+            // Mint(10) = Constr(0, [IData(10)])
+            var mintRedeemer = PlutusData.constr(0, PlutusData.integer(10));
+            var ctx = mockCtx(mintRedeemer);
+            assertSuccess(evaluate(program, ctx));
+        }
+    }
 }

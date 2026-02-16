@@ -172,10 +172,25 @@ public class JulcCompiler {
         new TypeRegistrar().registerAll(allCus, typeResolver);
         options.logf("Registered types from %d compilation unit(s)", allCus.size());
 
-        // 5c. Build knownFqcns for ImportResolver (types + library classes)
+        // 5c. Build knownFqcns for ImportResolver (types + library classes + stdlib classes)
         var knownFqcns = new LinkedHashSet<String>();
         knownFqcns.addAll(LedgerTypeRegistry.allLedgerFqcns());
         knownFqcns.addAll(typeResolver.allRegisteredFqcns());
+        // Stdlib class FQCNs — must match StdlibRegistry registration keys
+        knownFqcns.addAll(Set.of(
+                "com.bloxbean.cardano.julc.stdlib.Builtins",
+                "com.bloxbean.cardano.julc.stdlib.lib.ContextsLib",
+                "com.bloxbean.cardano.julc.stdlib.lib.ListsLib",
+                "com.bloxbean.cardano.julc.stdlib.lib.MapLib",
+                "com.bloxbean.cardano.julc.stdlib.lib.ValuesLib",
+                "com.bloxbean.cardano.julc.stdlib.lib.OutputLib",
+                "com.bloxbean.cardano.julc.stdlib.lib.MathLib",
+                "com.bloxbean.cardano.julc.stdlib.lib.IntervalLib",
+                "com.bloxbean.cardano.julc.stdlib.lib.CryptoLib",
+                "com.bloxbean.cardano.julc.stdlib.lib.ByteStringLib",
+                "com.bloxbean.cardano.julc.stdlib.lib.BitwiseLib",
+                "com.bloxbean.cardano.julc.stdlib.lib.AddressLib"
+        ));
         for (var libCu : libraryCus) {
             for (var cls : libCu.findAll(ClassOrInterfaceDeclaration.class)) {
                 if (!cls.isInterface()) {
@@ -444,13 +459,6 @@ public class JulcCompiler {
             var className = cls.getNameAsString();
             // Use FQCN for library class name
             var classNameFqcn = cls.getFullyQualifiedName().orElse(className);
-
-            // Check if this library class name collides with a stdlib class
-            if (effectiveLookup != null && effectiveLookup.hasMethodsForClass(className)) {
-                throw new CompilerException("Library class '" + classNameFqcn
-                        + "' has the same simple name as a built-in stdlib class '" + className
-                        + "'. This would shadow the stdlib methods. Use a different class name.");
-            }
 
             // Detect static fields with initializers in library classes
             var libStaticFields = findStaticFields(cls, typeResolver);

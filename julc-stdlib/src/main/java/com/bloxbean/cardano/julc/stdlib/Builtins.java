@@ -1,6 +1,7 @@
 package com.bloxbean.cardano.julc.stdlib;
 
 import com.bloxbean.cardano.julc.core.PlutusData;
+import com.bloxbean.cardano.julc.ledger.PlutusDataConvertible;
 
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
@@ -134,6 +135,11 @@ public final class Builtins {
             return bd;
         }
         throw new IllegalArgumentException("bData: expected BytesData, got " + bs);
+    }
+
+    /** Wrap a raw byte array as BytesData. */
+    public static PlutusData.BytesData bData(byte[] bs) {
+        return new PlutusData.BytesData(bs);
     }
 
     /** Wrap a list as ListData. */
@@ -289,7 +295,7 @@ public final class Builtins {
     }
 
     /** Convert integer to bytestring with given endianness and width. */
-    public static PlutusData.BytesData integerToByteString(boolean bigEndian, long width, long i) {
+    public static byte[] integerToByteString(boolean bigEndian, long width, long i) {
         var bi = BigInteger.valueOf(i);
         byte[] raw = bi.toByteArray();
         // Strip leading zero sign byte if present
@@ -305,7 +311,7 @@ public final class Builtins {
         if (!bigEndian) {
             reverseInPlace(raw);
         }
-        return new PlutusData.BytesData(raw);
+        return raw;
     }
 
     /** Convert bytestring to integer with given endianness. */
@@ -318,10 +324,10 @@ public final class Builtins {
     }
 
     /** Encode a string as UTF-8 bytestring. */
-    public static PlutusData.BytesData encodeUtf8(PlutusData s) {
+    public static byte[] encodeUtf8(PlutusData s) {
         if (s instanceof PlutusData.BytesData bd) {
             // On-chain, strings are ByteStrings; off-chain treat as pass-through
-            return bd;
+            return bd.value();
         }
         throw new IllegalArgumentException("encodeUtf8: expected BytesData (string), got " + s);
     }
@@ -343,21 +349,20 @@ public final class Builtins {
     }
 
     /** Serialise a Data value to its CBOR-encoded bytestring. */
-    public static PlutusData.BytesData serialiseData(PlutusData d) {
-        return new PlutusData.BytesData(
-                com.bloxbean.cardano.julc.core.cbor.PlutusDataCborEncoder.encode(d));
+    public static byte[] serialiseData(PlutusData d) {
+        return com.bloxbean.cardano.julc.core.cbor.PlutusDataCborEncoder.encode(d);
     }
 
     /** Create a bytestring of n copies of a given byte value. */
-    public static PlutusData.BytesData replicateByte(long n, long byte_) {
+    public static byte[] replicateByte(long n, long byte_) {
         byte[] result = new byte[(int) n];
         Arrays.fill(result, (byte) byte_);
-        return new PlutusData.BytesData(result);
+        return result;
     }
 
     /** Return an empty bytestring. */
-    public static PlutusData.BytesData emptyByteString() {
-        return new PlutusData.BytesData(new byte[0]);
+    public static byte[] emptyByteString() {
+        return new byte[0];
     }
 
     // =========================================================================
@@ -710,65 +715,95 @@ public final class Builtins {
     }
 
     // =========================================================================
-    // Object-accepting overloads for IDE compatibility
+    // Object-accepting overloads for IDE + off-chain compatibility
     // =========================================================================
     // On-chain types (ScriptInfo, TxInfo, etc.) don't extend PlutusData in
     // IDE stubs. The compiler matches by method name via StdlibRegistry and
     // ignores parameter types, so these overloads simply satisfy the IDE.
+    // Off-chain, ledger records implement PlutusDataConvertible for conversion.
+
+    private static PlutusData asPlutusData(Object obj) {
+        if (obj instanceof PlutusData pd) return pd;
+        if (obj instanceof PlutusDataConvertible pdc) return pdc.toPlutusData();
+        throw new ClassCastException("Cannot convert " + obj.getClass().getName() + " to PlutusData");
+    }
 
     /** @see #constrFields(PlutusData) */
     public static PlutusData.ListData constrFields(Object data) {
-        return constrFields((PlutusData) data);
+        return constrFields(asPlutusData(data));
     }
 
     /** @see #constrTag(PlutusData) */
     public static long constrTag(Object data) {
-        return constrTag((PlutusData) data);
+        return constrTag(asPlutusData(data));
     }
 
     /** @see #headList(PlutusData) */
     public static PlutusData headList(Object list) {
-        return headList((PlutusData) list);
+        return headList(asPlutusData(list));
     }
 
     /** @see #tailList(PlutusData) */
     public static PlutusData.ListData tailList(Object list) {
-        return tailList((PlutusData) list);
+        return tailList(asPlutusData(list));
     }
 
     /** @see #nullList(PlutusData) */
     public static boolean nullList(Object list) {
-        return nullList((PlutusData) list);
+        return nullList(asPlutusData(list));
     }
 
     /** @see #unBData(PlutusData) */
     public static PlutusData.BytesData unBData(Object data) {
-        return unBData((PlutusData) data);
+        return unBData(asPlutusData(data));
     }
 
     /** @see #unIData(PlutusData) */
     public static BigInteger unIData(Object data) {
-        return unIData((PlutusData) data);
+        return unIData(asPlutusData(data));
     }
 
     /** @see #unConstrData(PlutusData) */
     public static PlutusData.ConstrData unConstrData(Object data) {
-        return unConstrData((PlutusData) data);
+        return unConstrData(asPlutusData(data));
     }
 
     /** @see #unListData(PlutusData) */
     public static PlutusData.ListData unListData(Object data) {
-        return unListData((PlutusData) data);
+        return unListData(asPlutusData(data));
     }
 
     /** @see #unMapData(PlutusData) */
     public static PlutusData.MapData unMapData(Object data) {
-        return unMapData((PlutusData) data);
+        return unMapData(asPlutusData(data));
     }
 
     /** @see #equalsData(PlutusData, PlutusData) */
     public static boolean equalsData(Object a, Object b) {
-        return equalsData((PlutusData) a, (PlutusData) b);
+        return equalsData(asPlutusData(a), asPlutusData(b));
+    }
+
+    /** @see #bData(PlutusData.BytesData) */
+    public static PlutusData.BytesData bData(Object data) {
+        if (data instanceof byte[] b) return bData(b);
+        return bData(asPlutusData(data));
+    }
+
+    /** Wrap a PlutusData as BytesData (identity if already BytesData, otherwise convert). */
+    public static PlutusData.BytesData bData(PlutusData data) {
+        if (data instanceof PlutusData.BytesData bd) return bd;
+        throw new IllegalArgumentException("bData: expected BytesData, got " + data);
+    }
+
+    /** Extract byte[] from a value. On-chain: identity (value is already ByteString). */
+    public static byte[] toByteString(Object data) {
+        if (data instanceof byte[] b) return b;
+        if (data instanceof PlutusData.BytesData bd) return bd.value();
+        if (data instanceof PlutusDataConvertible pdc) {
+            var pd = pdc.toPlutusData();
+            if (pd instanceof PlutusData.BytesData bd) return bd.value();
+        }
+        throw new ClassCastException("Cannot extract byte[] from " + data.getClass().getName());
     }
 
     // =========================================================================
@@ -778,6 +813,12 @@ public final class Builtins {
     private static List<PlutusData> toList(PlutusData data) {
         if (data instanceof PlutusData.ListData ld) {
             return ld.items();
+        }
+        if (data instanceof PlutusData.MapData md) {
+            // MapData pairs → ConstrData(0, [key, value]) to match on-chain pair representation
+            return md.entries().stream()
+                    .map(p -> (PlutusData) new PlutusData.ConstrData(0, List.of(p.key(), p.value())))
+                    .toList();
         }
         throw new IllegalArgumentException("Expected ListData, got " + data.getClass().getSimpleName());
     }

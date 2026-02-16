@@ -510,6 +510,8 @@ class LedgerTypeAccessTest {
         void stdlibContextsLibStillWorks() {
             // Using ContextsLib.signedBy with typed txInfo parameter
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.lib.ContextsLib;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -588,6 +590,7 @@ class LedgerTypeAccessTest {
                     """;
             var validator = """
                     import com.example.TestOutputLib;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
 
                     @Validator
                     class TestValidator {
@@ -641,6 +644,7 @@ class LedgerTypeAccessTest {
                     """;
             var validator = """
                     import com.example.TestOutputLib;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
 
                     @Validator
                     class TestValidator {
@@ -677,6 +681,7 @@ class LedgerTypeAccessTest {
                     package com.example;
                     import com.bloxbean.cardano.julc.core.PlutusData;
                     import com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
 
                     @OnchainLibrary
                     public class TestOutputLib {

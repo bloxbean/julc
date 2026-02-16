@@ -3,11 +3,17 @@ package com.bloxbean.cardano.julc.compiler.resolve;
 import com.bloxbean.cardano.julc.compiler.pir.PirType;
 import com.github.javaparser.ParserConfiguration;
 import com.github.javaparser.StaticJavaParser;
+import com.github.javaparser.ast.CompilationUnit;
+import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
+import com.github.javaparser.ast.body.RecordDeclaration;
 import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import com.github.javaparser.ast.type.PrimitiveType;
 import com.github.javaparser.ast.type.VoidType;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -149,5 +155,146 @@ class TypeResolverTest {
         assertInstanceOf(PirType.IntegerType.class, result.get().fields().get(0).type());
         assertEquals("hash", result.get().fields().get(1).name());
         assertInstanceOf(PirType.ByteStringType.class, result.get().fields().get(1).type());
+    }
+
+    @Nested
+    class ScopeAwareResolutionTests {
+
+        private void registerAllTypes(TypeResolver resolver, CompilationUnit... cus) {
+            var registrar = new TypeRegistrar();
+            registrar.registerAll(List.of(cus), resolver);
+        }
+
+        @Test
+        void sameNamedInnerRecordsInDifferentPackages() {
+            // Two sealed interfaces in different packages, both with a "Branch" inner record
+            var sourceA = """
+                    package com.a;
+                    import java.math.BigInteger;
+                    sealed interface ProofStep permits ProofStep.Branch, ProofStep.Leaf {}
+                    record Branch(BigInteger left, BigInteger right) implements ProofStep {}
+                    record Leaf(BigInteger value) implements ProofStep {}
+                    """;
+            var sourceB = """
+                    package com.b;
+                    import java.math.BigInteger;
+                    sealed interface Tree permits Tree.Branch, Tree.Leaf {}
+                    record Branch(BigInteger data) implements Tree {}
+                    record Leaf() implements Tree {}
+                    """;
+            var cuA = StaticJavaParser.parse(sourceA);
+            var cuB = StaticJavaParser.parse(sourceB);
+
+            var resolver = new TypeResolver();
+            registerAllTypes(resolver, cuA, cuB);
+
+            // Both ProofStep and Tree should be registered as sum types
+            var proofStep = resolver.lookupSumType("com.a.ProofStep");
+            assertTrue(proofStep.isPresent(), "ProofStep should be registered");
+            assertEquals(2, proofStep.get().constructors().size());
+            assertEquals("Branch", proofStep.get().constructors().get(0).name());
+            assertEquals(2, proofStep.get().constructors().get(0).fields().size()); // left, right
+
+            var tree = resolver.lookupSumType("com.b.Tree");
+            assertTrue(tree.isPresent(), "Tree should be registered");
+            assertEquals(2, tree.get().constructors().size());
+            assertEquals("Branch", tree.get().constructors().get(0).name());
+            assertEquals(1, tree.get().constructors().get(0).fields().size()); // data only
+
+            // Variant lookup by FQCN should work
+            var proofBranch = resolver.lookupSumTypeForVariant("com.a.Branch");
+            assertTrue(proofBranch.isPresent());
+            assertEquals("ProofStep", proofBranch.get().name());
+
+            var treeBranch = resolver.lookupSumTypeForVariant("com.b.Branch");
+            assertTrue(treeBranch.isPresent());
+            assertEquals("Tree", treeBranch.get().name());
+        }
+
+        @Test
+        void scopeAwareResolveTypeWithScope() {
+            // Register types with same simple name in different packages
+            var sourceA = """
+                    package com.a;
+                    import java.math.BigInteger;
+                    sealed interface Shape permits Shape.Circle, Shape.Square {}
+                    record Circle(BigInteger radius) implements Shape {}
+                    record Square(BigInteger side) implements Shape {}
+                    """;
+            var sourceB = """
+                    package com.b;
+                    import java.math.BigInteger;
+                    sealed interface Shape permits Shape.Circle, Shape.Triangle {}
+                    record Circle(BigInteger r, BigInteger x) implements Shape {}
+                    record Triangle(BigInteger a, BigInteger b, BigInteger c) implements Shape {}
+                    """;
+            var cuA = StaticJavaParser.parse(sourceA);
+            var cuB = StaticJavaParser.parse(sourceB);
+
+            var resolver = new TypeResolver();
+            registerAllTypes(resolver, cuA, cuB);
+
+            // resolveTypeWithScope with scope should disambiguate
+            // Parse "Shape.Circle" as a ClassOrInterfaceType — scope="Shape" + name="Circle"
+            var scopedType = StaticJavaParser.parseClassOrInterfaceType("Shape.Circle");
+            assertEquals("Circle", scopedType.getNameAsString());
+            assertTrue(scopedType.getScope().isPresent());
+
+            // With com.a import context, Shape resolves to com.a.Shape, so Shape.Circle → com.a.Circle
+            var knownFqcns = resolver.allRegisteredFqcns();
+            resolver.setCurrentImportResolver(new ImportResolver(cuA, knownFqcns));
+            var resolvedA = resolver.resolveTypeWithScope(scopedType);
+            assertEquals("com.a.Circle", resolvedA);
+
+            // With com.b import context, Shape resolves to com.b.Shape, so Shape.Circle → com.b.Circle
+            resolver.setCurrentImportResolver(new ImportResolver(cuB, knownFqcns));
+            var resolvedB = resolver.resolveTypeWithScope(scopedType);
+            assertEquals("com.b.Circle", resolvedB);
+        }
+
+        @Test
+        void noScopeFallsBackToResolveName() {
+            var source = """
+                    package com.a;
+                    import java.math.BigInteger;
+                    sealed interface Action permits Mint, Burn {}
+                    record Mint(BigInteger amount) implements Action {}
+                    record Burn(BigInteger amount) implements Action {}
+                    """;
+            var cu = StaticJavaParser.parse(source);
+
+            var resolver = new TypeResolver();
+            registerAllTypes(resolver, cu);
+
+            // "Mint" without scope should still resolve via simpleNameIndex
+            var noScopeType = StaticJavaParser.parseClassOrInterfaceType("Mint");
+            assertFalse(noScopeType.getScope().isPresent());
+
+            var resolved = resolver.resolveTypeWithScope(noScopeType);
+            assertEquals("com.a.Mint", resolved);
+        }
+
+        @Test
+        void packagelessInnerRecordScopeResolution() {
+            // Packageless code: Shape.Circle should still resolve
+            var source = """
+                    import java.math.BigInteger;
+                    sealed interface Shape permits Shape.Circle, Shape.Square {}
+                    record Circle(BigInteger radius) implements Shape {}
+                    record Square(BigInteger side) implements Shape {}
+                    """;
+            var cu = StaticJavaParser.parse(source);
+
+            var resolver = new TypeResolver();
+            registerAllTypes(resolver, cu);
+
+            // "Shape.Circle" scoped type
+            var scopedType = StaticJavaParser.parseClassOrInterfaceType("Shape.Circle");
+            var resolved = resolver.resolveTypeWithScope(scopedType);
+            // For packageless code, FQCN = simple name, so Shape → "Shape", Shape.Circle → "Shape.Circle"
+            // But records are registered as "Circle" (no package). The scope "Shape" resolves to "Shape",
+            // candidate "Shape.Circle" won't match "Circle". Falls back to resolveName("Circle") → "Circle"
+            assertEquals("Circle", resolved);
+        }
     }
 }

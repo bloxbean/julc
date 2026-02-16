@@ -6,6 +6,7 @@ import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.RecordDeclaration;
 import com.github.javaparser.ast.expr.MarkerAnnotationExpr;
+import com.github.javaparser.ast.type.ClassOrInterfaceType;
 
 import java.util.*;
 
@@ -101,14 +102,9 @@ public class TypeRegistrar {
             var importResolver = new ImportResolver(cu, knownFqcns);
             var typeDeps = new LinkedHashSet<String>();
             for (var permitted : entry.getValue().getPermittedTypes()) {
-                var variantName = permitted.getNameAsString();
-                // Resolve variant name to FQCN
-                var resolvedVariant = importResolver.resolve(variantName);
-                if (allRecords.containsKey(resolvedVariant)) {
+                var resolvedVariant = resolveWithScope(permitted, allTypeNames, simpleToFqcn, importResolver);
+                if (allTypeNames.contains(resolvedVariant)) {
                     typeDeps.add(resolvedVariant);
-                } else if (allRecords.containsKey(variantName)) {
-                    // Fallback for packageless code
-                    typeDeps.add(variantName);
                 }
             }
             deps.put(fqcn, typeDeps);
@@ -214,6 +210,29 @@ public class TypeRegistrar {
         } else {
             resolveAndAddDep(typeName, knownFqcns, simpleToFqcn, importResolver, deps);
         }
+    }
+
+    /**
+     * Resolve a ClassOrInterfaceType using scope info, with fallback to resolveAndAddDep logic.
+     */
+    private String resolveWithScope(ClassOrInterfaceType ct, Set<String> knownTypes,
+                                     Map<String, Set<String>> simpleToFqcn,
+                                     ImportResolver importResolver) {
+        if (ct.getScope().isPresent()) {
+            var scopeResolved = resolveWithScope(ct.getScope().get(), knownTypes, simpleToFqcn, importResolver);
+            var candidate = scopeResolved + "." + ct.getNameAsString();
+            if (knownTypes.contains(candidate)) return candidate;
+        }
+        // Fall back to existing resolution chain
+        var name = ct.getNameAsString();
+        if (knownTypes.contains(name)) return name;
+        try {
+            var resolved = importResolver.resolve(name);
+            if (knownTypes.contains(resolved)) return resolved;
+        } catch (CompilerException ignored) {}
+        var fqcns = simpleToFqcn.get(name);
+        if (fqcns != null && fqcns.size() == 1) return fqcns.iterator().next();
+        return name;
     }
 
     private void resolveAndAddDep(String name, Set<String> knownFqcns,

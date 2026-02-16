@@ -65,6 +65,8 @@ class StdlibIntegrationTest {
         @Test
         void compileValidatorWithGetTxInfo() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.lib.ContextsLib;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -83,6 +85,8 @@ class StdlibIntegrationTest {
         @Test
         void compileValidatorWithGetRedeemer() {
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.lib.ContextsLib;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint
@@ -101,6 +105,8 @@ class StdlibIntegrationTest {
         void evalValidatorWithGetTxInfo() {
             // Validator that always returns true, but exercises getTxInfo path
             var source = """
+                    import com.bloxbean.cardano.julc.stdlib.lib.ContextsLib;
+
                     @Validator
                     class TestValidator {
                         @Entrypoint

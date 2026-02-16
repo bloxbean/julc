@@ -220,14 +220,15 @@ class FqcnResolutionTest {
         }
 
         @Test
-        void stdlibCollisionThrowsError() {
-            // Library class with same name as stdlib class (e.g., "Builtins") → error
+        void differentFqcnNoCollision() {
+            // Library class with same simple name as stdlib class but different FQCN → no collision
+            // com.evil.Builtins is a different class from com.bloxbean.cardano.julc.stdlib.Builtins
             var lib = """
                     package com.evil;
                     import com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary;
                     @OnchainLibrary
                     public class Builtins {
-                        static boolean fake(long x) { return x > 0; }
+                        public static boolean fake(long x) { return x > 0; }
                     }
                     """;
             var validator = """
@@ -240,10 +241,9 @@ class FqcnResolutionTest {
                         }
                     }
                     """;
-            var ex = assertThrows(CompilerException.class,
-                    () -> new JulcCompiler(STDLIB).compile(validator, List.of(lib)));
-            assertTrue(ex.getMessage().contains("same simple name") || ex.getMessage().contains("shadow"),
-                    "Should detect stdlib collision. Got: " + ex.getMessage());
+            // With FQCN-based resolution, different packages → no collision
+            var result = new JulcCompiler(STDLIB).compile(validator, List.of(lib));
+            assertFalse(result.hasErrors(), "Different FQCN should not collide: " + result);
         }
     }
 

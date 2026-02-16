@@ -145,12 +145,14 @@ public class TypeResolver {
                     + "A sealed interface with this name is already registered.");
         }
         var constructors = new ArrayList<PirType.Constructor>();
+        var resolvedVariantFqcns = new ArrayList<String>();
         int tag = 0;
         for (var permittedType : decl.getPermittedTypes()) {
             var variantName = permittedType.getNameAsString();
             // Look up the record type for this variant (must already be registered)
-            // Try resolving variant name to FQCN
-            var variantFqcn = resolveName(variantName);
+            // Use scope-aware resolution for inner class variants (e.g., ProofStep.Branch)
+            var variantFqcn = resolveTypeWithScope(permittedType);
+            resolvedVariantFqcns.add(variantFqcn);
             var recordType = recordTypes.get(variantFqcn);
             List<PirType.Field> fields = recordType != null ? recordType.fields() : List.of();
             constructors.add(new PirType.Constructor(variantName, tag, fields));
@@ -159,11 +161,15 @@ public class TypeResolver {
         var sumType = new PirType.SumType(interfaceName, constructors);
         sumTypes.put(fqcn, sumType);
         simpleNameIndex.computeIfAbsent(interfaceName, k -> new LinkedHashSet<>()).add(fqcn);
-        // Register each variant -> sum type mapping (variant FQCNs share same package as interface)
-        for (var ctor : constructors) {
-            var variantFqcn = fqcn.substring(0, fqcn.lastIndexOf('.') + 1) + ctor.name();
-            variantToSumType.put(variantFqcn, sumType);
-            simpleNameIndex.computeIfAbsent(ctor.name(), k -> new LinkedHashSet<>()).add(variantFqcn);
+        // Register each variant -> sum type mapping using resolved FQCNs
+        for (int i = 0; i < constructors.size(); i++) {
+            var ctor = constructors.get(i);
+            var resolvedFqcn = resolvedVariantFqcns.get(i);
+            var actualFqcn = resolvedFqcn.contains(".")
+                    ? resolvedFqcn
+                    : fqcn.substring(0, fqcn.lastIndexOf('.') + 1) + ctor.name();
+            variantToSumType.put(actualFqcn, sumType);
+            simpleNameIndex.computeIfAbsent(ctor.name(), k -> new LinkedHashSet<>()).add(actualFqcn);
         }
     }
 
@@ -247,8 +253,8 @@ public class TypeResolver {
                 yield new PirType.OptionalType(elemType);
             }
             default -> {
-                // Resolve simple name to FQCN
-                String fqcn = resolveName(name);
+                // Resolve using scope info when available (e.g., ProofStep.Branch)
+                String fqcn = resolveTypeWithScope(ct);
 
                 // Check ledger hash types -> ByteStringType
                 if (LEDGER_HASH_FQCNS.contains(fqcn) || LEDGER_HASH_NAMES.contains(name)) yield new PirType.ByteStringType();
@@ -258,12 +264,47 @@ public class TypeResolver {
                 if (recordTypes.containsKey(fqcn)) yield recordTypes.get(fqcn);
                 // Check registered sum types (sealed interfaces, including ledger sum types)
                 if (sumTypes.containsKey(fqcn)) yield sumTypes.get(fqcn);
+                // Check if FQCN is a variant of a registered sealed interface
+                if (variantToSumType.containsKey(fqcn)) {
+                    var st = variantToSumType.get(fqcn);
+                    var variantName = fqcn.substring(fqcn.lastIndexOf('.') + 1);
+                    for (var ctor : st.constructors()) {
+                        if (ctor.name().equals(variantName)) {
+                            yield new PirType.RecordType(ctor.name(), ctor.fields());
+                        }
+                    }
+                }
                 // Check remaining ledger data types -> opaque DataType
                 if (LEDGER_DATA_FQCNS.contains(fqcn) || LEDGER_DATA_NAMES.contains(name)) yield new PirType.DataType();
                 throw new IllegalArgumentException("Unknown type: " + name
                         + (fqcn.equals(name) ? "" : " (resolved to " + fqcn + ")"));
             }
         };
+    }
+
+    /**
+     * Resolve a ClassOrInterfaceType to FQCN using scope info when available.
+     * For "ProofStep.Branch": resolves scope "ProofStep" → "com.a.ProofStep",
+     * then returns "com.a.ProofStep.Branch".
+     * Falls back to resolveName(simpleName) when no scope present.
+     */
+    public String resolveTypeWithScope(ClassOrInterfaceType ct) {
+        if (ct.getScope().isPresent()) {
+            var scopeFqcn = resolveTypeWithScope(ct.getScope().get());
+            var candidate = scopeFqcn + "." + ct.getNameAsString();
+            // Check if candidate exists in any registry
+            if (recordTypes.containsKey(candidate) || sumTypes.containsKey(candidate)
+                    || variantToSumType.containsKey(candidate) || newTypes.containsKey(candidate)) {
+                return candidate;
+            }
+            // Check simpleNameIndex for the constructed name
+            var fqcns = simpleNameIndex.get(ct.getNameAsString());
+            if (fqcns != null && fqcns.contains(candidate)) {
+                return candidate;
+            }
+            // Scope resolved but candidate not found — fall through to standard resolution
+        }
+        return resolveName(ct.getNameAsString());
     }
 
     /**

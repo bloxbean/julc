@@ -43,6 +43,7 @@ class NewTypeTest {
         void pubKeyHashOfCompilesAsIdentity() {
             var source = """
                     import com.bloxbean.cardano.julc.ledger.*;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
 
                     @Validator
                     class TestValidator {
@@ -66,6 +67,7 @@ class NewTypeTest {
         void policyIdOfCompiles() {
             var source = """
                     import com.bloxbean.cardano.julc.ledger.*;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
 
                     @Validator
                     class TestValidator {
@@ -88,6 +90,7 @@ class NewTypeTest {
         void tokenNameOfCompiles() {
             var source = """
                     import com.bloxbean.cardano.julc.ledger.*;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
 
                     @Validator
                     class TestValidator {
@@ -118,6 +121,7 @@ class NewTypeTest {
         void newTypeByteArrayResolvesToByteStringType() {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.annotation.NewType;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
 
                     @Validator
                     class TestValidator {
@@ -144,6 +148,7 @@ class NewTypeTest {
             // new MyHash(bytes) compiles to just bytes — no ConstrData wrapping
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.annotation.NewType;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
 
                     @Validator
                     class TestValidator {
@@ -171,6 +176,7 @@ class NewTypeTest {
             // MyHash.of(bytes) should work via auto-registered StdlibLookup
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.annotation.NewType;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
 
                     @Validator
                     class TestValidator {
@@ -197,6 +203,7 @@ class NewTypeTest {
             var source = """
                     import java.math.BigInteger;
                     import com.bloxbean.cardano.julc.stdlib.annotation.NewType;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
 
                     @Validator
                     class TestValidator {
@@ -223,6 +230,7 @@ class NewTypeTest {
             var source = """
                     import java.math.BigInteger;
                     import com.bloxbean.cardano.julc.stdlib.annotation.NewType;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
 
                     @Validator
                     class TestValidator {
@@ -295,6 +303,7 @@ class NewTypeTest {
             // Redeemer is a record with two byte[] fields; compare them via @NewType
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.annotation.NewType;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
 
                     @MintingValidator
                     class TestValidator {
@@ -325,6 +334,7 @@ class NewTypeTest {
             // Same validator, different bytes should fail
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.annotation.NewType;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
 
                     @MintingValidator
                     class TestValidator {

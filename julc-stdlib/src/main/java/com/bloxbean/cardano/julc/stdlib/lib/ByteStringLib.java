@@ -48,12 +48,12 @@ public class ByteStringLib {
 
     /** An empty bytestring. */
     public static byte[] empty() {
-        return (byte[])(Object) Builtins.emptyByteString();
+        return Builtins.emptyByteString();
     }
 
     /** Create a bytestring of n zero bytes. */
     public static byte[] zeros(long n) {
-        return (byte[])(Object) Builtins.replicateByte(n, 0);
+        return Builtins.replicateByte(n, 0);
     }
 
     /** Compare two bytestrings for equality. */
@@ -73,7 +73,7 @@ public class ByteStringLib {
 
     /** Convert integer to bytestring. */
     public static byte[] integerToByteString(boolean endian, long width, long i) {
-        return (byte[])(Object) Builtins.integerToByteString(endian, width, i);
+        return Builtins.integerToByteString(endian, width, i);
     }
 
     /** Convert bytestring to integer. */
@@ -83,7 +83,7 @@ public class ByteStringLib {
 
     /** Encode a string as UTF-8 bytestring. */
     public static byte[] encodeUtf8(PlutusData s) {
-        return (byte[])(Object) Builtins.encodeUtf8(s);
+        return Builtins.encodeUtf8(s);
     }
 
     /** Decode a UTF-8 bytestring. */
@@ -93,6 +93,6 @@ public class ByteStringLib {
 
     /** Serialise a Data value to CBOR bytes. */
     public static byte[] serialiseData(PlutusData d) {
-        return (byte[])(Object) Builtins.serialiseData(d);
+        return Builtins.serialiseData(d);
     }
 }

@@ -46,22 +46,22 @@ public class OutputLib {
 
     /** Return all outputs sent to the given address. */
     public static JulcList<TxOut> outputsAt(JulcList<TxOut> outputs, Address address) {
-        JulcList<TxOut> result = (JulcList<TxOut>)(Object) ListsLib.empty();
+        JulcList<TxOut> result = JulcList.empty();
         for (TxOut out : outputs) {
-            if (out.address() == address) {
-                result = (JulcList<TxOut>)(Object) ListsLib.prepend((PlutusData.ListData)(Object) result, (PlutusData)(Object) out);
+            if (Builtins.equalsData(out.address(), address)) {
+                result = result.prepend(out);
             } else {
                 result = result;
             }
         }
-        return (JulcList<TxOut>)(Object) ListsLib.reverse((PlutusData.ListData)(Object) result);
+        return result.reverse();
     }
 
     /** Count the number of outputs sent to the given address. */
     public static long countOutputsAt(JulcList<TxOut> outputs, Address address) {
         long count = 0;
         for (TxOut out : outputs) {
-            if (out.address() == address) {
+            if (Builtins.equalsData(out.address(), address)) {
                 count = count + 1;
             } else {
                 count = count;
@@ -73,12 +73,11 @@ public class OutputLib {
     /** Return the unique output at the given address. Aborts if not exactly one match. */
     public static TxOut uniqueOutputAt(JulcList<TxOut> outputs, Address address) {
         JulcList<TxOut> matched = outputsAt(outputs, address);
-        PlutusData.ListData matchedData = (PlutusData.ListData)(Object) matched;
-        if (ListsLib.length(matchedData) == 1) {
-            return (TxOut)(Object) ListsLib.head(matchedData);
+        if (matched.size() == 1) {
+            return matched.head();
         } else {
             Builtins.error();
-            return (TxOut)(Object) ListsLib.head(matchedData);
+            return matched.head();
         }
     }
 
@@ -93,15 +92,15 @@ public class OutputLib {
 
     /** Return all outputs containing the specified token (amount > 0). */
     public static JulcList<TxOut> outputsWithToken(JulcList<TxOut> outputs, byte[] policyId, byte[] tokenName) {
-        JulcList<TxOut> result = (JulcList<TxOut>)(Object) ListsLib.empty();
+        JulcList<TxOut> result = JulcList.empty();
         for (TxOut out : outputs) {
             if (ValuesLib.assetOf(out.value(), policyId, tokenName).compareTo(BigInteger.ZERO) > 0) {
-                result = (JulcList<TxOut>)(Object) ListsLib.prepend((PlutusData.ListData)(Object) result, (PlutusData)(Object) out);
+                result = result.prepend(out);
             } else {
                 result = result;
             }
         }
-        return (JulcList<TxOut>)(Object) ListsLib.reverse((PlutusData.ListData)(Object) result);
+        return result.reverse();
     }
 
     /** Check if a value contains any amount of the specified token. */
@@ -115,7 +114,7 @@ public class OutputLib {
     public static BigInteger lovelacePaidTo(JulcList<TxOut> outputs, Address address) {
         BigInteger total = BigInteger.ZERO;
         for (TxOut out : outputs) {
-            if (out.address() == address) {
+            if (Builtins.equalsData(out.address(), address)) {
                 total = total.add(extractLovelace(out.value()));
             } else {
                 total = total;
@@ -148,7 +147,7 @@ public class OutputLib {
         return switch (txOut.datum()) {
             case OutputDatum.OutputDatumInline i -> i.datum();
             case OutputDatum.OutputDatumHash h -> {
-                PlutusData result = MapLib.lookup(datumsMap, Builtins.bData((PlutusData.BytesData)(Object) h.hash()));
+                PlutusData result = MapLib.lookup(datumsMap, Builtins.bData(h.hash()));
                 if (Builtins.constrTag(result) == 0) {
                     yield Builtins.headList(Builtins.constrFields(result));
                 } else {

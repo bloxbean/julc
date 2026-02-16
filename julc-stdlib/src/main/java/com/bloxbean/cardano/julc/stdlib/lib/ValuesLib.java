@@ -20,7 +20,7 @@ public class ValuesLib {
 
     /** Extracts the lovelace (ADA) amount from a Value. Assumes empty-BS policy is first entry. */
     public static BigInteger lovelaceOf(Value value) {
-        var pairs = Builtins.unMapData((PlutusData.MapData)(Object) value);
+        var pairs = Builtins.unMapData(value);
         var firstPair = Builtins.headList(pairs);
         var tokenMapData = Builtins.sndPair(firstPair);
         var tokenPairs = Builtins.unMapData(tokenMapData);
@@ -40,13 +40,13 @@ public class ValuesLib {
     @SuppressWarnings("unchecked")
     public static BigInteger assetOf(Value value, byte[] policyId, byte[] tokenName) {
         return _assetOf(value,
-                Builtins.bData((PlutusData.BytesData)(Object) policyId),
-                Builtins.bData((PlutusData.BytesData)(Object) tokenName));
+                Builtins.bData(policyId),
+                Builtins.bData(tokenName));
     }
 
     /** Internal zero-overhead assetOf for cost-sensitive on-chain use. */
     public static BigInteger _assetOf(Value value, PlutusData.BytesData policyId, PlutusData.BytesData tokenName) {
-        var outerPairs = Builtins.unMapData((PlutusData.MapData)(Object) value);
+        var outerPairs = Builtins.unMapData(value);
         BigInteger result = BigInteger.ZERO;
         PlutusData current = outerPairs;
         while (!Builtins.nullList(current)) {
@@ -81,7 +81,7 @@ public class ValuesLib {
     /** Checks if value a >= value b for ALL policy/token pairs (multi-asset). */
     public static boolean geqMultiAsset(Value a, Value b) {
         var result = true;
-        var outerPairs = Builtins.unMapData((PlutusData.MapData)(Object) b);
+        var outerPairs = Builtins.unMapData(b);
         PlutusData outerCurrent = outerPairs;
         while (!Builtins.nullList(outerCurrent)) {
             var outerPair = Builtins.headList(outerCurrent);
@@ -133,7 +133,7 @@ public class ValuesLib {
     /** Checks if a value is zero (all amounts == 0). */
     public static boolean isZero(Value value) {
         var result = true;
-        var outerPairs = Builtins.unMapData((PlutusData.MapData)(Object) value);
+        var outerPairs = Builtins.unMapData(value);
         PlutusData current = outerPairs;
         while (!Builtins.nullList(current)) {
             var outerPair = Builtins.headList(current);
@@ -168,8 +168,8 @@ public class ValuesLib {
     @SuppressWarnings("unchecked")
     public static Value singleton(byte[] policyId, byte[] tokenName, BigInteger amount) {
         return _singleton(
-                Builtins.bData((PlutusData.BytesData)(Object) policyId),
-                Builtins.bData((PlutusData.BytesData)(Object) tokenName),
+                Builtins.bData(policyId),
+                Builtins.bData(tokenName),
                 amount);
     }
 
@@ -186,7 +186,7 @@ public class ValuesLib {
 
     /** Negates all amounts in a value. */
     public static Value negate(Value value) {
-        var outerPairs = Builtins.unMapData((PlutusData.MapData)(Object) value);
+        var outerPairs = Builtins.unMapData(value);
         PlutusData result = Builtins.mkNilPairData();
         PlutusData current = outerPairs;
         while (!Builtins.nullList(current)) {
@@ -220,7 +220,7 @@ public class ValuesLib {
     /** Flattens a Value into a list of (policy, token, amount) triples as ConstrData(0, [p, t, amt]). */
     public static PlutusData.ListData flatten(Value value) {
         PlutusData.ListData result = Builtins.mkNilData();
-        var outerPairs = Builtins.unMapData((PlutusData.MapData)(Object) value);
+        var outerPairs = Builtins.unMapData(value);
         PlutusData current = outerPairs;
         while (!Builtins.nullList(current)) {
             var outerPair = Builtins.headList(current);
@@ -253,8 +253,8 @@ public class ValuesLib {
         Value adjustedMap = adjustOuterForAdd(a, b);
         Value extraMap = extraOuterEntries(b, a);
         // Concat the two pair lists: prepend all of extraMap onto adjustedMap
-        PlutusData result = Builtins.unMapData((PlutusData.MapData)(Object) adjustedMap);
-        PlutusData current = Builtins.unMapData((PlutusData.MapData)(Object) extraMap);
+        PlutusData result = Builtins.unMapData(adjustedMap);
+        PlutusData current = Builtins.unMapData(extraMap);
         while (!Builtins.nullList(current)) {
             result = Builtins.mkCons(Builtins.headList(current), result);
             current = Builtins.tailList(current);
@@ -264,7 +264,7 @@ public class ValuesLib {
 
     /** Walk a's outer map, adjust each token amount by adding assetOf(other). */
     public static Value adjustOuterForAdd(Value a, Value other) {
-        var outerPairs = Builtins.unMapData((PlutusData.MapData)(Object) a);
+        var outerPairs = Builtins.unMapData(a);
         PlutusData result = Builtins.mkNilPairData();
         PlutusData current = outerPairs;
         while (!Builtins.nullList(current)) {
@@ -298,7 +298,7 @@ public class ValuesLib {
 
     /** Walk b's outer map, collect entries where assetOf(base) == 0 (not in base). */
     public static Value extraOuterEntries(Value b, Value base) {
-        var outerPairs = Builtins.unMapData((PlutusData.MapData)(Object) b);
+        var outerPairs = Builtins.unMapData(b);
         PlutusData result = Builtins.mkNilPairData();
         PlutusData current = outerPairs;
         while (!Builtins.nullList(current)) {

@@ -55,6 +55,7 @@ class ByteStringLibTest {
     /** Common record wrapper for byte[] data. */
     static final String RECORD_HEADER = """
             import java.math.BigInteger;
+            import com.bloxbean.cardano.julc.stdlib.lib.ByteStringLib;
 
             @MintingPolicy
             class TestValidator {
@@ -79,6 +80,7 @@ class ByteStringLibTest {
     private String validatorNoData(String body) {
         return """
                 import java.math.BigInteger;
+                import com.bloxbean.cardano.julc.stdlib.lib.ByteStringLib;
 
                 @MintingPolicy
                 class TestValidator {
