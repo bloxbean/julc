@@ -200,6 +200,12 @@ public final class TypeMethodRegistry {
         reg.register("IntegerType", "longValue",
                 (scope, args, scopeType, argTypes) -> scope,
                 scopeType -> new PirType.IntegerType());
+
+        // value(): identity — for PlutusData.IntData.value() compatibility.
+        // On-chain, unIData() already produces Integer; .value() is a no-op.
+        reg.register("IntegerType", "value",
+                (scope, args, scopeType, argTypes) -> scope,
+                scopeType -> new PirType.IntegerType());
     }
 
     // --- ByteString methods ---
@@ -242,6 +248,12 @@ public final class TypeMethodRegistry {
         reg.register("ByteStringType", "prepend",
                 (scope, args, scopeType, argTypes) ->
                         PirHelpers.builtinApp2(DefaultFun.ConsByteString, args.get(0), scope),
+                scopeType -> new PirType.ByteStringType());
+
+        // value(): identity — for PlutusData.BytesData.value() compatibility.
+        // On-chain, unBData() already produces ByteString; .value() is a no-op.
+        reg.register("ByteStringType", "value",
+                (scope, args, scopeType, argTypes) -> scope,
                 scopeType -> new PirType.ByteStringType());
     }
 

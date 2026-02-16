@@ -18,6 +18,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class TypeMethodsTest {
 
     static JulcVm vm;
+    static final com.bloxbean.cardano.julc.stdlib.StdlibRegistry STDLIB = com.bloxbean.cardano.julc.stdlib.StdlibRegistry.defaultRegistry();
 
     @BeforeAll
     static void setUp() {
@@ -1471,6 +1472,105 @@ class TypeMethodsTest {
             var program = new JulcCompiler().compile(source).program();
             var result = vm.evaluateWithArgs(program, List.of(simpleCtx()));
             assertTrue(result.isSuccess(), "Integer != should still work. Got: " + result);
+        }
+    }
+
+    @Nested
+    class PlutusDataValueAccessor {
+        @Test
+        void bytesDataValueOnVar() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+
+                    @Validator
+                    class TestValidator {
+                        record MyDatum(PlutusData cred) {}
+
+                        @Entrypoint
+                        static boolean validate(MyDatum datum, PlutusData redeemer, ScriptContext ctx) {
+                            var pkh = Builtins.unBData(Builtins.headList(Builtins.constrFields(datum.cred())));
+                            byte[] raw = pkh.value();
+                            return raw.length() == 3;
+                        }
+                    }
+                    """;
+            var compiler = new JulcCompiler(STDLIB::lookup);
+            var program = compiler.compile(source).program();
+
+            // cred = Constr(0, [BData(bytes)])
+            var cred = PlutusData.constr(0, PlutusData.bytes(new byte[]{1, 2, 3}));
+            var datum = PlutusData.constr(0, cred);
+            var optDatum = PlutusData.constr(0, datum);
+            var txOutRef = PlutusData.constr(0, PlutusData.bytes(new byte[32]), PlutusData.integer(0));
+            var scriptInfo = PlutusData.constr(1, txOutRef, optDatum);
+            var ctx = buildScriptContext(buildTxInfo(new PlutusData[0], alwaysInterval()),
+                    PlutusData.integer(0), scriptInfo);
+            var result = vm.evaluateWithArgs(program, List.of(ctx));
+            assertTrue(result.isSuccess(), "unBData(...).value() should be identity (ByteString). Got: " + result);
+        }
+
+        @Test
+        void intDataValueOnVar() {
+            var source = """
+                    import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+
+                    @Validator
+                    class TestValidator {
+                        record MyDatum(PlutusData wrapped) {}
+
+                        @Entrypoint
+                        static boolean validate(MyDatum datum, PlutusData redeemer, ScriptContext ctx) {
+                            var n = Builtins.unIData(Builtins.headList(Builtins.constrFields(datum.wrapped())));
+                            BigInteger val = n.value();
+                            return val == 42;
+                        }
+                    }
+                    """;
+            var compiler = new JulcCompiler(STDLIB::lookup);
+            var program = compiler.compile(source).program();
+
+            // wrapped = Constr(0, [IData(42)])
+            var wrapped = PlutusData.constr(0, PlutusData.integer(42));
+            var datum = PlutusData.constr(0, wrapped);
+            var optDatum = PlutusData.constr(0, datum);
+            var txOutRef = PlutusData.constr(0, PlutusData.bytes(new byte[32]), PlutusData.integer(0));
+            var scriptInfo = PlutusData.constr(1, txOutRef, optDatum);
+            var ctx = buildScriptContext(buildTxInfo(new PlutusData[0], alwaysInterval()),
+                    PlutusData.integer(0), scriptInfo);
+            var result = vm.evaluateWithArgs(program, List.of(ctx));
+            assertTrue(result.isSuccess(), "unIData(...).value() should be identity (Integer). Got: " + result);
+        }
+
+        @Test
+        void bytesDataValueChainedWithEquals() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+
+                    @Validator
+                    class TestValidator {
+                        record MyDatum(PlutusData cred1, PlutusData cred2) {}
+
+                        @Entrypoint
+                        static boolean validate(MyDatum datum, PlutusData redeemer, ScriptContext ctx) {
+                            var a = Builtins.unBData(Builtins.headList(Builtins.constrFields(datum.cred1())));
+                            var b = Builtins.unBData(Builtins.headList(Builtins.constrFields(datum.cred2())));
+                            return a.value() == b.value();
+                        }
+                    }
+                    """;
+            var compiler = new JulcCompiler(STDLIB::lookup);
+            var program = compiler.compile(source).program();
+
+            var cred = PlutusData.constr(0, PlutusData.bytes(new byte[]{1, 2, 3}));
+            var datum = PlutusData.constr(0, cred, cred);
+            var optDatum = PlutusData.constr(0, datum);
+            var txOutRef = PlutusData.constr(0, PlutusData.bytes(new byte[32]), PlutusData.integer(0));
+            var scriptInfo = PlutusData.constr(1, txOutRef, optDatum);
+            var ctx = buildScriptContext(buildTxInfo(new PlutusData[0], alwaysInterval()),
+                    PlutusData.integer(0), scriptInfo);
+            var result = vm.evaluateWithArgs(program, List.of(ctx));
+            assertTrue(result.isSuccess(), "unBData().value() == unBData().value() should compare ByteStrings. Got: " + result);
         }
     }
 }
