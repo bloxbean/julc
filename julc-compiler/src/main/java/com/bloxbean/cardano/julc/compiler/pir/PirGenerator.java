@@ -681,6 +681,16 @@ public class PirGenerator {
                 return generateExpression(args.get(0));
             }
 
+            // Auto-recognize fromPlutusData() on known Plutus data types as identity (no stdlib needed)
+            if (scopeExpr instanceof NameExpr ne && methodName.equals("fromPlutusData") && args.size() == 1) {
+                var resolvedClassName = typeResolver.resolveClassName(ne.getNameAsString());
+                var targetType = typeResolver.resolveNameToType(resolvedClassName);
+                if (targetType.isPresent()) {
+                    options.logf("Resolved fromPlutusData identity: %s.fromPlutusData", ne.getNameAsString());
+                    return generateExpression(args.get(0));
+                }
+            }
+
             // Check if scope is a class name for static stdlib call (e.g., ContextsLib.signedBy)
             if (scopeExpr instanceof NameExpr ne && stdlibLookup != null) {
                 var className = ne.getNameAsString();
@@ -701,6 +711,7 @@ public class PirGenerator {
                     checkCrossLibraryTypeWarnings(className, methodName, mce, argPirTypes);
                     return result.get();
                 }
+
             }
 
             var scope = generateExpression(scopeExpr);
@@ -743,6 +754,11 @@ public class PirGenerator {
 
                 var registryResult = typeMethodRegistry.dispatch(scope, methodName, compiledArgs, scopeType, argPirTypes);
                 if (registryResult.isPresent()) return registryResult.get();
+
+                // Auto-recognize toPlutusData() — encode value as Data
+                if (methodName.equals("toPlutusData") && args.isEmpty()) {
+                    return PirHelpers.wrapEncode(scope, scopeType);
+                }
             }
 
             return generateFieldAccessFromMethod(scope, methodName, args);
@@ -872,6 +888,19 @@ public class PirGenerator {
         var methodName = mce.getNameAsString();
         if (mce.getScope().isEmpty()) return new PirType.DataType();
         var scopeExpr = mce.getScope().get();
+
+        // Static fromPlutusData() returns the target type
+        if (scopeExpr instanceof NameExpr ne
+                && methodName.equals("fromPlutusData") && mce.getArguments().size() == 1) {
+            var resolvedClassName = typeResolver.resolveClassName(ne.getNameAsString());
+            var targetType = typeResolver.resolveNameToType(resolvedClassName);
+            if (targetType.isPresent()) return targetType.get();
+        }
+
+        // toPlutusData() always returns DataType
+        if (methodName.equals("toPlutusData") && mce.getArguments().isEmpty()) {
+            return new PirType.DataType();
+        }
 
         // If scope is a variable with RecordType, return the field type
         if (scopeExpr instanceof NameExpr ne && mce.getArguments().isEmpty()) {

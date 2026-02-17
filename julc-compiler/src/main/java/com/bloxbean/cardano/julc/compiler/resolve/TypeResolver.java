@@ -352,6 +352,22 @@ public class TypeResolver {
         return Optional.ofNullable(recordTypes.get(resolved));
     }
 
+    /**
+     * Resolve a FQCN (or simple name) to its PirType.
+     * Returns empty for unknown types or built-in Java types (BigInteger, List, etc.).
+     */
+    public Optional<PirType> resolveNameToType(String fqcnOrSimpleName) {
+        String fqcn = resolveName(fqcnOrSimpleName);
+        if (LEDGER_HASH_FQCNS.contains(fqcn) || LEDGER_HASH_NAMES.contains(fqcnOrSimpleName))
+            return Optional.of(new PirType.ByteStringType());
+        if (newTypes.containsKey(fqcn)) return Optional.of(newTypes.get(fqcn));
+        if (recordTypes.containsKey(fqcn)) return Optional.of(recordTypes.get(fqcn));
+        if (sumTypes.containsKey(fqcn)) return Optional.of(sumTypes.get(fqcn));
+        if (LEDGER_DATA_FQCNS.contains(fqcn) || LEDGER_DATA_NAMES.contains(fqcnOrSimpleName))
+            return Optional.of(new PirType.DataType());
+        return Optional.empty();
+    }
+
     /** Return all registered FQCNs (for building knownFqcns sets). */
     public Set<String> allRegisteredFqcns() {
         var all = new LinkedHashSet<String>();
