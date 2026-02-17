@@ -278,8 +278,10 @@ public final class TypeMethodRegistry {
 
     private static void registerDataEqualsMethods(TypeMethodRegistry reg) {
         InstanceMethodHandler equalsDataHandler =
-                (scope, args, scopeType, argTypes) ->
-                        PirHelpers.builtinApp2(DefaultFun.EqualsData, scope, args.get(0));
+                (scope, args, scopeType, argTypes) -> {
+                    var encodedArg = PirHelpers.wrapEncode(args.get(0), argTypes.isEmpty() ? new PirType.DataType() : argTypes.get(0));
+                    return PirHelpers.builtinApp2(DefaultFun.EqualsData, scope, encodedArg);
+                };
         ReturnTypeResolver boolReturn = scopeType -> new PirType.BoolType();
 
         reg.register("DataType", "equals", equalsDataHandler, boolReturn);
@@ -578,8 +580,9 @@ public final class TypeMethodRegistry {
                     var binding = new PirTerm.Binding("go_get", goBody);
                     var search = new PirTerm.LetRec(List.of(binding), new PirTerm.App(goVar, pairsVar));
 
+                    var keyArg = PirHelpers.wrapEncode(args.get(0), argTypes.isEmpty() ? new PirType.DataType() : argTypes.get(0));
                     return new PirTerm.Let("ps_get", scope,
-                            new PirTerm.Let("k_get", args.get(0), search));
+                            new PirTerm.Let("k_get", keyArg, search));
                 },
                 scopeType -> new PirType.OptionalType(((PirType.MapType) scopeType).valueType()));
 
@@ -617,8 +620,9 @@ public final class TypeMethodRegistry {
                     var binding = new PirTerm.Binding("go_ck", goBody);
                     var search = new PirTerm.LetRec(List.of(binding), new PirTerm.App(goVar, pairsVar));
 
+                    var keyArg = PirHelpers.wrapEncode(args.get(0), argTypes.isEmpty() ? new PirType.DataType() : argTypes.get(0));
                     return new PirTerm.Let("ps_ck", scope,
-                            new PirTerm.Let("k_ck", args.get(0), search));
+                            new PirTerm.Let("k_ck", keyArg, search));
                 },
                 scopeType -> new PirType.BoolType());
 
@@ -807,8 +811,9 @@ public final class TypeMethodRegistry {
                             new PirType.PairType(new PirType.DataType(), new PirType.DataType())), outerIf);
                     var binding = new PirTerm.Binding("go_cp", goBody);
                     var search = new PirTerm.LetRec(List.of(binding), new PirTerm.App(goVar, pairsVar));
+                    var keyArg = PirHelpers.wrapEncode(args.get(0), argTypes.isEmpty() ? new PirType.DataType() : argTypes.get(0));
                     return new PirTerm.Let("ps_cp", pairList,
-                            new PirTerm.Let("k_cp", args.get(0), search));
+                            new PirTerm.Let("k_cp", keyArg, search));
                 },
                 scopeType -> new PirType.BoolType());
 
@@ -816,8 +821,8 @@ public final class TypeMethodRegistry {
         reg.register("Value", "assetOf",
                 (scope, args, scopeType, argTypes) -> {
                     if (args.size() < 2) throw new CompilerException("value.assetOf() requires policyId and tokenName arguments");
-                    var policyArg = args.get(0);
-                    var tokenArg = args.get(1);
+                    var policyArg = PirHelpers.wrapEncode(args.get(0), argTypes.size() >= 1 ? argTypes.get(0) : new PirType.DataType());
+                    var tokenArg = PirHelpers.wrapEncode(args.get(1), argTypes.size() >= 2 ? argTypes.get(1) : new PirType.DataType());
 
                     // Let-bind value, policyId, tokenName
                     var valVar = new PirTerm.Var("v__ao", new PirType.DataType());

@@ -3576,5 +3576,91 @@ class StdlibCompileEvalTest {
             var result = vm.evaluateWithArgs(program, List.of(ctx));
             assertTrue(result.isSuccess(), "txInfo.mint().containsPolicy() should be true. Got: " + result);
         }
+
+        @Test
+        void paramPolicyIdContainsPolicyFound() {
+            // Reproduces the exact CIP-113 BlacklistSpend failure:
+            // @Param PolicyId is decoded to ByteStringType, but containsPolicy uses EqualsData
+            // which needs Data args. Without wrapEncode, this fails with deserialization error.
+            var source = """
+                    import com.bloxbean.cardano.julc.ledger.api.*;
+                    import com.bloxbean.cardano.julc.ledger.*;
+
+                    @Validator
+                    class TestValidator {
+                        @Param PolicyId blacklistCs;
+
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            TxInfo txInfo = ctx.txInfo();
+                            Value mint = txInfo.mint();
+                            return mint.containsPolicy(blacklistCs);
+                        }
+                    }
+                    """;
+            var compiler = new JulcCompiler(STDLIB::lookup);
+            var compiled = compiler.compile(source);
+            assertFalse(compiled.hasErrors(), "Compilation failed: " + compiled);
+            assertTrue(compiled.isParameterized(), "Should be parameterized");
+
+            var policy = new byte[]{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
+                    15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28};
+            var concrete = compiled.program().applyParams(PlutusData.bytes(policy));
+
+            var mint = PlutusData.map(
+                    new PlutusData.Pair(
+                            PlutusData.bytes(policy),
+                            PlutusData.map(
+                                    new PlutusData.Pair(PlutusData.bytes(new byte[]{4, 5}), PlutusData.integer(100))
+                            )
+                    )
+            );
+            var txInfo = buildTxInfoWithMint(mint);
+            var ctx = PlutusData.constr(0, txInfo, PlutusData.integer(0), PlutusData.integer(0));
+            var result = vm.evaluateWithArgs(concrete, List.of(ctx));
+            assertTrue(result.isSuccess(), "@Param PolicyId + mint.containsPolicy() should succeed. Got: " + result);
+        }
+
+        @Test
+        void paramPolicyIdContainsPolicyNotFound() {
+            var source = """
+                    import com.bloxbean.cardano.julc.ledger.api.*;
+                    import com.bloxbean.cardano.julc.ledger.*;
+
+                    @Validator
+                    class TestValidator {
+                        @Param PolicyId blacklistCs;
+
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            TxInfo txInfo = ctx.txInfo();
+                            Value mint = txInfo.mint();
+                            return mint.containsPolicy(blacklistCs);
+                        }
+                    }
+                    """;
+            var compiler = new JulcCompiler(STDLIB::lookup);
+            var compiled = compiler.compile(source);
+            assertFalse(compiled.hasErrors(), "Compilation failed: " + compiled);
+
+            var policy = new byte[]{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
+                    15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28};
+            var otherPolicy = new byte[]{28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15,
+                    14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1};
+            var concrete = compiled.program().applyParams(PlutusData.bytes(policy));
+
+            var mint = PlutusData.map(
+                    new PlutusData.Pair(
+                            PlutusData.bytes(otherPolicy),
+                            PlutusData.map(
+                                    new PlutusData.Pair(PlutusData.bytes(new byte[]{4, 5}), PlutusData.integer(100))
+                            )
+                    )
+            );
+            var txInfo = buildTxInfoWithMint(mint);
+            var ctx = PlutusData.constr(0, txInfo, PlutusData.integer(0), PlutusData.integer(0));
+            var result = vm.evaluateWithArgs(concrete, List.of(ctx));
+            assertFalse(result.isSuccess(), "@Param PolicyId + mint.containsPolicy() not found should fail. Got: " + result);
+        }
     }
 }
