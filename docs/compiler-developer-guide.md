@@ -36,6 +36,7 @@ This guide covers the internals of the JuLC compiler — the component that tran
 | `docs/for-loop-patterns.md` | Loop compilation patterns |
 | `docs/performance-guide.md` | Script size and cost optimization |
 | `docs/troubleshooting.md` | Common errors and solutions |
+| `docs/advanced-guide.md` | Low-level programming patterns |
 | `docs/type-method-compilation-comparison.md` | Type method compilation details |
 
 ---
@@ -1920,7 +1921,7 @@ ADR files are in the `adr/` directory at the project root.
 | `julc-compiler/.../pir/PirTerm.java` | PIR term AST (12 variants) |
 | `julc-compiler/.../pir/PirType.java` | PIR type system (13 variants) |
 | `julc-compiler/.../pir/StdlibLookup.java` | Functional interface for stdlib method resolution |
-| `julc-compiler/.../pir/TypeMethodRegistry.java` | Instance method dispatch (35 methods across 8 types) |
+| `julc-compiler/.../pir/TypeMethodRegistry.java` | Instance method dispatch (~50 methods across 11 types) |
 | `julc-compiler/.../resolve/LedgerTypeRegistry.java` | 4-tier Cardano ledger type pre-registration |
 | `julc-compiler/.../resolve/LibraryMethodRegistry.java` | Compiled library method storage + typed coercion |
 | `julc-compiler/.../resolve/SymbolTable.java` | Scope stack for variable/method management |

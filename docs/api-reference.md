@@ -1,6 +1,6 @@
-# Plutus-Java API Reference
+# JuLC API Reference
 
-This document covers all supported Java operations in the Plutus-Java compiler, the standard library functions, and the typed ledger access API.
+This document covers all supported Java operations in the JuLC compiler, the standard library functions, and the typed ledger access API.
 
 ## Supported Types
 
@@ -11,11 +11,68 @@ This document covers all supported Java operations in the Plutus-Java compiler, 
 | `byte[]` | ByteString | Raw bytes |
 | `String` | String (UTF-8) | Converted via EncodeUtf8/DecodeUtf8 |
 | `PlutusData` | Data | Opaque on-chain data |
-| `List<T>` | BuiltinList | Builtin list of Data |
-| `Map<K,V>` | BuiltinList(Pair) | Map encoded as list of pairs |
+| `List<T>`, `JulcList<T>` | BuiltinList | Builtin list of Data |
+| `Map<K,V>`, `JulcMap<K,V>` | BuiltinList(Pair) | Map encoded as list of pairs |
 | `Optional<T>` | Constr 0/1 | Some = Constr(0,[x]), None = Constr(1,[]) |
+| `Tuple2<A,B>` | Constr(0, [a, b]) | Generic pair with auto-unwrap |
+| `Tuple3<A,B,C>` | Constr(0, [a, b, c]) | Generic triple with auto-unwrap |
 | Records | Constr(0, fields) | Each field is a Data element |
 | Sealed interfaces | Constr(tag, fields) | Tag based on permit order |
+| `@NewType` records | Underlying type | Zero-cost alias (identity on-chain) |
+| `PubKeyHash`, `PolicyId`, `TokenName`, `TxId`, `ScriptHash`, `ValidatorHash`, `DatumHash` | ByteString | Ledger hash types |
+| `Value` | Map(Pair) | Named RecordType with instance methods |
+
+### JulcList and JulcMap
+
+`JulcList<T>` and `JulcMap<K,V>` are interfaces in `julc-core/types/` that resolve to the same `ListType`/`MapType` as `List`/`Map`. They provide IDE autocomplete for on-chain methods (`.contains()`, `.size()`, `.get()`, etc.).
+
+```java
+JulcList<BigInteger> numbers = txInfo.signatories();  // same as List<byte[]>
+JulcMap<byte[], BigInteger> withdrawals = txInfo.withdrawals();
+```
+
+### Tuple2 and Tuple3
+
+Generic tuples with auto-unwrapping field access based on type arguments.
+
+```java
+Tuple2<BigInteger, byte[]> result = MathLib.divMod(a, b);
+BigInteger quotient = result.first();   // auto-generates UnIData
+byte[] remainder = result.second();     // auto-generates UnBData
+
+// Construction auto-wraps
+var t = new Tuple2<BigInteger, BigInteger>(val1, val2);  // auto-wraps via IData
+```
+
+Raw `Tuple2` (no type args) defaults to `DataType` for backward compatibility. Tuple2/Tuple3 are **not switchable** (registered as RecordType, but switch requires SumType). Use field access instead.
+
+### @NewType
+
+Zero-cost type aliases for single-field records with a supported underlying type (`byte[]`, `BigInteger`, `String`, `boolean`).
+
+```java
+@NewType
+public record AssetClass(byte[] policyId) {}
+
+// On-chain: identity (no ConstrData wrap)
+// AssetClass.of(bytes) is auto-registered
+```
+
+### Type.of() Factory Methods
+
+Seven ledger hash types have `.of(byte[])` factory methods:
+
+| Type | Usage | On-chain |
+|------|-------|----------|
+| `PubKeyHash.of(bytes)` | Create from raw bytes | Identity |
+| `ScriptHash.of(bytes)` | | Identity |
+| `ValidatorHash.of(bytes)` | | Identity |
+| `PolicyId.of(bytes)` | | Identity |
+| `TokenName.of(bytes)` | | Identity |
+| `DatumHash.of(bytes)` | | Identity |
+| `TxId.of(bytes)` | | Identity |
+
+These replace the ugly `(PubKeyHash)(Object) bytes` casts in user code. Note: `(PubKeyHash)(Object) plutusData` is still needed when the argument is `PlutusData` (not `byte[]`).
 
 ### Not Supported
 
@@ -51,8 +108,6 @@ The `+` operator is type-aware: the compiler infers the operand type and dispatc
 | `<=` | `a <= b` | `LessThanEqualsInteger` | |
 | `>` | `a > b` | `LessThanInteger` (swapped) | |
 | `>=` | `a >= b` | `LessThanEqualsInteger` (swapped) | |
-
-The `==` and `!=` operators are type-aware: the compiler infers the operand type from the expression and dispatches to the correct equality builtin.
 
 ### Boolean
 
@@ -91,6 +146,8 @@ return switch (action) {
 };
 ```
 
+Switch expressions check exhaustiveness at compile time. All variants of the sealed interface must be covered (the `default ->` branch body is **not compiled** — always use explicit cases).
+
 ### instanceof Pattern Matching
 ```java
 if (action instanceof Deposit d) {
@@ -107,7 +164,7 @@ for (var item : list) {
     }
 }
 ```
-Desugared to a recursive fold over the list.
+Desugared to a recursive fold. Supports single/multi-accumulator, break, and nesting. See [For-Loop Patterns](for-loop-patterns.md).
 
 ### While Loop
 ```java
@@ -122,11 +179,11 @@ Desugared to tail-recursive call via Z-combinator.
 
 ### Not Supported
 
-C-style `for(;;)`, `do-while`, `try-catch-finally`, `throw`, `break`, `continue`.
+C-style `for(;;)`, `do-while`, `try-catch-finally`, `throw`, `continue`.
 
 ## Variable Declarations
 
-All variables are **immutable** (functional semantics). Once declared, a variable cannot be reassigned.
+All variables are **immutable** (functional semantics). Reassignment is only supported inside for-each and while loop bodies (accumulator pattern).
 
 ```java
 // OK
@@ -156,33 +213,40 @@ BigInteger d = datum.deadline();
 
 ## Helper Methods
 
-Static methods in the validator class (without `@Entrypoint`) are compiled as helper functions.
+Static methods in the validator class (without `@Entrypoint`) are compiled as helper functions. Recursive helper methods use Z-combinator transformation.
 
 ```java
-@Validator
+@SpendingValidator
 class MyValidator {
     static boolean isPositive(BigInteger x) {
         return x > 0;
     }
 
     @Entrypoint
-    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+    static boolean validate(BigInteger redeemer, PlutusData ctx) {
         return isPositive(redeemer);
     }
 }
 ```
 
-Recursive helper methods are supported via Z-combinator transformation.
-
 ## Lambda Expressions
 
 ```java
 ListsLib.any(list, x -> x > 0)
+ListsLib.filter(list, x -> Builtins.unIData(x) > 100)
+ListsLib.foldl((acc, x) -> acc + Builtins.unIData(x), BigInteger.ZERO, list)
 ```
 
-Lambda bodies compile to UPLC lambda abstractions.
+Lambda bodies can be a single expression or a block:
 
-## Typed Ledger Access (Milestone 6)
+```java
+ListsLib.filter(items, item -> {
+    var threshold = new BigInteger("100");
+    return Builtins.unIData(item) > threshold;
+});
+```
+
+## Typed Ledger Access
 
 When using `ScriptContext` as a parameter type, the compiler provides typed access to all ledger fields without manual Data decoding.
 
@@ -219,134 +283,6 @@ static boolean validate(MyDatum datum, PlutusData redeemer, ScriptContext ctx) {
 | `txInfo.treasury()` | `Optional<BigInteger>` | 14 | Current treasury |
 | `txInfo.donation()` | `Optional<BigInteger>` | 15 | Current donation |
 
-### Chained Calls
-
-```java
-// Full typed chain from context to list methods
-boolean hasSigner = ctx.txInfo().signatories().contains(datum.beneficiary());
-```
-
-### List Instance Methods
-
-When the compiler knows a variable is a `List<T>`, these methods are available:
-
-| Method | Return Type | UPLC Builtin | Description |
-|--------|------------|-------------|-------------|
-| `.isEmpty()` | `boolean` | `NullList` | Returns true if empty |
-| `.size()` | `BigInteger` | foldl | Returns the number of elements |
-| `.head()` | `T` | `HeadList` + decode | Returns the first element (decoded) |
-| `.tail()` | `List<T>` | `TailList` | Returns the list without the first element |
-| `.contains(target)` | `boolean` | recursive search | Returns true if target is in the list |
-
-The element type is tracked for `.contains()` to generate the correct equality comparison (EqualsByteString for `byte[]`, EqualsInteger for integers, EqualsData for general Data).
-
-Chaining is supported: `sigs.tail().isEmpty()`, `sigs.tail().contains(pkh)`.
-
-### BigInteger Instance Methods
-
-| Method | Return Type | UPLC Translation | Description |
-|--------|------------|-----------------|-------------|
-| `.abs()` | `BigInteger` | `IfThenElse(x < 0, 0 - x, x)` | Absolute value |
-| `.negate()` | `BigInteger` | `SubtractInteger(0, x)` | Negation |
-| `.max(other)` | `BigInteger` | `IfThenElse(a < b, b, a)` | Maximum of two values |
-| `.min(other)` | `BigInteger` | `IfThenElse(a <= b, a, b)` | Minimum of two values |
-| `.equals(other)` | `boolean` | `EqualsInteger` | Equality check |
-| `.add(other)` | `BigInteger` | `AddInteger` | Addition |
-| `.subtract(other)` | `BigInteger` | `SubtractInteger` | Subtraction |
-| `.multiply(other)` | `BigInteger` | `MultiplyInteger` | Multiplication |
-| `.divide(other)` | `BigInteger` | `DivideInteger` | Integer division |
-| `.remainder(other)` | `BigInteger` | `RemainderInteger` | Remainder after division |
-| `.mod(other)` | `BigInteger` | `ModInteger` | Modulus (always non-negative) |
-| `.signum()` | `BigInteger` | `IfThenElse` chain | Returns -1, 0, or 1 |
-| `.compareTo(other)` | `BigInteger` | `IfThenElse` chain | Returns -1, 0, or 1 |
-
-```java
-BigInteger x = BigInteger.valueOf(-5);
-BigInteger absX = x.abs();          // 5
-BigInteger neg = x.negate();        // 5
-BigInteger m = x.max(BigInteger.ZERO); // 0
-BigInteger n = x.min(BigInteger.ZERO); // -5
-BigInteger sum = x.add(BigInteger.TEN);       // 5
-BigInteger diff = x.subtract(BigInteger.ONE);  // -6
-BigInteger prod = x.multiply(BigInteger.TWO);  // -10
-BigInteger quot = BigInteger.valueOf(17).divide(BigInteger.valueOf(5));    // 3
-BigInteger rem = BigInteger.valueOf(17).remainder(BigInteger.valueOf(5));  // 2
-BigInteger modVal = BigInteger.valueOf(17).mod(BigInteger.valueOf(5));     // 2
-BigInteger sign = x.signum();       // -1
-BigInteger cmp = x.compareTo(BigInteger.ZERO); // -1
-```
-
-### String Instance Methods
-
-| Method | Return Type | UPLC Translation | Description |
-|--------|------------|-----------------|-------------|
-| `.equals(other)` | `boolean` | `EqualsString` | String equality |
-| `.length()` | `BigInteger` | `LengthOfByteString(EncodeUtf8(s))` | String length in bytes |
-
-String operators `==`, `!=`, and `+` are also supported (see Operators section).
-
-```java
-String a = "hello";
-String b = "world";
-boolean eq = a.equals(b);     // false
-boolean same = a == "hello";   // true
-String c = a + b;              // "helloworld"
-BigInteger len = a.length();   // 5
-```
-
-### ByteString (byte[]) Instance Methods
-
-| Method | Return Type | UPLC Translation | Description |
-|--------|------------|-----------------|-------------|
-| `.equals(other)` | `boolean` | `EqualsByteString` | Byte array equality |
-| `.length()` | `BigInteger` | `LengthOfByteString` | Length in bytes |
-| `.length` | `BigInteger` | `LengthOfByteString` | Length as field access (Java array style) |
-
-ByteString operators `==`, `!=`, and `+` are also supported (see Operators section).
-
-```java
-byte[] hash = datum.hash();
-BigInteger len1 = hash.length();  // method call form
-BigInteger len2 = hash.length;    // field access form (both work)
-byte[] combined = hash1 + hash2;  // AppendByteString
-boolean same = hash1 == hash2;    // EqualsByteString
-```
-
-### Optional Instance Methods
-
-Optional is encoded as `Constr(0, [value])` (Some) or `Constr(1, [])` (None).
-
-| Method | Return Type | UPLC Translation | Description |
-|--------|------------|-----------------|-------------|
-| `.isPresent()` | `boolean` | `FstPair(UnConstrData(x)) == 0` | True if Some |
-| `.isEmpty()` | `boolean` | `FstPair(UnConstrData(x)) == 1` | True if None |
-| `.get()` | `T` | `HeadList(SndPair(UnConstrData(x)))` + decode | Unwrap the inner value |
-
-```java
-record MyDatum(Optional<BigInteger> reward) {}
-
-// In validator:
-if (datum.reward().isPresent()) {
-    BigInteger val = datum.reward().get();
-    return val > 0;
-}
-return datum.reward().isEmpty();
-```
-
-### PlutusData Equality
-
-Raw `PlutusData` variables support `.equals()` and `==`/`!=` operators using `EqualsData`:
-
-```java
-PlutusData a = redeemer;
-PlutusData b = redeemer;
-boolean eq1 = a.equals(b);  // EqualsData
-boolean eq2 = a == b;       // EqualsData
-boolean ne = a != b;         // negated EqualsData
-```
-
-Record and sealed interface instances also use `EqualsData` when compared with `==`/`!=`.
-
 ### Other Ledger Types
 
 - **TxInInfo**: `outRef()` (TxOutRef), `resolved()` (TxOut)
@@ -355,27 +291,149 @@ Record and sealed interface instances also use `EqualsData` when compared with `
 - **Address**: `credential()` (Credential), `stakingCredential()` (Optional)
 - **Credential**: sealed interface with `PubKeyCredential(byte[] hash)` and `ScriptCredential(byte[] hash)`
 - **OutputDatum**: sealed interface with `NoOutputDatum`, `OutputDatumHash(byte[])`, `OutputDatum(PlutusData)`
-- **ScriptInfo**: sealed interface with `MintingScript(byte[])`, `SpendingScript(TxOutRef, Optional)`, `RewardingScript(Credential)`, etc.
+- **ScriptInfo**: sealed interface with `MintingScript(byte[])`, `SpendingScript(TxOutRef, Optional)`, `RewardingScript(Credential)`, `CertifyingScript(BigInteger, TxCert)`, `VotingScript(Voter)`, `ProposingScript(BigInteger, ProposalProcedure)`
 - **Interval**: `from()` (IntervalBound), `to()` (IntervalBound)
 - **IntervalBound**: `boundType()` (IntervalBoundType), `isInclusive()` (boolean)
 - **IntervalBoundType**: sealed with `NegInf`, `Finite(BigInteger)`, `PosInf`
 
+### Chained Calls
+
+```java
+// Full typed chain from context to list methods
+boolean hasSigner = ctx.txInfo().signatories().contains(datum.beneficiary());
+```
+
+## Instance Methods
+
+### BigInteger Instance Methods
+
+| Method | Return Type | UPLC Translation |
+|--------|------------|-----------------|
+| `.abs()` | `BigInteger` | `IfThenElse(x < 0, 0 - x, x)` |
+| `.negate()` | `BigInteger` | `SubtractInteger(0, x)` |
+| `.max(other)` | `BigInteger` | `IfThenElse(a < b, b, a)` |
+| `.min(other)` | `BigInteger` | `IfThenElse(a <= b, a, b)` |
+| `.equals(other)` | `boolean` | `EqualsInteger` |
+| `.add(other)` | `BigInteger` | `AddInteger` |
+| `.subtract(other)` | `BigInteger` | `SubtractInteger` |
+| `.multiply(other)` | `BigInteger` | `MultiplyInteger` |
+| `.divide(other)` | `BigInteger` | `DivideInteger` |
+| `.remainder(other)` | `BigInteger` | `RemainderInteger` |
+| `.mod(other)` | `BigInteger` | `ModInteger` |
+| `.signum()` | `BigInteger` | `IfThenElse` chain |
+| `.compareTo(other)` | `BigInteger` | `IfThenElse` chain |
+| `.intValue()` | `int` | Identity |
+| `.longValue()` | `long` | Identity |
+
+### List Instance Methods
+
+| Method | Return Type | Description |
+|--------|------------|-------------|
+| `.isEmpty()` | `boolean` | Returns true if empty |
+| `.size()` | `BigInteger` | Returns the number of elements |
+| `.head()` | `T` | Returns the first element (decoded) |
+| `.tail()` | `List<T>` | Returns the list without the first element |
+| `.get(index)` | `T` | Returns element at index (decoded) |
+| `.contains(target)` | `boolean` | Recursive search with type-aware equality |
+| `.reverse()` | `List<T>` | Returns a reversed copy |
+| `.concat(other)` | `List<T>` | Concatenates two lists |
+| `.take(n)` | `List<T>` | Returns first n elements |
+| `.drop(n)` | `List<T>` | Returns list after dropping first n elements |
+| `.prepend(elem)` | `List<T>` | Prepends element with auto-wrap (BigInteger->IData, byte[]->BData, etc.) |
+
+Chaining is supported: `sigs.tail().isEmpty()`, `sigs.tail().contains(pkh)`.
+
+### Map Instance Methods
+
+| Method | Return Type | Description |
+|--------|------------|-------------|
+| `.get(key)` | `Optional<V>` | Lookup value by key |
+| `.containsKey(key)` | `boolean` | Check if key exists |
+| `.size()` | `BigInteger` | Number of entries |
+| `.isEmpty()` | `boolean` | True if no entries |
+| `.keys()` | `List<K>` | All keys as list |
+| `.values()` | `List<V>` | All values as list |
+| `.insert(key, value)` | `Map<K,V>` | Insert/update entry (returns pair list) |
+| `.delete(key)` | `Map<K,V>` | Remove entry (returns pair list) |
+
+MapType variables always hold pair lists internally. `insert` and `delete` return pair lists (not MapData-wrapped).
+
+### Value Instance Methods
+
+| Method | Return Type | Description |
+|--------|------------|-------------|
+| `.lovelaceOf()` | `BigInteger` | Extract ADA amount |
+| `.isEmpty()` | `boolean` | True if value is empty |
+| `.assetOf(policy, token)` | `BigInteger` | Extract specific token amount |
+
+**Caveat**: `value.assetOf(policyId, tokenName)` uses `EqualsData` internally. If `policyId`/`tokenName` are `byte[]` (ByteStringType), wrap with `Builtins.bData()` before passing.
+
+### Pair Instance Methods
+
+| Method | Return Type | Description |
+|--------|------------|-------------|
+| `.key()` | `K` | First element with auto-decode |
+| `.value()` | `V` | Second element with auto-decode |
+
+### String Instance Methods
+
+| Method | Return Type | UPLC Translation |
+|--------|------------|-----------------|
+| `.equals(other)` | `boolean` | `EqualsString` |
+| `.length()` | `BigInteger` | `LengthOfByteString(EncodeUtf8(s))` |
+
+### ByteString (byte[]) Instance Methods
+
+| Method | Return Type | UPLC Translation |
+|--------|------------|-----------------|
+| `.equals(other)` | `boolean` | `EqualsByteString` |
+| `.length()` | `BigInteger` | `LengthOfByteString` |
+| `.length` | `BigInteger` | `LengthOfByteString` (field access form) |
+| `.hash()` | `byte[]` | `UnBData` (for list iteration context) |
+
+### Optional Instance Methods
+
+| Method | Return Type | Description |
+|--------|------------|-------------|
+| `.isPresent()` | `boolean` | True if Some (tag == 0) |
+| `.isEmpty()` | `boolean` | True if None (tag == 1) |
+| `.get()` | `T` | Unwrap the inner value (decoded) |
+
+### PlutusData Equality
+
+Raw `PlutusData` variables support `.equals()` and `==`/`!=` operators using `EqualsData`.
+
 ## Standard Library Reference
 
-Import from `com.bloxbean.cardano.julc.onchain.stdlib.*` in validators.
+Import from `com.bloxbean.cardano.julc.stdlib.lib.*` in validators. See [Standard Library Guide](stdlib-guide.md) for comprehensive documentation.
 
 ### ContextsLib
 
 | Method | Args | Description |
 |--------|------|-------------|
 | `signedBy(txInfo, pkh)` | TxInfo, ByteString | Check if pkh is in signatories |
-| `getTxInfo(ctx)` | ScriptContext | Extract TxInfo from context |
-| `getRedeemer(ctx)` | ScriptContext | Extract redeemer from context |
+| `getTxInfo(ctx)` | ScriptContext | Extract TxInfo (legacy — prefer `ctx.txInfo()`) |
+| `getRedeemer(ctx)` | ScriptContext | Extract redeemer |
 | `getSpendingDatum(ctx)` | ScriptContext | Extract optional spending datum |
 | `txInfoInputs(txInfo)` | TxInfo | Get inputs list |
 | `txInfoOutputs(txInfo)` | TxInfo | Get outputs list |
 | `txInfoSignatories(txInfo)` | TxInfo | Get signatories list |
 | `txInfoValidRange(txInfo)` | TxInfo | Get validity time range |
+| `txInfoMint(txInfo)` | TxInfo | Get minted/burned value |
+| `txInfoFee(txInfo)` | TxInfo | Get transaction fee |
+| `txInfoId(txInfo)` | TxInfo | Get transaction hash |
+| `txInfoRefInputs(txInfo)` | TxInfo | Get reference inputs |
+| `txInfoWithdrawals(txInfo)` | TxInfo | Get withdrawals map |
+| `txInfoRedeemers(txInfo)` | TxInfo | Get redeemers map |
+| `findOwnInput(txInfo, outRef)` | TxInfo, TxOutRef | Find the input being validated |
+| `getContinuingOutputs(txInfo, ownHash)` | TxInfo, ByteString | Get outputs to same script |
+| `findDatum(txInfo, datumHash)` | TxInfo, ByteString | Lookup datum by hash |
+| `valueSpent(txInfo)` | TxInfo | Total value of all inputs |
+| `valuePaid(txInfo, address)` | TxInfo, Address | Value paid to an address |
+| `ownHash(scriptInfo)` | ScriptInfo | Get own script hash |
+| `scriptOutputsAt(txInfo, hash)` | TxInfo, ByteString | Outputs at script hash |
+| `listIndex(list, index)` | List, Integer | Get element at index |
+| `trace(msg)` | String | Emit trace message |
 
 ### ListsLib
 
@@ -383,38 +441,142 @@ Import from `com.bloxbean.cardano.julc.onchain.stdlib.*` in validators.
 |--------|------|-------------|
 | `isEmpty(list)` | List | Check if list is empty |
 | `length(list)` | List | Count elements |
-| `any(list, predicate)` | List, Lambda | True if any element matches |
-| `all(list, predicate)` | List, Lambda | True if all elements match |
-| `find(list, predicate)` | List, Lambda | Find first matching (Optional) |
+| `head(list)` | List | First element |
+| `tail(list)` | List | Rest of list |
+| `reverse(list)` | List | Reverse a list |
+| `concat(a, b)` | List, List | Concatenate two lists |
+| `nth(list, n)` | List, Integer | Get element at index |
+| `take(list, n)` | List, Integer | First n elements |
+| `drop(list, n)` | List, Integer | Drop first n elements |
+| `contains(list, elem)` | List, Data | Check membership (EqualsData) |
+| `containsInt(list, n)` | List, Integer | Check integer membership |
+| `containsBytes(list, bs)` | List, ByteString | Check bytestring membership |
+| `hasDuplicateInts(list)` | List | Check for duplicate integers |
+| `hasDuplicateBytes(list)` | List | Check for duplicate bytestrings |
+| `empty()` | (none) | Create empty list |
+| `prepend(elem, list)` | Data, List | Prepend element to list |
+| `any(list, pred)` | List, Lambda | True if any element matches |
+| `all(list, pred)` | List, Lambda | True if all elements match |
+| `find(list, pred)` | List, Lambda | Find first matching (Optional) |
 | `foldl(f, init, list)` | Lambda, init, List | Left fold |
+| `map(list, f)` | List, Lambda | Transform elements |
+| `filter(list, pred)` | List, Lambda | Keep matching elements |
+| `zip(a, b)` | List, List | Pair elements from two lists |
 
 ### ValuesLib
 
 | Method | Args | Description |
 |--------|------|-------------|
-| `lovelaceOf(value)` | Value | Extract ADA amount |
-| `geq(a, b)` | Value, Value | Compare lovelace: a >= b |
-| `assetOf(value, policy, name)` | Value, BS, BS | Extract specific token amount |
+| `geqMultiAsset(a, b)` | Value, Value | Multi-asset >= comparison |
+| `leq(a, b)` | Value, Value | Multi-asset <= comparison |
+| `eq(a, b)` | Value, Value | Multi-asset equality |
+| `isZero(value)` | Value | Check if value is zero |
+| `singleton(policy, token, amount)` | BS, BS, Integer | Create single-token value |
+| `negate(value)` | Value | Negate all amounts |
+| `flatten(value)` | Value | Flatten to list of triples |
+| `add(a, b)` | Value, Value | Add two values |
+| `subtract(a, b)` | Value, Value | Subtract values |
 
-### CryptoLib
+### MapLib
 
 | Method | Args | Description |
 |--------|------|-------------|
-| `sha2_256(bs)` | ByteString | SHA2-256 hash (32 bytes) |
-| `sha3_256(bs)` | ByteString | SHA3-256 hash (32 bytes) |
-| `blake2b_256(bs)` | ByteString | Blake2b-256 hash (32 bytes) |
-| `blake2b_224(bs)` | ByteString | Blake2b-224 hash (28 bytes) |
-| `keccak_256(bs)` | ByteString | Keccak-256 hash (32 bytes) |
-| `verifyEd25519Signature(pk, msg, sig)` | BS, BS, BS | Verify Ed25519 signature |
+| `lookup(map, key)` | Map, Data | Lookup value by key |
+| `member(map, key)` | Map, Data | Check key membership |
+| `insert(map, key, value)` | Map, Data, Data | Insert/update entry |
+| `delete(map, key)` | Map, Data | Remove entry by key |
+| `keys(map)` | Map | Get all keys |
+| `values(map)` | Map | Get all values |
+| `toList(map)` | Map | Convert to pair list |
+| `fromList(list)` | List | Convert pair list to map |
+| `size(map)` | Map | Count entries |
+
+### OutputLib
+
+| Method | Args | Description |
+|--------|------|-------------|
+| `txOutAddress(txOut)` | TxOut | Get output address |
+| `txOutValue(txOut)` | TxOut | Get output value |
+| `txOutDatum(txOut)` | TxOut | Get output datum |
+| `outputsAt(outputs, address)` | List, Address | Filter outputs by address |
+| `countOutputsAt(outputs, addr)` | List, Address | Count outputs at address |
+| `uniqueOutputAt(outputs, addr)` | List, Address | Get exactly one output at address |
+| `outputsWithToken(outs, pol, tn)` | List, BS, BS | Filter by token |
+| `valueHasToken(val, pol, tn)` | Value, BS, BS | Check if value has token |
+| `lovelacePaidTo(outputs, addr)` | List, Address | Total lovelace to address |
+| `paidAtLeast(outs, addr, min)` | List, Address, Integer | Check minimum payment |
+| `getInlineDatum(txOut)` | TxOut | Get inline datum |
+| `resolveDatum(txInfo, txOut)` | TxInfo, TxOut | Resolve datum (inline or by hash) |
+
+### MathLib
+
+| Method | Args | Description |
+|--------|------|-------------|
+| `abs(x)` | Integer | Absolute value |
+| `max(a, b)` | Integer, Integer | Maximum |
+| `min(a, b)` | Integer, Integer | Minimum |
+| `pow(base, exp)` | Integer, Integer | Exponentiation |
+| `sign(x)` | Integer | Sign (-1, 0, or 1) |
+| `divMod(a, b)` | Integer, Integer | Returns Tuple2(quotient, remainder) |
+| `quotRem(a, b)` | Integer, Integer | Returns Tuple2(quotient, remainder) |
+| `expMod(base, exp, mod)` | Integer, Integer, Integer | Modular exponentiation |
 
 ### IntervalLib
 
 | Method | Args | Description |
 |--------|------|-------------|
-| `contains(interval, time)` | Interval, Integer | Check if time is in interval |
-| `always()` | (none) | The (-inf, +inf) interval |
-| `after(time)` | Integer | The [time, +inf) interval |
-| `before(time)` | Integer | The (-inf, time] interval |
+| `between(interval, lower, upper)` | Interval, Integer, Integer | Check if interval is within bounds |
+| `never()` | (none) | Empty interval |
+| `isEmpty(interval)` | Interval | Check if interval is empty |
+| `finiteUpperBound(interval)` | Interval | Extract upper bound (if finite) |
+| `finiteLowerBound(interval)` | Interval | Extract lower bound (if finite) |
+
+### CryptoLib
+
+| Method | Args | Description |
+|--------|------|-------------|
+| `verifyEcdsaSecp256k1(key, msg, sig)` | BS, BS, BS | Verify ECDSA secp256k1 signature |
+| `verifySchnorrSecp256k1(key, msg, sig)` | BS, BS, BS | Verify Schnorr secp256k1 signature |
+| `ripemd_160(bs)` | BS | RIPEMD-160 hash |
+
+Note: `sha2_256`, `sha3_256`, `blake2b_256`, `blake2b_224`, `keccak_256`, and `verifyEd25519Signature` are available directly via `Builtins.*`.
+
+### ByteStringLib
+
+| Method | Args | Description |
+|--------|------|-------------|
+| `take(bs, n)` | BS, Integer | Take first n bytes |
+| `lessThan(a, b)` | BS, BS | Lexicographic less-than |
+| `lessThanEquals(a, b)` | BS, BS | Lexicographic less-than-or-equal |
+| `integerToByteString(be, w, i)` | Bool, Integer, Integer | Integer to byte string |
+| `byteStringToInteger(be, bs)` | Bool, BS | Byte string to integer |
+| `encodeUtf8(s)` | String | Encode string to UTF-8 bytes |
+| `decodeUtf8(bs)` | BS | Decode UTF-8 bytes to string |
+| `serialiseData(d)` | Data | Serialize data to CBOR bytes |
+
+### BitwiseLib
+
+| Method | Args | Description |
+|--------|------|-------------|
+| `andByteString(pad, a, b)` | Bool, BS, BS | Bitwise AND |
+| `orByteString(pad, a, b)` | Bool, BS, BS | Bitwise OR |
+| `xorByteString(pad, a, b)` | Bool, BS, BS | Bitwise XOR |
+| `complementByteString(bs)` | BS | Bitwise complement |
+| `readBit(bs, index)` | BS, Integer | Read single bit |
+| `writeBits(bs, indices, val)` | BS, List, Bool | Write bits at indices |
+| `shiftByteString(bs, n)` | BS, Integer | Shift by n bits |
+| `rotateByteString(bs, n)` | BS, Integer | Rotate by n bits |
+| `countSetBits(bs)` | BS | Count set (1) bits |
+| `findFirstSetBit(bs)` | BS | Index of first set bit |
+
+### AddressLib
+
+| Method | Args | Description |
+|--------|------|-------------|
+| `credentialHash(cred)` | Credential | Extract hash from credential |
+| `isScriptAddress(addr)` | Address | True if script address |
+| `isPubKeyAddress(addr)` | Address | True if pub key address |
+| `paymentCredential(addr)` | Address | Extract payment credential |
 
 ## Complete Example
 
@@ -424,7 +586,7 @@ import com.bloxbean.cardano.julc.onchain.ledger.*;
 import com.bloxbean.cardano.julc.core.PlutusData;
 import java.math.BigInteger;
 
-@Validator
+@SpendingValidator
 class VestingValidator {
     record VestingDatum(byte[] beneficiary, BigInteger deadline) {}
 

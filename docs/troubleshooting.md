@@ -336,7 +336,81 @@ if (action instanceof Bid b) {
 
 ---
 
-### 1.14 `Unsupported lambda body: <BodyType>`
+### 1.14 `Non-exhaustive switch on sealed interface: missing cases [X, Y]`
+
+**Cause:** A `switch` expression on a sealed interface does not cover all variants. The compiler checks exhaustiveness before generating `DataMatch`.
+
+**Fix:** Add cases for all variants of the sealed interface. Do not rely on `default ->` (the default branch body is not compiled).
+
+```java
+sealed interface Action permits Bid, Cancel, Update {}
+record Bid(BigInteger amount) implements Action {}
+record Cancel() implements Action {}
+record Update(BigInteger newPrice) implements Action {}
+
+// WRONG: missing Update case
+var result = switch (action) {
+    case Bid b -> b.amount();
+    case Cancel c -> BigInteger.ZERO;
+};
+// Error: Non-exhaustive switch on sealed interface: missing cases [Update]
+
+// CORRECT: all cases covered
+var result = switch (action) {
+    case Bid b -> b.amount();
+    case Cancel c -> BigInteger.ZERO;
+    case Update u -> u.newPrice();
+};
+```
+
+---
+
+### 1.15 `Method does not return on all execution paths`
+
+**Cause:** A method has code paths that do not end with a `return` statement. The compiler analyzes if/else completeness, fallthrough returns, and loop-as-return patterns.
+
+**Fix:** Ensure every code path returns a value.
+
+```java
+// WRONG: missing return on else path
+static boolean check(BigInteger x) {
+    if (x > 0) {
+        return true;
+    }
+    // no return here
+}
+
+// CORRECT
+static boolean check(BigInteger x) {
+    if (x > 0) {
+        return true;
+    } else {
+        return false;
+    }
+}
+```
+
+---
+
+### 1.16 `@NewType requires exactly one field`
+
+**Cause:** A record annotated with `@NewType` has zero or more than one field.
+
+**Fix:** `@NewType` records must have exactly one field of a supported primitive type (`byte[]`, `BigInteger`, `String`, `boolean`).
+
+```java
+// WRONG: two fields
+@NewType
+record AssetId(byte[] policy, byte[] name) {}
+
+// CORRECT: single field
+@NewType
+record PolicyId(byte[] hash) {}
+```
+
+---
+
+### 1.17 `Unsupported lambda body: <BodyType>`
 
 **Hint:** `Lambda bodies must be a single expression or a block statement.`
 
@@ -1175,6 +1249,104 @@ public record B(A other) {}
 // CORRECT: break cycle with Data
 public record A(Data other) {}  // other is opaque Data, cast as needed
 public record B(A parent) {}
+```
+
+---
+
+### Q: Why does my switch expression crash at runtime even though it compiles?
+
+**A:** The `default ->` branch body is **not compiled**. The compiler skips `entry.isDefault()` entirely, so default branch code is never generated. You must use explicit cases for ALL variants of the sealed interface.
+
+```java
+// WRONG: default branch is silently ignored
+var result = switch (action) {
+    case Bid b -> b.amount();
+    default -> BigInteger.ZERO;  // NOT COMPILED — will crash at runtime
+};
+
+// CORRECT: explicit cases for all variants
+var result = switch (action) {
+    case Bid b -> b.amount();
+    case Cancel c -> BigInteger.ZERO;
+};
+```
+
+---
+
+### Q: Why does `pk.hash().hash()` crash with a DeserializationError?
+
+**A:** Types like `PubKeyHash`, `TxId`, `ScriptHash`, and `DatumHash` map to `ByteStringType`. The field access `pk.hash()` already generates `UnBData(HeadList(...))` to extract the raw ByteString. Calling `.hash()` again applies a second `UnBData` on the already-unwrapped ByteString, causing `UnBData(ByteString)` to fail.
+
+```java
+// WRONG: double unwrap
+byte[] h = pk.hash().hash();
+
+// CORRECT: cast to extract bytes
+byte[] h = (byte[])(Object) pk.hash();
+
+// CORRECT for TxId:
+byte[] txHash = (byte[])(Object) ref.txId();
+```
+
+---
+
+### Q: Why can't I use `switch` on a `Tuple2` or `Tuple3`?
+
+**A:** `Tuple2` and `Tuple3` are registered as `RecordType`, but `switch` requires `SumType` (sealed interface). Use field access instead:
+
+```java
+// WRONG: Tuple2 is not switchable
+var result = switch (tuple) { ... };
+
+// CORRECT: use field access
+BigInteger first = tuple.first();
+BigInteger second = tuple.second();
+```
+
+---
+
+### Q: Why does `Value.assetOf(policyId, tokenName)` fail?
+
+**A:** `Value.assetOf()` uses `EqualsData` internally. If `policyId`/`tokenName` are `byte[]` (ByteStringType), you must wrap with `Builtins.bData()` before passing. Otherwise `EqualsData(BData(...), ByteString(...))` fails.
+
+```java
+// WRONG: passing raw byte[] to assetOf
+byte[] policy = ...;
+byte[] token = ...;
+BigInteger amount = value.assetOf(policy, token);  // DeserializationError
+
+// CORRECT: wrap with bData
+BigInteger amount = value.assetOf(Builtins.bData(policy), Builtins.bData(token));
+```
+
+---
+
+### Q: Why does my cross-library call with `BytesData` variables fail?
+
+**A:** When calling a stdlib library method that takes `BytesData`/`MapData` typed parameters, if the caller also has a variable of the same type, the compiler sees matching types and skips conversion. But compiled libraries expect raw Data args at the UPLC boundary.
+
+```java
+// WRONG: BytesData variable matches library parameter type
+PlutusData.BytesData myPolicy = ...;
+long amount = ValuesLib.assetOf(value, myPolicy, tokenName);  // type mismatch at UPLC level
+
+// CORRECT: use PlutusData typed variables
+PlutusData myPolicy = ...;
+long amount = ValuesLib.assetOf(value, myPolicy, tokenName);
+```
+
+---
+
+### Q: Why does `@Param PlutusData.BytesData` cause issues?
+
+**A:** `@Param` values are ALWAYS raw Data at runtime, regardless of the declared type. Using `PlutusData.BytesData` tells the compiler the value is already a ByteString, causing double-wrapping and incorrect cross-library calls.
+
+```java
+// WRONG
+@Param PlutusData.BytesData myPolicyId;
+
+// CORRECT — always use PlutusData for @Param
+@Param PlutusData myPolicyId;
 ```
 
 ---

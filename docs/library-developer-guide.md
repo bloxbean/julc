@@ -31,7 +31,7 @@ This is the primary and recommended approach. You write normal-looking Java stat
 
 ### 2.1 The `@OnchainLibrary` Annotation
 
-The `@OnchainLibrary` annotation (defined in `julc-onchain-api`) marks a class whose static methods can be called from `@Validator` or `@MintingPolicy` classes and from other `@OnchainLibrary` classes.
+The `@OnchainLibrary` annotation (defined in `julc-onchain-api`) marks a class whose static methods can be called from `@SpendingValidator` (or other validator annotation) classes and from other `@OnchainLibrary` classes.
 
 ```java
 package com.bloxbean.cardano.julc.onchain.annotation;
@@ -54,11 +54,11 @@ A library class must:
 Here is `MathLib`, the simplest real library in the codebase:
 
 ```java
-package com.bloxbean.cardano.julc.stdlib.onchain;
+package com.bloxbean.cardano.julc.stdlib.lib;
 
 import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.onchain.annotation.OnchainLibrary;
-import com.bloxbean.cardano.julc.onchain.stdlib.Builtins;
+import com.bloxbean.cardano.julc.stdlib.Builtins;
 
 @OnchainLibrary
 public class MathLib {
@@ -111,7 +111,7 @@ public class MathLib {
 }
 ```
 
-**Source:** `julc-stdlib/src/main/java/com/bloxbean/cardano/julc/stdlib/onchain/MathLib.java`
+**Source:** `julc-stdlib/src/main/java/com/bloxbean/cardano/julc/stdlib/lib/MathLib.java`
 
 Key observations:
 - Pure functions, no state.
@@ -187,7 +187,7 @@ public class CryptoLib {
 }
 ```
 
-**Source:** `julc-stdlib/src/main/java/com/bloxbean/cardano/julc/stdlib/onchain/CryptoLib.java`
+**Source:** `julc-stdlib/src/main/java/com/bloxbean/cardano/julc/stdlib/lib/CryptoLib.java`
 
 ### 2.4 Complete Example: A Custom `TokenUtils` Library
 
@@ -198,7 +198,7 @@ package com.example.myproject;
 
 import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.onchain.annotation.OnchainLibrary;
-import com.bloxbean.cardano.julc.onchain.stdlib.Builtins;
+import com.bloxbean.cardano.julc.stdlib.Builtins;
 
 @OnchainLibrary
 public class TokenUtils {
@@ -261,9 +261,9 @@ A validator using this library:
 package com.example.myproject;
 
 import java.math.BigInteger;
-import com.bloxbean.cardano.julc.onchain.stdlib.Builtins;
+import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-@Validator
+@SpendingValidator
 class TokenGateValidator {
     @Entrypoint
     static boolean validate(BigInteger redeemer, PlutusData ctx) {
@@ -336,7 +336,7 @@ public static boolean contains(PlutusData list, PlutusData target) {
 }
 ```
 
-**Source:** `julc-stdlib/src/main/java/com/bloxbean/cardano/julc/stdlib/onchain/ListsLib.java`
+**Source:** `julc-stdlib/src/main/java/com/bloxbean/cardano/julc/stdlib/lib/ListsLib.java`
 
 ### 2.6 Limitations
 
@@ -375,12 +375,16 @@ public static PlutusData flatten(PlutusData value) {
 }
 ```
 
-**Source:** `julc-stdlib/src/main/java/com/bloxbean/cardano/julc/stdlib/onchain/ValuesLib.java` (line 213)
+**Source:** `julc-stdlib/src/main/java/com/bloxbean/cardano/julc/stdlib/lib/ValuesLib.java` (line 213)
 
 Cross-library calls work as long as:
 1. The called library is also annotated with `@OnchainLibrary`.
 2. The called library's source is discoverable (either in the same project, or bundled via `META-INF/plutus-sources/` in a JAR dependency).
 3. The import statement (or same-package reference) is present so the resolver can find the dependency.
+
+> **Cross-Library BytesData Param Bug**: When calling a stdlib library method that takes `BytesData`/`MapData` typed parameters from user code, the compiler may skip Data encoding at the call boundary if the caller has a variable of the same type. **Workaround**: Pass `PlutusData` typed variables (not `BytesData`/`MapData`) when calling across library boundaries. See [Troubleshooting](troubleshooting.md) for details.
+
+> **@NewType records in library parameters**: `@NewType` records resolve to their underlying primitive type at compile time. When accepting `@NewType` parameters in library methods, the parameter will be the underlying type (e.g., `byte[]` for a `@NewType` wrapping `byte[]`).
 
 The `LibrarySourceResolver` handles transitive resolution: if `ValuesLib` calls `ListsLib.reverse`, and `ListsLib` calls `Builtins.headList`, all three are automatically included.
 
@@ -429,15 +433,15 @@ This manifest enables reliable source discovery from both file-system directorie
 **Example from the standard library (`julc-stdlib`):**
 
 ```
-com/bloxbean/cardano/julc/stdlib/onchain/MapLib.java
-com/bloxbean/cardano/julc/stdlib/onchain/MathLib.java
-com/bloxbean/cardano/julc/stdlib/onchain/IntervalLib.java
-com/bloxbean/cardano/julc/stdlib/onchain/CryptoLib.java
-com/bloxbean/cardano/julc/stdlib/onchain/ByteStringLib.java
-com/bloxbean/cardano/julc/stdlib/onchain/BitwiseLib.java
-com/bloxbean/cardano/julc/stdlib/onchain/ContextsLib.java
-com/bloxbean/cardano/julc/stdlib/onchain/ValuesLib.java
-com/bloxbean/cardano/julc/stdlib/onchain/ListsLib.java
+com/bloxbean/cardano/julc/stdlib/lib/MapLib.java
+com/bloxbean/cardano/julc/stdlib/lib/MathLib.java
+com/bloxbean/cardano/julc/stdlib/lib/IntervalLib.java
+com/bloxbean/cardano/julc/stdlib/lib/CryptoLib.java
+com/bloxbean/cardano/julc/stdlib/lib/ByteStringLib.java
+com/bloxbean/cardano/julc/stdlib/lib/BitwiseLib.java
+com/bloxbean/cardano/julc/stdlib/lib/ContextsLib.java
+com/bloxbean/cardano/julc/stdlib/lib/ValuesLib.java
+com/bloxbean/cardano/julc/stdlib/lib/ListsLib.java
 ```
 
 ### 3.3 Auto-Discovery from Classpath
@@ -513,7 +517,7 @@ class TokenUtilsTest {
         var libSource = """
             import com.bloxbean.cardano.julc.core.PlutusData;
             import com.bloxbean.cardano.julc.onchain.annotation.OnchainLibrary;
-            import com.bloxbean.cardano.julc.onchain.stdlib.Builtins;
+            import com.bloxbean.cardano.julc.stdlib.Builtins;
 
             @OnchainLibrary
             public class TokenUtils {
@@ -531,7 +535,7 @@ class TokenUtilsTest {
         var validatorSource = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(BigInteger redeemer, BigInteger ctx) {

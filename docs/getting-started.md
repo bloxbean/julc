@@ -1,42 +1,64 @@
-# Getting Started with julc
+# Getting Started with JuLC
 
 Write Cardano smart contracts in Java and compile them to Plutus V3 UPLC.
 
-## Prerequisites
+JuLC compiles a safe subset of Java to Untyped Plutus Lambda Calculus (UPLC), the
+on-chain execution language of the Cardano blockchain. You write validators as
+ordinary Java classes with records, sealed interfaces, and switch expressions. The
+compiler turns them into efficient Plutus scripts that run on the Cardano CEK
+machine.
 
-- **Java 25** (GraalVM recommended)
-- **Gradle 9+**
-- Familiarity with Cardano's eUTxO model
+---
 
-## Project Setup
+## 1. Prerequisites
 
-Add the julc modules to your `build.gradle`:
+- **Java 24+** (GraalVM recommended for best performance)
+- **Gradle 9+** (or Maven 3.9+)
+- Familiarity with Cardano's eUTxO model and the concept of validators, datums,
+  and redeemers
+
+---
+
+## 2. Project Setup
+
+### Gradle (annotation processor -- primary approach)
 
 ```groovy
+plugins {
+    id 'java'
+}
+
 repositories {
     mavenCentral()
     mavenLocal()
 }
 
 dependencies {
-    // Core compiler + stdlib
-    implementation 'com.bloxbean.cardano:julc-compiler:0.1.0-SNAPSHOT'
+    // Core: stdlib + ledger types + annotations
     implementation 'com.bloxbean.cardano:julc-stdlib:0.1.0-SNAPSHOT'
+    implementation 'com.bloxbean.cardano:julc-ledger-api:0.1.0-SNAPSHOT'
 
-    // VM for local evaluation (test only)
+    // Annotation processor -- compiles validators during javac
+    annotationProcessor 'com.bloxbean.cardano:julc-annotation-processor:0.1.0-SNAPSHOT'
+
+    // Runtime -- load pre-compiled scripts from classpath
+    implementation 'com.bloxbean.cardano:julc-cardano-client-lib:0.1.0-SNAPSHOT'
+    implementation 'com.bloxbean.cardano:cardano-client-lib:0.7.1'
+
+    // Test: VM for local evaluation
     testImplementation 'com.bloxbean.cardano:julc-testkit:0.1.0-SNAPSHOT'
     testImplementation 'com.bloxbean.cardano:julc-vm:0.1.0-SNAPSHOT'
     testRuntimeOnly 'com.bloxbean.cardano:julc-vm-scalus:0.1.0-SNAPSHOT'
-
-    // cardano-client-lib integration (for on-chain deployment)
-    implementation 'com.bloxbean.cardano:julc-cardano-client-lib:0.1.0-SNAPSHOT'
-    implementation 'com.bloxbean.cardano:cardano-client-lib:0.7.1'
 }
-```
 
-Enable preview features (required for Java 25):
+java {
+    sourceCompatibility = JavaVersion.VERSION_24
+    targetCompatibility = JavaVersion.VERSION_24
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(24)
+    }
+}
 
-```groovy
 tasks.withType(JavaCompile).configureEach {
     options.compilerArgs.addAll(['--enable-preview'])
 }
@@ -46,496 +68,23 @@ tasks.withType(Test).configureEach {
 }
 ```
 
-## Conway Validator Types
-
-JuLC supports all six Plutus V3 (Conway era) validator types:
-
-| Annotation | Purpose | Parameters |
-|------------|---------|------------|
-| `@SpendingValidator` | Guards spending UTxOs from a script address | `(datum, redeemer, scriptContext)` |
-| `@MintingValidator` | Controls minting/burning of native tokens | `(redeemer, scriptContext)` |
-| `@WithdrawValidator` | Authorizes staking reward withdrawals | `(redeemer, scriptContext)` |
-| `@CertifyingValidator` | Authorizes delegation certificates | `(redeemer, scriptContext)` |
-| `@VotingValidator` | Authorizes governance votes (DRep) | `(redeemer, scriptContext)` |
-| `@ProposingValidator` | Authorizes governance proposals | `(redeemer, scriptContext)` |
-
-> **Deprecation note**: The old `@Validator` and `@MintingPolicy` annotations still work but are deprecated. Use `@SpendingValidator` and `@MintingValidator` for new code.
-
-## Writing a Spending Validator
-
-A spending validator locks ADA at a script address and controls who can spend it.
-
-```java
-@SpendingValidator
-class VestingValidator {
-    record VestingDatum(PlutusData beneficiary, BigInteger deadline) {}
-
-    @Entrypoint
-    static boolean validate(VestingDatum datum, PlutusData redeemer, PlutusData ctx) {
-        PlutusData txInfo = ContextsLib.getTxInfo(ctx);
-        return ContextsLib.signedBy(txInfo, datum.beneficiary());
-    }
-}
-```
-
-Key annotations:
-- **`@SpendingValidator`** marks the class as a spending validator
-- **`@Entrypoint`** marks the validation function (must be `static`, return `boolean`)
-- Parameters: `(datum, redeemer, scriptContext)` for spending, `(redeemer, scriptContext)` for 2-param
-
-### Record Types as Datum
-
-Java records compile to Plutus Data constructor types. Field access (`datum.beneficiary()`) compiles to Data navigation:
-
-```
-HeadList(TailList^n(SndPair(UnConstrData(data))))
-```
-
-Where `n` is the zero-based field index. Fields decode automatically based on type:
-- `BigInteger` fields → `UnIData`
-- `byte[]` fields → `UnBData`
-- `PlutusData` fields → pass-through (no unwrap)
-
-## Writing a Minting Validator
-
-```java
-@MintingValidator
-class AuthorizedMinting {
-    @Entrypoint
-    static boolean validate(PlutusData redeemer, PlutusData ctx) {
-        PlutusData txInfo = ContextsLib.getTxInfo(ctx);
-        return ContextsLib.signedBy(txInfo, redeemer);
-    }
-}
-```
-
-Minting validators always take 2 parameters: `(redeemer, scriptContext)`.
-
-## Compiling
-
-```java
-import com.bloxbean.cardano.julc.compiler.JulcCompiler;
-import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
-
-// Create compiler with stdlib support
-var stdlib = StdlibRegistry.defaultRegistry();
-var compiler = new JulcCompiler(stdlib::lookup);
-
-// Compile Java source to UPLC Program
-var result = compiler.compile(javaSource);
-if (result.hasErrors()) {
-    System.err.println("Errors: " + result.diagnostics());
-} else {
-    Program program = result.program();
-    // program is a Plutus V3 UPLC program ready for serialization
-
-    // Check script size (16 KB on-chain limit)
-    System.out.println("Script size: " + result.scriptSizeFormatted());
-}
-```
-
-Without stdlib (for simple validators that don't call library functions):
-
-```java
-var compiler = new JulcCompiler();
-var result = compiler.compile(javaSource);
-```
-
-## Testing Validators
-
-The `julc-testkit` module provides test utilities for evaluating validators locally without a blockchain.
-
-### Basic Evaluation
-
-```java
-import com.bloxbean.cardano.julc.testkit.ValidatorTest;
-import com.bloxbean.cardano.julc.core.PlutusData;
-
-// Compile and evaluate in one step
-String source = """
-    @SpendingValidator
-    class AlwaysTrue {
-        @Entrypoint
-        static boolean validate(PlutusData redeemer, PlutusData ctx) {
-            return true;
-        }
-    }
-    """;
-
-// Build a minimal ScriptContext
-PlutusData ctx = PlutusData.constr(0,
-    PlutusData.integer(0),  // txInfo (simplified)
-    PlutusData.integer(0),  // redeemer
-    PlutusData.integer(0)   // scriptInfo
-);
-
-EvalResult result = ValidatorTest.evaluate(source, ctx);
-assertTrue(result.isSuccess());
-```
-
-### With Stdlib
-
-```java
-import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
-
-var stdlib = StdlibRegistry.defaultRegistry();
-var program = ValidatorTest.compile(source, stdlib::lookup);
-var result = ValidatorTest.evaluate(program, ctx);
-```
-
-### Assertion Helpers
-
-```java
-// Assert validator accepts
-ValidatorTest.assertValidates(program, ctx);
-
-// Assert validator rejects
-ValidatorTest.assertRejects(program, ctx);
-```
-
-### Budget Assertions
-
-```java
-import com.bloxbean.cardano.julc.testkit.BudgetAssertions;
-
-var result = ValidatorTest.evaluate(program, ctx);
-
-// Check that execution budget is within limits
-BudgetAssertions.assertBudgetUnder(result, 1_000_000L, 500_000L);
-
-// Check trace messages
-BudgetAssertions.assertTrace(result, "expected message");
-```
-
-### Building ScriptContext for Tests
-
-V3 ScriptContext structure (as Plutus Data):
-
-```
-ScriptContext = Constr(0, [txInfo, redeemer, scriptInfo])
-
-TxInfo = Constr(0, [
-    inputs,           // field 0
-    referenceInputs,  // field 1
-    outputs,          // field 2
-    fee,              // field 3
-    mint,             // field 4
-    certs,            // field 5
-    withdrawals,      // field 6
-    validRange,       // field 7
-    signatories,      // field 8  <-- list of PubKeyHash
-    redeemers,        // field 9
-    datums,           // field 10
-    id,               // field 11
-    votes,            // field 12
-    proposalProcedures, // field 13
-    currentTreasury,  // field 14
-    treasuryDonation  // field 15
-])
-
-// Spending ScriptInfo
-ScriptInfo = Constr(1, [txOutRef, optionalDatum])
-
-// Minting ScriptInfo
-ScriptInfo = Constr(0, [policyId])
-```
-
-Example building a minting context with signatories:
-
-```java
-var pkh = new byte[]{1, 2, 3, ...};  // 28-byte PubKeyHash
-var sigsList = PlutusData.list(PlutusData.bytes(pkh));
-var zero = PlutusData.integer(0);
-
-var txInfo = PlutusData.constr(0,
-    zero, zero, zero, zero, zero, zero, zero, zero,
-    sigsList,  // signatories at index 8
-    zero, zero, zero, zero, zero, zero, zero);
-
-var scriptInfo = PlutusData.constr(0, PlutusData.bytes(new byte[28]));
-var ctx = PlutusData.constr(0, txInfo, PlutusData.bytes(pkh), scriptInfo);
-```
-
-## Standard Library Reference
-
-The standard library provides pre-compiled UPLC functions callable from validator source code.
-
-### ContextsLib
-
-| Method | Description |
-|--------|-------------|
-| `ContextsLib.getTxInfo(ctx)` | Extract TxInfo from ScriptContext (field 0) |
-| `ContextsLib.getRedeemer(ctx)` | Extract redeemer from ScriptContext (field 1) |
-| `ContextsLib.signedBy(txInfo, pkh)` | Check if txInfo's signatories contain the given PubKeyHash |
-| `ContextsLib.getSpendingDatum(ctx)` | Extract Optional datum from spending ScriptInfo |
-
-### ListsLib
-
-| Method | Description |
-|--------|-------------|
-| `ListsLib.find(list, elem)` | Check if element exists in a Data list (equality via SerialiseData) |
-| `ListsLib.length(list)` | Count elements in a Data list |
-| `ListsLib.isEmpty(list)` | Check if a Data list is empty |
-
-### ValuesLib
-
-| Method | Description |
-|--------|-------------|
-| `ValuesLib.valueOf(value, cs, tn)` | Get quantity of a specific token from a Value |
-| `ValuesLib.geq(a, b)` | Check if Value `a` >= Value `b` (ADA only) |
-| `ValuesLib.assetOf(value, cs, tn)` | Get asset amount from a nested Value structure |
-
-### CryptoLib
-
-| Method | Description |
-|--------|-------------|
-| `CryptoLib.sha2_256(data)` | SHA2-256 hash |
-| `CryptoLib.sha3_256(data)` | SHA3-256 hash |
-| `CryptoLib.blake2b_256(data)` | Blake2b-256 hash |
-
-### IntervalLib
-
-| Method | Description |
-|--------|-------------|
-| `IntervalLib.contains(interval, point)` | Check if a time interval contains a given point |
-
-## Deploying to a Network
-
-### Converting to PlutusV3Script
-
-Use `JulcScriptAdapter` to convert a compiled Program to a cardano-client-lib `PlutusV3Script`:
-
-```java
-import com.bloxbean.cardano.julc.clientlib.JulcScriptAdapter;
-import com.bloxbean.cardano.client.plutus.spec.PlutusV3Script;
-
-Program program = compiler.compile(source).program();
-PlutusV3Script script = JulcScriptAdapter.fromProgram(program);
-
-// Get the script hash (policy ID for minting policies)
-String scriptHash = JulcScriptAdapter.scriptHash(program);
-```
-
-### Locking ADA to a Script Address
-
-```java
-import com.bloxbean.cardano.client.address.AddressProvider;
-import com.bloxbean.cardano.client.common.model.Networks;
-import com.bloxbean.cardano.client.quicktx.Tx;
-import com.bloxbean.cardano.client.quicktx.QuickTxBuilder;
-import com.bloxbean.cardano.client.api.model.Amount;
-import com.bloxbean.cardano.client.function.helper.SignerProviders;
-import com.bloxbean.cardano.client.plutus.spec.BigIntPlutusData;
-
-// Derive the script address
-String scriptAddress = AddressProvider
-    .getEntAddress(script, Networks.testnet())
-    .toBech32();
-
-// Build and submit the lock transaction
-var datum = BigIntPlutusData.of(42);
-var lockTx = new Tx()
-    .payToContract(scriptAddress, Amount.ada(5), datum)
-    .from(account.baseAddress());
-
-var result = quickTxBuilder.compose(lockTx)
-    .withSigner(SignerProviders.signerFrom(account))
-    .completeAndWait();
-```
-
-### Unlocking from a Script Address
-
-```java
-import com.bloxbean.cardano.client.quicktx.ScriptTx;
-
-// Find the script UTXO
-var utxos = backendService.getUtxoService()
-    .getUtxos(scriptAddress, 100, 1);
-var scriptUtxo = utxos.getValue().get(0);
-
-// Build and submit the unlock transaction
-var redeemer = BigIntPlutusData.of(0);
-var unlockTx = new ScriptTx()
-    .collectFrom(scriptUtxo, redeemer)
-    .payToAddress(account.baseAddress(), Amount.ada(4))
-    .attachSpendingValidator(script);
-
-var result = quickTxBuilder.compose(unlockTx)
-    .withSigner(SignerProviders.signerFrom(account))
-    .feePayer(account.baseAddress())
-    .collateralPayer(account.baseAddress())
-    .completeAndWait();
-```
-
-### Minting Tokens
-
-```java
-import com.bloxbean.cardano.client.transaction.spec.Asset;
-
-var asset = new Asset("MyToken", BigInteger.valueOf(100));
-var redeemer = BigIntPlutusData.of(0);
-
-var mintTx = new ScriptTx()
-    .mintAsset(script, asset, redeemer);
-
-var result = quickTxBuilder.compose(mintTx)
-    .withSigner(SignerProviders.signerFrom(account))
-    .feePayer(account.baseAddress())
-    .collateralPayer(account.baseAddress())
-    .completeAndWait();
-```
-
-### PlutusData Conversion
-
-Convert between julc's `PlutusData` and cardano-client-lib's `PlutusData`:
-
-```java
-import com.bloxbean.cardano.julc.clientlib.PlutusDataAdapter;
-
-// julc → cardano-client-lib
-var ourData = PlutusData.constr(0, PlutusData.integer(42));
-var clientData = PlutusDataAdapter.toClientLib(ourData);
-
-// cardano-client-lib → julc
-var backToOurs = PlutusDataAdapter.fromClientLib(clientData);
-```
-
-## File-Based Validator Development (Gradle Plugin)
-
-For the best development experience, write validators as **real Java files** with full IDE support (autocomplete, type checking, syntax highlighting).
-
-### Setup
-
-Apply the Plutus Gradle plugin in your `build.gradle`:
-
-```groovy
-plugins {
-    id 'java'
-    id 'com.bloxbean.cardano.julc' version '0.1.0-SNAPSHOT'
-}
-
-dependencies {
-    // On-chain API for IDE support (annotations + stdlib stubs)
-    compileOnly 'com.bloxbean.cardano:julc-onchain-api:0.1.0-SNAPSHOT'
-}
-```
-
-### Writing Validators as Java Files
-
-Create validator source files in `src/main/plutus/`:
-
-```java
-// src/main/plutus/VestingValidator.java
-package com.example.contracts;
-
-import com.bloxbean.cardano.julc.onchain.annotation.Validator;
-import com.bloxbean.cardano.julc.onchain.annotation.Entrypoint;
-import com.bloxbean.cardano.julc.stdlib.lib.ContextsLib;
-import com.bloxbean.cardano.julc.core.PlutusData;
-
-@SpendingValidator
-class VestingValidator {
-    @Entrypoint
-    static boolean validate(PlutusData redeemer, PlutusData ctx) {
-        PlutusData txInfo = ContextsLib.getTxInfo(ctx);
-        return ContextsLib.signedBy(txInfo, redeemer);
-    }
-}
-```
-
-Your IDE provides autocomplete on `ContextsLib.`, type checking on `PlutusData`, and annotation recognition.
-
-### Building
-
-```
-$ gradle build
-> Task :compilePlutus
-Compiled VestingValidator.java → VestingValidator.json (hash: 19b1de27...)
-
-BUILD SUCCESSFUL
-```
-
-### Build Output
-
-Each compiled validator produces a JSON file in `build/plutus/`:
-
-```json
-{
-  "type": "PlutusScriptV3",
-  "description": "VestingValidator",
-  "cborHex": "4d4c010100253335...",
-  "hash": "19b1de272327e28670d69f6820c0298d19b05497e04d78571f7e6bc3"
-}
-```
-
-### Loading Compiled Scripts in Off-Chain Code
-
-```java
-String json = Files.readString(Path.of("build/plutus/VestingValidator.json"));
-// Parse JSON and extract cborHex
-PlutusV3Script script = PlutusV3Script.builder()
-    .cborHex(cborHex)
-    .build();
-```
-
-### Configuration
-
-The plugin supports optional configuration:
-
-```groovy
-plutus {
-    sourceDir = file('src/main/plutus')     // default
-    outputDir = file("${buildDir}/plutus")   // default
-}
-```
-
-## Annotation Processor (Recommended)
-
-The annotation processor lets you write validators as **normal Java classes** in `src/main/java/` with full IDE support. Validators are compiled to UPLC during `javac` and loaded from the classpath at runtime. Works with both Gradle and Maven.
-
-### Gradle Setup
-
-```groovy
-plugins {
-    id 'java'
-}
-
-repositories {
-    mavenCentral()
-    mavenLocal()
-}
-
-dependencies {
-    // On-chain API — annotations, ledger types, and stdlib stubs for IDE support
-    implementation 'com.bloxbean.cardano:julc-onchain-api:0.1.0-SNAPSHOT'
-
-    // Annotation processor — compiles validators during javac
-    annotationProcessor 'com.bloxbean.cardano:julc-annotation-processor:0.1.0-SNAPSHOT'
-
-    // Runtime — load pre-compiled scripts from classpath
-    implementation 'com.bloxbean.cardano:julc-annotation-processor:0.1.0-SNAPSHOT'
-
-    // cardano-client-lib — for off-chain transaction building
-    implementation 'com.bloxbean.cardano:cardano-client-lib:0.7.1'
-}
-
-tasks.withType(JavaCompile).configureEach {
-    options.compilerArgs.addAll(['--enable-preview'])
-}
-```
-
-### Maven Setup
+### Maven
 
 ```xml
 <dependencies>
     <dependency>
         <groupId>com.bloxbean.cardano</groupId>
-        <artifactId>julc-onchain-api</artifactId>
+        <artifactId>julc-stdlib</artifactId>
         <version>0.1.0-SNAPSHOT</version>
     </dependency>
     <dependency>
         <groupId>com.bloxbean.cardano</groupId>
-        <artifactId>julc-annotation-processor</artifactId>
+        <artifactId>julc-ledger-api</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </dependency>
+    <dependency>
+        <groupId>com.bloxbean.cardano</groupId>
+        <artifactId>julc-cardano-client-lib</artifactId>
         <version>0.1.0-SNAPSHOT</version>
     </dependency>
     <dependency>
@@ -569,111 +118,979 @@ tasks.withType(JavaCompile).configureEach {
 </build>
 ```
 
-### Writing a Validator
+### Enable preview features
 
-Write your validator as a normal Java class in `src/main/java/`. You get full IDE support — autocomplete, type checking, refactoring, and navigation all work.
+Java preview features (sealed interfaces, pattern matching, record patterns) are
+required. Both the `--enable-preview` compiler flag and the test JVM flag must be
+set, as shown in the Gradle and Maven examples above.
+
+---
+
+## 3. Your First Validator
+
+### 3.1 Spending Validator
+
+A spending validator guards UTxOs locked at a script address. It receives a datum
+(the data stored with the UTxO), a redeemer (the data the spender provides), and
+the full `ScriptContext`.
 
 ```java
-// src/main/java/com/example/VestingValidator.java
 package com.example;
 
-import com.bloxbean.cardano.julc.onchain.annotation.SpendingValidator;
-import com.bloxbean.cardano.julc.onchain.annotation.Entrypoint;
-import com.bloxbean.cardano.julc.onchain.ledger.ScriptContext;
-import com.bloxbean.cardano.julc.onchain.ledger.TxInfo;
+import com.bloxbean.cardano.julc.stdlib.annotation.SpendingValidator;
+import com.bloxbean.cardano.julc.stdlib.annotation.Entrypoint;
+import com.bloxbean.cardano.julc.ledger.ScriptContext;
+import com.bloxbean.cardano.julc.ledger.TxInfo;
+import com.bloxbean.cardano.julc.ledger.PubKeyHash;
 import com.bloxbean.cardano.julc.core.PlutusData;
 import java.math.BigInteger;
 
 @SpendingValidator
 public class VestingValidator {
+
     record VestingDatum(byte[] beneficiary, BigInteger deadline) {}
 
     @Entrypoint
     static boolean validate(VestingDatum datum, PlutusData redeemer, ScriptContext ctx) {
         TxInfo txInfo = ctx.txInfo();
-        boolean hasSigner = txInfo.signatories().contains(datum.beneficiary());
-        return hasSigner && datum.deadline() > 0;
+
+        // Check that the beneficiary signed the transaction
+        boolean signed = txInfo.signatories().contains(datum.beneficiary());
+
+        // Check that the deadline has passed (lower bound of valid range > deadline)
+        boolean pastDeadline = datum.deadline().compareTo(BigInteger.ZERO) > 0;
+
+        return signed && pastDeadline;
     }
 }
 ```
 
-For a minting validator, use `@MintingValidator` instead of `@SpendingValidator`:
+Key points:
+
+- `@SpendingValidator` marks the class as a spending validator.
+- `@Entrypoint` marks the single validation method. It must be `static` and return
+  `boolean`.
+- The method signature is `(DatumType, RedeemerType, ScriptContext)` for spending
+  validators.
+- `ctx.txInfo()` gives you typed access to all 16 fields of the V3 `TxInfo`.
+- `txInfo.signatories()` returns a list of `PubKeyHash` that can be iterated or
+  searched with `.contains()`.
+- Records like `VestingDatum` compile to Plutus `ConstrData`. Field access
+  (`.beneficiary()`, `.deadline()`) compiles to efficient Data navigation with
+  automatic type unwrapping (`UnBData` for `byte[]`, `UnIData` for `BigInteger`).
+
+### 3.2 Minting Validator with Sealed Interface Redeemer
+
+A minting validator controls which tokens can be minted or burned under a given
+policy. It receives a redeemer and the `ScriptContext`.
 
 ```java
 package com.example;
 
-import com.bloxbean.cardano.julc.onchain.annotation.MintingValidator;
-import com.bloxbean.cardano.julc.onchain.annotation.Entrypoint;
-import com.bloxbean.cardano.julc.onchain.ledger.ScriptContext;
-import com.bloxbean.cardano.julc.onchain.ledger.TxInfo;
+import com.bloxbean.cardano.julc.stdlib.annotation.MintingValidator;
+import com.bloxbean.cardano.julc.stdlib.annotation.Entrypoint;
+import com.bloxbean.cardano.julc.ledger.ScriptContext;
+import com.bloxbean.cardano.julc.ledger.TxInfo;
 import com.bloxbean.cardano.julc.core.PlutusData;
+import java.math.BigInteger;
 
 @MintingValidator
-public class AuthorizedMinting {
+public class TokenPolicy {
+
+    sealed interface Action {
+        record Mint(BigInteger amount) implements Action {}
+        record Burn() implements Action {}
+    }
+
     @Entrypoint
-    static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+    static boolean validate(Action redeemer, ScriptContext ctx) {
         TxInfo txInfo = ctx.txInfo();
-        return txInfo.signatories().contains(redeemer);
+
+        return switch (redeemer) {
+            case Action.Mint m -> {
+                // Only mint positive amounts, and only if authorized
+                boolean positive = m.amount().compareTo(BigInteger.ZERO) > 0;
+                boolean signed = txInfo.signatories().contains(
+                    new byte[]{/* authority pkh */});
+                yield positive && signed;
+            }
+            case Action.Burn b -> {
+                // Anyone can burn their own tokens
+                yield true;
+            }
+        };
     }
 }
 ```
 
-### What Happens at Compile Time
+The sealed interface `Action` compiles to a Plutus `SumType`. The `switch`
+expression with pattern matching compiles to Data tag inspection with automatic
+field extraction. The compiler checks exhaustiveness -- every case of the sealed
+interface must be handled.
 
-When you run `javac` (via `gradle build` or `mvn compile`), the annotation processor:
+---
 
-1. Finds all classes annotated with `@SpendingValidator`, `@MintingValidator`, or other validator annotations
-2. Reads the source file via the compiler's `Trees` API
-3. Compiles the validator to a UPLC program using `JulcCompiler`
-4. FLAT-encodes and double-CBOR-wraps the program
-5. Writes the result to `META-INF/plutus/<ClassName>.plutus.json` in the class output directory
+## 4. Conway Validator Types
 
-The JSON file ends up on the classpath alongside the compiled `.class` files:
+JuLC supports all six Plutus V3 (Conway era) validator types through purpose-
+specific annotations:
 
+| Annotation | Purpose | Entrypoint Parameters |
+|---|---|---|
+| `@SpendingValidator` | Guards spending UTxOs from a script address | `(datum, redeemer, ctx)` or `(redeemer, ctx)` |
+| `@MintingValidator` | Controls minting/burning of native tokens | `(redeemer, ctx)` |
+| `@WithdrawValidator` | Authorizes staking reward withdrawals | `(redeemer, ctx)` |
+| `@CertifyingValidator` | Authorizes delegation certificate operations | `(redeemer, ctx)` |
+| `@VotingValidator` | Authorizes governance votes (DRep) | `(redeemer, ctx)` |
+| `@ProposingValidator` | Authorizes governance proposals | `(redeemer, ctx)` |
+
+All annotations live in `com.bloxbean.cardano.julc.stdlib.annotation`.
+
+> **Deprecation note**: The old `@Validator` and `@MintingPolicy` annotations
+> still compile but are deprecated. Use `@SpendingValidator` and
+> `@MintingValidator` for all new code.
+
+---
+
+## 5. Data Modeling
+
+### 5.1 Records
+
+Java records compile to Plutus `ConstrData` types. Field access compiles to
+efficient Data navigation.
+
+```java
+record Payment(byte[] recipient, BigInteger amount) {}
+
+// Construction: compiles to ConstrData(0, [BData(recipient), IData(amount)])
+var p = new Payment(recipientBytes, BigInteger.valueOf(1000000));
+
+// Field access: compiles to HeadList/TailList chains + type unwrapping
+byte[] who = p.recipient();     // UnBData(HeadList(SndPair(UnConstrData(p))))
+BigInteger how = p.amount();    // UnIData(HeadList(TailList(SndPair(UnConstrData(p)))))
 ```
-build/classes/java/main/
-    com/example/VestingValidator.class
-    META-INF/plutus/VestingValidator.plutus.json
+
+Records can be nested:
+
+```java
+record Proposal(Payment payment, BigInteger votesNeeded) {}
+
+// Access nested fields
+byte[] target = proposal.payment().recipient();
 ```
 
-The JSON file contains the compiled script in text envelope format:
+### 5.2 Sealed Interfaces
 
-```json
-{
-  "type": "PlutusScriptV3",
-  "description": "VestingValidator",
-  "cborHex": "590194590191010100...",
-  "hash": "a1b2c3d4e5f6..."
+Sealed interfaces compile to Plutus `SumType` (tagged union). Each permitted
+record variant gets a constructor tag starting from 0.
+
+```java
+sealed interface Shape {
+    record Circle(BigInteger radius) implements Shape {}       // tag 0
+    record Rectangle(BigInteger w, BigInteger h) implements Shape {}  // tag 1
 }
 ```
 
-### Loading Scripts at Runtime
+Use `switch` expressions for exhaustive pattern matching:
 
-Use `JulcScriptLoader` to load pre-compiled scripts from the classpath:
+```java
+BigInteger area = switch (shape) {
+    case Shape.Circle c -> c.radius().multiply(c.radius()).multiply(BigInteger.valueOf(3));
+    case Shape.Rectangle r -> r.w().multiply(r.h());
+};
+```
+
+The compiler checks exhaustiveness: if you omit a case for any variant, you get a
+compile error listing the missing cases.
+
+You can also use `instanceof` for type-checking:
+
+```java
+if (shape instanceof Shape.Circle c) {
+    // c is bound and typed as Circle
+    BigInteger r = c.radius();
+}
+```
+
+### 5.3 @NewType
+
+The `@NewType` annotation creates a zero-cost type alias for a single-field record.
+On-chain, the constructor and `.of()` factory method compile to identity (no
+`ConstrData` wrapping).
+
+```java
+import com.bloxbean.cardano.julc.stdlib.annotation.NewType;
+
+@NewType
+record AssetId(byte[] hash) {}
+
+// AssetId.of(bytes) compiles to identity -- no ConstrData overhead
+AssetId id = AssetId.of(someBytes);
+```
+
+`@NewType` is `@Retention(SOURCE)`, `@Target(TYPE)`. The single field must be one
+of the supported primitive types:
+
+- `byte[]` (compiles to `ByteStringType`)
+- `BigInteger` (compiles to `IntegerType`)
+- `String` (compiles to `TextType`)
+- `boolean` (compiles to `BoolType`)
+
+Multi-field records or unsupported field types produce a compiler error.
+
+### 5.4 Tuple2 and Tuple3
+
+Generic tuples are provided in `com.bloxbean.cardano.julc.core.types`:
+
+```java
+import com.bloxbean.cardano.julc.core.types.Tuple2;
+import com.bloxbean.cardano.julc.core.types.Tuple3;
+
+// Generic type parameters enable auto-unwrap on field access
+Tuple2<BigInteger, byte[]> pair = new Tuple2<>(someInt, someBytes);
+BigInteger first = pair.first();   // auto-generates UnIData
+byte[] second = pair.second();     // auto-generates UnBData
+
+Tuple3<BigInteger, byte[], BigInteger> triple = new Tuple3<>(a, b, c);
+BigInteger third = triple.third(); // auto-generates UnIData
+```
+
+On-chain, tuples compile to `ConstrData(0, [first, second, ...])`. With type
+arguments, field access auto-unwraps based on the generic type (`BigInteger` yields
+`UnIData`, `byte[]` yields `UnBData`).
+
+Raw `Tuple2` or `Tuple3` (without type arguments) defaults to `DataType` for
+backward compatibility -- no auto-unwrap occurs.
+
+**Note**: Tuple2/Tuple3 cannot be used in `switch` expressions because they are
+registered as `RecordType`, not `SumType`. Use `.first()` and `.second()` field
+access instead of pattern matching.
+
+### 5.5 Type.of() Factories
+
+Seven ledger hash types provide `.of(byte[])` factory methods that compile to
+identity on-chain:
+
+| Type | Factory |
+|---|---|
+| `PubKeyHash` | `PubKeyHash.of(bytes)` |
+| `ScriptHash` | `ScriptHash.of(bytes)` |
+| `ValidatorHash` | `ValidatorHash.of(bytes)` |
+| `PolicyId` | `PolicyId.of(bytes)` |
+| `TokenName` | `TokenName.of(bytes)` |
+| `DatumHash` | `DatumHash.of(bytes)` |
+| `TxId` | `TxId.of(bytes)` |
+
+These replace the older `(PubKeyHash)(Object) bytes` cast pattern:
+
+```java
+// Old pattern (still works but ugly)
+PubKeyHash pkh = (PubKeyHash)(Object) beneficiaryBytes;
+
+// New pattern (recommended)
+PubKeyHash pkh = PubKeyHash.of(beneficiaryBytes);
+```
+
+On-chain, `.of()` is identity (the bytes pass through). Off-chain, it delegates to
+the record constructor with validation (e.g., `PubKeyHash` checks for exactly 28
+bytes).
+
+---
+
+## 6. Collections
+
+### 6.1 Lists
+
+Lists (typed as `List<T>` or `JulcList<T>`) support the following instance methods:
+
+| Method | Return Type | Description |
+|---|---|---|
+| `list.isEmpty()` | `boolean` | True if the list has no elements |
+| `list.size()` | `long` | Number of elements |
+| `list.head()` | `T` | First element (error if empty) |
+| `list.tail()` | `List<T>` | All elements except the first |
+| `list.get(index)` | `T` | Element at 0-based index |
+| `list.contains(target)` | `boolean` | True if target is in the list (via EqualsData) |
+| `list.reverse()` | `List<T>` | Reversed copy |
+| `list.concat(other)` | `List<T>` | Concatenation of two lists |
+| `list.take(n)` | `List<T>` | First n elements |
+| `list.drop(n)` | `List<T>` | All elements after the first n |
+| `list.prepend(elem)` | `List<T>` | New list with elem at the front |
+
+The `prepend` method auto-wraps the element: if you prepend a `BigInteger`, it is
+automatically wrapped with `IData`; a `byte[]` is wrapped with `BData`.
+
+```java
+// Iterate a list with for-each
+for (TxOut out : ctx.txInfo().outputs()) {
+    // out is typed as TxOut with full field access
+    Value v = out.value();
+}
+```
+
+### 6.2 Maps
+
+Maps (typed as `Map<K,V>` or `JulcMap<K,V>`) are association lists on-chain. They
+support the following instance methods:
+
+| Method | Return Type | Description |
+|---|---|---|
+| `map.get(key)` | `V` | Value associated with key (or error) |
+| `map.containsKey(key)` | `boolean` | True if key exists |
+| `map.size()` | `long` | Number of entries |
+| `map.isEmpty()` | `boolean` | True if map has no entries |
+| `map.keys()` | `List<K>` | All keys as a list |
+| `map.values()` | `List<V>` | All values as a list |
+| `map.insert(k, v)` | `Map<K,V>` | New map with entry added (shadows existing) |
+| `map.delete(k)` | `Map<K,V>` | New map with key removed |
+
+Internally, `MapType` variables always hold pair lists (not `MapData`-wrapped
+values). The `insert` and `delete` operations return pair lists.
+
+Iterating over a map with `for-each` yields pairs:
+
+```java
+// For-each on a map yields PairType entries with .key() and .value()
+for (var entry : ctx.txInfo().withdrawals()) {
+    Credential cred = entry.key();
+    BigInteger amount = entry.value();
+}
+```
+
+### 6.3 Optional
+
+`Optional<T>` is supported for fields like `TxOut.referenceScript()` and
+`ScriptInfo.SpendingScript.datum()`:
+
+| Method | Description |
+|---|---|
+| `opt.isPresent()` | True if a value is present |
+| `opt.isEmpty()` | True if no value is present |
+| `opt.get()` | The contained value (error if empty) |
+
+On-chain, `Optional` compiles to `Constr(0, [value])` for `Some` and
+`Constr(1, [])` for `None`.
+
+---
+
+## 7. Typed Ledger Access
+
+### 7.1 ScriptContext / TxInfo / TxOut
+
+The Plutus V3 ScriptContext gives typed access to all transaction fields.
+
+**ScriptContext fields:**
+
+| Field | Type | Description |
+|---|---|---|
+| `ctx.txInfo()` | `TxInfo` | The transaction information |
+| `ctx.redeemer()` | `PlutusData` | The redeemer provided by the spender |
+| `ctx.scriptInfo()` | `ScriptInfo` | Information about the executing script |
+
+**TxInfo fields (all 16):**
+
+| Field | Type | Description |
+|---|---|---|
+| `txInfo.inputs()` | `JulcList<TxInInfo>` | Inputs being consumed |
+| `txInfo.referenceInputs()` | `JulcList<TxInInfo>` | Reference inputs (read-only) |
+| `txInfo.outputs()` | `JulcList<TxOut>` | Transaction outputs |
+| `txInfo.fee()` | `BigInteger` | Transaction fee in lovelace |
+| `txInfo.mint()` | `Value` | Minted/burned tokens |
+| `txInfo.certificates()` | `JulcList<TxCert>` | Delegation certificates |
+| `txInfo.withdrawals()` | `JulcMap<Credential, BigInteger>` | Staking withdrawals |
+| `txInfo.validRange()` | `Interval` | Validity time range |
+| `txInfo.signatories()` | `JulcList<PubKeyHash>` | Transaction signers |
+| `txInfo.redeemers()` | `JulcMap<ScriptPurpose, PlutusData>` | All redeemers |
+| `txInfo.datums()` | `JulcMap<DatumHash, PlutusData>` | Datum witness table |
+| `txInfo.id()` | `TxId` | Transaction hash |
+| `txInfo.votes()` | `JulcMap<Voter, JulcMap<GovernanceActionId, Vote>>` | Governance votes |
+| `txInfo.proposalProcedures()` | `JulcList<ProposalProcedure>` | Governance proposals |
+| `txInfo.currentTreasuryAmount()` | `Optional<BigInteger>` | Current treasury |
+| `txInfo.treasuryDonation()` | `Optional<BigInteger>` | Treasury donation |
+
+**TxOut fields:**
+
+| Field | Type | Description |
+|---|---|---|
+| `txOut.address()` | `Address` | Destination address |
+| `txOut.value()` | `Value` | The value carried |
+| `txOut.datum()` | `OutputDatum` | Attached datum (None, Hash, or Inline) |
+| `txOut.referenceScript()` | `Optional<ScriptHash>` | Optional reference script |
+
+### 7.2 Value
+
+A `Value` represents a multi-asset value: `Map<PolicyId, Map<TokenName, BigInteger>>`.
+
+Instance methods available on-chain:
+
+| Method | Return Type | Description |
+|---|---|---|
+| `value.lovelaceOf()` | `BigInteger` | ADA amount (in lovelace) |
+| `value.isEmpty()` | `boolean` | True if value has no entries |
+| `value.assetOf(policy, token)` | `BigInteger` | Amount of a specific token |
+
+**Caveat**: `Value.assetOf()` uses `EqualsData` internally. If you pass `byte[]`
+arguments for policy/token, they must be wrapped with `Builtins.bData()` first.
+Otherwise `EqualsData(BData(...), ByteString(...))` fails at runtime:
+
+```java
+// Correct: wrap byte[] args with bData
+BigInteger amount = value.assetOf(
+    Builtins.bData(policyIdBytes),
+    Builtins.bData(tokenNameBytes));
+
+// Or use ValuesLib.assetOf which handles wrapping for you:
+BigInteger amount = ValuesLib.assetOf(value, policyIdBytes, tokenNameBytes);
+```
+
+### 7.3 ScriptInfo
+
+`ScriptInfo` is a sealed interface describing the currently executing script:
+
+| Variant | Fields | Constructor Tag |
+|---|---|---|
+| `MintingScript` | `policyId: PolicyId` | 0 |
+| `SpendingScript` | `txOutRef: TxOutRef, datum: Optional<PlutusData>` | 1 |
+| `RewardingScript` | `credential: Credential` | 2 |
+| `CertifyingScript` | `index: BigInteger, cert: TxCert` | 3 |
+| `VotingScript` | `voter: Voter` | 4 |
+| `ProposingScript` | `index: BigInteger, procedure: ProposalProcedure` | 5 |
+
+Use switch to dispatch:
+
+```java
+return switch (ctx.scriptInfo()) {
+    case ScriptInfo.MintingScript ms -> handleMint(ms.policyId());
+    case ScriptInfo.SpendingScript ss -> handleSpend(ss.txOutRef());
+    case ScriptInfo.RewardingScript rs -> handleReward(rs.credential());
+    case ScriptInfo.CertifyingScript cs -> handleCert(cs.cert());
+    case ScriptInfo.VotingScript vs -> handleVote(vs.voter());
+    case ScriptInfo.ProposingScript ps -> handlePropose(ps.procedure());
+};
+```
+
+### 7.4 Address and Credential
+
+`Address` is a record with a payment credential and an optional staking credential:
+
+```java
+// Address fields
+Credential paymentCred = address.credential();
+Optional<StakingCredential> stakingCred = address.stakingCredential();
+```
+
+`Credential` is a sealed interface with two variants:
+
+| Variant | Fields | Tag |
+|---|---|---|
+| `PubKeyCredential` | `hash: PubKeyHash` | 0 |
+| `ScriptCredential` | `hash: ScriptHash` | 1 |
+
+```java
+return switch (address.credential()) {
+    case Credential.PubKeyCredential pk -> {
+        byte[] pkh = (byte[])(Object) pk.hash();
+        yield checkSigner(pkh);
+    }
+    case Credential.ScriptCredential sc -> {
+        byte[] sh = (byte[])(Object) sc.hash();
+        yield checkScript(sh);
+    }
+};
+```
+
+---
+
+## 8. Control Flow
+
+### 8.1 If/Else and Ternary
+
+Standard if/else compiles to Plutus `IfThenElse`:
+
+```java
+if (amount.compareTo(BigInteger.ZERO) > 0) {
+    return true;
+} else {
+    return false;
+}
+
+// Ternary also works
+boolean valid = amount.compareTo(BigInteger.ZERO) > 0 ? true : false;
+```
+
+Both branches must be present -- an `if` without `else` is supported only as a
+statement (not an expression).
+
+### 8.2 Switch Expressions
+
+Switch expressions on sealed interfaces compile to Data tag inspection with
+automatic field extraction:
+
+```java
+BigInteger result = switch (action) {
+    case Action.Mint m -> m.amount();
+    case Action.Burn b -> BigInteger.ZERO;
+};
+```
+
+The compiler checks exhaustiveness: if you omit a case, you get a compile error
+listing the missing variants.
+
+**Known limitation**: The `default ->` branch body is never compiled. Use explicit
+cases for all variants instead.
+
+### 8.3 instanceof Pattern Matching
+
+```java
+if (datum instanceof OutputDatum.OutputDatumInline inline) {
+    PlutusData d = inline.datum();
+    // use d
+}
+```
+
+### 8.4 For-Each Loops
+
+For-each loops over lists are desugared into tail-recursive functions with
+accumulators. The loop body can update one or more accumulator variables.
+
+```java
+// Single accumulator
+long count = 0;
+for (TxOut out : ctx.txInfo().outputs()) {
+    count = count + 1;
+}
+
+// Multi-accumulator
+long total = 0;
+boolean found = false;
+for (TxInInfo input : ctx.txInfo().inputs()) {
+    total = total + 1;
+    if (someCondition(input)) {
+        found = true;
+    } else {
+        found = found;
+    }
+}
+
+// Break: set the cursor to empty list to exit early
+boolean exists = false;
+for (PubKeyHash sig : txInfo.signatories()) {
+    if (Builtins.equalsByteString(sig.hash(), targetPkh)) {
+        exists = true;
+    } else {
+        exists = exists;
+    }
+}
+```
+
+For full loop patterns, accumulator rules, and examples, see
+[for-loop-patterns.md](for-loop-patterns.md).
+
+### 8.5 While Loops
+
+While loops also desugar to tail-recursive functions:
+
+```java
+var current = list;
+long count = 0;
+while (!Builtins.nullList(current)) {
+    count = count + 1;
+    current = Builtins.tailList(current);
+}
+```
+
+For details, see [for-loop-patterns.md](for-loop-patterns.md).
+
+### 8.6 Nested Loops
+
+Nested loops are supported: while-in-while, for-each-in-for-each, and mixed
+nesting all work. Each loop gets a unique LetRec name, and inner-loop results are
+correctly rebound into outer-loop accumulators.
+
+```java
+long totalOutputs = 0;
+for (TxInInfo input : ctx.txInfo().inputs()) {
+    long innerCount = 0;
+    for (TxOut out : ctx.txInfo().outputs()) {
+        innerCount = innerCount + 1;
+    }
+    totalOutputs = totalOutputs + innerCount;
+}
+```
+
+### 8.7 What Does Not Work
+
+- **No `continue` statement** -- every branch must assign all accumulators
+- **No C-style `for(init; cond; step)`** -- use `while` or for-each
+- **No `do-while`** -- use `while` with an initial check
+- **No `return` inside multi-accumulator loop body** -- the loop must complete
+  naturally; use a boolean accumulator for early-exit logic
+
+---
+
+## 9. Standard Library
+
+All standard library classes live in `com.bloxbean.cardano.julc.stdlib.lib` and are
+annotated with `@OnchainLibrary`. They are automatically discovered and compiled
+when your validator references them.
+
+| Library | Description |
+|---|---|
+| `ContextsLib` | ScriptContext/TxInfo field accessors, `signedBy`, `findOwnInput`, `getContinuingOutputs`, `findDatum`, `ownHash`, `trace` |
+| `ListsLib` | `empty`, `prepend`, `length`, `isEmpty`, `head`, `tail`, `reverse`, `concat`, `nth`, `take`, `drop`, `contains`, `containsInt`, `containsBytes`, `hasDuplicateInts`, `hasDuplicateBytes` + PIR HOFs (`any`, `all`, `find`, `foldl`, `map`, `filter`, `zip`) |
+| `ValuesLib` | `lovelaceOf`, `assetOf`, `containsPolicy`, `geq`, `geqMultiAsset`, `leq`, `eq`, `isZero`, `singleton`, `negate`, `flatten`, `add`, `subtract` |
+| `MapLib` | `lookup`, `member`, `insert`, `delete`, `keys`, `values`, `toList`, `fromList`, `size` |
+| `OutputLib` | `txOutAddress`, `txOutValue`, `txOutDatum`, `outputsAt`, `countOutputsAt`, `uniqueOutputAt`, `outputsWithToken`, `valueHasToken`, `lovelacePaidTo`, `paidAtLeast`, `getInlineDatum`, `resolveDatum` |
+| `MathLib` | `abs`, `max`, `min`, `divMod`, `quotRem`, `pow`, `sign`, `expMod` |
+| `IntervalLib` | `contains`, `always`, `after`, `before`, `between`, `never`, `isEmpty`, `finiteUpperBound`, `finiteLowerBound` |
+| `CryptoLib` | `sha2_256`, `blake2b_256`, `sha3_256`, `blake2b_224`, `keccak_256`, `verifyEd25519Signature`, `verifyEcdsaSecp256k1`, `verifySchnorrSecp256k1`, `ripemd_160` |
+| `ByteStringLib` | `at`, `cons`, `slice`, `length`, `drop`, `take`, `append`, `empty`, `zeros`, `equals`, `lessThan`, `lessThanEquals`, `integerToByteString`, `byteStringToInteger`, `encodeUtf8`, `decodeUtf8`, `serialiseData` |
+| `BitwiseLib` | `andByteString`, `orByteString`, `xorByteString`, `complementByteString`, `readBit`, `writeBits`, `shiftByteString`, `rotateByteString`, `countSetBits`, `findFirstSetBit` |
+| `AddressLib` | `credentialHash`, `isScriptAddress`, `isPubKeyAddress`, `paymentCredential` |
+
+For full method signatures and usage examples, see [stdlib-guide.md](stdlib-guide.md).
+
+---
+
+## 10. User Libraries (@OnchainLibrary)
+
+You can write your own on-chain libraries that are auto-discovered by the compiler.
+
+### Creating a library
+
+```java
+package com.example.lib;
+
+import com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary;
+import com.bloxbean.cardano.julc.stdlib.Builtins;
+import java.math.BigInteger;
+
+@OnchainLibrary
+public class MyLib {
+
+    public static BigInteger doubleAmount(BigInteger x) {
+        return x.add(x);
+    }
+
+    public static boolean isPositive(BigInteger x) {
+        return x.compareTo(BigInteger.ZERO) > 0;
+    }
+}
+```
+
+### Using a library from a validator
+
+```java
+@SpendingValidator
+public class MyValidator {
+    @Entrypoint
+    static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+        BigInteger doubled = MyLib.doubleAmount(BigInteger.valueOf(21));
+        return MyLib.isPositive(doubled);
+    }
+}
+```
+
+### Static field initializers
+
+Static fields with initializers in `@OnchainLibrary` classes compile as `Let`
+bindings:
+
+```java
+@OnchainLibrary
+public class Constants {
+    static BigInteger THRESHOLD = BigInteger.valueOf(1000000);
+
+    public static boolean meetsThreshold(BigInteger amount) {
+        return amount.compareTo(THRESHOLD) >= 0;
+    }
+}
+```
+
+### Cross-library calls
+
+Libraries can call other libraries. The compiler resolves dependencies
+transitively. When publishing a library as a JAR, the Gradle plugin bundles the
+Java source under `META-INF/plutus-sources/` so consumers can auto-discover and
+compile it.
+
+For full details, see [library-developer-guide.md](library-developer-guide.md).
+
+---
+
+## 11. Parameterized Validators (@Param)
+
+Parameterized validators have fields that are "baked in" at deploy time via UPLC
+partial application. Each unique set of parameter values produces a different script
+hash/address.
+
+```java
+import com.bloxbean.cardano.julc.stdlib.annotation.SpendingValidator;
+import com.bloxbean.cardano.julc.stdlib.annotation.Entrypoint;
+import com.bloxbean.cardano.julc.stdlib.annotation.Param;
+import com.bloxbean.cardano.julc.ledger.ScriptContext;
+import com.bloxbean.cardano.julc.core.PlutusData;
+import java.math.BigInteger;
+
+@SpendingValidator
+public class ParameterizedVesting {
+
+    @Param PlutusData beneficiary;
+    @Param PlutusData deadline;
+
+    @Entrypoint
+    static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+        return ctx.txInfo().signatories().contains(beneficiary);
+    }
+}
+```
+
+**Critical**: `@Param` fields must always use `PlutusData` as their type, never
+`PlutusData.BytesData`, `byte[]`, or other specific types. `@Param` values are
+always raw `Data` at runtime, and using a specific type causes the compiler to
+generate incorrect conversion code.
+
+Parameters are applied in declaration order when loading:
+
+```java
+PlutusV3Script script = JulcScriptLoader.load(ParameterizedVesting.class,
+    BytesPlutusData.of(ownerPkh),       // beneficiary
+    BigIntPlutusData.of(deadlineMs));    // deadline
+```
+
+---
+
+## 12. Lambda Expressions and HOFs
+
+The standard library provides higher-order functions that accept lambda expressions.
+These are registered as PIR-level functions in the `StdlibRegistry`.
+
+### ListsLib HOFs
+
+```java
+import com.bloxbean.cardano.julc.stdlib.lib.ListsLib;
+
+// map: transform each element
+var doubled = ListsLib.map(amounts, x -> x.multiply(BigInteger.TWO));
+
+// filter: keep elements matching a predicate
+var positives = ListsLib.filter(amounts, x -> x.compareTo(BigInteger.ZERO) > 0);
+
+// foldl: left fold with accumulator
+BigInteger sum = ListsLib.foldl(amounts, BigInteger.ZERO,
+    (acc, x) -> acc.add(x));
+
+// any: true if any element matches
+boolean hasLarge = ListsLib.any(amounts, x -> x.compareTo(BigInteger.valueOf(1000)) > 0);
+
+// all: true if all elements match
+boolean allPositive = ListsLib.all(amounts, x -> x.compareTo(BigInteger.ZERO) > 0);
+
+// find: return first matching element (as Optional-encoded Data)
+PlutusData found = ListsLib.find(items, x -> someCondition(x));
+
+// zip: combine two lists pairwise
+var zipped = ListsLib.zip(listA, listB);
+```
+
+### Lambda syntax
+
+Single-expression lambdas:
+
+```java
+x -> x.add(BigInteger.ONE)
+```
+
+Multi-statement lambdas (must have an explicit `return`):
+
+```java
+(acc, x) -> {
+    BigInteger doubled = x.multiply(BigInteger.TWO);
+    return acc.add(doubled);
+}
+```
+
+**Note**: Lambda `.apply()` is not supported -- you cannot store a lambda in a
+variable and call it later. Lambdas can only be passed directly to HOF methods.
+
+---
+
+## 13. Compiling
+
+### JulcCompiler (programmatic)
+
+```java
+import com.bloxbean.cardano.julc.compiler.JulcCompiler;
+import com.bloxbean.cardano.julc.compiler.CompileResult;
+import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
+
+// With stdlib support (recommended)
+var stdlib = StdlibRegistry.defaultRegistry();
+var compiler = new JulcCompiler(stdlib::lookup);
+
+CompileResult result = compiler.compile(javaSource);
+if (result.hasErrors()) {
+    System.err.println("Errors: " + result.diagnostics());
+} else {
+    var program = result.program();
+    System.out.println("Script size: " + result.scriptSizeFormatted());
+}
+```
+
+### Annotation Processor (primary approach)
+
+The annotation processor compiles validators during `javac`. Add it as shown in
+Section 2. The processor:
+
+1. Finds classes annotated with `@SpendingValidator`, `@MintingValidator`, etc.
+2. Reads the source file via the compiler's `Trees` API
+3. Compiles to UPLC, FLAT-encodes, and double-CBOR-wraps
+4. Writes to `META-INF/plutus/<ClassName>.plutus.json`
+
+The compiled script ends up on the classpath alongside `.class` files and can be
+loaded at runtime with `JulcScriptLoader`.
+
+### Gradle Plugin
+
+For projects that prefer separate validator source files, apply the Gradle plugin:
+
+```groovy
+plugins {
+    id 'com.bloxbean.cardano.julc' version '0.1.0-SNAPSHOT'
+}
+```
+
+Validators in `src/main/plutus/` are compiled during `gradle build` and output to
+`build/plutus/`.
+
+---
+
+## 14. Testing
+
+The `julc-testkit` module provides utilities for compiling and evaluating validators
+locally without a blockchain.
+
+### ValidatorTest
+
+```java
+import com.bloxbean.cardano.julc.testkit.ValidatorTest;
+import com.bloxbean.cardano.julc.testkit.BudgetAssertions;
+import com.bloxbean.cardano.julc.core.PlutusData;
+
+// Compile from source string
+var program = ValidatorTest.compile(javaSource);
+
+// Compile with stdlib
+var stdlib = StdlibRegistry.defaultRegistry();
+var program = ValidatorTest.compile(javaSource, stdlib::lookup);
+
+// Compile a validator class with auto-discovered dependencies
+var result = ValidatorTest.compileValidator(MyValidator.class);
+
+// Evaluate
+var evalResult = ValidatorTest.evaluate(program, datum, redeemer, ctx);
+
+// Assert
+ValidatorTest.assertValidates(program, datum, redeemer, ctx);
+ValidatorTest.assertRejects(program, datum, redeemer, ctx);
+```
+
+### ScriptContextTestBuilder
+
+The `ScriptContextTestBuilder` provides a fluent API for constructing test
+ScriptContexts:
+
+```java
+import com.bloxbean.cardano.julc.testkit.ScriptContextTestBuilder;
+import com.bloxbean.cardano.julc.ledger.*;
+
+var ref = new TxOutRef(TxId.of(txHashBytes), BigInteger.ZERO);
+var ctx = ScriptContextTestBuilder.spending(ref)
+    .signer(PubKeyHash.of(pkhBytes))
+    .input(new TxInInfo(ref, new TxOut(address, value, datum, Optional.empty())))
+    .output(new TxOut(destAddress, destValue, new OutputDatum.NoOutputDatum(), Optional.empty()))
+    .fee(BigInteger.valueOf(200_000))
+    .buildPlutusData();
+```
+
+The builder supports three output modes:
+
+- `.build()` -- returns a ledger-api `ScriptContext`
+- `.buildOnchain()` -- returns an on-chain-api `ScriptContext`
+- `.buildPlutusData()` -- returns `PlutusData` (for direct UPLC evaluation)
+
+### BudgetAssertions
+
+```java
+import com.bloxbean.cardano.julc.testkit.BudgetAssertions;
+
+var result = ValidatorTest.evaluate(program, ctx);
+
+// Check success/failure
+BudgetAssertions.assertSuccess(result);
+BudgetAssertions.assertFailure(result);
+
+// Check execution budget limits
+BudgetAssertions.assertBudgetUnder(result, 1_000_000L, 500_000L);
+
+// Check trace messages
+BudgetAssertions.assertTrace(result, "expected message");
+BudgetAssertions.assertTraceExact(result, "msg1", "msg2");
+BudgetAssertions.assertNoTraces(result);
+
+// Check script size
+var compileResult = ValidatorTest.compileWithDetails(source);
+BudgetAssertions.assertScriptSizeUnder(compileResult, 16_384); // 16 KB limit
+```
+
+---
+
+## 15. Deploying
+
+### JulcScriptLoader
+
+Load pre-compiled scripts from the classpath (produced by the annotation
+processor):
 
 ```java
 import com.bloxbean.cardano.julc.clientlib.JulcScriptLoader;
 import com.bloxbean.cardano.client.plutus.spec.PlutusV3Script;
 
-// Load the compiled script — ready for cardano-client-lib
+// Non-parameterized
 PlutusV3Script script = JulcScriptLoader.load(VestingValidator.class);
-
-// Get the script hash (also the policy ID for minting policies)
 String hash = JulcScriptLoader.scriptHash(VestingValidator.class);
 
-// Get the full output metadata
-ValidatorOutput output = JulcScriptLoader.loadOutput(VestingValidator.class);
+// Parameterized
+PlutusV3Script script = JulcScriptLoader.load(ParameterizedVesting.class,
+    BytesPlutusData.of(ownerPkh),
+    BigIntPlutusData.of(deadlineMs));
 ```
 
-### Using the Loaded Script with cardano-client-lib
+### JulcScriptAdapter
+
+Convert a `Program` (from programmatic compilation) to a cardano-client-lib
+`PlutusV3Script`:
+
+```java
+import com.bloxbean.cardano.julc.clientlib.JulcScriptAdapter;
+
+var program = compiler.compile(source).program();
+PlutusV3Script script = JulcScriptAdapter.fromProgram(program);
+String hash = JulcScriptAdapter.scriptHash(program);
+```
+
+### cardano-client-lib integration
+
+Once you have a `PlutusV3Script`, use cardano-client-lib to build transactions:
 
 ```java
 import com.bloxbean.cardano.client.address.AddressProvider;
 import com.bloxbean.cardano.client.common.model.Networks;
+import com.bloxbean.cardano.client.quicktx.Tx;
 import com.bloxbean.cardano.client.quicktx.ScriptTx;
-
-// Load the pre-compiled script
-PlutusV3Script script = JulcScriptLoader.load(VestingValidator.class);
+import com.bloxbean.cardano.client.quicktx.QuickTxBuilder;
+import com.bloxbean.cardano.client.api.model.Amount;
+import com.bloxbean.cardano.client.function.helper.SignerProviders;
 
 // Derive the script address
 String scriptAddress = AddressProvider
@@ -685,35 +1102,119 @@ var lockTx = new Tx()
     .payToContract(scriptAddress, Amount.ada(5), datum)
     .from(account.baseAddress());
 
+var result = quickTxBuilder.compose(lockTx)
+    .withSigner(SignerProviders.signerFrom(account))
+    .completeAndWait();
+
 // Unlock from the script
 var unlockTx = new ScriptTx()
     .collectFrom(scriptUtxo, redeemer)
     .payToAddress(account.baseAddress(), Amount.ada(4))
     .attachSpendingValidator(script);
+
+var result = quickTxBuilder.compose(unlockTx)
+    .withSigner(SignerProviders.signerFrom(account))
+    .feePayer(account.baseAddress())
+    .collateralPayer(account.baseAddress())
+    .completeAndWait();
+
+// Mint tokens
+var asset = new Asset("MyToken", BigInteger.valueOf(100));
+var mintTx = new ScriptTx()
+    .mintAsset(script, asset, redeemer);
+
+var result = quickTxBuilder.compose(mintTx)
+    .withSigner(SignerProviders.signerFrom(account))
+    .feePayer(account.baseAddress())
+    .collateralPayer(account.baseAddress())
+    .completeAndWait();
 ```
 
-### Annotation Processor vs Gradle Plugin
+---
 
-| Feature | Annotation Processor | Gradle Plugin |
-|---------|---------------------|---------------|
-| IDE support | Full (validators in `src/main/java`) | Partial (files in `src/main/plutus`) |
-| Build tool | Gradle + Maven + any javac | Gradle only |
-| Validator loading | `JulcScriptLoader.load(MyValidator.class)` | Manual JSON file reading |
-| Configuration | Zero-config (just add dependency) | `plutus { }` block |
-| File location | `src/main/java/` (normal Java) | `src/main/plutus/` (separate) |
+## 16. Compiler Limitations
 
-The annotation processor is recommended for new projects. The Gradle plugin is still available for projects that prefer to keep validator source separate from application code.
+The JuLC compiler supports a safe subset of Java for on-chain execution. The
+following limitations apply:
 
-## Compiler Limitations
+### Variables and Assignment
 
-The current compiler supports a safe Java subset for on-chain code:
+- **Immutable variables**: Variables cannot be reassigned after initialization. The
+  only exception is loop accumulator variables in `while` and `for-each` loops.
+- **No uninitialized variables**: All variables must be initialized at declaration.
 
-- **Immutable variables only**: No assignment (`x = x + 1` not supported)
-- **No uninitialized variables**: All variables must be initialized at declaration
-- **No lambda `.apply()`**: Lambda expressions compile but calling methods on them is not yet supported
-- **Supported types**: `BigInteger`, `boolean`, `byte[]`, `PlutusData`, records, sealed interfaces
-- **No standard Java library**: Only `BigInteger` arithmetic and the julc stdlib are available on-chain
-- **Supported control flow**: `if/else`, `switch` expressions, `for`/`while` loops (desugared to recursion), pattern matching
-- **Records**: Java records compile to Plutus Data constructors with field access support
-- **Sealed interfaces**: Sealed interfaces with record implementations compile to tagged union types
-- **Recursion**: Recursive methods use the Z-combinator for safe strict-language recursion
+### Types
+
+- **Supported types**: `BigInteger`, `boolean`, `byte[]`, `long`, `String`,
+  `PlutusData`, records, sealed interfaces, `List<T>`, `Map<K,V>`, `Optional<T>`,
+  `Tuple2<A,B>`, `Tuple3<A,B,C>`.
+- **No float/double**: Floating-point types do not exist on-chain.
+- **No arrays** (except `byte[]`): Use `List<T>` for collections.
+- **No class inheritance**: Only records and sealed interfaces are supported for
+  data types.
+
+### Control Flow
+
+- **No `continue` statement**: Every branch in a loop body must assign all
+  accumulator variables.
+- **No C-style `for(init; cond; step)`**: Use `while` or for-each.
+- **No `do-while`**: Use a `while` loop with an initial check.
+- **No `return` inside multi-accumulator loop body**: The loop must complete
+  naturally.
+- **No `try`/`catch`/`throw`**: Errors are expressed via `Builtins.error()` which
+  halts the CEK machine.
+- **No `null`**: There is no null concept on-chain. Use `Optional<T>` where
+  needed.
+- **No `this`/`super`**: All methods must be `static`.
+
+### Functions
+
+- **No lambda `.apply()`**: Lambda expressions can only be passed directly to HOF
+  methods (like `ListsLib.map`). You cannot store a lambda in a variable and invoke
+  it later.
+- **Multi-binding LetRec**: Mutual recursion is supported for up to 2 mutually
+  recursive methods (via Bekic's theorem). More than 2 mutually recursive bindings
+  are not supported.
+
+### Type System Caveats
+
+- **`@Param` must use `PlutusData`**: Never use `PlutusData.BytesData`, `byte[]`,
+  or other specific types for `@Param` fields. Param values are always raw Data at
+  runtime.
+- **Cross-method type inference**: Calling a helper method with a `long` parameter
+  from another method may generate `EqualsData` instead of `EqualsInteger`. Use
+  Data-level equality as a workaround.
+- **Cross-library `BytesData` param bug**: When calling a stdlib method that takes
+  `BytesData`-typed parameters from user code, if the caller has a `BytesData`
+  variable of matching type, the compiler skips the needed conversion. Workaround:
+  pass `PlutusData` (not `BytesData`) arguments to cross-library calls.
+- **Tuple2/Tuple3 not switchable**: These are registered as `RecordType`, not
+  `SumType`. Use `.first()` and `.second()` field access instead of pattern
+  matching.
+
+### Value and Ledger Types
+
+- **`Value.assetOf()` needs BData args**: Arguments must be wrapped with
+  `Builtins.bData()` when passing `byte[]` to avoid `EqualsData` mismatches.
+- **Double `.hash()` on ledger hash types**: Types like `PubKeyHash`, `TxId`,
+  `ScriptHash` map to `ByteStringType`. Calling `.hash()` extracts the raw
+  ByteString. Calling `.hash()` again generates a second `UnBData` on an already-
+  unwrapped value, which fails. Use `(byte[])(Object) pk.hash()` instead of
+  `pk.hash().hash()`.
+
+### Switch Expressions
+
+- **`default` branch not compiled**: The `default ->` branch body is silently
+  skipped. Always use explicit cases for all variants of a sealed interface.
+- **Field name shadows parameter**: In `case Variant f -> body`, the compiler
+  binds the variant's field names in scope. If a method parameter has the same name
+  as a field, the field binding shadows the parameter. Use different parameter
+  names.
+
+### Not Supported
+
+- No standard Java library classes (only `BigInteger` and the JuLC stdlib)
+- No `new` for non-record classes
+- No generics beyond Tuple2/Tuple3 and built-in collections
+- No method references (`MyClass::method`)
+- No annotations beyond the JuLC-provided ones

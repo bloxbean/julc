@@ -1,6 +1,6 @@
 # For-Each Loop Patterns
 
-Plutus-Java compiles `for (var item : list)` loops into recursive folds over Data lists. Since UPLC has no mutable state, the compiler detects variables assigned inside the loop body ("accumulators") and threads them through the fold as functional accumulator parameters.
+JuLC compiles `for (var item : list)` loops into recursive folds over Data lists. Since UPLC has no mutable state, the compiler detects variables assigned inside the loop body ("accumulators") and threads them through the fold as functional accumulator parameters.
 
 This document covers every supported pattern, the compilation strategy behind each, and known limitations.
 
@@ -351,6 +351,71 @@ while (k > BigInteger.ZERO) {
 
 At `break`, the current accumulator values are packed and returned (no recursion). At body end, they are packed and passed to the continue function (recursion).
 
+## For-Each on MapType
+
+When iterating over a `Map<K,V>` variable, the compiler auto-detects the `MapType`, prepends an `UnMapData` to convert to a pair list, and types each element as `PairType`. Use `.key()` and `.value()` to access pair elements:
+
+```java
+// Iterate over withdrawals map
+BigInteger totalWithdrawn = BigInteger.ZERO;
+for (var entry : txInfo.withdrawals()) {
+    // entry is a PairType — use .key() and .value()
+    byte[] credHash = entry.key();   // auto-decoded
+    BigInteger amount = entry.value(); // auto-decoded
+    totalWithdrawn = totalWithdrawn + amount;
+}
+```
+
+## Nested Loop Examples
+
+### While-in-While
+
+```java
+BigInteger total = BigInteger.ZERO;
+BigInteger i = BigInteger.ZERO;
+while (i < BigInteger.valueOf(3)) {
+    BigInteger j = BigInteger.ZERO;
+    while (j < BigInteger.valueOf(4)) {
+        total = total + BigInteger.ONE;
+        j = j + BigInteger.ONE;
+    }
+    i = i + BigInteger.ONE;
+}
+// total is 12
+```
+
+### For-Each-in-For-Each
+
+```java
+BigInteger matchCount = BigInteger.ZERO;
+for (var output : txInfo.outputs()) {
+    for (var sig : txInfo.signatories()) {
+        if (output.address().credential() == sig) {
+            matchCount = matchCount + BigInteger.ONE;
+        }
+    }
+}
+```
+
+### Mixed Nesting (For-Each with While)
+
+```java
+boolean found = false;
+for (var input : txInfo.inputs()) {
+    var pairs = Builtins.unMapData(input.resolved().value());
+    PlutusData cursor = pairs;
+    while (!Builtins.nullList(cursor)) {
+        var pair = Builtins.headList(cursor);
+        if (Builtins.equalsData(Builtins.fstPair(pair), targetPolicy)) {
+            found = true;
+        }
+        cursor = Builtins.tailList(cursor);
+    }
+}
+```
+
+Each loop gets a unique counter-based name (`loop__forEach__0`, `loop__while__1`, etc.) to prevent naming collisions. Inner loop accumulators are correctly rebound into the outer loop's scope.
+
 ## Supported Accumulator Types
 
 Any type supported by the compiler can be used as a loop accumulator:
@@ -374,6 +439,8 @@ Any type supported by the compiler can be used as a loop accumulator:
 | `for (int i = 0; ...)` | Rejected | C-style for loops not allowed |
 | `do { } while (cond)` | Rejected | Use `while` instead |
 | `break` outside loops | Rejected | Compile-time error |
+| Nested loops | Supported | While-in-while, for-each-in-for-each, mixed |
+| For-each on MapType | Supported | Elements are PairType with `.key()`/`.value()` |
 | Accumulator reassignment outside if | Supported | `acc = expr;` at any statement position |
 | Variable declaration inside loop | Supported | Local vars are scoped to the iteration |
 
@@ -394,46 +461,13 @@ for (var item : items) {
 
 ### Immutability Reminder
 
-Variables in Plutus-Java are immutable. The `acc = expr` syntax inside loops is special — the compiler recognizes it as a fold accumulator update, not a true mutation. Outside of loop bodies, assignment (`x = x + 1`) is not supported.
+Variables in JuLC are immutable. The `acc = expr` syntax inside loops is special — the compiler recognizes it as a fold accumulator update, not a true mutation. Outside of loop bodies, assignment (`x = x + 1`) is not supported.
 
-### Post-Loop Variable Access in Multi-Accumulator Loops
+### Post-Loop Variable Access in Multi-Accumulator Loops (FIXED)
 
-Variables defined **before** a multi-accumulator while or for-each loop may be corrupted when accessed **after** the loop completes. The compiler's LetRec transformation restructures the variable binding environment, and outer-scope bindings may not survive the transformation.
+This bug has been fixed. Variables defined before a multi-accumulator while or for-each loop are now correctly accessible after the loop completes. The fix snapshots pre-loop variables via `SymbolTable.allVisibleVariables()` and re-binds them after accumulator unpacking using `rebindPreLoopVars()`.
 
-**Failing pattern:**
-
-```java
-byte[] key1 = Builtins.unBData(someData);
-byte[] next1 = Builtins.unBData(otherData);
-
-// Multi-accumulator while loop (2+ accumulators)
-long burnQty = 0;
-PlutusData cursor = tokenList;
-while (!Builtins.nullList(cursor)) {
-    burnQty = burnQty + extractAmount(cursor);
-    cursor = Builtins.tailList(cursor);
-}
-
-// key1 is CORRUPTED here — runtime builtin error
-if (Builtins.equalsByteString(key1, expected)) { ... }
-```
-
-This only affects **multi-accumulator** loops (2+ accumulators). Single-accumulator loops preserve outer bindings correctly.
-
-**Workaround:** Extract post-loop logic into a separate helper method that receives the needed values as parameters:
-
-```java
-// Pass all pre-loop variables explicitly to a helper
-return checkAfterLoop(key1, next1, burnQty, expected);
-
-static boolean checkAfterLoop(byte[] key1, byte[] next1, long burnQty, byte[] expected) {
-    // key1 is fresh here — passed as a method parameter
-    if (Builtins.equalsByteString(key1, expected)) { ... }
-    return true;
-}
-```
-
-By passing variables as method parameters, they are freshly bound in the helper's scope, avoiding the LetRec corruption.
+Previously, the LetRec transformation restructured the variable binding environment, causing outer-scope bindings to be lost. This no longer occurs for either single-accumulator or multi-accumulator loops.
 
 ### No `return` Inside Multi-Accumulator Loop Body
 
@@ -556,7 +590,7 @@ static long localAssetOf(PlutusData value, PlutusData policyId, PlutusData token
 
 ## Comparison with Other Cardano Languages
 
-| Feature | Plutus-Java | Opshin (Python) | Aiken | Scalus (Scala) |
+| Feature | JuLC (Java) | Opshin (Python) | Aiken | Scalus (Scala) |
 |---------|-------------|-----------------|-------|----------------|
 | For-each | `for (var x : list)` | `for x in list:` | `list.fold(...)` | `list.foldLeft(...)` |
 | While with accumulator | Supported | Supported | N/A (no loops) | N/A (no loops) |

@@ -307,7 +307,7 @@ program. Delegate reusable logic to library classes annotated with
 `@OnchainLibrary` and keep the validator entry point minimal.
 
 ```java
-@Validator
+@SpendingValidator
 class MyValidator {
     @Entrypoint
     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -405,6 +405,20 @@ class MyValidatorBudgetTest {
     }
 }
 ```
+
+---
+
+## 7. Benchmark Data
+
+//TODO
+
+### Instance Methods vs Stdlib Calls
+
+Instance methods (e.g., `list.contains(x)`) and stdlib calls (e.g., `ListsLib.contains(list, x)`) generate the **same UPLC** — there is no performance difference. Both are dispatched through the `TypeMethodRegistry` and produce identical PIR terms. Choose based on readability.
+
+### Dead Code Elimination
+
+`@OnchainLibrary` methods are only included in the final UPLC if they are actually called. The compiler's library resolution is transitive but only includes reachable methods. Unused library methods do not increase script size.
 
 ---
 

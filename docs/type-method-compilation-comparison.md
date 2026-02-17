@@ -1,8 +1,8 @@
-# Standard Type Method Compilation: Opshin vs Scalus vs Plutus-Java
+# Standard Type Method Compilation: Opshin vs Scalus vs JuLC
 
 ## Context
 
-Plutus-Java currently supports ~15 instance methods on standard Java types (`BigInteger`, `String`, `byte[]`, `List`, `Optional`). Each method is hand-wired in `PirGenerator.generateMethodCall()` as a chain of `if (methodName.equals("X"))` blocks. This report compares our approach with **Opshin** (Python→UPLC) and **Scalus** (Scala→UPLC) to understand how they handle standard library type methods, what architectural patterns they use, and how we can improve scalability.
+JuLC now supports ~50 instance methods on standard Java types (`BigInteger`, `String`, `byte[]`, `List`, `Map`, `Optional`, `Value`, `Pair`) via the `TypeMethodRegistry`. This report compares our approach with **Opshin** (Python→UPLC) and **Scalus** (Scala→UPLC) to understand how they handle standard library type methods, what architectural patterns they use, and where each project sits architecturally.
 
 **Core question**: *To support any new standard method, we must write a transformer that produces equivalent UPLC. Is this true for all three projects, and how do they organize these transformers?*
 
@@ -168,73 +168,75 @@ Three paths depending on method type:
 
 ---
 
-## 3. Plutus-Java (Current)
+## 3. JuLC (Current)
 
 **Pipeline**: `Java Source → JavaParser → SubsetValidator → TypeResolver → PirGenerator → UplcGenerator → Program`
 
-### Architecture: Centralized If/Else Dispatch
+### Architecture: Registry-Based Dispatch (TypeMethodRegistry)
 
-All instance method dispatch is in **one method** — `PirGenerator.generateMethodCall()` (164 lines):
+Instance method dispatch uses `TypeMethodRegistry` — a clean registry pattern mapping `(PirType, methodName)` to handlers:
 
 ```java
-// PirGenerator.java — linear chain of method name checks
-if (methodName.equals("equals") && args.size() == 1) {
-    var scopeType = resolveExpressionType(scopeExpr);
-    if (scopeType instanceof PirType.IntegerType) { ... }
-    if (scopeType instanceof PirType.ByteStringType) { ... }
-    if (scopeType instanceof PirType.StringType) { ... }
-}
-if (methodName.equals("length") && args.isEmpty()) { ... }
-if (methodName.equals("abs") && args.isEmpty()) { ... }
-// ... 12 more if blocks
+// TypeMethodRegistry.java — registry-based dispatch
+reg.register("IntegerType", "abs", (scope, args, scopeType, argTypes) -> {
+    return PirHelpers.builtinApp2(IfThenElse,
+        PirHelpers.builtinApp2(LessThanInteger, scope, Const(0)),
+        PirHelpers.builtinApp2(SubtractInteger, Const(0), scope),
+        scope);
+}, scopeType -> new PirType.IntegerType());
+
+reg.register("ListType", "contains", (scope, args, scopeType, argTypes) -> {
+    var lt = (PirType.ListType) scopeType;
+    return PirHelpers.generateListContains(scope, args.get(0), lt);
+}, scopeType -> new PirType.BoolType());
 ```
+
+`PirGenerator.generateMethodCall()` is now ~15 lines of registry dispatch instead of the original ~170 lines of if/else chains.
 
 ### How Methods Are Added
 
-To add a new method (e.g., `String.substring(int, int)`):
-1. Add `if (methodName.equals("substring") ...)` block in `PirGenerator.generateMethodCall()` (~15-30 lines)
-2. Add return type case in `resolveMethodCallReturnType()` (~3 lines)
-3. Add test in `TypeMethodsTest.java` (~20-30 lines)
-4. Total: **40-60 lines across 2 files**, all touching compiler core
+To add a new method (e.g., `list.last()`):
+1. Add `reg.register("ListType", "last", handler, returnTypeResolver)` in `TypeMethodRegistry.defaultRegistry()` (~10-20 lines)
+2. Add test in `TypeMethodRegistryTest.java` or `TypeMethodsTest.java` (~20 lines)
+3. Total: **30-40 lines in 1 file** + test. No changes to compiler core.
 
-### Two Dispatch Systems (Inconsistency)
+### Unified Dispatch Systems
 
 | Call Style | Dispatch Mechanism | Example |
 |-----------|-------------------|---------|
 | Static: `ContextsLib.signedBy(x, y)` | `StdlibRegistry` (registry pattern) | Decoupled, scalable |
-| Instance: `myList.contains(x)` | Hardcoded in `PirGenerator` | Coupled, doesn't scale |
+| Instance: `myList.contains(x)` | `TypeMethodRegistry` (registry pattern) | Decoupled, scalable |
 
-The `StdlibRegistry` is a clean, extensible registry with `Map<String, PirTermBuilder>` — but it only handles static calls (`ClassName.method(args)`). Instance methods (`scope.method(args)`) bypass it entirely.
+Both static and instance method dispatch now use the registry pattern.
 
 ### Strengths
-- Simple and easy to understand
-- Works correctly for all 15 supported methods
-- `StdlibRegistry` pattern proves the extensible registry approach works
+- Registry-based dispatch: adding a method = one `reg.register()` call
+- ~50 methods registered across 11 type keys
+- Named RecordType dispatch for domain types (e.g., `Value.lovelaceOf()`)
+- `StdlibRegistry` + `TypeMethodRegistry` provide uniform extensibility
 - Type-aware `==`/`!=`/`+` dispatch in `generateBinaryExpr()` is elegant
 
 ### Weaknesses
-- Instance methods hardcoded in compiler core (every new method = edit PirGenerator)
-- No separation of concerns (method impl mixed with compiler logic)
 - `resolveExpressionType()` is incomplete (falls back to DataType too easily)
-- Dual dispatch systems (registry for static, hardcoded for instance)
+- No equivalent of Scalus's `inline` extension methods (cannot pre-expand before compilation)
 
 ---
 
 ## 4. Comparison Matrix
 
-| Dimension | Opshin | Scalus | Plutus-Java |
-|-----------|--------|--------|-------------|
-| **Dispatch pattern** | Type-class polymorphism | 3-layer hybrid (inline + macro + pattern match) | Centralized if/else |
-| **Method-to-UPLC coupling** | Type class owns methods | Extension methods + compiler | Compiler core owns everything |
-| **Files to modify for new method** | 1 (type class) | 1 (extension method) or 1 (compiler) | 2 (PirGenerator + return types) |
-| **Lines to add per method** | 5-15 | 3-5 (inline) or 10-20 (compiler) | 15-50 |
+| Dimension | Opshin | Scalus | JuLC |
+|-----------|--------|--------|------|
+| **Dispatch pattern** | Type-class polymorphism | 3-layer hybrid (inline + macro + pattern match) | Registry-based (TypeMethodRegistry) |
+| **Method-to-UPLC coupling** | Type class owns methods | Extension methods + compiler | Registry owns methods |
+| **Files to modify for new method** | 1 (type class) | 1 (extension method) or 1 (compiler) | 1 (TypeMethodRegistry) |
+| **Lines to add per method** | 5-15 | 3-5 (inline) or 10-20 (compiler) | 10-20 |
 | **Type system** | Custom inference (pre-compile pass) | Leverages Scala 3 compiler | JavaParser + manual resolution |
 | **IR typed?** | Yes (Pluthon is typed) | Yes (SIR is typed) | Yes (PIR has PirType) |
 | **Operator dispatch** | Type-polymorphic (`_binop_bin_fun`) | Type-directed pattern match | Type-directed switch in `generateBinaryExpr` |
 | **Static method dispatch** | N/A (Python uses builtins) | Macro-generated map | StdlibRegistry (Map<String, Builder>) |
-| **Instance method dispatch** | `type.attribute(name)` | `inline` extension + pattern match | Hardcoded if/else in PirGenerator |
-| **Scalability (current)** | ~20 methods (elegant) | ~50+ methods (very scalable) | ~15 methods (functional) |
-| **Scalability (to 100+)** | Easy | Easy | Difficult without refactoring |
+| **Instance method dispatch** | `type.attribute(name)` | `inline` extension + pattern match | TypeMethodRegistry (Map<String, Handler>) |
+| **Scalability (current)** | ~20 methods (elegant) | ~50+ methods (very scalable) | ~50 methods (scalable) |
+| **Scalability (to 100+)** | Easy | Easy | Easy (registry pattern) |
 
 ---
 
@@ -250,10 +252,10 @@ Each type owns its methods. The compiler calls `type.attribute("methodName")` an
 
 Opshin uses **OOP polymorphism**: each type class has virtual `attribute()` methods. In Python, types are classes you can subclass freely.
 
-In Plutus-Java, `PirType` is a **sealed interface with records** (`IntegerType()`, `StringType()`, etc.) — you can't add methods to records without breaking the sealed hierarchy. So we use the Java-idiomatic equivalent: a **single registry** (`TypeMethodRegistry`) that maps `(PirType, methodName) → handler`. This achieves the same decoupling:
+In JuLC, `PirType` is a **sealed interface with records** (`IntegerType()`, `StringType()`, etc.) — you can't add methods to records without breaking the sealed hierarchy. So we use the Java-idiomatic equivalent: a **single registry** (`TypeMethodRegistry`) that maps `(PirType, methodName) → handler`. This achieves the same decoupling:
 
-| Concept | Opshin | Plutus-Java (proposed) |
-|---------|--------|----------------------|
+| Concept | Opshin | JuLC |
+|---------|--------|------|
 | "Type owns its methods" | `IntegerType.attribute("abs")` returns lambda | `registry.dispatch(scope, "abs", args, IntegerType)` returns PIR |
 | Where implementations live | Inside type class (Python OOP) | In registry factory method (Java FunctionalInterface) |
 | Adding a method | Add to one type class | Call `reg.register(...)` in one place |
@@ -264,8 +266,8 @@ Both approaches decouple method implementations from the compiler core. The diff
 ### 5.4 Scalus's `inline` Is Most Pragmatic
 By leveraging `inline` extension methods, most methods compile to builtin calls **before the Scalus plugin even runs**. The compiler plugin never needs to know about `ByteString.slice()` — Scala's own compiler eliminates it. This is impossible in JavaParser (which doesn't execute code), but the concept of **pre-expansion** is powerful.
 
-### 5.5 Plutus-Java's StdlibRegistry Is the Right Foundation
-The `StdlibRegistry` already implements the registry pattern for static methods. It just needs to be **extended to instance methods**. The infrastructure is there.
+### 5.5 JuLC's Registry Pattern Is Complete
+Both `StdlibRegistry` (static methods) and `TypeMethodRegistry` (instance methods) now use the registry pattern, providing a unified, extensible architecture for all method dispatch.
 
 ---
 
@@ -275,7 +277,7 @@ The `StdlibRegistry` already implements the registry pattern for static methods.
 
 `TypeMethodRegistry` has been implemented in `julc-compiler/src/main/java/.../pir/TypeMethodRegistry.java` with:
 
-- **20 method registrations** across 8 type keys (IntegerType, ByteStringType, StringType, DataType, RecordType, SumType, ListType, OptionalType)
+- **~50 method registrations** across 11 type keys (IntegerType, ByteStringType, StringType, DataType, RecordType, SumType, ListType, OptionalType, MapType, PairType, named Value)
 - **`InstanceMethodHandler`** functional interface: `(scope, args, scopeType, argTypes) -> PirTerm`
 - **`ReturnTypeResolver`** functional interface: `(scopeType) -> PirType`
 - **`defaultRegistry()`** factory method registers all methods
@@ -285,7 +287,7 @@ Helper methods extracted to `PirHelpers.java`: `builtinApp2`, `wrapDecode`, `gen
 
 `PirGenerator.generateMethodCall()` reduced from ~170 lines of if/else to ~15 lines of registry dispatch. `resolveMethodCallReturnType()` type-specific switches replaced with `typeMethodRegistry.resolveReturnType()`.
 
-**Tests**: 365 compiler tests pass (35 new TypeMethodRegistryTest + 12 new edge-case tests + 318 existing).
+**Tests**: 898 compiler tests pass (including TypeMethodRegistryTest, TypeMethodsTest, and all existing tests).
 
 ### Phase 2: Return Type Registry -- IMPLEMENTED
 
@@ -307,14 +309,30 @@ Not yet implemented. `generateBinaryExpr()` still uses a switch statement. This 
 
 ## 7. Conclusion
 
-**Every standard type method requires an equivalent UPLC transformer.** This is universal across Opshin, Scalus, and Plutus-Java.
+**Every standard type method requires an equivalent UPLC transformer.** This is universal across Opshin, Scalus, and JuLC.
 
-With `TypeMethodRegistry` implemented, the comparison table is now:
+With `TypeMethodRegistry` fully implemented (~50 methods), the comparison table is now:
 
 | Project | Transformers Live In... | Scaling Cost |
 |---------|------------------------|--------------|
 | Opshin | Type classes (each type owns its methods) | O(1) per type |
 | Scalus | Extension methods + compiler plugin | O(1) for inline, O(n) for compiler |
-| Plutus-Java | `TypeMethodRegistry` (registry + functional interfaces) | O(1) per method |
+| JuLC | `TypeMethodRegistry` (registry + functional interfaces) | O(1) per method |
 
-Adding a new instance method now requires a single `reg.register(...)` call in `TypeMethodRegistry.defaultRegistry()` -- no changes to `PirGenerator` or any other compiler core file. This aligns with Opshin's philosophy (types own their methods) using Java-idiomatic patterns (registry + functional interfaces).
+Adding a new instance method requires a single `reg.register(...)` call in `TypeMethodRegistry.defaultRegistry()` -- no changes to `PirGenerator` or any other compiler core file. This aligns with Opshin's philosophy (types own their methods) using Java-idiomatic patterns (registry + functional interfaces).
+
+### Method Count Breakdown
+
+| Type Key | Methods | Examples |
+|----------|---------|---------|
+| IntegerType | 15 | abs, negate, max, min, equals, add, subtract, multiply, divide, remainder, mod, signum, compareTo, intValue, longValue |
+| ByteStringType | 3 | length, equals, hash |
+| StringType | 2 | length, equals |
+| ListType | 11 | size, isEmpty, head, tail, get, contains, reverse, concat, take, drop, prepend |
+| MapType | 8 | get, containsKey, size, isEmpty, keys, values, insert, delete |
+| Value (named) | 3 | lovelaceOf, isEmpty, assetOf |
+| PairType | 2 | key, value |
+| OptionalType | 3 | isPresent, isEmpty, get |
+| DataType | 1 | equals |
+| RecordType | 1 | equals |
+| SumType | 1 | equals |
