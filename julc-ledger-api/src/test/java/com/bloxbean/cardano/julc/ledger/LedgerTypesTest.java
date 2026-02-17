@@ -140,14 +140,14 @@ class LedgerTypesTest {
         @Test
         void lovelaceOnly() {
             var v = Value.lovelace(BigInteger.valueOf(2_000_000));
-            assertEquals(BigInteger.valueOf(2_000_000), v.getLovelace());
+            assertEquals(BigInteger.valueOf(2_000_000), v.lovelaceOf());
         }
 
         @Test
         void singleton() {
             var v = Value.singleton(pid(), tn(), BigInteger.TEN);
-            assertEquals(BigInteger.TEN, v.getAsset(pid(), tn()));
-            assertEquals(BigInteger.ZERO, v.getLovelace());
+            assertEquals(BigInteger.TEN, v.assetOf(pid(), tn()));
+            assertEquals(BigInteger.ZERO, v.lovelaceOf());
         }
 
         @Test
@@ -155,14 +155,14 @@ class LedgerTypesTest {
             var a = Value.lovelace(BigInteger.valueOf(100));
             var b = Value.lovelace(BigInteger.valueOf(200));
             var merged = a.merge(b);
-            assertEquals(BigInteger.valueOf(300), merged.getLovelace());
+            assertEquals(BigInteger.valueOf(300), merged.lovelaceOf());
         }
 
         @Test
         void mergeMultiAsset() {
             var a = Value.singleton(pid(), tn(), BigInteger.valueOf(5));
             var b = Value.singleton(pid(), tn(), BigInteger.valueOf(3));
-            assertEquals(BigInteger.valueOf(8), a.merge(b).getAsset(pid(), tn()));
+            assertEquals(BigInteger.valueOf(8), a.merge(b).assetOf(pid(), tn()));
         }
 
         @Test

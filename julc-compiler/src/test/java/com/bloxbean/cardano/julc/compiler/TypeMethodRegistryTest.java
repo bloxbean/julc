@@ -100,6 +100,7 @@ class TypeMethodRegistryTest {
         assertTrue(registry.contains("Value", "lovelaceOf"));
         assertTrue(registry.contains("Value", "isEmpty"));
         assertTrue(registry.contains("Value", "assetOf"));
+        assertTrue(registry.contains("Value", "containsPolicy"));
     }
 
     @Test

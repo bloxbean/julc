@@ -144,7 +144,7 @@ class DebugVestingTest extends ContractTest {
         @Test
         void valueOperationsWork() {
             var value = Value.lovelace(BigInteger.valueOf(10_000_000));
-            BigInteger lovelace = value.getLovelace();
+            BigInteger lovelace = value.lovelaceOf();
             assertEquals(BigInteger.valueOf(10_000_000), lovelace);
         }
 
@@ -157,9 +157,9 @@ class DebugVestingTest extends ContractTest {
                     .merge(Value.singleton(new PolicyId(policyId), new TokenName(tokenName),
                             BigInteger.valueOf(100)));
 
-            assertEquals(BigInteger.valueOf(2_000_000), value.getLovelace());
+            assertEquals(BigInteger.valueOf(2_000_000), value.lovelaceOf());
             assertEquals(BigInteger.valueOf(100),
-                    value.getAsset(new PolicyId(policyId), new TokenName(tokenName)));
+                    value.assetOf(new PolicyId(policyId), new TokenName(tokenName)));
         }
 
         @Test

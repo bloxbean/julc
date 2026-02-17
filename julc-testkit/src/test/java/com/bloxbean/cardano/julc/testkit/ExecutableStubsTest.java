@@ -153,13 +153,13 @@ class ExecutableStubsTest {
         @Test
         void lovelaceOfExtractsAda() {
             var value = Value.lovelace(BigInteger.valueOf(5_000_000));
-            assertEquals(BigInteger.valueOf(5_000_000), value.getLovelace());
+            assertEquals(BigInteger.valueOf(5_000_000), value.lovelaceOf());
         }
 
         @Test
         void lovelaceOfReturnsZeroForEmpty() {
             var value = Value.zero();
-            assertEquals(BigInteger.ZERO, value.getLovelace());
+            assertEquals(BigInteger.ZERO, value.lovelaceOf());
         }
 
         @Test
@@ -167,34 +167,34 @@ class ExecutableStubsTest {
             var policyId = new PolicyId(padTo28(new byte[]{1, 2, 3}));
             var tokenName = new TokenName(new byte[]{4, 5, 6});
             var value = Value.singleton(policyId, tokenName, BigInteger.valueOf(100));
-            assertEquals(BigInteger.valueOf(100), value.getAsset(policyId, tokenName));
+            assertEquals(BigInteger.valueOf(100), value.assetOf(policyId, tokenName));
         }
 
         @Test
         void assetOfReturnsZeroForMissing() {
             var value = Value.lovelace(BigInteger.valueOf(1000));
             assertEquals(BigInteger.ZERO,
-                    value.getAsset(new PolicyId(padTo28(new byte[]{1, 2, 3})), new TokenName(new byte[]{4, 5})));
+                    value.assetOf(new PolicyId(padTo28(new byte[]{1, 2, 3})), new TokenName(new byte[]{4, 5})));
         }
 
         @Test
         void geqReturnsTrueWhenGreater() {
             var a = Value.lovelace(BigInteger.valueOf(5_000_000));
             var b = Value.lovelace(BigInteger.valueOf(2_000_000));
-            assertTrue(a.getLovelace().compareTo(b.getLovelace()) >= 0);
+            assertTrue(a.lovelaceOf().compareTo(b.lovelaceOf()) >= 0);
         }
 
         @Test
         void geqReturnsTrueWhenEqual() {
             var v = Value.lovelace(BigInteger.valueOf(5_000_000));
-            assertTrue(v.getLovelace().compareTo(v.getLovelace()) >= 0);
+            assertTrue(v.lovelaceOf().compareTo(v.lovelaceOf()) >= 0);
         }
 
         @Test
         void geqReturnsFalseWhenLess() {
             var a = Value.lovelace(BigInteger.valueOf(2_000_000));
             var b = Value.lovelace(BigInteger.valueOf(5_000_000));
-            assertFalse(a.getLovelace().compareTo(b.getLovelace()) >= 0);
+            assertFalse(a.lovelaceOf().compareTo(b.lovelaceOf()) >= 0);
         }
 
         @Test
@@ -204,8 +204,8 @@ class ExecutableStubsTest {
             var value = Value.lovelace(BigInteger.valueOf(2_000_000))
                     .merge(Value.singleton(policyId, tokenName, BigInteger.valueOf(50)));
 
-            assertEquals(BigInteger.valueOf(2_000_000), value.getLovelace());
-            assertEquals(BigInteger.valueOf(50), value.getAsset(policyId, tokenName));
+            assertEquals(BigInteger.valueOf(2_000_000), value.lovelaceOf());
+            assertEquals(BigInteger.valueOf(50), value.assetOf(policyId, tokenName));
         }
     }
 
@@ -366,13 +366,13 @@ class ExecutableStubsTest {
         @Test
         void lovelaceCreatesCorrectValue() {
             var value = Value.lovelace(BigInteger.valueOf(5_000_000));
-            assertEquals(BigInteger.valueOf(5_000_000), value.getLovelace());
+            assertEquals(BigInteger.valueOf(5_000_000), value.lovelaceOf());
         }
 
         @Test
         void zeroCreatesEmptyValue() {
             var value = Value.zero();
-            assertEquals(BigInteger.ZERO, value.getLovelace());
+            assertEquals(BigInteger.ZERO, value.lovelaceOf());
         }
 
         @Test
@@ -380,7 +380,7 @@ class ExecutableStubsTest {
             var pid = new PolicyId(padTo28(new byte[]{1, 2, 3}));
             var tn = new TokenName(new byte[]{4, 5, 6});
             var value = Value.singleton(pid, tn, BigInteger.valueOf(100));
-            assertEquals(BigInteger.valueOf(100), value.getAsset(pid, tn));
+            assertEquals(BigInteger.valueOf(100), value.assetOf(pid, tn));
         }
 
         @Test
@@ -389,8 +389,8 @@ class ExecutableStubsTest {
             var tn = new TokenName(new byte[]{30, 40});
             var value = Value.lovelace(BigInteger.valueOf(2_000_000))
                     .merge(Value.singleton(pid, tn, BigInteger.valueOf(50)));
-            assertEquals(BigInteger.valueOf(2_000_000), value.getLovelace());
-            assertEquals(BigInteger.valueOf(50), value.getAsset(pid, tn));
+            assertEquals(BigInteger.valueOf(2_000_000), value.lovelaceOf());
+            assertEquals(BigInteger.valueOf(50), value.assetOf(pid, tn));
         }
     }
 

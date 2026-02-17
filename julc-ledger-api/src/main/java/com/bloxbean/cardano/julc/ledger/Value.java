@@ -27,21 +27,29 @@ public record Value(JulcMap<PolicyId, JulcMap<TokenName, BigInteger>> inner) imp
         return new Value(JulcMap.of(policyId, JulcMap.of(tokenName, quantity)));
     }
 
-    public BigInteger getLovelace() {
-        return getAsset(PolicyId.ADA, TokenName.EMPTY);
+    public BigInteger lovelaceOf() {
+        return assetOf(PolicyId.ADA, TokenName.EMPTY);
     }
 
     public boolean containsPolicy(PolicyId policyId) {
         return inner.containsKey(policyId);
     }
 
-    public BigInteger getAsset(PolicyId policyId, TokenName tokenName) {
+    public BigInteger assetOf(PolicyId policyId, TokenName tokenName) {
         JulcMap<TokenName, BigInteger> tokens = inner.get(policyId);
         if (tokens == null) return BigInteger.ZERO;
         BigInteger amount = tokens.get(tokenName);
         return amount != null ? amount : BigInteger.ZERO;
     }
 
+    public boolean isEmpty() {
+        return inner.isEmpty();
+    }
+
+    /**
+     * Merge two values by adding all token quantities.
+     * Equivalent to on-chain ValuesLib.add().
+     */
     public Value merge(Value other) {
         // Start with a mutable copy of this value's entries
         JulcMap<PolicyId, JulcMap<TokenName, BigInteger>> result = inner;
