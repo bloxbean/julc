@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="static/accent-light.svg" alt="JuLC Logo" width="400"/>
+  <img src="static/logo-light.svg" alt="JuLC Logo" width="300"/>
 </p>
 
 # julc
