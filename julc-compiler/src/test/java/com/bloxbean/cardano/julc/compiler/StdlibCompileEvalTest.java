@@ -3360,4 +3360,221 @@ class StdlibCompileEvalTest {
             assertTrue(result.isSuccess(), "MapLib.member on field-access map. Got: " + result);
         }
     }
+
+    // =========================================================================
+    // ContainsPolicyEval — ValuesLib.containsPolicy() and value.containsPolicy()
+    // =========================================================================
+
+    @Nested
+    class ContainsPolicyEval {
+
+        /** Build a TxInfo with a custom mint value at field index 4. */
+        static PlutusData buildTxInfoWithMint(PlutusData mint) {
+            return PlutusData.constr(0,
+                    PlutusData.list(),                                     // 0: inputs
+                    PlutusData.list(),                                     // 1: referenceInputs
+                    PlutusData.list(),                                     // 2: outputs
+                    PlutusData.integer(2000000),                           // 3: fee
+                    mint,                                                  // 4: mint
+                    PlutusData.list(),                                     // 5: certificates
+                    PlutusData.map(),                                      // 6: withdrawals
+                    alwaysInterval(),                                      // 7: validRange
+                    PlutusData.list(),                                     // 8: signatories
+                    PlutusData.map(),                                      // 9: redeemers
+                    PlutusData.map(),                                      // 10: datums
+                    PlutusData.bytes(new byte[32]),                        // 11: txId
+                    PlutusData.map(),                                      // 12: votes
+                    PlutusData.list(),                                     // 13: proposalProcedures
+                    PlutusData.constr(1),                                  // 14: currentTreasuryAmount (None)
+                    PlutusData.constr(1)                                   // 15: treasuryDonation (None)
+            );
+        }
+
+        // --- ValuesLib static method tests ---
+
+        @Test
+        void containsPolicyBytesFound() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            var fields = Builtins.constrFields(redeemer);
+                            PlutusData value = Builtins.headList(fields);
+                            byte[] policyId = Builtins.unBData(Builtins.headList(Builtins.tailList(fields)));
+                            return ValuesLib.containsPolicy(value, policyId);
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var policy = new byte[]{1, 2, 3};
+            var value = multiAssetValue(2000000, policy, new byte[]{4, 5}, 100);
+            var redeemer = PlutusData.constr(0, value, PlutusData.bytes(policy));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "containsPolicy(bytes) found should be true. Got: " + result);
+        }
+
+        @Test
+        void containsPolicyBytesNotFound() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            var fields = Builtins.constrFields(redeemer);
+                            PlutusData value = Builtins.headList(fields);
+                            byte[] policyId = Builtins.unBData(Builtins.headList(Builtins.tailList(fields)));
+                            return ValuesLib.containsPolicy(value, policyId);
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var policy = new byte[]{1, 2, 3};
+            var otherPolicy = new byte[]{9, 9, 9};
+            var value = multiAssetValue(2000000, policy, new byte[]{4, 5}, 100);
+            var redeemer = PlutusData.constr(0, value, PlutusData.bytes(otherPolicy));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertFalse(result.isSuccess(), "containsPolicy(bytes) not found should be false. Got: " + result);
+        }
+
+        @Test
+        void containsPolicyDataFound() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            var fields = Builtins.constrFields(redeemer);
+                            PlutusData value = Builtins.headList(fields);
+                            PlutusData policyId = Builtins.headList(Builtins.tailList(fields));
+                            return ValuesLib._containsPolicy(value, policyId);
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var policy = new byte[]{1, 2, 3};
+            var value = multiAssetValue(2000000, policy, new byte[]{4, 5}, 100);
+            var redeemer = PlutusData.constr(0, value, PlutusData.bytes(policy));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "_containsPolicy(data) found should be true. Got: " + result);
+        }
+
+        @Test
+        void containsPolicyEmptyValueReturnsFalse() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            var fields = Builtins.constrFields(redeemer);
+                            PlutusData value = Builtins.headList(fields);
+                            byte[] policyId = Builtins.unBData(Builtins.headList(Builtins.tailList(fields)));
+                            return ValuesLib.containsPolicy(value, policyId);
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var emptyValue = PlutusData.map(); // empty value
+            var redeemer = PlutusData.constr(0, emptyValue, PlutusData.bytes(new byte[]{1, 2, 3}));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertFalse(result.isSuccess(), "containsPolicy on empty value should be false. Got: " + result);
+        }
+
+        // --- Value instance method tests ---
+
+        @Test
+        void valueInstanceContainsPolicyFound() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.ledger.api.*;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            var fields = Builtins.constrFields(redeemer);
+                            Value value = (Value)(Object) Builtins.headList(fields);
+                            PlutusData policyId = Builtins.headList(Builtins.tailList(fields));
+                            return value.containsPolicy(policyId);
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var policy = new byte[]{1, 2, 3};
+            var value = multiAssetValue(2000000, policy, new byte[]{4, 5}, 100);
+            var redeemer = PlutusData.constr(0, value, PlutusData.bytes(policy));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "value.containsPolicy() found should be true. Got: " + result);
+        }
+
+        @Test
+        void valueInstanceContainsPolicyNotFound() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.ledger.api.*;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            var fields = Builtins.constrFields(redeemer);
+                            Value value = (Value)(Object) Builtins.headList(fields);
+                            PlutusData policyId = Builtins.headList(Builtins.tailList(fields));
+                            return value.containsPolicy(policyId);
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var policy = new byte[]{1, 2, 3};
+            var otherPolicy = new byte[]{9, 9, 9};
+            var value = multiAssetValue(2000000, policy, new byte[]{4, 5}, 100);
+            var redeemer = PlutusData.constr(0, value, PlutusData.bytes(otherPolicy));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertFalse(result.isSuccess(), "value.containsPolicy() not found should be false. Got: " + result);
+        }
+
+        @Test
+        void mintContainsPolicyChained() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.ledger.api.*;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            TxInfo txInfo = ctx.txInfo();
+                            Value mint = txInfo.mint();
+                            return mint.containsPolicy(redeemer);
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var policy = new byte[]{1, 2, 3};
+            var mint = PlutusData.map(
+                    new PlutusData.Pair(
+                            PlutusData.bytes(policy),
+                            PlutusData.map(
+                                    new PlutusData.Pair(PlutusData.bytes(new byte[]{4, 5}), PlutusData.integer(100))
+                            )
+                    )
+            );
+            var txInfo = buildTxInfoWithMint(mint);
+            var ctx = PlutusData.constr(0, txInfo, PlutusData.bytes(policy), PlutusData.integer(0));
+            var result = vm.evaluateWithArgs(program, List.of(ctx));
+            assertTrue(result.isSuccess(), "txInfo.mint().containsPolicy() should be true. Got: " + result);
+        }
+    }
 }

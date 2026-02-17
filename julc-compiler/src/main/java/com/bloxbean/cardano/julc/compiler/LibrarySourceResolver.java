@@ -75,7 +75,7 @@ public final class LibrarySourceResolver {
      * @return set of simple class names referenced in static-call patterns
      */
     public static Set<String> extractReferencedClassNames(String source) {
-        var pattern = Pattern.compile("\\b([A-Z][a-zA-Z0-9_]*)\\s*\\.\\s*[a-z][a-zA-Z0-9_]*\\s*\\(");
+        var pattern = Pattern.compile("\\b([A-Z][a-zA-Z0-9_]*)\\s*\\.\\s*[a-z_][a-zA-Z0-9_]*\\s*\\(");
         var result = new LinkedHashSet<String>();
         var matcher = pattern.matcher(source);
         while (matcher.find()) {

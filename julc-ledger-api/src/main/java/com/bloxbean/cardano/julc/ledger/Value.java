@@ -31,6 +31,10 @@ public record Value(JulcMap<PolicyId, JulcMap<TokenName, BigInteger>> inner) imp
         return getAsset(PolicyId.ADA, TokenName.EMPTY);
     }
 
+    public boolean containsPolicy(PolicyId policyId) {
+        return inner.containsKey(policyId);
+    }
+
     public BigInteger getAsset(PolicyId policyId, TokenName tokenName) {
         JulcMap<TokenName, BigInteger> tokens = inner.get(policyId);
         if (tokens == null) return BigInteger.ZERO;

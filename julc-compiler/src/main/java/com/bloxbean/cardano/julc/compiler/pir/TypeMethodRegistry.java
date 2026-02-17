@@ -778,6 +778,40 @@ public final class TypeMethodRegistry {
                                 new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), scope)),
                 scopeType -> new PirType.BoolType());
 
+        // containsPolicy(policyId): check if policy exists in Value's outer map
+        reg.register("Value", "containsPolicy",
+                (scope, args, scopeType, argTypes) -> {
+                    if (args.isEmpty()) throw new CompilerException("value.containsPolicy() requires a policyId argument");
+                    var pairList = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), scope);
+                    var keyVar = new PirTerm.Var("k_cp", new PirType.DataType());
+                    var pairsVar = new PirTerm.Var("ps_cp", new PirType.ListType(
+                            new PirType.PairType(new PirType.DataType(), new PirType.DataType())));
+                    var lstVar = new PirTerm.Var("lst_cp", new PirType.ListType(
+                            new PirType.PairType(new PirType.DataType(), new PirType.DataType())));
+                    var goVar = new PirTerm.Var("go_cp", new PirType.FunType(
+                            new PirType.ListType(new PirType.PairType(new PirType.DataType(), new PirType.DataType())),
+                            new PirType.BoolType()));
+                    var nullCheck = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), lstVar);
+                    var headExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), lstVar);
+                    var hVar = new PirTerm.Var("h_cp", new PirType.PairType(new PirType.DataType(), new PirType.DataType()));
+                    var fstH = new PirTerm.App(new PirTerm.Builtin(DefaultFun.FstPair), hVar);
+                    var eqCheck = PirHelpers.builtinApp2(DefaultFun.EqualsData, fstH, keyVar);
+                    var tailExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), lstVar);
+                    var recurse = new PirTerm.App(goVar, tailExpr);
+                    var innerIf = new PirTerm.IfThenElse(eqCheck,
+                            new PirTerm.Const(Constant.bool(true)), recurse);
+                    var letHead = new PirTerm.Let("h_cp", headExpr, innerIf);
+                    var outerIf = new PirTerm.IfThenElse(nullCheck,
+                            new PirTerm.Const(Constant.bool(false)), letHead);
+                    var goBody = new PirTerm.Lam("lst_cp", new PirType.ListType(
+                            new PirType.PairType(new PirType.DataType(), new PirType.DataType())), outerIf);
+                    var binding = new PirTerm.Binding("go_cp", goBody);
+                    var search = new PirTerm.LetRec(List.of(binding), new PirTerm.App(goVar, pairsVar));
+                    return new PirTerm.Let("ps_cp", pairList,
+                            new PirTerm.Let("k_cp", args.get(0), search));
+                },
+                scopeType -> new PirType.BoolType());
+
         // assetOf(policyId, tokenName): LetRec search in nested maps
         reg.register("Value", "assetOf",
                 (scope, args, scopeType, argTypes) -> {

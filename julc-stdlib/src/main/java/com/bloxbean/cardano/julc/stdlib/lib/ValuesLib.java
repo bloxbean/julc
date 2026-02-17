@@ -1,6 +1,7 @@
 package com.bloxbean.cardano.julc.stdlib.lib;
 
 import com.bloxbean.cardano.julc.core.PlutusData;
+import com.bloxbean.cardano.julc.core.types.JulcMap;
 import com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary;
 import com.bloxbean.cardano.julc.ledger.Value;
 import com.bloxbean.cardano.julc.stdlib.Builtins;
@@ -27,6 +28,17 @@ public class ValuesLib {
         var firstTokenPair = Builtins.headList(tokenPairs);
         var amountData = Builtins.sndPair(firstTokenPair);
         return Builtins.unIData(amountData);
+    }
+
+    /** Check if a policy ID (as bytes) exists in a Value. */
+    public static boolean containsPolicy(Value value, byte[] policyId) {
+        return _containsPolicy(value, Builtins.bData(policyId));
+    }
+
+    /** Check if a policy ID (as Data) exists in a Value. */
+    @SuppressWarnings("unchecked")
+    public static boolean _containsPolicy(Value value, PlutusData policyId) {
+        return ((JulcMap)(Object) value).containsKey(policyId);
     }
 
     /** Checks if lovelaceOf(a) >= lovelaceOf(b). */
