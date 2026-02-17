@@ -41,14 +41,14 @@ public class MathLib {
     }
 
     /** Returns division and modulo as a Tuple2. */
-    public static Tuple2 divMod(BigInteger a, BigInteger b) {
+    public static Tuple2<BigInteger, BigInteger> divMod(BigInteger a, BigInteger b) {
         var div = a.divide(b);
         var mod = a.remainder(b);
         return new Tuple2(Builtins.iData(div), Builtins.iData(mod));
     }
 
     /** Returns quotient and remainder as a Tuple2. */
-    public static Tuple2 quotRem(BigInteger a, BigInteger b) {
+    public static Tuple2<BigInteger, BigInteger> quotRem(BigInteger a, BigInteger b) {
         var quot = a.divide(b);
         var rem = a.remainder(b);
         return new Tuple2(Builtins.iData(quot), Builtins.iData(rem));

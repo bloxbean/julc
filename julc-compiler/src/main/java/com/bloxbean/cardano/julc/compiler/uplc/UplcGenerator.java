@@ -1,6 +1,7 @@
 package com.bloxbean.cardano.julc.compiler.uplc;
 
 import com.bloxbean.cardano.julc.compiler.CompilerException;
+import com.bloxbean.cardano.julc.compiler.pir.PirSubstitution;
 import com.bloxbean.cardano.julc.compiler.pir.PirTerm;
 import com.bloxbean.cardano.julc.compiler.pir.PirType;
 import com.bloxbean.cardano.julc.core.Constant;
@@ -160,13 +161,143 @@ public class UplcGenerator {
             return Term.apply(Term.lam(name, exprTerm), fixedFn);
         }
 
-        // For multiple bindings, treat as sequential lets (fallback)
-        PirTerm result = letRec.body();
-        for (int i = letRec.bindings().size() - 1; i >= 0; i--) {
-            var binding = letRec.bindings().get(i);
-            result = new PirTerm.Let(binding.name(), binding.value(), result);
+        // Multi-binding LetRec: dependency analysis + topological sort + Bekic's theorem
+        return generateMultiBindingLetRec(letRec);
+    }
+
+    /**
+     * Handle multi-binding LetRec by analyzing dependencies between bindings.
+     * <p>
+     * Strategy:
+     * 1. Build a dependency graph (which bindings reference which others)
+     * 2. If bindings can be topologically sorted (no mutual cycles), nest them as single-binding LetRec/Let
+     * 3. If exactly 2 bindings form a mutual cycle, apply Bekic's theorem
+     * 4. If cycle has >2 bindings, throw an error (not yet supported)
+     */
+    private Term generateMultiBindingLetRec(PirTerm.LetRec letRec) {
+        var bindings = letRec.bindings();
+        var bindingNames = new LinkedHashSet<String>();
+        for (var b : bindings) bindingNames.add(b.name());
+
+        // Build dependency graph: for each binding, which OTHER bindings does it reference?
+        var deps = new LinkedHashMap<String, Set<String>>();
+        var selfRecursive = new LinkedHashSet<String>();
+        var bindingMap = new LinkedHashMap<String, PirTerm>();
+        for (var b : bindings) {
+            var freeVars = PirSubstitution.collectFreeVarNames(b.value());
+            var otherDeps = new LinkedHashSet<String>();
+            for (var dep : freeVars) {
+                if (bindingNames.contains(dep) && !dep.equals(b.name())) {
+                    otherDeps.add(dep);
+                }
+            }
+            if (freeVars.contains(b.name())) {
+                selfRecursive.add(b.name());
+            }
+            deps.put(b.name(), otherDeps);
+            bindingMap.put(b.name(), b.value());
         }
-        return generate(result);
+
+        // Try topological sort (handle non-mutual case)
+        var sorted = topologicalSort(deps);
+        if (sorted != null) {
+            // No mutual cycles — nest single-binding LetRec (for self-recursive) or Let (non-recursive)
+            PirTerm result = letRec.body();
+            // Process in reverse topological order (last dependency first → innermost binding)
+            for (int i = sorted.size() - 1; i >= 0; i--) {
+                var name = sorted.get(i);
+                var value = bindingMap.get(name);
+                if (selfRecursive.contains(name)) {
+                    result = new PirTerm.LetRec(List.of(new PirTerm.Binding(name, value)), result);
+                } else {
+                    result = new PirTerm.Let(name, value, result);
+                }
+            }
+            return generate(result);
+        }
+
+        // Mutual cycle detected — try Bekic's theorem for 2-binding case
+        if (bindings.size() == 2) {
+            return generateBekicLetRec(bindings.get(0), bindings.get(1), letRec.body());
+        }
+
+        // >2 mutual bindings: not yet supported
+        throw new CompilerException("Mutually recursive bindings with more than 2 participants not yet supported: "
+                + String.join(", ", bindingNames));
+    }
+
+    /**
+     * Topological sort of bindings based on their inter-dependencies.
+     * Returns null if a cycle is detected (mutual recursion).
+     * Returns sorted list in dependency order (first has no deps, last depends on earlier ones).
+     */
+    private List<String> topologicalSort(Map<String, Set<String>> deps) {
+        var result = new ArrayList<String>();
+        var visited = new LinkedHashSet<String>();
+        var inProgress = new LinkedHashSet<String>();
+
+        for (var name : deps.keySet()) {
+            if (!visited.contains(name)) {
+                if (!topoVisit(name, deps, visited, inProgress, result)) {
+                    return null; // cycle detected
+                }
+            }
+        }
+        return result;
+    }
+
+    private boolean topoVisit(String name, Map<String, Set<String>> deps,
+                              Set<String> visited, Set<String> inProgress, List<String> result) {
+        if (inProgress.contains(name)) return false; // cycle
+        if (visited.contains(name)) return true;
+        inProgress.add(name);
+        for (var dep : deps.getOrDefault(name, Set.of())) {
+            if (!topoVisit(dep, deps, visited, inProgress, result)) return false;
+        }
+        inProgress.remove(name);
+        visited.add(name);
+        result.add(name);
+        return true;
+    }
+
+    /**
+     * Apply Bekic's theorem to decompose 2-binding mutual recursion into nested single-binding LetRecs.
+     * <p>
+     * Given: LetRec([A = bodyA, B = bodyB], mainBody)
+     * <p>
+     * Produces:
+     *   LetRec([A = bodyA[B := LetRec([B = bodyB[A := Var(A)]], Var(B))]],
+     *     Let(B, LetRec([B = bodyB[A := Var(A)]], Var(B)),
+     *       mainBody))
+     * <p>
+     * Where bodyA[B := ...] means substitute all free occurrences of B in bodyA with the inner LetRec.
+     * Inside the inner LetRec for B, self-references to B work via Z-combinator,
+     * and references to A resolve to the outer LetRec's binding.
+     */
+    private Term generateBekicLetRec(PirTerm.Binding bindingA, PirTerm.Binding bindingB,
+                                      PirTerm mainBody) {
+        var nameA = bindingA.name();
+        var nameB = bindingB.name();
+        var bodyA = bindingA.value();
+        var bodyB = bindingB.value();
+
+        // Inner LetRec for B: LetRec([B = bodyB], Var(B))
+        // Inside bodyB, references to A are free (will be captured by outer LetRec)
+        var innerLetRecB = new PirTerm.LetRec(
+                List.of(new PirTerm.Binding(nameB, bodyB)),
+                new PirTerm.Var(nameB, new PirType.DataType()));
+
+        // Substitute B in bodyA with the inner LetRec
+        var bodyASubstituted = PirSubstitution.substitute(bodyA, nameB, innerLetRecB);
+
+        // Outer LetRec for A: LetRec([A = bodyA'], ...)
+        // where bodyA' has B replaced by the inner LetRec
+        var outerLetRecA = new PirTerm.LetRec(
+                List.of(new PirTerm.Binding(nameA, bodyASubstituted)),
+                // After binding A, define B and then evaluate mainBody
+                new PirTerm.Let(nameB, innerLetRecB, mainBody));
+
+        return generate(outerLetRecA);
     }
 
     /**

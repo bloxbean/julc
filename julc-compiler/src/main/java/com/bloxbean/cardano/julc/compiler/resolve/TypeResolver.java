@@ -244,6 +244,33 @@ public class TypeResolver {
                 }
                 yield new PirType.MapType(keyType, valType);
             }
+            case "Tuple2" -> {
+                PirType firstType = new PirType.DataType();
+                PirType secondType = new PirType.DataType();
+                var tupleArgs = ct.getTypeArguments();
+                if (tupleArgs.isPresent() && tupleArgs.get().size() >= 2) {
+                    firstType = resolve(tupleArgs.get().get(0));
+                    secondType = resolve(tupleArgs.get().get(1));
+                }
+                yield new PirType.RecordType("Tuple2", List.of(
+                        new PirType.Field("first", firstType),
+                        new PirType.Field("second", secondType)));
+            }
+            case "Tuple3" -> {
+                PirType firstType = new PirType.DataType();
+                PirType secondType = new PirType.DataType();
+                PirType thirdType = new PirType.DataType();
+                var tuple3Args = ct.getTypeArguments();
+                if (tuple3Args.isPresent() && tuple3Args.get().size() >= 3) {
+                    firstType = resolve(tuple3Args.get().get(0));
+                    secondType = resolve(tuple3Args.get().get(1));
+                    thirdType = resolve(tuple3Args.get().get(2));
+                }
+                yield new PirType.RecordType("Tuple3", List.of(
+                        new PirType.Field("first", firstType),
+                        new PirType.Field("second", secondType),
+                        new PirType.Field("third", thirdType)));
+            }
             case "Optional" -> {
                 PirType elemType = new PirType.DataType();
                 var optArgs = ct.getTypeArguments();

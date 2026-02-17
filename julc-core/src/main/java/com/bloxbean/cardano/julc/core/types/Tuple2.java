@@ -1,11 +1,12 @@
 package com.bloxbean.cardano.julc.core.types;
 
-import com.bloxbean.cardano.julc.core.PlutusData;
-
 /**
- * A 2-element tuple.
+ * A 2-element tuple with generic type parameters.
  * <p>
  * On-chain: compiled to {@code ConstrData(0, [first, second])}.
- * Pattern matching via {@code switch (result) { case Tuple2(var a, var b) -> ... }} works.
+ * With type parameters, field access auto-unwraps: {@code Tuple2<BigInteger, byte[]> t; t.first()}
+ * returns an integer directly (no manual {@code Builtins.unIData()} needed).
+ * <p>
+ * Raw {@code Tuple2} (without type args) defaults to DataType fields for backward compatibility.
  */
-public record Tuple2(PlutusData first, PlutusData second) {}
+public record Tuple2<A, B>(A first, B second) {}

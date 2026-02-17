@@ -866,6 +866,11 @@ public class PirGenerator {
         if (expr instanceof MethodCallExpr mce && mce.getScope().isPresent()) {
             return resolveMethodCallReturnType(mce);
         }
+        // Handle constructor calls (e.g., new Tuple2<BigInteger, BigInteger>(...))
+        if (expr instanceof ObjectCreationExpr oce) {
+            var resolved = typeResolver.resolve(oce.getType());
+            if (!(resolved instanceof PirType.DataType)) return resolved;
+        }
         // Handle scopeless method calls (static helper methods)
         if (expr instanceof MethodCallExpr mce && mce.getScope().isEmpty()) {
             var methodType = symbolTable.lookup(mce.getNameAsString());
@@ -1044,6 +1049,19 @@ public class PirGenerator {
                     }
                     return new PirTerm.DataConstr(ctor.tag(), sumType.get(), fields);
                 }
+            }
+        }
+
+        // For generic Tuple2/Tuple3, resolve type from the ObjectCreationExpr's type args
+        // so that DataConstr uses typed fields (e.g., IntegerType) for proper wrapDataEncode
+        if (typeName.equals("Tuple2") || typeName.equals("Tuple3")) {
+            var resolvedType = typeResolver.resolve(ct);
+            if (resolvedType instanceof PirType.RecordType rt) {
+                var fields = new ArrayList<PirTerm>();
+                for (var arg : oce.getArguments()) {
+                    fields.add(generateExpression(arg));
+                }
+                return new PirTerm.DataConstr(0, rt, fields);
             }
         }
 

@@ -2242,6 +2242,105 @@ class StdlibCompileEvalTest {
             var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
             assertTrue(result.isSuccess(), "MathLib.quotRem should return Tuple2(3, 2) for 17/5. Got: " + result);
         }
+
+        @Test
+        void genericTuple2IntFields() {
+            var source = """
+                    import com.bloxbean.cardano.julc.core.types.Tuple2;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            Tuple2<BigInteger, BigInteger> t = new Tuple2<BigInteger, BigInteger>(BigInteger.valueOf(10), BigInteger.valueOf(20));
+                            return t.first() == 10;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
+            assertTrue(result.isSuccess(), "Generic Tuple2<BigInteger,BigInteger>.first() should auto-unwrap. Got: " + result);
+        }
+
+        @Test
+        void genericTuple2ByteFields() {
+            var source = """
+                    import com.bloxbean.cardano.julc.core.types.Tuple2;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            byte[] a = Builtins.encodeUtf8("hello");
+                            byte[] b = Builtins.encodeUtf8("world");
+                            Tuple2<byte[], byte[]> t = new Tuple2<byte[], byte[]>(a, b);
+                            return Builtins.equalsByteString(t.first(), a);
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
+            assertTrue(result.isSuccess(), "Generic Tuple2<byte[],byte[]>.first() should auto-unwrap via UnBData. Got: " + result);
+        }
+
+        @Test
+        void genericTuple2MixedFields() {
+            var source = """
+                    import com.bloxbean.cardano.julc.core.types.Tuple2;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            Tuple2<BigInteger, byte[]> t = new Tuple2<BigInteger, byte[]>(BigInteger.valueOf(42), Builtins.encodeUtf8("ab"));
+                            return t.first() == 42;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
+            assertTrue(result.isSuccess(), "Generic Tuple2<BigInteger,byte[]>.first() should auto-unwrap integer. Got: " + result);
+        }
+
+        @Test
+        void genericMathLibDivMod() {
+            var source = """
+                    import com.bloxbean.cardano.julc.core.types.Tuple2;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            Tuple2<BigInteger, BigInteger> result = MathLib.divMod(BigInteger.valueOf(17), BigInteger.valueOf(5));
+                            return result.first() == 3 && result.second() == 2;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
+            assertTrue(result.isSuccess(), "Generic Tuple2 from MathLib.divMod should auto-unwrap. Got: " + result);
+        }
+
+        @Test
+        void rawTuple2StillWorks() {
+            // Verify backward compat: raw Tuple2 without generics + manual unwrap
+            var source = """
+                    import com.bloxbean.cardano.julc.core.types.Tuple2;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            Tuple2 t = new Tuple2(Builtins.iData(BigInteger.valueOf(10)), Builtins.iData(BigInteger.valueOf(20)));
+                            return Builtins.unIData(t.first()) == 10 && Builtins.unIData(t.second()) == 20;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
+            assertTrue(result.isSuccess(), "Raw Tuple2 with manual unwrap should still work. Got: " + result);
+        }
     }
 
     @Nested
@@ -2289,6 +2388,26 @@ class StdlibCompileEvalTest {
             var program = compileValidator(source);
             var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
             assertTrue(result.isSuccess(), "Tuple3 field access should sum to 60. Got: " + result);
+        }
+
+        @Test
+        void genericTuple3AllFields() {
+            var source = """
+                    import com.bloxbean.cardano.julc.core.types.Tuple3;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            Tuple3<BigInteger, byte[], BigInteger> t = new Tuple3<BigInteger, byte[], BigInteger>(
+                                BigInteger.valueOf(10), Builtins.encodeUtf8("ab"), BigInteger.valueOf(30));
+                            return t.first() == 10 && t.third() == 30;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
+            assertTrue(result.isSuccess(), "Generic Tuple3 should auto-unwrap typed fields. Got: " + result);
         }
     }
 
