@@ -1,5 +1,6 @@
 package com.bloxbean.cardano.julc.compiler.pir;
 
+import com.bloxbean.cardano.julc.compiler.CompilerException;
 import com.bloxbean.cardano.julc.compiler.resolve.SymbolTable;
 import com.bloxbean.cardano.julc.compiler.resolve.TypeResolver;
 import com.bloxbean.cardano.julc.core.Constant;
@@ -73,7 +74,8 @@ class PirGeneratorTest {
         }
 
         @Test void undefinedVariable() {
-            assertThrows(Exception.class, () -> compile("undefined"));
+            var ex = assertThrows(CompilerException.class, () -> compile("undefined"));
+            assertTrue(ex.getMessage().contains("Undefined variable: undefined"));
         }
     }
 

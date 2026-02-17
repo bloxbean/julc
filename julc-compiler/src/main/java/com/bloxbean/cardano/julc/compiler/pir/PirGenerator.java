@@ -513,8 +513,12 @@ public class PirGenerator {
         }
         if (expr instanceof NameExpr ne) {
             var name = ne.getNameAsString();
-            var type = symbolTable.require(name);
-            return new PirTerm.Var(name, type);
+            var optType = symbolTable.lookup(name);
+            if (optType.isEmpty()) {
+                collectError("Undefined variable: " + name, "Check spelling, or add an import if '" + name + "' is a type", ne);
+                throw new CompilerException("Undefined variable: " + name);
+            }
+            return new PirTerm.Var(name, optType.get());
         }
         if (expr instanceof BinaryExpr be) {
             return generateBinaryExpr(be);

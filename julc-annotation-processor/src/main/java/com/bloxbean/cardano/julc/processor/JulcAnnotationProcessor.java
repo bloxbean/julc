@@ -210,6 +210,10 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
             processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
                     "I/O error writing compiled script for " + className + ": " + e.getMessage(),
                     element);
+        } catch (Exception e) {
+            processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
+                    "Unexpected compilation error for " + className + ": " + e.getClass().getSimpleName() + ": " + e.getMessage(),
+                    element);
         }
     }
 
