@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="static/accent-light.svg" alt="JuLC Logo" width="400"/>
+</p>
+
 # julc
 
 **Java UPLC Compiler for Cardano**
