@@ -90,6 +90,48 @@ public final class JulcArrayList<T> implements JulcList<T> {
     }
 
     @Override
+    public <R> JulcList<R> map(java.util.function.Function<T, R> fn) {
+        var result = new ArrayList<R>(delegate.size());
+        for (T elem : delegate) {
+            result.add(fn.apply(elem));
+        }
+        return new JulcArrayList<>(result);
+    }
+
+    @Override
+    public JulcList<T> filter(java.util.function.Predicate<T> pred) {
+        var result = new ArrayList<T>();
+        for (T elem : delegate) {
+            if (pred.test(elem)) result.add(elem);
+        }
+        return new JulcArrayList<>(result);
+    }
+
+    @Override
+    public boolean any(java.util.function.Predicate<T> pred) {
+        for (T elem : delegate) {
+            if (pred.test(elem)) return true;
+        }
+        return false;
+    }
+
+    @Override
+    public boolean all(java.util.function.Predicate<T> pred) {
+        for (T elem : delegate) {
+            if (!pred.test(elem)) return false;
+        }
+        return true;
+    }
+
+    @Override
+    public T find(java.util.function.Predicate<T> pred) {
+        for (T elem : delegate) {
+            if (pred.test(elem)) return elem;
+        }
+        return null;
+    }
+
+    @Override
     public Iterator<T> iterator() {
         return delegate.iterator();
     }

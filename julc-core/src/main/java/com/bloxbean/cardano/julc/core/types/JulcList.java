@@ -57,6 +57,23 @@ public interface JulcList<T> extends Iterable<T> {
     /** Check if the list contains the given element. */
     boolean contains(T element);
 
+    // --- Higher-order functions ---
+
+    /** Apply a function to each element, returning a new list. */
+    <R> JulcList<R> map(java.util.function.Function<T, R> fn);
+
+    /** Keep only elements satisfying the predicate. */
+    JulcList<T> filter(java.util.function.Predicate<T> pred);
+
+    /** Return true if any element satisfies the predicate. */
+    boolean any(java.util.function.Predicate<T> pred);
+
+    /** Return true if all elements satisfy the predicate. */
+    boolean all(java.util.function.Predicate<T> pred);
+
+    /** Return the first element satisfying the predicate, or null if none. */
+    T find(java.util.function.Predicate<T> pred);
+
     // --- Factory methods (off-chain only — on-chain use compiler intrinsics) ---
 
     /** Create an empty list. */

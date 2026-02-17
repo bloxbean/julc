@@ -3782,4 +3782,748 @@ class StdlibCompileEvalTest {
             assertFalse(result.isSuccess(), "@Param PolicyId + mint.containsPolicy() not found should fail. Got: " + result);
         }
     }
+
+    // =========================================================================
+    // HOF Instance Methods + Lambda Type Inference
+    // =========================================================================
+
+    @Nested
+    class ListHofTests {
+
+        // --- A. Instance HOFs with explicit typed lambdas (regression-safe) ---
+
+        @Test
+        void listMapWithTypedLambda() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            List<PlutusData> items = Builtins.unListData(redeemer);
+                            List<PlutusData> mapped = items.map((PlutusData x) -> Builtins.iData(Builtins.unIData(x) + 1));
+                            return Builtins.unIData(mapped.head()) == 2;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.list(PlutusData.integer(1), PlutusData.integer(2), PlutusData.integer(3));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "list.map with typed lambda should work. Got: " + result);
+        }
+
+        @Test
+        void listFilterWithTypedLambda() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            List<PlutusData> items = Builtins.unListData(redeemer);
+                            List<PlutusData> filtered = items.filter((PlutusData x) -> Builtins.unIData(x) > 2);
+                            return filtered.size() == 1;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.list(PlutusData.integer(1), PlutusData.integer(2), PlutusData.integer(3));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "list.filter with typed lambda should work. Got: " + result);
+        }
+
+        @Test
+        void listAnyWithTypedLambda() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            List<PlutusData> items = Builtins.unListData(redeemer);
+                            return items.any((PlutusData x) -> Builtins.unIData(x) > 2);
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.list(PlutusData.integer(1), PlutusData.integer(2), PlutusData.integer(3));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "list.any with typed lambda should work. Got: " + result);
+        }
+
+        @Test
+        void listAllWithTypedLambda() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            List<PlutusData> items = Builtins.unListData(redeemer);
+                            return items.all((PlutusData x) -> Builtins.unIData(x) > 0);
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.list(PlutusData.integer(1), PlutusData.integer(2), PlutusData.integer(3));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "list.all with typed lambda should work. Got: " + result);
+        }
+
+        @Test
+        void listFindWithTypedLambda() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            List<PlutusData> items = Builtins.unListData(redeemer);
+                            PlutusData found = items.find((PlutusData x) -> Builtins.unIData(x) == 3);
+                            return Builtins.constrTag(found) == 0;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.list(PlutusData.integer(1), PlutusData.integer(2), PlutusData.integer(3));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "list.find with typed lambda should return Some. Got: " + result);
+        }
+
+        // --- B. Instance HOFs with type inference (core feature) ---
+
+        @Test
+        void listMapInferred() {
+            var source = """
+                    import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.core.types.JulcList;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            JulcList<BigInteger> items = Builtins.unListData(redeemer);
+                            JulcList<PlutusData> mapped = items.map(x -> x + 1);
+                            return Builtins.unIData(mapped.head()) == 2;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.list(PlutusData.integer(1), PlutusData.integer(2), PlutusData.integer(3));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "list.map with inferred types should work. Got: " + result);
+        }
+
+        @Test
+        void listFilterInferred() {
+            var source = """
+                    import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.core.types.JulcList;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            JulcList<BigInteger> items = Builtins.unListData(redeemer);
+                            JulcList<BigInteger> filtered = items.filter(x -> x > 2);
+                            return filtered.size() == 1;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.list(PlutusData.integer(1), PlutusData.integer(2), PlutusData.integer(3));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "list.filter with inferred types should work. Got: " + result);
+        }
+
+        @Test
+        void listAnyInferred() {
+            var source = """
+                    import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.core.types.JulcList;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            JulcList<BigInteger> items = Builtins.unListData(redeemer);
+                            return items.any(x -> x > 2);
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.list(PlutusData.integer(1), PlutusData.integer(2), PlutusData.integer(3));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "list.any with inferred types should work. Got: " + result);
+        }
+
+        @Test
+        void listAllInferred() {
+            var source = """
+                    import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.core.types.JulcList;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            JulcList<BigInteger> items = Builtins.unListData(redeemer);
+                            return items.all(x -> x > 0);
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.list(PlutusData.integer(1), PlutusData.integer(2), PlutusData.integer(3));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "list.all with inferred types should work. Got: " + result);
+        }
+
+        // --- C. Variable capture (closures) ---
+
+        @Test
+        void listFilterWithCapturedVariable() {
+            var source = """
+                    import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.core.types.JulcList;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            JulcList<BigInteger> items = Builtins.unListData(redeemer);
+                            BigInteger threshold = BigInteger.valueOf(2);
+                            JulcList<BigInteger> filtered = items.filter(x -> x > threshold);
+                            return filtered.size() == 1;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.list(PlutusData.integer(1), PlutusData.integer(2), PlutusData.integer(3));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "Lambda with captured variable should work. Got: " + result);
+        }
+
+        @Test
+        void listMapWithCapturedVariable() {
+            var source = """
+                    import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.core.types.JulcList;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            JulcList<BigInteger> items = Builtins.unListData(redeemer);
+                            BigInteger offset = BigInteger.valueOf(10);
+                            JulcList<PlutusData> mapped = items.map(x -> x + offset);
+                            return Builtins.unIData(mapped.head()) == 11;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.list(PlutusData.integer(1), PlutusData.integer(2), PlutusData.integer(3));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "Lambda with captured variable in map should work. Got: " + result);
+        }
+
+        // --- D. Static HOF type inference ---
+
+        @Test
+        void listsLibMapInferred() {
+            var source = """
+                    import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.core.types.JulcList;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.ListsLib;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            JulcList<BigInteger> items = Builtins.unListData(redeemer);
+                            JulcList<PlutusData> mapped = ListsLib.map(items, x -> x + 1);
+                            return Builtins.unIData(mapped.head()) == 2;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.list(PlutusData.integer(1), PlutusData.integer(2), PlutusData.integer(3));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "ListsLib.map with inferred types should work. Got: " + result);
+        }
+
+        @Test
+        void listsLibFilterInferred() {
+            var source = """
+                    import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.core.types.JulcList;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.ListsLib;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            JulcList<BigInteger> items = Builtins.unListData(redeemer);
+                            JulcList<BigInteger> filtered = ListsLib.filter(items, x -> x > 2);
+                            return filtered.size() == 1;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.list(PlutusData.integer(1), PlutusData.integer(2), PlutusData.integer(3));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "ListsLib.filter with inferred types should work. Got: " + result);
+        }
+
+        // --- E. Chained HOFs ---
+
+        @Test
+        void chainedFilterThenMap() {
+            var source = """
+                    import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.core.types.JulcList;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            JulcList<BigInteger> items = Builtins.unListData(redeemer);
+                            JulcList<PlutusData> result = items.filter(x -> x > 1).map(x -> x * 2);
+                            return Builtins.unIData(result.head()) == 4;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.list(PlutusData.integer(1), PlutusData.integer(2), PlutusData.integer(3));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "Chained filter().map() should work. Got: " + result);
+        }
+
+        // --- F. Block body lambda ---
+
+        @Test
+        void listMapWithBlockBody() {
+            var source = """
+                    import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.core.types.JulcList;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            JulcList<BigInteger> items = Builtins.unListData(redeemer);
+                            JulcList<PlutusData> mapped = items.map(x -> {
+                                BigInteger y = x + 1;
+                                return y * 2;
+                            });
+                            return Builtins.unIData(mapped.head()) == 4;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.list(PlutusData.integer(1), PlutusData.integer(2), PlutusData.integer(3));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "list.map with block body lambda should work. Got: " + result);
+        }
+
+        // --- G. Edge cases ---
+
+        @Test
+        void listMapEmptyList() {
+            var source = """
+                    import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.core.types.JulcList;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            JulcList<BigInteger> items = Builtins.unListData(redeemer);
+                            JulcList<BigInteger> mapped = items.map(x -> x + 1);
+                            return mapped.isEmpty();
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.list();
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "map on empty list should return empty. Got: " + result);
+        }
+
+        @Test
+        void listFilterAllMatch() {
+            var source = """
+                    import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.core.types.JulcList;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            JulcList<BigInteger> items = Builtins.unListData(redeemer);
+                            JulcList<BigInteger> filtered = items.filter(x -> x > 0);
+                            return filtered.size() == 3;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.list(PlutusData.integer(1), PlutusData.integer(2), PlutusData.integer(3));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "filter where all match should return same-size list. Got: " + result);
+        }
+
+        @Test
+        void listFilterNoneMatch() {
+            var source = """
+                    import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.core.types.JulcList;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            JulcList<BigInteger> items = Builtins.unListData(redeemer);
+                            JulcList<BigInteger> filtered = items.filter(x -> x > 100);
+                            return filtered.isEmpty();
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.list(PlutusData.integer(1), PlutusData.integer(2), PlutusData.integer(3));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "filter where none match should return empty list. Got: " + result);
+        }
+
+        // --- H. Additional edge cases (review-identified gaps) ---
+
+        @Test
+        void listMapReturningBool() {
+            var source = """
+                    import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.core.types.JulcList;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            JulcList<BigInteger> items = Builtins.unListData(redeemer);
+                            JulcList<PlutusData> bools = items.map(x -> x > 0);
+                            // bools should be [ConstrData(1,[]), ConstrData(0,[]), ConstrData(1,[])]
+                            // ConstrData tag 1 = True, tag 0 = False
+                            BigInteger firstTag = Builtins.constrTag(bools.head());
+                            return firstTag == 1;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            // [5, -2, 3] — first is positive (True), second is negative (False), third is positive (True)
+            var redeemer = PlutusData.list(PlutusData.integer(5), PlutusData.integer(-2), PlutusData.integer(3));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "map returning Bool should wrapEncode to ConstrData. Got: " + result);
+        }
+
+        @Test
+        void listFindInferred() {
+            var source = """
+                    import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.core.types.JulcList;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            JulcList<BigInteger> items = Builtins.unListData(redeemer);
+                            PlutusData found = items.find(x -> x > 2);
+                            // found should be Some(IData(3)) = Constr(0, [IData(3)])
+                            return Builtins.constrTag(found) == 0;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.list(PlutusData.integer(1), PlutusData.integer(2), PlutusData.integer(3));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "list.find with inferred type should return Some. Got: " + result);
+        }
+
+        // --- G. ByteStringType HOF double-unwrap fix ---
+
+        @Test
+        void listAnyInferredByteStringType() {
+            // Bug: untyped lambda on JulcList<PubKeyHash> caused double UnBData
+            // HOF inference inserts Let("sig", UnBData(sig), body), then .hash() adds another UnBData
+            // PubKeyHash maps to ByteStringType — list elements are BData(bytes) on-chain
+            // Redeemer = Constr(0, [list_of_bdata, target_bytes])
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.core.types.JulcList;
+                    import com.bloxbean.cardano.julc.ledger.api.*;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            var fields = Builtins.sndPair(Builtins.unConstrData(redeemer));
+                            JulcList<PubKeyHash> sigs = Builtins.unListData(Builtins.headList(fields));
+                            byte[] target = Builtins.unBData(Builtins.headList(Builtins.tailList(fields)));
+                            return sigs.any(sig -> Builtins.equalsByteString((byte[])(Object) sig.hash(), target));
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            // PubKeyHash = ByteStringType → list elements are BData-wrapped bytes
+            var sigsList = PlutusData.list(
+                    PlutusData.bytes(new byte[]{1, 2, 3}),
+                    PlutusData.bytes(new byte[]{4, 5, 6}));
+            var redeemer = PlutusData.constr(0, sigsList, PlutusData.bytes(new byte[]{1, 2, 3}));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "list.any with inferred ByteStringType should not double-unwrap. Got: " + result);
+        }
+
+        @Test
+        void listFilterInferredByteStringType() {
+            // Same double-unwrap bug via filter HOF
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.core.types.JulcList;
+                    import com.bloxbean.cardano.julc.ledger.api.*;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            var fields = Builtins.sndPair(Builtins.unConstrData(redeemer));
+                            JulcList<PubKeyHash> sigs = Builtins.unListData(Builtins.headList(fields));
+                            byte[] target = Builtins.unBData(Builtins.headList(Builtins.tailList(fields)));
+                            JulcList<PubKeyHash> matched = sigs.filter(sig -> Builtins.equalsByteString((byte[])(Object) sig.hash(), target));
+                            return matched.size() == 1;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var sigsList = PlutusData.list(
+                    PlutusData.bytes(new byte[]{1, 2, 3}),
+                    PlutusData.bytes(new byte[]{4, 5, 6}));
+            var redeemer = PlutusData.constr(0, sigsList, PlutusData.bytes(new byte[]{1, 2, 3}));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "list.filter with inferred ByteStringType should not double-unwrap. Got: " + result);
+        }
+
+        @Test
+        void listAnyExplicitTypedByteString() {
+            // Regression: explicit typed lambda (PubKeyHash sig) -> must still work (no HOF unwrap)
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.core.types.JulcList;
+                    import com.bloxbean.cardano.julc.ledger.api.*;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            var fields = Builtins.sndPair(Builtins.unConstrData(redeemer));
+                            JulcList<PubKeyHash> sigs = Builtins.unListData(Builtins.headList(fields));
+                            byte[] target = Builtins.unBData(Builtins.headList(Builtins.tailList(fields)));
+                            return sigs.any((PubKeyHash sig) -> Builtins.equalsByteString((byte[])(Object) sig.hash(), target));
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var sigsList = PlutusData.list(
+                    PlutusData.bytes(new byte[]{1, 2, 3}),
+                    PlutusData.bytes(new byte[]{4, 5, 6}));
+            var redeemer = PlutusData.constr(0, sigsList, PlutusData.bytes(new byte[]{1, 2, 3}));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "list.any with explicit typed ByteStringType lambda should work. Got: " + result);
+        }
+
+        @Test
+        void byteStringUnregisteredFieldAccessor() {
+            // Bug 2: unregistered no-arg method on ByteStringType (e.g. TokenName.name()) should generate UnBData
+            // Simulates a for-each loop over a list where elements map to ByteStringType
+            // Redeemer = Constr(0, [list_of_tokennames, target_bytes])
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.core.types.JulcList;
+                    import com.bloxbean.cardano.julc.ledger.api.*;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            var fields = Builtins.sndPair(Builtins.unConstrData(redeemer));
+                            JulcList<TokenName> names = Builtins.unListData(Builtins.headList(fields));
+                            byte[] target = Builtins.unBData(Builtins.headList(Builtins.tailList(fields)));
+                            boolean found = false;
+                            for (var tn : names) {
+                                if (Builtins.equalsByteString(tn.name(), target)) {
+                                    found = true;
+                                }
+                            }
+                            return found;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            // TokenName maps to ByteStringType → list elements are BData-wrapped bytes
+            var namesList = PlutusData.list(
+                    PlutusData.bytes(new byte[]{65, 66}),
+                    PlutusData.bytes(new byte[]{67, 68}));
+            var redeemer = PlutusData.constr(0, namesList, PlutusData.bytes(new byte[]{65, 66}));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "Unregistered field accessor on ByteStringType should generate UnBData. Got: " + result);
+        }
+
+        @Test
+        void listsLibAnyInferredByteStringType() {
+            // Same double-unwrap bug via static ListsLib.any() path
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.core.types.JulcList;
+                    import com.bloxbean.cardano.julc.stdlib.lib.ListsLib;
+                    import com.bloxbean.cardano.julc.ledger.api.*;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            var fields = Builtins.sndPair(Builtins.unConstrData(redeemer));
+                            JulcList<PubKeyHash> sigs = Builtins.unListData(Builtins.headList(fields));
+                            byte[] target = Builtins.unBData(Builtins.headList(Builtins.tailList(fields)));
+                            return ListsLib.any(sigs, sig -> Builtins.equalsByteString((byte[])(Object) sig.hash(), target));
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var sigsList = PlutusData.list(
+                    PlutusData.bytes(new byte[]{1, 2, 3}),
+                    PlutusData.bytes(new byte[]{4, 5, 6}));
+            var redeemer = PlutusData.constr(0, sigsList, PlutusData.bytes(new byte[]{1, 2, 3}));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "ListsLib.any with inferred ByteStringType should not double-unwrap. Got: " + result);
+        }
+
+        // --- H. Nested HOF save/restore of hofUnwrappedVars ---
+
+        @Test
+        void nestedHofByteStringType() {
+            // Validates save/restore of hofUnwrappedVars for nested lambda-in-lambda.
+            // Outer filter has ByteStringType param, inner any also has ByteStringType param.
+            // Both must avoid double-unwrap independently.
+            // Redeemer = Constr(0, [list_of_bdata_hashes, list_of_bdata_whitelist])
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.core.types.JulcList;
+                    import com.bloxbean.cardano.julc.ledger.api.*;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            var fields = Builtins.sndPair(Builtins.unConstrData(redeemer));
+                            JulcList<PubKeyHash> sigs = Builtins.unListData(Builtins.headList(fields));
+                            JulcList<PubKeyHash> whitelist = Builtins.unListData(Builtins.headList(Builtins.tailList(fields)));
+                            // Nested HOF: filter sigs where sig is in whitelist
+                            JulcList<PubKeyHash> matched = sigs.filter(sig ->
+                                whitelist.any(w -> Builtins.equalsByteString((byte[])(Object) sig.hash(), (byte[])(Object) w.hash()))
+                            );
+                            return matched.size() == 2;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var sigsList = PlutusData.list(
+                    PlutusData.bytes(new byte[]{1, 2, 3}),
+                    PlutusData.bytes(new byte[]{4, 5, 6}),
+                    PlutusData.bytes(new byte[]{7, 8, 9}));
+            var whiteList = PlutusData.list(
+                    PlutusData.bytes(new byte[]{1, 2, 3}),
+                    PlutusData.bytes(new byte[]{7, 8, 9}));
+            var redeemer = PlutusData.constr(0, sigsList, whiteList);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "Nested HOF with ByteStringType should handle save/restore correctly. Got: " + result);
+        }
+
+        // --- I. Other ByteStringType-mapped types in HOF context ---
+
+        @Test
+        void listAnyInferredScriptHash() {
+            // ScriptHash maps to ByteStringType — same double-unwrap fix must apply
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.core.types.JulcList;
+                    import com.bloxbean.cardano.julc.ledger.api.*;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            var fields = Builtins.sndPair(Builtins.unConstrData(redeemer));
+                            JulcList<ScriptHash> hashes = Builtins.unListData(Builtins.headList(fields));
+                            byte[] target = Builtins.unBData(Builtins.headList(Builtins.tailList(fields)));
+                            return hashes.any(h -> Builtins.equalsByteString((byte[])(Object) h.hash(), target));
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var hashList = PlutusData.list(
+                    PlutusData.bytes(new byte[]{10, 20, 30}),
+                    PlutusData.bytes(new byte[]{40, 50, 60}));
+            var redeemer = PlutusData.constr(0, hashList, PlutusData.bytes(new byte[]{10, 20, 30}));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "list.any with inferred ScriptHash should not double-unwrap. Got: " + result);
+        }
+
+        @Test
+        void listAnyInferredTxId() {
+            // TxId maps to ByteStringType — same double-unwrap fix must apply
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.core.types.JulcList;
+                    import com.bloxbean.cardano.julc.ledger.api.*;
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            var fields = Builtins.sndPair(Builtins.unConstrData(redeemer));
+                            JulcList<TxId> txIds = Builtins.unListData(Builtins.headList(fields));
+                            byte[] target = Builtins.unBData(Builtins.headList(Builtins.tailList(fields)));
+                            return txIds.any(tx -> Builtins.equalsByteString((byte[])(Object) tx.hash(), target));
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var txIdList = PlutusData.list(
+                    PlutusData.bytes(new byte[]{11, 22}),
+                    PlutusData.bytes(new byte[]{33, 44}));
+            var redeemer = PlutusData.constr(0, txIdList, PlutusData.bytes(new byte[]{11, 22}));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "list.any with inferred TxId should not double-unwrap. Got: " + result);
+        }
+
+        // --- J. @NewType byte[] field access in HOF lambda ---
+
+        @Test
+        void newTypeByteArrayInHofLambda() {
+            // @NewType byte[] maps to ByteStringType.
+            // In HOF lambda, field accessor (.id()) should be identity for HOF-unwrapped var.
+            // Redeemer = Constr(0, [list_of_bdata, target_bytes])
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.core.types.JulcList;
+                    @Validator
+                    class TestValidator {
+                        @NewType
+                        record AssetId(byte[] id) {}
+
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            var fields = Builtins.sndPair(Builtins.unConstrData(redeemer));
+                            JulcList<AssetId> assets = Builtins.unListData(Builtins.headList(fields));
+                            byte[] target = Builtins.unBData(Builtins.headList(Builtins.tailList(fields)));
+                            return assets.any(a -> Builtins.equalsByteString(a.id(), target));
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            // @NewType byte[] → list elements are BData-wrapped bytes
+            var assetList = PlutusData.list(
+                    PlutusData.bytes(new byte[]{0x01, 0x02}),
+                    PlutusData.bytes(new byte[]{0x03, 0x04}));
+            var redeemer = PlutusData.constr(0, assetList, PlutusData.bytes(new byte[]{0x01, 0x02}));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "@NewType byte[] field accessor in HOF lambda should work. Got: " + result);
+        }
+    }
 }

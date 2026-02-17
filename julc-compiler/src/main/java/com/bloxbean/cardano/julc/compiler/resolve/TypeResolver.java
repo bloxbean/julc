@@ -213,6 +213,9 @@ public class TypeResolver {
             }
             throw new IllegalArgumentException("Arrays are not supported; use List. Got: " + at);
         }
+        if (type instanceof com.github.javaparser.ast.type.UnknownType) {
+            return new PirType.DataType(); // default fallback for untyped lambda params
+        }
         throw new IllegalArgumentException("Cannot resolve type: " + type);
     }
 

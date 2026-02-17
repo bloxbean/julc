@@ -72,6 +72,7 @@ public final class TypeMethodRegistry {
         registerStringMethods(reg);
         registerDataEqualsMethods(reg);
         registerListMethods(reg);
+        registerListHofMethods(reg);
         registerOptionalMethods(reg);
         registerMapMethods(reg);
         registerPairMethods(reg);
@@ -490,6 +491,50 @@ public final class TypeMethodRegistry {
                             new PirTerm.App(new PirTerm.App(goVar, scope), args.get(0)));
                 },
                 scopeType -> scopeType);
+    }
+
+    // --- List HOF instance methods (5): map, filter, any, all, find ---
+
+    private static void registerListHofMethods(TypeMethodRegistry reg) {
+        // map(fn): apply fn to each element, return new list
+        reg.register("ListType", "map",
+                (scope, args, scopeType, argTypes) -> {
+                    if (args.isEmpty()) throw new CompilerException("list.map() requires a function argument");
+                    return PirHofBuilders.map(scope, args.get(0));
+                },
+                scopeType -> new PirType.ListType(new PirType.DataType()));
+
+        // filter(pred): keep elements where pred returns true
+        reg.register("ListType", "filter",
+                (scope, args, scopeType, argTypes) -> {
+                    if (args.isEmpty()) throw new CompilerException("list.filter() requires a predicate argument");
+                    return PirHofBuilders.filter(scope, args.get(0));
+                },
+                scopeType -> scopeType);
+
+        // any(pred): return true if any element satisfies pred
+        reg.register("ListType", "any",
+                (scope, args, scopeType, argTypes) -> {
+                    if (args.isEmpty()) throw new CompilerException("list.any() requires a predicate argument");
+                    return PirHofBuilders.any(scope, args.get(0));
+                },
+                scopeType -> new PirType.BoolType());
+
+        // all(pred): return true if all elements satisfy pred
+        reg.register("ListType", "all",
+                (scope, args, scopeType, argTypes) -> {
+                    if (args.isEmpty()) throw new CompilerException("list.all() requires a predicate argument");
+                    return PirHofBuilders.all(scope, args.get(0));
+                },
+                scopeType -> new PirType.BoolType());
+
+        // find(pred): return first element matching pred as Optional
+        reg.register("ListType", "find",
+                (scope, args, scopeType, argTypes) -> {
+                    if (args.isEmpty()) throw new CompilerException("list.find() requires a predicate argument");
+                    return PirHofBuilders.find(scope, args.get(0));
+                },
+                scopeType -> new PirType.OptionalType(new PirType.DataType()));
     }
 
     // --- Optional methods (3) ---

@@ -37,6 +37,7 @@ public class PirGenerator {
     private String forEachAccumulatorVar; // non-null when compiling fold body
     private Function<PirTerm, PirTerm> breakContinueFn; // non-null when compiling break-capable fold body
     private Set<String> multiAccVars = Set.of(); // non-empty when compiling multi-acc fold body
+    private Set<String> hofUnwrappedVars = Set.of(); // param names unwrapped by HOF lambda Let-binding (prevents double-unwrap)
     /**
      * Execute a body-generation action within a loop body context.
      * Previously used to reject nested loops; now a simple pass-through since nested loops are supported.
@@ -698,13 +699,52 @@ public class PirGenerator {
                 var resolvedClassName = typeResolver.resolveClassName(className);
                 var compiledArgs = new ArrayList<PirTerm>();
                 var argPirTypes = new ArrayList<PirType>();
-                for (var arg : args) {
-                    var argPir = generateExpression(arg);
-                    compiledArgs.add(argPir);
-                    var argType = resolveExpressionType(arg);
-                    if (argType instanceof PirType.DataType) argType = inferPirType(argPir);
-                    argPirTypes.add(argType);
+
+                // For static HOF methods (ListsLib.map/filter/any/all/find), compile list arg first
+                // to infer element type for lambda parameter type inference
+                boolean isStaticHof = (className.equals("ListsLib") || resolvedClassName.endsWith(".ListsLib"))
+                        && STATIC_HOF_METHODS.contains(methodName) && args.size() >= 2;
+
+                if (isStaticHof) {
+                    // Compile list arg (first) to determine element type
+                    var listArg = generateExpression(args.get(0));
+                    compiledArgs.add(listArg);
+                    var listType = resolveExpressionType(args.get(0));
+                    if (listType instanceof PirType.DataType) listType = inferPirType(listArg);
+                    argPirTypes.add(listType);
+
+                    // Compile remaining args with lambda type inference
+                    for (int i = 1; i < args.size(); i++) {
+                        var arg = args.get(i);
+                        PirTerm argPir;
+                        if (arg.isLambdaExpr() && listType instanceof PirType.ListType lt) {
+                            var expectedTypes = inferHofLambdaParamTypes(methodName, lt);
+                            boolean wrapResult = methodName.equals("map");
+                            // foldl lambda has 2 params (acc, elem) — only infer elem type
+                            if (methodName.equals("foldl") && i == 1) {
+                                // foldl's function lambda — don't infer types (2-param)
+                                argPir = generateExpression(arg);
+                            } else {
+                                argPir = generateLambda(arg.asLambdaExpr(), expectedTypes, wrapResult);
+                            }
+                        } else {
+                            argPir = generateExpression(arg);
+                        }
+                        compiledArgs.add(argPir);
+                        var argType = resolveExpressionType(arg);
+                        if (argType instanceof PirType.DataType) argType = inferPirType(argPir);
+                        argPirTypes.add(argType);
+                    }
+                } else {
+                    for (var arg : args) {
+                        var argPir = generateExpression(arg);
+                        compiledArgs.add(argPir);
+                        var argType = resolveExpressionType(arg);
+                        if (argType instanceof PirType.DataType) argType = inferPirType(argPir);
+                        argPirTypes.add(argType);
+                    }
                 }
+
                 var result = stdlibLookup.lookup(resolvedClassName, methodName, compiledArgs, argPirTypes);
                 if (result.isPresent()) {
                     options.logf("Resolved stdlib: %s.%s", className, methodName);
@@ -741,15 +781,33 @@ public class PirGenerator {
                 var scopeType = resolveExpressionType(scopeExpr);
                 if (scopeType instanceof PirType.DataType) scopeType = inferPirType(scope);
 
-                // Compile args and resolve arg types
+                // Compile args — with lambda type inference for HOF methods on ListType
                 var compiledArgs = new ArrayList<PirTerm>();
                 var argPirTypes = new ArrayList<PirType>();
+                boolean isListHof = scopeType instanceof PirType.ListType && LIST_HOF_METHODS.contains(methodName);
                 for (var arg : args) {
-                    var argPir = generateExpression(arg);
+                    PirTerm argPir;
+                    if (isListHof && arg.isLambdaExpr()) {
+                        var lt = (PirType.ListType) scopeType;
+                        var expectedTypes = inferHofLambdaParamTypes(methodName, lt);
+                        boolean wrapResult = methodName.equals("map");
+                        argPir = generateLambda(arg.asLambdaExpr(), expectedTypes, wrapResult);
+                    } else {
+                        argPir = generateExpression(arg);
+                    }
                     compiledArgs.add(argPir);
-                    var argType = resolveExpressionType(arg);
+                    var argType = isListHof && arg.isLambdaExpr()
+                            ? inferPirType(argPir) : resolveExpressionType(arg);
                     if (argType instanceof PirType.DataType) argType = inferPirType(argPir);
                     argPirTypes.add(argType);
+                }
+
+                // 3A: Skip .hash() on HOF-unwrapped ByteStringType vars (prevents double UnBData)
+                if (scopeType instanceof PirType.ByteStringType
+                        && methodName.equals("hash") && args.isEmpty()
+                        && scopeExpr instanceof NameExpr ne
+                        && hofUnwrappedVars.contains(ne.getNameAsString())) {
+                    return scope; // Already unwrapped by Let-binding — identity
                 }
 
                 var registryResult = typeMethodRegistry.dispatch(scope, methodName, compiledArgs, scopeType, argPirTypes);
@@ -758,6 +816,16 @@ public class PirGenerator {
                 // Auto-recognize toPlutusData() — encode value as Data
                 if (methodName.equals("toPlutusData") && args.isEmpty()) {
                     return PirHelpers.wrapEncode(scope, scopeType);
+                }
+
+                // 3B: Handle unregistered no-arg methods on ByteStringType (e.g. TokenName.name(), @NewType fields)
+                if (scopeType instanceof PirType.ByteStringType && args.isEmpty()) {
+                    if (scopeExpr instanceof NameExpr ne
+                            && hofUnwrappedVars.contains(ne.getNameAsString())) {
+                        return scope; // HOF-unwrapped — identity
+                    }
+                    // Standard field extraction: UnBData (same semantics as .hash() for non-HOF context)
+                    return new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnBData), scope);
                 }
             }
 
@@ -2574,6 +2642,132 @@ public class PirGenerator {
         return result;
     }
 
+    /**
+     * Generate a lambda with inferred parameter types from the HOF context.
+     * <p>
+     * When the lambda has untyped params (e.g., {@code x -> x + 1}), this method uses
+     * the expected parameter types to:
+     * <ol>
+     *   <li>Define the param in the symbol table with the inferred type (enables correct arithmetic/comparison ops)</li>
+     *   <li>Insert wrapDecode Let bindings for primitive types (Lam receives raw Data, body needs unwrapped value)</li>
+     *   <li>Optionally wrap the result to Data (for map, where MkCons expects Data elements)</li>
+     * </ol>
+     *
+     * @param le the lambda expression
+     * @param expectedParamTypes the inferred parameter types from HOF context
+     * @param wrapResultToData if true, wrap the lambda body result with wrapEncode (for map)
+     */
+    private PirTerm generateLambda(LambdaExpr le, java.util.List<PirType> expectedParamTypes, boolean wrapResultToData) {
+        var params = le.getParameters();
+
+        symbolTable.pushScope();
+
+        var resolvedTypes = new ArrayList<PirType>();
+        var needsUnwrap = new ArrayList<Boolean>();
+
+        for (int i = 0; i < params.size(); i++) {
+            var param = params.get(i);
+            PirType pirType;
+            boolean unwrap = false;
+            if (param.getType().isUnknownType() && i < expectedParamTypes.size()) {
+                pirType = expectedParamTypes.get(i);
+                // Only unwrap primitive types (Integer, ByteString, Bool, String)
+                // RecordType/SumType/DataType are already Data at UPLC level
+                unwrap = isPrimitiveUplcType(pirType);
+            } else {
+                pirType = typeResolver.resolve(param.getType());
+            }
+            resolvedTypes.add(pirType);
+            needsUnwrap.add(unwrap);
+            symbolTable.define(param.getNameAsString(), pirType);
+        }
+
+        // Track HOF-unwrapped vars so dispatch can skip redundant UnBData.
+        // Union with outer scope's unwrapped vars — nested lambdas may capture outer vars.
+        var prevHofUnwrapped = hofUnwrappedVars;
+        var unwrappedNames = new LinkedHashSet<String>(hofUnwrappedVars);
+        for (int i = 0; i < params.size(); i++) {
+            if (needsUnwrap.get(i)) {
+                unwrappedNames.add(params.get(i).getNameAsString());
+            }
+        }
+        hofUnwrappedVars = unwrappedNames;
+
+        // Generate body
+        PirTerm bodyTerm;
+        var lambdaBody = le.getBody();
+        if (lambdaBody instanceof com.github.javaparser.ast.stmt.ExpressionStmt es) {
+            bodyTerm = generateExpression(es.getExpression());
+        } else if (lambdaBody instanceof com.github.javaparser.ast.stmt.BlockStmt block) {
+            bodyTerm = generateBlock(block);
+        } else {
+            throw enrichedError("Unsupported lambda body: " + lambdaBody.getClass().getSimpleName(),
+                    "Lambda bodies must be a single expression or a block statement.", le);
+        }
+
+        hofUnwrappedVars = prevHofUnwrapped;
+        symbolTable.popScope();
+
+        // Auto-wrap result for map (MkCons expects Data elements)
+        if (wrapResultToData) {
+            var bodyType = inferPirType(bodyTerm);
+            if (!(bodyType instanceof PirType.DataType)) {
+                bodyTerm = PirHelpers.wrapEncode(bodyTerm, bodyType);
+            }
+        }
+
+        // Insert wrapDecode Let bindings for inferred primitive types
+        // Uses same-name shadowing: Let("x", UnIData(Var("x")), body)
+        // UplcGenerator resolves correctly — value uses outer scope, body uses inner
+        for (int i = params.size() - 1; i >= 0; i--) {
+            if (needsUnwrap.get(i)) {
+                var paramName = params.get(i).getNameAsString();
+                bodyTerm = new PirTerm.Let(paramName,
+                        PirHelpers.wrapDecode(
+                                new PirTerm.Var(paramName, new PirType.DataType()),
+                                resolvedTypes.get(i)),
+                        bodyTerm);
+            }
+        }
+
+        // Build Lam chain — use DataType for inferred params (Lam receives raw Data)
+        PirTerm result = bodyTerm;
+        for (int i = params.size() - 1; i >= 0; i--) {
+            var param = params.get(i);
+            var lamType = needsUnwrap.get(i) ? new PirType.DataType() : resolvedTypes.get(i);
+            result = new PirTerm.Lam(param.getNameAsString(), lamType, result);
+        }
+
+        if (params.isEmpty()) {
+            result = new PirTerm.Lam("_", new PirType.UnitType(), result);
+        }
+        return result;
+    }
+
+    /**
+     * Returns true for primitive UPLC types that need unwrap/wrap at Data boundaries.
+     * RecordType, SumType, DataType, ListType, MapType are already Data — no conversion needed.
+     */
+    private static boolean isPrimitiveUplcType(PirType type) {
+        return type instanceof PirType.IntegerType
+                || type instanceof PirType.ByteStringType
+                || type instanceof PirType.BoolType
+                || type instanceof PirType.StringType;
+    }
+
+    private static final java.util.Set<String> LIST_HOF_METHODS =
+            java.util.Set.of("map", "filter", "any", "all", "find");
+
+    private static final java.util.Set<String> STATIC_HOF_METHODS =
+            java.util.Set.of("map", "filter", "any", "all", "find", "foldl");
+
+    /**
+     * Infer expected lambda parameter types for a HOF call based on the list's element type.
+     */
+    private java.util.List<PirType> inferHofLambdaParamTypes(String methodName, PirType.ListType lt) {
+        return java.util.List.of(lt.elemType());
+    }
+
     // --- Helpers ---
 
     private PirType inferType(com.github.javaparser.ast.type.Type declType, PirTerm initValue,
@@ -2632,6 +2826,12 @@ public class PirGenerator {
         }
         if (term instanceof PirTerm.IfThenElse ite) {
             return inferPirType(ite.thenBranch());
+        }
+        if (term instanceof PirTerm.Let let) {
+            return inferPirType(let.body());
+        }
+        if (term instanceof PirTerm.LetRec letRec) {
+            return inferPirType(letRec.body());
         }
         return new PirType.DataType();
     }
