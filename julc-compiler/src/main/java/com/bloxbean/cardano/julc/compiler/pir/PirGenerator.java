@@ -1123,7 +1123,7 @@ public class PirGenerator {
 
                 String prev = forEachAccumulatorVar;
                 forEachAccumulatorVar = accName;
-                var bodyTerm = withLoopBodyFlag(() -> generateStatement(fes.getBody()));
+                var bodyTerm = withLoopBodyFlag(() -> generateSingleAccBody(fes.getBody(), accName, accType));
                 forEachAccumulatorVar = prev;
 
                 symbolTable.popScope();
@@ -1331,10 +1331,11 @@ public class PirGenerator {
             thenTerm = generateBreakAwareBody(is.getThenStmt(), accName, accType, continueFn);
             elseTerm = generateBreakAwareBody(is.getElseStmt().get(), accName, accType, _ -> new PirTerm.Var(accName, accType));
         } else {
-            // Neither breaks: normal if
-            thenTerm = generateStatement(is.getThenStmt());
-            elseTerm = is.getElseStmt().map(this::generateStatement)
-                    .orElse(new PirTerm.Const(Constant.unit()));
+            // Neither breaks: use single-acc body to properly thread accumulator
+            thenTerm = generateSingleAccBody(is.getThenStmt(), accName, accType);
+            elseTerm = is.getElseStmt()
+                    .map(e -> generateSingleAccBody(e, accName, accType))
+                    .orElse(new PirTerm.Var(accName, accType));
         }
 
         var ifExpr = new PirTerm.IfThenElse(cond, thenTerm, elseTerm);
@@ -1346,6 +1347,10 @@ public class PirGenerator {
                 return ifExpr;
             }
             var rest = generateBreakAwareStatements(followingStmts, followingIndex + 1, accName, accType, continueFn);
+            if (!thenBreaks && !elseBreaks) {
+                // Neither breaks: rebind acc with if result so following stmts see updated value
+                return new PirTerm.Let(accName, ifExpr, rest);
+            }
             return new PirTerm.Let("_if", ifExpr, rest);
         }
 
@@ -1412,6 +1417,112 @@ public class PirGenerator {
     private static List<Statement> blockStmts(Statement stmt) {
         if (stmt instanceof BlockStmt bs) return bs.getStatements();
         return List.of(stmt);
+    }
+
+    /** Compile single-acc loop body: process stmts, acc assignments become Let shadows, return acc at end */
+    private PirTerm generateSingleAccBody(Statement bodyStmt, String accName, PirType accType) {
+        var stmts = blockStmts(bodyStmt);
+        return generateSingleAccStatements(stmts, 0, accName, accType);
+    }
+
+    private PirTerm generateSingleAccStatements(List<Statement> stmts, int index,
+                                                  String accName, PirType accType) {
+        if (index >= stmts.size()) {
+            return new PirTerm.Var(accName, accType); // return current acc at body end
+        }
+        var stmt = stmts.get(index);
+
+        if (stmt instanceof ExpressionStmt es) {
+            // Accumulator assignment: acc = val;
+            if (es.getExpression() instanceof AssignExpr ae
+                    && ae.getTarget() instanceof NameExpr ne
+                    && ne.getNameAsString().equals(accName)) {
+                var value = generateExpression(ae.getValue());
+                var rest = generateSingleAccStatements(stmts, index + 1, accName, accType);
+                return new PirTerm.Let(accName, value, rest);
+            }
+            // Non-accumulator assignment: shadow with Let binding
+            if (es.getExpression() instanceof AssignExpr ae
+                    && ae.getTarget() instanceof NameExpr ne) {
+                var value = generateExpression(ae.getValue());
+                var rest = generateSingleAccStatements(stmts, index + 1, accName, accType);
+                return new PirTerm.Let(ne.getNameAsString(), value, rest);
+            }
+            // Variable declaration
+            if (es.getExpression() instanceof VariableDeclarationExpr vde) {
+                var decl = vde.getVariable(0);
+                var name = decl.getNameAsString();
+                var initExpr = decl.getInitializer().orElseThrow(
+                        () -> new CompilerException("Variable must be initialized: " + name
+                                + ". Hint: On-chain variables need initial values, e.g. var " + name + " = BigInteger.ZERO;"));
+                var value = generateExpression(initExpr);
+                var pirType = inferType(decl.getType(), value, initExpr);
+                symbolTable.define(name, pirType);
+                var rest = generateSingleAccStatements(stmts, index + 1, accName, accType);
+                return new PirTerm.Let(name, value, rest);
+            }
+            // Other expression: evaluate, discard, continue
+            var expr = generateExpression(es.getExpression());
+            var rest = generateSingleAccStatements(stmts, index + 1, accName, accType);
+            return new PirTerm.Let("_", expr, rest);
+        }
+        if (stmt instanceof IfStmt is) {
+            var cond = generateExpression(is.getCondition());
+            var thenTerm = generateSingleAccBody(is.getThenStmt(), accName, accType);
+            var elseTerm = is.getElseStmt()
+                    .map(e -> generateSingleAccBody(e, accName, accType))
+                    .orElse(new PirTerm.Var(accName, accType));
+            var ifExpr = new PirTerm.IfThenElse(cond, thenTerm, elseTerm);
+            if (index + 1 < stmts.size()) {
+                // After if, rebind acc with if result, then continue
+                var rest = generateSingleAccStatements(stmts, index + 1, accName, accType);
+                return new PirTerm.Let(accName, ifExpr, rest);
+            }
+            return ifExpr;
+        }
+        if (stmt instanceof WhileStmt ws) {
+            // Nested while inside single-acc body
+            var innerAccs = detectForEachAccumulators(ws.getBody());
+            var innerResult = generateWhileStmt(ws, List.of(ws), 0);
+            if (innerAccs.size() == 1) {
+                var rest = generateSingleAccStatements(stmts, index + 1, accName, accType);
+                return new PirTerm.Let(innerAccs.get(0), innerResult, rest);
+            } else if (innerAccs.size() > 1) {
+                var innerTypes = innerAccs.stream()
+                        .map(n -> symbolTable.lookup(n).orElse(new PirType.DataType()))
+                        .toList();
+                var rest = generateSingleAccStatements(stmts, index + 1, accName, accType);
+                return unpackAccumulators(innerResult, innerAccs, innerTypes, rest);
+            } else {
+                var rest = generateSingleAccStatements(stmts, index + 1, accName, accType);
+                return new PirTerm.Let("_nested", innerResult, rest);
+            }
+        }
+        if (stmt instanceof ForEachStmt fes) {
+            // Nested for-each inside single-acc body
+            var innerAccs = detectForEachAccumulators(fes.getBody());
+            var innerResult = generateForEachStmt(fes, List.of(fes), 0);
+            if (innerAccs.size() == 1) {
+                var rest = generateSingleAccStatements(stmts, index + 1, accName, accType);
+                return new PirTerm.Let(innerAccs.get(0), innerResult, rest);
+            } else if (innerAccs.size() > 1) {
+                var innerTypes = innerAccs.stream()
+                        .map(n -> symbolTable.lookup(n).orElse(new PirType.DataType()))
+                        .toList();
+                var rest = generateSingleAccStatements(stmts, index + 1, accName, accType);
+                return unpackAccumulators(innerResult, innerAccs, innerTypes, rest);
+            } else {
+                var rest = generateSingleAccStatements(stmts, index + 1, accName, accType);
+                return new PirTerm.Let("_nested", innerResult, rest);
+            }
+        }
+        // Fallback: use generateStatement for other statements
+        var term = generateStatement(stmt);
+        if (index + 1 < stmts.size()) {
+            var rest = generateSingleAccStatements(stmts, index + 1, accName, accType);
+            return new PirTerm.Let("_", term, rest);
+        }
+        return new PirTerm.Var(accName, accType);
     }
 
     /**
@@ -2143,7 +2254,7 @@ public class PirGenerator {
                 String prev = forEachAccumulatorVar;
                 forEachAccumulatorVar = accName;
                 var condition = generateExpression(ws.getCondition());
-                var bodyTerm = withLoopBodyFlag(() -> generateStatement(ws.getBody()));
+                var bodyTerm = withLoopBodyFlag(() -> generateSingleAccBody(ws.getBody(), accName, accType));
                 forEachAccumulatorVar = prev;
 
                 symbolTable.popScope();

@@ -1606,4 +1606,223 @@ class LoopDesugarTest {
             assertTrue(evalResult.isSuccess(), "Triple shared accumulator should give total=248: " + evalResult);
         }
     }
+
+    // ========== Single-Acc If-Without-Else Bug Fix Tests ==========
+
+    @Nested
+    class SingleAccIfWithoutElseTests {
+
+        /** Build a minimal ScriptContext Data for eval tests */
+        private PlutusData dummyScriptContext() {
+            var emptyList = PlutusData.list();
+            var emptyMap = PlutusData.map();
+            var zeroInterval = PlutusData.constr(0,
+                    PlutusData.constr(0, PlutusData.constr(1), PlutusData.integer(0)),
+                    PlutusData.constr(0, PlutusData.constr(1), PlutusData.integer(0)));
+            var txInfo = PlutusData.constr(0,
+                    emptyList, emptyList, emptyList, emptyList, emptyList,
+                    emptyList, emptyMap, zeroInterval, emptyList, emptyMap,
+                    PlutusData.bytes(new byte[32]),
+                    emptyMap, emptyList, emptyList, emptyList, PlutusData.integer(0));
+            var redeemer = PlutusData.integer(0);
+            var scriptInfo = PlutusData.constr(0, PlutusData.bytes(new byte[28]));
+            return PlutusData.constr(0, txInfo, redeemer, scriptInfo);
+        }
+
+        @Test
+        void forEachSingleAcc_ifWithoutElse_asLastStmt() {
+            // Single-acc while: if-without-else is the LAST body statement.
+            // k counts down. After decrement, if k==3 set k=0 (immediate termination).
+            // k=10→9→...→4→3→0 (loop ends). Result: k==0.
+            // Tests that when if-without-else is at the end of body,
+            // the false branch returns current acc (not Unit).
+            var source = """
+                import java.math.BigInteger;
+
+                @Validator
+                class IfLastStmt {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        BigInteger k = BigInteger.valueOf(10);
+                        while (k > BigInteger.ZERO) {
+                            k = k - BigInteger.ONE;
+                            if (k == BigInteger.valueOf(3)) {
+                                k = BigInteger.ZERO;
+                            }
+                        }
+                        return k == BigInteger.ZERO;
+                    }
+                }
+                """;
+            var result = new JulcCompiler().compile(source);
+            assertNotNull(result.program(), "Compilation failed: " + result.diagnostics());
+            assertFalse(result.hasErrors(), "Errors: " + result.diagnostics());
+
+            var evalResult = vm.evaluateWithArgs(result.program(), List.of(dummyScriptContext()));
+            assertTrue(evalResult.isSuccess(), "If-without-else as last body stmt should work: " + evalResult);
+        }
+
+        @Test
+        void forEachSingleAcc_ifWithoutElse_conditionalIncrement() {
+            // Single-acc while: k starts at 100, counts down by 1 each iteration.
+            // If k > 95, subtract an extra 5 (so k drops faster for first 5 iterations).
+            // k=100: 100>95→k=100-1-5=94. k=94: not>95→k=94-1=93. etc.
+            // Only first iteration hits the condition. Final k==0.
+            var source = """
+                import java.math.BigInteger;
+
+                @Validator
+                class CondIncrement {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        BigInteger k = BigInteger.valueOf(100);
+                        while (k > BigInteger.ZERO) {
+                            if (k > BigInteger.valueOf(95)) {
+                                k = k - BigInteger.valueOf(5);
+                            }
+                            k = k - BigInteger.ONE;
+                        }
+                        return k == BigInteger.ZERO;
+                    }
+                }
+                """;
+            var result = new JulcCompiler().compile(source);
+            assertNotNull(result.program(), "Compilation failed: " + result.diagnostics());
+            assertFalse(result.hasErrors(), "Errors: " + result.diagnostics());
+
+            var evalResult = vm.evaluateWithArgs(result.program(), List.of(dummyScriptContext()));
+            assertTrue(evalResult.isSuccess(), "If-without-else conditional increment should work: " + evalResult);
+        }
+
+        @Test
+        void forEachSingleAcc_ifWithoutElse_followedByAccMod() {
+            // Single-acc while: k starts at 20, counts down.
+            // If k > 15, subtract 3 extra. Then subtract 1 always.
+            // k=20: >15→k=20-3-1=16. k=16: >15→k=16-3-1=12. k=12: not>15→k=11. ...→k=0.
+            // Tests that if-without-else result is properly threaded to the following statement.
+            var source = """
+                import java.math.BigInteger;
+
+                @Validator
+                class IfFollowedByMod {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        BigInteger k = BigInteger.valueOf(20);
+                        while (k > BigInteger.ZERO) {
+                            if (k > BigInteger.valueOf(15)) {
+                                k = k - BigInteger.valueOf(3);
+                            }
+                            k = k - BigInteger.ONE;
+                        }
+                        return k == BigInteger.ZERO;
+                    }
+                }
+                """;
+            var result = new JulcCompiler().compile(source);
+            assertNotNull(result.program(), "Compilation failed: " + result.diagnostics());
+            assertFalse(result.hasErrors(), "Errors: " + result.diagnostics());
+
+            var evalResult = vm.evaluateWithArgs(result.program(), List.of(dummyScriptContext()));
+            assertTrue(evalResult.isSuccess(), "If-without-else followed by acc mod should work: " + evalResult);
+        }
+
+        @Test
+        void whileSingleAcc_ifWithoutElse() {
+            // k=5, while k>0: if k==3 k=-1; k=k-1 → final k should be -2
+            var source = """
+                import java.math.BigInteger;
+
+                @Validator
+                class WhileIfNoElse {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        BigInteger k = BigInteger.valueOf(5);
+                        while (k > BigInteger.ZERO) {
+                            if (k == BigInteger.valueOf(3)) {
+                                k = BigInteger.valueOf(-1);
+                            }
+                            k = k - BigInteger.ONE;
+                        }
+                        return k == BigInteger.valueOf(-2);
+                    }
+                }
+                """;
+            var result = new JulcCompiler().compile(source);
+            assertNotNull(result.program(), "Compilation failed: " + result.diagnostics());
+            assertFalse(result.hasErrors(), "Errors: " + result.diagnostics());
+
+            var evalResult = vm.evaluateWithArgs(result.program(), List.of(dummyScriptContext()));
+            assertTrue(evalResult.isSuccess(), "While single-acc if-without-else should give k=-2: " + evalResult);
+        }
+
+        @Test
+        void breakAware_ifWithoutElse_neitherBreaks() {
+            // Single-acc while with break: k counts down from 10, if k==5 then k=-100, break.
+            // Without the if, k decrements. Tests that if-without-else in break-aware path
+            // correctly threads the accumulator.
+            // k=10,9,8,7,6,5→k=-100, break → final k=-100
+            var source = """
+                import java.math.BigInteger;
+
+                @Validator
+                class BreakAwareIfNoElse {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        BigInteger k = BigInteger.valueOf(10);
+                        while (k > BigInteger.ZERO) {
+                            if (k == BigInteger.valueOf(5)) {
+                                k = BigInteger.valueOf(-100);
+                            }
+                            if (k < BigInteger.ZERO) {
+                                break;
+                            }
+                            k = k - BigInteger.ONE;
+                        }
+                        return k == BigInteger.valueOf(-100);
+                    }
+                }
+                """;
+            var result = new JulcCompiler().compile(source);
+            assertNotNull(result.program(), "Compilation failed: " + result.diagnostics());
+            assertFalse(result.hasErrors(), "Errors: " + result.diagnostics());
+
+            var evalResult = vm.evaluateWithArgs(result.program(), List.of(dummyScriptContext()));
+            assertTrue(evalResult.isSuccess(), "Break-aware if-without-else with break: " + evalResult);
+        }
+
+        @Test
+        void forEachSingleAcc_nestedIfWithoutElse() {
+            // Single-acc while with nested if-without-else.
+            // k starts at 30. Body: if k>20 { if k>25 k=k-10; k=k-1; } k=k-1;
+            // k=30: >20,>25→k=30-10-1-1=18. k=18: not>20→k=18-1=17. ... k=1→0.
+            // Tests nested ifs-without-else properly thread accumulator at each level.
+            var source = """
+                import java.math.BigInteger;
+
+                @Validator
+                class NestedIfNoElse {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        BigInteger k = BigInteger.valueOf(30);
+                        while (k > BigInteger.ZERO) {
+                            if (k > BigInteger.valueOf(20)) {
+                                if (k > BigInteger.valueOf(25)) {
+                                    k = k - BigInteger.valueOf(10);
+                                }
+                                k = k - BigInteger.ONE;
+                            }
+                            k = k - BigInteger.ONE;
+                        }
+                        return k == BigInteger.ZERO;
+                    }
+                }
+                """;
+            var result = new JulcCompiler().compile(source);
+            assertNotNull(result.program(), "Compilation failed: " + result.diagnostics());
+            assertFalse(result.hasErrors(), "Errors: " + result.diagnostics());
+
+            var evalResult = vm.evaluateWithArgs(result.program(), List.of(dummyScriptContext()));
+            assertTrue(evalResult.isSuccess(), "Nested if-without-else should work: " + evalResult);
+        }
+    }
 }
