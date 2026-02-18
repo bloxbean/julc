@@ -129,31 +129,9 @@ var evalResult = vm.evaluateWithArgs(program, datum, redeemer, scriptContext);
 assertTrue(evalResult.isSuccess());
 ```
 
-## Benchmarks
-
-WingRiders-style batched swap benchmark (julc-annotation-test):
-
-| Requests per Tx | Total CPU | Per-Request CPU | Per-Request Mem |
-|-----------------|-----------|-----------------|-----------------|
-| 1 | 24.6M | 24.6M | 91.4K |
-| 2 | 37.6M | 18.8M | 70.7K |
-| 4 | 68.8M | 17.2M | 65.7K |
-| 10 | 204.3M | 20.4M | 79.6K |
-| 24 | 764.3M | 31.8M | 126.3K |
-| 30 | 1.1B | 37.0M | 147.1K |
-
-Comparison with other Cardano smart contract languages (per-request CPU):
-
-| Language | Per-Request CPU |
-|----------|-----------------|
-| Plinth (Haskell) | 723M |
-| Aiken (Rust-like) | 164M |
-| Plutarch (Haskell eDSL) | 121M |
-| **JuLC (Java)** | **~20-37M** |
-
 ## Requirements
 
-- **Java 25** (GraalVM recommended)
+- **Java 24+**
 - **Gradle 9+**
 
 ## Documentation
