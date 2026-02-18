@@ -63,13 +63,6 @@ java {
     }
 }
 
-tasks.withType(JavaCompile).configureEach {
-    options.compilerArgs.addAll(['--enable-preview'])
-}
-
-tasks.withType(Test).configureEach {
-    jvmArgs '--enable-preview'
-}
 ```
 
 ### Maven
@@ -120,9 +113,6 @@ tasks.withType(Test).configureEach {
             <version>3.13.0</version>
             <configuration>
                 <release>24</release>
-                <compilerArgs>
-                    <arg>--enable-preview</arg>
-                </compilerArgs>
                 <annotationProcessorPaths>
                     <path>
                         <groupId>com.bloxbean.cardano</groupId>
@@ -141,11 +131,11 @@ tasks.withType(Test).configureEach {
 > The snapshot repository configuration above is only needed for snapshot versions --
 > release versions are available from Maven Central.
 
-### Enable preview features
+### Java version note
 
-Java preview features (sealed interfaces, pattern matching, record patterns) are
-required. Both the `--enable-preview` compiler flag and the test JVM flag must be
-set, as shown in the Gradle and Maven examples above.
+JuLC uses sealed interfaces, records, pattern matching, and switch expressions.
+These features are fully standardized since Java 21, so no `--enable-preview` flag
+is needed with Java 24+.
 
 ---
 
