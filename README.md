@@ -10,7 +10,7 @@
 >
 > **Please do not use this in production.** Expect rough edges, incomplete features, and potential bugs.
 
-# julc
+# JuLC
 
 **Java UPLC Compiler for Cardano**
 
