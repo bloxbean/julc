@@ -71,6 +71,46 @@ dependencies {
 }
 ```
 
+### Using Snapshot Builds
+
+Snapshot versions include the Git commit hash for traceability, e.g. `0.1.0-d7dd508-SNAPSHOT`.
+
+To use snapshots, add the Sonatype snapshot repository:
+
+**Gradle**
+
+```groovy
+repositories {
+    mavenCentral()
+    maven {
+        url "https://central.sonatype.com/repository/maven-snapshots"
+    }
+}
+```
+
+**Maven**
+
+```xml
+<repositories>
+    <repository>
+        <id>snapshots-repo</id>
+        <url>https://central.sonatype.com/repository/maven-snapshots</url>
+        <releases>
+            <enabled>false</enabled>
+        </releases>
+        <snapshots>
+            <enabled>true</enabled>
+        </snapshots>
+    </repository>
+</repositories>
+```
+
+Then use the snapshot version in your dependencies:
+
+```groovy
+implementation 'com.bloxbean.cardano:julc-onchain-api:0.1.0-d7dd508-SNAPSHOT'
+```
+
 ### Write a Spending Validator
 
 ```java

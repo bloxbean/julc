@@ -2,6 +2,7 @@ plugins {
     id 'java'
     id 'maven-publish'
     id 'signing'
+    id 'org.ajoberstar.grgit' version '5.2.0'
     id 'io.github.gradle-nexus.publish-plugin' version '2.0.0'
 }
 
@@ -29,6 +30,11 @@ nexusPublishing {
 // Root project does not publish artifacts (subprojects + BOM handle this)
 
 subprojects {
+    def commit_id = getCheckedOutGitCommitHash()
+    if (project.version.endsWith("-SNAPSHOT")) {
+        version = "${project.version}".replace("-SNAPSHOT", "-${commit_id}-SNAPSHOT")
+    }
+
     // The BOM module uses java-platform, which is incompatible with java-library
     if (project.name == 'julc-bom') {
         return
@@ -128,4 +134,8 @@ subprojects {
             }
         }
     }
+}
+
+def getCheckedOutGitCommitHash() {
+    grgit.head().abbreviatedId
 }

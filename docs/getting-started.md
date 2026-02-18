@@ -31,6 +31,10 @@ plugins {
 repositories {
     mavenCentral()
     mavenLocal()
+    // Required for snapshot versions only
+    maven {
+        url "https://central.sonatype.com/repository/maven-snapshots"
+    }
 }
 
 dependencies {
@@ -71,6 +75,20 @@ tasks.withType(Test).configureEach {
 ### Maven
 
 ```xml
+<!-- Required for snapshot versions only -->
+<repositories>
+    <repository>
+        <id>snapshots-repo</id>
+        <url>https://central.sonatype.com/repository/maven-snapshots</url>
+        <releases>
+            <enabled>false</enabled>
+        </releases>
+        <snapshots>
+            <enabled>true</enabled>
+        </snapshots>
+    </repository>
+</repositories>
+
 <dependencies>
     <dependency>
         <groupId>com.bloxbean.cardano</groupId>
@@ -117,6 +135,11 @@ tasks.withType(Test).configureEach {
     </plugins>
 </build>
 ```
+
+> **Snapshot versions**: Snapshot builds include the Git commit hash in the version string
+> (e.g. `0.1.0-d7dd508-SNAPSHOT`). 
+> The snapshot repository configuration above is only needed for snapshot versions --
+> release versions are available from Maven Central.
 
 ### Enable preview features
 
