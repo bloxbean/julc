@@ -21,6 +21,18 @@ machine.
 
 ## 2. Project Setup
 
+> **Snapshot versions**: Snapshot builds include the Git commit hash in the version string
+> (e.g. `0.1.0-e0f314e-SNAPSHOT`).
+> The snapshot repository configuration below is only needed for snapshot versions available in snapshot repository.
+
+### Build Artifacts
+After a successful build, for a Gradle project, a validator-specific *.plutus.json file will be generated under the `build/classes/META-INF/plutus` directory.
+This JSON file contains the compiled UPLC script along with other metadata. If you are writing off-chain code in Java, this file will be automatically loaded
+by the `JulcScriptLoader.load(VestingValidator.class)` method.
+
+There is a JuLC hello world example with `VestingValidator` at https://github.com/bloxbean/julc-helloworld. You can clone this repository and add your validators
+to get started quickly.
+
 ### Gradle (annotation processor -- primary approach)
 
 ```groovy
@@ -28,10 +40,16 @@ plugins {
     id 'java'
 }
 
+group = 'com.example'
+version = '1.0-SNAPSHOT'
+
+ext {
+    julcVersion = '0.1.0-e0f314e-SNAPSHOT'
+    cardanoClientLibVersion = '0.7.1'
+}
+
 repositories {
     mavenCentral()
-    mavenLocal()
-    // Required for snapshot versions only
     maven {
         url "https://central.sonatype.com/repository/maven-snapshots"
     }
@@ -39,28 +57,28 @@ repositories {
 
 dependencies {
     // Core: stdlib + ledger types + annotations
-    implementation 'com.bloxbean.cardano:julc-stdlib:0.1.0-SNAPSHOT'
-    implementation 'com.bloxbean.cardano:julc-ledger-api:0.1.0-SNAPSHOT'
+    implementation "com.bloxbean.cardano:julc-stdlib:${julcVersion}"
+    implementation "com.bloxbean.cardano:julc-ledger-api:${julcVersion}"
 
     // Annotation processor -- compiles validators during javac
-    annotationProcessor 'com.bloxbean.cardano:julc-annotation-processor:0.1.0-SNAPSHOT'
+    annotationProcessor "com.bloxbean.cardano:julc-annotation-processor:${julcVersion}"
 
     // Runtime -- load pre-compiled scripts from classpath
-    implementation 'com.bloxbean.cardano:julc-cardano-client-lib:0.1.0-SNAPSHOT'
-    implementation 'com.bloxbean.cardano:cardano-client-lib:0.7.1'
+    implementation "com.bloxbean.cardano:julc-cardano-client-lib:${julcVersion}"
+    implementation "com.bloxbean.cardano:cardano-client-lib:${cardanoClientLibVersion}"
 
     // Test: VM for local evaluation
-    testImplementation 'com.bloxbean.cardano:julc-testkit:0.1.0-SNAPSHOT'
-    testImplementation 'com.bloxbean.cardano:julc-vm:0.1.0-SNAPSHOT'
-    testRuntimeOnly 'com.bloxbean.cardano:julc-vm-scalus:0.1.0-SNAPSHOT'
+    testImplementation "com.bloxbean.cardano:julc-testkit:${julcVersion}"
+    testImplementation "com.bloxbean.cardano:julc-vm:${julcVersion}"
+    testRuntimeOnly "com.bloxbean.cardano:julc-vm-scalus:${julcVersion}"
+
+    testImplementation platform('org.junit:junit-bom:5.10.0')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
-java {
-    sourceCompatibility = JavaVersion.VERSION_24
-    targetCompatibility = JavaVersion.VERSION_24
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(24)
-    }
+test {
+    useJUnitPlatform()
 }
 
 ```
@@ -86,22 +104,22 @@ java {
     <dependency>
         <groupId>com.bloxbean.cardano</groupId>
         <artifactId>julc-stdlib</artifactId>
-        <version>0.1.0-SNAPSHOT</version>
+        <version>${julc.version}</version>
     </dependency>
     <dependency>
         <groupId>com.bloxbean.cardano</groupId>
         <artifactId>julc-ledger-api</artifactId>
-        <version>0.1.0-SNAPSHOT</version>
+        <version>${julc.version}</version>
     </dependency>
     <dependency>
         <groupId>com.bloxbean.cardano</groupId>
         <artifactId>julc-cardano-client-lib</artifactId>
-        <version>0.1.0-SNAPSHOT</version>
+        <version>${julc.version}</version>
     </dependency>
     <dependency>
         <groupId>com.bloxbean.cardano</groupId>
         <artifactId>cardano-client-lib</artifactId>
-        <version>0.7.1</version>
+        <version>${ccl.version}</version>
     </dependency>
 </dependencies>
 
@@ -117,7 +135,7 @@ java {
                     <path>
                         <groupId>com.bloxbean.cardano</groupId>
                         <artifactId>julc-annotation-processor</artifactId>
-                        <version>0.1.0-SNAPSHOT</version>
+                        <version>${julc.version}</version>
                     </path>
                 </annotationProcessorPaths>
             </configuration>
@@ -125,11 +143,6 @@ java {
     </plugins>
 </build>
 ```
-
-> **Snapshot versions**: Snapshot builds include the Git commit hash in the version string
-> (e.g. `0.1.0-d7dd508-SNAPSHOT`). 
-> The snapshot repository configuration above is only needed for snapshot versions --
-> release versions are available from Maven Central.
 
 ### Java version note
 
@@ -150,12 +163,13 @@ the full `ScriptContext`.
 ```java
 package com.example;
 
-import com.bloxbean.cardano.julc.stdlib.annotation.SpendingValidator;
-import com.bloxbean.cardano.julc.stdlib.annotation.Entrypoint;
+import com.bloxbean.cardano.julc.core.PlutusData;
+import com.bloxbean.cardano.julc.ledger.PubKeyHash;
 import com.bloxbean.cardano.julc.ledger.ScriptContext;
 import com.bloxbean.cardano.julc.ledger.TxInfo;
-import com.bloxbean.cardano.julc.ledger.PubKeyHash;
-import com.bloxbean.cardano.julc.core.PlutusData;
+import com.bloxbean.cardano.julc.stdlib.annotation.Entrypoint;
+import com.bloxbean.cardano.julc.stdlib.annotation.SpendingValidator;
+
 import java.math.BigInteger;
 
 @SpendingValidator
@@ -168,14 +182,16 @@ public class VestingValidator {
         TxInfo txInfo = ctx.txInfo();
 
         // Check that the beneficiary signed the transaction
-        boolean signed = txInfo.signatories().contains(datum.beneficiary());
+        boolean signed = txInfo.signatories().contains(PubKeyHash.of(datum.beneficiary()));
 
         // Check that the deadline has passed (lower bound of valid range > deadline)
+        // Just a dummy check to demonstrate using the datum's deadline field.
         boolean pastDeadline = datum.deadline().compareTo(BigInteger.ZERO) > 0;
 
         return signed && pastDeadline;
     }
 }
+
 ```
 
 Key points:

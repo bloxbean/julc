@@ -49,12 +49,14 @@ operations, and first-class integration with [cardano-client-lib](https://github
 | `julc-ledger-api` | ScriptContext, TxInfo, and ledger types |
 | `julc-compiler` | Java source to UPLC compiler |
 | `julc-stdlib` | On-chain standard library |
-| `julc-onchain-api` | Annotations and builtin stubs for IDE support |
 | `julc-testkit` | Testing utilities for validators |
 | `julc-cardano-client-lib` | cardano-client-lib integration |
 | `julc-gradle-plugin` | Gradle build plugin |
 | `julc-annotation-processor` | Compile-time annotation processor |
-| `julc-examples` | Example validators |
+
+## Examples Repositories
+- [julc-helloworld](https://github.com/bloxbean/julc-helloworld) - A simple vesting contract with on-chain and off-chain code, plus tests
+- [julc-examples](https://github.com/bloxbean/julc-examples) - A collection of more complex validators demonstrating various features and patterns
 
 ## Quick Start
 
@@ -62,18 +64,26 @@ operations, and first-class integration with [cardano-client-lib](https://github
 
 ```groovy
 dependencies {
-    implementation 'com.bloxbean.cardano:julc-onchain-api:0.1.0-SNAPSHOT'
-    annotationProcessor 'com.bloxbean.cardano:julc-annotation-processor:0.1.0-SNAPSHOT'
+    implementation "com.bloxbean.cardano:julc-stdlib:${julcVersion}"
+    implementation "com.bloxbean.cardano:julc-ledger-api:${julcVersion}"
 
-    testImplementation 'com.bloxbean.cardano:julc-testkit:0.1.0-SNAPSHOT'
-    testImplementation 'com.bloxbean.cardano:julc-vm:0.1.0-SNAPSHOT'
-    testRuntimeOnly 'com.bloxbean.cardano:julc-vm-scalus:0.1.0-SNAPSHOT'
+    // Annotation processor -- compiles validators during javac
+    annotationProcessor "com.bloxbean.cardano:julc-annotation-processor:${julcVersion}"
+
+    // Test: VM for local evaluation
+    testImplementation "com.bloxbean.cardano:julc-testkit:${julcVersion}"
+    testImplementation "com.bloxbean.cardano:julc-vm:${julcVersion}"
+    testRuntimeOnly "com.bloxbean.cardano:julc-vm-scalus:${julcVersion}"
 }
 ```
 
+For detailed dependencies, check the [getting started](docs/getting-started.md) guide or the `julc-helloworld` example at https://github.com/bloxbean/julc-helloworld.
+
 ### Using Snapshot Builds
 
-Snapshot versions include the Git commit hash for traceability, e.g. `0.1.0-d7dd508-SNAPSHOT`.
+Snapshot versions include the Git commit hash for traceability, e.g. `0.1.0-e0f314e-SNAPSHOT`.
+
+**Current snapshot version**: `0.1.0-e0f314e-SNAPSHOT`. Check here for the latest snapshot commit ID: https://github.com/bloxbean/julc/actions/workflows/snapshot.yml
 
 To use snapshots, add the Sonatype snapshot repository:
 
@@ -108,7 +118,7 @@ repositories {
 Then use the snapshot version in your dependencies:
 
 ```groovy
-implementation 'com.bloxbean.cardano:julc-onchain-api:0.1.0-d7dd508-SNAPSHOT'
+implementation "com.bloxbean.cardano:julc-stdlib:${julcVersion}"
 ```
 
 ### Write a Spending Validator
@@ -116,14 +126,20 @@ implementation 'com.bloxbean.cardano:julc-onchain-api:0.1.0-d7dd508-SNAPSHOT'
 ```java
 @SpendingValidator
 public class VestingValidator {
-    record VestingDatum(byte[] beneficiary, BigInteger deadline) {}
+    record VestingDatum(PubKeyHash beneficiary, BigInteger deadline) {}
 
     @Entrypoint
     static boolean validate(VestingDatum datum, PlutusData redeemer, ScriptContext ctx) {
         TxInfo txInfo = ctx.txInfo();
-        boolean hasSigner = txInfo.signatories().contains(datum.beneficiary());
-        boolean pastDeadline = datum.deadline() > 0;
-        return hasSigner && pastDeadline;
+
+        // Check that the beneficiary signed the transaction
+        boolean signed = txInfo.signatories().contains(datum.beneficiary());
+
+        // Check that the deadline has passed (lower bound of valid range > deadline)
+        // Just a dummy check to demonstrate using the datum's deadline field.
+        boolean pastDeadline = datum.deadline().compareTo(BigInteger.ZERO) > 0;
+
+        return signed && pastDeadline;
     }
 }
 ```
@@ -141,14 +157,23 @@ public class TokenPolicy {
     static boolean validate(Action action, ScriptContext ctx) {
         TxInfo txInfo = ctx.txInfo();
         return switch (action) {
-            case Mint m -> m.amount() > 0 && !txInfo.signatories().isEmpty();
+            case Mint m -> m.amount().compareTo(BigInteger.ZERO) > 0 && !txInfo.signatories().isEmpty();
             case Burn b -> true;
         };
     }
 }
 ```
 
-### Compile and Evaluate
+### Load Compiled Script at Runtime
+
+During a Gradle build, the `@SpendingValidator` and `@MintingValidator` annotated classes are compiled to UPLC and saved as JSON files in `META-INF/plutus/` inside the JAR. You can load these compiled scripts at runtime using `JulcScriptLoader`:
+
+```java
+PlutusV3Script script = JulcScriptLoader.load(VestingValidator.class);
+// Use `script` for transaction building with cardano-client-lib
+```
+
+### Programmatically Compile and Evaluate
 
 ```java
 var stdlib = StdlibRegistry.defaultRegistry();
@@ -168,6 +193,8 @@ var vm = JulcVm.create();
 var evalResult = vm.evaluateWithArgs(program, datum, redeemer, scriptContext);
 assertTrue(evalResult.isSuccess());
 ```
+
+`julc-testkit` provides utilities for unit testing your validators locally.
 
 ## Requirements
 
