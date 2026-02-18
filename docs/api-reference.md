@@ -246,6 +246,14 @@ ListsLib.filter(items, item -> {
 });
 ```
 
+Equivalent instance method syntax (lambda types auto-inferred):
+
+```java
+list.any(x -> x.compareTo(BigInteger.ZERO) > 0)
+list.filter(x -> Builtins.unIData(x).compareTo(BigInteger.valueOf(100)) > 0)
+// foldl is only available as ListsLib.foldl (no instance method)
+```
+
 ## Typed Ledger Access
 
 When using `ScriptContext` as a parameter type, the compiler provides typed access to all ledger fields without manual Data decoding.
@@ -340,8 +348,15 @@ boolean hasSigner = ctx.txInfo().signatories().contains(datum.beneficiary());
 | `.take(n)` | `List<T>` | Returns first n elements |
 | `.drop(n)` | `List<T>` | Returns list after dropping first n elements |
 | `.prepend(elem)` | `List<T>` | Prepends element with auto-wrap (BigInteger->IData, byte[]->BData, etc.) |
+| `.map(f)` | `JulcList<PlutusData>` | Apply function to each element (wraps results to Data) |
+| `.filter(pred)` | `JulcList<T>` | Keep elements matching predicate |
+| `.any(pred)` | `boolean` | True if any element matches |
+| `.all(pred)` | `boolean` | True if all elements match |
+| `.find(pred)` | `T` | First matching element (error if none) |
 
 Chaining is supported: `sigs.tail().isEmpty()`, `sigs.tail().contains(pkh)`.
+
+`foldl` is only available as a static call (`ListsLib.foldl`), not as an instance method.
 
 ### Map Instance Methods
 

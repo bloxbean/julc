@@ -423,6 +423,24 @@ class HofExample {
 }
 ```
 
+These HOF methods are also available as instance methods on `JulcList`. Lambda
+parameter types are auto-inferred from the list element type:
+
+```java
+// Instance method equivalents
+boolean hasLargeOutput = outputs.any(
+    out -> ValuesLib.lovelaceOf(out.value()) > 5_000_000);
+
+JulcList<TxOut> largeOutputs = outputs.filter(
+    out -> ValuesLib.lovelaceOf(out.value()) > 2_000_000);
+
+// Chaining is supported
+var result = outputs.filter(out -> isLarge(out)).map(out -> transform(out));
+```
+
+`foldl` is only available as a static call (`ListsLib.foldl`) because it takes
+two lambda parameters plus an initial value.
+
 ### For-Each Loops
 
 JuLC supports for-each iteration over lists directly, which is often more readable than HOFs:
@@ -1180,6 +1198,12 @@ if (Builtins.constrTag(result) == 0) {
 }
 ```
 
+### map() Returns JulcList<PlutusData>
+
+The `map` HOF wraps each lambda result to Data, so the returned list always has
+`PlutusData` elements regardless of input type. Use `Builtins.unIData()` or
+`Builtins.unBData()` to extract typed values from mapped results.
+
 ### Typed Field Access vs Library Methods
 
 For `ScriptContext` and `TxInfo`, prefer direct typed field access over the ContextsLib wrapper methods:
@@ -1210,4 +1234,9 @@ TxOut first = ListsLib.head(outputs);
 long count = outputs.size();
 boolean empty = outputs.isEmpty();
 TxOut first = outputs.head();
+
+// HOF methods are also available as instance calls
+boolean anyLarge = outputs.any(out -> isLarge(out));
+JulcList<TxOut> filtered = outputs.filter(out -> isLarge(out));
+JulcList<PlutusData> mapped = outputs.map(out -> transform(out));
 ```

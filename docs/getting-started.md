@@ -429,9 +429,18 @@ Lists (typed as `List<T>` or `JulcList<T>`) support the following instance metho
 | `list.take(n)` | `List<T>` | First n elements |
 | `list.drop(n)` | `List<T>` | All elements after the first n |
 | `list.prepend(elem)` | `List<T>` | New list with elem at the front |
+| `list.map(x -> f(x))` | `JulcList<PlutusData>` | Apply function to each element |
+| `list.filter(x -> pred(x))` | `JulcList<T>` | Keep elements matching predicate |
+| `list.any(x -> pred(x))` | `boolean` | True if any element matches |
+| `list.all(x -> pred(x))` | `boolean` | True if all elements match |
+| `list.find(x -> pred(x))` | `T` | First matching element (error if none) |
 
 The `prepend` method auto-wraps the element: if you prepend a `BigInteger`, it is
 automatically wrapped with `IData`; a `byte[]` is wrapped with `BData`.
+
+The `map` method wraps each lambda result to `Data`, so the returned list has
+`PlutusData` elements regardless of input type. To extract typed values from a
+mapped list, use `Builtins.unIData()` or `Builtins.unBData()` on each element.
 
 ```java
 // Iterate a list with for-each
@@ -906,6 +915,31 @@ PlutusData found = ListsLib.find(items, x -> someCondition(x));
 var zipped = ListsLib.zip(listA, listB);
 ```
 
+### Instance HOF methods
+
+Lists also support HOF methods as instance calls. Lambda parameter types are
+auto-inferred from the list element type:
+
+```java
+// Instance methods -- equivalent to the static calls above
+var doubled = amounts.map(x -> x.multiply(BigInteger.TWO));
+var positives = amounts.filter(x -> x.compareTo(BigInteger.ZERO) > 0);
+boolean hasLarge = amounts.any(x -> x.compareTo(BigInteger.valueOf(1000)) > 0);
+boolean allPositive = amounts.all(x -> x.compareTo(BigInteger.ZERO) > 0);
+
+// Chaining is supported
+var result = outputs.filter(out -> someCondition(out)).map(out -> transform(out));
+
+// Block-body lambdas work too
+var processed = items.map(item -> {
+    BigInteger doubled = item.multiply(BigInteger.TWO);
+    return doubled.add(BigInteger.ONE);
+});
+```
+
+`foldl` is only available as a static call (`ListsLib.foldl`) because it takes
+two lambda parameters plus an initial value.
+
 ### Lambda syntax
 
 Single-expression lambdas:
@@ -925,6 +959,16 @@ Multi-statement lambdas (must have an explicit `return`):
 
 **Note**: Lambda `.apply()` is not supported -- you cannot store a lambda in a
 variable and call it later. Lambdas can only be passed directly to HOF methods.
+
+**Note**: Instance HOFs work on lists of `ByteStringType`-mapped types
+(`JulcList<PubKeyHash>`, `JulcList<ScriptHash>`, etc.) with both untyped and
+explicitly-typed lambdas. The compiler automatically avoids double-unwrapping:
+
+```java
+// Both styles work:
+signatories.any(sig -> Builtins.equalsByteString((byte[])(Object) sig.hash(), targetPkh));
+signatories.any((PubKeyHash sig) -> Builtins.equalsByteString((byte[])(Object) sig.hash(), targetPkh));
+```
 
 ---
 
@@ -1188,6 +1232,10 @@ following limitations apply:
 - **Multi-binding LetRec**: Mutual recursion is supported for up to 2 mutually
   recursive methods (via Bekic's theorem). More than 2 mutually recursive bindings
   are not supported.
+- **`map()` returns `JulcList<PlutusData>`**: The `map` HOF wraps each lambda
+  result to Data, so the returned list has `DataType` elements regardless of
+  input. Use `Builtins.unIData()` or `Builtins.unBData()` to extract typed
+  values from mapped results.
 
 ### Type System Caveats
 
@@ -1219,6 +1267,8 @@ following limitations apply:
 
 - **`default` branch not compiled**: The `default ->` branch body is silently
   skipped. Always use explicit cases for all variants of a sealed interface.
+  The compiler checks exhaustiveness at compile time: if you omit a case and have
+  no `default` branch, you get a compile error listing the missing variants.
 - **Field name shadows parameter**: In `case Variant f -> body`, the compiler
   binds the variant's field names in scope. If a method parameter has the same name
   as a field, the field binding shadows the parameter. Use different parameter

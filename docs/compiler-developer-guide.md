@@ -1155,7 +1155,7 @@ Used for type inference in chained method calls. For example, `list.tail()` retu
 |--------|---------------|
 | `equals(other)` | `EqualsData` |
 
-**ListType (6 methods):**
+**ListType (16 methods):**
 
 | Method | Implementation | Return Type |
 |--------|---------------|-------------|
@@ -1165,6 +1165,16 @@ Used for type inference in chained method calls. For example, `list.tail()` retu
 | `tail()` | `TailList(list)` | same ListType |
 | `get(index)` | LetRec nth traversal | elemType |
 | `contains(target)` | LetRec recursive search | BoolType |
+| `prepend(elem)` | `MkCons(wrapEncode(elem), list)` | same ListType |
+| `reverse()` | Foldl-based reversal | same ListType |
+| `concat(other)` | Recursive append | same ListType |
+| `take(n)` | LetRec traversal | same ListType |
+| `drop(n)` | LetRec traversal | same ListType |
+| `map(f)` | Delegates to StdlibRegistry HOF builder via lambda inference | ListType(DataType) |
+| `filter(pred)` | Delegates to StdlibRegistry HOF builder via lambda inference | same ListType |
+| `any(pred)` | Delegates to StdlibRegistry HOF builder via lambda inference | BoolType |
+| `all(pred)` | Delegates to StdlibRegistry HOF builder via lambda inference | BoolType |
+| `find(pred)` | Delegates to StdlibRegistry HOF builder via lambda inference | elemType |
 
 **OptionalType (3 methods):**
 
@@ -1174,13 +1184,18 @@ Used for type inference in chained method calls. For example, `list.tail()` retu
 | `isEmpty()` | `FstPair(UnConstrData(x)) == 1` (None tag) | BoolType |
 | `get()` | `wrapDecode(HeadList(SndPair(UnConstrData(x))), elemType)` | elemType |
 
-**MapType (3 methods):**
+**MapType (8 methods):**
 
 | Method | Implementation | Return Type |
 |--------|---------------|-------------|
 | `get(key)` | LetRec lookup, returns Optional | OptionalType(valueType) |
 | `containsKey(key)` | LetRec search | BoolType |
 | `size()` | `generateListLength(UnMapData(map))` | IntegerType |
+| `isEmpty()` | `NullList(map)` | BoolType |
+| `keys()` | Foldl-based key extraction | ListType(keyType) |
+| `values()` | Foldl-based value extraction | ListType(valueType) |
+| `insert(k, v)` | `MkCons(MkPairData(k, v), map)` | same MapType |
+| `delete(k)` | LetRec filtering | same MapType |
 
 ---
 

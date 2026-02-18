@@ -1,23 +1,23 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 480" width="400" height="480">
+  <!-- Mono logo with ONE accent: the lambda in Yaci blue (light theme) -->
   <rect width="400" height="480" fill="#FFFFFF"/>
 
-  <!-- Saucer/plate - offset below cup for depth -->
   <circle cx="200" cy="215" r="115" fill="none" stroke="#1A1A1A" stroke-width="1.5" opacity="0.15"/>
   <circle cx="200" cy="213" r="108" fill="none" stroke="#1A1A1A" stroke-width="0.8" opacity="0.08"/>
 
   <circle cx="200" cy="195" r="96" fill="none" stroke="#1A1A1A" stroke-width="2.5" opacity="0.82"/>
-
   <circle cx="200" cy="195" r="82" fill="#1A1A1A" opacity="0.04"/>
-  <circle cx="200" cy="195" r="82" fill="none" stroke="#1A1A1A" stroke-width="1.2" opacity="0.25"/>
+  <circle cx="200" cy="195" r="82" fill="none" stroke="#1A1A1A" stroke-width="1.2" opacity="0.3"/>
 
-  <g transform="translate(200,195)" fill="none" stroke="#1A1A1A" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M-12,-28 L0,0 L16,28" stroke-width="5" opacity="0.75"/>
-    <path d="M0,0 L-18,28" stroke-width="5" opacity="0.75"/>
-    <circle cx="0" cy="0" r="50" stroke-width="1.2" opacity="0.1"/>
-    <circle cx="0" cy="0" r="35" stroke-width="0.8" opacity="0.06"/>
+  <!-- Lambda — ACCENT in Yaci blue -->
+  <g transform="translate(200,190)" fill="none" stroke="#0565CB" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M-8,-18 L0,0 L12,18" stroke-width="4.5" opacity="0.8"/>
+    <path d="M0,0 L-14,18" stroke-width="4.5" opacity="0.8"/>
+    <circle cx="0" cy="0" r="50" stroke-width="1.2" opacity="0.15"/>
+    <circle cx="0" cy="0" r="35" stroke-width="1.2" opacity="0.15"/>
   </g>
 
-  <!-- Steam wisps — Java orange accent -->
+  <!-- Steam — Java orange accent -->
   <g opacity="0.3" fill="none" stroke="#D4600E" stroke-width="2" stroke-linecap="round">
     <path d="M172,90 Q167,70 174,54 Q180,40 175,24"/>
     <path d="M200,82 Q195,60 202,44 Q208,30 203,14"/>
@@ -27,7 +27,7 @@
   <g transform="translate(200, 385)">
     <text x="-62" y="0" font-family="'JetBrains Mono','SF Mono','Fira Code','Courier New',monospace" font-size="48" font-weight="700" fill="#1A1A1A" text-anchor="middle">J</text>
     <text x="-22" y="0" font-family="'JetBrains Mono','SF Mono','Fira Code','Courier New',monospace" font-size="48" font-weight="300" fill="#1A1A1A" opacity="0.35" text-anchor="middle">u</text>
-    <text x="18" y="0" font-family="'JetBrains Mono','SF Mono','Fira Code','Courier New',monospace" font-size="48" font-weight="700" fill="#1A1A1A" text-anchor="middle">L</text>
+    <text x="18" y="0" font-family="'JetBrains Mono','SF Mono','Fira Code','Courier New',monospace" font-size="48" font-weight="700" fill="#0565CB" text-anchor="middle">L</text>
     <text x="58" y="0" font-family="'JetBrains Mono','SF Mono','Fira Code','Courier New',monospace" font-size="48" font-weight="700" fill="#1A1A1A" text-anchor="middle">C</text>
   </g>
 

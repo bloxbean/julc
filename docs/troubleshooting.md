@@ -1305,6 +1305,29 @@ BigInteger second = tuple.second();
 
 ---
 
+### Q: Why can't I access typed elements from a `list.map(...)` result?
+
+**A:** The `map` HOF wraps each lambda result to `Data`, so the returned list is
+`JulcList<PlutusData>` regardless of input element type. Use `Builtins.unIData()`
+or `Builtins.unBData()` to extract the typed value:
+
+```java
+var mapped = amounts.map(x -> x.multiply(BigInteger.TWO));
+// WRONG: mapped.head() returns PlutusData, not BigInteger
+// CORRECT:
+BigInteger first = Builtins.unIData(mapped.head());
+```
+
+---
+
+### Q: Can I call `foldl` as an instance method on a list?
+
+**A:** No. `foldl` is only available as a static call: `ListsLib.foldl(f, init, list)`.
+It is not registered as an instance method because it takes two lambda parameters
+plus an initial value, which makes instance-call syntax ambiguous.
+
+---
+
 ### Q: Why does `Value.assetOf(policyId, tokenName)` fail?
 
 **A:** `Value.assetOf()` uses `EqualsData` internally. If `policyId`/`tokenName` are `byte[]` (ByteStringType), you must wrap with `Builtins.bData()` before passing. Otherwise `EqualsData(BData(...), ByteString(...))` fails.
