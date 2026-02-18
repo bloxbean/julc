@@ -8,3 +8,14 @@ dependencies {
     api project(':julc-vm')
     implementation 'org.scalus:scalus_3:0.15.0'
 }
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            pom {
+                name = 'JuLC VM Scalus'
+                description = 'Scalus-based Plutus VM Backend'
+            }
+        }
+    }
+}

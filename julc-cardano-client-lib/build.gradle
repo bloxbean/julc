@@ -12,3 +12,14 @@ dependencies {
     testImplementation project(':julc-vm')
     testRuntimeOnly project(':julc-vm-scalus')
 }
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            pom {
+                name = 'JuLC Cardano Client Lib'
+                description = 'Integration with cardano-client-lib'
+            }
+        }
+    }
+}

@@ -41,3 +41,15 @@ tasks.register('bundlePlutusSources') {
 }
 sourceSets.main.resources.srcDir generatedResDir
 processResources.dependsOn bundlePlutusSources
+tasks.named('sourcesJar') { dependsOn bundlePlutusSources }
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            pom {
+                name = 'JuLC Stdlib'
+                description = 'On-chain Standard Library'
+            }
+        }
+    }
+}

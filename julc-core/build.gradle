@@ -7,3 +7,14 @@ description = 'UPLC AST, PlutusData, and serialization (FLAT, CBOR)'
 dependencies {
     api 'co.nstant.in:cbor:0.9'
 }
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            pom {
+                name = 'JuLC Core'
+                description = 'UPLC AST and Serialization'
+            }
+        }
+    }
+}

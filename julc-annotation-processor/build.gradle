@@ -14,3 +14,14 @@ dependencies {
     testImplementation project(':julc-vm')
     testRuntimeOnly project(':julc-vm-scalus')
 }
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            pom {
+                name = 'JuLC Annotation Processor'
+                description = 'Javac Annotation Processor for JuLC'
+            }
+        }
+    }
+}

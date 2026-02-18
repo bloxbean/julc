@@ -13,3 +13,14 @@ dependencies {
     testImplementation project(':julc-stdlib')
     testRuntimeOnly project(':julc-vm-scalus')
 }
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            pom {
+                name = 'JuLC Compiler'
+                description = 'Java to UPLC Compiler'
+            }
+        }
+    }
+}

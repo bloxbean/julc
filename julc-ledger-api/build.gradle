@@ -7,3 +7,14 @@ description = 'Cardano V3 ledger types (ScriptContext, TxInfo, etc.) with Plutus
 dependencies {
     api project(':julc-core')
 }
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            pom {
+                name = 'JuLC Ledger API'
+                description = 'Cardano Ledger Types for JuLC'
+            }
+        }
+    }
+}

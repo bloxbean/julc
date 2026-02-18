@@ -26,6 +26,49 @@ gradlePlugin {
     }
 }
 
+afterEvaluate {
+    publishing {
+        publications {
+            pluginMaven(MavenPublication) {
+                pom {
+                    name = 'JuLC Gradle Plugin'
+                    description = 'Gradle Plugin for JuLC Compilation'
+                    url = 'https://github.com/bloxbean/julc'
+                    licenses {
+                        license {
+                            name = 'The MIT License'
+                            url = 'https://opensource.org/licenses/mit-license.php'
+                        }
+                    }
+                    developers {
+                        developer {
+                            id = 'satran004'
+                            name = 'Satya'
+                        }
+                    }
+                    scm {
+                        connection = 'scm:git:git://github.com/bloxbean/julc.git'
+                        developerConnection = 'scm:git:ssh://git@github.com/bloxbean/julc.git'
+                        url = 'https://github.com/bloxbean/julc'
+                    }
+                }
+            }
+        }
+
+        repositories {
+            maven {
+                def releasesRepoUrl = "https://ossrh-staging-api.central.sonatype.com/service/local/staging/deploy/maven2/"
+                def snapshotsRepoUrl = "https://central.sonatype.com/repository/maven-snapshots/"
+                url = version.endsWith('SNAPSHOT') ? snapshotsRepoUrl : releasesRepoUrl
+                credentials {
+                    username rootProject.ext.ossrhUsername
+                    password rootProject.ext.ossrhPassword
+                }
+            }
+        }
+    }
+}
+
 test {
     useJUnitPlatform()
     testLogging {

@@ -13,3 +13,14 @@ dependencies {
     implementation 'org.bouncycastle:bcprov-jdk18on:1.83'
     testImplementation project(':julc-vm-scalus')
 }
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            pom {
+                name = 'JuLC Testkit'
+                description = 'Testing Framework for JuLC Validators'
+            }
+        }
+    }
+}
