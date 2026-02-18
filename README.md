@@ -2,6 +2,14 @@
   <img src="static/logo-light.svg" alt="JuLC Logo" width="300"/>
 </p>
 
+> **Warning**
+> **Experimental / Research Project**
+>
+> Most of the code in this project is generated using AI, with human-assisted design, testing, and verification.
+> This is an experimental project created mainly for research and exploration purposes.
+>
+> **Please do not use this in production.** Expect rough edges, incomplete features, and potential bugs.
+
 # julc
 
 **Java UPLC Compiler for Cardano**
