@@ -2,7 +2,7 @@
   <img src="static/logo-light.svg" alt="JuLC Logo" width="300"/>
 </p>
 
-> **Warning**
+> ## **Warning**
 > **Experimental / Research Project**
 >
 > Most of the code in this project is generated using AI, with human-assisted design, testing, and verification.
@@ -14,7 +14,7 @@
 
 **Java UPLC Compiler for Cardano**
 
-*Pronounced like "bulk" — not "joolk"*
+*Pronounced "julk" (rhymes with "bulk") — not "joolk"*
 
 Write Cardano smart contracts in Java and compile them to Plutus V3 UPLC. julc provides a complete
 toolchain: a Java-subset compiler, a pluggable VM for local evaluation, a standard library of on-chain
