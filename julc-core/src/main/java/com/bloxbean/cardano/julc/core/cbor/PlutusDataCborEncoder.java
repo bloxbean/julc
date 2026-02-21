@@ -1,16 +1,21 @@
 package com.bloxbean.cardano.julc.core.cbor;
 
+import co.nstant.in.cbor.CborEncoder;
+import co.nstant.in.cbor.CborException;
+import co.nstant.in.cbor.encoder.ByteStringEncoder;
+import co.nstant.in.cbor.model.*;
+import co.nstant.in.cbor.model.Map;
 import com.bloxbean.cardano.julc.core.PlutusData;
 
 import java.io.ByteArrayOutputStream;
 import java.math.BigInteger;
-import java.util.List;
+import java.util.*;
 
 /**
  * Encodes {@link PlutusData} to CBOR bytes following the Cardano specification.
  * <p>
- * Uses direct CBOR encoding (no external library) to ensure compliance with
- * Cardano's canonical CBOR rules, including chunked bytestrings for data > 64 bytes.
+ * Uses cbor-java's high-level API with canonical encoding (RFC 7049 §3.9)
+ * and chunked byte strings for data &gt; 64 bytes (CDDL: bounded_bytes).
  * <p>
  * Constructor encoding uses compact form:
  * <ul>
@@ -29,89 +34,128 @@ public final class PlutusDataCborEncoder {
      * Encode PlutusData to CBOR bytes.
      */
     public static byte[] encode(PlutusData data) {
-        var baos = new ByteArrayOutputStream();
-        writeData(baos, data);
-        return baos.toByteArray();
+        DataItem dataItem = toDataItem(data);
+        return serializeDataItem(dataItem);
     }
 
-    private static void writeData(ByteArrayOutputStream out, PlutusData data) {
-        switch (data) {
-            case PlutusData.ConstrData c -> writeConstr(out, c);
-            case PlutusData.MapData m -> writeMap(out, m);
-            case PlutusData.ListData l -> writeList(out, l);
-            case PlutusData.IntData i -> writeInteger(out, i.value());
-            case PlutusData.BytesData b -> writeByteString(out, b.value());
-        }
+    /**
+     * Convert PlutusData to a cbor-java DataItem tree.
+     * Useful for interop with libraries that work with cbor-java DataItems.
+     */
+    public static DataItem toDataItem(PlutusData data) {
+        return switch (data) {
+            case PlutusData.ConstrData c -> constrToDataItem(c);
+            case PlutusData.MapData m -> mapToDataItem(m);
+            case PlutusData.ListData l -> listToDataItem(l);
+            case PlutusData.IntData i -> intToDataItem(i.value());
+            case PlutusData.BytesData b -> bytesToDataItem(b.value());
+        };
     }
 
     // --- Constr ---
 
-    private static void writeConstr(ByteArrayOutputStream out, PlutusData.ConstrData c) {
+    private static DataItem constrToDataItem(PlutusData.ConstrData c) {
         int tag = c.tag();
+        Array fieldsArray = fieldsToArray(c.fields());
+
         if (tag >= 0 && tag <= 6) {
-            writeTag(out, 121 + tag);
+            fieldsArray.setTag(121 + tag);
+            return fieldsArray;
         } else if (tag >= 7 && tag <= 127) {
-            writeTag(out, 1280 + (tag - 7));
+            fieldsArray.setTag(1280 + (tag - 7));
+            return fieldsArray;
         } else {
-            writeTag(out, 102);
-            // General form: [tag, fields]
-            writeMajorTypeLen(out, 4, 2);
-            writeInteger(out, BigInteger.valueOf(tag));
+            // General form: tag 102, [constructor_tag, fields_array]
+            Array outer = new Array();
+            outer.add(new UnsignedInteger(tag));
+            outer.add(fieldsArray);
+            outer.setTag(102);
+            return outer;
         }
-        writeFieldsArray(out, c.fields());
     }
 
-    private static void writeFieldsArray(ByteArrayOutputStream out, List<PlutusData> fields) {
-        writeMajorTypeLen(out, 4, fields.size());
+    private static Array fieldsToArray(List<PlutusData> fields) {
+        Array array = new Array();
         for (var field : fields) {
-            writeData(out, field);
+            array.add(toDataItem(field));
         }
+        return array;
     }
 
-    // --- Map ---
+    // --- Map (canonical key sorting) ---
 
-    private static void writeMap(ByteArrayOutputStream out, PlutusData.MapData m) {
+    private static DataItem mapToDataItem(PlutusData.MapData m) {
         var entries = m.entries();
-        writeMajorTypeLen(out, 5, entries.size());
-        for (var entry : entries) {
-            writeData(out, entry.key());
-            writeData(out, entry.value());
+        if (entries.size() <= 1) {
+            Map map = new Map();
+            for (var entry : entries) {
+                map.put(toDataItem(entry.key()), toDataItem(entry.value()));
+            }
+            return map;
         }
+
+        // Sort entries by their key's CBOR byte representation (RFC 7049 §3.9).
+        // We sort ourselves rather than relying on cbor-java's canonical mode because
+        // cbor-java's Map uses DataItem.hashCode/equals which can reorder or lose entries.
+        record EncodedEntry(byte[] keyBytes, DataItem key, DataItem value) {}
+        List<EncodedEntry> sortable = new ArrayList<>(entries.size());
+        for (var entry : entries) {
+            DataItem keyDi = toDataItem(entry.key());
+            DataItem valueDi = toDataItem(entry.value());
+            byte[] keyBytes = serializeDataItem(keyDi);
+            sortable.add(new EncodedEntry(keyBytes, keyDi, valueDi));
+        }
+        sortable.sort((a, b) -> {
+            if (a.keyBytes.length != b.keyBytes.length) {
+                return Integer.compare(a.keyBytes.length, b.keyBytes.length);
+            }
+            return Arrays.compareUnsigned(a.keyBytes, b.keyBytes);
+        });
+
+        Map map = new Map();
+        for (var e : sortable) {
+            map.put(e.key, e.value);
+        }
+        return map;
     }
 
     // --- List ---
 
-    private static void writeList(ByteArrayOutputStream out, PlutusData.ListData l) {
-        var items = l.items();
-        writeMajorTypeLen(out, 4, items.size());
-        for (var item : items) {
-            writeData(out, item);
+    private static DataItem listToDataItem(PlutusData.ListData l) {
+        Array array = new Array();
+        for (var item : l.items()) {
+            array.add(toDataItem(item));
         }
+        return array;
     }
 
     // --- Integer ---
 
-    private static void writeInteger(ByteArrayOutputStream out, BigInteger value) {
+    private static DataItem intToDataItem(BigInteger value) {
         if (value.signum() >= 0 && value.bitLength() <= 64) {
-            // Unsigned integer (major type 0)
-            // Note: bitLength() <= 64 means value fits in unsigned 64-bit, but may exceed Long.MAX_VALUE
-            writeMajorTypeLenBig(out, 0, value);
+            return new UnsignedInteger(value);
         } else if (value.signum() < 0 && value.negate().subtract(BigInteger.ONE).bitLength() <= 64) {
-            // Negative integer (major type 1): encode as -(1+n) where n is the stored value
-            writeMajorTypeLenBig(out, 1, value.negate().subtract(BigInteger.ONE));
+            return new NegativeInteger(value);
         } else if (value.signum() >= 0) {
-            // Positive BigNum: CBOR tag 2 + bytestring
-            writeTag(out, 2);
-            writeByteString(out, bigIntToMinimalBytes(value));
+            // Positive BigNum: tag 2 + byte string
+            byte[] bytes = bigIntToMinimalBytes(value);
+            DataItem bs = chunkByteString(bytes);
+            bs.setTag(2);
+            return bs;
         } else {
-            // Negative BigNum: CBOR tag 3 + bytestring encoding -(1+n)
+            // Negative BigNum: tag 3 + byte string encoding -(1+n)
             BigInteger n = value.negate().subtract(BigInteger.ONE);
-            writeTag(out, 3);
-            writeByteString(out, bigIntToMinimalBytes(n));
+            byte[] bytes = bigIntToMinimalBytes(n);
+            DataItem bs = chunkByteString(bytes);
+            bs.setTag(3);
+            return bs;
         }
     }
 
     private static byte[] bigIntToMinimalBytes(BigInteger value) {
+        if (value.signum() == 0) {
+            return new byte[0];
+        }
         byte[] raw = value.toByteArray();
         if (raw.length > 1 && raw[0] == 0) {
             var stripped = new byte[raw.length - 1];
@@ -123,76 +167,120 @@ public final class PlutusDataCborEncoder {
 
     // --- ByteString ---
 
-    private static void writeByteString(ByteArrayOutputStream out, byte[] value) {
-        // Use definite-length encoding for all bytestrings.
-        // Note: Cardano canonical CBOR requires chunking for bytestrings > 64 bytes,
-        // but that applies to on-chain transaction CBOR, not to FLAT-embedded Data CBOR.
-        // The Scalus VM's CBOR decoder does not support indefinite-length bytestrings
-        // in Data constants, so we use definite-length encoding here.
-        writeMajorTypeLen(out, 2, value.length);
-        out.write(value, 0, value.length);
-    }
-
-    // --- CBOR primitives ---
-
-    private static void writeTag(ByteArrayOutputStream out, long tagValue) {
-        writeMajorTypeLen(out, 6, tagValue);
+    private static DataItem bytesToDataItem(byte[] value) {
+        return chunkByteString(value);
     }
 
     /**
-     * Write a CBOR major type (0-7) with an associated length/value.
-     * Major type occupies bits 7-5, additional info in bits 4-0.
+     * Create a ByteString DataItem, chunking into 64-byte segments if needed.
      */
-    /**
-     * Write a CBOR major type with a BigInteger value (for unsigned 64-bit values that exceed Long.MAX_VALUE).
-     */
-    private static void writeMajorTypeLenBig(ByteArrayOutputStream out, int majorType, BigInteger value) {
-        if (value.bitLength() <= 63) {
-            // Fits in signed long
-            writeMajorTypeLen(out, majorType, value.longValue());
-        } else {
-            // Unsigned 64-bit value > Long.MAX_VALUE: always use 8-byte encoding
-            int mt = majorType << 5;
-            out.write(mt | 27);
-            long bits = value.longValue(); // two's complement representation
-            out.write((int) (bits >> 56) & 0xFF);
-            out.write((int) (bits >> 48) & 0xFF);
-            out.write((int) (bits >> 40) & 0xFF);
-            out.write((int) (bits >> 32) & 0xFF);
-            out.write((int) (bits >> 24) & 0xFF);
-            out.write((int) (bits >> 16) & 0xFF);
-            out.write((int) (bits >> 8) & 0xFF);
-            out.write((int) bits & 0xFF);
+    private static DataItem chunkByteString(byte[] value) {
+        if (value.length <= MAX_BYTESTRING_CHUNK) {
+            return new ByteString(value);
+        }
+        List<byte[]> chunks = new ArrayList<>();
+        int offset = 0;
+        while (offset < value.length) {
+            int len = Math.min(value.length - offset, MAX_BYTESTRING_CHUNK);
+            byte[] chunk = new byte[len];
+            System.arraycopy(value, offset, chunk, 0, len);
+            chunks.add(chunk);
+            offset += len;
+        }
+        return new ChunkedByteString(chunks);
+    }
+
+    // --- Serialization ---
+
+    static byte[] serializeDataItem(DataItem dataItem) {
+        try {
+            var baos = new ByteArrayOutputStream();
+            new PlutusDataCborCborEncoder(baos).encode(dataItem);
+            return baos.toByteArray();
+        } catch (CborException e) {
+            throw new CborDecodingException("CBOR encoding failed", e);
         }
     }
 
-    private static void writeMajorTypeLen(ByteArrayOutputStream out, int majorType, long value) {
-        int mt = majorType << 5;
-        if (value < 24) {
-            out.write(mt | (int) value);
-        } else if (value <= 0xFF) {
-            out.write(mt | 24);
-            out.write((int) value);
-        } else if (value <= 0xFFFF) {
-            out.write(mt | 25);
-            out.write((int) (value >> 8) & 0xFF);
-            out.write((int) value & 0xFF);
-        } else if (value <= 0xFFFFFFFFL) {
-            out.write(mt | 26);
-            out.write((int) (value >> 24) & 0xFF);
-            out.write((int) (value >> 16) & 0xFF);
-            out.write((int) (value >> 8) & 0xFF);
-            out.write((int) value & 0xFF);
-        } else {
-            out.write(mt | 27);
-            out.write((int) (value >> 56) & 0xFF);
-            out.write((int) (value >> 48) & 0xFF);
-            out.write((int) (value >> 40) & 0xFF);
-            out.write((int) (value >> 32) & 0xFF);
-            out.write((int) (value >> 24) & 0xFF);
-            out.write((int) (value >> 16) & 0xFF);
-            out.write((int) (value >> 8) & 0xFF);
-            out.write((int) value & 0xFF);
+    // --- Inner classes for chunked byte string support ---
+
+    /**
+     * A ByteString that has been split into chunks for indefinite-length encoding.
+     */
+    static final class ChunkedByteString extends ByteString {
+        private final List<byte[]> chunks;
+
+        ChunkedByteString(List<byte[]> chunks) {
+            super(new byte[0]);
+            this.chunks = chunks;
+            setChunked(true);
+        }
+
+        List<byte[]> getChunks() {
+            return chunks;
+        }
+
+        @Override
+        public byte[] getBytes() {
+            int total = 0;
+            for (byte[] chunk : chunks) total += chunk.length;
+            byte[] result = new byte[total];
+            int offset = 0;
+            for (byte[] chunk : chunks) {
+                System.arraycopy(chunk, 0, result, offset, chunk.length);
+                offset += chunk.length;
+            }
+            return result;
+        }
+    }
+
+    /**
+     * Custom ByteStringEncoder that encodes ChunkedByteString as indefinite-length
+     * CBOR byte strings (0x5F ... chunks ... 0xFF).
+     */
+    private static final class ChunkedByteStringEncoder extends ByteStringEncoder {
+
+        ChunkedByteStringEncoder(CborEncoder encoder, java.io.OutputStream outputStream) {
+            super(encoder, outputStream);
+        }
+
+        @Override
+        public void encode(ByteString byteString) throws CborException {
+            if (byteString instanceof ChunkedByteString chunked) {
+                encodeTypeChunked(MajorType.BYTE_STRING);
+                for (byte[] chunk : chunked.getChunks()) {
+                    super.encode(new ByteString(chunk));
+                }
+                encoder.encode(SimpleValue.BREAK);
+            } else {
+                super.encode(byteString);
+            }
+        }
+    }
+
+    /**
+     * Custom CborEncoder that dispatches BYTE_STRING encoding to our
+     * ChunkedByteStringEncoder while delegating everything else to the parent.
+     */
+    private static final class PlutusDataCborCborEncoder extends CborEncoder {
+        private final ChunkedByteStringEncoder chunkedByteStringEncoder;
+
+        PlutusDataCborCborEncoder(java.io.OutputStream outputStream) {
+            super(outputStream);
+            this.chunkedByteStringEncoder = new ChunkedByteStringEncoder(this, outputStream);
+        }
+
+        @Override
+        public void encode(DataItem dataItem) throws CborException {
+            if (dataItem != null && dataItem.getMajorType() == MajorType.BYTE_STRING) {
+                // Handle tag first, then dispatch to our custom byte string encoder
+                if (dataItem.hasTag()) {
+                    encode(dataItem.getTag());
+                }
+                chunkedByteStringEncoder.encode((ByteString) dataItem);
+            } else {
+                super.encode(dataItem);
+            }
         }
     }
 }
