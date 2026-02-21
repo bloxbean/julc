@@ -10,6 +10,7 @@ import java.io.ByteArrayInputStream;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 
 /**
  * Decodes {@link PlutusData} from CBOR bytes following the Cardano specification.
@@ -82,7 +83,7 @@ public final class PlutusDataCborDecoder {
             case ARRAY -> {
                 var array = (Array) item;
                 var items = new ArrayList<PlutusData>();
-                for (var elem : array.getDataItems()) {
+                for (var elem : filterBreaks(array.getDataItems())) {
                     items.add(fromDataItem(elem));
                 }
                 yield new PlutusData.ListData(items);
@@ -92,6 +93,7 @@ public final class PlutusDataCborDecoder {
                 var entries = new ArrayList<PlutusData.Pair>();
                 Collection<DataItem> keys = map.getKeys();
                 for (var key : keys) {
+                    if (key.getMajorType() == MajorType.SPECIAL) continue; // skip break codes
                     var value = map.get(key);
                     entries.add(new PlutusData.Pair(fromDataItem(key), fromDataItem(value)));
                 }
@@ -105,7 +107,7 @@ public final class PlutusDataCborDecoder {
     private static PlutusData decodeConstrFields(int constrTag, DataItem item) {
         if (item instanceof Array array) {
             var fields = new ArrayList<PlutusData>();
-            for (var elem : array.getDataItems()) {
+            for (var elem : filterBreaks(array.getDataItems())) {
                 fields.add(fromDataItem(elem));
             }
             return new PlutusData.ConstrData(constrTag, fields);
@@ -115,7 +117,7 @@ public final class PlutusDataCborDecoder {
 
     private static PlutusData decodeConstrGeneral(DataItem item) {
         if (item instanceof Array outer) {
-            var items = outer.getDataItems();
+            var items = filterBreaks(outer.getDataItems());
             if (items.size() != 2) {
                 throw new CborDecodingException(
                         "Constr general encoding expects [tag, fields], got " + items.size() + " elements");
@@ -131,14 +133,29 @@ public final class PlutusDataCborDecoder {
             }
             if (items.get(1) instanceof Array fieldsArray) {
                 var fields = new ArrayList<PlutusData>();
-                for (var elem : fieldsArray.getDataItems()) {
+                for (var elem : filterBreaks(fieldsArray.getDataItems())) {
                     fields.add(fromDataItem(elem));
                 }
-                return new PlutusData.ConstrData(tagValue.intValueExact(), fields);
+                try {
+                    return new PlutusData.ConstrData(tagValue.intValueExact(), fields);
+                } catch (ArithmeticException e) {
+                    throw new CborDecodingException("Constr tag exceeds int range: " + tagValue, e);
+                }
             }
             throw new CborDecodingException("Expected array for Constr fields in general encoding");
         }
         throw new CborDecodingException("Expected array for Constr general encoding");
+    }
+
+    /**
+     * Filter out CBOR break codes (SPECIAL major type) from a list of data items.
+     * The cbor-java library includes the break code (0xFF) as an element in indefinite-length
+     * arrays, so we must filter it out before processing.
+     */
+    private static List<DataItem> filterBreaks(List<DataItem> items) {
+        return items.stream()
+                .filter(i -> i.getMajorType() != MajorType.SPECIAL)
+                .toList();
     }
 
     /**
