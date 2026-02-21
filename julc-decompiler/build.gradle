@@ -1,0 +1,25 @@
+plugins {
+    id 'java-library'
+}
+
+description = 'UPLC decompiler: CBOR hex to structured HIR and Java source'
+
+dependencies {
+    api project(':julc-core')
+    api project(':julc-ledger-api')
+    testImplementation project(':julc-compiler')
+    testImplementation project(':julc-stdlib')
+    testImplementation project(':julc-vm')
+    testImplementation project(':julc-vm-scalus')
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            pom {
+                name = 'JuLC Decompiler'
+                description = 'UPLC Decompiler for Cardano Scripts'
+            }
+        }
+    }
+}

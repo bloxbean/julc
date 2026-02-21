@@ -1,0 +1,39 @@
+Analyze the following decompiled Cardano Plutus validator for security vulnerabilities.
+
+## Script Statistics
+- Plutus Version: {{plutusVersion}}
+- Total AST nodes: {{totalNodes}}
+- Builtins used: {{builtinsUsed}}
+- Error terminals: {{errorCount}}
+
+## Decompiled Java Source
+```java
+{{javaSource}}
+```
+
+## Instructions
+1. Identify all potential security vulnerabilities in the code above
+2. For each finding, provide these fields:
+   - "severity": one of "CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"
+   - "category": one of "DOUBLE_SATISFACTION", "MISSING_AUTHORIZATION", "VALUE_LEAK", "TIME_VALIDATION", "STATE_TRANSITION", "UNBOUNDED_EXECUTION", "HARDCODED_CREDENTIAL", "DATUM_INTEGRITY", "GENERAL"
+   - "title": short summary (one line)
+   - "description": detailed explanation of the vulnerability and its impact
+   - "location": where in the code (e.g., "line 42" or "Switch branch 3")
+   - "recommendation": specific actionable advice on how to fix the issue
+3. Return your findings as a JSON array
+
+## Output Format
+Return ONLY a JSON array of findings. No markdown code fences. No extra text.
+Example:
+[
+  {
+    "severity": "HIGH",
+    "category": "MISSING_AUTHORIZATION",
+    "title": "Missing signatory check on withdrawal",
+    "description": "The withdrawal action does not verify that the transaction is signed by the expected party.",
+    "location": "Switch branch 2",
+    "recommendation": "Add a signatory check using txInfo.signatories to verify authorization."
+  }
+]
+
+If no vulnerabilities are found, return: []

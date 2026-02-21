@@ -22,6 +22,8 @@ dependencies {
         api project(':julc-cardano-client-lib')
         api project(':julc-gradle-plugin')
         api project(':julc-annotation-processor')
+        api project(':julc-decompiler')
+        api project(':julc-analysis')
     }
 }
 

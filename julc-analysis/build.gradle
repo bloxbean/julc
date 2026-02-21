@@ -1,0 +1,32 @@
+plugins {
+    id 'java-library'
+}
+
+description = 'AI-powered security analysis for decompiled Plutus scripts'
+
+dependencies {
+    api project(':julc-decompiler')
+
+    // LangChain4j core — interfaces only, no provider bundled
+    implementation 'dev.langchain4j:langchain4j:1.11.0'
+
+    // Test: compile validators -> decompile -> analyze roundtrip
+    testImplementation project(':julc-compiler')
+    testImplementation project(':julc-stdlib')
+    testImplementation project(':julc-vm')
+    testRuntimeOnly project(':julc-vm-scalus')
+
+    // Test with Ollama provider for AI integration tests
+    testImplementation 'dev.langchain4j:langchain4j-ollama:1.11.0'
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            pom {
+                name = 'JuLC Analysis'
+                description = 'AI-powered security analysis for decompiled Plutus scripts'
+            }
+        }
+    }
+}
