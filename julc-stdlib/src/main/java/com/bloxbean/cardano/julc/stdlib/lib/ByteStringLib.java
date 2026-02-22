@@ -4,6 +4,8 @@ import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary;
 import com.bloxbean.cardano.julc.stdlib.Builtins;
 
+import java.math.BigInteger;
+
 /**
  * ByteString operations compiled from Java source to UPLC.
  */
@@ -76,8 +78,8 @@ public class ByteStringLib {
         return Builtins.integerToByteString(endian, width, i);
     }
 
-    /** Convert bytestring to integer. */
-    public static long byteStringToInteger(boolean endian, byte[] bs) {
+    /** Convert bytestring to integer. Returns arbitrary-precision BigInteger. */
+    public static BigInteger byteStringToInteger(boolean endian, byte[] bs) {
         return Builtins.byteStringToInteger(endian, bs);
     }
 
