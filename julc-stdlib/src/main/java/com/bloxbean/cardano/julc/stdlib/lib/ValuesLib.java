@@ -19,7 +19,13 @@ import java.math.BigInteger;
 @OnchainLibrary
 public class ValuesLib {
 
-    /** Extracts the lovelace (ADA) amount from a Value. Assumes empty-BS policy is first entry. */
+    /**
+     * Extracts the lovelace (ADA) amount from a Value.
+     * <p>
+     * Assumes the ADA entry (empty bytestring policy) is the <b>first</b> entry in the outer map.
+     * This invariant holds for all on-chain Values produced by the Cardano ledger, but may not hold
+     * for hand-constructed Values in tests.
+     */
     public static BigInteger lovelaceOf(Value value) {
         var pairs = Builtins.unMapData(value);
         var firstPair = Builtins.headList(pairs);
@@ -260,7 +266,14 @@ public class ValuesLib {
         return result;
     }
 
-    /** Adds two Values together (union, adding amounts for matching policy/token). */
+    /**
+     * Adds two Values together (union, adding amounts for matching policy/token).
+     * <p>
+     * Complexity: O(P * T * P) worst case, where P = number of policies and T = tokens per policy.
+     * For each token in value {@code a}, {@code _assetOf} scans value {@code b} to find matching amounts.
+     * Suitable for typical on-chain Values (few policies/tokens) but may be expensive for Values with
+     * many distinct policies.
+     */
     public static Value add(Value a, Value b) {
         Value adjustedMap = adjustOuterForAdd(a, b);
         Value extraMap = extraOuterEntries(b, a);

@@ -1,6 +1,5 @@
 package com.bloxbean.cardano.julc.stdlib.lib;
 
-import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.core.types.Tuple2;
 import com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary;
 import com.bloxbean.cardano.julc.stdlib.Builtins;
@@ -40,21 +39,35 @@ public class MathLib {
         }
     }
 
-    /** Returns division and modulo as a Tuple2. */
+    /**
+     * Returns division and modulo as a Tuple2.
+     * <p>
+     * Division by zero causes script failure on-chain (UPLC error) and ArithmeticException off-chain.
+     */
     public static Tuple2<BigInteger, BigInteger> divMod(BigInteger a, BigInteger b) {
         var div = a.divide(b);
         var mod = a.remainder(b);
         return new Tuple2(Builtins.iData(div), Builtins.iData(mod));
     }
 
-    /** Returns quotient and remainder as a Tuple2. */
+    /**
+     * Returns quotient and remainder as a Tuple2.
+     * <p>
+     * Division by zero causes script failure on-chain (UPLC error) and ArithmeticException off-chain.
+     */
     public static Tuple2<BigInteger, BigInteger> quotRem(BigInteger a, BigInteger b) {
         var quot = a.divide(b);
         var rem = a.remainder(b);
         return new Tuple2(Builtins.iData(quot), Builtins.iData(rem));
     }
 
-    /** Returns base raised to the power of exp. */
+    /**
+     * Returns base raised to the power of exp.
+     * <p>
+     * For negative exponents, returns 1 (the loop condition {@code e > 0} is never satisfied,
+     * so the result stays at the initial value of {@code BigInteger.ONE}).
+     * This matches integer exponentiation semantics (no fractional results).
+     */
     public static BigInteger pow(BigInteger base, BigInteger exp) {
         BigInteger result = BigInteger.ONE;
         var e = exp;

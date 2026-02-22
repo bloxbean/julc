@@ -91,7 +91,7 @@ public final class FlatWriter {
     /**
      * Encode a non-negative integer (Natural) using variable-length 7-bit encoding.
      * Each byte: bit 7 = continuation flag, bits 6-0 = 7 data bits.
-     * Most significant chunks first.
+     * Least-significant chunks first (LEB128 standard).
      */
     public void natural(BigInteger value) {
         if (value.signum() < 0) throw new IllegalArgumentException("Natural must be non-negative: " + value);

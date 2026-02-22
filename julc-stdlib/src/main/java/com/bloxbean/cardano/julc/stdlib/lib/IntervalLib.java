@@ -103,7 +103,12 @@ public class IntervalLib {
         };
     }
 
-    /** Extract the finite upper bound time, or return -1 if not finite. */
+    /**
+     * Extract the finite upper bound time, or return -1 if not finite.
+     * <p>
+     * Returns {@code -1} as a sentinel value if the upper bound is infinite (NegInf or PosInf).
+     * Callers should check for this sentinel before using the result as a time value.
+     */
     public static BigInteger finiteUpperBound(Interval interval) {
         return switch (interval.to().boundType()) {
             case IntervalBoundType.Finite f -> f.time();
@@ -112,7 +117,12 @@ public class IntervalLib {
         };
     }
 
-    /** Extract the finite lower bound time, or return -1 if not finite. */
+    /**
+     * Extract the finite lower bound time, or return -1 if not finite.
+     * <p>
+     * Returns {@code -1} as a sentinel value if the lower bound is infinite (NegInf or PosInf).
+     * Callers should check for this sentinel before using the result as a time value.
+     */
     public static BigInteger finiteLowerBound(Interval interval) {
         return switch (interval.from().boundType()) {
             case IntervalBoundType.Finite f -> f.time();
