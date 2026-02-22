@@ -1059,8 +1059,14 @@ class StdlibTest {
             assertTrue(reg.contains(LEDGER + "TokenName", "of"));
             assertTrue(reg.contains(LEDGER + "DatumHash", "of"));
             assertTrue(reg.contains(LEDGER + "TxId", "of"));
-            // Total: 60 Builtins + 7 ListsLib HOF + 1 ContextsLib.trace + 3 Math delegates + 2 JulcList factories + 7 ledger .of() = 80
-            assertEquals(80, reg.size());
+            // Optional factory methods (registered under both simple and FQCN)
+            assertTrue(reg.contains("Optional", "of"));
+            assertTrue(reg.contains("Optional", "empty"));
+            assertTrue(reg.contains("java.util.Optional", "of"));
+            assertTrue(reg.contains("java.util.Optional", "empty"));
+            // Total: 60 Builtins + 7 ListsLib HOF + 1 ContextsLib.trace + 3 Math delegates
+            //   + 2 JulcList factories + 7 ledger .of() + 4 Optional factories = 84
+            assertEquals(84, reg.size());
         }
 
         @Test

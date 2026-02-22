@@ -2485,7 +2485,9 @@ public class PirGenerator {
 
         for (var entry : se.getEntries()) {
             if (entry.isDefault()) {
-                // default branch — skip for now
+                collectError("The 'default' branch is not supported in switch on sealed interfaces. "
+                                + "The default branch body is not compiled and would be silently ignored.",
+                        "Use explicit cases for all variants of '" + sumType.name() + "' instead.", se);
                 continue;
             }
             for (var label : entry.getLabels()) {
@@ -2544,7 +2546,7 @@ public class PirGenerator {
             if (!missingCases.isEmpty()) {
                 collectError("Switch on sealed interface '" + sumType.name()
                                 + "' is not exhaustive. Missing cases: " + String.join(", ", missingCases),
-                        "Add the missing cases or a 'default' branch.", se);
+                        "Add explicit cases for all variants.", se);
             }
         }
 
