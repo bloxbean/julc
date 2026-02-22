@@ -428,4 +428,38 @@ class ExecutableStubsTest {
             assertFalse(IntervalLib.contains(interval, BigInteger.valueOf(201)));
         }
     }
+
+    @Nested
+    class ByteStringToIntegerTests {
+        @Test
+        void returnsCorrectBigIntegerForSmallInput() {
+            byte[] bs = {0x01, 0x02}; // 258 in big-endian
+            BigInteger result = Builtins.byteStringToInteger(true, bs);
+            assertEquals(BigInteger.valueOf(258), result);
+        }
+
+        @Test
+        void returnsCorrectBigIntegerForLargeInput() {
+            // 16-byte value that would overflow long — must return full BigInteger
+            // 0x01 followed by 15 zero bytes = 2^120
+            byte[] bs = {0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+            BigInteger result = Builtins.byteStringToInteger(true, bs);
+            assertEquals(BigInteger.TWO.pow(120), result);
+            assertTrue(result.bitLength() > 64, "Result should exceed 64-bit range");
+        }
+
+        @Test
+        void littleEndianReversesCorrectly() {
+            byte[] bs = {0x02, 0x01}; // little-endian for 258
+            BigInteger result = Builtins.byteStringToInteger(false, bs);
+            assertEquals(BigInteger.valueOf(258), result);
+        }
+
+        @Test
+        void emptyByteStringReturnsZero() {
+            BigInteger result = Builtins.byteStringToInteger(true, new byte[0]);
+            assertEquals(BigInteger.ZERO, result);
+        }
+    }
 }

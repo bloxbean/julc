@@ -54,6 +54,17 @@ operations, and first-class integration with [cardano-client-lib](https://github
 | `julc-gradle-plugin` | Gradle build plugin |
 | `julc-annotation-processor` | Compile-time annotation processor |
 
+## Known Limitations
+
+JuLC compiles a safe subset of Java to UPLC. Key limitations to be aware of:
+
+- **`default` branches in switch expressions** are not supported on sealed interfaces — use explicit cases for all variants (compiler error is emitted)
+- **`@Param` fields**: supported types are `PlutusData`, `byte[]`, `BigInteger`, `String`, records, sealed interfaces, and `@NewType` — never use `PlutusData.BytesData`, `PlutusData.MapData`, `PlutusData.ListData`, or `PlutusData.IntData`
+- **No `Function.apply()`** — lambdas work with HOFs (`list.map(x -> ...)`, `list.filter(...)`) but cannot be stored in `Function<T,R>` variables and called via `.apply()`
+- **Immutable variables** — variables cannot be reassigned except as loop accumulators in `while`/`for-each`
+
+For the full list of compiler limitations and workarounds, see the [Compiler Limitations](docs/getting-started.md#16-compiler-limitations) section in the Getting Started guide.
+
 ## Examples Repositories
 - [julc-helloworld](https://github.com/bloxbean/julc-helloworld) - A simple vesting contract with on-chain and off-chain code, plus tests
 - [julc-examples](https://github.com/bloxbean/julc-examples) - A collection of more complex validators demonstrating various features and patterns

@@ -314,13 +314,13 @@ public final class Builtins {
         return raw;
     }
 
-    /** Convert bytestring to integer with given endianness. */
-    public static long byteStringToInteger(boolean bigEndian, PlutusData.BytesData bs) {
+    /** Convert bytestring to integer with given endianness. Returns arbitrary-precision BigInteger. */
+    public static BigInteger byteStringToInteger(boolean bigEndian, PlutusData.BytesData bs) {
         byte[] bytes = toBytes(bs).clone();
         if (!bigEndian) {
             reverseInPlace(bytes);
         }
-        return new BigInteger(1, bytes).longValue();
+        return new BigInteger(1, bytes);
     }
 
     /** Encode a string as UTF-8 bytestring. */
@@ -410,7 +410,7 @@ public final class Builtins {
     }
 
     /** @see #byteStringToInteger(boolean, PlutusData.BytesData) */
-    public static long byteStringToInteger(boolean bigEndian, byte[] bs) {
+    public static BigInteger byteStringToInteger(boolean bigEndian, byte[] bs) {
         return byteStringToInteger(bigEndian, new PlutusData.BytesData(bs));
     }
 

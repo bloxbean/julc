@@ -83,6 +83,23 @@ public final class StdlibRegistry implements StdlibLookup {
         return Optional.of(builder.build(args));
     }
 
+    @Override
+    public Optional<PirTerm> lookup(String className, String methodName,
+                                      List<PirTerm> args, List<PirType> argTypes) {
+        // Optional.of(x) needs arg type info to properly encode the value
+        if (isOptionalClass(className) && methodName.equals("of") && args.size() == 1) {
+            var elemType = (argTypes != null && !argTypes.isEmpty()) ? argTypes.get(0) : new PirType.DataType();
+            var recordType = new PirType.RecordType("Optional",
+                    List.of(new PirType.Field("value", elemType)));
+            return Optional.of(new PirTerm.DataConstr(0, recordType, List.of(args.get(0))));
+        }
+        return lookup(className, methodName, args);
+    }
+
+    private static boolean isOptionalClass(String className) {
+        return className.equals("Optional") || className.equals("java.util.Optional");
+    }
+
     /**
      * Look up a PIR term builder by key.
      *
@@ -163,6 +180,7 @@ public final class StdlibRegistry implements StdlibLookup {
         registerJavaMathDelegates(reg);
         registerCollectionFactories(reg);
         registerLedgerTypeFactories(reg);
+        registerOptionalFactories(reg);
         return reg;
     }
 
@@ -571,6 +589,35 @@ public final class StdlibRegistry implements StdlibLookup {
             reg.register(ledgerPkg + type, "of", args -> {
                 requireArgs(type + ".of", args, 1);
                 return args.get(0);
+            });
+        }
+    }
+
+    /**
+     * Register Optional.of() and Optional.empty() factory methods.
+     * On-chain, Optional follows Plutus Maybe convention:
+     * Some(x) = ConstrData(0, [x]), None = ConstrData(1, []).
+     *
+     * Optional.of(x) is handled specially in the typed lookup override above
+     * to get correct field type encoding. The registration here is a fallback
+     * for the untyped lookup path (treats arg as already Data).
+     */
+    private static void registerOptionalFactories(StdlibRegistry reg) {
+        // Register under both simple and FQCN for import flexibility
+        for (String cls : List.of("Optional", "java.util.Optional")) {
+            // Optional.of(x) — fallback for untyped lookup (arg assumed to be Data)
+            reg.register(cls, "of", args -> {
+                requireArgs("Optional.of", args, 1);
+                var recordType = new PirType.RecordType("Optional",
+                        List.of(new PirType.Field("value", new PirType.DataType())));
+                return new PirTerm.DataConstr(0, recordType, List.of(args.get(0)));
+            });
+
+            // Optional.empty() → ConstrData(1, [])
+            reg.register(cls, "empty", args -> {
+                requireArgs("Optional.empty", args, 0);
+                var recordType = new PirType.RecordType("Optional", List.of());
+                return new PirTerm.DataConstr(1, recordType, List.of());
             });
         }
     }

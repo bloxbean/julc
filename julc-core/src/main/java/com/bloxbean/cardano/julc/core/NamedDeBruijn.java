@@ -8,7 +8,7 @@ package com.bloxbean.cardano.julc.core;
  * only for debugging/pretty-printing.
  *
  * @param name  the optional name (for debugging)
- * @param index the De Bruijn index (0-based)
+ * @param index the De Bruijn index (1-based per Plutus Core convention)
  */
 public record NamedDeBruijn(String name, int index) {
 

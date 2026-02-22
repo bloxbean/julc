@@ -93,8 +93,8 @@ class SwitchExhaustivenessTest {
     }
 
     @Test
-    void testDefaultBranchCoversAll() {
-        // Switch with 1 explicit case + default — should compile OK
+    void testDefaultBranchProducesError() {
+        // Switch with default branch — should produce compiler error since default is not supported
         var source = """
             import java.math.BigInteger;
 
@@ -115,8 +115,37 @@ class SwitchExhaustivenessTest {
                 }
             }
             """;
-        var result = new JulcCompiler().compile(source);
-        assertFalse(result.hasErrors(), "Default branch should make it exhaustive. Got: " + result.diagnostics());
+        var ex = assertThrows(CompilerException.class, () -> new JulcCompiler().compile(source));
+        assertTrue(ex.getMessage().contains("default") && ex.getMessage().contains("not supported"),
+                "Should report default branch not supported. Got: " + ex.getMessage());
+    }
+
+    @Test
+    void testDefaultBranchWithAllCasesStillErrors() {
+        // Even with all cases + default, default branch should produce error
+        var source = """
+            import java.math.BigInteger;
+
+            sealed interface Action permits Mint, Burn {}
+            record Mint(long amt) implements Action {}
+            record Burn(long amt) implements Action {}
+
+            @Validator
+            class TestValidator {
+                @Entrypoint
+                static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                    Action a = (Action) redeemer;
+                    return switch (a) {
+                        case Mint m -> m.amt() > 0;
+                        case Burn b -> b.amt() > 0;
+                        default -> false;
+                    };
+                }
+            }
+            """;
+        var ex = assertThrows(CompilerException.class, () -> new JulcCompiler().compile(source));
+        assertTrue(ex.getMessage().contains("default") && ex.getMessage().contains("not supported"),
+                "Should report default branch not supported even with all cases. Got: " + ex.getMessage());
     }
 
     @Test
