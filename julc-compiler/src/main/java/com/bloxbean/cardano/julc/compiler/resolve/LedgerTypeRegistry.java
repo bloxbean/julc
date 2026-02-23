@@ -31,43 +31,69 @@ public final class LedgerTypeRegistry {
     public static void registerAll(TypeResolver typeResolver) {
         registerTier1Records(typeResolver);
         registerSealedInterfaces(typeResolver);
+        registerGovernanceTypes(typeResolver);
         registerCompositeRecords(typeResolver);
         registerTopLevelTypes(typeResolver);
     }
 
     /**
-     * Return all known ledger FQCNs (records, sealed interfaces, variants, hash types, data types).
+     * Return all known ledger FQCNs (records, sealed interfaces, variants, hash types).
      * Used by ImportResolver to populate its knownFqcns set.
      */
     public static Set<String> allLedgerFqcns() {
         var fqcns = new LinkedHashSet<String>();
         // Record types
         for (var name : List.of("TxOutRef", "IntervalBound", "Tuple2", "Tuple3", "Value",
-                "Interval", "Address", "TxOut", "TxInInfo", "TxInfo", "ScriptContext")) {
+                "Interval", "Address", "TxOut", "TxInInfo", "TxInfo", "ScriptContext",
+                "Rational", "ProtocolVersion", "GovernanceActionId", "ProposalProcedure", "Committee")) {
             fqcns.add(LEDGER_PACKAGE + "." + name);
         }
         // Sealed interface types
-        for (var name : List.of("IntervalBoundType", "Credential", "OutputDatum", "ScriptInfo")) {
+        for (var name : List.of("IntervalBoundType", "Credential", "OutputDatum", "ScriptInfo",
+                "Vote", "DRep", "Voter", "StakingCredential", "Delegatee",
+                "TxCert", "GovernanceAction", "ScriptPurpose")) {
             fqcns.add(LEDGER_PACKAGE + "." + name);
         }
         // Variant types (constructors of sealed interfaces)
-        for (var name : List.of("NegInf", "Finite", "PosInf",
+        for (var name : List.of(
+                // IntervalBoundType
+                "NegInf", "Finite", "PosInf",
+                // Credential
                 "PubKeyCredential", "ScriptCredential",
+                // OutputDatum
                 "NoOutputDatum", "OutputDatumHash", "OutputDatumInline",
+                // ScriptInfo
                 "MintingScript", "SpendingScript", "RewardingScript",
-                "CertifyingScript", "VotingScript", "ProposingScript")) {
+                "CertifyingScript", "VotingScript", "ProposingScript",
+                // Vote
+                "VoteNo", "VoteYes", "Abstain",
+                // DRep
+                "DRepCredential", "AlwaysAbstain", "AlwaysNoConfidence",
+                // Voter
+                "CommitteeVoter", "DRepVoter", "StakePoolVoter",
+                // StakingCredential
+                "StakingHash", "StakingPtr",
+                // Delegatee
+                "Stake",
+                // Note: Delegatee.Vote variant name clashes with Vote interface — registered under
+                // LEDGER_PACKAGE but resolved by SumType variant lookup, not simple name.
+                // Delegatee variants: Stake(0), Vote(1), StakeVote(2) — registered via registerLedgerSumType
+                "StakeVote",
+                // TxCert (11 variants)
+                "RegStaking", "UnRegStaking", "DelegStaking", "RegDeleg",
+                "RegDRep", "UpdateDRep", "UnRegDRep",
+                "PoolRegister", "PoolRetire", "AuthHotCommittee", "ResignColdCommittee",
+                // GovernanceAction (7 variants)
+                "ParameterChange", "HardForkInitiation", "TreasuryWithdrawals",
+                "NoConfidence", "UpdateCommittee", "NewConstitution", "InfoAction",
+                // ScriptPurpose (6 variants)
+                "Minting", "Spending", "Rewarding", "Certifying", "Voting", "Proposing"
+        )) {
             fqcns.add(LEDGER_PACKAGE + "." + name);
         }
         // Hash types (resolved as ByteStringType, not registered as records)
         for (var name : List.of("PubKeyHash", "ScriptHash", "ValidatorHash",
                 "PolicyId", "TokenName", "DatumHash", "TxId")) {
-            fqcns.add(LEDGER_PACKAGE + "." + name);
-        }
-        // Opaque data types
-        for (var name : List.of("StakingCredential", "ScriptPurpose",
-                "Vote", "Voter", "DRep", "Delegatee",
-                "GovernanceActionId", "GovernanceAction", "ProposalProcedure",
-                "TxCert", "Rational", "ProtocolVersion", "Committee")) {
             fqcns.add(LEDGER_PACKAGE + "." + name);
         }
         return fqcns;
@@ -113,6 +139,24 @@ public final class LedgerTypeRegistry {
                         new PirType.MapType(new PirType.ByteStringType(), new PirType.IntegerType())
                 ))
         ));
+
+        // Rational: numerator (Integer), denominator (Integer)
+        typeResolver.registerLedgerRecord("Rational", fqcn("Rational"), List.of(
+                new PirType.Field("numerator", new PirType.IntegerType()),
+                new PirType.Field("denominator", new PirType.IntegerType())
+        ));
+
+        // ProtocolVersion: major (Integer), minor (Integer)
+        typeResolver.registerLedgerRecord("ProtocolVersion", fqcn("ProtocolVersion"), List.of(
+                new PirType.Field("major", new PirType.IntegerType()),
+                new PirType.Field("minor", new PirType.IntegerType())
+        ));
+
+        // GovernanceActionId: txId (ByteString), govActionIx (Integer)
+        typeResolver.registerLedgerRecord("GovernanceActionId", fqcn("GovernanceActionId"), List.of(
+                new PirType.Field("txId", new PirType.ByteStringType()),
+                new PirType.Field("govActionIx", new PirType.IntegerType())
+        ));
     }
 
     // --- Sealed interfaces (SumTypes) ---
@@ -155,30 +199,236 @@ public final class LedgerTypeRegistry {
                         new PirType.Field("datum", new PirType.DataType())
                 ))
         ));
+    }
 
-        // ScriptInfo: MintingScript(0), SpendingScript(1), RewardingScript(2),
-        //             CertifyingScript(3), VotingScript(4), ProposingScript(5)
+    // --- Conway governance types (depends on Credential being registered) ---
+
+    private static void registerGovernanceTypes(TypeResolver typeResolver) {
+        var credentialType = typeResolver.lookupSumType("Credential")
+                .orElseThrow(() -> new IllegalStateException("Credential must be registered first"));
+
+        // --- Simple sealed interfaces ---
+
+        // Vote: VoteNo(0), VoteYes(1), Abstain(2) — all empty
+        typeResolver.registerLedgerSumType("Vote", fqcn("Vote"), List.of(
+                new PirType.Constructor("VoteNo", 0, List.of()),
+                new PirType.Constructor("VoteYes", 1, List.of()),
+                new PirType.Constructor("Abstain", 2, List.of())
+        ));
+
+        // DRep: DRepCredential(0), AlwaysAbstain(1), AlwaysNoConfidence(2)
+        typeResolver.registerLedgerSumType("DRep", fqcn("DRep"), List.of(
+                new PirType.Constructor("DRepCredential", 0, List.of(
+                        new PirType.Field("credential", credentialType)
+                )),
+                new PirType.Constructor("AlwaysAbstain", 1, List.of()),
+                new PirType.Constructor("AlwaysNoConfidence", 2, List.of())
+        ));
+
+        // Voter: CommitteeVoter(0), DRepVoter(1), StakePoolVoter(2)
+        typeResolver.registerLedgerSumType("Voter", fqcn("Voter"), List.of(
+                new PirType.Constructor("CommitteeVoter", 0, List.of(
+                        new PirType.Field("credential", credentialType)
+                )),
+                new PirType.Constructor("DRepVoter", 1, List.of(
+                        new PirType.Field("credential", credentialType)
+                )),
+                new PirType.Constructor("StakePoolVoter", 2, List.of(
+                        new PirType.Field("pubKeyHash", new PirType.ByteStringType())
+                ))
+        ));
+
+        // StakingCredential: StakingHash(0), StakingPtr(1)
+        typeResolver.registerLedgerSumType("StakingCredential", fqcn("StakingCredential"), List.of(
+                new PirType.Constructor("StakingHash", 0, List.of(
+                        new PirType.Field("credential", credentialType)
+                )),
+                new PirType.Constructor("StakingPtr", 1, List.of(
+                        new PirType.Field("slot", new PirType.IntegerType()),
+                        new PirType.Field("txIndex", new PirType.IntegerType()),
+                        new PirType.Field("certIndex", new PirType.IntegerType())
+                ))
+        ));
+
+        // --- Mid-level types ---
+
+        // Delegatee: Stake(0), Vote(1), StakeVote(2)
+        var dRepType = typeResolver.lookupSumType("DRep")
+                .orElseThrow(() -> new IllegalStateException("DRep must be registered first"));
+        typeResolver.registerLedgerSumType("Delegatee", fqcn("Delegatee"), List.of(
+                new PirType.Constructor("Stake", 0, List.of(
+                        new PirType.Field("poolId", new PirType.ByteStringType())
+                )),
+                new PirType.Constructor("Vote", 1, List.of(
+                        new PirType.Field("dRep", dRepType)
+                )),
+                new PirType.Constructor("StakeVote", 2, List.of(
+                        new PirType.Field("poolId", new PirType.ByteStringType()),
+                        new PirType.Field("dRep", dRepType)
+                ))
+        ));
+
+        // --- Complex sealed interfaces ---
+
+        // TxCert: 11 variants
+        var delegateeType = typeResolver.lookupSumType("Delegatee")
+                .orElseThrow(() -> new IllegalStateException("Delegatee must be registered first"));
+        typeResolver.registerLedgerSumType("TxCert", fqcn("TxCert"), List.of(
+                new PirType.Constructor("RegStaking", 0, List.of(
+                        new PirType.Field("credential", credentialType),
+                        new PirType.Field("deposit", new PirType.OptionalType(new PirType.IntegerType()))
+                )),
+                new PirType.Constructor("UnRegStaking", 1, List.of(
+                        new PirType.Field("credential", credentialType),
+                        new PirType.Field("refund", new PirType.OptionalType(new PirType.IntegerType()))
+                )),
+                new PirType.Constructor("DelegStaking", 2, List.of(
+                        new PirType.Field("credential", credentialType),
+                        new PirType.Field("delegatee", delegateeType)
+                )),
+                new PirType.Constructor("RegDeleg", 3, List.of(
+                        new PirType.Field("credential", credentialType),
+                        new PirType.Field("delegatee", delegateeType),
+                        new PirType.Field("deposit", new PirType.IntegerType())
+                )),
+                new PirType.Constructor("RegDRep", 4, List.of(
+                        new PirType.Field("credential", credentialType),
+                        new PirType.Field("deposit", new PirType.IntegerType())
+                )),
+                new PirType.Constructor("UpdateDRep", 5, List.of(
+                        new PirType.Field("credential", credentialType)
+                )),
+                new PirType.Constructor("UnRegDRep", 6, List.of(
+                        new PirType.Field("credential", credentialType),
+                        new PirType.Field("refund", new PirType.IntegerType())
+                )),
+                new PirType.Constructor("PoolRegister", 7, List.of(
+                        new PirType.Field("poolId", new PirType.ByteStringType()),
+                        new PirType.Field("poolVfr", new PirType.ByteStringType())
+                )),
+                new PirType.Constructor("PoolRetire", 8, List.of(
+                        new PirType.Field("pubKeyHash", new PirType.ByteStringType()),
+                        new PirType.Field("epoch", new PirType.IntegerType())
+                )),
+                new PirType.Constructor("AuthHotCommittee", 9, List.of(
+                        new PirType.Field("cold", credentialType),
+                        new PirType.Field("hot", credentialType)
+                )),
+                new PirType.Constructor("ResignColdCommittee", 10, List.of(
+                        new PirType.Field("cold", credentialType)
+                ))
+        ));
+
+        // GovernanceAction: 7 variants
+        var govActionIdType = typeResolver.lookupRecord("GovernanceActionId")
+                .orElseThrow(() -> new IllegalStateException("GovernanceActionId must be registered first"));
+        var rationalType = typeResolver.lookupRecord("Rational")
+                .orElseThrow(() -> new IllegalStateException("Rational must be registered first"));
+        var protocolVersionType = typeResolver.lookupRecord("ProtocolVersion")
+                .orElseThrow(() -> new IllegalStateException("ProtocolVersion must be registered first"));
+        typeResolver.registerLedgerSumType("GovernanceAction", fqcn("GovernanceAction"), List.of(
+                new PirType.Constructor("ParameterChange", 0, List.of(
+                        new PirType.Field("id", new PirType.OptionalType(govActionIdType)),
+                        new PirType.Field("parameters", new PirType.DataType()),
+                        new PirType.Field("constitutionScript", new PirType.OptionalType(new PirType.ByteStringType()))
+                )),
+                new PirType.Constructor("HardForkInitiation", 1, List.of(
+                        new PirType.Field("id", new PirType.OptionalType(govActionIdType)),
+                        new PirType.Field("protocolVersion", protocolVersionType)
+                )),
+                new PirType.Constructor("TreasuryWithdrawals", 2, List.of(
+                        new PirType.Field("withdrawals", new PirType.MapType(new PirType.DataType(), new PirType.IntegerType())),
+                        new PirType.Field("constitutionScript", new PirType.OptionalType(new PirType.ByteStringType()))
+                )),
+                new PirType.Constructor("NoConfidence", 3, List.of(
+                        new PirType.Field("id", new PirType.OptionalType(govActionIdType))
+                )),
+                new PirType.Constructor("UpdateCommittee", 4, List.of(
+                        new PirType.Field("id", new PirType.OptionalType(govActionIdType)),
+                        new PirType.Field("removedMembers", new PirType.ListType(new PirType.DataType())),
+                        new PirType.Field("addedMembers", new PirType.MapType(new PirType.DataType(), new PirType.IntegerType())),
+                        new PirType.Field("newQuorum", rationalType)
+                )),
+                new PirType.Constructor("NewConstitution", 5, List.of(
+                        new PirType.Field("id", new PirType.OptionalType(govActionIdType)),
+                        new PirType.Field("constitution", new PirType.OptionalType(new PirType.ByteStringType()))
+                )),
+                new PirType.Constructor("InfoAction", 6, List.of())
+        ));
+
+        // --- Composite records ---
+
+        // ProposalProcedure: deposit (Integer), returnAddress (Credential), governanceAction (GovernanceAction)
+        var governanceActionType = typeResolver.lookupSumType("GovernanceAction")
+                .orElseThrow(() -> new IllegalStateException("GovernanceAction must be registered first"));
+        typeResolver.registerLedgerRecord("ProposalProcedure", fqcn("ProposalProcedure"), List.of(
+                new PirType.Field("deposit", new PirType.IntegerType()),
+                new PirType.Field("returnAddress", credentialType),
+                new PirType.Field("governanceAction", governanceActionType)
+        ));
+
+        // Committee: members (Map<Data, Integer>), quorum (Rational)
+        typeResolver.registerLedgerRecord("Committee", fqcn("Committee"), List.of(
+                new PirType.Field("members", new PirType.MapType(new PirType.DataType(), new PirType.IntegerType())),
+                new PirType.Field("quorum", rationalType)
+        ));
+
+        // --- ScriptPurpose (depends on TxOutRef, TxCert, Voter, ProposalProcedure) ---
+
+        var txOutRefType = typeResolver.lookupRecord("TxOutRef")
+                .orElseThrow(() -> new IllegalStateException("TxOutRef must be registered first"));
+        var txCertType = typeResolver.lookupSumType("TxCert")
+                .orElseThrow(() -> new IllegalStateException("TxCert must be registered first"));
+        var voterType = typeResolver.lookupSumType("Voter")
+                .orElseThrow(() -> new IllegalStateException("Voter must be registered first"));
+        var proposalProcedureType = typeResolver.lookupRecord("ProposalProcedure")
+                .orElseThrow(() -> new IllegalStateException("ProposalProcedure must be registered first"));
+        typeResolver.registerLedgerSumType("ScriptPurpose", fqcn("ScriptPurpose"), List.of(
+                new PirType.Constructor("Minting", 0, List.of(
+                        new PirType.Field("policyId", new PirType.ByteStringType())
+                )),
+                new PirType.Constructor("Spending", 1, List.of(
+                        new PirType.Field("txOutRef", txOutRefType)
+                )),
+                new PirType.Constructor("Rewarding", 2, List.of(
+                        new PirType.Field("credential", credentialType)
+                )),
+                new PirType.Constructor("Certifying", 3, List.of(
+                        new PirType.Field("index", new PirType.IntegerType()),
+                        new PirType.Field("cert", txCertType)
+                )),
+                new PirType.Constructor("Voting", 4, List.of(
+                        new PirType.Field("voter", voterType)
+                )),
+                new PirType.Constructor("Proposing", 5, List.of(
+                        new PirType.Field("index", new PirType.IntegerType()),
+                        new PirType.Field("procedure", proposalProcedureType)
+                ))
+        ));
+
+        // --- ScriptInfo (registered here so governance types are available for typed fields) ---
+
         typeResolver.registerLedgerSumType("ScriptInfo", fqcn("ScriptInfo"), List.of(
                 new PirType.Constructor("MintingScript", 0, List.of(
                         new PirType.Field("policyId", new PirType.ByteStringType())
                 )),
                 new PirType.Constructor("SpendingScript", 1, List.of(
-                        new PirType.Field("txOutRef", new PirType.DataType()),
+                        new PirType.Field("txOutRef", txOutRefType),
                         new PirType.Field("datum", new PirType.DataType())
                 )),
                 new PirType.Constructor("RewardingScript", 2, List.of(
-                        new PirType.Field("credential", new PirType.DataType())
+                        new PirType.Field("credential", credentialType)
                 )),
                 new PirType.Constructor("CertifyingScript", 3, List.of(
                         new PirType.Field("index", new PirType.IntegerType()),
-                        new PirType.Field("cert", new PirType.DataType())
+                        new PirType.Field("cert", txCertType)
                 )),
                 new PirType.Constructor("VotingScript", 4, List.of(
-                        new PirType.Field("voter", new PirType.DataType())
+                        new PirType.Field("voter", voterType)
                 )),
                 new PirType.Constructor("ProposingScript", 5, List.of(
                         new PirType.Field("index", new PirType.IntegerType()),
-                        new PirType.Field("procedure", new PirType.DataType())
+                        new PirType.Field("procedure", proposalProcedureType)
                 ))
         ));
     }
@@ -194,12 +444,14 @@ public final class LedgerTypeRegistry {
                 new PirType.Field("to", intervalBoundType)
         ));
 
-        // Address: credential (SumType Credential), stakingCredential (DataType)
+        // Address: credential (SumType Credential), stakingCredential (Optional<StakingCredential>)
         var credentialType = typeResolver.lookupSumType("Credential")
                 .orElseThrow(() -> new IllegalStateException("Credential must be registered first"));
+        var stakingCredentialType = typeResolver.lookupSumType("StakingCredential")
+                .orElseThrow(() -> new IllegalStateException("StakingCredential must be registered first"));
         typeResolver.registerLedgerRecord("Address", fqcn("Address"), List.of(
                 new PirType.Field("credential", credentialType),
-                new PirType.Field("stakingCredential", new PirType.DataType())
+                new PirType.Field("stakingCredential", new PirType.OptionalType(stakingCredentialType))
         ));
 
         // TxOut: address (Address), value (Value), datum (OutputDatum), referenceScript (DataType)
@@ -238,6 +490,14 @@ public final class LedgerTypeRegistry {
                 .orElseThrow(() -> new IllegalStateException("Value must be registered first"));
         var intervalType = typeResolver.lookupRecord("Interval")
                 .orElseThrow(() -> new IllegalStateException("Interval must be registered first"));
+        var txCertType = typeResolver.lookupSumType("TxCert")
+                .orElseThrow(() -> new IllegalStateException("TxCert must be registered first"));
+        var scriptPurposeType = typeResolver.lookupSumType("ScriptPurpose")
+                .orElseThrow(() -> new IllegalStateException("ScriptPurpose must be registered first"));
+        var voterType = typeResolver.lookupSumType("Voter")
+                .orElseThrow(() -> new IllegalStateException("Voter must be registered first"));
+        var proposalProcedureType = typeResolver.lookupRecord("ProposalProcedure")
+                .orElseThrow(() -> new IllegalStateException("ProposalProcedure must be registered first"));
 
         // TxInfo: 16 fields
         typeResolver.registerLedgerRecord("TxInfo", fqcn("TxInfo"), List.of(
@@ -246,15 +506,15 @@ public final class LedgerTypeRegistry {
                 new PirType.Field("outputs", new PirType.ListType(txOutType)),             // 2
                 new PirType.Field("fee", new PirType.IntegerType()),                       // 3
                 new PirType.Field("mint", valueType),                                      // 4
-                new PirType.Field("certificates", new PirType.ListType(new PirType.DataType())),  // 5
+                new PirType.Field("certificates", new PirType.ListType(txCertType)),       // 5
                 new PirType.Field("withdrawals", new PirType.MapType(new PirType.DataType(), new PirType.IntegerType())),  // 6
                 new PirType.Field("validRange", intervalType),                             // 7
                 new PirType.Field("signatories", new PirType.ListType(new PirType.ByteStringType())),  // 8
-                new PirType.Field("redeemers", new PirType.MapType(new PirType.DataType(), new PirType.DataType())),  // 9
+                new PirType.Field("redeemers", new PirType.MapType(scriptPurposeType, new PirType.DataType())),  // 9
                 new PirType.Field("datums", new PirType.MapType(new PirType.DataType(), new PirType.DataType())),  // 10
                 new PirType.Field("id", new PirType.ByteStringType()),                     // 11
-                new PirType.Field("votes", new PirType.MapType(new PirType.DataType(), new PirType.DataType())),  // 12
-                new PirType.Field("proposalProcedures", new PirType.ListType(new PirType.DataType())),  // 13
+                new PirType.Field("votes", new PirType.MapType(voterType, new PirType.MapType(new PirType.DataType(), new PirType.DataType()))),  // 12
+                new PirType.Field("proposalProcedures", new PirType.ListType(proposalProcedureType)),  // 13
                 new PirType.Field("currentTreasuryAmount", new PirType.OptionalType(new PirType.IntegerType())),  // 14
                 new PirType.Field("treasuryDonation", new PirType.OptionalType(new PirType.IntegerType()))  // 15
         ));
