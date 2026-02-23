@@ -1,0 +1,49 @@
+plugins {
+    id 'application'
+    id 'com.gradleup.shadow' version '9.0.0-beta12'
+    id 'org.graalvm.buildtools.native' version '0.10.6'
+}
+
+description = 'CLI for JuLC security analysis of Cardano Plutus scripts'
+
+application {
+    mainClass = 'com.bloxbean.cardano.julc.analyzer.cli.Main'
+}
+
+dependencies {
+    implementation project(':julc-analysis')
+
+    // CLI framework
+    implementation 'info.picocli:picocli:4.7.7'
+    annotationProcessor 'info.picocli:picocli-codegen:4.7.7'
+
+    // LangChain4j providers bundled
+    implementation 'dev.langchain4j:langchain4j-ollama:1.11.0'
+    implementation 'dev.langchain4j:langchain4j-open-ai:1.11.0'
+    implementation 'dev.langchain4j:langchain4j-anthropic:1.11.0'
+}
+
+shadowJar {
+    archiveBaseName.set('julc-analyzer-cli')
+    archiveClassifier.set('')
+    archiveVersion.set('')
+    mergeServiceFiles()
+    manifest {
+        attributes 'Main-Class': application.mainClass.get()
+    }
+}
+
+graalvmNative {
+    binaries {
+        main {
+            imageName = 'julc-analyzer'
+            mainClass = application.mainClass.get()
+            buildArgs.add('--no-fallback')
+            sharedLibrary = false
+        }
+    }
+}
+
+tasks.named('compileJava') {
+    options.compilerArgs += ["-Aproject=${project.group}/${project.name}"]
+}
