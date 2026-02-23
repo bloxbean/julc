@@ -4,6 +4,7 @@ import com.bloxbean.cardano.julc.compiler.CompileResult;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
 import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.core.Program;
+import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
 import com.bloxbean.cardano.julc.vm.EvalResult;
 import com.bloxbean.cardano.julc.vm.ExBudget;
 import com.bloxbean.cardano.julc.vm.JulcVm;
@@ -98,7 +99,7 @@ public final class ValidatorTest {
      */
     public static Program compile(String javaSource) {
         Objects.requireNonNull(javaSource, "javaSource must not be null");
-        var compiler = new JulcCompiler();
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry());
         CompileResult result = compiler.compile(javaSource);
         if (result.hasErrors()) {
             throw new AssertionError("Compilation produced errors: " + result.diagnostics());
@@ -203,7 +204,7 @@ public final class ValidatorTest {
      */
     public static CompileResult compileWithDetails(String javaSource) {
         Objects.requireNonNull(javaSource, "javaSource must not be null");
-        var compiler = new JulcCompiler();
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry());
         CompileResult result = compiler.compileWithDetails(javaSource);
         if (result.hasErrors()) {
             throw new AssertionError("Compilation produced errors: " + result.diagnostics());
@@ -241,7 +242,7 @@ public final class ValidatorTest {
      */
     public static Program compile(String validatorSource, String... librarySources) {
         Objects.requireNonNull(validatorSource, "validatorSource must not be null");
-        var compiler = new JulcCompiler();
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry());
         CompileResult result = compiler.compile(validatorSource, List.of(librarySources));
         if (result.hasErrors()) {
             throw new AssertionError("Compilation produced errors: " + result.diagnostics());
@@ -259,7 +260,7 @@ public final class ValidatorTest {
      */
     public static Program compile(Path sourceFile) throws IOException {
         Objects.requireNonNull(sourceFile, "sourceFile must not be null");
-        var compiler = new JulcCompiler();
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry());
         CompileResult result = compiler.compile(sourceFile);
         if (result.hasErrors()) {
             throw new AssertionError("Compilation produced errors: " + result.diagnostics());
@@ -279,7 +280,7 @@ public final class ValidatorTest {
     public static EvalResult evaluate(String validatorSource, List<String> librarySources, PlutusData... args) {
         Objects.requireNonNull(validatorSource, "validatorSource must not be null");
         Objects.requireNonNull(librarySources, "librarySources must not be null");
-        var compiler = new JulcCompiler();
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry());
         CompileResult result = compiler.compile(validatorSource, librarySources);
         if (result.hasErrors()) {
             throw new AssertionError("Compilation produced errors: " + result.diagnostics());

@@ -3,8 +3,12 @@ package com.bloxbean.cardano.julc.testkit;
 import com.bloxbean.cardano.julc.compiler.CompileResult;
 import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.core.Program;
+import com.bloxbean.cardano.julc.ledger.Credential;
 import com.bloxbean.cardano.julc.ledger.PolicyId;
+import com.bloxbean.cardano.julc.ledger.ProposalProcedure;
+import com.bloxbean.cardano.julc.ledger.TxCert;
 import com.bloxbean.cardano.julc.ledger.TxOutRef;
+import com.bloxbean.cardano.julc.ledger.Voter;
 import com.bloxbean.cardano.julc.stdlib.Builtins;
 import com.bloxbean.cardano.julc.vm.EvalResult;
 import com.bloxbean.cardano.julc.vm.JulcVm;
@@ -150,6 +154,48 @@ public abstract class ContractTest {
      */
     protected ScriptContextTestBuilder mintingContext(PolicyId policyId) {
         return ScriptContextTestBuilder.minting(policyId);
+    }
+
+    /**
+     * Create a ScriptContextTestBuilder for a rewarding (withdraw) script context.
+     *
+     * @param credential the staking credential
+     * @return a new ScriptContextTestBuilder
+     */
+    protected ScriptContextTestBuilder rewardingContext(Credential credential) {
+        return ScriptContextTestBuilder.rewarding(credential);
+    }
+
+    /**
+     * Create a ScriptContextTestBuilder for a certifying script context.
+     *
+     * @param index the certificate index
+     * @param cert  the transaction certificate
+     * @return a new ScriptContextTestBuilder
+     */
+    protected ScriptContextTestBuilder certifyingContext(java.math.BigInteger index, TxCert cert) {
+        return ScriptContextTestBuilder.certifying(index, cert);
+    }
+
+    /**
+     * Create a ScriptContextTestBuilder for a voting script context.
+     *
+     * @param voter the governance voter
+     * @return a new ScriptContextTestBuilder
+     */
+    protected ScriptContextTestBuilder votingContext(Voter voter) {
+        return ScriptContextTestBuilder.voting(voter);
+    }
+
+    /**
+     * Create a ScriptContextTestBuilder for a proposing script context.
+     *
+     * @param index     the proposal index
+     * @param procedure the proposal procedure
+     * @return a new ScriptContextTestBuilder
+     */
+    protected ScriptContextTestBuilder proposingContext(java.math.BigInteger index, ProposalProcedure procedure) {
+        return ScriptContextTestBuilder.proposing(index, procedure);
     }
 
     // --- Multi-file compilation ---

@@ -20,6 +20,9 @@ import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.body.RecordDeclaration;
+import com.github.javaparser.ast.expr.FieldAccessExpr;
+import com.github.javaparser.ast.expr.MemberValuePair;
+import com.github.javaparser.ast.expr.NormalAnnotationExpr;
 
 import java.io.File;
 import java.io.IOException;
@@ -38,7 +41,7 @@ public class JulcCompiler {
      * The script purpose determined by the annotation on the validator class.
      */
     public enum ScriptPurpose {
-        SPENDING, MINTING, WITHDRAW, CERTIFYING, VOTING, PROPOSING
+        SPENDING, MINTING, WITHDRAW, CERTIFYING, VOTING, PROPOSING, MULTI
     }
 
     /** All annotation names recognized as validator annotations. */
@@ -46,7 +49,8 @@ public class JulcCompiler {
             "Validator", "SpendingValidator",
             "MintingPolicy", "MintingValidator",
             "WithdrawValidator", "CertifyingValidator",
-            "VotingValidator", "ProposingValidator"
+            "VotingValidator", "ProposingValidator",
+            "MultiValidator"
     );
 
     private record ParamField(String name, PirType pirType, String javaType) {}
@@ -223,11 +227,18 @@ public class JulcCompiler {
         // 6b. Detect static fields with initializers (non-@Param)
         var staticFields = findStaticFields(validatorClass, typeResolver);
 
-        // 7. Find @Entrypoint method
-        var entrypointMethod = findEntrypoint(validatorClass);
+        // 7. Find @Entrypoint method(s) and validate
+        // For MULTI purpose, discover all entrypoints and their purposes
+        var entrypointInfos = new ArrayList<EntrypointInfo>();
+        MethodDeclaration entrypointMethod = null;
 
-        // 7b. Validate parameter count matches script purpose
-        validateEntrypointParams(entrypointMethod, scriptPurpose, validatorClass);
+        if (scriptPurpose == ScriptPurpose.MULTI) {
+            entrypointInfos = findMultiEntrypoints(validatorClass);
+        } else {
+            entrypointMethod = findEntrypoint(validatorClass);
+            // 7b. Validate parameter count matches script purpose
+            validateEntrypointParams(entrypointMethod, scriptPurpose, validatorClass);
+        }
 
         // 8. Compile library static methods to PIR (progressive lookup: each library sees previous)
         var libraryRegistry = new LibraryMethodRegistry(options);
@@ -280,9 +291,34 @@ public class JulcCompiler {
             }
         }
 
-        // 12. Generate PIR for the entrypoint method
-        var validateFn = pirGenerator.generateMethod(entrypointMethod);
-        options.log("PIR generation complete");
+        // 12. Generate PIR for entrypoint(s)
+        PirTerm validateFn = null;
+        Map<Integer, PirTerm> multiHandlers = null;
+        Map<Integer, Integer> multiParamCounts = null;
+        boolean isMultiAutoDispatch = false;
+
+        boolean isExplicitPurpose = !entrypointInfos.isEmpty()
+                && entrypointInfos.stream().noneMatch(e -> e.purposeName().equals("DEFAULT"));
+        if (scriptPurpose == ScriptPurpose.MULTI && isExplicitPurpose) {
+            // Mode 1: Auto-dispatch — entrypoints with explicit purposes
+            isMultiAutoDispatch = true;
+            multiHandlers = new LinkedHashMap<>();
+            multiParamCounts = new LinkedHashMap<>();
+            for (var ei : entrypointInfos) {
+                var handlerPir = pirGenerator.generateMethod(ei.method());
+                multiHandlers.put(ei.tag(), handlerPir);
+                multiParamCounts.put(ei.tag(), ei.method().getParameters().size());
+            }
+            options.logf("PIR generation complete (%d auto-dispatch entrypoints)", entrypointInfos.size());
+        } else if (scriptPurpose == ScriptPurpose.MULTI) {
+            // Mode 2: Manual dispatch — single DEFAULT entrypoint
+            entrypointMethod = entrypointInfos.get(0).method();
+            validateFn = pirGenerator.generateMethod(entrypointMethod);
+            options.log("PIR generation complete (manual dispatch)");
+        } else {
+            validateFn = pirGenerator.generateMethod(entrypointMethod);
+            options.log("PIR generation complete");
+        }
 
         // 12b. Collect non-fatal errors from PIR generation
         diagnostics.addAll(pirGenerator.getCollectedErrors());
@@ -291,40 +327,93 @@ public class JulcCompiler {
         }
 
         // 13. Wrap helper methods as Let bindings
-        PirTerm body = validateFn;
-        var methods = new ArrayList<>(symbolTable.allMethods());
-        for (int i = methods.size() - 1; i >= 0; i--) {
-            var mi = methods.get(i);
-            body = new PirTerm.Let(mi.name(), mi.body(), body);
-        }
+        // For auto-dispatch, wrap each handler; for single entrypoint, wrap the single body
+        PirTerm body;
+        if (isMultiAutoDispatch) {
+            // Wrap helper methods around each handler
+            var helperMethods = new ArrayList<>(symbolTable.allMethods());
+            for (var entry : multiHandlers.entrySet()) {
+                PirTerm handlerBody = entry.getValue();
+                for (int i = helperMethods.size() - 1; i >= 0; i--) {
+                    var mi = helperMethods.get(i);
+                    handlerBody = new PirTerm.Let(mi.name(), mi.body(), handlerBody);
+                }
+                // Wrap static field initializers
+                for (int i = compiledStaticFields.size() - 1; i >= 0; i--) {
+                    var sf = compiledStaticFields.get(i);
+                    handlerBody = new PirTerm.Let(sf.name(), sf.initPir(), handlerBody);
+                }
+                multiHandlers.put(entry.getKey(), handlerBody);
+            }
+            body = null; // Not used; wrapper handles it
+        } else {
+            body = validateFn;
+            var methods = new ArrayList<>(symbolTable.allMethods());
+            for (int i = methods.size() - 1; i >= 0; i--) {
+                var mi = methods.get(i);
+                body = new PirTerm.Let(mi.name(), mi.body(), body);
+            }
 
-        // 13b. Wrap static field initializers as Let bindings (reverse order for correct scoping)
-        for (int i = compiledStaticFields.size() - 1; i >= 0; i--) {
-            var sf = compiledStaticFields.get(i);
-            body = new PirTerm.Let(sf.name(), sf.initPir(), body);
+            // 13b. Wrap static field initializers as Let bindings (reverse order for correct scoping)
+            for (int i = compiledStaticFields.size() - 1; i >= 0; i--) {
+                var sf = compiledStaticFields.get(i);
+                body = new PirTerm.Let(sf.name(), sf.initPir(), body);
+            }
         }
 
         // 14. Wrap library methods as Let bindings (topologically sorted: dependencies outermost)
         var sortedLibMethods = topoSortLibraryMethods(libraryRegistry.allMethods());
-        for (var libMethod : sortedLibMethods) {
-            if (containsVarRef(libMethod.body(), libMethod.qualifiedName())) {
-                // Self-recursive method: wrap in LetRec (Z-combinator)
-                body = new PirTerm.LetRec(
-                        List.of(new PirTerm.Binding(libMethod.qualifiedName(), libMethod.body())),
-                        body);
-            } else {
-                body = new PirTerm.Let(libMethod.qualifiedName(), libMethod.body(), body);
+        if (isMultiAutoDispatch) {
+            for (var entry : multiHandlers.entrySet()) {
+                PirTerm handlerBody = entry.getValue();
+                for (var libMethod : sortedLibMethods) {
+                    if (containsVarRef(libMethod.body(), libMethod.qualifiedName())) {
+                        handlerBody = new PirTerm.LetRec(
+                                List.of(new PirTerm.Binding(libMethod.qualifiedName(), libMethod.body())),
+                                handlerBody);
+                    } else {
+                        handlerBody = new PirTerm.Let(libMethod.qualifiedName(), libMethod.body(), handlerBody);
+                    }
+                }
+                multiHandlers.put(entry.getKey(), handlerBody);
+            }
+        } else {
+            for (var libMethod : sortedLibMethods) {
+                if (containsVarRef(libMethod.body(), libMethod.qualifiedName())) {
+                    body = new PirTerm.LetRec(
+                            List.of(new PirTerm.Binding(libMethod.qualifiedName(), libMethod.body())),
+                            body);
+                } else {
+                    body = new PirTerm.Let(libMethod.qualifiedName(), libMethod.body(), body);
+                }
             }
         }
 
         // 15. Wrap entrypoint for on-chain
         var wrapper = new ValidatorWrapper();
-        int paramCount = entrypointMethod.getParameters().size();
         PirTerm wrappedTerm;
-        if (scriptPurpose == ScriptPurpose.SPENDING) {
-            wrappedTerm = wrapper.wrapSpendingValidator(body, paramCount);
+        if (isMultiAutoDispatch) {
+            // Build datumOptional flags for auto-dispatch handlers
+            Map<Integer, Boolean> multiDatumOptional = new LinkedHashMap<>();
+            for (var ei : entrypointInfos) {
+                boolean datumOpt = false;
+                if (ei.tag() == 1 && ei.method().getParameters().size() == 3) {
+                    var firstParamType = ei.method().getParameter(0).getTypeAsString();
+                    datumOpt = firstParamType.startsWith("Optional");
+                }
+                multiDatumOptional.put(ei.tag(), datumOpt);
+            }
+            wrappedTerm = wrapper.wrapMultiValidator(multiHandlers, multiParamCounts, multiDatumOptional);
+        } else if (scriptPurpose == ScriptPurpose.SPENDING) {
+            int paramCount = entrypointMethod.getParameters().size();
+            boolean datumIsOptional = false;
+            if (paramCount == 3) {
+                var firstParamType = entrypointMethod.getParameter(0).getTypeAsString();
+                datumIsOptional = firstParamType.startsWith("Optional");
+            }
+            wrappedTerm = wrapper.wrapSpendingValidator(body, paramCount, datumIsOptional);
         } else {
-            // Minting, Withdraw, Certifying, Voting, Proposing all use 2-param wrapper
+            // Minting, Withdraw, Certifying, Voting, Proposing, Multi(manual) all use 2-param wrapper
             wrappedTerm = wrapper.wrapMintingPolicy(body);
         }
 
@@ -628,6 +717,19 @@ public class JulcCompiler {
     }
 
     private ScriptPurpose getScriptPurpose(ClassOrInterfaceDeclaration cls) {
+        // Count how many validator annotations are present
+        var foundAnnotations = new ArrayList<String>();
+        for (var ann : VALIDATOR_ANNOTATIONS) {
+            if (cls.getAnnotationByName(ann).isPresent()) {
+                foundAnnotations.add(ann);
+            }
+        }
+        if (foundAnnotations.size() > 1) {
+            throw new CompilerException("Class " + cls.getNameAsString()
+                    + " has multiple validator annotations: " + foundAnnotations
+                    + ". Only one validator annotation is allowed per class.");
+        }
+
         if (cls.getAnnotationByName("Validator").isPresent()
                 || cls.getAnnotationByName("SpendingValidator").isPresent()) {
             return ScriptPurpose.SPENDING;
@@ -648,6 +750,9 @@ public class JulcCompiler {
         if (cls.getAnnotationByName("ProposingValidator").isPresent()) {
             return ScriptPurpose.PROPOSING;
         }
+        if (cls.getAnnotationByName("MultiValidator").isPresent()) {
+            return ScriptPurpose.MULTI;
+        }
         throw new CompilerException("No validator annotation found on " + cls.getNameAsString());
     }
 
@@ -658,6 +763,124 @@ public class JulcCompiler {
             }
         }
         throw new CompilerException("No @Entrypoint method found in " + cls.getNameAsString());
+    }
+
+    /** Map Purpose enum name to ScriptInfo tag. */
+    private static final Map<String, Integer> PURPOSE_TAG_MAP = Map.of(
+            "MINT", 0,
+            "SPEND", 1,
+            "WITHDRAW", 2,
+            "CERTIFY", 3,
+            "VOTE", 4,
+            "PROPOSE", 5
+    );
+
+    /**
+     * Find all @Entrypoint methods in a @MultiValidator class and extract their purposes.
+     * Returns a list of (method, purposeName, tag) tuples.
+     * <p>
+     * Validates:
+     * <ul>
+     *   <li>No mixing of DEFAULT and explicit purposes</li>
+     *   <li>No duplicate purposes</li>
+     *   <li>SPEND: 2 or 3 params; all others: 2 params</li>
+     *   <li>DEFAULT mode: exactly 1 entrypoint with 2 params</li>
+     * </ul>
+     */
+    private record EntrypointInfo(MethodDeclaration method, String purposeName, int tag) {}
+
+    private ArrayList<EntrypointInfo> findMultiEntrypoints(ClassOrInterfaceDeclaration cls) {
+        var entrypoints = new ArrayList<EntrypointInfo>();
+
+        for (var method : cls.getMethods()) {
+            var annOpt = method.getAnnotationByName("Entrypoint");
+            if (annOpt.isEmpty()) continue;
+
+            var ann = annOpt.get();
+            String purposeName = "DEFAULT";
+
+            // Extract purpose from annotation
+            if (ann instanceof NormalAnnotationExpr normalAnn) {
+                for (MemberValuePair pair : normalAnn.getPairs()) {
+                    if (pair.getNameAsString().equals("purpose")) {
+                        var value = pair.getValue();
+                        if (value instanceof FieldAccessExpr fae) {
+                            purposeName = fae.getNameAsString();
+                        } else {
+                            purposeName = value.toString();
+                            // Handle "Purpose.MINT" string form
+                            if (purposeName.contains(".")) {
+                                purposeName = purposeName.substring(purposeName.lastIndexOf('.') + 1);
+                            }
+                        }
+                    }
+                }
+            }
+            // MarkerAnnotationExpr and SingleMemberAnnotationExpr default to "DEFAULT"
+
+            int tag = purposeName.equals("DEFAULT") ? -1 : PURPOSE_TAG_MAP.getOrDefault(purposeName, -1);
+            if (!purposeName.equals("DEFAULT") && tag == -1) {
+                throw new CompilerException("Unknown purpose '" + purposeName + "' on @Entrypoint method "
+                        + method.getNameAsString() + " in " + cls.getNameAsString()
+                        + ". Valid values: MINT, SPEND, WITHDRAW, CERTIFY, VOTE, PROPOSE");
+            }
+
+            entrypoints.add(new EntrypointInfo(method, purposeName, tag));
+        }
+
+        if (entrypoints.isEmpty()) {
+            throw new CompilerException("No @Entrypoint method found in @MultiValidator " + cls.getNameAsString());
+        }
+
+        // Check for mixing DEFAULT and explicit purposes
+        boolean hasDefault = entrypoints.stream().anyMatch(e -> e.purposeName.equals("DEFAULT"));
+        boolean hasExplicit = entrypoints.stream().anyMatch(e -> !e.purposeName.equals("DEFAULT"));
+        if (hasDefault && hasExplicit) {
+            throw new CompilerException("@MultiValidator " + cls.getNameAsString()
+                    + " mixes DEFAULT and explicit purposes. "
+                    + "Either use a single @Entrypoint (manual dispatch) or "
+                    + "annotate all @Entrypoint methods with explicit purposes.");
+        }
+
+        if (hasDefault) {
+            // Mode 2: manual dispatch — exactly 1 entrypoint, 2 params
+            if (entrypoints.size() > 1) {
+                throw new CompilerException("@MultiValidator " + cls.getNameAsString()
+                        + " has multiple @Entrypoint methods with DEFAULT purpose. "
+                        + "Use explicit purposes (e.g. Purpose.MINT) for auto-dispatch, "
+                        + "or use a single @Entrypoint for manual dispatch.");
+            }
+            int paramCount = entrypoints.get(0).method.getParameters().size();
+            if (paramCount != 2) {
+                throw new CompilerException("@MultiValidator manual dispatch entrypoint must have 2 parameters "
+                        + "(redeemer, scriptContext), found " + paramCount
+                        + " in " + cls.getNameAsString() + "." + entrypoints.get(0).method.getNameAsString() + "()");
+            }
+        } else {
+            // Mode 1: auto-dispatch — check for duplicates and param counts
+            var seenPurposes = new HashSet<String>();
+            for (var ep : entrypoints) {
+                if (!seenPurposes.add(ep.purposeName)) {
+                    throw new CompilerException("Duplicate purpose " + ep.purposeName
+                            + " in @MultiValidator " + cls.getNameAsString());
+                }
+                int paramCount = ep.method.getParameters().size();
+                if (ep.purposeName.equals("SPEND")) {
+                    if (paramCount < 2 || paramCount > 3) {
+                        throw new CompilerException("@Entrypoint(purpose=Purpose.SPEND) must have 2 or 3 parameters, "
+                                + "found " + paramCount + " in " + cls.getNameAsString() + "." + ep.method.getNameAsString() + "()");
+                    }
+                } else {
+                    if (paramCount != 2) {
+                        throw new CompilerException("@Entrypoint(purpose=Purpose." + ep.purposeName + ") must have 2 parameters "
+                                + "(redeemer, scriptContext), found " + paramCount
+                                + " in " + cls.getNameAsString() + "." + ep.method.getNameAsString() + "()");
+                    }
+                }
+            }
+        }
+
+        return entrypoints;
     }
 
     private void validateEntrypointParams(MethodDeclaration entrypoint, ScriptPurpose purpose,
