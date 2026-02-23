@@ -128,9 +128,17 @@ class TypeResolverTest {
         assertEquals("ScriptCredential", st.constructors().get(1).name());
     }
 
-    @Test void resolveGovernanceTypeAsOpaque() {
-        // Governance types not yet registered still resolve as DataType
-        assertEquals(new PirType.DataType(), resolver.resolve(StaticJavaParser.parseClassOrInterfaceType("Vote")));
+    @Test void resolveGovernanceTypeAsSumType() {
+        // Governance types resolve as SumType after LedgerTypeRegistry registration
+        LedgerTypeRegistry.registerAll(resolver);
+        var result = resolver.resolve(StaticJavaParser.parseClassOrInterfaceType("Vote"));
+        assertInstanceOf(PirType.SumType.class, result);
+        var st = (PirType.SumType) result;
+        assertEquals("Vote", st.name());
+        assertEquals(3, st.constructors().size());
+        assertEquals("VoteNo", st.constructors().get(0).name());
+        assertEquals("VoteYes", st.constructors().get(1).name());
+        assertEquals("Abstain", st.constructors().get(2).name());
     }
 
     @Test void resolveUnknownTypeThrows() {

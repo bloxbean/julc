@@ -44,15 +44,6 @@ public class TypeResolver {
     private static final Set<String> LEDGER_HASH_FQCNS = LEDGER_HASH_NAMES.stream()
             .map(n -> LEDGER_PKG + "." + n).collect(Collectors.toUnmodifiableSet());
 
-    // Types not yet registered as RecordType/SumType — resolved as opaque DataType
-    private static final Set<String> LEDGER_DATA_NAMES = Set.of(
-            "StakingCredential", "ScriptPurpose",
-            "Vote", "Voter", "DRep", "Delegatee",
-            "GovernanceActionId", "GovernanceAction", "ProposalProcedure",
-            "TxCert", "Rational", "ProtocolVersion", "Committee");
-
-    private static final Set<String> LEDGER_DATA_FQCNS = LEDGER_DATA_NAMES.stream()
-            .map(n -> LEDGER_PKG + "." + n).collect(Collectors.toUnmodifiableSet());
 
     public void setCurrentImportResolver(ImportResolver resolver) {
         this.currentImportResolver = resolver;
@@ -82,8 +73,7 @@ public class TypeResolver {
         }
         // Simple name check via index
         return simpleNameIndex.containsKey(fqcnOrSimpleName)
-                || LEDGER_HASH_NAMES.contains(fqcnOrSimpleName)
-                || LEDGER_DATA_NAMES.contains(fqcnOrSimpleName);
+                || LEDGER_HASH_NAMES.contains(fqcnOrSimpleName);
     }
 
     /**
@@ -304,8 +294,6 @@ public class TypeResolver {
                         }
                     }
                 }
-                // Check remaining ledger data types -> opaque DataType
-                if (LEDGER_DATA_FQCNS.contains(fqcn) || LEDGER_DATA_NAMES.contains(name)) yield new PirType.DataType();
                 throw new IllegalArgumentException("Unknown type: " + name
                         + (fqcn.equals(name) ? "" : " (resolved to " + fqcn + ")"));
             }
@@ -393,8 +381,6 @@ public class TypeResolver {
         if (newTypes.containsKey(fqcn)) return Optional.of(newTypes.get(fqcn));
         if (recordTypes.containsKey(fqcn)) return Optional.of(recordTypes.get(fqcn));
         if (sumTypes.containsKey(fqcn)) return Optional.of(sumTypes.get(fqcn));
-        if (LEDGER_DATA_FQCNS.contains(fqcn) || LEDGER_DATA_NAMES.contains(fqcnOrSimpleName))
-            return Optional.of(new PirType.DataType());
         return Optional.empty();
     }
 
