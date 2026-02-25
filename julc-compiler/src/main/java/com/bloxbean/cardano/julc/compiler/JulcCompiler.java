@@ -4,7 +4,7 @@ import com.bloxbean.cardano.julc.compiler.codegen.ValidatorWrapper;
 import com.bloxbean.cardano.julc.compiler.error.CompilerDiagnostic;
 import com.bloxbean.cardano.julc.compiler.pir.*;
 import com.bloxbean.cardano.julc.compiler.resolve.ImportResolver;
-import com.bloxbean.cardano.julc.compiler.resolve.LedgerTypeRegistry;
+import com.bloxbean.cardano.julc.compiler.resolve.LedgerSourceLoader;
 import com.bloxbean.cardano.julc.compiler.resolve.LibraryMethodRegistry;
 import com.bloxbean.cardano.julc.compiler.resolve.SymbolTable;
 import com.bloxbean.cardano.julc.compiler.resolve.TypeRegistrar;
@@ -86,7 +86,7 @@ public class JulcCompiler {
      */
     public CompileResult compile(String javaSource) {
         var availableLibs = LibrarySourceResolver.scanClasspathSources(
-                Thread.currentThread().getContextClassLoader());
+                JulcCompiler.class.getClassLoader());
         if (availableLibs.isEmpty()) {
             return compile(javaSource, List.of());
         }
@@ -100,7 +100,7 @@ public class JulcCompiler {
      */
     public CompileResult compileWithDetails(String javaSource) {
         var availableLibs = LibrarySourceResolver.scanClasspathSources(
-                Thread.currentThread().getContextClassLoader());
+                JulcCompiler.class.getClassLoader());
         if (availableLibs.isEmpty()) {
             return compileWithDetails(javaSource, List.of());
         }
@@ -169,7 +169,16 @@ public class JulcCompiler {
 
         // 5. Register types from ALL sources (topo-sorted)
         var typeResolver = new TypeResolver();
-        LedgerTypeRegistry.registerAll(typeResolver);
+
+        // 5a. Register ledger types dynamically from bundled sources
+        var ledgerCus = LedgerSourceLoader.loadLedgerSources(
+                JulcCompiler.class.getClassLoader());
+        new TypeRegistrar().registerAll(ledgerCus, typeResolver);
+        // Add flat-FQCN aliases for inner variant types (backward compat with ImportResolver)
+        typeResolver.addFlatVariantAliases("com.bloxbean.cardano.julc.ledger");
+        options.logf("Registered %d ledger type(s) dynamically", ledgerCus.size());
+
+        // 5b. Register user-defined types from validator + library sources
         var allCus = new ArrayList<CompilationUnit>();
         allCus.addAll(libraryCus);
         allCus.add(validatorCu);
@@ -178,8 +187,8 @@ public class JulcCompiler {
 
         // 5c. Build knownFqcns for ImportResolver (types + library classes + stdlib classes)
         var knownFqcns = new LinkedHashSet<String>();
-        knownFqcns.addAll(LedgerTypeRegistry.allLedgerFqcns());
         knownFqcns.addAll(typeResolver.allRegisteredFqcns());
+        knownFqcns.addAll(TypeResolver.ledgerHashFqcns());
         // Stdlib class FQCNs — must match StdlibRegistry registration keys
         knownFqcns.addAll(Set.of(
                 "com.bloxbean.cardano.julc.stdlib.Builtins",
@@ -505,6 +514,226 @@ public class JulcCompiler {
         var uplcGenerator = new UplcGenerator();
         var uplcTerm = uplcGenerator.generate(pirTerm);
         return Program.plutusV3(uplcTerm);
+    }
+
+    // --- Method compilation (for expression evaluation) ---
+
+    /**
+     * Compile a single static method to a UPLC Program.
+     * No {@code @Validator} annotation required. The method becomes a lambda accepting Data arguments.
+     * Auto-discovers {@code @OnchainLibrary} sources from classpath.
+     *
+     * @param javaSource the Java source containing the method
+     * @param methodName the name of the static method to compile
+     * @return the compile result containing the UPLC Program
+     */
+    public CompileResult compileMethod(String javaSource, String methodName) {
+        var availableLibs = LibrarySourceResolver.scanClasspathSources(
+                Thread.currentThread().getContextClassLoader());
+        if (availableLibs.isEmpty()) {
+            return compileMethod(javaSource, methodName, List.of());
+        }
+        var resolvedLibs = LibrarySourceResolver.resolve(javaSource, availableLibs);
+        return compileMethod(javaSource, methodName, resolvedLibs);
+    }
+
+    /**
+     * Compile a single static method to a UPLC Program with explicit library sources.
+     *
+     * @param javaSource     the Java source containing the method
+     * @param methodName     the name of the static method to compile
+     * @param librarySources library Java sources (must NOT contain validator annotations)
+     * @return the compile result containing the UPLC Program
+     */
+    public CompileResult compileMethod(String javaSource, String methodName, List<String> librarySources) {
+        StaticJavaParser.getParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
+
+        // 1. Parse all sources
+        var cu = parseSource(javaSource, "method source");
+        var libraryCus = new ArrayList<CompilationUnit>();
+        for (int i = 0; i < librarySources.size(); i++) {
+            libraryCus.add(parseSource(librarySources.get(i), "library[" + i + "]"));
+        }
+
+        // 2. Validate subset
+        var subsetValidator = new SubsetValidator();
+        var diagnostics = new ArrayList<>(subsetValidator.validate(cu));
+        for (var libCu : libraryCus) {
+            diagnostics.addAll(subsetValidator.validate(libCu));
+        }
+        if (hasErrors(diagnostics)) {
+            throw new CompilerException(diagnostics);
+        }
+
+        // 3. Find the target class (first non-interface class)
+        var targetClass = cu.findAll(ClassOrInterfaceDeclaration.class).stream()
+                .filter(c -> !c.isInterface())
+                .findFirst()
+                .orElseThrow(() -> new CompilerException("No class found in source"));
+
+        // 4. Find the target method
+        var targetMethod = targetClass.getMethods().stream()
+                .filter(m -> m.isStatic() && m.getNameAsString().equals(methodName))
+                .findFirst()
+                .orElseThrow(() -> new CompilerException(
+                        "No static method '" + methodName + "' found in " + targetClass.getNameAsString()));
+
+        // 5. Register types (ledger + user-defined)
+        var typeResolver = new TypeResolver();
+
+        var ledgerCus = LedgerSourceLoader.loadLedgerSources(
+                JulcCompiler.class.getClassLoader());
+        new TypeRegistrar().registerAll(ledgerCus, typeResolver);
+        typeResolver.addFlatVariantAliases("com.bloxbean.cardano.julc.ledger");
+
+        var allCus = new ArrayList<CompilationUnit>();
+        allCus.addAll(libraryCus);
+        allCus.add(cu);
+        new TypeRegistrar().registerAll(allCus, typeResolver);
+
+        // 6. Build knownFqcns and import resolver
+        var knownFqcns = new LinkedHashSet<String>();
+        knownFqcns.addAll(typeResolver.allRegisteredFqcns());
+        knownFqcns.addAll(TypeResolver.ledgerHashFqcns());
+        knownFqcns.addAll(Set.of(
+                "com.bloxbean.cardano.julc.stdlib.Builtins",
+                "com.bloxbean.cardano.julc.stdlib.lib.ContextsLib",
+                "com.bloxbean.cardano.julc.stdlib.lib.ListsLib",
+                "com.bloxbean.cardano.julc.stdlib.lib.MapLib",
+                "com.bloxbean.cardano.julc.stdlib.lib.ValuesLib",
+                "com.bloxbean.cardano.julc.stdlib.lib.OutputLib",
+                "com.bloxbean.cardano.julc.stdlib.lib.MathLib",
+                "com.bloxbean.cardano.julc.stdlib.lib.IntervalLib",
+                "com.bloxbean.cardano.julc.stdlib.lib.CryptoLib",
+                "com.bloxbean.cardano.julc.stdlib.lib.ByteStringLib",
+                "com.bloxbean.cardano.julc.stdlib.lib.BitwiseLib",
+                "com.bloxbean.cardano.julc.stdlib.lib.AddressLib"
+        ));
+        for (var libCu : libraryCus) {
+            for (var cls : libCu.findAll(ClassOrInterfaceDeclaration.class)) {
+                if (!cls.isInterface()) {
+                    knownFqcns.add(cls.getFullyQualifiedName().orElse(cls.getNameAsString()));
+                }
+            }
+        }
+
+        var newTypeNames = typeResolver.getNewTypeNames();
+        StdlibLookup effectiveStdlibLookup = newTypeNames.isEmpty()
+                ? stdlibLookup
+                : wrapWithNewTypeLookup(stdlibLookup, newTypeNames);
+
+        var importResolver = new ImportResolver(cu, knownFqcns);
+        typeResolver.setCurrentImportResolver(importResolver);
+
+        // 7. Detect static fields
+        var staticFields = findStaticFields(targetClass, typeResolver);
+
+        // 8. Compile libraries (if any)
+        var libraryRegistry = new LibraryMethodRegistry(options);
+        if (!libraryCus.isEmpty()) {
+            compileLibraryMethods(libraryCus, typeResolver, libraryRegistry, effectiveStdlibLookup, knownFqcns);
+        }
+        typeResolver.setCurrentImportResolver(importResolver);
+
+        var effectiveLookup = libraryRegistry.isEmpty()
+                ? effectiveStdlibLookup
+                : new CompositeStdlibLookup(effectiveStdlibLookup, libraryRegistry);
+
+        // 9. Set up symbol table
+        var symbolTable = new SymbolTable();
+        for (var sf : staticFields) {
+            symbolTable.define(sf.name, sf.pirType);
+        }
+        for (var method : targetClass.getMethods()) {
+            if (method.isStatic()) {
+                var mType = computeMethodType(method, typeResolver);
+                symbolTable.define(method.getNameAsString(), mType);
+            }
+        }
+
+        // 10. Generate PIR for helper methods
+        var pirGenerator = new PirGenerator(typeResolver, symbolTable, effectiveLookup,
+                TypeMethodRegistry.defaultRegistry(), null, options);
+
+        record CompiledStaticField(String name, PirTerm initPir) {}
+        var compiledStaticFields = new ArrayList<CompiledStaticField>();
+        for (var sf : staticFields) {
+            var initPir = pirGenerator.generateExpression(sf.initExpr);
+            compiledStaticFields.add(new CompiledStaticField(sf.name, initPir));
+        }
+
+        // Compile ALL static methods (including target) so cross-references work
+        for (var method : targetClass.getMethods()) {
+            if (method.isStatic()) {
+                var helperPir = pirGenerator.generateMethod(method);
+                var mType = computeMethodType(method, typeResolver);
+                symbolTable.defineMethod(method.getNameAsString(), mType, helperPir);
+            }
+        }
+
+        diagnostics.addAll(pirGenerator.getCollectedErrors());
+        if (hasErrors(diagnostics)) {
+            throw new CompilerException(diagnostics);
+        }
+
+        // 11. Build body: Data-accepting lambda that calls target method by Var reference
+        var paramTypes = new ArrayList<PirType>();
+        for (var param : targetMethod.getParameters()) {
+            paramTypes.add(typeResolver.resolve(param.getType()));
+        }
+
+        // Build application: Var("method") applied to decoded args
+        PirTerm application = new PirTerm.Var(methodName, computeMethodType(targetMethod, typeResolver));
+        for (int i = 0; i < paramTypes.size(); i++) {
+            var decodedName = targetMethod.getParameter(i).getNameAsString() + "__dec";
+            application = new PirTerm.App(application,
+                    new PirTerm.Var(decodedName, paramTypes.get(i)));
+        }
+
+        // Wrap with outer Lam + decode for each param (inside-out)
+        PirTerm body = application;
+        for (int i = paramTypes.size() - 1; i >= 0; i--) {
+            var decodedName = targetMethod.getParameter(i).getNameAsString() + "__dec";
+            var rawName = targetMethod.getParameter(i).getNameAsString() + "__raw";
+            var decoded = PirHelpers.wrapDecode(
+                    new PirTerm.Var(rawName, new PirType.DataType()), paramTypes.get(i));
+            body = new PirTerm.Let(decodedName, decoded, body);
+            body = new PirTerm.Lam(rawName, new PirType.DataType(), body);
+        }
+
+        // 12. Wrap ALL methods as Let bindings (target + helpers)
+        var methods = new ArrayList<>(symbolTable.allMethods());
+        for (int i = methods.size() - 1; i >= 0; i--) {
+            var mi = methods.get(i);
+            body = new PirTerm.Let(mi.name(), mi.body(), body);
+        }
+
+        // 14. Wrap static field initializers
+        for (int i = compiledStaticFields.size() - 1; i >= 0; i--) {
+            var sf = compiledStaticFields.get(i);
+            body = new PirTerm.Let(sf.name(), sf.initPir(), body);
+        }
+
+        // 15. Wrap library methods as Let bindings
+        var sortedLibMethods = topoSortLibraryMethods(libraryRegistry.allMethods());
+        for (var libMethod : sortedLibMethods) {
+            if (containsVarRef(libMethod.body(), libMethod.qualifiedName())) {
+                body = new PirTerm.LetRec(
+                        List.of(new PirTerm.Binding(libMethod.qualifiedName(), libMethod.body())),
+                        body);
+            } else {
+                body = new PirTerm.Let(libMethod.qualifiedName(), libMethod.body(), body);
+            }
+        }
+
+        // 16. Lower to UPLC
+        var uplcGenerator = new UplcGenerator();
+        var uplcTerm = uplcGenerator.generate(body);
+        var optimizer = new UplcOptimizer();
+        uplcTerm = optimizer.optimize(uplcTerm);
+
+        var program = Program.plutusV3(uplcTerm);
+        return new CompileResult(program, diagnostics, List.of(), body, uplcTerm);
     }
 
     // --- Library compilation ---

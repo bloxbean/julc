@@ -161,6 +161,88 @@ public final class PirHelpers {
     }
 
     /**
+     * Callback for pair list search body construction.
+     * Called with the head pair variable, key variable, and recursive call on tail.
+     */
+    @FunctionalInterface
+    public interface PairSearchBody {
+        PirTerm build(PirTerm.Var headPair, PirTerm.Var keyVar, PirTerm recurseOnTail);
+    }
+
+    /**
+     * Generate a LetRec search over a pair list, matching by key.
+     * <p>
+     * Produces:
+     * <pre>{@code
+     * Let ps_<suffix> = list in
+     * Let k_<suffix> = key in
+     * LetRec go_<suffix>(lst) =
+     *     if null(lst) then baseCase
+     *     else let h_<suffix> = head(lst) in
+     *       bodyBuilder(h_<suffix>, k_<suffix>, go(tail(lst)))
+     * in go_<suffix>(ps_<suffix>)
+     * }</pre>
+     *
+     * @param suffix      unique suffix for variable names (e.g., "get", "ck", "del")
+     * @param list        the pair list to search (scope term)
+     * @param key         the key to search for (pre-encoded as Data)
+     * @param baseCase    result when list is exhausted
+     * @param bodyBuilder produces the body for the non-null case
+     * @return the complete LetRec search term
+     */
+    public static PirTerm pairListSearch(String suffix, PirTerm list, PirTerm key,
+                                          PirTerm baseCase, PairSearchBody bodyBuilder) {
+        var pairType = new PirType.PairType(new PirType.DataType(), new PirType.DataType());
+        var pairListType = new PirType.ListType(pairType);
+
+        var pairsVar = new PirTerm.Var("ps_" + suffix, pairListType);
+        var keyVar = new PirTerm.Var("k_" + suffix, new PirType.DataType());
+        var lstVar = new PirTerm.Var("lst_" + suffix, pairListType);
+        var goVar = new PirTerm.Var("go_" + suffix,
+                new PirType.FunType(pairListType, new PirType.DataType()));
+
+        var nullCheck = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), lstVar);
+        var headExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), lstVar);
+        var hVar = new PirTerm.Var("h_" + suffix, pairType);
+        var tailExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), lstVar);
+        var recurse = new PirTerm.App(goVar, tailExpr);
+
+        var innerBody = bodyBuilder.build(hVar, keyVar, recurse);
+        var letHead = new PirTerm.Let("h_" + suffix, headExpr, innerBody);
+        var outerIf = new PirTerm.IfThenElse(nullCheck, baseCase, letHead);
+
+        var goBody = new PirTerm.Lam("lst_" + suffix, pairListType, outerIf);
+        var binding = new PirTerm.Binding("go_" + suffix, goBody);
+        var search = new PirTerm.LetRec(List.of(binding), new PirTerm.App(goVar, pairsVar));
+
+        return new PirTerm.Let("ps_" + suffix, list,
+                new PirTerm.Let("k_" + suffix, key, search));
+    }
+
+    /** Convenience: None value (ConstrData(1, [])). */
+    public static PirTerm mkNone() {
+        var mkNil = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilData),
+                new PirTerm.Const(Constant.unit()));
+        return builtinApp2(DefaultFun.ConstrData,
+                new PirTerm.Const(Constant.integer(BigInteger.ONE)), mkNil);
+    }
+
+    /** Convenience: Some(value) = ConstrData(0, [value]). */
+    public static PirTerm mkSome(PirTerm value) {
+        var mkNil = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilData),
+                new PirTerm.Const(Constant.unit()));
+        var fields = builtinApp2(DefaultFun.MkCons, value, mkNil);
+        return builtinApp2(DefaultFun.ConstrData,
+                new PirTerm.Const(Constant.integer(BigInteger.ZERO)), fields);
+    }
+
+    /** Convenience: empty pair list (MkNilPairData(unit)). */
+    public static PirTerm mkNilPairData() {
+        return new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilPairData),
+                new PirTerm.Const(Constant.unit()));
+    }
+
+    /**
      * Generate PIR foldl using LetRec — same pattern as ListsLib.foldl.
      */
     static PirTerm generateFoldl(PirTerm f, PirTerm init, PirTerm list) {
