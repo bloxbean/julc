@@ -48,6 +48,22 @@ public class ScriptContextBuilder {
         return new ScriptContextBuilder(new ScriptInfo.MintingScript(policyId));
     }
 
+    public static ScriptContextBuilder rewarding(Credential credential) {
+        return new ScriptContextBuilder(new ScriptInfo.RewardingScript(credential));
+    }
+
+    public static ScriptContextBuilder certifying(BigInteger index, TxCert cert) {
+        return new ScriptContextBuilder(new ScriptInfo.CertifyingScript(index, cert));
+    }
+
+    public static ScriptContextBuilder voting(Voter voter) {
+        return new ScriptContextBuilder(new ScriptInfo.VotingScript(voter));
+    }
+
+    public static ScriptContextBuilder proposing(BigInteger index, ProposalProcedure procedure) {
+        return new ScriptContextBuilder(new ScriptInfo.ProposingScript(index, procedure));
+    }
+
     public ScriptContextBuilder input(TxInInfo input) {
         this.inputs.add(input);
         return this;

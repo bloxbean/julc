@@ -46,7 +46,8 @@ import java.util.stream.Collectors;
         "com.bloxbean.cardano.julc.stdlib.annotation.WithdrawValidator",
         "com.bloxbean.cardano.julc.stdlib.annotation.CertifyingValidator",
         "com.bloxbean.cardano.julc.stdlib.annotation.VotingValidator",
-        "com.bloxbean.cardano.julc.stdlib.annotation.ProposingValidator"
+        "com.bloxbean.cardano.julc.stdlib.annotation.ProposingValidator",
+        "com.bloxbean.cardano.julc.stdlib.annotation.MultiValidator"
 })
 @SupportedSourceVersion(SourceVersion.RELEASE_24)
 public class JulcAnnotationProcessor extends AbstractProcessor {
@@ -81,6 +82,7 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
                 "com.bloxbean.cardano.julc.stdlib.annotation.CertifyingValidator",
                 "com.bloxbean.cardano.julc.stdlib.annotation.VotingValidator",
                 "com.bloxbean.cardano.julc.stdlib.annotation.ProposingValidator",
+                "com.bloxbean.cardano.julc.stdlib.annotation.MultiValidator",
                 "com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary"
         );
     }
@@ -249,6 +251,7 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
             case "CertifyingValidator" -> "PlutusScriptV3-Certifying";
             case "VotingValidator" -> "PlutusScriptV3-Voting";
             case "ProposingValidator" -> "PlutusScriptV3-Proposing";
+            case "MultiValidator" -> "PlutusScriptV3";
             default -> "PlutusScriptV3";
         };
     }

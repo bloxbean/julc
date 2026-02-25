@@ -66,6 +66,48 @@ public class ScriptContextTestBuilder {
         return new ScriptContextTestBuilder(ScriptContextBuilder.minting(policyId));
     }
 
+    /**
+     * Create a builder for a rewarding (withdraw) script context.
+     *
+     * @param credential the staking credential
+     * @return a new builder
+     */
+    public static ScriptContextTestBuilder rewarding(Credential credential) {
+        return new ScriptContextTestBuilder(ScriptContextBuilder.rewarding(credential));
+    }
+
+    /**
+     * Create a builder for a certifying script context.
+     *
+     * @param index the certificate index
+     * @param cert  the transaction certificate
+     * @return a new builder
+     */
+    public static ScriptContextTestBuilder certifying(BigInteger index, TxCert cert) {
+        return new ScriptContextTestBuilder(ScriptContextBuilder.certifying(index, cert));
+    }
+
+    /**
+     * Create a builder for a voting script context.
+     *
+     * @param voter the governance voter
+     * @return a new builder
+     */
+    public static ScriptContextTestBuilder voting(Voter voter) {
+        return new ScriptContextTestBuilder(ScriptContextBuilder.voting(voter));
+    }
+
+    /**
+     * Create a builder for a proposing script context.
+     *
+     * @param index     the proposal index
+     * @param procedure the proposal procedure
+     * @return a new builder
+     */
+    public static ScriptContextTestBuilder proposing(BigInteger index, ProposalProcedure procedure) {
+        return new ScriptContextTestBuilder(ScriptContextBuilder.proposing(index, procedure));
+    }
+
     // --- Delegate methods ---
 
     /**
