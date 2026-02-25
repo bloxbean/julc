@@ -1148,6 +1148,14 @@ public class PirGenerator {
     }
 
     private PirTerm generateForEachStmt(ForEachStmt fes, List<Statement> followingStmts, int followingIndex) {
+        if (containsReturn(fes.getBody())) {
+            throw enrichedError(
+                    "'return' is not supported inside for-each loop body",
+                    "Use 'break' to exit the loop early, then return after the loop. "
+                            + "Or use the accumulator pattern: result = value; (continue iterating) "
+                            + "then return result; after the loop.",
+                    fes);
+        }
         var iterableExpr = generateExpression(fes.getIterable());
         var itemName = fes.getVariable().getVariables().get(0).getNameAsString();
 
@@ -1462,6 +1470,20 @@ public class PirGenerator {
         return false;
     }
 
+    private boolean containsReturn(Statement stmt) {
+        if (stmt instanceof ReturnStmt) return true;
+        // Do not walk into nested loops — a return inside a nested loop belongs to that loop
+        if (stmt instanceof WhileStmt || stmt instanceof ForEachStmt) return false;
+        if (stmt instanceof BlockStmt bs) {
+            return bs.getStatements().stream().anyMatch(this::containsReturn);
+        }
+        if (stmt instanceof IfStmt is) {
+            if (containsReturn(is.getThenStmt())) return true;
+            return is.getElseStmt().map(this::containsReturn).orElse(false);
+        }
+        return false;
+    }
+
     /**
      * Detect ALL accumulator assignments in a for-each loop body.
      * Returns the list of pre-loop variable names that are assigned in the body.
@@ -1630,6 +1652,11 @@ public class PirGenerator {
         for (int i = 0; i < accNames.size(); i++) {
             if (!(result.get(i) instanceof PirType.DataType)) continue;
             String accName = accNames.get(i);
+            // Check if accumulator is initialized from pair-list source BEFORE the loop
+            if (isInitializedFromPairListSource(accName, precedingStmts, pairListNames)) {
+                result.set(i, new PirType.MapType(new PirType.DataType(), new PirType.DataType()));
+                continue;
+            }
             boolean hasMkNilPairData = hasBuiltinAssignment(ws.getBody(), accName, "mkNilPairData");
             if (hasMkNilPairData) {
                 result.set(i, new PirType.MapType(new PirType.DataType(), new PirType.DataType()));
@@ -2292,6 +2319,14 @@ public class PirGenerator {
     }
 
     private PirTerm generateWhileStmt(WhileStmt ws, List<Statement> followingStmts, int followingIndex) {
+        if (containsReturn(ws.getBody())) {
+            throw enrichedError(
+                    "'return' is not supported inside while loop body",
+                    "Use 'break' to exit the loop early, then return after the loop. "
+                            + "Or use the accumulator pattern: result = value; (continue iterating) "
+                            + "then return result; after the loop.",
+                    ws);
+        }
         var desugarer = loopDesugarer;
         boolean hasBreak = containsBreak(ws.getBody());
         var accumulators = detectForEachAccumulators(ws.getBody());
