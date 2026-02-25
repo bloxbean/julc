@@ -1,12 +1,14 @@
 package com.bloxbean.cardano.julc.testkit;
 
 import com.bloxbean.cardano.julc.core.PlutusData;
+import com.bloxbean.cardano.julc.testkit.fixtures.SampleValidator;
 import com.bloxbean.cardano.julc.vm.EvalResult;
 import com.bloxbean.cardano.julc.vm.TermExtractor;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigInteger;
+import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -455,6 +457,71 @@ class MethodEvaluatorTest {
             assertNotNull(success.consumed());
             assertTrue(success.consumed().cpuSteps() > 0);
             assertTrue(success.consumed().memoryUnits() > 0);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // File-based evaluation (Class<?> overloads)
+    // -------------------------------------------------------------------------
+
+    @Nested
+    class FileBasedEvaluation {
+
+        static final Path TEST_SOURCE_ROOT = Path.of("src/test/java");
+
+        @Test
+        void doubleItFromFile() {
+            var result = MethodEvaluator.evaluateInteger(SampleValidator.class,
+                    TEST_SOURCE_ROOT, "doubleIt", PlutusData.integer(21));
+            assertEquals(BigInteger.valueOf(42), result);
+        }
+
+        @Test
+        void concatBytesFromFile() {
+            var a = new byte[]{1, 2, 3};
+            var b = new byte[]{4, 5};
+            var result = MethodEvaluator.evaluateByteString(SampleValidator.class,
+                    TEST_SOURCE_ROOT, "concatBytes",
+                    PlutusData.bytes(a), PlutusData.bytes(b));
+            assertArrayEquals(new byte[]{1, 2, 3, 4, 5}, result);
+        }
+
+        @Test
+        void isPositiveFromFile() {
+            assertTrue(MethodEvaluator.evaluateBoolean(SampleValidator.class,
+                    TEST_SOURCE_ROOT, "isPositive", PlutusData.integer(42)));
+            assertFalse(MethodEvaluator.evaluateBoolean(SampleValidator.class,
+                    TEST_SOURCE_ROOT, "isPositive", PlutusData.integer(-1)));
+        }
+
+        @Test
+        void sumUpToFromFile() {
+            // 1+2+3+4+5 = 15
+            var result = MethodEvaluator.evaluateInteger(SampleValidator.class,
+                    TEST_SOURCE_ROOT, "sumUpTo", PlutusData.integer(5));
+            assertEquals(BigInteger.valueOf(15), result);
+        }
+
+        @Test
+        void rawEvalFromFile() {
+            var result = MethodEvaluator.evaluateRaw(SampleValidator.class,
+                    TEST_SOURCE_ROOT, "doubleIt", PlutusData.integer(10));
+            assertTrue(result.isSuccess());
+        }
+
+        @Test
+        void autoDetectFromFile() {
+            Object result = MethodEvaluator.evaluate(SampleValidator.class,
+                    TEST_SOURCE_ROOT, "doubleIt", PlutusData.integer(5));
+            assertInstanceOf(BigInteger.class, result);
+            assertEquals(BigInteger.TEN, result);
+        }
+
+        @Test
+        void compileMethodFromFile() {
+            var program = MethodEvaluator.compileMethod(SampleValidator.class,
+                    TEST_SOURCE_ROOT, "doubleIt");
+            assertNotNull(program);
         }
     }
 }
