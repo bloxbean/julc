@@ -226,6 +226,92 @@ class MethodEvaluatorTest {
     }
 
     // -------------------------------------------------------------------------
+    // Self-recursive helper methods
+    // -------------------------------------------------------------------------
+
+    @Nested
+    class RecursiveHelpers {
+
+        static final String SOURCE = """
+                class RecursiveTest {
+                    static BigInteger factorial(BigInteger n) {
+                        if (n <= 1) {
+                            return 1;
+                        } else {
+                            return n * factorial(n - 1);
+                        }
+                    }
+
+                    static BigInteger fib(BigInteger n) {
+                        if (n <= 0) {
+                            return 0;
+                        } else if (n == 1) {
+                            return 1;
+                        } else {
+                            return fib(n - 1) + fib(n - 2);
+                        }
+                    }
+
+                    static BigInteger sumList(BigInteger n) {
+                        if (n <= 0) {
+                            return 0;
+                        } else {
+                            return n + sumList(n - 1);
+                        }
+                    }
+
+                    static BigInteger callFactorial(BigInteger n) {
+                        return factorial(n) + 1;
+                    }
+                }
+                """;
+
+        @Test
+        void factorialRecursive() {
+            var result = MethodEvaluator.evaluateInteger(SOURCE, "factorial",
+                    PlutusData.integer(5));
+            assertEquals(BigInteger.valueOf(120), result);
+        }
+
+        @Test
+        void factorialBase() {
+            var result = MethodEvaluator.evaluateInteger(SOURCE, "factorial",
+                    PlutusData.integer(1));
+            assertEquals(BigInteger.ONE, result);
+        }
+
+        @Test
+        void fibonacci() {
+            var result = MethodEvaluator.evaluateInteger(SOURCE, "fib",
+                    PlutusData.integer(10));
+            assertEquals(BigInteger.valueOf(55), result);
+        }
+
+        @Test
+        void fibonacciZero() {
+            var result = MethodEvaluator.evaluateInteger(SOURCE, "fib",
+                    PlutusData.integer(0));
+            assertEquals(BigInteger.ZERO, result);
+        }
+
+        @Test
+        void sumListRecursive() {
+            // 1+2+3+4+5 = 15
+            var result = MethodEvaluator.evaluateInteger(SOURCE, "sumList",
+                    PlutusData.integer(5));
+            assertEquals(BigInteger.valueOf(15), result);
+        }
+
+        @Test
+        void callRecursiveFromNonRecursive() {
+            // factorial(5) + 1 = 121
+            var result = MethodEvaluator.evaluateInteger(SOURCE, "callFactorial",
+                    PlutusData.integer(5));
+            assertEquals(BigInteger.valueOf(121), result);
+        }
+    }
+
+    // -------------------------------------------------------------------------
     // If-then-else
     // -------------------------------------------------------------------------
 

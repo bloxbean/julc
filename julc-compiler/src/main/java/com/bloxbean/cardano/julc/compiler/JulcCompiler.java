@@ -701,11 +701,17 @@ public class JulcCompiler {
             body = new PirTerm.Lam(rawName, new PirType.DataType(), body);
         }
 
-        // 12. Wrap ALL methods as Let bindings (target + helpers)
+        // 12. Wrap ALL methods as Let/LetRec bindings (target + helpers)
         var methods = new ArrayList<>(symbolTable.allMethods());
         for (int i = methods.size() - 1; i >= 0; i--) {
             var mi = methods.get(i);
-            body = new PirTerm.Let(mi.name(), mi.body(), body);
+            if (containsVarRef(mi.body(), mi.name())) {
+                body = new PirTerm.LetRec(
+                        List.of(new PirTerm.Binding(mi.name(), mi.body())),
+                        body);
+            } else {
+                body = new PirTerm.Let(mi.name(), mi.body(), body);
+            }
         }
 
         // 14. Wrap static field initializers
