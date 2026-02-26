@@ -1384,6 +1384,108 @@ long amount = ValuesLib.assetOf(value, myPolicy, tokenName);
 | `@CertifyingValidator` | Validates certificate actions | 2 (redeemer, ctx) |
 | `@VotingValidator` | Validates governance votes | 2 (redeemer, ctx) |
 | `@ProposingValidator` | Validates governance proposals | 2 (redeemer, ctx) |
+| `@MultiValidator` | Multi-purpose validator (multiple script purposes) | Multiple `@Entrypoint` methods with `Purpose`, or single DEFAULT |
 | `@Entrypoint` | Marks the main validator method | - |
+| `@Entrypoint(purpose = Purpose.MINT)` | Purpose-specific entrypoint in `@MultiValidator` | - |
 | `@Param` | Marks a parameterized field (applied at deployment) | - |
 | `@OnchainLibrary` | Marks a reusable library class (auto-discovered) | - |
+
+---
+
+### Q: Duplicate purpose in @MultiValidator
+
+**A:** Two `@Entrypoint` methods in a `@MultiValidator` class have the same `Purpose` value. Each purpose can only have one handler.
+
+```java
+// WRONG: duplicate MINT
+@MultiValidator
+public class BadValidator {
+    @Entrypoint(purpose = Purpose.MINT)
+    static boolean mint1(PlutusData redeemer, ScriptContext ctx) { return true; }
+
+    @Entrypoint(purpose = Purpose.MINT)  // ERROR: duplicate purpose MINT
+    static boolean mint2(PlutusData redeemer, ScriptContext ctx) { return true; }
+}
+
+// CORRECT: one handler per purpose
+@MultiValidator
+public class GoodValidator {
+    @Entrypoint(purpose = Purpose.MINT)
+    static boolean mint(PlutusData redeemer, ScriptContext ctx) { return true; }
+
+    @Entrypoint(purpose = Purpose.SPEND)
+    static boolean spend(PlutusData redeemer, ScriptContext ctx) { return true; }
+}
+```
+
+---
+
+### Q: Cannot mix DEFAULT and explicit purposes in @MultiValidator
+
+**A:** You are combining `Purpose.DEFAULT` (manual dispatch) with explicit purposes like `Purpose.MINT` (auto-dispatch). Choose one mode.
+
+```java
+// WRONG: mixing DEFAULT and MINT
+@MultiValidator
+public class BadValidator {
+    @Entrypoint  // DEFAULT
+    static boolean validate(PlutusData redeemer, ScriptContext ctx) { return true; }
+
+    @Entrypoint(purpose = Purpose.MINT)  // ERROR: cannot mix
+    static boolean mint(PlutusData redeemer, ScriptContext ctx) { return true; }
+}
+
+// CORRECT: all explicit
+@MultiValidator
+public class GoodValidator {
+    @Entrypoint(purpose = Purpose.MINT)
+    static boolean mint(PlutusData redeemer, ScriptContext ctx) { return true; }
+
+    @Entrypoint(purpose = Purpose.SPEND)
+    static boolean spend(PlutusData redeemer, ScriptContext ctx) { return true; }
+}
+```
+
+---
+
+### Q: Multiple validator annotations on the same class
+
+**A:** A class cannot have both `@MultiValidator` and a single-purpose annotation (like `@SpendingValidator`). Use one or the other.
+
+```java
+// WRONG
+@SpendingValidator
+@MultiValidator
+public class BadValidator { ... }
+
+// CORRECT: use @MultiValidator for multi-purpose
+@MultiValidator
+public class GoodValidator {
+    @Entrypoint(purpose = Purpose.SPEND)
+    static boolean spend(PlutusData redeemer, ScriptContext ctx) { return true; }
+
+    @Entrypoint(purpose = Purpose.MINT)
+    static boolean mint(PlutusData redeemer, ScriptContext ctx) { return true; }
+}
+```
+
+---
+
+### Q: Invalid parameter count for multi-validator entrypoint
+
+**A:** In a `@MultiValidator`, SPEND entrypoints accept 2 or 3 parameters. All other purposes accept exactly 2 parameters.
+
+```java
+// WRONG: MINT with 3 params
+@Entrypoint(purpose = Purpose.MINT)
+static boolean mint(PlutusData datum, PlutusData redeemer, ScriptContext ctx) { ... }
+// ERROR: MINT entrypoint must have 2 parameters
+
+// CORRECT: MINT with 2 params
+@Entrypoint(purpose = Purpose.MINT)
+static boolean mint(PlutusData redeemer, ScriptContext ctx) { ... }
+
+// CORRECT: SPEND with 3 params (datum)
+@Entrypoint(purpose = Purpose.SPEND)
+static boolean spend(Optional<PlutusData> datum, PlutusData redeemer, ScriptContext ctx) { ... }
+```
