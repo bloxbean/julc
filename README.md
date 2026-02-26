@@ -14,7 +14,7 @@
 
 **Java UPLC Compiler for Cardano**
 
-*Pronounced "julk" (rhymes with "bulk") — not "joolk"*
+*Pronounced “jool-see” (J-U-L-C), or simply “jules”*
 
 Write Cardano smart contracts in Java and compile them to Plutus V3 UPLC. julc provides a complete
 toolchain: a Java-subset compiler, a pluggable VM for local evaluation, a standard library of on-chain
