@@ -279,6 +279,109 @@ All annotations live in `com.bloxbean.cardano.julc.stdlib.annotation`.
 > still compile but are deprecated. Use `@SpendingValidator` and
 > `@MintingValidator` for all new code.
 
+### 4.1 Multi-Validators (@MultiValidator)
+
+When a single compiled script needs to handle multiple purposes (e.g. mint **and**
+spend), annotate the class with `@MultiValidator` instead of a single-purpose
+annotation. This produces one on-chain script that dispatches on `ScriptInfo` at
+runtime.
+
+**Two modes:**
+
+| Mode | How it works |
+|------|-------------|
+| **Auto-dispatch** | Multiple `@Entrypoint` methods, each with an explicit `Purpose`. The compiler generates a `ScriptInfo` tag dispatch automatically. |
+| **Manual dispatch** | A single `@Entrypoint` method with `Purpose.DEFAULT`. You switch on `ctx.scriptInfo()` yourself. |
+
+**Purpose enum values:**
+
+| Purpose | ScriptInfo tag | ScriptInfo variant |
+|---------|---------------|-------------------|
+| `MINT` | 0 | `MintingScript` |
+| `SPEND` | 1 | `SpendingScript` |
+| `WITHDRAW` | 2 | `RewardingScript` |
+| `CERTIFY` | 3 | `CertifyingScript` |
+| `VOTE` | 4 | `VotingScript` |
+| `PROPOSE` | 5 | `ProposingScript` |
+| `DEFAULT` | — | Manual dispatch (no auto-dispatch) |
+
+**Entrypoint parameter rules:**
+
+| Purpose | Parameters |
+|---------|-----------|
+| `SPEND` | 2 params `(redeemer, ctx)` or 3 params `(datum, redeemer, ctx)` — datum is `Optional<PlutusData>` or a record type |
+| All others | 2 params `(redeemer, ctx)` |
+
+#### Auto-dispatch example
+
+```java
+@MultiValidator
+public class TokenManager {
+
+    @Entrypoint(purpose = Purpose.MINT)
+    static boolean mint(PlutusData redeemer, ScriptContext ctx) {
+        // Minting logic
+        return !ctx.txInfo().signatories().isEmpty();
+    }
+
+    @Entrypoint(purpose = Purpose.SPEND)
+    static boolean spend(PlutusData redeemer, ScriptContext ctx) {
+        // Spending logic (2-param — no datum)
+        return true;
+    }
+}
+```
+
+The compiler generates ScriptInfo tag dispatch that routes `MintingScript` to
+`mint()` and `SpendingScript` to `spend()`. Unhandled purposes cause a script
+Error at runtime.
+
+#### Auto-dispatch with datum (3-param SPEND)
+
+```java
+@MultiValidator
+public class TokenManagerWithDatum {
+
+    @Entrypoint(purpose = Purpose.MINT)
+    static boolean mint(PlutusData redeemer, ScriptContext ctx) {
+        return true;
+    }
+
+    @Entrypoint(purpose = Purpose.SPEND)
+    static boolean spend(Optional<PlutusData> datum, PlutusData redeemer, ScriptContext ctx) {
+        // datum is Optional — Some when present, None when absent
+        return datum.isPresent();
+    }
+}
+```
+
+#### Manual dispatch example
+
+```java
+@MultiValidator
+public class ManualRouter {
+
+    @Entrypoint
+    static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+        return switch (ctx.scriptInfo()) {
+            case ScriptInfo.MintingScript m -> handleMint(redeemer, ctx);
+            case ScriptInfo.SpendingScript s -> handleSpend(redeemer, ctx);
+            case ScriptInfo.RewardingScript r -> handleWithdraw(redeemer, ctx);
+            // Must cover all ScriptInfo variants you handle
+        };
+    }
+
+    static boolean handleMint(PlutusData redeemer, ScriptContext ctx) { return true; }
+    static boolean handleSpend(PlutusData redeemer, ScriptContext ctx) { return true; }
+    static boolean handleWithdraw(PlutusData redeemer, ScriptContext ctx) { return true; }
+}
+```
+
+**Validation rules:**
+- Do not mix `Purpose.DEFAULT` with explicit purposes — use one mode or the other
+- No duplicate purposes (two `@Entrypoint` methods with the same `Purpose`)
+- Do not combine `@MultiValidator` with single-purpose annotations (`@SpendingValidator`, etc.)
+
 ---
 
 ## 5. Data Modeling
@@ -1015,7 +1118,7 @@ if (result.hasErrors()) {
 The annotation processor compiles validators during `javac`. Add it as shown in
 Section 2. The processor:
 
-1. Finds classes annotated with `@SpendingValidator`, `@MintingValidator`, etc.
+1. Finds classes annotated with `@SpendingValidator`, `@MintingValidator`, `@MultiValidator`, etc.
 2. Reads the source file via the compiler's `Trees` API
 3. Compiles to UPLC, FLAT-encodes, and double-CBOR-wraps
 4. Writes to `META-INF/plutus/<ClassName>.plutus.json`
@@ -1115,6 +1218,74 @@ BudgetAssertions.assertNoTraces(result);
 var compileResult = ValidatorTest.compileWithDetails(source);
 BudgetAssertions.assertScriptSizeUnder(compileResult, 16_384); // 16 KB limit
 ```
+
+### JulcEval
+
+`JulcEval` lets you test individual helper methods in isolation — no
+`ScriptContext` required. Use it when you want to verify a single function's logic
+without building a full validator test scenario.
+
+**Factory methods:**
+
+| Method | Description |
+|--------|-------------|
+| `JulcEval.forClass(Class<?>)` | Load source from `src/main/java` by class |
+| `JulcEval.forClass(Class<?>, Path)` | Load source from a custom source root |
+| `JulcEval.forSource(String)` | Use inline Java source |
+
+**Mode 1: Interface proxy** — define an interface matching the on-chain methods,
+and call them with Java types:
+
+```java
+interface MathProxy {
+    BigInteger doubleIt(long x);
+    boolean isPositive(long x);
+}
+
+var proxy = JulcEval.forClass(MathHelper.class)
+                    .create(MathProxy.class);
+
+assertEquals(BigInteger.valueOf(42), proxy.doubleIt(21));
+assertTrue(proxy.isPositive(1));
+```
+
+**Mode 2: Fluent `call()` API** — one-off calls with string method names:
+
+```java
+var eval = JulcEval.forClass(MathHelper.class);
+
+assertEquals(BigInteger.valueOf(42), eval.call("doubleIt", 21).asInteger());
+assertTrue(eval.call("isPositive", 1).asBoolean());
+```
+
+**Supported argument types** (auto-converted to PlutusData):
+
+`BigInteger`, `int`, `long`, `boolean`, `byte[]`, `String`, `PlutusData`, `PlutusDataConvertible`
+
+**CallResult extraction methods:**
+
+| Method | Return type |
+|--------|------------|
+| `.asInteger()` | `BigInteger` |
+| `.asLong()` | `long` |
+| `.asInt()` | `int` |
+| `.asByteString()` | `byte[]` |
+| `.asBoolean()` | `boolean` |
+| `.asString()` | `String` |
+| `.asData()` | `PlutusData` |
+| `.asOptional()` | `Optional<PlutusData>` |
+| `.asList()` | `List<PlutusData>` |
+| `.as(Class<T>)` | `T` (supports ledger types and primitives) |
+| `.auto()` | `Object` (auto-detected) |
+| `.rawTerm()` | `Term` (raw UPLC term) |
+
+**When to use which:**
+
+| Scenario | Use |
+|----------|-----|
+| Test a single helper method (math, string, logic) | `JulcEval` |
+| Test a full validator with datum + redeemer + ScriptContext | `ValidatorTest` |
+| End-to-end with budget checks and trace messages | `ValidatorTest` + `BudgetAssertions` |
 
 ---
 

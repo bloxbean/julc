@@ -33,7 +33,8 @@ operations, and first-class integration with [cardano-client-lib](https://github
 - **Tuple2/Tuple3** — generic tuples with auto-unwrapping field access
 - **Type.of() factories** — `PubKeyHash.of(bytes)`, `PolicyId.of(bytes)`, etc. for ledger hash types
 - **JulcList/JulcMap** — typed collection interfaces with IDE autocomplete for on-chain methods
-- **Annotation processor** — `@SpendingValidator`, `@MintingValidator`, `@Entrypoint` for compile-time code generation
+- **Multi-validator** — `@MultiValidator` for handling multiple script purposes (mint + spend + withdraw, etc.) in a single compiled script
+- **Annotation processor** — `@SpendingValidator`, `@MintingValidator`, `@MultiValidator`, `@Entrypoint` for compile-time code generation
 - **Pluggable VM** — evaluate UPLC programs locally via SPI (Scalus backend included)
 - **Testkit** — test validators locally without a running node
 - **Gradle plugin** — compile validators and bundle on-chain sources as part of your build
@@ -171,6 +172,24 @@ public class TokenPolicy {
             case Mint m -> m.amount().compareTo(BigInteger.ZERO) > 0 && !txInfo.signatories().isEmpty();
             case Burn b -> true;
         };
+    }
+}
+```
+
+### Write a Multi-Validator (Mint + Spend)
+
+```java
+@MultiValidator
+public class TokenManager {
+
+    @Entrypoint(purpose = Purpose.MINT)
+    static boolean mint(PlutusData redeemer, ScriptContext ctx) {
+        return !ctx.txInfo().signatories().isEmpty();
+    }
+
+    @Entrypoint(purpose = Purpose.SPEND)
+    static boolean spend(PlutusData redeemer, ScriptContext ctx) {
+        return true;
     }
 }
 ```

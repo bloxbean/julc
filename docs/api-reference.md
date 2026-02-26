@@ -593,6 +593,84 @@ Note: `sha2_256`, `sha3_256`, `blake2b_256`, `blake2b_224`, `keccak_256`, and `v
 | `isPubKeyAddress(addr)` | Address | True if pub key address |
 | `paymentCredential(addr)` | Address | Extract payment credential |
 
+## Annotations Reference
+
+### Validator Annotations
+
+| Annotation | Target | Description |
+|-----------|--------|-------------|
+| `@SpendingValidator` | Class | Single-purpose spending validator |
+| `@MintingValidator` | Class | Single-purpose minting validator |
+| `@WithdrawValidator` | Class | Single-purpose withdrawal validator |
+| `@CertifyingValidator` | Class | Single-purpose certifying validator |
+| `@VotingValidator` | Class | Single-purpose voting validator |
+| `@ProposingValidator` | Class | Single-purpose proposing validator |
+| `@MultiValidator` | Class | Multi-purpose validator (handles multiple script purposes) |
+| `@Entrypoint` | Method | Marks the validator entrypoint method |
+| `@Entrypoint(purpose = Purpose.MINT)` | Method | Purpose-specific entrypoint for multi-validators |
+| `@Param` | Field | Parameterized field applied at deployment |
+| `@OnchainLibrary` | Class | Reusable library class (auto-discovered from classpath) |
+| `@NewType` | Class | Zero-cost type alias for single-field records |
+
+### Purpose Enum
+
+The `Purpose` enum controls dispatch in `@MultiValidator` classes:
+
+| Value | ScriptInfo Tag | Description |
+|-------|---------------|-------------|
+| `Purpose.DEFAULT` | — | Manual dispatch (user switches on ScriptInfo) |
+| `Purpose.MINT` | 0 | MintingScript |
+| `Purpose.SPEND` | 1 | SpendingScript |
+| `Purpose.WITHDRAW` | 2 | RewardingScript |
+| `Purpose.CERTIFY` | 3 | CertifyingScript |
+| `Purpose.VOTE` | 4 | VotingScript |
+| `Purpose.PROPOSE` | 5 | ProposingScript |
+
+## Testing Utilities
+
+### JulcEval
+
+Type-safe evaluator for testing individual on-chain methods without a full ScriptContext.
+
+**Factory methods:**
+
+| Method | Description |
+|--------|-------------|
+| `JulcEval.forClass(Class<?>)` | Load source from `src/main/java` |
+| `JulcEval.forClass(Class<?>, Path)` | Load source from custom root |
+| `JulcEval.forSource(String)` | Use inline Java source |
+
+**Proxy mode:**
+
+```java
+var proxy = JulcEval.forClass(MyHelper.class).create(MyInterface.class);
+```
+
+**Fluent call mode:**
+
+```java
+var result = JulcEval.forClass(MyHelper.class).call("methodName", arg1, arg2);
+```
+
+**CallResult extraction:**
+
+| Method | Return Type |
+|--------|------------|
+| `.asInteger()` | `BigInteger` |
+| `.asLong()` | `long` |
+| `.asInt()` | `int` |
+| `.asByteString()` | `byte[]` |
+| `.asBoolean()` | `boolean` |
+| `.asString()` | `String` |
+| `.asData()` | `PlutusData` |
+| `.asOptional()` | `Optional<PlutusData>` |
+| `.asList()` | `List<PlutusData>` |
+| `.as(Class<T>)` | `T` |
+| `.auto()` | `Object` |
+| `.rawTerm()` | `Term` |
+
+**Supported argument types:** `BigInteger`, `int`, `long`, `boolean`, `byte[]`, `String`, `PlutusData`, `PlutusDataConvertible`
+
 ## Complete Example
 
 ```java
