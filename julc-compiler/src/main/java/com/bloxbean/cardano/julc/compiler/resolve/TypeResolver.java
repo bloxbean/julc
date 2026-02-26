@@ -44,6 +44,16 @@ public class TypeResolver {
     private static final Set<String> LEDGER_HASH_FQCNS = LEDGER_HASH_NAMES.stream()
             .map(n -> LEDGER_PKG + "." + n).collect(Collectors.toUnmodifiableSet());
 
+    /** Return the set of ledger hash FQCNs (needed for ImportResolver knownFqcns). */
+    public static Set<String> ledgerHashFqcns() {
+        return LEDGER_HASH_FQCNS;
+    }
+
+    /** Return the set of ledger hash simple names. */
+    public static Set<String> ledgerHashNames() {
+        return LEDGER_HASH_NAMES;
+    }
+
 
     public void setCurrentImportResolver(ImportResolver resolver) {
         this.currentImportResolver = resolver;
@@ -74,31 +84,6 @@ public class TypeResolver {
         // Simple name check via index
         return simpleNameIndex.containsKey(fqcnOrSimpleName)
                 || LEDGER_HASH_NAMES.contains(fqcnOrSimpleName);
-    }
-
-    /**
-     * Register a ledger record type directly (not from a JavaParser RecordDeclaration).
-     * Used by {@link LedgerTypeRegistry} to pre-register ledger types with known schemas.
-     */
-    public void registerLedgerRecord(String name, String fqcn, List<PirType.Field> fields) {
-        var recordType = new PirType.RecordType(name, fields);
-        recordTypes.put(fqcn, recordType);
-        simpleNameIndex.computeIfAbsent(name, k -> new LinkedHashSet<>()).add(fqcn);
-    }
-
-    /**
-     * Register a ledger sum type (sealed interface) directly.
-     * Used by {@link LedgerTypeRegistry} to pre-register ledger types with known schemas.
-     */
-    public void registerLedgerSumType(String name, String fqcn, List<PirType.Constructor> constructors) {
-        var sumType = new PirType.SumType(name, constructors);
-        sumTypes.put(fqcn, sumType);
-        simpleNameIndex.computeIfAbsent(name, k -> new LinkedHashSet<>()).add(fqcn);
-        for (var ctor : constructors) {
-            var variantFqcn = fqcn.substring(0, fqcn.lastIndexOf('.') + 1) + ctor.name();
-            variantToSumType.put(variantFqcn, sumType);
-            simpleNameIndex.computeIfAbsent(ctor.name(), k -> new LinkedHashSet<>()).add(variantFqcn);
-        }
     }
 
     /**
@@ -160,6 +145,85 @@ public class TypeResolver {
                     : fqcn.substring(0, fqcn.lastIndexOf('.') + 1) + ctor.name();
             variantToSumType.put(actualFqcn, sumType);
             simpleNameIndex.computeIfAbsent(ctor.name(), k -> new LinkedHashSet<>()).add(actualFqcn);
+        }
+    }
+
+    /**
+     * Register a sealed interface using an ordered list of variant FQCNs (for implicit permits).
+     * Used when the sealed interface has no explicit {@code permits} clause
+     * and variants are discovered as inner records.
+     *
+     * @param decl         the sealed interface declaration
+     * @param fqcn         the FQCN of the sealed interface
+     * @param variantFqcns ordered list of variant FQCNs (determines constructor tags)
+     */
+    public void registerSealedInterfaceFromVariants(ClassOrInterfaceDeclaration decl, String fqcn,
+                                                     List<String> variantFqcns) {
+        var interfaceName = decl.getNameAsString();
+        if (sumTypes.containsKey(fqcn)) {
+            throw new IllegalArgumentException("Duplicate sealed interface: '" + fqcn + "'. "
+                    + "A sealed interface with this name is already registered.");
+        }
+        var constructors = new ArrayList<PirType.Constructor>();
+        int tag = 0;
+        for (var variantFqcn : variantFqcns) {
+            var variantName = variantFqcn.substring(variantFqcn.lastIndexOf('.') + 1);
+            var recordType = recordTypes.get(variantFqcn);
+            List<PirType.Field> fields = recordType != null ? recordType.fields() : List.of();
+            constructors.add(new PirType.Constructor(variantName, tag, fields));
+            tag++;
+        }
+        var sumType = new PirType.SumType(interfaceName, constructors);
+        sumTypes.put(fqcn, sumType);
+        simpleNameIndex.computeIfAbsent(interfaceName, k -> new LinkedHashSet<>()).add(fqcn);
+        // Register each variant -> sum type mapping
+        for (int i = 0; i < variantFqcns.size(); i++) {
+            var ctor = constructors.get(i);
+            var variantFqcn = variantFqcns.get(i);
+            variantToSumType.put(variantFqcn, sumType);
+            simpleNameIndex.computeIfAbsent(ctor.name(), k -> new LinkedHashSet<>()).add(variantFqcn);
+        }
+    }
+
+    /**
+     * Add flat-FQCN aliases for inner variant types under a given package.
+     * For example, maps "pkg.Credential.PubKeyCredential" also under "pkg.PubKeyCredential".
+     * This ensures backward compatibility with ImportResolver wildcard resolution.
+     *
+     * @param packagePrefix the package prefix (e.g., "com.bloxbean.cardano.julc.ledger")
+     */
+    public void addFlatVariantAliases(String packagePrefix) {
+        var aliases = new LinkedHashMap<String, PirType.SumType>();
+        for (var entry : new LinkedHashMap<>(variantToSumType).entrySet()) {
+            String fqcn = entry.getKey();
+            if (fqcn.startsWith(packagePrefix + ".")) {
+                String afterPkg = fqcn.substring(packagePrefix.length() + 1);
+                if (afterPkg.contains(".")) {
+                    // Inner class FQCN, e.g., "Credential.PubKeyCredential"
+                    String simpleName = afterPkg.substring(afterPkg.lastIndexOf('.') + 1);
+                    String flatFqcn = packagePrefix + "." + simpleName;
+                    // Skip if flat FQCN already exists as a top-level type (e.g., Vote is both
+                    // a sealed interface and a variant of Delegatee — don't shadow the interface)
+                    if (!sumTypes.containsKey(flatFqcn)
+                            && !recordTypes.containsKey(flatFqcn)
+                            && !variantToSumType.containsKey(flatFqcn)) {
+                        aliases.put(flatFqcn, entry.getValue());
+                    } else {
+                        // Conflict: inner variant's simple name clashes with a top-level type.
+                        // Remove the inner-class FQCN from simpleNameIndex so the top-level type
+                        // wins for simple-name resolution (e.g., "Vote" → Vote interface, not Delegatee.Vote)
+                        var fqcns = simpleNameIndex.get(simpleName);
+                        if (fqcns != null) {
+                            fqcns.remove(fqcn);
+                        }
+                    }
+                }
+            }
+        }
+        for (var entry : aliases.entrySet()) {
+            variantToSumType.put(entry.getKey(), entry.getValue());
+            String simpleName = entry.getKey().substring(entry.getKey().lastIndexOf('.') + 1);
+            simpleNameIndex.computeIfAbsent(simpleName, k -> new LinkedHashSet<>()).add(entry.getKey());
         }
     }
 
@@ -280,7 +344,7 @@ public class TypeResolver {
                 if (LEDGER_HASH_FQCNS.contains(fqcn) || LEDGER_HASH_NAMES.contains(name)) yield new PirType.ByteStringType();
                 // Check @NewType records -> resolve to underlying type
                 if (newTypes.containsKey(fqcn)) yield newTypes.get(fqcn);
-                // Check registered record types (includes ledger records from LedgerTypeRegistry)
+                // Check registered record types (includes dynamically registered ledger records)
                 if (recordTypes.containsKey(fqcn)) yield recordTypes.get(fqcn);
                 // Check registered sum types (sealed interfaces, including ledger sum types)
                 if (sumTypes.containsKey(fqcn)) yield sumTypes.get(fqcn);

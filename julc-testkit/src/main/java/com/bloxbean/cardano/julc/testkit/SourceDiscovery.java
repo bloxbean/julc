@@ -189,6 +189,96 @@ public final class SourceDiscovery {
         return pool;
     }
 
+    // --- Method compilation ---
+
+    /**
+     * Compile a single static method from a validator class with auto-discovered library dependencies.
+     * Uses the default source root ({@code src/main/java}).
+     *
+     * @param sourceClass the class containing the method
+     * @param methodName  the name of the static method to compile
+     * @return the compilation result
+     */
+    public static CompileResult compileMethod(Class<?> sourceClass, String methodName) {
+        return compileMethod(sourceClass, DEFAULT_SOURCE_ROOT, methodName);
+    }
+
+    /**
+     * Compile a single static method from a validator class with auto-discovered library dependencies.
+     *
+     * @param sourceClass the class containing the method
+     * @param sourceRoot  the root of the source tree
+     * @param methodName  the name of the static method to compile
+     * @return the compilation result
+     * @throws AssertionError if the source file cannot be read or compilation fails
+     */
+    public static CompileResult compileMethod(Class<?> sourceClass, Path sourceRoot, String methodName) {
+        Path sourceFile = sourceFileFor(sourceClass, sourceRoot);
+        String source;
+        try {
+            source = Files.readString(sourceFile);
+        } catch (IOException e) {
+            throw new AssertionError("Cannot read source: " + sourceFile, e);
+        }
+
+        Map<String, String> pool = buildLibraryPool(source, sourceRoot);
+        List<String> libSources = LibrarySourceResolver.resolve(source, pool);
+
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry()::lookup);
+        var result = compiler.compileMethod(source, methodName, libSources);
+
+        if (result.hasErrors()) {
+            throw new AssertionError("Compilation failed for " + sourceClass.getSimpleName()
+                    + "." + methodName + ": " + result.diagnostics());
+        }
+
+        return result;
+    }
+
+    /**
+     * Compile a single static method by fully-qualified class name with auto-discovered library dependencies.
+     * Uses the default source root ({@code src/main/java}).
+     *
+     * @param fqcn       the fully-qualified class name (e.g., "com.example.MyValidator")
+     * @param methodName the name of the static method to compile
+     * @return the compilation result
+     */
+    public static CompileResult compileMethod(String fqcn, String methodName) {
+        return compileMethod(fqcn, DEFAULT_SOURCE_ROOT, methodName);
+    }
+
+    /**
+     * Compile a single static method by fully-qualified class name with auto-discovered library dependencies.
+     *
+     * @param fqcn       the fully-qualified class name
+     * @param sourceRoot the root of the source tree
+     * @param methodName the name of the static method to compile
+     * @return the compilation result
+     * @throws AssertionError if the source file cannot be read or compilation fails
+     */
+    public static CompileResult compileMethod(String fqcn, Path sourceRoot, String methodName) {
+        Path sourceFile = sourceRoot.resolve(fqcn.replace('.', '/') + ".java");
+        String source;
+        try {
+            source = Files.readString(sourceFile);
+        } catch (IOException e) {
+            throw new AssertionError("Cannot read source for " + fqcn + ": " + sourceFile, e);
+        }
+
+        Map<String, String> pool = buildLibraryPool(source, sourceRoot);
+        List<String> libSources = LibrarySourceResolver.resolve(source, pool);
+
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry()::lookup);
+        var result = compiler.compileMethod(source, methodName, libSources);
+
+        if (result.hasErrors()) {
+            throw new AssertionError("Compilation failed for " + fqcn
+                    + "." + methodName + ": " + result.diagnostics());
+        }
+
+        return result;
+    }
+
     /**
      * Recursively discover same-project sources referenced by already-found libraries.
      */

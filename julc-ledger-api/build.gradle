@@ -8,6 +8,43 @@ dependencies {
     api project(':julc-core')
 }
 
+// Bundle ledger type Java sources into META-INF/ledger-sources/ in the JAR.
+// The compiler parses these at compile time to dynamically register ledger types
+// (records, sealed interfaces) via TypeRegistrar, eliminating LedgerTypeRegistry.
+def generatedResDir = file("${buildDir}/generated/ledger-resources")
+tasks.register('bundleLedgerSources') {
+    def srcDir = file('src/main/java')
+    def outDir = file("${generatedResDir}/META-INF/ledger-sources")
+    inputs.dir(srcDir)
+    outputs.dir(generatedResDir)
+    doLast {
+        // Exclude hash types (handled as ByteStringType by TypeResolver.LEDGER_HASH_NAMES)
+        // and utility classes (not type definitions)
+        def excludes = [
+            'PubKeyHash.java', 'ScriptHash.java', 'ValidatorHash.java',
+            'PolicyId.java', 'TokenName.java', 'DatumHash.java', 'TxId.java',
+            'PlutusDataCodec.java', 'PlutusDataConvertible.java',
+            'PlutusDataHelper.java', 'ScriptContextBuilder.java'
+        ] as Set
+
+        def entries = []
+        fileTree(srcDir).matching { include 'com/bloxbean/cardano/julc/ledger/*.java' }.each { File f ->
+            if (!excludes.contains(f.name)) {
+                def relative = srcDir.toPath().relativize(f.toPath()).toString()
+                def target = outDir.toPath().resolve(relative)
+                target.parent.toFile().mkdirs()
+                target.toFile().text = f.text
+                entries << relative
+            }
+        }
+        // Write index file so classpath scanning works from jar URLs too
+        new File(outDir, 'index.txt').text = entries.sort().join('\n') + '\n'
+    }
+}
+sourceSets.main.resources.srcDir generatedResDir
+processResources.dependsOn bundleLedgerSources
+tasks.named('sourcesJar') { dependsOn bundleLedgerSources }
+
 publishing {
     publications {
         mavenJava(MavenPublication) {

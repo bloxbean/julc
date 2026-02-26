@@ -184,285 +184,159 @@ public final class StdlibRegistry implements StdlibLookup {
         return reg;
     }
 
+    // ---- Declarative builtin tables ----
+    // Each entry: {methodName, DefaultFun, arity}. Registered as standard builtinApp1/2/3 wrappers.
+
+    /** 1-arg builtin operations: methodName → Builtin(fun, arg0) */
+    private static final Object[][] BUILTIN_1_ARG = {
+            // List operations
+            {"headList",            DefaultFun.HeadList},
+            {"tailList",            DefaultFun.TailList},
+            {"nullList",            DefaultFun.NullList},
+            {"fstPair",             DefaultFun.FstPair},
+            {"sndPair",             DefaultFun.SndPair},
+            // Data encode/decode
+            {"iData",               DefaultFun.IData},
+            {"bData",               DefaultFun.BData},
+            {"listData",            DefaultFun.ListData},
+            {"mapData",             DefaultFun.MapData},
+            {"unConstrData",        DefaultFun.UnConstrData},
+            {"unIData",             DefaultFun.UnIData},
+            {"unBData",             DefaultFun.UnBData},
+            {"unListData",          DefaultFun.UnListData},
+            {"unMapData",           DefaultFun.UnMapData},
+            // ByteString operations
+            {"lengthOfByteString",  DefaultFun.LengthOfByteString},
+            {"encodeUtf8",          DefaultFun.EncodeUtf8},
+            {"decodeUtf8",          DefaultFun.DecodeUtf8},
+            {"serialiseData",       DefaultFun.SerialiseData},
+            // Crypto operations
+            {"sha2_256",            DefaultFun.Sha2_256},
+            {"blake2b_256",         DefaultFun.Blake2b_256},
+            {"sha3_256",            DefaultFun.Sha3_256},
+            {"blake2b_224",         DefaultFun.Blake2b_224},
+            {"keccak_256",          DefaultFun.Keccak_256},
+            {"ripemd_160",          DefaultFun.Ripemd_160},
+            // Bitwise operations
+            {"complementByteString", DefaultFun.ComplementByteString},
+            {"countSetBits",        DefaultFun.CountSetBits},
+            {"findFirstSetBit",     DefaultFun.FindFirstSetBit},
+    };
+
+    /** 2-arg builtin operations: methodName → Builtin(fun, arg0, arg1) */
+    private static final Object[][] BUILTIN_2_ARG = {
+            {"mkCons",              DefaultFun.MkCons},
+            {"mkPairData",          DefaultFun.MkPairData},
+            {"constrData",          DefaultFun.ConstrData},
+            {"equalsData",          DefaultFun.EqualsData},
+            // ByteString operations
+            {"indexByteString",     DefaultFun.IndexByteString},
+            {"consByteString",      DefaultFun.ConsByteString},
+            {"appendByteString",    DefaultFun.AppendByteString},
+            {"equalsByteString",    DefaultFun.EqualsByteString},
+            {"lessThanByteString",  DefaultFun.LessThanByteString},
+            {"lessThanEqualsByteString", DefaultFun.LessThanEqualsByteString},
+            {"byteStringToInteger", DefaultFun.ByteStringToInteger},
+            {"replicateByte",       DefaultFun.ReplicateByte},
+            // Bitwise operations
+            {"readBit",             DefaultFun.ReadBit},
+            {"shiftByteString",     DefaultFun.ShiftByteString},
+            {"rotateByteString",    DefaultFun.RotateByteString},
+    };
+
+    /** 3-arg builtin operations: methodName → Builtin(fun, arg0, arg1, arg2) */
+    private static final Object[][] BUILTIN_3_ARG = {
+            {"sliceByteString",     DefaultFun.SliceByteString},
+            {"integerToByteString", DefaultFun.IntegerToByteString},
+            // Crypto operations
+            {"verifyEd25519Signature",          DefaultFun.VerifyEd25519Signature},
+            {"verifyEcdsaSecp256k1Signature",   DefaultFun.VerifyEcdsaSecp256k1Signature},
+            {"verifySchnorrSecp256k1Signature", DefaultFun.VerifySchnorrSecp256k1Signature},
+            // Bitwise operations
+            {"andByteString",       DefaultFun.AndByteString},
+            {"orByteString",        DefaultFun.OrByteString},
+            {"xorByteString",       DefaultFun.XorByteString},
+            {"writeBits",           DefaultFun.WriteBits},
+            // Math operations
+            {"expModInteger",       DefaultFun.ExpModInteger},
+    };
+
     /**
      * Register raw UPLC builtin operations under the "Builtins" class name.
      * These are the bridge between Java stdlib sources and the UPLC machine.
      */
     private static void registerBuiltins(StdlibRegistry reg) {
         String B = PKG + "Builtins";
-        // List operations
-        reg.register(B, "headList", args -> {
-            requireArgs("Builtins.headList", args, 1);
-            return new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), args.get(0));
-        });
-        reg.register(B, "tailList", args -> {
-            requireArgs("Builtins.tailList", args, 1);
-            return new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), args.get(0));
-        });
-        reg.register(B, "nullList", args -> {
-            requireArgs("Builtins.nullList", args, 1);
-            return new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), args.get(0));
-        });
-        reg.register(B, "mkCons", args -> {
-            requireArgs("Builtins.mkCons", args, 2);
-            return new PirTerm.App(
-                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkCons), args.get(0)),
-                    args.get(1));
-        });
+
+        // Table-driven registration for standard builtin wrappers
+        for (var entry : BUILTIN_1_ARG) {
+            var method = (String) entry[0];
+            var fun = (DefaultFun) entry[1];
+            reg.register(B, method, args -> {
+                requireArgs("Builtins." + method, args, 1);
+                return builtinApp1(fun, args.get(0));
+            });
+        }
+        for (var entry : BUILTIN_2_ARG) {
+            var method = (String) entry[0];
+            var fun = (DefaultFun) entry[1];
+            reg.register(B, method, args -> {
+                requireArgs("Builtins." + method, args, 2);
+                return builtinApp2(fun, args.get(0), args.get(1));
+            });
+        }
+        for (var entry : BUILTIN_3_ARG) {
+            var method = (String) entry[0];
+            var fun = (DefaultFun) entry[1];
+            reg.register(B, method, args -> {
+                requireArgs("Builtins." + method, args, 3);
+                return builtinApp3(fun, args.get(0), args.get(1), args.get(2));
+            });
+        }
+
+        // Special cases that don't follow the standard builtin pattern
+
+        // 0-arg: mkNilData/mkNilPairData need unit argument
         reg.register(B, "mkNilData", args -> {
             requireArgs("Builtins.mkNilData", args, 0);
-            return new PirTerm.App(
-                    new PirTerm.Builtin(DefaultFun.MkNilData),
-                    new PirTerm.Const(Constant.unit()));
-        });
-
-        // Pair operations
-        reg.register(B, "fstPair", args -> {
-            requireArgs("Builtins.fstPair", args, 1);
-            return new PirTerm.App(new PirTerm.Builtin(DefaultFun.FstPair), args.get(0));
-        });
-        reg.register(B, "sndPair", args -> {
-            requireArgs("Builtins.sndPair", args, 1);
-            return new PirTerm.App(new PirTerm.Builtin(DefaultFun.SndPair), args.get(0));
-        });
-        reg.register(B, "mkPairData", args -> {
-            requireArgs("Builtins.mkPairData", args, 2);
-            return new PirTerm.App(
-                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkPairData), args.get(0)),
-                    args.get(1));
+            return builtinApp1(DefaultFun.MkNilData, new PirTerm.Const(Constant.unit()));
         });
         reg.register(B, "mkNilPairData", args -> {
             requireArgs("Builtins.mkNilPairData", args, 0);
-            return new PirTerm.App(
-                    new PirTerm.Builtin(DefaultFun.MkNilPairData),
-                    new PirTerm.Const(Constant.unit()));
+            return builtinApp1(DefaultFun.MkNilPairData, new PirTerm.Const(Constant.unit()));
         });
 
-        // Data encode
-        reg.register(B, "constrData", args -> {
-            requireArgs("Builtins.constrData", args, 2);
-            return new PirTerm.App(
-                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.ConstrData), args.get(0)),
-                    args.get(1));
-        });
-        reg.register(B, "iData", args -> {
-            requireArgs("Builtins.iData", args, 1);
-            return new PirTerm.App(new PirTerm.Builtin(DefaultFun.IData), args.get(0));
-        });
-        reg.register(B, "bData", args -> {
-            requireArgs("Builtins.bData", args, 1);
-            return new PirTerm.App(new PirTerm.Builtin(DefaultFun.BData), args.get(0));
-        });
-        reg.register(B, "listData", args -> {
-            requireArgs("Builtins.listData", args, 1);
-            return new PirTerm.App(new PirTerm.Builtin(DefaultFun.ListData), args.get(0));
-        });
-        reg.register(B, "mapData", args -> {
-            requireArgs("Builtins.mapData", args, 1);
-            return new PirTerm.App(new PirTerm.Builtin(DefaultFun.MapData), args.get(0));
-        });
-
-        // Data decode
-        reg.register(B, "unConstrData", args -> {
-            requireArgs("Builtins.unConstrData", args, 1);
-            return new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnConstrData), args.get(0));
-        });
-        reg.register(B, "unIData", args -> {
-            requireArgs("Builtins.unIData", args, 1);
-            return new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnIData), args.get(0));
-        });
-        reg.register(B, "unBData", args -> {
-            requireArgs("Builtins.unBData", args, 1);
-            return new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnBData), args.get(0));
-        });
-        reg.register(B, "unListData", args -> {
-            requireArgs("Builtins.unListData", args, 1);
-            return new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnListData), args.get(0));
-        });
-        reg.register(B, "unMapData", args -> {
-            requireArgs("Builtins.unMapData", args, 1);
-            return new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), args.get(0));
-        });
-
-        // Data comparison
-        reg.register(B, "equalsData", args -> {
-            requireArgs("Builtins.equalsData", args, 2);
-            return new PirTerm.App(
-                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.EqualsData), args.get(0)),
-                    args.get(1));
-        });
-
-        // Error / Trace
+        // error: returns Error term (not a builtin application)
         reg.register(B, "error", args -> {
             requireArgs("Builtins.error", args, 0);
-            return new PirTerm.Error(new com.bloxbean.cardano.julc.compiler.pir.PirType.DataType());
+            return new PirTerm.Error(new PirType.DataType());
         });
+
+        // trace: returns Trace term (not a builtin application)
         reg.register(B, "trace", args -> {
             requireArgs("Builtins.trace", args, 2);
             return new PirTerm.Trace(args.get(0), args.get(1));
         });
 
-        // ByteString operations
-        reg.register(B, "indexByteString", args -> {
-            requireArgs("Builtins.indexByteString", args, 2);
-            return builtinApp2(DefaultFun.IndexByteString, args.get(0), args.get(1));
+        // constrTag/constrFields: compound operations (UnConstrData + FstPair/SndPair)
+        reg.register(B, "constrTag", args -> {
+            requireArgs("Builtins.constrTag", args, 1);
+            return builtinApp1(DefaultFun.FstPair,
+                    builtinApp1(DefaultFun.UnConstrData, args.get(0)));
         });
-        reg.register(B, "consByteString", args -> {
-            requireArgs("Builtins.consByteString", args, 2);
-            return builtinApp2(DefaultFun.ConsByteString, args.get(0), args.get(1));
+        reg.register(B, "constrFields", args -> {
+            requireArgs("Builtins.constrFields", args, 1);
+            return builtinApp1(DefaultFun.SndPair,
+                    builtinApp1(DefaultFun.UnConstrData, args.get(0)));
         });
-        reg.register(B, "sliceByteString", args -> {
-            requireArgs("Builtins.sliceByteString", args, 3);
-            return builtinApp3(DefaultFun.SliceByteString, args.get(0), args.get(1), args.get(2));
-        });
-        reg.register(B, "lengthOfByteString", args -> {
-            requireArgs("Builtins.lengthOfByteString", args, 1);
-            return builtinApp1(DefaultFun.LengthOfByteString, args.get(0));
-        });
-        reg.register(B, "appendByteString", args -> {
-            requireArgs("Builtins.appendByteString", args, 2);
-            return builtinApp2(DefaultFun.AppendByteString, args.get(0), args.get(1));
-        });
-        reg.register(B, "equalsByteString", args -> {
-            requireArgs("Builtins.equalsByteString", args, 2);
-            return builtinApp2(DefaultFun.EqualsByteString, args.get(0), args.get(1));
-        });
-        reg.register(B, "lessThanByteString", args -> {
-            requireArgs("Builtins.lessThanByteString", args, 2);
-            return builtinApp2(DefaultFun.LessThanByteString, args.get(0), args.get(1));
-        });
-        reg.register(B, "lessThanEqualsByteString", args -> {
-            requireArgs("Builtins.lessThanEqualsByteString", args, 2);
-            return builtinApp2(DefaultFun.LessThanEqualsByteString, args.get(0), args.get(1));
-        });
-        reg.register(B, "integerToByteString", args -> {
-            requireArgs("Builtins.integerToByteString", args, 3);
-            return builtinApp3(DefaultFun.IntegerToByteString, args.get(0), args.get(1), args.get(2));
-        });
-        reg.register(B, "byteStringToInteger", args -> {
-            requireArgs("Builtins.byteStringToInteger", args, 2);
-            return builtinApp2(DefaultFun.ByteStringToInteger, args.get(0), args.get(1));
-        });
-        reg.register(B, "encodeUtf8", args -> {
-            requireArgs("Builtins.encodeUtf8", args, 1);
-            return builtinApp1(DefaultFun.EncodeUtf8, args.get(0));
-        });
-        reg.register(B, "decodeUtf8", args -> {
-            requireArgs("Builtins.decodeUtf8", args, 1);
-            return builtinApp1(DefaultFun.DecodeUtf8, args.get(0));
-        });
-        reg.register(B, "serialiseData", args -> {
-            requireArgs("Builtins.serialiseData", args, 1);
-            return builtinApp1(DefaultFun.SerialiseData, args.get(0));
-        });
-        reg.register(B, "replicateByte", args -> {
-            requireArgs("Builtins.replicateByte", args, 2);
-            return builtinApp2(DefaultFun.ReplicateByte, args.get(0), args.get(1));
-        });
+
+        // emptyByteString: constant (not a builtin application)
         reg.register(B, "emptyByteString", args -> {
             requireArgs("Builtins.emptyByteString", args, 0);
             return new PirTerm.Const(Constant.byteString(new byte[0]));
         });
 
-        // Crypto operations
-        reg.register(B, "sha2_256", args -> {
-            requireArgs("Builtins.sha2_256", args, 1);
-            return builtinApp1(DefaultFun.Sha2_256, args.get(0));
-        });
-        reg.register(B, "blake2b_256", args -> {
-            requireArgs("Builtins.blake2b_256", args, 1);
-            return builtinApp1(DefaultFun.Blake2b_256, args.get(0));
-        });
-        reg.register(B, "verifyEd25519Signature", args -> {
-            requireArgs("Builtins.verifyEd25519Signature", args, 3);
-            return builtinApp3(DefaultFun.VerifyEd25519Signature, args.get(0), args.get(1), args.get(2));
-        });
-        reg.register(B, "sha3_256", args -> {
-            requireArgs("Builtins.sha3_256", args, 1);
-            return builtinApp1(DefaultFun.Sha3_256, args.get(0));
-        });
-        reg.register(B, "blake2b_224", args -> {
-            requireArgs("Builtins.blake2b_224", args, 1);
-            return builtinApp1(DefaultFun.Blake2b_224, args.get(0));
-        });
-        reg.register(B, "keccak_256", args -> {
-            requireArgs("Builtins.keccak_256", args, 1);
-            return builtinApp1(DefaultFun.Keccak_256, args.get(0));
-        });
-        reg.register(B, "verifyEcdsaSecp256k1Signature", args -> {
-            requireArgs("Builtins.verifyEcdsaSecp256k1Signature", args, 3);
-            return builtinApp3(DefaultFun.VerifyEcdsaSecp256k1Signature, args.get(0), args.get(1), args.get(2));
-        });
-        reg.register(B, "verifySchnorrSecp256k1Signature", args -> {
-            requireArgs("Builtins.verifySchnorrSecp256k1Signature", args, 3);
-            return builtinApp3(DefaultFun.VerifySchnorrSecp256k1Signature, args.get(0), args.get(1), args.get(2));
-        });
-        reg.register(B, "ripemd_160", args -> {
-            requireArgs("Builtins.ripemd_160", args, 1);
-            return builtinApp1(DefaultFun.Ripemd_160, args.get(0));
-        });
-
-        // Bitwise operations
-        reg.register(B, "andByteString", args -> {
-            requireArgs("Builtins.andByteString", args, 3);
-            return builtinApp3(DefaultFun.AndByteString, args.get(0), args.get(1), args.get(2));
-        });
-        reg.register(B, "orByteString", args -> {
-            requireArgs("Builtins.orByteString", args, 3);
-            return builtinApp3(DefaultFun.OrByteString, args.get(0), args.get(1), args.get(2));
-        });
-        reg.register(B, "xorByteString", args -> {
-            requireArgs("Builtins.xorByteString", args, 3);
-            return builtinApp3(DefaultFun.XorByteString, args.get(0), args.get(1), args.get(2));
-        });
-        reg.register(B, "complementByteString", args -> {
-            requireArgs("Builtins.complementByteString", args, 1);
-            return builtinApp1(DefaultFun.ComplementByteString, args.get(0));
-        });
-        reg.register(B, "readBit", args -> {
-            requireArgs("Builtins.readBit", args, 2);
-            return builtinApp2(DefaultFun.ReadBit, args.get(0), args.get(1));
-        });
-        reg.register(B, "writeBits", args -> {
-            requireArgs("Builtins.writeBits", args, 3);
-            return builtinApp3(DefaultFun.WriteBits, args.get(0), args.get(1), args.get(2));
-        });
-        reg.register(B, "shiftByteString", args -> {
-            requireArgs("Builtins.shiftByteString", args, 2);
-            return builtinApp2(DefaultFun.ShiftByteString, args.get(0), args.get(1));
-        });
-        reg.register(B, "rotateByteString", args -> {
-            requireArgs("Builtins.rotateByteString", args, 2);
-            return builtinApp2(DefaultFun.RotateByteString, args.get(0), args.get(1));
-        });
-        reg.register(B, "countSetBits", args -> {
-            requireArgs("Builtins.countSetBits", args, 1);
-            return builtinApp1(DefaultFun.CountSetBits, args.get(0));
-        });
-        reg.register(B, "findFirstSetBit", args -> {
-            requireArgs("Builtins.findFirstSetBit", args, 1);
-            return builtinApp1(DefaultFun.FindFirstSetBit, args.get(0));
-        });
-
-        // Data decomposition helpers
-        reg.register(B, "constrTag", args -> {
-            requireArgs("Builtins.constrTag", args, 1);
-            var unconstr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnConstrData), args.get(0));
-            return new PirTerm.App(new PirTerm.Builtin(DefaultFun.FstPair), unconstr);
-        });
-        reg.register(B, "constrFields", args -> {
-            requireArgs("Builtins.constrFields", args, 1);
-            var unconstr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnConstrData), args.get(0));
-            return new PirTerm.App(new PirTerm.Builtin(DefaultFun.SndPair), unconstr);
-        });
-
-        // Math operations
-        reg.register(B, "expModInteger", args -> {
-            requireArgs("Builtins.expModInteger", args, 3);
-            return builtinApp3(DefaultFun.ExpModInteger, args.get(0), args.get(1), args.get(2));
-        });
-
-        // toByteString — identity on-chain (value is already a ByteString)
+        // toByteString: identity on-chain (value is already a ByteString)
         reg.register(B, "toByteString", args -> {
             requireArgs("Builtins.toByteString", args, 1);
             return args.get(0);

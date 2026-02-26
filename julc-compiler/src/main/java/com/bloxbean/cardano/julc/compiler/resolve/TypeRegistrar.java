@@ -3,6 +3,7 @@ package com.bloxbean.cardano.julc.compiler.resolve;
 import com.bloxbean.cardano.julc.compiler.CompilerException;
 import com.bloxbean.cardano.julc.compiler.pir.PirType;
 import com.github.javaparser.ast.CompilationUnit;
+import com.github.javaparser.ast.Modifier;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.RecordDeclaration;
 import com.github.javaparser.ast.expr.MarkerAnnotationExpr;
@@ -21,12 +22,15 @@ import java.util.*;
  * <p>
  * Types are keyed by FQCN (fully qualified class name). For packageless inline
  * code, the FQCN equals the simple name.
+ * <p>
+ * Supports both explicit {@code permits} clauses and implicit permits (sealed
+ * interfaces where all variants are inner records implementing the interface).
  */
 public class TypeRegistrar {
 
     /**
      * Collect and register all types from the given compilation units.
-     * Ledger types should already be registered in the TypeResolver before calling this.
+     * Any types already registered in the TypeResolver are skipped.
      *
      * @param cus           the compilation units to scan
      * @param typeResolver  the type resolver to register into
@@ -36,6 +40,8 @@ public class TypeRegistrar {
         var allRecords = new LinkedHashMap<String, RecordDeclaration>();  // FQCN -> RD
         var allSealed = new LinkedHashMap<String, ClassOrInterfaceDeclaration>(); // FQCN -> CD
         var typeToCu = new LinkedHashMap<String, CompilationUnit>(); // FQCN -> source CU
+        // For implicit permits: map sealed interface FQCN -> ordered list of inner variant FQCNs
+        var implicitVariants = new LinkedHashMap<String, List<String>>();
 
         for (var cu : cus) {
             for (var rd : cu.findAll(RecordDeclaration.class)) {
@@ -49,7 +55,12 @@ public class TypeRegistrar {
                 typeToCu.put(fqcn, cu);
             }
             for (var cd : cu.findAll(ClassOrInterfaceDeclaration.class)) {
-                if (cd.isInterface() && !cd.getPermittedTypes().isEmpty()) {
+                if (!cd.isInterface()) continue;
+
+                boolean hasExplicitPermits = !cd.getPermittedTypes().isEmpty();
+                boolean hasSealedModifier = cd.hasModifier(Modifier.Keyword.SEALED);
+
+                if (hasExplicitPermits || hasSealedModifier) {
                     var simpleName = cd.getNameAsString();
                     var fqcn = cd.getFullyQualifiedName().orElse(simpleName);
 
@@ -58,15 +69,36 @@ public class TypeRegistrar {
                     }
                     allSealed.put(fqcn, cd);
                     typeToCu.put(fqcn, cu);
+
+                    // For implicit permits, find inner records implementing this interface
+                    if (!hasExplicitPermits && hasSealedModifier) {
+                        var variants = new ArrayList<String>();
+                        for (var member : cd.getMembers()) {
+                            if (member instanceof RecordDeclaration rd) {
+                                boolean implementsParent = rd.getImplementedTypes().stream()
+                                        .anyMatch(t -> t.getNameAsString().equals(simpleName));
+                                if (implementsParent) {
+                                    var variantFqcn = rd.getFullyQualifiedName()
+                                            .orElse(fqcn + "." + rd.getNameAsString());
+                                    variants.add(variantFqcn);
+                                }
+                            }
+                        }
+                        if (!variants.isEmpty()) {
+                            implicitVariants.put(fqcn, variants);
+                        }
+                    }
                 }
             }
         }
 
-        // PASS 1b: Build knownFqcns = user FQCNs + ledger FQCNs
+        // PASS 1b: Build knownFqcns = user FQCNs + already-registered FQCNs
         var knownFqcns = new LinkedHashSet<String>();
         knownFqcns.addAll(allRecords.keySet());
         knownFqcns.addAll(allSealed.keySet());
-        knownFqcns.addAll(LedgerTypeRegistry.allLedgerFqcns());
+        knownFqcns.addAll(typeResolver.allRegisteredFqcns());
+        // Hash type FQCNs are needed for ImportResolver but not registered as record types
+        knownFqcns.addAll(TypeResolver.ledgerHashFqcns());
 
         // 2. Build unified dependency graph (records AND sealed interfaces) using FQCNs
         var allTypeNames = new LinkedHashSet<String>();
@@ -101,10 +133,24 @@ public class TypeRegistrar {
             var cu = typeToCu.get(fqcn);
             var importResolver = new ImportResolver(cu, knownFqcns);
             var typeDeps = new LinkedHashSet<String>();
-            for (var permitted : entry.getValue().getPermittedTypes()) {
-                var resolvedVariant = resolveWithScope(permitted, allTypeNames, simpleToFqcn, importResolver);
-                if (allTypeNames.contains(resolvedVariant)) {
-                    typeDeps.add(resolvedVariant);
+
+            if (!entry.getValue().getPermittedTypes().isEmpty()) {
+                // Explicit permits
+                for (var permitted : entry.getValue().getPermittedTypes()) {
+                    var resolvedVariant = resolveWithScope(permitted, allTypeNames, simpleToFqcn, importResolver);
+                    if (allTypeNames.contains(resolvedVariant)) {
+                        typeDeps.add(resolvedVariant);
+                    }
+                }
+            } else {
+                // Implicit permits: use inner variant records
+                var variants = implicitVariants.get(fqcn);
+                if (variants != null) {
+                    for (var variantFqcn : variants) {
+                        if (allTypeNames.contains(variantFqcn)) {
+                            typeDeps.add(variantFqcn);
+                        }
+                    }
                 }
             }
             deps.put(fqcn, typeDeps);
@@ -113,7 +159,7 @@ public class TypeRegistrar {
         // 3. Topological sort the combined graph
         var sorted = topologicalSort(deps);
 
-        // 4. Register in dependency order (skip already-registered ledger types)
+        // 4. Register in dependency order (skip already-registered types)
         for (var fqcn : sorted) {
             if (typeResolver.isRegistered(fqcn)) continue;
 
@@ -134,7 +180,17 @@ public class TypeRegistrar {
                     typeResolver.registerRecord(rd, fqcn);
                 }
             } else if (allSealed.containsKey(fqcn)) {
-                typeResolver.registerSealedInterface(allSealed.get(fqcn), fqcn);
+                var cd = allSealed.get(fqcn);
+                if (!cd.getPermittedTypes().isEmpty()) {
+                    // Explicit permits — use standard registration
+                    typeResolver.registerSealedInterface(cd, fqcn);
+                } else {
+                    // Implicit permits — register with inner variants
+                    var variants = implicitVariants.get(fqcn);
+                    if (variants != null) {
+                        typeResolver.registerSealedInterfaceFromVariants(cd, fqcn, variants);
+                    }
+                }
             }
         }
         typeResolver.setCurrentImportResolver(null); // clean up

@@ -336,6 +336,90 @@ public final class ValidatorTest {
         return SourceDiscovery.compile(fqcn, sourceRoot);
     }
 
+    // --- Method evaluation (delegates to MethodEvaluator) ---
+
+    /**
+     * Compile and evaluate a single static method, returning the raw evaluation result.
+     *
+     * @param javaSource the Java source containing the method
+     * @param methodName the static method name to compile and evaluate
+     * @param args       arguments to apply (as PlutusData)
+     * @return the evaluation result
+     * @see MethodEvaluator#evaluateRaw
+     */
+    public static EvalResult evaluateMethod(String javaSource, String methodName, PlutusData... args) {
+        return MethodEvaluator.evaluateRaw(javaSource, methodName, args);
+    }
+
+    /**
+     * Compile and evaluate a static method, returning the result as a BigInteger.
+     *
+     * @see MethodEvaluator#evaluateInteger
+     */
+    public static java.math.BigInteger evaluateInteger(String javaSource, String methodName, PlutusData... args) {
+        return MethodEvaluator.evaluateInteger(javaSource, methodName, args);
+    }
+
+    /**
+     * Compile and evaluate a static method, returning the result as a boolean.
+     *
+     * @see MethodEvaluator#evaluateBoolean
+     */
+    public static boolean evaluateBoolean(String javaSource, String methodName, PlutusData... args) {
+        return MethodEvaluator.evaluateBoolean(javaSource, methodName, args);
+    }
+
+    /**
+     * Compile and evaluate a static method, returning the result as PlutusData.
+     *
+     * @see MethodEvaluator#evaluateData
+     */
+    public static PlutusData evaluateData(String javaSource, String methodName, PlutusData... args) {
+        return MethodEvaluator.evaluateData(javaSource, methodName, args);
+    }
+
+    // --- File-based method evaluation (Class<?>) ---
+
+    /**
+     * Compile and evaluate a static method from a source file, returning the raw evaluation result.
+     *
+     * @param sourceClass the class containing the method
+     * @param methodName  the static method name to compile and evaluate
+     * @param args        arguments to apply (as PlutusData)
+     * @return the evaluation result
+     * @see MethodEvaluator#evaluateRaw(Class, String, PlutusData...)
+     */
+    public static EvalResult evaluateMethod(Class<?> sourceClass, String methodName, PlutusData... args) {
+        return MethodEvaluator.evaluateRaw(sourceClass, methodName, args);
+    }
+
+    /**
+     * Compile and evaluate a static method from a source file, returning the result as a BigInteger.
+     *
+     * @see MethodEvaluator#evaluateInteger(Class, String, PlutusData...)
+     */
+    public static java.math.BigInteger evaluateInteger(Class<?> sourceClass, String methodName, PlutusData... args) {
+        return MethodEvaluator.evaluateInteger(sourceClass, methodName, args);
+    }
+
+    /**
+     * Compile and evaluate a static method from a source file, returning the result as a boolean.
+     *
+     * @see MethodEvaluator#evaluateBoolean(Class, String, PlutusData...)
+     */
+    public static boolean evaluateBoolean(Class<?> sourceClass, String methodName, PlutusData... args) {
+        return MethodEvaluator.evaluateBoolean(sourceClass, methodName, args);
+    }
+
+    /**
+     * Compile and evaluate a static method from a source file, returning the result as PlutusData.
+     *
+     * @see MethodEvaluator#evaluateData(Class, String, PlutusData...)
+     */
+    public static PlutusData evaluateData(Class<?> sourceClass, String methodName, PlutusData... args) {
+        return MethodEvaluator.evaluateData(sourceClass, methodName, args);
+    }
+
     private static String formatResult(EvalResult result) {
         return switch (result) {
             case EvalResult.Success s ->

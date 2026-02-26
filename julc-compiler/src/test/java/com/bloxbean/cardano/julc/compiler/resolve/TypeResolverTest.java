@@ -17,6 +17,11 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Tests for TypeResolver, including dynamic ledger type registration via
+ * LedgerSourceLoader + TypeRegistrar (replacing the old LedgerTypeRegistry).
+ */
+
 class TypeResolverTest {
 
     @BeforeAll
@@ -25,6 +30,14 @@ class TypeResolverTest {
     }
 
     private final TypeResolver resolver = new TypeResolver();
+
+    /** Helper: register all ledger types dynamically (replaces old LedgerTypeRegistry.registerAll). */
+    private void registerLedgerTypes(TypeResolver tr) {
+        var ledgerCus = LedgerSourceLoader.loadLedgerSources(
+                Thread.currentThread().getContextClassLoader());
+        new TypeRegistrar().registerAll(ledgerCus, tr);
+        tr.addFlatVariantAliases("com.bloxbean.cardano.julc.ledger");
+    }
 
     @Test void resolveBoolean() { assertEquals(new PirType.BoolType(), resolver.resolve(PrimitiveType.booleanType())); }
     @Test void resolveInt() { assertEquals(new PirType.IntegerType(), resolver.resolve(PrimitiveType.intType())); }
@@ -95,8 +108,8 @@ class TypeResolverTest {
     }
 
     @Test void resolveScriptContextAsRecordType() {
-        // ScriptContext resolves to RecordType after LedgerTypeRegistry registration
-        LedgerTypeRegistry.registerAll(resolver);
+        // ScriptContext resolves to RecordType after dynamic ledger type registration
+        registerLedgerTypes(resolver);
         var result = resolver.resolve(StaticJavaParser.parseClassOrInterfaceType("ScriptContext"));
         assertInstanceOf(PirType.RecordType.class, result);
         var rt = (PirType.RecordType) result;
@@ -108,7 +121,7 @@ class TypeResolverTest {
     }
 
     @Test void resolveTxInfoAsRecordType() {
-        LedgerTypeRegistry.registerAll(resolver);
+        registerLedgerTypes(resolver);
         var result = resolver.resolve(StaticJavaParser.parseClassOrInterfaceType("TxInfo"));
         assertInstanceOf(PirType.RecordType.class, result);
         var rt = (PirType.RecordType) result;
@@ -119,7 +132,7 @@ class TypeResolverTest {
     }
 
     @Test void resolveCredentialAsSumType() {
-        LedgerTypeRegistry.registerAll(resolver);
+        registerLedgerTypes(resolver);
         var result = resolver.resolve(StaticJavaParser.parseClassOrInterfaceType("Credential"));
         assertInstanceOf(PirType.SumType.class, result);
         var st = (PirType.SumType) result;
@@ -129,8 +142,8 @@ class TypeResolverTest {
     }
 
     @Test void resolveGovernanceTypeAsSumType() {
-        // Governance types resolve as SumType after LedgerTypeRegistry registration
-        LedgerTypeRegistry.registerAll(resolver);
+        // Governance types resolve as SumType after dynamic ledger type registration
+        registerLedgerTypes(resolver);
         var result = resolver.resolve(StaticJavaParser.parseClassOrInterfaceType("Vote"));
         assertInstanceOf(PirType.SumType.class, result);
         var st = (PirType.SumType) result;
@@ -163,6 +176,154 @@ class TypeResolverTest {
         assertInstanceOf(PirType.IntegerType.class, result.get().fields().get(0).type());
         assertEquals("hash", result.get().fields().get(1).name());
         assertInstanceOf(PirType.ByteStringType.class, result.get().fields().get(1).type());
+    }
+
+    @Nested
+    class DynamicLedgerRegistrationTests {
+
+        @Test
+        void allLedgerSealedInterfacesRegistered() {
+            // All ledger sealed interfaces should be registered as SumTypes
+            var tr = new TypeResolver();
+            registerLedgerTypes(tr);
+
+            // Core sealed interfaces that use implicit permits (inner records)
+            var expectedSumTypes = List.of(
+                    "Credential", "OutputDatum", "ScriptInfo", "IntervalBoundType",
+                    "Vote", "DRep", "Voter", "StakingCredential", "Delegatee",
+                    "TxCert", "GovernanceAction", "ScriptPurpose"
+            );
+            for (var name : expectedSumTypes) {
+                var st = tr.lookupSumType(name);
+                assertTrue(st.isPresent(), name + " should be registered as SumType");
+                assertFalse(st.get().constructors().isEmpty(), name + " should have constructors");
+            }
+        }
+
+        @Test
+        void allLedgerRecordsRegistered() {
+            // Key ledger records should be registered as RecordTypes
+            var tr = new TypeResolver();
+            registerLedgerTypes(tr);
+
+            var expectedRecords = List.of(
+                    "ScriptContext", "TxInfo", "TxOut", "Address", "Value",
+                    "TxOutRef", "IntervalBound", "Interval"
+            );
+            for (var name : expectedRecords) {
+                var rt = tr.lookupRecord(name);
+                assertTrue(rt.isPresent(), name + " should be registered as RecordType");
+                assertFalse(rt.get().fields().isEmpty(), name + " should have fields");
+            }
+        }
+
+        @Test
+        void implicitSealedInterfaceVariantOrdering() {
+            // Credential variants must have correct constructor tags (tag order = declaration order)
+            var tr = new TypeResolver();
+            registerLedgerTypes(tr);
+
+            var credential = tr.lookupSumType("Credential").orElseThrow();
+            assertEquals(2, credential.constructors().size());
+            assertEquals("PubKeyCredential", credential.constructors().get(0).name());
+            assertEquals(0, credential.constructors().get(0).tag());
+            assertEquals("ScriptCredential", credential.constructors().get(1).name());
+            assertEquals(1, credential.constructors().get(1).tag());
+        }
+
+        @Test
+        void flatVariantAliasesWork() {
+            // Variant lookup should work with both inner-class and flat FQCNs
+            var tr = new TypeResolver();
+            registerLedgerTypes(tr);
+
+            // Inner-class FQCN
+            var innerLookup = tr.lookupSumTypeForVariant("com.bloxbean.cardano.julc.ledger.Credential.PubKeyCredential");
+            assertTrue(innerLookup.isPresent(), "Inner-class FQCN should resolve");
+            assertEquals("Credential", innerLookup.get().name());
+
+            // Flat FQCN (backward compatibility)
+            var flatLookup = tr.lookupSumTypeForVariant("com.bloxbean.cardano.julc.ledger.PubKeyCredential");
+            assertTrue(flatLookup.isPresent(), "Flat FQCN should resolve");
+            assertEquals("Credential", flatLookup.get().name());
+        }
+
+        @Test
+        void voteNameCollisionResolvesCorrectly() {
+            // "Vote" should resolve to the Vote sealed interface, NOT to Delegatee.Vote variant
+            var tr = new TypeResolver();
+            registerLedgerTypes(tr);
+
+            var result = tr.resolve(StaticJavaParser.parseClassOrInterfaceType("Vote"));
+            assertInstanceOf(PirType.SumType.class, result);
+            var st = (PirType.SumType) result;
+            assertEquals("Vote", st.name());
+            assertEquals(3, st.constructors().size());
+            // Delegatee.Vote would have only 1 field (dRep), not 3 constructors
+        }
+
+        @Test
+        void delegateeVariantsRegistered() {
+            // Delegatee should have its own variants including Vote
+            var tr = new TypeResolver();
+            registerLedgerTypes(tr);
+
+            var delegatee = tr.lookupSumType("Delegatee").orElseThrow();
+            assertEquals(3, delegatee.constructors().size());
+            assertEquals("Stake", delegatee.constructors().get(0).name());
+            assertEquals("Vote", delegatee.constructors().get(1).name());
+            assertEquals("StakeVote", delegatee.constructors().get(2).name());
+
+            // The Delegatee.Vote variant should still be findable by inner-class FQCN
+            var delegateeVote = tr.lookupSumTypeForVariant(
+                    "com.bloxbean.cardano.julc.ledger.Delegatee.Vote");
+            assertTrue(delegateeVote.isPresent());
+            assertEquals("Delegatee", delegateeVote.get().name());
+        }
+
+        @Test
+        void dependencyOrderingPreserved() {
+            // IntervalBound depends on IntervalBoundType — both should be registered correctly
+            var tr = new TypeResolver();
+            registerLedgerTypes(tr);
+
+            var bound = tr.lookupRecord("IntervalBound").orElseThrow();
+            // IntervalBound should have a field "boundType" that's a SumType (IntervalBoundType)
+            var boundTypeField = bound.fields().stream()
+                    .filter(f -> f.name().equals("boundType"))
+                    .findFirst()
+                    .orElseThrow();
+            assertInstanceOf(PirType.SumType.class, boundTypeField.type(),
+                    "IntervalBound.boundType should be SumType, not DataType");
+        }
+
+        @Test
+        void txInfoFieldTypesArePrecise() {
+            // Dynamic registration should produce precise types for TxInfo fields
+            var tr = new TypeResolver();
+            registerLedgerTypes(tr);
+
+            var txInfo = tr.lookupRecord("TxInfo").orElseThrow();
+            // signatories should be List<PubKeyHash> -> ListType(ByteStringType)
+            var signatories = txInfo.fields().stream()
+                    .filter(f -> f.name().equals("signatories"))
+                    .findFirst()
+                    .orElseThrow();
+            assertInstanceOf(PirType.ListType.class, signatories.type());
+            assertInstanceOf(PirType.ByteStringType.class,
+                    ((PirType.ListType) signatories.type()).elemType(),
+                    "signatories element type should be ByteStringType (PubKeyHash)");
+        }
+
+        @Test
+        void ledgerSourceLoaderFindsAllSources() {
+            // LedgerSourceLoader should load sources without errors
+            var ledgerCus = LedgerSourceLoader.loadLedgerSources(
+                    Thread.currentThread().getContextClassLoader());
+            assertFalse(ledgerCus.isEmpty(), "Should load at least 1 ledger source");
+            // We bundle ~26 types (37 files minus 7 hash types minus 4 utility classes)
+            assertTrue(ledgerCus.size() >= 20, "Should load at least 20 ledger sources, got " + ledgerCus.size());
+        }
     }
 
     @Nested
