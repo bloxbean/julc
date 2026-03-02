@@ -943,11 +943,7 @@ public class PirGenerator {
         if (expr instanceof MethodCallExpr mce && mce.getScope().isEmpty()) {
             var methodType = symbolTable.lookup(mce.getNameAsString());
             if (methodType.isPresent()) {
-                PirType type = methodType.get();
-                while (type instanceof PirType.FunType ft) {
-                    type = ft.returnType();
-                }
-                return type;
+                return extractReturnType(methodType.get());
             }
         }
         return new PirType.DataType();
@@ -995,12 +991,44 @@ public class PirGenerator {
             }
         }
 
+        // Static library method call (e.g., OutputLib.outputsAt(...)): look up return type from registry
+        if (scopeExpr instanceof NameExpr ne) {
+            var registry = findLibraryRegistry(stdlibLookup);
+            if (registry != null) {
+                var resolvedClassName = typeResolver.resolveClassName(ne.getNameAsString());
+                var qualifiedKey = resolvedClassName + "." + methodName;
+                var libMethod = registry.lookupMethod(qualifiedKey);
+                if (libMethod.isPresent()) {
+                    return extractReturnType(libMethod.get().type());
+                }
+                // Also try simple name lookup (e.g., "OutputLib.outputsAt")
+                var simpleKey = ne.getNameAsString() + "." + methodName;
+                if (!simpleKey.equals(qualifiedKey)) {
+                    libMethod = registry.lookupMethod(simpleKey);
+                    if (libMethod.isPresent()) {
+                        return extractReturnType(libMethod.get().type());
+                    }
+                }
+            }
+        }
+
         // Delegate to TypeMethodRegistry for return type resolution
         var scopeType = resolveExpressionType(scopeExpr);
         var returnType = typeMethodRegistry.resolveReturnType(scopeType, methodName);
         if (returnType.isPresent()) return returnType.get();
 
         return new PirType.DataType();
+    }
+
+    /**
+     * Extract the return type from a FunType chain by walking all parameter types.
+     * E.g., FunType(A, FunType(B, C)) -> C
+     */
+    private static PirType extractReturnType(PirType type) {
+        while (type instanceof PirType.FunType ft) {
+            type = ft.returnType();
+        }
+        return type;
     }
 
     /**

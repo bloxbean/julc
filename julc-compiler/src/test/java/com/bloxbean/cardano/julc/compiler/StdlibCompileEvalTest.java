@@ -164,6 +164,14 @@ class StdlibCompileEvalTest {
         return result.program();
     }
 
+    static Program compileValidatorWithLibs(String validator, String... libs) {
+        var compiler = new JulcCompiler(STDLIB::lookup);
+        var result = compiler.compile(validator, List.of(libs));
+        assertFalse(result.hasErrors(), "Compilation failed: " + result);
+        assertNotNull(result.program(), "Program should not be null");
+        return result.program();
+    }
+
     // =========================================================================
     // 1. ConstrTagTypeInference — Bug 2 regression
     //    FstPair(UnConstrData(...)) must infer as IntegerType, not DataType
@@ -4524,6 +4532,197 @@ class StdlibCompileEvalTest {
             var redeemer = PlutusData.constr(0, assetList, PlutusData.bytes(new byte[]{0x01, 0x02}));
             var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
             assertTrue(result.isSuccess(), "@NewType byte[] field accessor in HOF lambda should work. Got: " + result);
+        }
+    }
+
+    // =========================================================================
+    // Library Method Return Type Resolution — tests for resolveMethodCallReturnType
+    // covering static @OnchainLibrary method calls via LibraryMethodRegistry lookup
+    // =========================================================================
+
+    @Nested
+    class LibraryMethodReturnTypeResolution {
+
+        @Test
+        void libraryReturningLongDirectComparison() {
+            // Library returns long; validator uses result directly in == comparison.
+            // Verifies resolveMethodCallReturnType returns IntegerType → EqualsInteger
+            var userLib = """
+                    package com.example;
+                    import com.bloxbean.cardano.julc.core.PlutusData;
+                    import com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+
+                    @OnchainLibrary
+                    public class MyLib {
+                        public static long countElements(PlutusData list) {
+                            var cursor = Builtins.unListData(list);
+                            long count = 0;
+                            while (!Builtins.nullList(cursor)) {
+                                count = count + 1;
+                                cursor = Builtins.tailList(cursor);
+                            }
+                            return count;
+                        }
+                    }
+                    """;
+            var validator = """
+                    import com.example.MyLib;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            return MyLib.countElements(redeemer) == 3;
+                        }
+                    }
+                    """;
+            var program = compileValidatorWithLibs(validator, userLib);
+            var redeemer = PlutusData.list(PlutusData.integer(1), PlutusData.integer(2), PlutusData.integer(3));
+            var evalResult = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(evalResult.isSuccess(), "Library returning long in direct == should use EqualsInteger. Got: " + evalResult);
+        }
+
+        @Test
+        void libraryReturningLongInArithmetic() {
+            // Library returns long; validator uses result in arithmetic then comparison.
+            // Verifies library result type feeds into AddInteger then EqualsInteger
+            var userLib = """
+                    package com.example;
+                    import com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary;
+
+                    @OnchainLibrary
+                    public class MyLib {
+                        public static long doubleValue(long x) {
+                            return x + x;
+                        }
+                    }
+                    """;
+            var validator = """
+                    import com.example.MyLib;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            return MyLib.doubleValue(5) + 1 == 11;
+                        }
+                    }
+                    """;
+            var program = compileValidatorWithLibs(validator, userLib);
+            var evalResult = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
+            assertTrue(evalResult.isSuccess(), "Library returning long in arithmetic should use AddInteger. Got: " + evalResult);
+        }
+
+        @Test
+        void libraryReturningBooleanDirectUse() {
+            // Library returns boolean; validator returns it directly.
+            // Verifies BoolType return resolution
+            var userLib = """
+                    package com.example;
+                    import com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary;
+
+                    @OnchainLibrary
+                    public class MyLib {
+                        public static boolean isPositive(long x) {
+                            return x > 0;
+                        }
+                    }
+                    """;
+            var validator = """
+                    import com.example.MyLib;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            return MyLib.isPositive(42);
+                        }
+                    }
+                    """;
+            var program = compileValidatorWithLibs(validator, userLib);
+            var evalResult = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
+            assertTrue(evalResult.isSuccess(), "Library returning boolean should resolve BoolType. Got: " + evalResult);
+        }
+
+        @Test
+        void chainedFieldAccessOnLibraryRecordResult() {
+            // CRITICAL: Library returns TxOut; validator chains .address() on the result.
+            // Without the fix, resolveMethodCallReturnType returns DataType → line 769
+            // has NO inferPirType fallback → falls through to generateFieldAccessFromMethod
+            // → produces broken PIR ("Unbound variable: .address")
+            var userLib = """
+                    package com.example;
+                    import com.bloxbean.cardano.julc.core.PlutusData;
+                    import com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.ledger.TxOut;
+
+                    @OnchainLibrary
+                    public class MyLib {
+                        public static TxOut getFirstOutput(PlutusData outputsList) {
+                            return Builtins.headList(Builtins.unListData(outputsList));
+                        }
+                    }
+                    """;
+            var validator = """
+                    import com.example.MyLib;
+                    import com.bloxbean.cardano.julc.ledger.Address;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            Address addr = MyLib.getFirstOutput(redeemer).address();
+                            return addr == addr;
+                        }
+                    }
+                    """;
+            var program = compileValidatorWithLibs(validator, userLib);
+            // Build a TxOut as PlutusData: Constr(0, [address, value, datum, refScript])
+            var address = PlutusData.constr(0,
+                    PlutusData.constr(0, PlutusData.bytes(new byte[]{1, 2, 3})),
+                    PlutusData.constr(1));
+            var txOut = PlutusData.constr(0, address, simpleValue(2000000),
+                    PlutusData.constr(0), PlutusData.constr(1));
+            var redeemer = PlutusData.list(txOut);
+            var evalResult = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(evalResult.isSuccess(),
+                    "Chained .address() on library-returned TxOut must resolve RecordType. Got: " + evalResult);
+        }
+
+        @Test
+        void nestedLibraryCallTypeResolution() {
+            // Two library methods; validator nests one inside the other.
+            // Verifies recursive resolveMethodCallReturnType for nested library calls
+            var userLib = """
+                    package com.example;
+                    import com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary;
+
+                    @OnchainLibrary
+                    public class MyLib {
+                        public static long doubleIt(long x) {
+                            return x + x;
+                        }
+                        public static long addOne(long x) {
+                            return x + 1;
+                        }
+                    }
+                    """;
+            var validator = """
+                    import com.example.MyLib;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            return MyLib.addOne(MyLib.doubleIt(5)) == 11;
+                        }
+                    }
+                    """;
+            var program = compileValidatorWithLibs(validator, userLib);
+            var evalResult = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
+            assertTrue(evalResult.isSuccess(), "Nested library calls should resolve types recursively. Got: " + evalResult);
         }
     }
 }
