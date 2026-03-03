@@ -774,6 +774,14 @@ public class PirGenerator {
                         }
                     }
                 }
+                // Chained .hash() on a ledger hash / @NewType that already resolved to
+                // ByteStringType.  The parent accessor already applied UnBData, so
+                // the .hash() accessor is an identity — skip the TypeMethodRegistry
+                // dispatch which would apply a redundant UnBData.
+                if (scopeType instanceof PirType.ByteStringType
+                        && methodName.equals("hash")) {
+                    return scope;
+                }
             }
 
             // Dispatch instance methods via TypeMethodRegistry
@@ -823,6 +831,12 @@ public class PirGenerator {
                     if (scopeExpr instanceof NameExpr ne
                             && hofUnwrappedVars.contains(ne.getNameAsString())) {
                         return scope; // HOF-unwrapped — identity
+                    }
+                    // Chained accessor: parent MethodCallExpr already produced a raw
+                    // bytestring (via field extraction / wrapDecode), so another
+                    // UnBData would be a double-unwrap.
+                    if (scopeExpr instanceof MethodCallExpr) {
+                        return scope;
                     }
                     // Standard field extraction: UnBData (same semantics as .hash() for non-HOF context)
                     return new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnBData), scope);
