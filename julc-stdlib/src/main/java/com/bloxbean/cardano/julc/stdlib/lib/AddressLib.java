@@ -27,7 +27,7 @@ public class AddressLib {
     public static boolean isScriptAddress(Address address) {
         return switch (address.credential()) {
             case Credential.ScriptCredential sc -> true;
-            default -> false;
+            case Credential.PubKeyCredential pk -> false;
         };
     }
 
@@ -35,7 +35,7 @@ public class AddressLib {
     public static boolean isPubKeyAddress(Address address) {
         return switch (address.credential()) {
             case Credential.PubKeyCredential pk -> true;
-            default -> false;
+            case Credential.ScriptCredential sc -> false;
         };
     }
 

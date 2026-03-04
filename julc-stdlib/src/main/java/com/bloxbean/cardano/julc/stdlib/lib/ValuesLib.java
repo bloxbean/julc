@@ -1,6 +1,8 @@
 package com.bloxbean.cardano.julc.stdlib.lib;
 
 import com.bloxbean.cardano.julc.core.PlutusData;
+import com.bloxbean.cardano.julc.core.types.AssetEntry;
+import com.bloxbean.cardano.julc.core.types.JulcList;
 import com.bloxbean.cardano.julc.core.types.JulcMap;
 import com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary;
 import com.bloxbean.cardano.julc.ledger.Value;
@@ -235,19 +237,36 @@ public class ValuesLib {
         return Builtins.mapData(result);
     }
 
-    /** Flattens a Value into a list of (policy, token, amount) triples as ConstrData(0, [p, t, amt]). */
+    /**
+     * Flattens a Value into a list of (policy, token, amount) triples as ConstrData(0, [p, t, amt]).
+     * <p>
+     * Each element has the same layout as {@link AssetEntry}: {@code ConstrData(0, [BData, BData, IData])}.
+     * Cast the result for typed field access:
+     * <pre>{@code
+     * for (AssetEntry entry : (JulcList<AssetEntry>)(Object) ValuesLib.flatten(txInfo.mint())) {
+     *     byte[] policy = entry.policyId();
+     *     byte[] name = entry.tokenName();
+     *     BigInteger qty = entry.amount();
+     * }
+     * }</pre>
+     *
+     * Note: Split into separate step methods to avoid nested while loops
+     * (compiler limitation — while-loop calling a function with a while-loop).
+     */
     public static PlutusData.ListData flatten(Value value) {
-        PlutusData.ListData result = Builtins.mkNilData();
-        var outerPairs = Builtins.unMapData(value);
-        PlutusData current = outerPairs;
-        while (!Builtins.nullList(current)) {
-            var outerPair = Builtins.headList(current);
-            var policyData = Builtins.fstPair(outerPair);
-            PlutusData.MapData innerMap = (PlutusData.MapData) Builtins.sndPair(outerPair);
-            result = flattenPolicy(policyData, innerMap, result);
-            current = Builtins.tailList(current);
+        return flattenStep(Builtins.unMapData(value), Builtins.mkNilData());
+    }
+
+    /** Process one policy from the outer map, then recurse on the rest. */
+    public static PlutusData.ListData flattenStep(PlutusData outerPairs, PlutusData.ListData acc) {
+        if (Builtins.nullList(outerPairs)) {
+            return ListsLib.reverse(acc);
         }
-        return ListsLib.reverse(result);
+        var outerPair = Builtins.headList(outerPairs);
+        var policyData = Builtins.fstPair(outerPair);
+        PlutusData.MapData innerMap = (PlutusData.MapData) Builtins.sndPair(outerPair);
+        PlutusData.ListData updated = flattenPolicy(policyData, innerMap, acc);
+        return flattenStep(Builtins.tailList(outerPairs), updated);
     }
 
     /** Flatten a single policy's token entries into the accumulator list. */
@@ -363,5 +382,93 @@ public class ValuesLib {
     /** Subtracts value b from value a: add(a, negate(b)). */
     public static Value subtract(Value a, Value b) {
         return add(a, negate(b));
+    }
+
+    // =========================================================================
+    // Mint helpers — common patterns for validating minting/burning transactions
+    // =========================================================================
+
+    /**
+     * Count tokens with a specific quantity under a specific policy in a Value/mint.
+     * E.g., count how many tokens were minted with qty=1 under a given policy.
+     */
+    public static BigInteger countTokensWithQty(Value mint, byte[] policyId, BigInteger expectedQty) {
+        return _countTokensWithQty(mint, Builtins.bData(policyId), expectedQty);
+    }
+
+    /** Internal implementation: count tokens matching expectedQty under a policy. */
+    public static BigInteger _countTokensWithQty(Value mint, PlutusData policyData, BigInteger expectedQty) {
+        var outerPairs = Builtins.unMapData(mint);
+        BigInteger count = BigInteger.ZERO;
+        PlutusData current = outerPairs;
+        while (!Builtins.nullList(current)) {
+            var outerPair = Builtins.headList(current);
+            if (Builtins.equalsData(Builtins.fstPair(outerPair), policyData)) {
+                count = count.add(_countInnerTokensWithQty(
+                        (PlutusData.MapData) Builtins.sndPair(outerPair), expectedQty));
+                current = Builtins.mkNilPairData();
+            } else {
+                current = Builtins.tailList(current);
+            }
+        }
+        return count;
+    }
+
+    /** Count tokens matching expectedQty in an inner token map (single policy). */
+    public static BigInteger _countInnerTokensWithQty(PlutusData.MapData innerPairs, BigInteger expectedQty) {
+        BigInteger count = BigInteger.ZERO;
+        PlutusData current = Builtins.unMapData(innerPairs);
+        while (!Builtins.nullList(current)) {
+            var pair = Builtins.headList(current);
+            var qty = Builtins.unIData(Builtins.sndPair(pair));
+            if (qty.equals(expectedQty)) {
+                count = count.add(BigInteger.ONE);
+            }
+            current = Builtins.tailList(current);
+        }
+        return count;
+    }
+
+    /**
+     * Find the first token name with a specific quantity under a specific policy.
+     * Returns empty bytestring if not found.
+     */
+    public static byte[] findTokenName(Value mint, byte[] policyId, BigInteger expectedQty) {
+        return _findTokenName(mint, Builtins.bData(policyId), expectedQty);
+    }
+
+    /** Internal implementation: find first token name matching expectedQty under a policy. */
+    public static byte[] _findTokenName(Value mint, PlutusData policyData, BigInteger expectedQty) {
+        var outerPairs = Builtins.unMapData(mint);
+        byte[] result = Builtins.emptyByteString();
+        PlutusData current = outerPairs;
+        while (!Builtins.nullList(current)) {
+            var outerPair = Builtins.headList(current);
+            if (Builtins.equalsData(Builtins.fstPair(outerPair), policyData)) {
+                result = _findInnerTokenName(
+                        (PlutusData.MapData) Builtins.sndPair(outerPair), expectedQty);
+                current = Builtins.mkNilPairData();
+            } else {
+                current = Builtins.tailList(current);
+            }
+        }
+        return result;
+    }
+
+    /** Find first token name matching expectedQty in an inner token map. Returns empty bytestring if not found. */
+    public static byte[] _findInnerTokenName(PlutusData.MapData innerPairs, BigInteger expectedQty) {
+        byte[] result = Builtins.emptyByteString();
+        boolean found = false;
+        PlutusData current = Builtins.unMapData(innerPairs);
+        while (!Builtins.nullList(current) && !found) {
+            var pair = Builtins.headList(current);
+            var qty = Builtins.unIData(Builtins.sndPair(pair));
+            if (qty.equals(expectedQty)) {
+                result = (byte[]) (Object) Builtins.unBData(Builtins.fstPair(pair));
+                found = true;
+            }
+            current = Builtins.tailList(current);
+        }
+        return result;
     }
 }

@@ -328,6 +328,10 @@ public class TypeResolver {
                         new PirType.Field("second", secondType),
                         new PirType.Field("third", thirdType)));
             }
+            case "AssetEntry" -> new PirType.RecordType("AssetEntry", List.of(
+                    new PirType.Field("policyId", new PirType.ByteStringType()),
+                    new PirType.Field("tokenName", new PirType.ByteStringType()),
+                    new PirType.Field("amount", new PirType.IntegerType())));
             case "Optional" -> {
                 PirType elemType = new PirType.DataType();
                 var optArgs = ct.getTypeArguments();

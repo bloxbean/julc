@@ -135,7 +135,11 @@ public class ContextsLib {
                     yield Builtins.constrData(0, Builtins.mkNilData());
                 }
             }
-            default -> Builtins.constrData(0, Builtins.mkNilData());
+            case ScriptInfo.MintingScript ms -> Builtins.constrData(0, Builtins.mkNilData());
+            case ScriptInfo.RewardingScript rs -> Builtins.constrData(0, Builtins.mkNilData());
+            case ScriptInfo.CertifyingScript cs -> Builtins.constrData(0, Builtins.mkNilData());
+            case ScriptInfo.VotingScript vs -> Builtins.constrData(0, Builtins.mkNilData());
+            case ScriptInfo.ProposingScript ps -> Builtins.constrData(0, Builtins.mkNilData());
         };
     }
 
@@ -161,7 +165,11 @@ public class ContextsLib {
                 }
                 yield result;
             }
-            default -> Builtins.constrData(1, Builtins.mkNilData());
+            case ScriptInfo.MintingScript ms -> Builtins.constrData(1, Builtins.mkNilData());
+            case ScriptInfo.RewardingScript rs -> Builtins.constrData(1, Builtins.mkNilData());
+            case ScriptInfo.CertifyingScript cs -> Builtins.constrData(1, Builtins.mkNilData());
+            case ScriptInfo.VotingScript vs -> Builtins.constrData(1, Builtins.mkNilData());
+            case ScriptInfo.ProposingScript ps -> Builtins.constrData(1, Builtins.mkNilData());
         };
     }
 
@@ -231,27 +239,32 @@ public class ContextsLib {
         return result;
     }
 
+    /** Extracts the script credential hash from the own input's address. */
+    public static PlutusData.BytesData ownInputScriptHash(ScriptContext ctx) {
+        var ownInputOpt = findOwnInput(ctx);
+        var optFields = Builtins.constrFields(ownInputOpt);
+        var ownInput = Builtins.headList(optFields);
+        var ownInFields = Builtins.constrFields(ownInput);
+        var ownTxOut = Builtins.headList(Builtins.tailList(ownInFields));
+        var ownTxOutFields = Builtins.constrFields(ownTxOut);
+        var ownAddress = Builtins.headList(ownTxOutFields);
+        var addrFields = Builtins.constrFields(ownAddress);
+        var credential = Builtins.headList(addrFields);
+        var credFields = Builtins.constrFields(credential);
+        return (PlutusData.BytesData) Builtins.headList(credFields);
+    }
+
     /** Extracts the own script hash from the ScriptContext's ScriptInfo.
-     *  Minting (tag 0) -> policyId. Spending (tag 1) -> script credential hash. */
+     *  Minting (tag 0) -> policyId. Others -> script credential hash from own input. */
     public static PlutusData.BytesData ownHash(ScriptContext ctx) {
         return switch (ctx.scriptInfo()) {
             case ScriptInfo.MintingScript ms ->
                     (PlutusData.BytesData)(Object) ms.policyId();
-            default -> {
-                // For spending and other script types, find the own input and extract
-                // the script credential hash from its address
-                var ownInputOpt = findOwnInput(ctx);
-                var optFields = Builtins.constrFields(ownInputOpt);
-                var ownInput = Builtins.headList(optFields);
-                var ownInFields = Builtins.constrFields(ownInput);
-                var ownTxOut = Builtins.headList(Builtins.tailList(ownInFields));
-                var ownTxOutFields = Builtins.constrFields(ownTxOut);
-                var ownAddress = Builtins.headList(ownTxOutFields);
-                var addrFields = Builtins.constrFields(ownAddress);
-                var credential = Builtins.headList(addrFields);
-                var credFields = Builtins.constrFields(credential);
-                yield (PlutusData.BytesData) Builtins.headList(credFields);
-            }
+            case ScriptInfo.SpendingScript ss -> ownInputScriptHash(ctx);
+            case ScriptInfo.RewardingScript rs -> ownInputScriptHash(ctx);
+            case ScriptInfo.CertifyingScript cs -> ownInputScriptHash(ctx);
+            case ScriptInfo.VotingScript vs -> ownInputScriptHash(ctx);
+            case ScriptInfo.ProposingScript ps -> ownInputScriptHash(ctx);
         };
     }
 

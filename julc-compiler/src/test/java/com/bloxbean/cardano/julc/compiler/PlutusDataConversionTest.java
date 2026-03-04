@@ -198,6 +198,122 @@ class PlutusDataConversionTest {
         }
 
         @Test
+        void castToRecordFieldAccess() {
+            // (RecordType)(Object) rawData → field access should work
+            // Cast is identity at UPLC level, but explicit type annotation
+            // registers RecordType in symbol table, enabling field extraction
+            var source = """
+                    import com.bloxbean.cardano.julc.ledger.*;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+
+                    @Validator
+                    class TestValidator {
+                        record MyDatum(BigInteger count, byte[] owner) {}
+
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            MyDatum datum = (MyDatum)(Object) redeemer;
+                            return datum.count() > 0;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var datumData = PlutusData.constr(0, PlutusData.integer(42), PlutusData.bytes(new byte[28]));
+            var ctx = PlutusData.constr(0, PlutusData.integer(0), datumData, PlutusData.integer(0));
+            var result = vm.evaluateWithArgs(program, List.of(ctx));
+            assertTrue(result.isSuccess(), "Cast-to-record field access should work. Got: " + result);
+        }
+
+        @Test
+        void castToRecordWithVarFieldAccess() {
+            // var datum = (RecordType)(Object) rawData → field access should work
+            // Tests that resolveExpressionType handles CastExpr for var type inference
+            var source = """
+                    import com.bloxbean.cardano.julc.ledger.*;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+
+                    @Validator
+                    class TestValidator {
+                        record MyDatum(BigInteger count, byte[] owner) {}
+
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            var datum = (MyDatum)(Object) redeemer;
+                            return datum.count() > 0;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var datumData = PlutusData.constr(0, PlutusData.integer(42), PlutusData.bytes(new byte[28]));
+            var ctx = PlutusData.constr(0, PlutusData.integer(0), datumData, PlutusData.integer(0));
+            var result = vm.evaluateWithArgs(program, List.of(ctx));
+            assertTrue(result.isSuccess(), "var + cast-to-record field access should work. Got: " + result);
+        }
+
+        @Test
+        void castToRecordMultiFieldAccess() {
+            // Test accessing multiple fields after cast, including deep fields
+            var source = """
+                    import com.bloxbean.cardano.julc.ledger.*;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+
+                    @Validator
+                    class TestValidator {
+                        record StateDatum(byte[] id, byte[] owner, BigInteger fee,
+                                          BigInteger feeInterval, BigInteger ttl) {}
+
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            StateDatum sd = (StateDatum)(Object) redeemer;
+                            BigInteger fee = sd.fee();
+                            BigInteger ttl = sd.ttl();
+                            return fee > 0 && ttl > 100;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var datumData = PlutusData.constr(0,
+                    PlutusData.bytes(new byte[32]),   // id
+                    PlutusData.bytes(new byte[28]),   // owner
+                    PlutusData.integer(1000),         // fee
+                    PlutusData.integer(5),            // feeInterval
+                    PlutusData.integer(999999));      // ttl
+            var ctx = PlutusData.constr(0, PlutusData.integer(0), datumData, PlutusData.integer(0));
+            var result = vm.evaluateWithArgs(program, List.of(ctx));
+            assertTrue(result.isSuccess(), "Multi-field access after cast should work. Got: " + result);
+        }
+
+        @Test
+        void nestedRecordConstruction() {
+            // new Credential.ScriptCredential(new ScriptHash(hash)) should compile correctly:
+            // ScriptHash(hash) is identity (hash type → ByteStringType)
+            // ScriptCredential(hash) → Constr(1, [BData(hash)])
+            var source = """
+                    import com.bloxbean.cardano.julc.ledger.*;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            byte[] hash = Builtins.unBData(redeemer);
+                            Credential cred = new Credential.ScriptCredential(new ScriptHash(hash));
+                            // ScriptCredential = Constr(1, [BData(hash)])
+                            // Verify by checking that equalsData matches the expected encoding
+                            PlutusData expected = Builtins.constrData(1,
+                                    Builtins.mkCons(Builtins.bData(hash), Builtins.mkNilData()));
+                            return Builtins.equalsData(cred, expected);
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.bytes(new byte[28]);
+            var ctx = PlutusData.constr(0, PlutusData.integer(0), redeemer, PlutusData.integer(0));
+            var result = vm.evaluateWithArgs(program, List.of(ctx));
+            assertTrue(result.isSuccess(), "Nested record construction should produce correct encoding. Got: " + result);
+        }
+
+        @Test
         void userDefinedSealedInterfaceFromPlutusData() {
             // User-defined sealed interfaces support fromPlutusData
             var source = """
