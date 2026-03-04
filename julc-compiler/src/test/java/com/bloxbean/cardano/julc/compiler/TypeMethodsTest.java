@@ -1573,4 +1573,131 @@ class TypeMethodsTest {
             assertTrue(result.isSuccess(), "unBData().value() == unBData().value() should compare ByteStrings. Got: " + result);
         }
     }
+
+    @Nested
+    class ChainedHashAccessor {
+        private PlutusData spendingCtx(PlutusData datum) {
+            var optDatum = PlutusData.constr(0, datum);
+            var txOutRef = PlutusData.constr(0, PlutusData.bytes(new byte[32]), PlutusData.integer(0));
+            var scriptInfo = PlutusData.constr(1, txOutRef, optDatum);
+            return buildScriptContext(buildTxInfo(new PlutusData[0], alwaysInterval()),
+                    PlutusData.integer(0), scriptInfo);
+        }
+
+        @Test
+        void sealedInterfaceHashDotHash() {
+            var source = """
+                    import java.math.BigInteger;
+
+                    @Validator
+                    class TestValidator {
+                        sealed interface Cred permits ScriptCred, PubKeyCred {}
+                        record ScriptCred(byte[] hash) implements Cred {}
+                        record PubKeyCred(byte[] hash) implements Cred {}
+
+                        record MyDatum(Cred cred, byte[] expected) {}
+
+                        @Entrypoint
+                        static boolean validate(MyDatum datum, PlutusData redeemer, ScriptContext ctx) {
+                            byte[] expected = datum.expected();
+                            return switch (datum.cred()) {
+                                case ScriptCred sc -> sc.hash().hash() == expected;
+                                case PubKeyCred pk -> false;
+                            };
+                        }
+                    }
+                    """;
+            var compiler = new JulcCompiler();
+            var program = compiler.compile(source).program();
+
+            // ScriptCred = Constr(0, [BData(hash)])
+            var cred = PlutusData.constr(0, PlutusData.bytes(new byte[]{1, 2, 3}));
+            // MyDatum = Constr(0, [cred, BData(expected)])
+            var datum = PlutusData.constr(0, cred, PlutusData.bytes(new byte[]{1, 2, 3}));
+            var ctx = spendingCtx(datum);
+            var result = vm.evaluateWithArgs(program, List.of(ctx));
+            assertTrue(result.isSuccess(), "sc.hash().hash() should work without double UnBData. Got: " + result);
+        }
+
+        @Test
+        void helperMethodWithHashDotHash() {
+            var source = """
+                    import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.core.types.JulcList;
+
+                    @Validator
+                    class TestValidator {
+                        sealed interface Cred permits ScriptCred, PubKeyCred {}
+                        record ScriptCred(byte[] hash) implements Cred {}
+                        record PubKeyCred(byte[] hash) implements Cred {}
+
+                        static boolean isMatch(Cred cred, byte[] expected) {
+                            return switch (cred) {
+                                case ScriptCred sc -> sc.hash().hash() == expected;
+                                case PubKeyCred pk -> false;
+                            };
+                        }
+
+                        record MyDatum(Cred cred, byte[] expected) {}
+
+                        @Entrypoint
+                        static boolean validate(MyDatum datum, PlutusData redeemer, ScriptContext ctx) {
+                            return isMatch(datum.cred(), datum.expected());
+                        }
+                    }
+                    """;
+            var compiler = new JulcCompiler();
+            var program = compiler.compile(source).program();
+
+            var cred = PlutusData.constr(0, PlutusData.bytes(new byte[]{1, 2, 3}));
+            var datum = PlutusData.constr(0, cred, PlutusData.bytes(new byte[]{1, 2, 3}));
+            var ctx = spendingCtx(datum);
+            var result = vm.evaluateWithArgs(program, List.of(ctx));
+            assertTrue(result.isSuccess(), "Helper method with sc.hash().hash() should work. Got: " + result);
+        }
+
+        @Test
+        void helperMethodInHofLambda() {
+            var source = """
+                    import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.core.types.JulcList;
+
+                    @Validator
+                    class TestValidator {
+                        sealed interface Cred permits ScriptCred, PubKeyCred {}
+                        record ScriptCred(byte[] hash) implements Cred {}
+                        record PubKeyCred(byte[] hash) implements Cred {}
+
+                        static boolean isMatch(Cred cred, byte[] expected) {
+                            return switch (cred) {
+                                case ScriptCred sc -> sc.hash().hash() == expected;
+                                case PubKeyCred pk -> false;
+                            };
+                        }
+
+                        record Item(Cred cred) {}
+                        record MyDatum(JulcList<Item> items, byte[] expected) {}
+
+                        @Entrypoint
+                        static boolean validate(MyDatum datum, PlutusData redeemer, ScriptContext ctx) {
+                            byte[] expected = datum.expected();
+                            return datum.items().any(item -> isMatch(item.cred(), expected));
+                        }
+                    }
+                    """;
+            var compiler = new JulcCompiler();
+            var program = compiler.compile(source).program();
+
+            // Item = Constr(0, [cred])  where cred = Constr(0, [BData(hash)])
+            var cred = PlutusData.constr(0, PlutusData.bytes(new byte[]{1, 2, 3}));
+            var item = PlutusData.constr(0, cred);
+            // MyDatum = Constr(0, [list_of_items, BData(expected)])
+            var datum = PlutusData.constr(0,
+                    PlutusData.list(item),
+                    PlutusData.bytes(new byte[]{1, 2, 3}));
+            var ctx = spendingCtx(datum);
+            var result = vm.evaluateWithArgs(program, List.of(ctx));
+            assertTrue(result.isSuccess(), "Helper in HOF lambda with sc.hash().hash() should work. Got: " + result);
+        }
+    }
 }

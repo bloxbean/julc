@@ -97,4 +97,55 @@ public class ByteStringLib {
     public static byte[] serialiseData(PlutusData d) {
         return Builtins.serialiseData(d);
     }
+
+    // --- Hex encoding ---
+
+    /** Map a nibble (0-15) to its lowercase ASCII hex char ('0'-'9', 'a'-'f'). */
+    public static long hexNibble(long n) {
+        if (n < 10) return 48 + n;   // '0' + n
+        return 87 + n;               // 'a' + (n - 10) = 87 + n
+    }
+
+    /**
+     * Convert a bytestring to its lowercase hex representation.
+     * Each byte becomes two hex characters (e.g. 0xDE → "de").
+     */
+    public static byte[] toHex(byte[] bs) {
+        long len = Builtins.lengthOfByteString(bs);
+        if (len == 0) return Builtins.emptyByteString();
+        return toHexStep(bs, len - 1, Builtins.emptyByteString());
+    }
+
+    /** Recursive helper: process bytes from index down to 0, prepending hex chars. */
+    public static byte[] toHexStep(byte[] bs, long idx, byte[] acc) {
+        long b = Builtins.indexByteString(bs, idx);
+        long hi = b / 16;
+        long lo = b % 16;
+        byte[] updated = Builtins.consByteString(hexNibble(hi),
+                Builtins.consByteString(hexNibble(lo), acc));
+        if (idx == 0) return updated;
+        return toHexStep(bs, idx - 1, updated);
+    }
+
+    // --- Integer to decimal string ---
+
+    /**
+     * Convert a non-negative integer to its decimal string representation as UTF-8 bytes.
+     * E.g. 42 → "42" (as byte[]{52, 50}).
+     */
+    public static byte[] intToDecimalString(BigInteger n) {
+        if (n.equals(BigInteger.ZERO)) {
+            return Builtins.consByteString(48, Builtins.emptyByteString()); // "0"
+        }
+        return intToDecimalStep(n, Builtins.emptyByteString());
+    }
+
+    /** Recursive helper: divmod by 10, prepend digit char. */
+    public static byte[] intToDecimalStep(BigInteger n, byte[] acc) {
+        if (n.equals(BigInteger.ZERO)) return acc;
+        BigInteger div = n.divide(BigInteger.TEN);
+        long digit = n.remainder(BigInteger.TEN).longValue();
+        byte[] updated = Builtins.consByteString(48 + digit, acc);
+        return intToDecimalStep(div, updated);
+    }
 }

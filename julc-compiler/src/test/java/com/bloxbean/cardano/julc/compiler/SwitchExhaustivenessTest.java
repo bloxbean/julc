@@ -93,8 +93,8 @@ class SwitchExhaustivenessTest {
     }
 
     @Test
-    void testDefaultBranchProducesError() {
-        // Switch with default branch — should produce compiler error since default is not supported
+    void testDefaultBranchCompilesAndEvaluates() {
+        // Switch with default branch — should compile, default covers unmatched variants
         var source = """
             import java.math.BigInteger;
 
@@ -115,14 +115,28 @@ class SwitchExhaustivenessTest {
                 }
             }
             """;
-        var ex = assertThrows(CompilerException.class, () -> new JulcCompiler().compile(source));
-        assertTrue(ex.getMessage().contains("default") && ex.getMessage().contains("not supported"),
-                "Should report default branch not supported. Got: " + ex.getMessage());
+        var result = new JulcCompiler().compile(source);
+        assertFalse(result.hasErrors(), "Default branch should compile. Got: " + result.diagnostics());
+
+        // Evaluate with Mint(10) → amt > 0 → true (explicit case)
+        var mintRedeemer = PlutusData.constr(0, PlutusData.integer(10));
+        var mintResult = vm.evaluateWithArgs(result.program(), List.of(mockCtx(mintRedeemer)));
+        assertTrue(mintResult.isSuccess(), "Mint(10) should pass via explicit case. Got: " + mintResult);
+
+        // Evaluate with Burn(5) → default → true (default branch)
+        var burnRedeemer = PlutusData.constr(1, PlutusData.integer(5));
+        var burnResult = vm.evaluateWithArgs(result.program(), List.of(mockCtx(burnRedeemer)));
+        assertTrue(burnResult.isSuccess(), "Burn(5) should pass via default branch. Got: " + burnResult);
+
+        // Evaluate with Transfer(3) → default → true (default branch)
+        var transferRedeemer = PlutusData.constr(2, PlutusData.integer(3));
+        var transferResult = vm.evaluateWithArgs(result.program(), List.of(mockCtx(transferRedeemer)));
+        assertTrue(transferResult.isSuccess(), "Transfer(3) should pass via default branch. Got: " + transferResult);
     }
 
     @Test
-    void testDefaultBranchWithAllCasesStillErrors() {
-        // Even with all cases + default, default branch should produce error
+    void testDefaultBranchWithAllCasesCompiles() {
+        // All cases + default — default is redundant but should still compile
         var source = """
             import java.math.BigInteger;
 
@@ -143,9 +157,18 @@ class SwitchExhaustivenessTest {
                 }
             }
             """;
-        var ex = assertThrows(CompilerException.class, () -> new JulcCompiler().compile(source));
-        assertTrue(ex.getMessage().contains("default") && ex.getMessage().contains("not supported"),
-                "Should report default branch not supported even with all cases. Got: " + ex.getMessage());
+        var result = new JulcCompiler().compile(source);
+        assertFalse(result.hasErrors(), "All cases + default should compile. Got: " + result.diagnostics());
+
+        // Evaluate with Mint(10) → amt > 0 → true (explicit case takes priority)
+        var mintRedeemer = PlutusData.constr(0, PlutusData.integer(10));
+        var mintResult = vm.evaluateWithArgs(result.program(), List.of(mockCtx(mintRedeemer)));
+        assertTrue(mintResult.isSuccess(), "Mint(10) should pass. Got: " + mintResult);
+
+        // Evaluate with Burn(5) → amt > 0 → true (explicit case)
+        var burnRedeemer = PlutusData.constr(1, PlutusData.integer(5));
+        var burnResult = vm.evaluateWithArgs(result.program(), List.of(mockCtx(burnRedeemer)));
+        assertTrue(burnResult.isSuccess(), "Burn(5) should pass. Got: " + burnResult);
     }
 
     @Test

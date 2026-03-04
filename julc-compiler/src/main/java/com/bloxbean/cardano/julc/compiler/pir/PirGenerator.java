@@ -774,6 +774,14 @@ public class PirGenerator {
                         }
                     }
                 }
+                // Chained .hash() on a ledger hash / @NewType that already resolved to
+                // ByteStringType.  The parent accessor already applied UnBData, so
+                // the .hash() accessor is an identity — skip the TypeMethodRegistry
+                // dispatch which would apply a redundant UnBData.
+                if (scopeType instanceof PirType.ByteStringType
+                        && methodName.equals("hash")) {
+                    return scope;
+                }
             }
 
             // Dispatch instance methods via TypeMethodRegistry
@@ -823,6 +831,12 @@ public class PirGenerator {
                     if (scopeExpr instanceof NameExpr ne
                             && hofUnwrappedVars.contains(ne.getNameAsString())) {
                         return scope; // HOF-unwrapped — identity
+                    }
+                    // Chained accessor: parent MethodCallExpr already produced a raw
+                    // bytestring (via field extraction / wrapDecode), so another
+                    // UnBData would be a double-unwrap.
+                    if (scopeExpr instanceof MethodCallExpr) {
+                        return scope;
                     }
                     // Standard field extraction: UnBData (same semantics as .hash() for non-HOF context)
                     return new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnBData), scope);
@@ -945,6 +959,17 @@ public class PirGenerator {
             if (methodType.isPresent()) {
                 return extractReturnType(methodType.get());
             }
+        }
+        // Handle cast expressions: (RecordType)(Object) data → resolve the target type
+        // This enables `var sd = (StateDatum)(Object) rawDatum;` to infer RecordType
+        if (expr instanceof CastExpr ce) {
+            try {
+                var castType = typeResolver.resolve(ce.getType());
+                if (!(castType instanceof PirType.DataType)) return castType;
+            } catch (IllegalArgumentException _) {
+                // Unknown target (e.g., Object) — fall through
+            }
+            return resolveExpressionType(ce.getExpression());
         }
         return new PirType.DataType();
     }
@@ -1122,6 +1147,17 @@ public class PirGenerator {
                         "@NewType records have a single field, so the constructor takes 1 argument.", oce);
             }
             return generateExpression(oce.getArguments().get(0));
+        }
+
+        // Ledger hash types (ScriptHash, PubKeyHash, etc.) resolve to ByteStringType.
+        // Their constructors are identity — the single field IS the underlying byte[].
+        try {
+            var resolvedType = typeResolver.resolve(ct);
+            if (resolvedType instanceof PirType.ByteStringType && oce.getArguments().size() == 1) {
+                return generateExpression(oce.getArguments().get(0));
+            }
+        } catch (IllegalArgumentException _) {
+            // Not a known type — continue to other checks
         }
 
         // Handle new BigInteger("12345") → integer constant
@@ -2545,12 +2581,12 @@ public class PirGenerator {
 
         var desugarer = new PatternMatchDesugarer(typeResolver);
         var matchEntries = new ArrayList<PatternMatchDesugarer.MatchEntry>();
+        PirTerm defaultBranchBody = null;
 
         for (var entry : se.getEntries()) {
             if (entry.isDefault()) {
-                collectError("The 'default' branch is not supported in switch on sealed interfaces. "
-                                + "The default branch body is not compiled and would be silently ignored.",
-                        "Use explicit cases for all variants of '" + sumType.name() + "' instead.", se);
+                // Compile the default branch body for use as catch-all for unmatched variants
+                defaultBranchBody = generateSwitchEntryBody(entry);
                 continue;
             }
             for (var label : entry.getLabels()) {
@@ -2593,10 +2629,19 @@ public class PirGenerator {
             }
         }
 
-        // Exhaustiveness check: verify all constructors are covered or a default branch exists
-        boolean hasDefault = se.getEntries().stream().anyMatch(
-                com.github.javaparser.ast.stmt.SwitchEntry::isDefault);
-        if (!hasDefault) {
+        if (defaultBranchBody != null) {
+            // Fill missing variants with the default branch body
+            var coveredCases = matchEntries.stream()
+                    .map(PatternMatchDesugarer.MatchEntry::variantName)
+                    .collect(java.util.stream.Collectors.toSet());
+            for (var ctor : sumType.constructors()) {
+                if (!coveredCases.contains(ctor.name())) {
+                    matchEntries.add(new PatternMatchDesugarer.MatchEntry(
+                            ctor.name(), List.of(), defaultBranchBody));
+                }
+            }
+        } else {
+            // Exhaustiveness check: verify all constructors are covered
             var coveredCases = matchEntries.stream()
                     .map(PatternMatchDesugarer.MatchEntry::variantName)
                     .collect(java.util.stream.Collectors.toSet());

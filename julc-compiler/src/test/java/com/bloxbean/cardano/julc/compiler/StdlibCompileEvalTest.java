@@ -579,6 +579,135 @@ class StdlibCompileEvalTest {
             var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
             assertTrue(result.isSuccess(), "findMintOutput pattern should work. Got: " + result);
         }
+
+        @Test
+        void reverseWorks() {
+            // Test ListsLib.reverse — build [1,2,3], reverse to [3,2,1], check head==3
+            var source = """
+                    import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            PlutusData.ListData list = Builtins.mkCons(Builtins.iData(1),
+                                Builtins.mkCons(Builtins.iData(2),
+                                Builtins.mkCons(Builtins.iData(3), Builtins.mkNilData())));
+                            PlutusData.ListData rev = ListsLib.reverse(list);
+                            return Builtins.unIData(Builtins.headList(rev)) == 3;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
+            assertTrue(result.isSuccess(), "reverse([1,2,3]) head should be 3. Got: " + result);
+        }
+
+        @Test
+        void flattenPolicyWorks() {
+            // Test flattenPolicy directly — flatten a single policy's inner map
+            var source = """
+                    import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            // redeemer = Map[(policy, Map[(token, 100)])]
+                            var outerPairs = Builtins.unMapData(redeemer);
+                            var outerPair = Builtins.headList(outerPairs);
+                            var policyData = Builtins.fstPair(outerPair);
+                            PlutusData.MapData innerMap = (PlutusData.MapData) Builtins.sndPair(outerPair);
+                            PlutusData.ListData acc = Builtins.mkNilData();
+                            PlutusData.ListData result = ValuesLib.flattenPolicy(policyData, innerMap, acc);
+                            return !Builtins.nullList(result);
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var value = PlutusData.map(
+                    new PlutusData.Pair(
+                            PlutusData.bytes(new byte[]{1, 2, 3}),
+                            PlutusData.map(
+                                    new PlutusData.Pair(PlutusData.bytes(new byte[]{4, 5, 6}), PlutusData.integer(100))
+                            )
+                    )
+            );
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(value)));
+            assertTrue(result.isSuccess(), "flattenPolicy should return non-empty list. Got: " + result);
+        }
+
+        @Test
+        void flattenReturnsNonEmptyList() {
+            // Test calling ValuesLib.flatten as a library method
+            var source = """
+                    import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            PlutusData.ListData flat = ValuesLib.flatten(redeemer);
+                            return !Builtins.nullList(flat);
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var value = PlutusData.map(
+                    new PlutusData.Pair(
+                            PlutusData.bytes(new byte[]{1, 2, 3}),
+                            PlutusData.map(
+                                    new PlutusData.Pair(PlutusData.bytes(new byte[]{4, 5, 6}), PlutusData.integer(100))
+                            )
+                    )
+            );
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(value)));
+            assertTrue(result.isSuccess(), "ValuesLib.flatten should return non-empty list. Got: " + result);
+        }
+
+        @Test
+        void flattenWithAssetEntryCast() {
+            // Test that flatten() result can be cast to JulcList<AssetEntry> for typed field access
+            var source = """
+                    import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.core.types.AssetEntry;
+                    import com.bloxbean.cardano.julc.core.types.JulcList;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            JulcList<AssetEntry> entries = (JulcList<AssetEntry>)(Object) ValuesLib.flatten(redeemer);
+                            boolean found = false;
+                            for (AssetEntry entry : entries) {
+                                if (entry.amount().compareTo(BigInteger.valueOf(100)) == 0) {
+                                    found = true;
+                                }
+                            }
+                            return found;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var value = PlutusData.map(
+                    new PlutusData.Pair(
+                            PlutusData.bytes(new byte[]{1, 2, 3}),
+                            PlutusData.map(
+                                    new PlutusData.Pair(PlutusData.bytes(new byte[]{4, 5, 6}), PlutusData.integer(100))
+                            )
+                    )
+            );
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(value)));
+            assertTrue(result.isSuccess(), "flatten + AssetEntry cast should enable typed field access. Got: " + result);
+        }
     }
 
     // =========================================================================
@@ -4723,6 +4852,166 @@ class StdlibCompileEvalTest {
             var program = compileValidatorWithLibs(validator, userLib);
             var evalResult = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
             assertTrue(evalResult.isSuccess(), "Nested library calls should resolve types recursively. Got: " + evalResult);
+        }
+    }
+
+    // =========================================================================
+    // ByteStringLib — toHex and intToDecimalString
+    // =========================================================================
+
+    @Nested
+    class ByteStringLibEval {
+
+        // All tests pack input + expected into redeemer as Constr(0, [input, expected])
+        // and use mockCtx(redeemer) for proper PlutusV3 single-arg evaluation.
+
+        @Test
+        void toHexDeadBeef() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            var fields = Builtins.constrFields(redeemer);
+                            byte[] input = Builtins.unBData(Builtins.headList(fields));
+                            byte[] expected = Builtins.unBData(Builtins.headList(Builtins.tailList(fields)));
+                            byte[] hex = ByteStringLib.toHex(input);
+                            return Builtins.equalsByteString(hex, expected);
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.constr(0,
+                    PlutusData.bytes(new byte[]{(byte) 0xDE, (byte) 0xAD}),
+                    PlutusData.bytes("dead".getBytes()));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "toHex([0xDE,0xAD]) should produce 'dead'. Got: " + result);
+        }
+
+        @Test
+        void toHexZeroPadding() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            var fields = Builtins.constrFields(redeemer);
+                            byte[] input = Builtins.unBData(Builtins.headList(fields));
+                            byte[] expected = Builtins.unBData(Builtins.headList(Builtins.tailList(fields)));
+                            byte[] hex = ByteStringLib.toHex(input);
+                            return Builtins.equalsByteString(hex, expected);
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.constr(0,
+                    PlutusData.bytes(new byte[]{0x00, (byte) 0xFF}),
+                    PlutusData.bytes("00ff".getBytes()));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "toHex([0x00,0xFF]) should produce '00ff'. Got: " + result);
+        }
+
+        @Test
+        void toHexEmptyInput() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            byte[] hex = ByteStringLib.toHex(Builtins.emptyByteString());
+                            return Builtins.lengthOfByteString(hex) == 0;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
+            assertTrue(result.isSuccess(), "toHex([]) should produce empty. Got: " + result);
+        }
+
+        @Test
+        void intToDecimalStringZero() {
+            var source = """
+                    import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            byte[] result = ByteStringLib.intToDecimalString(BigInteger.ZERO);
+                            byte[] expected = Builtins.unBData(redeemer);
+                            return Builtins.equalsByteString(result, expected);
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.bytes("0".getBytes());
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "intToDecimalString(0) should produce '0'. Got: " + result);
+        }
+
+        @Test
+        void intToDecimalString42() {
+            var source = """
+                    import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            var fields = Builtins.constrFields(redeemer);
+                            BigInteger n = Builtins.unIData(Builtins.headList(fields));
+                            byte[] expected = Builtins.unBData(Builtins.headList(Builtins.tailList(fields)));
+                            byte[] result = ByteStringLib.intToDecimalString(n);
+                            return Builtins.equalsByteString(result, expected);
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.constr(0,
+                    PlutusData.integer(42),
+                    PlutusData.bytes("42".getBytes()));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "intToDecimalString(42) should produce '42'. Got: " + result);
+        }
+
+        @Test
+        void intToDecimalString12345() {
+            var source = """
+                    import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            var fields = Builtins.constrFields(redeemer);
+                            BigInteger n = Builtins.unIData(Builtins.headList(fields));
+                            byte[] expected = Builtins.unBData(Builtins.headList(Builtins.tailList(fields)));
+                            byte[] result = ByteStringLib.intToDecimalString(n);
+                            return Builtins.equalsByteString(result, expected);
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.constr(0,
+                    PlutusData.integer(12345),
+                    PlutusData.bytes("12345".getBytes()));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "intToDecimalString(12345) should produce '12345'. Got: " + result);
         }
     }
 }
