@@ -11,6 +11,7 @@ import com.bloxbean.cardano.julc.compiler.resolve.TypeRegistrar;
 import com.bloxbean.cardano.julc.compiler.resolve.TypeResolver;
 import com.bloxbean.cardano.julc.compiler.uplc.UplcGenerator;
 import com.bloxbean.cardano.julc.compiler.uplc.UplcOptimizer;
+import com.bloxbean.cardano.julc.compiler.util.MethodDependencyResolver;
 import com.bloxbean.cardano.julc.compiler.validate.SubsetValidator;
 import com.bloxbean.cardano.julc.core.Program;
 import com.bloxbean.cardano.julc.core.Term;
@@ -339,14 +340,9 @@ public class JulcCompiler {
         // For auto-dispatch, wrap each handler; for single entrypoint, wrap the single body
         PirTerm body;
         if (isMultiAutoDispatch) {
-            // Wrap helper methods around each handler
-            var helperMethods = new ArrayList<>(symbolTable.allMethods());
+            // Wrap helper methods around each handler (dependency-ordered)
             for (var entry : multiHandlers.entrySet()) {
-                PirTerm handlerBody = entry.getValue();
-                for (int i = helperMethods.size() - 1; i >= 0; i--) {
-                    var mi = helperMethods.get(i);
-                    handlerBody = new PirTerm.Let(mi.name(), mi.body(), handlerBody);
-                }
+                PirTerm handlerBody = wrapMethodBindings(symbolTable.allMethods(), entry.getValue());
                 // Wrap static field initializers
                 for (int i = compiledStaticFields.size() - 1; i >= 0; i--) {
                     var sf = compiledStaticFields.get(i);
@@ -356,12 +352,7 @@ public class JulcCompiler {
             }
             body = null; // Not used; wrapper handles it
         } else {
-            body = validateFn;
-            var methods = new ArrayList<>(symbolTable.allMethods());
-            for (int i = methods.size() - 1; i >= 0; i--) {
-                var mi = methods.get(i);
-                body = new PirTerm.Let(mi.name(), mi.body(), body);
-            }
+            body = wrapMethodBindings(symbolTable.allMethods(), validateFn);
 
             // 13b. Wrap static field initializers as Let bindings (reverse order for correct scoping)
             for (int i = compiledStaticFields.size() - 1; i >= 0; i--) {
@@ -701,18 +692,8 @@ public class JulcCompiler {
             body = new PirTerm.Lam(rawName, new PirType.DataType(), body);
         }
 
-        // 12. Wrap ALL methods as Let/LetRec bindings (target + helpers)
-        var methods = new ArrayList<>(symbolTable.allMethods());
-        for (int i = methods.size() - 1; i >= 0; i--) {
-            var mi = methods.get(i);
-            if (containsVarRef(mi.body(), mi.name())) {
-                body = new PirTerm.LetRec(
-                        List.of(new PirTerm.Binding(mi.name(), mi.body())),
-                        body);
-            } else {
-                body = new PirTerm.Let(mi.name(), mi.body(), body);
-            }
-        }
+        // 12. Wrap ALL methods as Let/LetRec bindings (target + helpers, dependency-ordered)
+        body = wrapMethodBindings(symbolTable.allMethods(), body);
 
         // 14. Wrap static field initializers
         for (int i = compiledStaticFields.size() - 1; i >= 0; i--) {
@@ -846,6 +827,50 @@ public class JulcCompiler {
             case PirTerm.Trace t -> containsVarRef(t.message(), name) || containsVarRef(t.body(), name);
             case PirTerm.Const _, PirTerm.Builtin _, PirTerm.Error _ -> false;
         };
+    }
+
+    /**
+     * Wrap class/validator methods as Let/LetRec bindings in dependency order.
+     * Uses Tarjan's SCC to handle forward references and mutual recursion.
+     */
+    private static PirTerm wrapMethodBindings(java.util.Collection<SymbolTable.MethodInfo> methods, PirTerm body) {
+        if (methods.isEmpty()) return body;
+
+        var bindings = new ArrayList<MethodDependencyResolver.NamedBinding>();
+        for (var mi : methods) {
+            bindings.add(new MethodDependencyResolver.NamedBinding(mi.name(), mi.body()));
+        }
+
+        var groups = MethodDependencyResolver.resolveDependencyOrder(
+                bindings, JulcCompiler::containsVarRef);
+
+        // Wrap from first (innermost) to last (outermost)
+        for (var group : groups) {
+            if (group.isSingle()) {
+                var b = group.bindings().get(0);
+                if (containsVarRef(b.body(), b.name())) {
+                    body = new PirTerm.LetRec(
+                            List.of(new PirTerm.Binding(b.name(), b.body())), body);
+                } else {
+                    body = new PirTerm.Let(b.name(), b.body(), body);
+                }
+            } else if (group.bindings().size() == 2) {
+                // Mutual recursion — multi-binding LetRec (Bekic's theorem in UplcGenerator)
+                var pirBindings = new ArrayList<PirTerm.Binding>();
+                for (var b : group.bindings()) {
+                    pirBindings.add(new PirTerm.Binding(b.name(), b.body()));
+                }
+                body = new PirTerm.LetRec(pirBindings, body);
+            } else {
+                var names = group.bindings().stream()
+                        .map(MethodDependencyResolver.NamedBinding::name)
+                        .toList();
+                throw new CompilerException(
+                        "Mutual recursion with more than 2 methods is not supported: " + names);
+            }
+        }
+
+        return body;
     }
 
     /**
