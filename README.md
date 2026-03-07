@@ -93,9 +93,9 @@ For detailed dependencies, check the [getting started](docs/getting-started.md) 
 
 ### Using Snapshot Builds
 
-Snapshot versions include the Git commit hash for traceability, e.g. `0.1.0-061434c-SNAPSHOT`.
+Snapshot versions include the Git commit hash for traceability, e.g. `0.1.0-055d17f-SNAPSHOT`.
 
-**Current snapshot version**: `0.1.0-061434c-SNAPSHOT`. Check here for the latest snapshot commit ID: https://github.com/bloxbean/julc/actions/workflows/snapshot.yml
+**Current snapshot version**: `0.1.0-055d17f-SNAPSHOT`. Check here for the latest snapshot commit ID: https://github.com/bloxbean/julc/actions/workflows/snapshot.yml
 
 To use snapshots, add the Sonatype snapshot repository:
 
