@@ -464,7 +464,7 @@ public class ValuesLib {
             var pair = Builtins.headList(current);
             var qty = Builtins.unIData(Builtins.sndPair(pair));
             if (qty.equals(expectedQty)) {
-                result = (byte[]) (Object) Builtins.unBData(Builtins.fstPair(pair));
+                result = Builtins.unBData(Builtins.fstPair(pair));
                 found = true;
             }
             current = Builtins.tailList(current);

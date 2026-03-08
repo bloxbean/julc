@@ -205,6 +205,11 @@ public final class StdlibRegistry implements StdlibLookup {
             {"unBData",             DefaultFun.UnBData},
             {"unListData",          DefaultFun.UnListData},
             {"unMapData",           DefaultFun.UnMapData},
+            // Type-friendly aliases
+            {"asBytes",             DefaultFun.UnBData},
+            {"asInteger",           DefaultFun.UnIData},
+            {"asList",              DefaultFun.UnListData},
+            {"asMap",               DefaultFun.UnMapData},
             // ByteString operations
             {"lengthOfByteString",  DefaultFun.LengthOfByteString},
             {"encodeUtf8",          DefaultFun.EncodeUtf8},

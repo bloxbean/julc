@@ -5014,4 +5014,215 @@ class StdlibCompileEvalTest {
             assertTrue(result.isSuccess(), "intToDecimalString(12345) should produce '12345'. Got: " + result);
         }
     }
+
+    // =========================================================================
+    // TypeFriendlyAliases — asBytes/asInteger/asList/asMap + unBData return type
+    // =========================================================================
+
+    @Nested
+    class TypeFriendlyAliases {
+
+        @Test
+        void asBytesExtractsFromBytesData() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            byte[] raw = Builtins.asBytes(redeemer);
+                            return Builtins.lengthOfByteString(raw) == 3;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.bytes(new byte[]{1, 2, 3});
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "asBytes should extract bytes. Got: " + result);
+        }
+
+        @Test
+        void asIntegerExtractsFromIntData() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            BigInteger n = Builtins.asInteger(redeemer);
+                            return n.compareTo(BigInteger.valueOf(42)) == 0;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.integer(42);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "asInteger should extract integer. Got: " + result);
+        }
+
+        @Test
+        void asListExtractsFromListData() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            var list = Builtins.asList(redeemer);
+                            return !Builtins.nullList(list);
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.list(PlutusData.integer(1), PlutusData.integer(2));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "asList should extract list. Got: " + result);
+        }
+
+        @Test
+        void asMapExtractsFromMapData() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            var m = Builtins.asMap(redeemer);
+                            return !Builtins.nullList(m);
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.map(
+                    new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(10)));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "asMap should extract map. Got: " + result);
+        }
+
+        @Test
+        void unBDataReturnsBytes() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            byte[] raw = Builtins.unBData(redeemer);
+                            return Builtins.lengthOfByteString(raw) == 4;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.bytes(new byte[]{10, 20, 30, 40});
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "unBData should return byte[]. Got: " + result);
+        }
+
+        @Test
+        void backwardCompatRedundantCast() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            byte[] raw = (byte[])(Object) Builtins.unBData(redeemer);
+                            return Builtins.lengthOfByteString(raw) == 2;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.bytes(new byte[]{(byte) 0xAB, (byte) 0xCD});
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "Redundant cast should still compile. Got: " + result);
+        }
+
+        @Test
+        void constrTagExtractsTag() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            long tag = Builtins.constrTag(redeemer);
+                            return tag == 2;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.constr(2, PlutusData.integer(99));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "constrTag should extract tag. Got: " + result);
+        }
+
+        @Test
+        void constrFieldsExtractsFields() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            var fields = Builtins.constrFields(redeemer);
+                            BigInteger val = Builtins.unIData(Builtins.headList(fields));
+                            return val.compareTo(BigInteger.valueOf(42)) == 0;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.constr(0, PlutusData.integer(42));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "constrFields should extract fields. Got: " + result);
+        }
+
+        @Test
+        void asBytesWithHeadList() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            var fields = Builtins.constrFields(redeemer);
+                            byte[] hash = Builtins.asBytes(Builtins.headList(fields));
+                            return Builtins.lengthOfByteString(hash) == 28;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.constr(0, PlutusData.bytes(new byte[28]));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "asBytes(headList(fields)) should work. Got: " + result);
+        }
+
+        @Test
+        void varTypeInferenceWithAsBytes() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            var raw = Builtins.asBytes(redeemer);
+                            return Builtins.equalsByteString(raw, raw);
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.bytes(new byte[]{1, 2, 3});
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "var inference with asBytes should work. Got: " + result);
+        }
+    }
 }

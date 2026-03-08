@@ -1064,9 +1064,10 @@ class StdlibTest {
             assertTrue(reg.contains("Optional", "empty"));
             assertTrue(reg.contains("java.util.Optional", "of"));
             assertTrue(reg.contains("java.util.Optional", "empty"));
-            // Total: 60 Builtins + 7 ListsLib HOF + 1 ContextsLib.trace + 3 Math delegates
-            //   + 2 JulcList factories + 7 ledger .of() + 4 Optional factories = 84
-            assertEquals(84, reg.size());
+            // Total: 60 Builtins + 4 aliases (asBytes/asInteger/asList/asMap)
+            //   + 7 ListsLib HOF + 1 ContextsLib.trace + 3 Math delegates
+            //   + 2 JulcList factories + 7 ledger .of() + 4 Optional factories = 88
+            assertEquals(88, reg.size());
         }
 
         @Test

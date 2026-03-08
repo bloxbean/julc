@@ -1,6 +1,10 @@
 package com.bloxbean.cardano.julc.stdlib;
 
 import com.bloxbean.cardano.julc.core.PlutusData;
+import com.bloxbean.cardano.julc.core.types.JulcArrayList;
+import com.bloxbean.cardano.julc.core.types.JulcAssocMap;
+import com.bloxbean.cardano.julc.core.types.JulcList;
+import com.bloxbean.cardano.julc.core.types.JulcMap;
 import com.bloxbean.cardano.julc.ledger.PlutusDataConvertible;
 
 import java.math.BigInteger;
@@ -175,9 +179,9 @@ public final class Builtins {
     }
 
     /** Extract byte string from BytesData. */
-    public static PlutusData.BytesData unBData(PlutusData data) {
+    public static byte[] unBData(PlutusData data) {
         if (data instanceof PlutusData.BytesData bd) {
-            return bd;
+            return bd.value();
         }
         throw new IllegalArgumentException("unBData: expected BytesData, got " + data);
     }
@@ -397,6 +401,11 @@ public final class Builtins {
     /** @see #equalsByteString(PlutusData.BytesData, PlutusData.BytesData) */
     public static boolean equalsByteString(byte[] a, byte[] b) {
         return equalsByteString(new PlutusData.BytesData(a), new PlutusData.BytesData(b));
+    }
+
+    /** @see #equalsByteString(PlutusData.BytesData, PlutusData.BytesData) */
+    public static boolean equalsByteString(byte[] a, PlutusData.BytesData b) {
+        return Arrays.equals(a, toBytes(b));
     }
 
     /** @see #lessThanByteString(PlutusData.BytesData, PlutusData.BytesData) */
@@ -754,7 +763,7 @@ public final class Builtins {
     }
 
     /** @see #unBData(PlutusData) */
-    public static PlutusData.BytesData unBData(Object data) {
+    public static byte[] unBData(Object data) {
         return unBData(asPlutusData(data));
     }
 
@@ -805,6 +814,46 @@ public final class Builtins {
         }
         throw new ClassCastException("Cannot extract byte[] from " + data.getClass().getName());
     }
+
+    // =========================================================================
+    // Type-friendly aliases (eliminate double-cast verbosity)
+    // =========================================================================
+
+    /** Extract byte string from Data. Alias for {@link #unBData(PlutusData)}. */
+    public static byte[] asBytes(PlutusData data) { return unBData(data); }
+
+    /** @see #asBytes(PlutusData) */
+    public static byte[] asBytes(Object data) { return unBData(asPlutusData(data)); }
+
+    /** Extract integer from Data. Alias for {@link #unIData(PlutusData)}. */
+    public static BigInteger asInteger(PlutusData data) { return unIData(data); }
+
+    /** @see #asInteger(PlutusData) */
+    public static BigInteger asInteger(Object data) { return unIData(asPlutusData(data)); }
+
+    /** Extract list from Data. Typed alias for {@link #unListData(PlutusData)}. */
+    public static JulcList<PlutusData> asList(PlutusData data) {
+        if (data instanceof PlutusData.ListData ld) return new JulcArrayList<>(ld.items());
+        throw new IllegalArgumentException("asList: expected ListData, got " + data);
+    }
+
+    /** @see #asList(PlutusData) */
+    public static JulcList<PlutusData> asList(Object data) { return asList(asPlutusData(data)); }
+
+    /** Extract map from Data. Typed alias for {@link #unMapData(PlutusData)}. */
+    public static JulcMap<PlutusData, PlutusData> asMap(PlutusData data) {
+        if (data instanceof PlutusData.MapData md) {
+            JulcMap<PlutusData, PlutusData> result = JulcAssocMap.empty();
+            for (var pair : md.entries()) {
+                result = result.insert(pair.key(), pair.value());
+            }
+            return result;
+        }
+        throw new IllegalArgumentException("asMap: expected MapData, got " + data);
+    }
+
+    /** @see #asMap(PlutusData) */
+    public static JulcMap<PlutusData, PlutusData> asMap(Object data) { return asMap(asPlutusData(data)); }
 
     // =========================================================================
     // Helpers
