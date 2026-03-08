@@ -273,47 +273,47 @@ class ExecutableStubsTest {
 
         @Test
         void containsFindsElement() {
-            var list = new PlutusData.ListData(List.of(
+            var list = JulcList.of(
                     PlutusData.integer(1),
                     PlutusData.integer(2),
-                    PlutusData.integer(3)));
+                    PlutusData.integer(3));
             assertTrue(ListsLib.contains(list, PlutusData.integer(2)));
         }
 
         @Test
         void containsReturnsFalseForMissing() {
-            var list = new PlutusData.ListData(List.of(
+            var list = JulcList.of(
                     PlutusData.integer(1),
-                    PlutusData.integer(2)));
+                    PlutusData.integer(2));
             assertFalse(ListsLib.contains(list, PlutusData.integer(42)));
         }
 
         @Test
         void lengthReturnsCorrectCount() {
-            var list = new PlutusData.ListData(List.of(
+            var list = JulcList.of(
                     PlutusData.integer(1),
                     PlutusData.integer(2),
-                    PlutusData.integer(3)));
+                    PlutusData.integer(3));
             assertEquals(3L, ListsLib.length(list));
         }
 
         @Test
         void isEmptyReturnsTrueForEmpty() {
-            var list = new PlutusData.ListData(List.of());
+            JulcList<PlutusData> list = JulcList.empty();
             assertTrue(ListsLib.isEmpty(list));
         }
 
         @Test
         void isEmptyReturnsFalseForNonEmpty() {
-            var list = new PlutusData.ListData(List.of(PlutusData.integer(1)));
+            var list = JulcList.of(PlutusData.integer(1));
             assertFalse(ListsLib.isEmpty(list));
         }
 
         @Test
         void headReturnsFirstElement() {
-            var list = new PlutusData.ListData(List.of(
+            var list = JulcList.of(
                     PlutusData.integer(10),
-                    PlutusData.integer(20)));
+                    PlutusData.integer(20));
             assertEquals(PlutusData.integer(10), ListsLib.head(list));
         }
     }

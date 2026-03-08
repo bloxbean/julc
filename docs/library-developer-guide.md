@@ -342,7 +342,7 @@ public static boolean contains(PlutusData list, PlutusData target) {
 
 The following Java features are NOT supported in `@OnchainLibrary` classes:
 
-- **No lambdas or `.apply()` on functions** -- you cannot pass functions as arguments. Use the PIR API (Approach 2) for higher-order functions.
+- **No lambdas or `.apply()` on functions in Java source libraries** -- you cannot pass functions as arguments in `@OnchainLibrary` Java source code. However, HOFs are available for user code via PIR-based methods (e.g., `list.map(x -> ...)`, `ListsLib.foldl(...)`). To add HOFs to a library, use the PIR API (Approach 2).
 - **No assignment expressions** -- all variables are immutable outside of `while`/`for-each` loop bodies.
 - **No `try`/`catch`** -- errors abort execution via `Builtins.error()`.
 - **No `null`** -- Plutus has no null concept.

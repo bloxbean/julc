@@ -8,14 +8,14 @@ import com.bloxbean.cardano.julc.stdlib.Builtins;
 import com.bloxbean.cardano.julc.ledger.*;
 
 import java.math.BigInteger;
+import java.util.Optional;
 
 /**
  * Script context operations compiled from Java source to UPLC.
  * <p>
  * Uses typed records (ScriptContext, TxInfo, ScriptInfo, etc.) for readability.
  * Simple field accessors work both on-chain and off-chain.
- * Complex methods (findOwnInput, getContinuingOutputs, etc.) use casts that
- * are no-ops on-chain but do not execute off-chain.
+ * Complex methods use typed returns (Optional, JulcList, byte[]) for DX-friendly API.
  */
 @OnchainLibrary
 @SuppressWarnings("unchecked")
@@ -117,149 +117,68 @@ public class ContextsLib {
     }
 
     // =========================================================================
-    // getSpendingDatum (on-chain only — casts for Optional unwrapping)
+    // getSpendingDatum — returns Optional<PlutusData>
     // =========================================================================
 
     /** Extracts the optional datum from a spending ScriptContext.
-     *  On-chain: switch on ScriptInfo, unwrap Optional Constr manually.
-     *  Off-chain: use ctx.scriptInfo() instanceof SpendingScript ss -> ss.datum().orElse(...) directly. */
-    public static PlutusData getSpendingDatum(ScriptContext ctx) {
+     *  Returns Optional.of(datum) for SpendingScript with datum, Optional.empty() otherwise. */
+    public static Optional<PlutusData> getSpendingDatum(ScriptContext ctx) {
         return switch (ctx.scriptInfo()) {
-            case ScriptInfo.SpendingScript ss -> {
-                // datum field is Optional<PlutusData>, encoded as Constr(0, [val]) or Constr(1, [])
-                // Cast is no-op on-chain, extracts second field of SpendingScript
-                PlutusData optDatum = (PlutusData)(Object) ss.datum();
-                if (Builtins.constrTag(optDatum) == 0) {
-                    yield Builtins.headList(Builtins.constrFields(optDatum));
-                } else {
-                    yield Builtins.constrData(0, Builtins.mkNilData());
-                }
-            }
-            case ScriptInfo.MintingScript ms -> Builtins.constrData(0, Builtins.mkNilData());
-            case ScriptInfo.RewardingScript rs -> Builtins.constrData(0, Builtins.mkNilData());
-            case ScriptInfo.CertifyingScript cs -> Builtins.constrData(0, Builtins.mkNilData());
-            case ScriptInfo.VotingScript vs -> Builtins.constrData(0, Builtins.mkNilData());
-            case ScriptInfo.ProposingScript ps -> Builtins.constrData(0, Builtins.mkNilData());
+            case ScriptInfo.SpendingScript ss -> ss.datum();
+            case ScriptInfo.MintingScript ms -> Optional.empty();
+            case ScriptInfo.RewardingScript rs -> Optional.empty();
+            case ScriptInfo.CertifyingScript cs -> Optional.empty();
+            case ScriptInfo.VotingScript vs -> Optional.empty();
+            case ScriptInfo.ProposingScript ps -> Optional.empty();
         };
     }
 
     // =========================================================================
-    // Complex search/filter operations (on-chain only — use casts)
+    // findOwnInput — returns Optional<TxInInfo>
     // =========================================================================
 
-    /** Finds the own input for a spending validator. Returns Optional TxInInfo
-     *  encoded as Constr(0, [txInInfo]) for Some, Constr(1, []) for None. */
-    public static PlutusData.ConstrData findOwnInput(ScriptContext ctx) {
+    /** Finds the own input for a spending validator. Returns Optional<TxInInfo>. */
+    public static Optional<TxInInfo> findOwnInput(ScriptContext ctx) {
         return switch (ctx.scriptInfo()) {
             case ScriptInfo.SpendingScript ss -> {
-                PlutusData targetRef = (PlutusData)(Object) ss.txOutRef();
-                PlutusData.ConstrData result = Builtins.constrData(1, Builtins.mkNilData());
+                Optional<TxInInfo> result = Optional.empty();
                 for (TxInInfo input : ctx.txInfo().inputs()) {
-                    PlutusData inputRef = (PlutusData)(Object) input.outRef();
-                    if (Builtins.equalsData(inputRef, targetRef)) {
-                        var someFields = Builtins.mkCons((PlutusData)(Object) input, Builtins.mkNilData());
-                        result = Builtins.constrData(0, someFields);
+                    if (Builtins.equalsData(input.outRef(), ss.txOutRef())) {
+                        result = Optional.of(input);
                     } else {
                         result = result;
                     }
                 }
                 yield result;
             }
-            case ScriptInfo.MintingScript ms -> Builtins.constrData(1, Builtins.mkNilData());
-            case ScriptInfo.RewardingScript rs -> Builtins.constrData(1, Builtins.mkNilData());
-            case ScriptInfo.CertifyingScript cs -> Builtins.constrData(1, Builtins.mkNilData());
-            case ScriptInfo.VotingScript vs -> Builtins.constrData(1, Builtins.mkNilData());
-            case ScriptInfo.ProposingScript ps -> Builtins.constrData(1, Builtins.mkNilData());
+            case ScriptInfo.MintingScript ms -> Optional.empty();
+            case ScriptInfo.RewardingScript rs -> Optional.empty();
+            case ScriptInfo.CertifyingScript cs -> Optional.empty();
+            case ScriptInfo.VotingScript vs -> Optional.empty();
+            case ScriptInfo.ProposingScript ps -> Optional.empty();
         };
     }
 
-    /** Returns outputs that pay to the same address as the own spending input. */
-    public static PlutusData.ListData getContinuingOutputs(ScriptContext ctx) {
-        var ownInputOpt = findOwnInput(ctx);
-        var optFields = Builtins.constrFields(ownInputOpt);
-        var ownInput = Builtins.headList(optFields);
-        var ownInFields = Builtins.constrFields(ownInput);
-        var ownTxOut = Builtins.headList(Builtins.tailList(ownInFields));
-        var ownTxOutFields = Builtins.constrFields(ownTxOut);
-        var ownAddress = Builtins.headList(ownTxOutFields);
-
-        PlutusData.ListData result = Builtins.mkNilData();
-        for (TxOut out : ctx.txInfo().outputs()) {
-            PlutusData outAddr = (PlutusData)(Object) out.address();
-            if (Builtins.equalsData(outAddr, ownAddress)) {
-                result = Builtins.mkCons((PlutusData)(Object) out, result);
-            } else {
-                result = result;
-            }
-        }
-        return result;
-    }
-
-    /** Searches the txInfo datums map for a datum matching the given hash. Returns Optional. */
-    public static PlutusData.ConstrData findDatum(TxInfo txInfo, PlutusData.BytesData hash) {
-        PlutusData.MapData datumsMap = (PlutusData.MapData)(Object) txInfo.datums();
-        var datumsPairs = Builtins.unMapData(datumsMap);
-        PlutusData.ConstrData result = Builtins.constrData(1, Builtins.mkNilData());
-        PlutusData current = datumsPairs;
-        while (!Builtins.nullList(current)) {
-            var pair = Builtins.headList(current);
-            if (Builtins.equalsData(Builtins.fstPair(pair), hash)) {
-                var someFields = Builtins.mkCons(Builtins.sndPair(pair), Builtins.mkNilData());
-                result = Builtins.constrData(0, someFields);
-                current = Builtins.mkNilPairData();
-            } else {
-                current = Builtins.tailList(current);
-            }
-        }
-        return result;
-    }
-
-    /** Collects the values of all inputs as a list. */
-    public static PlutusData.ListData valueSpent(TxInfo txInfo) {
-        PlutusData.ListData result = Builtins.mkNilData();
-        for (TxInInfo input : txInfo.inputs()) {
-            PlutusData value = (PlutusData)(Object) input.resolved().value();
-            result = Builtins.mkCons(value, result);
-        }
-        return result;
-    }
-
-    /** Filters outputs by address and returns their values as a list. */
-    public static PlutusData.ListData valuePaid(TxInfo txInfo, PlutusData addr) {
-        PlutusData.ListData result = Builtins.mkNilData();
-        for (TxOut out : txInfo.outputs()) {
-            PlutusData outAddr = (PlutusData)(Object) out.address();
-            PlutusData outValue = (PlutusData)(Object) out.value();
-            if (Builtins.equalsData(outAddr, addr)) {
-                result = Builtins.mkCons(outValue, result);
-            } else {
-                result = result;
-            }
-        }
-        return result;
-    }
+    // =========================================================================
+    // ownInputScriptHash — returns byte[]
+    // =========================================================================
 
     /** Extracts the script credential hash from the own input's address. */
-    public static PlutusData.BytesData ownInputScriptHash(ScriptContext ctx) {
-        var ownInputOpt = findOwnInput(ctx);
-        var optFields = Builtins.constrFields(ownInputOpt);
-        var ownInput = Builtins.headList(optFields);
-        var ownInFields = Builtins.constrFields(ownInput);
-        var ownTxOut = Builtins.headList(Builtins.tailList(ownInFields));
-        var ownTxOutFields = Builtins.constrFields(ownTxOut);
-        var ownAddress = Builtins.headList(ownTxOutFields);
-        var addrFields = Builtins.constrFields(ownAddress);
-        var credential = Builtins.headList(addrFields);
-        var credFields = Builtins.constrFields(credential);
-        return (PlutusData.BytesData) Builtins.headList(credFields);
+    public static byte[] ownInputScriptHash(ScriptContext ctx) {
+        Optional<TxInInfo> ownInputOpt = findOwnInput(ctx);
+        TxInInfo ownInput = ownInputOpt.get();
+        return AddressLib.credentialHash(ownInput.resolved().address());
     }
 
+    // =========================================================================
+    // ownHash — returns byte[]
+    // =========================================================================
+
     /** Extracts the own script hash from the ScriptContext's ScriptInfo.
-     *  Minting (tag 0) -> policyId. Others -> script credential hash from own input. */
-    public static PlutusData.BytesData ownHash(ScriptContext ctx) {
+     *  Minting -> policyId. Others -> script credential hash from own input. */
+    public static byte[] ownHash(ScriptContext ctx) {
         return switch (ctx.scriptInfo()) {
-            case ScriptInfo.MintingScript ms ->
-                    (PlutusData.BytesData)(Object) ms.policyId();
+            case ScriptInfo.MintingScript ms -> (byte[])(Object) ms.policyId();
             case ScriptInfo.SpendingScript ss -> ownInputScriptHash(ctx);
             case ScriptInfo.RewardingScript rs -> ownInputScriptHash(ctx);
             case ScriptInfo.CertifyingScript cs -> ownInputScriptHash(ctx);
@@ -268,24 +187,92 @@ public class ContextsLib {
         };
     }
 
-    /** Filters outputs whose address has a ScriptCredential matching the given hash. */
-    public static PlutusData.ListData scriptOutputsAt(TxInfo txInfo, PlutusData.BytesData scriptHash) {
-        PlutusData.ListData result = Builtins.mkNilData();
-        for (TxOut out : txInfo.outputs()) {
-            PlutusData outAddr = (PlutusData)(Object) out.address();
-            var addrFields = Builtins.constrFields(outAddr);
-            var credential = Builtins.headList(addrFields);
-            var credTag = Builtins.constrTag(credential);
-            if (credTag == 1) {
-                var credFields = Builtins.constrFields(credential);
-                var credHash = Builtins.headList(credFields);
-                if (Builtins.equalsData(credHash, scriptHash)) {
-                    result = Builtins.mkCons((PlutusData)(Object) out, result);
-                } else {
-                    result = result;
-                }
+    // =========================================================================
+    // getContinuingOutputs — returns JulcList<TxOut>
+    // =========================================================================
+
+    /** Returns outputs that pay to the same address as the own spending input. */
+    public static JulcList<TxOut> getContinuingOutputs(ScriptContext ctx) {
+        Optional<TxInInfo> ownInputOpt = findOwnInput(ctx);
+        TxInInfo ownInput = ownInputOpt.get();
+        Address ownAddress = ownInput.resolved().address();
+
+        JulcList<TxOut> result = JulcList.empty();
+        for (TxOut out : ctx.txInfo().outputs()) {
+            if (Builtins.equalsData(out.address(), ownAddress)) {
+                result = result.prepend(out);
             } else {
                 result = result;
+            }
+        }
+        return result;
+    }
+
+    // =========================================================================
+    // valueSpent — returns JulcList<Value>
+    // =========================================================================
+
+    /** Collects the values of all inputs as a list. */
+    public static JulcList<Value> valueSpent(TxInfo txInfo) {
+        JulcList<Value> result = JulcList.empty();
+        for (TxInInfo input : txInfo.inputs()) {
+            result = result.prepend(input.resolved().value());
+        }
+        return result;
+    }
+
+    // =========================================================================
+    // valuePaid — returns JulcList<Value>, takes Address param
+    // =========================================================================
+
+    /** Filters outputs by address and returns their values as a list. */
+    public static JulcList<Value> valuePaid(TxInfo txInfo, Address addr) {
+        JulcList<Value> result = JulcList.empty();
+        for (TxOut out : txInfo.outputs()) {
+            if (Builtins.equalsData(out.address(), addr)) {
+                result = result.prepend(out.value());
+            } else {
+                result = result;
+            }
+        }
+        return result;
+    }
+
+    // =========================================================================
+    // scriptOutputsAt — returns JulcList<TxOut>, takes byte[] param
+    // =========================================================================
+
+    /** Filters outputs whose address has a ScriptCredential matching the given hash. */
+    public static JulcList<TxOut> scriptOutputsAt(TxInfo txInfo, byte[] scriptHash) {
+        JulcList<TxOut> result = JulcList.empty();
+        for (TxOut out : txInfo.outputs()) {
+            Address outAddr = out.address();
+            byte[] credHash = AddressLib.credentialHash(outAddr);
+            if (AddressLib.isScriptAddress(outAddr)
+                    && Builtins.equalsByteString(credHash, scriptHash)) {
+                result = result.prepend(out);
+            } else {
+                result = result;
+            }
+        }
+        return result;
+    }
+
+    // =========================================================================
+    // findDatum — returns Optional<PlutusData>
+    // =========================================================================
+
+    /** Searches the txInfo datums map for a datum matching the given hash. Returns Optional. */
+    public static Optional<PlutusData> findDatum(TxInfo txInfo, PlutusData hash) {
+        PlutusData current = (PlutusData)(Object) txInfo.datums();
+        Optional<PlutusData> result = Optional.empty();
+        while (!Builtins.nullList(current)) {
+            var pair = Builtins.headList(current);
+            if (Builtins.equalsData(Builtins.fstPair(pair), hash)) {
+                result = Optional.of(Builtins.sndPair(pair));
+                current = Builtins.mkNilPairData();
+            } else {
+                current = Builtins.tailList(current);
             }
         }
         return result;

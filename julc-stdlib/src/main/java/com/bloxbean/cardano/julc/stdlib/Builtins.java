@@ -833,8 +833,7 @@ public final class Builtins {
 
     /** Extract list from Data. Typed alias for {@link #unListData(PlutusData)}. */
     public static JulcList<PlutusData> asList(PlutusData data) {
-        if (data instanceof PlutusData.ListData ld) return new JulcArrayList<>(ld.items());
-        throw new IllegalArgumentException("asList: expected ListData, got " + data);
+        return new JulcArrayList<>(unListData(data).items());
     }
 
     /** @see #asList(PlutusData) */
@@ -842,14 +841,12 @@ public final class Builtins {
 
     /** Extract map from Data. Typed alias for {@link #unMapData(PlutusData)}. */
     public static JulcMap<PlutusData, PlutusData> asMap(PlutusData data) {
-        if (data instanceof PlutusData.MapData md) {
-            JulcMap<PlutusData, PlutusData> result = JulcAssocMap.empty();
-            for (var pair : md.entries()) {
-                result = result.insert(pair.key(), pair.value());
-            }
-            return result;
+        PlutusData.MapData md = unMapData(data);
+        JulcMap<PlutusData, PlutusData> result = JulcAssocMap.empty();
+        for (var pair : md.entries()) {
+            result = result.insert(pair.key(), pair.value());
         }
-        throw new IllegalArgumentException("asMap: expected MapData, got " + data);
+        return result;
     }
 
     /** @see #asMap(PlutusData) */

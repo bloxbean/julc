@@ -114,6 +114,8 @@ The JuLC standard library provides 11 on-chain libraries in the `com.bloxbean.ca
 | `flatten(value)` | Flatten to list of (policy, token, amount) triples |
 | `add(a, b)` | Add two Values |
 | `subtract(a, b)` | Subtract value b from value a |
+| `countTokensWithQty(mint, policy, qty)` | Count tokens with exact quantity under policy |
+| `findTokenName(mint, policy, qty)` | Find token name with exact quantity under policy |
 
 ### MapLib
 
@@ -145,6 +147,8 @@ The JuLC standard library provides 11 on-chain libraries in the `com.bloxbean.ca
 | `paidAtLeast(outputs, address, min)` | Check minimum lovelace at address |
 | `getInlineDatum(txOut)` | Get inline datum (aborts if not inline) |
 | `resolveDatum(txOut, datumsMap)` | Resolve datum from inline or hash lookup |
+| `findOutputWithToken(outputs, scriptHash, policy, token)` | Find output at script address with specific token |
+| `findInputWithToken(inputs, scriptHash, policy, token)` | Find input at script address with specific token |
 
 ### MathLib
 
@@ -208,6 +212,9 @@ The JuLC standard library provides 11 on-chain libraries in the `com.bloxbean.ca
 | `encodeUtf8(s)` | Encode string as UTF-8 bytes |
 | `decodeUtf8(bs)` | Decode UTF-8 bytes to string |
 | `serialiseData(d)` | Serialize Data to CBOR bytes |
+| `hexNibble(n)` | Convert nibble (0-15) to hex ASCII code |
+| `toHex(bs)` | Convert bytestring to hex-encoded bytestring |
+| `intToDecimalString(n)` | Convert integer to decimal digit bytestring |
 
 ### BitwiseLib
 

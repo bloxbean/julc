@@ -1,11 +1,18 @@
 package com.bloxbean.cardano.julc.stdlib.lib;
 
 import com.bloxbean.cardano.julc.core.PlutusData;
+import com.bloxbean.cardano.julc.core.types.JulcList;
+import com.bloxbean.cardano.julc.core.types.JulcMap;
 import com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary;
 import com.bloxbean.cardano.julc.stdlib.Builtins;
 
+import java.util.Optional;
+
 /**
  * Map (association list) operations compiled from Java source to UPLC.
+ * <p>
+ * Uses {@link JulcMap} for type-safe, readable map manipulation.
+ * On-chain, JulcMap methods are dispatched via TypeMethodRegistry to UPLC builtins.
  * <p>
  * In Plutus, maps are {@code List<Pair<Data, Data>>} (association lists).
  * These are NOT hash maps — lookups are O(n).
@@ -13,16 +20,15 @@ import com.bloxbean.cardano.julc.stdlib.Builtins;
 @OnchainLibrary
 public class MapLib {
 
-    /** Look up a key. Returns Constr(0, [value]) (Some) or Constr(1, []) (None). */
-    public static PlutusData.ConstrData lookup(PlutusData.MapData map, PlutusData key) {
-        var pairs = Builtins.unMapData(map);
-        var result = Builtins.constrData(1, Builtins.mkNilData());
-        PlutusData current = pairs;
+    /** Look up a key. Returns Optional.of(value) if found, Optional.empty() if not. */
+    @SuppressWarnings("unchecked")
+    public static Optional<PlutusData> lookup(JulcMap<PlutusData, PlutusData> map, PlutusData key) {
+        Optional<PlutusData> result = Optional.empty();
+        PlutusData current = (PlutusData)(Object) map;
         while (!Builtins.nullList(current)) {
             var pair = Builtins.headList(current);
             if (Builtins.equalsData(Builtins.fstPair(pair), key)) {
-                var fields = Builtins.mkCons(Builtins.sndPair(pair), Builtins.mkNilData());
-                result = Builtins.constrData(0, fields);
+                result = Optional.of(Builtins.sndPair(pair));
                 current = Builtins.mkNilPairData();
             } else {
                 current = Builtins.tailList(current);
@@ -32,99 +38,43 @@ public class MapLib {
     }
 
     /** Check if key exists in map. */
-    public static boolean member(PlutusData.MapData map, PlutusData key) {
-        var found = false;
-        var pairs = Builtins.unMapData(map);
-        PlutusData current = pairs;
-        while (!Builtins.nullList(current)) {
-            var pair = Builtins.headList(current);
-            if (Builtins.equalsData(Builtins.fstPair(pair), key)) {
-                found = true;
-                current = Builtins.mkNilPairData();
-            } else {
-                current = Builtins.tailList(current);
-            }
-        }
-        return found;
+    public static boolean member(JulcMap<PlutusData, PlutusData> map, PlutusData key) {
+        return map.containsKey(key);
     }
 
     /** Insert key-value pair (prepends; shadows existing). */
-    public static PlutusData.MapData insert(PlutusData.MapData map, PlutusData key, PlutusData value) {
-        var pair = Builtins.mkPairData(key, value);
-        var pairs = Builtins.unMapData(map);
-        var newPairs = Builtins.mkCons(pair, pairs);
-        return Builtins.mapData(newPairs);
+    public static JulcMap<PlutusData, PlutusData> insert(JulcMap<PlutusData, PlutusData> map, PlutusData key, PlutusData value) {
+        return map.insert(key, value);
     }
 
     /** Delete a key from the map. */
-    public static PlutusData.MapData delete(PlutusData.MapData map, PlutusData key) {
-        var pairs = Builtins.unMapData(map);
-        PlutusData acc = Builtins.mkNilPairData();
-        PlutusData current = pairs;
-        while (!Builtins.nullList(current)) {
-            var pair = Builtins.headList(current);
-            if (Builtins.equalsData(Builtins.fstPair(pair), key)) {
-                acc = acc;
-            } else {
-                acc = Builtins.mkCons(pair, acc);
-            }
-            current = Builtins.tailList(current);
-        }
-        // Reverse to maintain original order
-        var result = Builtins.mkNilPairData();
-        var rev = acc;
-        while (!Builtins.nullList(rev)) {
-            result = Builtins.mkCons(Builtins.headList(rev), result);
-            rev = Builtins.tailList(rev);
-        }
-        return Builtins.mapData(result);
+    public static JulcMap<PlutusData, PlutusData> delete(JulcMap<PlutusData, PlutusData> map, PlutusData key) {
+        return map.delete(key);
     }
 
     /** Extract all keys from a map as a list. */
-    public static PlutusData.ListData keys(PlutusData.MapData map) {
-        var pairs = Builtins.unMapData(map);
-        PlutusData.ListData acc = Builtins.mkNilData();
-        PlutusData current = pairs;
-        while (!Builtins.nullList(current)) {
-            var pair = Builtins.headList(current);
-            acc = Builtins.mkCons(Builtins.fstPair(pair), acc);
-            current = Builtins.tailList(current);
-        }
-        return ListsLib.reverse(acc);
+    public static JulcList<PlutusData> keys(JulcMap<PlutusData, PlutusData> map) {
+        return map.keys();
     }
 
     /** Extract all values from a map as a list. */
-    public static PlutusData.ListData values(PlutusData.MapData map) {
-        var pairs = Builtins.unMapData(map);
-        PlutusData.ListData acc = Builtins.mkNilData();
-        PlutusData current = pairs;
-        while (!Builtins.nullList(current)) {
-            var pair = Builtins.headList(current);
-            acc = Builtins.mkCons(Builtins.sndPair(pair), acc);
-            current = Builtins.tailList(current);
-        }
-        return ListsLib.reverse(acc);
+    public static JulcList<PlutusData> values(JulcMap<PlutusData, PlutusData> map) {
+        return map.values();
     }
 
-    /** Convert map to pair list (UnMapData). */
-    public static PlutusData.MapData toList(PlutusData.MapData map) {
-        return Builtins.unMapData(map);
+    /** Convert map to pair list (identity — MapType vars already hold pair lists). */
+    public static JulcMap<PlutusData, PlutusData> toList(JulcMap<PlutusData, PlutusData> map) {
+        return map;
     }
 
     /** Construct map from pair list (MapData). */
-    public static PlutusData.MapData fromList(PlutusData list) {
-        return Builtins.mapData(list);
+    @SuppressWarnings("unchecked")
+    public static JulcMap<PlutusData, PlutusData> fromList(PlutusData list) {
+        return (JulcMap<PlutusData, PlutusData>)(Object) Builtins.mapData(list);
     }
 
     /** Count entries in the map. */
-    public static long size(PlutusData.MapData map) {
-        var pairs = Builtins.unMapData(map);
-        var count = 0L;
-        PlutusData current = pairs;
-        while (!Builtins.nullList(current)) {
-            count = count + 1;
-            current = Builtins.tailList(current);
-        }
-        return count;
+    public static long size(JulcMap<PlutusData, PlutusData> map) {
+        return map.size();
     }
 }

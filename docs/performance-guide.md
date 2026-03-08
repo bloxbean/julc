@@ -410,7 +410,27 @@ class MyValidatorBudgetTest {
 
 ## 7. Benchmark Data
 
-//TODO
+### WingRiders DEX Benchmark (julc-annotation-test)
+
+Real-world benchmark using a WingRiders DEX-style multi-request validator:
+
+| Requests | Total CPU | Per-Req CPU | Per-Req Mem |
+|----------|-----------|-------------|-------------|
+| 1 | 24.6M | 24.6M | 91.4K |
+| 2 | 37.6M | 18.8M | 70.7K |
+| 4 | 68.8M | 17.2M | 65.7K |
+| 10 | 204.3M | 20.4M | 79.6K |
+| 24 | 764.3M | 31.8M | 126.3K |
+| 30 | 1.1B | 37.0M | 147.1K |
+
+**Comparison with other Cardano smart contract languages (per-request CPU):**
+
+| Language | Per-Request CPU |
+|----------|----------------|
+| Plinth (Haskell) | 723M |
+| Aiken | 164M |
+| Plutarch | 121M |
+| **JuLC** | **~20-37M** |
 
 ### Instance Methods vs Stdlib Calls
 

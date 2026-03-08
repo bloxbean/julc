@@ -8,6 +8,8 @@ import com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary;
 import com.bloxbean.cardano.julc.ledger.Value;
 import com.bloxbean.cardano.julc.stdlib.Builtins;
 
+import java.util.Optional;
+
 import java.math.BigInteger;
 
 /**
@@ -253,25 +255,26 @@ public class ValuesLib {
      * Note: Split into separate step methods to avoid nested while loops
      * (compiler limitation — while-loop calling a function with a while-loop).
      */
-    public static PlutusData.ListData flatten(Value value) {
-        return flattenStep(Builtins.unMapData(value), Builtins.mkNilData());
+    @SuppressWarnings("unchecked")
+    public static JulcList<PlutusData> flatten(Value value) {
+        return flattenStep(Builtins.unMapData(value), JulcList.empty());
     }
 
     /** Process one policy from the outer map, then recurse on the rest. */
-    public static PlutusData.ListData flattenStep(PlutusData outerPairs, PlutusData.ListData acc) {
+    public static JulcList<PlutusData> flattenStep(PlutusData outerPairs, JulcList<PlutusData> acc) {
         if (Builtins.nullList(outerPairs)) {
             return ListsLib.reverse(acc);
         }
         var outerPair = Builtins.headList(outerPairs);
         var policyData = Builtins.fstPair(outerPair);
         PlutusData.MapData innerMap = (PlutusData.MapData) Builtins.sndPair(outerPair);
-        PlutusData.ListData updated = flattenPolicy(policyData, innerMap, acc);
+        JulcList<PlutusData> updated = flattenPolicy(policyData, innerMap, acc);
         return flattenStep(Builtins.tailList(outerPairs), updated);
     }
 
     /** Flatten a single policy's token entries into the accumulator list. */
-    public static PlutusData.ListData flattenPolicy(PlutusData policyData, PlutusData.MapData innerPairs, PlutusData.ListData acc) {
-        PlutusData.ListData result = acc;
+    public static JulcList<PlutusData> flattenPolicy(PlutusData policyData, PlutusData.MapData innerPairs, JulcList<PlutusData> acc) {
+        JulcList<PlutusData> result = acc;
         PlutusData current = Builtins.unMapData(innerPairs);
         while (!Builtins.nullList(current)) {
             var pair = Builtins.headList(current);
@@ -279,7 +282,7 @@ public class ValuesLib {
             var amountData = Builtins.sndPair(pair);
             var tripleFields = Builtins.mkCons(policyData, Builtins.mkCons(tokenData, Builtins.mkCons(amountData, Builtins.mkNilData())));
             var triple = Builtins.constrData(0, tripleFields);
-            result = Builtins.mkCons(triple, result);
+            result = result.prepend(triple);
             current = Builtins.tailList(current);
         }
         return result;

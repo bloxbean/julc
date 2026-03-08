@@ -879,13 +879,13 @@ when your validator references them.
 |---|---|
 | `ContextsLib` | ScriptContext/TxInfo field accessors, `signedBy`, `findOwnInput`, `getContinuingOutputs`, `findDatum`, `ownHash`, `trace` |
 | `ListsLib` | `empty`, `prepend`, `length`, `isEmpty`, `head`, `tail`, `reverse`, `concat`, `nth`, `take`, `drop`, `contains`, `containsInt`, `containsBytes`, `hasDuplicateInts`, `hasDuplicateBytes` + PIR HOFs (`any`, `all`, `find`, `foldl`, `map`, `filter`, `zip`) |
-| `ValuesLib` | `lovelaceOf`, `assetOf`, `containsPolicy`, `geq`, `geqMultiAsset`, `leq`, `eq`, `isZero`, `singleton`, `negate`, `flatten`, `add`, `subtract` |
+| `ValuesLib` | `lovelaceOf`, `assetOf`, `containsPolicy`, `geq`, `geqMultiAsset`, `leq`, `eq`, `isZero`, `singleton`, `negate`, `flatten`, `add`, `subtract`, `countTokensWithQty`, `findTokenName` |
 | `MapLib` | `lookup`, `member`, `insert`, `delete`, `keys`, `values`, `toList`, `fromList`, `size` |
-| `OutputLib` | `txOutAddress`, `txOutValue`, `txOutDatum`, `outputsAt`, `countOutputsAt`, `uniqueOutputAt`, `outputsWithToken`, `valueHasToken`, `lovelacePaidTo`, `paidAtLeast`, `getInlineDatum`, `resolveDatum` |
+| `OutputLib` | `txOutAddress`, `txOutValue`, `txOutDatum`, `outputsAt`, `countOutputsAt`, `uniqueOutputAt`, `outputsWithToken`, `valueHasToken`, `lovelacePaidTo`, `paidAtLeast`, `getInlineDatum`, `resolveDatum`, `findOutputWithToken`, `findInputWithToken` |
 | `MathLib` | `abs`, `max`, `min`, `divMod`, `quotRem`, `pow`, `sign`, `expMod` |
 | `IntervalLib` | `contains`, `always`, `after`, `before`, `between`, `never`, `isEmpty`, `finiteUpperBound`, `finiteLowerBound` |
-| `CryptoLib` | `sha2_256`, `blake2b_256`, `sha3_256`, `blake2b_224`, `keccak_256`, `verifyEd25519Signature`, `verifyEcdsaSecp256k1`, `verifySchnorrSecp256k1`, `ripemd_160` |
-| `ByteStringLib` | `at`, `cons`, `slice`, `length`, `drop`, `take`, `append`, `empty`, `zeros`, `equals`, `lessThan`, `lessThanEquals`, `integerToByteString`, `byteStringToInteger`, `encodeUtf8`, `decodeUtf8`, `serialiseData` |
+| `CryptoLib` | `sha2_256`, `blake2b_256`, `sha3_256`, `blake2b_224`, `keccak_256`, `verifyEd25519Signature`, `verifyEcdsaSecp256k1`, `verifySchnorrSecp256k1`, `ripemd_160` (all hash functions also available via `Builtins.*`) |
+| `ByteStringLib` | `at`, `cons`, `slice`, `length`, `drop`, `take`, `append`, `empty`, `zeros`, `equals`, `lessThan`, `lessThanEquals`, `integerToByteString`, `byteStringToInteger`, `encodeUtf8`, `decodeUtf8`, `serialiseData`, `hexNibble`, `toHex`, `intToDecimalString` |
 | `BitwiseLib` | `andByteString`, `orByteString`, `xorByteString`, `complementByteString`, `readBit`, `writeBits`, `shiftByteString`, `rotateByteString`, `countSetBits`, `findFirstSetBit` |
 | `AddressLib` | `credentialHash`, `isScriptAddress`, `isPubKeyAddress`, `paymentCredential` |
 
@@ -1452,8 +1452,8 @@ following limitations apply:
 
 ### Switch Expressions
 
-- **`default` branch not compiled**: The `default ->` branch body is silently
-  skipped. Always use explicit cases for all variants of a sealed interface.
+- **`default` branch**: The `default ->` branch acts as a catch-all for uncovered
+  variants. Prefer explicit cases for all variants of a sealed interface for clarity.
   The compiler checks exhaustiveness at compile time: if you omit a case and have
   no `default` branch, you get a compile error listing the missing variants.
 - **Field name shadows parameter**: In `case Variant f -> body`, the compiler

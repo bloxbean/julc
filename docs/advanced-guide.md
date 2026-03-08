@@ -21,6 +21,11 @@ stdlib usage) as covered in the getting-started guide.
 10. [Cross-Library Call Patterns](#10-cross-library-call-patterns)
 11. [Complex Sealed Interface Hierarchies](#11-complex-sealed-interface-hierarchies)
 12. [Recursion Patterns](#12-recursion-patterns)
+13. [@NewType Zero-Cost Type Aliases](#13-newtype-zero-cost-type-aliases)
+14. [Optional Support](#14-optional-support)
+15. [Tuple2/Tuple3 Generic Support](#15-tuple2tuple3-generic-support)
+16. [Nested Loops](#16-nested-loops)
+17. [Higher-Order Functions (HOFs)](#17-higher-order-functions-hofs)
 
 ---
 
@@ -1127,17 +1132,17 @@ class NestedSwitch {
 
 ### Switch Best Practices
 
-**Exhaust all cases explicitly.** The `default` branch body is NOT compiled
-in JuLC -- its code is silently ignored. Always list every variant:
+**Exhaust all cases explicitly.** The `default` branch works as a catch-all for
+uncovered variants, but prefer listing every variant explicitly for clarity:
 
 ```java
-// WRONG: default branch body is never compiled!
+// OK but not recommended: default catches all unlisted variants
 return switch (ctx.scriptInfo()) {
     case ScriptInfo.SpendingScript ss -> true;
-    default -> false;  // This "false" is never generated in UPLC!
+    default -> false;  // compiled — covers all other ScriptInfo variants
 };
 
-// CORRECT: list all cases explicitly
+// RECOMMENDED: list all cases explicitly
 return switch (ctx.scriptInfo()) {
     case ScriptInfo.SpendingScript ss -> true;
     case ScriptInfo.MintingScript ms -> false;
@@ -1396,3 +1401,110 @@ Note: For iterative patterns (where you do not need true recursion), prefer
 `while` loops. The compiler desugars `while` loops into efficient `LetRec`
 with accumulator unpacking, which is often more budget-friendly than manual
 recursion for simple traversals.
+
+---
+
+## 13. @NewType Zero-Cost Type Aliases
+
+The `@NewType` annotation creates zero-cost type aliases for single-field records. On-chain, the constructor compiles to identity — no `ConstrData` wrapping is generated.
+
+```java
+@NewType
+public record AssetClass(byte[] policyId) {}
+
+// Usage in validator:
+AssetClass ac = AssetClass.of(myBytes);  // .of() auto-registered
+```
+
+**Constraints:**
+- Must be a `record` with exactly one field
+- Underlying type must be `byte[]`, `BigInteger`, `String`, or `boolean`
+- Multi-field or unsupported-type records produce a compiler error
+
+**On-chain behavior:** `AssetClass.of(bytes)` compiles to identity — the bytes are passed through as-is. Field access `ac.policyId()` is also identity.
+
+---
+
+## 14. Optional Support
+
+`Optional<T>` is supported as a first-class on-chain type. It maps to `ConstrData`:
+
+- `Optional.of(x)` → `ConstrData(0, [encode(x)])`
+- `Optional.empty()` → `ConstrData(1, [])`
+
+```java
+Optional<BigInteger> maybe = Optional.of(BigInteger.valueOf(42));
+if (maybe.isPresent()) {
+    BigInteger val = maybe.get();  // auto-decoded from Data
+}
+```
+
+**Instance methods:**
+| Method | Description |
+|--------|-------------|
+| `.isPresent()` | True if Some (tag == 0) |
+| `.isEmpty()` | True if None (tag == 1) |
+| `.get()` | Unwrap the inner value (decoded based on type arg) |
+
+Use `import java.util.Optional` or bare `Optional` in your validator code.
+
+---
+
+## 15. Tuple2/Tuple3 Generic Support
+
+`Tuple2<A,B>` and `Tuple3<A,B,C>` provide generic tuples with auto-unwrapping field access based on type arguments.
+
+```java
+Tuple2<BigInteger, byte[]> result = MathLib.divMod(a, b);
+BigInteger quotient = result.first();   // auto-generates UnIData
+byte[] remainder = result.second();     // auto-generates UnBData
+
+// Construction auto-wraps
+var t = new Tuple2<BigInteger, BigInteger>(val1, val2);  // auto-wraps via IData
+```
+
+**Important:** Tuple2/Tuple3 are **not switchable** — they are registered as `RecordType`, but `switch` requires `SumType` (sealed interface). Use `.first()`, `.second()`, `.third()` field access instead of pattern matching.
+
+Raw `Tuple2` (no type args) defaults to `DataType` for backward compatibility.
+
+---
+
+## 16. Nested Loops
+
+Nested loops are fully supported: while-in-while, for-each-in-for-each, and mixed nesting. The `LoopDesugarer` assigns unique names to each loop function (`loop__forEach__0`, `loop__while__1`, etc.) to prevent name collisions.
+
+```java
+BigInteger total = 0;
+for (var group : groups) {
+    for (var item : group.items()) {
+        total = total + item.amount();
+    }
+}
+```
+
+For detailed patterns including multi-accumulator nested loops, see [For-Loop Patterns](for-loop-patterns.md).
+
+---
+
+## 17. Higher-Order Functions (HOFs)
+
+Higher-order functions are available as both instance methods and static calls. Lambda parameter types are auto-inferred from the list element type.
+
+```java
+// Instance method syntax (preferred)
+boolean hasLargeAmount = outputs.any(o -> o.value().lovelaceOf() > 1000000);
+var filtered = list.filter(x -> x > 0);
+var mapped = list.map(x -> x + 1);  // returns JulcList<PlutusData>
+
+// Static syntax
+boolean found = ListsLib.any(list, x -> x > threshold);
+var sum = ListsLib.foldl((acc, x) -> acc + Builtins.unIData(x), BigInteger.ZERO, list);
+```
+
+**Available HOFs:** `map`, `filter`, `any`, `all`, `find` (instance + static), `foldl`, `zip` (static only).
+
+Variable capture is supported. Block body lambdas and chaining (`list.filter(...).map(...)`) work as expected.
+
+Note: `map()` wraps lambda results to Data — the returned list has `DataType` elements. Use `Builtins.unIData()` etc. when extracting values from mapped results.
+
+For the full HOF reference, see [Standard Library Guide — HOFs](stdlib-guide.md).
