@@ -154,7 +154,10 @@ public final class SourceDiscovery {
             Path sourceFile = sourceRoot.resolve(fullPath.replace('.', '/') + ".java");
             if (Files.exists(sourceFile)) {
                 try {
-                    pool.put(simpleName, Files.readString(sourceFile));
+                    String src = Files.readString(sourceFile);
+                    if (src.contains("@OnchainLibrary")) {
+                        pool.put(simpleName, src);
+                    }
                 } catch (IOException e) {
                     // skip unreadable files
                 }
@@ -297,8 +300,11 @@ public final class SourceDiscovery {
                     Path sourceFile = sourceRoot.resolve(fullPath.replace('.', '/') + ".java");
                     if (Files.exists(sourceFile)) {
                         try {
-                            pool.put(simpleName, Files.readString(sourceFile));
-                            changed = true;
+                            String src = Files.readString(sourceFile);
+                            if (src.contains("@OnchainLibrary")) {
+                                pool.put(simpleName, src);
+                                changed = true;
+                            }
                         } catch (IOException e) {
                             // skip
                         }

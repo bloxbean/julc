@@ -10,6 +10,7 @@ dependencies {
     implementation project(':julc-compiler')
 
     testImplementation project(':julc-vm')
+    testImplementation project(':julc-testkit')
     testRuntimeOnly project(':julc-vm-scalus')
 }
 

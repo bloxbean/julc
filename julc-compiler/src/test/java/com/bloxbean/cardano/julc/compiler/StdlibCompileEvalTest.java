@@ -140,6 +140,34 @@ class StdlibCompileEvalTest {
         return PlutusData.map(pairs);
     }
 
+    /** Build Address: Constr(0, [PubKeyCredential(pkh), noStaking]). */
+    static PlutusData buildAddress(byte[] pkh) {
+        var pubKeyCred = PlutusData.constr(0, PlutusData.bytes(pkh));
+        var noStaking = PlutusData.constr(1);
+        return PlutusData.constr(0, pubKeyCred, noStaking);
+    }
+
+    /** Build a TxOut: Constr(0, [address, value, datum, refScript]). */
+    static PlutusData buildTxOut(PlutusData address, PlutusData value, PlutusData datum) {
+        var noRefScript = PlutusData.constr(1);    // None
+        return PlutusData.constr(0, address, value, datum, noRefScript);
+    }
+
+    /** Build TxOut with NoOutputDatum. */
+    static PlutusData buildTxOut(PlutusData address, PlutusData value) {
+        return buildTxOut(address, value, PlutusData.constr(0)); // NoOutputDatum
+    }
+
+    /** Build a Value with only lovelace. */
+    static PlutusData lovelaceValue(long lovelace) {
+        return simpleValue(lovelace);
+    }
+
+    /** Build a Value with lovelace + one token. */
+    static PlutusData tokenValue(long lovelace, byte[] policy, byte[] token, long amount) {
+        return multiAssetValue(lovelace, policy, token, amount);
+    }
+
     /** Build a minimal ScriptContext: Constr(0, [txInfo, redeemer, scriptInfo]). */
     static PlutusData mockCtx(PlutusData redeemer) {
         return PlutusData.constr(0,
@@ -587,16 +615,17 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
+                    import com.bloxbean.cardano.julc.core.types.JulcList;
 
                     @Validator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            PlutusData.ListData list = Builtins.mkCons(Builtins.iData(1),
+                            JulcList<PlutusData> list = (JulcList)(Object) Builtins.mkCons(Builtins.iData(1),
                                 Builtins.mkCons(Builtins.iData(2),
                                 Builtins.mkCons(Builtins.iData(3), Builtins.mkNilData())));
-                            PlutusData.ListData rev = ListsLib.reverse(list);
-                            return Builtins.unIData(Builtins.headList(rev)) == 3;
+                            JulcList<PlutusData> rev = ListsLib.reverse(list);
+                            return Builtins.unIData(rev.head()) == 3;
                         }
                     }
                     """;
@@ -612,6 +641,7 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
+                    import com.bloxbean.cardano.julc.core.types.JulcList;
 
                     @Validator
                     class TestValidator {
@@ -622,9 +652,9 @@ class StdlibCompileEvalTest {
                             var outerPair = Builtins.headList(outerPairs);
                             var policyData = Builtins.fstPair(outerPair);
                             PlutusData.MapData innerMap = (PlutusData.MapData) Builtins.sndPair(outerPair);
-                            PlutusData.ListData acc = Builtins.mkNilData();
-                            PlutusData.ListData result = ValuesLib.flattenPolicy(policyData, innerMap, acc);
-                            return !Builtins.nullList(result);
+                            JulcList<PlutusData> acc = JulcList.empty();
+                            JulcList<PlutusData> result = ValuesLib.flattenPolicy(policyData, innerMap, acc);
+                            return !result.isEmpty();
                         }
                     }
                     """;
@@ -800,14 +830,16 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
+                    import com.bloxbean.cardano.julc.core.types.JulcMap;
+                    import java.util.Optional;
 
                     @Validator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
-                            PlutusData result = MapLib.lookup(redeemer, Builtins.iData(1));
-                            var tag = Builtins.constrTag(result);
-                            return tag == 0;
+                            JulcMap<PlutusData, PlutusData> map = (JulcMap)(Object) redeemer;
+                            Optional<PlutusData> result = MapLib.lookup(map, Builtins.iData(1));
+                            return result.isPresent();
                         }
                     }
                     """;
@@ -1395,40 +1427,6 @@ class StdlibCompileEvalTest {
     @Nested
     class OutputLibEval {
 
-        /**
-         * Build Address: Constr(0, [PubKeyCredential(pkh), noStaking]).
-         * PubKeyCredential = Constr(0, [pkh_bytes])
-         * noStaking = Constr(1, []) (None)
-         */
-        static PlutusData buildAddress(byte[] pkh) {
-            var pubKeyCred = PlutusData.constr(0, PlutusData.bytes(pkh));
-            var noStaking = PlutusData.constr(1);
-            return PlutusData.constr(0, pubKeyCred, noStaking);
-        }
-
-        /**
-         * Build a TxOut: Constr(0, [address, value, datum, refScript]).
-         */
-        static PlutusData buildTxOut(PlutusData address, PlutusData value, PlutusData datum) {
-            var noRefScript = PlutusData.constr(1);    // None
-            return PlutusData.constr(0, address, value, datum, noRefScript);
-        }
-
-        /** Build TxOut with NoOutputDatum. */
-        static PlutusData buildTxOut(PlutusData address, PlutusData value) {
-            return buildTxOut(address, value, PlutusData.constr(0)); // NoOutputDatum
-        }
-
-        /** Build a Value with only lovelace. */
-        static PlutusData lovelaceValue(long lovelace) {
-            return simpleValue(lovelace);
-        }
-
-        /** Build a Value with lovelace + one token. */
-        static PlutusData tokenValue(long lovelace, byte[] policy, byte[] token, long amount) {
-            return multiAssetValue(lovelace, policy, token, amount);
-        }
-
         @Test
         void txOutAddressExtractsCorrectField() {
             var source = """
@@ -1789,6 +1787,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
+                    import com.bloxbean.cardano.julc.core.types.JulcMap;
 
                     @Validator
                     class TestValidator {
@@ -1797,7 +1796,7 @@ class StdlibCompileEvalTest {
                             // redeemer = Constr(0, [txOut, datumsMap])
                             PlutusData fields = Builtins.constrFields(redeemer);
                             TxOut txOut = Builtins.headList(fields);
-                            PlutusData.MapData datumsMap = Builtins.headList(Builtins.tailList(fields));
+                            JulcMap<PlutusData, PlutusData> datumsMap = (JulcMap)(Object) Builtins.headList(Builtins.tailList(fields));
                             PlutusData datum = OutputLib.resolveDatum(txOut, datumsMap);
                             return Builtins.unIData(datum) == 99;
                         }
@@ -5012,6 +5011,748 @@ class StdlibCompileEvalTest {
                     PlutusData.bytes("12345".getBytes()));
             var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
             assertTrue(result.isSuccess(), "intToDecimalString(12345) should produce '12345'. Got: " + result);
+        }
+    }
+
+    // =========================================================================
+    // TypeFriendlyAliases — asBytes/asInteger/asList/asMap + unBData return type
+    // =========================================================================
+
+    @Nested
+    class TypeFriendlyAliases {
+
+        @Test
+        void asBytesExtractsFromBytesData() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            byte[] raw = Builtins.asBytes(redeemer);
+                            return Builtins.lengthOfByteString(raw) == 3;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.bytes(new byte[]{1, 2, 3});
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "asBytes should extract bytes. Got: " + result);
+        }
+
+        @Test
+        void asIntegerExtractsFromIntData() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            BigInteger n = Builtins.asInteger(redeemer);
+                            return n.compareTo(BigInteger.valueOf(42)) == 0;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.integer(42);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "asInteger should extract integer. Got: " + result);
+        }
+
+        @Test
+        void asListExtractsFromListData() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            var list = Builtins.asList(redeemer);
+                            return !Builtins.nullList(list);
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.list(PlutusData.integer(1), PlutusData.integer(2));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "asList should extract list. Got: " + result);
+        }
+
+        @Test
+        void asMapExtractsFromMapData() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            var m = Builtins.asMap(redeemer);
+                            return !Builtins.nullList(m);
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.map(
+                    new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(10)));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "asMap should extract map. Got: " + result);
+        }
+
+        @Test
+        void unBDataReturnsBytes() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            byte[] raw = Builtins.unBData(redeemer);
+                            return Builtins.lengthOfByteString(raw) == 4;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.bytes(new byte[]{10, 20, 30, 40});
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "unBData should return byte[]. Got: " + result);
+        }
+
+        @Test
+        void backwardCompatRedundantCast() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            byte[] raw = (byte[])(Object) Builtins.unBData(redeemer);
+                            return Builtins.lengthOfByteString(raw) == 2;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.bytes(new byte[]{(byte) 0xAB, (byte) 0xCD});
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "Redundant cast should still compile. Got: " + result);
+        }
+
+        @Test
+        void constrTagExtractsTag() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            long tag = Builtins.constrTag(redeemer);
+                            return tag == 2;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.constr(2, PlutusData.integer(99));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "constrTag should extract tag. Got: " + result);
+        }
+
+        @Test
+        void constrFieldsExtractsFields() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            var fields = Builtins.constrFields(redeemer);
+                            BigInteger val = Builtins.unIData(Builtins.headList(fields));
+                            return val.compareTo(BigInteger.valueOf(42)) == 0;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.constr(0, PlutusData.integer(42));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "constrFields should extract fields. Got: " + result);
+        }
+
+        @Test
+        void asBytesWithHeadList() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            var fields = Builtins.constrFields(redeemer);
+                            byte[] hash = Builtins.asBytes(Builtins.headList(fields));
+                            return Builtins.lengthOfByteString(hash) == 28;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.constr(0, PlutusData.bytes(new byte[28]));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "asBytes(headList(fields)) should work. Got: " + result);
+        }
+
+        @Test
+        void varTypeInferenceWithAsBytes() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            var raw = Builtins.asBytes(redeemer);
+                            return Builtins.equalsByteString(raw, raw);
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.bytes(new byte[]{1, 2, 3});
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "var inference with asBytes should work. Got: " + result);
+        }
+    }
+
+    // =========================================================================
+    // ContextsLib Typed Returns — DX-friendly API
+    // =========================================================================
+
+    @Nested
+    class ContextsLibTypedReturns {
+
+        // --- Data construction helpers ---
+
+        static PlutusData buildScriptAddress(byte[] scriptHash) {
+            var scriptCred = PlutusData.constr(1, PlutusData.bytes(scriptHash));
+            var noStaking = PlutusData.constr(1);
+            return PlutusData.constr(0, scriptCred, noStaking);
+        }
+
+        static PlutusData buildTxOutRef(byte[] txId, long index) {
+            return PlutusData.constr(0, PlutusData.bytes(txId), PlutusData.integer(index));
+        }
+
+        static PlutusData buildTxInInfo(PlutusData txOutRef, PlutusData txOut) {
+            return PlutusData.constr(0, txOutRef, txOut);
+        }
+
+        /** Build a ScriptContext: Constr(0, [txInfo, redeemer, scriptInfo]) */
+        static PlutusData buildScriptContext(PlutusData txInfo, PlutusData redeemer, PlutusData scriptInfo) {
+            return PlutusData.constr(0, txInfo, redeemer, scriptInfo);
+        }
+
+        /** Build a SpendingScript ScriptInfo: Constr(1, [txOutRef, optionalDatum]) */
+        static PlutusData buildSpendingScriptInfo(PlutusData txOutRef, PlutusData optDatum) {
+            return PlutusData.constr(1, txOutRef, optDatum);
+        }
+
+        /** Build a MintingScript ScriptInfo: Constr(0, [policyId]) */
+        static PlutusData buildMintingScriptInfo(byte[] policyId) {
+            return PlutusData.constr(0, PlutusData.bytes(policyId));
+        }
+
+        /** Build a TxInfo with inputs, outputs, and datums map. All 16 fields. */
+        static PlutusData buildFullTxInfo(PlutusData[] inputs, PlutusData[] outputs, PlutusData datumsMap) {
+            return PlutusData.constr(0,
+                    PlutusData.list(inputs),                               // 0: inputs
+                    PlutusData.list(),                                     // 1: referenceInputs
+                    PlutusData.list(outputs),                              // 2: outputs
+                    PlutusData.integer(2000000),                           // 3: fee
+                    PlutusData.map(),                                      // 4: mint
+                    PlutusData.list(),                                     // 5: certificates
+                    PlutusData.map(),                                      // 6: withdrawals
+                    alwaysInterval(),                                      // 7: validRange
+                    PlutusData.list(),                                     // 8: signatories
+                    PlutusData.map(),                                      // 9: redeemers
+                    datumsMap,                                             // 10: datums
+                    PlutusData.bytes(new byte[32]),                        // 11: txId
+                    PlutusData.map(),                                      // 12: votes
+                    PlutusData.list(),                                     // 13: proposalProcedures
+                    PlutusData.constr(1),                                  // 14: currentTreasuryAmount (None)
+                    PlutusData.constr(1)                                   // 15: treasuryDonation (None)
+            );
+        }
+
+        // --- 1. getSpendingDatum ---
+
+        @Test
+        void getSpendingDatumReturnsOptionalPresent() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+                    import java.util.Optional;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            Optional<PlutusData> datum = ContextsLib.getSpendingDatum(ctx);
+                            return datum.isPresent();
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+
+            var txOutRef = buildTxOutRef(new byte[]{1, 2, 3}, 0);
+            var optDatum = PlutusData.constr(0, PlutusData.integer(42)); // Some(42)
+            var scriptInfo = buildSpendingScriptInfo(txOutRef, optDatum);
+            var txInfo = buildFullTxInfo(new PlutusData[0], new PlutusData[0], PlutusData.map());
+            var ctx = buildScriptContext(txInfo, PlutusData.integer(0), scriptInfo);
+            var result = vm.evaluateWithArgs(program, List.of(ctx));
+            assertTrue(result.isSuccess(), "getSpendingDatum should return present Optional. Got: " + result);
+        }
+
+        @Test
+        void getSpendingDatumReturnsOptionalEmpty() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+                    import java.util.Optional;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            Optional<PlutusData> datum = ContextsLib.getSpendingDatum(ctx);
+                            return datum.isEmpty();
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+
+            var txOutRef = buildTxOutRef(new byte[]{1, 2, 3}, 0);
+            var optDatum = PlutusData.constr(1); // None
+            var scriptInfo = buildSpendingScriptInfo(txOutRef, optDatum);
+            var txInfo = buildFullTxInfo(new PlutusData[0], new PlutusData[0], PlutusData.map());
+            var ctx = buildScriptContext(txInfo, PlutusData.integer(0), scriptInfo);
+            var result = vm.evaluateWithArgs(program, List.of(ctx));
+            assertTrue(result.isSuccess(), "getSpendingDatum should return empty Optional for no-datum spending. Got: " + result);
+        }
+
+        @Test
+        void getSpendingDatumReturnsEmptyForMinting() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+                    import java.util.Optional;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            Optional<PlutusData> datum = ContextsLib.getSpendingDatum(ctx);
+                            return datum.isEmpty();
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+
+            var scriptInfo = buildMintingScriptInfo(new byte[]{10, 20, 30});
+            var txInfo = buildFullTxInfo(new PlutusData[0], new PlutusData[0], PlutusData.map());
+            var ctx = buildScriptContext(txInfo, PlutusData.integer(0), scriptInfo);
+            var result = vm.evaluateWithArgs(program, List.of(ctx));
+            assertTrue(result.isSuccess(), "getSpendingDatum should return empty for MintingScript. Got: " + result);
+        }
+
+        // --- 2. findOwnInput ---
+
+        @Test
+        void findOwnInputReturnsOptionalPresent() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+                    import java.util.Optional;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            Optional<TxInInfo> ownInputOpt = ContextsLib.findOwnInput(ctx);
+                            return ownInputOpt.isPresent();
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+
+            var txOutRef = buildTxOutRef(new byte[]{1, 2, 3}, 0);
+            var scriptAddr = buildScriptAddress(new byte[]{7, 8, 9});
+            var txOut = buildTxOut(scriptAddr, lovelaceValue(5000000));
+            var txInInfo = buildTxInInfo(txOutRef, txOut);
+
+            var optDatum = PlutusData.constr(1); // None
+            var scriptInfo = buildSpendingScriptInfo(txOutRef, optDatum);
+            var txInfo = buildFullTxInfo(new PlutusData[]{txInInfo}, new PlutusData[0], PlutusData.map());
+            var ctx = buildScriptContext(txInfo, PlutusData.integer(0), scriptInfo);
+            var result = vm.evaluateWithArgs(program, List.of(ctx));
+            assertTrue(result.isSuccess(), "findOwnInput should find matching input. Got: " + result);
+        }
+
+        @Test
+        void findOwnInputReturnsEmptyForMinting() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+                    import java.util.Optional;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            Optional<TxInInfo> ownInputOpt = ContextsLib.findOwnInput(ctx);
+                            return ownInputOpt.isEmpty();
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+
+            var scriptInfo = buildMintingScriptInfo(new byte[]{10, 20, 30});
+            var txInfo = buildFullTxInfo(new PlutusData[0], new PlutusData[0], PlutusData.map());
+            var ctx = buildScriptContext(txInfo, PlutusData.integer(0), scriptInfo);
+            var result = vm.evaluateWithArgs(program, List.of(ctx));
+            assertTrue(result.isSuccess(), "findOwnInput should return empty for MintingScript. Got: " + result);
+        }
+
+        @Test
+        void findOwnInputFieldAccess() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+                    import java.util.Optional;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            Optional<TxInInfo> ownInputOpt = ContextsLib.findOwnInput(ctx);
+                            TxInInfo ownInput = ownInputOpt.get();
+                            Address addr = ownInput.resolved().address();
+                            // Verify the address matches (equalsData with redeemer which holds expected address)
+                            return Builtins.equalsData(addr, redeemer);
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+
+            var txOutRef = buildTxOutRef(new byte[]{1, 2, 3}, 0);
+            var scriptAddr = buildScriptAddress(new byte[]{7, 8, 9});
+            var txOut = buildTxOut(scriptAddr, lovelaceValue(5000000));
+            var txInInfo = buildTxInInfo(txOutRef, txOut);
+
+            var optDatum = PlutusData.constr(1); // None
+            var scriptInfo = buildSpendingScriptInfo(txOutRef, optDatum);
+            var txInfo = buildFullTxInfo(new PlutusData[]{txInInfo}, new PlutusData[0], PlutusData.map());
+            var ctx = buildScriptContext(txInfo, scriptAddr, scriptInfo);
+            var result = vm.evaluateWithArgs(program, List.of(ctx));
+            assertTrue(result.isSuccess(), "findOwnInput should allow typed field access. Got: " + result);
+        }
+
+        // --- 3. ownHash ---
+
+        @Test
+        void ownHashReturnsByteArrayMinting() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            byte[] hash = ContextsLib.ownHash(ctx);
+                            // Compare with redeemer which holds expected policy id
+                            return Builtins.equalsByteString(hash, Builtins.unBData(redeemer));
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+
+            var policyId = new byte[]{10, 20, 30, 40};
+            var scriptInfo = buildMintingScriptInfo(policyId);
+            var txInfo = buildFullTxInfo(new PlutusData[0], new PlutusData[0], PlutusData.map());
+            var ctx = buildScriptContext(txInfo, PlutusData.bytes(policyId), scriptInfo);
+            var result = vm.evaluateWithArgs(program, List.of(ctx));
+            assertTrue(result.isSuccess(), "ownHash should return policyId for MintingScript. Got: " + result);
+        }
+
+        @Test
+        void ownHashReturnsByteArraySpending() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            byte[] hash = ContextsLib.ownHash(ctx);
+                            // Compare with redeemer which holds expected script hash
+                            return Builtins.equalsByteString(hash, Builtins.unBData(redeemer));
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+
+            var scriptHash = new byte[]{7, 8, 9};
+            var txOutRef = buildTxOutRef(new byte[]{1, 2, 3}, 0);
+            var scriptAddr = buildScriptAddress(scriptHash);
+            var txOut = buildTxOut(scriptAddr, lovelaceValue(5000000));
+            var txInInfo = buildTxInInfo(txOutRef, txOut);
+
+            var optDatum = PlutusData.constr(1); // None
+            var scriptInfo = buildSpendingScriptInfo(txOutRef, optDatum);
+            var txInfo = buildFullTxInfo(new PlutusData[]{txInInfo}, new PlutusData[0], PlutusData.map());
+            var ctx = buildScriptContext(txInfo, PlutusData.bytes(scriptHash), scriptInfo);
+            var result = vm.evaluateWithArgs(program, List.of(ctx));
+            assertTrue(result.isSuccess(), "ownHash should return script hash for SpendingScript. Got: " + result);
+        }
+
+        // --- 4. getContinuingOutputs ---
+
+        @Test
+        void getContinuingOutputsReturnsTypedList() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            List<TxOut> continuing = ContextsLib.getContinuingOutputs(ctx);
+                            return ListsLib.length(continuing) == 2;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+
+            var scriptHash = new byte[]{7, 8, 9};
+            var txOutRef = buildTxOutRef(new byte[]{1, 2, 3}, 0);
+            var scriptAddr = buildScriptAddress(scriptHash);
+            var otherAddr = buildAddress(new byte[]{4, 5, 6});
+            var txOut = buildTxOut(scriptAddr, lovelaceValue(5000000));
+            var txInInfo = buildTxInInfo(txOutRef, txOut);
+
+            // 2 outputs to own address, 1 to other
+            var out1 = buildTxOut(scriptAddr, lovelaceValue(3000000));
+            var out2 = buildTxOut(otherAddr, lovelaceValue(1000000));
+            var out3 = buildTxOut(scriptAddr, lovelaceValue(2000000));
+
+            var optDatum = PlutusData.constr(1);
+            var scriptInfo = buildSpendingScriptInfo(txOutRef, optDatum);
+            var txInfo = buildFullTxInfo(new PlutusData[]{txInInfo}, new PlutusData[]{out1, out2, out3}, PlutusData.map());
+            var ctx = buildScriptContext(txInfo, PlutusData.integer(0), scriptInfo);
+            var result = vm.evaluateWithArgs(program, List.of(ctx));
+            assertTrue(result.isSuccess(), "getContinuingOutputs should return 2 outputs. Got: " + result);
+        }
+
+        // --- 5. valueSpent ---
+
+        @Test
+        void valueSpentReturnsTypedList() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            TxInfo txInfo = ContextsLib.getTxInfo(ctx);
+                            List<Value> values = ContextsLib.valueSpent(txInfo);
+                            return ListsLib.length(values) == 2;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+
+            var addr1 = buildAddress(new byte[]{1, 2, 3});
+            var addr2 = buildAddress(new byte[]{4, 5, 6});
+            var txOutRef1 = buildTxOutRef(new byte[]{10}, 0);
+            var txOutRef2 = buildTxOutRef(new byte[]{20}, 0);
+            var txOut1 = buildTxOut(addr1, lovelaceValue(3000000));
+            var txOut2 = buildTxOut(addr2, lovelaceValue(5000000));
+            var in1 = buildTxInInfo(txOutRef1, txOut1);
+            var in2 = buildTxInInfo(txOutRef2, txOut2);
+
+            var mintingInfo = buildMintingScriptInfo(new byte[]{99});
+            var txInfo = buildFullTxInfo(new PlutusData[]{in1, in2}, new PlutusData[0], PlutusData.map());
+            var ctx = buildScriptContext(txInfo, PlutusData.integer(0), mintingInfo);
+            var result = vm.evaluateWithArgs(program, List.of(ctx));
+            assertTrue(result.isSuccess(), "valueSpent should return 2 values. Got: " + result);
+        }
+
+        // --- 6. valuePaid ---
+
+        @Test
+        void valuePaidReturnsTypedList() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            TxInfo txInfo = ContextsLib.getTxInfo(ctx);
+                            // redeemer holds the target address
+                            List<Value> values = ContextsLib.valuePaid(txInfo, redeemer);
+                            return ListsLib.length(values) == 2;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+
+            var addr1 = buildAddress(new byte[]{1, 2, 3});
+            var addr2 = buildAddress(new byte[]{4, 5, 6});
+            var out1 = buildTxOut(addr1, lovelaceValue(1000000));
+            var out2 = buildTxOut(addr1, lovelaceValue(2000000));
+            var out3 = buildTxOut(addr2, lovelaceValue(3000000));
+
+            var mintingInfo = buildMintingScriptInfo(new byte[]{99});
+            var txInfo = buildFullTxInfo(new PlutusData[0], new PlutusData[]{out1, out2, out3}, PlutusData.map());
+            var ctx = buildScriptContext(txInfo, addr1, mintingInfo);
+            var result = vm.evaluateWithArgs(program, List.of(ctx));
+            assertTrue(result.isSuccess(), "valuePaid should return 2 matching values. Got: " + result);
+        }
+
+        // --- 7. scriptOutputsAt ---
+
+        @Test
+        void scriptOutputsAtReturnsTypedList() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            TxInfo txInfo = ContextsLib.getTxInfo(ctx);
+                            // redeemer holds the script hash as bytes
+                            byte[] sh = Builtins.unBData(redeemer);
+                            List<TxOut> outputs = ContextsLib.scriptOutputsAt(txInfo, sh);
+                            return ListsLib.length(outputs) == 2;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+
+            var scriptHash = new byte[]{7, 8, 9};
+            var scriptAddr = buildScriptAddress(scriptHash);
+            var pubKeyAddr = buildAddress(new byte[]{1, 2, 3});
+            var out1 = buildTxOut(scriptAddr, lovelaceValue(1000000));
+            var out2 = buildTxOut(pubKeyAddr, lovelaceValue(2000000));
+            var out3 = buildTxOut(scriptAddr, lovelaceValue(3000000));
+
+            var mintingInfo = buildMintingScriptInfo(new byte[]{99});
+            var txInfo = buildFullTxInfo(new PlutusData[0], new PlutusData[]{out1, out2, out3}, PlutusData.map());
+            var ctx = buildScriptContext(txInfo, PlutusData.bytes(scriptHash), mintingInfo);
+            var result = vm.evaluateWithArgs(program, List.of(ctx));
+            assertTrue(result.isSuccess(), "scriptOutputsAt should return 2 script outputs. Got: " + result);
+        }
+
+        @Test
+        void scriptOutputsAtEmptyForPubKey() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            TxInfo txInfo = ContextsLib.getTxInfo(ctx);
+                            byte[] sh = Builtins.unBData(redeemer);
+                            List<TxOut> outputs = ContextsLib.scriptOutputsAt(txInfo, sh);
+                            return ListsLib.length(outputs) == 0;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+
+            var pubKeyAddr = buildAddress(new byte[]{1, 2, 3});
+            var out1 = buildTxOut(pubKeyAddr, lovelaceValue(1000000));
+
+            var mintingInfo = buildMintingScriptInfo(new byte[]{99});
+            var txInfo = buildFullTxInfo(new PlutusData[0], new PlutusData[]{out1}, PlutusData.map());
+            var ctx = buildScriptContext(txInfo, PlutusData.bytes(new byte[]{7, 8, 9}), mintingInfo);
+            var result = vm.evaluateWithArgs(program, List.of(ctx));
+            assertTrue(result.isSuccess(), "scriptOutputsAt should return empty for pubkey addresses. Got: " + result);
+        }
+
+        // --- 8. findDatum ---
+
+        @Test
+        void findDatumReturnsOptionalPresent() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+                    import java.util.Optional;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            TxInfo txInfo = ContextsLib.getTxInfo(ctx);
+                            // redeemer holds the datum hash to search for
+                            Optional<PlutusData> datum = ContextsLib.findDatum(txInfo, redeemer);
+                            return datum.isPresent();
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+
+            var datumHash = PlutusData.bytes(new byte[]{1, 2, 3});
+            var datumValue = PlutusData.integer(42);
+            var datumsMap = PlutusData.map(new PlutusData.Pair(datumHash, datumValue));
+
+            var mintingInfo = buildMintingScriptInfo(new byte[]{99});
+            var txInfo = buildFullTxInfo(new PlutusData[0], new PlutusData[0], datumsMap);
+            var ctx = buildScriptContext(txInfo, datumHash, mintingInfo);
+            var result = vm.evaluateWithArgs(program, List.of(ctx));
+            assertTrue(result.isSuccess(), "findDatum should find matching datum. Got: " + result);
+        }
+
+        @Test
+        void findDatumReturnsOptionalEmpty() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+                    import java.util.Optional;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            TxInfo txInfo = ContextsLib.getTxInfo(ctx);
+                            Optional<PlutusData> datum = ContextsLib.findDatum(txInfo, redeemer);
+                            return datum.isEmpty();
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+
+            var datumHash = PlutusData.bytes(new byte[]{1, 2, 3});
+            var datumsMap = PlutusData.map(
+                    new PlutusData.Pair(PlutusData.bytes(new byte[]{9, 9, 9}), PlutusData.integer(99)));
+
+            var mintingInfo = buildMintingScriptInfo(new byte[]{99});
+            var txInfo = buildFullTxInfo(new PlutusData[0], new PlutusData[0], datumsMap);
+            var ctx = buildScriptContext(txInfo, datumHash, mintingInfo);
+            var result = vm.evaluateWithArgs(program, List.of(ctx));
+            assertTrue(result.isSuccess(), "findDatum should return empty for non-matching hash. Got: " + result);
         }
     }
 }

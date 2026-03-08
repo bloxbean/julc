@@ -59,8 +59,8 @@ operations, and first-class integration with [cardano-client-lib](https://github
 
 JuLC compiles a safe subset of Java to UPLC. Key limitations to be aware of:
 
-- **`default` branches in switch expressions** are not supported on sealed interfaces — use explicit cases for all variants (compiler error is emitted)
-- **`@Param` fields**: supported types are `PlutusData`, `byte[]`, `BigInteger`, `String`, records, sealed interfaces, and `@NewType` — never use `PlutusData.BytesData`, `PlutusData.MapData`, `PlutusData.ListData`, or `PlutusData.IntData`
+- **`default` branches in switch expressions** work as catch-alls for uncovered variants, but prefer explicit cases for all variants of sealed interfaces for clarity
+- **`@Param` fields**: always use `PlutusData` as the type for `@Param` fields. Other supported types are `byte[]`, `BigInteger`, `String`, records, sealed interfaces, and `@NewType`. **Never** use `PlutusData.BytesData`, `PlutusData.MapData`, `PlutusData.ListData`, or `PlutusData.IntData` — these cause double-wrapping and cross-library type mismatches at runtime
 - **No `Function.apply()`** — lambdas work with HOFs (`list.map(x -> ...)`, `list.filter(...)`) but cannot be stored in `Function<T,R>` variables and called via `.apply()`
 - **Immutable variables** — variables cannot be reassigned except as loop accumulators in `while`/`for-each`
 

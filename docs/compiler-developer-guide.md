@@ -903,6 +903,15 @@ For `LetRec([name = body], expr)`:
 2. Create recursive lambda: `Lam(name, body')` where body references `name`
 3. Apply: `Apply(Lam(name, expr'), Apply(fix, Lam(name, body')))`
 
+**Multi-binding LetRec (Bekic's theorem):**
+
+`UplcGenerator` handles multi-binding `LetRec` via dependency analysis:
+
+1. Build a dependency graph between bindings
+2. Topological sort: non-mutual bindings are nested as single `LetRec`/`Let` in topo order
+3. For 2-binding mutual recursion, apply Bekic's theorem to decompose into nested single-binding `LetRec`s
+4. Limitation: mutual recursion with >2 bindings is not yet supported
+
 **IfThenElse → Delay/Force:**
 ```
 IfThenElse(c, t, e)  →  Force(Apply(Apply(Apply(Force(Builtin(IfThenElse)), c'),
@@ -1268,6 +1277,18 @@ Example: `ListsLib.foldl(fn, init, list)` in user Java code:
    ```
 5. **UplcGenerator** lowers LetRec using Z-combinator
 6. **UplcOptimizer** applies Force/Delay cancellation, potentially beta-reduces
+
+### HOF Compilation Pipeline (Instance Methods)
+
+Instance HOF calls like `list.map(x -> x + 1)` are compiled via `PirHofBuilders.java`:
+
+1. **TypeMethodRegistry** detects HOF method (`map`, `filter`, `any`, `all`, `find`) on a `ListType` variable
+2. **Lambda inference:** Lambda parameter type is auto-inferred from the list's element type
+3. **PirHofBuilders** generates the PIR pattern (same builders as `StdlibRegistry` static HOFs)
+4. **hofUnwrappedVars:** For `ByteStringType` elements (e.g., `JulcList<PubKeyHash>`), the lambda param is tracked as pre-unwrapped to prevent double `UnBData` in `.hash()` calls
+5. Result: `map` wraps results to Data; `filter`/`any`/`all`/`find` preserve element types
+
+`foldl` is only available as `ListsLib.foldl(...)` (static), not as an instance method, due to the complexity of 2-parameter lambdas with an init value.
 
 ---
 

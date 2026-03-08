@@ -27,8 +27,8 @@ This document covers all supported Java operations in the JuLC compiler, the sta
 `JulcList<T>` and `JulcMap<K,V>` are interfaces in `julc-core/types/` that resolve to the same `ListType`/`MapType` as `List`/`Map`. They provide IDE autocomplete for on-chain methods (`.contains()`, `.size()`, `.get()`, etc.).
 
 ```java
-JulcList<BigInteger> numbers = txInfo.signatories();  // same as List<byte[]>
-JulcMap<byte[], BigInteger> withdrawals = txInfo.withdrawals();
+JulcList<PubKeyHash> signers = txInfo.signatories();  // typed list of PubKeyHash
+JulcMap<Credential, BigInteger> withdrawals = txInfo.withdrawals();
 ```
 
 ### Tuple2 and Tuple3
@@ -146,7 +146,7 @@ return switch (action) {
 };
 ```
 
-Switch expressions check exhaustiveness at compile time. All variants of the sealed interface must be covered (the `default ->` branch body is **not compiled** — always use explicit cases).
+Switch expressions check exhaustiveness at compile time. All variants of the sealed interface must be covered. The `default ->` branch can be used as a catch-all for uncovered variants, but prefer explicit cases for clarity.
 
 ### instanceof Pattern Matching
 ```java
@@ -279,17 +279,17 @@ static boolean validate(MyDatum datum, PlutusData redeemer, ScriptContext ctx) {
 | `txInfo.outputs()` | `List<TxOut>` | 2 | Transaction outputs |
 | `txInfo.fee()` | `BigInteger` | 3 | Transaction fee (lovelace) |
 | `txInfo.mint()` | `Value` | 4 | Minted/burned value |
-| `txInfo.certificates()` | `List<PlutusData>` | 5 | Certificates |
-| `txInfo.withdrawals()` | `Map<PlutusData,BigInteger>` | 6 | Reward withdrawals |
+| `txInfo.certificates()` | `JulcList<TxCert>` | 5 | Certificates |
+| `txInfo.withdrawals()` | `JulcMap<Credential, BigInteger>` | 6 | Reward withdrawals |
 | `txInfo.validRange()` | `Interval` | 7 | Validity time range |
-| `txInfo.signatories()` | `List<byte[]>` | 8 | Required signers |
-| `txInfo.redeemers()` | `Map<PlutusData,PlutusData>` | 9 | All redeemers |
-| `txInfo.datums()` | `Map<byte[],PlutusData>` | 10 | Datum hash map |
-| `txInfo.txId()` | `byte[]` | 11 | Transaction hash |
-| `txInfo.votes()` | `Map<PlutusData,PlutusData>` | 12 | Governance votes |
-| `txInfo.proposalProcedures()` | `List<PlutusData>` | 13 | Proposal procedures |
-| `txInfo.treasury()` | `Optional<BigInteger>` | 14 | Current treasury |
-| `txInfo.donation()` | `Optional<BigInteger>` | 15 | Current donation |
+| `txInfo.signatories()` | `JulcList<PubKeyHash>` | 8 | Required signers |
+| `txInfo.redeemers()` | `JulcMap<ScriptPurpose, PlutusData>` | 9 | All redeemers |
+| `txInfo.datums()` | `JulcMap<DatumHash, PlutusData>` | 10 | Datum hash map |
+| `txInfo.txId()` | `TxId` | 11 | Transaction hash |
+| `txInfo.votes()` | `JulcMap<Voter, JulcMap<GovernanceActionId, Vote>>` | 12 | Governance votes |
+| `txInfo.proposalProcedures()` | `JulcList<ProposalProcedure>` | 13 | Proposal procedures |
+| `txInfo.currentTreasuryAmount()` | `Optional<BigInteger>` | 14 | Current treasury |
+| `txInfo.treasuryDonation()` | `Optional<BigInteger>` | 15 | Treasury donation |
 
 ### Other Ledger Types
 
@@ -491,6 +491,8 @@ Import from `com.bloxbean.cardano.julc.stdlib.lib.*` in validators. See [Standar
 | `flatten(value)` | Value | Flatten to list of triples |
 | `add(a, b)` | Value, Value | Add two values |
 | `subtract(a, b)` | Value, Value | Subtract values |
+| `countTokensWithQty(mint, policy, qty)` | Value, BS, Integer | Count tokens with exact quantity under policy |
+| `findTokenName(mint, policy, qty)` | Value, BS, Integer | Find token name with exact quantity under policy |
 
 ### MapLib
 
@@ -521,7 +523,9 @@ Import from `com.bloxbean.cardano.julc.stdlib.lib.*` in validators. See [Standar
 | `lovelacePaidTo(outputs, addr)` | List, Address | Total lovelace to address |
 | `paidAtLeast(outs, addr, min)` | List, Address, Integer | Check minimum payment |
 | `getInlineDatum(txOut)` | TxOut | Get inline datum |
-| `resolveDatum(txInfo, txOut)` | TxInfo, TxOut | Resolve datum (inline or by hash) |
+| `resolveDatum(txOut, datumsMap)` | TxOut, Map | Resolve datum (inline or by hash) |
+| `findOutputWithToken(outputs, scriptHash, policy, token)` | List, BS, BS, BS | Find output at script address with specific token |
+| `findInputWithToken(inputs, scriptHash, policy, token)` | List, BS, BS, BS | Find input at script address with specific token |
 
 ### MathLib
 
@@ -565,9 +569,21 @@ Note: `sha2_256`, `sha3_256`, `blake2b_256`, `blake2b_224`, `keccak_256`, and `v
 | `lessThanEquals(a, b)` | BS, BS | Lexicographic less-than-or-equal |
 | `integerToByteString(be, w, i)` | Bool, Integer, Integer | Integer to byte string |
 | `byteStringToInteger(be, bs)` | Bool, BS | Byte string to integer |
+| `at(bs, index)` | BS, Integer | Get byte at index |
+| `cons(byte_, bs)` | Integer, BS | Prepend a byte |
+| `slice(bs, start, length)` | BS, Integer, Integer | Extract a slice |
+| `length(bs)` | BS | Length of bytestring |
+| `drop(bs, n)` | BS, Integer | Drop first n bytes |
+| `append(a, b)` | BS, BS | Concatenate two bytestrings |
+| `empty()` | (none) | Empty bytestring |
+| `zeros(n)` | Integer | Bytestring of n zero bytes |
+| `equals(a, b)` | BS, BS | Equality check |
 | `encodeUtf8(s)` | String | Encode string to UTF-8 bytes |
 | `decodeUtf8(bs)` | BS | Decode UTF-8 bytes to string |
 | `serialiseData(d)` | Data | Serialize data to CBOR bytes |
+| `hexNibble(n)` | Integer | Convert nibble (0-15) to hex ASCII code |
+| `toHex(bs)` | BS | Convert bytestring to hex-encoded bytestring |
+| `intToDecimalString(n)` | Integer | Convert integer to decimal digit bytestring |
 
 ### BitwiseLib
 

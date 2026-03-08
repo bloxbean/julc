@@ -138,14 +138,21 @@ path that supports a narrower set of statements.
 assignments, if/else, and break.
 
 ```java
-// WRONG: for-each in a break-aware loop body
+// WRONG: nested for-each inside a break-aware loop body
 for (var item : items) {
-    for (var sub : item.children()) { // nested for-each not supported here
+    for (var sub : item.children()) { // not supported inside break-aware body
         if (condition) break;
     }
 }
 
-// CORRECT: flatten logic or extract into a helper method
+// CORRECT: nested for-each without break is supported
+for (var item : items) {
+    for (var sub : item.children()) { // OK — no break in outer loop
+        sum = sum + sub.amount();
+    }
+}
+
+// CORRECT: use a helper method for the break pattern
 var found = false;
 for (var item : items) {
     if (checkCondition(item)) {
@@ -154,6 +161,8 @@ for (var item : items) {
     }
 }
 ```
+
+Note: Nested loops (while-in-while, for-each-in-for-each, mixed) are fully supported. The restriction is specifically about nesting inside a **break-aware** loop body — when the outer loop uses `break`, the inner statements must be limited to declarations, assignments, if/else, and break.
 
 ---
 
@@ -340,7 +349,7 @@ if (action instanceof Bid b) {
 
 **Cause:** A `switch` expression on a sealed interface does not cover all variants. The compiler checks exhaustiveness before generating `DataMatch`.
 
-**Fix:** Add cases for all variants of the sealed interface. Do not rely on `default ->` (the default branch body is not compiled).
+**Fix:** Add explicit cases for all variants of the sealed interface, or use `default ->` as a catch-all for uncovered variants.
 
 ```java
 sealed interface Action permits Bid, Cancel, Update {}
@@ -1043,7 +1052,7 @@ an opaque type to break cycles if needed.
 
 These errors occur when evaluating compiled UPLC programs on the Plutus VM.
 
-### 5.1 `No JulcVmProvider found. Add plutus-vm-scalus or plutus-vm-java to your classpath.`
+### 5.1 `No JulcVmProvider found. Add julc-vm-scalus or julc-vm-java to your classpath.`
 
 **Cause:** The `JulcVm.create()` method could not find any VM provider via
 `ServiceLoader`. No VM backend JAR is on the classpath.
@@ -1253,23 +1262,25 @@ public record B(A parent) {}
 
 ---
 
-### Q: Why does my switch expression crash at runtime even though it compiles?
+### Q: Why does my switch expression fail with a compiler error about missing cases?
 
-**A:** The `default ->` branch body is **not compiled**. The compiler skips `entry.isDefault()` entirely, so default branch code is never generated. You must use explicit cases for ALL variants of the sealed interface.
+**A:** The compiler enforces exhaustiveness for switch expressions on sealed interfaces. The `default ->` branch acts as a catch-all for any uncovered variants — its body is compiled and used for all variants not explicitly listed. However, for clarity and safety, prefer explicit cases for ALL variants rather than relying on `default`.
 
 ```java
-// WRONG: default branch is silently ignored
+// OK but not recommended: default catches unlisted variants
 var result = switch (action) {
     case Bid b -> b.amount();
-    default -> BigInteger.ZERO;  // NOT COMPILED — will crash at runtime
+    default -> BigInteger.ZERO;  // compiled — covers Cancel and any other variants
 };
 
-// CORRECT: explicit cases for all variants
+// RECOMMENDED: explicit cases for all variants
 var result = switch (action) {
     case Bid b -> b.amount();
     case Cancel c -> BigInteger.ZERO;
 };
 ```
+
+If you omit both a `default` branch and an explicit case, the compiler emits an error listing the missing variants.
 
 ---
 

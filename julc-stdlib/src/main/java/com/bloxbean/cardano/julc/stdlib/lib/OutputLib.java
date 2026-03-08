@@ -2,6 +2,7 @@ package com.bloxbean.cardano.julc.stdlib.lib;
 
 import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.core.types.JulcList;
+import com.bloxbean.cardano.julc.core.types.JulcMap;
 import com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary;
 import com.bloxbean.cardano.julc.ledger.Address;
 import com.bloxbean.cardano.julc.ledger.OutputDatum;
@@ -10,6 +11,7 @@ import com.bloxbean.cardano.julc.ledger.TxOut;
 import com.bloxbean.cardano.julc.ledger.Value;
 import com.bloxbean.cardano.julc.stdlib.Builtins;
 import java.math.BigInteger;
+import java.util.Optional;
 
 /**
  * Transaction output utility operations compiled from Java source to UPLC.
@@ -148,16 +150,16 @@ public class OutputLib {
 
     /** Resolve the datum from a TxOut: inline datum is returned directly,
      *  datum hash is looked up in the datums map, NoDatum aborts. */
-    public static PlutusData resolveDatum(TxOut txOut, PlutusData.MapData datumsMap) {
+    public static PlutusData resolveDatum(TxOut txOut, JulcMap<PlutusData, PlutusData> datumsMap) {
         return switch (txOut.datum()) {
             case OutputDatum.OutputDatumInline i -> i.datum();
             case OutputDatum.OutputDatumHash h -> {
-                PlutusData result = MapLib.lookup(datumsMap, Builtins.bData(h.hash()));
-                if (Builtins.constrTag(result) == 0) {
-                    yield Builtins.headList(Builtins.constrFields(result));
+                Optional<PlutusData> result = MapLib.lookup(datumsMap, Builtins.bData(h.hash()));
+                if (result.isPresent()) {
+                    yield result.get();
                 } else {
                     Builtins.error();
-                    yield result;
+                    yield (PlutusData)(Object) txOut.datum();
                 }
             }
             case OutputDatum.NoOutputDatum n -> {
