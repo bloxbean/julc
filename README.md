@@ -91,6 +91,14 @@ dependencies {
 
 For detailed dependencies, check the [getting started](docs/getting-started.md) guide or the `julc-helloworld` example at https://github.com/bloxbean/julc-helloworld.
 
+### Current Preview Version
+
+**`0.1.0-pre1`**
+
+```groovy
+ext.julcVersion = '0.1.0-pre1'
+```
+
 ### Using Snapshot Builds
 
 Snapshot versions include the Git commit hash for traceability, e.g. `0.1.0-055d17f-SNAPSHOT`.
