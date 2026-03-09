@@ -1260,6 +1260,14 @@ public class PirGenerator {
                             symbolTable.define(itemName, finalElemType);
                             symbolTable.define(accName, accType);
 
+                            // Track auto-unwrapped loop var to prevent double-unwrap in .hash()/.name() etc.
+                            var prevHofUnwrapped = hofUnwrappedVars;
+                            if (needsForEachUnwrapTracking(finalElemType)) {
+                                var unwrapped = new LinkedHashSet<>(hofUnwrappedVars);
+                                unwrapped.add(itemName);
+                                hofUnwrappedVars = unwrapped;
+                            }
+
                             String prevAcc = forEachAccumulatorVar;
                             Function<PirTerm, PirTerm> prevBreak = breakContinueFn;
                             forEachAccumulatorVar = accName;
@@ -1270,24 +1278,34 @@ public class PirGenerator {
 
                             forEachAccumulatorVar = prevAcc;
                             breakContinueFn = prevBreak;
+                            hofUnwrappedVars = prevHofUnwrapped;
                             symbolTable.popScope();
                             return bodyTerm;
-                        });
+                        }, finalElemType);
             } else {
                 // Normal fold: no break
                 symbolTable.pushScope();
                 symbolTable.define(itemName, elemType);
                 symbolTable.define(accName, accType);
 
+                // Track auto-unwrapped loop var to prevent double-unwrap in .hash()/.name() etc.
+                var prevHofUnwrapped = hofUnwrappedVars;
+                if (needsForEachUnwrapTracking(elemType)) {
+                    var unwrapped = new LinkedHashSet<>(hofUnwrappedVars);
+                    unwrapped.add(itemName);
+                    hofUnwrappedVars = unwrapped;
+                }
+
                 String prev = forEachAccumulatorVar;
                 forEachAccumulatorVar = accName;
                 var bodyTerm = withLoopBodyFlag(() -> generateSingleAccBody(fes.getBody(), accName, accType));
                 forEachAccumulatorVar = prev;
 
+                hofUnwrappedVars = prevHofUnwrapped;
                 symbolTable.popScope();
 
                 foldResult = desugarer.desugarForEach(
-                        iterableExpr, itemName, accName, accInit, accType, bodyTerm);
+                        iterableExpr, itemName, accName, accInit, accType, bodyTerm, elemType);
             }
 
             // Rebind accumulator with fold result for following statements
@@ -1323,6 +1341,14 @@ public class PirGenerator {
                             symbolTable.pushScope();
                             symbolTable.define(itemName, finalElemType);
 
+                            // Track auto-unwrapped loop var to prevent double-unwrap
+                            var prevHofUnwrapped = hofUnwrappedVars;
+                            if (needsForEachUnwrapTracking(finalElemType)) {
+                                var unwrapped = new LinkedHashSet<>(hofUnwrappedVars);
+                                unwrapped.add(itemName);
+                                hofUnwrappedVars = unwrapped;
+                            }
+
                             var prevMultiAcc = multiAccVars;
                             multiAccVars = new LinkedHashSet<>(accNames);
 
@@ -1331,12 +1357,21 @@ public class PirGenerator {
                                             generateMultiAccBreakAwareBody(fes.getBody(), accNames, accTypesFinal, continueFn)));
 
                             multiAccVars = prevMultiAcc;
+                            hofUnwrappedVars = prevHofUnwrapped;
                             symbolTable.popScope();
                             return bodyTerm;
-                        });
+                        }, finalElemType);
             } else {
                 symbolTable.pushScope();
                 symbolTable.define(itemName, elemType);
+
+                // Track auto-unwrapped loop var to prevent double-unwrap
+                var prevHofUnwrapped = hofUnwrappedVars;
+                if (needsForEachUnwrapTracking(elemType)) {
+                    var unwrapped = new LinkedHashSet<>(hofUnwrappedVars);
+                    unwrapped.add(itemName);
+                    hofUnwrappedVars = unwrapped;
+                }
 
                 var prevMultiAcc = multiAccVars;
                 multiAccVars = new LinkedHashSet<>(accumulators);
@@ -1346,10 +1381,11 @@ public class PirGenerator {
                         withLoopBodyFlag(() -> generateMultiAccBody(fes.getBody(), accumulators, accTypes)));
 
                 multiAccVars = prevMultiAcc;
+                hofUnwrappedVars = prevHofUnwrapped;
                 symbolTable.popScope();
 
                 foldResult = desugarer.desugarForEach(
-                        iterableExpr, itemName, tupleAccName, accInit, tupleAccType, bodyTerm);
+                        iterableExpr, itemName, tupleAccName, accInit, tupleAccType, bodyTerm, elemType);
             }
 
             // After loop: unpack final tuple into individual vars for following statements
@@ -1368,13 +1404,23 @@ public class PirGenerator {
             // --- Unit-accumulator fallback: for-each with no accumulator ---
             symbolTable.pushScope();
             symbolTable.define(itemName, elemType);
+
+            // Track auto-unwrapped loop var to prevent double-unwrap
+            var prevHofUnwrapped = hofUnwrappedVars;
+            if (needsForEachUnwrapTracking(elemType)) {
+                var unwrapped = new LinkedHashSet<>(hofUnwrappedVars);
+                unwrapped.add(itemName);
+                hofUnwrappedVars = unwrapped;
+            }
+
             var bodyTerm = withLoopBodyFlag(() -> generateStatement(fes.getBody()));
+            hofUnwrappedVars = prevHofUnwrapped;
             symbolTable.popScope();
 
             var forEachResult = desugarer.desugarForEach(
                     iterableExpr, itemName, "acc__forEach",
                     new PirTerm.Const(Constant.unit()), new PirType.UnitType(),
-                    bodyTerm);
+                    bodyTerm, elemType);
 
             if (followingIndex + 1 < followingStmts.size()) {
                 var rest = generateStatements(followingStmts, followingIndex + 1);
@@ -1546,6 +1592,17 @@ public class PirGenerator {
             return is.getElseStmt().map(this::containsReturn).orElse(false);
         }
         return false;
+    }
+
+    /**
+     * Check if a for-each element type needs unwrap tracking (to prevent double-unwrap
+     * in .hash()/.name() etc. when auto-unwrap is applied in the desugarer).
+     */
+    private boolean needsForEachUnwrapTracking(PirType elemType) {
+        return elemType instanceof PirType.ByteStringType
+                || elemType instanceof PirType.IntegerType
+                || elemType instanceof PirType.BoolType
+                || elemType instanceof PirType.StringType;
     }
 
     /**

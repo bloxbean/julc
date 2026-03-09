@@ -59,6 +59,28 @@ class StdlibCompileEvalTest {
         );
     }
 
+    /** Build a TxInfo with custom signatories at field index 8. */
+    static PlutusData buildTxInfoWithSignatories(PlutusData... sigs) {
+        return PlutusData.constr(0,
+                PlutusData.list(),                                     // 0: inputs
+                PlutusData.list(),                                     // 1: referenceInputs
+                PlutusData.list(),                                     // 2: outputs
+                PlutusData.integer(2000000),                           // 3: fee (lovelace)
+                PlutusData.map(),                                      // 4: mint (empty)
+                PlutusData.list(),                                     // 5: certificates
+                PlutusData.map(),                                      // 6: withdrawals
+                alwaysInterval(),                                      // 7: validRange
+                PlutusData.list(sigs),                                 // 8: signatories
+                PlutusData.map(),                                      // 9: redeemers
+                PlutusData.map(),                                      // 10: datums
+                PlutusData.bytes(new byte[32]),                        // 11: txId
+                PlutusData.map(),                                      // 12: votes
+                PlutusData.list(),                                     // 13: proposalProcedures
+                PlutusData.constr(1),                                  // 14: currentTreasuryAmount (None)
+                PlutusData.constr(1)                                   // 15: treasuryDonation (None)
+        );
+    }
+
     /** Build a TxInfo with a custom withdrawals map at field index 6. */
     static PlutusData buildTxInfoWithWithdrawals(PlutusData withdrawals) {
         return PlutusData.constr(0,
@@ -3054,14 +3076,14 @@ class StdlibCompileEvalTest {
                             Map<PlutusData, PlutusData> w = txInfo.withdrawals();
                             PlutusData key = Builtins.iData(BigInteger.valueOf(1));
                             PlutusData result = w.get(key);
-                            return Builtins.constrTag(result) == 0;
+                            return Builtins.equalsData(result, Builtins.iData(BigInteger.valueOf(100)));
                         }
                     }
                     """;
             var program = compileValidator(source);
             var ctx = fieldAccessCtx(twoEntryWithdrawals());
             var result = vm.evaluateWithArgs(program, List.of(ctx));
-            assertTrue(result.isSuccess(), "mapFromFieldAccess get should return Some (tag=0). Got: " + result);
+            assertTrue(result.isSuccess(), "mapFromFieldAccess get should return value 100. Got: " + result);
         }
 
         @Test
@@ -3172,7 +3194,7 @@ class StdlibCompileEvalTest {
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
                             PlutusData result = m.get(Builtins.iData(BigInteger.valueOf(1)));
-                            return Builtins.constrTag(result) == 0;
+                            return Builtins.equalsData(result, Builtins.iData(BigInteger.valueOf(10)));
                         }
                     }
                     """;
@@ -3181,7 +3203,7 @@ class StdlibCompileEvalTest {
                     new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(10)),
                     new PlutusData.Pair(PlutusData.integer(2), PlutusData.integer(20)));
             var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
-            assertTrue(result.isSuccess(), "mapCast get should return Some (tag=0). Got: " + result);
+            assertTrue(result.isSuccess(), "mapCast get should return value 10. Got: " + result);
         }
 
         @Test
@@ -3196,7 +3218,7 @@ class StdlibCompileEvalTest {
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
                             PlutusData result = m.get(Builtins.iData(BigInteger.valueOf(99)));
-                            return Builtins.constrTag(result) == 1;
+                            return Builtins.equalsData(result, Builtins.iData(BigInteger.ONE));
                         }
                     }
                     """;
@@ -3205,7 +3227,7 @@ class StdlibCompileEvalTest {
                     new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(10)),
                     new PlutusData.Pair(PlutusData.integer(2), PlutusData.integer(20)));
             var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
-            assertTrue(result.isSuccess(), "mapCast get missing should return None (tag=1). Got: " + result);
+            assertFalse(result.isSuccess(), "mapCast get missing should crash (VM error). Got: " + result);
         }
 
         @Test
@@ -3613,6 +3635,231 @@ class StdlibCompileEvalTest {
             var ctx = fieldAccessCtx(twoEntryWithdrawals());
             var result = vm.evaluateWithArgs(program, List.of(ctx));
             assertTrue(result.isSuccess(), "MapLib.member on field-access map. Got: " + result);
+        }
+
+        // ================================================================
+        // H. map.get() returns value directly, map.lookup() returns Optional
+        // ================================================================
+
+        @Test
+        void mapGet_returnsValueDirectly() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import java.math.BigInteger;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
+                            PlutusData val = m.get(Builtins.iData(BigInteger.valueOf(1)));
+                            return Builtins.equalsData(val, Builtins.iData(BigInteger.valueOf(10)));
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.map(
+                    new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(10)),
+                    new PlutusData.Pair(PlutusData.integer(2), PlutusData.integer(20)));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "mapGet should return value directly. Got: " + result);
+        }
+
+        @Test
+        void mapGet_missingKey_crashes() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import java.math.BigInteger;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
+                            PlutusData val = m.get(Builtins.iData(BigInteger.valueOf(99)));
+                            return Builtins.equalsData(val, Builtins.iData(BigInteger.ONE));
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.map(
+                    new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(10)));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertFalse(result.isSuccess(), "mapGet missing key should crash. Got: " + result);
+        }
+
+        @Test
+        void mapLookup_returnsOptional() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import java.math.BigInteger;
+                    import java.util.Optional;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
+                            Optional<PlutusData> opt = m.lookup(Builtins.iData(BigInteger.valueOf(1)));
+                            return opt.isPresent();
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.map(
+                    new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(10)));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "mapLookup should return present Optional. Got: " + result);
+        }
+
+        @Test
+        void mapLookup_missingKey_isEmpty() {
+            var source = """
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import java.math.BigInteger;
+                    import java.util.Optional;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
+                            Optional<PlutusData> opt = m.lookup(Builtins.iData(BigInteger.valueOf(99)));
+                            return opt.isEmpty();
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.map(
+                    new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(10)));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "mapLookup missing key should return empty Optional. Got: " + result);
+        }
+
+        // ================================================================
+        // I. For-each auto-unwrap tests
+        // ================================================================
+
+        @Test
+        void forEach_integerList_autoUnwrap() {
+            // Test auto-unwrapping of integer elements via map.values() which returns a typed list
+            var source = """
+                    import com.bloxbean.cardano.julc.ledger.api.*;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import java.math.BigInteger;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
+                            List<PlutusData> vs = m.values();
+                            BigInteger total = BigInteger.ZERO;
+                            for (var v : vs) {
+                                total = total.add(Builtins.unIData(v));
+                            }
+                            return total == 6;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.map(
+                    new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(1)),
+                    new PlutusData.Pair(PlutusData.integer(2), PlutusData.integer(2)),
+                    new PlutusData.Pair(PlutusData.integer(3), PlutusData.integer(3)));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "forEach integer list via map.values() should sum to 6. Got: " + result);
+        }
+
+        @Test
+        void forEach_byteStringList_autoUnwrap() {
+            // Test for-each over signatories (List<PubKeyHash>) — ByteStringType elements
+            var source = """
+                    import com.bloxbean.cardano.julc.ledger.api.*;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            TxInfo txInfo = ctx.txInfo();
+                            List<PubKeyHash> sigs = txInfo.signatories();
+                            int count = 0;
+                            for (var sig : sigs) {
+                                count = count + 1;
+                            }
+                            return count == 2;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            // Build a TxInfo with 2 signatories
+            var txInfo = buildTxInfoWithSignatories(
+                    PlutusData.bytes(new byte[]{1, 2, 3}),
+                    PlutusData.bytes(new byte[]{4, 5, 6}));
+            var ctx = PlutusData.constr(0, txInfo, PlutusData.integer(0),
+                    PlutusData.constr(2, PlutusData.constr(0)));
+            var result = vm.evaluateWithArgs(program, List.of(ctx));
+            assertTrue(result.isSuccess(), "forEach bytestring list auto-unwrap should count 2. Got: " + result);
+        }
+
+        @Test
+        void forEach_plutusDataList_unchanged() {
+            // Test for-each over untyped (DataType) list — no auto-unwrap, backward compat
+            var source = """
+                    import com.bloxbean.cardano.julc.ledger.api.*;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import java.math.BigInteger;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            Map<PlutusData, PlutusData> m = (Map<PlutusData, PlutusData>)(Object) redeemer;
+                            List<PlutusData> ks = m.keys();
+                            int count = 0;
+                            for (var k : ks) {
+                                count = count + 1;
+                            }
+                            return count == 3;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.map(
+                    new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(10)),
+                    new PlutusData.Pair(PlutusData.integer(2), PlutusData.integer(20)),
+                    new PlutusData.Pair(PlutusData.integer(3), PlutusData.integer(30)));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(), "forEach PlutusData list unchanged should count 3. Got: " + result);
+        }
+
+        @Test
+        void forEach_mapValues_autoUnwrap() {
+            var source = """
+                    import com.bloxbean.cardano.julc.ledger.api.*;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import java.math.BigInteger;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            TxInfo txInfo = ctx.txInfo();
+                            Map<PlutusData, PlutusData> w = txInfo.withdrawals();
+                            List<PlutusData> vs = w.values();
+                            BigInteger total = BigInteger.ZERO;
+                            for (var v : vs) {
+                                total = total.add(Builtins.unIData(v));
+                            }
+                            return total == 300;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var ctx = fieldAccessCtx(twoEntryWithdrawals());
+            var result = vm.evaluateWithArgs(program, List.of(ctx));
+            assertTrue(result.isSuccess(), "forEach map values auto-unwrap should sum to 300. Got: " + result);
         }
     }
 

@@ -54,6 +54,11 @@ public final class JulcAssocMap<K, V> implements JulcMap<K, V> {
     }
 
     @Override
+    public java.util.Optional<V> lookup(K key) {
+        return java.util.Optional.ofNullable(get(key));
+    }
+
+    @Override
     public boolean containsKey(K key) {
         for (var entry : entries) {
             if (Objects.equals(entry.key(), key)) {
@@ -107,6 +112,16 @@ public final class JulcAssocMap<K, V> implements JulcMap<K, V> {
     @Override
     public boolean isEmpty() {
         return entries.isEmpty();
+    }
+
+    @Override
+    public Object head() {
+        return entries.getFirst();
+    }
+
+    @Override
+    public JulcMap<K, V> tail() {
+        return new JulcAssocMap<>(entries.subList(1, entries.size()));
     }
 
     @Override
