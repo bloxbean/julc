@@ -253,6 +253,18 @@ class ValuesLibTest {
         }
     }
 
+    @Nested
+    class FlattenTyped {
+
+        @Test
+        void flattenTypedReturnsSameAsFlatten() {
+            var v = multiAssetValue(2_000_000, POLICY_A, TOKEN_X, 42);
+            var flatResult = eval.call("flatten", v).asList();
+            var typedResult = eval.call("flattenTyped", v).asList();
+            assertEquals(flatResult.size(), typedResult.size());
+        }
+    }
+
     // =========================================================================
     // add, subtract
     // =========================================================================

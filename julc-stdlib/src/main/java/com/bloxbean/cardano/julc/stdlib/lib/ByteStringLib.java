@@ -148,4 +148,28 @@ public class ByteStringLib {
         byte[] updated = Builtins.consByteString(48 + digit, acc);
         return intToDecimalStep(div, updated);
     }
+
+    // --- Decimal string (UTF-8) to integer ---
+
+    /**
+     * Parse a UTF-8 decimal string (e.g. bytes of "42") to an integer.
+     * Inverse of {@link #intToDecimalString(BigInteger)}.
+     * Assumes all bytes are ASCII digits ('0'-'9'). No sign handling.
+     */
+    public static BigInteger utf8ToInteger(byte[] bs) {
+        long len = Builtins.lengthOfByteString(bs);
+        if (len == 0) {
+            return BigInteger.ZERO;
+        }
+        return utf8ToIntegerStep(bs, 0L, len, BigInteger.ZERO);
+    }
+
+    /** Recursive helper: accumulate decimal value left-to-right. */
+    public static BigInteger utf8ToIntegerStep(byte[] bs, long idx, long len, BigInteger acc) {
+        if (idx >= len) return acc;
+        long digitByte = Builtins.indexByteString(bs, idx);
+        BigInteger digit = BigInteger.valueOf(digitByte - 48);
+        BigInteger newAcc = acc.multiply(BigInteger.TEN).add(digit);
+        return utf8ToIntegerStep(bs, idx + 1, len, newAcc);
+    }
 }

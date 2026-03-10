@@ -273,6 +273,12 @@ public final class TypeMethodRegistry {
                 (scope, args, scopeType, argTypes) ->
                         PirHelpers.builtinApp2(DefaultFun.EqualsString, scope, args.get(0)),
                 scopeType -> new PirType.BoolType());
+
+        // getBytes: EncodeUtf8(s) — convert String to byte[]
+        reg.register("StringType", "getBytes",
+                (scope, args, scopeType, argTypes) ->
+                        new PirTerm.App(new PirTerm.Builtin(DefaultFun.EncodeUtf8), scope),
+                scopeType -> new PirType.ByteStringType());
     }
 
     // --- Data/Record/SumType .equals() (3 registrations, same handler) ---
