@@ -93,10 +93,10 @@ For detailed dependencies, check the [getting started](docs/getting-started.md) 
 
 ### Current Preview Version
 
-**`0.1.0-pre1`**
+**`0.1.0-pre2`**
 
 ```groovy
-ext.julcVersion = '0.1.0-pre1'
+ext.julcVersion = '0.1.0-pre2'
 ```
 
 ### Using Snapshot Builds
