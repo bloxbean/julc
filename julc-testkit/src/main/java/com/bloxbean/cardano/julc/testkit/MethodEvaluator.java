@@ -48,14 +48,28 @@ public final class MethodEvaluator {
      * @return the evaluation result
      */
     public static EvalResult evaluateRaw(String javaSource, String methodName, PlutusData... args) {
+        return evaluateRaw(javaSource, methodName, null, args);
+    }
+
+    /**
+     * Compile and evaluate a static method with @Param values, returning the raw evaluation result.
+     *
+     * @param javaSource the Java source containing the method
+     * @param methodName the name of the static method to compile and evaluate
+     * @param params     @Param values to apply before method args (null or empty for non-parameterized)
+     * @param args       arguments to apply (as PlutusData, passed as Data to the method)
+     * @return the evaluation result
+     */
+    public static EvalResult evaluateRaw(String javaSource, String methodName, PlutusData[] params, PlutusData... args) {
         Objects.requireNonNull(javaSource, "javaSource must not be null");
         Objects.requireNonNull(methodName, "methodName must not be null");
         var program = compileMethod(javaSource, methodName);
         var vm = JulcVm.create();
-        if (args.length == 0) {
+        var allArgs = buildAllArgs(params, args);
+        if (allArgs.isEmpty()) {
             return vm.evaluate(program);
         }
-        return vm.evaluateWithArgs(program, List.of(args));
+        return vm.evaluateWithArgs(program, allArgs);
     }
 
     /**
@@ -64,7 +78,17 @@ public final class MethodEvaluator {
      * @throws TermExtractor.ExtractionException if evaluation failed
      */
     public static Term evaluateTerm(String javaSource, String methodName, PlutusData... args) {
-        var result = evaluateRaw(javaSource, methodName, args);
+        var result = evaluateRaw(javaSource, methodName, (PlutusData[]) null, args);
+        return TermExtractor.extractResultTerm(result);
+    }
+
+    /**
+     * Compile and evaluate a static method with @Param values, returning the result Term.
+     *
+     * @throws TermExtractor.ExtractionException if evaluation failed
+     */
+    public static Term evaluateTerm(String javaSource, String methodName, PlutusData[] params, PlutusData... args) {
+        var result = evaluateRaw(javaSource, methodName, params, args);
         return TermExtractor.extractResultTerm(result);
     }
 
@@ -164,7 +188,7 @@ public final class MethodEvaluator {
      * @return the evaluation result
      */
     public static EvalResult evaluateRaw(Class<?> sourceClass, String methodName, PlutusData... args) {
-        return evaluateRaw(sourceClass, Path.of("src/main/java"), methodName, args);
+        return evaluateRaw(sourceClass, Path.of("src/main/java"), methodName, null, args);
     }
 
     /**
@@ -177,15 +201,31 @@ public final class MethodEvaluator {
      * @return the evaluation result
      */
     public static EvalResult evaluateRaw(Class<?> sourceClass, Path sourceRoot, String methodName, PlutusData... args) {
+        return evaluateRaw(sourceClass, sourceRoot, methodName, null, args);
+    }
+
+    /**
+     * Compile and evaluate a static method from a source file with @Param values.
+     *
+     * @param sourceClass the class containing the method
+     * @param sourceRoot  the root of the source tree
+     * @param methodName  the name of the static method to compile and evaluate
+     * @param params      @Param values to apply before method args (null or empty for non-parameterized)
+     * @param args        arguments to apply (as PlutusData)
+     * @return the evaluation result
+     */
+    public static EvalResult evaluateRaw(Class<?> sourceClass, Path sourceRoot, String methodName,
+                                          PlutusData[] params, PlutusData... args) {
         Objects.requireNonNull(sourceClass, "sourceClass must not be null");
         Objects.requireNonNull(sourceRoot, "sourceRoot must not be null");
         Objects.requireNonNull(methodName, "methodName must not be null");
         var program = compileMethod(sourceClass, sourceRoot, methodName);
         var vm = JulcVm.create();
-        if (args.length == 0) {
+        var allArgs = buildAllArgs(params, args);
+        if (allArgs.isEmpty()) {
             return vm.evaluate(program);
         }
-        return vm.evaluateWithArgs(program, List.of(args));
+        return vm.evaluateWithArgs(program, allArgs);
     }
 
     /**
@@ -193,14 +233,22 @@ public final class MethodEvaluator {
      * Uses the default source root ({@code src/main/java}).
      */
     public static Term evaluateTerm(Class<?> sourceClass, String methodName, PlutusData... args) {
-        return evaluateTerm(sourceClass, Path.of("src/main/java"), methodName, args);
+        return evaluateTerm(sourceClass, Path.of("src/main/java"), methodName, null, args);
     }
 
     /**
      * Compile and evaluate a static method from a source file, returning the result Term.
      */
     public static Term evaluateTerm(Class<?> sourceClass, Path sourceRoot, String methodName, PlutusData... args) {
-        var result = evaluateRaw(sourceClass, sourceRoot, methodName, args);
+        return evaluateTerm(sourceClass, sourceRoot, methodName, null, args);
+    }
+
+    /**
+     * Compile and evaluate a static method from a source file with @Param values.
+     */
+    public static Term evaluateTerm(Class<?> sourceClass, Path sourceRoot, String methodName,
+                                     PlutusData[] params, PlutusData... args) {
+        var result = evaluateRaw(sourceClass, sourceRoot, methodName, params, args);
         return TermExtractor.extractResultTerm(result);
     }
 
@@ -351,5 +399,24 @@ public final class MethodEvaluator {
     public static Program compileMethod(Class<?> sourceClass, Path sourceRoot, String methodName) {
         CompileResult result = SourceDiscovery.compileMethod(sourceClass, sourceRoot, methodName);
         return result.program();
+    }
+
+    /**
+     * Build combined argument list: params first, then method args.
+     */
+    private static List<PlutusData> buildAllArgs(PlutusData[] params, PlutusData[] args) {
+        int paramLen = (params != null) ? params.length : 0;
+        int argLen = (args != null) ? args.length : 0;
+        if (paramLen == 0 && argLen == 0) {
+            return List.of();
+        }
+        var allArgs = new java.util.ArrayList<PlutusData>(paramLen + argLen);
+        if (params != null) {
+            java.util.Collections.addAll(allArgs, params);
+        }
+        if (args != null) {
+            java.util.Collections.addAll(allArgs, args);
+        }
+        return allArgs;
     }
 }

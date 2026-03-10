@@ -42,11 +42,14 @@ public final class JulcEval {
     private final String javaSource;
     private final Class<?> sourceClass;
     private final Path sourceRoot;
+    private final com.bloxbean.cardano.julc.core.PlutusData[] params;
 
-    private JulcEval(String javaSource, Class<?> sourceClass, Path sourceRoot) {
+    private JulcEval(String javaSource, Class<?> sourceClass, Path sourceRoot,
+                     com.bloxbean.cardano.julc.core.PlutusData[] params) {
         this.javaSource = javaSource;
         this.sourceClass = sourceClass;
         this.sourceRoot = sourceRoot;
+        this.params = params;
     }
 
     // --- Factory methods ---
@@ -64,7 +67,33 @@ public final class JulcEval {
     public static JulcEval forClass(Class<?> sourceClass, Path sourceRoot) {
         Objects.requireNonNull(sourceClass, "sourceClass must not be null");
         Objects.requireNonNull(sourceRoot, "sourceRoot must not be null");
-        return new JulcEval(null, sourceClass, sourceRoot);
+        return new JulcEval(null, sourceClass, sourceRoot, null);
+    }
+
+    /**
+     * Create an evaluator for a parameterized source class using the default source root.
+     * The params are applied as outermost lambda arguments (for {@code @Param} fields).
+     *
+     * @param sourceClass the class containing the method(s)
+     * @param params      @Param values to apply (auto-converted via ArgConverter)
+     */
+    public static JulcEval forClass(Class<?> sourceClass, Object... params) {
+        return forClass(sourceClass, Path.of("src/main/java"), params);
+    }
+
+    /**
+     * Create an evaluator for a parameterized source class with a specific source root.
+     * The params are applied as outermost lambda arguments (for {@code @Param} fields).
+     *
+     * @param sourceClass the class containing the method(s)
+     * @param sourceRoot  the root of the source tree
+     * @param params      @Param values to apply (auto-converted via ArgConverter)
+     */
+    public static JulcEval forClass(Class<?> sourceClass, Path sourceRoot, Object... params) {
+        Objects.requireNonNull(sourceClass, "sourceClass must not be null");
+        Objects.requireNonNull(sourceRoot, "sourceRoot must not be null");
+        var converted = ArgConverter.convert(params);
+        return new JulcEval(null, sourceClass, sourceRoot, converted.length > 0 ? converted : null);
     }
 
     /**
@@ -72,7 +101,7 @@ public final class JulcEval {
      */
     public static JulcEval forSource(String javaSource) {
         Objects.requireNonNull(javaSource, "javaSource must not be null");
-        return new JulcEval(javaSource, null, null);
+        return new JulcEval(javaSource, null, null, null);
     }
 
     // --- Interface proxy ---
@@ -136,9 +165,9 @@ public final class JulcEval {
 
     private Term evaluateTerm(String methodName, com.bloxbean.cardano.julc.core.PlutusData[] args) {
         if (javaSource != null) {
-            return MethodEvaluator.evaluateTerm(javaSource, methodName, args);
+            return MethodEvaluator.evaluateTerm(javaSource, methodName, params, args);
         }
-        return MethodEvaluator.evaluateTerm(sourceClass, sourceRoot, methodName, args);
+        return MethodEvaluator.evaluateTerm(sourceClass, sourceRoot, methodName, params, args);
     }
 
     private static Object handleObjectMethod(Method method, Object proxy, Object[] args) {
