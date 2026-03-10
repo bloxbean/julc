@@ -575,13 +575,35 @@ public final class TypeMethodRegistry {
     // --- Map methods (6): get, containsKey, size, isEmpty, keys, values ---
 
     private static void registerMapMethods(TypeMethodRegistry reg) {
-        // get(key): search pair list, return Optional(value) on match
+        // get(key): search pair list, return value directly (crash on miss)
         reg.register("MapType", "get",
                 (scope, args, scopeType, argTypes) -> {
                     if (args.isEmpty()) throw new CompilerException("map.get() requires a key argument");
+                    var mt = (PirType.MapType) scopeType;
                     var keyArg = PirHelpers.wrapEncode(args.get(0),
                             argTypes.isEmpty() ? new PirType.DataType() : argTypes.get(0));
-                    return PirHelpers.pairListSearch("get", scope, keyArg, PirHelpers.mkNone(),
+                    // On miss: crash by taking HeadList of an empty list
+                    var crashOnMiss = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList),
+                            new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilData),
+                                    new PirTerm.Const(Constant.unit())));
+                    return PirHelpers.pairListSearch("get", scope, keyArg, crashOnMiss,
+                            (h, k, goTail) -> {
+                                var fstH = new PirTerm.App(new PirTerm.Builtin(DefaultFun.FstPair), h);
+                                var sndH = new PirTerm.App(new PirTerm.Builtin(DefaultFun.SndPair), h);
+                                var eqCheck = PirHelpers.builtinApp2(DefaultFun.EqualsData, fstH, k);
+                                return new PirTerm.IfThenElse(eqCheck,
+                                        PirHelpers.wrapDecode(sndH, mt.valueType()), goTail);
+                            });
+                },
+                scopeType -> ((PirType.MapType) scopeType).valueType());
+
+        // lookup(key): search pair list, return Optional(value) on match
+        reg.register("MapType", "lookup",
+                (scope, args, scopeType, argTypes) -> {
+                    if (args.isEmpty()) throw new CompilerException("map.lookup() requires a key argument");
+                    var keyArg = PirHelpers.wrapEncode(args.get(0),
+                            argTypes.isEmpty() ? new PirType.DataType() : argTypes.get(0));
+                    return PirHelpers.pairListSearch("lk", scope, keyArg, PirHelpers.mkNone(),
                             (h, k, goTail) -> {
                                 var fstH = new PirTerm.App(new PirTerm.Builtin(DefaultFun.FstPair), h);
                                 var sndH = new PirTerm.App(new PirTerm.Builtin(DefaultFun.SndPair), h);
@@ -619,6 +641,21 @@ public final class TypeMethodRegistry {
                 (scope, args, scopeType, argTypes) ->
                         new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), scope),
                 scopeType -> new PirType.BoolType());
+
+        // head(): HeadList(pairList) — returns native pair, no wrapDecode needed
+        reg.register("MapType", "head",
+                (scope, args, scopeType, argTypes) ->
+                        new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), scope),
+                scopeType -> {
+                    var mt = (PirType.MapType) scopeType;
+                    return new PirType.PairType(mt.keyType(), mt.valueType());
+                });
+
+        // tail(): TailList(pairList) — returns same MapType
+        reg.register("MapType", "tail",
+                (scope, args, scopeType, argTypes) ->
+                        new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), scope),
+                scopeType -> scopeType);
 
         // keys(): foldl collecting fstPair from each pair
         reg.register("MapType", "keys",

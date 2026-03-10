@@ -2,6 +2,7 @@ package com.bloxbean.cardano.julc.testkit;
 
 import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.ledger.PubKeyHash;
+import com.bloxbean.cardano.julc.testkit.fixtures.ParameterizedSample;
 import com.bloxbean.cardano.julc.testkit.fixtures.SampleValidator;
 import com.bloxbean.cardano.julc.vm.TermExtractor;
 import org.junit.jupiter.api.Nested;
@@ -498,6 +499,125 @@ class JulcEvalTest {
                     PlutusData.integer(1));
             assertThrows(TermExtractor.ExtractionException.class,
                     () -> ResultConverter.convert(term, Thread.class));
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Parameterized class support (@Param)
+    // -------------------------------------------------------------------------
+
+    @Nested
+    class ParameterizedClassTests {
+
+        static final String PARAM_SOURCE = """
+                import com.bloxbean.cardano.julc.stdlib.annotation.Param;
+                class ParamClass {
+                    @Param BigInteger threshold;
+                    static BigInteger getThreshold() {
+                        return threshold;
+                    }
+                    static boolean isAboveThreshold(BigInteger x) {
+                        return x > threshold;
+                    }
+                    static BigInteger addToThreshold(BigInteger x) {
+                        return threshold + x;
+                    }
+                    static BigInteger doubleIt(BigInteger x) {
+                        return x * 2;
+                    }
+                }
+                """;
+
+        @Test
+        void callWithParamReturnsParamValue() {
+            var eval = JulcEval.forSource(PARAM_SOURCE);
+            // For inline source, params must be passed via MethodEvaluator directly
+            var term = MethodEvaluator.evaluateTerm(PARAM_SOURCE, "getThreshold",
+                    new PlutusData[]{PlutusData.integer(42)});
+            assertEquals(BigInteger.valueOf(42), TermExtractor.extractInteger(term));
+        }
+
+        @Test
+        void callWithParamAndMethodArgs() {
+            var term = MethodEvaluator.evaluateTerm(PARAM_SOURCE, "addToThreshold",
+                    new PlutusData[]{PlutusData.integer(100)}, PlutusData.integer(42));
+            assertEquals(BigInteger.valueOf(142), TermExtractor.extractInteger(term));
+        }
+
+        @Test
+        void callParamBooleanComparison() {
+            // threshold=10, x=15 → true
+            var term1 = MethodEvaluator.evaluateTerm(PARAM_SOURCE, "isAboveThreshold",
+                    new PlutusData[]{PlutusData.integer(10)}, PlutusData.integer(15));
+            assertTrue(TermExtractor.extractBoolean(term1));
+
+            // threshold=10, x=5 → false
+            var term2 = MethodEvaluator.evaluateTerm(PARAM_SOURCE, "isAboveThreshold",
+                    new PlutusData[]{PlutusData.integer(10)}, PlutusData.integer(5));
+            assertFalse(TermExtractor.extractBoolean(term2));
+        }
+
+        @Test
+        void callMethodNotUsingParam() {
+            // doubleIt doesn't use threshold, but param lambda is still there
+            var term = MethodEvaluator.evaluateTerm(PARAM_SOURCE, "doubleIt",
+                    new PlutusData[]{PlutusData.integer(0)}, PlutusData.integer(21));
+            assertEquals(BigInteger.valueOf(42), TermExtractor.extractInteger(term));
+        }
+    }
+
+    @Nested
+    class ParameterizedFileBasedTests {
+
+        @Test
+        void forClassWithParamsFluentCall() {
+            var eval = JulcEval.forClass(ParameterizedSample.class, TEST_SOURCE_ROOT,
+                    42L, new byte[]{1, 2, 3});
+            assertEquals(BigInteger.valueOf(42), eval.call("getThreshold").asInteger());
+        }
+
+        @Test
+        void forClassWithParamsMethodArgs() {
+            var eval = JulcEval.forClass(ParameterizedSample.class, TEST_SOURCE_ROOT,
+                    10L, new byte[]{1});
+            assertEquals(BigInteger.valueOf(52), eval.call("addToThreshold", 42).asInteger());
+        }
+
+        @Test
+        void forClassWithParamsBooleanCheck() {
+            var eval = JulcEval.forClass(ParameterizedSample.class, TEST_SOURCE_ROOT,
+                    10L, new byte[]{1});
+            assertTrue(eval.call("isAboveThreshold", 15).asBoolean());
+            assertFalse(eval.call("isAboveThreshold", 5).asBoolean());
+        }
+
+        @Test
+        void forClassWithParamsUnusedParam() {
+            var eval = JulcEval.forClass(ParameterizedSample.class, TEST_SOURCE_ROOT,
+                    0L, new byte[]{});
+            assertEquals(BigInteger.valueOf(42), eval.call("doubleIt", 21).asInteger());
+        }
+
+        @Test
+        void forClassWithParamsGetOwnerBytes() {
+            var eval = JulcEval.forClass(ParameterizedSample.class, TEST_SOURCE_ROOT,
+                    99L, new byte[]{(byte) 0xCA, (byte) 0xFE});
+            assertArrayEquals(new byte[]{(byte) 0xCA, (byte) 0xFE},
+                    eval.call("getOwner").asByteString());
+        }
+
+        @Test
+        void forClassWithParamsProxyInterface() {
+            interface ParamProxy {
+                BigInteger getThreshold();
+                boolean isAboveThreshold(long x);
+            }
+            var proxy = JulcEval.forClass(ParameterizedSample.class, TEST_SOURCE_ROOT,
+                    50L, new byte[]{1})
+                    .create(ParamProxy.class);
+            assertEquals(BigInteger.valueOf(50), proxy.getThreshold());
+            assertTrue(proxy.isAboveThreshold(100));
+            assertFalse(proxy.isAboveThreshold(10));
         }
     }
 }

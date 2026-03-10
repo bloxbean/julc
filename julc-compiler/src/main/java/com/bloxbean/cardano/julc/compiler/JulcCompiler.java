@@ -616,7 +616,13 @@ public class JulcCompiler {
         var importResolver = new ImportResolver(cu, knownFqcns);
         typeResolver.setCurrentImportResolver(importResolver);
 
-        // 7. Detect static fields
+        // 7. Detect @Param fields
+        var paramFields = findParamFields(targetClass, typeResolver, diagnostics);
+        if (hasErrors(diagnostics)) {
+            throw new CompilerException(diagnostics);
+        }
+
+        // 7b. Detect static fields
         var staticFields = findStaticFields(targetClass, typeResolver);
 
         // 8. Compile libraries (if any)
@@ -632,6 +638,9 @@ public class JulcCompiler {
 
         // 9. Set up symbol table
         var symbolTable = new SymbolTable();
+        for (var pf : paramFields) {
+            symbolTable.define(pf.name, pf.pirType);
+        }
         for (var sf : staticFields) {
             symbolTable.define(sf.name, sf.pirType);
         }
@@ -713,14 +722,27 @@ public class JulcCompiler {
             }
         }
 
-        // 16. Lower to UPLC
+        // 16. Wrap with outer @Param lambdas
+        for (int i = paramFields.size() - 1; i >= 0; i--) {
+            var pf = paramFields.get(i);
+            var rawName = pf.name + "__raw";
+            var decoded = PirHelpers.wrapDecode(
+                    new PirTerm.Var(rawName, new PirType.DataType()), pf.pirType);
+            body = new PirTerm.Lam(rawName, new PirType.DataType(),
+                    new PirTerm.Let(pf.name, decoded, body));
+        }
+
+        // 17. Lower to UPLC
         var uplcGenerator = new UplcGenerator();
         var uplcTerm = uplcGenerator.generate(body);
         var optimizer = new UplcOptimizer();
         uplcTerm = optimizer.optimize(uplcTerm);
 
+        var paramInfos = paramFields.stream()
+                .map(pf -> new CompileResult.ParamInfo(pf.name, pf.javaType))
+                .toList();
         var program = Program.plutusV3(uplcTerm);
-        return new CompileResult(program, diagnostics, List.of(), body, uplcTerm);
+        return new CompileResult(program, diagnostics, paramInfos, body, uplcTerm);
     }
 
     // --- Library compilation ---

@@ -1,5 +1,6 @@
 package com.bloxbean.cardano.julc.compiler.desugar;
 
+import com.bloxbean.cardano.julc.compiler.pir.PirHelpers;
 import com.bloxbean.cardano.julc.compiler.pir.PirTerm;
 import com.bloxbean.cardano.julc.compiler.pir.PirType;
 import com.bloxbean.cardano.julc.core.Constant;
@@ -37,19 +38,22 @@ public class LoopDesugarer {
      * @param accInit      the initial accumulator value
      * @param accType      the accumulator type
      * @param loopBody     the body that computes new acc from (acc, item)
+     * @param elemType     the element type for auto-unwrapping (IntegerType → UnIData, etc.)
      * @return LetRec term that folds over the list
      */
     public PirTerm desugarForEach(PirTerm iterableExpr, String itemName, String accName,
-                                   PirTerm accInit, PirType accType, PirTerm loopBody) {
+                                   PirTerm accInit, PirType accType, PirTerm loopBody,
+                                   PirType elemType) {
         var listType = new PirType.ListType(new PirType.DataType());
         var loopName = nextLoopName("loop__forEach");
         var xsName = "xs__";
 
         // loop = \xs \acc -> IfThenElse(NullList(xs), acc, loop(TailList(xs), body))
-        // where body substitutes item = HeadList(xs)
+        // where body substitutes item = wrapDecode(HeadList(xs), elemType)
         var xsVar = new PirTerm.Var(xsName, listType);
         var accVar = new PirTerm.Var(accName, accType);
-        var headExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), xsVar);
+        var headExpr = PirHelpers.wrapDecode(
+                new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), xsVar), elemType);
         var tailExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), xsVar);
         var nullCheck = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), xsVar);
 
@@ -98,18 +102,21 @@ public class LoopDesugarer {
      * @param accType      the accumulator type
      * @param bodyBuilder  (continueFn, accVar) → term. continueFn accepts a newAcc and returns loop(tail, newAcc).
      *                     To break: return newAcc directly. To continue: return continueFn.apply(newAcc).
+     * @param elemType     the element type for auto-unwrapping (IntegerType → UnIData, etc.)
      * @return LetRec term that folds over the list with break support
      */
     public PirTerm desugarForEachWithBreak(PirTerm iterableExpr, String itemName, String accName,
                                             PirTerm accInit, PirType accType,
-                                            BiFunction<java.util.function.Function<PirTerm, PirTerm>, PirTerm, PirTerm> bodyBuilder) {
+                                            BiFunction<java.util.function.Function<PirTerm, PirTerm>, PirTerm, PirTerm> bodyBuilder,
+                                            PirType elemType) {
         var listType = new PirType.ListType(new PirType.DataType());
         var loopName = nextLoopName("loop__forEach");
         var xsName = "xs__";
 
         var xsVar = new PirTerm.Var(xsName, listType);
         var accVar = new PirTerm.Var(accName, accType);
-        var headExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), xsVar);
+        var headExpr = PirHelpers.wrapDecode(
+                new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), xsVar), elemType);
         var tailExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), xsVar);
         var nullCheck = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), xsVar);
 

@@ -50,7 +50,7 @@ class LoopDesugarTest {
                     "item", "acc__forEach",
                     new PirTerm.Const(Constant.unit()),
                     new PirType.UnitType(),
-                    body);
+                    body, new PirType.DataType());
 
             assertInstanceOf(PirTerm.LetRec.class, result);
             var letRec = (PirTerm.LetRec) result;
@@ -122,7 +122,7 @@ class LoopDesugarTest {
             var pir = desugarer.desugarForEach(
                     list, "item", "acc__forEach",
                     new PirTerm.Const(Constant.integer(BigInteger.ZERO)),
-                    intType, body);
+                    intType, body, new PirType.DataType());
 
             var uplc = new UplcGenerator().generate(pir);
             assertEquals(BigInteger.valueOf(60), evalInteger(uplc)); // 10+20+30 = 60
@@ -145,7 +145,7 @@ class LoopDesugarTest {
             var pir = desugarer.desugarForEach(
                     emptyList, "item", "acc__forEach",
                     new PirTerm.Const(Constant.integer(BigInteger.valueOf(42))),
-                    intType, body);
+                    intType, body, new PirType.DataType());
 
             var uplc = new UplcGenerator().generate(pir);
             assertEquals(BigInteger.valueOf(42), evalInteger(uplc)); // Empty list → initial acc
@@ -174,7 +174,7 @@ class LoopDesugarTest {
             var pir = desugarer.desugarForEach(
                     list, "item", "acc__forEach",
                     new PirTerm.Const(Constant.integer(BigInteger.ONE)),
-                    intType, body);
+                    intType, body, new PirType.DataType());
 
             var uplc = new UplcGenerator().generate(pir);
             assertEquals(BigInteger.valueOf(7), evalInteger(uplc)); // 1 * 7 = 7
@@ -212,7 +212,7 @@ class LoopDesugarTest {
             var pir = desugarer.desugarForEach(
                     list, "item", "acc__forEach",
                     new PirTerm.Const(Constant.integer(BigInteger.ONE)),
-                    intType, body);
+                    intType, body, new PirType.DataType());
 
             var uplc = new UplcGenerator().generate(pir);
             assertEquals(BigInteger.valueOf(24), evalInteger(uplc)); // 1 * 2 * 3 * 4 = 24
@@ -370,7 +370,7 @@ class LoopDesugarTest {
                         return new PirTerm.IfThenElse(cond,
                                 new PirTerm.Const(Constant.bool(true)),
                                 continueFn.apply(accVar));
-                    });
+                    }, new PirType.DataType());
 
             var uplc = new UplcGenerator().generate(pir);
             assertTrue(evalBool(uplc));
@@ -396,7 +396,7 @@ class LoopDesugarTest {
                         return new PirTerm.IfThenElse(cond,
                                 new PirTerm.Const(Constant.bool(true)),
                                 continueFn.apply(accVar));
-                    });
+                    }, new PirType.DataType());
 
             var uplc = new UplcGenerator().generate(pir);
             assertTrue(evalBool(uplc));
@@ -422,7 +422,7 @@ class LoopDesugarTest {
                         return new PirTerm.IfThenElse(cond,
                                 new PirTerm.Const(Constant.bool(true)),
                                 continueFn.apply(accVar));
-                    });
+                    }, new PirType.DataType());
 
             var uplc = new UplcGenerator().generate(pir);
             assertFalse(evalBool(uplc));
@@ -449,7 +449,7 @@ class LoopDesugarTest {
                         return new PirTerm.IfThenElse(cond,
                                 new PirTerm.Const(Constant.bool(true)),
                                 continueFn.apply(accVar));
-                    });
+                    }, new PirType.DataType());
 
             var uplc = new UplcGenerator().generate(pir);
             assertFalse(evalBool(uplc));
@@ -479,7 +479,7 @@ class LoopDesugarTest {
                         return new PirTerm.IfThenElse(isTarget,
                                 newAcc,
                                 continueFn.apply(newAcc));
-                    });
+                    }, new PirType.DataType());
 
             var uplc = new UplcGenerator().generate(pir);
             assertEquals(BigInteger.valueOf(30), evalInteger(uplc)); // 10 + 20 = 30 (skips 30)

@@ -82,11 +82,14 @@ class TypeMethodRegistryTest {
     @Test
     void containsMapMethods() {
         assertTrue(registry.contains("MapType", "get"));
+        assertTrue(registry.contains("MapType", "lookup"));
         assertTrue(registry.contains("MapType", "containsKey"));
         assertTrue(registry.contains("MapType", "size"));
         assertTrue(registry.contains("MapType", "isEmpty"));
         assertTrue(registry.contains("MapType", "keys"));
         assertTrue(registry.contains("MapType", "values"));
+        assertTrue(registry.contains("MapType", "head"));
+        assertTrue(registry.contains("MapType", "tail"));
     }
 
     @Test
@@ -461,6 +464,14 @@ class TypeMethodRegistryTest {
         var rt = registry.resolveReturnType(
                 new PirType.MapType(new PirType.ByteStringType(), new PirType.IntegerType()), "get");
         assertTrue(rt.isPresent());
+        assertInstanceOf(PirType.IntegerType.class, rt.get());
+    }
+
+    @Test
+    void resolveReturnTypeMapLookup() {
+        var rt = registry.resolveReturnType(
+                new PirType.MapType(new PirType.ByteStringType(), new PirType.IntegerType()), "lookup");
+        assertTrue(rt.isPresent());
         assertInstanceOf(PirType.OptionalType.class, rt.get());
         var opt = (PirType.OptionalType) rt.get();
         assertInstanceOf(PirType.IntegerType.class, opt.elemType());
@@ -519,6 +530,45 @@ class TypeMethodRegistryTest {
     }
 
     // --- Map isEmpty/keys/values tests ---
+
+    @Test
+    void dispatchMapHeadReturnsPresent() {
+        var scope = new PirTerm.Var("myMap",
+                new PirType.MapType(new PirType.DataType(), new PirType.DataType()));
+        var result = registry.dispatch(scope, "head", List.of(),
+                new PirType.MapType(new PirType.DataType(), new PirType.DataType()), List.of());
+        assertTrue(result.isPresent());
+        assertInstanceOf(PirTerm.App.class, result.get());
+    }
+
+    @Test
+    void resolveReturnTypeMapHead() {
+        var rt = registry.resolveReturnType(
+                new PirType.MapType(new PirType.ByteStringType(), new PirType.IntegerType()), "head");
+        assertTrue(rt.isPresent());
+        assertInstanceOf(PirType.PairType.class, rt.get());
+        var pt = (PirType.PairType) rt.get();
+        assertInstanceOf(PirType.ByteStringType.class, pt.first());
+        assertInstanceOf(PirType.IntegerType.class, pt.second());
+    }
+
+    @Test
+    void dispatchMapTailReturnsPresent() {
+        var scope = new PirTerm.Var("myMap",
+                new PirType.MapType(new PirType.DataType(), new PirType.DataType()));
+        var result = registry.dispatch(scope, "tail", List.of(),
+                new PirType.MapType(new PirType.DataType(), new PirType.DataType()), List.of());
+        assertTrue(result.isPresent());
+        assertInstanceOf(PirTerm.App.class, result.get());
+    }
+
+    @Test
+    void resolveReturnTypeMapTail() {
+        var mt = new PirType.MapType(new PirType.ByteStringType(), new PirType.IntegerType());
+        var rt = registry.resolveReturnType(mt, "tail");
+        assertTrue(rt.isPresent());
+        assertEquals(mt, rt.get());
+    }
 
     @Test
     void dispatchMapIsEmptyReturnsPresent() {

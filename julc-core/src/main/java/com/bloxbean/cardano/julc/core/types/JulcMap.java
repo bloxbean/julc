@@ -38,8 +38,21 @@ public interface JulcMap<K, V> {
 
     // --- Lookup ---
 
-    /** Look up a value by key. Returns null if not found. */
+    /**
+     * Look up a value by key.
+     * On-chain: crashes if key not found (VM error).
+     * Off-chain: returns null if not found.
+     */
     V get(K key);
+
+    /**
+     * Look up a value by key, returning an Optional.
+     * On-chain: returns Optional.of(value) if found, Optional.empty() if not.
+     * Off-chain: delegates to Optional.ofNullable(get(key)).
+     */
+    default java.util.Optional<V> lookup(K key) {
+        return java.util.Optional.ofNullable(get(key));
+    }
 
     /** Look up a value by key, returning defaultValue if not found. */
     default V getOrDefault(K key, V defaultValue) {
@@ -73,4 +86,12 @@ public interface JulcMap<K, V> {
 
     /** Check if the map is empty. */
     boolean isEmpty();
+
+    // --- Iteration ---
+
+    /** Return the first entry. On-chain: returns a PairType with {@code .key()} / {@code .value()}. */
+    Object head();
+
+    /** Return all entries except the first. */
+    JulcMap<K, V> tail();
 }
