@@ -6347,4 +6347,36 @@ class StdlibCompileEvalTest {
             );
         }
     }
+
+    // =========================================================================
+    // 28. MergedValueLovelaceOf — ValuesLib.lovelaceOf() on multi-asset values
+    // =========================================================================
+
+    @Nested
+    class MergedValueLovelaceOf {
+
+        @Test
+        void lovelaceOfMultiAssetValue() {
+            // On-chain test: pass a multi-asset value (ADA first) and verify lovelaceOf extracts ADA amount
+            var source = """
+                    import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
+                    @Validator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            long lovelace = ValuesLib.lovelaceOf(redeemer);
+                            return lovelace == 5000000;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            // Build a multi-asset value with ADA first (as the Cardano ledger serializes)
+            var policy = new byte[]{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28};
+            var value = multiAssetValue(5000000, policy, new byte[]{0x01}, 42);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(value)));
+            assertTrue(result.isSuccess(), "lovelaceOf on multi-asset value should extract 5000000. Got: " + result);
+        }
+    }
 }

@@ -81,6 +81,8 @@ public record Value(JulcMap<PolicyId, JulcMap<TokenName, BigInteger>> inner) imp
     @Override
     public PlutusData.MapData toPlutusData() {
         List<PlutusData.Pair> outerEntries = new ArrayList<>();
+        PlutusData.Pair adaEntry = null;
+
         for (PolicyId policyId : inner.keys()) {
             JulcMap<TokenName, BigInteger> tokens = inner.get(policyId);
             List<PlutusData.Pair> innerEntries = new ArrayList<>();
@@ -89,9 +91,19 @@ public record Value(JulcMap<PolicyId, JulcMap<TokenName, BigInteger>> inner) imp
                         tokenName.toPlutusData(),
                         new PlutusData.IntData(tokens.get(tokenName))));
             }
-            outerEntries.add(new PlutusData.Pair(
+            var pair = new PlutusData.Pair(
                     policyId.toPlutusData(),
-                    new PlutusData.MapData(innerEntries)));
+                    new PlutusData.MapData(innerEntries));
+            if (policyId.equals(PolicyId.ADA)) {
+                adaEntry = pair;
+            } else {
+                outerEntries.add(pair);
+            }
+        }
+
+        // Ensure ADA entry is first, matching Cardano ledger invariant
+        if (adaEntry != null) {
+            outerEntries.addFirst(adaEntry);
         }
         return new PlutusData.MapData(outerEntries);
     }
