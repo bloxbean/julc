@@ -257,7 +257,6 @@ assertTrue(evalResult.isSuccess());
 | [Advanced Guide](docs/advanced-guide.md) | Low-level PlutusData patterns, type casting, raw list/map manipulation, debugging |
 | [For-Loop Patterns](docs/for-loop-patterns.md) | For-each, while, nested loops, multi-accumulator, break |
 | [Library Developer Guide](docs/library-developer-guide.md) | Writing `@OnchainLibrary` modules and PIR API |
-| [Performance Guide](docs/performance-guide.md) | Script size/budget optimization and benchmark data |
 | [Troubleshooting](docs/troubleshooting.md) | Every compiler error, common mistakes, and FAQ |
 | [Compiler Developer Guide](docs/compiler-developer-guide.md) | Internal architecture for compiler contributors |
 | [Type Method Comparison](docs/type-method-compilation-comparison.md) | How JuLC compares to Opshin and Scalus |
