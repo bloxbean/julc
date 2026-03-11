@@ -489,6 +489,7 @@ Import from `com.bloxbean.cardano.julc.stdlib.lib.*` in validators. See [Standar
 | `singleton(policy, token, amount)` | BS, BS, Integer | Create single-token value |
 | `negate(value)` | Value | Negate all amounts |
 | `flatten(value)` | Value | Flatten to list of triples |
+| `flattenTyped(value)` | Value | Flatten to typed `JulcList<AssetEntry>` |
 | `add(a, b)` | Value, Value | Add two values |
 | `subtract(a, b)` | Value, Value | Subtract values |
 | `countTokensWithQty(mint, policy, qty)` | Value, BS, Integer | Count tokens with exact quantity under policy |
@@ -584,6 +585,7 @@ Note: `sha2_256`, `sha3_256`, `blake2b_256`, `blake2b_224`, `keccak_256`, and `v
 | `hexNibble(n)` | Integer | Convert nibble (0-15) to hex ASCII code |
 | `toHex(bs)` | BS | Convert bytestring to hex-encoded bytestring |
 | `intToDecimalString(n)` | Integer | Convert integer to decimal digit bytestring |
+| `utf8ToInteger(bs)` | BS | Parse UTF-8 decimal string to integer |
 
 ### BitwiseLib
 

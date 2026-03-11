@@ -112,6 +112,7 @@ The JuLC standard library provides 11 on-chain libraries in the `com.bloxbean.ca
 | `singleton(policy, token, amount)` | Create single-asset Value |
 | `negate(value)` | Negate all amounts |
 | `flatten(value)` | Flatten to list of (policy, token, amount) triples |
+| `flattenTyped(value)` | Flatten to typed `JulcList<AssetEntry>` with `.policyId()`, `.tokenName()`, `.amount()` |
 | `add(a, b)` | Add two Values |
 | `subtract(a, b)` | Subtract value b from value a |
 | `countTokensWithQty(mint, policy, qty)` | Count tokens with exact quantity under policy |
@@ -215,6 +216,7 @@ The JuLC standard library provides 11 on-chain libraries in the `com.bloxbean.ca
 | `hexNibble(n)` | Convert nibble (0-15) to hex ASCII code |
 | `toHex(bs)` | Convert bytestring to hex-encoded bytestring |
 | `intToDecimalString(n)` | Convert integer to decimal digit bytestring |
+| `utf8ToInteger(bs)` | Parse UTF-8 decimal string to integer (inverse of `intToDecimalString`) |
 
 ### BitwiseLib
 
@@ -562,6 +564,32 @@ class ValueArithmeticExample {
     }
 }
 ```
+
+### Typed Asset Iteration
+
+`ValuesLib.flattenTyped()` returns a `JulcList<AssetEntry>` for type-safe iteration over all assets in a Value. Each `AssetEntry` provides `.policyId()`, `.tokenName()`, and `.amount()` field access without manual destructuring.
+
+```java
+@SpendingValidator
+class TokenLeakCheck {
+    @Entrypoint
+    static boolean validate(PlutusData datum, PlutusData redeemer, ScriptContext ctx) {
+        TxOut output = ctx.txInfo().outputs().head();
+        long nonAdaCount = 0;
+        for (AssetEntry asset : ValuesLib.flattenTyped(output.value())) {
+            byte[] policy = asset.policyId();
+            byte[] name = asset.tokenName();
+            BigInteger amount = asset.amount();
+            if (Builtins.lengthOfByteString(policy) > 0) {
+                nonAdaCount = nonAdaCount + 1;
+            }
+        }
+        return nonAdaCount == 1;
+    }
+}
+```
+
+> **Tip:** Use `flattenTyped()` instead of `flatten()` whenever you need to inspect individual assets. The raw `flatten()` returns `PlutusData.ListData` requiring manual `Builtins.constrFields()` + `headList`/`tailList` destructuring.
 
 ---
 
@@ -1028,6 +1056,19 @@ class ByteStringCompareExample {
 }
 ```
 
+### UTF-8 Decimal Parsing
+
+`ByteStringLib.utf8ToInteger()` parses a UTF-8-encoded decimal string into an integer. This is the inverse of `intToDecimalString()`.
+
+```java
+// Parse "42" bytes → integer 42
+byte[] bs = "42".getBytes();
+BigInteger n = ByteStringLib.utf8ToInteger(bs);  // 42
+
+// Roundtrip property:
+// ByteStringLib.utf8ToInteger(ByteStringLib.intToDecimalString(n)) == n
+```
+
 ---
 
 ## BitwiseLib -- Bitwise Operations
@@ -1188,6 +1229,31 @@ BigInteger amount = ValuesLib.assetOf(value, policyId, tokenName);
 
 // The library internally wraps with bData for the UPLC comparison
 ```
+
+### ownHash + containsPolicy Pattern
+
+When checking if a minting policy's own token exists in a value (common in minting validators), use the `(byte[])(Object)` cast on `ContextsLib.ownHash()`:
+
+```java
+@MintingValidator
+class MyTokenPolicy {
+    @Entrypoint
+    static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+        TxInfo txInfo = ctx.txInfo();
+        byte[] ownPolicy = (byte[])(Object) ContextsLib.ownHash(ctx);
+
+        // Check if minted value contains our policy
+        boolean hasMint = ValuesLib.containsPolicy(txInfo.mint(), ownPolicy);
+
+        // Or get a specific token amount
+        BigInteger qty = ValuesLib.assetOf(txInfo.mint(), ownPolicy, "TOKEN".getBytes());
+
+        return hasMint && qty.equals(BigInteger.ONE);
+    }
+}
+```
+
+The `(byte[])(Object)` cast is required because `ownHash()` returns a `ValidatorHash` (which is `ByteStringType` at UPLC level but a different Java type at source level). The cast is a no-op at UPLC level.
 
 ### MapLib.lookup Returns Optional Encoding
 
