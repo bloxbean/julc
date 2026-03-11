@@ -20,6 +20,14 @@ Write Cardano smart contracts in Java and compile them to Plutus V3 UPLC. julc p
 toolchain: a Java-subset compiler, a pluggable VM for local evaluation, a standard library of on-chain
 operations, and first-class integration with [cardano-client-lib](https://github.com/bloxbean/cardano-client-lib).
 
+## Powered by Scalus
+
+JuLC's end-to-end experience — from local testing to script evaluation — is powered by
+[Scalus](https://scalus.org/), a Scala implementation of the Plutus VM (CEK machine).
+JuLC uses the Scalus VM as its evaluation backend for local validator testing, cost estimation,
+and the testkit. Huge thanks to the Scalus team for building and open-sourcing a high-quality
+Plutus VM that made this project possible.
+
 ## Features
 
 - **Java-to-UPLC compiler** — write validators in a familiar Java subset, compile to Plutus V3
