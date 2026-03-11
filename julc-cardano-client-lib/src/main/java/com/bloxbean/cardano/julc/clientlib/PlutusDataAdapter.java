@@ -2,9 +2,7 @@ package com.bloxbean.cardano.julc.clientlib;
 
 import com.bloxbean.cardano.julc.core.PlutusData;
 
-import java.math.BigInteger;
 import java.util.ArrayList;
-import java.util.List;
 
 /**
  * Bidirectional conversion between plutus-java's {@link PlutusData}
@@ -13,6 +11,43 @@ import java.util.List;
 public final class PlutusDataAdapter {
 
     private PlutusDataAdapter() {}
+
+    /**
+     * Convert a Java record, sealed-interface variant, or primitive to
+     * cardano-client-lib {@link com.bloxbean.cardano.client.plutus.spec.PlutusData},
+     * ready for use with QuickTx or other CCL APIs.
+     * <p>
+     * Supports records, sealed interfaces (tag from permits order), {@code @NewType},
+     * primitives ({@code BigInteger}, {@code byte[]}, {@code boolean}, {@code String}),
+     * {@code Optional}, {@code List}, {@code Map}, {@code Tuple2}, {@code Tuple3},
+     * and any type implementing {@link com.bloxbean.cardano.julc.ledger.PlutusDataConvertible}.
+     *
+     * @param obj the Java object to convert
+     * @return CCL PlutusData representation
+     * @throws IllegalArgumentException if obj is null or an unsupported type
+     */
+    public static com.bloxbean.cardano.client.plutus.spec.PlutusData convert(Object obj) {
+        return toClientLib(ReflectivePlutusDataConverter.toPlutusData(obj));
+    }
+
+    /**
+     * Convert cardano-client-lib {@link com.bloxbean.cardano.client.plutus.spec.PlutusData}
+     * back to a typed Java record or sealed-interface instance.
+     * <p>
+     * For sealed interfaces, the ConstrData tag selects the variant from
+     * the {@code permits()} list. For {@code @NewType} records, the data is decoded
+     * as the underlying primitive type.
+     *
+     * @param cclData the CCL PlutusData to convert
+     * @param type    the target Java class
+     * @param <T>     the target type
+     * @return decoded Java object
+     * @throws IllegalArgumentException if conversion fails
+     */
+    public static <T> T convert(
+            com.bloxbean.cardano.client.plutus.spec.PlutusData cclData, Class<T> type) {
+        return ReflectivePlutusDataConverter.fromPlutusData(fromClientLib(cclData), type);
+    }
 
     /**
      * Convert our PlutusData to cardano-client-lib PlutusData.

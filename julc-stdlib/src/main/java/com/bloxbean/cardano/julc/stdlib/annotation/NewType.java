@@ -19,7 +19,7 @@ import java.lang.annotation.Target;
  * // MyHash.of(bytes) — auto-registered, compiles to identity
  * }</pre>
  */
-@Retention(RetentionPolicy.SOURCE)
+@Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.TYPE)
 public @interface NewType {
 }
