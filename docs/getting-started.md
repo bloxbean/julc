@@ -1304,10 +1304,15 @@ import com.bloxbean.cardano.client.plutus.spec.PlutusV3Script;
 PlutusV3Script script = JulcScriptLoader.load(VestingValidator.class);
 String hash = JulcScriptLoader.scriptHash(VestingValidator.class);
 
-// Parameterized
+// Parameterized — manual CCL PlutusData
 PlutusV3Script script = JulcScriptLoader.load(ParameterizedVesting.class,
     BytesPlutusData.of(ownerPkh),
     BigIntPlutusData.of(deadlineMs));
+
+// Parameterized — using PlutusDataAdapter.convert() (simpler)
+PlutusV3Script script = JulcScriptLoader.load(ParameterizedVesting.class,
+    PlutusDataAdapter.convert(ownerPkh),        // byte[] → BytesPlutusData
+    PlutusDataAdapter.convert(deadlineMs));      // BigInteger → BigIntPlutusData
 ```
 
 ### JulcScriptAdapter
@@ -1373,6 +1378,80 @@ var result = quickTxBuilder.compose(mintTx)
     .collateralPayer(account.baseAddress())
     .completeAndWait();
 ```
+
+### PlutusDataAdapter — Automatic Datum/Redeemer Conversion
+
+Instead of manually building CCL `ConstrPlutusData` for datums and redeemers,
+use `PlutusDataAdapter.convert()` to automatically convert your on-chain Java
+records and sealed interfaces to/from CCL `PlutusData`:
+
+```java
+import com.bloxbean.cardano.julc.clientlib.PlutusDataAdapter;
+
+// Given your on-chain types:
+record AuctionDatum(byte[] seller, BigInteger deadline, BigInteger minBid) {}
+
+sealed interface Action permits Bid, Close {}
+record Bid(byte[] bidder, BigInteger amount) implements Action {}
+record Close() implements Action {}
+```
+
+**Java object → CCL PlutusData** (for building transactions):
+
+```java
+// Record datum — no manual ConstrPlutusData construction needed
+var datum = PlutusDataAdapter.convert(
+    new AuctionDatum(sellerPkh, BigInteger.valueOf(deadline), BigInteger.valueOf(minBid)));
+
+// Sealed interface redeemer — tag assigned from permits() order (Bid=0, Close=1)
+var redeemer = PlutusDataAdapter.convert(
+    new Bid(bidderPkh, BigInteger.valueOf(7_000_000)));
+
+// Use directly with QuickTx
+var lockTx = new Tx()
+    .payToContract(scriptAddress, Amount.ada(5), datum)
+    .from(account.baseAddress());
+```
+
+**CCL PlutusData → Java object** (when reading from chain):
+
+```java
+// Decode a datum from a UTxO query result
+AuctionDatum datum = PlutusDataAdapter.convert(utxoPlutusData, AuctionDatum.class);
+
+// Decode a sealed interface — dispatches by ConstrData tag
+Action action = PlutusDataAdapter.convert(redeemerData, Action.class);
+// Returns Bid or Close depending on the tag
+```
+
+**Primitives** work directly for script parameters:
+
+```java
+var paramBytes = PlutusDataAdapter.convert(new byte[]{0x01, 0x02, 0x03});  // → BytesPlutusData
+var paramInt = PlutusDataAdapter.convert(BigInteger.valueOf(42));           // → BigIntPlutusData
+var paramBool = PlutusDataAdapter.convert(true);                           // → ConstrPlutusData(1)
+var paramStr = PlutusDataAdapter.convert("TOKEN");                         // → BytesPlutusData (UTF-8)
+```
+
+**Supported types:**
+
+| Java Type | PlutusData Encoding |
+|-----------|-------------------|
+| `BigInteger`, `int`, `long` | `IntData` |
+| `byte[]` | `BytesData` |
+| `boolean` | `ConstrData(0)` false / `ConstrData(1)` true |
+| `String` | `BytesData` (UTF-8 encoded) |
+| `Optional<T>` | `ConstrData(0,[val])` present / `ConstrData(1,[])` empty |
+| `List<T>`, `JulcList<T>` | `ListData` |
+| `Map<K,V>`, `JulcMap<K,V>` | `MapData` |
+| `Tuple2<A,B>`, `Tuple3<A,B,C>` | `ConstrData(0, [fields...])` |
+| Record | `ConstrData(tag, [fields in declaration order])` |
+| Sealed interface variant | tag = position in `permits()` list |
+| `@NewType` record | Underlying type directly (no ConstrData wrap) |
+| Ledger types (`PubKeyHash`, etc.) | Handled via `toPlutusData()`/`fromPlutusData()` |
+
+The encoding rules match the JuLC compiler exactly, so on-chain and off-chain
+representations are binary-compatible.
 
 ---
 
