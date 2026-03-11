@@ -169,7 +169,12 @@ class LedgerTypesTest {
         void roundTrip() {
             var v = Value.lovelace(BigInteger.valueOf(1_500_000))
                     .merge(Value.singleton(pid(), tn(), BigInteger.valueOf(42)));
-            assertEquals(v, Value.fromPlutusData(v.toPlutusData()));
+            // toPlutusData() normalizes to ADA-first; fromPlutusData preserves that order.
+            // Verify the normalized form is idempotent and preserves all values.
+            var restored = Value.fromPlutusData(v.toPlutusData());
+            assertEquals(BigInteger.valueOf(1_500_000), restored.lovelaceOf());
+            assertEquals(BigInteger.valueOf(42), restored.assetOf(pid(), tn()));
+            assertEquals(restored, Value.fromPlutusData(restored.toPlutusData()));
         }
 
         @Test
@@ -182,6 +187,51 @@ class LedgerTypesTest {
         void encodingIsMap() {
             var data = Value.lovelace(BigInteger.ONE).toPlutusData();
             assertInstanceOf(PlutusData.MapData.class, data);
+        }
+
+        @Test
+        void mergePreservesADAFirst() {
+            var merged = Value.lovelace(BigInteger.valueOf(5_000_000))
+                    .merge(Value.singleton(pid(), tn(), BigInteger.ONE));
+            var mapData = merged.toPlutusData();
+            // ADA (empty bytestring) must be the first entry
+            var firstKey = mapData.entries().getFirst().key();
+            assertInstanceOf(PlutusData.BytesData.class, firstKey);
+            assertArrayEquals(new byte[0], ((PlutusData.BytesData) firstKey).value());
+        }
+
+        @Test
+        void mergeThenLovelaceOfReturnsCorrectAmount() {
+            var merged = Value.lovelace(BigInteger.valueOf(5_000_000))
+                    .merge(Value.singleton(pid(), tn(), BigInteger.valueOf(42)));
+            // Round-trip through PlutusData and check lovelaceOf
+            var restored = Value.fromPlutusData(merged.toPlutusData());
+            assertEquals(BigInteger.valueOf(5_000_000), restored.lovelaceOf());
+        }
+
+        @Test
+        void mergeMultiplePoliciesKeepsADAFirst() {
+            var policyA = new PolicyId(bytes28());
+            var policyB = new PolicyId(bytes28b());
+            var merged = Value.lovelace(BigInteger.valueOf(2_000_000))
+                    .merge(Value.singleton(policyA, tn(), BigInteger.ONE))
+                    .merge(Value.singleton(policyB, tn(), BigInteger.TWO));
+            var mapData = merged.toPlutusData();
+            var firstKey = mapData.entries().getFirst().key();
+            assertInstanceOf(PlutusData.BytesData.class, firstKey);
+            assertArrayEquals(new byte[0], ((PlutusData.BytesData) firstKey).value());
+            assertEquals(3, mapData.entries().size());
+        }
+
+        @Test
+        void mergeWithoutADAStillWorks() {
+            var policyA = new PolicyId(bytes28());
+            var policyB = new PolicyId(bytes28b());
+            var merged = Value.singleton(policyA, tn(), BigInteger.ONE)
+                    .merge(Value.singleton(policyB, tn(), BigInteger.TWO));
+            var mapData = merged.toPlutusData();
+            assertEquals(2, mapData.entries().size());
+            assertEquals(BigInteger.ZERO, merged.lovelaceOf());
         }
     }
 
