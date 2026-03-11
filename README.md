@@ -259,7 +259,6 @@ assertTrue(evalResult.isSuccess());
 | [Library Developer Guide](docs/library-developer-guide.md) | Writing `@OnchainLibrary` modules and PIR API |
 | [Troubleshooting](docs/troubleshooting.md) | Every compiler error, common mistakes, and FAQ |
 | [Compiler Developer Guide](docs/compiler-developer-guide.md) | Internal architecture for compiler contributors |
-| [Type Method Comparison](docs/type-method-compilation-comparison.md) | How JuLC compares to Opshin and Scalus |
 
 ## License
 
