@@ -63,6 +63,10 @@ class SubsetValidatorTest {
     @Test void rejectsThis() { assertRejects("class X { void f() { Object x = this; } }", "this"); }
     @Test void rejectsSuper() { assertRejects("class X extends Y { void f() { super.f(); } }", "super"); }
     @Test void rejectsArrayCreation() { assertRejects("class X { void f() { int[] a = new int[5]; } }", "arrays"); }
+    @Test void acceptsByteArrayLiteral() { assertAccepts("class X { void f() { byte[] b = new byte[]{0x48, 0x45}; } }"); }
+    @Test void acceptsEmptyByteArrayLiteral() { assertAccepts("class X { void f() { byte[] b = new byte[]{}; } }"); }
+    @Test void rejectsIntArrayLiteral() { assertRejects("class X { void f() { int[] a = new int[]{1, 2}; } }", "arrays"); }
+    @Test void rejectsByteArrayWithVarElement() { assertRejects("class X { void f(int v) { byte[] b = new byte[]{(byte)v}; } }", "arrays"); }
     @Test void rejectsArrayAccess() { assertRejects("class X { void f(int[] a) { int x = a[0]; } }", "array access"); }
     @Test void rejectsFloat() { assertRejects("class X { void f(float x) { } }", "floating point"); }
     @Test void rejectsDouble() { assertRejects("class X { void f(double x) { } }", "floating point"); }

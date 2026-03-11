@@ -569,6 +569,15 @@ public class PirGenerator {
             }
             return inner;
         }
+        if (expr instanceof ArrayCreationExpr ace) {
+            // byte[] literal initializer → ByteString constant
+            var values = ace.getInitializer().get().getValues();
+            byte[] bytes = new byte[values.size()];
+            for (int i = 0; i < values.size(); i++) {
+                bytes[i] = (byte) values.get(i).asIntegerLiteralExpr().asNumber().intValue();
+            }
+            return new PirTerm.Const(Constant.byteString(bytes));
+        }
         if (expr instanceof AssignExpr ae && ae.getTarget() instanceof NameExpr ne) {
             var name = ne.getNameAsString();
             if ((forEachAccumulatorVar != null && name.equals(forEachAccumulatorVar))

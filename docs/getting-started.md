@@ -879,13 +879,13 @@ when your validator references them.
 |---|---|
 | `ContextsLib` | ScriptContext/TxInfo field accessors, `signedBy`, `findOwnInput`, `getContinuingOutputs`, `findDatum`, `ownHash`, `trace` |
 | `ListsLib` | `empty`, `prepend`, `length`, `isEmpty`, `head`, `tail`, `reverse`, `concat`, `nth`, `take`, `drop`, `contains`, `containsInt`, `containsBytes`, `hasDuplicateInts`, `hasDuplicateBytes` + PIR HOFs (`any`, `all`, `find`, `foldl`, `map`, `filter`, `zip`) |
-| `ValuesLib` | `lovelaceOf`, `assetOf`, `containsPolicy`, `geq`, `geqMultiAsset`, `leq`, `eq`, `isZero`, `singleton`, `negate`, `flatten`, `add`, `subtract`, `countTokensWithQty`, `findTokenName` |
+| `ValuesLib` | `lovelaceOf`, `assetOf`, `containsPolicy`, `geq`, `geqMultiAsset`, `leq`, `eq`, `isZero`, `singleton`, `negate`, `flatten`, `flattenTyped`, `add`, `subtract`, `countTokensWithQty`, `findTokenName` |
 | `MapLib` | `lookup`, `member`, `insert`, `delete`, `keys`, `values`, `toList`, `fromList`, `size` |
 | `OutputLib` | `txOutAddress`, `txOutValue`, `txOutDatum`, `outputsAt`, `countOutputsAt`, `uniqueOutputAt`, `outputsWithToken`, `valueHasToken`, `lovelacePaidTo`, `paidAtLeast`, `getInlineDatum`, `resolveDatum`, `findOutputWithToken`, `findInputWithToken` |
 | `MathLib` | `abs`, `max`, `min`, `divMod`, `quotRem`, `pow`, `sign`, `expMod` |
 | `IntervalLib` | `contains`, `always`, `after`, `before`, `between`, `never`, `isEmpty`, `finiteUpperBound`, `finiteLowerBound` |
 | `CryptoLib` | `sha2_256`, `blake2b_256`, `sha3_256`, `blake2b_224`, `keccak_256`, `verifyEd25519Signature`, `verifyEcdsaSecp256k1`, `verifySchnorrSecp256k1`, `ripemd_160` (all hash functions also available via `Builtins.*`) |
-| `ByteStringLib` | `at`, `cons`, `slice`, `length`, `drop`, `take`, `append`, `empty`, `zeros`, `equals`, `lessThan`, `lessThanEquals`, `integerToByteString`, `byteStringToInteger`, `encodeUtf8`, `decodeUtf8`, `serialiseData`, `hexNibble`, `toHex`, `intToDecimalString` |
+| `ByteStringLib` | `at`, `cons`, `slice`, `length`, `drop`, `take`, `append`, `empty`, `zeros`, `equals`, `lessThan`, `lessThanEquals`, `integerToByteString`, `byteStringToInteger`, `encodeUtf8`, `decodeUtf8`, `serialiseData`, `hexNibble`, `toHex`, `intToDecimalString`, `utf8ToInteger` |
 | `BitwiseLib` | `andByteString`, `orByteString`, `xorByteString`, `complementByteString`, `readBit`, `writeBits`, `shiftByteString`, `rotateByteString`, `countSetBits`, `findFirstSetBit` |
 | `AddressLib` | `credentialHash`, `isScriptAddress`, `isPubKeyAddress`, `paymentCredential` |
 
@@ -1393,7 +1393,7 @@ following limitations apply:
   `PlutusData`, records, sealed interfaces, `List<T>`, `Map<K,V>`, `Optional<T>`,
   `Tuple2<A,B>`, `Tuple3<A,B,C>`.
 - **No float/double**: Floating-point types do not exist on-chain.
-- **No arrays** (except `byte[]`): Use `List<T>` for collections.
+- **No arrays** (except `byte[]`): Use `List<T>` for collections. `byte[]` literal arrays (`new byte[]{0x48, 0x45}`) and `"TOKEN".getBytes()` are supported as compile-time constants.
 - **No class inheritance**: Only records and sealed interfaces are supported for
   data types.
 

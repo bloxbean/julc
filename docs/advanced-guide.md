@@ -26,6 +26,7 @@ stdlib usage) as covered in the getting-started guide.
 15. [Tuple2/Tuple3 Generic Support](#15-tuple2tuple3-generic-support)
 16. [Nested Loops](#16-nested-loops)
 17. [Higher-Order Functions (HOFs)](#17-higher-order-functions-hofs)
+18. [Byte Array Constants](#18-byte-array-constants)
 
 ---
 
@@ -1508,3 +1509,43 @@ Variable capture is supported. Block body lambdas and chaining (`list.filter(...
 Note: `map()` wraps lambda results to Data — the returned list has `DataType` elements. Use `Builtins.unIData()` etc. when extracting values from mapped results.
 
 For the full HOF reference, see [Standard Library Guide — HOFs](stdlib-guide.md).
+
+---
+
+## 18. Byte Array Constants
+
+JuLC supports `byte[]` constants in on-chain code using two syntaxes:
+
+### String.getBytes()
+
+```java
+static final byte[] FACTORY_MARKER = "FACTORY_MARKER".getBytes();
+static final byte[] LOTTERY_TOKEN = "LOTTERY_TOKEN".getBytes();
+```
+
+Compiles to `EncodeUtf8("FACTORY_MARKER")` — produces the UTF-8 encoded bytes at UPLC level.
+
+### Literal byte[] Initializers
+
+```java
+static final byte[] TOKEN_PREFIX = new byte[]{0x46, 0x41, 0x43, 0x54};
+```
+
+Compiles to a `ByteString` constant. All array elements must be integer literals (no variables or expressions).
+
+### Usage in Validators
+
+```java
+@MintingValidator
+class FactoryPolicy {
+    static final byte[] FACTORY_MARKER = "FACTORY_MARKER".getBytes();
+
+    @Entrypoint
+    static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+        TxInfo txInfo = ctx.txInfo();
+        byte[] ownPolicy = (byte[])(Object) ContextsLib.ownHash(ctx);
+        BigInteger qty = ValuesLib.assetOf(txInfo.mint(), ownPolicy, FACTORY_MARKER);
+        return qty.equals(BigInteger.ONE);
+    }
+}
+```

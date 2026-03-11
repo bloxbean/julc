@@ -251,6 +251,7 @@ public class ValuesLib {
      *     BigInteger qty = entry.amount();
      * }
      * }</pre>
+     * Or use {@link #flattenTyped(Value)} for a typed alternative.
      *
      * Note: Split into separate step methods to avoid nested while loops
      * (compiler limitation — while-loop calling a function with a while-loop).
@@ -258,6 +259,16 @@ public class ValuesLib {
     @SuppressWarnings("unchecked")
     public static JulcList<PlutusData> flatten(Value value) {
         return flattenStep(Builtins.unMapData(value), JulcList.empty());
+    }
+
+    /**
+     * Typed variant of {@link #flatten(Value)} that returns {@code JulcList<AssetEntry>}.
+     * Each element provides typed field access: {@code entry.policyId()}, {@code entry.tokenName()},
+     * {@code entry.amount()}.
+     */
+    @SuppressWarnings("unchecked")
+    public static JulcList<AssetEntry> flattenTyped(Value value) {
+        return (JulcList<AssetEntry>)(Object) flatten(value);
     }
 
     /** Process one policy from the outer map, then recurse on the rest. */

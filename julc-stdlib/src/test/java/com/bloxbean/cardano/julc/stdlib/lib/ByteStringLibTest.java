@@ -239,4 +239,44 @@ class ByteStringLibTest {
             assertArrayEquals(new byte[]{52, 50}, result); // '4'=52, '2'=50
         }
     }
+
+    @Nested
+    class Utf8ToInteger {
+
+        @Test
+        void emptyReturnsZero() {
+            assertEquals(BigInteger.ZERO, eval.call("utf8ToInteger", new byte[]{}).asInteger());
+        }
+
+        @Test
+        void singleDigit() {
+            // "7" = byte 55
+            assertEquals(BigInteger.valueOf(7), eval.call("utf8ToInteger", new byte[]{55}).asInteger());
+        }
+
+        @Test
+        void twoDigits() {
+            // "42" = bytes {52, 50}
+            assertEquals(BigInteger.valueOf(42), eval.call("utf8ToInteger", new byte[]{52, 50}).asInteger());
+        }
+
+        @Test
+        void largeNumber() {
+            // "12345" = bytes {49, 50, 51, 52, 53}
+            assertEquals(BigInteger.valueOf(12345), eval.call("utf8ToInteger", new byte[]{49, 50, 51, 52, 53}).asInteger());
+        }
+
+        @Test
+        void zero() {
+            // "0" = byte 48
+            assertEquals(BigInteger.ZERO, eval.call("utf8ToInteger", new byte[]{48}).asInteger());
+        }
+
+        @Test
+        void roundtripWithIntToDecimalString() {
+            // intToDecimalString(42) → bytes, utf8ToInteger(bytes) → 42
+            byte[] encoded = eval.call("intToDecimalString", BigInteger.valueOf(42)).asByteString();
+            assertEquals(BigInteger.valueOf(42), eval.call("utf8ToInteger", encoded).asInteger());
+        }
+    }
 }

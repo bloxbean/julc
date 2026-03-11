@@ -195,8 +195,19 @@ public class SubsetValidator extends VoidVisitorAdapter<Void> {
 
     @Override
     public void visit(ArrayCreationExpr n, Void arg) {
+        // Allow: new byte[]{0x46, 0x41, ...} — compiles to ByteString constant
+        if (n.getElementType().isPrimitiveType()
+                && n.getElementType().asPrimitiveType().getType() == PrimitiveType.Primitive.BYTE
+                && n.getInitializer().isPresent()) {
+            boolean allLiterals = n.getInitializer().get().getValues().stream()
+                    .allMatch(v -> v.isIntegerLiteralExpr());
+            if (allLiterals) {
+                super.visit(n, arg);
+                return;
+            }
+        }
         error(n, "arrays are not supported on-chain",
-                "Use List<T> instead of arrays");
+                "Use List<T> instead of arrays, or byte[] with literal initializers");
         super.visit(n, arg);
     }
 
