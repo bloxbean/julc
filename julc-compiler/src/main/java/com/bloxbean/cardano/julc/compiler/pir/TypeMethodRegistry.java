@@ -330,7 +330,7 @@ public final class TypeMethodRegistry {
         // get(index): LetRec-based nth element access (O(n) linked list traversal)
         reg.register("ListType", "get",
                 (scope, args, scopeType, argTypes) -> {
-                    if (args.isEmpty()) throw new CompilerException("get() requires an index argument");
+                    if (args.isEmpty()) throw new CompilerException("get() requires an index argument. Usage: list.get(0)");
                     // LetRec pattern: go(lst, idx) = if idx == 0 then HeadList(lst) else go(TailList(lst), idx-1)
                     var lstVar = new PirTerm.Var("lst_get", new PirType.ListType(new PirType.DataType()));
                     var idxVar = new PirTerm.Var("idx_get", new PirType.IntegerType());
@@ -369,7 +369,7 @@ public final class TypeMethodRegistry {
         // contains: recursive search with typed equality
         reg.register("ListType", "contains",
                 (scope, args, scopeType, argTypes) -> {
-                    if (args.isEmpty()) throw new CompilerException("contains() requires one argument");
+                    if (args.isEmpty()) throw new CompilerException("contains() requires one argument. Usage: list.contains(element)");
                     var lt = (PirType.ListType) scopeType;
                     var targetType = argTypes.get(0);
                     return PirHelpers.generateListContains(scope, args.get(0), lt.elemType(), targetType);
@@ -406,7 +406,7 @@ public final class TypeMethodRegistry {
         // go(reversed, other) = if null(reversed) then other else go(tail(reversed), mkCons(head(reversed), other))
         reg.register("ListType", "concat",
                 (scope, args, scopeType, argTypes) -> {
-                    if (args.isEmpty()) throw new CompilerException("concat() requires one argument");
+                    if (args.isEmpty()) throw new CompilerException("concat() requires one argument. Usage: list.concat(otherList)");
                     // First reverse the source list
                     var revLstVar = new PirTerm.Var("lst_crev", new PirType.ListType(new PirType.DataType()));
                     var revAccVar = new PirTerm.Var("acc_crev", new PirType.ListType(new PirType.DataType()));
@@ -436,7 +436,7 @@ public final class TypeMethodRegistry {
         // take(n): LetRec go(lst, n) = if n<=0 || null(lst) then nil else mkCons(head(lst), go(tail(lst), n-1))
         reg.register("ListType", "take",
                 (scope, args, scopeType, argTypes) -> {
-                    if (args.isEmpty()) throw new CompilerException("take() requires a count argument");
+                    if (args.isEmpty()) throw new CompilerException("take() requires a count argument. Usage: list.take(n)");
                     var lstVar = new PirTerm.Var("lst_take", new PirType.ListType(new PirType.DataType()));
                     var nVar = new PirTerm.Var("n_take", new PirType.IntegerType());
                     var goVar = new PirTerm.Var("go_take", new PirType.FunType(
@@ -472,7 +472,7 @@ public final class TypeMethodRegistry {
         // drop(n): LetRec go(lst, n) = if n<=0 || null(lst) then lst else go(tail(lst), n-1)
         reg.register("ListType", "drop",
                 (scope, args, scopeType, argTypes) -> {
-                    if (args.isEmpty()) throw new CompilerException("drop() requires a count argument");
+                    if (args.isEmpty()) throw new CompilerException("drop() requires a count argument. Usage: list.drop(n)");
                     var lstVar = new PirTerm.Var("lst_drop", new PirType.ListType(new PirType.DataType()));
                     var nVar = new PirTerm.Var("n_drop", new PirType.IntegerType());
                     var goVar = new PirTerm.Var("go_drop", new PirType.FunType(
@@ -505,7 +505,7 @@ public final class TypeMethodRegistry {
         // map(fn): apply fn to each element, return new list
         reg.register("ListType", "map",
                 (scope, args, scopeType, argTypes) -> {
-                    if (args.isEmpty()) throw new CompilerException("list.map() requires a function argument");
+                    if (args.isEmpty()) throw new CompilerException("list.map() requires a function argument. Usage: list.map(x -> x + 1)");
                     return PirHofBuilders.map(scope, args.get(0));
                 },
                 scopeType -> new PirType.ListType(new PirType.DataType()));
@@ -513,7 +513,7 @@ public final class TypeMethodRegistry {
         // filter(pred): keep elements where pred returns true
         reg.register("ListType", "filter",
                 (scope, args, scopeType, argTypes) -> {
-                    if (args.isEmpty()) throw new CompilerException("list.filter() requires a predicate argument");
+                    if (args.isEmpty()) throw new CompilerException("list.filter() requires a predicate argument. Usage: list.filter(x -> x > 0)");
                     return PirHofBuilders.filter(scope, args.get(0));
                 },
                 scopeType -> scopeType);
@@ -521,7 +521,7 @@ public final class TypeMethodRegistry {
         // any(pred): return true if any element satisfies pred
         reg.register("ListType", "any",
                 (scope, args, scopeType, argTypes) -> {
-                    if (args.isEmpty()) throw new CompilerException("list.any() requires a predicate argument");
+                    if (args.isEmpty()) throw new CompilerException("list.any() requires a predicate argument. Usage: list.any(x -> x > 0)");
                     return PirHofBuilders.any(scope, args.get(0));
                 },
                 scopeType -> new PirType.BoolType());
@@ -529,7 +529,7 @@ public final class TypeMethodRegistry {
         // all(pred): return true if all elements satisfy pred
         reg.register("ListType", "all",
                 (scope, args, scopeType, argTypes) -> {
-                    if (args.isEmpty()) throw new CompilerException("list.all() requires a predicate argument");
+                    if (args.isEmpty()) throw new CompilerException("list.all() requires a predicate argument. Usage: list.all(x -> x > 0)");
                     return PirHofBuilders.all(scope, args.get(0));
                 },
                 scopeType -> new PirType.BoolType());
@@ -537,7 +537,7 @@ public final class TypeMethodRegistry {
         // find(pred): return first element matching pred as Optional
         reg.register("ListType", "find",
                 (scope, args, scopeType, argTypes) -> {
-                    if (args.isEmpty()) throw new CompilerException("list.find() requires a predicate argument");
+                    if (args.isEmpty()) throw new CompilerException("list.find() requires a predicate argument. Usage: list.find(x -> x == target)");
                     return PirHofBuilders.find(scope, args.get(0));
                 },
                 scopeType -> new PirType.OptionalType(new PirType.DataType()));
@@ -584,7 +584,7 @@ public final class TypeMethodRegistry {
         // get(key): search pair list, return value directly (crash on miss)
         reg.register("MapType", "get",
                 (scope, args, scopeType, argTypes) -> {
-                    if (args.isEmpty()) throw new CompilerException("map.get() requires a key argument");
+                    if (args.isEmpty()) throw new CompilerException("map.get() requires a key argument. Usage: map.get(key). Note: crashes on missing key; use map.lookup(key) for Optional result");
                     var mt = (PirType.MapType) scopeType;
                     var keyArg = PirHelpers.wrapEncode(args.get(0),
                             argTypes.isEmpty() ? new PirType.DataType() : argTypes.get(0));
@@ -606,7 +606,7 @@ public final class TypeMethodRegistry {
         // lookup(key): search pair list, return Optional(value) on match
         reg.register("MapType", "lookup",
                 (scope, args, scopeType, argTypes) -> {
-                    if (args.isEmpty()) throw new CompilerException("map.lookup() requires a key argument");
+                    if (args.isEmpty()) throw new CompilerException("map.lookup() requires a key argument. Usage: map.lookup(key). Returns Optional<V>");
                     var keyArg = PirHelpers.wrapEncode(args.get(0),
                             argTypes.isEmpty() ? new PirType.DataType() : argTypes.get(0));
                     return PirHelpers.pairListSearch("lk", scope, keyArg, PirHelpers.mkNone(),
@@ -622,7 +622,7 @@ public final class TypeMethodRegistry {
         // containsKey(key): search pair list, return true on match
         reg.register("MapType", "containsKey",
                 (scope, args, scopeType, argTypes) -> {
-                    if (args.isEmpty()) throw new CompilerException("map.containsKey() requires a key argument");
+                    if (args.isEmpty()) throw new CompilerException("map.containsKey() requires a key argument. Usage: map.containsKey(key)");
                     var keyArg = PirHelpers.wrapEncode(args.get(0),
                             argTypes.isEmpty() ? new PirType.DataType() : argTypes.get(0));
                     return PirHelpers.pairListSearch("ck", scope, keyArg,
@@ -702,7 +702,7 @@ public final class TypeMethodRegistry {
         // insert(key, value): MkCons(MkPairData(key, value), pairList) — returns pair list
         reg.register("MapType", "insert",
                 (scope, args, scopeType, argTypes) -> {
-                    if (args.size() < 2) throw new CompilerException("map.insert() requires key and value arguments");
+                    if (args.size() < 2) throw new CompilerException("map.insert() requires key and value arguments. Usage: map.insert(key, value)");
                     var mt = (PirType.MapType) scopeType;
                     var keyArg = PirHelpers.wrapEncode(args.get(0), argTypes.size() >= 1 ? argTypes.get(0) : new PirType.DataType());
                     var valArg = PirHelpers.wrapEncode(args.get(1), argTypes.size() >= 2 ? argTypes.get(1) : new PirType.DataType());
@@ -715,7 +715,7 @@ public final class TypeMethodRegistry {
         // delete(key): filter out matching key from pair list
         reg.register("MapType", "delete",
                 (scope, args, scopeType, argTypes) -> {
-                    if (args.isEmpty()) throw new CompilerException("map.delete() requires a key argument");
+                    if (args.isEmpty()) throw new CompilerException("map.delete() requires a key argument. Usage: map.delete(key)");
                     var keyArg = PirHelpers.wrapEncode(args.get(0),
                             argTypes.isEmpty() ? new PirType.DataType() : argTypes.get(0));
                     return PirHelpers.pairListSearch("del", scope, keyArg, PirHelpers.mkNilPairData(),
@@ -780,7 +780,7 @@ public final class TypeMethodRegistry {
         // containsPolicy(policyId): check if policy exists in Value's outer map
         reg.register("Value", "containsPolicy",
                 (scope, args, scopeType, argTypes) -> {
-                    if (args.isEmpty()) throw new CompilerException("value.containsPolicy() requires a policyId argument");
+                    if (args.isEmpty()) throw new CompilerException("value.containsPolicy() requires a policyId argument. Usage: value.containsPolicy(policyId)");
                     var pairList = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), scope);
                     var keyArg = PirHelpers.wrapEncode(args.get(0),
                             argTypes.isEmpty() ? new PirType.DataType() : argTypes.get(0));
@@ -798,7 +798,7 @@ public final class TypeMethodRegistry {
         // assetOf(policyId, tokenName): LetRec search in nested maps
         reg.register("Value", "assetOf",
                 (scope, args, scopeType, argTypes) -> {
-                    if (args.size() < 2) throw new CompilerException("value.assetOf() requires policyId and tokenName arguments");
+                    if (args.size() < 2) throw new CompilerException("value.assetOf() requires policyId and tokenName arguments. Usage: value.assetOf(policyId, tokenName)");
                     var policyArg = PirHelpers.wrapEncode(args.get(0), argTypes.size() >= 1 ? argTypes.get(0) : new PirType.DataType());
                     var tokenArg = PirHelpers.wrapEncode(args.get(1), argTypes.size() >= 2 ? argTypes.get(1) : new PirType.DataType());
 
