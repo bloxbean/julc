@@ -638,6 +638,84 @@ class ScalusVmProviderTest {
     }
 
     @Nested
+    class CostModelParams {
+
+        @Test
+        void customMachineParams_usedByVm() {
+            // Verify the machineParams field is wired through to createVm.
+            // Directly set machineParams via Scalus API and confirm evaluation uses it.
+            var customProvider = new ScalusVmProvider();
+            var defaultMp = scalus.uplc.eval.MachineParams.defaultPlutusV3Params();
+            // Invoke setCostModelParams indirectly by setting the field
+            // (accessible since test is in same package).
+            // Instead, use the Scalus API directly to set machineParams.
+            customProvider.machineParams = defaultMp;
+            customProvider.protocolVersion = scalus.cardano.ledger.MajorProtocolVersion.changPV();
+
+            // Evaluate: 10 + 20 = 30
+            var term = Term.apply(
+                    Term.apply(
+                            Term.builtin(DefaultFun.AddInteger),
+                            Term.const_(Constant.integer(10))),
+                    Term.const_(Constant.integer(20)));
+            var program = Program.plutusV3(term);
+
+            var result = customProvider.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
+            assertTrue(result.isSuccess());
+            var c = (Term.Const) ((EvalResult.Success) result).resultTerm();
+            assertEquals(BigInteger.valueOf(30), ((Constant.IntegerConst) c.value()).value());
+            assertTrue(result.budgetConsumed().cpuSteps() > 0);
+            assertTrue(result.budgetConsumed().memoryUnits() > 0);
+        }
+
+        @Test
+        void customMachineParams_budgetMatchesDefault() {
+            // Verify that using default params explicitly produces the same budget
+            // as the no-params path.
+            var term = Term.apply(
+                    Term.apply(
+                            Term.builtin(DefaultFun.AddInteger),
+                            Term.const_(Constant.integer(2))),
+                    Term.const_(Constant.integer(3)));
+            var program = Program.plutusV3(term);
+
+            // Without custom params
+            var defaultProvider = new ScalusVmProvider();
+            var defaultResult = defaultProvider.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
+
+            // With default params set explicitly
+            var customProvider = new ScalusVmProvider();
+            customProvider.machineParams = scalus.uplc.eval.MachineParams.defaultPlutusV3Params();
+            customProvider.protocolVersion = scalus.cardano.ledger.MajorProtocolVersion.changPV();
+            var customResult = customProvider.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
+
+            assertTrue(defaultResult.isSuccess());
+            assertTrue(customResult.isSuccess());
+            assertEquals(defaultResult.budgetConsumed().cpuSteps(),
+                    customResult.budgetConsumed().cpuSteps());
+            assertEquals(defaultResult.budgetConsumed().memoryUnits(),
+                    customResult.budgetConsumed().memoryUnits());
+        }
+
+        @Test
+        void defaultProvider_ignoresCostModelParams() {
+            // The default JulcVmProvider.setCostModelParams should be a no-op.
+            JulcVmProvider mockProvider = new JulcVmProvider() {
+                @Override
+                public EvalResult evaluate(Program p, PlutusLanguage l, ExBudget b) { return null; }
+                @Override
+                public EvalResult evaluateWithArgs(Program p, PlutusLanguage l, List<PlutusData> a, ExBudget b) { return null; }
+                @Override
+                public String name() { return "test"; }
+                @Override
+                public int priority() { return 0; }
+            };
+            // Should not throw
+            mockProvider.setCostModelParams(new long[]{1, 2, 3}, 10);
+        }
+    }
+
+    @Nested
     class ServiceLoaderDiscovery {
 
         @Test

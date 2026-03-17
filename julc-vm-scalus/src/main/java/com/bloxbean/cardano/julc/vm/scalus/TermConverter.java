@@ -45,8 +45,7 @@ final class TermConverter {
             return Term.const_(fromScalusConstant(scalusConst));
         } else if (term instanceof scalus.uplc.Term.Builtin b) {
             return Term.builtin(fromScalusDefaultFun(b.bn()));
-        } else if (term == scalus.uplc.Term$.MODULE$.Error) {
-            // Error is a parameterless enum case in Scala 3 - accessed via companion object
+        } else if (term instanceof scalus.uplc.Term.Error) {
             return Term.error();
         } else if (term instanceof scalus.uplc.Term.Constr c) {
             var fields = new ArrayList<Term>();

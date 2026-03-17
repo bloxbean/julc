@@ -48,6 +48,19 @@ public interface JulcVmProvider {
     EvalResult evaluateWithArgs(Program program, PlutusLanguage language,
                                 List<PlutusData> args, ExBudget budget);
 
+    /**
+     * Set the cost model parameter values for the current language version.
+     * Values must be in the canonical order (matching the on-chain costModels array).
+     * <p>
+     * If not called, the provider uses its built-in default cost model.
+     *
+     * @param costModelValues       ordered array of cost model parameter values
+     * @param protocolMajorVersion  the protocol major version (e.g. 9 for Chang, 10 for Plomin)
+     */
+    default void setCostModelParams(long[] costModelValues, int protocolMajorVersion) {
+        // Default: ignore (use built-in defaults)
+    }
+
     /** The name of this provider (for logging/debugging). */
     String name();
 

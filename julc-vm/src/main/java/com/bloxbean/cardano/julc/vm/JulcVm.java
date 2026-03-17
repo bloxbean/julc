@@ -107,6 +107,17 @@ public final class JulcVm {
         return provider.evaluateWithArgs(program, language, args, budget);
     }
 
+    /**
+     * Set the cost model parameter values for the current language version.
+     * Values must be in the canonical order (matching the on-chain costModels array).
+     *
+     * @param costModelValues       ordered array of cost model parameter values
+     * @param protocolMajorVersion  the protocol major version (e.g. 9 for Chang, 10 for Plomin)
+     */
+    public void setCostModelParams(long[] costModelValues, int protocolMajorVersion) {
+        provider.setCostModelParams(costModelValues, protocolMajorVersion);
+    }
+
     /** The name of the active VM provider. */
     public String providerName() {
         return provider.name();

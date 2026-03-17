@@ -1,0 +1,23 @@
+plugins {
+    id 'java-library'
+}
+
+description = 'Pure Java CEK Machine - Plutus VM backend without external dependencies'
+
+dependencies {
+    api project(':julc-vm')
+    implementation 'org.bouncycastle:bcprov-jdk18on:1.78.1'
+    testImplementation project(':julc-core')
+    testRuntimeOnly project(':julc-vm-scalus')
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            pom {
+                name = 'JuLC VM Java'
+                description = 'Pure Java Plutus VM Backend (CEK Machine)'
+            }
+        }
+    }
+}
