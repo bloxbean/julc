@@ -258,9 +258,11 @@ class PlutusConformanceTest {
     }
 
     private PlutusLanguage detectLanguage(Program program) {
-        if (program.major() == 1 && program.minor() >= 1) {
-            return PlutusLanguage.PLUTUS_V3;
-        }
+        // The conformance test suite uses UPLC 1.0.0 for ALL tests, even those
+        // exercising V3-only builtins. The UPLC version alone cannot distinguish
+        // V1/V2/V3 — that's determined by the script's language tag on-chain.
+        // We default to V3 for conformance tests since the suite expects all
+        // builtins to be available.
         return PlutusLanguage.PLUTUS_V3;
     }
 

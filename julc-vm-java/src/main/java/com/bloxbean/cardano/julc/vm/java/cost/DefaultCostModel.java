@@ -1,6 +1,7 @@
 package com.bloxbean.cardano.julc.vm.java.cost;
 
 import com.bloxbean.cardano.julc.core.DefaultFun;
+import com.bloxbean.cardano.julc.vm.PlutusLanguage;
 
 import java.util.EnumMap;
 import java.util.Map;
@@ -8,7 +9,7 @@ import java.util.Map;
 import static com.bloxbean.cardano.julc.vm.java.cost.CostFunction.*;
 
 /**
- * Default Plutus V3 cost model parameters.
+ * Default Plutus cost model parameters for V1, V2, and V3.
  * <p>
  * Values are from the Cardano mainnet Conway genesis / Plutus cost model specification
  * (builtinCostModelC.json + cekMachineCostsC.json from the Plutus repository).
@@ -16,6 +17,101 @@ import static com.bloxbean.cardano.julc.vm.java.cost.CostFunction.*;
 public final class DefaultCostModel {
 
     private DefaultCostModel() {}
+
+    /**
+     * Get the default machine costs for the specified Plutus language version.
+     * <p>
+     * V1/V2 use the same step costs as V3 for the 8 shared step types,
+     * with Constr/Case costs set to 0 (those terms are rejected for V1/V2).
+     */
+    public static MachineCosts defaultMachineCosts(PlutusLanguage language) {
+        return switch (language) {
+            case PLUTUS_V1, PLUTUS_V2 -> defaultMachineCostsV1V2();
+            case PLUTUS_V3 -> defaultMachineCosts();
+        };
+    }
+
+    /**
+     * Get the default builtin cost model for the specified Plutus language version.
+     * <p>
+     * Only includes builtins available in the given version.
+     */
+    public static BuiltinCostModel defaultBuiltinCostModel(PlutusLanguage language) {
+        return switch (language) {
+            case PLUTUS_V1 -> defaultBuiltinCostModelV1();
+            case PLUTUS_V2 -> defaultBuiltinCostModelV2();
+            case PLUTUS_V3 -> defaultBuiltinCostModel();
+        };
+    }
+
+    /** V1/V2 machine costs — same as V3 but without Constr/Case. */
+    private static MachineCosts defaultMachineCostsV1V2() {
+        return new MachineCosts(
+                /* startupCpu */ 100,    /* startupMem */ 100,
+                /* varCpu */     16000,  /* varMem */     100,
+                /* lamCpu */     16000,  /* lamMem */     100,
+                /* applyCpu */   16000,  /* applyMem */   100,
+                /* forceCpu */   16000,  /* forceMem */   100,
+                /* delayCpu */   16000,  /* delayMem */   100,
+                /* constCpu */   16000,  /* constMem */   100,
+                /* builtinCpu */ 16000,  /* builtinMem */ 100,
+                /* constrCpu */  0,      /* constrMem */  0,
+                /* caseCpu */    0,      /* caseMem */    0
+        );
+    }
+
+    /**
+     * Default builtin cost model (Plutus V1 — 51 builtins, codes 0-50).
+     * <p>
+     * Uses Conway-era (PostConway) cost values — same as V3 for most builtins,
+     * filtered to V1 builtins only. Division builtins use the V2-era cost model
+     * (simpler const_above_diagonal with multiplied_sizes inner model) as carried
+     * forward in PostConway defaults. This matches Scalus's
+     * {@code defaultPlutusV1PostConwayParams()} behavior.
+     */
+    public static BuiltinCostModel defaultBuiltinCostModelV1() {
+        return filterAndOverrideDivision(1);
+    }
+
+    /**
+     * Default builtin cost model (Plutus V2 — 54 builtins, codes 0-53).
+     * <p>
+     * Uses Conway-era (PostConway) cost values — same as V3 for most builtins,
+     * filtered to V2 builtins only. Division builtins use the V2-era cost model.
+     * This matches Scalus's {@code defaultPlutusV2PostConwayParams()} behavior.
+     */
+    public static BuiltinCostModel defaultBuiltinCostModelV2() {
+        return filterAndOverrideDivision(2);
+    }
+
+    /**
+     * Filter V3 defaults to the given version and override division builtins
+     * with V2-era cost values (used for both V1 and V2 PostConway defaults).
+     */
+    private static BuiltinCostModel filterAndOverrideDivision(int maxVersion) {
+        var v3 = defaultBuiltinCostModel();
+        Map<DefaultFun, BuiltinCostModel.CostPair> costs = new EnumMap<>(DefaultFun.class);
+        for (var fun : DefaultFun.values()) {
+            if (fun.isAvailableIn(maxVersion)) {
+                var costPair = v3.get(fun);
+                if (costPair != null) {
+                    costs.put(fun, costPair);
+                }
+            }
+        }
+
+        // V1/V2 division builtins use simpler const_above_diagonal with multiplied_sizes
+        // inner model (from builtinCostModelB.json), carried forward in PostConway defaults.
+        // constant=85848, inner=MultipliedSizes(228465, 122), memory=SubtractedSizes(0,1,1)
+        var divCpu = new ConstAboveDiagonal(85848, 228465, 0, 0, 0, 122, 0, 0);
+        var divMem = new SubtractedSizes(0, 1, 1);
+        costs.put(DefaultFun.DivideInteger, pair(divCpu, divMem));
+        costs.put(DefaultFun.QuotientInteger, pair(divCpu, divMem));
+        costs.put(DefaultFun.RemainderInteger, pair(divCpu, divMem));
+        costs.put(DefaultFun.ModInteger, pair(divCpu, divMem));
+
+        return new BuiltinCostModel(costs);
+    }
 
     /** Default CEK machine step costs (Plutus V3 Conway era). */
     public static MachineCosts defaultMachineCosts() {

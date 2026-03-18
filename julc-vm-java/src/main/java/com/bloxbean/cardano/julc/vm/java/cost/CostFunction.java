@@ -80,18 +80,21 @@ public sealed interface CostFunction {
         }
     }
 
-    /** Cost based on difference of two argument sizes: intercept + slope * max(0, x - y), with a minimum. */
+    /**
+     * Cost based on difference of two argument sizes: intercept + slope * max(minimum, x - y).
+     * Matches Haskell: intercept + slope * max(minSize, x - y).
+     */
     record SubtractedSizes(long intercept, long slope, long minimum) implements CostFunction {
         @Override
         public long apply(long... sizes) {
-            long diff = Math.max(0, sizes[0] - sizes[1]);
-            return Math.max(minimum, intercept + slope * diff);
+            long diff = Math.max(minimum, sizes[0] - sizes[1]);
+            return intercept + slope * diff;
         }
     }
 
     /**
-     * Constant cost when x >= y (above diagonal), otherwise quadratic in x and y.
-     * Used for division/modulo operations.
+     * Constant cost when x < y (above diagonal), otherwise quadratic in x and y.
+     * Used for division/modulo operations where numerator smaller than denominator is cheap.
      */
     record ConstAboveDiagonal(long constant, long c00, long c01, long c02,
                               long c10, long c11, long c20, long minimum) implements CostFunction {
@@ -99,7 +102,7 @@ public sealed interface CostFunction {
         public long apply(long... sizes) {
             long x = sizes[0];
             long y = sizes[1];
-            if (x > y) {
+            if (x < y) {
                 return constant;
             }
             long result = c00 + c01 * y + c02 * y * y + c10 * x + c11 * x * y + c20 * x * x;
@@ -169,14 +172,22 @@ public sealed interface CostFunction {
         }
     }
 
-    /** ExpModInteger CPU cost: c00 + c11*x*y + c12*x*z. */
+    /**
+     * ExpModInteger CPU cost matching Haskell:
+     * cost0 = c00 + c11 * exp * mod + c12 * exp * mod * mod.
+     * If base > mod, apply 50% penalty: cost0 + cost0 / 2 (integer division).
+     */
     record ExpModCost(long c00, long c11, long c12) implements CostFunction {
         @Override
         public long apply(long... sizes) {
-            long x = sizes[0];
-            long y = sizes[1];
-            long z = sizes[2];
-            return c00 + c11 * x * y + c12 * x * z;
+            long base = sizes[0];
+            long exp = sizes[1];
+            long mod = sizes[2];
+            long cost0 = c00 + c11 * exp * mod + c12 * exp * mod * mod;
+            if (base > mod) {
+                return cost0 + cost0 / 2;
+            }
+            return cost0;
         }
     }
 }

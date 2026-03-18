@@ -1,6 +1,7 @@
 package com.bloxbean.cardano.julc.vm.java.cost;
 
 import com.bloxbean.cardano.julc.core.DefaultFun;
+import com.bloxbean.cardano.julc.vm.PlutusLanguage;
 
 import java.util.EnumMap;
 import java.util.Map;
@@ -23,10 +24,126 @@ public final class CostModelParser {
     /** Result of parsing a flat cost model array. */
     public record ParsedCostModel(MachineCosts machineCosts, BuiltinCostModel builtinCostModel) {}
 
+    /** Expected parameter count for PlutusV1 (Alonzo era). */
+    public static final int V1_PARAM_COUNT = 166;
+
+    /** Expected parameter count for PlutusV2 (Babbage era). */
+    public static final int V2_PARAM_COUNT = 175;
+
     /** Expected parameter count for PlutusV3 PV10 (post-Plomin, current mainnet). */
     public static final int PV10_PARAM_COUNT = 297;
 
     private CostModelParser() {}
+
+    /**
+     * Parse a flat cost model parameter array for the specified Plutus language version.
+     * <p>
+     * Validates the array length against the expected parameter count for the version:
+     * <ul>
+     *   <li>V1: {@link #V1_PARAM_COUNT} (166)</li>
+     *   <li>V2: {@link #V2_PARAM_COUNT} (175)</li>
+     *   <li>V3: {@link #PV10_PARAM_COUNT} (297)</li>
+     * </ul>
+     * <p>
+     * For V1/V2, machine costs are extracted from the array and builtin costs use
+     * version-appropriate defaults. For V3, full parsing is performed.
+     *
+     * @param values   the flat cost model array from protocol parameters
+     * @param language the Plutus language version
+     * @return parsed machine costs and builtin cost model
+     * @throws IllegalArgumentException if the array is too short
+     */
+    public static ParsedCostModel parse(long[] values, PlutusLanguage language) {
+        return switch (language) {
+            case PLUTUS_V1 -> parseV1(values);
+            case PLUTUS_V2 -> parseV2(values);
+            case PLUTUS_V3 -> parse(values);
+        };
+    }
+
+    /**
+     * Parse a PlutusV1 cost model parameter array (166 parameters).
+     * <p>
+     * Extracts machine costs from the array. Builtin costs use V1 defaults
+     * since the V1 cost function shapes may differ from V3.
+     */
+    private static ParsedCostModel parseV1(long[] values) {
+        if (values.length < V1_PARAM_COUNT) {
+            throw new IllegalArgumentException(
+                    "PlutusV1 cost model requires at least " + V1_PARAM_COUNT +
+                    " parameters, got " + values.length);
+        }
+        // V1 machine costs are at fixed positions within the 166-param array.
+        // The alphabetical ordering places them at the same relative positions
+        // as V3 (after the first 5 builtins), but offset differs from V3 due to
+        // different cost function shapes for V1 builtins.
+        // For correctness, use V1 defaults for builtin costs and extract machine
+        // costs from the known position.
+        // V1 machine costs are at indices 17-32 in the V1 flat array
+        // (same position as V3 — after AddInteger, AppendByteString, AppendString, BData, Blake2b_256)
+        // These 5 builtins consume 17 params in both V1 and V3 (same cost shapes for these).
+        long applyCpu = values[17];   long applyMem = values[18];
+        long builtinCpu = values[19]; long builtinMem = values[20];
+        long constCpu = values[21];   long constMem = values[22];
+        long delayCpu = values[23];   long delayMem = values[24];
+        long forceCpu = values[25];   long forceMem = values[26];
+        long lamCpu = values[27];     long lamMem = values[28];
+        long startupCpu = values[29]; long startupMem = values[30];
+        long varCpu = values[31];     long varMem = values[32];
+
+        MachineCosts mc = new MachineCosts(
+                startupCpu, startupMem,
+                varCpu, varMem,
+                lamCpu, lamMem,
+                applyCpu, applyMem,
+                forceCpu, forceMem,
+                delayCpu, delayMem,
+                constCpu, constMem,
+                builtinCpu, builtinMem,
+                0, 0,  // constrCpu/Mem — not available in V1
+                0, 0   // caseCpu/Mem — not available in V1
+        );
+
+        return new ParsedCostModel(mc, DefaultCostModel.defaultBuiltinCostModel(PlutusLanguage.PLUTUS_V1));
+    }
+
+    /**
+     * Parse a PlutusV2 cost model parameter array (175 parameters).
+     * <p>
+     * Extracts machine costs from the array. Builtin costs use V2 defaults
+     * since the V2 cost function shapes may differ from V3.
+     */
+    private static ParsedCostModel parseV2(long[] values) {
+        if (values.length < V2_PARAM_COUNT) {
+            throw new IllegalArgumentException(
+                    "PlutusV2 cost model requires at least " + V2_PARAM_COUNT +
+                    " parameters, got " + values.length);
+        }
+        // V2 machine costs are at the same position as V1 (indices 17-32)
+        long applyCpu = values[17];   long applyMem = values[18];
+        long builtinCpu = values[19]; long builtinMem = values[20];
+        long constCpu = values[21];   long constMem = values[22];
+        long delayCpu = values[23];   long delayMem = values[24];
+        long forceCpu = values[25];   long forceMem = values[26];
+        long lamCpu = values[27];     long lamMem = values[28];
+        long startupCpu = values[29]; long startupMem = values[30];
+        long varCpu = values[31];     long varMem = values[32];
+
+        MachineCosts mc = new MachineCosts(
+                startupCpu, startupMem,
+                varCpu, varMem,
+                lamCpu, lamMem,
+                applyCpu, applyMem,
+                forceCpu, forceMem,
+                delayCpu, delayMem,
+                constCpu, constMem,
+                builtinCpu, builtinMem,
+                0, 0,  // constrCpu/Mem — not available in V2
+                0, 0   // caseCpu/Mem — not available in V2
+        );
+
+        return new ParsedCostModel(mc, DefaultCostModel.defaultBuiltinCostModel(PlutusLanguage.PLUTUS_V2));
+    }
 
     /**
      * Parse a flat cost model parameter array into machine costs and builtin cost model.

@@ -3,6 +3,7 @@ package com.bloxbean.cardano.julc.vm.java;
 import com.bloxbean.cardano.julc.core.Constant;
 import com.bloxbean.cardano.julc.core.DefaultFun;
 import com.bloxbean.cardano.julc.core.Term;
+import com.bloxbean.cardano.julc.vm.PlutusLanguage;
 import com.bloxbean.cardano.julc.vm.java.builtins.BuiltinHelper;
 import com.bloxbean.cardano.julc.vm.java.builtins.BuiltinRuntime;
 import com.bloxbean.cardano.julc.vm.java.builtins.BuiltinTable;
@@ -30,6 +31,8 @@ public final class CekMachine {
     private final ArrayDeque<CekFrame> stack = new ArrayDeque<>();
     private final List<String> traces = new ArrayList<>();
     private final CostTracker costTracker;
+    private final PlutusLanguage language;
+    private final BuiltinTable.VersionedBuiltinTable builtinTable;
 
     // Machine state
     private Term currentTerm;
@@ -37,14 +40,21 @@ public final class CekMachine {
     private CekValue currentValue;
     private boolean inComputePhase;
 
-    /** Create a CekMachine without cost tracking (for backward compatibility). */
+    /** Create a CekMachine without cost tracking (for backward compatibility). Defaults to V3. */
     public CekMachine() {
-        this(null);
+        this(null, PlutusLanguage.PLUTUS_V3);
     }
 
-    /** Create a CekMachine with optional cost tracking. */
+    /** Create a CekMachine with optional cost tracking. Defaults to V3. */
     public CekMachine(CostTracker costTracker) {
+        this(costTracker, PlutusLanguage.PLUTUS_V3);
+    }
+
+    /** Create a CekMachine with optional cost tracking and language version. */
+    public CekMachine(CostTracker costTracker, PlutusLanguage language) {
         this.costTracker = costTracker;
+        this.language = language;
+        this.builtinTable = BuiltinTable.forLanguage(language);
     }
 
     /**
@@ -109,7 +119,7 @@ public final class CekMachine {
             }
             case Term.Builtin b -> {
                 chargeStep(StepKind.BUILTIN);
-                var sig = BuiltinTable.getSignature(b.fun());
+                var sig = builtinTable.getSignature(b.fun());
                 currentValue = CekValue.VBuiltin.initial(b.fun(), sig.forceCount(), sig.arity());
                 inComputePhase = false;
             }
@@ -129,6 +139,11 @@ public final class CekMachine {
                 // currentEnv stays the same
             }
             case Term.Constr constr -> {
+                if (language != PlutusLanguage.PLUTUS_V3) {
+                    throw new CekEvaluationException(
+                            "Constr term is not available in " + language +
+                            " (requires PLUTUS_V3)");
+                }
                 chargeStep(StepKind.CONSTR);
                 if (constr.fields().isEmpty()) {
                     currentValue = new CekValue.VConstr(constr.tag(), List.of());
@@ -141,6 +156,11 @@ public final class CekMachine {
                 }
             }
             case Term.Case cs -> {
+                if (language != PlutusLanguage.PLUTUS_V3) {
+                    throw new CekEvaluationException(
+                            "Case term is not available in " + language +
+                            " (requires PLUTUS_V3)");
+                }
                 chargeStep(StepKind.CASE);
                 stack.push(new CekFrame.CaseFrame(cs.branches(), currentEnv));
                 currentTerm = cs.scrutinee();
@@ -287,7 +307,7 @@ public final class CekMachine {
             costTracker.chargeBuiltin(vb.fun(), vb.collectedArgs());
         }
 
-        BuiltinRuntime runtime = BuiltinTable.getRuntime(vb.fun());
+        BuiltinRuntime runtime = builtinTable.getRuntime(vb.fun());
         return runtime.execute(vb.collectedArgs());
     }
 

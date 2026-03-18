@@ -60,19 +60,48 @@ class CostFunctionTest {
 
     @Test
     void subtractedSizes() {
+        // Haskell formula: intercept + slope * max(minimum, x - y)
         var f = new CostFunction.SubtractedSizes(0, 1, 1);
-        assertEquals(7, f.apply(10, 3));  // 0 + 1 * (10-3) = 7
-        assertEquals(1, f.apply(3, 10));  // max(0, 3-10) = 0 → max(1, 0) = 1
+        assertEquals(7, f.apply(10, 3));  // 0 + 1 * max(1, 10-3) = 7
+        assertEquals(1, f.apply(3, 10));  // 0 + 1 * max(1, 3-10) = max(1, -7) = 1
+    }
+
+    @Test
+    void subtractedSizesWithInterceptAndSlope() {
+        var f = new CostFunction.SubtractedSizes(100, 5, 3);
+        // x > y: 100 + 5 * max(3, 10-2) = 100 + 5*8 = 140
+        assertEquals(140, f.apply(10, 2));
+        // x < y: 100 + 5 * max(3, 2-10) = 100 + 5*3 = 115 (minimum kicks in)
+        assertEquals(115, f.apply(2, 10));
+        // difference < minimum: 100 + 5 * max(3, 5-4) = 100 + 5*3 = 115
+        assertEquals(115, f.apply(5, 4));
+        // difference == minimum: 100 + 5 * max(3, 6-3) = 100 + 5*3 = 115
+        assertEquals(115, f.apply(6, 3));
+        // difference > minimum: 100 + 5 * max(3, 10-3) = 100 + 5*7 = 135
+        assertEquals(135, f.apply(10, 3));
     }
 
     @Test
     void constAboveDiagonal() {
         var f = new CostFunction.ConstAboveDiagonal(85848, 123203, 7305, -900, 1716, 549, 57, 85848);
-        // When x > y, returns constant
-        assertEquals(85848, f.apply(10, 5));
-        // When x <= y, returns quadratic formula (clamped to minimum)
-        long result = f.apply(1, 10);
+        // When x < y, returns constant (above diagonal = numerator smaller than denominator)
+        assertEquals(85848, f.apply(5, 10));
+        // When x >= y, returns quadratic formula (clamped to minimum)
+        long result = f.apply(10, 1);
         assertTrue(result >= 85848, "Result should be at least minimum: " + result);
+    }
+
+    @Test
+    void constAboveDiagonalAllPaths() {
+        var f = new CostFunction.ConstAboveDiagonal(100, 10, 2, 3, 4, 5, 6, 50);
+        // x < y: constant
+        assertEquals(100, f.apply(1, 5));
+        // x == y (on diagonal): quadratic with x=y=3
+        // 10 + 2*3 + 3*9 + 4*3 + 5*9 + 6*9 = 10+6+27+12+45+54 = 154
+        assertEquals(154, f.apply(3, 3));
+        // x > y (below diagonal): quadratic with x=5, y=1
+        // 10 + 2*1 + 3*1 + 4*5 + 5*5 + 6*25 = 10+2+3+20+25+150 = 210
+        assertEquals(210, f.apply(5, 1));
     }
 
     @Test
@@ -121,8 +150,41 @@ class CostFunctionTest {
     }
 
     @Test
-    void expModCost() {
+    void expModCostBaseLeqMod() {
+        // base <= mod: no penalty
+        // cost0 = c00 + c11 * exp * mod + c12 * exp * mod * mod
         var f = new CostFunction.ExpModCost(607153, 231697, 53144);
-        assertEquals(607153 + 231697 * 2 * 3 + 53144 * 2 * 4, f.apply(2, 3, 4));
+        // base=2, exp=3, mod=4: 607153 + 231697*3*4 + 53144*3*4*4
+        long expected = 607153 + 231697L * 3 * 4 + 53144L * 3 * 4 * 4;
+        assertEquals(expected, f.apply(2, 3, 4));
+    }
+
+    @Test
+    void expModCostBaseEqualsMod() {
+        // base == mod: no penalty
+        var f = new CostFunction.ExpModCost(1000, 100, 10);
+        long expected = 1000 + 100L * 3 * 5 + 10L * 3 * 5 * 5;
+        assertEquals(expected, f.apply(5, 3, 5));
+    }
+
+    @Test
+    void expModCostBaseGreaterThanMod() {
+        // base > mod: 50% penalty (cost0 + cost0/2)
+        var f = new CostFunction.ExpModCost(1000, 100, 10);
+        // base=10, exp=3, mod=5
+        long cost0 = 1000 + 100L * 3 * 5 + 10L * 3 * 5 * 5;
+        long expected = cost0 + cost0 / 2;
+        assertEquals(expected, f.apply(10, 3, 5));
+    }
+
+    @Test
+    void expModCostPenaltyUsesIntegerDivision() {
+        // Verify integer division for odd cost0
+        var f = new CostFunction.ExpModCost(1001, 0, 0);
+        // base=5, exp=1, mod=1: cost0 = 1001
+        // penalty: 1001 + 1001/2 = 1001 + 500 = 1501
+        assertEquals(1501, f.apply(5, 1, 1));
+        // base=1, exp=1, mod=1: no penalty, cost0 = 1001
+        assertEquals(1001, f.apply(1, 1, 1));
     }
 }

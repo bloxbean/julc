@@ -19,16 +19,34 @@ import java.util.List;
  */
 public class JavaVmProvider implements JulcVmProvider {
 
-    private volatile CostModelParser.ParsedCostModel customCostModel;
+    private volatile CostModelParser.ParsedCostModel customV1CostModel;
+    private volatile CostModelParser.ParsedCostModel customV2CostModel;
+    private volatile CostModelParser.ParsedCostModel customV3CostModel;
 
     @Override
     public void setCostModelParams(long[] costModelValues, int protocolMajorVersion) {
-        this.customCostModel = CostModelParser.parse(costModelValues);
+        // Default to V3 for backward compatibility
+        this.customV3CostModel = CostModelParser.parse(costModelValues);
+    }
+
+    /**
+     * Set cost model parameters for a specific Plutus language version.
+     *
+     * @param costModelValues      ordered array of cost model parameter values
+     * @param language             the Plutus language version
+     */
+    public void setCostModelParams(long[] costModelValues, PlutusLanguage language) {
+        var parsed = CostModelParser.parse(costModelValues, language);
+        switch (language) {
+            case PLUTUS_V1 -> this.customV1CostModel = parsed;
+            case PLUTUS_V2 -> this.customV2CostModel = parsed;
+            case PLUTUS_V3 -> this.customV3CostModel = parsed;
+        }
     }
 
     @Override
     public EvalResult evaluate(Program program, PlutusLanguage language, ExBudget budget) {
-        return evaluateInternal(program.term(), budget);
+        return evaluateInternal(program.term(), language, budget);
     }
 
     @Override
@@ -39,22 +57,22 @@ public class JavaVmProvider implements JulcVmProvider {
         for (var arg : args) {
             term = new Term.Apply(term, new Term.Const(Constant.data(arg)));
         }
-        return evaluateInternal(term, budget);
+        return evaluateInternal(term, language, budget);
     }
 
-    private EvalResult evaluateInternal(Term term, ExBudget budget) {
+    private EvalResult evaluateInternal(Term term, PlutusLanguage language, ExBudget budget) {
         MachineCosts mc;
         BuiltinCostModel bcm;
-        var parsed = customCostModel;
+        var parsed = getCustomCostModel(language);
         if (parsed != null) {
             mc = parsed.machineCosts();
             bcm = parsed.builtinCostModel();
         } else {
-            mc = DefaultCostModel.defaultMachineCosts();
-            bcm = DefaultCostModel.defaultBuiltinCostModel();
+            mc = DefaultCostModel.defaultMachineCosts(language);
+            bcm = DefaultCostModel.defaultBuiltinCostModel(language);
         }
         var costTracker = new CostTracker(mc, bcm, budget);
-        var machine = new CekMachine(costTracker);
+        var machine = new CekMachine(costTracker, language);
         try {
             CekValue result = machine.evaluate(term);
             Term resultTerm = ValueConverter.toTerm(result);
@@ -68,6 +86,14 @@ public class JavaVmProvider implements JulcVmProvider {
             String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
             return new EvalResult.Failure(errorMsg, costTracker.consumed(), machine.getTraces());
         }
+    }
+
+    private CostModelParser.ParsedCostModel getCustomCostModel(PlutusLanguage language) {
+        return switch (language) {
+            case PLUTUS_V1 -> customV1CostModel;
+            case PLUTUS_V2 -> customV2CostModel;
+            case PLUTUS_V3 -> customV3CostModel;
+        };
     }
 
     @Override

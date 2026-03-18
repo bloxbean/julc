@@ -177,6 +177,29 @@ public enum DefaultFun {
         return flatCode;
     }
 
+    /**
+     * The minimum Plutus language version that includes this builtin.
+     * <p>
+     * Returns 1 for V1 builtins (codes 0-50), 2 for V2 (51-53),
+     * 3 for V3 (54-87), 4 for V4 (88+).
+     */
+    public int minLanguageVersion() {
+        if (flatCode <= 50) return 1;
+        if (flatCode <= 53) return 2;
+        if (flatCode <= 87) return 3;
+        return 4;
+    }
+
+    /**
+     * Check if this builtin is available in the given Plutus language version.
+     *
+     * @param languageVersion 1 for PlutusV1, 2 for PlutusV2, 3 for PlutusV3
+     * @return true if the builtin is available in that version
+     */
+    public boolean isAvailableIn(int languageVersion) {
+        return minLanguageVersion() <= languageVersion;
+    }
+
     private static final DefaultFun[] BY_FLAT_CODE;
 
     static {

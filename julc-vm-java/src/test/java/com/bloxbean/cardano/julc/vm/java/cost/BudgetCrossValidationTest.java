@@ -14,13 +14,9 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Cross-validates budget values between Java and Scalus VM backends.
- * <p>
- * The tolerance allows for minor implementation differences in how
- * argument sizes are computed (especially for Data values).
+ * Budgets must match exactly.
  */
 class BudgetCrossValidationTest {
-
-    private static final double TOLERANCE = 0.10; // 10% — allows for size calculation differences
 
     private final JavaVmProvider javaProvider = new JavaVmProvider();
     private final JulcVmProvider scalusProvider;
@@ -124,6 +120,124 @@ class BudgetCrossValidationTest {
                 "Expected BudgetExhausted but got: " + result.getClass().getSimpleName());
     }
 
+    // === V1 budget cross-validation ===
+
+    @Test
+    void v1_addIntegerBudget() {
+        crossValidateBudgetWithLanguage(
+                "(program 1.0.0 [[(builtin addInteger) (con integer 3)] (con integer 4)])",
+                PlutusLanguage.PLUTUS_V1);
+    }
+
+    @Test
+    void v1_factorialBudget() {
+        String program = """
+                (program 1.0.0
+                  [[(lam f
+                    [(lam x [f (lam v [[x x] v])])
+                     (lam x [f (lam v [[x x] v])])])
+                   (lam self (lam n
+                     (force [[(force (builtin ifThenElse))
+                       [[(builtin equalsInteger) n] (con integer 0)]]
+                       (delay (con integer 1))
+                       (delay [[(builtin multiplyInteger) n]
+                               [self [[(builtin subtractInteger) n] (con integer 1)]]])])))]
+                   (con integer 5)]
+                )""";
+        crossValidateBudgetWithLanguage(program, PlutusLanguage.PLUTUS_V1);
+    }
+
+    @Test
+    void v1_sha256Budget() {
+        crossValidateBudgetWithLanguage(
+                "(program 1.0.0 [(builtin sha2_256) (con bytestring #)])",
+                PlutusLanguage.PLUTUS_V1);
+    }
+
+    @Test
+    void v1_dataRoundTripBudget() {
+        crossValidateBudgetWithLanguage(
+                "(program 1.0.0 [(builtin unIData) [(builtin iData) (con integer 42)]])",
+                PlutusLanguage.PLUTUS_V1);
+    }
+
+    @Test
+    void v1_divideIntegerBudget() {
+        crossValidateBudgetWithLanguage(
+                "(program 1.0.0 [[(builtin divideInteger) (con integer 17)] (con integer 5)])",
+                PlutusLanguage.PLUTUS_V1);
+    }
+
+    // === V2 budget cross-validation ===
+
+    @Test
+    void v2_addIntegerBudget() {
+        crossValidateBudgetWithLanguage(
+                "(program 1.0.0 [[(builtin addInteger) (con integer 3)] (con integer 4)])",
+                PlutusLanguage.PLUTUS_V2);
+    }
+
+    @Test
+    void v2_serialiseDataBudget() {
+        crossValidateBudgetWithLanguage(
+                "(program 1.0.0 [(builtin serialiseData) (con data (I 42))])",
+                PlutusLanguage.PLUTUS_V2);
+    }
+
+    @Test
+    void v2_divideIntegerBudget() {
+        crossValidateBudgetWithLanguage(
+                "(program 1.0.0 [[(builtin divideInteger) (con integer 17)] (con integer 5)])",
+                PlutusLanguage.PLUTUS_V2);
+    }
+
+    @Test
+    void v2_factorialBudget() {
+        String program = """
+                (program 1.0.0
+                  [[(lam f
+                    [(lam x [f (lam v [[x x] v])])
+                     (lam x [f (lam v [[x x] v])])])
+                   (lam self (lam n
+                     (force [[(force (builtin ifThenElse))
+                       [[(builtin equalsInteger) n] (con integer 0)]]
+                       (delay (con integer 1))
+                       (delay [[(builtin multiplyInteger) n]
+                               [self [[(builtin subtractInteger) n] (con integer 1)]]])])))]
+                   (con integer 5)]
+                )""";
+        crossValidateBudgetWithLanguage(program, PlutusLanguage.PLUTUS_V2);
+    }
+
+    // === Off-diagonal division cross-validation (tests ConstAboveDiagonal fix) ===
+
+    @Test
+    void divideIntegerAsymmetricLargeNumerator() {
+        // x=2 words, y=1 word — triggers below-diagonal path (polynomial)
+        crossValidateBudget("(program 1.0.0 [[(builtin divideInteger) (con integer 18446744073709551616)] (con integer 5)])");
+    }
+
+    @Test
+    void divideIntegerAsymmetricSmallNumerator() {
+        // x=1 word, y=2 words — triggers above-diagonal path (constant)
+        crossValidateBudget("(program 1.0.0 [[(builtin divideInteger) (con integer 5)] (con integer 18446744073709551616)])");
+    }
+
+    @Test
+    void modIntegerAsymmetric() {
+        crossValidateBudget("(program 1.0.0 [[(builtin modInteger) (con integer 18446744073709551616)] (con integer 5)])");
+    }
+
+    @Test
+    void quotientIntegerAsymmetric() {
+        crossValidateBudget("(program 1.0.0 [[(builtin quotientInteger) (con integer 18446744073709551616)] (con integer 5)])");
+    }
+
+    @Test
+    void remainderIntegerAsymmetric() {
+        crossValidateBudget("(program 1.0.0 [[(builtin remainderInteger) (con integer 5)] (con integer 18446744073709551616)])");
+    }
+
     @Test
     void failureStillReportsBudget() {
         var result = evaluateJava("(program 1.0.0 (error))");
@@ -135,6 +249,29 @@ class BudgetCrossValidationTest {
     private EvalResult evaluateJava(String uplcProgram) {
         Program program = UplcParser.parseProgram(uplcProgram);
         return javaProvider.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
+    }
+
+    private void crossValidateBudgetWithLanguage(String uplcProgram, PlutusLanguage language) {
+        if (!hasScalus()) {
+            org.junit.jupiter.api.Assumptions.assumeTrue(false, "Scalus provider not available");
+            return;
+        }
+
+        Program program = UplcParser.parseProgram(uplcProgram);
+        var javaResult = javaProvider.evaluate(program, language, null);
+        var scalusResult = scalusProvider.evaluate(program, language, null);
+
+        assertEquals(scalusResult.isSuccess(), javaResult.isSuccess(),
+                language + " success/failure mismatch.\nJava: " + javaResult + "\nScalus: " + scalusResult);
+
+        var javaBudget = javaResult.budgetConsumed();
+        var scalusBudget = scalusResult.budgetConsumed();
+
+        assertTrue(javaBudget.cpuSteps() > 0, language + " Java CPU should be > 0");
+        assertTrue(scalusBudget.cpuSteps() > 0, language + " Scalus CPU should be > 0");
+
+        assertEquals(scalusBudget.cpuSteps(), javaBudget.cpuSteps(), language + " CPU budget mismatch");
+        assertEquals(scalusBudget.memoryUnits(), javaBudget.memoryUnits(), language + " Memory budget mismatch");
     }
 
     private void crossValidateBudget(String uplcProgram) {
@@ -157,17 +294,7 @@ class BudgetCrossValidationTest {
         assertTrue(javaBudget.cpuSteps() > 0, "Java CPU should be > 0");
         assertTrue(scalusBudget.cpuSteps() > 0, "Scalus CPU should be > 0");
 
-        // Allow TOLERANCE difference
-        assertWithinTolerance("CPU", scalusBudget.cpuSteps(), javaBudget.cpuSteps(), TOLERANCE);
-        assertWithinTolerance("Memory", scalusBudget.memoryUnits(), javaBudget.memoryUnits(), TOLERANCE);
-    }
-
-    private void assertWithinTolerance(String label, long expected, long actual, double tolerance) {
-        if (expected == 0 && actual == 0) return;
-        double diff = Math.abs((double) actual - expected) / Math.max(1, Math.abs(expected));
-        assertTrue(diff <= tolerance,
-                label + " budget diverged beyond " + (tolerance * 100) + "%%: " +
-                "expected=" + expected + " actual=" + actual +
-                " diff=" + String.format("%.2f%%", diff * 100));
+        assertEquals(scalusBudget.cpuSteps(), javaBudget.cpuSteps(), "CPU budget mismatch");
+        assertEquals(scalusBudget.memoryUnits(), javaBudget.memoryUnits(), "Memory budget mismatch");
     }
 }

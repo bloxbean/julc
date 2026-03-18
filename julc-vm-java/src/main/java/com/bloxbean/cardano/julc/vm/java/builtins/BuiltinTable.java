@@ -1,6 +1,7 @@
 package com.bloxbean.cardano.julc.vm.java.builtins;
 
 import com.bloxbean.cardano.julc.core.DefaultFun;
+import com.bloxbean.cardano.julc.vm.PlutusLanguage;
 
 import java.util.EnumMap;
 import java.util.Map;
@@ -9,6 +10,9 @@ import java.util.Map;
  * Master registry mapping {@link DefaultFun} to its signature and runtime implementation.
  * <p>
  * Covers all V1/V2/V3 builtins. V4 builtins throw UnsupportedBuiltinException.
+ * <p>
+ * Use {@link #forLanguage(PlutusLanguage)} to get a version-gated view that only
+ * includes builtins available in the specified Plutus language version.
  */
 public final class BuiltinTable {
 
@@ -178,5 +182,81 @@ public final class BuiltinTable {
      */
     public static boolean isSupported(DefaultFun fun) {
         return TABLE.containsKey(fun);
+    }
+
+    /**
+     * Create a version-gated builtin table for the specified Plutus language version.
+     * <p>
+     * Only builtins available in the given language version are included.
+     * Looking up a builtin from a newer version throws {@link UnsupportedBuiltinException}.
+     *
+     * @param language the Plutus language version
+     * @return a version-gated view of the builtin table
+     */
+    public static VersionedBuiltinTable forLanguage(PlutusLanguage language) {
+        int langVersion = languageToVersion(language);
+        Map<DefaultFun, Entry> filtered = new EnumMap<>(DefaultFun.class);
+        for (var entry : TABLE.entrySet()) {
+            if (entry.getKey().isAvailableIn(langVersion)) {
+                filtered.put(entry.getKey(), entry.getValue());
+            }
+        }
+        return new VersionedBuiltinTable(filtered, language);
+    }
+
+    private static int languageToVersion(PlutusLanguage language) {
+        return switch (language) {
+            case PLUTUS_V1 -> 1;
+            case PLUTUS_V2 -> 2;
+            case PLUTUS_V3 -> 3;
+        };
+    }
+
+    /**
+     * A version-gated view of the builtin table that only includes builtins
+     * available in a specific Plutus language version.
+     */
+    public static final class VersionedBuiltinTable {
+        private final Map<DefaultFun, Entry> table;
+        private final PlutusLanguage language;
+
+        private VersionedBuiltinTable(Map<DefaultFun, Entry> table, PlutusLanguage language) {
+            this.table = table;
+            this.language = language;
+        }
+
+        public BuiltinSignature getSignature(DefaultFun fun) {
+            var entry = table.get(fun);
+            if (entry == null) {
+                if (TABLE.containsKey(fun)) {
+                    throw new UnsupportedBuiltinException(
+                            "Builtin " + fun + " is not available in " + language +
+                            " (requires " + fun.minLanguageVersion() + "+)");
+                }
+                throw new UnsupportedBuiltinException("Builtin not supported: " + fun);
+            }
+            return entry.signature();
+        }
+
+        public BuiltinRuntime getRuntime(DefaultFun fun) {
+            var entry = table.get(fun);
+            if (entry == null) {
+                if (TABLE.containsKey(fun)) {
+                    throw new UnsupportedBuiltinException(
+                            "Builtin " + fun + " is not available in " + language +
+                            " (requires " + fun.minLanguageVersion() + "+)");
+                }
+                throw new UnsupportedBuiltinException("Builtin not supported: " + fun);
+            }
+            return entry.runtime();
+        }
+
+        public boolean isSupported(DefaultFun fun) {
+            return table.containsKey(fun);
+        }
+
+        public PlutusLanguage language() {
+            return language;
+        }
     }
 }
