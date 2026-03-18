@@ -1,5 +1,6 @@
 package com.bloxbean.cardano.julc.vm.java.cost;
 
+import com.bloxbean.cardano.julc.core.Term;
 import com.bloxbean.cardano.julc.vm.java.CekEvaluationException;
 
 /**
@@ -9,5 +10,9 @@ public class BudgetExhaustedException extends CekEvaluationException {
 
     public BudgetExhaustedException(String message) {
         super(message);
+    }
+
+    public BudgetExhaustedException(String message, Term failedTerm) {
+        super(message, failedTerm);
     }
 }

@@ -78,10 +78,12 @@ public class JavaVmProvider implements JulcVmProvider {
             Term resultTerm = ValueConverter.toTerm(result);
             return new EvalResult.Success(resultTerm, costTracker.consumed(), machine.getTraces());
         } catch (BudgetExhaustedException e) {
-            return new EvalResult.BudgetExhausted(costTracker.consumed(), machine.getTraces());
+            return new EvalResult.BudgetExhausted(costTracker.consumed(), machine.getTraces(),
+                    e.failedTerm());
         } catch (CekEvaluationException e) {
             String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
-            return new EvalResult.Failure(errorMsg, costTracker.consumed(), machine.getTraces());
+            return new EvalResult.Failure(errorMsg, costTracker.consumed(), machine.getTraces(),
+                    e.failedTerm());
         } catch (Exception e) {
             String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
             return new EvalResult.Failure(errorMsg, costTracker.consumed(), machine.getTraces());

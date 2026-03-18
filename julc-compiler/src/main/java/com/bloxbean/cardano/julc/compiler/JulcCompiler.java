@@ -15,6 +15,8 @@ import com.bloxbean.cardano.julc.compiler.util.MethodDependencyResolver;
 import com.bloxbean.cardano.julc.compiler.validate.SubsetValidator;
 import com.bloxbean.cardano.julc.core.Program;
 import com.bloxbean.cardano.julc.core.Term;
+import com.bloxbean.cardano.julc.core.source.SourceLocation;
+import com.bloxbean.cardano.julc.core.source.SourceMap;
 import com.github.javaparser.ParserConfiguration;
 import com.github.javaparser.StaticJavaParser;
 import com.github.javaparser.ast.CompilationUnit;
@@ -301,6 +303,11 @@ public class JulcCompiler {
             }
         }
 
+        // Enable boolean return guard for entrypoint only (not helpers — they may legitimately return false)
+        if (options.isSourceMapEnabled()) {
+            pirGenerator.setBooleanReturnGuard(true);
+        }
+
         // 12. Generate PIR for entrypoint(s)
         PirTerm validateFn = null;
         Map<Integer, PirTerm> multiHandlers = null;
@@ -329,6 +336,9 @@ public class JulcCompiler {
             validateFn = pirGenerator.generateMethod(entrypointMethod);
             options.log("PIR generation complete");
         }
+
+        // Disable guard after entrypoint generation
+        pirGenerator.setBooleanReturnGuard(false);
 
         // 12b. Collect non-fatal errors from PIR generation
         diagnostics.addAll(pirGenerator.getCollectedErrors());
@@ -417,6 +427,23 @@ public class JulcCompiler {
             wrappedTerm = wrapper.wrapMintingPolicy(body);
         }
 
+        // 15b. Register wrapper Error terms in source map (points to @Entrypoint method)
+        if (options.isSourceMapEnabled() && !wrapper.getErrorTerms().isEmpty()) {
+            var pirPositions = pirGenerator.getPirPositions();
+            // For multi-dispatch, use the first entrypoint; for single, use the entrypoint method
+            var epMethod = entrypointMethod != null ? entrypointMethod : entrypointInfos.getFirst().method();
+            epMethod.getRange().ifPresent(range -> {
+                var fileName = epMethod.findCompilationUnit()
+                        .flatMap(cu -> cu.getStorage().map(s -> s.getFileName()))
+                        .orElse(null);
+                var loc = new SourceLocation(fileName, range.begin.line, range.begin.column,
+                        "validator returned false");
+                for (var errorTerm : wrapper.getErrorTerms()) {
+                    pirPositions.put(errorTerm, loc);
+                }
+            });
+        }
+
         // 16. Wrap with outer param lambdas
         for (int i = paramFields.size() - 1; i >= 0; i--) {
             var pf = paramFields.get(i);
@@ -430,14 +457,22 @@ public class JulcCompiler {
         // 17. Capture PIR if details requested
         PirTerm capturedPir = captureDetails ? wrappedTerm : null;
 
-        // 18. Lower to UPLC
-        var uplcGenerator = new UplcGenerator();
+        // 18. Lower to UPLC (with source map support)
+        var uplcGenerator = options.isSourceMapEnabled()
+                ? new UplcGenerator(pirGenerator.getPirPositions())
+                : new UplcGenerator();
         var uplcTerm = uplcGenerator.generate(wrappedTerm);
 
-        // 19. Optimize UPLC
-        var optimizer = new UplcOptimizer();
-        uplcTerm = optimizer.optimize(uplcTerm);
-        options.log("UPLC optimization complete");
+        // 19. Optimize UPLC (skip when source maps enabled to preserve Term identity)
+        SourceMap sourceMap = null;
+        if (options.isSourceMapEnabled()) {
+            sourceMap = SourceMap.of(uplcGenerator.getUplcPositions());
+            options.logf("Source map generated: %d entries (optimization skipped)", sourceMap.size());
+        } else {
+            var optimizer = new UplcOptimizer();
+            uplcTerm = optimizer.optimize(uplcTerm);
+            options.log("UPLC optimization complete");
+        }
 
         // 20. Capture UPLC if details requested
         Term capturedUplc = captureDetails ? uplcTerm : null;
@@ -450,7 +485,7 @@ public class JulcCompiler {
                 .map(pf -> new CompileResult.ParamInfo(pf.name, pf.javaType))
                 .toList();
 
-        var result = new CompileResult(program, diagnostics, paramInfos, capturedPir, capturedUplc);
+        var result = new CompileResult(program, diagnostics, paramInfos, capturedPir, capturedUplc, sourceMap);
         options.logf("Compilation complete: %s", result.scriptSizeFormatted());
         return result;
     }
@@ -732,17 +767,25 @@ public class JulcCompiler {
                     new PirTerm.Let(pf.name, decoded, body));
         }
 
-        // 17. Lower to UPLC
-        var uplcGenerator = new UplcGenerator();
+        // 17. Lower to UPLC (with source map support)
+        var uplcGenerator = options.isSourceMapEnabled()
+                ? new UplcGenerator(pirGenerator.getPirPositions())
+                : new UplcGenerator();
         var uplcTerm = uplcGenerator.generate(body);
-        var optimizer = new UplcOptimizer();
-        uplcTerm = optimizer.optimize(uplcTerm);
+
+        SourceMap sourceMap = null;
+        if (options.isSourceMapEnabled()) {
+            sourceMap = SourceMap.of(uplcGenerator.getUplcPositions());
+        } else {
+            var optimizer = new UplcOptimizer();
+            uplcTerm = optimizer.optimize(uplcTerm);
+        }
 
         var paramInfos = paramFields.stream()
                 .map(pf -> new CompileResult.ParamInfo(pf.name, pf.javaType))
                 .toList();
         var program = Program.plutusV3(uplcTerm);
-        return new CompileResult(program, diagnostics, paramInfos, body, uplcTerm);
+        return new CompileResult(program, diagnostics, paramInfos, body, uplcTerm, sourceMap);
     }
 
     // --- Library compilation ---
@@ -958,7 +1001,11 @@ public class JulcCompiler {
 
     private CompilationUnit parseSource(String source, String label) {
         try {
-            return StaticJavaParser.parse(source);
+            var cu = StaticJavaParser.parse(source);
+            // Set synthetic storage so source maps can resolve filenames
+            cu.findFirst(ClassOrInterfaceDeclaration.class)
+                    .ifPresent(cls -> cu.setStorage(Path.of(cls.getNameAsString() + ".java")));
+            return cu;
         } catch (Exception e) {
             throw new CompilerException("Failed to parse " + label + " source: " + e.getMessage());
         }

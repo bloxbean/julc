@@ -1,6 +1,11 @@
 package com.bloxbean.cardano.julc.testkit;
 
+import com.bloxbean.cardano.julc.compiler.CompileResult;
+import com.bloxbean.cardano.julc.compiler.CompilerOptions;
 import com.bloxbean.cardano.julc.core.Term;
+import com.bloxbean.cardano.julc.core.source.SourceLocation;
+import com.bloxbean.cardano.julc.core.source.SourceMap;
+import com.bloxbean.cardano.julc.vm.EvalResult;
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
@@ -43,6 +48,7 @@ public final class JulcEval {
     private final Class<?> sourceClass;
     private final Path sourceRoot;
     private final com.bloxbean.cardano.julc.core.PlutusData[] params;
+    private boolean sourceMapEnabled;
 
     private JulcEval(String javaSource, Class<?> sourceClass, Path sourceRoot,
                      com.bloxbean.cardano.julc.core.PlutusData[] params) {
@@ -102,6 +108,23 @@ public final class JulcEval {
     public static JulcEval forSource(String javaSource) {
         Objects.requireNonNull(javaSource, "javaSource must not be null");
         return new JulcEval(javaSource, null, null, null);
+    }
+
+    /**
+     * Enable source map generation. When a method call fails, the error message
+     * will include the Java source file and line number where the error occurred.
+     * <p>
+     * Example:
+     * <pre>{@code
+     * var eval = JulcEval.forClass(MyValidator.class).sourceMap();
+     * eval.call("validate", data).asBoolean();
+     * // On failure: "Evaluation failed: Error term encountered
+     * //   at MyValidator.java:42 (Builtins.error())"
+     * }</pre>
+     */
+    public JulcEval sourceMap() {
+        this.sourceMapEnabled = true;
+        return this;
     }
 
     // --- Interface proxy ---
@@ -164,10 +187,64 @@ public final class JulcEval {
     // --- Internal ---
 
     private Term evaluateTerm(String methodName, com.bloxbean.cardano.julc.core.PlutusData[] args) {
+        if (sourceMapEnabled) {
+            return evaluateTermWithSourceMap(methodName, args);
+        }
         if (javaSource != null) {
             return MethodEvaluator.evaluateTerm(javaSource, methodName, params, args);
         }
         return MethodEvaluator.evaluateTerm(sourceClass, sourceRoot, methodName, params, args);
+    }
+
+    private Term evaluateTermWithSourceMap(String methodName, com.bloxbean.cardano.julc.core.PlutusData[] args) {
+        var options = new CompilerOptions().setSourceMapEnabled(true);
+        var compiler = new com.bloxbean.cardano.julc.compiler.JulcCompiler(
+                com.bloxbean.cardano.julc.stdlib.StdlibRegistry.defaultRegistry(), options);
+
+        CompileResult compiled;
+        if (javaSource != null) {
+            compiled = compiler.compileMethod(javaSource, methodName);
+        } else {
+            // Read source file and compile method with source maps
+            var sourceFile = SourceDiscovery.sourceFileFor(sourceClass, sourceRoot);
+            String source;
+            try {
+                source = java.nio.file.Files.readString(sourceFile);
+            } catch (java.io.IOException e) {
+                throw new com.bloxbean.cardano.julc.vm.TermExtractor.ExtractionException(
+                        "Cannot read source: " + sourceFile);
+            }
+            compiled = compiler.compileMethod(source, methodName);
+        }
+        if (compiled.hasErrors()) {
+            throw new com.bloxbean.cardano.julc.vm.TermExtractor.ExtractionException(
+                    "Compilation failed: " + compiled.diagnostics());
+        }
+
+        var vm = com.bloxbean.cardano.julc.vm.JulcVm.create();
+        var allArgs = MethodEvaluator.buildAllArgs(params, args);
+        EvalResult result;
+        if (allArgs.isEmpty()) {
+            result = vm.evaluate(compiled.program());
+        } else {
+            result = vm.evaluateWithArgs(compiled.program(), allArgs);
+        }
+
+        if (result instanceof EvalResult.Success s) {
+            return s.resultTerm();
+        }
+
+        // Resolve source location for error message
+        var location = ValidatorTest.resolveErrorLocation(result, compiled.sourceMap());
+        var errorMsg = switch (result) {
+            case EvalResult.Failure f -> "Evaluation failed: " + f.error();
+            case EvalResult.BudgetExhausted b -> "Budget exhausted: " + b.consumed();
+            default -> "Evaluation failed: " + result;
+        };
+        if (location != null) {
+            errorMsg += "\n  at " + location;
+        }
+        throw new com.bloxbean.cardano.julc.vm.TermExtractor.ExtractionException(errorMsg);
     }
 
     private static Object handleObjectMethod(Method method, Object proxy, Object[] args) {

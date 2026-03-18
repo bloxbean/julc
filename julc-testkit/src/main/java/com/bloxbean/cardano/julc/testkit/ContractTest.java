@@ -3,6 +3,8 @@ package com.bloxbean.cardano.julc.testkit;
 import com.bloxbean.cardano.julc.compiler.CompileResult;
 import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.core.Program;
+import com.bloxbean.cardano.julc.core.source.SourceLocation;
+import com.bloxbean.cardano.julc.core.source.SourceMap;
 import com.bloxbean.cardano.julc.ledger.Credential;
 import com.bloxbean.cardano.julc.ledger.PolicyId;
 import com.bloxbean.cardano.julc.ledger.ProposalProcedure;
@@ -282,5 +284,89 @@ public abstract class ContractTest {
      */
     protected CompileResult compileValidator(Class<?> validatorClass, Path sourceRoot) {
         return SourceDiscovery.compile(validatorClass, sourceRoot);
+    }
+
+    // --- Source map support ---
+
+    /**
+     * Compile a validator class with source map generation enabled.
+     * Uses the default source root ({@code src/main/java}).
+     * <p>
+     * Usage:
+     * <pre>{@code
+     * var compiled = compileValidatorWithSourceMap(SwapOrder.class);
+     * var result = evaluate(compiled.program(), ctx);
+     * assertFailure(result, compiled.sourceMap());
+     * }</pre>
+     *
+     * @param validatorClass the validator class to compile
+     * @return the compile result with source map
+     */
+    protected CompileResult compileValidatorWithSourceMap(Class<?> validatorClass) {
+        return compileValidatorWithSourceMap(validatorClass, Path.of("src/main/java"));
+    }
+
+    /**
+     * Compile a validator class with source map generation enabled.
+     *
+     * @param validatorClass the validator class to compile
+     * @param sourceRoot     the root of the source tree
+     * @return the compile result with source map
+     */
+    protected CompileResult compileValidatorWithSourceMap(Class<?> validatorClass, Path sourceRoot) {
+        return ValidatorTest.compileValidatorWithSourceMap(validatorClass, sourceRoot);
+    }
+
+    /**
+     * Assert that the result is a success, with source map error reporting on failure.
+     *
+     * @param result    the evaluation result
+     * @param sourceMap the source map from compilation
+     */
+    protected void assertSuccess(EvalResult result, SourceMap sourceMap) {
+        BudgetAssertions.assertSuccess(result, sourceMap);
+    }
+
+    /**
+     * Assert that the result is a failure, with source map location in the message.
+     *
+     * @param result    the evaluation result
+     * @param sourceMap the source map from compilation
+     */
+    protected void assertFailure(EvalResult result, SourceMap sourceMap) {
+        BudgetAssertions.assertFailure(result, sourceMap);
+    }
+
+    /**
+     * Resolve the source location of a failed evaluation result using a source map.
+     *
+     * @param result    the evaluation result
+     * @param sourceMap the source map from compilation
+     * @return the source location, or null if not resolvable
+     */
+    protected SourceLocation resolveErrorLocation(EvalResult result, SourceMap sourceMap) {
+        return ValidatorTest.resolveErrorLocation(result, sourceMap);
+    }
+
+    /**
+     * Log the evaluation result with budget and source location on failure.
+     *
+     * @param testName  a label for the test (e.g., method name)
+     * @param result    the evaluation result
+     * @param sourceMap the source map from compilation
+     */
+    protected void logResult(String testName, EvalResult result, SourceMap sourceMap) {
+        var budget = result.budgetConsumed();
+        var sb = new StringBuilder();
+        sb.append("[").append(testName).append("] ");
+        sb.append("CPU: ").append(budget.cpuSteps());
+        sb.append(", Mem: ").append(budget.memoryUnits());
+        if (!result.isSuccess()) {
+            var location = ValidatorTest.resolveErrorLocation(result, sourceMap);
+            if (location != null) {
+                sb.append(" | Error at: ").append(location);
+            }
+        }
+        System.out.println(sb);
     }
 }

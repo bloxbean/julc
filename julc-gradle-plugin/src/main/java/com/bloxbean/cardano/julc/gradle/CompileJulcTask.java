@@ -1,18 +1,15 @@
 package com.bloxbean.cardano.julc.gradle;
 
 import com.bloxbean.cardano.julc.clientlib.JulcScriptAdapter;
+import com.bloxbean.cardano.julc.compiler.CompilerOptions;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
 
 import org.gradle.api.DefaultTask;
 import org.gradle.api.GradleException;
 import org.gradle.api.file.DirectoryProperty;
-import org.gradle.api.tasks.InputDirectory;
-import org.gradle.api.tasks.OutputDirectory;
-import org.gradle.api.tasks.PathSensitive;
-import org.gradle.api.tasks.PathSensitivity;
-import org.gradle.api.tasks.SkipWhenEmpty;
-import org.gradle.api.tasks.TaskAction;
+import org.gradle.api.provider.Property;
+import org.gradle.api.tasks.*;
 
 import java.io.File;
 import java.io.IOException;
@@ -40,6 +37,10 @@ public abstract class CompileJulcTask extends DefaultTask {
     @OutputDirectory
     public abstract DirectoryProperty getOutputDir();
 
+    @Input
+    @Optional
+    public abstract Property<Boolean> getSourceMap();
+
     @TaskAction
     public void compile() throws IOException {
         File srcDir = getSourceDir().get().getAsFile();
@@ -47,7 +48,11 @@ public abstract class CompileJulcTask extends DefaultTask {
         outDir.mkdirs();
 
         var stdlib = StdlibRegistry.defaultRegistry();
-        var compiler = new JulcCompiler(stdlib::lookup);
+        var options = new CompilerOptions();
+        if (Boolean.TRUE.equals(getSourceMap().getOrElse(false))) {
+            options.setSourceMapEnabled(true);
+        }
+        var compiler = new JulcCompiler(stdlib::lookup, options);
 
         List<File> javaFiles = findJavaFiles(srcDir);
 

@@ -35,28 +35,40 @@ public sealed interface EvalResult {
     /**
      * Failed evaluation.
      *
-     * @param error    description of the failure
-     * @param consumed the budget consumed before failure
-     * @param traces   trace messages emitted before failure
+     * @param error      description of the failure
+     * @param consumed   the budget consumed before failure
+     * @param traces     trace messages emitted before failure
+     * @param failedTerm the UPLC term that was being evaluated when the error occurred (nullable)
      */
-    record Failure(String error, ExBudget consumed, List<String> traces) implements EvalResult {
+    record Failure(String error, ExBudget consumed, List<String> traces, Term failedTerm) implements EvalResult {
         public Failure {
             Objects.requireNonNull(error);
             Objects.requireNonNull(consumed);
             traces = List.copyOf(traces);
+        }
+
+        /** Backward-compatible constructor (no failedTerm). */
+        public Failure(String error, ExBudget consumed, List<String> traces) {
+            this(error, consumed, traces, null);
         }
     }
 
     /**
      * Budget exhausted — evaluation exceeded the allowed budget.
      *
-     * @param consumed the budget consumed before exhaustion
-     * @param traces   trace messages emitted before exhaustion
+     * @param consumed   the budget consumed before exhaustion
+     * @param traces     trace messages emitted before exhaustion
+     * @param failedTerm the UPLC term that was being evaluated when the budget was exhausted (nullable)
      */
-    record BudgetExhausted(ExBudget consumed, List<String> traces) implements EvalResult {
+    record BudgetExhausted(ExBudget consumed, List<String> traces, Term failedTerm) implements EvalResult {
         public BudgetExhausted {
             Objects.requireNonNull(consumed);
             traces = List.copyOf(traces);
+        }
+
+        /** Backward-compatible constructor (no failedTerm). */
+        public BudgetExhausted(ExBudget consumed, List<String> traces) {
+            this(consumed, traces, null);
         }
     }
 

@@ -7,6 +7,7 @@ import com.bloxbean.cardano.julc.compiler.pir.PirType;
 import com.bloxbean.cardano.julc.core.Constant;
 import com.bloxbean.cardano.julc.core.DefaultFun;
 import com.bloxbean.cardano.julc.core.Term;
+import com.bloxbean.cardano.julc.core.source.SourceLocation;
 
 import java.math.BigInteger;
 import java.util.*;
@@ -14,12 +15,79 @@ import java.util.*;
 /**
  * Translates PIR terms to UPLC terms.
  * Performs type erasure and De Bruijn index computation.
+ * <p>
+ * When source map generation is enabled (via {@code pirPositions}), the generator
+ * propagates source locations from PIR terms to their outermost UPLC terms,
+ * building an {@link IdentityHashMap} for runtime error location tracking.
  */
 public class UplcGenerator {
 
     private final Deque<String> scope = new ArrayDeque<>();
 
+    /** PIR term → source location (provided by PirGenerator when source maps are enabled). */
+    private final Map<PirTerm, SourceLocation> pirPositions;
+
+    /** UPLC term → source location (built during generation). */
+    private final IdentityHashMap<Term, SourceLocation> uplcPositions = new IdentityHashMap<>();
+
+    /** Stack of inherited source locations for propagation to inner terms. */
+    private final Deque<SourceLocation> locationStack = new ArrayDeque<>();
+
+    public UplcGenerator() {
+        this(null);
+    }
+
+    /**
+     * Create a UplcGenerator with source position mapping.
+     *
+     * @param pirPositions PIR term to source location map from PirGenerator (nullable)
+     */
+    public UplcGenerator(Map<PirTerm, SourceLocation> pirPositions) {
+        this.pirPositions = pirPositions != null ? pirPositions : Map.of();
+    }
+
+    /**
+     * Get the UPLC term → source location map built during generation.
+     * Only populated when pirPositions was provided.
+     */
+    public IdentityHashMap<Term, SourceLocation> getUplcPositions() {
+        return uplcPositions;
+    }
+
     public Term generate(PirTerm pir) {
+        var term = generateCore(pir);
+        // Record source position: check if this PIR term has a direct mapping,
+        // otherwise inherit from parent context (locationStack)
+        if (!pirPositions.isEmpty()) {
+            var loc = pirPositions.get(pir);
+            if (loc != null) {
+                uplcPositions.put(term, loc);
+            } else if (!locationStack.isEmpty() && !uplcPositions.containsKey(term)) {
+                // Propagate parent location to inner terms that lack their own
+                uplcPositions.put(term, locationStack.peek());
+            }
+        }
+        return term;
+    }
+
+    private Term generateCore(PirTerm pir) {
+        // Push source location context for children to inherit
+        if (!pirPositions.isEmpty()) {
+            var loc = pirPositions.get(pir);
+            if (loc != null) {
+                locationStack.push(loc);
+            }
+        }
+        try {
+            return generateInner(pir);
+        } finally {
+            if (!pirPositions.isEmpty() && pirPositions.containsKey(pir)) {
+                locationStack.pop();
+            }
+        }
+    }
+
+    private Term generateInner(PirTerm pir) {
         return switch (pir) {
             case PirTerm.Var(var name, _) -> {
                 // Field accessor pseudo-variables are handled by their containing App

@@ -10,6 +10,7 @@ import java.util.function.Consumer;
  */
 public class CompilerOptions {
     private boolean verbose = false;
+    private boolean sourceMapEnabled = false;
     private Consumer<String> logger = System.out::println;
 
     public CompilerOptions setVerbose(boolean verbose) {
@@ -19,6 +20,19 @@ public class CompilerOptions {
 
     public boolean isVerbose() {
         return verbose;
+    }
+
+    /**
+     * Enable source map generation. When enabled, the compiler captures source positions
+     * for UPLC terms and skips optimization to preserve Term identity for runtime lookup.
+     */
+    public CompilerOptions setSourceMapEnabled(boolean sourceMapEnabled) {
+        this.sourceMapEnabled = sourceMapEnabled;
+        return this;
+    }
+
+    public boolean isSourceMapEnabled() {
+        return sourceMapEnabled;
     }
 
     public CompilerOptions setLogger(Consumer<String> logger) {

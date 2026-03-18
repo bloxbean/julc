@@ -1,9 +1,12 @@
 package com.bloxbean.cardano.julc.testkit;
 
 import com.bloxbean.cardano.julc.compiler.CompileResult;
+import com.bloxbean.cardano.julc.compiler.CompilerOptions;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
 import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.core.Program;
+import com.bloxbean.cardano.julc.core.source.SourceLocation;
+import com.bloxbean.cardano.julc.core.source.SourceMap;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
 import com.bloxbean.cardano.julc.vm.EvalResult;
 import com.bloxbean.cardano.julc.vm.ExBudget;
@@ -418,6 +421,109 @@ public final class ValidatorTest {
      */
     public static PlutusData evaluateData(Class<?> sourceClass, String methodName, PlutusData... args) {
         return MethodEvaluator.evaluateData(sourceClass, methodName, args);
+    }
+
+    // --- Source map support ---
+
+    /**
+     * Compile a validator class with source map generation enabled.
+     * This is the primary way to get source-mapped error locations in tests.
+     * <p>
+     * Usage:
+     * <pre>{@code
+     * var compiled = ValidatorTest.compileValidatorWithSourceMap(MyValidator.class);
+     * var result = ValidatorTest.evaluate(compiled.program(), datum, redeemer, ctx);
+     * var location = ValidatorTest.resolveErrorLocation(result, compiled.sourceMap());
+     * // location = "MyValidator.java:42 (amount < 0)"
+     * }</pre>
+     *
+     * @param validatorClass the validator class to compile
+     * @return the compile result with source map
+     */
+    public static CompileResult compileValidatorWithSourceMap(Class<?> validatorClass) {
+        return compileValidatorWithSourceMap(validatorClass, java.nio.file.Path.of("src/main/java"));
+    }
+
+    /**
+     * Compile a validator class with source map generation enabled.
+     *
+     * @param validatorClass the validator class to compile
+     * @param sourceRoot     the root of the source tree
+     * @return the compile result with source map
+     */
+    public static CompileResult compileValidatorWithSourceMap(Class<?> validatorClass,
+                                                               java.nio.file.Path sourceRoot) {
+        var options = new CompilerOptions().setSourceMapEnabled(true);
+        return SourceDiscovery.compile(validatorClass, sourceRoot, options);
+    }
+
+    /**
+     * Compile Java source with source map generation enabled.
+     *
+     * @param javaSource the Java source code
+     * @return the compile result with a non-null sourceMap
+     */
+    public static CompileResult compileWithSourceMap(String javaSource) {
+        Objects.requireNonNull(javaSource, "javaSource must not be null");
+        var options = new CompilerOptions().setSourceMapEnabled(true);
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), options);
+        CompileResult result = compiler.compile(javaSource);
+        if (result.hasErrors()) {
+            throw new AssertionError("Compilation produced errors: " + result.diagnostics());
+        }
+        return result;
+    }
+
+    /**
+     * Compile Java source with source map, then evaluate with the given arguments.
+     * On failure, the returned {@link EvalResult} includes source location information.
+     *
+     * @param javaSource the Java source code
+     * @param args       the arguments to apply (as PlutusData)
+     * @return the evaluation result
+     */
+    public static EvalResult evaluateWithSourceMap(String javaSource, PlutusData... args) {
+        var compiled = compileWithSourceMap(javaSource);
+        return evaluate(compiled.program(), args);
+    }
+
+    /**
+     * Resolve the source location of a failed evaluation result using a source map.
+     *
+     * @param result    the evaluation result (Failure or BudgetExhausted)
+     * @param sourceMap the source map from compilation
+     * @return the source location, or null if not resolvable
+     */
+    public static SourceLocation resolveErrorLocation(EvalResult result, SourceMap sourceMap) {
+        if (sourceMap == null) return null;
+        var failedTerm = switch (result) {
+            case EvalResult.Failure f -> f.failedTerm();
+            case EvalResult.BudgetExhausted b -> b.failedTerm();
+            case EvalResult.Success _ -> null;
+        };
+        return sourceMap.lookup(failedTerm);
+    }
+
+    /**
+     * Assert that the program evaluates successfully, with source map error reporting on failure.
+     *
+     * @param compileResult the compile result (must have source map)
+     * @param args          the arguments to apply
+     */
+    public static void assertValidatesWithSourceMap(CompileResult compileResult, PlutusData... args) {
+        var result = evaluate(compileResult.program(), args);
+        BudgetAssertions.assertSuccess(result, compileResult.sourceMap());
+    }
+
+    /**
+     * Assert that the program evaluation fails, with source map location in the message.
+     *
+     * @param compileResult the compile result (must have source map)
+     * @param args          the arguments to apply
+     */
+    public static void assertRejectsWithSourceMap(CompileResult compileResult, PlutusData... args) {
+        var result = evaluate(compileResult.program(), args);
+        BudgetAssertions.assertFailure(result, compileResult.sourceMap());
     }
 
     private static String formatResult(EvalResult result) {

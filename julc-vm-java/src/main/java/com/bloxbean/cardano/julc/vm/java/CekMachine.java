@@ -76,15 +76,24 @@ public final class CekMachine {
             costTracker.chargeMachineStep(StepKind.STARTUP);
         }
 
-        while (true) {
-            if (inComputePhase) {
-                compute();
-            } else {
-                if (stack.isEmpty()) {
-                    return currentValue;
+        try {
+            while (true) {
+                if (inComputePhase) {
+                    compute();
+                } else {
+                    if (stack.isEmpty()) {
+                        return currentValue;
+                    }
+                    returnValue();
                 }
-                returnValue();
             }
+        } catch (com.bloxbean.cardano.julc.vm.java.cost.BudgetExhaustedException e) {
+            // Re-throw with currentTerm attached for source map resolution
+            if (e.failedTerm() == null && currentTerm != null) {
+                throw new com.bloxbean.cardano.julc.vm.java.cost.BudgetExhaustedException(
+                        e.getMessage(), currentTerm);
+            }
+            throw e;
         }
     }
 
@@ -124,7 +133,7 @@ public final class CekMachine {
                 inComputePhase = false;
             }
             case Term.Error _ -> {
-                throw new CekEvaluationException("Error term encountered");
+                throw new CekEvaluationException("Error term encountered", currentTerm);
             }
             case Term.Force f -> {
                 chargeStep(StepKind.FORCE);
@@ -142,7 +151,7 @@ public final class CekMachine {
                 if (language != PlutusLanguage.PLUTUS_V3) {
                     throw new CekEvaluationException(
                             "Constr term is not available in " + language +
-                            " (requires PLUTUS_V3)");
+                            " (requires PLUTUS_V3)", currentTerm);
                 }
                 chargeStep(StepKind.CONSTR);
                 if (constr.fields().isEmpty()) {
@@ -159,7 +168,7 @@ public final class CekMachine {
                 if (language != PlutusLanguage.PLUTUS_V3) {
                     throw new CekEvaluationException(
                             "Case term is not available in " + language +
-                            " (requires PLUTUS_V3)");
+                            " (requires PLUTUS_V3)", currentTerm);
                 }
                 chargeStep(StepKind.CASE);
                 stack.push(new CekFrame.CaseFrame(cs.branches(), currentEnv));
@@ -226,13 +235,13 @@ public final class CekMachine {
                 } else {
                     throw new CekEvaluationException(
                             "Case scrutinee must be a constructor or built-in value, got: " +
-                            describeValue(currentValue));
+                            describeValue(currentValue), currentTerm);
                 }
 
                 if (tag < 0 || tag >= cf.branches().size()) {
                     throw new CekEvaluationException(
                             "Case: tag " + tag + " out of range for " +
-                            cf.branches().size() + " branches");
+                            cf.branches().size() + " branches", currentTerm);
                 }
                 Term branch = cf.branches().get(tag);
 
@@ -270,7 +279,7 @@ public final class CekMachine {
                 // stay in return phase
             }
             default -> throw new CekEvaluationException(
-                    "Cannot force value: " + describeValue(value));
+                    "Cannot force value: " + describeValue(value), currentTerm);
         }
     }
 
@@ -291,7 +300,7 @@ public final class CekMachine {
                 // stay in return phase
             }
             default -> throw new CekEvaluationException(
-                    "Cannot apply non-function value: " + describeValue(function));
+                    "Cannot apply non-function value: " + describeValue(function), currentTerm);
         }
     }
 

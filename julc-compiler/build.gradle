@@ -12,6 +12,7 @@ dependencies {
     testImplementation project(':julc-vm')
     testImplementation project(':julc-stdlib')
     testImplementation project(':julc-testkit')
+    testRuntimeOnly project(':julc-vm-java')
     testRuntimeOnly project(':julc-vm-scalus')
 }
 
