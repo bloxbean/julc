@@ -274,6 +274,141 @@ class BudgetCrossValidationTest {
         assertEquals(scalusBudget.memoryUnits(), javaBudget.memoryUnits(), language + " Memory budget mismatch");
     }
 
+    // === Step 4: Cost model parse round-trip and custom params tests ===
+
+    @Test
+    void costModelParseRoundTrip() {
+        // Serialize defaults to flat array, parse back, re-serialize — must be lossless
+        long[] original = CostModelParser.defaultToFlatArray();
+        assertEquals(CostModelParser.PV10_PARAM_COUNT, original.length,
+                "Default flat array should have " + CostModelParser.PV10_PARAM_COUNT + " elements");
+
+        // Parse into MachineCosts + BuiltinCostModel
+        CostModelParser.ParsedCostModel parsed = CostModelParser.parse(original);
+        assertNotNull(parsed.machineCosts());
+        assertNotNull(parsed.builtinCostModel());
+
+        // Re-serialize back to flat array
+        long[] roundTripped = CostModelParser.toFlatArray(parsed.machineCosts(), parsed.builtinCostModel());
+        assertEquals(original.length, roundTripped.length, "Round-tripped array length mismatch");
+
+        for (int i = 0; i < original.length; i++) {
+            assertEquals(original[i], roundTripped[i],
+                    "Round-trip mismatch at index " + i + ": original=" + original[i]
+                    + ", roundTripped=" + roundTripped[i]);
+        }
+    }
+
+    @Test
+    void evaluateWithParsedDefaultParams_matchesBuiltinDefaults() {
+        // Evaluate a program using defaults directly vs parsed-from-flat-array defaults.
+        // This verifies the parse→serialize→parse roundtrip produces identical budgets.
+        String uplc = """
+                (program 1.0.0
+                  [[(lam f
+                    [(lam x [f (lam v [[x x] v])])
+                     (lam x [f (lam v [[x x] v])])])
+                   (lam self (lam n
+                     (force [[(force (builtin ifThenElse))
+                       [[(builtin equalsInteger) n] (con integer 0)]]
+                       (delay (con integer 1))
+                       (delay [[(builtin multiplyInteger) n]
+                               [self [[(builtin subtractInteger) n] (con integer 1)]]])])))]
+                   (con integer 5)]
+                )""";
+
+        Program program = UplcParser.parseProgram(uplc);
+
+        // Evaluate with built-in defaults (no setCostModelParams)
+        var defaultProvider = new JavaVmProvider();
+        var defaultResult = defaultProvider.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
+        assertTrue(defaultResult.isSuccess(), "Default evaluation should succeed");
+
+        // Evaluate with parsed-from-flat-array params
+        var parsedProvider = new JavaVmProvider();
+        long[] flat = CostModelParser.defaultToFlatArray();
+        parsedProvider.setCostModelParams(flat, 10); // PV10
+        var parsedResult = parsedProvider.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
+        assertTrue(parsedResult.isSuccess(), "Parsed-params evaluation should succeed");
+
+        // Budgets must match exactly
+        assertEquals(defaultResult.budgetConsumed().cpuSteps(), parsedResult.budgetConsumed().cpuSteps(),
+                "CPU mismatch between default and parsed params");
+        assertEquals(defaultResult.budgetConsumed().memoryUnits(), parsedResult.budgetConsumed().memoryUnits(),
+                "Memory mismatch between default and parsed params");
+    }
+
+    @Test
+    void evaluateWithCustomParams_affectsBudget() {
+        // Create a slightly modified cost model (bump AddInteger intercept by 1)
+        long[] custom = CostModelParser.defaultToFlatArray();
+        custom[0] += 1; // AddInteger CPU intercept
+
+        // Apply to Java VM
+        var customJava = new JavaVmProvider();
+        customJava.setCostModelParams(custom, 10);
+
+        // Evaluate a program that uses AddInteger
+        String uplc = "(program 1.0.0 [[(builtin addInteger) (con integer 3)] (con integer 4)])";
+        Program program = UplcParser.parseProgram(uplc);
+
+        var customResult = customJava.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
+        assertTrue(customResult.isSuccess(), "Custom params evaluation should succeed");
+
+        // Evaluate with default params
+        var defaultJava = new JavaVmProvider();
+        var defaultResult = defaultJava.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
+        assertTrue(defaultResult.isSuccess(), "Default evaluation should succeed");
+
+        // The custom CPU should differ from default by exactly 1 (one AddInteger call)
+        assertEquals(defaultResult.budgetConsumed().cpuSteps() + 1, customResult.budgetConsumed().cpuSteps(),
+                "Custom params should add exactly 1 CPU step for AddInteger");
+
+        // Memory should be unchanged (we only modified the CPU intercept)
+        assertEquals(defaultResult.budgetConsumed().memoryUnits(), customResult.budgetConsumed().memoryUnits(),
+                "Memory should be unchanged when only CPU intercept is modified");
+    }
+
+    // === ByteString size formula regression tests ===
+
+    @Test
+    void byteStringSize_matchesHaskellFormula() {
+        // Haskell: ((BS.length bs - 1) `quot` 8) + 1
+        // This is ceiling(len / 8), with empty giving 1
+        assertEquals(1, BuiltinCostModel.byteStringSize(new byte[0]),  "empty");
+        assertEquals(1, BuiltinCostModel.byteStringSize(new byte[1]),  "1 byte");
+        assertEquals(1, BuiltinCostModel.byteStringSize(new byte[7]),  "7 bytes");
+        assertEquals(1, BuiltinCostModel.byteStringSize(new byte[8]),  "8 bytes");
+        assertEquals(2, BuiltinCostModel.byteStringSize(new byte[9]),  "9 bytes");
+        assertEquals(2, BuiltinCostModel.byteStringSize(new byte[16]), "16 bytes");
+        assertEquals(3, BuiltinCostModel.byteStringSize(new byte[17]), "17 bytes");
+        assertEquals(3, BuiltinCostModel.byteStringSize(new byte[24]), "24 bytes");
+        assertEquals(4, BuiltinCostModel.byteStringSize(new byte[28]), "28 bytes (PubKeyHash)");
+        assertEquals(4, BuiltinCostModel.byteStringSize(new byte[32]), "32 bytes (TxId)");
+        assertEquals(5, BuiltinCostModel.byteStringSize(new byte[33]), "33 bytes");
+        assertEquals(6, BuiltinCostModel.byteStringSize(new byte[48]), "48 bytes");
+    }
+
+    @Test
+    void equalsByteString_32bytes_budget() {
+        // Tests EqualsByteString with 32-byte args (TxId-sized).
+        // Exercises LinearOnDiagonal where the byteStringSize formula matters.
+        crossValidateBudget(
+                "(program 1.0.0 [[(builtin equalsByteString) "
+                + "(con bytestring #0000000000000000000000000000000000000000000000000000000000000000)] "
+                + "(con bytestring #0000000000000000000000000000000000000000000000000000000000000000)])");
+    }
+
+    @Test
+    void equalsData_with32byteFields_budget() {
+        // Tests EqualsData with Data containing 32-byte BytesData fields (TxId-sized).
+        // This is where the 54,558 CPU discrepancy originated.
+        crossValidateBudget(
+                "(program 1.0.0 [[(builtin equalsData) "
+                + "(con data (B #0000000000000000000000000000000000000000000000000000000000000000))] "
+                + "(con data (B #0000000000000000000000000000000000000000000000000000000000000000))])");
+    }
+
     private void crossValidateBudget(String uplcProgram) {
         if (!hasScalus()) {
             org.junit.jupiter.api.Assumptions.assumeTrue(false, "Scalus provider not available");

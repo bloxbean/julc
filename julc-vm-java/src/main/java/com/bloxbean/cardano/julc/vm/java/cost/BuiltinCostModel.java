@@ -125,11 +125,14 @@ public final class BuiltinCostModel {
     /**
      * Memory usage of a byte string in 8-byte (64-bit) words.
      * <p>
-     * Matches Plutus/Scalus: {@code BS.length bs `div` 8 + 1}.
-     * Includes overhead for the ByteString object representation.
+     * Matches Plutus: {@code ((BS.length bs - 1) `quot` 8) + 1}.
+     * This is ceiling division of byte length by 8, with empty strings giving 1.
+     * <p>
+     * Note: Java's integer division truncates toward zero (same as Haskell's {@code quot}),
+     * so {@code (0 - 1) / 8 + 1 = 1} correctly handles empty byte strings.
      */
     static long byteStringSize(byte[] bytes) {
-        return bytes.length / 8 + 1;
+        return (bytes.length - 1) / 8 + 1;
     }
 
     /**
