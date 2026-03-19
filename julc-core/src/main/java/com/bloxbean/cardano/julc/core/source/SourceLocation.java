@@ -12,17 +12,18 @@ package com.bloxbean.cardano.julc.core.source;
 public record SourceLocation(String fileName, int line, int column, String fragment) {
 
     /**
-     * Format as "FileName.java:line (fragment)" for display in error messages.
+     * Format as "at .(FileName.java:line) fragment" for display in error messages.
+     * Uses the stacktrace-like format so IntelliJ makes file:line clickable.
      */
     @Override
     public String toString() {
         var sb = new StringBuilder();
+        sb.append("at .(");
         if (fileName != null) sb.append(fileName);
-        sb.append(':').append(line);
+        sb.append(':').append(line).append(')');
         if (fragment != null && !fragment.isEmpty()) {
-            // Truncate long fragments
             var frag = fragment.length() > 80 ? fragment.substring(0, 77) + "..." : fragment;
-            sb.append(" (").append(frag).append(')');
+            sb.append(' ').append(frag);
         }
         return sb.toString();
     }

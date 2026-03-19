@@ -14,6 +14,7 @@ import com.bloxbean.cardano.julc.ledger.Voter;
 import com.bloxbean.cardano.julc.stdlib.Builtins;
 import com.bloxbean.cardano.julc.vm.EvalResult;
 import com.bloxbean.cardano.julc.vm.JulcVm;
+import com.bloxbean.cardano.julc.vm.trace.ExecutionTraceEntry;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -368,5 +369,53 @@ public abstract class ContractTest {
             }
         }
         System.out.println(sb);
+    }
+
+    // --- Execution tracing ---
+
+    /**
+     * Evaluate a compiled program with source map and execution tracing enabled.
+     * After evaluation, retrieve the trace via {@link #getLastExecutionTrace()}.
+     *
+     * @param compiled the compile result (with source map)
+     * @param args     the PlutusData arguments
+     * @return the evaluation result
+     */
+    protected EvalResult evaluateWithTrace(CompileResult compiled, PlutusData... args) {
+        var v = vm();
+        v.setSourceMap(compiled.sourceMap());
+        v.setTracingEnabled(true);
+        try {
+            if (args.length == 0) {
+                return v.evaluate(compiled.program());
+            }
+            return v.evaluateWithArgs(compiled.program(), java.util.List.of(args));
+        } finally {
+            v.setTracingEnabled(false);
+            v.setSourceMap(null);
+        }
+    }
+
+    /**
+     * Returns the execution trace from the most recent evaluation.
+     * Call after {@link #evaluateWithTrace}.
+     */
+    protected java.util.List<ExecutionTraceEntry> getLastExecutionTrace() {
+        return vm().getLastExecutionTrace();
+    }
+
+    /**
+     * Format the last execution trace as a readable multi-line string.
+     */
+    protected String formatExecutionTrace() {
+        return ExecutionTraceEntry.format(getLastExecutionTrace());
+    }
+
+    /**
+     * Format a per-file/line budget summary for the last execution trace.
+     * Aggregates CPU/memory costs by source location with visit counts.
+     */
+    protected String formatBudgetSummary() {
+        return ExecutionTraceEntry.formatSummary(getLastExecutionTrace());
     }
 }

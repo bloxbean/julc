@@ -80,6 +80,12 @@ public final class CostTracker {
         return new ExBudget(cpuConsumed, memConsumed);
     }
 
+    /** Total CPU consumed so far (zero-allocation accessor). */
+    public long cpuConsumed() { return cpuConsumed; }
+
+    /** Total memory consumed so far (zero-allocation accessor). */
+    public long memConsumed() { return memConsumed; }
+
     private void charge(long cpu, long mem) {
         cpuConsumed += cpu;
         memConsumed += mem;

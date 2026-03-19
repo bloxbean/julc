@@ -6,11 +6,13 @@ import com.bloxbean.cardano.julc.core.Term;
 import com.bloxbean.cardano.julc.core.source.SourceLocation;
 import com.bloxbean.cardano.julc.core.source.SourceMap;
 import com.bloxbean.cardano.julc.vm.EvalResult;
+import com.bloxbean.cardano.julc.vm.trace.ExecutionTraceEntry;
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -49,6 +51,8 @@ public final class JulcEval {
     private final Path sourceRoot;
     private final com.bloxbean.cardano.julc.core.PlutusData[] params;
     private boolean sourceMapEnabled;
+    private boolean tracingEnabled;
+    private volatile List<ExecutionTraceEntry> lastExecutionTrace = List.of();
 
     private JulcEval(String javaSource, Class<?> sourceClass, Path sourceRoot,
                      com.bloxbean.cardano.julc.core.PlutusData[] params) {
@@ -125,6 +129,47 @@ public final class JulcEval {
     public JulcEval sourceMap() {
         this.sourceMapEnabled = true;
         return this;
+    }
+
+    /**
+     * Enable execution tracing. Implies {@link #sourceMap()}.
+     * After each call, the execution trace is accessible via {@link #getLastExecutionTrace()}
+     * and {@link #formatLastTrace()}.
+     * On failure, the error message includes the full execution trace.
+     * <p>
+     * Example:
+     * <pre>{@code
+     * var eval = JulcEval.forClass(MyValidator.class).trace();
+     * eval.call("validate", data).asBoolean();
+     * System.out.print(eval.formatLastTrace());
+     * }</pre>
+     */
+    public JulcEval trace() {
+        this.sourceMapEnabled = true;
+        this.tracingEnabled = true;
+        return this;
+    }
+
+    /**
+     * Returns the execution trace from the most recent call.
+     * Empty if tracing was not enabled.
+     */
+    public List<ExecutionTraceEntry> getLastExecutionTrace() {
+        return lastExecutionTrace;
+    }
+
+    /**
+     * Format the last execution trace as a readable multi-line string.
+     */
+    public String formatLastTrace() {
+        return ExecutionTraceEntry.format(lastExecutionTrace);
+    }
+
+    /**
+     * Format a per-file/line budget summary for the last execution trace.
+     */
+    public String formatLastBudgetSummary() {
+        return ExecutionTraceEntry.formatSummary(lastExecutionTrace);
     }
 
     // --- Interface proxy ---
@@ -222,12 +267,22 @@ public final class JulcEval {
         }
 
         var vm = com.bloxbean.cardano.julc.vm.JulcVm.create();
+        vm.setSourceMap(compiled.sourceMap());
+        if (tracingEnabled) {
+            vm.setTracingEnabled(true);
+        }
         var allArgs = MethodEvaluator.buildAllArgs(params, args);
         EvalResult result;
-        if (allArgs.isEmpty()) {
-            result = vm.evaluate(compiled.program());
-        } else {
-            result = vm.evaluateWithArgs(compiled.program(), allArgs);
+        try {
+            if (allArgs.isEmpty()) {
+                result = vm.evaluate(compiled.program());
+            } else {
+                result = vm.evaluateWithArgs(compiled.program(), allArgs);
+            }
+        } finally {
+            this.lastExecutionTrace = vm.getLastExecutionTrace();
+            vm.setTracingEnabled(false);
+            vm.setSourceMap(null);
         }
 
         if (result instanceof EvalResult.Success s) {
@@ -243,6 +298,9 @@ public final class JulcEval {
         };
         if (location != null) {
             errorMsg += "\n  at " + location;
+        }
+        if (tracingEnabled && !lastExecutionTrace.isEmpty()) {
+            errorMsg += "\n" + ExecutionTraceEntry.format(lastExecutionTrace);
         }
         throw new com.bloxbean.cardano.julc.vm.TermExtractor.ExtractionException(errorMsg);
     }

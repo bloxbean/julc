@@ -3,6 +3,8 @@ package com.bloxbean.cardano.julc.vm;
 import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.core.Program;
 import com.bloxbean.cardano.julc.core.Term;
+import com.bloxbean.cardano.julc.core.source.SourceMap;
+import com.bloxbean.cardano.julc.vm.trace.ExecutionTraceEntry;
 
 import java.util.List;
 
@@ -59,6 +61,41 @@ public interface JulcVmProvider {
      */
     default void setCostModelParams(long[] costModelValues, int protocolMajorVersion) {
         // Default: ignore (use built-in defaults)
+    }
+
+    /**
+     * Set the source map for debugging support.
+     * When set, evaluation errors can include the originating Java source location,
+     * and execution tracing can map CEK steps back to Java source lines.
+     * <p>
+     * Providers that do not support source maps ignore this call.
+     *
+     * @param sourceMap the source map from compilation (nullable — pass null to disable)
+     */
+    default void setSourceMap(SourceMap sourceMap) {
+        // Default: ignore (provider does not support source maps)
+    }
+
+    /**
+     * Enable or disable execution tracing.
+     * When enabled (and a source map is set), each statement-level CEK step
+     * is recorded with its Java source location.
+     * <p>
+     * Providers that do not support tracing ignore this call.
+     *
+     * @param enabled true to enable tracing, false to disable
+     */
+    default void setTracingEnabled(boolean enabled) {
+        // Default: ignore (provider does not support tracing)
+    }
+
+    /**
+     * Returns the execution trace from the most recent evaluation.
+     * Empty list if tracing was disabled, no source map was set, or
+     * the provider does not support tracing.
+     */
+    default List<ExecutionTraceEntry> getLastExecutionTrace() {
+        return List.of();
     }
 
     /** The name of this provider (for logging/debugging). */

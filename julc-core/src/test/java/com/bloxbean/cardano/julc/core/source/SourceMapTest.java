@@ -17,13 +17,13 @@ class SourceMapTest {
     @Test
     void sourceLocation_toString_withAllFields() {
         var loc = new SourceLocation("MyValidator.java", 42, 5, "amount < 0");
-        assertEquals("MyValidator.java:42 (amount < 0)", loc.toString());
+        assertEquals("at .(MyValidator.java:42) amount < 0", loc.toString());
     }
 
     @Test
     void sourceLocation_toString_withNullFragment() {
         var loc = new SourceLocation("MyValidator.java", 42, 5, null);
-        assertEquals("MyValidator.java:42", loc.toString());
+        assertEquals("at .(MyValidator.java:42)", loc.toString());
     }
 
     @Test
@@ -31,7 +31,7 @@ class SourceMapTest {
         var longFragment = "a".repeat(100);
         var loc = new SourceLocation("Test.java", 1, 1, longFragment);
         assertTrue(loc.toString().contains("..."));
-        assertTrue(loc.toString().length() < 100);
+        assertTrue(loc.toString().contains("at .(Test.java:1)"));
     }
 
     @Test

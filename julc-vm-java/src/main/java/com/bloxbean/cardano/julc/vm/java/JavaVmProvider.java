@@ -4,8 +4,10 @@ import com.bloxbean.cardano.julc.core.Constant;
 import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.core.Program;
 import com.bloxbean.cardano.julc.core.Term;
+import com.bloxbean.cardano.julc.core.source.SourceMap;
 import com.bloxbean.cardano.julc.vm.*;
 import com.bloxbean.cardano.julc.vm.java.cost.*;
+import com.bloxbean.cardano.julc.vm.trace.ExecutionTraceEntry;
 
 import java.util.List;
 
@@ -22,6 +24,9 @@ public class JavaVmProvider implements JulcVmProvider {
     private volatile CostModelParser.ParsedCostModel customV1CostModel;
     private volatile CostModelParser.ParsedCostModel customV2CostModel;
     private volatile CostModelParser.ParsedCostModel customV3CostModel;
+    private volatile SourceMap sourceMap;
+    private volatile boolean tracingEnabled;
+    private volatile List<ExecutionTraceEntry> lastExecutionTrace = List.of();
 
     @Override
     public void setCostModelParams(long[] costModelValues, int protocolMajorVersion) {
@@ -72,19 +77,23 @@ public class JavaVmProvider implements JulcVmProvider {
             bcm = DefaultCostModel.defaultBuiltinCostModel(language);
         }
         var costTracker = new CostTracker(mc, bcm, budget);
-        var machine = new CekMachine(costTracker, language);
+        var machine = new CekMachine(costTracker, language, sourceMap, tracingEnabled);
         try {
             CekValue result = machine.evaluate(term);
+            lastExecutionTrace = machine.getExecutionTrace();
             Term resultTerm = ValueConverter.toTerm(result);
             return new EvalResult.Success(resultTerm, costTracker.consumed(), machine.getTraces());
         } catch (BudgetExhaustedException e) {
+            lastExecutionTrace = machine.getExecutionTrace();
             return new EvalResult.BudgetExhausted(costTracker.consumed(), machine.getTraces(),
                     e.failedTerm());
         } catch (CekEvaluationException e) {
+            lastExecutionTrace = machine.getExecutionTrace();
             String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
             return new EvalResult.Failure(errorMsg, costTracker.consumed(), machine.getTraces(),
                     e.failedTerm());
         } catch (Exception e) {
+            lastExecutionTrace = machine.getExecutionTrace();
             String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
             return new EvalResult.Failure(errorMsg, costTracker.consumed(), machine.getTraces());
         }
@@ -96,6 +105,21 @@ public class JavaVmProvider implements JulcVmProvider {
             case PLUTUS_V2 -> customV2CostModel;
             case PLUTUS_V3 -> customV3CostModel;
         };
+    }
+
+    @Override
+    public void setSourceMap(SourceMap sourceMap) {
+        this.sourceMap = sourceMap;
+    }
+
+    @Override
+    public void setTracingEnabled(boolean enabled) {
+        this.tracingEnabled = enabled;
+    }
+
+    @Override
+    public List<ExecutionTraceEntry> getLastExecutionTrace() {
+        return lastExecutionTrace;
     }
 
     @Override

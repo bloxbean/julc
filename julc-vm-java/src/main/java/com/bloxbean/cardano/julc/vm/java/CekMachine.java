@@ -3,12 +3,15 @@ package com.bloxbean.cardano.julc.vm.java;
 import com.bloxbean.cardano.julc.core.Constant;
 import com.bloxbean.cardano.julc.core.DefaultFun;
 import com.bloxbean.cardano.julc.core.Term;
+import com.bloxbean.cardano.julc.core.source.SourceMap;
 import com.bloxbean.cardano.julc.vm.PlutusLanguage;
 import com.bloxbean.cardano.julc.vm.java.builtins.BuiltinHelper;
 import com.bloxbean.cardano.julc.vm.java.builtins.BuiltinRuntime;
 import com.bloxbean.cardano.julc.vm.java.builtins.BuiltinTable;
 import com.bloxbean.cardano.julc.vm.java.cost.CostTracker;
 import com.bloxbean.cardano.julc.vm.java.cost.MachineCosts.StepKind;
+import com.bloxbean.cardano.julc.vm.java.trace.ExecutionTraceCollector;
+import com.bloxbean.cardano.julc.vm.trace.ExecutionTraceEntry;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -33,6 +36,8 @@ public final class CekMachine {
     private final CostTracker costTracker;
     private final PlutusLanguage language;
     private final BuiltinTable.VersionedBuiltinTable builtinTable;
+    private final SourceMap sourceMap;
+    private final ExecutionTraceCollector executionTraceCollector;
 
     // Machine state
     private Term currentTerm;
@@ -52,9 +57,18 @@ public final class CekMachine {
 
     /** Create a CekMachine with optional cost tracking and language version. */
     public CekMachine(CostTracker costTracker, PlutusLanguage language) {
+        this(costTracker, language, null, false);
+    }
+
+    /** Create a CekMachine with optional cost tracking, language version, source map and tracing. */
+    public CekMachine(CostTracker costTracker, PlutusLanguage language,
+                      SourceMap sourceMap, boolean tracingEnabled) {
         this.costTracker = costTracker;
         this.language = language;
         this.builtinTable = BuiltinTable.forLanguage(language);
+        this.sourceMap = sourceMap;
+        this.executionTraceCollector = (tracingEnabled && sourceMap != null && !sourceMap.isEmpty())
+                ? new ExecutionTraceCollector(costTracker) : null;
     }
 
     /**
@@ -102,6 +116,12 @@ public final class CekMachine {
         return List.copyOf(traces);
     }
 
+    /** Returns the collected execution trace entries (empty if tracing is disabled). */
+    public List<ExecutionTraceEntry> getExecutionTrace() {
+        if (executionTraceCollector == null) return List.of();
+        return executionTraceCollector.getEntries();
+    }
+
     // === COMPUTE phase ===
 
     private void compute() {
@@ -133,15 +153,18 @@ public final class CekMachine {
                 inComputePhase = false;
             }
             case Term.Error _ -> {
+                recordTrace("Error");
                 throw new CekEvaluationException("Error term encountered", currentTerm);
             }
             case Term.Force f -> {
                 chargeStep(StepKind.FORCE);
+                recordTrace("Force");
                 stack.push(new CekFrame.ForceFrame());
                 currentTerm = f.term();
             }
             case Term.Apply app -> {
                 chargeStep(StepKind.APPLY);
+                recordTrace("Apply");
                 // Push frame: "after function evaluates, evaluate argument in current env"
                 stack.push(new CekFrame.ComputeArgFrame(app.argument(), currentEnv));
                 currentTerm = app.function();
@@ -171,6 +194,7 @@ public final class CekMachine {
                             " (requires PLUTUS_V3)", currentTerm);
                 }
                 chargeStep(StepKind.CASE);
+                recordTrace("Case");
                 stack.push(new CekFrame.CaseFrame(cs.branches(), currentEnv));
                 currentTerm = cs.scrutinee();
             }
@@ -323,6 +347,12 @@ public final class CekMachine {
     private void chargeStep(StepKind kind) {
         if (costTracker != null) {
             costTracker.chargeMachineStep(kind);
+        }
+    }
+
+    private void recordTrace(String nodeType) {
+        if (executionTraceCollector != null) {
+            executionTraceCollector.record(sourceMap.lookup(currentTerm), nodeType);
         }
     }
 

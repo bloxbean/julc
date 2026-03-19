@@ -1,0 +1,26 @@
+plugins {
+    id 'java'
+    id 'me.champeau.jmh' version '0.7.2'
+}
+
+description = 'JMH benchmarks for julc VM backends'
+
+// Exclude from publishing
+tasks.withType(Javadoc).configureEach { enabled = false }
+
+jmh {
+    warmupIterations = 1
+    iterations = 1
+    warmup = '5s'
+    timeOnIteration = '5s'
+    fork = 1
+    threads = 1
+    resultFormat = 'CSV'
+}
+
+dependencies {
+    jmh project(':julc-core')
+    jmh project(':julc-vm')
+    jmh project(':julc-vm-java')
+    jmh project(':julc-vm-truffle')
+}

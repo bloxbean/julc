@@ -11,6 +11,7 @@ import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
 import com.bloxbean.cardano.julc.vm.EvalResult;
 import com.bloxbean.cardano.julc.vm.ExBudget;
 import com.bloxbean.cardano.julc.vm.JulcVm;
+import com.bloxbean.cardano.julc.vm.trace.ExecutionTraceEntry;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -524,6 +525,47 @@ public final class ValidatorTest {
     public static void assertRejectsWithSourceMap(CompileResult compileResult, PlutusData... args) {
         var result = evaluate(compileResult.program(), args);
         BudgetAssertions.assertFailure(result, compileResult.sourceMap());
+    }
+
+    // --- Execution tracing ---
+
+    /**
+     * Evaluate a compiled program with source map and execution tracing enabled.
+     * Returns an {@link EvalWithTrace} containing both the result and the trace.
+     *
+     * @param compiled the compile result (with source map)
+     * @param args     the PlutusData arguments
+     * @return the result and execution trace
+     */
+    public static EvalWithTrace evaluateWithTrace(CompileResult compiled, PlutusData... args) {
+        var vm = JulcVm.create();
+        vm.setSourceMap(compiled.sourceMap());
+        vm.setTracingEnabled(true);
+        EvalResult result;
+        if (args.length == 0) {
+            result = vm.evaluate(compiled.program());
+        } else {
+            result = vm.evaluateWithArgs(compiled.program(), List.of(args));
+        }
+        var trace = vm.getLastExecutionTrace();
+        vm.setTracingEnabled(false);
+        vm.setSourceMap(null);
+        return new EvalWithTrace(result, trace);
+    }
+
+    /**
+     * Holds an evaluation result together with its execution trace.
+     */
+    public record EvalWithTrace(EvalResult result, List<ExecutionTraceEntry> trace) {
+        /** Format the trace as a readable multi-line string. */
+        public String formatTrace() {
+            return ExecutionTraceEntry.format(trace);
+        }
+
+        /** Format a per-file/line budget summary with visit counts. */
+        public String formatBudgetSummary() {
+            return ExecutionTraceEntry.formatSummary(trace);
+        }
     }
 
     private static String formatResult(EvalResult result) {
