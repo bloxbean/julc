@@ -5,6 +5,7 @@ import com.oracle.truffle.api.frame.Frame;
 import com.oracle.truffle.api.frame.VirtualFrame;
 import com.oracle.truffle.api.instrumentation.ProbeNode;
 import com.oracle.truffle.api.instrumentation.InstrumentableNode.WrapperNode;
+import com.oracle.truffle.api.interop.TruffleObject;
 
 /**
  * Manual wrapper node for Truffle instrumentation.
@@ -45,7 +46,7 @@ public final class UplcNodeWrapper extends UplcNode implements WrapperNode {
                 probeNode.onEnter(vf);
                 Object returnValue = delegateNode.execute(frame, context);
                 wasOnReturnExecuted = true;
-                probeNode.onReturnValue(vf, returnValue);
+                probeNode.onReturnValue(vf, toInterop(returnValue));
                 return returnValue;
             } catch (Throwable t) {
                 Object result = probeNode.onReturnExceptionalOrUnwind(vf, t, wasOnReturnExecuted);
@@ -56,6 +57,39 @@ public final class UplcNodeWrapper extends UplcNode implements WrapperNode {
                 }
                 throw t;
             }
+        }
+    }
+
+    /**
+     * Wrap non-interop values for ProbeNode events.
+     * Truffle's debugger requires all values passed to onReturnValue to be
+     * valid interop types. Our Constant records aren't TruffleObjects, so
+     * we wrap them in a minimal TruffleObject shell. The real return value
+     * is still returned directly to the caller.
+     */
+    private static Object toInterop(Object value) {
+        if (value instanceof TruffleObject || value instanceof Number
+                || value instanceof String || value instanceof Boolean
+                || value instanceof Character) {
+            return value; // Already interop-compatible
+        }
+        return new UplcValueWrapper(value);
+    }
+
+    /**
+     * Minimal TruffleObject wrapper for non-interop UPLC values (Constants).
+     * Only used for instrumentation events — never returned as execution result.
+     */
+    static final class UplcValueWrapper implements TruffleObject {
+        final Object wrapped;
+
+        UplcValueWrapper(Object wrapped) {
+            this.wrapped = wrapped;
+        }
+
+        @Override
+        public String toString() {
+            return wrapped != null ? wrapped.toString() : "null";
         }
     }
 }

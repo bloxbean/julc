@@ -4,6 +4,7 @@ import com.bloxbean.cardano.julc.core.Term;
 import com.bloxbean.cardano.julc.vm.java.cost.MachineCosts.StepKind;
 import com.bloxbean.cardano.julc.vm.truffle.UplcContext;
 import com.bloxbean.cardano.julc.vm.truffle.runtime.UplcRuntimeException;
+import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.frame.Frame;
 import com.oracle.truffle.api.frame.MaterializedFrame;
 
@@ -33,19 +34,23 @@ public final class VarNode extends UplcNode {
         Frame current = frame;
         for (int i = 1; i < deBruijnIndex; i++) {
             Object[] args = current.getArguments();
-            if (args.length < 2 || !(args[1] instanceof MaterializedFrame parent)) {
-                throw new UplcRuntimeException(
-                        "Variable index " + deBruijnIndex + " out of scope",
-                        getSourceTerm(), this);
+            if (args.length >= 2 && args[1] instanceof MaterializedFrame parentFrame) {
+                current = parentFrame;
+            } else {
+                throw throwOutOfScope();
             }
-            current = parent;
         }
         try {
             return current.getObject(0);
         } catch (Exception e) {
-            throw new UplcRuntimeException(
-                    "Variable index " + deBruijnIndex + " out of scope",
-                    getSourceTerm(), this);
+            throw throwOutOfScope();
         }
+    }
+
+    @TruffleBoundary
+    private UplcRuntimeException throwOutOfScope() {
+        throw new UplcRuntimeException(
+                "Variable index " + deBruijnIndex + " out of scope",
+                getSourceTerm(), this);
     }
 }

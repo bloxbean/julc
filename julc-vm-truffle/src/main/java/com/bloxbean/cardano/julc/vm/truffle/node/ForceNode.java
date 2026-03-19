@@ -7,6 +7,7 @@ import com.bloxbean.cardano.julc.vm.truffle.builtin.BuiltinDispatcher;
 import com.bloxbean.cardano.julc.vm.truffle.runtime.UplcBuiltinDescriptor;
 import com.bloxbean.cardano.julc.vm.truffle.runtime.UplcDelay;
 import com.bloxbean.cardano.julc.vm.truffle.runtime.UplcRuntimeException;
+import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.frame.Frame;
 import com.oracle.truffle.api.instrumentation.StandardTags.StatementTag;
 import com.oracle.truffle.api.instrumentation.Tag;
@@ -45,9 +46,14 @@ public final class ForceNode extends UplcNode {
             }
             return forced;
         } else {
-            throw new UplcRuntimeException(
-                    "Cannot force value: " + ApplyNode.describeValue(value),
-                    getSourceTerm(), this);
+            throw throwCannotForce(value);
         }
+    }
+
+    @TruffleBoundary
+    private UplcRuntimeException throwCannotForce(Object value) {
+        throw new UplcRuntimeException(
+                "Cannot force value: " + ApplyNode.describeValue(value),
+                getSourceTerm(), this);
     }
 }

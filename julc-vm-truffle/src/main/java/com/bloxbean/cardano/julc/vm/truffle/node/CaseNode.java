@@ -6,6 +6,7 @@ import com.bloxbean.cardano.julc.vm.java.cost.MachineCosts.StepKind;
 import com.bloxbean.cardano.julc.vm.truffle.UplcContext;
 import com.bloxbean.cardano.julc.vm.truffle.runtime.UplcConstrValue;
 import com.bloxbean.cardano.julc.vm.truffle.runtime.UplcRuntimeException;
+import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.frame.Frame;
 import com.oracle.truffle.api.instrumentation.StandardTags.StatementTag;
 import com.oracle.truffle.api.instrumentation.Tag;
@@ -54,15 +55,11 @@ public final class CaseNode extends UplcNode {
             tag = decomposed.tag;
             fields = decomposed.fields;
         } else {
-            throw new UplcRuntimeException(
-                    "Case scrutinee must be a constructor or built-in value, got: " +
-                    ApplyNode.describeValue(scrutinee), getSourceTerm(), this);
+            throw throwBadScrutinee(scrutinee);
         }
 
         if (tag < 0 || tag >= branchNodes.length) {
-            throw new UplcRuntimeException(
-                    "Case: tag " + tag + " out of range for " + branchNodes.length + " branches",
-                    getSourceTerm(), this);
+            throw throwTagOutOfRange(tag);
         }
 
         // Evaluate the selected branch
@@ -107,16 +104,40 @@ public final class CaseNode extends UplcNode {
                 validateMaxBranches("Pair", branchCount, 1);
                 yield new CaseDecomposition(0, new Object[]{pc.first(), pc.second()});
             }
-            default -> throw new UplcRuntimeException(
-                    "Cannot use case on constant type: " + c.type(), getSourceTerm(), this);
+            default -> throw throwBadConstantType(c);
         };
     }
 
     private void validateMaxBranches(String typeName, int actual, int max) {
         if (actual > max) {
-            throw new UplcRuntimeException(
-                    "Case on " + typeName + " allows at most " + max +
-                    " branch(es), got " + actual, getSourceTerm(), this);
+            throw throwMaxBranches(typeName, actual, max);
         }
+    }
+
+    @TruffleBoundary
+    private UplcRuntimeException throwBadScrutinee(Object scrutinee) {
+        throw new UplcRuntimeException(
+                "Case scrutinee must be a constructor or built-in value, got: " +
+                ApplyNode.describeValue(scrutinee), getSourceTerm(), this);
+    }
+
+    @TruffleBoundary
+    private UplcRuntimeException throwTagOutOfRange(int tag) {
+        throw new UplcRuntimeException(
+                "Case: tag " + tag + " out of range for " + branchNodes.length + " branches",
+                getSourceTerm(), this);
+    }
+
+    @TruffleBoundary
+    private UplcRuntimeException throwBadConstantType(Constant c) {
+        throw new UplcRuntimeException(
+                "Cannot use case on constant type: " + c.type(), getSourceTerm(), this);
+    }
+
+    @TruffleBoundary
+    private UplcRuntimeException throwMaxBranches(String typeName, int actual, int max) {
+        throw new UplcRuntimeException(
+                "Case on " + typeName + " allows at most " + max +
+                " branch(es), got " + actual, getSourceTerm(), this);
     }
 }

@@ -73,4 +73,22 @@ public final class UplcContext {
         if (executionTraceCollector == null) return List.of();
         return executionTraceCollector.getEntries();
     }
+
+    // --- Result capture (for debugger polyglot execution) ---
+
+    private Object capturedResult;
+
+    /**
+     * Store the evaluation result for later retrieval by the debugger.
+     */
+    public void setCapturedResult(Object result) {
+        this.capturedResult = result;
+    }
+
+    /**
+     * Retrieve the captured evaluation result.
+     */
+    public Object getCapturedResult() {
+        return capturedResult;
+    }
 }

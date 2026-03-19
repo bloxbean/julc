@@ -27,10 +27,26 @@ public final class UplcRootNode extends RootNode {
 
     @Override
     public Object execute(VirtualFrame frame) {
-        // Arguments: [0] = UplcContext, [1] = optional captured frame (for closures)
+        // Direct path: args[0] = UplcContext
+        // Polyglot path (debugger): no UplcContext in args — use thread-local
         Object[] args = frame.getArguments();
-        UplcContext context = (UplcContext) args[0];
-        return bodyNode.execute(frame, context);
+        boolean directPath = args.length > 0 && args[0] instanceof UplcContext;
+        UplcContext context;
+        if (directPath) {
+            context = (UplcContext) args[0];
+        } else {
+            context = com.bloxbean.cardano.julc.vm.truffle.UplcTruffleLanguage.getPendingContext();
+            if (context == null) {
+                throw new IllegalStateException("No UplcContext available");
+            }
+        }
+        Object result = bodyNode.execute(frame, context);
+        if (!directPath) {
+            // Polyglot path: capture result for debugger retrieval, return interop-safe value
+            context.setCapturedResult(result);
+            return 0;
+        }
+        return result;
     }
 
     @Override

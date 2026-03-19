@@ -9,6 +9,7 @@ import com.bloxbean.cardano.julc.vm.java.builtins.BuiltinRuntime;
 import com.bloxbean.cardano.julc.vm.truffle.UplcContext;
 import com.bloxbean.cardano.julc.vm.truffle.runtime.UplcBuiltinDescriptor;
 import com.bloxbean.cardano.julc.vm.truffle.runtime.UplcRuntimeException;
+import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -43,7 +44,12 @@ public final class BuiltinDispatcher {
 
     /**
      * Execute a fully-saturated builtin descriptor.
+     * <p>
+     * Marked as {@code @TruffleBoundary} because this crosses into julc-vm-java
+     * code that Graal cannot optimize (different compilation unit). The boundary
+     * prevents the JIT from trying to inline this call chain.
      */
+    @TruffleBoundary
     public static Object execute(UplcBuiltinDescriptor descriptor, UplcContext context) {
         DefaultFun fun = descriptor.getFun();
         List<Object> truffleArgs = descriptor.getCollectedArgs();
@@ -113,6 +119,7 @@ public final class BuiltinDispatcher {
      * appear as pass-through arguments get a VCon(null) sentinel — the cost model
      * treats null constants as size 1.
      */
+    @TruffleBoundary
     private static List<CekValue> toCekValues(List<Object> truffleArgs) {
         var cekArgs = new ArrayList<CekValue>(truffleArgs.size());
         for (Object arg : truffleArgs) {

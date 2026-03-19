@@ -7,6 +7,7 @@ import com.bloxbean.cardano.julc.vm.truffle.builtin.BuiltinDispatcher;
 import com.bloxbean.cardano.julc.vm.truffle.runtime.UplcBuiltinDescriptor;
 import com.bloxbean.cardano.julc.vm.truffle.runtime.UplcClosure;
 import com.bloxbean.cardano.julc.vm.truffle.runtime.UplcRuntimeException;
+import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.frame.Frame;
 import com.oracle.truffle.api.instrumentation.StandardTags.StatementTag;
 import com.oracle.truffle.api.instrumentation.Tag;
@@ -55,9 +56,14 @@ public final class ApplyNode extends UplcNode {
             }
             return applied;
         } else {
-            throw new UplcRuntimeException(
-                    "Cannot apply non-function value: " + describeValue(function));
+            throw throwCannotApply(function);
         }
+    }
+
+    @TruffleBoundary
+    private static UplcRuntimeException throwCannotApply(Object function) {
+        throw new UplcRuntimeException(
+                "Cannot apply non-function value: " + describeValue(function));
     }
 
     static String describeValue(Object v) {

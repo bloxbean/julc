@@ -16,6 +16,17 @@ jmh {
     fork = 1
     threads = 1
     resultFormat = 'CSV'
+
+    // Filter: ./gradlew :julc-benchmark:jmh -PjmhInclude=CekTruffleBenchmark
+    if (project.hasProperty('jmhInclude')) {
+        includes = [project.property('jmhInclude')]
+    }
+
+    // Disable Truffle JIT (interpreter-only mode):
+    //   ./gradlew :julc-benchmark:jmh -PnoJit
+    if (project.hasProperty('noJit')) {
+        jvmArgsAppend = ['-Dtruffle.TruffleRuntime=com.oracle.truffle.api.impl.DefaultTruffleRuntime']
+    }
 }
 
 dependencies {
