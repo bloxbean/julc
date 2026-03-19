@@ -104,15 +104,15 @@ class CostModelParserTest {
             var parsedPair = parsedBcm.get(fun);
             assertNotNull(parsedPair, "Missing cost pair for " + fun);
 
-            // Test with 3-arg sizes (covers all cost function arities)
+            // Test with 4-arg sizes (covers LinearInU which needs 4th arg)
             for (long s1 : testSizes) {
                 for (long s2 : testSizes) {
-                    for (long s3 : testSizes) {
-                        assertEquals(defaultPair.cpu().apply(s1, s2, s3), parsedPair.cpu().apply(s1, s2, s3),
-                                fun + " CPU mismatch at sizes " + s1 + "," + s2 + "," + s3);
-                        assertEquals(defaultPair.mem().apply(s1, s2, s3), parsedPair.mem().apply(s1, s2, s3),
-                                fun + " Mem mismatch at sizes " + s1 + "," + s2 + "," + s3);
-                    }
+                    assertEquals(defaultPair.cpu().apply(s1, s2, s1, s2),
+                            parsedPair.cpu().apply(s1, s2, s1, s2),
+                            fun + " CPU mismatch at sizes " + s1 + "," + s2);
+                    assertEquals(defaultPair.mem().apply(s1, s2, s1, s2),
+                            parsedPair.mem().apply(s1, s2, s1, s2),
+                            fun + " Mem mismatch at sizes " + s1 + "," + s2);
                 }
             }
         }
@@ -136,7 +136,7 @@ class CostModelParserTest {
         long defaultCpu = defaultResult.budgetConsumed().cpuSteps();
 
         // Set doubled cost model and evaluate
-        javaProvider.setCostModelParams(doubled, 10);
+        javaProvider.setCostModelParams(doubled, PlutusLanguage.PLUTUS_V3, 10, 0);
         var customResult = javaProvider.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
         assertTrue(customResult.isSuccess());
         long customCpu = customResult.budgetConsumed().cpuSteps();
@@ -156,8 +156,8 @@ class CostModelParserTest {
 
     @Test
     void parse_longerArray_accepted() {
-        // PV11 arrays (350 params) should parse without error, using first 297
-        long[] flat = new long[350];
+        // Longer arrays should parse without error at PV10, using first 297
+        long[] flat = new long[400];
         long[] defaultFlat = CostModelParser.defaultToFlatArray();
         System.arraycopy(defaultFlat, 0, flat, 0, 297);
 
@@ -173,13 +173,159 @@ class CostModelParserTest {
     }
 
     @Test
+    void toFlatArray_pv11_length() {
+        long[] flat = CostModelParser.defaultToFlatArray(11);
+        assertEquals(350, flat.length);
+    }
+
+    // === PV11 round-trip tests ===
+
+    @Test
+    void parse_pv11_defaultValues_roundTrip() {
+        // Build PV11 flat array from defaults, parse back, verify all costs match
+        long[] flat = CostModelParser.defaultToFlatArray(11);
+        assertEquals(CostModelParser.PV11_PARAM_COUNT, flat.length);
+
+        var parsed = CostModelParser.parse(flat, 11);
+        assertNotNull(parsed);
+
+        // Machine costs should match
+        assertEquals(DefaultCostModel.defaultMachineCosts(), parsed.machineCosts());
+
+        // Verify PV11-specific builtins
+        var defaultBcm = DefaultCostModel.defaultBuiltinCostModel();
+        var parsedBcm = parsed.builtinCostModel();
+
+        // DropList: LinearInX(116711, 1957) CPU + Const(4) mem
+        var dropListCpu = parsedBcm.get(DefaultFun.DropList).cpu();
+        assertEquals(defaultBcm.get(DefaultFun.DropList).cpu().apply(10), dropListCpu.apply(10));
+        var dropListMem = parsedBcm.get(DefaultFun.DropList).mem();
+        assertEquals(4, dropListMem.apply());
+
+        // InsertCoin: LinearInU (4th arg) — test with 4 args
+        var insertCoinCpu = parsedBcm.get(DefaultFun.InsertCoin).cpu();
+        assertEquals(defaultBcm.get(DefaultFun.InsertCoin).cpu().apply(1, 1, 1, 10),
+                insertCoinCpu.apply(1, 1, 1, 10));
+
+        // UnionValue: WithInteractionInXAndY
+        var unionCpu = parsedBcm.get(DefaultFun.UnionValue).cpu();
+        assertEquals(defaultBcm.get(DefaultFun.UnionValue).cpu().apply(5, 10),
+                unionCpu.apply(5, 10));
+
+        // ValueContains: ConstAboveDiagonalLinear — above and below diagonal
+        var vcCpu = parsedBcm.get(DefaultFun.ValueContains).cpu();
+        assertEquals(defaultBcm.get(DefaultFun.ValueContains).cpu().apply(3, 10),
+                vcCpu.apply(3, 10));  // above diagonal
+        assertEquals(defaultBcm.get(DefaultFun.ValueContains).cpu().apply(10, 3),
+                vcCpu.apply(10, 3));  // below diagonal
+
+        // UnValueData: QuadraticInX
+        var uvdCpu = parsedBcm.get(DefaultFun.UnValueData).cpu();
+        assertEquals(defaultBcm.get(DefaultFun.UnValueData).cpu().apply(20),
+                uvdCpu.apply(20));
+
+        // ExpModInteger (moved from defaults-only to PV11 array)
+        var expModCpu = parsedBcm.get(DefaultFun.ExpModInteger).cpu();
+        assertEquals(defaultBcm.get(DefaultFun.ExpModInteger).cpu().apply(5, 10, 20),
+                expModCpu.apply(5, 10, 20));
+    }
+
+    @Test
+    void parse_pv11_allBuiltinCostsMatch() {
+        // Comprehensive PV11 check: for every builtin with defaults, verify parsed matches
+        long[] flat = CostModelParser.defaultToFlatArray(11);
+        var parsed = CostModelParser.parse(flat, 11);
+
+        var defaultBcm = DefaultCostModel.defaultBuiltinCostModel();
+        var parsedBcm = parsed.builtinCostModel();
+
+        long[] testSizes = {1, 5, 10, 20, 100};
+
+        for (var fun : DefaultFun.values()) {
+            var defaultPair = defaultBcm.get(fun);
+            if (defaultPair == null) continue;
+            // MultiIndexArray is JuLC-specific, not in PV11 flat array
+            if (fun == DefaultFun.MultiIndexArray) continue;
+
+            var parsedPair = parsedBcm.get(fun);
+            assertNotNull(parsedPair, "Missing cost pair for " + fun);
+
+            // Test with 4-arg sizes (covers LinearInU which needs 4th arg)
+            for (long s1 : testSizes) {
+                for (long s2 : testSizes) {
+                    assertEquals(defaultPair.cpu().apply(s1, s2, s1, s2),
+                            parsedPair.cpu().apply(s1, s2, s1, s2),
+                            fun + " CPU mismatch at sizes " + s1 + "," + s2);
+                    assertEquals(defaultPair.mem().apply(s1, s2, s1, s2),
+                            parsedPair.mem().apply(s1, s2, s1, s2),
+                            fun + " Mem mismatch at sizes " + s1 + "," + s2);
+                }
+            }
+        }
+    }
+
+    @Test
+    void parse_pv11_arrayRoundTrip() {
+        // PV11 serialize→parse→serialize must be lossless
+        long[] original = CostModelParser.defaultToFlatArray(11);
+        var parsed = CostModelParser.parse(original, 11);
+        long[] roundTripped = CostModelParser.toFlatArray(parsed.machineCosts(), parsed.builtinCostModel(), 11);
+
+        assertEquals(original.length, roundTripped.length);
+        for (int i = 0; i < original.length; i++) {
+            assertEquals(original[i], roundTripped[i],
+                    "PV11 round-trip mismatch at index " + i);
+        }
+    }
+
+    @Test
+    void parse_pv11_wrongArrayLength_throws() {
+        // PV11 parse should reject arrays shorter than 350
+        assertThrows(IllegalArgumentException.class, () ->
+                CostModelParser.parse(new long[297], 11));
+        assertThrows(IllegalArgumentException.class, () ->
+                CostModelParser.parse(new long[349], 11));
+    }
+
+    @Test
+    void parse_pv10_backwardCompat() {
+        // PV10 arrays (297 params) still parse correctly at PV10
+        long[] flat = CostModelParser.defaultToFlatArray();
+        assertEquals(297, flat.length);
+
+        var parsed = CostModelParser.parse(flat, 10);
+        assertNotNull(parsed);
+        assertEquals(DefaultCostModel.defaultMachineCosts(), parsed.machineCosts());
+
+        // PV10 parse should NOT have PV11 builtins from parsing (they come from defaults)
+        var bcm = parsed.builtinCostModel();
+        // These are present because DefaultCostModel now includes them as defaults
+        assertNotNull(bcm.get(DefaultFun.DropList), "DropList should be present from defaults");
+    }
+
+    @Test
+    void parse_pv11_setCostModelParams_endToEnd() {
+        // End-to-end: build PV11 array, set on provider, evaluate with PV11 builtins
+        var provider = new JavaVmProvider();
+        long[] flat = CostModelParser.defaultToFlatArray(11);
+        provider.setCostModelParams(flat, PlutusLanguage.PLUTUS_V3, 11, 0);
+
+        // Simple program that doesn't use PV11 builtins — just verify it works
+        var program = UplcParser.parseProgram(
+                "(program 1.0.0 [[(builtin addInteger) (con integer 3)] (con integer 4)])");
+        var result = provider.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
+        assertTrue(result.isSuccess());
+        assertTrue(result.budgetConsumed().cpuSteps() > 0);
+    }
+
+    @Test
     void parse_defaultValues_matchesVmBudget() {
         // Parse default flat array, evaluate, verify same budget as without setCostModelParams
         var provider1 = new JavaVmProvider();
         var provider2 = new JavaVmProvider();
 
         long[] flat = CostModelParser.defaultToFlatArray();
-        provider2.setCostModelParams(flat, 10);
+        provider2.setCostModelParams(flat, PlutusLanguage.PLUTUS_V3, 10, 0);
 
         var program = UplcParser.parseProgram(
                 "(program 1.0.0 [[(builtin addInteger) (con integer 3)] (con integer 4)])");
@@ -193,5 +339,82 @@ class CostModelParserTest {
                 "CPU budget should match with explicit default cost model");
         assertEquals(result1.budgetConsumed().memoryUnits(), result2.budgetConsumed().memoryUnits(),
                 "Memory budget should match with explicit default cost model");
+    }
+
+    // === DefaultCostModel PV11 builtin tests ===
+
+    @Test
+    void defaultCostModel_pv11BuiltinsHaveNonNullCosts() {
+        var bcm = DefaultCostModel.defaultBuiltinCostModel();
+        DefaultFun[] pv11Builtins = {
+                DefaultFun.DropList, DefaultFun.LengthOfArray, DefaultFun.ListToArray,
+                DefaultFun.IndexArray, DefaultFun.Bls12_381_G1_multiScalarMul,
+                DefaultFun.Bls12_381_G2_multiScalarMul, DefaultFun.InsertCoin,
+                DefaultFun.LookupCoin, DefaultFun.UnionValue, DefaultFun.ValueContains,
+                DefaultFun.ValueData, DefaultFun.UnValueData, DefaultFun.ScaleValue,
+                DefaultFun.MultiIndexArray
+        };
+        for (var fun : pv11Builtins) {
+            var pair = bcm.get(fun);
+            assertNotNull(pair, "Missing cost pair for PV11 builtin: " + fun);
+            assertNotNull(pair.cpu(), "Null CPU cost for " + fun);
+            assertNotNull(pair.mem(), "Null mem cost for " + fun);
+        }
+    }
+
+    @Test
+    void pv11_customCostModel_affectsBudget() {
+        long[] defaultFlat = CostModelParser.defaultToFlatArray(11);
+        long[] custom = defaultFlat.clone();
+        custom[302] += 1000; // DropList CPU intercept (index 302)
+
+        var defaultProvider = new JavaVmProvider();
+        var customProvider = new JavaVmProvider();
+        customProvider.setCostModelParams(custom, PlutusLanguage.PLUTUS_V3, 11, 0);
+
+        var program = UplcParser.parseProgram(
+                "(program 1.0.0 [[(force (builtin dropList)) (con integer 0)] (con (list integer) [1,2,3])])");
+
+        var defaultResult = defaultProvider.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
+        var customResult = customProvider.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
+
+        assertTrue(defaultResult.isSuccess(), "Default should succeed: " + defaultResult);
+        assertTrue(customResult.isSuccess(), "Custom should succeed: " + customResult);
+        assertTrue(customResult.budgetConsumed().cpuSteps() > defaultResult.budgetConsumed().cpuSteps(),
+                "Custom CPU (" + customResult.budgetConsumed().cpuSteps()
+                + ") should be > default CPU (" + defaultResult.budgetConsumed().cpuSteps() + ")");
+    }
+
+    @Test
+    void parse_pv11_longerArray_accepted() {
+        long[] flat = new long[400];
+        long[] pv11Flat = CostModelParser.defaultToFlatArray(11);
+        System.arraycopy(pv11Flat, 0, flat, 0, 350);
+        var parsed = CostModelParser.parse(flat, 11);
+        assertNotNull(parsed);
+        assertEquals(DefaultCostModel.defaultMachineCosts(), parsed.machineCosts());
+    }
+
+    @Test
+    void costFunctionShapes_pv11() {
+        // Verify the new cost function types produce expected values
+
+        // LinearInU: intercept + slope * sizes[3]
+        var liu = new CostFunction.LinearInU(100, 5);
+        assertEquals(100 + 5 * 20, liu.apply(1, 2, 3, 20));
+
+        // QuadraticInX: c0 + c1*x + c2*x*x
+        var qix = new CostFunction.QuadraticInX(10, 3, 2);
+        assertEquals(10 + 3 * 5 + 2 * 25, qix.apply(5));
+
+        // ConstAboveDiagonalLinear: constant when x < y, linear below
+        var cadl = new CostFunction.ConstAboveDiagonalLinear(999, 100, 3, 7);
+        assertEquals(999, cadl.apply(3, 10));  // above diagonal (x < y)
+        assertEquals(100 + 3 * 10 + 7 * 3, cadl.apply(10, 3));  // below diagonal (x >= y)
+        assertEquals(100 + 3 * 5 + 7 * 5, cadl.apply(5, 5));  // on diagonal (x == y)
+
+        // WithInteractionInXAndY: c00 + c10*x + c01*y + c11*x*y
+        var wi = new CostFunction.WithInteractionInXAndY(10, 3, 7, 2);
+        assertEquals(10 + 3 * 5 + 7 * 4 + 2 * 5 * 4, wi.apply(5, 4));
     }
 }

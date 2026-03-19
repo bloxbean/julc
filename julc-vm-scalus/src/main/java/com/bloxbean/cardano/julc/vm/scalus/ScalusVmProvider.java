@@ -35,7 +35,19 @@ public class ScalusVmProvider implements JulcVmProvider {
     volatile MajorProtocolVersion protocolVersion;
 
     @Override
-    public void setCostModelParams(long[] costModelValues, int protocolMajorVersion) {
+    public void setCostModelParams(long[] costModelValues, PlutusLanguage language,
+                                   int protocolMajorVersion, int protocolMinorVersion) {
+        // Map protocol major version to Scalus MajorProtocolVersion
+        MajorProtocolVersion pv = protocolMajorVersion >= 10
+                ? MajorProtocolVersion.plominPV()
+                : MajorProtocolVersion.changPV();
+        this.protocolVersion = pv;
+
+        // Only V3 supports custom MachineParams in Scalus; V1/V2 use built-in defaults
+        if (language != PlutusLanguage.PLUTUS_V3) {
+            return;
+        }
+
         // Convert long[] to Scala IndexedSeq<Long> (boxed)
         var builder = scala.collection.immutable.Vector$.MODULE$.<Object>newBuilder();
         for (long v : costModelValues) {
@@ -48,14 +60,8 @@ public class ScalusVmProvider implements JulcVmProvider {
                 scala.collection.immutable.Map$.MODULE$.<Object, scala.collection.immutable.IndexedSeq<Object>>empty()
                         .updated(Language.PlutusV3, indexedSeq);
 
-        // Map protocol major version to Scalus MajorProtocolVersion
-        MajorProtocolVersion pv = protocolMajorVersion >= 10
-                ? MajorProtocolVersion.plominPV()
-                : MajorProtocolVersion.changPV();
-
         CostModels costModels = new CostModels(map);
         this.machineParams = MachineParams.fromCostModels(costModels, Language.PlutusV3, pv);
-        this.protocolVersion = pv;
     }
 
     @Override

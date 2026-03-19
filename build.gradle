@@ -58,6 +58,7 @@ subprojects {
     tasks.withType(Test).configureEach {
         useJUnitPlatform()
 //        jvmArgs '--enable-preview'
+        jvmArgs '--enable-native-access=ALL-UNNAMED'
         maxHeapSize = '1g'
     }
 

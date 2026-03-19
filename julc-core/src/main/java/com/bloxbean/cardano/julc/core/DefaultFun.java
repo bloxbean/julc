@@ -1,7 +1,7 @@
 package com.bloxbean.cardano.julc.core;
 
 /**
- * All 102 Plutus Core built-in functions (V1 through V4).
+ * All 102 Plutus Core built-in functions (V1 through V3).
  * <p>
  * Each entry has a 7-bit FLAT encoding code that must match the Plutus specification exactly.
  * The codes are contiguous from 0 to 101.
@@ -11,7 +11,7 @@ package com.bloxbean.cardano.julc.core;
  *   <li>V1 (0-50): Integer, ByteString, String, Crypto, Control, Pair, List, Data ops</li>
  *   <li>V2 (51-53): SerialiseData, SECP256k1 signature verification</li>
  *   <li>V3 (54-87): BLS12-381, bitwise ops, hash functions, integer/bytestring conversion (CIP-381/121/122/123/127/109)</li>
- *   <li>V4 (88-101): Array ops, DropList, BLS multi-scalar mul, MaryEraValue ops (CIP-156/158/153/133)</li>
+ *   <li>V3 PV11 Batch 6 (88-101): Array ops, DropList, BLS MSM, MaryEraValue ops (CIP-156/158/153/133)</li>
  * </ul>
  */
 public enum DefaultFun {
@@ -142,19 +142,19 @@ public enum DefaultFun {
     // Modular exponentiation (V3, CIP-109)
     ExpModInteger(87),
 
-    // List extensions (V4, CIP-158)
+    // List extensions (PV11 Batch 6, CIP-158)
     DropList(88),
 
-    // Array operations (V4, CIP-156)
+    // Array operations (PV11 Batch 6, CIP-156)
     LengthOfArray(89),
     ListToArray(90),
     IndexArray(91),
 
-    // BLS12-381 multi-scalar multiplication (V4, CIP-133)
+    // BLS12-381 multi-scalar multiplication (PV11 Batch 6, CIP-133)
     Bls12_381_G1_multiScalarMul(92),
     Bls12_381_G2_multiScalarMul(93),
 
-    // MaryEraValue operations (V4, CIP-153)
+    // MaryEraValue operations (PV11 Batch 6, CIP-153)
     InsertCoin(94),
     LookupCoin(95),
     UnionValue(96),
@@ -163,7 +163,7 @@ public enum DefaultFun {
     UnValueData(99),
     ScaleValue(100),
 
-    // Array multi-index (V4, CIP-156)
+    // Array multi-index (PV11 Batch 6, CIP-156)
     MultiIndexArray(101);
 
     private final int flatCode;
@@ -181,13 +181,12 @@ public enum DefaultFun {
      * The minimum Plutus language version that includes this builtin.
      * <p>
      * Returns 1 for V1 builtins (codes 0-50), 2 for V2 (51-53),
-     * 3 for V3 (54-87), 4 for V4 (88+).
+     * 3 for V3 (54-101, includes PV11 Batch 6).
      */
     public int minLanguageVersion() {
         if (flatCode <= 50) return 1;
         if (flatCode <= 53) return 2;
-        if (flatCode <= 87) return 3;
-        return 4;
+        return 3;  // codes 54-101 all available in V3 (PV11 Batch 6)
     }
 
     /**

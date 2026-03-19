@@ -239,6 +239,38 @@ class UplcTextRoundTripTest {
         assertTextRoundTrip("(con (list (list integer)) [[1, 2], [3]])");
     }
 
+    // ---- Array and Value round-trips ----
+
+    @Test
+    void roundTripConstArray() {
+        assertConstRoundTrip(new Constant.ArrayConst(DefaultUni.BOOL,
+                List.of(Constant.bool(true), Constant.bool(false))));
+        assertConstRoundTrip(new Constant.ArrayConst(DefaultUni.INTEGER, List.of()));
+        assertConstRoundTrip(new Constant.ArrayConst(DefaultUni.INTEGER,
+                List.of(Constant.integer(1), Constant.integer(2), Constant.integer(3))));
+    }
+
+    @Test
+    void roundTripConstValue() {
+        assertConstRoundTrip(new Constant.ValueConst(List.of()));
+        assertConstRoundTrip(new Constant.ValueConst(List.of(
+                new Constant.ValueConst.ValueEntry(new byte[]{0x01, 0x02},
+                        List.of(new Constant.ValueConst.TokenEntry(new byte[]{0x03}, BigInteger.valueOf(100)))))));
+    }
+
+    @Test
+    void textRoundTripArray() {
+        assertTextRoundTrip("(con (array bool) [True,False])");
+        assertTextRoundTrip("(con (array integer) [])");
+        assertTextRoundTrip("(con (array integer) [1,2,3])");
+    }
+
+    @Test
+    void textRoundTripValue() {
+        assertTextRoundTrip("(con value [(#0102, [(#03, 100)])])");
+        assertTextRoundTrip("(con value [])");
+    }
+
     // ---- Helpers ----
 
     private void assertTermRoundTrip(Term original) {

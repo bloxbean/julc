@@ -23,20 +23,12 @@ class PlutusConformanceTest {
 
     private static final JavaVmProvider PROVIDER = new JavaVmProvider();
 
-    /** V4/future builtins not supported by our V3-targeting implementation. */
+    /** Builtins/types not yet supported. */
     private static final Set<String> SKIP_DIRS = Set.of(
-            // V4 builtins
-            "dropList", "lengthOfArray", "listToArray", "indexArray",
-            "bls12_381_G1_multiScalarMul", "bls12_381_G2_multiScalarMul",
-            "insertCoin", "lookupCoin", "unionValue", "valueContains",
-            "valueData", "unValueData", "scaleValue", "multiIndexArray",
-            // V4 types (constant tests)
-            "array", "value"
     );
 
     /** Path substrings that trigger skipping. */
     private static final String[] SKIP_PATH_CONTAINS = {
-            "bls12-381", "bls12_381"
     };
 
     @TestFactory
@@ -72,13 +64,6 @@ class PlutusConformanceTest {
     private void runConformanceTest(Path uplcFile, Path expectedFile) throws IOException {
         String input = Files.readString(uplcFile).trim();
         String expected = Files.readString(expectedFile).trim();
-
-        // Skip tests with V4 types in expected output
-        if (expected.contains("con value") || expected.contains("con array")) {
-            org.junit.jupiter.api.Assumptions.assumeTrue(false,
-                    "V4 type in expected output — skipped");
-            return;
-        }
 
         // Step 1: Parse input
         Program program;
@@ -213,12 +198,33 @@ class PlutusConformanceTest {
                     && Arrays.equals(g2a.value(), g2b.value());
             case Constant.Bls12_381_MlResult mla -> b instanceof Constant.Bls12_381_MlResult mlb
                     && Arrays.equals(mla.value(), mlb.value());
+            case Constant.ArrayConst aa -> b instanceof Constant.ArrayConst ab
+                    && aa.values().size() == ab.values().size()
+                    && constantListsEqual(aa.values(), ab.values());
+            case Constant.ValueConst va -> b instanceof Constant.ValueConst vb
+                    && va.entries().size() == vb.entries().size()
+                    && valueEntriesEqual(va.entries(), vb.entries());
         };
     }
 
     private boolean constantListsEqual(List<Constant> a, List<Constant> b) {
         for (int i = 0; i < a.size(); i++) {
             if (!constantsEqual(a.get(i), b.get(i))) return false;
+        }
+        return true;
+    }
+
+    private boolean valueEntriesEqual(List<Constant.ValueConst.ValueEntry> a,
+                                       List<Constant.ValueConst.ValueEntry> b) {
+        for (int i = 0; i < a.size(); i++) {
+            if (!Arrays.equals(a.get(i).policyId(), b.get(i).policyId())) return false;
+            if (a.get(i).tokens().size() != b.get(i).tokens().size()) return false;
+            for (int j = 0; j < a.get(i).tokens().size(); j++) {
+                var ta = a.get(i).tokens().get(j);
+                var tb = b.get(i).tokens().get(j);
+                if (!Arrays.equals(ta.tokenName(), tb.tokenName())) return false;
+                if (!ta.quantity().equals(tb.quantity())) return false;
+            }
         }
         return true;
     }

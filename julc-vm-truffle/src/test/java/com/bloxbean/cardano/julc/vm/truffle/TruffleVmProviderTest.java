@@ -245,7 +245,7 @@ class TruffleVmProviderTest {
         // Create a provider with custom cost model
         var customProvider = new TruffleVmProvider();
         // Just verify the method doesn't throw
-        customProvider.setCostModelParams(new long[297], 10);
+        customProvider.setCostModelParams(new long[297], PlutusLanguage.PLUTUS_V3, 10, 0);
         // Verify evaluation still works after setting params
         var customResult = customProvider.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
         assertInstanceOf(EvalResult.Success.class, customResult);

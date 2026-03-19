@@ -74,6 +74,8 @@ class DefaultUniTest {
             case DefaultUni.Bls12_381_G1_Element _ -> "g1";
             case DefaultUni.Bls12_381_G2_Element _ -> "g2";
             case DefaultUni.Bls12_381_MlResult _ -> "ml";
+            case DefaultUni.ProtoArray _ -> "array";
+            case DefaultUni.ProtoValue _ -> "value";
             case DefaultUni.Apply _ -> "apply";
         };
         assertEquals("integer", name);

@@ -19,6 +19,8 @@ public sealed interface DefaultUni {
     record Bls12_381_G1_Element() implements DefaultUni {}
     record Bls12_381_G2_Element() implements DefaultUni {}
     record Bls12_381_MlResult()   implements DefaultUni {}
+    record ProtoArray()  implements DefaultUni {}
+    record ProtoValue()  implements DefaultUni {}
 
     /** Type application, e.g. List(Integer) = Apply(ProtoList, Integer) */
     record Apply(DefaultUni f, DefaultUni arg) implements DefaultUni {}
@@ -32,6 +34,10 @@ public sealed interface DefaultUni {
         return new Apply(new Apply(new ProtoPair(), a), b);
     }
 
+    static DefaultUni arrayOf(DefaultUni elemType) {
+        return new Apply(new ProtoArray(), elemType);
+    }
+
     // Singleton instances for base types
     DefaultUni INTEGER     = new Integer();
     DefaultUni BYTESTRING  = new ByteString();
@@ -42,4 +48,6 @@ public sealed interface DefaultUni {
     DefaultUni BLS12_381_G1 = new Bls12_381_G1_Element();
     DefaultUni BLS12_381_G2 = new Bls12_381_G2_Element();
     DefaultUni BLS12_381_ML = new Bls12_381_MlResult();
+    DefaultUni PROTO_ARRAY = new ProtoArray();
+    DefaultUni PROTO_VALUE = new ProtoValue();
 }

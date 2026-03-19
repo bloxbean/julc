@@ -190,4 +190,52 @@ public sealed interface CostFunction {
             return cost0;
         }
     }
+
+    /** Cost is linear in the fourth argument (index 3): intercept + slope * u. */
+    record LinearInU(long intercept, long slope) implements CostFunction {
+        @Override
+        public long apply(long... sizes) {
+            return intercept + slope * sizes[3];
+        }
+    }
+
+    /** Quadratic in the first argument: c0 + c1*x + c2*x*x. */
+    record QuadraticInX(long c0, long c1, long c2) implements CostFunction {
+        @Override
+        public long apply(long... sizes) {
+            long x = sizes[0];
+            return c0 + c1 * x + c2 * x * x;
+        }
+    }
+
+    /**
+     * Constant cost when x &lt; y (above diagonal), linear in x and y below.
+     * Used for ValueContains CPU.
+     */
+    record ConstAboveDiagonalLinear(long constant, long intercept, long slope1, long slope2) implements CostFunction {
+        @Override
+        public long apply(long... sizes) {
+            long x = sizes[0];
+            long y = sizes[1];
+            if (x < y) {
+                return constant;
+            }
+            return intercept + slope1 * x + slope2 * y;
+        }
+    }
+
+    /**
+     * Bilinear with interaction term: c00 + c10*x + c01*y + c11*x*y.
+     * Used for UnionValue CPU.
+     * <p>
+     * Field order matches Haskell ParamName canonical ordering (c00, c10, c01, c11).
+     */
+    record WithInteractionInXAndY(long c00, long c10, long c01, long c11) implements CostFunction {
+        @Override
+        public long apply(long... sizes) {
+            long x = sizes[0];
+            long y = sizes[1];
+            return c00 + c10 * x + c01 * y + c11 * x * y;
+        }
+    }
 }

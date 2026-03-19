@@ -327,7 +327,7 @@ class BudgetCrossValidationTest {
         // Evaluate with parsed-from-flat-array params
         var parsedProvider = new JavaVmProvider();
         long[] flat = CostModelParser.defaultToFlatArray();
-        parsedProvider.setCostModelParams(flat, 10); // PV10
+        parsedProvider.setCostModelParams(flat, PlutusLanguage.PLUTUS_V3, 10, 0); // PV10
         var parsedResult = parsedProvider.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
         assertTrue(parsedResult.isSuccess(), "Parsed-params evaluation should succeed");
 
@@ -346,7 +346,7 @@ class BudgetCrossValidationTest {
 
         // Apply to Java VM
         var customJava = new JavaVmProvider();
-        customJava.setCostModelParams(custom, 10);
+        customJava.setCostModelParams(custom, PlutusLanguage.PLUTUS_V3, 10, 0);
 
         // Evaluate a program that uses AddInteger
         String uplc = "(program 1.0.0 [[(builtin addInteger) (con integer 3)] (con integer 4)])";
@@ -407,6 +407,171 @@ class BudgetCrossValidationTest {
                 "(program 1.0.0 [[(builtin equalsData) "
                 + "(con data (B #0000000000000000000000000000000000000000000000000000000000000000))] "
                 + "(con data (B #0000000000000000000000000000000000000000000000000000000000000000))])");
+    }
+
+    // === PV11 builtin budget tests ===
+
+    // --- MaryEraValue builtins ---
+
+    @Test
+    void insertCoin_budget() {
+        var result = evaluateJava("""
+                (program 1.0.0
+                  [(builtin insertCoin)
+                   (con bytestring #aa) (con bytestring #bb)
+                   (con integer 10)
+                   (con value [(#aa, [(#aa, 5)])])])""");
+        assertTrue(result.isSuccess(), "insertCoin should succeed: " + result);
+        assertTrue(result.budgetConsumed().cpuSteps() > 0, "CPU should be > 0");
+        assertTrue(result.budgetConsumed().memoryUnits() > 0, "Mem should be > 0");
+    }
+
+    @Test
+    void lookupCoin_budget() {
+        var result = evaluateJava("""
+                (program 1.0.0
+                  [(builtin lookupCoin)
+                   (con bytestring #aa) (con bytestring #aa)
+                   (con value [(#aa, [(#aa, 100)]), (#bb, [(#aa, 1)])])])""");
+        assertTrue(result.isSuccess(), "lookupCoin should succeed: " + result);
+        assertTrue(result.budgetConsumed().cpuSteps() > 0, "CPU should be > 0");
+        assertTrue(result.budgetConsumed().memoryUnits() > 0, "Mem should be > 0");
+    }
+
+    @Test
+    void unionValue_budget() {
+        var result = evaluateJava("""
+                (program 1.0.0
+                  [(builtin unionValue)
+                   (con value [(#aa, [(#aa, 5)])])
+                   (con value [(#bb, [(#bb, 10)])])])""");
+        assertTrue(result.isSuccess(), "unionValue should succeed: " + result);
+        assertTrue(result.budgetConsumed().cpuSteps() > 0, "CPU should be > 0");
+        assertTrue(result.budgetConsumed().memoryUnits() > 0, "Mem should be > 0");
+    }
+
+    @Test
+    void valueContains_aboveDiagonal_budget() {
+        // x < y (above diagonal path in ConstAboveDiagonalLinear)
+        var result = evaluateJava("""
+                (program 1.0.0
+                  [(builtin valueContains)
+                   (con value [(#aa, [(#aa, 10)])])
+                   (con value [(#aa, [(#aa, 10), (#bb, 2800)]), (#ff, [(#88, 100)])])])""");
+        assertTrue(result.isSuccess(), "valueContains (above diagonal) should succeed: " + result);
+        assertTrue(result.budgetConsumed().cpuSteps() > 0, "CPU should be > 0");
+        assertTrue(result.budgetConsumed().memoryUnits() > 0, "Mem should be > 0");
+    }
+
+    @Test
+    void valueContains_belowDiagonal_budget() {
+        // x >= y (below diagonal path in ConstAboveDiagonalLinear)
+        var result = evaluateJava("""
+                (program 1.0.0
+                  [(builtin valueContains)
+                   (con value [(#aa, [(#aa, 10), (#bb, 2800)]), (#ff, [(#88, 100)])])
+                   (con value [(#aa, [(#aa, 10)])])])""");
+        assertTrue(result.isSuccess(), "valueContains (below diagonal) should succeed: " + result);
+        assertTrue(result.budgetConsumed().cpuSteps() > 0, "CPU should be > 0");
+        assertTrue(result.budgetConsumed().memoryUnits() > 0, "Mem should be > 0");
+    }
+
+    @Test
+    void valueData_budget() {
+        var result = evaluateJava("""
+                (program 1.0.0
+                  [(builtin valueData)
+                   (con value [(#aa, [(#aa, 1)]), (#bb, [(#bb, 2)])])])""");
+        assertTrue(result.isSuccess(), "valueData should succeed: " + result);
+        assertTrue(result.budgetConsumed().cpuSteps() > 0, "CPU should be > 0");
+        assertTrue(result.budgetConsumed().memoryUnits() > 0, "Mem should be > 0");
+    }
+
+    @Test
+    void unValueData_budget() {
+        var result = evaluateJava("""
+                (program 1.0.0
+                  [(builtin unValueData)
+                   (con data (Map [(B #aa, Map [(B #aa, I 1)]), (B #bb, Map [(B #bb, I 2)])]))])""");
+        assertTrue(result.isSuccess(), "unValueData should succeed: " + result);
+        assertTrue(result.budgetConsumed().cpuSteps() > 0, "CPU should be > 0");
+        assertTrue(result.budgetConsumed().memoryUnits() > 0, "Mem should be > 0");
+    }
+
+    @Test
+    void scaleValue_budget() {
+        var result = evaluateJava("""
+                (program 1.0.0
+                  [(builtin scaleValue)
+                   (con integer 2)
+                   (con value [(#aa, [(#aa, 5), (#bb, -15), (#cc, 20)])])])""");
+        assertTrue(result.isSuccess(), "scaleValue should succeed: " + result);
+        assertTrue(result.budgetConsumed().cpuSteps() > 0, "CPU should be > 0");
+        assertTrue(result.budgetConsumed().memoryUnits() > 0, "Mem should be > 0");
+    }
+
+    // --- BLS MSM builtins ---
+
+    @Test
+    void blsG1_multiScalarMul_budget() {
+        var result = evaluateJava("""
+                (program 1.0.0
+                  [(builtin bls12_381_G1_multiScalarMul)
+                   (con (list integer) [-7843724524521392138901923801823923123123454352157])
+                   (con (list bls12_381_G1_element) [0x950dfd33da2682260c76038dfb8bad6e84ae9d599a3c151815945ac1e6ef6b1027cd917f3907479d20d636ce437a41f5])])""");
+        assertTrue(result.isSuccess(), "G1 multiScalarMul should succeed: " + result);
+        assertTrue(result.budgetConsumed().cpuSteps() > 0, "CPU should be > 0");
+        assertTrue(result.budgetConsumed().memoryUnits() > 0, "Mem should be > 0");
+    }
+
+    @Test
+    void blsG2_multiScalarMul_budget() {
+        var result = evaluateJava("""
+                (program 1.0.0
+                  [(builtin bls12_381_G2_multiScalarMul)
+                   (con (list integer) [42])
+                   (con (list bls12_381_G2_element) [0xb889aa4128a72d8e2d62efae37ed4c93dd5500145e6e8dd532e11d2219866942e712c304086c9be5ea209028a252d5b60fbda94fe4ace6ba00c9b27ff6045df4088c89271d56b098b86e8be8fa4738008cd5edb4df9671dcc01591f87610fa72])])""");
+        assertTrue(result.isSuccess(), "G2 multiScalarMul should succeed: " + result);
+        assertTrue(result.budgetConsumed().cpuSteps() > 0, "CPU should be > 0");
+        assertTrue(result.budgetConsumed().memoryUnits() > 0, "Mem should be > 0");
+    }
+
+    // --- Array/List PV11 builtins ---
+
+    @Test
+    void dropList_budget() {
+        // dropList requires force (polymorphic), operates on list
+        var result = evaluateJava("""
+                (program 1.0.0
+                  [[(force (builtin dropList)) (con integer 0)]
+                   (con (list integer) [11, 22, 33])])""");
+        assertTrue(result.isSuccess(), "dropList should succeed");
+        assertTrue(result.budgetConsumed().cpuSteps() > 0, "CPU should be > 0");
+        assertTrue(result.budgetConsumed().memoryUnits() > 0, "Mem should be > 0");
+    }
+
+    @Test
+    void indexArray_budget() {
+        // indexArray requires force (polymorphic), operates on array constant
+        var result = evaluateJava("""
+                (program 1.1.0
+                  [[(force (builtin indexArray))
+                    (con (array integer) [10, 20, 30])]
+                   (con integer 1)])""");
+        assertTrue(result.isSuccess(), "indexArray should succeed");
+        assertTrue(result.budgetConsumed().cpuSteps() > 0, "CPU should be > 0");
+        assertTrue(result.budgetConsumed().memoryUnits() > 0, "Mem should be > 0");
+    }
+
+    @Test
+    void lengthOfArray_budget() {
+        // lengthOfArray requires force (polymorphic)
+        var result = evaluateJava("""
+                (program 1.1.0
+                  [(force (builtin lengthOfArray))
+                   (con (array integer) [1, 2, 3])])""");
+        assertTrue(result.isSuccess(), "lengthOfArray should succeed");
+        assertTrue(result.budgetConsumed().cpuSteps() > 0, "CPU should be > 0");
     }
 
     private void crossValidateBudget(String uplcProgram) {

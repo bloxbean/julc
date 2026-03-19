@@ -157,6 +157,24 @@ public final class UplcPrinter {
                 sb.append("bls12_381_mlresult 0x");
                 sb.append(HEX.formatHex(ml.value()));
             }
+            case Constant.ArrayConst ac -> {
+                printType(ac.type(), sb);
+                sb.append(' ');
+                sb.append('[');
+                for (int i = 0; i < ac.values().size(); i++) {
+                    if (i > 0) sb.append(",");
+                    printConstantValue(ac.values().get(i), sb);
+                }
+                sb.append(']');
+            }
+            case Constant.ValueConst vc -> {
+                sb.append("value [");
+                for (int i = 0; i < vc.entries().size(); i++) {
+                    if (i > 0) sb.append(", ");
+                    printValueEntry(vc.entries().get(i), sb);
+                }
+                sb.append(']');
+            }
         }
     }
 
@@ -202,6 +220,22 @@ public final class UplcPrinter {
                 sb.append("0x");
                 sb.append(HEX.formatHex(ml.value()));
             }
+            case Constant.ArrayConst ac -> {
+                sb.append('[');
+                for (int i = 0; i < ac.values().size(); i++) {
+                    if (i > 0) sb.append(",");
+                    printConstantValue(ac.values().get(i), sb);
+                }
+                sb.append(']');
+            }
+            case Constant.ValueConst vc -> {
+                sb.append('[');
+                for (int i = 0; i < vc.entries().size(); i++) {
+                    if (i > 0) sb.append(", ");
+                    printValueEntry(vc.entries().get(i), sb);
+                }
+                sb.append(']');
+            }
         }
     }
 
@@ -218,6 +252,8 @@ public final class UplcPrinter {
             case DefaultUni.Bls12_381_G1_Element ignored -> sb.append("bls12_381_G1_element");
             case DefaultUni.Bls12_381_G2_Element ignored -> sb.append("bls12_381_G2_element");
             case DefaultUni.Bls12_381_MlResult ignored -> sb.append("bls12_381_mlresult");
+            case DefaultUni.ProtoArray ignored -> sb.append("array");
+            case DefaultUni.ProtoValue ignored -> sb.append("value");
             case DefaultUni.Apply a -> {
                 // Special-case pair: Apply(Apply(ProtoPair, typeA), typeB) → (pair typeA typeB)
                 if (a.f() instanceof DefaultUni.Apply inner
@@ -236,6 +272,22 @@ public final class UplcPrinter {
                 }
             }
         }
+    }
+
+    private static void printValueEntry(Constant.ValueConst.ValueEntry entry, StringBuilder sb) {
+        sb.append("(#");
+        sb.append(HEX.formatHex(entry.policyId()));
+        sb.append(", [");
+        for (int i = 0; i < entry.tokens().size(); i++) {
+            if (i > 0) sb.append(", ");
+            var token = entry.tokens().get(i);
+            sb.append("(#");
+            sb.append(HEX.formatHex(token.tokenName()));
+            sb.append(", ");
+            sb.append(token.quantity());
+            sb.append(')');
+        }
+        sb.append("])");
     }
 
     private static void printPlutusData(PlutusData data, StringBuilder sb) {

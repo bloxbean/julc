@@ -5,6 +5,7 @@ import com.bloxbean.cardano.julc.core.text.UplcParser;
 import com.bloxbean.cardano.julc.core.text.UplcPrinter;
 import com.bloxbean.cardano.julc.vm.EvalResult;
 import com.bloxbean.cardano.julc.vm.PlutusLanguage;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;
 
@@ -27,29 +28,23 @@ import java.util.stream.Stream;
  *       "parse error", or a UPLC program in text format</li>
  * </ul>
  */
+@Disabled("Scalus is an external backend — conformance tests run manually, not as part of CI build")
 class PlutusConformanceTest {
 
     private static final ScalusVmProvider PROVIDER = new ScalusVmProvider();
 
     /**
-     * V4/future builtins not supported by our V3-targeting implementation.
-     * Tests referencing these builtins or the 'value'/'array' types are skipped.
-     */
-    /**
-     * V4/future builtins not supported by our V3-targeting implementation.
-     * Tests referencing these builtins or the 'value'/'array' types are skipped.
+     * Tests skipped due to Scalus 0.16.0 limitations.
+     * Re-evaluate when upgrading Scalus version.
      */
     private static final Set<String> SKIP_DIRS = Set.of(
-            // V4 builtins
-            "dropList", "lengthOfArray", "listToArray", "indexArray",
-            "bls12_381_G1_multiScalarMul", "bls12_381_G2_multiScalarMul",
+            // PV11 Value/Array types: Scalus 0.16.0 FLAT codec can't decode these
             "insertCoin", "lookupCoin", "unionValue", "valueContains",
-            "valueData", "unValueData", "scaleValue", "multiIndexArray",
-            // V4 types (constant tests)
+            "valueData", "unValueData", "scaleValue",
+            "listToArray",
             "array", "value",
-            // Case-on-constant for built-in types: Scalus 0.15.0 doesn't support
+            // Case-on-constant for built-in types: Scalus doesn't support
             // scrutinizing built-in values (Bool, Integer, List, Pair, Unit) via case.
-            // The Plutus reference impl added this feature, but Scalus hasn't yet.
             "constant-case"
     );
 
@@ -95,13 +90,6 @@ class PlutusConformanceTest {
     private void runConformanceTest(Path uplcFile, Path expectedFile) throws IOException {
         String input = Files.readString(uplcFile).trim();
         String expected = Files.readString(expectedFile).trim();
-
-        // Skip tests with V4 'value' or 'array' type in expected output
-        if (expected.contains("con value") || expected.contains("con array")) {
-            org.junit.jupiter.api.Assumptions.assumeTrue(false,
-                    "V4 type in expected output — skipped");
-            return;
-        }
 
         // Step 1: Try to parse the input
         Program program;
@@ -241,6 +229,11 @@ class PlutusConformanceTest {
                     && Arrays.equals(g2a.value(), g2b.value());
             case Constant.Bls12_381_MlResult mla -> b instanceof Constant.Bls12_381_MlResult mlb
                     && Arrays.equals(mla.value(), mlb.value());
+            case Constant.ArrayConst aa -> b instanceof Constant.ArrayConst ab
+                    && aa.values().size() == ab.values().size()
+                    && constantListsEqual(aa.values(), ab.values());
+            case Constant.ValueConst va -> b instanceof Constant.ValueConst vb
+                    && va.equals(vb);
         };
     }
 

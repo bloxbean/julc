@@ -6,6 +6,7 @@ description = 'Pure Java CEK Machine - Plutus VM backend without external depend
 
 dependencies {
     api project(':julc-vm')
+    implementation project(':julc-bls')
     implementation 'org.bouncycastle:bcprov-jdk18on:1.78.1'
     testImplementation project(':julc-core')
     testRuntimeOnly project(':julc-vm-scalus')

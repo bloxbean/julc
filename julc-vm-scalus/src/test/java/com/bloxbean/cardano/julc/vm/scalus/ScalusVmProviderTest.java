@@ -711,7 +711,7 @@ class ScalusVmProviderTest {
                 public int priority() { return 0; }
             };
             // Should not throw
-            mockProvider.setCostModelParams(new long[]{1, 2, 3}, 10);
+            mockProvider.setCostModelParams(new long[]{1, 2, 3}, PlutusLanguage.PLUTUS_V3, 10, 0);
         }
     }
 

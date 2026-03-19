@@ -1,0 +1,21 @@
+plugins {
+    id 'java-library'
+}
+
+description = 'BLS12-381 cryptographic operations for JuLC VM'
+
+dependencies {
+    api project(':julc-core')
+    api 'foundation.icon:blst-java:0.3.2'
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            pom {
+                name = 'JuLC BLS'
+                description = 'BLS12-381 Cryptographic Operations (blst JNI wrapper)'
+            }
+        }
+    }
+}

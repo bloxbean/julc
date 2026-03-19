@@ -154,14 +154,24 @@ public final class JulcVm {
     }
 
     /**
-     * Set the cost model parameter values for the current language version.
+     * Set the cost model parameter values for a specific Plutus language version.
      * Values must be in the canonical order (matching the on-chain costModels array).
+     * <p>
+     * Mixed-version transactions require calling this once per language version
+     * present in the transaction (V1, V2, and/or V3).
+     * <p>
+     * The protocol version determines which builtins are available and therefore
+     * the expected parameter count. New builtins are added to all language versions
+     * (V1/V2/V3) in each protocol version, so V1/V2 arrays grow over time too.
      *
      * @param costModelValues       ordered array of cost model parameter values
+     * @param language              the Plutus language version these parameters are for
      * @param protocolMajorVersion  the protocol major version (e.g. 9 for Chang, 10 for Plomin)
+     * @param protocolMinorVersion  the protocol minor version
      */
-    public void setCostModelParams(long[] costModelValues, int protocolMajorVersion) {
-        provider.setCostModelParams(costModelValues, protocolMajorVersion);
+    public void setCostModelParams(long[] costModelValues, PlutusLanguage language,
+                                   int protocolMajorVersion, int protocolMinorVersion) {
+        provider.setCostModelParams(costModelValues, language, protocolMajorVersion, protocolMinorVersion);
     }
 
     /**

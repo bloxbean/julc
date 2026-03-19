@@ -120,6 +120,65 @@ public final class BuiltinHelper {
         return new CekValue.VCon(new Constant.PairConst(first, second));
     }
 
+    // --- Array and Value type helpers ---
+
+    public static Constant.ArrayConst asArrayConst(CekValue v, String context) {
+        if (v instanceof CekValue.VCon(Constant.ArrayConst ac)) {
+            return ac;
+        }
+        throw new BuiltinException(context + ": expected array, got " + describeValue(v));
+    }
+
+    public static Constant.ValueConst asValueConst(CekValue v, String context) {
+        if (v instanceof CekValue.VCon(Constant.ValueConst vc)) {
+            return vc;
+        }
+        throw new BuiltinException(context + ": expected value, got " + describeValue(v));
+    }
+
+    public static CekValue mkArray(DefaultUni elemType, List<Constant> values) {
+        return new CekValue.VCon(new Constant.ArrayConst(elemType, values));
+    }
+
+    public static CekValue mkValue(List<Constant.ValueConst.ValueEntry> entries) {
+        return new CekValue.VCon(new Constant.ValueConst(entries));
+    }
+
+    // --- BLS12-381 type helpers ---
+
+    public static byte[] asG1Element(CekValue v, String context) {
+        if (v instanceof CekValue.VCon(Constant.Bls12_381_G1Element g1)) {
+            return g1.value();
+        }
+        throw new BuiltinException(context + ": expected bls12_381_G1_element, got " + describeValue(v));
+    }
+
+    public static byte[] asG2Element(CekValue v, String context) {
+        if (v instanceof CekValue.VCon(Constant.Bls12_381_G2Element g2)) {
+            return g2.value();
+        }
+        throw new BuiltinException(context + ": expected bls12_381_G2_element, got " + describeValue(v));
+    }
+
+    public static byte[] asMlResult(CekValue v, String context) {
+        if (v instanceof CekValue.VCon(Constant.Bls12_381_MlResult ml)) {
+            return ml.value();
+        }
+        throw new BuiltinException(context + ": expected bls12_381_mlresult, got " + describeValue(v));
+    }
+
+    public static CekValue mkG1Element(byte[] value) {
+        return new CekValue.VCon(new Constant.Bls12_381_G1Element(value));
+    }
+
+    public static CekValue mkG2Element(byte[] value) {
+        return new CekValue.VCon(new Constant.Bls12_381_G2Element(value));
+    }
+
+    public static CekValue mkMlResult(byte[] value) {
+        return new CekValue.VCon(new Constant.Bls12_381_MlResult(value));
+    }
+
     private static String describeValue(CekValue v) {
         return switch (v) {
             case CekValue.VCon vc -> "VCon(" + vc.constant().type() + ")";

@@ -191,9 +191,12 @@ class LanguageVersionTest {
         }
 
         @Test
-        void v4_builtins_have_version_4() {
-            assertEquals(4, DefaultFun.DropList.minLanguageVersion());
-            assertEquals(4, DefaultFun.MultiIndexArray.minLanguageVersion());
+        void pv11_builtins_have_version_3() {
+            // PV11 Batch 6 builtins are available in V3
+            assertEquals(3, DefaultFun.DropList.minLanguageVersion());
+            assertEquals(3, DefaultFun.MultiIndexArray.minLanguageVersion());
+            assertEquals(3, DefaultFun.InsertCoin.minLanguageVersion());
+            assertEquals(3, DefaultFun.Bls12_381_G1_multiScalarMul.minLanguageVersion());
         }
 
         @Test
@@ -236,13 +239,13 @@ class LanguageVersionTest {
         }
 
         @Test
-        void v3_table_has_88_builtins() {
+        void v3_table_has_102_builtins() {
             var table = BuiltinTable.forLanguage(PlutusLanguage.PLUTUS_V3);
             int count = 0;
             for (var fun : DefaultFun.values()) {
                 if (table.isSupported(fun)) count++;
             }
-            assertEquals(88, count, "V3 should have 88 builtins (54 V2 + 34 V3)");
+            assertEquals(102, count, "V3 should have 102 builtins (54 V2 + 34 V3 + 14 PV11)");
         }
     }
 
@@ -489,7 +492,7 @@ class LanguageVersionTest {
             for (int i = 17; i <= 32; i++) {
                 v1Params[i] = 16000;
             }
-            provider.setCostModelParams(v1Params, PlutusLanguage.PLUTUS_V1);
+            provider.setCostModelParams(v1Params, PlutusLanguage.PLUTUS_V1, 10, 0);
 
             // V1 evaluation should work
             var term = Term.apply(

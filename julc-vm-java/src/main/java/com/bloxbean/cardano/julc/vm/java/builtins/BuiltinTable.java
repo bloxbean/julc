@@ -9,7 +9,7 @@ import java.util.Map;
 /**
  * Master registry mapping {@link DefaultFun} to its signature and runtime implementation.
  * <p>
- * Covers all V1/V2/V3 builtins. V4 builtins throw UnsupportedBuiltinException.
+ * Covers all V1/V2/V3 builtins including PV11 Batch 6.
  * <p>
  * Use {@link #forLanguage(PlutusLanguage)} to get a version-gated view that only
  * includes builtins available in the specified Plutus language version.
@@ -96,23 +96,23 @@ public final class BuiltinTable {
         reg(DefaultFun.VerifySchnorrSecp256k1Signature,  0, 3, CryptoBuiltins::verifySchnorrSecp256k1Signature);
 
         // === V3 BLS12-381 ===
-        reg(DefaultFun.Bls12_381_G1_add,        0, 2, Bls12381Stubs::g1Add);
-        reg(DefaultFun.Bls12_381_G1_neg,        0, 1, Bls12381Stubs::g1Neg);
-        reg(DefaultFun.Bls12_381_G1_scalarMul,  0, 2, Bls12381Stubs::g1ScalarMul);
-        reg(DefaultFun.Bls12_381_G1_equal,      0, 2, Bls12381Stubs::g1Equal);
-        reg(DefaultFun.Bls12_381_G1_compress,   0, 1, Bls12381Stubs::g1Compress);
-        reg(DefaultFun.Bls12_381_G1_uncompress, 0, 1, Bls12381Stubs::g1Uncompress);
-        reg(DefaultFun.Bls12_381_G1_hashToGroup,0, 2, Bls12381Stubs::g1HashToGroup);
-        reg(DefaultFun.Bls12_381_G2_add,        0, 2, Bls12381Stubs::g2Add);
-        reg(DefaultFun.Bls12_381_G2_neg,        0, 1, Bls12381Stubs::g2Neg);
-        reg(DefaultFun.Bls12_381_G2_scalarMul,  0, 2, Bls12381Stubs::g2ScalarMul);
-        reg(DefaultFun.Bls12_381_G2_equal,      0, 2, Bls12381Stubs::g2Equal);
-        reg(DefaultFun.Bls12_381_G2_compress,   0, 1, Bls12381Stubs::g2Compress);
-        reg(DefaultFun.Bls12_381_G2_uncompress, 0, 1, Bls12381Stubs::g2Uncompress);
-        reg(DefaultFun.Bls12_381_G2_hashToGroup,0, 2, Bls12381Stubs::g2HashToGroup);
-        reg(DefaultFun.Bls12_381_millerLoop,    0, 2, Bls12381Stubs::millerLoop);
-        reg(DefaultFun.Bls12_381_mulMlResult,   0, 2, Bls12381Stubs::mulMlResult);
-        reg(DefaultFun.Bls12_381_finalVerify,   0, 2, Bls12381Stubs::finalVerify);
+        reg(DefaultFun.Bls12_381_G1_add,        0, 2, Bls12381Builtins::g1Add);
+        reg(DefaultFun.Bls12_381_G1_neg,        0, 1, Bls12381Builtins::g1Neg);
+        reg(DefaultFun.Bls12_381_G1_scalarMul,  0, 2, Bls12381Builtins::g1ScalarMul);
+        reg(DefaultFun.Bls12_381_G1_equal,      0, 2, Bls12381Builtins::g1Equal);
+        reg(DefaultFun.Bls12_381_G1_compress,   0, 1, Bls12381Builtins::g1Compress);
+        reg(DefaultFun.Bls12_381_G1_uncompress, 0, 1, Bls12381Builtins::g1Uncompress);
+        reg(DefaultFun.Bls12_381_G1_hashToGroup,0, 2, Bls12381Builtins::g1HashToGroup);
+        reg(DefaultFun.Bls12_381_G2_add,        0, 2, Bls12381Builtins::g2Add);
+        reg(DefaultFun.Bls12_381_G2_neg,        0, 1, Bls12381Builtins::g2Neg);
+        reg(DefaultFun.Bls12_381_G2_scalarMul,  0, 2, Bls12381Builtins::g2ScalarMul);
+        reg(DefaultFun.Bls12_381_G2_equal,      0, 2, Bls12381Builtins::g2Equal);
+        reg(DefaultFun.Bls12_381_G2_compress,   0, 1, Bls12381Builtins::g2Compress);
+        reg(DefaultFun.Bls12_381_G2_uncompress, 0, 1, Bls12381Builtins::g2Uncompress);
+        reg(DefaultFun.Bls12_381_G2_hashToGroup,0, 2, Bls12381Builtins::g2HashToGroup);
+        reg(DefaultFun.Bls12_381_millerLoop,    0, 2, Bls12381Builtins::millerLoop);
+        reg(DefaultFun.Bls12_381_mulMlResult,   0, 2, Bls12381Builtins::mulMlResult);
+        reg(DefaultFun.Bls12_381_finalVerify,   0, 2, Bls12381Builtins::finalVerify);
 
         // === V3 Crypto ===
         reg(DefaultFun.Keccak_256,              0, 1, CryptoBuiltins::keccak_256);
@@ -143,8 +143,27 @@ public final class BuiltinTable {
         // === V3 Modular exponentiation (CIP-109) ===
         reg(DefaultFun.ExpModInteger,           0, 3, IntegerBuiltins::expModInteger);
 
-        // === V4 stubs — not implemented ===
-        // These are not registered; looking them up will produce an error.
+        // === PV11 Batch 6: List extensions (CIP-158) ===
+        reg(DefaultFun.DropList,                1, 2, ListExtBuiltins::dropList);
+
+        // === PV11 Batch 6: Array operations (CIP-156) ===
+        reg(DefaultFun.LengthOfArray,           1, 1, ArrayBuiltins::lengthOfArray);
+        reg(DefaultFun.ListToArray,             1, 1, ArrayBuiltins::listToArray);
+        reg(DefaultFun.IndexArray,              1, 2, ArrayBuiltins::indexArray);
+        reg(DefaultFun.MultiIndexArray,         1, 2, ArrayBuiltins::multiIndexArray);
+
+        // === PV11 Batch 6: BLS12-381 multi-scalar multiplication (CIP-133) ===
+        reg(DefaultFun.Bls12_381_G1_multiScalarMul, 0, 2, Bls12381Builtins::g1MultiScalarMul);
+        reg(DefaultFun.Bls12_381_G2_multiScalarMul, 0, 2, Bls12381Builtins::g2MultiScalarMul);
+
+        // === PV11 Batch 6: MaryEraValue operations (CIP-153) ===
+        reg(DefaultFun.InsertCoin,              0, 4, ValueBuiltins::insertCoin);
+        reg(DefaultFun.LookupCoin,              0, 3, ValueBuiltins::lookupCoin);
+        reg(DefaultFun.UnionValue,              0, 2, ValueBuiltins::unionValue);
+        reg(DefaultFun.ValueContains,           0, 2, ValueBuiltins::valueContains);
+        reg(DefaultFun.ValueData,               0, 1, ValueBuiltins::valueData);
+        reg(DefaultFun.UnValueData,             0, 1, ValueBuiltins::unValueData);
+        reg(DefaultFun.ScaleValue,              0, 2, ValueBuiltins::scaleValue);
     }
 
     private static void reg(DefaultFun fun, int forces, int arity, BuiltinRuntime runtime) {

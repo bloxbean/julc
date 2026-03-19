@@ -55,15 +55,9 @@ public class TruffleVmProvider implements JulcVmProvider {
     }
 
     @Override
-    public void setCostModelParams(long[] costModelValues, int protocolMajorVersion) {
-        this.customV3CostModel = CostModelParser.parse(costModelValues);
-    }
-
-    /**
-     * Set cost model parameters for a specific Plutus language version.
-     */
-    public void setCostModelParams(long[] costModelValues, PlutusLanguage language) {
-        var parsed = CostModelParser.parse(costModelValues, language);
+    public void setCostModelParams(long[] costModelValues, PlutusLanguage language,
+                                   int protocolMajorVersion, int protocolMinorVersion) {
+        var parsed = CostModelParser.parse(costModelValues, language, protocolMajorVersion, protocolMinorVersion);
         switch (language) {
             case PLUTUS_V1 -> this.customV1CostModel = parsed;
             case PLUTUS_V2 -> this.customV2CostModel = parsed;

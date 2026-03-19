@@ -1,6 +1,7 @@
 package com.bloxbean.cardano.julc.core;
 
 import java.math.BigInteger;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
@@ -89,6 +90,94 @@ public sealed interface Constant {
         @Override public int hashCode() { return Arrays.hashCode(value); }
     }
 
+    record ArrayConst(DefaultUni elemType, List<Constant> values) implements Constant {
+        public ArrayConst { Objects.requireNonNull(elemType); values = List.copyOf(values); }
+        @Override public DefaultUni type() { return DefaultUni.arrayOf(elemType); }
+    }
+
+    record ValueConst(List<ValueEntry> entries) implements Constant {
+        public ValueConst { Objects.requireNonNull(entries); entries = List.copyOf(entries); }
+        @Override public DefaultUni type() { return new DefaultUni.ProtoValue(); }
+
+        /** A single policy entry in a Value: policyId -> list of (tokenName, quantity). */
+        public record ValueEntry(byte[] policyId, List<TokenEntry> tokens) {
+            public ValueEntry {
+                Objects.requireNonNull(policyId); policyId = policyId.clone();
+                Objects.requireNonNull(tokens); tokens = List.copyOf(tokens);
+            }
+            public byte[] policyId() { return policyId.clone(); }
+            @Override public boolean equals(Object o) {
+                return o instanceof ValueEntry other
+                        && Arrays.equals(this.policyId, other.policyId)
+                        && this.tokens.equals(other.tokens);
+            }
+            @Override public int hashCode() {
+                return 31 * Arrays.hashCode(policyId) + tokens.hashCode();
+            }
+        }
+
+        /** A single token entry: tokenName -> quantity. */
+        public record TokenEntry(byte[] tokenName, BigInteger quantity) {
+            public TokenEntry {
+                Objects.requireNonNull(tokenName); tokenName = tokenName.clone();
+                Objects.requireNonNull(quantity);
+            }
+            public byte[] tokenName() { return tokenName.clone(); }
+            @Override public boolean equals(Object o) {
+                return o instanceof TokenEntry other
+                        && Arrays.equals(this.tokenName, other.tokenName)
+                        && this.quantity.equals(other.quantity);
+            }
+            @Override public int hashCode() {
+                return 31 * Arrays.hashCode(tokenName) + quantity.hashCode();
+            }
+        }
+
+        /**
+         * Normalize a Value: sort entries by policyId, then by tokenName within each policy,
+         * merge duplicate tokens (add quantities), remove zero-quantity tokens,
+         * and remove policies with no remaining tokens.
+         */
+        public static ValueConst normalize(List<ValueEntry> rawEntries) {
+            // Group by policyId
+            var policyMap = new java.util.TreeMap<ByteArrayKey, java.util.TreeMap<ByteArrayKey, BigInteger>>(ByteArrayKey.COMPARATOR);
+            for (var entry : rawEntries) {
+                var key = new ByteArrayKey(entry.policyId);
+                var tokenMap = policyMap.computeIfAbsent(key, k -> new java.util.TreeMap<>(ByteArrayKey.COMPARATOR));
+                for (var token : entry.tokens) {
+                    var tKey = new ByteArrayKey(token.tokenName);
+                    tokenMap.merge(tKey, token.quantity, BigInteger::add);
+                }
+            }
+            // Build result, dropping zero-quantity tokens and empty policies
+            var result = new ArrayList<ValueEntry>();
+            for (var pEntry : policyMap.entrySet()) {
+                var tokens = new ArrayList<TokenEntry>();
+                for (var tEntry : pEntry.getValue().entrySet()) {
+                    if (tEntry.getValue().signum() != 0) {
+                        tokens.add(new TokenEntry(tEntry.getKey().bytes, tEntry.getValue()));
+                    }
+                }
+                if (!tokens.isEmpty()) {
+                    result.add(new ValueEntry(pEntry.getKey().bytes, tokens));
+                }
+            }
+            return new ValueConst(result);
+        }
+    }
+
+    /** Wrapper for byte[] that supports comparison and hashing. */
+    record ByteArrayKey(byte[] bytes) implements Comparable<ByteArrayKey> {
+        public static final java.util.Comparator<ByteArrayKey> COMPARATOR = ByteArrayKey::compareTo;
+        @Override public int compareTo(ByteArrayKey other) {
+            return Arrays.compareUnsigned(this.bytes, other.bytes);
+        }
+        @Override public boolean equals(Object o) {
+            return o instanceof ByteArrayKey other && Arrays.equals(this.bytes, other.bytes);
+        }
+        @Override public int hashCode() { return Arrays.hashCode(bytes); }
+    }
+
     // Convenience factory methods
     static Constant integer(long value) { return new IntegerConst(value); }
     static Constant integer(BigInteger value) { return new IntegerConst(value); }
@@ -97,4 +186,5 @@ public sealed interface Constant {
     static Constant unit() { return new UnitConst(); }
     static Constant bool(boolean value) { return new BoolConst(value); }
     static Constant data(PlutusData value) { return new DataConst(value); }
+    static Constant array(DefaultUni elemType, List<Constant> values) { return new ArrayConst(elemType, values); }
 }

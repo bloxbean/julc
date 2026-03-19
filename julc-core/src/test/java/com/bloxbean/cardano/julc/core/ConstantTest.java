@@ -244,6 +244,8 @@ class ConstantTest {
             case Constant.Bls12_381_G1Element _ -> "g1";
             case Constant.Bls12_381_G2Element _ -> "g2";
             case Constant.Bls12_381_MlResult _ -> "ml";
+            case Constant.ArrayConst _ -> "array";
+            case Constant.ValueConst _ -> "value";
         };
         assertEquals("int:42", result);
     }

@@ -33,20 +33,19 @@ public final class CostModelParser {
     /** Expected parameter count for PlutusV3 PV10 (post-Plomin, current mainnet). */
     public static final int PV10_PARAM_COUNT = 297;
 
+    /**
+     * Expected parameter count for PlutusV3 PV11 (post-Chang+2).
+     * <p>
+     * Adds 53 params: ExpModInteger (5, moved from defaults-only to array) + 13 PV11 builtins (48).
+     * Canonical ordering from Haskell ParamName.hs.
+     */
+    public static final int PV11_PARAM_COUNT = 350;
+
     private CostModelParser() {}
 
     /**
      * Parse a flat cost model parameter array for the specified Plutus language version.
-     * <p>
-     * Validates the array length against the expected parameter count for the version:
-     * <ul>
-     *   <li>V1: {@link #V1_PARAM_COUNT} (166)</li>
-     *   <li>V2: {@link #V2_PARAM_COUNT} (175)</li>
-     *   <li>V3: {@link #PV10_PARAM_COUNT} (297)</li>
-     * </ul>
-     * <p>
-     * For V1/V2, machine costs are extracted from the array and builtin costs use
-     * version-appropriate defaults. For V3, full parsing is performed.
+     * Uses default protocol version 10.0.
      *
      * @param values   the flat cost model array from protocol parameters
      * @param language the Plutus language version
@@ -54,20 +53,58 @@ public final class CostModelParser {
      * @throws IllegalArgumentException if the array is too short
      */
     public static ParsedCostModel parse(long[] values, PlutusLanguage language) {
+        return parse(values, language, 10, 0);
+    }
+
+    /**
+     * Parse a flat cost model parameter array for the specified Plutus language version
+     * and protocol version.
+     * <p>
+     * The protocol version determines the expected parameter count for ALL language
+     * versions (V1/V2/V3), since new builtins are added to all versions in each
+     * protocol version. For example, PV10 (Plomin) added bitwise builtins to V1/V2/V3,
+     * increasing the parameter count for all three.
+     * <p>
+     * Currently supported:
+     * <ul>
+     *   <li>V1 PV9: 166 params, PV10: 166+ (extra params accepted but unused)</li>
+     *   <li>V2 PV9: 175 params, PV10: 175+ (extra params accepted but unused)</li>
+     *   <li>V3 PV10: 297 params, PV11: 350 params</li>
+     * </ul>
+     *
+     * @param values               the flat cost model array from protocol parameters
+     * @param language             the Plutus language version
+     * @param protocolMajorVersion the protocol major version (e.g. 9 for Chang, 10 for Plomin)
+     * @param protocolMinorVersion the protocol minor version
+     * @return parsed machine costs and builtin cost model
+     * @throws IllegalArgumentException if the array is too short
+     */
+    public static ParsedCostModel parse(long[] values, PlutusLanguage language,
+                                         int protocolMajorVersion, int protocolMinorVersion) {
         return switch (language) {
-            case PLUTUS_V1 -> parseV1(values);
-            case PLUTUS_V2 -> parseV2(values);
-            case PLUTUS_V3 -> parse(values);
+            case PLUTUS_V1 -> parseV1(values, protocolMajorVersion, protocolMinorVersion);
+            case PLUTUS_V2 -> parseV2(values, protocolMajorVersion, protocolMinorVersion);
+            case PLUTUS_V3 -> parse(values, protocolMajorVersion);
         };
     }
 
     /**
-     * Parse a PlutusV1 cost model parameter array (166 parameters).
+     * Parse a PlutusV1 cost model parameter array.
      * <p>
      * Extracts machine costs from the array. Builtin costs use V1 defaults
      * since the V1 cost function shapes may differ from V3.
+     * <p>
+     * The protocol version is reserved for future use — when new builtins are
+     * added to V1 in a future protocol version, this method will branch on the
+     * version to parse the additional cost parameters.
+     *
+     * @param protocolMajorVersion protocol major version
+     * @param protocolMinorVersion protocol minor version
      */
-    private static ParsedCostModel parseV1(long[] values) {
+    private static ParsedCostModel parseV1(long[] values, int protocolMajorVersion,
+                                            int protocolMinorVersion) {
+        // At PV11, V1/V2 arrays grow too — accept longer arrays but use defaults for new builtins.
+        // TODO: Parse additional V1 PV11 params when exact V1 PV11 param counts are verified.
         if (values.length < V1_PARAM_COUNT) {
             throw new IllegalArgumentException(
                     "PlutusV1 cost model requires at least " + V1_PARAM_COUNT +
@@ -108,12 +145,22 @@ public final class CostModelParser {
     }
 
     /**
-     * Parse a PlutusV2 cost model parameter array (175 parameters).
+     * Parse a PlutusV2 cost model parameter array.
      * <p>
      * Extracts machine costs from the array. Builtin costs use V2 defaults
      * since the V2 cost function shapes may differ from V3.
+     * <p>
+     * The protocol version is reserved for future use — when new builtins are
+     * added to V2 in a future protocol version, this method will branch on the
+     * version to parse the additional cost parameters.
+     *
+     * @param protocolMajorVersion protocol major version
+     * @param protocolMinorVersion protocol minor version
      */
-    private static ParsedCostModel parseV2(long[] values) {
+    private static ParsedCostModel parseV2(long[] values, int protocolMajorVersion,
+                                            int protocolMinorVersion) {
+        // At PV11, V1/V2 arrays grow too — accept longer arrays but use defaults for new builtins.
+        // TODO: Parse additional V2 PV11 params when exact V2 PV11 param counts are verified.
         if (values.length < V2_PARAM_COUNT) {
             throw new IllegalArgumentException(
                     "PlutusV2 cost model requires at least " + V2_PARAM_COUNT +
@@ -146,7 +193,7 @@ public final class CostModelParser {
     }
 
     /**
-     * Parse a flat cost model parameter array into machine costs and builtin cost model.
+     * Parse a PlutusV3 flat cost model parameter array into machine costs and builtin cost model.
      * <p>
      * The array must have at least {@link #PV10_PARAM_COUNT} (297) elements.
      * Any builtins not covered by the array (e.g., ExpModInteger in PV10) retain
@@ -157,7 +204,27 @@ public final class CostModelParser {
      * @throws IllegalArgumentException if the array is too short
      */
     public static ParsedCostModel parse(long[] values) {
-        if (values.length < PV10_PARAM_COUNT) {
+        return parse(values, 10);
+    }
+
+    /**
+     * Parse a PlutusV3 flat cost model parameter array with protocol major version.
+     * <p>
+     * Supports PV10 (297 params) and PV11 (350 params).
+     *
+     * @param values               the flat cost model array from protocol parameters
+     * @param protocolMajorVersion the protocol major version
+     * @return parsed machine costs and builtin cost model
+     * @throws IllegalArgumentException if the array is too short
+     */
+    public static ParsedCostModel parse(long[] values, int protocolMajorVersion) {
+        if (protocolMajorVersion >= 11) {
+            if (values.length < PV11_PARAM_COUNT) {
+                throw new IllegalArgumentException(
+                        "PlutusV3 PV11 cost model requires at least " + PV11_PARAM_COUNT +
+                        " parameters, got " + values.length);
+            }
+        } else if (values.length < PV10_PARAM_COUNT) {
             throw new IllegalArgumentException(
                     "PlutusV3 cost model requires at least " + PV10_PARAM_COUNT +
                     " parameters, got " + values.length);
@@ -373,6 +440,40 @@ public final class CostModelParser {
 
         assert c[0] == PV10_PARAM_COUNT : "Parser consumed " + c[0] + " params, expected " + PV10_PARAM_COUNT;
 
+        // === PV11 builtins (indices 297–349, if present) ===
+        if (protocolMajorVersion >= 11 && values.length >= PV11_PARAM_COUNT) {
+            // 297-301: ExpModInteger — ExpModCost(cpu) + LinearInZ(mem)
+            costs.put(DefaultFun.ExpModInteger, pair(readExpModCost(values, c), readLinearInZ(values, c)));
+            // 302-304: DropList — LinearInX(cpu) + Const(mem)
+            costs.put(DefaultFun.DropList, pair(readLinearInX(values, c), readConst(values, c)));
+            // 305-306: LengthOfArray — Const(cpu) + Const(mem)
+            costs.put(DefaultFun.LengthOfArray, pair(readConst(values, c), readConst(values, c)));
+            // 307-310: ListToArray — LinearInX(cpu) + LinearInX(mem)
+            costs.put(DefaultFun.ListToArray, pair(readLinearInX(values, c), readLinearInX(values, c)));
+            // 311-312: IndexArray — Const(cpu) + Const(mem)
+            costs.put(DefaultFun.IndexArray, pair(readConst(values, c), readConst(values, c)));
+            // 313-315: Bls12_381_G1_multiScalarMul — LinearInX(cpu) + Const(mem)
+            costs.put(DefaultFun.Bls12_381_G1_multiScalarMul, pair(readLinearInX(values, c), readConst(values, c)));
+            // 316-318: Bls12_381_G2_multiScalarMul — LinearInX(cpu) + Const(mem)
+            costs.put(DefaultFun.Bls12_381_G2_multiScalarMul, pair(readLinearInX(values, c), readConst(values, c)));
+            // 319-322: InsertCoin — LinearInU(cpu) + LinearInU(mem)
+            costs.put(DefaultFun.InsertCoin, pair(readLinearInU(values, c), readLinearInU(values, c)));
+            // 323-325: LookupCoin — LinearInZ(cpu) + Const(mem)
+            costs.put(DefaultFun.LookupCoin, pair(readLinearInZ(values, c), readConst(values, c)));
+            // 326-331: UnionValue — WithInteractionInXAndY(cpu) + AddedSizes(mem)
+            costs.put(DefaultFun.UnionValue, pair(readWithInteraction(values, c), readAddedSizes(values, c)));
+            // 332-336: ValueContains — ConstAboveDiagLinear(cpu) + Const(mem)
+            costs.put(DefaultFun.ValueContains, pair(readConstAboveDiagLinear(values, c), readConst(values, c)));
+            // 337-340: ValueData — LinearInX(cpu) + LinearInX(mem)
+            costs.put(DefaultFun.ValueData, pair(readLinearInX(values, c), readLinearInX(values, c)));
+            // 341-345: UnValueData — QuadraticInX(cpu) + LinearInX(mem)
+            costs.put(DefaultFun.UnValueData, pair(readQuadraticInX(values, c), readLinearInX(values, c)));
+            // 346-349: ScaleValue — LinearInY(cpu) + LinearInY(mem)
+            costs.put(DefaultFun.ScaleValue, pair(readLinearInY(values, c), readLinearInY(values, c)));
+
+            assert c[0] == PV11_PARAM_COUNT : "PV11 parser consumed " + c[0] + " params, expected " + PV11_PARAM_COUNT;
+        }
+
         // Build MachineCosts
         MachineCosts mc = new MachineCosts(
                 startupCpu, startupMem,
@@ -391,24 +492,46 @@ public final class CostModelParser {
     }
 
     /**
-     * Build a flat cost model parameter array from the default cost model.
+     * Build a flat cost model parameter array from the default cost model (PV10).
      * Useful for testing round-trip parsing.
      *
      * @return the flat array in canonical PV10 order (297 elements)
      */
     public static long[] defaultToFlatArray() {
+        return defaultToFlatArray(10);
+    }
+
+    /**
+     * Build a flat cost model parameter array from the default cost model
+     * for the specified protocol version.
+     *
+     * @param protocolMajorVersion the protocol major version (10 for PV10, 11+ for PV11)
+     * @return the flat array (297 elements for PV10, 350 for PV11)
+     */
+    public static long[] defaultToFlatArray(int protocolMajorVersion) {
         MachineCosts mc = DefaultCostModel.defaultMachineCosts();
         BuiltinCostModel bcm = DefaultCostModel.defaultBuiltinCostModel();
-        return toFlatArray(mc, bcm);
+        return toFlatArray(mc, bcm, protocolMajorVersion);
+    }
+
+    /**
+     * Build a flat cost model parameter array from the given cost model (PV10).
+     *
+     * @return the flat array in canonical PV10 order (297 elements)
+     */
+    public static long[] toFlatArray(MachineCosts mc, BuiltinCostModel bcm) {
+        return toFlatArray(mc, bcm, 10);
     }
 
     /**
      * Build a flat cost model parameter array from the given cost model.
      *
-     * @return the flat array in canonical PV10 order (297 elements)
+     * @param protocolMajorVersion the protocol major version
+     * @return the flat array (297 elements for PV10, 350 for PV11+)
      */
-    public static long[] toFlatArray(MachineCosts mc, BuiltinCostModel bcm) {
-        long[] values = new long[PV10_PARAM_COUNT];
+    public static long[] toFlatArray(MachineCosts mc, BuiltinCostModel bcm, int protocolMajorVersion) {
+        int paramCount = protocolMajorVersion >= 11 ? PV11_PARAM_COUNT : PV10_PARAM_COUNT;
+        long[] values = new long[paramCount];
         int[] c = {0};
 
         // V1/V2 builtins
@@ -521,6 +644,27 @@ public final class CostModelParser {
         writeParams(values, c, bcm.get(DefaultFun.Ripemd_160));
 
         assert c[0] == PV10_PARAM_COUNT : "Writer produced " + c[0] + " params, expected " + PV10_PARAM_COUNT;
+
+        // === PV11 builtins (indices 297–349) ===
+        if (protocolMajorVersion >= 11) {
+            writeParams(values, c, bcm.get(DefaultFun.ExpModInteger));
+            writeParams(values, c, bcm.get(DefaultFun.DropList));
+            writeParams(values, c, bcm.get(DefaultFun.LengthOfArray));
+            writeParams(values, c, bcm.get(DefaultFun.ListToArray));
+            writeParams(values, c, bcm.get(DefaultFun.IndexArray));
+            writeParams(values, c, bcm.get(DefaultFun.Bls12_381_G1_multiScalarMul));
+            writeParams(values, c, bcm.get(DefaultFun.Bls12_381_G2_multiScalarMul));
+            writeParams(values, c, bcm.get(DefaultFun.InsertCoin));
+            writeParams(values, c, bcm.get(DefaultFun.LookupCoin));
+            writeParams(values, c, bcm.get(DefaultFun.UnionValue));
+            writeParams(values, c, bcm.get(DefaultFun.ValueContains));
+            writeParams(values, c, bcm.get(DefaultFun.ValueData));
+            writeParams(values, c, bcm.get(DefaultFun.UnValueData));
+            writeParams(values, c, bcm.get(DefaultFun.ScaleValue));
+
+            assert c[0] == PV11_PARAM_COUNT : "PV11 writer produced " + c[0] + " params, expected " + PV11_PARAM_COUNT;
+        }
+
         return values;
     }
 
@@ -603,6 +747,26 @@ public final class CostModelParser {
         return new LinearInYAndZ(next(v, c), next(v, c), next(v, c));
     }
 
+    private static CostFunction readExpModCost(long[] v, int[] c) {
+        return new ExpModCost(next(v, c), next(v, c), next(v, c));
+    }
+
+    private static CostFunction readLinearInU(long[] v, int[] c) {
+        return new LinearInU(next(v, c), next(v, c));
+    }
+
+    private static CostFunction readQuadraticInX(long[] v, int[] c) {
+        return new QuadraticInX(next(v, c), next(v, c), next(v, c));
+    }
+
+    private static CostFunction readWithInteraction(long[] v, int[] c) {
+        return new WithInteractionInXAndY(next(v, c), next(v, c), next(v, c), next(v, c));
+    }
+
+    private static CostFunction readConstAboveDiagLinear(long[] v, int[] c) {
+        return new ConstAboveDiagonalLinear(next(v, c), next(v, c), next(v, c), next(v, c));
+    }
+
     // ========== Write helpers (CostFunction → array) ==========
 
     private static void writeParams(long[] values, int[] c, BuiltinCostModel.CostPair pair) {
@@ -661,6 +825,16 @@ public final class CostModelParser {
                 values[c[0]++] = lyz.intercept(); values[c[0]++] = lyz.slope1(); values[c[0]++] = lyz.slope2();
             }
             case ExpModCost em -> { values[c[0]++] = em.c00(); values[c[0]++] = em.c11(); values[c[0]++] = em.c12(); }
+            case LinearInU li -> { values[c[0]++] = li.intercept(); values[c[0]++] = li.slope(); }
+            case QuadraticInX q -> { values[c[0]++] = q.c0(); values[c[0]++] = q.c1(); values[c[0]++] = q.c2(); }
+            case ConstAboveDiagonalLinear ca -> {
+                values[c[0]++] = ca.constant(); values[c[0]++] = ca.intercept();
+                values[c[0]++] = ca.slope1(); values[c[0]++] = ca.slope2();
+            }
+            case WithInteractionInXAndY wi -> {
+                values[c[0]++] = wi.c00(); values[c[0]++] = wi.c10();
+                values[c[0]++] = wi.c01(); values[c[0]++] = wi.c11();
+            }
         }
     }
 

@@ -29,19 +29,9 @@ public class JavaVmProvider implements JulcVmProvider {
     private volatile List<ExecutionTraceEntry> lastExecutionTrace = List.of();
 
     @Override
-    public void setCostModelParams(long[] costModelValues, int protocolMajorVersion) {
-        // Default to V3 for backward compatibility
-        this.customV3CostModel = CostModelParser.parse(costModelValues);
-    }
-
-    /**
-     * Set cost model parameters for a specific Plutus language version.
-     *
-     * @param costModelValues      ordered array of cost model parameter values
-     * @param language             the Plutus language version
-     */
-    public void setCostModelParams(long[] costModelValues, PlutusLanguage language) {
-        var parsed = CostModelParser.parse(costModelValues, language);
+    public void setCostModelParams(long[] costModelValues, PlutusLanguage language,
+                                   int protocolMajorVersion, int protocolMinorVersion) {
+        var parsed = CostModelParser.parse(costModelValues, language, protocolMajorVersion, protocolMinorVersion);
         switch (language) {
             case PLUTUS_V1 -> this.customV1CostModel = parsed;
             case PLUTUS_V2 -> this.customV2CostModel = parsed;

@@ -429,6 +429,61 @@ public final class DefaultCostModel {
                 new ExpModCost(607153, 231697, 53144),
                 new LinearInZ(0, 1)));
 
+        // === PV11 Batch 6 builtins ===
+
+        // List extensions (CIP-158)
+        costs.put(DefaultFun.DropList, pair(
+                new LinearInX(116711, 1957),
+                new ConstantCost(4)));
+
+        // Array operations (CIP-156)
+        costs.put(DefaultFun.LengthOfArray, pair(
+                new ConstantCost(231883),
+                new ConstantCost(10)));
+        costs.put(DefaultFun.ListToArray, pair(
+                new LinearInX(1000, 24838),
+                new LinearInX(7, 1)));
+        costs.put(DefaultFun.IndexArray, pair(
+                new ConstantCost(232010),
+                new ConstantCost(32)));
+
+        // BLS12-381 multi-scalar multiplication (CIP-133)
+        costs.put(DefaultFun.Bls12_381_G1_multiScalarMul, pair(
+                new LinearInX(321837444, 25087669),
+                new ConstantCost(18)));
+        costs.put(DefaultFun.Bls12_381_G2_multiScalarMul, pair(
+                new LinearInX(617887431, 67302824),
+                new ConstantCost(36)));
+
+        // MaryEraValue operations (CIP-153)
+        costs.put(DefaultFun.InsertCoin, pair(
+                new LinearInU(356924, 18413),
+                new LinearInU(45, 21)));
+        costs.put(DefaultFun.LookupCoin, pair(
+                new LinearInZ(219951, 9444),
+                new ConstantCost(1)));
+        costs.put(DefaultFun.UnionValue, pair(
+                new WithInteractionInXAndY(1000, 172116, 183150, 6),
+                new AddedSizes(24, 21)));
+        costs.put(DefaultFun.ValueContains, pair(
+                new ConstAboveDiagonalLinear(213283, 618401, 1998, 28258),
+                new ConstantCost(1)));
+        costs.put(DefaultFun.ValueData, pair(
+                new LinearInX(1000, 38159),
+                new LinearInX(2, 22)));
+        costs.put(DefaultFun.UnValueData, pair(
+                new QuadraticInX(1000, 95933, 1),
+                new LinearInX(1, 11)));
+        costs.put(DefaultFun.ScaleValue, pair(
+                new LinearInY(1000, 277577),
+                new LinearInY(12, 21)));
+
+        // MultiIndexArray — JuLC-specific (code 101), not in on-chain cost params.
+        // Estimated costs based on IndexArray.
+        costs.put(DefaultFun.MultiIndexArray, pair(
+                new ConstantCost(232010),
+                new ConstantCost(32)));
+
         return new BuiltinCostModel(costs);
     }
 

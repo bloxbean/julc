@@ -18,6 +18,7 @@ import com.bloxbean.cardano.julc.ledger.*;
 import com.bloxbean.cardano.julc.vm.EvalResult;
 import com.bloxbean.cardano.julc.vm.ExBudget;
 import com.bloxbean.cardano.julc.vm.JulcVm;
+import com.bloxbean.cardano.julc.vm.PlutusLanguage;
 
 import java.math.BigInteger;
 import java.util.*;
@@ -45,6 +46,7 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
     private final SlotConfig slotConfig;
 
     private volatile JulcVm vm;
+    private volatile com.bloxbean.cardano.julc.vm.JulcVmProvider provider;
 
     /**
      * Create an evaluator without slot-to-POSIX conversion.
@@ -93,35 +95,56 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
                     Long.parseLong(params.getMaxTxExSteps()),
                     Long.parseLong(params.getMaxTxExMem()));
 
-            // 5. Create VM (lazy, cached) and configure cost model
+            // 5. Create VM (lazy, cached) and configure cost models for all language versions
             JulcVm julcVm = getOrCreateVm();
-            CostModelUtil.getCostModelFromProtocolParams(params, Language.PLUTUS_V3)
-                    .ifPresent(cm -> julcVm.setCostModelParams(
-                            cm.getCosts(), params.getProtocolMajorVer()));
+            int pvMajor = params.getProtocolMajorVer() != null ? params.getProtocolMajorVer() : 10;
+            int pvMinor = params.getProtocolMinorVer() != null ? params.getProtocolMinorVer() : 0;
+            for (var lang : List.of(Language.PLUTUS_V1, Language.PLUTUS_V2, Language.PLUTUS_V3)) {
+                CostModelUtil.getCostModelFromProtocolParams(params, lang)
+                        .ifPresent(cm -> julcVm.setCostModelParams(
+                                cm.getCosts(), toPlutusLanguage(lang), pvMajor, pvMinor));
+            }
 
             // 6. Evaluate each redeemer
             List<EvaluationResult> results = new ArrayList<>();
 
             for (Redeemer redeemer : redeemers) {
                 try {
-                    // a. Resolve script
+                    // a. Resolve script (with language version detection)
                     ScriptPurpose purpose = converter.redeemerToScriptPurpose(redeemer);
                     String scriptHash = resolveScriptHash(purpose, inputUtxos, converter);
-                    Program program = resolveScript(tx, scriptHash, inputUtxos);
+                    ResolvedScript resolved = resolveScript(tx, scriptHash, inputUtxos);
 
-                    // b. Build ScriptInfo
-                    ScriptInfo scriptInfo = buildScriptInfo(purpose, redeemer, txInfo);
-
-                    // c. Build ScriptContext
+                    // b. Build arguments based on script version
                     com.bloxbean.cardano.julc.core.PlutusData redeemerData =
                             PlutusDataAdapter.fromClientLib(redeemer.getData());
-                    ScriptContext scriptContext = new ScriptContext(txInfo, redeemerData, scriptInfo);
-                    com.bloxbean.cardano.julc.core.PlutusData scriptContextData =
-                            scriptContext.toPlutusData();
 
-                    // d. Evaluate
-                    EvalResult evalResult = julcVm.evaluateWithArgs(
-                            program, List.of(scriptContextData), maxBudget);
+                    List<com.bloxbean.cardano.julc.core.PlutusData> args;
+                    if (resolved.language() == PlutusLanguage.PLUTUS_V3) {
+                        // V3: single ScriptContext argument
+                        ScriptInfo scriptInfo = buildScriptInfo(purpose, redeemer, txInfo);
+                        ScriptContext scriptContext = new ScriptContext(txInfo, redeemerData, scriptInfo);
+                        args = List.of(scriptContext.toPlutusData());
+                    } else {
+                        // V1/V2: [datum, redeemer, scriptContext] or [redeemer, scriptContext]
+                        com.bloxbean.cardano.julc.core.PlutusData scriptContextData =
+                                V1V2ScriptContextBuilder.build(resolved.language(), txInfo,
+                                        purpose, converter);
+                        if (purpose instanceof ScriptPurpose.Spending(var txOutRef)) {
+                            // Spending: datum is the first argument
+                            com.bloxbean.cardano.julc.core.PlutusData datumData =
+                                    resolveDatumForSpending(txOutRef, txInfo);
+                            args = List.of(datumData, redeemerData, scriptContextData);
+                        } else {
+                            args = List.of(redeemerData, scriptContextData);
+                        }
+                    }
+
+                    // c. Evaluate with the resolved language version
+                    var langVm = JulcVm.withProvider(getProvider(), resolved.language());
+                    // Apply cost model for this language if not already set
+                    EvalResult evalResult = langVm.evaluateWithArgs(
+                            resolved.program(), args, maxBudget);
 
                     // e. Handle result
                     switch (evalResult) {
@@ -173,6 +196,45 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
         return vm;
     }
 
+    private com.bloxbean.cardano.julc.vm.JulcVmProvider getProvider() {
+        if (provider == null) {
+            synchronized (this) {
+                if (provider == null) {
+                    provider = java.util.ServiceLoader.load(com.bloxbean.cardano.julc.vm.JulcVmProvider.class)
+                            .stream()
+                            .map(java.util.ServiceLoader.Provider::get)
+                            .max(java.util.Comparator.comparingInt(com.bloxbean.cardano.julc.vm.JulcVmProvider::priority))
+                            .orElseThrow(() -> new IllegalStateException("No JulcVmProvider found."));
+                }
+            }
+        }
+        return provider;
+    }
+
+    private com.bloxbean.cardano.julc.core.PlutusData resolveDatumForSpending(
+            TxOutRef txOutRef, TxInfo txInfo) {
+        for (int i = 0; i < txInfo.inputs().size(); i++) {
+            TxInInfo input = txInfo.inputs().get(i);
+            if (input.outRef().equals(txOutRef)) {
+                OutputDatum od = input.resolved().datum();
+                if (od instanceof OutputDatum.OutputDatumInline inlineDatum) {
+                    return inlineDatum.datum();
+                } else if (od instanceof OutputDatum.OutputDatumHash datumHashOd) {
+                    var d = txInfo.datums().get(datumHashOd.hash());
+                    if (d != null) {
+                        return d;
+                    }
+                }
+                break;
+            }
+        }
+        // V1/V2 spending scripts require a datum; if not found, use unit
+        return new com.bloxbean.cardano.julc.core.PlutusData.ConstrData(0, List.of());
+    }
+
+    /** Resolved script: program + language version. */
+    private record ResolvedScript(Program program, PlutusLanguage language) {}
+
     private String resolveScriptHash(ScriptPurpose purpose, Set<Utxo> inputUtxos,
                                      CclTxConverter converter) {
         return switch (purpose) {
@@ -202,27 +264,63 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
             }
             case ScriptPurpose.Minting(var policyId) ->
                     HexFormat.of().formatHex(policyId.hash());
-            case ScriptPurpose.Rewarding(var credential) -> {
-                if (credential instanceof Credential.ScriptCredential sc) {
-                    yield HexFormat.of().formatHex(sc.hash().hash());
-                }
-                throw new IllegalStateException("Reward credential is not a script credential");
-            }
-            default ->
-                    throw new UnsupportedOperationException("Script hash resolution not supported for: " + purpose);
+            case ScriptPurpose.Rewarding(var credential) ->
+                    extractScriptHashFromCredential(credential);
+            case ScriptPurpose.Certifying(var index, var cert) ->
+                    extractScriptHashFromCert(cert);
+            case ScriptPurpose.Voting(var voter) ->
+                    extractScriptHashFromVoter(voter);
+            case ScriptPurpose.Proposing(var index, var procedure) ->
+                    extractScriptHashFromCredential(procedure.returnAddress());
         };
     }
 
-    private Program resolveScript(Transaction tx, String scriptHash,
-                                  Set<Utxo> inputUtxos) {
+    private String extractScriptHashFromCredential(Credential credential) {
+        if (credential instanceof Credential.ScriptCredential sc) {
+            return HexFormat.of().formatHex(sc.hash().hash());
+        }
+        throw new IllegalStateException("Credential is not a script credential: " + credential);
+    }
+
+    private String extractScriptHashFromCert(TxCert cert) {
+        return switch (cert) {
+            case TxCert.RegStaking(var cred, var _) -> extractScriptHashFromCredential(cred);
+            case TxCert.UnRegStaking(var cred, var _) -> extractScriptHashFromCredential(cred);
+            case TxCert.DelegStaking(var cred, var _) -> extractScriptHashFromCredential(cred);
+            case TxCert.RegDeleg(var cred, var _, var _) -> extractScriptHashFromCredential(cred);
+            case TxCert.RegDRep(var cred, var _) -> extractScriptHashFromCredential(cred);
+            case TxCert.UpdateDRep(var cred) -> extractScriptHashFromCredential(cred);
+            case TxCert.UnRegDRep(var cred, var _) -> extractScriptHashFromCredential(cred);
+            case TxCert.AuthHotCommittee(var cold, var _) -> extractScriptHashFromCredential(cold);
+            case TxCert.ResignColdCommittee(var cold) -> extractScriptHashFromCredential(cold);
+            case TxCert.PoolRegister _, TxCert.PoolRetire _ ->
+                    throw new IllegalStateException("Pool certificates don't have script credentials");
+        };
+    }
+
+    private String extractScriptHashFromVoter(Voter voter) {
+        return switch (voter) {
+            case Voter.CommitteeVoter(var cred) -> extractScriptHashFromCredential(cred);
+            case Voter.DRepVoter(var cred) -> extractScriptHashFromCredential(cred);
+            case Voter.StakePoolVoter _ ->
+                    throw new IllegalStateException("StakePoolVoter does not have a script credential");
+        };
+    }
+
+    private ResolvedScript resolveScript(Transaction tx, String scriptHash,
+                                         Set<Utxo> inputUtxos) {
+        var ws = tx.getWitnessSet();
+
         // 1. Check witness set PlutusV3Scripts
-        List<PlutusV3Script> v3Scripts = tx.getWitnessSet().getPlutusV3Scripts();
+        List<PlutusV3Script> v3Scripts = ws.getPlutusV3Scripts();
         if (v3Scripts != null) {
             for (PlutusV3Script script : v3Scripts) {
                 try {
                     String hash = HexFormat.of().formatHex(script.getScriptHash());
                     if (scriptHash.equals(hash)) {
-                        return JulcScriptAdapter.toProgram(script.getCborHex());
+                        return new ResolvedScript(
+                                JulcScriptAdapter.toProgram(script.getCborHex()),
+                                PlutusLanguage.PLUTUS_V3);
                     }
                 } catch (Exception e) {
                     // Continue searching
@@ -230,13 +328,41 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
             }
         }
 
-        // 2. Check V1/V2 scripts — not supported
-        if (hasV1V2Script(tx, scriptHash)) {
-            throw new UnsupportedOperationException(
-                    "PlutusV1/V2 scripts not supported by JuLC evaluator. Script hash: " + scriptHash);
+        // 2. Check witness set PlutusV2Scripts
+        List<PlutusV2Script> v2Scripts = ws.getPlutusV2Scripts();
+        if (v2Scripts != null) {
+            for (PlutusV2Script script : v2Scripts) {
+                try {
+                    String hash = HexFormat.of().formatHex(script.getScriptHash());
+                    if (scriptHash.equals(hash)) {
+                        return new ResolvedScript(
+                                JulcScriptAdapter.toProgram(script.getCborHex()),
+                                PlutusLanguage.PLUTUS_V2);
+                    }
+                } catch (Exception e) {
+                    // Continue searching
+                }
+            }
         }
 
-        // 3. Check reference input UTxOs with scriptRef
+        // 3. Check witness set PlutusV1Scripts
+        List<PlutusV1Script> v1Scripts = ws.getPlutusV1Scripts();
+        if (v1Scripts != null) {
+            for (PlutusV1Script script : v1Scripts) {
+                try {
+                    String hash = HexFormat.of().formatHex(script.getScriptHash());
+                    if (scriptHash.equals(hash)) {
+                        return new ResolvedScript(
+                                JulcScriptAdapter.toProgram(script.getCborHex()),
+                                PlutusLanguage.PLUTUS_V1);
+                    }
+                } catch (Exception e) {
+                    // Continue searching
+                }
+            }
+        }
+
+        // 4. Check reference input UTxOs with scriptRef
         if (inputUtxos != null) {
             for (Utxo utxo : inputUtxos) {
                 if (utxo.getReferenceScriptHash() != null
@@ -249,44 +375,29 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
             }
         }
 
-        // 4. ScriptSupplier fallback
+        // 5. ScriptSupplier fallback
         if (scriptSupplier != null) {
             Optional<PlutusScript> script = scriptSupplier.getScript(scriptHash);
             if (script.isPresent()) {
                 PlutusScript ps = script.get();
                 if (ps instanceof PlutusV3Script v3) {
-                    return JulcScriptAdapter.toProgram(v3.getCborHex());
+                    return new ResolvedScript(
+                            JulcScriptAdapter.toProgram(v3.getCborHex()),
+                            PlutusLanguage.PLUTUS_V3);
+                } else if (ps instanceof PlutusV2Script v2) {
+                    return new ResolvedScript(
+                            JulcScriptAdapter.toProgram(v2.getCborHex()),
+                            PlutusLanguage.PLUTUS_V2);
+                } else if (ps instanceof PlutusV1Script v1) {
+                    return new ResolvedScript(
+                            JulcScriptAdapter.toProgram(v1.getCborHex()),
+                            PlutusLanguage.PLUTUS_V1);
                 }
-                throw new UnsupportedOperationException(
-                        "PlutusV1/V2 scripts not supported by JuLC evaluator. Script hash: " + scriptHash);
             }
         }
 
         throw new IllegalStateException("Script not found: " + scriptHash
                 + ". Provide it in the witness set, reference inputs, or via ScriptSupplier.");
-    }
-
-    private boolean hasV1V2Script(Transaction tx, String scriptHash) {
-        try {
-            var ws = tx.getWitnessSet();
-            if (ws.getPlutusV1Scripts() != null) {
-                for (var script : ws.getPlutusV1Scripts()) {
-                    if (scriptHash.equals(HexFormat.of().formatHex(script.getScriptHash()))) {
-                        return true;
-                    }
-                }
-            }
-            if (ws.getPlutusV2Scripts() != null) {
-                for (var script : ws.getPlutusV2Scripts()) {
-                    if (scriptHash.equals(HexFormat.of().formatHex(script.getScriptHash()))) {
-                        return true;
-                    }
-                }
-            }
-        } catch (Exception e) {
-            // Ignore hash computation errors
-        }
-        return false;
     }
 
     private ScriptInfo buildScriptInfo(ScriptPurpose purpose, Redeemer redeemer,
@@ -320,8 +431,20 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
                     new ScriptInfo.MintingScript(policyId);
             case ScriptPurpose.Rewarding(var credential) ->
                     new ScriptInfo.RewardingScript(credential);
-            default ->
-                    throw new UnsupportedOperationException("ScriptInfo not supported for: " + purpose);
+            case ScriptPurpose.Certifying(var index, var cert) ->
+                    new ScriptInfo.CertifyingScript(index, cert);
+            case ScriptPurpose.Voting(var voter) ->
+                    new ScriptInfo.VotingScript(voter);
+            case ScriptPurpose.Proposing(var index, var procedure) ->
+                    new ScriptInfo.ProposingScript(index, procedure);
+        };
+    }
+
+    private static PlutusLanguage toPlutusLanguage(Language cclLanguage) {
+        return switch (cclLanguage) {
+            case PLUTUS_V1 -> PlutusLanguage.PLUTUS_V1;
+            case PLUTUS_V2 -> PlutusLanguage.PLUTUS_V2;
+            case PLUTUS_V3 -> PlutusLanguage.PLUTUS_V3;
         };
     }
 }

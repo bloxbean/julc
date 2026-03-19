@@ -155,6 +155,8 @@ public final class UplcFlatEncoder {
             case DefaultUni.Bls12_381_G1_Element _ -> 9;
             case DefaultUni.Bls12_381_G2_Element _ -> 10;
             case DefaultUni.Bls12_381_MlResult _ -> 11;
+            case DefaultUni.ProtoArray _ -> 12;
+            case DefaultUni.ProtoValue _ -> 13;
         };
     }
 
@@ -182,6 +184,26 @@ public final class UplcFlatEncoder {
             case Constant.PairConst pc -> {
                 writeConstantValue(pc.first());
                 writeConstantValue(pc.second());
+            }
+            case Constant.ArrayConst ac -> {
+                for (var elem : ac.values()) {
+                    writer.listCons();
+                    writeConstantValue(elem);
+                }
+                writer.listNil();
+            }
+            case Constant.ValueConst vc -> {
+                for (var entry : vc.entries()) {
+                    writer.listCons();
+                    writer.byteString(entry.policyId());
+                    for (var token : entry.tokens()) {
+                        writer.listCons();
+                        writer.byteString(token.tokenName());
+                        writer.integer(token.quantity());
+                    }
+                    writer.listNil();
+                }
+                writer.listNil();
             }
         }
     }

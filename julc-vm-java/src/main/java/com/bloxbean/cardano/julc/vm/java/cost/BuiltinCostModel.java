@@ -74,6 +74,12 @@ public final class BuiltinCostModel {
             case Constant.Bls12_381_G1Element _ -> 48;
             case Constant.Bls12_381_G2Element _ -> 96;
             case Constant.Bls12_381_MlResult _ -> 576;
+            case Constant.ArrayConst ac -> ac.values().size();
+            case Constant.ValueConst vc -> {
+                long size = 0;
+                for (var entry : vc.entries()) size += entry.tokens().size();
+                yield size;
+            }
         };
     }
 

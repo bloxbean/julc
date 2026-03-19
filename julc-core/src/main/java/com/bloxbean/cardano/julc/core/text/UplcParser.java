@@ -321,12 +321,29 @@ public final class UplcParser {
                 yield Constant.data(data);
             }
             case DefaultUni.Apply a -> parseApplyConstant(a);
+            case DefaultUni.ProtoValue ignored -> parseValueConstant();
             case DefaultUni.Bls12_381_G1_Element ignored -> {
                 var bytes = parse0xByteString();
+                var validator = BlsConstantValidator.getInstance();
+                if (validator != null) {
+                    try {
+                        validator.validateG1Element(bytes);
+                    } catch (Exception e) {
+                        throw error("Invalid bls12_381_G1_element: " + e.getMessage());
+                    }
+                }
                 yield new Constant.Bls12_381_G1Element(bytes);
             }
             case DefaultUni.Bls12_381_G2_Element ignored -> {
                 var bytes = parse0xByteString();
+                var validator = BlsConstantValidator.getInstance();
+                if (validator != null) {
+                    try {
+                        validator.validateG2Element(bytes);
+                    } catch (Exception e) {
+                        throw error("Invalid bls12_381_G2_element: " + e.getMessage());
+                    }
+                }
                 yield new Constant.Bls12_381_G2Element(bytes);
             }
             case DefaultUni.Bls12_381_MlResult ignored -> {
@@ -338,8 +355,26 @@ public final class UplcParser {
     }
 
     private Constant parseApplyConstant(DefaultUni.Apply apply) {
-        // Determine if it's a list or pair by unwinding the Apply chain
-        if (apply.f() instanceof DefaultUni.ProtoList) {
+        // Determine if it's a list, array, or pair by unwinding the Apply chain
+        if (apply.f() instanceof DefaultUni.ProtoArray) {
+            // Array type
+            var elemType = apply.arg();
+            expect('[');
+            skipWhitespace();
+            var values = new ArrayList<Constant>();
+            if (pos < input.length() && input.charAt(pos) != ']') {
+                values.add(parseConstantValueOfType(elemType));
+                skipWhitespace();
+                while (pos < input.length() && input.charAt(pos) == ',') {
+                    pos++; // skip comma
+                    skipWhitespace();
+                    values.add(parseConstantValueOfType(elemType));
+                    skipWhitespace();
+                }
+            }
+            expect(']');
+            return new Constant.ArrayConst(elemType, values);
+        } else if (apply.f() instanceof DefaultUni.ProtoList) {
             // List type
             var elemType = apply.arg();
             expect('[');
@@ -401,6 +436,12 @@ public final class UplcParser {
                     expect(')');
                     yield DefaultUni.pairOf(typeA, typeB);
                 }
+                case "array" -> {
+                    var elemType = parseType();
+                    skipWhitespace();
+                    expect(')');
+                    yield DefaultUni.arrayOf(elemType);
+                }
                 default -> throw error("Unknown compound type: " + typeName);
             };
         }
@@ -416,8 +457,99 @@ public final class UplcParser {
             case "bls12_381_G1_element" -> DefaultUni.BLS12_381_G1;
             case "bls12_381_G2_element" -> DefaultUni.BLS12_381_G2;
             case "bls12_381_mlresult" -> DefaultUni.BLS12_381_ML;
+            case "value" -> new DefaultUni.ProtoValue();
             default -> throw error("Unknown type: " + typeName);
         };
+    }
+
+    // ---- Value Constants ----
+
+    /** Maximum key length in Value: 32 bytes (CIP-153). */
+    private static final int MAX_POLICY_ID_LENGTH = 32;
+    /** Maximum tokenName length: 32 bytes. */
+    private static final int MAX_TOKEN_NAME_LENGTH = 32;
+    /** Maximum token quantity: 2^127 - 1 (Int128). */
+    private static final BigInteger MAX_QUANTITY = BigInteger.ONE.shiftLeft(127).subtract(BigInteger.ONE);
+    /** Minimum token quantity: -2^127 (Int128). */
+    private static final BigInteger MIN_QUANTITY = BigInteger.ONE.shiftLeft(127).negate();
+
+    /**
+     * Parse a Value constant: [(#policyId, [(#tokenName, quantity), ...]), ...]
+     * <p>
+     * Normalizes: sorts by policyId then tokenName, merges duplicate tokens,
+     * removes zero quantities, removes empty policies.
+     * Validates: key <= 32 bytes (CIP-153), tokenName <= 32 bytes, quantity in Int128 range.
+     */
+    private Constant parseValueConstant() {
+        expect('[');
+        skipWhitespace();
+        var rawEntries = new ArrayList<Constant.ValueConst.ValueEntry>();
+        if (pos < input.length() && input.charAt(pos) != ']') {
+            rawEntries.add(parseValueEntry());
+            skipWhitespace();
+            while (pos < input.length() && input.charAt(pos) == ',') {
+                pos++; // skip comma
+                skipWhitespace();
+                rawEntries.add(parseValueEntry());
+                skipWhitespace();
+            }
+        }
+        expect(']');
+        return Constant.ValueConst.normalize(rawEntries);
+    }
+
+    private Constant.ValueConst.ValueEntry parseValueEntry() {
+        expect('(');
+        skipWhitespace();
+        byte[] policyId = parseHashByteString();
+        if (policyId.length > MAX_POLICY_ID_LENGTH) {
+            throw error("Value policyId too long: " + policyId.length +
+                    " bytes (max " + MAX_POLICY_ID_LENGTH + ")");
+        }
+        skipWhitespace();
+        expect(',');
+        skipWhitespace();
+        // Parse token list
+        expect('[');
+        skipWhitespace();
+        var tokens = new ArrayList<Constant.ValueConst.TokenEntry>();
+        if (pos < input.length() && input.charAt(pos) != ']') {
+            tokens.add(parseTokenEntry());
+            skipWhitespace();
+            while (pos < input.length() && input.charAt(pos) == ',') {
+                pos++; // skip comma
+                skipWhitespace();
+                tokens.add(parseTokenEntry());
+                skipWhitespace();
+            }
+        }
+        expect(']');
+        skipWhitespace();
+        expect(')');
+        return new Constant.ValueConst.ValueEntry(policyId, tokens);
+    }
+
+    private Constant.ValueConst.TokenEntry parseTokenEntry() {
+        expect('(');
+        skipWhitespace();
+        byte[] tokenName = parseHashByteString();
+        if (tokenName.length > MAX_TOKEN_NAME_LENGTH) {
+            throw error("Value tokenName too long: " + tokenName.length +
+                    " bytes (max " + MAX_TOKEN_NAME_LENGTH + ")");
+        }
+        skipWhitespace();
+        expect(',');
+        skipWhitespace();
+        BigInteger quantity = parseBigInteger();
+        if (quantity.compareTo(MAX_QUANTITY) > 0) {
+            throw error("Value quantity overflow: " + quantity + " exceeds Int128 max");
+        }
+        if (quantity.compareTo(MIN_QUANTITY) < 0) {
+            throw error("Value quantity underflow: " + quantity + " below Int128 min");
+        }
+        skipWhitespace();
+        expect(')');
+        return new Constant.ValueConst.TokenEntry(tokenName, quantity);
     }
 
     // ---- PlutusData ----

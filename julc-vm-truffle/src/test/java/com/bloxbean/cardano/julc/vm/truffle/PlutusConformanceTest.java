@@ -23,17 +23,10 @@ class PlutusConformanceTest {
 
     private static final TruffleVmProvider PROVIDER = new TruffleVmProvider();
 
-    /** V4/future builtins not supported by our V3-targeting implementation. */
     private static final Set<String> SKIP_DIRS = Set.of(
-            "dropList", "lengthOfArray", "listToArray", "indexArray",
-            "bls12_381_G1_multiScalarMul", "bls12_381_G2_multiScalarMul",
-            "insertCoin", "lookupCoin", "unionValue", "valueContains",
-            "valueData", "unValueData", "scaleValue", "multiIndexArray",
-            "array", "value"
     );
 
     private static final String[] SKIP_PATH_CONTAINS = {
-            "bls12-381", "bls12_381"
     };
 
     @TestFactory
@@ -69,12 +62,6 @@ class PlutusConformanceTest {
     private void runConformanceTest(Path uplcFile, Path expectedFile) throws IOException {
         String input = Files.readString(uplcFile).trim();
         String expected = Files.readString(expectedFile).trim();
-
-        if (expected.contains("con value") || expected.contains("con array")) {
-            org.junit.jupiter.api.Assumptions.assumeTrue(false,
-                    "V4 type in expected output — skipped");
-            return;
-        }
 
         Program program;
         try {
@@ -207,6 +194,11 @@ class PlutusConformanceTest {
                     && Arrays.equals(g2a.value(), g2b.value());
             case Constant.Bls12_381_MlResult mla -> b instanceof Constant.Bls12_381_MlResult mlb
                     && Arrays.equals(mla.value(), mlb.value());
+            case Constant.ArrayConst aa -> b instanceof Constant.ArrayConst ab
+                    && aa.values().size() == ab.values().size()
+                    && constantListsEqual(aa.values(), ab.values());
+            case Constant.ValueConst va -> b instanceof Constant.ValueConst vb
+                    && va.equals(vb);
         };
     }
 
