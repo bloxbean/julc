@@ -1,6 +1,8 @@
 package com.bloxbean.cardano.julc.compiler.resolve;
 
+import com.bloxbean.cardano.julc.compiler.CompilerException;
 import com.bloxbean.cardano.julc.compiler.pir.PirType;
+import com.bloxbean.cardano.julc.compiler.util.StringUtils;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.RecordDeclaration;
 import com.github.javaparser.ast.type.ClassOrInterfaceType;
@@ -62,7 +64,7 @@ public class TypeResolver {
     public void registerRecord(RecordDeclaration rd, String fqcn) {
         var name = rd.getNameAsString();
         if (recordTypes.containsKey(fqcn)) {
-            throw new IllegalArgumentException("Duplicate record type: '" + fqcn + "'. "
+            throw new CompilerException("Duplicate record type: '" + fqcn + "'. "
                     + "A record with this name is already registered.");
         }
         var fields = new ArrayList<PirType.Field>();
@@ -116,7 +118,7 @@ public class TypeResolver {
     public void registerSealedInterface(ClassOrInterfaceDeclaration decl, String fqcn) {
         var interfaceName = decl.getNameAsString();
         if (sumTypes.containsKey(fqcn)) {
-            throw new IllegalArgumentException("Duplicate sealed interface: '" + fqcn + "'. "
+            throw new CompilerException("Duplicate sealed interface: '" + fqcn + "'. "
                     + "A sealed interface with this name is already registered.");
         }
         var constructors = new ArrayList<PirType.Constructor>();
@@ -161,7 +163,7 @@ public class TypeResolver {
                                                      List<String> variantFqcns) {
         var interfaceName = decl.getNameAsString();
         if (sumTypes.containsKey(fqcn)) {
-            throw new IllegalArgumentException("Duplicate sealed interface: '" + fqcn + "'. "
+            throw new CompilerException("Duplicate sealed interface: '" + fqcn + "'. "
                     + "A sealed interface with this name is already registered.");
         }
         var constructors = new ArrayList<PirType.Constructor>();
@@ -246,7 +248,8 @@ public class TypeResolver {
             return switch (pt.getType()) {
                 case BOOLEAN -> new PirType.BoolType();
                 case INT, LONG -> new PirType.IntegerType();
-                default -> throw new IllegalArgumentException("Unsupported primitive type: " + pt);
+                default -> throw new CompilerException("Unsupported primitive type: " + pt
+                        + ". Supported types: boolean, int, long");
             };
         }
         if (type instanceof VoidType) {
@@ -265,12 +268,13 @@ public class TypeResolver {
                     pt.getType() == PrimitiveType.Primitive.BYTE) {
                 return new PirType.ByteStringType();
             }
-            throw new IllegalArgumentException("Arrays are not supported; use List. Got: " + at);
+            throw new CompilerException("Arrays are not supported except byte[]. Use List<T> instead. Got: " + at);
         }
         if (type instanceof com.github.javaparser.ast.type.UnknownType) {
             return new PirType.DataType(); // default fallback for untyped lambda params
         }
-        throw new IllegalArgumentException("Cannot resolve type: " + type);
+        throw new CompilerException("Cannot resolve type: " + type
+                + ". Supported types: BigInteger, String, boolean, byte[], List<T>, Map<K,V>, records, sealed interfaces");
     }
 
     private PirType resolveClassType(ClassOrInterfaceType ct) {
@@ -362,8 +366,11 @@ public class TypeResolver {
                         }
                     }
                 }
-                throw new IllegalArgumentException("Unknown type: " + name
-                        + (fqcn.equals(name) ? "" : " (resolved to " + fqcn + ")"));
+                // Suggest similar registered types
+                var suggestion = findSimilarType(name);
+                throw new CompilerException("Unknown type: " + name
+                        + (fqcn.equals(name) ? "" : " (resolved to " + fqcn + ")")
+                        + (suggestion != null ? ". Did you mean: " + suggestion + "?" : ""));
             }
         };
     }
@@ -413,7 +420,7 @@ public class TypeResolver {
         var fqcns = simpleNameIndex.get(simpleName);
         if (fqcns != null && fqcns.size() == 1) return fqcns.iterator().next();
         if (fqcns != null && fqcns.size() > 1) {
-            throw new IllegalArgumentException("Ambiguous type '" + simpleName
+            throw new CompilerException("Ambiguous type '" + simpleName
                     + "'. Could be: " + String.join(", ", fqcns)
                     + ". Use an explicit import to disambiguate.");
         }
@@ -460,5 +467,35 @@ public class TypeResolver {
         all.addAll(variantToSumType.keySet());
         all.addAll(newTypes.keySet());
         return all;
+    }
+
+    private static final List<String> BUILTIN_TYPE_NAMES = List.of(
+            "BigInteger", "String", "Boolean", "PlutusData",
+            "List", "Map", "Optional", "Tuple2", "Tuple3");
+
+    /**
+     * Find a registered type with a similar name (for "did you mean?" suggestions).
+     * Uses case-insensitive Levenshtein distance.
+     */
+    private String findSimilarType(String name) {
+        String best = null;
+        int bestDist = Integer.MAX_VALUE;
+        String lowerName = name.toLowerCase();
+
+        for (String registered : simpleNameIndex.keySet()) {
+            int dist = StringUtils.levenshtein(lowerName, registered.toLowerCase());
+            if (dist < bestDist && dist <= 3) {
+                bestDist = dist;
+                best = registered;
+            }
+        }
+        for (String builtin : BUILTIN_TYPE_NAMES) {
+            int dist = StringUtils.levenshtein(lowerName, builtin.toLowerCase());
+            if (dist < bestDist && dist <= 3) {
+                bestDist = dist;
+                best = builtin;
+            }
+        }
+        return best;
     }
 }

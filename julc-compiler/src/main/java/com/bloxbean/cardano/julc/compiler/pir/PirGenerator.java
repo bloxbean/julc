@@ -15,6 +15,7 @@ import com.github.javaparser.ast.stmt.*;
 
 import com.bloxbean.cardano.julc.compiler.CompilerOptions;
 import com.bloxbean.cardano.julc.compiler.resolve.LibraryMethodRegistry;
+import com.bloxbean.cardano.julc.compiler.util.StringUtils;
 
 import java.math.BigInteger;
 import java.util.*;
@@ -564,7 +565,7 @@ public class PirGenerator {
                 if (castTargetType instanceof PirType.MapType) {
                     return new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), inner);
                 }
-            } catch (IllegalArgumentException _) {
+            } catch (IllegalArgumentException | CompilerException _) {
                 // Unknown cast target type (e.g., Object) — treat as no-op
             }
             return inner;
@@ -603,6 +604,12 @@ public class PirGenerator {
         // Infer operand type for type-aware dispatching
         var leftType = resolveExpressionType(be.getLeft());
         if (leftType instanceof PirType.DataType) leftType = inferPirType(left);
+        // If left is still DataType, try the right operand for better type inference
+        if (leftType instanceof PirType.DataType) {
+            var rightType = resolveExpressionType(be.getRight());
+            if (rightType instanceof PirType.DataType) rightType = inferPirType(right);
+            if (!(rightType instanceof PirType.DataType)) leftType = rightType;
+        }
 
         return switch (be.getOperator()) {
             case PLUS -> {
@@ -969,13 +976,18 @@ public class PirGenerator {
                 return extractReturnType(methodType.get());
             }
         }
+        // Handle literal expressions for type inference
+        if (expr instanceof IntegerLiteralExpr || expr instanceof LongLiteralExpr)
+            return new PirType.IntegerType();
+        if (expr instanceof StringLiteralExpr) return new PirType.StringType();
+        if (expr instanceof BooleanLiteralExpr) return new PirType.BoolType();
         // Handle cast expressions: (RecordType)(Object) data → resolve the target type
         // This enables `var sd = (StateDatum)(Object) rawDatum;` to infer RecordType
         if (expr instanceof CastExpr ce) {
             try {
                 var castType = typeResolver.resolve(ce.getType());
                 if (!(castType instanceof PirType.DataType)) return castType;
-            } catch (IllegalArgumentException _) {
+            } catch (IllegalArgumentException | CompilerException _) {
                 // Unknown target (e.g., Object) — fall through
             }
             return resolveExpressionType(ce.getExpression());
@@ -1165,7 +1177,7 @@ public class PirGenerator {
             if (resolvedType instanceof PirType.ByteStringType && oce.getArguments().size() == 1) {
                 return generateExpression(oce.getArguments().get(0));
             }
-        } catch (IllegalArgumentException _) {
+        } catch (IllegalArgumentException | CompilerException _) {
             // Not a known type — continue to other checks
         }
 
@@ -3073,26 +3085,6 @@ public class PirGenerator {
     }
 
     /**
-     * Compute the edit distance between two strings (Levenshtein distance).
-     * Used for fuzzy matching in error suggestions.
-     */
-    private static int editDistance(String a, String b) {
-        int m = a.length(), n = b.length();
-        int[] prev = new int[n + 1];
-        int[] curr = new int[n + 1];
-        for (int j = 0; j <= n; j++) prev[j] = j;
-        for (int i = 1; i <= m; i++) {
-            curr[0] = i;
-            for (int j = 1; j <= n; j++) {
-                int cost = a.charAt(i - 1) == b.charAt(j - 1) ? 0 : 1;
-                curr[j] = Math.min(Math.min(curr[j - 1] + 1, prev[j] + 1), prev[j - 1] + cost);
-            }
-            var tmp = prev; prev = curr; curr = tmp;
-        }
-        return prev[n];
-    }
-
-    /**
      * Find the closest method name from available stdlib methods.
      * Returns a suggestion string like "Did you mean 'ListsLib.contains()'?" or empty if no close match.
      */
@@ -3131,7 +3123,7 @@ public class PirGenerator {
 
         for (String qualified : knownMethods) {
             String simpleName = qualified.substring(qualified.indexOf('.') + 1);
-            int dist = editDistance(methodName.toLowerCase(), simpleName.toLowerCase());
+            int dist = StringUtils.levenshtein(methodName.toLowerCase(), simpleName.toLowerCase());
             if (dist < bestDist && dist <= Math.max(2, methodName.length() / 3)) {
                 bestDist = dist;
                 bestMatch = qualified;

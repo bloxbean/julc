@@ -1,5 +1,6 @@
 package com.bloxbean.cardano.julc.compiler.resolve;
 
+import com.bloxbean.cardano.julc.compiler.CompilerException;
 import com.bloxbean.cardano.julc.compiler.pir.PirType;
 import com.github.javaparser.ParserConfiguration;
 import com.github.javaparser.StaticJavaParser;
@@ -155,12 +156,12 @@ class TypeResolverTest {
     }
 
     @Test void resolveUnknownTypeThrows() {
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(CompilerException.class,
                 () -> resolver.resolve(StaticJavaParser.parseClassOrInterfaceType("UnknownType")));
     }
 
     @Test void resolveFloatThrows() {
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(CompilerException.class,
                 () -> resolver.resolve(PrimitiveType.floatType()));
     }
 
