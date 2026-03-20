@@ -1,9 +1,11 @@
 package com.bloxbean.cardano.julc.compiler.resolve;
 
 import com.bloxbean.cardano.julc.compiler.CompilerException;
+import com.bloxbean.cardano.julc.compiler.error.CompilerDiagnostic;
 import com.bloxbean.cardano.julc.compiler.pir.PirType;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.Modifier;
+import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.RecordDeclaration;
 import com.github.javaparser.ast.expr.MarkerAnnotationExpr;
@@ -49,7 +51,7 @@ public class TypeRegistrar {
                 var fqcn = rd.getFullyQualifiedName().orElse(simpleName);
 
                 if (allRecords.containsKey(fqcn)) {
-                    throw new CompilerException("Duplicate record type '" + fqcn + "' found across compilation units");
+                    throw errorAt(rd, "Duplicate record type '" + fqcn + "' found across compilation units");
                 }
                 allRecords.put(fqcn, rd);
                 typeToCu.put(fqcn, cu);
@@ -65,7 +67,7 @@ public class TypeRegistrar {
                     var fqcn = cd.getFullyQualifiedName().orElse(simpleName);
 
                     if (allSealed.containsKey(fqcn)) {
-                        throw new CompilerException("Duplicate sealed interface '" + fqcn + "' found across compilation units");
+                        throw errorAt(cd, "Duplicate sealed interface '" + fqcn + "' found across compilation units");
                     }
                     allSealed.put(fqcn, cd);
                     typeToCu.put(fqcn, cu);
@@ -216,12 +218,12 @@ public class TypeRegistrar {
     private void validateNewType(RecordDeclaration rd) {
         var params = rd.getParameters();
         if (params.size() != 1) {
-            throw new CompilerException("@NewType record '" + rd.getNameAsString()
+            throw errorAt(rd, "@NewType record '" + rd.getNameAsString()
                     + "' must have exactly 1 field, got " + params.size());
         }
         var fieldType = params.get(0).getType().asString();
         if (!isSupportedNewTypeField(fieldType)) {
-            throw new CompilerException("@NewType record '" + rd.getNameAsString()
+            throw errorAt(rd, "@NewType record '" + rd.getNameAsString()
                     + "' field type '" + fieldType + "' is not supported. "
                     + "Supported types: byte[], BigInteger, String, boolean");
         }
@@ -235,7 +237,8 @@ public class TypeRegistrar {
             case "BigInteger" -> new PirType.IntegerType();
             case "String" -> new PirType.StringType();
             case "boolean" -> new PirType.BoolType();
-            default -> throw new CompilerException("Unsupported @NewType field type: " + fieldType);
+            default -> throw new CompilerException("Unsupported @NewType field type: " + fieldType
+                    + ". Supported types: byte[], BigInteger, String, boolean");
         };
     }
 
@@ -374,5 +377,24 @@ public class TypeRegistrar {
         }
 
         return result;
+    }
+
+    /** Create a CompilerException with source position from a JavaParser node. */
+    private CompilerException errorAt(Node node, String message) {
+        int line = 0, col = 0;
+        String fileName = "<source>";
+        if (node != null) {
+            var range = node.getRange();
+            if (range.isPresent()) {
+                line = range.get().begin.line;
+                col = range.get().begin.column;
+            }
+            var cu = node.findCompilationUnit();
+            if (cu.isPresent() && cu.get().getStorage().isPresent()) {
+                fileName = cu.get().getStorage().get().getFileName();
+            }
+        }
+        var diag = new CompilerDiagnostic(CompilerDiagnostic.Level.ERROR, message, fileName, line, col);
+        return new CompilerException(List.of(diag));
     }
 }

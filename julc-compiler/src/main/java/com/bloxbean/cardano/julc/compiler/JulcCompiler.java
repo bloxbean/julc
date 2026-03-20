@@ -185,7 +185,7 @@ public class JulcCompiler {
         var allCus = new ArrayList<CompilationUnit>();
         allCus.addAll(libraryCus);
         allCus.add(validatorCu);
-        new TypeRegistrar().registerAll(allCus, typeResolver);
+        registerTypesWithDiagnostics(allCus, typeResolver, diagnostics);
         options.logf("Registered types from %d compilation unit(s)", allCus.size());
 
         // 5c. Build knownFqcns for ImportResolver (types + library classes + stdlib classes)
@@ -615,7 +615,7 @@ public class JulcCompiler {
         var allCus = new ArrayList<CompilationUnit>();
         allCus.addAll(libraryCus);
         allCus.add(cu);
-        new TypeRegistrar().registerAll(allCus, typeResolver);
+        registerTypesWithDiagnostics(allCus, typeResolver, diagnostics);
 
         // 6. Build knownFqcns and import resolver
         var knownFqcns = new LinkedHashSet<String>();
@@ -1303,6 +1303,23 @@ public class JulcCompiler {
             methodType = new PirType.FunType(paramTypes.get(i), methodType);
         }
         return methodType;
+    }
+
+    /** Register types with error collection instead of immediate failure. */
+    private void registerTypesWithDiagnostics(List<CompilationUnit> allCus, TypeResolver typeResolver,
+                                              List<CompilerDiagnostic> diagnostics) {
+        try {
+            new TypeRegistrar().registerAll(allCus, typeResolver);
+        } catch (CompilerException e) {
+            diagnostics.addAll(e.diagnostics());
+            if (e.diagnostics().isEmpty()) {
+                diagnostics.add(new CompilerDiagnostic(
+                        CompilerDiagnostic.Level.ERROR, e.getMessage(), "<source>", 0, 0));
+            }
+            if (hasErrors(diagnostics)) {
+                throw new CompilerException(diagnostics);
+            }
+        }
     }
 
     private boolean hasErrors(List<CompilerDiagnostic> diagnostics) {
