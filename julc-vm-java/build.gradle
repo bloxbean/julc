@@ -4,6 +4,15 @@ plugins {
 
 description = 'Pure Java CEK Machine - Plutus VM backend without external dependencies'
 
+// Share conformance test resources from julc-vm
+sourceSets {
+    test {
+        resources {
+            srcDir project(':julc-vm').file('src/test/resources')
+        }
+    }
+}
+
 dependencies {
     api project(':julc-vm')
     implementation project(':julc-bls')

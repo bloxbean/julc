@@ -4,11 +4,11 @@ plugins {
 
 description = 'GraalVM Truffle JIT-based Plutus CEK machine'
 
-// Share conformance test resources from julc-vm-java
+// Share conformance test resources from julc-vm
 sourceSets {
     test {
         resources {
-            srcDir project(':julc-vm-java').file('src/test/resources')
+            srcDir project(':julc-vm').file('src/test/resources')
         }
     }
 }
