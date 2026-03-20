@@ -4,6 +4,8 @@ import com.bloxbean.julc.cli.check.TestDiscovery;
 import com.bloxbean.julc.cli.check.TestRunner;
 import com.bloxbean.julc.cli.project.*;
 import com.bloxbean.julc.cli.blueprint.BlueprintGenerator;
+import com.bloxbean.julc.cli.scaffold.GradleProjectScaffolder;
+import com.bloxbean.julc.cli.scaffold.MavenProjectScaffolder;
 import com.bloxbean.julc.cli.scaffold.ProjectScaffolder;
 import com.bloxbean.cardano.julc.clientlib.JulcScriptAdapter;
 import com.bloxbean.cardano.julc.compiler.CompilerOptions;
@@ -166,5 +168,105 @@ class JulccIntegrationTest {
 
         assertFalse(result.hasErrors());
         assertNotNull(result.program());
+    }
+
+    @Test
+    void scaffoldGradleProject(@TempDir Path tempDir) throws IOException {
+        Path projectRoot = tempDir.resolve("test-gradle");
+        GradleProjectScaffolder.scaffold(projectRoot, "test-gradle",
+                "com.myorg", "test-gradle", "com.myorg.testgradle");
+
+        // Verify directory structure
+        assertTrue(Files.isDirectory(projectRoot.resolve("src/main/java/com/myorg/testgradle")));
+        assertTrue(Files.isDirectory(projectRoot.resolve("src/test/java/com/myorg/testgradle")));
+
+        // Verify build files
+        assertTrue(Files.exists(projectRoot.resolve("build.gradle")));
+        assertTrue(Files.exists(projectRoot.resolve("settings.gradle")));
+        assertTrue(Files.exists(projectRoot.resolve(".gitignore")));
+
+        // Verify Gradle wrapper
+        assertTrue(Files.exists(projectRoot.resolve("gradlew")));
+        assertTrue(Files.exists(projectRoot.resolve("gradlew.bat")));
+        assertTrue(Files.exists(projectRoot.resolve("gradle/wrapper/gradle-wrapper.jar")));
+        assertTrue(Files.exists(projectRoot.resolve("gradle/wrapper/gradle-wrapper.properties")));
+        assertTrue(projectRoot.resolve("gradlew").toFile().canExecute());
+
+        // Verify build.gradle content
+        String buildGradle = Files.readString(projectRoot.resolve("build.gradle"));
+        assertTrue(buildGradle.contains("group = 'com.myorg'"));
+        assertTrue(buildGradle.contains("julcVersion = '" + JulccVersionProvider.VERSION + "'"));
+        assertTrue(buildGradle.contains("cardanoClientLibVersion = '" + JulccVersionProvider.CARDANO_CLIENT_LIB_VERSION + "'"));
+        assertTrue(buildGradle.contains("julc-stdlib"));
+        assertTrue(buildGradle.contains("julc-annotation-processor"));
+        assertTrue(buildGradle.contains("julc-testkit"));
+
+        // Verify settings.gradle
+        String settingsGradle = Files.readString(projectRoot.resolve("settings.gradle"));
+        assertTrue(settingsGradle.contains("rootProject.name = 'test-gradle'"));
+
+        // Verify starter files have package declaration
+        String validator = Files.readString(projectRoot.resolve("src/main/java/com/myorg/testgradle/AlwaysSucceeds.java"));
+        assertTrue(validator.contains("package com.myorg.testgradle;"));
+        assertTrue(validator.contains("@Validator"));
+
+        String test = Files.readString(projectRoot.resolve("src/test/java/com/myorg/testgradle/AlwaysSucceedsTest.java"));
+        assertTrue(test.contains("package com.myorg.testgradle;"));
+        assertTrue(test.contains("ContractTest"));
+        assertTrue(test.contains("compileValidatorWithSourceMap"));
+        assertTrue(test.contains("TestDataBuilder"));
+        assertTrue(test.contains("evaluateWithTrace"));
+
+        // No julc.toml or .julc/ directory
+        assertFalse(Files.exists(projectRoot.resolve("julc.toml")));
+        assertFalse(Files.exists(projectRoot.resolve(".julc")));
+    }
+
+    @Test
+    void scaffoldMavenProject(@TempDir Path tempDir) throws IOException {
+        Path projectRoot = tempDir.resolve("test-maven");
+        MavenProjectScaffolder.scaffold(projectRoot, "test-maven",
+                "com.myorg", "test-maven", "com.myorg.testmaven");
+
+        // Verify directory structure
+        assertTrue(Files.isDirectory(projectRoot.resolve("src/main/java/com/myorg/testmaven")));
+        assertTrue(Files.isDirectory(projectRoot.resolve("src/test/java/com/myorg/testmaven")));
+
+        // Verify build files
+        assertTrue(Files.exists(projectRoot.resolve("pom.xml")));
+        assertTrue(Files.exists(projectRoot.resolve(".gitignore")));
+
+        // Verify Maven wrapper
+        assertTrue(Files.exists(projectRoot.resolve("mvnw")));
+        assertTrue(Files.exists(projectRoot.resolve("mvnw.cmd")));
+        assertTrue(Files.exists(projectRoot.resolve(".mvn/wrapper/maven-wrapper.jar")));
+        assertTrue(Files.exists(projectRoot.resolve(".mvn/wrapper/maven-wrapper.properties")));
+        assertTrue(projectRoot.resolve("mvnw").toFile().canExecute());
+
+        // Verify pom.xml content
+        String pom = Files.readString(projectRoot.resolve("pom.xml"));
+        assertTrue(pom.contains("<groupId>com.myorg</groupId>"));
+        assertTrue(pom.contains("<artifactId>test-maven</artifactId>"));
+        assertTrue(pom.contains("<julc.version>" + JulccVersionProvider.VERSION + "</julc.version>"));
+        assertTrue(pom.contains("<cardano-client-lib.version>" + JulccVersionProvider.CARDANO_CLIENT_LIB_VERSION + "</cardano-client-lib.version>"));
+        assertTrue(pom.contains("julc-stdlib"));
+        assertTrue(pom.contains("julc-annotation-processor"));
+        assertTrue(pom.contains("julc-testkit"));
+        assertTrue(pom.contains("maven-compiler-plugin"));
+        assertTrue(pom.contains("annotationProcessorPaths"));
+
+        // Verify starter files have package declaration
+        String validator = Files.readString(projectRoot.resolve("src/main/java/com/myorg/testmaven/AlwaysSucceeds.java"));
+        assertTrue(validator.contains("package com.myorg.testmaven;"));
+
+        String test = Files.readString(projectRoot.resolve("src/test/java/com/myorg/testmaven/AlwaysSucceedsTest.java"));
+        assertTrue(test.contains("package com.myorg.testmaven;"));
+        assertTrue(test.contains("compileValidatorWithSourceMap"));
+        assertTrue(test.contains("TestDataBuilder"));
+        assertTrue(test.contains("evaluateWithTrace"));
+
+        // No julc.toml or .julc/ directory
+        assertFalse(Files.exists(projectRoot.resolve("julc.toml")));
+        assertFalse(Files.exists(projectRoot.resolve(".julc")));
     }
 }

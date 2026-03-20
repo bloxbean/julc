@@ -126,6 +126,7 @@
     {"glob": "META-INF/plutus-sources/**"},
     {"glob": "META-INF/julc/stdlib-sources.zip"},
     {"glob": "META-INF/services/*"},
-    {"glob": "julc-version.properties"}
+    {"glob": "julc-version.properties"},
+    {"glob": "META-INF/julc/wrappers/**"}
   ]
 }
