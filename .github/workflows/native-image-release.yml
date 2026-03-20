@@ -1,0 +1,82 @@
+name: Native Image Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  native-image:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            label: macos-aarch64
+            binary: julcc
+          - os: ubuntu-latest
+            label: linux-x86_64
+            binary: julcc
+          - os: windows-latest
+            label: windows-x86_64
+            binary: julcc.exe
+
+    runs-on: ${{ matrix.os }}
+    name: Build ${{ matrix.label }}
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Extract version from tag
+      id: version
+      shell: bash
+      run: |
+        VERSION="${GITHUB_REF_NAME#v}"
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+    - name: Set up GraalVM JDK 24
+      uses: actions/setup-java@v4
+      with:
+        java-version: '24'
+        distribution: 'graalvm'
+
+    - name: Setup MSVC (Windows only)
+      if: runner.os == 'Windows'
+      uses: ilammy/msvc-dev-cmd@v1
+
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v4
+
+    - name: Build native image
+      run: ./gradlew :julcc:nativeCompile -PskipSigning=true --no-daemon
+      shell: bash
+
+    - name: Package (Unix)
+      if: runner.os != 'Windows'
+      shell: bash
+      run: |
+        VERSION="${{ steps.version.outputs.version }}"
+        STAGING="julc-${VERSION}-${{ matrix.label }}"
+        mkdir -p "$STAGING"
+        cp julcc/build/native/nativeCompile/${{ matrix.binary }} "$STAGING/"
+        cp julcc/README.md "$STAGING/"
+        zip -r "julc-${VERSION}-${{ matrix.label }}.zip" "$STAGING"
+
+    - name: Package (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $VERSION = "${{ steps.version.outputs.version }}"
+        $STAGING = "julc-${VERSION}-${{ matrix.label }}"
+        New-Item -ItemType Directory -Path $STAGING -Force
+        Copy-Item "julcc/build/native/nativeCompile/${{ matrix.binary }}" -Destination $STAGING
+        Copy-Item "julcc/README.md" -Destination $STAGING
+        Compress-Archive -Path $STAGING -DestinationPath "julc-${VERSION}-${{ matrix.label }}.zip"
+
+    - name: Upload to GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: julc-${{ steps.version.outputs.version }}-${{ matrix.label }}.zip
