@@ -80,7 +80,7 @@ public final class SourceDiscovery {
         List<String> libSources = LibrarySourceResolver.resolve(validatorSource, pool);
 
         // Compile with stdlib
-        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry()::lookup);
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry());
         var result = compiler.compile(validatorSource, libSources);
 
         if (result.hasErrors()) {
@@ -134,7 +134,7 @@ public final class SourceDiscovery {
         Map<String, String> pool = buildLibraryPool(validatorSource, sourceRoot);
         List<String> libSources = LibrarySourceResolver.resolve(validatorSource, pool);
 
-        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry()::lookup, options);
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), options);
         var result = compiler.compile(validatorSource, libSources);
 
         if (result.hasErrors()) {
@@ -239,7 +239,7 @@ public final class SourceDiscovery {
         Map<String, String> pool = buildLibraryPool(source, sourceRoot);
         List<String> libSources = LibrarySourceResolver.resolve(source, pool);
 
-        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry()::lookup);
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry());
         var result = compiler.compileMethod(source, methodName, libSources);
 
         if (result.hasErrors()) {
@@ -283,7 +283,7 @@ public final class SourceDiscovery {
         Map<String, String> pool = buildLibraryPool(source, sourceRoot);
         List<String> libSources = LibrarySourceResolver.resolve(source, pool);
 
-        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry()::lookup);
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry());
         var result = compiler.compileMethod(source, methodName, libSources);
 
         if (result.hasErrors()) {

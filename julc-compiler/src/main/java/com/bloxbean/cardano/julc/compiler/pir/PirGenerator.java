@@ -652,10 +652,16 @@ public class PirGenerator {
             var inner = generateExpression(ce.getExpression());
             // Most casts are no-ops at UPLC level. But casting to MapType needs UnMapData
             // so that MapType variables always hold pair lists (consistent with field access).
+            // Exception: if the inner expression is already a MapType (pair list), skip UnMapData
+            // to avoid double-unwrap (e.g., (JulcMap)(Object) MapLib.empty() where empty() already
+            // returns a pair list via MkNilPairData).
             try {
                 var castTargetType = typeResolver.resolve(ce.getType());
                 if (castTargetType instanceof PirType.MapType) {
-                    return new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), inner);
+                    var innerType = inferPirType(inner);
+                    if (!(innerType instanceof PirType.MapType)) {
+                        return new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), inner);
+                    }
                 }
             } catch (IllegalArgumentException _) {
                 // Unknown cast target type (e.g., Object) — treat as no-op

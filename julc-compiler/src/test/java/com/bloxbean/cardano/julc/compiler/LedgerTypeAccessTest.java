@@ -521,7 +521,7 @@ class LedgerTypeAccessTest {
                         }
                     }
                     """;
-            var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry()::lookup);
+            var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry());
             var program = compiler.compile(source).program();
 
             var pkh = new byte[]{1, 2, 3, 4, 5};

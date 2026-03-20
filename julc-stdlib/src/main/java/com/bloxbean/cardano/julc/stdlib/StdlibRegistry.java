@@ -1,5 +1,6 @@
 package com.bloxbean.cardano.julc.stdlib;
 
+import com.bloxbean.cardano.julc.compiler.pir.PirHelpers;
 import com.bloxbean.cardano.julc.compiler.pir.PirTerm;
 import com.bloxbean.cardano.julc.compiler.pir.PirType;
 import com.bloxbean.cardano.julc.compiler.pir.StdlibLookup;
@@ -93,11 +94,89 @@ public final class StdlibRegistry implements StdlibLookup {
                     List.of(new PirType.Field("value", elemType)));
             return Optional.of(new PirTerm.DataConstr(0, recordType, List.of(args.get(0))));
         }
+        // ListsLib.prepend(list, elem) — wrap elem to Data before MkCons
+        if (isListsLibClass(className) && methodName.equals("prepend") && args.size() == 2) {
+            var wrappedElem = PirHelpers.wrapEncode(args.get(1), safeArgType(argTypes, 1));
+            return Optional.of(builtinApp2(DefaultFun.MkCons, wrappedElem, args.get(0)));
+        }
+
+        // ListsLib.contains(list, target) — wrap target, search with EqualsData
+        if (isListsLibClass(className) && methodName.equals("contains") && args.size() == 2) {
+            var wrappedTarget = PirHelpers.wrapEncode(args.get(1), safeArgType(argTypes, 1));
+            return Optional.of(PirHelpers.listSearch("con", args.get(0), wrappedTarget,
+                    new PirTerm.Const(Constant.bool(false)),
+                    (elem, t, recurse) -> {
+                        var eq = builtinApp2(DefaultFun.EqualsData, elem, t);
+                        return new PirTerm.IfThenElse(eq,
+                                new PirTerm.Const(Constant.bool(true)), recurse);
+                    }));
+        }
+
+        // MapLib.insert(map, key, value) — wrap key/value, MkPairData + MkCons
+        if (isMapLibClass(className) && methodName.equals("insert") && args.size() == 3) {
+            var key = PirHelpers.wrapEncode(args.get(1), safeArgType(argTypes, 1));
+            var value = PirHelpers.wrapEncode(args.get(2), safeArgType(argTypes, 2));
+            var pair = builtinApp2(DefaultFun.MkPairData, key, value);
+            return Optional.of(builtinApp2(DefaultFun.MkCons, pair, args.get(0)));
+        }
+
+        // MapLib.member(map, key) — wrap key, pairListSearch returning bool
+        if (isMapLibClass(className) && methodName.equals("member") && args.size() == 2) {
+            var key = PirHelpers.wrapEncode(args.get(1), safeArgType(argTypes, 1));
+            return Optional.of(PirHelpers.pairListSearch("mb", args.get(0), key,
+                    new PirTerm.Const(Constant.bool(false)),
+                    (h, k, goTail) -> {
+                        var fstH = builtinApp1(DefaultFun.FstPair, h);
+                        var eq = builtinApp2(DefaultFun.EqualsData, fstH, k);
+                        return new PirTerm.IfThenElse(eq,
+                                new PirTerm.Const(Constant.bool(true)), goTail);
+                    }));
+        }
+
+        // MapLib.lookup(map, key) — wrap key, pairListSearch returning Optional
+        if (isMapLibClass(className) && methodName.equals("lookup") && args.size() == 2) {
+            var key = PirHelpers.wrapEncode(args.get(1), safeArgType(argTypes, 1));
+            return Optional.of(PirHelpers.pairListSearch("lk", args.get(0), key,
+                    PirHelpers.mkNone(),
+                    (h, k, goTail) -> {
+                        var fstH = builtinApp1(DefaultFun.FstPair, h);
+                        var sndH = builtinApp1(DefaultFun.SndPair, h);
+                        var eq = builtinApp2(DefaultFun.EqualsData, fstH, k);
+                        return new PirTerm.IfThenElse(eq,
+                                PirHelpers.mkSome(sndH), goTail);
+                    }));
+        }
+
+        // MapLib.delete(map, key) — wrap key, pairListSearch filtering out matching pair
+        if (isMapLibClass(className) && methodName.equals("delete") && args.size() == 2) {
+            var key = PirHelpers.wrapEncode(args.get(1), safeArgType(argTypes, 1));
+            return Optional.of(PirHelpers.pairListSearch("del", args.get(0), key,
+                    PirHelpers.mkNilPairData(),
+                    (h, k, goTail) -> {
+                        var fstH = builtinApp1(DefaultFun.FstPair, h);
+                        var eq = builtinApp2(DefaultFun.EqualsData, fstH, k);
+                        return new PirTerm.IfThenElse(eq, goTail,
+                                builtinApp2(DefaultFun.MkCons, h, goTail));
+                    }));
+        }
+
         return lookup(className, methodName, args);
     }
 
     private static boolean isOptionalClass(String className) {
         return className.equals("Optional") || className.equals("java.util.Optional");
+    }
+
+    private static boolean isListsLibClass(String className) {
+        return className.equals("ListsLib") || className.equals(LIB + "ListsLib");
+    }
+
+    private static boolean isMapLibClass(String className) {
+        return className.equals("MapLib") || className.equals(LIB + "MapLib");
+    }
+
+    private static PirType safeArgType(List<PirType> argTypes, int index) {
+        return (argTypes != null && argTypes.size() > index) ? argTypes.get(index) : new PirType.DataType();
     }
 
     /**
@@ -181,6 +260,8 @@ public final class StdlibRegistry implements StdlibLookup {
         registerCollectionFactories(reg);
         registerLedgerTypeFactories(reg);
         registerOptionalFactories(reg);
+        registerValueFactories(reg);
+        registerIntervalFactories(reg);
         return reg;
     }
 
@@ -455,6 +536,12 @@ public final class StdlibRegistry implements StdlibLookup {
             }
             return result;
         });
+
+        // JulcMap.empty() → MkNilPairData(unit)
+        reg.register("JulcMap", "empty", args -> {
+            requireArgs("JulcMap.empty", args, 0);
+            return builtinApp1(DefaultFun.MkNilPairData, new PirTerm.Const(Constant.unit()));
+        });
     }
 
     /**
@@ -522,5 +609,159 @@ public final class StdlibRegistry implements StdlibLookup {
                         new PirTerm.App(new PirTerm.Builtin(fun), a),
                         b),
                 c);
+    }
+
+    // ---- Value factory methods ----
+
+    private static final String LEDGER_PKG = "com.bloxbean.cardano.julc.ledger.";
+
+    /**
+     * Register Value.zero(), Value.lovelace(amt), Value.singleton(policy, token, qty).
+     * On-chain, Value is MapType (pair list). These produce raw pair lists;
+     * DataConstr field encoding applies MapData when stored in records.
+     */
+    private static void registerValueFactories(StdlibRegistry reg) {
+        String V = LEDGER_PKG + "Value";
+
+        // Value.zero() → empty pair list, wrapped as MapData for Data encoding
+        reg.register(V, "zero", args -> {
+            requireArgs("Value.zero", args, 0);
+            return builtinApp1(DefaultFun.MapData,
+                    builtinApp1(DefaultFun.MkNilPairData, new PirTerm.Const(Constant.unit())));
+        });
+
+        // Value.lovelace(amount) → {emptyBS → {emptyBS → amount}}
+        reg.register(V, "lovelace", args -> {
+            requireArgs("Value.lovelace", args, 1);
+            var amt = args.get(0);
+            var unit = new PirTerm.Const(Constant.unit());
+            var emptyBS = new PirTerm.Const(Constant.byteString(new byte[0]));
+            var emptyPairList = builtinApp1(DefaultFun.MkNilPairData, unit);
+            // Inner map: {emptyBS → IData(amt)}
+            var innerPair = builtinApp2(DefaultFun.MkPairData,
+                    builtinApp1(DefaultFun.BData, emptyBS),
+                    builtinApp1(DefaultFun.IData, amt));
+            var innerList = builtinApp2(DefaultFun.MkCons, innerPair, emptyPairList);
+            // Outer map: {emptyBS → MapData(innerList)}
+            var outerPair = builtinApp2(DefaultFun.MkPairData,
+                    builtinApp1(DefaultFun.BData, emptyBS),
+                    builtinApp1(DefaultFun.MapData, innerList));
+            return builtinApp1(DefaultFun.MapData,
+                    builtinApp2(DefaultFun.MkCons, outerPair,
+                            builtinApp1(DefaultFun.MkNilPairData, unit)));
+        });
+
+        // Value.singleton(policy, token, qty) → {policy → {token → qty}}
+        reg.register(V, "singleton", args -> {
+            requireArgs("Value.singleton", args, 3);
+            var policy = args.get(0);
+            var token = args.get(1);
+            var qty = args.get(2);
+            var unit = new PirTerm.Const(Constant.unit());
+            var emptyPairList = builtinApp1(DefaultFun.MkNilPairData, unit);
+            // Inner map: {BData(token) → IData(qty)}
+            var innerPair = builtinApp2(DefaultFun.MkPairData,
+                    builtinApp1(DefaultFun.BData, token),
+                    builtinApp1(DefaultFun.IData, qty));
+            var innerList = builtinApp2(DefaultFun.MkCons, innerPair, emptyPairList);
+            // Outer map: {BData(policy) → MapData(innerList)}
+            var outerPair = builtinApp2(DefaultFun.MkPairData,
+                    builtinApp1(DefaultFun.BData, policy),
+                    builtinApp1(DefaultFun.MapData, innerList));
+            return builtinApp1(DefaultFun.MapData,
+                    builtinApp2(DefaultFun.MkCons, outerPair,
+                            builtinApp1(DefaultFun.MkNilPairData, unit)));
+        });
+    }
+
+    // ---- Interval factory methods ----
+
+    /**
+     * Register Interval.always(), never(), after(t), before(t), between(a,b).
+     * Interval on-chain: Constr(0, [lower_bound, upper_bound]).
+     * IntervalBound: Constr(0, [bound_type, inclusive_bool]).
+     * IntervalBoundType: NegInf→Constr(0,[]), Finite(t)→Constr(1,[IData(t)]), PosInf→Constr(2,[]).
+     */
+    private static void registerIntervalFactories(StdlibRegistry reg) {
+        String I = LEDGER_PKG + "Interval";
+
+        // Interval.always() → Interval(IB(NegInf, True), IB(PosInf, True))
+        reg.register(I, "always", args -> {
+            requireArgs("Interval.always", args, 0);
+            return intervalConstr(
+                    intervalBound(negInf(), boolTrue()),
+                    intervalBound(posInf(), boolTrue()));
+        });
+
+        // Interval.never() → Interval(IB(PosInf, True), IB(NegInf, True))
+        reg.register(I, "never", args -> {
+            requireArgs("Interval.never", args, 0);
+            return intervalConstr(
+                    intervalBound(posInf(), boolTrue()),
+                    intervalBound(negInf(), boolTrue()));
+        });
+
+        // Interval.after(time) → Interval(IB(Finite(time), True), IB(PosInf, True))
+        reg.register(I, "after", args -> {
+            requireArgs("Interval.after", args, 1);
+            return intervalConstr(
+                    intervalBound(finite(args.get(0)), boolTrue()),
+                    intervalBound(posInf(), boolTrue()));
+        });
+
+        // Interval.before(time) → Interval(IB(NegInf, True), IB(Finite(time), True))
+        reg.register(I, "before", args -> {
+            requireArgs("Interval.before", args, 1);
+            return intervalConstr(
+                    intervalBound(negInf(), boolTrue()),
+                    intervalBound(finite(args.get(0)), boolTrue()));
+        });
+
+        // Interval.between(from, to) → Interval(IB(Finite(from), True), IB(Finite(to), True))
+        reg.register(I, "between", args -> {
+            requireArgs("Interval.between", args, 2);
+            return intervalConstr(
+                    intervalBound(finite(args.get(0)), boolTrue()),
+                    intervalBound(finite(args.get(1)), boolTrue()));
+        });
+    }
+
+    // -- Interval PIR construction helpers --
+
+    private static PirTerm boolTrue() {
+        return new PirTerm.DataConstr(1, new PirType.RecordType("True", List.of()), List.of());
+    }
+
+    private static PirTerm negInf() {
+        return new PirTerm.DataConstr(0, new PirType.RecordType("NegInf", List.of()), List.of());
+    }
+
+    private static PirTerm posInf() {
+        return new PirTerm.DataConstr(2, new PirType.RecordType("PosInf", List.of()), List.of());
+    }
+
+    /** Finite(time) → Constr(1, [IData(time)]). Field is IntegerType so UplcGenerator wraps with IData. */
+    private static PirTerm finite(PirTerm time) {
+        var type = new PirType.RecordType("Finite",
+                List.of(new PirType.Field("time", new PirType.IntegerType())));
+        return new PirTerm.DataConstr(1, type, List.of(time));
+    }
+
+    /** IntervalBound(boundType, inclusive) → Constr(0, [boundType, inclusive]).
+     *  Both fields are DataType (already ConstrData-encoded). */
+    private static PirTerm intervalBound(PirTerm boundType, PirTerm inclusive) {
+        var type = new PirType.RecordType("IntervalBound", List.of(
+                new PirType.Field("boundType", new PirType.DataType()),
+                new PirType.Field("isInclusive", new PirType.DataType())));
+        return new PirTerm.DataConstr(0, type, List.of(boundType, inclusive));
+    }
+
+    /** Interval(lower, upper) → Constr(0, [lower, upper]).
+     *  Both fields are DataType (already ConstrData-encoded IntervalBounds). */
+    private static PirTerm intervalConstr(PirTerm lower, PirTerm upper) {
+        var type = new PirType.RecordType("Interval", List.of(
+                new PirType.Field("from", new PirType.DataType()),
+                new PirType.Field("to", new PirType.DataType())));
+        return new PirTerm.DataConstr(0, type, List.of(lower, upper));
     }
 }

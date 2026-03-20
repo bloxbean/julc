@@ -20,6 +20,12 @@ import java.util.Optional;
 @OnchainLibrary
 public class MapLib {
 
+    /** Return an empty map. */
+    @SuppressWarnings("unchecked")
+    public static JulcMap<PlutusData, PlutusData> empty() {
+        return (JulcMap<PlutusData, PlutusData>)(Object) Builtins.mkNilPairData();
+    }
+
     /** Look up a key. Returns Optional.of(value) if found, Optional.empty() if not. */
     @SuppressWarnings("unchecked")
     public static Optional<PlutusData> lookup(JulcMap<PlutusData, PlutusData> map, PlutusData key) {
