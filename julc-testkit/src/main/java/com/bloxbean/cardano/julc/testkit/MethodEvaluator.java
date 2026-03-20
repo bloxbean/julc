@@ -404,7 +404,7 @@ public final class MethodEvaluator {
     /**
      * Build combined argument list: params first, then method args.
      */
-    private static List<PlutusData> buildAllArgs(PlutusData[] params, PlutusData[] args) {
+    static List<PlutusData> buildAllArgs(PlutusData[] params, PlutusData[] args) {
         int paramLen = (params != null) ? params.length : 0;
         int argLen = (args != null) ? args.length : 0;
         if (paramLen == 0 && argLen == 0) {

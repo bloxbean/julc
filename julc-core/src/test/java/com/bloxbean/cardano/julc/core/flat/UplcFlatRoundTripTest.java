@@ -392,6 +392,34 @@ class UplcFlatRoundTripTest {
     }
 
     @Test
+    void constArrayRoundTrip() {
+        var array = new Constant.ArrayConst(DefaultUni.BOOL,
+                List.of(Constant.bool(true), Constant.bool(false)));
+        assertConstRoundTrip(array);
+    }
+
+    @Test
+    void constArrayEmpty() {
+        var array = new Constant.ArrayConst(DefaultUni.INTEGER, List.of());
+        assertConstRoundTrip(array);
+    }
+
+    @Test
+    void constValueRoundTrip() {
+        var value = new Constant.ValueConst(List.of(
+                new Constant.ValueConst.ValueEntry(new byte[]{0x01, 0x02},
+                        List.of(new Constant.ValueConst.TokenEntry(new byte[]{0x03}, BigInteger.valueOf(100))))
+        ));
+        assertConstRoundTrip(value);
+    }
+
+    @Test
+    void constValueEmpty() {
+        var value = new Constant.ValueConst(List.of());
+        assertConstRoundTrip(value);
+    }
+
+    @Test
     void constListOfData() {
         var list = new Constant.ListConst(DefaultUni.DATA,
                 List.of(Constant.data(PlutusData.integer(1)),

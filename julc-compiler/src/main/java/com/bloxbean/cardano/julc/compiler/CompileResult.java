@@ -6,6 +6,7 @@ import com.bloxbean.cardano.julc.compiler.pir.PirTerm;
 import com.bloxbean.cardano.julc.core.Program;
 import com.bloxbean.cardano.julc.core.Term;
 import com.bloxbean.cardano.julc.core.flat.UplcFlatEncoder;
+import com.bloxbean.cardano.julc.core.source.SourceMap;
 import com.bloxbean.cardano.julc.core.text.UplcPrinter;
 
 import java.util.List;
@@ -18,7 +19,7 @@ import java.util.List;
  * When created via the standard {@link JulcCompiler#compile(String)}, they are null.
  */
 public record CompileResult(Program program, List<CompilerDiagnostic> diagnostics, List<ParamInfo> params,
-                             PirTerm pirTerm, Term uplcTerm) {
+                             PirTerm pirTerm, Term uplcTerm, SourceMap sourceMap) {
 
     public CompileResult {
         diagnostics = List.copyOf(diagnostics);
@@ -26,17 +27,32 @@ public record CompileResult(Program program, List<CompilerDiagnostic> diagnostic
     }
 
     /**
+     * Backward-compatible constructor (no PIR/UPLC/sourceMap).
+     */
+    public CompileResult(Program program, List<CompilerDiagnostic> diagnostics, List<ParamInfo> params,
+                         PirTerm pirTerm, Term uplcTerm) {
+        this(program, diagnostics, params, pirTerm, uplcTerm, null);
+    }
+
+    /**
      * Backward-compatible constructor (no PIR/UPLC).
      */
     public CompileResult(Program program, List<CompilerDiagnostic> diagnostics, List<ParamInfo> params) {
-        this(program, diagnostics, params, null, null);
+        this(program, diagnostics, params, null, null, null);
     }
 
     /**
      * Backward-compatible constructor for non-parameterized validators.
      */
     public CompileResult(Program program, List<CompilerDiagnostic> diagnostics) {
-        this(program, diagnostics, List.of(), null, null);
+        this(program, diagnostics, List.of(), null, null, null);
+    }
+
+    /**
+     * Whether this compile result includes a source map for error location tracking.
+     */
+    public boolean hasSourceMap() {
+        return sourceMap != null && !sourceMap.isEmpty();
     }
 
     public boolean hasErrors() {

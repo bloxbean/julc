@@ -1,6 +1,7 @@
 package com.bloxbean.cardano.julc.testkit;
 
 import com.bloxbean.cardano.julc.compiler.CompileResult;
+import com.bloxbean.cardano.julc.compiler.CompilerOptions;
 import com.bloxbean.cardano.julc.compiler.LibrarySourceResolver;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
@@ -79,7 +80,7 @@ public final class SourceDiscovery {
         List<String> libSources = LibrarySourceResolver.resolve(validatorSource, pool);
 
         // Compile with stdlib
-        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry()::lookup);
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry());
         var result = compiler.compile(validatorSource, libSources);
 
         if (result.hasErrors()) {
@@ -109,6 +110,19 @@ public final class SourceDiscovery {
      * @throws AssertionError if the source file cannot be read or compilation fails
      */
     public static CompileResult compile(Class<?> validatorClass, Path sourceRoot) {
+        return compile(validatorClass, sourceRoot, new CompilerOptions());
+    }
+
+    /**
+     * Compile a validator class with auto-discovered library dependencies and custom compiler options.
+     * This is the primary way to enable source maps for class-based compilation.
+     *
+     * @param validatorClass the validator class to compile
+     * @param sourceRoot     the root of the source tree
+     * @param options        compiler options (e.g., source map enabled)
+     * @return the compilation result
+     */
+    public static CompileResult compile(Class<?> validatorClass, Path sourceRoot, CompilerOptions options) {
         Path sourceFile = sourceFileFor(validatorClass, sourceRoot);
         String validatorSource;
         try {
@@ -117,12 +131,10 @@ public final class SourceDiscovery {
             throw new AssertionError("Cannot read validator source: " + sourceFile, e);
         }
 
-        // Build library pool and resolve dependencies
         Map<String, String> pool = buildLibraryPool(validatorSource, sourceRoot);
         List<String> libSources = LibrarySourceResolver.resolve(validatorSource, pool);
 
-        // Compile with stdlib
-        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry()::lookup);
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), options);
         var result = compiler.compile(validatorSource, libSources);
 
         if (result.hasErrors()) {
@@ -227,7 +239,7 @@ public final class SourceDiscovery {
         Map<String, String> pool = buildLibraryPool(source, sourceRoot);
         List<String> libSources = LibrarySourceResolver.resolve(source, pool);
 
-        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry()::lookup);
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry());
         var result = compiler.compileMethod(source, methodName, libSources);
 
         if (result.hasErrors()) {
@@ -271,7 +283,7 @@ public final class SourceDiscovery {
         Map<String, String> pool = buildLibraryPool(source, sourceRoot);
         List<String> libSources = LibrarySourceResolver.resolve(source, pool);
 
-        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry()::lookup);
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry());
         var result = compiler.compileMethod(source, methodName, libSources);
 
         if (result.hasErrors()) {

@@ -58,6 +58,7 @@ subprojects {
     tasks.withType(Test).configureEach {
         useJUnitPlatform()
 //        jvmArgs '--enable-preview'
+        jvmArgs '--enable-native-access=ALL-UNNAMED'
         maxHeapSize = '1g'
     }
 
@@ -83,7 +84,7 @@ subprojects {
     }
 
     // Publishing for publishable modules
-    def nonPublishable = ['julc-examples', 'julc-e2e-tests', 'julc-plugin-test', 'julc-analyzer-cli']
+    def nonPublishable = ['julc-examples', 'julc-e2e-tests', 'julc-plugin-test', 'julc-analyzer-cli', 'julc-benchmark', 'julcc']
     if (!nonPublishable.contains(project.name)) {
         apply plugin: 'maven-publish'
         apply plugin: 'signing'

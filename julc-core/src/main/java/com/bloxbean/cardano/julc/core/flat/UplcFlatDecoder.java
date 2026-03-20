@@ -146,6 +146,8 @@ public final class UplcFlatDecoder {
             case 9 -> DefaultUni.BLS12_381_G1;
             case 10 -> DefaultUni.BLS12_381_G2;
             case 11 -> DefaultUni.BLS12_381_ML;
+            case 12 -> new DefaultUni.ProtoArray();
+            case 13 -> new DefaultUni.ProtoValue();
             default -> throw new FlatDecodingException("Unknown type tag: " + tag);
         };
     }
@@ -166,7 +168,15 @@ public final class UplcFlatDecoder {
             case DefaultUni.Bls12_381_G2_Element _ -> new Constant.Bls12_381_G2Element(reader.byteString());
             case DefaultUni.Bls12_381_MlResult _ -> new Constant.Bls12_381_MlResult(reader.byteString());
             case DefaultUni.Apply a -> {
-                if (a.f() instanceof DefaultUni.ProtoList) {
+                if (a.f() instanceof DefaultUni.ProtoArray) {
+                    // Array: read elements using elem type (same encoding as List)
+                    DefaultUni elemType = a.arg();
+                    var elements = new ArrayList<Constant>();
+                    while (reader.listHasNext()) {
+                        elements.add(readConstantValueForType(elemType));
+                    }
+                    yield new Constant.ArrayConst(elemType, elements);
+                } else if (a.f() instanceof DefaultUni.ProtoList) {
                     // List: read elements using elem type
                     DefaultUni elemType = a.arg();
                     var elements = new ArrayList<Constant>();
@@ -186,8 +196,23 @@ public final class UplcFlatDecoder {
                     throw new FlatDecodingException("Unsupported compound type: " + a);
                 }
             }
+            case DefaultUni.ProtoValue _ -> {
+                var entries = new ArrayList<Constant.ValueConst.ValueEntry>();
+                while (reader.listHasNext()) {
+                    byte[] policyId = reader.byteString();
+                    var tokens = new ArrayList<Constant.ValueConst.TokenEntry>();
+                    while (reader.listHasNext()) {
+                        byte[] tokenName = reader.byteString();
+                        java.math.BigInteger quantity = reader.integer();
+                        tokens.add(new Constant.ValueConst.TokenEntry(tokenName, quantity));
+                    }
+                    entries.add(new Constant.ValueConst.ValueEntry(policyId, tokens));
+                }
+                yield new Constant.ValueConst(entries);
+            }
             case DefaultUni.ProtoList _ -> throw new FlatDecodingException("Bare ProtoList in value position");
             case DefaultUni.ProtoPair _ -> throw new FlatDecodingException("Bare ProtoPair in value position");
+            case DefaultUni.ProtoArray _ -> throw new FlatDecodingException("Bare ProtoArray in value position");
         };
     }
 

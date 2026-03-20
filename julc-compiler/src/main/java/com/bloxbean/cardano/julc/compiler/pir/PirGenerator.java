@@ -15,6 +15,7 @@ import com.github.javaparser.ast.stmt.*;
 
 import com.bloxbean.cardano.julc.compiler.CompilerOptions;
 import com.bloxbean.cardano.julc.compiler.resolve.LibraryMethodRegistry;
+import com.bloxbean.cardano.julc.core.source.SourceLocation;
 import com.bloxbean.cardano.julc.compiler.util.StringUtils;
 
 import java.math.BigInteger;
@@ -35,10 +36,21 @@ public class PirGenerator {
     private final CompilerOptions options;
     private final List<CompilerDiagnostic> collectedErrors = new ArrayList<>();
     private final LoopDesugarer loopDesugarer = new LoopDesugarer();
+
+    /** PIR term → Java source location. Only populated when source maps are enabled. */
+    private final IdentityHashMap<PirTerm, SourceLocation> pirPositions = new IdentityHashMap<>();
     private String forEachAccumulatorVar; // non-null when compiling fold body
     private Function<PirTerm, PirTerm> breakContinueFn; // non-null when compiling break-capable fold body
     private Set<String> multiAccVars = Set.of(); // non-empty when compiling multi-acc fold body
     private Set<String> hofUnwrappedVars = Set.of(); // param names unwrapped by HOF lambda Let-binding (prevents double-unwrap)
+    /**
+     * When true, each {@code return <boolExpr>} is compiled as
+     * {@code IfThenElse(expr, True, Error)} with the Error mapped to the return statement.
+     * This allows source maps to pinpoint which return statement caused a validator to fail.
+     * Set by the compiler for boolean entrypoint methods when source maps are enabled.
+     */
+    private boolean booleanReturnGuard = false;
+    private boolean booleanReturnGuardActive = false; // true when inside a boolean method with guard enabled
     /**
      * Execute a body-generation action within a loop body context.
      * Previously used to reject nested loops; now a simple pass-through since nested loops are supported.
@@ -83,6 +95,56 @@ public class PirGenerator {
      */
     public List<CompilerDiagnostic> getCollectedErrors() {
         return List.copyOf(collectedErrors);
+    }
+
+    /**
+     * Get the PIR term → source location map.
+     * Only populated when {@link CompilerOptions#isSourceMapEnabled()} is true.
+     */
+    public IdentityHashMap<PirTerm, SourceLocation> getPirPositions() {
+        return pirPositions;
+    }
+
+    /**
+     * Enable boolean return guard: each {@code return <boolExpr>} becomes
+     * {@code IfThenElse(expr, True, Error)} with the Error source-mapped to the return statement.
+     * Call this before generating a boolean entrypoint method when source maps are enabled.
+     */
+    public void setBooleanReturnGuard(boolean enabled) {
+        this.booleanReturnGuard = enabled;
+    }
+
+    /**
+     * If booleanReturnGuard is active, wrap the return value as:
+     * {@code IfThenElse(expr, True, Error)} where Error is source-mapped to the return statement.
+     * Otherwise returns expr unchanged.
+     */
+    private PirTerm applyBooleanReturnGuard(PirTerm expr, com.github.javaparser.ast.Node sourceNode) {
+        if (!booleanReturnGuardActive) return expr;
+        var errorTerm = new PirTerm.Error(new PirType.BoolType());
+        recordPosition(errorTerm, sourceNode);
+        var guarded = new PirTerm.IfThenElse(expr, new PirTerm.Const(Constant.bool(true)), errorTerm);
+        recordPosition(guarded, sourceNode);
+        return guarded;
+    }
+
+    /**
+     * Record the Java source position for a PIR term (only when source maps are enabled).
+     */
+    private void recordPosition(PirTerm term, Node javaNode) {
+        if (!options.isSourceMapEnabled() || term == null || javaNode == null) return;
+        javaNode.getRange().ifPresent(range -> {
+            var fileName = javaNode.findCompilationUnit()
+                    .flatMap(cu -> cu.getStorage().map(s -> s.getFileName()))
+                    .orElse(null);
+            // Use a short fragment of the Java expression for display
+            var fragment = javaNode.toString();
+            if (fragment.length() > 100) {
+                fragment = fragment.substring(0, 97) + "...";
+            }
+            pirPositions.put(term, new SourceLocation(
+                    fileName, range.begin.line, range.begin.column, fragment));
+        });
     }
 
     /**
@@ -201,6 +263,12 @@ public class PirGenerator {
                     "Ensure all code paths end with a 'return' statement.", method);
         }
 
+        // Activate boolean return guard for boolean methods when source maps enabled
+        boolean prevGuard = this.booleanReturnGuardActive;
+        if (booleanReturnGuard && returnType.equals("boolean")) {
+            this.booleanReturnGuardActive = true;
+        }
+
         // Register parameters in scope
         symbolTable.pushScope();
         for (var param : params) {
@@ -209,6 +277,7 @@ public class PirGenerator {
         }
 
         PirTerm bodyTerm = generateBlock(body);
+        this.booleanReturnGuardActive = prevGuard;
         symbolTable.popScope();
 
         // Wrap body in lambda chain: \p1 -> \p2 -> ... -> body
@@ -218,6 +287,7 @@ public class PirGenerator {
             var pirType = typeResolver.resolve(param.getType());
             result = new PirTerm.Lam(param.getNameAsString(), pirType, result);
         }
+        recordPosition(result, method);
         return result;
     }
 
@@ -235,8 +305,10 @@ public class PirGenerator {
         }
         var stmt = stmts.get(index);
         if (stmt instanceof ReturnStmt rs) {
-            return rs.getExpression().map(this::generateExpression)
+            var result = rs.getExpression().map(this::generateExpression)
                     .orElse(new PirTerm.Const(Constant.unit()));
+            recordPosition(result, rs);
+            return applyBooleanReturnGuard(result, rs);
         }
         if (stmt instanceof YieldStmt ys) {
             return generateExpression(ys.getExpression());
@@ -310,7 +382,9 @@ public class PirGenerator {
             } else {
                 var cond = generateExpression(is.getCondition());
                 var thenTerm = generateStatement(is.getThenStmt());
-                return new PirTerm.IfThenElse(cond, thenTerm, rest);
+                var result = new PirTerm.IfThenElse(cond, thenTerm, rest);
+                recordPosition(result, is);
+                return result;
             }
         }
 
@@ -326,6 +400,7 @@ public class PirGenerator {
                     .orElse(new PirTerm.Const(Constant.unit()));
             ifExpr = new PirTerm.IfThenElse(cond, thenTerm, elseTerm);
         }
+        recordPosition(ifExpr, is);
 
         // If there are statements following the if, wrap in a let
         if (hasFollowing) {
@@ -455,8 +530,10 @@ public class PirGenerator {
             return result;
         }
         if (stmt instanceof ReturnStmt rs) {
-            return rs.getExpression().map(this::generateExpression)
+            var result = rs.getExpression().map(this::generateExpression)
                     .orElse(new PirTerm.Const(Constant.unit()));
+            recordPosition(result, rs);
+            return applyBooleanReturnGuard(result, rs);
         }
         if (stmt instanceof YieldStmt ys) {
             return generateExpression(ys.getExpression());
@@ -523,47 +600,69 @@ public class PirGenerator {
             return new PirTerm.Var(name, optType.get());
         }
         if (expr instanceof BinaryExpr be) {
-            return generateBinaryExpr(be);
+            var result = generateBinaryExpr(be);
+            recordPosition(result, be);
+            return result;
         }
         if (expr instanceof UnaryExpr ue) {
-            return generateUnaryExpr(ue);
+            var result = generateUnaryExpr(ue);
+            recordPosition(result, ue);
+            return result;
         }
         if (expr instanceof EnclosedExpr ee) {
             return generateExpression(ee.getInner());
         }
         if (expr instanceof MethodCallExpr mce) {
-            return generateMethodCall(mce);
+            var result = generateMethodCall(mce);
+            recordPosition(result, mce);
+            return result;
         }
         if (expr instanceof FieldAccessExpr fae) {
-            return generateFieldAccess(fae);
+            var result = generateFieldAccess(fae);
+            recordPosition(result, fae);
+            return result;
         }
         if (expr instanceof ObjectCreationExpr oce) {
-            return generateObjectCreation(oce);
+            var result = generateObjectCreation(oce);
+            recordPosition(result, oce);
+            return result;
         }
         if (expr instanceof ConditionalExpr ce) {
             // Ternary: cond ? then : else
-            return new PirTerm.IfThenElse(
+            var result = new PirTerm.IfThenElse(
                     generateExpression(ce.getCondition()),
                     generateExpression(ce.getThenExpr()),
                     generateExpression(ce.getElseExpr()));
+            recordPosition(result, ce);
+            return result;
         }
         if (expr instanceof LambdaExpr le) {
             return generateLambda(le);
         }
         if (expr instanceof SwitchExpr se) {
-            return generateSwitchExpr(se);
+            var result = generateSwitchExpr(se);
+            recordPosition(result, se);
+            return result;
         }
         if (expr instanceof InstanceOfExpr ioe) {
-            return generateInstanceOf(ioe);
+            var result = generateInstanceOf(ioe);
+            recordPosition(result, ioe);
+            return result;
         }
         if (expr instanceof CastExpr ce) {
             var inner = generateExpression(ce.getExpression());
             // Most casts are no-ops at UPLC level. But casting to MapType needs UnMapData
             // so that MapType variables always hold pair lists (consistent with field access).
+            // Exception: if the inner expression is already a MapType (pair list), skip UnMapData
+            // to avoid double-unwrap (e.g., (JulcMap)(Object) MapLib.empty() where empty() already
+            // returns a pair list via MkNilPairData).
             try {
                 var castTargetType = typeResolver.resolve(ce.getType());
                 if (castTargetType instanceof PirType.MapType) {
-                    return new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), inner);
+                    var innerType = inferPirType(inner);
+                    if (!(innerType instanceof PirType.MapType)) {
+                        return new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnMapData), inner);
+                    }
                 }
             } catch (IllegalArgumentException | CompilerException _) {
                 // Unknown cast target type (e.g., Object) — treat as no-op
@@ -2753,8 +2852,9 @@ public class PirGenerator {
                 return generateBlock(block);
             }
             if (stmt instanceof ReturnStmt rs) {
-                return rs.getExpression().map(this::generateExpression)
+                var result = rs.getExpression().map(this::generateExpression)
                         .orElse(new PirTerm.Const(Constant.unit()));
+                return applyBooleanReturnGuard(result, rs);
             }
         }
         return generateStatements(new ArrayList<>(stmts), 0);

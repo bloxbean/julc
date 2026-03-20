@@ -1,6 +1,7 @@
 package com.bloxbean.cardano.julc.testkit;
 
 import com.bloxbean.cardano.julc.compiler.CompileResult;
+import com.bloxbean.cardano.julc.core.source.SourceMap;
 import com.bloxbean.cardano.julc.vm.EvalResult;
 
 import java.util.ArrayList;
@@ -152,6 +153,39 @@ public final class BudgetAssertions {
             throw new AssertionError("Script size " + actual + " bytes exceeds maximum "
                     + maxBytes + " bytes (formatted: " + result.scriptSizeFormatted() + ")");
         }
+    }
+
+    /**
+     * Assert that the evaluation result is a success, with source location in error message on failure.
+     */
+    public static void assertSuccess(EvalResult result, SourceMap sourceMap) {
+        Objects.requireNonNull(result, "result must not be null");
+        if (!result.isSuccess()) {
+            throw new AssertionError("Expected success but got: " + describeResult(result, sourceMap));
+        }
+    }
+
+    /**
+     * Assert that the evaluation result is a failure, with source location in error message.
+     */
+    public static void assertFailure(EvalResult result, SourceMap sourceMap) {
+        Objects.requireNonNull(result, "result must not be null");
+        if (result.isSuccess()) {
+            throw new AssertionError("Expected failure but got: " + describeResult(result, sourceMap));
+        }
+    }
+
+    /**
+     * Describe a result with source location info if a source map is available.
+     */
+    public static String describeResult(EvalResult result, SourceMap sourceMap) {
+        var base = describeResult(result);
+        if (sourceMap == null) return base;
+        var location = ValidatorTest.resolveErrorLocation(result, sourceMap);
+        if (location != null) {
+            return base + "\n  at " + location;
+        }
+        return base;
     }
 
     private static String describeResult(EvalResult result) {

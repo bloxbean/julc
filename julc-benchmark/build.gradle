@@ -1,0 +1,37 @@
+plugins {
+    id 'java'
+    id 'me.champeau.jmh' version '0.7.2'
+}
+
+description = 'JMH benchmarks for julc VM backends'
+
+// Exclude from publishing
+tasks.withType(Javadoc).configureEach { enabled = false }
+
+jmh {
+    warmupIterations = 1
+    iterations = 1
+    warmup = '5s'
+    timeOnIteration = '5s'
+    fork = 1
+    threads = 1
+    resultFormat = 'CSV'
+
+    // Filter: ./gradlew :julc-benchmark:jmh -PjmhInclude=CekTruffleBenchmark
+    if (project.hasProperty('jmhInclude')) {
+        includes = [project.property('jmhInclude')]
+    }
+
+    // Disable Truffle JIT (interpreter-only mode):
+    //   ./gradlew :julc-benchmark:jmh -PnoJit
+    if (project.hasProperty('noJit')) {
+        jvmArgsAppend = ['-Dtruffle.TruffleRuntime=com.oracle.truffle.api.impl.DefaultTruffleRuntime']
+    }
+}
+
+dependencies {
+    jmh project(':julc-core')
+    jmh project(':julc-vm')
+    jmh project(':julc-vm-java')
+    jmh project(':julc-vm-truffle')
+}

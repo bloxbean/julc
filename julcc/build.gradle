@@ -1,0 +1,149 @@
+plugins {
+    id 'application'
+    id 'com.gradleup.shadow' version '9.0.0-beta12'
+    id 'org.graalvm.buildtools.native' version '0.10.6'
+}
+
+description = 'julcc - Cardano smart contract CLI for Java'
+
+application {
+    mainClass = 'com.bloxbean.julc.cli.JulccMain'
+}
+
+dependencies {
+    implementation project(':julc-compiler')
+    implementation project(':julc-core')
+    implementation project(':julc-stdlib')
+    implementation project(':julc-ledger-api')
+    implementation project(':julc-vm')
+    implementation project(':julc-vm-java')
+    implementation project(':julc-cardano-client-lib')
+    implementation project(':julc-blueprint')
+    implementation project(':julc-bls')
+    implementation 'com.bloxbean.cardano:cardano-client-lib:0.7.1'
+
+    implementation 'info.picocli:picocli:4.7.7'
+    annotationProcessor 'info.picocli:picocli-codegen:4.7.7'
+}
+
+// --- Generate version.properties at build time ---
+def versionPropsDir = file("${buildDir}/generated/version-props")
+
+tasks.register('generateVersionProperties') {
+    def versionFile = new File(versionPropsDir, 'julc-version.properties')
+    outputs.file(versionFile)
+    // Always regenerate (version may change between builds)
+    outputs.upToDateWhen { false }
+    doLast {
+        versionFile.parentFile.mkdirs()
+        versionFile.text = "version=${project.version}\n"
+    }
+}
+
+sourceSets.main.resources.srcDir versionPropsDir
+processResources.dependsOn generateVersionProperties
+
+// --- Bundle stdlib sources into a ZIP for project scaffolding ---
+def stdlibSourcesZipDir = file("${buildDir}/generated/stdlib-zip")
+
+tasks.register('bundleStdlibSources') {
+    description = 'Bundle stdlib, ledger, and core type sources into a ZIP for julcc new/install'
+    def stdlibSrcDir = project(':julc-stdlib').file('src/main/java')
+    def ledgerSrcDir = project(':julc-ledger-api').file('src/main/java')
+    def coreSrcDir   = project(':julc-core').file('src/main/java')
+
+    inputs.dir(stdlibSrcDir)
+    inputs.dir(ledgerSrcDir)
+    inputs.dir(coreSrcDir)
+    outputs.dir(stdlibSourcesZipDir)
+
+    doLast {
+        def zipFile = new File(stdlibSourcesZipDir, 'META-INF/julc/stdlib-sources.zip')
+        zipFile.parentFile.mkdirs()
+
+        def tempDir = new File(temporaryDir, 'stdlib-collect')
+        tempDir.deleteDir()
+        tempDir.mkdirs()
+
+        // Stdlib: annotations + lib + test + Builtins + CryptoProvider
+        def stdlibBase = 'com/bloxbean/cardano/julc/stdlib'
+        fileTree(stdlibSrcDir).matching {
+            include "${stdlibBase}/annotation/*.java"
+            include "${stdlibBase}/lib/*.java"
+            include "${stdlibBase}/test/*.java"
+            include "${stdlibBase}/Builtins.java"
+            include "${stdlibBase}/CryptoProvider.java"
+            // Exclude internal compiler-coupled files
+            exclude "${stdlibBase}/StdlibRegistry.java"
+            exclude "${stdlibBase}/lib/*Hof.java"
+        }.each { File f ->
+            def rel = stdlibSrcDir.toPath().relativize(f.toPath()).toString()
+            def target = new File(tempDir, rel)
+            target.parentFile.mkdirs()
+            target.text = f.text
+        }
+
+        // Ledger types — include @NewType hash types (PubKeyHash, TxId, etc.)
+        // for IDE resolution in user projects. Only exclude internal utility classes.
+        def ledgerExcludes = [
+            'PlutusDataCodec.java', 'PlutusDataHelper.java',
+            'PlutusDataConverter.java', 'LedgerConstants.java'
+        ] as Set
+        fileTree(ledgerSrcDir).matching {
+            include 'com/bloxbean/cardano/julc/ledger/**/*.java'
+        }.each { File f ->
+            if (!ledgerExcludes.contains(f.name)) {
+                def rel = ledgerSrcDir.toPath().relativize(f.toPath()).toString()
+                def target = new File(tempDir, rel)
+                target.parentFile.mkdirs()
+                target.text = f.text
+            }
+        }
+
+        // Core: PlutusData + types (JulcList, JulcMap, Tuple2, Tuple3, Optional)
+        fileTree(coreSrcDir).matching {
+            include 'com/bloxbean/cardano/julc/core/PlutusData.java'
+            include 'com/bloxbean/cardano/julc/core/types/*.java'
+        }.each { File f ->
+            def rel = coreSrcDir.toPath().relativize(f.toPath()).toString()
+            def target = new File(tempDir, rel)
+            target.parentFile.mkdirs()
+            target.text = f.text
+        }
+
+        // Create ZIP
+        ant.zip(destfile: zipFile) {
+            fileset(dir: tempDir)
+        }
+
+        logger.lifecycle("Bundled stdlib sources: ${zipFile.length()} bytes")
+    }
+}
+
+sourceSets.main.resources.srcDir stdlibSourcesZipDir
+processResources.dependsOn bundleStdlibSources
+
+shadowJar {
+    archiveBaseName.set('julcc')
+    archiveClassifier.set('')
+    archiveVersion.set('')
+    mergeServiceFiles()
+    manifest {
+        attributes 'Main-Class': application.mainClass.get()
+    }
+}
+
+graalvmNative {
+    binaries {
+        main {
+            imageName = 'julcc'
+            mainClass = application.mainClass.get()
+            buildArgs.addAll(['--no-fallback', '-H:+ReportExceptionStackTraces'])
+            sharedLibrary = false
+        }
+    }
+}
+
+tasks.named('compileJava') {
+    options.compilerArgs += ["-Aproject=${project.group}/${project.name}"]
+}

@@ -219,6 +219,64 @@ public final class PirHelpers {
                 new PirTerm.Let("k_" + suffix, key, search));
     }
 
+    /**
+     * Callback for regular list search body construction.
+     * Called with the head element, target value, and recursive call on tail.
+     */
+    @FunctionalInterface
+    public interface ListSearchBody {
+        PirTerm build(PirTerm element, PirTerm target, PirTerm recurseOnTail);
+    }
+
+    /**
+     * Generate a LetRec search over a regular Data list.
+     * <p>
+     * Produces:
+     * <pre>{@code
+     * Let xs_<suffix> = list in
+     * Let t_<suffix> = target in
+     * LetRec go_<suffix>(lst) =
+     *     if null(lst) then baseCase
+     *     else let e_<suffix> = head(lst) in
+     *       bodyBuilder(e_<suffix>, t_<suffix>, go(tail(lst)))
+     * in go_<suffix>(xs_<suffix>)
+     * }</pre>
+     *
+     * @param suffix      unique suffix for variable names
+     * @param list        the list to search
+     * @param target      the target value (pre-encoded as Data)
+     * @param baseCase    result when list is exhausted
+     * @param bodyBuilder produces the body for the non-null case
+     * @return the complete LetRec search term
+     */
+    public static PirTerm listSearch(String suffix, PirTerm list, PirTerm target,
+                                      PirTerm baseCase, ListSearchBody bodyBuilder) {
+        var dataListType = new PirType.ListType(new PirType.DataType());
+
+        var xsVar = new PirTerm.Var("xs_" + suffix, dataListType);
+        var tVar = new PirTerm.Var("t_" + suffix, new PirType.DataType());
+        var lstVar = new PirTerm.Var("lst_" + suffix, dataListType);
+        var goVar = new PirTerm.Var("go_" + suffix,
+                new PirType.FunType(dataListType, new PirType.DataType()));
+
+        var nullCheck = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), lstVar);
+        var headExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), lstVar);
+        var eVar = new PirTerm.Var("e_" + suffix, new PirType.DataType());
+        var tailExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), lstVar);
+        var recurse = new PirTerm.App(goVar, tailExpr);
+
+        var innerBody = bodyBuilder.build(eVar, tVar, recurse);
+        var letHead = new PirTerm.Let("e_" + suffix, headExpr, innerBody);
+        var outerIf = new PirTerm.IfThenElse(nullCheck, baseCase, letHead);
+
+        var goBody = new PirTerm.Lam("lst_" + suffix, dataListType, outerIf);
+        var binding = new PirTerm.Binding("go_" + suffix, goBody);
+        var search = new PirTerm.LetRec(List.of(binding), new PirTerm.App(goVar, xsVar));
+
+        return new PirTerm.Let("xs_" + suffix, list,
+                new PirTerm.Let("t_" + suffix, target, search));
+    }
+
     /** Convenience: None value (ConstrData(1, [])). */
     public static PirTerm mkNone() {
         var mkNil = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilData),

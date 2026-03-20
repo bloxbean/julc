@@ -3,6 +3,8 @@ package com.bloxbean.cardano.julc.vm;
 import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.core.Program;
 import com.bloxbean.cardano.julc.core.Term;
+import com.bloxbean.cardano.julc.core.source.SourceMap;
+import com.bloxbean.cardano.julc.vm.trace.ExecutionTraceEntry;
 
 import java.util.List;
 
@@ -47,6 +49,64 @@ public interface JulcVmProvider {
      */
     EvalResult evaluateWithArgs(Program program, PlutusLanguage language,
                                 List<PlutusData> args, ExBudget budget);
+
+    /**
+     * Set the cost model parameter values for a specific Plutus language version.
+     * Values must be in the canonical order (matching the on-chain costModels array).
+     * <p>
+     * If not called, the provider uses its built-in default cost model.
+     * <p>
+     * Mixed-version transactions require calling this once per language version
+     * present in the transaction (V1, V2, and/or V3).
+     * <p>
+     * The protocol version determines which builtins are available and therefore
+     * the expected parameter count. New builtins are added to all language versions
+     * (V1/V2/V3) in each protocol version, so V1/V2 arrays grow over time too.
+     *
+     * @param costModelValues       ordered array of cost model parameter values
+     * @param language              the Plutus language version these parameters are for
+     * @param protocolMajorVersion  the protocol major version (e.g. 9 for Chang, 10 for Plomin)
+     * @param protocolMinorVersion  the protocol minor version
+     */
+    default void setCostModelParams(long[] costModelValues, PlutusLanguage language,
+                                    int protocolMajorVersion, int protocolMinorVersion) {
+        // Default: ignore (use built-in defaults)
+    }
+
+    /**
+     * Set the source map for debugging support.
+     * When set, evaluation errors can include the originating Java source location,
+     * and execution tracing can map CEK steps back to Java source lines.
+     * <p>
+     * Providers that do not support source maps ignore this call.
+     *
+     * @param sourceMap the source map from compilation (nullable — pass null to disable)
+     */
+    default void setSourceMap(SourceMap sourceMap) {
+        // Default: ignore (provider does not support source maps)
+    }
+
+    /**
+     * Enable or disable execution tracing.
+     * When enabled (and a source map is set), each statement-level CEK step
+     * is recorded with its Java source location.
+     * <p>
+     * Providers that do not support tracing ignore this call.
+     *
+     * @param enabled true to enable tracing, false to disable
+     */
+    default void setTracingEnabled(boolean enabled) {
+        // Default: ignore (provider does not support tracing)
+    }
+
+    /**
+     * Returns the execution trace from the most recent evaluation.
+     * Empty list if tracing was disabled, no source map was set, or
+     * the provider does not support tracing.
+     */
+    default List<ExecutionTraceEntry> getLastExecutionTrace() {
+        return List.of();
+    }
 
     /** The name of this provider (for logging/debugging). */
     String name();

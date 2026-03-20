@@ -1,0 +1,33 @@
+plugins {
+    id 'java-library'
+}
+
+description = 'Pure Java CEK Machine - Plutus VM backend without external dependencies'
+
+// Share conformance test resources from julc-vm
+sourceSets {
+    test {
+        resources {
+            srcDir project(':julc-vm').file('src/test/resources')
+        }
+    }
+}
+
+dependencies {
+    api project(':julc-vm')
+    implementation project(':julc-bls')
+    implementation 'org.bouncycastle:bcprov-jdk18on:1.78.1'
+    testImplementation project(':julc-core')
+    testRuntimeOnly project(':julc-vm-scalus')
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            pom {
+                name = 'JuLC VM Java'
+                description = 'Pure Java Plutus VM Backend (CEK Machine)'
+            }
+        }
+    }
+}

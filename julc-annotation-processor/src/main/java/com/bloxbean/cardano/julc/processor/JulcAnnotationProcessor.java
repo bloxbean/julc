@@ -1,5 +1,7 @@
 package com.bloxbean.cardano.julc.processor;
 
+import com.bloxbean.cardano.julc.blueprint.BlueprintConfig;
+import com.bloxbean.cardano.julc.blueprint.BlueprintGenerator;
 import com.bloxbean.cardano.julc.clientlib.JulcScriptAdapter;
 import com.bloxbean.cardano.julc.clientlib.ValidatorOutput;
 import com.bloxbean.cardano.julc.compiler.CompileResult;
@@ -49,11 +51,15 @@ import java.util.stream.Collectors;
         "com.bloxbean.cardano.julc.stdlib.annotation.ProposingValidator",
         "com.bloxbean.cardano.julc.stdlib.annotation.MultiValidator"
 })
+@SupportedOptions({"julc.projectName", "julc.projectVersion"})
 @SupportedSourceVersion(SourceVersion.RELEASE_24)
 public class JulcAnnotationProcessor extends AbstractProcessor {
 
     private Trees trees;
     private StdlibRegistry stdlib;
+
+    /** Accumulated compiled validators for CIP-57 blueprint generation. */
+    private final List<BlueprintGenerator.CompiledValidator> compiledValidators = new ArrayList<>();
 
     /** Same-project @OnchainLibrary sources: simple name → source string */
     private final Map<String, String> sameProjectLibraries = new LinkedHashMap<>();
@@ -108,6 +114,12 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
                 processElement(element, annotation);
             }
         }
+
+        // 4. Generate CIP-57 blueprint on final round
+        if (roundEnv.processingOver() && !compiledValidators.isEmpty()) {
+            generateBlueprint();
+        }
+
         return true;
     }
 
@@ -200,6 +212,9 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
                 writer.write(output.toJson());
             }
 
+            // Accumulate for CIP-57 blueprint generation
+            compiledValidators.add(new BlueprintGenerator.CompiledValidator(className, source, result));
+
             String libMsg = librarySources.isEmpty() ? "" : " (with " + librarySources.size() + " library file(s))";
             processingEnv.getMessager().printMessage(Diagnostic.Kind.NOTE,
                     "Compiled Plutus validator: " + className + " (hash: " + scriptHash + ", size: " + sizeStr + ")" + libMsg,
@@ -254,5 +269,35 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
             case "MultiValidator" -> "PlutusScriptV3";
             default -> "PlutusScriptV3";
         };
+    }
+
+    /**
+     * Generate aggregated CIP-57 blueprint from all compiled validators.
+     */
+    private void generateBlueprint() {
+        try {
+            String projectName = processingEnv.getOptions().getOrDefault("julc.projectName", "julc-project");
+            String projectVersion = processingEnv.getOptions().getOrDefault("julc.projectVersion", "0.0.0");
+
+            var config = new BlueprintConfig(projectName, projectVersion);
+            var blueprint = BlueprintGenerator.generate(config, compiledValidators);
+
+            var filer = processingEnv.getFiler();
+            var resource = filer.createResource(
+                    StandardLocation.CLASS_OUTPUT,
+                    "",
+                    "META-INF/plutus/plutus.json");
+
+            try (Writer writer = resource.openWriter()) {
+                writer.write(blueprint.toJson());
+            }
+
+            processingEnv.getMessager().printMessage(Diagnostic.Kind.NOTE,
+                    "Generated CIP-57 blueprint: META-INF/plutus/plutus.json ("
+                            + compiledValidators.size() + " validator(s))");
+        } catch (IOException e) {
+            processingEnv.getMessager().printMessage(Diagnostic.Kind.WARNING,
+                    "Could not generate CIP-57 blueprint: " + e.getMessage());
+        }
     }
 }

@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -194,6 +195,89 @@ class JulcAnnotationProcessorTest {
     }
 
     @Test
+    void generatesBlueprintJson() throws Exception {
+        var source = """
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                import java.math.BigInteger;
+
+                @Validator
+                class BpValidator {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        return redeemer == ctx;
+                    }
+                }
+                """;
+
+        var result = compileWithProcessor(source, "BpValidator");
+        assertTrue(result.success(), "Compilation should succeed: " + result.diagnostics());
+
+        // Verify CIP-57 blueprint was generated
+        Path blueprintFile = tempDir.resolve("META-INF/plutus/plutus.json");
+        assertTrue(Files.exists(blueprintFile), "CIP-57 blueprint should exist at " + blueprintFile);
+
+        String json = Files.readString(blueprintFile);
+        assertTrue(json.contains("\"preamble\""), "Blueprint should have preamble");
+        assertTrue(json.contains("\"validators\""), "Blueprint should have validators");
+        assertTrue(json.contains("\"title\": \"BpValidator\""), "Blueprint should contain validator title");
+        assertTrue(json.contains("\"compiledCode\""), "Blueprint should contain compiledCode");
+        assertTrue(json.contains("\"hash\""), "Blueprint should contain hash");
+    }
+
+    @Test
+    void blueprintUsesProcessorOptions() throws Exception {
+        var source = """
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                import java.math.BigInteger;
+
+                @Validator
+                class OptValidator {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        return true;
+                    }
+                }
+                """;
+
+        var result = compileWithProcessorAndOptions(source, "OptValidator",
+                List.of("-Ajulc.projectName=my-project", "-Ajulc.projectVersion=1.2.3"));
+        assertTrue(result.success(), "Compilation should succeed: " + result.diagnostics());
+
+        Path blueprintFile = tempDir.resolve("META-INF/plutus/plutus.json");
+        assertTrue(Files.exists(blueprintFile));
+
+        String json = Files.readString(blueprintFile);
+        assertTrue(json.contains("\"title\": \"my-project\""), "Blueprint preamble should use project name option");
+        assertTrue(json.contains("\"version\": \"1.2.3\""), "Blueprint preamble should use project version option");
+    }
+
+    @Test
+    void blueprintDefaultsWhenNoOptions() throws Exception {
+        var source = """
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                import java.math.BigInteger;
+
+                @Validator
+                class DefValidator {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        return true;
+                    }
+                }
+                """;
+
+        var result = compileWithProcessor(source, "DefValidator");
+        assertTrue(result.success(), "Compilation should succeed: " + result.diagnostics());
+
+        Path blueprintFile = tempDir.resolve("META-INF/plutus/plutus.json");
+        assertTrue(Files.exists(blueprintFile));
+
+        String json = Files.readString(blueprintFile);
+        assertTrue(json.contains("\"title\": \"julc-project\""), "Blueprint should use default project name");
+        assertTrue(json.contains("\"version\": \"0.0.0\""), "Blueprint should use default project version");
+    }
+
+    @Test
     void scriptLoaderThrowsForMissingResource() {
         // JulcScriptLoader should throw for a class with no compiled script
         assertThrows(IllegalArgumentException.class,
@@ -205,6 +289,11 @@ class JulcAnnotationProcessorTest {
     record CompileOutput(boolean success, List<Diagnostic<? extends JavaFileObject>> diagnostics) {}
 
     private CompileOutput compileWithProcessor(String source, String className) throws IOException {
+        return compileWithProcessorAndOptions(source, className, List.of());
+    }
+
+    private CompileOutput compileWithProcessorAndOptions(String source, String className,
+                                                         List<String> extraOptions) throws IOException {
         JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
         assertNotNull(javac, "System Java compiler must be available");
 
@@ -223,12 +312,13 @@ class JulcAnnotationProcessorTest {
                 }
             };
 
-            var options = List.of(
+            var options = new ArrayList<>(List.of(
                     "--enable-preview",
                     "--source", "24",
                     "-proc:only",
                     "-processor", JulcAnnotationProcessor.class.getName()
-            );
+            ));
+            options.addAll(extraOptions);
 
             var task = javac.getTask(null, fileManager, diagnostics,
                     options, null, List.of(sourceFile));

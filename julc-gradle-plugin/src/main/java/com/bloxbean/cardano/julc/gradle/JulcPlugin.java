@@ -42,6 +42,7 @@ public class JulcPlugin implements Plugin<Project> {
             task.setDescription("Compile julc validators to UPLC scripts");
             task.getSourceDir().set(extension.getSourceDir());
             task.getOutputDir().set(extension.getOutputDir());
+            task.getSourceMap().set(extension.getSourceMap());
         });
 
         // 3. Register bundleJulcSources task

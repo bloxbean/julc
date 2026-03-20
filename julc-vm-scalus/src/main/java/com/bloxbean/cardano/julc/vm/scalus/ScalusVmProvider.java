@@ -6,9 +6,13 @@ import com.bloxbean.cardano.julc.core.Program;
 import com.bloxbean.cardano.julc.core.Term;
 import com.bloxbean.cardano.julc.core.flat.UplcFlatEncoder;
 import com.bloxbean.cardano.julc.vm.*;
+import scalus.cardano.ledger.CostModels;
+import scalus.cardano.ledger.Language;
+import scalus.cardano.ledger.MajorProtocolVersion;
 import scalus.uplc.ProgramFlatCodec$;
 import scalus.uplc.eval.CountingBudgetSpender;
 import scalus.uplc.eval.Log;
+import scalus.uplc.eval.MachineParams;
 import scalus.uplc.eval.PlutusVM;
 
 import java.util.List;
@@ -25,6 +29,40 @@ import java.util.List;
  * is on the classpath.
  */
 public class ScalusVmProvider implements JulcVmProvider {
+
+    // Package-private for testing
+    volatile MachineParams machineParams;
+    volatile MajorProtocolVersion protocolVersion;
+
+    @Override
+    public void setCostModelParams(long[] costModelValues, PlutusLanguage language,
+                                   int protocolMajorVersion, int protocolMinorVersion) {
+        // Map protocol major version to Scalus MajorProtocolVersion
+        MajorProtocolVersion pv = protocolMajorVersion >= 10
+                ? MajorProtocolVersion.plominPV()
+                : MajorProtocolVersion.changPV();
+        this.protocolVersion = pv;
+
+        // Only V3 supports custom MachineParams in Scalus; V1/V2 use built-in defaults
+        if (language != PlutusLanguage.PLUTUS_V3) {
+            return;
+        }
+
+        // Convert long[] to Scala IndexedSeq<Long> (boxed)
+        var builder = scala.collection.immutable.Vector$.MODULE$.<Object>newBuilder();
+        for (long v : costModelValues) {
+            builder.addOne(Long.valueOf(v));
+        }
+        scala.collection.immutable.IndexedSeq<Object> indexedSeq = builder.result();
+
+        // Build CostModels map: Language.PlutusV3 -> indexedSeq
+        scala.collection.immutable.Map<Object, scala.collection.immutable.IndexedSeq<Object>> map =
+                scala.collection.immutable.Map$.MODULE$.<Object, scala.collection.immutable.IndexedSeq<Object>>empty()
+                        .updated(Language.PlutusV3, indexedSeq);
+
+        CostModels costModels = new CostModels(map);
+        this.machineParams = MachineParams.fromCostModels(costModels, Language.PlutusV3, pv);
+    }
 
     @Override
     public EvalResult evaluate(Program program, PlutusLanguage language, ExBudget budget) {
@@ -45,8 +83,11 @@ public class ScalusVmProvider implements JulcVmProvider {
             for (var arg : args) {
                 scalus.uplc.builtin.Data scalusData = DataConverter.toScalus(arg);
                 scalus.uplc.Constant dataConst = new scalus.uplc.Constant.Data(scalusData);
+                var emptyAnn = scalus.uplc.UplcAnnotation.empty();
                 scalusTerm = scalus.uplc.Term.Apply.apply(
-                        scalusTerm, scalus.uplc.Term.Const.apply(dataConst));
+                        scalusTerm,
+                        scalus.uplc.Term.Const.apply(dataConst, emptyAnn),
+                        emptyAnn);
             }
 
             return evaluateScalusTerm(scalusTerm, language);
@@ -104,7 +145,13 @@ public class ScalusVmProvider implements JulcVmProvider {
         return switch (language) {
             case PLUTUS_V1 -> PlutusVM.makePlutusV1VM();
             case PLUTUS_V2 -> PlutusVM.makePlutusV2VM();
-            case PLUTUS_V3 -> PlutusVM.makePlutusV3VM();
+            case PLUTUS_V3 -> {
+                if (machineParams != null && protocolVersion != null) {
+                    yield PlutusVM.makePlutusV3VM(machineParams, protocolVersion);
+                } else {
+                    yield PlutusVM.makePlutusV3VM();
+                }
+            }
         };
     }
 
