@@ -1,4 +1,4 @@
-package com.bloxbean.julc.cli.blueprint;
+package com.bloxbean.cardano.julc.blueprint;
 
 import org.junit.jupiter.api.Test;
 
@@ -12,7 +12,7 @@ class BlueprintTest {
     void toJsonProducesValidStructure() {
         var blueprint = new Blueprint(
                 new Blueprint.Preamble("test", "0.1.0", "v3",
-                        new Blueprint.Compiler("julcc", "0.1.0")),
+                        new Blueprint.Compiler("julc", "0.1.0")),
                 List.of(new Blueprint.ValidatorEntry("MyValidator", "abcdef", "123456", 42,
                         null, null, null)),
                 null
@@ -23,14 +23,14 @@ class BlueprintTest {
         assertTrue(json.contains("\"plutusVersion\": \"v3\""));
         assertTrue(json.contains("\"compiledCode\": \"abcdef\""));
         assertTrue(json.contains("\"hash\": \"123456\""));
-        assertTrue(json.contains("\"name\": \"julcc\""));
+        assertTrue(json.contains("\"name\": \"julc\""));
     }
 
     @Test
     void toJsonEscapesSpecialChars() {
         var blueprint = new Blueprint(
                 new Blueprint.Preamble("test\"name", "0.1.0", "v3",
-                        new Blueprint.Compiler("julcc", "0.1.0")),
+                        new Blueprint.Compiler("julc", "0.1.0")),
                 List.of(),
                 null
         );
@@ -43,7 +43,7 @@ class BlueprintTest {
     void toJsonMultipleValidators() {
         var blueprint = new Blueprint(
                 new Blueprint.Preamble("multi", "0.1.0", "v3",
-                        new Blueprint.Compiler("julcc", "0.1.0")),
+                        new Blueprint.Compiler("julc", "0.1.0")),
                 List.of(
                         new Blueprint.ValidatorEntry("V1", "aa", "bb", 10, null, null, null),
                         new Blueprint.ValidatorEntry("V2", "cc", "dd", 20, null, null, null)
@@ -66,7 +66,7 @@ class BlueprintTest {
 
         var blueprint = new Blueprint(
                 new Blueprint.Preamble("test", "0.1.0", "v3",
-                        new Blueprint.Compiler("julcc", "0.1.0")),
+                        new Blueprint.Compiler("julc", "0.1.0")),
                 List.of(new Blueprint.ValidatorEntry("MyValidator", "abcdef", "123456", 42,
                         datum, redeemer, null)),
                 defs

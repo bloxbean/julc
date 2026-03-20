@@ -9,6 +9,7 @@ dependencies {
     implementation project(':julc-core')
     implementation project(':julc-stdlib')
     implementation project(':julc-cardano-client-lib')
+    implementation project(':julc-blueprint')
     implementation 'com.bloxbean.cardano:cardano-client-lib:0.7.1'
 
     testImplementation project(':julc-vm')

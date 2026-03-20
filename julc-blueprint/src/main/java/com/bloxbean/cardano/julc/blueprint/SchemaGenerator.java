@@ -1,4 +1,4 @@
-package com.bloxbean.julc.cli.blueprint;
+package com.bloxbean.cardano.julc.blueprint;
 
 import com.github.javaparser.ParserConfiguration;
 import com.github.javaparser.StaticJavaParser;

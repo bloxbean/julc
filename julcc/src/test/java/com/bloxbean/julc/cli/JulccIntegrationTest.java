@@ -3,7 +3,8 @@ package com.bloxbean.julc.cli;
 import com.bloxbean.julc.cli.check.TestDiscovery;
 import com.bloxbean.julc.cli.check.TestRunner;
 import com.bloxbean.julc.cli.project.*;
-import com.bloxbean.julc.cli.blueprint.BlueprintGenerator;
+import com.bloxbean.cardano.julc.blueprint.BlueprintConfig;
+import com.bloxbean.cardano.julc.blueprint.BlueprintGenerator;
 import com.bloxbean.julc.cli.scaffold.GradleProjectScaffolder;
 import com.bloxbean.julc.cli.scaffold.MavenProjectScaffolder;
 import com.bloxbean.julc.cli.scaffold.ProjectScaffolder;
@@ -61,7 +62,7 @@ class JulccIntegrationTest {
         // 3. Blueprint
         var compiled = new ArrayList<BlueprintGenerator.CompiledValidator>();
         compiled.add(new BlueprintGenerator.CompiledValidator("AlwaysSucceeds", validatorSource, result));
-        var blueprint = BlueprintGenerator.generate(config, compiled);
+        var blueprint = BlueprintGenerator.generate(new BlueprintConfig(config.name(), config.version()), compiled);
         assertEquals(1, blueprint.validators().size());
         assertEquals(hash, blueprint.validators().getFirst().hash());
 

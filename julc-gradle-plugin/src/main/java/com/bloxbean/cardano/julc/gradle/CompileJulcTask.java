@@ -1,5 +1,7 @@
 package com.bloxbean.cardano.julc.gradle;
 
+import com.bloxbean.cardano.julc.blueprint.BlueprintConfig;
+import com.bloxbean.cardano.julc.blueprint.BlueprintGenerator;
 import com.bloxbean.cardano.julc.clientlib.JulcScriptAdapter;
 import com.bloxbean.cardano.julc.compiler.CompilerOptions;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
@@ -76,6 +78,7 @@ public abstract class CompileJulcTask extends DefaultTask {
         }
 
         int compiled = 0;
+        var compiledList = new ArrayList<BlueprintGenerator.CompiledValidator>();
 
         for (File validatorFile : validatorFiles) {
             String validatorSource = Files.readString(validatorFile.toPath());
@@ -105,7 +108,20 @@ public abstract class CompileJulcTask extends DefaultTask {
             Files.writeString(outputFile.toPath(), output.toJson());
             getLogger().lifecycle("Compiled {} → {} (hash: {}, size: {})",
                     validatorFile.getName(), outputFile.getName(), scriptHash, sizeStr);
+
+            compiledList.add(new BlueprintGenerator.CompiledValidator(
+                    validatorName, validatorSource, result));
             compiled++;
+        }
+
+        // Generate CIP-57 blueprint
+        if (!compiledList.isEmpty()) {
+            var config = new BlueprintConfig(
+                    getProject().getName(), getProject().getVersion().toString());
+            var blueprint = BlueprintGenerator.generate(config, compiledList);
+            Files.writeString(new File(outDir, "plutus.json").toPath(), blueprint.toJson());
+            getLogger().lifecycle("Generated CIP-57 blueprint: plutus.json ({} validator(s))",
+                    compiledList.size());
         }
 
         if (compiled == 0) {

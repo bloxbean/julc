@@ -1,0 +1,30 @@
+plugins {
+    id 'java-library'
+}
+
+description = 'CIP-57 Plutus blueprint generation for JuLC validators'
+
+dependencies {
+    api project(':julc-core')
+    implementation project(':julc-compiler')
+    implementation project(':julc-cardano-client-lib')
+    implementation 'com.bloxbean.cardano:cardano-client-lib:0.7.1'
+    implementation 'com.github.javaparser:javaparser-core:3.26.3'
+}
+
+// --- Generate version.properties at build time ---
+def versionPropsDir = file("${buildDir}/generated/version-props")
+
+tasks.register('generateVersionProperties') {
+    def versionFile = new File(versionPropsDir, 'julc-version.properties')
+    outputs.file(versionFile)
+    outputs.upToDateWhen { false }
+    doLast {
+        versionFile.parentFile.mkdirs()
+        versionFile.text = "version=${project.version}\n"
+    }
+}
+
+sourceSets.main.resources.srcDir versionPropsDir
+processResources.dependsOn generateVersionProperties
+tasks.named('sourcesJar').configure { dependsOn generateVersionProperties }

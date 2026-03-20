@@ -1,9 +1,7 @@
-package com.bloxbean.julc.cli.blueprint;
+package com.bloxbean.cardano.julc.blueprint;
 
 import com.bloxbean.cardano.julc.clientlib.JulcScriptAdapter;
 import com.bloxbean.cardano.julc.compiler.CompileResult;
-import com.bloxbean.julc.cli.JulccVersionProvider;
-import com.bloxbean.julc.cli.project.JulcToml;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -21,12 +19,12 @@ public final class BlueprintGenerator {
     /**
      * Generate a CIP-57 blueprint from compiled validators.
      */
-    public static Blueprint generate(JulcToml config, List<CompiledValidator> compiledValidators) {
+    public static Blueprint generate(BlueprintConfig config, List<CompiledValidator> compiledValidators) {
         var preamble = new Blueprint.Preamble(
-                config.name(),
-                config.version(),
+                config.projectName(),
+                config.projectVersion(),
                 "v3",
-                new Blueprint.Compiler("julcc", JulccVersionProvider.VERSION)
+                new Blueprint.Compiler("julc", JulcVersion.VERSION)
         );
 
         var allDefinitions = new LinkedHashMap<String, SchemaGenerator.Schema>();

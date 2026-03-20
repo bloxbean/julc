@@ -7,7 +7,8 @@ import com.bloxbean.cardano.julc.compiler.CompilerOptions;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
 import com.bloxbean.cardano.julc.core.text.UplcPrinter;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
-import com.bloxbean.julc.cli.blueprint.BlueprintGenerator;
+import com.bloxbean.cardano.julc.blueprint.BlueprintConfig;
+import com.bloxbean.cardano.julc.blueprint.BlueprintGenerator;
 import com.bloxbean.julc.cli.output.AnsiColors;
 import com.bloxbean.julc.cli.output.DiagnosticFormatter;
 import com.bloxbean.julc.cli.project.*;
@@ -109,7 +110,8 @@ public class BuildCommand implements Runnable {
 
             // Generate CIP-57 blueprint
             if (!compiledValidators.isEmpty()) {
-                var blueprint = BlueprintGenerator.generate(config, compiledValidators);
+                var blueprintConfig = new BlueprintConfig(config.name(), config.version());
+                var blueprint = BlueprintGenerator.generate(blueprintConfig, compiledValidators);
                 Files.writeString(plutusDir.resolve("plutus.json"), blueprint.toJson());
             }
 

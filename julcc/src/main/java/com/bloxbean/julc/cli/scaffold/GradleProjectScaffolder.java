@@ -97,6 +97,13 @@ public final class GradleProjectScaffolder {
                     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
                 }
 
+                tasks.withType(JavaCompile).configureEach {
+                    options.compilerArgs += [
+                        "-Ajulc.projectName=${project.name}",
+                        "-Ajulc.projectVersion=${project.version}"
+                    ]
+                }
+
                 test {
                     useJUnitPlatform()
                 }

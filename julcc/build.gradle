@@ -18,9 +18,9 @@ dependencies {
     implementation project(':julc-vm')
     implementation project(':julc-vm-java')
     implementation project(':julc-cardano-client-lib')
+    implementation project(':julc-blueprint')
     implementation project(':julc-bls')
     implementation 'com.bloxbean.cardano:cardano-client-lib:0.7.1'
-    implementation 'com.github.javaparser:javaparser-core:3.26.3'
 
     implementation 'info.picocli:picocli:4.7.7'
     annotationProcessor 'info.picocli:picocli-codegen:4.7.7'

@@ -130,6 +130,10 @@ public final class MavenProjectScaffolder {
                                 <configuration>
                                     <source>24</source>
                                     <target>24</target>
+                                    <compilerArgs>
+                                        <arg>-Ajulc.projectName=${project.name}</arg>
+                                        <arg>-Ajulc.projectVersion=${project.version}</arg>
+                                    </compilerArgs>
                                     <annotationProcessorPaths>
                                         <path>
                                             <groupId>com.bloxbean.cardano</groupId>

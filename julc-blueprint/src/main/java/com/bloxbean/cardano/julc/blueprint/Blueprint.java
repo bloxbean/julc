@@ -1,4 +1,4 @@
-package com.bloxbean.julc.cli.blueprint;
+package com.bloxbean.cardano.julc.blueprint;
 
 import java.util.List;
 import java.util.Map;
