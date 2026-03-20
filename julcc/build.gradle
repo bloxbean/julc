@@ -26,6 +26,23 @@ dependencies {
     annotationProcessor 'info.picocli:picocli-codegen:4.7.7'
 }
 
+// --- Generate version.properties at build time ---
+def versionPropsDir = file("${buildDir}/generated/version-props")
+
+tasks.register('generateVersionProperties') {
+    def versionFile = new File(versionPropsDir, 'julc-version.properties')
+    outputs.file(versionFile)
+    // Always regenerate (version may change between builds)
+    outputs.upToDateWhen { false }
+    doLast {
+        versionFile.parentFile.mkdirs()
+        versionFile.text = "version=${project.version}\n"
+    }
+}
+
+sourceSets.main.resources.srcDir versionPropsDir
+processResources.dependsOn generateVersionProperties
+
 // --- Bundle stdlib sources into a ZIP for project scaffolding ---
 def stdlibSourcesZipDir = file("${buildDir}/generated/stdlib-zip")
 

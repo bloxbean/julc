@@ -1,5 +1,6 @@
 package com.bloxbean.julc.cli.project;
 
+import com.bloxbean.julc.cli.JulccVersionProvider;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -19,8 +20,8 @@ public final class TomlParser {
         var project = sections.getOrDefault("project", Map.of());
         return new JulcToml(
                 project.getOrDefault("name", "unnamed"),
-                project.getOrDefault("version", "0.1.0"),
-                project.getOrDefault("compiler", "0.1.0")
+                project.getOrDefault("version", JulccVersionProvider.VERSION),
+                project.getOrDefault("compiler", JulccVersionProvider.VERSION)
         );
     }
 

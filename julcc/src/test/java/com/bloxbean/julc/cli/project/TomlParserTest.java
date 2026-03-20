@@ -1,5 +1,6 @@
 package com.bloxbean.julc.cli.project;
 
+import com.bloxbean.julc.cli.JulccVersionProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -78,7 +79,7 @@ class TomlParserTest {
     void julcTomlDefaultProject() {
         JulcToml toml = JulcToml.defaultProject("test");
         assertEquals("test", toml.name());
-        assertEquals("0.1.0", toml.version());
+        assertEquals(JulccVersionProvider.VERSION, toml.version());
         assertTrue(toml.toToml().contains("[project]"));
         assertTrue(toml.toToml().contains("name = \"test\""));
     }

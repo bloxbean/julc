@@ -1,12 +1,14 @@
 package com.bloxbean.julc.cli.project;
 
+import com.bloxbean.julc.cli.JulccVersionProvider;
+
 /**
  * Model for julc.toml project configuration.
  */
 public record JulcToml(String name, String version, String compiler) {
 
     public static JulcToml defaultProject(String name) {
-        return new JulcToml(name, "0.1.0", com.bloxbean.julc.cli.JulccVersionProvider.VERSION);
+        return new JulcToml(name, JulccVersionProvider.VERSION, JulccVersionProvider.VERSION);
     }
 
     public String toToml() {
