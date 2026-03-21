@@ -28,3 +28,14 @@ tasks.register('generateVersionProperties') {
 sourceSets.main.resources.srcDir versionPropsDir
 processResources.dependsOn generateVersionProperties
 tasks.named('sourcesJar').configure { dependsOn generateVersionProperties }
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            pom {
+                name = 'JuLC Blueprint'
+                description = 'CIP-57 Plutus blueprint generation for JuLC validators'
+            }
+        }
+    }
+}
