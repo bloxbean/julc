@@ -6,7 +6,7 @@ import java.lang.annotation.Target;
 import java.lang.annotation.ElementType;
 
 /**
- * Marks a static boolean method as a julcc test.
+ * Marks a static boolean method as a julc test.
  * Tests are compiled and evaluated on the UPLC VM.
  * Return true to pass, false to fail.
  */
