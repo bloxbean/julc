@@ -80,3 +80,72 @@ jobs:
       uses: softprops/action-gh-release@v2
       with:
         files: julc-${{ steps.version.outputs.version }}-${{ matrix.label }}.zip
+
+  update-homebrew:
+    needs: native-image
+    runs-on: ubuntu-latest
+    name: Update Homebrew formula
+    steps:
+    - name: Checkout homebrew-tap
+      uses: actions/checkout@v4
+      with:
+        repository: bloxbean/homebrew-tap
+        token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+    - name: Update formula
+      shell: bash
+      run: |
+        VERSION="${GITHUB_REF_NAME#v}"
+
+        # Download release assets
+        curl -fSL -o macos.zip \
+          "https://github.com/bloxbean/julc/releases/download/v${VERSION}/julc-${VERSION}-macos-aarch64.zip"
+        curl -fSL -o linux.zip \
+          "https://github.com/bloxbean/julc/releases/download/v${VERSION}/julc-${VERSION}-linux-x86_64.zip"
+
+        MACOS_SHA=$(sha256sum macos.zip | awk '{print $1}')
+        LINUX_SHA=$(sha256sum linux.zip | awk '{print $1}')
+
+        mkdir -p Formula
+        cat > Formula/julc.rb << FORMULA
+        class Julc < Formula
+          desc "JuLC Cardano smart contract toolkit"
+          homepage "https://github.com/bloxbean/julc"
+          version "${VERSION}"
+          license "MIT"
+
+          on_macos do
+            if Hardware::CPU.arm?
+              url "https://github.com/bloxbean/julc/releases/download/v${VERSION}/julc-${VERSION}-macos-aarch64.zip"
+              sha256 "${MACOS_SHA}"
+            end
+          end
+
+          on_linux do
+            if Hardware::CPU.intel?
+              url "https://github.com/bloxbean/julc/releases/download/v${VERSION}/julc-${VERSION}-linux-x86_64.zip"
+              sha256 "${LINUX_SHA}"
+            end
+          end
+
+          def install
+            bin.install "julc"
+          end
+
+          test do
+            assert_match version.to_s, shell_output("#{bin}/julc --version")
+          end
+        end
+        FORMULA
+
+        # Remove leading whitespace from heredoc (YAML run block adds 8 spaces)
+        sed -i 's/^        //' Formula/julc.rb
+
+    - name: Commit and push
+      run: |
+        VERSION="${GITHUB_REF_NAME#v}"
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add Formula/julc.rb
+        git diff --cached --quiet || git commit -m "julc ${VERSION}"
+        git push
