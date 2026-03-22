@@ -7,15 +7,13 @@ import java.util.HexFormat;
 import java.util.Objects;
 
 /**
- * A 28-byte script hash.
+ * A script hash (typically 28 bytes).
+ * No byte-length validation — length enforcement is a ledger rule, not a type invariant.
  */
 public record ScriptHash(byte[] hash) implements PlutusDataConvertible {
 
     public ScriptHash {
         Objects.requireNonNull(hash, "hash must not be null");
-        if (hash.length != 28) {
-            throw new IllegalArgumentException("ScriptHash must be 28 bytes, got: " + hash.length);
-        }
         hash = hash.clone();
     }
 

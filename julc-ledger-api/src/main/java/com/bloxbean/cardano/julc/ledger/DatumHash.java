@@ -7,15 +7,13 @@ import java.util.HexFormat;
 import java.util.Objects;
 
 /**
- * A 32-byte datum hash.
+ * A datum hash (typically 32 bytes).
+ * No byte-length validation — length enforcement is a ledger rule, not a type invariant.
  */
 public record DatumHash(byte[] hash) implements PlutusDataConvertible {
 
     public DatumHash {
         Objects.requireNonNull(hash, "hash must not be null");
-        if (hash.length != 32) {
-            throw new IllegalArgumentException("DatumHash must be 32 bytes, got: " + hash.length);
-        }
         hash = hash.clone();
     }
 

@@ -30,7 +30,12 @@ class HashTypesTest {
         void construction() { assertNotNull(new PubKeyHash(bytes28())); }
 
         @Test
-        void wrongSize() { assertThrows(IllegalArgumentException.class, () -> new PubKeyHash(new byte[27])); }
+        void arbitraryLength() {
+            // No length validation — any byte array is accepted (ledger enforces lengths, not the type)
+            assertNotNull(new PubKeyHash(new byte[27]));
+            assertNotNull(new PubKeyHash(new byte[0]));
+            assertNotNull(new PubKeyHash(new byte[64]));
+        }
 
         @Test
         void nullHash() { assertThrows(NullPointerException.class, () -> new PubKeyHash(null)); }
@@ -80,7 +85,11 @@ class HashTypesTest {
         void construction() { assertNotNull(new ScriptHash(bytes28())); }
 
         @Test
-        void wrongSize() { assertThrows(IllegalArgumentException.class, () -> new ScriptHash(new byte[29])); }
+        void arbitraryLength() {
+            assertNotNull(new ScriptHash(new byte[29]));
+            assertNotNull(new ScriptHash(new byte[0]));
+            assertNotNull(new ScriptHash(new byte[64]));
+        }
 
         @Test
         void toPlutusDataRoundTrip() {
@@ -100,7 +109,11 @@ class HashTypesTest {
         void construction() { assertNotNull(new ValidatorHash(bytes28())); }
 
         @Test
-        void wrongSize() { assertThrows(IllegalArgumentException.class, () -> new ValidatorHash(new byte[32])); }
+        void arbitraryLength() {
+            assertNotNull(new ValidatorHash(new byte[32]));
+            assertNotNull(new ValidatorHash(new byte[0]));
+            assertNotNull(new ValidatorHash(new byte[64]));
+        }
 
         @Test
         void roundTrip() {
@@ -123,7 +136,10 @@ class HashTypesTest {
         void adaConstant() { assertEquals(new PolicyId(new byte[0]), PolicyId.ADA); }
 
         @Test
-        void wrongSize() { assertThrows(IllegalArgumentException.class, () -> new PolicyId(new byte[10])); }
+        void arbitraryLength() {
+            assertNotNull(new PolicyId(new byte[10]));
+            assertNotNull(new PolicyId(new byte[64]));
+        }
 
         @Test
         void roundTrip() {
@@ -148,7 +164,12 @@ class HashTypesTest {
         void construction32() { assertNotNull(new TokenName(new byte[32])); }
 
         @Test
-        void tooLong() { assertThrows(IllegalArgumentException.class, () -> new TokenName(new byte[33])); }
+        void arbitraryLength() {
+            // No length validation — matches Haskell/Scalus (simple bytestring wrapper)
+            assertNotNull(new TokenName(new byte[33]));
+            assertNotNull(new TokenName(new byte[66]));
+            assertNotNull(new TokenName(new byte[128]));
+        }
 
         @Test
         void emptyConstant() { assertEquals(new TokenName(new byte[0]), TokenName.EMPTY); }
@@ -168,7 +189,11 @@ class HashTypesTest {
         void construction() { assertNotNull(new DatumHash(bytes32())); }
 
         @Test
-        void wrongSize() { assertThrows(IllegalArgumentException.class, () -> new DatumHash(new byte[28])); }
+        void arbitraryLength() {
+            assertNotNull(new DatumHash(new byte[28]));
+            assertNotNull(new DatumHash(new byte[0]));
+            assertNotNull(new DatumHash(new byte[64]));
+        }
 
         @Test
         void roundTrip() {
@@ -188,7 +213,11 @@ class HashTypesTest {
         void construction() { assertNotNull(new TxId(bytes32())); }
 
         @Test
-        void wrongSize() { assertThrows(IllegalArgumentException.class, () -> new TxId(new byte[31])); }
+        void arbitraryLength() {
+            assertNotNull(new TxId(new byte[31]));
+            assertNotNull(new TxId(new byte[0]));
+            assertNotNull(new TxId(new byte[64]));
+        }
 
         @Test
         void roundTrip() {

@@ -141,16 +141,16 @@ final class CclValueConverter {
         return map.insert(policyId, existing);
     }
 
-    private static byte[] assetNameToBytes(String assetName) {
+    static byte[] assetNameToBytes(String assetName) {
         if (assetName == null || assetName.isEmpty()) {
             return new byte[0];
         }
-        // CCL asset names are hex-encoded
-        try {
-            return HexFormat.of().parseHex(assetName);
-        } catch (IllegalArgumentException e) {
-            // If not valid hex, treat as UTF-8 string
-            return assetName.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        // Strip 0x/0X prefix — its presence means the string IS hex
+        String hex = assetName;
+        if (hex.startsWith("0x") || hex.startsWith("0X")) {
+            hex = hex.substring(2);
         }
+        // CCL asset names are hex-encoded; no UTF-8 fallback (garbage in should not be silently accepted)
+        return HexFormat.of().parseHex(hex);
     }
 }

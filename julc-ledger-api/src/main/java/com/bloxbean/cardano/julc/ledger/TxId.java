@@ -7,15 +7,13 @@ import java.util.HexFormat;
 import java.util.Objects;
 
 /**
- * A 32-byte transaction ID.
+ * A transaction ID (typically 32 bytes).
+ * No byte-length validation — length enforcement is a ledger rule, not a type invariant.
  */
 public record TxId(byte[] hash) implements PlutusDataConvertible {
 
     public TxId {
         Objects.requireNonNull(hash, "hash must not be null");
-        if (hash.length != 32) {
-            throw new IllegalArgumentException("TxId must be 32 bytes, got: " + hash.length);
-        }
         hash = hash.clone();
     }
 
