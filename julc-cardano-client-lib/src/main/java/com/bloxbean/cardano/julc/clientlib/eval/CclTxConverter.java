@@ -30,6 +30,9 @@ import java.util.*;
  */
 final class CclTxConverter {
 
+    private static final System.Logger LOG = System.getLogger(CclTxConverter.class.getName());
+    private static volatile boolean slotConfigWarningLogged = false;
+
     private final Transaction tx;
     private final Set<Utxo> inputUtxos;
     private final UtxoSupplier utxoSupplier;
@@ -294,6 +297,13 @@ final class CclTxConverter {
     }
 
     private Interval convertValidRange(long validityStart, long ttl) {
+        if (slotConfig == null && (validityStart != 0 || ttl != 0) && !slotConfigWarningLogged) {
+            slotConfigWarningLogged = true;
+            LOG.log(System.Logger.Level.WARNING,
+                    "SlotConfig is null — validity range will use raw slot numbers instead of POSIX time. "
+                    + "Time-sensitive validators will likely fail. Pass a SlotConfig to JulcTransactionEvaluator.");
+        }
+
         IntervalBound from;
         if (validityStart == 0) {
             from = new IntervalBound(new IntervalBoundType.NegInf(), true);
