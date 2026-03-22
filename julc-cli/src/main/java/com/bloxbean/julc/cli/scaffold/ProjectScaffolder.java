@@ -18,7 +18,7 @@ public final class ProjectScaffolder {
         scaffold(projectRoot, projectName, false);
     }
 
-    public static void scaffold(Path projectRoot, String projectName, boolean crl) throws IOException {
+    public static void scaffold(Path projectRoot, String projectName, boolean jrl) throws IOException {
         // Create directory structure
         Files.createDirectories(ProjectLayout.srcDir(projectRoot));
         Files.createDirectories(ProjectLayout.testDir(projectRoot));
@@ -38,8 +38,8 @@ public final class ProjectScaffolder {
                 """);
 
         // Starter validator
-        if (crl) {
-            Files.writeString(ProjectLayout.srcDir(projectRoot).resolve("AlwaysSucceeds.crl"),
+        if (jrl) {
+            Files.writeString(ProjectLayout.srcDir(projectRoot).resolve("AlwaysSucceeds.jrl"),
                     """
                     contract "AlwaysSucceeds"
                     version  "1.0"

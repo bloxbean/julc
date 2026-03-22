@@ -9,7 +9,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
- * Scans project source directories for validator (.java) and CRL (.crl) files
+ * Scans project source directories for validator (.java) and JRL (.jrl) files
  * in a single directory walk.
  */
 public final class ProjectScanner {
@@ -23,20 +23,20 @@ public final class ProjectScanner {
     public record ScanResult(
             Map<String, String> validators,  // simpleName -> source (.java validators)
             Map<String, String> libraries,   // simpleName -> source (.java libraries)
-            Map<String, String> crlFiles     // simpleName -> source (.crl files)
+            Map<String, String> jrlFiles     // simpleName -> source (.jrl files)
     ) {}
 
     /**
-     * Scan a directory for .java and .crl files in a single walk.
+     * Scan a directory for .java and .jrl files in a single walk.
      * Java files are split into validators (with annotations) and libraries (without).
      */
     public static ScanResult scan(Path srcDir) throws IOException {
         var validators = new LinkedHashMap<String, String>();
         var libraries = new LinkedHashMap<String, String>();
-        var crlFiles = new LinkedHashMap<String, String>();
+        var jrlFiles = new LinkedHashMap<String, String>();
 
         if (!Files.isDirectory(srcDir)) {
-            return new ScanResult(validators, libraries, crlFiles);
+            return new ScanResult(validators, libraries, jrlFiles);
         }
 
         try (Stream<Path> paths = Files.walk(srcDir)) {
@@ -52,10 +52,10 @@ public final class ProjectScanner {
                                 } else {
                                     libraries.put(simpleName, source);
                                 }
-                            } else if (fileName.endsWith(".crl")) {
+                            } else if (fileName.endsWith(".jrl")) {
                                 String source = Files.readString(p);
-                                String simpleName = fileName.replace(".crl", "");
-                                crlFiles.put(simpleName, source);
+                                String simpleName = fileName.replace(".jrl", "");
+                                jrlFiles.put(simpleName, source);
                             }
                         } catch (IOException e) {
                             throw new RuntimeException("Failed to read " + p, e);
@@ -63,7 +63,7 @@ public final class ProjectScanner {
                     });
         }
 
-        return new ScanResult(validators, libraries, crlFiles);
+        return new ScanResult(validators, libraries, jrlFiles);
     }
 
     /**

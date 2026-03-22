@@ -6,7 +6,7 @@ import com.bloxbean.cardano.julc.compiler.CompilerException;
 import com.bloxbean.cardano.julc.compiler.CompilerOptions;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
 import com.bloxbean.cardano.julc.core.text.UplcPrinter;
-import com.bloxbean.cardano.julc.crl.CrlCompiler;
+import com.bloxbean.cardano.julc.jrl.JrlCompiler;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
 import com.bloxbean.cardano.julc.blueprint.BlueprintConfig;
 import com.bloxbean.cardano.julc.blueprint.BlueprintGenerator;
@@ -44,9 +44,9 @@ public class BuildCommand implements Runnable {
             var config = TomlParser.parse(tomlFile);
             System.out.println("Building " + AnsiColors.bold(config.name()) + " ...");
 
-            // Scan sources (single walk for .java + .crl)
+            // Scan sources (single walk for .java + .jrl)
             var scanResult = ProjectScanner.scan(ProjectLayout.srcDir(root));
-            if (scanResult.validators().isEmpty() && scanResult.crlFiles().isEmpty()) {
+            if (scanResult.validators().isEmpty() && scanResult.jrlFiles().isEmpty()) {
                 System.err.println(AnsiColors.yellow("No validators found in src/"));
                 System.exit(0);
             }
@@ -101,19 +101,19 @@ public class BuildCommand implements Runnable {
                 }
             }
 
-            // Compile CRL files
-            var crlCompiler = new CrlCompiler(stdlib);
-            for (var entry : scanResult.crlFiles().entrySet()) {
+            // Compile JRL files
+            var jrlCompiler = new JrlCompiler(stdlib);
+            for (var entry : scanResult.jrlFiles().entrySet()) {
                 String name = entry.getKey();
-                String crlSource = entry.getValue();
+                String jrlSource = entry.getValue();
 
-                System.out.print("  Compiling " + name + ".crl ... ");
+                System.out.print("  Compiling " + name + ".jrl ... ");
 
-                var crlResult = crlCompiler.compile(crlSource, name + ".crl");
+                var jrlResult = jrlCompiler.compile(jrlSource, name + ".jrl");
 
-                if (crlResult.hasErrors()) {
+                if (jrlResult.hasErrors()) {
                     System.out.println(AnsiColors.red("FAILED"));
-                    for (var diag : crlResult.crlDiagnostics()) {
+                    for (var diag : jrlResult.jrlDiagnostics()) {
                         if (diag.isError()) {
                             System.err.println("  " + diag);
                         }
@@ -122,9 +122,9 @@ public class BuildCommand implements Runnable {
                     continue;
                 }
 
-                var result = crlResult.compileResult();
+                var result = jrlResult.compileResult();
                 compiledValidators.add(new BlueprintGenerator.CompiledValidator(
-                        name, crlResult.generatedJavaSource(), result));
+                        name, jrlResult.generatedJavaSource(), result));
                 writeCompiledOutput(name, result, plutusDir);
             }
 

@@ -138,5 +138,10 @@ subprojects {
 }
 
 def getCheckedOutGitCommitHash() {
-    grgit.head().abbreviatedId
+    try {
+        grgit.head().abbreviatedId
+    } catch (Exception e) {
+        // Fallback for git worktrees where grgit may not resolve properly
+        'git rev-parse --short HEAD'.execute(null, project.rootDir).text.trim()
+    }
 }
