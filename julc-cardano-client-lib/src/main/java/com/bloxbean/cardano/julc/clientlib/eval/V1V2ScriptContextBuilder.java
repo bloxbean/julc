@@ -4,6 +4,7 @@ import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.ledger.*;
 import com.bloxbean.cardano.julc.vm.PlutusLanguage;
 
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -49,18 +50,20 @@ final class V1V2ScriptContextBuilder {
      * Build V1/V2 ScriptPurpose as PlutusData.
      * Note: V1/V2 only has 4 purposes (no Voting/Proposing).
      * Certifying has NO index field (unlike V3).
+     * Rewarding uses StakingCredential (not raw Credential like V3).
      */
     private static PlutusData buildScriptPurposeData(ScriptPurpose purpose) {
         return switch (purpose) {
             case ScriptPurpose.Minting(var policyId) ->
                     new PlutusData.ConstrData(0, List.of(policyId.toPlutusData()));
             case ScriptPurpose.Spending(var txOutRef) ->
-                    new PlutusData.ConstrData(1, List.of(txOutRef.toPlutusData()));
+                    new PlutusData.ConstrData(1, List.of(encodeTxOutRef(txOutRef)));
             case ScriptPurpose.Rewarding(var credential) ->
-                    new PlutusData.ConstrData(2, List.of(credential.toPlutusData()));
+                    // V1/V2: Rewarding uses StakingCredential, not raw Credential
+                    new PlutusData.ConstrData(2, List.of(encodeStakingHash(credential)));
             case ScriptPurpose.Certifying(var index, var cert) ->
-                    // V1/V2: no index field
-                    new PlutusData.ConstrData(3, List.of(cert.toPlutusData()));
+                    // V1/V2: no index field, uses DCert encoding (not V3 TxCert)
+                    new PlutusData.ConstrData(3, List.of(encodeDCert(cert)));
             case ScriptPurpose.Voting _, ScriptPurpose.Proposing _ ->
                     throw new UnsupportedOperationException(
                             "Voting/Proposing purposes are not available in V1/V2 scripts");
@@ -76,17 +79,24 @@ final class V1V2ScriptContextBuilder {
      *                        validRange, signatories, redeemers, datums, id]
      */
     private static PlutusData buildTxInfoData(PlutusLanguage language, TxInfo txInfo) {
+        // V1/V2: TxOut encoding differs — V1 has 3 fields, V2 has 4 fields
+        DataEncoder<TxOut> txOutEncoder = language == PlutusLanguage.PLUTUS_V1
+                ? V1V2ScriptContextBuilder::txOutToDataV1
+                : V1V2ScriptContextBuilder::txOutToDataV2;
+
         PlutusData inputsData = encodeList(txInfo.inputs(), i ->
-                new PlutusData.ConstrData(0, List.of(i.outRef().toPlutusData(), txOutToData(i.resolved()))));
-        PlutusData outputsData = encodeList(txInfo.outputs(), V1V2ScriptContextBuilder::txOutToData);
+                new PlutusData.ConstrData(0, List.of(encodeTxOutRef(i.outRef()), txOutEncoder.encode(i.resolved()))));
+        PlutusData outputsData = encodeList(txInfo.outputs(), txOutEncoder);
         PlutusData feeData = encodeValue(Value.lovelace(txInfo.fee()));
         PlutusData mintData = encodeValue(txInfo.mint());
-        PlutusData certsData = encodeList(txInfo.certificates(), cert -> cert.toPlutusData());
+        // V1/V2: uses DCert encoding (not V3 TxCert)
+        PlutusData certsData = encodeList(txInfo.certificates(), V1V2ScriptContextBuilder::encodeDCert);
+        // V1/V2: withdrawal keys are StakingCredential (not raw Credential like V3)
         PlutusData withdrawalsData = encodeAssocMap(txInfo.withdrawals(),
-                Credential::toPlutusData, v -> new PlutusData.IntData(v));
+                V1V2ScriptContextBuilder::encodeStakingHash, v -> new PlutusData.IntData(v));
         PlutusData validRangeData = txInfo.validRange().toPlutusData();
         PlutusData signatoriesData = encodeList(txInfo.signatories(), PubKeyHash::toPlutusData);
-        PlutusData txIdData = txInfo.id().toPlutusData();
+        PlutusData txIdData = encodeTxId(txInfo.id());
 
         if (language == PlutusLanguage.PLUTUS_V1) {
             // V1: datums as assoc list (hash -> data)
@@ -98,7 +108,7 @@ final class V1V2ScriptContextBuilder {
         } else {
             // V2: includes referenceInputs, redeemers map, datums
             PlutusData refInputsData = encodeList(txInfo.referenceInputs(), i ->
-                    new PlutusData.ConstrData(0, List.of(i.outRef().toPlutusData(), txOutToData(i.resolved()))));
+                    new PlutusData.ConstrData(0, List.of(encodeTxOutRef(i.outRef()), txOutEncoder.encode(i.resolved()))));
             PlutusData redeemersData = encodeRedeemersForV2(txInfo.redeemers());
             PlutusData datumsData = encodeAssocMap(txInfo.datums(),
                     DatumHash::toPlutusData, d -> d);
@@ -108,13 +118,96 @@ final class V1V2ScriptContextBuilder {
         }
     }
 
-    private static PlutusData txOutToData(TxOut txOut) {
+    /**
+     * V1 TxOut = Constr 0 [address, value, maybeDatumHash] — 3 fields.
+     * V1 datum is Maybe DatumHash: Nothing=Constr(1,[]), Just=Constr(0,[B hash]).
+     */
+    private static PlutusData txOutToDataV1(TxOut txOut) {
+        // Convert V3 OutputDatum to V1 Maybe DatumHash
+        PlutusData maybeDatumHash = switch (txOut.datum()) {
+            case OutputDatum.NoOutputDatum() ->
+                    // Nothing = Constr 1 []
+                    new PlutusData.ConstrData(1, List.of());
+            case OutputDatum.OutputDatumHash(var hash) ->
+                    // Just hash = Constr 0 [B hash]
+                    new PlutusData.ConstrData(0, List.of(hash.toPlutusData()));
+            case OutputDatum.OutputDatumInline _ ->
+                    // V1 doesn't have inline datums — encode as Nothing
+                    new PlutusData.ConstrData(1, List.of());
+        };
+        return new PlutusData.ConstrData(0, List.of(
+                txOut.address().toPlutusData(),
+                encodeValue(txOut.value()),
+                maybeDatumHash));
+    }
+
+    /**
+     * V2 TxOut = Constr 0 [address, value, outputDatum, maybeRefScript] — 4 fields.
+     */
+    private static PlutusData txOutToDataV2(TxOut txOut) {
         return new PlutusData.ConstrData(0, List.of(
                 txOut.address().toPlutusData(),
                 encodeValue(txOut.value()),
                 txOut.datum().toPlutusData(),
                 PlutusDataHelper.encodeOptional(txOut.referenceScript(),
                         ScriptHash::toPlutusData)));
+    }
+
+    /**
+     * Wrap a Credential as StakingCredential.StakingHash for V1/V2 encoding.
+     * V1/V2 uses StakingCredential in withdrawals and Rewarding purpose,
+     * while V3 uses raw Credential.
+     * StakingHash cred = Constr 0 [cred.toPlutusData()]
+     */
+    private static PlutusData encodeStakingHash(Credential credential) {
+        return new PlutusData.ConstrData(0, List.of(credential.toPlutusData()));
+    }
+
+    /**
+     * Encode a V3 TxCert as a V1/V2 DCert.
+     * <p>
+     * V1/V2 DCert encoding (7 variants, tags 0-6):
+     * <ul>
+     *   <li>DCertDelegRegKey   stakingCred         → Constr 0 [stakingCred]</li>
+     *   <li>DCertDelegDeRegKey stakingCred         → Constr 1 [stakingCred]</li>
+     *   <li>DCertDelegDelegate stakingCred poolId  → Constr 2 [stakingCred, B poolId]</li>
+     *   <li>DCertPoolRegister  poolId vrfKey       → Constr 3 [B poolId, B vrfKey]</li>
+     *   <li>DCertPoolRetire    poolId epoch        → Constr 4 [B poolId, I epoch]</li>
+     *   <li>DCertGenesis                           → Constr 5 []</li>
+     *   <li>DCertMir                               → Constr 6 []</li>
+     * </ul>
+     */
+    private static PlutusData encodeDCert(TxCert cert) {
+        return switch (cert) {
+            case TxCert.RegStaking(var credential, var _deposit) ->
+                    // DCertDelegRegKey = Constr 0 [StakingHash(cred)]
+                    new PlutusData.ConstrData(0, List.of(encodeStakingHash(credential)));
+            case TxCert.UnRegStaking(var credential, var _refund) ->
+                    // DCertDelegDeRegKey = Constr 1 [StakingHash(cred)]
+                    new PlutusData.ConstrData(1, List.of(encodeStakingHash(credential)));
+            case TxCert.DelegStaking(var credential, var delegatee) -> {
+                // DCertDelegDelegate = Constr 2 [StakingHash(cred), B poolId]
+                // V1/V2 only has pool delegation (not DRep/vote delegation)
+                if (delegatee instanceof Delegatee.Stake(var poolId)) {
+                    yield new PlutusData.ConstrData(2, List.of(
+                            encodeStakingHash(credential), poolId.toPlutusData()));
+                } else {
+                    throw new UnsupportedOperationException(
+                            "V1/V2 DCertDelegDelegate only supports pool delegation (Delegatee.Stake), got: " + delegatee);
+                }
+            }
+            case TxCert.PoolRegister(var poolId, var poolVfr) ->
+                    // DCertPoolRegister = Constr 3 [B poolId, B vrfKey]
+                    new PlutusData.ConstrData(3, List.of(poolId.toPlutusData(), poolVfr.toPlutusData()));
+            case TxCert.PoolRetire(var pubKeyHash, var epoch) ->
+                    // DCertPoolRetire = Constr 4 [B poolId, I epoch]
+                    new PlutusData.ConstrData(4, List.of(pubKeyHash.toPlutusData(), new PlutusData.IntData(epoch)));
+            // Conway governance certs are not available in V1/V2
+            case TxCert.RegDeleg _, TxCert.RegDRep _, TxCert.UpdateDRep _,
+                 TxCert.UnRegDRep _, TxCert.AuthHotCommittee _, TxCert.ResignColdCommittee _ ->
+                    throw new UnsupportedOperationException(
+                            "Conway governance certificates are not available in V1/V2 scripts: " + cert);
+        };
     }
 
     /**
@@ -139,6 +232,25 @@ final class V1V2ScriptContextBuilder {
             pairs.add(new PlutusData.Pair(buildScriptPurposeData(sp), redeemerData));
         }
         return new PlutusData.MapData(pairs);
+    }
+
+    /**
+     * Encode TxId as Constr 0 [B hash] for V1/V2 compatibility.
+     * PlutusTx uses {@code makeIsDataIndexed ''TxId [('TxId, 0)]} which wraps the
+     * hash bytes in a ConstrData, unlike other hash newtypes that use
+     * {@code deriving newtype (ToData)} and encode as plain BytesData.
+     */
+    private static PlutusData encodeTxId(TxId txId) {
+        return new PlutusData.ConstrData(0, List.of(txId.toPlutusData()));
+    }
+
+    /**
+     * Encode TxOutRef with V1/V2 TxId wrapping: Constr 0 [encodeTxId(txId), I index].
+     */
+    private static PlutusData encodeTxOutRef(TxOutRef ref) {
+        return new PlutusData.ConstrData(0, List.of(
+                encodeTxId(ref.txId()),
+                new PlutusData.IntData(ref.index())));
     }
 
     @FunctionalInterface
