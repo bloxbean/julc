@@ -1,0 +1,43 @@
+plugins {
+    id 'antlr'
+}
+
+description = 'CRL (CardanoRL) rule language compiler'
+
+dependencies {
+    antlr 'org.antlr:antlr4:4.13.2'
+    implementation 'org.antlr:antlr4-runtime:4.13.2'
+
+    implementation project(':julc-compiler')
+    implementation project(':julc-core')
+    implementation project(':julc-stdlib')
+    implementation project(':julc-ledger-api')
+
+    testImplementation project(':julc-testkit')
+    testImplementation project(':julc-vm')
+    testRuntimeOnly project(':julc-vm-java')
+}
+
+generateGrammarSource {
+    arguments += ['-visitor', '-no-listener', '-package', 'com.bloxbean.cardano.julc.crl.grammar']
+    outputDirectory = file("${project.buildDir}/generated-src/antlr/main")
+}
+
+sourceSets.main.java.srcDirs += "${project.buildDir}/generated-src/antlr/main"
+
+compileJava.dependsOn generateGrammarSource
+tasks.named('sourcesJar') {
+    dependsOn generateGrammarSource
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            pom {
+                name = 'JuLC CRL'
+                description = 'JuLC CRL (CardanoRL) rule language compiler'
+            }
+        }
+    }
+}

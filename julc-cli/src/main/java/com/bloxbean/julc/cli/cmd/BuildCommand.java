@@ -6,6 +6,7 @@ import com.bloxbean.cardano.julc.compiler.CompilerException;
 import com.bloxbean.cardano.julc.compiler.CompilerOptions;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
 import com.bloxbean.cardano.julc.core.text.UplcPrinter;
+import com.bloxbean.cardano.julc.crl.CrlCompiler;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
 import com.bloxbean.cardano.julc.blueprint.BlueprintConfig;
 import com.bloxbean.cardano.julc.blueprint.BlueprintGenerator;
@@ -43,9 +44,9 @@ public class BuildCommand implements Runnable {
             var config = TomlParser.parse(tomlFile);
             System.out.println("Building " + AnsiColors.bold(config.name()) + " ...");
 
-            // Scan sources
+            // Scan sources (single walk for .java + .crl)
             var scanResult = ProjectScanner.scan(ProjectLayout.srcDir(root));
-            if (scanResult.validators().isEmpty()) {
+            if (scanResult.validators().isEmpty() && scanResult.crlFiles().isEmpty()) {
                 System.err.println(AnsiColors.yellow("No validators found in src/"));
                 System.exit(0);
             }
@@ -55,6 +56,7 @@ public class BuildCommand implements Runnable {
 
             // Compile each validator
             var options = new CompilerOptions().setVerbose(verbose);
+            var stdlib = StdlibRegistry.defaultRegistry();
             var compiledValidators = new ArrayList<BlueprintGenerator.CompiledValidator>();
             int errorCount = 0;
 
@@ -69,7 +71,7 @@ public class BuildCommand implements Runnable {
 
                 try {
                     var resolvedLibs = ProjectSourceResolver.resolve(source, pool);
-                    var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), options);
+                    var compiler = new JulcCompiler(stdlib, options);
                     CompileResult result = compiler.compile(source, resolvedLibs);
 
                     if (result.hasErrors()) {
@@ -87,16 +89,7 @@ public class BuildCommand implements Runnable {
                     }
 
                     compiledValidators.add(new BlueprintGenerator.CompiledValidator(name, source, result));
-
-                    // Write UPLC text
-                    String uplcText = UplcPrinter.print(result.program());
-                    Files.writeString(plutusDir.resolve(name + ".uplc"), uplcText);
-
-                    // Script info
-                    String hash = JulcScriptAdapter.scriptHash(result.program());
-                    String sizeStr = result.scriptSizeFormatted();
-                    System.out.println(AnsiColors.green("OK") + " "
-                            + AnsiColors.dim("[" + sizeStr + ", " + hash.substring(0, 8) + "...]"));
+                    writeCompiledOutput(name, result, plutusDir);
                 } catch (CompilerException e) {
                     System.out.println(AnsiColors.red("FAILED"));
                     if (!e.diagnostics().isEmpty()) {
@@ -106,6 +99,33 @@ public class BuildCommand implements Runnable {
                     }
                     errorCount++;
                 }
+            }
+
+            // Compile CRL files
+            var crlCompiler = new CrlCompiler(stdlib);
+            for (var entry : scanResult.crlFiles().entrySet()) {
+                String name = entry.getKey();
+                String crlSource = entry.getValue();
+
+                System.out.print("  Compiling " + name + ".crl ... ");
+
+                var crlResult = crlCompiler.compile(crlSource, name + ".crl");
+
+                if (crlResult.hasErrors()) {
+                    System.out.println(AnsiColors.red("FAILED"));
+                    for (var diag : crlResult.crlDiagnostics()) {
+                        if (diag.isError()) {
+                            System.err.println("  " + diag);
+                        }
+                    }
+                    errorCount++;
+                    continue;
+                }
+
+                var result = crlResult.compileResult();
+                compiledValidators.add(new BlueprintGenerator.CompiledValidator(
+                        name, crlResult.generatedJavaSource(), result));
+                writeCompiledOutput(name, result, plutusDir);
             }
 
             // Generate CIP-57 blueprint
@@ -128,5 +148,15 @@ public class BuildCommand implements Runnable {
             System.err.println(AnsiColors.red("Build error: " + e.getMessage()));
             System.exit(1);
         }
+    }
+
+    private void writeCompiledOutput(String name, CompileResult result, Path plutusDir)
+            throws IOException {
+        String uplcText = UplcPrinter.print(result.program());
+        Files.writeString(plutusDir.resolve(name + ".uplc"), uplcText);
+        String hash = JulcScriptAdapter.scriptHash(result.program());
+        String sizeStr = result.scriptSizeFormatted();
+        System.out.println(AnsiColors.green("OK") + " "
+                + AnsiColors.dim("[" + sizeStr + ", " + hash.substring(0, 8) + "...]"));
     }
 }

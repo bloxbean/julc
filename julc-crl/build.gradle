@@ -1,0 +1,2 @@
+// Parent module for CRL (CardanoRL) rule language.
+// No source code here — all implementation is in julc-crl-core.

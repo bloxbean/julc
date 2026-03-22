@@ -15,6 +15,10 @@ public final class ProjectScaffolder {
     private ProjectScaffolder() {}
 
     public static void scaffold(Path projectRoot, String projectName) throws IOException {
+        scaffold(projectRoot, projectName, false);
+    }
+
+    public static void scaffold(Path projectRoot, String projectName, boolean crl) throws IOException {
         // Create directory structure
         Files.createDirectories(ProjectLayout.srcDir(projectRoot));
         Files.createDirectories(ProjectLayout.testDir(projectRoot));
@@ -34,22 +38,39 @@ public final class ProjectScaffolder {
                 """);
 
         // Starter validator
-        Files.writeString(ProjectLayout.srcDir(projectRoot).resolve("AlwaysSucceeds.java"),
-                """
-                import com.bloxbean.cardano.julc.stdlib.annotation.Validator;
-                import com.bloxbean.cardano.julc.stdlib.annotation.Entrypoint;
-                import com.bloxbean.cardano.julc.ledger.ScriptContext;
-                import com.bloxbean.cardano.julc.core.PlutusData;
+        if (crl) {
+            Files.writeString(ProjectLayout.srcDir(projectRoot).resolve("AlwaysSucceeds.crl"),
+                    """
+                    contract "AlwaysSucceeds"
+                    version  "1.0"
+                    purpose  spending
 
-                @Validator
-                public class AlwaysSucceeds {
+                    rule "Always allow"
+                    when
+                        Condition( true )
+                    then
+                        allow
 
-                    @Entrypoint
-                    public static boolean validate(PlutusData redeemer, ScriptContext ctx) {
-                        return true;
+                    default: deny
+                    """);
+        } else {
+            Files.writeString(ProjectLayout.srcDir(projectRoot).resolve("AlwaysSucceeds.java"),
+                    """
+                    import com.bloxbean.cardano.julc.stdlib.annotation.Validator;
+                    import com.bloxbean.cardano.julc.stdlib.annotation.Entrypoint;
+                    import com.bloxbean.cardano.julc.ledger.ScriptContext;
+                    import com.bloxbean.cardano.julc.core.PlutusData;
+
+                    @Validator
+                    public class AlwaysSucceeds {
+
+                        @Entrypoint
+                        public static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            return true;
+                        }
                     }
-                }
-                """);
+                    """);
+        }
 
         // Starter test
         Files.writeString(ProjectLayout.testDir(projectRoot).resolve("AlwaysSucceedsTest.java"),

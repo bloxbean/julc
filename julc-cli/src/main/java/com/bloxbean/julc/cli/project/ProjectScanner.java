@@ -9,7 +9,8 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
- * Scans project source directories for validator and library .java files.
+ * Scans project source directories for validator (.java) and CRL (.crl) files
+ * in a single directory walk.
  */
 public final class ProjectScanner {
 
@@ -20,32 +21,41 @@ public final class ProjectScanner {
     private ProjectScanner() {}
 
     public record ScanResult(
-            Map<String, String> validators,  // simpleName -> source
-            Map<String, String> libraries     // simpleName -> source
+            Map<String, String> validators,  // simpleName -> source (.java validators)
+            Map<String, String> libraries,   // simpleName -> source (.java libraries)
+            Map<String, String> crlFiles     // simpleName -> source (.crl files)
     ) {}
 
     /**
-     * Scan a directory for .java files, separating validators from libraries.
+     * Scan a directory for .java and .crl files in a single walk.
+     * Java files are split into validators (with annotations) and libraries (without).
      */
     public static ScanResult scan(Path srcDir) throws IOException {
         var validators = new LinkedHashMap<String, String>();
         var libraries = new LinkedHashMap<String, String>();
+        var crlFiles = new LinkedHashMap<String, String>();
 
         if (!Files.isDirectory(srcDir)) {
-            return new ScanResult(validators, libraries);
+            return new ScanResult(validators, libraries, crlFiles);
         }
 
         try (Stream<Path> paths = Files.walk(srcDir)) {
-            paths.filter(p -> p.toString().endsWith(".java") && Files.isRegularFile(p))
+            paths.filter(Files::isRegularFile)
                     .forEach(p -> {
                         try {
-                            String source = Files.readString(p);
                             String fileName = p.getFileName().toString();
-                            String simpleName = fileName.replace(".java", "");
-                            if (VALIDATOR_PATTERN.matcher(source).find()) {
-                                validators.put(simpleName, source);
-                            } else {
-                                libraries.put(simpleName, source);
+                            if (fileName.endsWith(".java")) {
+                                String source = Files.readString(p);
+                                String simpleName = fileName.replace(".java", "");
+                                if (VALIDATOR_PATTERN.matcher(source).find()) {
+                                    validators.put(simpleName, source);
+                                } else {
+                                    libraries.put(simpleName, source);
+                                }
+                            } else if (fileName.endsWith(".crl")) {
+                                String source = Files.readString(p);
+                                String simpleName = fileName.replace(".crl", "");
+                                crlFiles.put(simpleName, source);
                             }
                         } catch (IOException e) {
                             throw new RuntimeException("Failed to read " + p, e);
@@ -53,7 +63,7 @@ public final class ProjectScanner {
                     });
         }
 
-        return new ScanResult(validators, libraries);
+        return new ScanResult(validators, libraries, crlFiles);
     }
 
     /**
