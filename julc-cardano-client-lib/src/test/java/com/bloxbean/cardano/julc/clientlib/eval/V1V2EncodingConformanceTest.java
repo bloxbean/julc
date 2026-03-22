@@ -243,6 +243,94 @@ class V1V2EncodingConformanceTest {
         expectConstr(dcert.fields().getFirst(), 0); // StakingHash
     }
 
+    // --- Interval upper bound closure (PV-dependent) ---
+
+    @Test
+    void v2_ttlOnly_upperBoundInclusive_pv8() {
+        // PV 8 (V2 Babbage): only TTL set → upper bound inclusive (true)
+        var converter = new CclTxConverter(
+                buildTxWithBounds(0, 1000), dummyUtxoSet(), null, null, 8);
+        var txInfo = converter.buildTxInfo();
+        assertTrue(txInfo.validRange().to().isInclusive(),
+                "PV 8 with only TTL → upper bound should be inclusive");
+    }
+
+    @Test
+    void v2_bothBounds_upperBoundExclusive_pv8() {
+        // PV 8 (V2 Babbage): both bounds set → upper bound exclusive (false)
+        var converter = new CclTxConverter(
+                buildTxWithBounds(500, 1000), dummyUtxoSet(), null, null, 8);
+        var txInfo = converter.buildTxInfo();
+        assertFalse(txInfo.validRange().to().isInclusive(),
+                "PV 8 with both bounds → upper bound should be exclusive");
+    }
+
+    @Test
+    void v3_ttlOnly_upperBoundExclusive_pv10() {
+        // PV 10 (V3 Conway+): only TTL set → upper bound exclusive (false)
+        var converter = new CclTxConverter(
+                buildTxWithBounds(0, 1000), dummyUtxoSet(), null, null, 10);
+        var txInfo = converter.buildTxInfo();
+        assertFalse(txInfo.validRange().to().isInclusive(),
+                "PV 10 with only TTL → upper bound should be exclusive");
+    }
+
+    @Test
+    void v2_ttlOnly_intervalDataEncoding_pv8() {
+        // Verify the PlutusData encoding has closure=true for PV8 TTL-only
+        var converter = new CclTxConverter(
+                buildTxWithBounds(0, 1000), dummyUtxoSet(), null, null, 8);
+        var txInfo = converter.buildTxInfo();
+        PlutusData intervalData = txInfo.validRange().toPlutusData();
+        // Interval = Constr 0 [lowerBound, upperBound]
+        var intervalConstr = expectConstr(intervalData, 0);
+        // upperBound = Constr 0 [boundType, closure]
+        var upperBound = expectConstr(intervalConstr.fields().get(1), 0);
+        // closure = True (Constr 1 []) for PV 8 TTL-only
+        expectConstr(upperBound.fields().get(1), 1); // True = Constr 1
+    }
+
+    @Test
+    void v3_ttlOnly_intervalDataEncoding_pv10() {
+        // Verify the PlutusData encoding has closure=false for PV10 TTL-only
+        var converter = new CclTxConverter(
+                buildTxWithBounds(0, 1000), dummyUtxoSet(), null, null, 10);
+        var txInfo = converter.buildTxInfo();
+        PlutusData intervalData = txInfo.validRange().toPlutusData();
+        var intervalConstr = expectConstr(intervalData, 0);
+        var upperBound = expectConstr(intervalConstr.fields().get(1), 0);
+        // closure = False (Constr 0 []) for PV 10 TTL-only
+        expectConstr(upperBound.fields().get(1), 0); // False = Constr 0
+    }
+
+    private static final String DUMMY_ADDR =
+            "addr_test1qz2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3jcu5d8ps7zex2k2xt3uqxgjqnnj83ws8lhrn648jjxtwq2ytjqp";
+
+    private static java.util.Set<com.bloxbean.cardano.client.api.model.Utxo> dummyUtxoSet() {
+        return java.util.Set.of(com.bloxbean.cardano.client.api.model.Utxo.builder()
+                .txHash(java.util.HexFormat.of().formatHex(HASH_32))
+                .outputIndex(0)
+                .address(DUMMY_ADDR)
+                .amount(java.util.List.of(com.bloxbean.cardano.client.api.model.Amount
+                        .lovelace(BigInteger.valueOf(5_000_000))))
+                .build());
+    }
+
+    private static com.bloxbean.cardano.client.transaction.spec.Transaction buildTxWithBounds(
+            long validityStart, long ttl) {
+        return com.bloxbean.cardano.client.transaction.spec.Transaction.builder()
+                .body(com.bloxbean.cardano.client.transaction.spec.TransactionBody.builder()
+                        .inputs(java.util.List.of(
+                                new com.bloxbean.cardano.client.transaction.spec.TransactionInput(
+                                        java.util.HexFormat.of().formatHex(HASH_32), 0)))
+                        .outputs(java.util.List.of())
+                        .fee(BigInteger.valueOf(200_000))
+                        .ttl(ttl)
+                        .validityStartInterval(validityStart)
+                        .build())
+                .build();
+    }
+
     // --- V1 vs V2 TxInfo field count ---
 
     @Test

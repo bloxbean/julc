@@ -88,7 +88,7 @@ final class V1V2ScriptContextBuilder {
                 new PlutusData.ConstrData(0, List.of(encodeTxOutRef(i.outRef()), txOutEncoder.encode(i.resolved()))));
         PlutusData outputsData = encodeList(txInfo.outputs(), txOutEncoder);
         PlutusData feeData = encodeValue(Value.lovelace(txInfo.fee()));
-        PlutusData mintData = encodeValue(txInfo.mint());
+        PlutusData mintData = encodeMintValue(txInfo.mint());
         // V1/V2: uses DCert encoding (not V3 TxCert)
         PlutusData certsData = encodeList(txInfo.certificates(), V1V2ScriptContextBuilder::encodeDCert);
         // V1/V2: withdrawal keys are StakingCredential (not raw Credential like V3)
@@ -215,6 +215,37 @@ final class V1V2ScriptContextBuilder {
      */
     private static PlutusData encodeValue(Value value) {
         return value.toPlutusData();
+    }
+
+    /**
+     * Encode the mint value for V1/V2 TxInfo.
+     * <p>
+     * Per the Cardano ledger, the V1/V2 mint field always includes a zero ADA entry
+     * prepended to the actual mint entries. This is for backwards compatibility
+     * ("hysterical raisins") — the original MaryValue included ADA in mint, and
+     * changing the encoding would break existing scripts.
+     * <p>
+     * See cardano-ledger: {@code transMintValue m = transCoinToValue zero <> transMultiAsset m}
+     */
+    private static PlutusData encodeMintValue(Value mint) {
+        // Always prepend a zero ADA entry: Map { B"" → Map { B"" → I 0 } }
+        var zeroAda = new PlutusData.Pair(
+                PlutusData.bytes(new byte[0]),
+                new PlutusData.MapData(List.of(
+                        new PlutusData.Pair(
+                                PlutusData.bytes(new byte[0]),
+                                PlutusData.integer(0)))));
+
+        PlutusData.MapData mintMap = mint.toPlutusData();
+        var entries = new ArrayList<>(mintMap.entries());
+
+        // Remove any existing ADA entry (shouldn't be there for mint, but be safe)
+        entries.removeIf(p -> p.key() instanceof PlutusData.BytesData b && b.value().length == 0);
+
+        // Prepend zero ADA entry
+        entries.addFirst(zeroAda);
+
+        return new PlutusData.MapData(entries);
     }
 
     /**

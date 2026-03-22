@@ -85,19 +85,21 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
                         .withValue(List.of());
             }
 
-            // 3. Build TxInfo
-            var converter = new CclTxConverter(tx, inputUtxos, utxoSupplier, slotConfig);
+            // 3. Get protocol params (needed for both TxInfo and VM)
+            var params = protocolParamsSupplier.getProtocolParams();
+            int pvMajor = params.getProtocolMajorVer() != null ? params.getProtocolMajorVer() : 10;
+
+            // 4. Build TxInfo (pass pvMajor for PV-dependent interval encoding)
+            var converter = new CclTxConverter(tx, inputUtxos, utxoSupplier, slotConfig, pvMajor);
             TxInfo txInfo = converter.buildTxInfo();
 
-            // 4. Get max script budget
-            var params = protocolParamsSupplier.getProtocolParams();
+            // 5. Get max script budget
             ExBudget maxBudget = new ExBudget(
                     Long.parseLong(params.getMaxTxExSteps()),
                     Long.parseLong(params.getMaxTxExMem()));
 
-            // 5. Create VM (lazy, cached) and configure cost models for all language versions
+            // 6. Create VM (lazy, cached) and configure cost models for all language versions
             JulcVm julcVm = getOrCreateVm();
-            int pvMajor = params.getProtocolMajorVer() != null ? params.getProtocolMajorVer() : 10;
             int pvMinor = params.getProtocolMinorVer() != null ? params.getProtocolMinorVer() : 0;
             for (var lang : List.of(Language.PLUTUS_V1, Language.PLUTUS_V2, Language.PLUTUS_V3)) {
                 CostModelUtil.getCostModelFromProtocolParams(params, lang)

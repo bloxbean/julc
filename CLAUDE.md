@@ -21,3 +21,7 @@ Full openapi doc for Yaci Devkit API END points is available at http://localhost
 - Use meaningful variable and function names that clearly convey their purpose and intent.
 - Reuse code where possible to avoid duplication and improve maintainability. Consider using helper functions or classes to encapsulate common logic.
 - Regularly review and refactor the code to improve its structure and readability. This will help ensure that the codebase remains clean and maintainable as it evolves over time.
+
+## Paths
+
+- `julc-examples` - Test projects with validator and off-chain code examples, plus unit tests. ../julc-examples

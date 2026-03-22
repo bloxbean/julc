@@ -520,6 +520,173 @@ class JulcTransactionEvaluatorTest {
         assertEquals(RedeemerTag.Spend, result.getValue().getFirst().getRedeemerTag());
     }
 
+    /**
+     * Budget conformance: evaluate V2 sum script via direct VM call and verify
+     * the Java VM budget matches Scalus VM budget exactly for the same ScriptContext.
+     * This ensures that after ScriptContext fixes, transaction evaluation produces
+     * budgets that the node will accept.
+     */
+    @Test
+    void evaluateV2_sumScript_budgetMatchesScalus() {
+        var scalusProvider = findScalusProvider();
+        org.junit.jupiter.api.Assumptions.assumeTrue(scalusProvider != null, "Scalus provider not available");
+
+        var javaProvider = new com.bloxbean.cardano.julc.vm.java.JavaVmProvider();
+        Program program = JulcScriptAdapter.toProgram(V2_SUM_SCRIPT_CBOR);
+
+        var datum = new com.bloxbean.cardano.julc.core.PlutusData.IntData(BigInteger.valueOf(8));
+        var redeemer = new com.bloxbean.cardano.julc.core.PlutusData.IntData(BigInteger.valueOf(36));
+        var scriptContext = buildMinimalV2SpendingContext();
+
+        var args = List.<com.bloxbean.cardano.julc.core.PlutusData>of(datum, redeemer, scriptContext);
+
+        EvalResult javaResult = javaProvider.evaluateWithArgs(program, PlutusLanguage.PLUTUS_V2, args, null);
+        assertTrue(javaResult.isSuccess(), "Java VM should succeed");
+
+        EvalResult scalusResult = scalusProvider.evaluateWithArgs(program, PlutusLanguage.PLUTUS_V2, args, null);
+        assertTrue(scalusResult.isSuccess(), "Scalus VM should succeed");
+
+        assertEquals(scalusResult.budgetConsumed().cpuSteps(), javaResult.budgetConsumed().cpuSteps(),
+                "V2 sum script CPU budget must match Scalus exactly");
+        assertEquals(scalusResult.budgetConsumed().memoryUnits(), javaResult.budgetConsumed().memoryUnits(),
+                "V2 sum script memory budget must match Scalus exactly");
+    }
+
+    /**
+     * Verify upper bound closure is protocol-version-dependent.
+     * - PV 8 (V1/V2), only TTL → inclusive (true)
+     * - PV 8 (V1/V2), both bounds → exclusive (false)
+     * - PV 10 (V3), only TTL → exclusive (false)
+     */
+    @Test
+    void convertValidRange_pvDependent_ttlOnlyClosure() throws Exception {
+        var utxos = dummyInputUtxos();
+
+        // PV 8 (V2), only TTL → upper bound should be inclusive
+        var converter8 = new CclTxConverter(
+                buildMinimalTx(0, 1000), utxos, null, null, 8);
+        var txInfo8 = converter8.buildTxInfo();
+        var interval8 = txInfo8.validRange();
+        assertTrue(interval8.to().isInclusive(),
+                "PV 8 with only TTL → upper bound should be inclusive (true)");
+
+        // PV 8 (V2), both bounds → upper bound should be exclusive
+        var converter8both = new CclTxConverter(
+                buildMinimalTx(500, 1000), utxos, null, null, 8);
+        var txInfo8both = converter8both.buildTxInfo();
+        var interval8both = txInfo8both.validRange();
+        assertFalse(interval8both.to().isInclusive(),
+                "PV 8 with both bounds → upper bound should be exclusive (false)");
+
+        // PV 10 (V3), only TTL → upper bound should be exclusive
+        var converter10 = new CclTxConverter(
+                buildMinimalTx(0, 1000), utxos, null, null, 10);
+        var txInfo10 = converter10.buildTxInfo();
+        var interval10 = txInfo10.validRange();
+        assertFalse(interval10.to().isInclusive(),
+                "PV 10 with only TTL → upper bound should be exclusive (false)");
+    }
+
+    @Test
+    void convertValidRange_bothBounds_alwaysExclusive() throws Exception {
+        // Both bounds set → always exclusive regardless of PV
+        var utxos = dummyInputUtxos();
+        for (int pv : new int[]{7, 8, 9, 10}) {
+            var converter = new CclTxConverter(
+                    buildMinimalTx(500, 1000), utxos, null, null, pv);
+            var txInfo = converter.buildTxInfo();
+            assertFalse(txInfo.validRange().to().isInclusive(),
+                    "PV " + pv + " with both bounds → upper bound must be exclusive");
+        }
+    }
+
+    @Test
+    void convertValidRange_noTtl_upperIsPosInf() throws Exception {
+        var converter = new CclTxConverter(
+                buildMinimalTx(0, 0), dummyInputUtxos(), null, null, 8);
+        var txInfo = converter.buildTxInfo();
+        assertInstanceOf(com.bloxbean.cardano.julc.ledger.IntervalBoundType.PosInf.class,
+                txInfo.validRange().to().boundType(),
+                "No TTL → upper bound should be PosInf");
+    }
+
+    @Test
+    void convertValidRange_finiteUpperBound_evaluationSucceeds() throws Exception {
+        String scriptAddr = buildScriptAddress(alwaysTrueHash);
+        String txHash = "ab".repeat(32);
+
+        Utxo inputUtxo = Utxo.builder()
+                .txHash(txHash)
+                .outputIndex(0)
+                .address(scriptAddr)
+                .amount(List.of(Amount.lovelace(BigInteger.valueOf(5_000_000))))
+                .build();
+
+        var redeemer = Redeemer.builder()
+                .tag(RedeemerTag.Spend)
+                .index(BigInteger.ZERO)
+                .data(new BigIntPlutusData(BigInteger.ZERO))
+                .exUnits(ExUnits.builder()
+                        .mem(BigInteger.ZERO)
+                        .steps(BigInteger.ZERO)
+                        .build())
+                .build();
+
+        // Build tx with TTL=1000 and validityStartInterval=500
+        var tx = Transaction.builder()
+                .body(TransactionBody.builder()
+                        .inputs(List.of(new TransactionInput(txHash, 0)))
+                        .outputs(List.of())
+                        .fee(BigInteger.valueOf(200_000))
+                        .ttl(1000)
+                        .validityStartInterval(500)
+                        .build())
+                .witnessSet(TransactionWitnessSet.builder()
+                        .redeemers(List.of(redeemer))
+                        .plutusV3Scripts(List.of(alwaysTrueScript))
+                        .build())
+                .build();
+
+        var evaluator = createEvaluator(null);
+        byte[] cbor = tx.serialize();
+        var result = evaluator.evaluateTx(cbor, Set.of(inputUtxo));
+
+        assertTrue(result.isSuccessful(), "Should succeed with TTL: " + result.getResponse());
+    }
+
+    private static final String DUMMY_TX_HASH = "ab".repeat(32);
+    private static final String DUMMY_ADDR = "addr_test1qz2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3jcu5d8ps7zex2k2xt3uqxgjqnnj83ws8lhrn648jjxtwq2ytjqp";
+
+    private static Transaction buildMinimalTx(long validityStart, long ttl) {
+        return Transaction.builder()
+                .body(TransactionBody.builder()
+                        .inputs(List.of(new TransactionInput(DUMMY_TX_HASH, 0)))
+                        .outputs(List.of())
+                        .fee(BigInteger.valueOf(200_000))
+                        .ttl(ttl)
+                        .validityStartInterval(validityStart)
+                        .build())
+                .build();
+    }
+
+    private static Set<Utxo> dummyInputUtxos() {
+        return Set.of(Utxo.builder()
+                .txHash(DUMMY_TX_HASH)
+                .outputIndex(0)
+                .address(DUMMY_ADDR)
+                .amount(List.of(Amount.lovelace(BigInteger.valueOf(5_000_000))))
+                .build());
+    }
+
+    private static com.bloxbean.cardano.julc.vm.JulcVmProvider findScalusProvider() {
+        for (var provider : java.util.ServiceLoader.load(com.bloxbean.cardano.julc.vm.JulcVmProvider.class)) {
+            if ("Scalus".equals(provider.name())) {
+                return provider;
+            }
+        }
+        return null;
+    }
+
     // --- Helpers ---
 
     /**

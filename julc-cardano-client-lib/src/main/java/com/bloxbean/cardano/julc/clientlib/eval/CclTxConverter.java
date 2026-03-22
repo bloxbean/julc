@@ -34,16 +34,24 @@ final class CclTxConverter {
     private final Set<Utxo> inputUtxos;
     private final UtxoSupplier utxoSupplier;
     private final SlotConfig slotConfig;
+    private final int protocolMajorVersion;
 
     // Cached sorted inputs for redeemer index mapping
     private List<TransactionInput> sortedInputs;
 
     CclTxConverter(Transaction tx, Set<Utxo> inputUtxos,
                    UtxoSupplier utxoSupplier, SlotConfig slotConfig) {
+        this(tx, inputUtxos, utxoSupplier, slotConfig, 10);
+    }
+
+    CclTxConverter(Transaction tx, Set<Utxo> inputUtxos,
+                   UtxoSupplier utxoSupplier, SlotConfig slotConfig,
+                   int protocolMajorVersion) {
         this.tx = Objects.requireNonNull(tx);
         this.inputUtxos = inputUtxos != null ? inputUtxos : Set.of();
         this.utxoSupplier = utxoSupplier;
         this.slotConfig = slotConfig;
+        this.protocolMajorVersion = protocolMajorVersion;
     }
 
     /**
@@ -96,9 +104,9 @@ final class CclTxConverter {
         JulcMap<ScriptPurpose, com.bloxbean.cardano.julc.core.PlutusData> redeemers =
                 convertRedeemers(tx.getWitnessSet().getRedeemers());
 
-        // 11. Datums (witness set datum map: hash -> data)
-        JulcMap<DatumHash, com.bloxbean.cardano.julc.core.PlutusData> datums = convertDatums(
-                tx.getWitnessSet().getPlutusDataList());
+        // 11. Datums: witness set datums + inline datums from all inputs/refInputs/outputs
+        JulcMap<DatumHash, com.bloxbean.cardano.julc.core.PlutusData> datums = convertAllDatums(
+                tx.getWitnessSet().getPlutusDataList(), inputs, referenceInputs, outputs);
 
         // 12. TxId from body hash
         TxId txId = computeTxId(body);
@@ -195,11 +203,11 @@ final class CclTxConverter {
 
         OutputDatum datum;
         if (utxo.getInlineDatum() != null && !utxo.getInlineDatum().isEmpty()) {
-            // Inline datum: deserialize the CBOR hex to CCL PlutusData, then convert
             try {
                 byte[] datumBytes = HexFormat.of().parseHex(utxo.getInlineDatum());
                 PlutusData cclDatum = PlutusData.deserialize(datumBytes);
-                datum = new OutputDatum.OutputDatumInline(PlutusDataAdapter.fromClientLib(cclDatum));
+                var julcDatum = PlutusDataAdapter.fromClientLib(cclDatum);
+                datum = new OutputDatum.OutputDatumInline(julcDatum);
             } catch (Exception e) {
                 throw new IllegalStateException("Failed to deserialize inline datum for UTxO: "
                         + utxo.getTxHash() + "#" + utxo.getOutputIndex(), e);
@@ -303,7 +311,17 @@ final class CclTxConverter {
             BigInteger toTime = slotConfig != null
                     ? BigInteger.valueOf(slotConfig.slotToPosixMs(ttl))
                     : BigInteger.valueOf(ttl);
-            to = new IntervalBound(new IntervalBoundType.Finite(toTime), true);
+            // Scalus/Cardano ledger: when both bounds are set, upper is always exclusive.
+            // When only TTL is set (no lower), closure depends on protocol version:
+            //   PV <= 8 (V1/V2 Babbage): inclusive (true)
+            //   PV >= 9 (V3 Conway+): exclusive (false)
+            boolean upperInclusive;
+            if (validityStart != 0) {
+                upperInclusive = false; // both bounds set → always exclusive
+            } else {
+                upperInclusive = protocolMajorVersion <= 8; // only TTL → PV-dependent
+            }
+            to = new IntervalBound(new IntervalBoundType.Finite(toTime), upperInclusive);
         }
 
         return new Interval(from, to);
@@ -647,28 +665,34 @@ final class CclTxConverter {
         return new JulcArrayList<>(convertProposalProcedures(cclProposals));
     }
 
-    private JulcMap<DatumHash, com.bloxbean.cardano.julc.core.PlutusData> convertDatums(
-            List<PlutusData> plutusDataList) {
-        if (plutusDataList == null || plutusDataList.isEmpty()) {
-            return JulcAssocMap.empty();
-        }
+    /**
+     * Collect datums from the transaction witness set.
+     * <p>
+     * Per the Cardano ledger specification, the txInfoData map in V1/V2/V3 ScriptContext
+     * contains ONLY witness set datums (from {@code datsTxWitsL}). Inline datums are
+     * NOT included — scripts access them through the resolved TxOut's OutputDatum field.
+     */
+    private JulcMap<DatumHash, com.bloxbean.cardano.julc.core.PlutusData> convertAllDatums(
+            List<PlutusData> witnessDatums,
+            JulcList<TxInInfo> inputs, JulcList<TxInInfo> referenceInputs,
+            JulcList<TxOut> outputs) {
 
         JulcMap<DatumHash, com.bloxbean.cardano.julc.core.PlutusData> result = JulcAssocMap.empty();
 
-        for (PlutusData cclDatum : plutusDataList) {
-            try {
-                // Hash the original serialized bytes to preserve CBOR encoding
-                byte[] serializedBytes = com.bloxbean.cardano.client.common.cbor.CborSerializationUtil
-                        .serialize(cclDatum.serialize());
-                byte[] datumHashBytes = Blake2bUtil.blake2bHash256(serializedBytes);
-
-                DatumHash datumHash = DatumHash.of(datumHashBytes);
-                com.bloxbean.cardano.julc.core.PlutusData julcDatum =
-                        PlutusDataAdapter.fromClientLib(cclDatum);
-
-                result = result.insert(datumHash, julcDatum);
-            } catch (Exception e) {
-                throw new IllegalStateException("Failed to hash witness datum", e);
+        // Witness set datums only
+        if (witnessDatums != null) {
+            for (PlutusData cclDatum : witnessDatums) {
+                try {
+                    byte[] serializedBytes = com.bloxbean.cardano.client.common.cbor.CborSerializationUtil
+                            .serialize(cclDatum.serialize());
+                    byte[] datumHashBytes = Blake2bUtil.blake2bHash256(serializedBytes);
+                    DatumHash datumHash = DatumHash.of(datumHashBytes);
+                    com.bloxbean.cardano.julc.core.PlutusData julcDatum =
+                            PlutusDataAdapter.fromClientLib(cclDatum);
+                    result = result.insert(datumHash, julcDatum);
+                } catch (Exception e) {
+                    throw new IllegalStateException("Failed to hash witness datum", e);
+                }
             }
         }
 
