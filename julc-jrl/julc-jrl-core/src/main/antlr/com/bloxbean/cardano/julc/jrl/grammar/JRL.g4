@@ -38,29 +38,34 @@ paramBlock
     ;
 
 paramDecl
-    : IDENT COLON typeRef
+    : ident COLON typeRef
     ;
 
 typeRef
     : LIST typeRef      # listType
     | OPTIONAL typeRef  # optionalType
-    | IDENT             # simpleType
+    | ident             # simpleType
     ;
 
 fieldDecl
-    : IDENT COLON typeRef
+    : ident COLON typeRef
+    ;
+
+// Soft keywords: these are keywords in fact pattern contexts but valid identifiers elsewhere
+ident
+    : IDENT | FROM_KW | TOKEN_KW | POLICY_KW | AMOUNT_KW | BURNED_KW | FEE_KW
     ;
 
 datumDecl
-    : DATUM IDENT COLON fieldDecl+
+    : DATUM ident COLON fieldDecl+
     ;
 
 recordDecl
-    : RECORD IDENT COLON fieldDecl+
+    : RECORD ident COLON fieldDecl+
     ;
 
 redeemerDecl
-    : REDEEMER IDENT COLON redeemerBody
+    : REDEEMER ident COLON redeemerBody
     ;
 
 redeemerBody
@@ -69,7 +74,7 @@ redeemerBody
     ;
 
 variantDecl
-    : PIPE IDENT (COLON fieldDecl+)?
+    : PIPE ident (COLON fieldDecl+)?
     ;
 
 // ============================================================
@@ -106,16 +111,33 @@ factPattern
     | DATUM_KW LPAREN variantMatch RPAREN                  # datumPattern
     | CONDITION LPAREN expr RPAREN                         # conditionPattern
     | OUTPUT LPAREN outputField (COMMA outputField)* RPAREN # outputPattern
+    | INPUT LPAREN inputField (COMMA inputField)* RPAREN    # inputPattern
+    | MINT LPAREN mintField (COMMA mintField)* RPAREN       # mintPattern
+    | CONTINUING_OUTPUT LPAREN outputField (COMMA outputField)* RPAREN # continuingOutputPattern
     ;
 
 txField
-    : SIGNED_BY | VALID_AFTER | VALID_BEFORE
+    : SIGNED_BY | VALID_AFTER | VALID_BEFORE | FEE_KW
+    ;
+
+inputField
+    : FROM_KW COLON expr            # inputFrom
+    | VALUE COLON VAR_BINDING       # inputValue
+    | TOKEN_KW COLON valueExpr      # inputToken
+    ;
+
+mintField
+    : POLICY_KW COLON expr          # mintPolicy
+    | TOKEN_KW COLON expr           # mintToken
+    | AMOUNT_KW COLON VAR_BINDING   # mintAmount
+    | BURNED_KW                     # mintBurned
     ;
 
 outputField
-    : TO COLON expr          # outputTo
-    | VALUE COLON valueExpr  # outputValue
-    | DATUM_KW COLON datumExpr # outputDatum
+    : TO COLON expr              # outputTo
+    | VALUE COLON valueExpr      # outputValue
+    | DATUM_KW COLON datumExpr   # outputDatum
+    | DATUM COLON datumExpr      # outputDatumLower
     ;
 
 valueExpr
@@ -124,11 +146,11 @@ valueExpr
     ;
 
 datumExpr
-    : INLINE IDENT LPAREN datumFieldExpr (COMMA datumFieldExpr)* RPAREN
+    : INLINE ident LPAREN datumFieldExpr (COMMA datumFieldExpr)* RPAREN
     ;
 
 datumFieldExpr
-    : IDENT COLON expr
+    : ident COLON expr
     ;
 
 // ============================================================
@@ -136,16 +158,16 @@ datumFieldExpr
 // ============================================================
 
 variantMatch
-    : IDENT (LPAREN fieldMatch (COMMA fieldMatch)* RPAREN)?
+    : ident (LPAREN fieldMatch (COMMA fieldMatch)* RPAREN)?
     ;
 
 fieldMatch
-    : IDENT COLON matchValue
+    : ident COLON matchValue
     ;
 
 matchValue
     : VAR_BINDING                                              # bindingValue
-    | IDENT LPAREN fieldMatch (COMMA fieldMatch)* RPAREN       # nestedMatchValue
+    | ident LPAREN fieldMatch (COMMA fieldMatch)* RPAREN       # nestedMatchValue
     | expr                                                     # literalValue
     ;
 
@@ -156,8 +178,8 @@ matchValue
 // ============================================================
 
 expr
-    : expr DOT IDENT                  # fieldAccessExpr
-    | IDENT LPAREN exprList? RPAREN   # functionCallExpr
+    : expr DOT ident                  # fieldAccessExpr
+    | ident LPAREN exprList? RPAREN   # functionCallExpr
     | NOT expr                        # notExpr
     | expr STAR expr                  # multiplicativeExpr
     | expr (PLUS | MINUS) expr        # additiveExpr
@@ -169,7 +191,7 @@ expr
     | VAR_BINDING                     # varRefExpr
     | OWN_ADDRESS                     # ownAddressExpr
     | OWN_POLICY_ID                   # ownPolicyIdExpr
-    | IDENT                           # identRefExpr
+    | ident                           # identRefExpr
     | INTEGER                         # intLiteralExpr
     | STRING                          # stringLiteralExpr
     | HEX_LITERAL                     # hexLiteralExpr
@@ -201,23 +223,32 @@ DEFAULT     : 'default' ;
 TRACE       : 'trace' ;
 
 // Fact pattern keywords
-REDEEMER_KW : 'Redeemer' ;
-DATUM_KW    : 'Datum' ;
-TRANSACTION : 'Transaction' ;
-CONDITION   : 'Condition' ;
-OUTPUT      : 'Output' ;
+REDEEMER_KW       : 'Redeemer' ;
+DATUM_KW          : 'Datum' ;
+TRANSACTION       : 'Transaction' ;
+CONDITION         : 'Condition' ;
+OUTPUT            : 'Output' ;
+INPUT             : 'Input' ;
+MINT              : 'Mint' ;
+CONTINUING_OUTPUT : 'ContinuingOutput' ;
 
 // Transaction fields
 SIGNED_BY   : 'signedBy' ;
 VALID_AFTER : 'validAfter' ;
 VALID_BEFORE: 'validBefore' ;
 
-// Output keywords
+// Output / Input / Mint keywords
 TO          : 'to' ;
+FROM_KW     : 'from' ;
 VALUE       : 'value' ;
 MIN_ADA     : 'minADA' ;
 CONTAINS    : 'contains' ;
 INLINE      : 'inline' ;
+TOKEN_KW    : 'token' ;
+POLICY_KW   : 'policy' ;
+AMOUNT_KW   : 'amount' ;
+BURNED_KW   : 'burned' ;
+FEE_KW      : 'fee' ;
 
 // Purpose types
 SPENDING    : 'spending' ;

@@ -24,6 +24,13 @@ public class JrlAstBuilder extends JRLBaseVisitor<Object> {
 
     // ── Helpers ──────────────────────────────────────────────────
 
+    /**
+     * Extract text from an ident rule context, which can be IDENT or a soft keyword.
+     */
+    private String identText(JRLParser.IdentContext ctx) {
+        return ctx.getText();
+    }
+
     private SourceRange rangeOf(ParserRuleContext ctx) {
         Token start = ctx.getStart();
         Token stop = ctx.getStop();
@@ -117,7 +124,7 @@ public class JrlAstBuilder extends JRLBaseVisitor<Object> {
     @Override
     public ParamNode visitParamDecl(JRLParser.ParamDeclContext ctx) {
         return new ParamNode(
-                ctx.IDENT().getText(),
+                identText(ctx.ident()),
                 visitTypeRef(ctx.typeRef()),
                 rangeOf(ctx));
     }
@@ -128,7 +135,7 @@ public class JrlAstBuilder extends JRLBaseVisitor<Object> {
         } else if (ctx instanceof JRLParser.OptionalTypeContext ot) {
             return new TypeRef.OptionalType(visitTypeRef(ot.typeRef()), rangeOf(ctx));
         } else if (ctx instanceof JRLParser.SimpleTypeContext st) {
-            return new TypeRef.SimpleType(st.IDENT().getText(), rangeOf(ctx));
+            return new TypeRef.SimpleType(identText(st.ident()), rangeOf(ctx));
         }
         throw new IllegalStateException("Unknown typeRef: " + ctx.getText());
     }
@@ -137,27 +144,27 @@ public class JrlAstBuilder extends JRLBaseVisitor<Object> {
     public DatumDeclNode visitDatumDecl(JRLParser.DatumDeclContext ctx) {
         List<FieldNode> fields = ctx.fieldDecl().stream()
                 .map(this::visitFieldDecl).toList();
-        return new DatumDeclNode(ctx.IDENT().getText(), fields, rangeOf(ctx));
+        return new DatumDeclNode(identText(ctx.ident()), fields, rangeOf(ctx));
     }
 
     @Override
     public RecordDeclNode visitRecordDecl(JRLParser.RecordDeclContext ctx) {
         List<FieldNode> fields = ctx.fieldDecl().stream()
                 .map(this::visitFieldDecl).toList();
-        return new RecordDeclNode(ctx.IDENT().getText(), fields, rangeOf(ctx));
+        return new RecordDeclNode(identText(ctx.ident()), fields, rangeOf(ctx));
     }
 
     @Override
     public FieldNode visitFieldDecl(JRLParser.FieldDeclContext ctx) {
         return new FieldNode(
-                ctx.IDENT().getText(),
+                identText(ctx.ident()),
                 visitTypeRef(ctx.typeRef()),
                 rangeOf(ctx));
     }
 
     @Override
     public RedeemerDeclNode visitRedeemerDecl(JRLParser.RedeemerDeclContext ctx) {
-        String name = ctx.IDENT().getText();
+        String name = identText(ctx.ident());
         var body = ctx.redeemerBody();
         if (body instanceof JRLParser.VariantRedeemerContext vr) {
             List<VariantNode> variants = vr.variantDecl().stream()
@@ -176,7 +183,7 @@ public class JrlAstBuilder extends JRLBaseVisitor<Object> {
         List<FieldNode> fields = ctx.fieldDecl() != null
                 ? ctx.fieldDecl().stream().map(this::visitFieldDecl).toList()
                 : List.of();
-        return new VariantNode(ctx.IDENT().getText(), fields, rangeOf(ctx));
+        return new VariantNode(identText(ctx.ident()), fields, rangeOf(ctx));
     }
 
     // ── Purpose sections ────────────────────────────────────────
@@ -225,6 +232,7 @@ public class JrlAstBuilder extends JRLBaseVisitor<Object> {
                 case "signedBy"    -> FactPattern.TxField.SIGNED_BY;
                 case "validAfter"  -> FactPattern.TxField.VALID_AFTER;
                 case "validBefore" -> FactPattern.TxField.VALID_BEFORE;
+                case "fee"          -> FactPattern.TxField.FEE;
                 default -> throw new IllegalStateException("Unknown txField: " + tp.txField().getText());
             };
             return new FactPattern.TransactionPattern(
@@ -237,6 +245,12 @@ public class JrlAstBuilder extends JRLBaseVisitor<Object> {
                     visitExprDispatch(cp.expr()), rangeOf(ctx));
         } else if (ctx instanceof JRLParser.OutputPatternContext op) {
             return buildOutputPattern(op);
+        } else if (ctx instanceof JRLParser.InputPatternContext ip) {
+            return buildInputPattern(ip);
+        } else if (ctx instanceof JRLParser.MintPatternContext mp) {
+            return buildMintPattern(mp);
+        } else if (ctx instanceof JRLParser.ContinuingOutputPatternContext cop) {
+            return buildContinuingOutputPattern(cop);
         }
         throw new IllegalStateException("Unknown fact pattern: " + ctx.getText());
     }
@@ -253,6 +267,8 @@ public class JrlAstBuilder extends JRLBaseVisitor<Object> {
                 value = visitValueExpr(ov.valueExpr());
             } else if (field instanceof JRLParser.OutputDatumContext od) {
                 datum = buildDatumConstraint(od.datumExpr());
+            } else if (field instanceof JRLParser.OutputDatumLowerContext odl) {
+                datum = buildDatumConstraint(odl.datumExpr());
             }
         }
         return new FactPattern.OutputPattern(to, value, datum, rangeOf(ctx));
@@ -271,18 +287,79 @@ public class JrlAstBuilder extends JRLBaseVisitor<Object> {
     }
 
     private DatumConstraint buildDatumConstraint(JRLParser.DatumExprContext ctx) {
-        String typeName = ctx.IDENT().getText();
+        String typeName = identText(ctx.ident());
         List<DatumFieldExpr> fields = ctx.datumFieldExpr().stream()
-                .map(f -> new DatumFieldExpr(f.IDENT().getText(), visitExprDispatch(f.expr())))
+                .map(f -> new DatumFieldExpr(identText(f.ident()), visitExprDispatch(f.expr())))
                 .toList();
         return new DatumConstraint(typeName, fields);
+    }
+
+    // ── Input pattern ────────────────────────────────────────────
+
+    private FactPattern.InputPattern buildInputPattern(JRLParser.InputPatternContext ctx) {
+        Expression from = null;
+        String valueBinding = null;
+        ValueConstraint token = null;
+
+        for (var field : ctx.inputField()) {
+            if (field instanceof JRLParser.InputFromContext inf) {
+                from = visitExprDispatch(inf.expr());
+            } else if (field instanceof JRLParser.InputValueContext inv) {
+                valueBinding = inv.VAR_BINDING().getText().substring(1); // strip '$'
+            } else if (field instanceof JRLParser.InputTokenContext intk) {
+                token = visitValueExpr(intk.valueExpr());
+            }
+        }
+        return new FactPattern.InputPattern(from, valueBinding, token, rangeOf(ctx));
+    }
+
+    // ── Mint pattern ─────────────────────────────────────────────
+
+    private FactPattern.MintPattern buildMintPattern(JRLParser.MintPatternContext ctx) {
+        Expression policy = null;
+        Expression token = null;
+        String amountBinding = null;
+        boolean burned = false;
+
+        for (var field : ctx.mintField()) {
+            if (field instanceof JRLParser.MintPolicyContext mp) {
+                policy = visitExprDispatch(mp.expr());
+            } else if (field instanceof JRLParser.MintTokenContext mt) {
+                token = visitExprDispatch(mt.expr());
+            } else if (field instanceof JRLParser.MintAmountContext ma) {
+                amountBinding = ma.VAR_BINDING().getText().substring(1); // strip '$'
+            } else if (field instanceof JRLParser.MintBurnedContext) {
+                burned = true;
+            }
+        }
+        return new FactPattern.MintPattern(policy, token, amountBinding, burned, rangeOf(ctx));
+    }
+
+    // ── ContinuingOutput pattern ─────────────────────────────────
+
+    private FactPattern.ContinuingOutputPattern buildContinuingOutputPattern(
+            JRLParser.ContinuingOutputPatternContext ctx) {
+        ValueConstraint value = null;
+        DatumConstraint datum = null;
+
+        for (var field : ctx.outputField()) {
+            if (field instanceof JRLParser.OutputValueContext ov) {
+                value = visitValueExpr(ov.valueExpr());
+            } else if (field instanceof JRLParser.OutputDatumContext od) {
+                datum = buildDatumConstraint(od.datumExpr());
+            } else if (field instanceof JRLParser.OutputDatumLowerContext odl) {
+                datum = buildDatumConstraint(odl.datumExpr());
+            }
+            // 'to:' is ignored for ContinuingOutput (always ownAddress)
+        }
+        return new FactPattern.ContinuingOutputPattern(value, datum, rangeOf(ctx));
     }
 
     // ── Pattern matching ────────────────────────────────────────
 
     @Override
     public VariantMatch visitVariantMatch(JRLParser.VariantMatchContext ctx) {
-        String typeName = ctx.IDENT().getText();
+        String typeName = identText(ctx.ident());
         List<FieldMatch> fields = ctx.fieldMatch() != null
                 ? ctx.fieldMatch().stream().map(this::visitFieldMatch).toList()
                 : List.of();
@@ -292,7 +369,7 @@ public class JrlAstBuilder extends JRLBaseVisitor<Object> {
     @Override
     public FieldMatch visitFieldMatch(JRLParser.FieldMatchContext ctx) {
         return new FieldMatch(
-                ctx.IDENT().getText(),
+                identText(ctx.ident()),
                 visitMatchValue(ctx.matchValue()),
                 rangeOf(ctx));
     }
@@ -302,7 +379,7 @@ public class JrlAstBuilder extends JRLBaseVisitor<Object> {
             String varName = bv.VAR_BINDING().getText().substring(1); // strip '$'
             return new MatchValue.Binding(varName, rangeOf(ctx));
         } else if (ctx instanceof JRLParser.NestedMatchValueContext nm) {
-            String typeName = nm.IDENT().getText();
+            String typeName = identText(nm.ident());
             List<FieldMatch> fields = nm.fieldMatch().stream()
                     .map(this::visitFieldMatch).toList();
             return new MatchValue.NestedMatch(typeName, fields, rangeOf(ctx));
@@ -350,12 +427,12 @@ public class JrlAstBuilder extends JRLBaseVisitor<Object> {
                     Expression.UnaryOp.NOT, visitExprDispatch(ne.expr()), rangeOf(ctx));
         } else if (ctx instanceof JRLParser.FieldAccessExprContext fa) {
             return new Expression.FieldAccessExpr(
-                    visitExprDispatch(fa.expr()), fa.IDENT().getText(), rangeOf(ctx));
+                    visitExprDispatch(fa.expr()), identText(fa.ident()), rangeOf(ctx));
         } else if (ctx instanceof JRLParser.FunctionCallExprContext fc) {
             List<Expression> args = fc.exprList() != null
                     ? fc.exprList().expr().stream().map(this::visitExprDispatch).toList()
                     : List.of();
-            return new Expression.FunctionCallExpr(fc.IDENT().getText(), args, rangeOf(ctx));
+            return new Expression.FunctionCallExpr(identText(fc.ident()), args, rangeOf(ctx));
         } else if (ctx instanceof JRLParser.ParenExprContext pe) {
             return visitExprDispatch(pe.expr());
         } else if (ctx instanceof JRLParser.VarRefExprContext vr) {
@@ -366,7 +443,7 @@ public class JrlAstBuilder extends JRLBaseVisitor<Object> {
         } else if (ctx instanceof JRLParser.OwnPolicyIdExprContext) {
             return new Expression.OwnPolicyIdExpr(rangeOf(ctx));
         } else if (ctx instanceof JRLParser.IdentRefExprContext ir) {
-            return new Expression.IdentRefExpr(ir.IDENT().getText(), rangeOf(ctx));
+            return new Expression.IdentRefExpr(identText(ir.ident()), rangeOf(ctx));
         } else if (ctx instanceof JRLParser.IntLiteralExprContext il) {
             return new Expression.IntLiteralExpr(Long.parseLong(il.INTEGER().getText()), rangeOf(ctx));
         } else if (ctx instanceof JRLParser.StringLiteralExprContext sl) {

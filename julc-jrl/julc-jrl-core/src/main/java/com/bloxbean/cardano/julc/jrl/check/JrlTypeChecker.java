@@ -252,16 +252,134 @@ public final class JrlTypeChecker {
                             collectBindings(rp.match(), boundVars);
                     case FactPattern.DatumPattern dp ->
                             collectBindings(dp.match(), boundVars);
-                    case FactPattern.TransactionPattern tp ->
+                    case FactPattern.TransactionPattern tp -> {
+                        if (tp.field() == FactPattern.TxField.FEE) {
+                            // Fee is a binding, not a check — the value expression should be a $var
+                            if (tp.value() instanceof Expression.VarRefExpr vr) {
+                                boundVars.add(vr.name());
+                            } else {
+                                checkExprVars(tp.value(), boundVars, paramNames, purpose);
+                            }
+                        } else {
                             checkExprVars(tp.value(), boundVars, paramNames, purpose);
+                        }
+                    }
                     case FactPattern.ConditionPattern cp ->
                             checkExprVars(cp.condition(), boundVars, paramNames, purpose);
                     case FactPattern.OutputPattern op -> {
-                        if (op.to() != null) checkExprVars(op.to(), boundVars, paramNames, purpose);
-                        if (op.value() != null) checkValueConstraintVars(op.value(), boundVars, paramNames, purpose);
+                        checkOutputPattern(op, boundVars, paramNames, purpose);
+                    }
+                    case FactPattern.InputPattern ip -> {
+                        checkInputPattern(ip, boundVars, paramNames, purpose);
+                    }
+                    case FactPattern.MintPattern mp -> {
+                        checkMintPattern(mp, boundVars, paramNames, purpose);
+                    }
+                    case FactPattern.ContinuingOutputPattern cop -> {
+                        checkContinuingOutputPattern(cop, boundVars, paramNames, purpose);
                     }
                 }
             }
+        }
+    }
+
+    private void checkOutputPattern(FactPattern.OutputPattern op, Set<String> boundVars,
+                                     Set<String> paramNames, PurposeType purpose) {
+        if (op.to() == null && op.value() == null && op.datum() == null) {
+            error("JRL033", "Empty Output pattern has no effect",
+                    op.sourceRange(),
+                    "Add 'to:' and 'value:' fields, e.g. Output( to: addr, value: minADA(2000000) )");
+        }
+        if (op.to() != null && op.value() == null && op.datum() == null) {
+            error("JRL032", "Output pattern requires 'value:' or 'Datum:' field when 'to:' is specified",
+                    op.sourceRange(),
+                    "Add a value or datum constraint, e.g. Output( to: addr, value: minADA(2000000) )");
+        }
+        if (op.to() == null && op.value() != null) {
+            error("JRL031", "Output pattern requires 'to:' field when 'value:' is specified",
+                    op.sourceRange(),
+                    "Add a recipient, e.g. Output( to: addr, value: minADA(2000000) )");
+        }
+        if (op.to() != null) checkExprVars(op.to(), boundVars, paramNames, purpose);
+        if (op.value() != null) checkValueConstraintVars(op.value(), boundVars, paramNames, purpose);
+        if (op.datum() != null) checkDatumConstraintVars(op.datum(), boundVars, paramNames, purpose);
+    }
+
+    private void checkInputPattern(FactPattern.InputPattern ip, Set<String> boundVars,
+                                    Set<String> paramNames, PurposeType purpose) {
+        if (ip.from() == null && ip.valueBinding() == null && ip.token() == null) {
+            error("JRL040", "Empty Input pattern has no effect", ip.sourceRange(),
+                    "Add 'from:', 'value:', or 'token:' fields");
+        }
+        // C2: Input value binding only supported with 'from: ownAddress'
+        if (ip.valueBinding() != null && ip.from() != null
+                && !(ip.from() instanceof Expression.OwnAddressExpr)) {
+            error("JRL046", "Input value binding is only supported with 'from: ownAddress'",
+                    ip.sourceRange(),
+                    "Use 'Input( from: ownAddress, value: $val )' or remove the value binding");
+        }
+        // C2: Input(from: expr) without token or value is not useful
+        if (ip.from() != null && !(ip.from() instanceof Expression.OwnAddressExpr)
+                && ip.token() == null && ip.valueBinding() == null) {
+            error("JRL047", "Input( from: expr ) without 'token:' or 'value:' is not yet supported",
+                    ip.sourceRange(),
+                    "Add a token constraint, e.g. Input( from: addr, token: contains(policy, name, 1) )");
+        }
+        if (ip.from() != null) checkExprVars(ip.from(), boundVars, paramNames, purpose);
+        if (ip.token() != null) checkValueConstraintVars(ip.token(), boundVars, paramNames, purpose);
+        // valueBinding introduces a new variable
+        if (ip.valueBinding() != null) boundVars.add(ip.valueBinding());
+    }
+
+    private void checkMintPattern(FactPattern.MintPattern mp, Set<String> boundVars,
+                                   Set<String> paramNames, PurposeType purpose) {
+        if (mp.policy() == null) {
+            error("JRL041", "Mint pattern requires 'policy:' field", mp.sourceRange(),
+                    "Add policy, e.g. Mint( policy: ownPolicyId, token: \"MyToken\", amount: $amt )");
+        }
+        // H2: Mint requires at least one of token/amount/burned to have an effect
+        if (mp.token() == null && mp.amountBinding() == null && !mp.burned()) {
+            error("JRL044", "Mint pattern requires 'token:', 'amount:', or 'burned'",
+                    mp.sourceRange(),
+                    "Add a constraint, e.g. Mint( policy: ownPolicyId, token: \"MyToken\", amount: $amt )");
+        }
+        // H3: burned and amount are mutually exclusive
+        if (mp.burned() && mp.amountBinding() != null) {
+            error("JRL045", "'burned' and 'amount:' are mutually exclusive in Mint pattern",
+                    mp.sourceRange(),
+                    "Use 'burned' to check for negative amount, or 'amount: $var' to bind the amount");
+        }
+        if (mp.policy() != null) checkExprVars(mp.policy(), boundVars, paramNames, purpose);
+        if (mp.token() != null) checkExprVars(mp.token(), boundVars, paramNames, purpose);
+        // amountBinding introduces a new variable
+        if (mp.amountBinding() != null) boundVars.add(mp.amountBinding());
+    }
+
+    private void checkContinuingOutputPattern(FactPattern.ContinuingOutputPattern cop,
+                                               Set<String> boundVars, Set<String> paramNames,
+                                               PurposeType purpose) {
+        if (purpose != null && purpose != PurposeType.SPENDING) {
+            error("JRL042", "'ContinuingOutput' is only available in spending validators",
+                    cop.sourceRange());
+        }
+        if (cop.value() == null && cop.datum() == null) {
+            error("JRL043", "ContinuingOutput pattern requires 'value:' or 'datum:' field",
+                    cop.sourceRange(),
+                    "Add a constraint, e.g. ContinuingOutput( value: minADA(2000000) )");
+        }
+        if (cop.value() != null) checkValueConstraintVars(cop.value(), boundVars, paramNames, purpose);
+        if (cop.datum() != null) checkDatumConstraintVars(cop.datum(), boundVars, paramNames, purpose);
+    }
+
+    private void checkDatumConstraintVars(DatumConstraint dc, Set<String> boundVars,
+                                           Set<String> paramNames, PurposeType purpose) {
+        if (!declaredTypes.contains(dc.typeName())) {
+            // No source range on DatumConstraint — just validate the type name
+            diagnostics.add(JrlDiagnostic.error("JRL002",
+                    "Unknown type '" + dc.typeName() + "' in datum constraint", null));
+        }
+        for (var field : dc.fields()) {
+            checkExprVars(field.value(), boundVars, paramNames, purpose);
         }
     }
 
@@ -270,11 +388,20 @@ public final class JrlTypeChecker {
             switch (fm.value()) {
                 case MatchValue.Binding b -> boundVars.add(b.varName());
                 case MatchValue.NestedMatch nm -> {
+                    // C4: Nested match values not yet supported in transpiler
+                    error("JRL051", "Nested match values in datum/redeemer patterns are not yet supported",
+                            fm.sourceRange(),
+                            "Use a $variable binding and extract fields in a separate pattern");
                     for (var inner : nm.fields()) {
                         collectBindingsFromMatch(inner, boundVars);
                     }
                 }
-                case MatchValue.Literal _ -> {} // no bindings
+                case MatchValue.Literal lit -> {
+                    // C4: Literal match values not yet supported in transpiler
+                    error("JRL050", "Literal match values in datum/redeemer patterns are not yet supported",
+                            fm.sourceRange(),
+                            "Use a $variable binding and a Condition() check instead");
+                }
             }
         }
     }

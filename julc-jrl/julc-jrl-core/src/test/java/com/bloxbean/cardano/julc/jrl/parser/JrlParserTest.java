@@ -641,4 +641,201 @@ class JrlParserTest {
             assertEquals(2, contract.rules().size());
         }
     }
+
+    // ── Phase 2: New Fact Patterns ──────────────────────────────
+
+    @Nested
+    class Phase2FactPatterns {
+
+        @Test
+        void inputPattern_from() {
+            var contract = parse("""
+                    contract "T" version "1" purpose spending
+                    params:
+                        addr : PubKeyHash
+                    rule "r"
+                    when
+                        Input( from: addr )
+                    then allow
+                    default: deny
+                    """);
+            assertEquals(1, contract.rules().size());
+            var pattern = contract.rules().get(0).patterns().get(0);
+            assertInstanceOf(FactPattern.InputPattern.class, pattern);
+            var ip = (FactPattern.InputPattern) pattern;
+            assertNotNull(ip.from());
+            assertNull(ip.valueBinding());
+            assertNull(ip.token());
+        }
+
+        @Test
+        void inputPattern_tokenContains() {
+            var contract = parse("""
+                    contract "T" version "1" purpose spending
+                    params:
+                        authPolicy : PolicyId
+                    rule "r"
+                    when
+                        Input( token: contains(authPolicy, "AUTH", 1) )
+                    then allow
+                    default: deny
+                    """);
+            var pattern = contract.rules().get(0).patterns().get(0);
+            assertInstanceOf(FactPattern.InputPattern.class, pattern);
+            var ip = (FactPattern.InputPattern) pattern;
+            assertNull(ip.from());
+            assertNotNull(ip.token());
+            assertInstanceOf(ValueConstraint.Contains.class, ip.token());
+        }
+
+        @Test
+        void inputPattern_fromWithValueBinding() {
+            var contract = parse("""
+                    contract "T" version "1" purpose spending
+                    params:
+                        addr : PubKeyHash
+                    rule "r"
+                    when
+                        Input( from: ownAddress, value: $inputVal )
+                    then allow
+                    default: deny
+                    """);
+            var ip = (FactPattern.InputPattern) contract.rules().get(0).patterns().get(0);
+            assertNotNull(ip.from());
+            assertEquals("inputVal", ip.valueBinding());
+        }
+
+        @Test
+        void mintPattern_policyTokenAmount() {
+            var contract = parse("""
+                    contract "T" version "1" purpose minting
+                    rule "r"
+                    when
+                        Mint( policy: ownPolicyId, token: "MyToken", amount: $amt )
+                    then allow
+                    default: deny
+                    """);
+            var pattern = contract.rules().get(0).patterns().get(0);
+            assertInstanceOf(FactPattern.MintPattern.class, pattern);
+            var mp = (FactPattern.MintPattern) pattern;
+            assertNotNull(mp.policy());
+            assertNotNull(mp.token());
+            assertEquals("amt", mp.amountBinding());
+            assertFalse(mp.burned());
+        }
+
+        @Test
+        void mintPattern_burned() {
+            var contract = parse("""
+                    contract "T" version "1" purpose minting
+                    rule "r"
+                    when
+                        Mint( policy: ownPolicyId, token: "LPToken", burned )
+                    then allow
+                    default: deny
+                    """);
+            var mp = (FactPattern.MintPattern) contract.rules().get(0).patterns().get(0);
+            assertTrue(mp.burned());
+            assertNull(mp.amountBinding());
+        }
+
+        @Test
+        void continuingOutputPattern_value() {
+            var contract = parse("""
+                    contract "T" version "1" purpose spending
+                    rule "r"
+                    when
+                        ContinuingOutput( value: minADA( 2000000 ) )
+                    then allow
+                    default: deny
+                    """);
+            var pattern = contract.rules().get(0).patterns().get(0);
+            assertInstanceOf(FactPattern.ContinuingOutputPattern.class, pattern);
+            var cop = (FactPattern.ContinuingOutputPattern) pattern;
+            assertNotNull(cop.value());
+            assertInstanceOf(ValueConstraint.MinADA.class, cop.value());
+            assertNull(cop.datum());
+        }
+
+        @Test
+        void continuingOutputPattern_datumInline() {
+            var contract = parse("""
+                    contract "T" version "1" purpose spending
+                    datum StateDatum:
+                        counter : Integer
+                    rule "r"
+                    when
+                        ContinuingOutput( Datum: inline StateDatum( counter: 42 ) )
+                    then allow
+                    default: deny
+                    """);
+            var cop = (FactPattern.ContinuingOutputPattern) contract.rules().get(0).patterns().get(0);
+            assertNull(cop.value());
+            assertNotNull(cop.datum());
+            assertEquals("StateDatum", cop.datum().typeName());
+            assertEquals(1, cop.datum().fields().size());
+            assertEquals("counter", cop.datum().fields().get(0).fieldName());
+        }
+
+        @Test
+        void transactionPattern_fee() {
+            var contract = parse("""
+                    contract "T" version "1" purpose spending
+                    rule "r"
+                    when
+                        Transaction( fee: $f )
+                        Condition( $f <= 2000000 )
+                    then allow
+                    default: deny
+                    """);
+            var tp = (FactPattern.TransactionPattern) contract.rules().get(0).patterns().get(0);
+            assertEquals(FactPattern.TxField.FEE, tp.field());
+        }
+
+        @Test
+        void softKeywords_usableAsFieldNames() {
+            // Ensure 'amount', 'token', 'policy', 'fee', 'from', 'burned' can be field names
+            var contract = parse("""
+                    contract "T" version "1" purpose spending
+                    redeemer Action:
+                        amount : Integer
+                        token  : TokenName
+                        policy : PolicyId
+                        fee    : Lovelace
+                        from   : PubKeyHash
+                        burned : Boolean
+                    rule "r"
+                    when
+                        Redeemer( Action( amount: $a ) )
+                    then allow
+                    default: deny
+                    """);
+            assertEquals(6, contract.redeemer().fields().size());
+            assertEquals("amount", contract.redeemer().fields().get(0).name());
+            assertEquals("token", contract.redeemer().fields().get(1).name());
+            assertEquals("policy", contract.redeemer().fields().get(2).name());
+            assertEquals("fee", contract.redeemer().fields().get(3).name());
+            assertEquals("from", contract.redeemer().fields().get(4).name());
+            assertEquals("burned", contract.redeemer().fields().get(5).name());
+        }
+
+        @Test
+        void outputPattern_datumInline() {
+            var contract = parse("""
+                    contract "T" version "1" purpose spending
+                    params:
+                        receiver : PubKeyHash
+                    record PaymentReceipt:
+                        payer : PubKeyHash
+                    rule "r"
+                    when
+                        Output( to: receiver, value: minADA( 2000000 ), Datum: inline PaymentReceipt( payer: 0xdead ) )
+                    then allow
+                    default: deny
+                    """);
+            var op = (FactPattern.OutputPattern) contract.rules().get(0).patterns().get(0);
+            assertNotNull(op.datum());
+            assertEquals("PaymentReceipt", op.datum().typeName());
+        }
+    }
 }

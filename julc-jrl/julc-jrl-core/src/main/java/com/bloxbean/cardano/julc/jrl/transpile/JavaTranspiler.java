@@ -16,6 +16,7 @@ public final class JavaTranspiler {
 
     private final StringBuilder sb = new StringBuilder();
     private int indent = 0;
+    private int varCounter = 0;
 
     private JavaTranspiler() {}
 
@@ -192,41 +193,48 @@ public final class JavaTranspiler {
 
     private void emitRuleBlocks(List<RuleNode> rules, DatumDeclNode datum,
                                 RedeemerDeclNode redeemer) {
-        int ruleIdx = 0;
         for (var rule : rules) {
             emitLine("// Rule: \"" + rule.name() + "\"");
-            emitRuleBlock(rule, datum, redeemer, ruleIdx);
+            emitRuleBlock(rule, datum, redeemer);
             emitLine();
-            ruleIdx++;
         }
     }
 
     private void emitRuleBlock(RuleNode rule, DatumDeclNode datum,
-                               RedeemerDeclNode redeemer, int ruleIdx) {
+                               RedeemerDeclNode redeemer) {
         var conditionExprs = new ArrayList<String>();
         FactPattern.RedeemerPattern variantRedeemerPattern = null;
 
         for (var pattern : rule.patterns()) {
             switch (pattern) {
                 case FactPattern.DatumPattern dp ->
-                        emitCastAndExtract(dp.match(), "datum", ruleIdx);
+                        emitCastAndExtract(dp.match(), "datum");
                 case FactPattern.RedeemerPattern rp -> {
                     if (redeemer != null && redeemer.isVariantStyle()) {
                         variantRedeemerPattern = rp;
                     } else {
-                        emitCastAndExtract(rp.match(), "redeemer", ruleIdx);
+                        emitCastAndExtract(rp.match(), "redeemer");
                     }
                 }
-                case FactPattern.TransactionPattern tp ->
+                case FactPattern.TransactionPattern tp -> {
+                    if (tp.field() == FactPattern.TxField.FEE) {
+                        // Fee binding: var $name = txInfo.fee();
+                        String varName = FactTranslator.translateExpr(tp.value());
+                        emitLine("var " + varName + " = txInfo.fee();");
+                    } else {
                         conditionExprs.add(FactTranslator.translateTransaction(tp));
+                    }
+                }
                 case FactPattern.ConditionPattern cp ->
                         conditionExprs.add(FactTranslator.translateExpr(cp.condition()));
-                case FactPattern.OutputPattern op -> {
-                    if (op.value() != null && op.to() != null) {
-                        conditionExprs.add(FactTranslator.translateValueConstraint(
-                                op.value(), FactTranslator.translateExpr(op.to())));
-                    }
-                }
+                case FactPattern.OutputPattern op ->
+                        emitOutputConditions(op, conditionExprs);
+                case FactPattern.InputPattern ip ->
+                        emitInputPattern(ip, conditionExprs);
+                case FactPattern.MintPattern mp ->
+                        emitMintPattern(mp, conditionExprs);
+                case FactPattern.ContinuingOutputPattern cop ->
+                        emitContinuingOutputPattern(cop, conditionExprs);
             }
         }
 
@@ -239,7 +247,7 @@ public final class JavaTranspiler {
             int tag = findVariantTag(variantRedeemerPattern.match(), redeemer);
             emitLine("if (Builtins.constrTag(redeemer) == " + tag + ") {");
             indent++;
-            emitCastAndExtract(variantRedeemerPattern.match(), "redeemer", ruleIdx);
+            emitCastAndExtract(variantRedeemerPattern.match(), "redeemer");
             if (!conditionExprs.isEmpty()) {
                 if (rule.traceMessage() != null) {
                     emitLine("// trace: " + rule.traceMessage());
@@ -266,6 +274,89 @@ public final class JavaTranspiler {
         }
     }
 
+    // ── Output pattern emission ────────────────────────────────
+
+    private void emitOutputConditions(FactPattern.OutputPattern op,
+                                       List<String> conditionExprs) {
+        if (op.to() == null) return;
+        String toExpr;
+        if (op.value() != null && op.datum() != null) {
+            // Cache address expression to avoid duplicating complex expressions
+            String addrVar = "_addr" + (varCounter++);
+            emitLine("var " + addrVar + " = " + FactTranslator.translateExpr(op.to()) + ";");
+            toExpr = addrVar;
+        } else {
+            toExpr = FactTranslator.translateExpr(op.to());
+        }
+        if (op.value() != null) {
+            conditionExprs.add(FactTranslator.translateValueConstraint(op.value(), toExpr));
+        }
+        if (op.datum() != null) {
+            String datumVar = "_outDatum" + (varCounter++);
+            emitLine("var " + datumVar + " = (" + op.datum().typeName()
+                    + ") OutputLib.getInlineDatum(OutputLib.uniqueOutputAt(txInfo.outputs(), " + toExpr + "));");
+            for (String cond : FactTranslator.translateDatumConstraint(op.datum(), datumVar)) {
+                conditionExprs.add(cond);
+            }
+        }
+    }
+
+    // ── Input pattern emission ───────────────────────────────────
+
+    private void emitInputPattern(FactPattern.InputPattern ip,
+                                   List<String> conditionExprs) {
+        if (ip.from() != null && ip.from() instanceof Expression.OwnAddressExpr && ip.valueBinding() != null) {
+            emitLine("var " + ip.valueBinding() + " = ContextsLib.findOwnInput(ctx).get().resolved().value();");
+        }
+        if (ip.token() != null) {
+            conditionExprs.add(FactTranslator.translateInputTokenConstraint(ip.token()));
+        }
+    }
+
+    // ── Mint pattern emission ────────────────────────────────────
+
+    private void emitMintPattern(FactPattern.MintPattern mp,
+                                  List<String> conditionExprs) {
+        String policyExpr = mp.policy() != null ? FactTranslator.translateExpr(mp.policy()) : "ownPolicyId";
+        String tokenExpr = mp.token() != null ? FactTranslator.translateExpr(mp.token()) : null;
+        String assetExpr = mintAssetExpr(policyExpr, tokenExpr);
+
+        if (mp.amountBinding() != null) {
+            emitLine("var " + mp.amountBinding() + " = " + assetExpr + ";");
+        } else if (mp.burned()) {
+            conditionExprs.add(assetExpr + ".compareTo(BigInteger.ZERO) < 0");
+        } else if (tokenExpr != null) {
+            conditionExprs.add(assetExpr + ".compareTo(BigInteger.ZERO) > 0");
+        }
+    }
+
+    private String mintAssetExpr(String policyExpr, String tokenExpr) {
+        String token = tokenExpr != null ? tokenExpr : "new byte[]{}";
+        return "ValuesLib.assetOf(txInfo.mint(), " + policyExpr + ", " + token + ")";
+    }
+
+    // ── ContinuingOutput pattern emission ────────────────────────
+
+    private void emitContinuingOutputPattern(FactPattern.ContinuingOutputPattern cop,
+                                              List<String> conditionExprs) {
+        String continuingVar = "_continuing" + (varCounter++);
+        emitLine("var " + continuingVar + " = ContextsLib.getContinuingOutputs(ctx);");
+
+        if (cop.value() != null) {
+            conditionExprs.add(FactTranslator.translateValueConstraintForOutputs(
+                    cop.value(), continuingVar));
+        }
+
+        if (cop.datum() != null) {
+            String datumVar = "_coDatum" + (varCounter++);
+            emitLine("var " + datumVar + " = (" + cop.datum().typeName()
+                    + ") OutputLib.getInlineDatum(" + continuingVar + ".head());");
+            for (String cond : FactTranslator.translateDatumConstraint(cop.datum(), datumVar)) {
+                conditionExprs.add(cond);
+            }
+        }
+    }
+
     /**
      * Find the tag (constructor index) for a variant in a sealed interface redeemer.
      */
@@ -275,16 +366,16 @@ public final class JavaTranspiler {
                 return i;
             }
         }
-        return 0;
+        throw new IllegalStateException("Unknown variant: " + match.typeName());
     }
 
     /**
      * Emit a cast-and-extract for record types (datum, non-variant redeemers).
      * Does not add nesting depth — variables are declared at the current scope.
      */
-    private void emitCastAndExtract(VariantMatch match, String varName, int ruleIdx) {
+    private void emitCastAndExtract(VariantMatch match, String varName) {
         String typeName = match.typeName();
-        String localVar = "_" + varName.charAt(0) + ruleIdx;
+        String localVar = "_" + varName.charAt(0) + (varCounter++);
 
         if (!match.fields().isEmpty()) {
             emitLine("var " + localVar + " = (" + typeName + ") " + varName + ";");
@@ -293,6 +384,7 @@ public final class JavaTranspiler {
                     emitLine("var " + binding.varName() + " = " + localVar
                             + "." + fm.fieldName() + "();");
                 }
+                // Literal and NestedMatch are rejected by the type checker (JRL050/JRL051)
             }
         }
     }

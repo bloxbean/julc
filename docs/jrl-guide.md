@@ -307,7 +307,7 @@ return default action
 ## Fact Patterns
 
 Patterns appear in a rule's `when` clause. All patterns in a rule must match for
-the rule to fire. JRL provides five pattern types:
+the rule to fire. JRL provides eight pattern types:
 
 ### Datum( ... )
 
@@ -351,6 +351,19 @@ Transaction( signedBy: $boundVar )
 -- Check transaction validity interval
 Transaction( validAfter: lockTime )    -- tx valid range starts after lockTime
 Transaction( validBefore: deadline )   -- tx valid range ends before deadline
+
+-- Bind the transaction fee to a variable
+Transaction( fee: $txFee )
+```
+
+The `fee:` field binds the transaction fee to a variable for use in conditions:
+
+```
+rule "Fee must be reasonable"
+when
+    Transaction( fee: $f )
+    Condition( $f <= 2000000 )
+then allow
 ```
 
 ### Condition( expr )
@@ -366,7 +379,7 @@ Condition( $a + $b >= $threshold )
 
 ### Output( ... )
 
-Check transaction outputs:
+Check transaction outputs by address, value, and/or datum:
 
 ```
 -- Output must go to address with minimum ADA
@@ -374,7 +387,97 @@ Output( to: $recipient, value: minADA( $amount ) )
 
 -- Output must contain a specific token
 Output( to: $addr, value: contains( $policy, $token, 1 ) )
+
+-- Output must have a specific inline datum
+Output( to: receiver, Datum: inline PaymentReceipt( payer: $payer ) )
+
+-- Output with both value and datum checks
+Output( to: receiver, value: minADA( 2000000 ), Datum: inline Receipt( ref: refHash ) )
 ```
+
+The `Datum:` field checks the inline datum at the output address. Field values
+are compared for equality.
+
+### Input( ... )
+
+Check transaction inputs — useful for verifying the spending UTxO or checking
+that specific tokens are present in the transaction inputs:
+
+```
+-- Bind the value at the script's own input
+Input( from: ownAddress, value: $inputVal )
+
+-- Check that inputs contain a specific token (authorization pattern)
+Input( token: contains( authPolicy, "AUTH", 1 ) )
+```
+
+Supported fields:
+
+| Field    | Description                                              |
+|---------|----------------------------------------------------------|
+| `from:`  | Address expression (`ownAddress` or a parameter/variable)|
+| `value:` | Bind own input's value to a `$variable` (requires `from: ownAddress`) |
+| `token:` | Check that total input value contains a token: `contains(policy, token, amount)` or `minADA(amount)` |
+
+**Notes:**
+- `value: $var` binds the value of the script's own input UTxO, and requires
+  `from: ownAddress`.
+- `token:` checks the total `valueSpent` of all transaction inputs.
+
+### Mint( ... )
+
+Check minting or burning activity in the transaction:
+
+```
+-- Bind minted amount to a variable
+Mint( policy: ownPolicyId, token: "MyToken", amount: $amt )
+
+-- Check that tokens are being burned
+Mint( policy: ownPolicyId, token: "LPToken", burned )
+
+-- Check that a specific token is being minted (amount > 0)
+Mint( policy: ownPolicyId, token: "Ticket" )
+```
+
+Supported fields:
+
+| Field     | Description                                     |
+|----------|-------------------------------------------------|
+| `policy:` | Policy ID expression (required)                 |
+| `token:`  | Token name expression                           |
+| `amount:` | Bind minted amount to a `$variable`             |
+| `burned`  | Assert the minted amount is negative (burning)  |
+
+**Constraints:**
+- `policy:` is required (error JRL041 if missing).
+- `burned` and `amount:` are mutually exclusive (error JRL045).
+- At least one of `token:`, `amount:`, or `burned` must be present (error JRL044).
+
+### ContinuingOutput( ... )
+
+Check outputs that go back to the script's own address. This is the "state
+continuation" pattern — verifying that the contract re-creates itself with
+updated state:
+
+```
+-- Check minimum ADA in continuing output
+ContinuingOutput( value: minADA( 2000000 ) )
+
+-- Check continuing output has specific datum
+ContinuingOutput( Datum: inline StateDatum( counter: 42 ) )
+
+-- Check both value and datum
+ContinuingOutput( value: minADA( 2000000 ), Datum: inline StateDatum( counter: $newCount ) )
+
+-- Check continuing output contains a specific token
+ContinuingOutput( value: contains( policy, token, 1 ) )
+```
+
+**Notes:**
+- Only valid in `spending` purpose (error JRL042 otherwise).
+- Uses `getContinuingOutputs(ctx)` — outputs that go back to the same script
+  address. No `to:` field needed since the address is implicit.
+- Checks the first continuing output.
 
 ---
 
@@ -743,6 +846,13 @@ suggestions. Errors are prefixed with codes like `JRL001`:
 | `JRL009`| Missing header  | Contract name or version not specified      |
 | `JRL010`| Missing purpose | No purpose in header and no purpose sections|
 | `JRL011`| Unbound variable| `$var` used in condition but never bound    |
+| `JRL041`| Mint missing policy | `Mint` pattern requires `policy:` field |
+| `JRL042`| Wrong purpose   | `ContinuingOutput` only valid in `spending` |
+| `JRL044`| Mint incomplete | `Mint` needs `token:`, `amount:`, or `burned` |
+| `JRL045`| Mutually exclusive | `burned` and `amount:` cannot both appear |
+| `JRL046`| Input constraint | `value: $var` requires `from: ownAddress` |
+| `JRL047`| Input useless   | `Input(from: expr)` alone has no effect     |
+| `JRL050`| Datum literal   | Literal values not allowed in datum patterns |
 
 ---
 
@@ -750,12 +860,13 @@ suggestions. Errors are prefixed with codes like `JRL001`:
 
 | Use JRL when...                          | Use Java when...                          |
 |-----------------------------------------|------------------------------------------|
-| Simple authorization logic               | Complex business logic with loops         |
-| Signature + time checks                  | Custom data transformations               |
+| Authorization logic (signatures + time)  | Complex business logic with loops         |
+| Output/input/minting checks              | Custom data transformations               |
 | Pattern matching on datum/redeemer       | Multiple helper methods                   |
-| Quick prototyping                        | Fine-grained budget optimization          |
-| Non-developers writing validators        | Integration with off-chain Java code      |
-| Clear, auditable rule sets               | Advanced stdlib usage (maps, lists, HOFs) |
+| State continuation (ContinuingOutput)    | Fine-grained budget optimization          |
+| Quick prototyping                        | Integration with off-chain Java code      |
+| Non-developers writing validators        | Advanced stdlib usage (maps, lists, HOFs) |
+| Clear, auditable rule sets               | Complex multi-step state machines         |
 
 JRL is perfect for validators that follow the pattern: "check conditions,
 allow or deny." For complex logic involving iteration, accumulation, or deep

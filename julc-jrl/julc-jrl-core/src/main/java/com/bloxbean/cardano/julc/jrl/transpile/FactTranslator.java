@@ -63,7 +63,6 @@ public final class FactTranslator {
     }
 
     private static String translateEquality(String left, String right) {
-        // julc's compiler maps == to the appropriate builtin (EqualsInteger, EqualsByteString, etc.)
         return left + " == " + right;
     }
 
@@ -75,7 +74,6 @@ public final class FactTranslator {
                     .collect(Collectors.joining(", "));
             return sig.get().javaCall().formatted(args);
         }
-        // Fallback: direct call
         String args = fc.args().stream()
                 .map(FactTranslator::translateExpr)
                 .collect(Collectors.joining(", "));
@@ -86,6 +84,7 @@ public final class FactTranslator {
 
     /**
      * Translate a Transaction fact pattern into a Java boolean expression.
+     * FEE is handled as variable binding in JavaTranspiler — calling this method with FEE is a bug.
      */
     public static String translateTransaction(FactPattern.TransactionPattern tp) {
         String value = translateExpr(tp.value());
@@ -96,6 +95,7 @@ public final class FactTranslator {
                     "IntervalLib.finiteLowerBound(txInfo.validRange()).compareTo(" + value + ") >= 0";
             case VALID_BEFORE ->
                     "IntervalLib.finiteUpperBound(txInfo.validRange()).compareTo(" + value + ") <= 0";
+            case FEE -> throw new IllegalStateException("FEE handled as binding, not condition");
         };
     }
 
@@ -103,6 +103,7 @@ public final class FactTranslator {
 
     /**
      * Translate an Output value constraint into a Java boolean expression.
+     * Uses uniqueOutputAt to find the single output at the address, then checks its value.
      */
     public static String translateValueConstraint(ValueConstraint vc, String toExpr) {
         return switch (vc) {
@@ -110,11 +111,60 @@ public final class FactTranslator {
                     "OutputLib.lovelacePaidTo(txInfo.outputs(), " + toExpr + ").compareTo("
                             + translateExpr(ma.amount()) + ") >= 0";
             case ValueConstraint.Contains c ->
-                    "ValuesLib.assetOf(OutputLib.valuePaidTo(txInfo.outputs(), " + toExpr + "), "
+                    "ValuesLib.assetOf(OutputLib.uniqueOutputAt(txInfo.outputs(), " + toExpr + ").value(), "
                             + translateExpr(c.policy()) + ", "
                             + translateExpr(c.token()) + ").compareTo("
                             + translateExpr(c.amount()) + ") >= 0";
         };
+    }
+
+    /**
+     * Translate a value constraint against a specific output list (for ContinuingOutput).
+     * Checks the first continuing output's value directly — these outputs are already
+     * filtered to own address, so re-filtering would be redundant.
+     */
+    public static String translateValueConstraintForOutputs(ValueConstraint vc, String outputsExpr) {
+        return switch (vc) {
+            case ValueConstraint.MinADA ma ->
+                    "ValuesLib.lovelaceOf(" + outputsExpr + ".head().value()).compareTo("
+                            + translateExpr(ma.amount()) + ") >= 0";
+            case ValueConstraint.Contains c ->
+                    "ValuesLib.assetOf(" + outputsExpr + ".head().value(), "
+                            + translateExpr(c.policy()) + ", "
+                            + translateExpr(c.token()) + ").compareTo("
+                            + translateExpr(c.amount()) + ") >= 0";
+        };
+    }
+
+    // ── Input token constraint translation ─────────────────────
+
+    /**
+     * Translate an Input token constraint into a Java boolean expression
+     * that checks valueSpent for the required token/ADA amount.
+     */
+    public static String translateInputTokenConstraint(ValueConstraint vc) {
+        return switch (vc) {
+            case ValueConstraint.MinADA ma ->
+                    "ValuesLib.lovelaceOf(ContextsLib.valueSpent(txInfo)).compareTo("
+                            + translateExpr(ma.amount()) + ") >= 0";
+            case ValueConstraint.Contains c ->
+                    "ValuesLib.assetOf(ContextsLib.valueSpent(txInfo), "
+                            + translateExpr(c.policy()) + ", "
+                            + translateExpr(c.token()) + ").compareTo("
+                            + translateExpr(c.amount()) + ") >= 0";
+        };
+    }
+
+    // ── Datum constraint translation ────────────────────────────
+
+    /**
+     * Translate a datum constraint into Java field comparison expressions.
+     * Returns a list of expressions to AND together.
+     */
+    public static List<String> translateDatumConstraint(DatumConstraint dc, String datumVarName) {
+        return dc.fields().stream()
+                .map(f -> datumVarName + "." + f.fieldName() + "() == " + translateExpr(f.value()))
+                .toList();
     }
 
     // ── Helpers ──────────────────────────────────────────────────
