@@ -3,17 +3,16 @@ package com.bloxbean.cardano.julc.benchmark;
 /**
  * Shared list of benchmark FLAT files.
  * <p>
- * Both {@link CekJavaBenchmark} and {@link CekTruffleBenchmark} use
- * {@code @Param({})} with an empty default — files are provided externally
- * by the benchmark harness (e.g., cardano-plutus-vm-benchmark) via JMH's
- * {@code -p file=name.flat} option.
+ * Both {@link CekJavaBenchmark} and {@link CekTruffleBenchmark} have these
+ * filenames as {@code @Param} defaults, so {@code ./gradlew :julc-benchmark:jmh}
+ * works standalone without extra arguments.
  * <p>
- * For standalone runs, use the Gradle property:
+ * To run a single file via Gradle, use the {@code -PjmhFile} property:
  * <pre>{@code
- * ./gradlew :julc-benchmark:jmh -PjmhInclude=CekTruffleBenchmark \
- *     -PjmhFile=escrow-redeem_1-1.flat
+ * ./gradlew :julc-benchmark:jmh -PjmhFile=escrow-redeem_1-1.flat
  * }</pre>
- * Or pass all files via {@code BenchmarkFiles.ALL} programmatically.
+ * The external harness can still override via
+ * JMH's {@code -p file=name.flat} option, which fully replaces annotation defaults.
  */
 public final class BenchmarkFiles {
 

@@ -7,15 +7,13 @@ import java.util.HexFormat;
 import java.util.Objects;
 
 /**
- * A 28-byte validator hash (semantically an alias for ScriptHash).
+ * A validator hash (typically 28 bytes, semantically an alias for ScriptHash).
+ * No byte-length validation — length enforcement is a ledger rule, not a type invariant.
  */
 public record ValidatorHash(byte[] hash) implements PlutusDataConvertible {
 
     public ValidatorHash {
         Objects.requireNonNull(hash, "hash must not be null");
-        if (hash.length != 28) {
-            throw new IllegalArgumentException("ValidatorHash must be 28 bytes, got: " + hash.length);
-        }
         hash = hash.clone();
     }
 

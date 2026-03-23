@@ -6,8 +6,10 @@ import com.bloxbean.cardano.julc.clientlib.JulcScriptAdapter;
 import com.bloxbean.cardano.julc.clientlib.ValidatorOutput;
 import com.bloxbean.cardano.julc.compiler.CompileResult;
 import com.bloxbean.cardano.julc.compiler.CompilerException;
+import com.bloxbean.cardano.julc.compiler.CompilerOptions;
 import com.bloxbean.cardano.julc.compiler.LibrarySourceResolver;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
+import com.bloxbean.cardano.julc.core.source.SourceMapSerializer;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
 import com.sun.source.util.Trees;
 
@@ -51,12 +53,13 @@ import java.util.stream.Collectors;
         "com.bloxbean.cardano.julc.stdlib.annotation.ProposingValidator",
         "com.bloxbean.cardano.julc.stdlib.annotation.MultiValidator"
 })
-@SupportedOptions({"julc.projectName", "julc.projectVersion"})
+@SupportedOptions({"julc.projectName", "julc.projectVersion", "julc.sourceMap"})
 @SupportedSourceVersion(SourceVersion.RELEASE_24)
 public class JulcAnnotationProcessor extends AbstractProcessor {
 
     private Trees trees;
     private StdlibRegistry stdlib;
+    private boolean sourceMapEnabled;
 
     /** Accumulated compiled validators for CIP-57 blueprint generation. */
     private final List<BlueprintGenerator.CompiledValidator> compiledValidators = new ArrayList<>();
@@ -75,6 +78,8 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
         super.init(processingEnv);
         this.trees = Trees.instance(processingEnv);
         this.stdlib = StdlibRegistry.defaultRegistry();
+        this.sourceMapEnabled = "true".equalsIgnoreCase(
+                processingEnv.getOptions().get("julc.sourceMap"));
     }
 
     @Override
@@ -169,7 +174,11 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
             List<String> librarySources = resolveLibrarySources(source);
 
             // 3. Compile with JulcCompiler (multi-file if libraries found)
-            var compiler = new JulcCompiler(stdlib::lookup);
+            var options = new CompilerOptions();
+            if (sourceMapEnabled) {
+                options.setSourceMapEnabled(true);
+            }
+            var compiler = new JulcCompiler(stdlib::lookup, options);
             var result = compiler.compile(source, librarySources);
 
             if (result.hasErrors()) {
@@ -210,6 +219,24 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
 
             try (Writer writer = resource.openWriter()) {
                 writer.write(output.toJson());
+            }
+
+            // 6. Write source map if enabled and available
+            if (sourceMapEnabled && result.hasSourceMap()) {
+                var indexed = result.sourceMap().toIndexed(program.term());
+                String sourceMapJson = SourceMapSerializer.toJson(indexed, className);
+                var smResource = filer.createResource(
+                        StandardLocation.CLASS_OUTPUT,
+                        "",
+                        "META-INF/plutus/" + className + ".sourcemap.json",
+                        element);
+                try (Writer smWriter = smResource.openWriter()) {
+                    smWriter.write(sourceMapJson);
+                }
+                processingEnv.getMessager().printMessage(Diagnostic.Kind.NOTE,
+                        "Generated source map for " + className
+                                + " (" + indexed.size() + " entries, optimization skipped)",
+                        element);
             }
 
             // Accumulate for CIP-57 blueprint generation

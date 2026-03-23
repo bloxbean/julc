@@ -5,6 +5,7 @@ import com.bloxbean.cardano.julc.blueprint.BlueprintGenerator;
 import com.bloxbean.cardano.julc.clientlib.JulcScriptAdapter;
 import com.bloxbean.cardano.julc.compiler.CompilerOptions;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
+import com.bloxbean.cardano.julc.core.source.SourceMapSerializer;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
 
 import org.gradle.api.DefaultTask;
@@ -108,6 +109,16 @@ public abstract class CompileJulcTask extends DefaultTask {
             Files.writeString(outputFile.toPath(), output.toJson());
             getLogger().lifecycle("Compiled {} → {} (hash: {}, size: {})",
                     validatorFile.getName(), outputFile.getName(), scriptHash, sizeStr);
+
+            // Write source map if enabled and available
+            if (Boolean.TRUE.equals(getSourceMap().getOrElse(false)) && result.hasSourceMap()) {
+                var indexed = result.sourceMap().toIndexed(program.term());
+                String sourceMapJson = SourceMapSerializer.toJson(indexed, validatorName);
+                File smFile = new File(outDir, validatorName + ".sourcemap.json");
+                Files.writeString(smFile.toPath(), sourceMapJson);
+                getLogger().lifecycle("Generated source map: {} ({} entries)",
+                        smFile.getName(), indexed.size());
+            }
 
             compiledList.add(new BlueprintGenerator.CompiledValidator(
                     validatorName, validatorSource, result));

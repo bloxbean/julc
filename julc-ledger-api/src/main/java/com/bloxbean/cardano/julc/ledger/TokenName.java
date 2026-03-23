@@ -7,7 +7,8 @@ import java.util.HexFormat;
 import java.util.Objects;
 
 /**
- * A token name (0-32 bytes).
+ * A token name (typically 0-32 bytes).
+ * No byte-length validation — length enforcement is a ledger rule, not a type invariant.
  */
 public record TokenName(byte[] name) implements PlutusDataConvertible {
 
@@ -16,9 +17,6 @@ public record TokenName(byte[] name) implements PlutusDataConvertible {
 
     public TokenName {
         Objects.requireNonNull(name, "name must not be null");
-        if (name.length > 32) {
-            throw new IllegalArgumentException("TokenName must be 0-32 bytes, got: " + name.length);
-        }
         name = name.clone();
     }
 

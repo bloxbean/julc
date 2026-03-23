@@ -7,7 +7,8 @@ import java.util.HexFormat;
 import java.util.Objects;
 
 /**
- * A minting policy ID (28 bytes, or 0 bytes for ADA).
+ * A minting policy ID (typically 28 bytes, or 0 bytes for ADA).
+ * No byte-length validation — length enforcement is a ledger rule, not a type invariant.
  */
 public record PolicyId(byte[] hash) implements PlutusDataConvertible {
 
@@ -16,9 +17,6 @@ public record PolicyId(byte[] hash) implements PlutusDataConvertible {
 
     public PolicyId {
         Objects.requireNonNull(hash, "hash must not be null");
-        if (hash.length != 0 && hash.length != 28) {
-            throw new IllegalArgumentException("PolicyId must be 0 or 28 bytes, got: " + hash.length);
-        }
         hash = hash.clone();
     }
 

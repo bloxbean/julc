@@ -7,15 +7,13 @@ import java.util.HexFormat;
 import java.util.Objects;
 
 /**
- * A 28-byte public key hash.
+ * A public key hash (typically 28 bytes).
+ * No byte-length validation — length enforcement is a ledger rule, not a type invariant.
  */
 public record PubKeyHash(byte[] hash) implements PlutusDataConvertible {
 
     public PubKeyHash {
         Objects.requireNonNull(hash, "hash must not be null");
-        if (hash.length != 28) {
-            throw new IllegalArgumentException("PubKeyHash must be 28 bytes, got: " + hash.length);
-        }
         hash = hash.clone();
     }
 

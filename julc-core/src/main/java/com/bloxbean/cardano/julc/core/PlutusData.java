@@ -127,4 +127,91 @@ public sealed interface PlutusData {
 
     /** The unit value: Constr 0 [] */
     PlutusData UNIT = new ConstrData(0, List.of());
+
+    /**
+     * Count the total number of nodes in this PlutusData tree.
+     * Useful for comparing structural sizes of two PlutusData trees.
+     */
+    default int countNodes() {
+        return switch (this) {
+            case ConstrData(var tag, var fields) -> {
+                int count = 1;
+                for (PlutusData f : fields) count += f.countNodes();
+                yield count;
+            }
+            case MapData(var entries) -> {
+                int count = 1;
+                for (Pair p : entries) count += p.key().countNodes() + p.value().countNodes();
+                yield count;
+            }
+            case ListData(var items) -> {
+                int count = 1;
+                for (PlutusData item : items) count += item.countNodes();
+                yield count;
+            }
+            case IntData _, BytesData _ -> 1;
+        };
+    }
+
+    /**
+     * Pretty-print this PlutusData tree with indentation for readability.
+     */
+    default String prettyPrint() {
+        var sb = new StringBuilder();
+        prettyPrint(sb, 0);
+        return sb.toString();
+    }
+
+    private void prettyPrint(StringBuilder sb, int indent) {
+        String pad = "  ".repeat(indent);
+        switch (this) {
+            case IntData(var v) -> sb.append(pad).append("I ").append(v);
+            case BytesData bd -> sb.append(pad).append("B #").append(HexFormat.of().formatHex(bd.value));
+            case ConstrData(var tag, var fields) -> {
+                sb.append(pad).append("Constr ").append(tag);
+                if (fields.isEmpty()) {
+                    sb.append(" []");
+                } else {
+                    sb.append(" [\n");
+                    for (int i = 0; i < fields.size(); i++) {
+                        fields.get(i).prettyPrint(sb, indent + 1);
+                        if (i < fields.size() - 1) sb.append(",");
+                        sb.append("\n");
+                    }
+                    sb.append(pad).append("]");
+                }
+            }
+            case ListData(var items) -> {
+                sb.append(pad).append("List");
+                if (items.isEmpty()) {
+                    sb.append(" []");
+                } else {
+                    sb.append(" [\n");
+                    for (int i = 0; i < items.size(); i++) {
+                        items.get(i).prettyPrint(sb, indent + 1);
+                        if (i < items.size() - 1) sb.append(",");
+                        sb.append("\n");
+                    }
+                    sb.append(pad).append("]");
+                }
+            }
+            case MapData(var entries) -> {
+                sb.append(pad).append("Map");
+                if (entries.isEmpty()) {
+                    sb.append(" {}");
+                } else {
+                    sb.append(" {\n");
+                    for (int i = 0; i < entries.size(); i++) {
+                        var p = entries.get(i);
+                        p.key().prettyPrint(sb, indent + 1);
+                        sb.append(" =>\n");
+                        p.value().prettyPrint(sb, indent + 2);
+                        if (i < entries.size() - 1) sb.append(",");
+                        sb.append("\n");
+                    }
+                    sb.append(pad).append("}");
+                }
+            }
+        }
+    }
 }

@@ -22,6 +22,11 @@ jmh {
         includes = [project.property('jmhInclude')]
     }
 
+    // Single file: ./gradlew :julc-benchmark:jmh -PjmhFile=escrow-redeem_1-1.flat
+    if (project.hasProperty('jmhFile')) {
+        benchmarkParameters = [file: [project.property('jmhFile')]]
+    }
+
     // Disable Truffle JIT (interpreter-only mode):
     //   ./gradlew :julc-benchmark:jmh -PnoJit
     if (project.hasProperty('noJit')) {

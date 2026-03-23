@@ -57,6 +57,38 @@ public final class SourceMap {
         return positions.isEmpty();
     }
 
+    /**
+     * Convert this source map to a position-based index using DFS traversal order.
+     * The resulting map can be serialized to JSON for persistence.
+     *
+     * @param rootTerm the root of the UPLC term tree that was compiled with this source map
+     * @return sparse index → SourceLocation map
+     */
+    public Map<Integer, SourceLocation> toIndexed(Term rootTerm) {
+        return SourceMapSerializer.toIndexed(positions, rootTerm);
+    }
+
+    /**
+     * Reconstruct a SourceMap from a position-based index and a (deserialized) term tree.
+     * The DFS traversal order must match the one used during {@link #toIndexed(Term)}.
+     *
+     * @param indexed  the sparse index → SourceLocation map
+     * @param rootTerm the root of the deserialized UPLC term tree
+     * @return a new SourceMap with identity-based lookups for the given term tree
+     */
+    public static SourceMap reconstruct(Map<Integer, SourceLocation> indexed, Term rootTerm) {
+        var identityMap = SourceMapSerializer.fromIndexed(indexed, rootTerm);
+        return new SourceMap(identityMap);
+    }
+
+    /**
+     * Package-private access to the underlying positions map.
+     * Used by {@link SourceMapSerializer} for serialization.
+     */
+    IdentityHashMap<Term, SourceLocation> positions() {
+        return positions;
+    }
+
     @Override
     public String toString() {
         return "SourceMap{size=" + positions.size() + "}";

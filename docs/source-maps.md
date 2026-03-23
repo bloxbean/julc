@@ -63,6 +63,50 @@ ValidatorTest.assertValidatesWithSourceMap(compiled, scriptContext);
 
 ---
 
+## Enabling Source Maps
+
+Source maps must be enabled at compile time. There are three ways depending on your build setup.
+
+### Gradle Plugin DSL
+
+If you use the `julc` Gradle plugin:
+
+```groovy
+julc {
+    sourceMap = true
+}
+```
+
+### Annotation Processor in Gradle (without julc plugin)
+
+Pass the `-Ajulc.sourceMap=true` compiler arg directly:
+
+```groovy
+tasks.withType(JavaCompile).configureEach {
+    options.compilerArgs.add('-Ajulc.sourceMap=true')
+}
+```
+
+### Annotation Processor in Maven
+
+```xml
+<plugin>
+    <groupId>org.apache.maven.plugins</groupId>
+    <artifactId>maven-compiler-plugin</artifactId>
+    <configuration>
+        <compilerArgs>
+            <arg>-Ajulc.sourceMap=true</arg>
+        </compilerArgs>
+    </configuration>
+</plugin>
+```
+
+In all cases, the annotation processor reads the option via `processingEnv.getOptions().get("julc.sourceMap")`
+and writes a `.sourcemap.json` file alongside the compiled `.plutus.json` under
+`META-INF/plutus/`.
+
+---
+
 ## Usage Patterns
 
 ### Pattern 1: JulcEval with `.sourceMap()` (simplest)
@@ -173,14 +217,169 @@ void testWithFullControl() {
 }
 ```
 
-### Pattern 4: Gradle plugin DSL
+---
 
-For the `compileJulc` task (when using `src/main/plutus`):
+## Execution Tracing
 
-```groovy
-julc {
-    sourceMap = true  // generates source maps alongside compiled scripts
+Source maps tell you *where* a failure occurred. Execution tracing goes further — it records
+**every CEK machine step** that has a source mapping, along with the CPU and memory consumed
+at each step. This lets you see the hot path through your validator and identify which Java
+lines consume the most budget.
+
+### What a trace contains
+
+Each trace entry is an `ExecutionTraceEntry` record:
+
+```java
+public record ExecutionTraceEntry(
+    String fileName,   // Java source file name
+    int line,          // 1-based line number
+    String fragment,   // Java expression snippet (nullable)
+    String nodeType,   // CEK step type: "Apply", "Force", "Case", "Error"
+    long cpuDelta,     // CPU consumed since previous trace point
+    long memDelta      // Memory consumed since previous trace point
+)
+```
+
+### With ValidatorTest (static)
+
+```java
+var compiled = ValidatorTest.compileValidatorWithSourceMap(MyValidator.class);
+var traced = ValidatorTest.evaluateWithTrace(compiled, scriptContext);
+
+// Step-by-step trace with IntelliJ-clickable file:line links
+System.out.println(traced.formatTrace());
+
+// Aggregated CPU/mem by source location, sorted by cost
+System.out.println(traced.formatBudgetSummary());
+
+// Access the raw result
+EvalResult result = traced.result();
+```
+
+### With ContractTest (instance)
+
+```java
+class MyTest extends ContractTest {
+    @Test void testBudget() {
+        var compiled = compileValidatorWithSourceMap(MyValidator.class);
+        var result = evaluateWithTrace(compiled, ctx);
+
+        // Format last trace
+        System.out.println(formatExecutionTrace());
+
+        // Aggregated budget summary
+        System.out.println(formatBudgetSummary());
+
+        // Or access raw entries
+        List<ExecutionTraceEntry> entries = getLastExecutionTrace();
+    }
 }
+```
+
+### Output format: `format()` (step-by-step)
+
+```
+Execution trace (1247 steps):
+  at .(MyValidator.java:18)  Apply  cpu=+230  mem=+100  | validate(PlutusData, PlutusData)
+  at .(MyValidator.java:22)  Apply  cpu=+456  mem=+200  | txInfo.fee()
+  at .(MyValidator.java:23)  Force  cpu=+128  mem=+64   | list.head()
+  ...
+Total: cpu=967522, mem=4536
+```
+
+File and line references use `at .(File.java:line)` format, which is clickable in IntelliJ
+console output.
+
+### Output format: `formatSummary()` (aggregated by location)
+
+```
+Budget by source location (top consumers first):
+  MyValidator.java:42    visits=12  cpu=245000  mem=1200  | Builtins.equalsData(a, b)
+  MyValidator.java:38    visits=8   cpu=180000  mem=900   | list.head()
+  MyValidator.java:55    visits=1   cpu=95000   mem=450   | Builtins.verifyEd25519Signature(...)
+  ...
+```
+
+This format groups all visits to the same source line, sums their budgets, and sorts by CPU
+cost descending — making it easy to find optimization targets.
+
+---
+
+## Using with QuickTxBuilder (JulcTransactionEvaluator)
+
+For offchain integration with cardano-client-lib's `QuickTxBuilder`, use
+`JulcTransactionEvaluator` with source maps and tracing.
+
+### Loading scripts with source maps
+
+`JulcScriptLoader.loadWithSourceMap()` loads a pre-compiled script from the classpath and
+reconstructs its source map with correct Term object identity:
+
+```java
+// Load script + source map + deserialized program
+JulcScriptLoader.LoadResult loaded = JulcScriptLoader.loadWithSourceMap(MyValidator.class);
+
+PlutusV3Script script = loaded.script();     // ready for QuickTxBuilder
+SourceMap sourceMap = loaded.sourceMap();     // may be null if no .sourcemap.json
+Program program = loaded.program();          // deserialized UPLC program
+
+// For parameterized validators
+var loaded = JulcScriptLoader.loadWithSourceMap(MyValidator.class, param1, param2);
+```
+
+`LoadResult` is a record:
+
+```java
+public record LoadResult(
+    PlutusV3Script script,
+    SourceMap sourceMap,
+    Program program
+)
+```
+
+### Registering scripts and enabling tracing
+
+```java
+// Create the evaluator (typically with a BackendService for protocol params)
+var evaluator = new JulcTransactionEvaluator(backendService);
+
+// Register script so the evaluator can resolve it by hash
+evaluator.registerScript(script.getScriptHash(), loaded);
+
+// Enable per-step execution tracing
+evaluator.enableTracing(true);
+
+// Use with QuickTxBuilder
+var quickTx = new QuickTxBuilder(backendService)
+    .withTxEvaluator(evaluator);
+```
+
+### Retrieving traces after evaluation
+
+```java
+// After QuickTxBuilder submits a transaction...
+Map<String, List<ExecutionTraceEntry>> traces = evaluator.getLastTraces();
+
+// Traces are keyed by redeemer tag+index, e.g. "SPEND[0]", "MINT[0]"
+for (var entry : traces.entrySet()) {
+    System.out.println("=== " + entry.getKey() + " ===");
+    System.out.println(ExecutionTraceEntry.format(entry.getValue()));
+    System.out.println(ExecutionTraceEntry.formatSummary(entry.getValue()));
+}
+```
+
+**Important**: When tracing is enabled, traces are automatically printed to stdout during
+evaluation. This is intentional — `QuickTxBuilder` may swallow `Result.error()` messages,
+so printing ensures you always see the trace output even if the transaction fails silently.
+
+### Source map methods
+
+You can also register source maps and programs individually:
+
+```java
+evaluator.setSourceMap(scriptHash, sourceMap);
+evaluator.setProgram(scriptHash, program);
 ```
 
 ---
@@ -276,6 +475,23 @@ failure.failedTerm()         // → Term (nullable) — the UPLC term that cause
 exhausted.failedTerm()       // → Term (nullable) — the UPLC term when budget ran out
 ```
 
+### `ExecutionTraceEntry`
+
+```java
+record ExecutionTraceEntry(
+    String fileName, int line, String fragment,
+    String nodeType, long cpuDelta, long memDelta
+)
+
+// Format a list of entries as step-by-step trace
+ExecutionTraceEntry.format(entries)          // → String (multi-line, with totals)
+
+// Aggregate by source location, sorted by CPU cost
+ExecutionTraceEntry.formatSummary(entries)   // → String (multi-line, with visit counts)
+
+// toString() uses IntelliJ-clickable format: "at .(File.java:42)"
+```
+
 ### `ValidatorTest`
 
 ```java
@@ -283,6 +499,9 @@ exhausted.failedTerm()       // → Term (nullable) — the UPLC term when budge
 ValidatorTest.compileValidatorWithSourceMap(MyValidator.class)
 ValidatorTest.compileValidatorWithSourceMap(MyValidator.class, sourceRoot)
 ValidatorTest.compileWithSourceMap(javaSource)
+
+// Evaluate with execution tracing
+ValidatorTest.evaluateWithTrace(compiled, args...)  // → EvalWithTrace
 
 // Resolve error location
 ValidatorTest.resolveErrorLocation(result, sourceMap) // → SourceLocation or null
@@ -292,12 +511,30 @@ ValidatorTest.assertValidatesWithSourceMap(compileResult, args...)
 ValidatorTest.assertRejectsWithSourceMap(compileResult, args...)
 ```
 
+### `EvalWithTrace`
+
+```java
+record EvalWithTrace(EvalResult result, List<ExecutionTraceEntry> trace)
+
+evalWithTrace.formatTrace()          // → formatted step-by-step trace
+evalWithTrace.formatBudgetSummary()  // → formatted per-location budget summary
+evalWithTrace.result()               // → the underlying EvalResult
+```
+
 ### `ContractTest`
 
 ```java
 // Compile with source maps
 compileValidatorWithSourceMap(MyValidator.class)
 compileValidatorWithSourceMap(MyValidator.class, sourceRoot)
+
+// Evaluate with tracing
+evaluateWithTrace(compiled, args...)     // → EvalResult (trace stored internally)
+
+// Access last execution trace
+getLastExecutionTrace()                  // → List<ExecutionTraceEntry>
+formatExecutionTrace()                   // → formatted step-by-step trace
+formatBudgetSummary()                    // → formatted per-location budget summary
 
 // Assertions with source location in error messages
 assertSuccess(result, sourceMap)
@@ -315,6 +552,36 @@ logResult("testName", result, sourceMap)
 ```java
 JulcEval.forClass(MyClass.class).sourceMap()   // enable source maps
 JulcEval.forSource(javaString).sourceMap()     // works with inline source too
+```
+
+### `JulcScriptLoader`
+
+```java
+// Load pre-compiled script with source map from classpath
+JulcScriptLoader.loadWithSourceMap(MyValidator.class)           // → LoadResult
+JulcScriptLoader.loadWithSourceMap(MyValidator.class, params...)// → LoadResult (parameterized)
+JulcScriptLoader.loadSourceMap(MyValidator.class)               // → SourceMap (nullable)
+```
+
+### `JulcScriptLoader.LoadResult`
+
+```java
+record LoadResult(PlutusV3Script script, SourceMap sourceMap, Program program)
+
+loaded.script()     // PlutusV3Script for QuickTxBuilder
+loaded.sourceMap()  // SourceMap (null if no .sourcemap.json)
+loaded.program()    // deserialized UPLC Program
+```
+
+### `JulcTransactionEvaluator`
+
+```java
+evaluator.registerScript(scriptHash, loadResult)  // register script + source map + program
+evaluator.setSourceMap(scriptHash, sourceMap)      // register source map only
+evaluator.setProgram(scriptHash, program)          // register program only
+evaluator.enableTracing(true)                      // enable per-step tracing
+evaluator.getLastTraces()                          // → Map<String, List<ExecutionTraceEntry>>
+                                                   //   keyed by redeemer tag+index, e.g. "SPEND[0]"
 ```
 
 ---

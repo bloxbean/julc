@@ -140,4 +140,43 @@ class CclValueConverterTest {
                 value.assetOf(PolicyId.of(HexFormat.of().parseHex(policyHex)),
                         new TokenName(HexFormat.of().parseHex(assetHex))));
     }
+
+    // --- assetNameToBytes tests ---
+
+    @Test
+    void assetNameToBytes_hexWithOxPrefix() {
+        // "0x" prefix should be stripped, then hex-decoded
+        byte[] result = CclValueConverter.assetNameToBytes("0xabcd");
+        assertArrayEquals(new byte[]{(byte) 0xab, (byte) 0xcd}, result);
+    }
+
+    @Test
+    void assetNameToBytes_hexWith0XPrefix() {
+        // "0X" prefix should also be stripped
+        byte[] result = CclValueConverter.assetNameToBytes("0XABCD");
+        assertArrayEquals(new byte[]{(byte) 0xab, (byte) 0xcd}, result);
+    }
+
+    @Test
+    void assetNameToBytes_plainHex() {
+        byte[] result = CclValueConverter.assetNameToBytes("abcd");
+        assertArrayEquals(new byte[]{(byte) 0xab, (byte) 0xcd}, result);
+    }
+
+    @Test
+    void assetNameToBytes_emptyString() {
+        assertArrayEquals(new byte[0], CclValueConverter.assetNameToBytes(""));
+    }
+
+    @Test
+    void assetNameToBytes_nullString() {
+        assertArrayEquals(new byte[0], CclValueConverter.assetNameToBytes(null));
+    }
+
+    @Test
+    void assetNameToBytes_invalidHex_throwsInsteadOfUtf8Fallback() {
+        // Invalid hex should NOT silently fall back to UTF-8 — it should propagate the error
+        assertThrows(IllegalArgumentException.class,
+                () -> CclValueConverter.assetNameToBytes("not-hex-data"));
+    }
 }

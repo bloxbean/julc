@@ -12,13 +12,16 @@ import com.bloxbean.cardano.client.api.util.CostModelUtil;
 import com.bloxbean.cardano.client.plutus.spec.*;
 import com.bloxbean.cardano.client.transaction.spec.Transaction;
 import com.bloxbean.cardano.julc.clientlib.JulcScriptAdapter;
+import com.bloxbean.cardano.julc.clientlib.JulcScriptLoader;
 import com.bloxbean.cardano.julc.clientlib.PlutusDataAdapter;
 import com.bloxbean.cardano.julc.core.Program;
+import com.bloxbean.cardano.julc.core.source.SourceMap;
 import com.bloxbean.cardano.julc.ledger.*;
 import com.bloxbean.cardano.julc.vm.EvalResult;
 import com.bloxbean.cardano.julc.vm.ExBudget;
 import com.bloxbean.cardano.julc.vm.JulcVm;
 import com.bloxbean.cardano.julc.vm.PlutusLanguage;
+import com.bloxbean.cardano.julc.vm.trace.ExecutionTraceEntry;
 
 import java.math.BigInteger;
 import java.util.*;
@@ -48,6 +51,14 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
     private volatile JulcVm vm;
     private volatile com.bloxbean.cardano.julc.vm.JulcVmProvider provider;
 
+    // Source map support
+    private final Map<String, SourceMap> scriptSourceMaps = new HashMap<>();
+    private final Map<String, Program> scriptPrograms = new HashMap<>();
+    private boolean tracingEnabled = false;
+
+    // Last execution traces (per redeemer tag+index) from the most recent evaluateTx call
+    private volatile Map<String, List<ExecutionTraceEntry>> lastTraces = Map.of();
+
     /**
      * Create an evaluator without slot-to-POSIX conversion.
      * Slot numbers will be passed directly in the validity range.
@@ -71,8 +82,71 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
         this.slotConfig = slotConfig;
     }
 
+    /**
+     * Register a script with its source map from a {@link JulcScriptLoader.LoadResult}.
+     * <p>
+     * The pre-deserialized program is used during evaluation to preserve Term object
+     * identity, which is required for source map lookups.
+     *
+     * @param scriptHash the script hash (hex string)
+     * @param loadResult the LoadResult from {@code JulcScriptLoader.loadWithSourceMap()}
+     */
+    public void registerScript(String scriptHash, JulcScriptLoader.LoadResult loadResult) {
+        if (loadResult.sourceMap() != null) {
+            scriptSourceMaps.put(scriptHash, loadResult.sourceMap());
+        }
+        if (loadResult.program() != null) {
+            scriptPrograms.put(scriptHash, loadResult.program());
+        }
+    }
+
+    /**
+     * Set a source map for a specific script hash.
+     *
+     * @param scriptHash the script hash (hex string)
+     * @param sourceMap  the source map
+     */
+    public void setSourceMap(String scriptHash, SourceMap sourceMap) {
+        scriptSourceMaps.put(scriptHash, sourceMap);
+    }
+
+    /**
+     * Set a pre-deserialized program for a specific script hash.
+     * Needed for Term identity when source maps are used.
+     *
+     * @param scriptHash the script hash (hex string)
+     * @param program    the pre-deserialized program
+     */
+    public void setProgram(String scriptHash, Program program) {
+        scriptPrograms.put(scriptHash, program);
+    }
+
+    /**
+     * Enable or disable execution tracing.
+     * When enabled, per-step budget and source line tracking are included in error messages.
+     *
+     * @param enabled true to enable tracing
+     */
+    public void enableTracing(boolean enabled) {
+        this.tracingEnabled = enabled;
+    }
+
+    /**
+     * Get the execution traces from the most recent {@link #evaluateTx} call.
+     * <p>
+     * Returns a map keyed by redeemer tag and index (e.g., "SPEND[0]").
+     * Only populated when tracing is enabled. Empty if tracing is off or no
+     * evaluation has been performed.
+     *
+     * @return unmodifiable map of redeemer key → execution trace entries
+     */
+    public Map<String, List<ExecutionTraceEntry>> getLastTraces() {
+        return lastTraces;
+    }
+
     @Override
     public Result<List<EvaluationResult>> evaluateTx(byte[] cbor, Set<Utxo> inputUtxos) throws ApiException {
+        lastTraces = Map.of();
         try {
             // 1. Deserialize
             Transaction tx = Transaction.deserialize(cbor);
@@ -85,19 +159,21 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
                         .withValue(List.of());
             }
 
-            // 3. Build TxInfo
-            var converter = new CclTxConverter(tx, inputUtxos, utxoSupplier, slotConfig);
+            // 3. Get protocol params (needed for both TxInfo and VM)
+            var params = protocolParamsSupplier.getProtocolParams();
+            int pvMajor = params.getProtocolMajorVer() != null ? params.getProtocolMajorVer() : 10;
+
+            // 4. Build TxInfo (pass pvMajor for PV-dependent interval encoding)
+            var converter = new CclTxConverter(tx, inputUtxos, utxoSupplier, slotConfig, pvMajor);
             TxInfo txInfo = converter.buildTxInfo();
 
-            // 4. Get max script budget
-            var params = protocolParamsSupplier.getProtocolParams();
+            // 5. Get max script budget
             ExBudget maxBudget = new ExBudget(
                     Long.parseLong(params.getMaxTxExSteps()),
                     Long.parseLong(params.getMaxTxExMem()));
 
-            // 5. Create VM (lazy, cached) and configure cost models for all language versions
+            // 6. Create VM (lazy, cached) and configure cost models for all language versions
             JulcVm julcVm = getOrCreateVm();
-            int pvMajor = params.getProtocolMajorVer() != null ? params.getProtocolMajorVer() : 10;
             int pvMinor = params.getProtocolMinorVer() != null ? params.getProtocolMinorVer() : 0;
             for (var lang : List.of(Language.PLUTUS_V1, Language.PLUTUS_V2, Language.PLUTUS_V3)) {
                 CostModelUtil.getCostModelFromProtocolParams(params, lang)
@@ -107,6 +183,8 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
 
             // 6. Evaluate each redeemer
             List<EvaluationResult> results = new ArrayList<>();
+            var collectedTraces = tracingEnabled
+                    ? new LinkedHashMap<String, List<ExecutionTraceEntry>>() : null;
 
             for (Redeemer redeemer : redeemers) {
                 try {
@@ -140,13 +218,43 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
                         }
                     }
 
-                    // c. Evaluate with the resolved language version
-                    var langVm = JulcVm.withProvider(getProvider(), resolved.language());
-                    // Apply cost model for this language if not already set
-                    EvalResult evalResult = langVm.evaluateWithArgs(
-                            resolved.program(), args, maxBudget);
+                    // c. Configure source map and tracing on the provider
+                    var vmProvider = getProvider();
+                    SourceMap activeSourceMap = scriptSourceMaps.get(scriptHash);
+                    if (activeSourceMap != null) {
+                        vmProvider.setSourceMap(activeSourceMap);
+                    }
+                    if (tracingEnabled) {
+                        vmProvider.setTracingEnabled(true);
+                    }
 
-                    // e. Handle result
+                    // d. Use pre-registered program if available (preserves Term identity)
+                    Program evalProgram = scriptPrograms.containsKey(scriptHash)
+                            ? scriptPrograms.get(scriptHash) : resolved.program();
+
+                    // e. Evaluate with try-finally for provider state reset
+                    List<ExecutionTraceEntry> executionTrace;
+                    EvalResult evalResult;
+                    try {
+                        var langVm = JulcVm.withProvider(vmProvider, resolved.language());
+                        evalResult = langVm.evaluateWithArgs(
+                                evalProgram, args, maxBudget);
+                        executionTrace = tracingEnabled
+                                ? vmProvider.getLastExecutionTrace() : List.of();
+                    } finally {
+                        if (activeSourceMap != null) {
+                            vmProvider.setSourceMap(null);
+                        }
+                        if (tracingEnabled) {
+                            vmProvider.setTracingEnabled(false);
+                        }
+                    }
+
+                    // f. Capture trace (prints to stdout + stores in collectedTraces)
+                    String key = redeemer.getTag() + "[" + redeemer.getIndex() + "]";
+                    captureTrace(key, executionTrace, collectedTraces);
+
+                    // g. Handle result
                     switch (evalResult) {
                         case EvalResult.Success success -> {
                             ExBudget consumed = success.consumed();
@@ -160,16 +268,16 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
                                     .build());
                         }
                         case EvalResult.Failure failure -> {
-                            String traces = String.join("\n", failure.traces());
-                            return Result.error("Script evaluation failed for "
-                                    + redeemer.getTag() + "[" + redeemer.getIndex() + "]: "
-                                    + failure.error()
-                                    + (traces.isEmpty() ? "" : "\nTraces:\n" + traces));
+                            lastTraces = collectedTraces != null
+                                    ? Collections.unmodifiableMap(collectedTraces) : Map.of();
+                            return Result.error(formatFailure(
+                                    redeemer, failure, activeSourceMap));
                         }
                         case EvalResult.BudgetExhausted exhausted -> {
-                            return Result.error("Budget exhausted for "
-                                    + redeemer.getTag() + "[" + redeemer.getIndex() + "]: "
-                                    + exhausted.consumed());
+                            lastTraces = collectedTraces != null
+                                    ? Collections.unmodifiableMap(collectedTraces) : Map.of();
+                            return Result.error(formatBudgetExhausted(
+                                    redeemer, exhausted, activeSourceMap));
                         }
                     }
                 } catch (Exception e) {
@@ -178,6 +286,9 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
                 }
             }
 
+            if (collectedTraces != null) {
+                lastTraces = Collections.unmodifiableMap(collectedTraces);
+            }
             return Result.<List<EvaluationResult>>success("OK").withValue(results);
 
         } catch (Exception e) {
@@ -438,6 +549,60 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
             case ScriptPurpose.Proposing(var index, var procedure) ->
                     new ScriptInfo.ProposingScript(index, procedure);
         };
+    }
+
+    // ---- Error formatting with source map support ----
+
+    private String formatFailure(Redeemer redeemer, EvalResult.Failure failure,
+                                  SourceMap sourceMap) {
+        var sb = new StringBuilder();
+        sb.append("Script evaluation failed for ")
+                .append(redeemer.getTag()).append('[').append(redeemer.getIndex()).append("]: ")
+                .append(failure.error());
+
+        if (sourceMap != null && failure.failedTerm() != null) {
+            var loc = sourceMap.lookup(failure.failedTerm());
+            if (loc != null) {
+                sb.append("\n  ").append(loc);
+            }
+        }
+
+        String traces = String.join("\n", failure.traces());
+        if (!traces.isEmpty()) {
+            sb.append("\nTraces:\n  ").append(traces.replace("\n", "\n  "));
+        }
+
+        return sb.toString();
+    }
+
+    private String formatBudgetExhausted(Redeemer redeemer, EvalResult.BudgetExhausted exhausted,
+                                          SourceMap sourceMap) {
+        var sb = new StringBuilder();
+        sb.append("Budget exhausted for ")
+                .append(redeemer.getTag()).append('[').append(redeemer.getIndex()).append("]: ")
+                .append(exhausted.consumed());
+
+        if (sourceMap != null && exhausted.failedTerm() != null) {
+            var loc = sourceMap.lookup(exhausted.failedTerm());
+            if (loc != null) {
+                sb.append("\n  ").append(loc);
+            }
+        }
+
+        String traces = String.join("\n", exhausted.traces());
+        if (!traces.isEmpty()) {
+            sb.append("\nTraces:\n  ").append(traces.replace("\n", "\n  "));
+        }
+
+        return sb.toString();
+    }
+
+    private void captureTrace(String redeemerKey, List<ExecutionTraceEntry> executionTrace,
+                               Map<String, List<ExecutionTraceEntry>> collectedTraces) {
+        if (!tracingEnabled || executionTrace.isEmpty()) return;
+        collectedTraces.put(redeemerKey, List.copyOf(executionTrace));
+        System.out.println(ExecutionTraceEntry.format(executionTrace));
+        System.out.println(ExecutionTraceEntry.formatSummary(executionTrace));
     }
 
     private static PlutusLanguage toPlutusLanguage(Language cclLanguage) {
