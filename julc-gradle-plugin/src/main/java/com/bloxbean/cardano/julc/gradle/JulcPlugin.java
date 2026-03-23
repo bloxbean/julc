@@ -60,12 +60,17 @@ public class JulcPlugin implements Plugin<Project> {
             java.io.File plutusSrcDir = extension.getSourceDir().get().getAsFile();
             mainSourceSet.getJava().srcDir(plutusSrcDir);
 
-            // Exclude the plutus dir from javac compilation
+            // Exclude the plutus dir from javac compilation + propagate sourceMap setting
             p.getTasks().named("compileJava", org.gradle.api.tasks.compile.JavaCompile.class,
-                    task -> task.exclude(fileTreeElement -> {
-                        java.io.File file = fileTreeElement.getFile();
-                        return isUnderDirectory(file, plutusSrcDir);
-                    }));
+                    task -> {
+                        task.exclude(fileTreeElement -> {
+                            java.io.File file = fileTreeElement.getFile();
+                            return isUnderDirectory(file, plutusSrcDir);
+                        });
+                        if (Boolean.TRUE.equals(extension.getSourceMap().getOrElse(false))) {
+                            task.getOptions().getCompilerArgs().add("-Ajulc.sourceMap=true");
+                        }
+                    });
 
             // Configure bundleJulcSources: source from main java srcDirs, output to resources
             p.getTasks().named("bundleJulcSources", BundleJulcSourcesTask.class, task -> {
