@@ -38,10 +38,15 @@ dependencies {
 // --- Frontend build integration ---
 
 def frontendDir = file('frontend')
+def isWindows = System.getProperty('os.name').toLowerCase().contains('windows')
 
 tasks.register('npmInstall', Exec) {
     workingDir frontendDir
-    commandLine 'npm', 'install'
+    if (isWindows) {
+        commandLine 'cmd', '/c', 'npm', 'install'
+    } else {
+        commandLine 'npm', 'install'
+    }
     inputs.file(new File(frontendDir, 'package.json'))
     inputs.file(new File(frontendDir, 'package-lock.json'))
     outputs.dir(new File(frontendDir, 'node_modules'))
@@ -50,7 +55,11 @@ tasks.register('npmInstall', Exec) {
 tasks.register('buildFrontend', Exec) {
     dependsOn 'npmInstall'
     workingDir frontendDir
-    commandLine 'npm', 'run', 'build'
+    if (isWindows) {
+        commandLine 'cmd', '/c', 'npm', 'run', 'build'
+    } else {
+        commandLine 'npm', 'run', 'build'
+    }
     inputs.dir(new File(frontendDir, 'src'))
     inputs.file(new File(frontendDir, 'index.html'))
     inputs.file(new File(frontendDir, 'vite.config.ts'))
