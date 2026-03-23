@@ -1,0 +1,21 @@
+contract "HTLC" version "1.0" purpose spending
+params:
+    secretHash : ByteString
+    expiration : POSIXTime
+    owner      : PubKeyHash
+redeemer HtlcAction:
+    | Guess:
+        answer : ByteString
+    | Withdraw
+rule "Correct guess unlocks"
+when
+    Redeemer( Guess( answer: $answer ) )
+    Condition( sha2_256($answer) == secretHash )
+then allow
+rule "Owner can withdraw after expiry"
+when
+    Redeemer( Withdraw )
+    Transaction( signedBy: owner )
+    Transaction( validAfter: expiration )
+then allow
+default: deny

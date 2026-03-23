@@ -25,7 +25,7 @@ jobs:
             binary: julc.exe
 
     runs-on: ${{ matrix.os }}
-    name: Build ${{ matrix.label }}
+    name: Build CLI ${{ matrix.label }}
 
     steps:
     - uses: actions/checkout@v4
@@ -81,10 +81,87 @@ jobs:
       with:
         files: julc-${{ steps.version.outputs.version }}-${{ matrix.label }}.zip
 
+  native-image-playground:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            label: macos-aarch64
+            binary: julc-playground
+          - os: ubuntu-latest
+            label: linux-x86_64
+            binary: julc-playground
+          - os: windows-latest
+            label: windows-x86_64
+            binary: julc-playground.exe
+
+    runs-on: ${{ matrix.os }}
+    name: Build Playground ${{ matrix.label }}
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Extract version from tag
+      id: version
+      shell: bash
+      run: |
+        VERSION="${GITHUB_REF_NAME#v}"
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+    - name: Set up GraalVM JDK 24
+      uses: actions/setup-java@v4
+      with:
+        java-version: '24'
+        distribution: 'graalvm'
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Setup MSVC (Windows only)
+      if: runner.os == 'Windows'
+      uses: ilammy/msvc-dev-cmd@v1
+
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v4
+
+    - name: Build native image
+      run: ./gradlew :julc-playground:nativeCompile -PskipSigning=true --no-daemon
+      shell: bash
+
+    - name: Package (Unix)
+      if: runner.os != 'Windows'
+      shell: bash
+      run: |
+        VERSION="${{ steps.version.outputs.version }}"
+        STAGING="julc-playground-${VERSION}-${{ matrix.label }}"
+        mkdir -p "$STAGING"
+        cp julc-playground/build/native/nativeCompile/${{ matrix.binary }} "$STAGING/"
+        cp julc-playground/README.md "$STAGING/"
+        zip -r "julc-playground-${VERSION}-${{ matrix.label }}.zip" "$STAGING"
+
+    - name: Package (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $VERSION = "${{ steps.version.outputs.version }}"
+        $STAGING = "julc-playground-${VERSION}-${{ matrix.label }}"
+        New-Item -ItemType Directory -Path $STAGING -Force
+        Copy-Item "julc-playground/build/native/nativeCompile/${{ matrix.binary }}" -Destination $STAGING
+        Copy-Item "julc-playground/README.md" -Destination $STAGING
+        Compress-Archive -Path $STAGING -DestinationPath "julc-playground-${VERSION}-${{ matrix.label }}.zip"
+
+    - name: Upload to GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: julc-playground-${{ steps.version.outputs.version }}-${{ matrix.label }}.zip
+
   update-homebrew:
-    needs: native-image
+    needs: [native-image, native-image-playground]
     runs-on: ubuntu-latest
-    name: Update Homebrew formula
+    name: Update Homebrew formulas
     steps:
     - name: Checkout homebrew-tap
       uses: actions/checkout@v4
@@ -92,7 +169,7 @@ jobs:
         repository: bloxbean/homebrew-tap
         token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
 
-    - name: Update formula
+    - name: Update julc formula
       shell: bash
       run: |
         VERSION="${GITHUB_REF_NAME#v}"
@@ -141,11 +218,73 @@ jobs:
         # Remove leading whitespace from heredoc (YAML run block adds 8 spaces)
         sed -i 's/^        //' Formula/julc.rb
 
+    - name: Update julc-playground formula
+      shell: bash
+      run: |
+        VERSION="${GITHUB_REF_NAME#v}"
+
+        # Download playground release assets
+        curl -fSL -o playground-macos.zip \
+          "https://github.com/bloxbean/julc/releases/download/v${VERSION}/julc-playground-${VERSION}-macos-aarch64.zip"
+        curl -fSL -o playground-linux.zip \
+          "https://github.com/bloxbean/julc/releases/download/v${VERSION}/julc-playground-${VERSION}-linux-x86_64.zip"
+
+        PG_MACOS_SHA=$(sha256sum playground-macos.zip | awk '{print $1}')
+        PG_LINUX_SHA=$(sha256sum playground-linux.zip | awk '{print $1}')
+
+        mkdir -p Formula
+        cat > Formula/julc-playground.rb << FORMULA
+        class JulcPlayground < Formula
+          desc "JuLC Playground - Web-based JRL editor and compiler"
+          homepage "https://github.com/bloxbean/julc"
+          version "${VERSION}"
+          license "MIT"
+
+          on_macos do
+            if Hardware::CPU.arm?
+              url "https://github.com/bloxbean/julc/releases/download/v${VERSION}/julc-playground-${VERSION}-macos-aarch64.zip"
+              sha256 "${PG_MACOS_SHA}"
+            end
+          end
+
+          on_linux do
+            if Hardware::CPU.intel?
+              url "https://github.com/bloxbean/julc/releases/download/v${VERSION}/julc-playground-${VERSION}-linux-x86_64.zip"
+              sha256 "${PG_LINUX_SHA}"
+            end
+          end
+
+          def install
+            bin.install "julc-playground"
+          end
+
+          test do
+            # Start server in background, check health endpoint, then stop
+            port = free_port
+            pid = fork do
+              ENV["JRL_PLAYGROUND_PORT"] = port.to_s
+              exec bin/"julc-playground"
+            end
+            sleep 3
+            begin
+              output = shell_output("curl -s http://localhost:#{port}/api/health")
+              assert_match "ok", output.downcase
+            ensure
+              Process.kill("TERM", pid)
+              Process.wait(pid)
+            end
+          end
+        end
+        FORMULA
+
+        # Remove leading whitespace from heredoc (YAML run block adds 8 spaces)
+        sed -i 's/^        //' Formula/julc-playground.rb
+
     - name: Commit and push
       run: |
         VERSION="${GITHUB_REF_NAME#v}"
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
-        git add Formula/julc.rb
+        git add Formula/julc.rb Formula/julc-playground.rb
         git diff --cached --quiet || git commit -m "julc ${VERSION}"
         git push

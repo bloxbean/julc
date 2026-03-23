@@ -1,0 +1,97 @@
+plugins {
+    id 'application'
+    id 'com.gradleup.shadow' version '9.0.0-beta12'
+    id 'org.graalvm.buildtools.native' version '0.10.6'
+}
+
+description = 'julc-playground - Online JRL editor and testing playground'
+
+application {
+    mainClass = 'com.bloxbean.julc.playground.JrlPlaygroundServer'
+}
+
+dependencies {
+    implementation project(':julc-jrl:julc-jrl-core')
+    implementation project(':julc-compiler')
+    implementation project(':julc-core')
+    implementation project(':julc-stdlib')
+    implementation project(':julc-ledger-api')
+    implementation project(':julc-vm')
+    implementation project(':julc-vm-java')
+    implementation project(':julc-testkit')
+
+    // Javalin 6 micro-framework
+    implementation 'io.javalin:javalin:6.7.0'
+
+    // Jackson for JSON serialization
+    implementation 'io.javalin:javalin-rendering:6.7.0'
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
+
+    // SLF4J simple logger
+    implementation 'org.slf4j:slf4j-simple:2.0.16'
+
+    // Test
+    testImplementation 'io.javalin:javalin-testtools:6.7.0'
+    testImplementation 'com.squareup.okhttp3:okhttp:4.12.0'
+}
+
+// --- Frontend build integration ---
+
+def frontendDir = file('frontend')
+def isWindows = System.getProperty('os.name').toLowerCase().contains('windows')
+
+tasks.register('npmInstall', Exec) {
+    workingDir frontendDir
+    if (isWindows) {
+        commandLine 'cmd', '/c', 'npm', 'install'
+    } else {
+        commandLine 'npm', 'install'
+    }
+    inputs.file(new File(frontendDir, 'package.json'))
+    inputs.file(new File(frontendDir, 'package-lock.json'))
+    outputs.dir(new File(frontendDir, 'node_modules'))
+}
+
+tasks.register('buildFrontend', Exec) {
+    dependsOn 'npmInstall'
+    workingDir frontendDir
+    if (isWindows) {
+        commandLine 'cmd', '/c', 'npm', 'run', 'build'
+    } else {
+        commandLine 'npm', 'run', 'build'
+    }
+    inputs.dir(new File(frontendDir, 'src'))
+    inputs.file(new File(frontendDir, 'index.html'))
+    inputs.file(new File(frontendDir, 'vite.config.ts'))
+    inputs.file(new File(frontendDir, 'package.json'))
+    outputs.dir(file('src/main/resources/static'))
+}
+
+if (!project.hasProperty('skipFrontend')) {
+    processResources.dependsOn buildFrontend
+}
+
+// --- Shadow JAR ---
+
+shadowJar {
+    archiveBaseName.set('julc-playground')
+    archiveClassifier.set('')
+    archiveVersion.set('')
+    mergeServiceFiles()
+    manifest {
+        attributes 'Main-Class': application.mainClass.get()
+    }
+}
+
+// --- GraalVM native image ---
+
+graalvmNative {
+    binaries {
+        main {
+            imageName = 'julc-playground'
+            mainClass = application.mainClass.get()
+            buildArgs.addAll(['--no-fallback', '-H:+ReportExceptionStackTraces'])
+            sharedLibrary = false
+        }
+    }
+}

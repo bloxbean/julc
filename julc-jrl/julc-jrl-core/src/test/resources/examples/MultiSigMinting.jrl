@@ -1,0 +1,27 @@
+contract "MultiSigMinting" version "1.0" purpose minting
+params:
+    authority : PubKeyHash
+    owner     : PubKeyHash
+    cosigner1 : PubKeyHash
+    cosigner2 : PubKeyHash
+redeemer MintAction:
+    | MintByAuthority
+    | BurnByOwner
+    | MintByMultiSig
+rule "Authority can mint"
+when
+    Redeemer( MintByAuthority )
+    Transaction( signedBy: authority )
+then allow
+rule "Owner can burn"
+when
+    Redeemer( BurnByOwner )
+    Transaction( signedBy: owner )
+then allow
+rule "Multi-sig can mint"
+when
+    Redeemer( MintByMultiSig )
+    Transaction( signedBy: cosigner1 )
+    Transaction( signedBy: cosigner2 )
+then allow
+default: deny

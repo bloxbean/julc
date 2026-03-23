@@ -84,7 +84,7 @@ subprojects {
     }
 
     // Publishing for publishable modules
-    def nonPublishable = ['julc-examples', 'julc-e2e-tests', 'julc-plugin-test', 'julc-analyzer-cli', 'julc-benchmark', 'julc-cli']
+    def nonPublishable = ['julc-examples', 'julc-e2e-tests', 'julc-plugin-test', 'julc-analyzer-cli', 'julc-benchmark', 'julc-cli', 'julc-playground']
     if (!nonPublishable.contains(project.name)) {
         apply plugin: 'maven-publish'
         apply plugin: 'signing'
@@ -138,5 +138,10 @@ subprojects {
 }
 
 def getCheckedOutGitCommitHash() {
-    grgit.head().abbreviatedId
+    try {
+        grgit.head().abbreviatedId
+    } catch (Exception e) {
+        // Fallback for git worktrees where grgit may not resolve properly
+        'git rev-parse --short HEAD'.execute(null, project.rootDir).text.trim()
+    }
 }
