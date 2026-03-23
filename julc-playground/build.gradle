@@ -45,7 +45,7 @@ tasks.register('npmInstall', Exec) {
     if (isWindows) {
         commandLine 'cmd', '/c', 'npm', 'install'
     } else {
-        commandLine 'npm', 'install'
+        commandLine 'sh', '-c', 'npm install'
     }
     inputs.file(new File(frontendDir, 'package.json'))
     inputs.file(new File(frontendDir, 'package-lock.json'))
@@ -58,7 +58,7 @@ tasks.register('buildFrontend', Exec) {
     if (isWindows) {
         commandLine 'cmd', '/c', 'npm', 'run', 'build'
     } else {
-        commandLine 'npm', 'run', 'build'
+        commandLine 'sh', '-c', 'npm run build'
     }
     inputs.dir(new File(frontendDir, 'src'))
     inputs.file(new File(frontendDir, 'index.html'))
@@ -67,7 +67,7 @@ tasks.register('buildFrontend', Exec) {
     outputs.dir(file('src/main/resources/static'))
 }
 
-if (!project.hasProperty('skipFrontend')) {
+if (project.hasProperty('withFrontend')) {
     processResources.dependsOn buildFrontend
 }
 
