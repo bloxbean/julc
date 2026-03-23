@@ -1,0 +1,11 @@
+contract "MultiSigTreasury" version "1.0" purpose spending
+datum TreasuryDatum:
+    signer1 : PubKeyHash
+    signer2 : PubKeyHash
+rule "Both signers required"
+when
+    Datum( TreasuryDatum( signer1: $s1, signer2: $s2 ) )
+    Transaction( signedBy: $s1 )
+    Transaction( signedBy: $s2 )
+then allow
+default: deny

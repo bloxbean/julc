@@ -1,0 +1,10 @@
+contract "OutputCheck" version "1.0" purpose spending
+datum PaymentDatum:
+    recipient : ByteString
+    minAmount : Lovelace
+rule "Payment meets minimum"
+when
+    Datum( PaymentDatum( recipient: $addr, minAmount: $min ) )
+    Output( to: $addr, value: minADA( $min ) )
+then allow
+default: deny

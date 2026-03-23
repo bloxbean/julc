@@ -1,0 +1,8 @@
+contract "SimpleTransfer" version "1.0" purpose spending
+params:
+    receiver : PubKeyHash
+rule "Receiver can spend"
+when
+    Transaction( signedBy: receiver )
+then allow
+default: deny

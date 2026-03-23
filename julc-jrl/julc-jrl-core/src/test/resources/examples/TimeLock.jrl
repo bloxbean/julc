@@ -1,0 +1,10 @@
+contract "TimeLock" version "1.0" purpose spending
+params:
+    owner    : PubKeyHash
+    lockTime : POSIXTime
+rule "Owner can spend after lock time"
+when
+    Transaction( signedBy: owner )
+    Transaction( validAfter: lockTime )
+then allow
+default: deny

@@ -1,0 +1,17 @@
+contract "Vesting" version "1.0" purpose spending
+datum VestingDatum:
+    owner       : PubKeyHash
+    beneficiary : PubKeyHash
+    deadline    : POSIXTime
+rule "Owner can always withdraw"
+when
+    Datum( VestingDatum( owner: $owner ) )
+    Transaction( signedBy: $owner )
+then allow
+rule "Beneficiary can withdraw after deadline"
+when
+    Datum( VestingDatum( beneficiary: $ben, deadline: $deadline ) )
+    Transaction( signedBy: $ben )
+    Transaction( validAfter: $deadline )
+then allow
+default: deny
