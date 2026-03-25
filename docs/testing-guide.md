@@ -14,7 +14,7 @@ provides a layered testing approach so you can catch bugs early:
 
 | Layer | Speed | What it catches |
 |-------|-------|-----------------|
-| Direct Java | Instant | Logic bugs, off-by-one errors |
+| Direct Java | Instant | Logic bugs, wrong conditions (e.g., `>` vs `>=`), incorrect boundary checks |
 | UPLC evaluation | Fast (~ms) | Compilation issues, on-chain behavior differences |
 | Property-based | Moderate (~s) | Edge cases you didn't think of |
 | Budget | Fast (~ms) | Cost regressions, script size bloat |
