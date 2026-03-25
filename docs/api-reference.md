@@ -90,7 +90,23 @@ Seven ledger hash types have `.of(byte[])` factory methods:
 | `DatumHash.of(bytes)` | | Identity |
 | `TxId.of(bytes)` | | Identity |
 
-These replace the ugly `(PubKeyHash)(Object) bytes` casts in user code. Note: `(PubKeyHash)(Object) plutusData` is still needed when the argument is `PlutusData` (not `byte[]`).
+These replace the ugly `(PubKeyHash)(Object) bytes` casts in user code.
+
+### PlutusData.cast() Helper
+
+| Signature | On-chain | Off-chain |
+|-----------|----------|-----------|
+| `PlutusData.cast(data, TargetType.class)` | Identity (zero cost) | Unchecked cast |
+
+Replaces the `(TargetType)(Object) data` double-cast pattern. Works with records, sealed interfaces, ledger types, `JulcMap`, `byte[]`, and hash types. The second argument must be a literal `ClassName.class` expression.
+
+For generic collections (`JulcList`, `JulcMap`), use an explicit type declaration to preserve element types:
+
+```java
+JulcList<MyRecord> items = PlutusData.cast(data, JulcList.class);   // element type: MyRecord
+JulcMap<BigInteger, MyRecord> m = PlutusData.cast(data, JulcMap.class); // typed keys + values
+var items2 = PlutusData.cast(data, JulcList.class);                 // element type: DataType (avoid)
+```
 
 ### Not Supported
 

@@ -203,13 +203,16 @@ are no-ops on-chain but serve as type hints for the compiler.
 When you have raw `PlutusData` and need to treat it as a ledger type:
 
 ```java
-// Cast PlutusData to a ledger record type
+// Recommended: PlutusData.cast()
 PlutusData rawData = Builtins.headList(someList);
-TxOut txOut = (TxOut)(Object) rawData;
+TxOut txOut = PlutusData.cast(rawData, TxOut.class);
 
-// Cast PlutusData to a hash type
+// Also works: double-cast
+TxOut txOut2 = (TxOut)(Object) rawData;
+
+// Hash types
 PlutusData rawHash = Builtins.headList(credentialFields);
-PubKeyHash pkh = (PubKeyHash)(Object) rawHash;
+PubKeyHash pkh = PlutusData.cast(rawHash, PubKeyHash.class);
 ```
 
 ### Extract Raw Hash Bytes
@@ -243,13 +246,79 @@ byte[] hashBytes = Builtins.sha2_256(someData);
 PubKeyHash pkh = PubKeyHash.of(hashBytes);
 PolicyId pid = PolicyId.of(policyBytes);
 
-// Use casts when you have PlutusData and want a ledger type
+// Use PlutusData.cast() when you have PlutusData and want a ledger type
 PlutusData rawFromList = Builtins.headList(signatories);
-PubKeyHash pkh2 = (PubKeyHash)(Object) rawFromList;
+PubKeyHash pkh2 = PlutusData.cast(rawFromList, PubKeyHash.class);
+
+// Also works: double-cast
+PubKeyHash pkh3 = (PubKeyHash)(Object) rawFromList;
 ```
 
-Key rule: `Type.of(byte[])` is for `byte[]` arguments. Casts are for `PlutusData`
-arguments.
+Key rule: `Type.of(byte[])` is for `byte[]` arguments. `PlutusData.cast()` or double-casts are for `PlutusData` arguments. `PlutusData.cast()` is preferred for readability.
+
+### PlutusData.cast() — Clean Type Casting
+
+Instead of the double-cast pattern, use `PlutusData.cast()`:
+
+```java
+// Old pattern (still works)
+MyDatum datum = (MyDatum)(Object) rawData;
+
+// New pattern (recommended)
+MyDatum datum = PlutusData.cast(rawData, MyDatum.class);
+```
+
+Works with all target types — records, sealed interfaces, ledger types, `JulcMap`, `byte[]`, hash types:
+
+```java
+// Cast to custom record
+var datum = PlutusData.cast(datumData, AuctionDatum.class);
+
+// Cast to sealed interface (use in switch)
+var action = PlutusData.cast(redeemer, Action.class);
+return switch (action) {
+    case Mint m -> m.amount() > 0;
+    case Burn b -> b.amount() > 0;
+};
+
+// Cast to ledger type
+var val = PlutusData.cast(rawValue, Value.class);
+
+// Cast hash types
+byte[] policyBytes = PlutusData.cast(mintInfo.policyId(), byte[].class);
+ScriptHash sh = PlutusData.cast(policyBytes, ScriptHash.class);
+
+// Chained field access
+boolean ok = PlutusData.cast(redeemer, MyDatum.class).amount() == 42;
+```
+
+On-chain: zero cost (compiles to identity, same as the double-cast).
+Off-chain: unchecked cast at JVM level.
+
+**Note:** The second argument must be a literal `ClassName.class` expression. A variable holding a `Class<?>` is not supported on-chain.
+
+#### Generic Collections: JulcList and JulcMap
+
+Java class literals cannot carry generic type parameters (`JulcList.class` not `JulcList<MyRecord>.class`). When casting to generic collections, use an **explicit type declaration** on the left side — the compiler reads the generic info from the declared type, not from the `PlutusData.cast()` return:
+
+```java
+// CORRECT: explicit type preserves generics — element type is MyRecord
+JulcList<MyRecord> records = PlutusData.cast(data, JulcList.class);
+
+// CORRECT: explicit type preserves key/value types
+JulcMap<BigInteger, MyRecord> lookup = PlutusData.cast(data, JulcMap.class);
+
+// AVOID: var loses generic info — element type defaults to DataType
+var records = PlutusData.cast(data, JulcList.class);  // JulcList<PlutusData>
+```
+
+This works because the JuLC compiler resolves the variable type from the declared type (`JulcList<MyRecord>`) rather than inferring it from the right-hand side. The generic parameters give the compiler the element/key/value types needed for typed access on list and map elements.
+
+For nested generics, the same rule applies:
+```java
+// Map with typed values
+JulcMap<byte[], JulcList<BigInteger>> nested = PlutusData.cast(data, JulcMap.class);
+```
 
 ### The Double .hash() Bug Explained
 

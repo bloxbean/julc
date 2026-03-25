@@ -125,6 +125,20 @@ public sealed interface PlutusData {
         return new MapData(List.of(entries));
     }
 
+    /**
+     * Cast an untyped value to a target type. On-chain this compiles to identity
+     * (zero cost), replacing the ugly {@code (TargetType)(Object) data} pattern.
+     *
+     * @param data the value to cast (typically PlutusData, JulcList, or JulcMap)
+     * @param type the target type class
+     * @param <T>  the target type
+     * @return the value cast to T
+     */
+    @SuppressWarnings("unchecked")
+    static <T> T cast(Object data, Class<T> type) {
+        return (T) data;
+    }
+
     /** The unit value: Constr 0 [] */
     PlutusData UNIT = new ConstrData(0, List.of());
 
