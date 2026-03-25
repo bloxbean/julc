@@ -14,3 +14,14 @@ dependencies {
     testImplementation project(':julc-vm-scalus')
     testImplementation project(':julc-compiler')
 }
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            pom {
+                name = 'JuLC Testkit jqwik'
+                description = 'jqwik property-based testing support for JuLC validators'
+            }
+        }
+    }
+}
