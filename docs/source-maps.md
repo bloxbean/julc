@@ -10,6 +10,18 @@ Evaluation failed: Error term encountered
 Source maps bridge this gap by mapping UPLC terms back to the Java source line that
 generated them.
 
+## Table of Contents
+
+- [Quick Start](#quick-start) — one-line setup with JulcEval and ValidatorTest
+- [Enabling Source Maps](#enabling-source-maps) — Gradle plugin, annotation processor, programmatic
+- [Usage Patterns](#usage-patterns) — ContractTest, assertions, logging
+- [Execution Tracing](#execution-tracing) — step-by-step trace with budget per line
+- [Using with QuickTxBuilder](#using-with-quicktxbuilder-julctransactionevaluator) — cardano-client-lib integration
+- [What Gets Mapped](#what-gets-mapped) — which Java constructs produce source map entries
+- [How It Works](#how-it-works) — SourceMap internals
+- [API Reference](#api-reference) — SourceMap, SourceLocation, CompileResult
+- [Limitations](#limitations)
+
 ---
 
 ## Quick Start

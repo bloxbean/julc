@@ -4,6 +4,24 @@ JuLC compiles `for (var item : list)` loops into recursive folds over Data lists
 
 This document covers every supported pattern, the compilation strategy behind each, and known limitations.
 
+## Table of Contents
+
+- [How It Works](#how-it-works)
+- [Pattern 1: Side-Effect Loop (No Accumulator)](#pattern-1-side-effect-loop-no-accumulator)
+- [Pattern 2: Single Accumulator (No Break)](#pattern-2-single-accumulator-no-break)
+- [Pattern 3: Single Accumulator with Break](#pattern-3-single-accumulator-with-break)
+- [Pattern 4: Multiple Accumulators (No Break)](#pattern-4-multiple-accumulators-no-break)
+- [Pattern 5: Multiple Accumulators with Break](#pattern-5-multiple-accumulators-with-break)
+- [Pattern 6: Nested For-Each Loops](#pattern-6-nested-for-each-loops)
+- [While Loops](#while-loops)
+- [For-Each on MapType](#for-each-on-maptype)
+- [Nested Loop Examples](#nested-loop-examples)
+- [Supported Accumulator Types](#supported-accumulator-types)
+- [Limitations](#limitations)
+- [Comparison with Other Cardano Languages](#comparison-with-other-cardano-languages)
+
+---
+
 ## How It Works
 
 The compiler analyzes each for-each loop body to determine the compilation path:

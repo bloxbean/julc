@@ -2,6 +2,16 @@
 
 This guide explains how to write, publish, and test on-chain libraries for JuLC, the Java-to-UPLC compiler for Cardano smart contracts.
 
+## Table of Contents
+
+1. [Introduction](#1-introduction)
+2. [Approach 1: Java Source Libraries (@OnchainLibrary)](#2-approach-1-java-source-libraries-onchainlibrary) — recommended approach
+3. [Publishing and Distribution](#3-publishing-and-distribution) — JAR packaging, META-INF
+4. [Testing Libraries](#4-testing-libraries) — unit tests, JulcEval, integration
+5. [Approach 2: PIR API (Advanced)](#5-approach-2-pir-api-advanced) — low-level PIR term generation
+6. [Builtins.java Reference](#6-builtinsjava-reference) — all available builtins
+7. [Checklist for Adding a New Library Function](#7-checklist-for-adding-a-new-library-function)
+
 ---
 
 ## 1. Introduction
@@ -31,10 +41,10 @@ This is the primary and recommended approach. You write normal-looking Java stat
 
 ### 2.1 The `@OnchainLibrary` Annotation
 
-The `@OnchainLibrary` annotation (defined in `julc-onchain-api`) marks a class whose static methods can be called from `@SpendingValidator` (or other validator annotation) classes and from other `@OnchainLibrary` classes.
+The `@OnchainLibrary` annotation (defined in `julc-stdlib`) marks a class whose static methods can be called from `@SpendingValidator` (or other validator annotation) classes and from other `@OnchainLibrary` classes.
 
 ```java
-package com.bloxbean.cardano.julc.onchain.annotation;
+package com.bloxbean.cardano.julc.stdlib.annotation;
 
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
@@ -42,7 +52,7 @@ public @interface OnchainLibrary {
 }
 ```
 
-**Source:** `julc-onchain-api/src/main/java/com/bloxbean/cardano/julc/onchain/annotation/OnchainLibrary.java`
+**Source:** `julc-stdlib/src/main/java/com/bloxbean/cardano/julc/onchain/annotation/OnchainLibrary.java`
 
 ### 2.2 Basic Structure
 
@@ -57,7 +67,7 @@ Here is `MathLib`, the simplest real library in the codebase:
 package com.bloxbean.cardano.julc.stdlib.lib;
 
 import com.bloxbean.cardano.julc.core.PlutusData;
-import com.bloxbean.cardano.julc.onchain.annotation.OnchainLibrary;
+import com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary;
 import com.bloxbean.cardano.julc.stdlib.Builtins;
 
 @OnchainLibrary
@@ -121,7 +131,7 @@ Key observations:
 
 ### 2.3 Using `Builtins.*` for UPLC Primitives
 
-The `Builtins` class (in `julc-onchain-api`) provides Java method signatures that map directly to UPLC builtin operations. On-chain, calls to these methods are replaced by their corresponding UPLC builtins. Off-chain, the JVM implementations provide executable behavior for testing.
+The `Builtins` class (in `julc-stdlib`) provides Java method signatures that map directly to UPLC builtin operations. On-chain, calls to these methods are replaced by their corresponding UPLC builtins. Off-chain, the JVM implementations provide executable behavior for testing.
 
 All data flowing through the Plutus VM is `PlutusData`. The `Builtins` class provides encode/decode functions to convert between Java types and `PlutusData`:
 
@@ -165,7 +175,7 @@ Builtins.error()                // abort execution
 Builtins.trace(msg, val)        // trace message, return val
 ```
 
-**Source:** `julc-onchain-api/src/main/java/com/bloxbean/cardano/julc/onchain/stdlib/Builtins.java`
+**Source:** `julc-stdlib/src/main/java/com/bloxbean/cardano/julc/onchain/stdlib/Builtins.java`
 
 Here is a real example from `CryptoLib` -- the simplest pattern, where library methods are thin wrappers around builtins:
 
@@ -197,7 +207,7 @@ Here is an example of a custom library that checks whether a `Value` contains a 
 package com.example.myproject;
 
 import com.bloxbean.cardano.julc.core.PlutusData;
-import com.bloxbean.cardano.julc.onchain.annotation.OnchainLibrary;
+import com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary;
 import com.bloxbean.cardano.julc.stdlib.Builtins;
 
 @OnchainLibrary
@@ -465,7 +475,7 @@ plugins {
 
 dependencies {
     api 'com.bloxbean.cardano:julc-core:<version>'
-    implementation 'com.bloxbean.cardano:julc-onchain-api:<version>'
+    implementation 'com.bloxbean.cardano:julc-stdlib:<version>'
 }
 
 // Bundle @OnchainLibrary Java sources into META-INF/plutus-sources/
@@ -516,7 +526,7 @@ class TokenUtilsTest {
     void hasTokenReturnsTrueWhenPresent() {
         var libSource = """
             import com.bloxbean.cardano.julc.core.PlutusData;
-            import com.bloxbean.cardano.julc.onchain.annotation.OnchainLibrary;
+            import com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary;
             import com.bloxbean.cardano.julc.stdlib.Builtins;
 
             @OnchainLibrary
