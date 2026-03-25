@@ -2,6 +2,24 @@
 
 This document covers all supported Java operations in the JuLC compiler, the standard library functions, and the typed ledger access API.
 
+## Table of Contents
+
+- [Supported Types](#supported-types) — primitives, collections, PlutusData
+- [Operators](#operators) — arithmetic, comparison, logical
+- [Control Flow](#control-flow) — if/else, switch, loops
+- [Variable Declarations](#variable-declarations) — var, final
+- [Records](#records) — data modeling
+- [Helper Methods](#helper-methods) — static methods, recursion
+- [Lambda Expressions](#lambda-expressions) — HOFs, map/filter/fold
+- [Typed Ledger Access](#typed-ledger-access) — ScriptContext, TxInfo, Value
+- [Instance Methods](#instance-methods) — list, map, value, pair methods
+- [Standard Library Reference](#standard-library-reference) — all stdlib modules
+- [Annotations Reference](#annotations-reference) — @Validator, @Param, @OnchainLibrary
+- [Testing Utilities](#testing-utilities) — ValidatorTest, JulcEval, BudgetAssertions
+- [Complete Example](#complete-example) — full validator walkthrough
+
+---
+
 ## Supported Types
 
 | Java Type | UPLC Representation | Notes |
@@ -440,8 +458,9 @@ Import from `com.bloxbean.cardano.julc.stdlib.lib.*` in validators. See [Standar
 | `txInfoRefInputs(txInfo)` | TxInfo | Get reference inputs |
 | `txInfoWithdrawals(txInfo)` | TxInfo | Get withdrawals map |
 | `txInfoRedeemers(txInfo)` | TxInfo | Get redeemers map |
-| `findOwnInput(txInfo, outRef)` | TxInfo, TxOutRef | Find the input being validated |
-| `getContinuingOutputs(txInfo, ownHash)` | TxInfo, ByteString | Get outputs to same script |
+| `findOwnInput(ctx)` | ScriptContext | Find the input being validated → `Optional<TxInInfo>` |
+| `getContinuingOutputs(ctx)` | ScriptContext | Get outputs to same script → `JulcList<TxOut>` |
+| `ownInputScriptHash(ctx)` | ScriptContext | Get script hash of own input → `byte[]` |
 | `findDatum(txInfo, datumHash)` | TxInfo, ByteString | Lookup datum by hash |
 | `valueSpent(txInfo)` | TxInfo | Total value of all inputs |
 | `valuePaid(txInfo, address)` | TxInfo, Address | Value paid to an address |

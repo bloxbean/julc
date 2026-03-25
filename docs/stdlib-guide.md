@@ -65,6 +65,7 @@ The JuLC standard library provides 11 on-chain libraries in the `com.bloxbean.ca
 | `valueSpent(txInfo)` | Total value of all inputs |
 | `valuePaid(txInfo, addr)` | Values paid to an address |
 | `ownHash(ctx)` | Get own script hash |
+| `ownInputScriptHash(ctx)` | Get script hash of own input → `byte[]` |
 | `scriptOutputsAt(txInfo, hash)` | Get outputs at a script hash |
 | `listIndex(list, index)` | Get element at index |
 | `trace(msg)` | Emit a trace message |
@@ -319,6 +320,9 @@ class StatefulValidator {
 
         // Get own script hash (works for both minting and spending)
         PlutusData.BytesData ownHash = ContextsLib.ownHash(ctx);
+
+        // Get script hash of own input as byte[]
+        byte[] scriptHash = ContextsLib.ownInputScriptHash(ctx);
 
         return !Builtins.nullList(continuingOutputs);
     }

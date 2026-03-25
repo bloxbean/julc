@@ -8,6 +8,25 @@ ordinary Java classes with records, sealed interfaces, and switch expressions. T
 compiler turns them into efficient Plutus scripts that run on the Cardano CEK
 machine.
 
+## Table of Contents
+
+1. [Prerequisites](#1-prerequisites)
+2. [Project Setup](#2-project-setup) — Gradle, Maven, annotation processor
+3. [Your First Validator](#3-your-first-validator) — spending validator walkthrough
+4. [Conway Validator Types](#4-conway-validator-types) — minting, staking, voting, proposing
+5. [Data Modeling](#5-data-modeling) — records, sealed interfaces, switch
+6. [Collections](#6-collections) — lists, maps, tuples
+7. [Typed Ledger Access](#7-typed-ledger-access) — ScriptContext, TxInfo, Value
+8. [Control Flow](#8-control-flow) — if/else, loops, recursion
+9. [Standard Library](#9-standard-library) — stdlib overview
+10. [User Libraries (@OnchainLibrary)](#10-user-libraries-onchainlibrary) — reusable on-chain modules
+11. [Parameterized Validators (@Param)](#11-parameterized-validators-param) — compile-time parameters
+12. [Lambda Expressions and HOFs](#12-lambda-expressions-and-hofs) — map, filter, fold
+13. [Compiling](#13-compiling) — Gradle plugin, annotation processor, CLI
+14. [Testing](#14-testing) — ValidatorTest, ScriptContextTestBuilder, JulcEval
+15. [Deploying](#15-deploying) — cardano-client-lib integration
+16. [Compiler Limitations](#16-compiler-limitations) — what Java features are not supported
+
 ---
 
 ## 1. Prerequisites
@@ -44,7 +63,7 @@ group = 'com.example'
 version = '1.0-SNAPSHOT'
 
 ext {
-    julcVersion = '0.1.0-e0f314e-SNAPSHOT'
+    julcVersion = '0.1.0-pre7'
     cardanoClientLibVersion = '0.7.1'
 }
 
@@ -460,7 +479,7 @@ record AssetId(byte[] hash) {}
 AssetId id = AssetId.of(someBytes);
 ```
 
-`@NewType` is `@Retention(SOURCE)`, `@Target(TYPE)`. The single field must be one
+`@NewType` is `@Retention(RUNTIME)`, `@Target(TYPE)`. The single field must be one
 of the supported primitive types:
 
 - `byte[]` (compiles to `ByteStringType`)
@@ -776,9 +795,6 @@ BigInteger result = switch (action) {
 
 The compiler checks exhaustiveness: if you omit a case, you get a compile error
 listing the missing variants.
-
-**Known limitation**: The `default ->` branch body is never compiled. Use explicit
-cases for all variants instead.
 
 ### 8.3 instanceof Pattern Matching
 

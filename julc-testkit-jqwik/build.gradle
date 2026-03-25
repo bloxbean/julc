@@ -1,0 +1,16 @@
+plugins {
+    id 'java-library'
+}
+
+description = 'jqwik property-based testing support for JuLC validators'
+
+dependencies {
+    api project(':julc-testkit')
+    api project(':julc-core')
+    api project(':julc-ledger-api')
+    api "net.jqwik:jqwik-api:${jqwikVersion}"
+
+    testImplementation "net.jqwik:jqwik:${jqwikVersion}"
+    testImplementation project(':julc-vm-scalus')
+    testImplementation project(':julc-compiler')
+}

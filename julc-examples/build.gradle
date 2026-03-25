@@ -10,6 +10,8 @@ dependencies {
     implementation project(':julc-ledger-api')
     implementation project(':julc-stdlib')
     testImplementation project(':julc-testkit')
+    testImplementation project(':julc-testkit-jqwik')
     testImplementation project(':julc-vm')
+    testImplementation "net.jqwik:jqwik:${jqwikVersion}"
     testRuntimeOnly project(':julc-vm-scalus')
 }
