@@ -546,6 +546,15 @@ On-chain, `.of()` is identity (the bytes pass through). Off-chain, it delegates 
 the record constructor with validation (e.g., `PubKeyHash` checks for exactly 28
 bytes).
 
+For casting `PlutusData` to typed records (e.g., datums, redeemers), use `PlutusData.cast()`:
+
+```java
+// Cast raw PlutusData to your datum type
+MyDatum datum = PlutusData.cast(rawDatumData, MyDatum.class);
+```
+
+See the [Advanced Guide](advanced-guide.md#plutusdatacast--clean-type-casting) for full details.
+
 ---
 
 ## 6. Collections

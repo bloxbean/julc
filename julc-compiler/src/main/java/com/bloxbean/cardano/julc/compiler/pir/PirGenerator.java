@@ -807,6 +807,33 @@ public class PirGenerator {
                 }
             }
 
+            // PlutusData.cast(data, TargetType.class) → identity (same as double-cast)
+            if (scopeExpr instanceof NameExpr ne
+                    && ne.getNameAsString().equals("PlutusData")
+                    && methodName.equals("cast") && args.size() == 2) {
+                if (!(args.get(1) instanceof ClassExpr)) {
+                    return collectError(
+                        "PlutusData.cast() second argument must be a literal ClassName.class expression",
+                        "Use PlutusData.cast(data, MyType.class) — a variable holding a Class<?> is not supported on-chain.",
+                        mce);
+                }
+                var classExpr = (ClassExpr) args.get(1);
+                options.logf("Resolved PlutusData.cast: %s", classExpr.getType());
+                var inner = generateExpression(args.get(0));
+                // MapType needs UnMapData (same logic as CastExpr at line 652)
+                try {
+                    var castTargetType = typeResolver.resolve(classExpr.getType());
+                    if (castTargetType instanceof PirType.MapType) {
+                        var innerType = inferPirType(inner);
+                        if (!(innerType instanceof PirType.MapType)) {
+                            return new PirTerm.App(
+                                new PirTerm.Builtin(DefaultFun.UnMapData), inner);
+                        }
+                    }
+                } catch (CompilerException _) { }
+                return inner;
+            }
+
             // Check if scope is a class name for static stdlib call (e.g., ContextsLib.signedBy)
             if (scopeExpr instanceof NameExpr ne && stdlibLookup != null) {
                 var className = ne.getNameAsString();
@@ -1107,6 +1134,21 @@ public class PirGenerator {
         if (scopeExpr instanceof NameExpr ne
                 && methodName.equals("fromPlutusData") && mce.getArguments().size() == 1) {
             var resolvedClassName = typeResolver.resolveClassName(ne.getNameAsString());
+            var targetType = typeResolver.resolveNameToType(resolvedClassName);
+            if (targetType.isPresent()) return targetType.get();
+        }
+
+        // PlutusData.cast(data, TargetType.class) → resolve type from ClassExpr
+        if (scopeExpr instanceof NameExpr ne
+                && ne.getNameAsString().equals("PlutusData")
+                && methodName.equals("cast") && mce.getArguments().size() == 2
+                && mce.getArguments().get(1) instanceof ClassExpr classExpr) {
+            try {
+                var castType = typeResolver.resolve(classExpr.getType());
+                if (!(castType instanceof PirType.DataType)) return castType;
+            } catch (IllegalArgumentException | CompilerException _) { }
+            var typeName = classExpr.getType().asString();
+            var resolvedClassName = typeResolver.resolveClassName(typeName);
             var targetType = typeResolver.resolveNameToType(resolvedClassName);
             if (targetType.isPresent()) return targetType.get();
         }

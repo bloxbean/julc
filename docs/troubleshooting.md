@@ -1292,11 +1292,14 @@ If you omit both a `default` branch and an explicit case, the compiler emits an 
 // WRONG: double unwrap
 byte[] h = pk.hash().hash();
 
-// CORRECT: cast to extract bytes
-byte[] h = (byte[])(Object) pk.hash();
+// CORRECT: PlutusData.cast() (recommended)
+byte[] h = PlutusData.cast(pk.hash(), byte[].class);
+
+// CORRECT: double-cast (also works)
+byte[] h2 = (byte[])(Object) pk.hash();
 
 // CORRECT for TxId:
-byte[] txHash = (byte[])(Object) ref.txId();
+byte[] txHash = PlutusData.cast(ref.txId(), byte[].class);
 ```
 
 ---
