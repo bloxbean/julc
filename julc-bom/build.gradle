@@ -19,6 +19,7 @@ dependencies {
         api project(':julc-compiler')
         api project(':julc-stdlib')
         api project(':julc-testkit')
+        api project(':julc-testkit-jqwik')
         api project(':julc-cardano-client-lib')
         api project(':julc-gradle-plugin')
         api project(':julc-annotation-processor')

@@ -43,3 +43,4 @@ bin/
 .DS_Store
 /.claude/
 /.idea/
+.jqwik-database
