@@ -240,7 +240,7 @@ public final class StdlibRegistry implements StdlibLookup {
         fqcns.add(PKG + "Builtins");
         for (String lib : List.of("ContextsLib", "ListsLib", "MapLib", "ValuesLib",
                 "OutputLib", "MathLib", "IntervalLib", "CryptoLib",
-                "ByteStringLib", "BitwiseLib", "AddressLib")) {
+                "ByteStringLib", "BitwiseLib", "AddressLib", "BlsLib", "NativeValueLib")) {
             fqcns.add(LIB + lib);
         }
         return fqcns;
@@ -307,6 +307,20 @@ public final class StdlibRegistry implements StdlibLookup {
             {"complementByteString", DefaultFun.ComplementByteString},
             {"countSetBits",        DefaultFun.CountSetBits},
             {"findFirstSetBit",     DefaultFun.FindFirstSetBit},
+            // BLS12-381 G1 operations (1-arg)
+            {"bls12_381_G1_neg",              DefaultFun.Bls12_381_G1_neg},
+            {"bls12_381_G1_compress",         DefaultFun.Bls12_381_G1_compress},
+            {"bls12_381_G1_uncompress",       DefaultFun.Bls12_381_G1_uncompress},
+            // BLS12-381 G2 operations (1-arg)
+            {"bls12_381_G2_neg",              DefaultFun.Bls12_381_G2_neg},
+            {"bls12_381_G2_compress",         DefaultFun.Bls12_381_G2_compress},
+            {"bls12_381_G2_uncompress",       DefaultFun.Bls12_381_G2_uncompress},
+            // PV11 Array operations (1-arg)
+            {"listToArray",                   DefaultFun.ListToArray},
+            {"lengthOfArray",                 DefaultFun.LengthOfArray},
+            // PV11 MaryEraValue operations (1-arg)
+            {"valueData",                     DefaultFun.ValueData},
+            {"unValueData",                   DefaultFun.UnValueData},
     };
 
     /** 2-arg builtin operations: methodName → Builtin(fun, arg0, arg1) */
@@ -328,6 +342,32 @@ public final class StdlibRegistry implements StdlibLookup {
             {"readBit",             DefaultFun.ReadBit},
             {"shiftByteString",     DefaultFun.ShiftByteString},
             {"rotateByteString",    DefaultFun.RotateByteString},
+            // BLS12-381 G1 operations (2-arg)
+            {"bls12_381_G1_add",              DefaultFun.Bls12_381_G1_add},
+            {"bls12_381_G1_scalarMul",        DefaultFun.Bls12_381_G1_scalarMul},
+            {"bls12_381_G1_equal",            DefaultFun.Bls12_381_G1_equal},
+            {"bls12_381_G1_hashToGroup",      DefaultFun.Bls12_381_G1_hashToGroup},
+            // BLS12-381 G2 operations (2-arg)
+            {"bls12_381_G2_add",              DefaultFun.Bls12_381_G2_add},
+            {"bls12_381_G2_scalarMul",        DefaultFun.Bls12_381_G2_scalarMul},
+            {"bls12_381_G2_equal",            DefaultFun.Bls12_381_G2_equal},
+            {"bls12_381_G2_hashToGroup",      DefaultFun.Bls12_381_G2_hashToGroup},
+            // BLS12-381 Pairing operations (2-arg)
+            {"bls12_381_millerLoop",          DefaultFun.Bls12_381_millerLoop},
+            {"bls12_381_mulMlResult",         DefaultFun.Bls12_381_mulMlResult},
+            {"bls12_381_finalVerify",         DefaultFun.Bls12_381_finalVerify},
+            // BLS12-381 Multi-Scalar Multiplication (2-arg: scalars list, points list)
+            {"bls12_381_G1_multiScalarMul",   DefaultFun.Bls12_381_G1_multiScalarMul},
+            {"bls12_381_G2_multiScalarMul",   DefaultFun.Bls12_381_G2_multiScalarMul},
+            // PV11 List extensions (2-arg)
+            {"dropList",                      DefaultFun.DropList},
+            // PV11 Array operations (2-arg)
+            {"indexArray",                    DefaultFun.IndexArray},
+            {"multiIndexArray",               DefaultFun.MultiIndexArray},
+            // PV11 MaryEraValue operations (2-arg)
+            {"unionValue",                    DefaultFun.UnionValue},
+            {"valueContains",                 DefaultFun.ValueContains},
+            {"scaleValue",                    DefaultFun.ScaleValue},
     };
 
     /** 3-arg builtin operations: methodName → Builtin(fun, arg0, arg1, arg2) */
@@ -345,6 +385,8 @@ public final class StdlibRegistry implements StdlibLookup {
             {"writeBits",           DefaultFun.WriteBits},
             // Math operations
             {"expModInteger",       DefaultFun.ExpModInteger},
+            // PV11 MaryEraValue operations (3-arg)
+            {"lookupCoin",          DefaultFun.LookupCoin},
     };
 
     /**
@@ -426,6 +468,12 @@ public final class StdlibRegistry implements StdlibLookup {
         reg.register(B, "toByteString", args -> {
             requireArgs("Builtins.toByteString", args, 1);
             return args.get(0);
+        });
+
+        // PV11 InsertCoin: 4-arg builtin (special case, not in tables)
+        reg.register(B, "insertCoin", args -> {
+            requireArgs("Builtins.insertCoin", args, 4);
+            return builtinApp4(DefaultFun.InsertCoin, args.get(0), args.get(1), args.get(2), args.get(3));
         });
     }
 
@@ -542,6 +590,12 @@ public final class StdlibRegistry implements StdlibLookup {
             requireArgs("JulcMap.empty", args, 0);
             return builtinApp1(DefaultFun.MkNilPairData, new PirTerm.Const(Constant.unit()));
         });
+
+        // JulcArray.fromList(list) → ListToArray(list) — PV11 only
+        reg.register("JulcArray", "fromList", args -> {
+            requireArgs("JulcArray.fromList", args, 1);
+            return builtinApp1(DefaultFun.ListToArray, args.get(0));
+        });
     }
 
     /**
@@ -609,6 +663,13 @@ public final class StdlibRegistry implements StdlibLookup {
                         new PirTerm.App(new PirTerm.Builtin(fun), a),
                         b),
                 c);
+    }
+
+    private static PirTerm builtinApp4(DefaultFun fun, PirTerm a, PirTerm b, PirTerm c, PirTerm d) {
+        return new PirTerm.App(
+                new PirTerm.App(
+                        new PirTerm.App(
+                                new PirTerm.App(new PirTerm.Builtin(fun), a), b), c), d);
     }
 
     // ---- Value factory methods ----

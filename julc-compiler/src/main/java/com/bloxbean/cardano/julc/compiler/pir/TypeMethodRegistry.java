@@ -77,6 +77,7 @@ public final class TypeMethodRegistry {
         registerMapMethods(reg);
         registerPairMethods(reg);
         registerValueMethods(reg);
+        registerArrayMethods(reg);
         return reg;
     }
 
@@ -497,6 +498,32 @@ public final class TypeMethodRegistry {
                             new PirTerm.App(new PirTerm.App(goVar, scope), args.get(0)));
                 },
                 scopeType -> scopeType);
+
+        // toArray: ListToArray(list) — PV11 only
+        reg.register("ListType", "toArray",
+                (scope, args, scopeType, argTypes) ->
+                        new PirTerm.App(new PirTerm.Builtin(DefaultFun.ListToArray), scope),
+                scopeType -> new PirType.ArrayType(((PirType.ListType) scopeType).elemType()));
+    }
+
+    // --- Array methods (2): length, get ---
+
+    private static void registerArrayMethods(TypeMethodRegistry reg) {
+        // length: LengthOfArray(arr)
+        reg.register("ArrayType", "length",
+                (scope, args, scopeType, argTypes) ->
+                        new PirTerm.App(new PirTerm.Builtin(DefaultFun.LengthOfArray), scope),
+                scopeType -> new PirType.IntegerType());
+
+        // get(index): wrapDecode(IndexArray(arr, index), elemType)
+        reg.register("ArrayType", "get",
+                (scope, args, scopeType, argTypes) -> {
+                    if (args.isEmpty()) throw new CompilerException("arr.get() requires an index argument. Usage: arr.get(0)");
+                    var at = (PirType.ArrayType) scopeType;
+                    var raw = PirHelpers.builtinApp2(DefaultFun.IndexArray, scope, args.get(0));
+                    return PirHelpers.wrapDecode(raw, at.elemType());
+                },
+                scopeType -> ((PirType.ArrayType) scopeType).elemType());
     }
 
     // --- List HOF instance methods (5): map, filter, any, all, find ---

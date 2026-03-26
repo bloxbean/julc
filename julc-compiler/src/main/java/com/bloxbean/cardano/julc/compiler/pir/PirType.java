@@ -20,6 +20,7 @@ public sealed interface PirType {
     record PairType(PirType first, PirType second) implements PirType {}
     record MapType(PirType keyType, PirType valueType) implements PirType {}
     record OptionalType(PirType elemType) implements PirType {}
+    record ArrayType(PirType elemType) implements PirType {}
 
     // Function type
     record FunType(PirType paramType, PirType returnType) implements PirType {}
