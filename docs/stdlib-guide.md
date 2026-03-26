@@ -1,6 +1,6 @@
 # JuLC Standard Library Usage Guide
 
-The JuLC standard library provides 11 on-chain libraries in the `com.bloxbean.cardano.julc.stdlib.lib` package. Each library is annotated with `@OnchainLibrary` and compiled from Java source to UPLC. All methods are `static` and can be called directly from your validator code.
+The JuLC standard library provides 13 on-chain libraries in the `com.bloxbean.cardano.julc.stdlib.lib` package. Each library is annotated with `@OnchainLibrary` and compiled from Java source to UPLC. All methods are `static` and can be called directly from your validator code.
 
 ## Table of Contents
 
@@ -17,6 +17,8 @@ The JuLC standard library provides 11 on-chain libraries in the `com.bloxbean.ca
 - [ByteStringLib -- ByteString Operations](#bytestringlib----bytestring-operations)
 - [BitwiseLib -- Bitwise Operations](#bitwiselib----bitwise-operations)
 - [AddressLib -- Address Operations](#addresslib----address-operations)
+- [BlsLib -- BLS12-381 Curve Operations](#blslib----bls12-381-curve-operations)
+- [NativeValueLib -- Native Value Operations (PV11)](#nativevaluelib----native-value-operations-pv11)
 - [Important Notes and Caveats](#important-notes-and-caveats)
 
 ---
@@ -36,6 +38,8 @@ The JuLC standard library provides 11 on-chain libraries in the `com.bloxbean.ca
 | **ByteStringLib** | `com.bloxbean.cardano.julc.stdlib.lib.ByteStringLib` | ByteString slicing, comparison, encoding, serialization |
 | **BitwiseLib** | `com.bloxbean.cardano.julc.stdlib.lib.BitwiseLib` | Bitwise AND/OR/XOR, shift, rotate, bit read/write |
 | **AddressLib** | `com.bloxbean.cardano.julc.stdlib.lib.AddressLib` | Credential extraction, address type checks |
+| **BlsLib** | `com.bloxbean.cardano.julc.stdlib.lib.BlsLib` | BLS12-381 G1/G2/pairing/MSM operations |
+| **NativeValueLib** *(PV11)* | `com.bloxbean.cardano.julc.stdlib.lib.NativeValueLib` | Native MaryEra Value insert, lookup, union, contains, scale |
 
 ---
 
@@ -1196,6 +1200,90 @@ class DestinationCheckExample {
 
 ---
 
+## BlsLib -- BLS12-381 Curve Operations
+
+`BlsLib` wraps the Plutus V3 BLS12-381 builtins for elliptic curve cryptography. All methods are `static` and available on PV10+.
+
+### Quick Reference
+
+| Method | Description |
+|--------|-------------|
+| `g1Add(a, b)` | Add two G1 elements |
+| `g1Neg(a)` | Negate a G1 element |
+| `g1ScalarMul(scalar, g1)` | Scalar multiplication of G1 |
+| `g1Equal(a, b)` | Check G1 equality |
+| `g1Compress(g1)` | Compress G1 to bytes |
+| `g1Uncompress(compressed)` | Uncompress bytes to G1 |
+| `g1HashToGroup(msg, dst)` | Hash to G1 |
+| `g2Add(a, b)` | Add two G2 elements |
+| `g2Neg(a)` | Negate a G2 element |
+| `g2ScalarMul(scalar, g2)` | Scalar multiplication of G2 |
+| `g2Equal(a, b)` | Check G2 equality |
+| `g2Compress(g2)` | Compress G2 to bytes |
+| `g2Uncompress(compressed)` | Uncompress bytes to G2 |
+| `g2HashToGroup(msg, dst)` | Hash to G2 |
+| `millerLoop(g1, g2)` | Compute Miller loop pairing |
+| `mulMlResult(a, b)` | Multiply two Miller loop results |
+| `finalVerify(a, b)` | Final pairing verification |
+| `g1MultiScalarMul(scalars, points)` | Multi-scalar multiplication on G1 |
+| `g2MultiScalarMul(scalars, points)` | Multi-scalar multiplication on G2 |
+
+### Usage
+
+```java
+import com.bloxbean.cardano.julc.stdlib.lib.BlsLib;
+
+// G1 operations
+var sum = BlsLib.g1Add(pointA, pointB);
+var scaled = BlsLib.g1ScalarMul(scalar, point);
+boolean eq = BlsLib.g1Equal(a, b);
+
+// Pairing
+var ml = BlsLib.millerLoop(g1Point, g2Point);
+boolean valid = BlsLib.finalVerify(ml1, ml2);
+```
+
+> **Off-chain:** BlsLib methods throw `UnsupportedOperationException` — use `JulcEval.forSource()` for UPLC evaluation.
+
+---
+
+## NativeValueLib -- Native Value Operations (PV11)
+
+> **Protocol Version 11+ only.** These operations use native UPLC Value builtins (CIP-153) available from PV11 onwards. They will not work on PV10 networks. For PV10 networks, use `ValuesLib` which operates on Map-encoded PlutusData.
+
+`NativeValueLib` provides efficient native MaryEra Value operations via PV11 builtins.
+
+### Quick Reference
+
+| Method | Description |
+|--------|-------------|
+| `insertCoin(policyId, tokenName, amount, value)` | Insert/update token quantity |
+| `lookupCoin(policyId, tokenName, value)` | Look up token quantity (0 if absent) |
+| `union(a, b)` | Merge two Values by adding quantities |
+| `contains(a, b)` | Check a >= b element-wise |
+| `scale(scalar, value)` | Scale all quantities |
+| `fromData(mapData)` | Convert Map-encoded PlutusData to native Value |
+| `toData(value)` | Convert native Value back to Map encoding |
+
+### Usage
+
+```java
+import com.bloxbean.cardano.julc.stdlib.lib.NativeValueLib;
+
+// Build a Value with tokens
+var value = NativeValueLib.insertCoin(policyId, tokenName, BigInteger.valueOf(100), emptyValue);
+
+// Check if one value contains another
+boolean ok = NativeValueLib.contains(outputValue, requiredValue);
+
+// Merge values
+var total = NativeValueLib.union(valueA, valueB);
+```
+
+> **Off-chain:** NativeValueLib methods throw `UnsupportedOperationException` — use `JulcEval.forSource()` for UPLC evaluation.
+
+---
+
 ## Important Notes and Caveats
 
 ### On-Chain vs Off-Chain
@@ -1317,3 +1405,13 @@ boolean anyLarge = outputs.any(out -> isLarge(out));
 JulcList<TxOut> filtered = outputs.filter(out -> isLarge(out));
 JulcList<PlutusData> mapped = outputs.map(out -> transform(out));
 ```
+
+### PV11 (Protocol Version 11) Features
+
+The following features require protocol version 11 or later and will not work on PV10 networks:
+
+- **NativeValueLib** — Native MaryEra Value operations (CIP-153)
+- **JulcArray\<T\>** — Immutable arrays with O(1) random access (CIP-156)
+- **Builtins.dropList()** — Drop first n elements from a list (CIP-158)
+
+These are experimental APIs that may evolve as PV11 stabilizes. BlsLib and all other existing stdlib libraries work on PV10+.

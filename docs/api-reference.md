@@ -39,6 +39,7 @@ This document covers all supported Java operations in the JuLC compiler, the sta
 | `@NewType` records | Underlying type | Zero-cost alias (identity on-chain) |
 | `PubKeyHash`, `PolicyId`, `TokenName`, `TxId`, `ScriptHash`, `ValidatorHash`, `DatumHash` | ByteString | Ledger hash types |
 | `Value` | Map(Pair) | Named RecordType with instance methods |
+| `JulcArray<T>` *(PV11)* | BuiltinArray | O(1) random access array (CIP-156). PV11+ only |
 
 ### JulcList and JulcMap
 
@@ -48,6 +49,21 @@ This document covers all supported Java operations in the JuLC compiler, the sta
 JulcList<PubKeyHash> signers = txInfo.signatories();  // typed list of PubKeyHash
 JulcMap<Credential, BigInteger> withdrawals = txInfo.withdrawals();
 ```
+
+### JulcArray (PV11)
+
+> **Protocol Version 11+ only.** Arrays use CIP-156 builtins and are not available on PV10 networks.
+
+`JulcArray<T>` is an immutable array interface providing O(1) random access on-chain. Create from a list via `list.toArray()` or `JulcArray.fromList(list)`.
+
+```java
+JulcList<BigInteger> list = ...;
+JulcArray<BigInteger> arr = list.toArray();     // ListToArray builtin
+BigInteger elem = arr.get(0);                    // IndexArray builtin (O(1))
+long len = arr.length();                         // LengthOfArray builtin
+```
+
+Off-chain: backed by `JulcArrayImpl`, wrapping `java.util.List` with O(1) index access.
 
 ### Tuple2 and Tuple3
 
@@ -110,7 +126,7 @@ var items2 = PlutusData.cast(data, JulcList.class);                 // element t
 
 ### Not Supported
 
-`float`, `double`, `char`, arrays (`T[]`), `null`, collections other than `List`/`Map`/`Optional`, generic classes, inheritance (use sealed interfaces instead).
+`float`, `double`, `char`, arrays (`T[]` — use `JulcArray<T>` on PV11+ or `List<T>`), `null`, collections other than `List`/`Map`/`Optional`/`JulcArray`, generic classes, inheritance (use sealed interfaces instead).
 
 ## Operators
 
@@ -645,6 +661,39 @@ Note: `sha2_256`, `sha3_256`, `blake2b_256`, `blake2b_224`, `keccak_256`, and `v
 | `isScriptAddress(addr)` | Address | True if script address |
 | `isPubKeyAddress(addr)` | Address | True if pub key address |
 | `paymentCredential(addr)` | Address | Extract payment credential |
+
+### BlsLib
+
+BLS12-381 elliptic curve operations. Available on PV10+. See [Standard Library Guide](stdlib-guide.md#blslib----bls12-381-curve-operations) for full documentation.
+
+| Method | Args | Description |
+|--------|------|-------------|
+| `g1Add(a, b)` | G1, G1 | Add two G1 elements |
+| `g1Neg(a)` | G1 | Negate a G1 element |
+| `g1ScalarMul(scalar, g1)` | Integer, G1 | Scalar multiplication of G1 |
+| `g1Equal(a, b)` | G1, G1 | Check G1 equality |
+| `g1Compress(g1)` / `g1Uncompress(bs)` | G1 / BS | G1 compression |
+| `g1HashToGroup(msg, dst)` | BS, BS | Hash to G1 |
+| `g2Add`, `g2Neg`, `g2ScalarMul`, `g2Equal`, `g2Compress`, `g2Uncompress`, `g2HashToGroup` | — | G2 equivalents |
+| `millerLoop(g1, g2)` | G1, G2 | Compute Miller loop pairing |
+| `mulMlResult(a, b)` | ML, ML | Multiply two Miller loop results |
+| `finalVerify(a, b)` | ML, ML | Final pairing verification |
+| `g1MultiScalarMul(scalars, points)` | List, List | Multi-scalar multiplication on G1 |
+| `g2MultiScalarMul(scalars, points)` | List, List | Multi-scalar multiplication on G2 |
+
+### NativeValueLib (PV11)
+
+> **Protocol Version 11+ only.** Native MaryEra Value operations via CIP-153 builtins. For PV10 networks, use `ValuesLib`. See [Standard Library Guide](stdlib-guide.md#nativevaluelib----native-value-operations-pv11) for full documentation.
+
+| Method | Args | Description |
+|--------|------|-------------|
+| `insertCoin(policy, token, amount, value)` | BS, BS, Integer, Value | Insert/update token quantity |
+| `lookupCoin(policy, token, value)` | BS, BS, Value | Look up token quantity (0 if absent) |
+| `union(a, b)` | Value, Value | Merge two Values by adding quantities |
+| `contains(a, b)` | Value, Value | Check a >= b element-wise |
+| `scale(scalar, value)` | Integer, Value | Scale all quantities |
+| `fromData(mapData)` | Data | Convert Map-encoded PlutusData to native Value |
+| `toData(value)` | Value | Convert native Value back to Map encoding |
 
 ## Annotations Reference
 
