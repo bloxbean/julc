@@ -3170,17 +3170,35 @@ public class PirGenerator {
         return switch (fun) {
             case AddInteger, SubtractInteger, MultiplyInteger, DivideInteger,
                  QuotientInteger, RemainderInteger, ModInteger,
-                 LengthOfByteString, ByteStringToInteger, UnIData -> new PirType.IntegerType();
+                 LengthOfByteString, ByteStringToInteger, UnIData,
+                 LengthOfArray, LookupCoin -> new PirType.IntegerType();
             case EqualsInteger, LessThanInteger, LessThanEqualsInteger,
                  EqualsByteString, LessThanByteString, LessThanEqualsByteString,
-                 EqualsString, EqualsData, NullList -> new PirType.BoolType();
+                 EqualsString, EqualsData, NullList,
+                 Bls12_381_G1_equal, Bls12_381_G2_equal, Bls12_381_finalVerify,
+                 ValueContains -> new PirType.BoolType();
             case AppendByteString, SliceByteString, ConsByteString,
-                 Sha2_256, Sha3_256, Blake2b_256, EncodeUtf8, UnBData -> new PirType.ByteStringType();
+                 Sha2_256, Sha3_256, Blake2b_256, EncodeUtf8, UnBData,
+                 Bls12_381_G1_compress, Bls12_381_G2_compress,
+                 // BLS G1/G2 element-returning operations (native UPLC BLS constants, treated as opaque bytes)
+                 Bls12_381_G1_add, Bls12_381_G1_neg, Bls12_381_G1_scalarMul,
+                 Bls12_381_G1_hashToGroup, Bls12_381_G1_uncompress,
+                 Bls12_381_G2_add, Bls12_381_G2_neg, Bls12_381_G2_scalarMul,
+                 Bls12_381_G2_hashToGroup, Bls12_381_G2_uncompress,
+                 // Miller loop result-returning operations (also opaque BLS constants)
+                 Bls12_381_millerLoop, Bls12_381_mulMlResult,
+                 // Multi-scalar multiplication results
+                 Bls12_381_G1_multiScalarMul, Bls12_381_G2_multiScalarMul -> new PirType.ByteStringType();
             case AppendString, DecodeUtf8 -> new PirType.StringType();
             // List-returning builtins: these return List(Data) in UPLC
-            case UnListData, TailList, MkCons, MkNilData -> new PirType.ListType(new PirType.DataType());
+            case UnListData, TailList, MkCons, MkNilData,
+                 DropList, MultiIndexArray -> new PirType.ListType(new PirType.DataType());
             // Map-returning builtins: these return List(Pair(Data,Data)) in UPLC
             case UnMapData, MkNilPairData -> new PirType.MapType(new PirType.DataType(), new PirType.DataType());
+            // Array-returning builtins
+            case ListToArray -> new PirType.ArrayType(new PirType.DataType());
+            // IndexArray, InsertCoin, UnionValue, ValueData, UnValueData, ScaleValue intentionally
+            // fall through to DataType — actual types are resolved by TypeMethodRegistry or are opaque.
             default -> new PirType.DataType();
         };
     }

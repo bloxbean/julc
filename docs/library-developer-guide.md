@@ -357,7 +357,7 @@ The following Java features are NOT supported in `@OnchainLibrary` classes:
 - **No `try`/`catch`** -- errors abort execution via `Builtins.error()`.
 - **No `null`** -- Plutus has no null concept.
 - **No object creation** (`new`) -- all data is constructed via `Builtins.*` or `PlutusData` factories.
-- **No arrays or collections** -- lists are Plutus builtin lists manipulated through `Builtins.headList`, `Builtins.tailList`, etc.
+- **No Java arrays or raw collections** -- lists are Plutus builtin lists manipulated through `Builtins.headList`, `Builtins.tailList`, etc. PV11 adds `JulcArray<T>` with `Builtins.listToArray`, `Builtins.indexArray`, `Builtins.lengthOfArray`.
 - **No `return` inside `while` body** -- accumulate into a variable and return after the loop.
 - **No `for` loops with ranges** -- use `while` with a counter variable.
 - **No string operations in library source** -- UPLC Text type cannot be compiled from Java source; use PIR API for `trace`.

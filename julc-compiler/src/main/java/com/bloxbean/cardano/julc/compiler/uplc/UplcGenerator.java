@@ -493,7 +493,8 @@ public class UplcGenerator {
             case FstPair, SndPair, ChooseList -> 2;
             // 1 Force (1 type variable: ∀ a)
             case IfThenElse, ChooseUnit, Trace, ChooseData,
-                 SerialiseData, MkCons, HeadList, TailList, NullList -> 1;
+                 SerialiseData, MkCons, HeadList, TailList, NullList,
+                 DropList, LengthOfArray, ListToArray, IndexArray, MultiIndexArray -> 1;
             // 0 Forces (monomorphic)
             default -> 0;
         };

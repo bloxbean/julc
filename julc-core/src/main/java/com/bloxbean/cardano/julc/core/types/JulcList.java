@@ -74,6 +74,13 @@ public interface JulcList<T> extends Iterable<T> {
     /** Return the first element satisfying the predicate, or null if none. */
     T find(java.util.function.Predicate<T> pred);
 
+    // --- Conversion ---
+
+    /** Convert this list to an immutable array for O(1) access. PV11 only on-chain. */
+    default JulcArray<T> toArray() {
+        return JulcArray.fromList(this);
+    }
+
     // --- Factory methods (off-chain only — on-chain use compiler intrinsics) ---
 
     /** Create an empty list. */

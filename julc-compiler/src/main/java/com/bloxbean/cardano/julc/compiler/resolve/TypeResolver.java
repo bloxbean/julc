@@ -294,6 +294,14 @@ public class TypeResolver {
                 }
                 yield new PirType.ListType(elemType);
             }
+            case "JulcArray" -> {
+                PirType elemType = new PirType.DataType();
+                var arrayArgs = ct.getTypeArguments();
+                if (arrayArgs.isPresent() && !arrayArgs.get().isEmpty()) {
+                    elemType = resolve(arrayArgs.get().get(0));
+                }
+                yield new PirType.ArrayType(elemType);
+            }
             case "Map", "JulcMap" -> {
                 PirType keyType = new PirType.DataType();
                 PirType valType = new PirType.DataType();

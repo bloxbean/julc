@@ -724,6 +724,200 @@ public final class Builtins {
     }
 
     // =========================================================================
+    // BLS12-381 operations
+    // =========================================================================
+    // These stubs are replaced by UPLC BLS12-381 builtins on-chain.
+    // Off-chain (JVM), they throw UnsupportedOperationException — use the
+    // Julc VM for off-chain evaluation of BLS operations.
+
+    // ---- G1 operations ----
+
+    /** Add two BLS12-381 G1 elements. */
+    public static byte[] bls12_381_G1_add(byte[] a, byte[] b) {
+        throw new UnsupportedOperationException("BLS12-381 G1 add: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    /** Negate a BLS12-381 G1 element. */
+    public static byte[] bls12_381_G1_neg(byte[] a) {
+        throw new UnsupportedOperationException("BLS12-381 G1 neg: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    /** Scalar multiplication of a BLS12-381 G1 element. */
+    public static byte[] bls12_381_G1_scalarMul(BigInteger scalar, byte[] g1) {
+        throw new UnsupportedOperationException("BLS12-381 G1 scalarMul: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    /** Check equality of two BLS12-381 G1 elements. */
+    public static boolean bls12_381_G1_equal(byte[] a, byte[] b) {
+        throw new UnsupportedOperationException("BLS12-381 G1 equal: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    /** Compress a BLS12-381 G1 element (uncompressed → 48 bytes compressed). */
+    public static byte[] bls12_381_G1_compress(byte[] g1) {
+        throw new UnsupportedOperationException("BLS12-381 G1 compress: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    /** Uncompress a BLS12-381 G1 element (48 bytes compressed → uncompressed). */
+    public static byte[] bls12_381_G1_uncompress(byte[] compressed) {
+        throw new UnsupportedOperationException("BLS12-381 G1 uncompress: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    /** Hash a message to a BLS12-381 G1 element using the given DST. */
+    public static byte[] bls12_381_G1_hashToGroup(byte[] msg, byte[] dst) {
+        throw new UnsupportedOperationException("BLS12-381 G1 hashToGroup: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    // ---- G2 operations ----
+
+    /** Add two BLS12-381 G2 elements. */
+    public static byte[] bls12_381_G2_add(byte[] a, byte[] b) {
+        throw new UnsupportedOperationException("BLS12-381 G2 add: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    /** Negate a BLS12-381 G2 element. */
+    public static byte[] bls12_381_G2_neg(byte[] a) {
+        throw new UnsupportedOperationException("BLS12-381 G2 neg: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    /** Scalar multiplication of a BLS12-381 G2 element. */
+    public static byte[] bls12_381_G2_scalarMul(BigInteger scalar, byte[] g2) {
+        throw new UnsupportedOperationException("BLS12-381 G2 scalarMul: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    /** Check equality of two BLS12-381 G2 elements. */
+    public static boolean bls12_381_G2_equal(byte[] a, byte[] b) {
+        throw new UnsupportedOperationException("BLS12-381 G2 equal: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    /** Compress a BLS12-381 G2 element (uncompressed → 96 bytes compressed). */
+    public static byte[] bls12_381_G2_compress(byte[] g2) {
+        throw new UnsupportedOperationException("BLS12-381 G2 compress: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    /** Uncompress a BLS12-381 G2 element (96 bytes compressed → uncompressed). */
+    public static byte[] bls12_381_G2_uncompress(byte[] compressed) {
+        throw new UnsupportedOperationException("BLS12-381 G2 uncompress: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    /** Hash a message to a BLS12-381 G2 element using the given DST. */
+    public static byte[] bls12_381_G2_hashToGroup(byte[] msg, byte[] dst) {
+        throw new UnsupportedOperationException("BLS12-381 G2 hashToGroup: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    // ---- Pairing operations ----
+
+    /** Compute a BLS12-381 Miller loop pairing of a G1 and G2 element. */
+    public static byte[] bls12_381_millerLoop(byte[] g1, byte[] g2) {
+        throw new UnsupportedOperationException("BLS12-381 millerLoop: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    /** Multiply two BLS12-381 Miller loop results. */
+    public static byte[] bls12_381_mulMlResult(byte[] a, byte[] b) {
+        throw new UnsupportedOperationException("BLS12-381 mulMlResult: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    /** Final verification of two BLS12-381 Miller loop results. Returns true if the pairing check passes. */
+    public static boolean bls12_381_finalVerify(byte[] a, byte[] b) {
+        throw new UnsupportedOperationException("BLS12-381 finalVerify: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    // ---- Multi-Scalar Multiplication ----
+
+    /** Multi-scalar multiplication on BLS12-381 G1. Takes a list of scalars and a list of G1 elements. */
+    public static byte[] bls12_381_G1_multiScalarMul(PlutusData scalars, PlutusData points) {
+        throw new UnsupportedOperationException("BLS12-381 G1 multiScalarMul: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    /** Multi-scalar multiplication on BLS12-381 G2. Takes a list of scalars and a list of G2 elements. */
+    public static byte[] bls12_381_G2_multiScalarMul(PlutusData scalars, PlutusData points) {
+        throw new UnsupportedOperationException("BLS12-381 G2 multiScalarMul: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    // =========================================================================
+    // PV11 List Extensions (CIP-158)
+    // =========================================================================
+
+    /** Drop the first n elements from a list. PV11 only. */
+    public static PlutusData dropList(long n, PlutusData list) {
+        throw new UnsupportedOperationException("Builtins.dropList: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    // =========================================================================
+    // PV11 Array Operations (CIP-156)
+    // =========================================================================
+
+    /** Convert a list to an immutable array for O(1) random access. PV11 only. */
+    public static PlutusData listToArray(PlutusData list) {
+        throw new UnsupportedOperationException("Builtins.listToArray: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    /** Return the number of elements in an array. PV11 only. */
+    public static long lengthOfArray(PlutusData array) {
+        throw new UnsupportedOperationException("Builtins.lengthOfArray: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    /** Get the element at the given 0-based index. PV11 only. */
+    public static PlutusData indexArray(PlutusData array, long index) {
+        throw new UnsupportedOperationException("Builtins.indexArray: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    /** Get multiple elements at the given indices. PV11 only. */
+    public static PlutusData multiIndexArray(PlutusData array, PlutusData indices) {
+        throw new UnsupportedOperationException("Builtins.multiIndexArray: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    // =========================================================================
+    // PV11 MaryEraValue Operations (CIP-153)
+    // =========================================================================
+
+    /**
+     * Insert or update a token quantity in a native Value. PV11 only.
+     *
+     * @apiNote On-chain, the UPLC builtin accepts arbitrary-precision integers. The {@code long}
+     *          parameter here covers the practical range for token quantities but will truncate
+     *          values outside {@code Long.MIN_VALUE..Long.MAX_VALUE}.
+     */
+    public static PlutusData insertCoin(byte[] policyId, byte[] tokenName, long amount, PlutusData value) {
+        throw new UnsupportedOperationException("Builtins.insertCoin: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    /**
+     * Look up a token quantity in a native Value. Returns 0 if absent. PV11 only.
+     *
+     * @apiNote On-chain, the UPLC builtin returns an arbitrary-precision integer. The {@code long}
+     *          return type here covers the practical range but will truncate values outside
+     *          {@code Long.MIN_VALUE..Long.MAX_VALUE}.
+     */
+    public static long lookupCoin(byte[] policyId, byte[] tokenName, PlutusData value) {
+        throw new UnsupportedOperationException("Builtins.lookupCoin: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    /** Merge two native Values by adding quantities. PV11 only. */
+    public static PlutusData unionValue(PlutusData a, PlutusData b) {
+        throw new UnsupportedOperationException("Builtins.unionValue: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    /** Check if native Value a contains at least Value b (a >= b element-wise). PV11 only. */
+    public static boolean valueContains(PlutusData a, PlutusData b) {
+        throw new UnsupportedOperationException("Builtins.valueContains: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    /** Convert a native Value to its Data encoding. PV11 only. */
+    public static PlutusData valueData(PlutusData value) {
+        throw new UnsupportedOperationException("Builtins.valueData: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    /** Convert Data-encoded value to native Value. PV11 only. */
+    public static PlutusData unValueData(PlutusData data) {
+        throw new UnsupportedOperationException("Builtins.unValueData: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    /** Scale all quantities in a native Value by a scalar. PV11 only. */
+    public static PlutusData scaleValue(long scalar, PlutusData value) {
+        throw new UnsupportedOperationException("Builtins.scaleValue: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    // =========================================================================
     // Object-accepting overloads for IDE + off-chain compatibility
     // =========================================================================
     // On-chain types (ScriptInfo, TxInfo, etc.) don't extend PlutusData in
