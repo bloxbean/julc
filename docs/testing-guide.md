@@ -45,14 +45,14 @@ Add these test dependencies to your `build.gradle`:
 ```groovy
 dependencies {
     // Core compilation + ledger types
-    implementation 'com.bloxbean.cardano:julc-core:0.1.0-pre7'
-    implementation 'com.bloxbean.cardano:julc-compiler:0.1.0-pre7'
-    implementation 'com.bloxbean.cardano:julc-ledger-api:0.1.0-pre7'
-    implementation 'com.bloxbean.cardano:julc-stdlib:0.1.0-pre7'
+    implementation 'com.bloxbean.cardano:julc-core:0.1.0-pre9'
+    implementation 'com.bloxbean.cardano:julc-compiler:0.1.0-pre9'
+    implementation 'com.bloxbean.cardano:julc-ledger-api:0.1.0-pre9'
+    implementation 'com.bloxbean.cardano:julc-stdlib:0.1.0-pre9'
 
     // Test framework
-    testImplementation 'com.bloxbean.cardano:julc-testkit:0.1.0-pre7'
-    testRuntimeOnly    'com.bloxbean.cardano:julc-vm-scalus:0.1.0-pre7'
+    testImplementation 'com.bloxbean.cardano:julc-testkit:0.1.0-pre9'
+    testRuntimeOnly    'com.bloxbean.cardano:julc-vm-scalus:0.1.0-pre9'
 }
 ```
 
@@ -60,7 +60,7 @@ To add property-based testing with jqwik:
 
 ```groovy
 dependencies {
-    testImplementation 'com.bloxbean.cardano:julc-testkit-jqwik:0.1.0-pre7'
+    testImplementation 'com.bloxbean.cardano:julc-testkit-jqwik:0.1.0-pre9'
     testImplementation 'net.jqwik:jqwik:1.9.2'
 }
 ```
@@ -85,13 +85,13 @@ test {
 <dependency>
     <groupId>com.bloxbean.cardano</groupId>
     <artifactId>julc-testkit</artifactId>
-    <version>0.1.0-pre7</version>
+    <version>0.1.0-pre9</version>
     <scope>test</scope>
 </dependency>
 <dependency>
     <groupId>com.bloxbean.cardano</groupId>
     <artifactId>julc-vm-scalus</artifactId>
-    <version>0.1.0-pre7</version>
+    <version>0.1.0-pre9</version>
     <scope>test</scope>
 </dependency>
 
@@ -99,7 +99,7 @@ test {
 <dependency>
     <groupId>com.bloxbean.cardano</groupId>
     <artifactId>julc-testkit-jqwik</artifactId>
-    <version>0.1.0-pre7</version>
+    <version>0.1.0-pre9</version>
     <scope>test</scope>
 </dependency>
 <dependency>
@@ -660,7 +660,7 @@ says "for ALL valid inputs, this invariant holds":
 Add `julc-testkit-jqwik` and `jqwik` to your test dependencies:
 
 ```groovy
-testImplementation 'com.bloxbean.cardano:julc-testkit-jqwik:0.1.0-pre7'
+testImplementation 'com.bloxbean.cardano:julc-testkit-jqwik:0.1.0-pre9'
 testImplementation 'net.jqwik:jqwik:1.9.2'
 ```
 
@@ -1386,8 +1386,8 @@ class StdlibDirectTests {
 
 ```groovy
 dependencies {
-    testImplementation 'com.bloxbean.cardano:julc-testkit:0.1.0-pre7'
-    testRuntimeOnly    'com.bloxbean.cardano:julc-vm-scalus:0.1.0-pre7'
+    testImplementation 'com.bloxbean.cardano:julc-testkit:0.1.0-pre9'
+    testRuntimeOnly    'com.bloxbean.cardano:julc-vm-scalus:0.1.0-pre9'
 }
 
 test { useJUnitPlatform() }
@@ -1397,10 +1397,10 @@ test { useJUnitPlatform() }
 
 ```groovy
 dependencies {
-    testImplementation 'com.bloxbean.cardano:julc-testkit:0.1.0-pre7'
-    testImplementation 'com.bloxbean.cardano:julc-testkit-jqwik:0.1.0-pre7'
+    testImplementation 'com.bloxbean.cardano:julc-testkit:0.1.0-pre9'
+    testImplementation 'com.bloxbean.cardano:julc-testkit-jqwik:0.1.0-pre9'
     testImplementation 'net.jqwik:jqwik:1.9.2'
-    testRuntimeOnly    'com.bloxbean.cardano:julc-vm-scalus:0.1.0-pre7'
+    testRuntimeOnly    'com.bloxbean.cardano:julc-vm-scalus:0.1.0-pre9'
 }
 
 test { useJUnitPlatform() }

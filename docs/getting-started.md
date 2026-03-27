@@ -63,7 +63,7 @@ group = 'com.example'
 version = '1.0-SNAPSHOT'
 
 ext {
-    julcVersion = '0.1.0-pre7'
+    julcVersion = '0.1.0-pre9'
     cardanoClientLibVersion = '0.7.1'
 }
 
