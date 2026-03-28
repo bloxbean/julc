@@ -269,19 +269,27 @@ sealed interface Shape {
 
 ```
 com.bloxbean.cardano.julc.compiler/
-├── JulcCompiler.java          # Main pipeline orchestrator
+├── JulcCompiler.java          # Main pipeline orchestrator 
+├── LibraryCompiler.java       # Library compilation sub-pipeline 
 ├── CompileResult.java         # Compilation result record
 ├── CompilerException.java     # Fatal compiler error
+├── CompilerOptions.java       # Compilation options
 ├── LibrarySourceResolver.java # Classpath scanning + transitive resolution
-├── annotation/                # Annotation handling utilities
-├── codegen/                   # ValidatorWrapper (ScriptContext decoding)
+├── codegen/                   # ValidatorWrapper, DataCodecGenerator
 ├── desugar/                   # LoopDesugarer, PatternMatchDesugarer
-├── error/                     # CompilerDiagnostic
-├── parse/                     # JavaParser utilities
-├── pir/                       # PIR generation (PirGenerator, PirTerm, PirType, PirHelpers,
-│                              #   TypeMethodRegistry, StdlibLookup, CompositeStdlibLookup)
+├── error/                     # CompilerDiagnostic, DiagnosticCollector
+├── pir/                       # PIR generation subsystem 
+│   ├── PirGenerator.java      #   Core PIR generation 
+│   ├── LoopBodyGenerator.java #   Loop body compilation 
+│   ├── AccumulatorTypeAnalyzer.java # Accumulator type analysis 
+│   ├── TypeInferenceHelper.java #   Read-only type inference 
+│   ├── TypeMethodRegistry.java #   Instance method dispatch 
+│   ├── PirHelpers.java        #   wrapDecode/wrapEncode + utilities 
+│   ├── PirHofBuilders.java    #   HOF PIR builders 
+│   ├── PirTerm.java, PirType.java # PIR AST + type system
+│   └── StdlibLookup.java, CompositeStdlibLookup.java # Stdlib resolution
 ├── resolve/                   # TypeResolver, TypeRegistrar, SymbolTable,
-│                              #   LedgerTypeRegistry, LibraryMethodRegistry
+│                              #   LedgerSourceLoader, LibraryMethodRegistry
 ├── uplc/                      # UplcGenerator, UplcOptimizer
 └── validate/                  # SubsetValidator
 ```
@@ -532,6 +540,14 @@ This is the heart of the compiler. `PirGenerator` transforms JavaParser AST node
 
 ### 8.1 PirGenerator Architecture
 
+After the ADR-018 refactoring, PirGenerator (2,147 lines) delegates to three extracted helper classes:
+
+- **`AccumulatorTypeAnalyzer`** — Pure AST analysis: detects accumulator variables in loops, refines types (e.g., distinguishing `ListType` vs `MapType` accumulators based on pair operation evidence)
+- **`TypeInferenceHelper`** — Read-only type inference: `resolveExpressionType()`, `inferPirType()`, `inferBuiltinReturnType()`, etc. Takes read-only dependencies (SymbolTable, TypeResolver, StdlibLookup, TypeMethodRegistry)
+- **`LoopBodyGenerator`** — Loop body compilation: 9 body-processing methods across 5 loop paths (single/multi accumulator × break/no-break), plus pack/unpack helpers and nested loop handling
+
+All three are package-private, final classes in the `pir/` package.
+
 **Constructor dependencies:**
 
 ```java
@@ -550,7 +566,12 @@ PirGenerator(TypeResolver typeResolver,
    - Compiles the method body via `generateBlock()`
    - Wraps result in nested lambdas: `\p1 -> \p2 -> ... -> body`
 
-2. **`generateExpression(Expression)`** — Compiles any expression node to a PIR term. Dispatches by expression type to specialized handlers.
+2. **`generateExpression(Expression)`** (public) — Compiles any expression node to a PIR term. Dispatches by expression type to specialized handlers.
+
+**Callback surface for LoopBodyGenerator:**
+
+LoopBodyGenerator calls back to PirGenerator via 7 methods (1 already public, 6 widened to package-private):
+- `generateExpression()` (public), `generateStatement()`, `generateWhileStmt()`, `generateForEachStmt()`, `inferType()`, `enrichedError()` (static), `detectForEachAccumulators()`
 
 **Error collection:**
 - Non-fatal: `collectError(msg, suggestion, node)` → adds `CompilerDiagnostic`, returns `PirTerm.Error`
@@ -784,7 +805,7 @@ LetRec([loop__while__0 = \n ->
 ], loop__while__0(x))
 ```
 
-**Accumulator type refinement** (`refineAccumulatorTypes()`): The compiler distinguishes `ListType` vs `MapType` accumulators by looking for evidence:
+**Accumulator type refinement** (`AccumulatorTypeAnalyzer.refineAccumulatorTypes()`): The compiler distinguishes `ListType` vs `MapType` accumulators by looking for evidence (this logic was extracted from PirGenerator into `AccumulatorTypeAnalyzer` as part of ADR-018):
 
 | Evidence | Inferred Type |
 |----------|---------------|
@@ -1032,7 +1053,7 @@ Case(Constr(tag, [a, b]), [br0, br1, br2]) → Apply(Apply(br_tag, a), b)
 
 ### Multi-Pass Retry Strategy
 
-Library methods may depend on each other across compilation units. `JulcCompiler` uses a multi-pass strategy:
+Library methods may depend on each other across compilation units. Library compilation was extracted into `LibraryCompiler.java` (138 lines) as part of ADR-018. `JulcCompiler` delegates via `new LibraryCompiler(options).compile(...)`. The strategy is multi-pass:
 
 ```
 1. Create progressive LibraryMethodRegistry (starts empty)
@@ -1940,6 +1961,15 @@ void testFeature() {
 | ADR-007 | Convert Legacy PIR to Java Source | Accepted |
 | ADR-008 | Rename to JuLC | Proposed |
 | ADR-009 | CIP-113 Compiler Fixes | Completed |
+| ADR-010 | Beta Release Review | — |
+| ADR-011 | Post-Review Fixes | — |
+| ADR-012 | Compiler Core Simplification | Completed |
+| ADR-013 | Beta Release Readiness Review | — |
+| ADR-014 | Release Readiness Review | — |
+| ADR-015 | CompileMethod Param Support | — |
+| ADR-016 | Feature Roadmap Prioritization | — |
+| ADR-017 | 1.0 Release Readiness Assessment | — |
+| ADR-018 | PirGenerator Refactoring | Completed |
 
 ADR files are in the `adr/` directory at the project root.
 
@@ -1977,31 +2007,44 @@ ADR files are in the `adr/` directory at the project root.
 
 ## 30. Quick Reference: File Index
 
-| File | Role |
-|------|------|
-| `julc-compiler/.../JulcCompiler.java` | Main pipeline orchestrator — 24-phase compilation |
-| `julc-compiler/.../CompileResult.java` | Compilation result (program + diagnostics + params) |
-| `julc-compiler/.../CompilerException.java` | Fatal compiler error |
-| `julc-compiler/.../LibrarySourceResolver.java` | Classpath scanning + transitive BFS library resolution |
-| `julc-compiler/.../codegen/ValidatorWrapper.java` | ScriptContext decoding + bool→unit/error wrapping |
-| `julc-compiler/.../desugar/LoopDesugarer.java` | For-each/while → LetRec transformation |
-| `julc-compiler/.../desugar/PatternMatchDesugarer.java` | Switch/instanceof → DataMatch transformation |
-| `julc-compiler/.../error/CompilerDiagnostic.java` | Diagnostic record (level, message, location, suggestion) |
-| `julc-compiler/.../pir/CompositeStdlibLookup.java` | Chains multiple StdlibLookup instances (first match wins) |
-| `julc-compiler/.../pir/PirGenerator.java` | Java AST → PIR (largest file, ~2400 lines) |
-| `julc-compiler/.../pir/PirHelpers.java` | wrapDecode/wrapEncode + list length/contains/foldl |
-| `julc-compiler/.../pir/PirTerm.java` | PIR term AST (12 variants) |
-| `julc-compiler/.../pir/PirType.java` | PIR type system (13 variants) |
-| `julc-compiler/.../pir/StdlibLookup.java` | Functional interface for stdlib method resolution |
-| `julc-compiler/.../pir/TypeMethodRegistry.java` | Instance method dispatch (~50 methods across 11 types) |
-| `julc-compiler/.../resolve/LedgerTypeRegistry.java` | 4-tier Cardano ledger type pre-registration |
-| `julc-compiler/.../resolve/LibraryMethodRegistry.java` | Compiled library method storage + typed coercion |
-| `julc-compiler/.../resolve/SymbolTable.java` | Scope stack for variable/method management |
-| `julc-compiler/.../resolve/TypeRegistrar.java` | Topological type registration (Kahn's algorithm) |
-| `julc-compiler/.../resolve/TypeResolver.java` | Java → PIR type mapping |
-| `julc-compiler/.../uplc/UplcGenerator.java` | PIR → UPLC lowering (Let→Apply, LetRec→Z-combinator) |
-| `julc-compiler/.../uplc/UplcOptimizer.java` | 6-pass UPLC optimizer with fixpoint iteration |
-| `julc-compiler/.../validate/SubsetValidator.java` | Java subset enforcement |
-| `julc-core/.../DefaultFun.java` | 102 Plutus builtin functions with FLAT codes |
-| `julc-core/.../Term.java` | UPLC term AST (10 variants) |
-| `julc-stdlib/.../StdlibRegistry.java` | PIR term builders for ~65 stdlib methods |
+| File | Lines | Role |
+|------|-------|------|
+| `julc-compiler/.../JulcCompiler.java` | 1,221 | Main pipeline orchestrator — 24-phase compilation |
+| `julc-compiler/.../LibraryCompiler.java` | 138 | Library compilation sub-pipeline (extracted from JulcCompiler, ADR-018) |
+| `julc-compiler/.../CompileResult.java` | — | Compilation result (program + diagnostics + params) |
+| `julc-compiler/.../CompilerException.java` | — | Fatal compiler error |
+| `julc-compiler/.../CompilerOptions.java` | — | Compilation options |
+| `julc-compiler/.../LibrarySourceResolver.java` | — | Classpath scanning + transitive BFS library resolution |
+| `julc-compiler/.../codegen/ValidatorWrapper.java` | — | ScriptContext decoding + bool→unit/error wrapping |
+| `julc-compiler/.../codegen/DataCodecGenerator.java` | — | Data codec generation |
+| `julc-compiler/.../desugar/LoopDesugarer.java` | — | For-each/while → LetRec transformation |
+| `julc-compiler/.../desugar/PatternMatchDesugarer.java` | — | Switch/instanceof → DataMatch transformation |
+| `julc-compiler/.../error/CompilerDiagnostic.java` | — | Diagnostic record (level, message, location, suggestion) |
+| `julc-compiler/.../error/DiagnosticCollector.java` | — | Structured error collection with source location |
+| `julc-compiler/.../pir/PirGenerator.java` | 2,147 | Java AST → PIR — core expression/statement compilation |
+| `julc-compiler/.../pir/LoopBodyGenerator.java` | 531 | Loop body compilation — 5 paths × break/no-break (extracted, ADR-018) |
+| `julc-compiler/.../pir/AccumulatorTypeAnalyzer.java` | 432 | Accumulator type analysis — pair list detection heuristics (extracted, ADR-018) |
+| `julc-compiler/.../pir/TypeInferenceHelper.java` | 282 | Read-only type inference — resolveExpressionType, inferPirType (extracted, ADR-018) |
+| `julc-compiler/.../pir/TypeMethodRegistry.java` | 905 | Instance method dispatch (~50 methods across 11 types) |
+| `julc-compiler/.../pir/PirHelpers.java` | 356 | wrapDecode/wrapEncode + list length/contains/foldl + blockStmts |
+| `julc-compiler/.../pir/PirHofBuilders.java` | 244 | HOF PIR builders (map, filter, any, all, find, foldl, zip) |
+| `julc-compiler/.../pir/CompositeStdlibLookup.java` | — | Chains multiple StdlibLookup instances (first match wins) |
+| `julc-compiler/.../pir/PirTerm.java` | — | PIR term AST (12 variants) |
+| `julc-compiler/.../pir/PirType.java` | — | PIR type system (13 variants) |
+| `julc-compiler/.../pir/StdlibLookup.java` | — | Functional interface for stdlib method resolution |
+| `julc-compiler/.../pir/PirFormatter.java` | — | PIR pretty-printing |
+| `julc-compiler/.../pir/PirSubstitution.java` | — | PIR variable substitution |
+| `julc-compiler/.../resolve/TypeResolver.java` | — | Java → PIR type mapping |
+| `julc-compiler/.../resolve/TypeRegistrar.java` | — | Topological type registration (Kahn's algorithm) |
+| `julc-compiler/.../resolve/SymbolTable.java` | — | Scope stack for variable/method management |
+| `julc-compiler/.../resolve/LedgerSourceLoader.java` | — | Dynamic ledger type loading from META-INF |
+| `julc-compiler/.../resolve/LibraryMethodRegistry.java` | — | Compiled library method storage + typed coercion |
+| `julc-compiler/.../resolve/ImportResolver.java` | — | Import resolution |
+| `julc-compiler/.../uplc/UplcGenerator.java` | — | PIR → UPLC lowering (Let→Apply, LetRec→Z-combinator) |
+| `julc-compiler/.../uplc/UplcOptimizer.java` | — | 6-pass UPLC optimizer with fixpoint iteration |
+| `julc-compiler/.../validate/SubsetValidator.java` | — | Java subset enforcement |
+| `julc-compiler/.../util/MethodDependencyResolver.java` | — | Method dependency graph construction |
+| `julc-compiler/.../util/StringUtils.java` | — | String utilities (Levenshtein distance, etc.) |
+| `julc-core/.../DefaultFun.java` | — | 102 Plutus builtin functions with FLAT codes |
+| `julc-core/.../Term.java` | — | UPLC term AST (10 variants) |
+| `julc-stdlib/.../StdlibRegistry.java` | — | PIR term builders for ~65 stdlib methods |

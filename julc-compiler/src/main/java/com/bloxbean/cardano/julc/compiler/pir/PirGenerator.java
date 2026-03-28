@@ -32,6 +32,8 @@ public class PirGenerator {
     private final SymbolTable symbolTable;
     private final StdlibLookup stdlibLookup;
     private final TypeMethodRegistry typeMethodRegistry;
+    private final TypeInferenceHelper typeInference;
+    private final LoopBodyGenerator loopBody;
     private final String libraryClassName; // non-null when compiling library class methods
     private final CompilerOptions options;
     private final List<CompilerDiagnostic> collectedErrors = new ArrayList<>();
@@ -51,14 +53,6 @@ public class PirGenerator {
      */
     private boolean booleanReturnGuard = false;
     private boolean booleanReturnGuardActive = false; // true when inside a boolean method with guard enabled
-    /**
-     * Execute a body-generation action within a loop body context.
-     * Previously used to reject nested loops; now a simple pass-through since nested loops are supported.
-     */
-    private <T> T withLoopBodyFlag(java.util.function.Supplier<T> action) {
-        return action.get();
-    }
-
     public PirGenerator(TypeResolver typeResolver, SymbolTable symbolTable) {
         this(typeResolver, symbolTable, null, TypeMethodRegistry.defaultRegistry(), null, new CompilerOptions());
     }
@@ -87,6 +81,8 @@ public class PirGenerator {
         this.typeMethodRegistry = typeMethodRegistry;
         this.libraryClassName = libraryClassName;
         this.options = options != null ? options : new CompilerOptions();
+        this.typeInference = new TypeInferenceHelper(symbolTable, typeResolver, stdlibLookup, typeMethodRegistry);
+        this.loopBody = new LoopBodyGenerator(this, symbolTable);
     }
 
     /**
@@ -229,13 +225,7 @@ public class PirGenerator {
     }
 
     private static LibraryMethodRegistry findLibraryRegistry(StdlibLookup lookup) {
-        if (lookup instanceof LibraryMethodRegistry r) return r;
-        if (lookup instanceof CompositeStdlibLookup composite) {
-            for (var inner : composite.getLookups()) {
-                if (inner instanceof LibraryMethodRegistry r) return r;
-            }
-        }
-        return null;
+        return TypeInferenceHelper.findLibraryRegistry(lookup);
     }
 
     private static boolean isSpecificPrimitiveType(PirType type) {
@@ -522,7 +512,7 @@ public class PirGenerator {
         return new PirTerm.IfThenElse(condTerm, thenTerm, elseTerm);
     }
 
-    private PirTerm generateStatement(Statement stmt) {
+    PirTerm generateStatement(Statement stmt) {
         if (stmt instanceof BlockStmt block) {
             symbolTable.pushScope();
             var result = generateBlock(block);
@@ -787,208 +777,239 @@ public class PirGenerator {
         var methodName = mce.getNameAsString();
         var args = mce.getArguments();
 
-        // Handle scope.method() -> check stdlib first, then field access
         if (mce.getScope().isPresent()) {
             var scopeExpr = mce.getScope().get();
+            PirTerm result;
 
-            // Handle BigInteger.valueOf(n) → integer constant
-            if (scopeExpr instanceof NameExpr ne && ne.getNameAsString().equals("BigInteger")
-                    && methodName.equals("valueOf") && args.size() == 1) {
-                return generateExpression(args.get(0));
-            }
+            // 1. Constant folding: BigInteger.valueOf(n) → integer constant
+            result = tryBigIntegerConstant(mce, scopeExpr, methodName, args);
+            if (result != null) return result;
 
-            // Auto-recognize fromPlutusData() on known Plutus data types as identity (no stdlib needed)
-            if (scopeExpr instanceof NameExpr ne && methodName.equals("fromPlutusData") && args.size() == 1) {
-                var resolvedClassName = typeResolver.resolveClassName(ne.getNameAsString());
-                var targetType = typeResolver.resolveNameToType(resolvedClassName);
-                if (targetType.isPresent()) {
-                    options.logf("Resolved fromPlutusData identity: %s.fromPlutusData", ne.getNameAsString());
-                    return generateExpression(args.get(0));
-                }
-            }
+            // 2. Identity recognition: fromPlutusData() on known types
+            result = tryFromPlutusDataIdentity(mce, scopeExpr, methodName, args);
+            if (result != null) return result;
 
-            // PlutusData.cast(data, TargetType.class) → identity (same as double-cast)
-            if (scopeExpr instanceof NameExpr ne
-                    && ne.getNameAsString().equals("PlutusData")
-                    && methodName.equals("cast") && args.size() == 2) {
-                if (!(args.get(1) instanceof ClassExpr)) {
-                    return collectError(
-                        "PlutusData.cast() second argument must be a literal ClassName.class expression",
-                        "Use PlutusData.cast(data, MyType.class) — a variable holding a Class<?> is not supported on-chain.",
-                        mce);
-                }
-                var classExpr = (ClassExpr) args.get(1);
-                options.logf("Resolved PlutusData.cast: %s", classExpr.getType());
-                var inner = generateExpression(args.get(0));
-                // MapType needs UnMapData (same logic as CastExpr at line 652)
-                try {
-                    var castTargetType = typeResolver.resolve(classExpr.getType());
-                    if (castTargetType instanceof PirType.MapType) {
-                        var innerType = inferPirType(inner);
-                        if (!(innerType instanceof PirType.MapType)) {
-                            return new PirTerm.App(
-                                new PirTerm.Builtin(DefaultFun.UnMapData), inner);
-                        }
-                    }
-                } catch (CompilerException _) { }
-                return inner;
-            }
+            // 3. Cast identity: PlutusData.cast(data, Type.class)
+            result = tryPlutusDataCast(mce, scopeExpr, methodName, args);
+            if (result != null) return result;
 
-            // Check if scope is a class name for static stdlib call (e.g., ContextsLib.signedBy)
-            if (scopeExpr instanceof NameExpr ne && stdlibLookup != null) {
-                var className = ne.getNameAsString();
-                // Resolve to FQCN for library class lookup
-                var resolvedClassName = typeResolver.resolveClassName(className);
-                var compiledArgs = new ArrayList<PirTerm>();
-                var argPirTypes = new ArrayList<PirType>();
+            // 4. Static stdlib/library dispatch
+            result = tryStaticStdlibCall(mce, scopeExpr, methodName, args);
+            if (result != null) return result;
 
-                // For static HOF methods (ListsLib.map/filter/any/all/find), compile list arg first
-                // to infer element type for lambda parameter type inference
-                boolean isStaticHof = (className.equals("ListsLib") || resolvedClassName.endsWith(".ListsLib"))
-                        && STATIC_HOF_METHODS.contains(methodName) && args.size() >= 2;
-
-                if (isStaticHof) {
-                    // Compile list arg (first) to determine element type
-                    var listArg = generateExpression(args.get(0));
-                    compiledArgs.add(listArg);
-                    var listType = resolveExpressionType(args.get(0));
-                    if (listType instanceof PirType.DataType) listType = inferPirType(listArg);
-                    argPirTypes.add(listType);
-
-                    // Compile remaining args with lambda type inference
-                    for (int i = 1; i < args.size(); i++) {
-                        var arg = args.get(i);
-                        PirTerm argPir;
-                        if (arg.isLambdaExpr() && listType instanceof PirType.ListType lt) {
-                            var expectedTypes = inferHofLambdaParamTypes(methodName, lt);
-                            boolean wrapResult = methodName.equals("map");
-                            // foldl lambda has 2 params (acc, elem) — only infer elem type
-                            if (methodName.equals("foldl") && i == 1) {
-                                // foldl's function lambda — don't infer types (2-param)
-                                argPir = generateExpression(arg);
-                            } else {
-                                argPir = generateLambda(arg.asLambdaExpr(), expectedTypes, wrapResult);
-                            }
-                        } else {
-                            argPir = generateExpression(arg);
-                        }
-                        compiledArgs.add(argPir);
-                        var argType = resolveExpressionType(arg);
-                        if (argType instanceof PirType.DataType) argType = inferPirType(argPir);
-                        argPirTypes.add(argType);
-                    }
-                } else {
-                    for (var arg : args) {
-                        var argPir = generateExpression(arg);
-                        compiledArgs.add(argPir);
-                        var argType = resolveExpressionType(arg);
-                        if (argType instanceof PirType.DataType) argType = inferPirType(argPir);
-                        argPirTypes.add(argType);
-                    }
-                }
-
-                var result = stdlibLookup.lookup(resolvedClassName, methodName, compiledArgs, argPirTypes);
-                if (result.isPresent()) {
-                    options.logf("Resolved stdlib: %s.%s", className, methodName);
-                    checkCrossLibraryTypeWarnings(className, methodName, mce, argPirTypes);
-                    return result.get();
-                }
-
-            }
-
-            var scope = generateExpression(scopeExpr);
-
-            // Check if scope is a Data-typed parameter with a known record type for field access
-            if (args.isEmpty() && scopeExpr instanceof NameExpr ne) {
-                var recordField = resolveRecordFieldAccess(ne.getNameAsString(), methodName);
-                if (recordField.isPresent()) {
-                    return recordField.get().apply(scope);
-                }
-            }
-
-            // Handle chained record field access: scope.innerRecord().field()
-            if (args.isEmpty() && scopeExpr instanceof MethodCallExpr innerMce) {
-                var scopeType = resolveMethodCallReturnType(innerMce);
-                if (scopeType instanceof PirType.RecordType rt) {
-                    for (int i = 0; i < rt.fields().size(); i++) {
-                        if (rt.fields().get(i).name().equals(methodName)) {
-                            return generateFieldExtraction(scope, i, rt.fields().get(i).type());
-                        }
-                    }
-                }
-                // Chained .hash() on a ledger hash / @NewType that already resolved to
-                // ByteStringType.  The parent accessor already applied UnBData, so
-                // the .hash() accessor is an identity — skip the TypeMethodRegistry
-                // dispatch which would apply a redundant UnBData.
-                if (scopeType instanceof PirType.ByteStringType
-                        && methodName.equals("hash")) {
-                    return scope;
-                }
-            }
-
-            // Dispatch instance methods via TypeMethodRegistry
-            {
-                var scopeType = resolveExpressionType(scopeExpr);
-                if (scopeType instanceof PirType.DataType) scopeType = inferPirType(scope);
-
-                // Compile args — with lambda type inference for HOF methods on ListType
-                var compiledArgs = new ArrayList<PirTerm>();
-                var argPirTypes = new ArrayList<PirType>();
-                boolean isListHof = scopeType instanceof PirType.ListType && LIST_HOF_METHODS.contains(methodName);
-                for (var arg : args) {
-                    PirTerm argPir;
-                    if (isListHof && arg.isLambdaExpr()) {
-                        var lt = (PirType.ListType) scopeType;
-                        var expectedTypes = inferHofLambdaParamTypes(methodName, lt);
-                        boolean wrapResult = methodName.equals("map");
-                        argPir = generateLambda(arg.asLambdaExpr(), expectedTypes, wrapResult);
-                    } else {
-                        argPir = generateExpression(arg);
-                    }
-                    compiledArgs.add(argPir);
-                    var argType = isListHof && arg.isLambdaExpr()
-                            ? inferPirType(argPir) : resolveExpressionType(arg);
-                    if (argType instanceof PirType.DataType) argType = inferPirType(argPir);
-                    argPirTypes.add(argType);
-                }
-
-                // 3A: Skip .hash() on HOF-unwrapped ByteStringType vars (prevents double UnBData)
-                if (scopeType instanceof PirType.ByteStringType
-                        && methodName.equals("hash") && args.isEmpty()
-                        && scopeExpr instanceof NameExpr ne
-                        && hofUnwrappedVars.contains(ne.getNameAsString())) {
-                    return scope; // Already unwrapped by Let-binding — identity
-                }
-
-                var registryResult = typeMethodRegistry.dispatch(scope, methodName, compiledArgs, scopeType, argPirTypes);
-                if (registryResult.isPresent()) return registryResult.get();
-
-                // Auto-recognize toPlutusData() — encode value as Data
-                if (methodName.equals("toPlutusData") && args.isEmpty()) {
-                    return PirHelpers.wrapEncode(scope, scopeType);
-                }
-
-                // 3B: Handle unregistered no-arg methods on ByteStringType (e.g. TokenName.name(), @NewType fields)
-                if (scopeType instanceof PirType.ByteStringType && args.isEmpty()) {
-                    if (scopeExpr instanceof NameExpr ne
-                            && hofUnwrappedVars.contains(ne.getNameAsString())) {
-                        return scope; // HOF-unwrapped — identity
-                    }
-                    // Chained accessor: parent MethodCallExpr already produced a raw
-                    // bytestring (via field extraction / wrapDecode), so another
-                    // UnBData would be a double-unwrap.
-                    if (scopeExpr instanceof MethodCallExpr) {
-                        return scope;
-                    }
-                    // Standard field extraction: UnBData (same semantics as .hash() for non-HOF context)
-                    return new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnBData), scope);
-                }
-            }
-
-            return generateFieldAccessFromMethod(scope, methodName, args);
+            // 5-8. Instance dispatch (field access, chained access, registry, fallback)
+            return resolveInstanceMethodCall(mce, scopeExpr, methodName, args);
         }
 
-        // Static method call — try simple name first, then qualified name for library methods
+        // Unqualified method call — local or library static method
+        return resolveUnqualifiedMethodCall(mce, methodName, args);
+    }
+
+    /** BigInteger.valueOf(n) → compile the argument directly as an integer constant. */
+    private PirTerm tryBigIntegerConstant(MethodCallExpr mce, Expression scopeExpr,
+                                           String methodName, com.github.javaparser.ast.NodeList<Expression> args) {
+        if (scopeExpr instanceof NameExpr ne && ne.getNameAsString().equals("BigInteger")
+                && methodName.equals("valueOf") && args.size() == 1) {
+            return generateExpression(args.get(0));
+        }
+        return null;
+    }
+
+    /** Auto-recognize fromPlutusData() on known Plutus data types as identity. */
+    private PirTerm tryFromPlutusDataIdentity(MethodCallExpr mce, Expression scopeExpr,
+                                               String methodName, com.github.javaparser.ast.NodeList<Expression> args) {
+        if (scopeExpr instanceof NameExpr ne && methodName.equals("fromPlutusData") && args.size() == 1) {
+            var resolvedClassName = typeResolver.resolveClassName(ne.getNameAsString());
+            var targetType = typeResolver.resolveNameToType(resolvedClassName);
+            if (targetType.isPresent()) {
+                options.logf("Resolved fromPlutusData identity: %s.fromPlutusData", ne.getNameAsString());
+                return generateExpression(args.get(0));
+            }
+        }
+        return null;
+    }
+
+    /** PlutusData.cast(data, TargetType.class) → identity with optional MapType unwrap. */
+    private PirTerm tryPlutusDataCast(MethodCallExpr mce, Expression scopeExpr,
+                                       String methodName, com.github.javaparser.ast.NodeList<Expression> args) {
+        if (!(scopeExpr instanceof NameExpr ne
+                && ne.getNameAsString().equals("PlutusData")
+                && methodName.equals("cast") && args.size() == 2)) {
+            return null;
+        }
+        if (!(args.get(1) instanceof ClassExpr)) {
+            return collectError(
+                "PlutusData.cast() second argument must be a literal ClassName.class expression",
+                "Use PlutusData.cast(data, MyType.class) — a variable holding a Class<?> is not supported on-chain.",
+                mce);
+        }
+        var classExpr = (ClassExpr) args.get(1);
+        options.logf("Resolved PlutusData.cast: %s", classExpr.getType());
+        var inner = generateExpression(args.get(0));
+        try {
+            var castTargetType = typeResolver.resolve(classExpr.getType());
+            if (castTargetType instanceof PirType.MapType) {
+                var innerType = inferPirType(inner);
+                if (!(innerType instanceof PirType.MapType)) {
+                    return new PirTerm.App(
+                        new PirTerm.Builtin(DefaultFun.UnMapData), inner);
+                }
+            }
+        } catch (CompilerException _) { }
+        return inner;
+    }
+
+    /** Check if scope is a class name for static stdlib/library call (e.g., ContextsLib.signedBy). */
+    private PirTerm tryStaticStdlibCall(MethodCallExpr mce, Expression scopeExpr,
+                                         String methodName, com.github.javaparser.ast.NodeList<Expression> args) {
+        if (!(scopeExpr instanceof NameExpr ne) || stdlibLookup == null) return null;
+
+        var className = ne.getNameAsString();
+        var resolvedClassName = typeResolver.resolveClassName(className);
+        var compiledArgs = new ArrayList<PirTerm>();
+        var argPirTypes = new ArrayList<PirType>();
+
+        boolean isStaticHof = (className.equals("ListsLib") || resolvedClassName.endsWith(".ListsLib"))
+                && STATIC_HOF_METHODS.contains(methodName) && args.size() >= 2;
+
+        if (isStaticHof) {
+            // Compile list arg first to determine element type for lambda type inference
+            var listArg = generateExpression(args.get(0));
+            compiledArgs.add(listArg);
+            var listType = resolveExpressionType(args.get(0));
+            if (listType instanceof PirType.DataType) listType = inferPirType(listArg);
+            argPirTypes.add(listType);
+
+            for (int i = 1; i < args.size(); i++) {
+                var arg = args.get(i);
+                PirTerm argPir;
+                if (arg.isLambdaExpr() && listType instanceof PirType.ListType lt) {
+                    var expectedTypes = inferHofLambdaParamTypes(methodName, lt);
+                    boolean wrapResult = methodName.equals("map");
+                    if (methodName.equals("foldl") && i == 1) {
+                        argPir = generateExpression(arg);
+                    } else {
+                        argPir = generateLambda(arg.asLambdaExpr(), expectedTypes, wrapResult);
+                    }
+                } else {
+                    argPir = generateExpression(arg);
+                }
+                compiledArgs.add(argPir);
+                var argType = resolveExpressionType(arg);
+                if (argType instanceof PirType.DataType) argType = inferPirType(argPir);
+                argPirTypes.add(argType);
+            }
+        } else {
+            for (var arg : args) {
+                var argPir = generateExpression(arg);
+                compiledArgs.add(argPir);
+                var argType = resolveExpressionType(arg);
+                if (argType instanceof PirType.DataType) argType = inferPirType(argPir);
+                argPirTypes.add(argType);
+            }
+        }
+
+        var result = stdlibLookup.lookup(resolvedClassName, methodName, compiledArgs, argPirTypes);
+        if (result.isPresent()) {
+            options.logf("Resolved stdlib: %s.%s", className, methodName);
+            checkCrossLibraryTypeWarnings(className, methodName, mce, argPirTypes);
+            return result.get();
+        }
+        return null;
+    }
+
+    /**
+     * Resolve an instance method call: record field access, chained access,
+     * TypeMethodRegistry dispatch, and ByteStringType fallback.
+     */
+    private PirTerm resolveInstanceMethodCall(MethodCallExpr mce, Expression scopeExpr,
+                                               String methodName, com.github.javaparser.ast.NodeList<Expression> args) {
+        var scope = generateExpression(scopeExpr);
+
+        // Record field access on Data-typed parameter
+        if (args.isEmpty() && scopeExpr instanceof NameExpr ne) {
+            var recordField = resolveRecordFieldAccess(ne.getNameAsString(), methodName);
+            if (recordField.isPresent()) {
+                return recordField.get().apply(scope);
+            }
+        }
+
+        // Chained record field access: scope.innerRecord().field()
+        if (args.isEmpty() && scopeExpr instanceof MethodCallExpr innerMce) {
+            var scopeType = resolveMethodCallReturnType(innerMce);
+            if (scopeType instanceof PirType.RecordType rt) {
+                for (int i = 0; i < rt.fields().size(); i++) {
+                    if (rt.fields().get(i).name().equals(methodName)) {
+                        return generateFieldExtraction(scope, i, rt.fields().get(i).type());
+                    }
+                }
+            }
+            // Chained .hash() on ByteStringType — identity (already UnBData'd by parent)
+            if (scopeType instanceof PirType.ByteStringType && methodName.equals("hash")) {
+                return scope;
+            }
+        }
+
+        // TypeMethodRegistry dispatch
+        {
+            var scopeType = resolveExpressionType(scopeExpr);
+            if (scopeType instanceof PirType.DataType) scopeType = inferPirType(scope);
+
+            var compiledArgs = new ArrayList<PirTerm>();
+            var argPirTypes = new ArrayList<PirType>();
+            boolean isListHof = scopeType instanceof PirType.ListType && LIST_HOF_METHODS.contains(methodName);
+            for (var arg : args) {
+                PirTerm argPir;
+                if (isListHof && arg.isLambdaExpr()) {
+                    var lt = (PirType.ListType) scopeType;
+                    var expectedTypes = inferHofLambdaParamTypes(methodName, lt);
+                    boolean wrapResult = methodName.equals("map");
+                    argPir = generateLambda(arg.asLambdaExpr(), expectedTypes, wrapResult);
+                } else {
+                    argPir = generateExpression(arg);
+                }
+                compiledArgs.add(argPir);
+                var argType = isListHof && arg.isLambdaExpr()
+                        ? inferPirType(argPir) : resolveExpressionType(arg);
+                if (argType instanceof PirType.DataType) argType = inferPirType(argPir);
+                argPirTypes.add(argType);
+            }
+
+            // Skip .hash() on HOF-unwrapped ByteStringType vars (prevents double UnBData)
+            if (scopeType instanceof PirType.ByteStringType
+                    && methodName.equals("hash") && args.isEmpty()
+                    && scopeExpr instanceof NameExpr ne
+                    && hofUnwrappedVars.contains(ne.getNameAsString())) {
+                return scope;
+            }
+
+            var registryResult = typeMethodRegistry.dispatch(scope, methodName, compiledArgs, scopeType, argPirTypes);
+            if (registryResult.isPresent()) return registryResult.get();
+
+            // Auto-recognize toPlutusData() — encode value as Data
+            if (methodName.equals("toPlutusData") && args.isEmpty()) {
+                return PirHelpers.wrapEncode(scope, scopeType);
+            }
+
+            // Handle unregistered no-arg methods on ByteStringType
+            if (scopeType instanceof PirType.ByteStringType && args.isEmpty()) {
+                if (scopeExpr instanceof NameExpr ne
+                        && hofUnwrappedVars.contains(ne.getNameAsString())) {
+                    return scope;
+                }
+                if (scopeExpr instanceof MethodCallExpr) {
+                    return scope;
+                }
+                return new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnBData), scope);
+            }
+        }
+
+        return generateFieldAccessFromMethod(scope, methodName, args);
+    }
+
+    /** Resolve an unqualified method call — local static method or library method. */
+    private PirTerm resolveUnqualifiedMethodCall(MethodCallExpr mce, String methodName,
+                                                  com.github.javaparser.ast.NodeList<Expression> args) {
         var resolvedName = methodName;
         var funType = symbolTable.lookup(methodName);
         if (funType.isEmpty() && libraryClassName != null) {
@@ -1079,161 +1100,16 @@ public class PirGenerator {
         return PirHelpers.wrapDecode(data, targetType);
     }
 
-    /**
-     * Resolve the PirType of a JavaParser expression without generating PIR.
-     * Used for determining if a scope expression is a ListType for method dispatch.
-     */
     private PirType resolveExpressionType(Expression expr) {
-        if (expr instanceof NameExpr ne) {
-            return symbolTable.lookup(ne.getNameAsString()).orElse(new PirType.DataType());
-        }
-        if (expr instanceof MethodCallExpr mce && mce.getScope().isPresent()) {
-            return resolveMethodCallReturnType(mce);
-        }
-        // Handle constructor calls (e.g., new Tuple2<BigInteger, BigInteger>(...))
-        if (expr instanceof ObjectCreationExpr oce) {
-            var resolved = typeResolver.resolve(oce.getType());
-            if (!(resolved instanceof PirType.DataType)) return resolved;
-        }
-        // Handle scopeless method calls (static helper methods)
-        if (expr instanceof MethodCallExpr mce && mce.getScope().isEmpty()) {
-            var methodType = symbolTable.lookup(mce.getNameAsString());
-            if (methodType.isPresent()) {
-                return extractReturnType(methodType.get());
-            }
-        }
-        // Handle literal expressions for type inference
-        if (expr instanceof IntegerLiteralExpr || expr instanceof LongLiteralExpr)
-            return new PirType.IntegerType();
-        if (expr instanceof StringLiteralExpr) return new PirType.StringType();
-        if (expr instanceof BooleanLiteralExpr) return new PirType.BoolType();
-        // Handle cast expressions: (RecordType)(Object) data → resolve the target type
-        // This enables `var sd = (StateDatum)(Object) rawDatum;` to infer RecordType
-        if (expr instanceof CastExpr ce) {
-            try {
-                var castType = typeResolver.resolve(ce.getType());
-                if (!(castType instanceof PirType.DataType)) return castType;
-            } catch (IllegalArgumentException | CompilerException _) {
-                // Unknown target (e.g., Object) — fall through
-            }
-            return resolveExpressionType(ce.getExpression());
-        }
-        return new PirType.DataType();
+        return typeInference.resolveExpressionType(expr);
     }
 
-    /**
-     * Infer the return type of a method call expression (for chained access).
-     * Handles record field access and known list methods.
-     */
     private PirType resolveMethodCallReturnType(MethodCallExpr mce) {
-        var methodName = mce.getNameAsString();
-        if (mce.getScope().isEmpty()) return new PirType.DataType();
-        var scopeExpr = mce.getScope().get();
-
-        // Static fromPlutusData() returns the target type
-        if (scopeExpr instanceof NameExpr ne
-                && methodName.equals("fromPlutusData") && mce.getArguments().size() == 1) {
-            var resolvedClassName = typeResolver.resolveClassName(ne.getNameAsString());
-            var targetType = typeResolver.resolveNameToType(resolvedClassName);
-            if (targetType.isPresent()) return targetType.get();
-        }
-
-        // PlutusData.cast(data, TargetType.class) → resolve type from ClassExpr
-        if (scopeExpr instanceof NameExpr ne
-                && ne.getNameAsString().equals("PlutusData")
-                && methodName.equals("cast") && mce.getArguments().size() == 2
-                && mce.getArguments().get(1) instanceof ClassExpr classExpr) {
-            try {
-                var castType = typeResolver.resolve(classExpr.getType());
-                if (!(castType instanceof PirType.DataType)) return castType;
-            } catch (IllegalArgumentException | CompilerException _) { }
-            var typeName = classExpr.getType().asString();
-            var resolvedClassName = typeResolver.resolveClassName(typeName);
-            var targetType = typeResolver.resolveNameToType(resolvedClassName);
-            if (targetType.isPresent()) return targetType.get();
-        }
-
-        // toPlutusData() always returns DataType
-        if (methodName.equals("toPlutusData") && mce.getArguments().isEmpty()) {
-            return new PirType.DataType();
-        }
-
-        // If scope is a variable with RecordType, return the field type
-        if (scopeExpr instanceof NameExpr ne && mce.getArguments().isEmpty()) {
-            var fieldType = resolveRecordFieldType(ne.getNameAsString(), methodName);
-            if (fieldType.isPresent()) return fieldType.get();
-        }
-
-        // If scope is itself a method call, resolve recursively for chained access
-        if (scopeExpr instanceof MethodCallExpr innerMce && mce.getArguments().isEmpty()) {
-            var innerType = resolveMethodCallReturnType(innerMce);
-            if (innerType instanceof PirType.RecordType rt) {
-                for (var field : rt.fields()) {
-                    if (field.name().equals(methodName)) return field.type();
-                }
-            }
-            // List methods that return a list
-            if (innerType instanceof PirType.ListType && methodName.equals("tail")) {
-                return innerType; // tail returns same list type
-            }
-        }
-
-        // Static library method call (e.g., OutputLib.outputsAt(...)): look up return type from registry
-        if (scopeExpr instanceof NameExpr ne) {
-            var registry = findLibraryRegistry(stdlibLookup);
-            if (registry != null) {
-                var resolvedClassName = typeResolver.resolveClassName(ne.getNameAsString());
-                var qualifiedKey = resolvedClassName + "." + methodName;
-                var libMethod = registry.lookupMethod(qualifiedKey);
-                if (libMethod.isPresent()) {
-                    return extractReturnType(libMethod.get().type());
-                }
-                // Also try simple name lookup (e.g., "OutputLib.outputsAt")
-                var simpleKey = ne.getNameAsString() + "." + methodName;
-                if (!simpleKey.equals(qualifiedKey)) {
-                    libMethod = registry.lookupMethod(simpleKey);
-                    if (libMethod.isPresent()) {
-                        return extractReturnType(libMethod.get().type());
-                    }
-                }
-            }
-        }
-
-        // Delegate to TypeMethodRegistry for return type resolution
-        var scopeType = resolveExpressionType(scopeExpr);
-        var returnType = typeMethodRegistry.resolveReturnType(scopeType, methodName);
-        if (returnType.isPresent()) return returnType.get();
-
-        return new PirType.DataType();
+        return typeInference.resolveMethodCallReturnType(mce);
     }
 
-    /**
-     * Extract the return type from a FunType chain by walking all parameter types.
-     * E.g., FunType(A, FunType(B, C)) -> C
-     */
     private static PirType extractReturnType(PirType type) {
-        while (type instanceof PirType.FunType ft) {
-            type = ft.returnType();
-        }
-        return type;
-    }
-
-    /**
-     * Resolve the PirType of a record field without generating extraction PIR.
-     * Returns the field type if the variable is a RecordType with the named field.
-     */
-    private java.util.Optional<PirType> resolveRecordFieldType(String varName, String fieldName) {
-        var varType = symbolTable.lookup(varName);
-        if (varType.isEmpty()) return java.util.Optional.empty();
-
-        PirType type = varType.get();
-        if (type instanceof PirType.OptionalType opt) type = opt.elemType();
-        if (!(type instanceof PirType.RecordType rt)) return java.util.Optional.empty();
-
-        for (var field : rt.fields()) {
-            if (field.name().equals(fieldName)) return java.util.Optional.of(field.type());
-        }
-        return java.util.Optional.empty();
+        return TypeInferenceHelper.extractReturnType(type);
     }
 
     private PirTerm generateFieldAccessFromMethod(PirTerm scope, String methodName,
@@ -1373,7 +1249,7 @@ public class PirGenerator {
                 oce);
     }
 
-    private PirTerm generateForEachStmt(ForEachStmt fes, List<Statement> followingStmts, int followingIndex) {
+    PirTerm generateForEachStmt(ForEachStmt fes, List<Statement> followingStmts, int followingIndex) {
         if (containsReturn(fes.getBody())) {
             throw enrichedError(
                     "'return' is not supported inside for-each loop body",
@@ -1435,8 +1311,7 @@ public class PirGenerator {
                             forEachAccumulatorVar = accName;
                             breakContinueFn = continueFn;
 
-                            var bodyTerm = withLoopBodyFlag(() ->
-                                    generateBreakAwareBody(fes.getBody(), accName, accType, continueFn));
+                            var bodyTerm = generateBreakAwareBody(fes.getBody(), accName, accType, continueFn);
 
                             forEachAccumulatorVar = prevAcc;
                             breakContinueFn = prevBreak;
@@ -1460,7 +1335,7 @@ public class PirGenerator {
 
                 String prev = forEachAccumulatorVar;
                 forEachAccumulatorVar = accName;
-                var bodyTerm = withLoopBodyFlag(() -> generateSingleAccBody(fes.getBody(), accName, accType));
+                var bodyTerm = generateSingleAccBody(fes.getBody(), accName, accType);
                 forEachAccumulatorVar = prev;
 
                 hofUnwrappedVars = prevHofUnwrapped;
@@ -1515,8 +1390,7 @@ public class PirGenerator {
                             multiAccVars = new LinkedHashSet<>(accNames);
 
                             var bodyTerm = unpackAccumulators(tupleVar, accNames, accTypesFinal,
-                                    withLoopBodyFlag(() ->
-                                            generateMultiAccBreakAwareBody(fes.getBody(), accNames, accTypesFinal, continueFn)));
+                                    generateMultiAccBreakAwareBody(fes.getBody(), accNames, accTypesFinal, continueFn));
 
                             multiAccVars = prevMultiAcc;
                             hofUnwrappedVars = prevHofUnwrapped;
@@ -1540,7 +1414,7 @@ public class PirGenerator {
 
                 var tupleVar = new PirTerm.Var(tupleAccName, tupleAccType);
                 var bodyTerm = unpackAccumulators(tupleVar, accumulators, accTypes,
-                        withLoopBodyFlag(() -> generateMultiAccBody(fes.getBody(), accumulators, accTypes)));
+                        generateMultiAccBody(fes.getBody(), accumulators, accTypes));
 
                 multiAccVars = prevMultiAcc;
                 hofUnwrappedVars = prevHofUnwrapped;
@@ -1575,7 +1449,7 @@ public class PirGenerator {
                 hofUnwrappedVars = unwrapped;
             }
 
-            var bodyTerm = withLoopBodyFlag(() -> generateStatement(fes.getBody()));
+            var bodyTerm = generateStatement(fes.getBody());
             hofUnwrappedVars = prevHofUnwrapped;
             symbolTable.popScope();
 
@@ -1600,320 +1474,27 @@ public class PirGenerator {
      */
     private PirTerm generateBreakAwareBody(Statement bodyStmt, String accName,
                                             PirType accType, Function<PirTerm, PirTerm> continueFn) {
-        List<Statement> stmts;
-        if (bodyStmt instanceof BlockStmt bs) stmts = bs.getStatements();
-        else stmts = List.of(bodyStmt);
-
-        return generateBreakAwareStatements(stmts, 0, accName, accType, continueFn);
-    }
-
-    private PirTerm generateBreakAwareStatements(List<Statement> stmts, int index,
-                                                  String accName, PirType accType,
-                                                  Function<PirTerm, PirTerm> continueFn) {
-        if (index >= stmts.size()) {
-            // End of body without break: continue with current acc
-            return continueFn.apply(new PirTerm.Var(accName, accType));
-        }
-
-        var stmt = stmts.get(index);
-
-        if (stmt instanceof BreakStmt) {
-            // break; → return current accumulator (no recursion)
-            return new PirTerm.Var(accName, accType);
-        }
-
-        if (stmt instanceof ExpressionStmt es) {
-            // Accumulator assignment: acc = val;
-            if (es.getExpression() instanceof AssignExpr ae
-                    && ae.getTarget() instanceof NameExpr ne
-                    && ne.getNameAsString().equals(accName)) {
-                var value = generateExpression(ae.getValue());
-                // Check if next statement is break
-                if (index + 1 < stmts.size() && stmts.get(index + 1) instanceof BreakStmt) {
-                    // acc = val; break; → return val (no recursion)
-                    return value;
-                }
-                // acc = val; ... more stmts → shadow acc with new value, continue
-                var rest = generateBreakAwareStatements(stmts, index + 1, accName, accType, continueFn);
-                return new PirTerm.Let(accName, value, rest);
-            }
-
-            // Variable declaration
-            if (es.getExpression() instanceof VariableDeclarationExpr vde) {
-                var decl = vde.getVariable(0);
-                var name = decl.getNameAsString();
-                var initExpr = decl.getInitializer().orElseThrow(
-                        () -> new CompilerException("Variable must be initialized: " + name
-                                + ". Hint: On-chain variables need initial values, e.g. var " + name + " = BigInteger.ZERO;"));
-                var value = generateExpression(initExpr);
-                var pirType = inferType(decl.getType(), value, initExpr);
-                symbolTable.define(name, pirType);
-                var rest = generateBreakAwareStatements(stmts, index + 1, accName, accType, continueFn);
-                return new PirTerm.Let(name, value, rest);
-            }
-
-            // Other expression statement
-            var expr = generateExpression(es.getExpression());
-            var rest = generateBreakAwareStatements(stmts, index + 1, accName, accType, continueFn);
-            return new PirTerm.Let("_", expr, rest);
-        }
-
-        if (stmt instanceof IfStmt is) {
-            return generateBreakAwareIf(is, stmts, index, accName, accType, continueFn);
-        }
-
-        throw enrichedError("Unsupported statement in break-aware loop body: " + stmt.getClass().getSimpleName(),
-                "Inside loops with break, only variable declarations, assignments, if/else, and break are supported.",
-                stmt);
-    }
-
-    private PirTerm generateBreakAwareIf(IfStmt is, List<Statement> followingStmts, int followingIndex,
-                                          String accName, PirType accType,
-                                          Function<PirTerm, PirTerm> continueFn) {
-        var cond = generateExpression(is.getCondition());
-        boolean thenBreaks = containsBreak(is.getThenStmt());
-        boolean elseBreaks = is.getElseStmt().map(this::containsBreak).orElse(false);
-
-        PirTerm thenTerm;
-        PirTerm elseTerm;
-
-        if (thenBreaks && elseBreaks) {
-            // Both branches break: neither recurses
-            thenTerm = generateBreakAwareBody(is.getThenStmt(), accName, accType, _ -> new PirTerm.Var(accName, accType));
-            elseTerm = generateBreakAwareBody(is.getElseStmt().get(), accName, accType, _ -> new PirTerm.Var(accName, accType));
-        } else if (thenBreaks) {
-            // Then breaks, else continues (or falls through to remaining stmts)
-            thenTerm = generateBreakAwareBody(is.getThenStmt(), accName, accType, _ -> new PirTerm.Var(accName, accType));
-            if (is.getElseStmt().isPresent()) {
-                elseTerm = generateBreakAwareBody(is.getElseStmt().get(), accName, accType, continueFn);
-            } else {
-                // No else: fall through to remaining statements
-                elseTerm = generateBreakAwareStatements(followingStmts, followingIndex + 1, accName, accType, continueFn);
-                // Remaining stmts already handled in else branch, so return directly
-                return new PirTerm.IfThenElse(cond, thenTerm, elseTerm);
-            }
-        } else if (elseBreaks) {
-            // Else breaks, then continues
-            thenTerm = generateBreakAwareBody(is.getThenStmt(), accName, accType, continueFn);
-            elseTerm = generateBreakAwareBody(is.getElseStmt().get(), accName, accType, _ -> new PirTerm.Var(accName, accType));
-        } else {
-            // Neither breaks: use single-acc body to properly thread accumulator
-            thenTerm = generateSingleAccBody(is.getThenStmt(), accName, accType);
-            elseTerm = is.getElseStmt()
-                    .map(e -> generateSingleAccBody(e, accName, accType))
-                    .orElse(new PirTerm.Var(accName, accType));
-        }
-
-        var ifExpr = new PirTerm.IfThenElse(cond, thenTerm, elseTerm);
-
-        // If there are following statements and neither branch fully terminated
-        if (followingIndex + 1 < followingStmts.size()) {
-            if (thenBreaks && !elseBreaks && !is.getElseStmt().isPresent()) {
-                // Already handled: else path includes remaining stmts
-                return ifExpr;
-            }
-            var rest = generateBreakAwareStatements(followingStmts, followingIndex + 1, accName, accType, continueFn);
-            if (!thenBreaks && !elseBreaks) {
-                // Neither breaks: rebind acc with if result so following stmts see updated value
-                return new PirTerm.Let(accName, ifExpr, rest);
-            }
-            return new PirTerm.Let("_if", ifExpr, rest);
-        }
-
-        // Last statement: if neither breaks, wrap with continue
-        if (!thenBreaks && !elseBreaks) {
-            return continueFn.apply(ifExpr);
-        }
-
-        return ifExpr;
+        return loopBody.generateBreakAwareBody(bodyStmt, accName, accType, continueFn);
     }
 
     private boolean containsBreak(Statement stmt) {
-        if (stmt instanceof BreakStmt) return true;
-        // Do not walk into nested loops — a break inside a nested loop belongs to that loop
-        if (stmt instanceof WhileStmt || stmt instanceof ForEachStmt) return false;
-        if (stmt instanceof BlockStmt bs) {
-            return bs.getStatements().stream().anyMatch(this::containsBreak);
-        }
-        if (stmt instanceof IfStmt is) {
-            if (containsBreak(is.getThenStmt())) return true;
-            return is.getElseStmt().map(this::containsBreak).orElse(false);
-        }
-        return false;
+        return loopBody.containsBreak(stmt);
     }
 
     private boolean containsReturn(Statement stmt) {
-        if (stmt instanceof ReturnStmt) return true;
-        // Do not walk into nested loops — a return inside a nested loop belongs to that loop
-        if (stmt instanceof WhileStmt || stmt instanceof ForEachStmt) return false;
-        if (stmt instanceof BlockStmt bs) {
-            return bs.getStatements().stream().anyMatch(this::containsReturn);
-        }
-        if (stmt instanceof IfStmt is) {
-            if (containsReturn(is.getThenStmt())) return true;
-            return is.getElseStmt().map(this::containsReturn).orElse(false);
-        }
-        return false;
+        return loopBody.containsReturn(stmt);
     }
 
-    /**
-     * Check if a for-each element type needs unwrap tracking (to prevent double-unwrap
-     * in .hash()/.name() etc. when auto-unwrap is applied in the desugarer).
-     */
     private boolean needsForEachUnwrapTracking(PirType elemType) {
-        return elemType instanceof PirType.ByteStringType
-                || elemType instanceof PirType.IntegerType
-                || elemType instanceof PirType.BoolType
-                || elemType instanceof PirType.StringType;
-    }
-
-    /**
-     * Detect ALL accumulator assignments in a for-each loop body.
-     * Returns the list of pre-loop variable names that are assigned in the body.
-     */
-    private List<String> detectForEachAccumulators(Statement bodyStmt) {
-        List<Statement> stmts;
-        if (bodyStmt instanceof BlockStmt bs) stmts = bs.getStatements();
-        else stmts = List.of(bodyStmt);
-        if (stmts.isEmpty()) return List.of();
-        var accNames = new LinkedHashSet<String>();
-        collectAccumulatorAssignments(stmts, accNames);
-        return new ArrayList<>(accNames);
-    }
-
-    private void collectAccumulatorAssignments(List<Statement> stmts, LinkedHashSet<String> accNames) {
-        for (var stmt : stmts) {
-            if (stmt instanceof ExpressionStmt es && es.getExpression() instanceof AssignExpr ae
-                    && ae.getTarget() instanceof NameExpr ne) {
-                var name = ne.getNameAsString();
-                if (symbolTable.lookup(name).isPresent()) accNames.add(name);
-            }
-            if (stmt instanceof IfStmt is) {
-                collectAccumulatorAssignments(blockStmts(is.getThenStmt()), accNames);
-                is.getElseStmt().ifPresent(e -> collectAccumulatorAssignments(blockStmts(e), accNames));
-            }
-            if (stmt instanceof BlockStmt bs) {
-                collectAccumulatorAssignments(bs.getStatements(), accNames);
-            }
-            // Recurse into nested loop bodies to find shared accumulators
-            if (stmt instanceof WhileStmt ws) {
-                collectAccumulatorAssignments(blockStmts(ws.getBody()), accNames);
-            }
-            if (stmt instanceof ForEachStmt fes) {
-                collectAccumulatorAssignments(blockStmts(fes.getBody()), accNames);
-            }
-        }
+        return loopBody.needsForEachUnwrapTracking(elemType);
     }
 
     private static List<Statement> blockStmts(Statement stmt) {
-        if (stmt instanceof BlockStmt bs) return bs.getStatements();
-        return List.of(stmt);
+        return PirHelpers.blockStmts(stmt);
     }
 
-    /** Compile single-acc loop body: process stmts, acc assignments become Let shadows, return acc at end */
     private PirTerm generateSingleAccBody(Statement bodyStmt, String accName, PirType accType) {
-        var stmts = blockStmts(bodyStmt);
-        return generateSingleAccStatements(stmts, 0, accName, accType);
-    }
-
-    private PirTerm generateSingleAccStatements(List<Statement> stmts, int index,
-                                                  String accName, PirType accType) {
-        if (index >= stmts.size()) {
-            return new PirTerm.Var(accName, accType); // return current acc at body end
-        }
-        var stmt = stmts.get(index);
-
-        if (stmt instanceof ExpressionStmt es) {
-            // Accumulator assignment: acc = val;
-            if (es.getExpression() instanceof AssignExpr ae
-                    && ae.getTarget() instanceof NameExpr ne
-                    && ne.getNameAsString().equals(accName)) {
-                var value = generateExpression(ae.getValue());
-                var rest = generateSingleAccStatements(stmts, index + 1, accName, accType);
-                return new PirTerm.Let(accName, value, rest);
-            }
-            // Non-accumulator assignment: shadow with Let binding
-            if (es.getExpression() instanceof AssignExpr ae
-                    && ae.getTarget() instanceof NameExpr ne) {
-                var value = generateExpression(ae.getValue());
-                var rest = generateSingleAccStatements(stmts, index + 1, accName, accType);
-                return new PirTerm.Let(ne.getNameAsString(), value, rest);
-            }
-            // Variable declaration
-            if (es.getExpression() instanceof VariableDeclarationExpr vde) {
-                var decl = vde.getVariable(0);
-                var name = decl.getNameAsString();
-                var initExpr = decl.getInitializer().orElseThrow(
-                        () -> new CompilerException("Variable must be initialized: " + name
-                                + ". Hint: On-chain variables need initial values, e.g. var " + name + " = BigInteger.ZERO;"));
-                var value = generateExpression(initExpr);
-                var pirType = inferType(decl.getType(), value, initExpr);
-                symbolTable.define(name, pirType);
-                var rest = generateSingleAccStatements(stmts, index + 1, accName, accType);
-                return new PirTerm.Let(name, value, rest);
-            }
-            // Other expression: evaluate, discard, continue
-            var expr = generateExpression(es.getExpression());
-            var rest = generateSingleAccStatements(stmts, index + 1, accName, accType);
-            return new PirTerm.Let("_", expr, rest);
-        }
-        if (stmt instanceof IfStmt is) {
-            var cond = generateExpression(is.getCondition());
-            var thenTerm = generateSingleAccBody(is.getThenStmt(), accName, accType);
-            var elseTerm = is.getElseStmt()
-                    .map(e -> generateSingleAccBody(e, accName, accType))
-                    .orElse(new PirTerm.Var(accName, accType));
-            var ifExpr = new PirTerm.IfThenElse(cond, thenTerm, elseTerm);
-            if (index + 1 < stmts.size()) {
-                // After if, rebind acc with if result, then continue
-                var rest = generateSingleAccStatements(stmts, index + 1, accName, accType);
-                return new PirTerm.Let(accName, ifExpr, rest);
-            }
-            return ifExpr;
-        }
-        if (stmt instanceof WhileStmt ws) {
-            // Nested while inside single-acc body
-            var innerAccs = detectForEachAccumulators(ws.getBody());
-            var innerResult = generateWhileStmt(ws, List.of(ws), 0);
-            if (innerAccs.size() == 1) {
-                var rest = generateSingleAccStatements(stmts, index + 1, accName, accType);
-                return new PirTerm.Let(innerAccs.get(0), innerResult, rest);
-            } else if (innerAccs.size() > 1) {
-                var innerTypes = innerAccs.stream()
-                        .map(n -> symbolTable.lookup(n).orElse(new PirType.DataType()))
-                        .toList();
-                var rest = generateSingleAccStatements(stmts, index + 1, accName, accType);
-                return unpackAccumulators(innerResult, innerAccs, innerTypes, rest);
-            } else {
-                var rest = generateSingleAccStatements(stmts, index + 1, accName, accType);
-                return new PirTerm.Let("_nested", innerResult, rest);
-            }
-        }
-        if (stmt instanceof ForEachStmt fes) {
-            // Nested for-each inside single-acc body
-            var innerAccs = detectForEachAccumulators(fes.getBody());
-            var innerResult = generateForEachStmt(fes, List.of(fes), 0);
-            if (innerAccs.size() == 1) {
-                var rest = generateSingleAccStatements(stmts, index + 1, accName, accType);
-                return new PirTerm.Let(innerAccs.get(0), innerResult, rest);
-            } else if (innerAccs.size() > 1) {
-                var innerTypes = innerAccs.stream()
-                        .map(n -> symbolTable.lookup(n).orElse(new PirType.DataType()))
-                        .toList();
-                var rest = generateSingleAccStatements(stmts, index + 1, accName, accType);
-                return unpackAccumulators(innerResult, innerAccs, innerTypes, rest);
-            } else {
-                var rest = generateSingleAccStatements(stmts, index + 1, accName, accType);
-                return new PirTerm.Let("_nested", innerResult, rest);
-            }
-        }
-        // Fallback: use generateStatement for other statements
-        var term = generateStatement(stmt);
-        if (index + 1 < stmts.size()) {
-            var rest = generateSingleAccStatements(stmts, index + 1, accName, accType);
-            return new PirTerm.Let("_", term, rest);
-        }
-        return new PirTerm.Var(accName, accType);
+        return loopBody.generateSingleAccBody(bodyStmt, accName, accType);
     }
 
     /**
@@ -1926,682 +1507,38 @@ public class PirGenerator {
      */
     private List<PirType> refineAccumulatorTypes(WhileStmt ws, List<String> accNames, List<PirType> initialTypes,
                                                   List<Statement> precedingStmts) {
-        // Collect names declared/known as pair-list types from context:
-        // method parameters declared as MapData, and local variables initialized from mkNilPairData/unMapData
-        var pairListNames = collectPairListNames(ws, precedingStmts);
-
-        var result = new ArrayList<>(initialTypes);
-        // Pass 1: Detect MapType from direct evidence
-        for (int i = 0; i < accNames.size(); i++) {
-            if (!(result.get(i) instanceof PirType.DataType)) continue;
-            String accName = accNames.get(i);
-            // Check if accumulator is initialized from pair-list source BEFORE the loop
-            if (isInitializedFromPairListSource(accName, precedingStmts, pairListNames)) {
-                result.set(i, new PirType.MapType(new PirType.DataType(), new PirType.DataType()));
-                continue;
-            }
-            boolean hasMkNilPairData = hasBuiltinAssignment(ws.getBody(), accName, "mkNilPairData");
-            if (hasMkNilPairData) {
-                result.set(i, new PirType.MapType(new PirType.DataType(), new PirType.DataType()));
-                continue;
-            }
-            boolean hasTailList = hasBuiltinAssignment(ws.getBody(), accName, "tailList");
-            boolean hasMkNilData = hasBuiltinAssignment(ws.getBody(), accName, "mkNilData");
-            boolean hasMkCons = hasBuiltinAssignment(ws.getBody(), accName, "mkCons");
-            if (hasTailList || hasMkNilData || hasMkCons) {
-                if (hasTailList && !hasMkNilData && !hasMkCons
-                        && isInitializedFromPairListSource(accName, precedingStmts, pairListNames)) {
-                    // Cursor initialized from unMapData or MapData-typed parameter → MapType
-                    result.set(i, new PirType.MapType(new PirType.DataType(), new PirType.DataType()));
-                } else if (hasMkCons && isInitializedFromPairListSource(accName, precedingStmts, pairListNames)) {
-                    // mkCons building a pair list (initialized from mkNilPairData/MapData param) → MapType
-                    result.set(i, new PirType.MapType(new PirType.DataType(), new PirType.DataType()));
-                } else if (hasMkCons && bodyUsesMkPairDataForCons(ws.getBody(), accName)) {
-                    // mkCons with mkPairData items in loop body → building a pair list → MapType
-                    result.set(i, new PirType.MapType(new PirType.DataType(), new PirType.DataType()));
-                } else if (hasTailList && !hasMkNilData && !hasMkCons
-                        && bodyUsesPairOpsOnCursor(ws.getBody(), accName)) {
-                    // tailList cursor where body extracts pair elements via fstPair/sndPair → MapType
-                    result.set(i, new PirType.MapType(new PirType.DataType(), new PirType.DataType()));
-                } else {
-                    result.set(i, new PirType.ListType(new PirType.DataType()));
-                }
-            }
-        }
-        // Pass 2: Propagate MapType to sibling cursors when one accumulator is proven MapType.
-        // Only promote tailList-only cursors (not mkCons builders, to avoid mistyping list-data builders).
-        boolean changed = true;
-        while (changed) {
-            changed = false;
-            boolean anyMapType = result.stream().anyMatch(t -> t instanceof PirType.MapType);
-            if (!anyMapType) break;
-            for (int i = 0; i < accNames.size(); i++) {
-                if (result.get(i) instanceof PirType.ListType) {
-                    String accName = accNames.get(i);
-                    boolean hasTailList = hasBuiltinAssignment(ws.getBody(), accName, "tailList");
-                    boolean hasMkCons = hasBuiltinAssignment(ws.getBody(), accName, "mkCons");
-                    // Only promote pure cursors (tailList without mkCons) to MapType
-                    if (hasTailList && !hasMkCons) {
-                        result.set(i, new PirType.MapType(new PirType.DataType(), new PirType.DataType()));
-                        changed = true;
-                    }
-                }
-            }
-        }
-        return result;
+        return AccumulatorTypeAnalyzer.refineAccumulatorTypes(ws, accNames, initialTypes, precedingStmts);
     }
 
-    /**
-     * Collect variable/parameter names known to hold pair lists (MapType).
-     * Sources: method parameters declared as MapData, and local variables initialized
-     * from mkNilPairData() or unMapData().
-     */
-    private Set<String> collectPairListNames(WhileStmt ws, List<Statement> precedingStmts) {
-        var names = new HashSet<String>();
-        // 1. Check method parameters for MapData type declarations
-        var methodDecl = ws.findAncestor(com.github.javaparser.ast.body.MethodDeclaration.class);
-        if (methodDecl.isPresent()) {
-            for (var param : methodDecl.get().getParameters()) {
-                if (isDeclaredAsMapData(param.getType())) {
-                    names.add(param.getNameAsString());
-                }
-            }
-        }
-        // 2. Check preceding variable declarations for pair-list initializers
-        for (var stmt : precedingStmts) {
-            if (stmt instanceof ExpressionStmt es
-                    && es.getExpression() instanceof VariableDeclarationExpr vde) {
-                var decl = vde.getVariable(0);
-                if (decl.getInitializer().isPresent()) {
-                    var init = decl.getInitializer().get();
-                    if (exprIsPairListSource(init)) {
-                        names.add(decl.getNameAsString());
-                    } else if (isDeclaredAsMapData(decl.getType())) {
-                        names.add(decl.getNameAsString());
-                    } else if (init instanceof NameExpr ne && names.contains(ne.getNameAsString())) {
-                        // Alias: var current = outerPairs (where outerPairs is a pair list)
-                        names.add(decl.getNameAsString());
-                    }
-                }
-            }
-        }
-        return names;
+    List<String> detectForEachAccumulators(Statement bodyStmt) {
+        return AccumulatorTypeAnalyzer.detectForEachAccumulators(bodyStmt, symbolTable::lookup);
     }
 
-    /** Check if a Java type declaration is MapData (PlutusData.MapData or just MapData). */
-    private static boolean isDeclaredAsMapData(com.github.javaparser.ast.type.Type type) {
-        if (type instanceof com.github.javaparser.ast.type.ClassOrInterfaceType ct) {
-            var name = ct.getNameAsString();
-            return name.equals("MapData");
-        }
-        return false;
-    }
-
-    /** Check if an expression is a direct pair-list source: mkNilPairData() or unMapData(). */
-    private static boolean exprIsPairListSource(Expression expr) {
-        if (expr instanceof MethodCallExpr mce) {
-            var name = mce.getNameAsString();
-            return name.equals("mkNilPairData") || name.equals("unMapData");
-        }
-        return false;
-    }
-
-    /**
-     * Check if accumulator is initialized from a pair-list source.
-     * Uses both preceding variable declarations and the collected pairListNames set
-     * (which includes MapData-typed method parameters).
-     */
-    private boolean isInitializedFromPairListSource(String varName, List<Statement> precedingStmts,
-                                                     Set<String> pairListNames) {
-        // First check existing logic (declarations in preceding stmts)
-        if (isInitializedFromPairList(varName, precedingStmts)) return true;
-        if (isInitializedFromMapType(varName, precedingStmts)) return true;
-        // Check if initialized from a known pair-list name (e.g., MapData parameter)
-        for (int i = precedingStmts.size() - 1; i >= 0; i--) {
-            var stmt = precedingStmts.get(i);
-            if (stmt instanceof ExpressionStmt es
-                    && es.getExpression() instanceof VariableDeclarationExpr vde) {
-                var decl = vde.getVariable(0);
-                if (decl.getNameAsString().equals(varName) && decl.getInitializer().isPresent()) {
-                    var init = decl.getInitializer().get();
-                    if (init instanceof NameExpr ne && pairListNames.contains(ne.getNameAsString())) {
-                        return true;
-                    }
-                }
-            }
-        }
-        // Check if the varName itself is a pair-list name (e.g., directly a MapData parameter)
-        return pairListNames.contains(varName);
-    }
-
-    /**
-     * Check if a variable's initial declaration is assigned from a MapType source.
-     * This traces through variable aliases (e.g., current = pairs where pairs = unMapData(x)).
-     */
-    private boolean isInitializedFromMapType(String varName, List<Statement> precedingStmts) {
-        // Find the declaration of varName in the preceding statements
-        for (int i = precedingStmts.size() - 1; i >= 0; i--) {
-            var stmt = precedingStmts.get(i);
-            if (stmt instanceof ExpressionStmt es
-                    && es.getExpression() instanceof VariableDeclarationExpr vde) {
-                var decl = vde.getVariable(0);
-                if (decl.getNameAsString().equals(varName) && decl.getInitializer().isPresent()) {
-                    return exprResolvesToMapType(decl.getInitializer().get(), precedingStmts);
-                }
-            }
-        }
-        return false;
-    }
-
-    /**
-     * Check if a variable's initial declaration is assigned from a pair list source (mkNilPairData).
-     * When an accumulator is initialized with mkNilPairData() and built with mkCons in the loop body,
-     * it should be typed as MapType (list (pair data data)), not ListType (list data).
-     */
-    private boolean isInitializedFromPairList(String varName, List<Statement> precedingStmts) {
-        for (int i = precedingStmts.size() - 1; i >= 0; i--) {
-            var stmt = precedingStmts.get(i);
-            if (stmt instanceof ExpressionStmt es
-                    && es.getExpression() instanceof VariableDeclarationExpr vde) {
-                var decl = vde.getVariable(0);
-                if (decl.getNameAsString().equals(varName) && decl.getInitializer().isPresent()) {
-                    return exprResolvesToPairList(decl.getInitializer().get(), precedingStmts);
-                }
-            }
-        }
-        return false;
-    }
-
-    /**
-     * Check if an expression resolves to a pair list type — mkNilPairData(), unMapData(...), or a
-     * variable reference to one.
-     */
-    private boolean exprResolvesToPairList(Expression expr, List<Statement> precedingStmts) {
-        if (expr instanceof MethodCallExpr mce) {
-            String name = mce.getNameAsString();
-            if (name.equals("mkNilPairData") || name.equals("unMapData")) {
-                return true;
-            }
-        }
-        if (expr instanceof NameExpr ne) {
-            return isInitializedFromPairList(ne.getNameAsString(), precedingStmts);
-        }
-        return false;
-    }
-
-    /**
-     * Check if an expression resolves to a MapType value — either a direct unMapData call,
-     * or a variable reference to one.
-     */
-    private boolean exprResolvesToMapType(Expression expr, List<Statement> precedingStmts) {
-        if (expr instanceof MethodCallExpr mce && mce.getNameAsString().equals("unMapData")) {
-            return true;
-        }
-        // Trace through variable aliases: if expr is a variable reference, check its declaration
-        if (expr instanceof NameExpr ne) {
-            return isInitializedFromMapType(ne.getNameAsString(), precedingStmts);
-        }
-        return false;
-    }
-
-    /** Check if any assignment to varName in the statement tree uses a specific Builtins method. */
-    private static boolean hasBuiltinAssignment(Statement body, String varName, String builtinMethod) {
-        var stmts = blockStmts(body);
-        for (var stmt : stmts) {
-            if (stmt instanceof ExpressionStmt es
-                    && es.getExpression() instanceof AssignExpr ae
-                    && ae.getTarget() instanceof NameExpr ne
-                    && ne.getNameAsString().equals(varName)
-                    && ae.getValue() instanceof MethodCallExpr mce
-                    && mce.getNameAsString().equals(builtinMethod)) {
-                return true;
-            }
-            if (stmt instanceof IfStmt is) {
-                if (hasBuiltinAssignment(is.getThenStmt(), varName, builtinMethod)) return true;
-                if (is.getElseStmt().isPresent()
-                        && hasBuiltinAssignment(is.getElseStmt().get(), varName, builtinMethod)) return true;
-            }
-            if (stmt instanceof BlockStmt bs) {
-                if (hasBuiltinAssignment(bs, varName, builtinMethod)) return true;
-            }
-        }
-        return false;
-    }
-
-    /**
-     * Check if mkCons assignments to accName in the loop body use mkPairData items.
-     * Pattern: accName = mkCons(expr, accName) where expr traces to mkPairData.
-     * This indicates the accumulator is building a pair list (MapType).
-     */
-    private static boolean bodyUsesMkPairDataForCons(Statement body, String accName) {
-        return bodyContainsMethodCall(body, "mkPairData");
-    }
-
-    /**
-     * Check if a tailList cursor's elements are treated as pairs in the loop body.
-     * Specifically checks for fstPair/sndPair applied to the direct headList result of the cursor,
-     * NOT just any fstPair/sndPair anywhere in the body.
-     * Pattern: var x = headList(cursor); fstPair(x) / sndPair(x)
-     */
-    private static boolean bodyUsesPairOpsOnCursor(Statement body, String cursorName) {
-        // Find the variable that holds headList(cursorName)
-        String headVar = findHeadListVar(body, cursorName);
-        if (headVar == null) return false;
-        // Check if fstPair or sndPair is called with that variable as argument
-        return bodyCallsPairOpOn(body, headVar);
-    }
-
-    /** Find the variable name assigned from headList(cursorName), e.g. "var pair = Builtins.headList(cursor)". */
-    private static String findHeadListVar(Statement body, String cursorName) {
-        var stmts = blockStmts(body);
-        for (var stmt : stmts) {
-            var found = findHeadListVarInStmt(stmt, cursorName);
-            if (found != null) return found;
-        }
-        return null;
-    }
-
-    private static String findHeadListVarInStmt(Statement stmt, String cursorName) {
-        if (stmt instanceof ExpressionStmt es
-                && es.getExpression() instanceof VariableDeclarationExpr vde) {
-            var decl = vde.getVariable(0);
-            if (decl.getInitializer().isPresent()) {
-                var init = decl.getInitializer().get();
-                if (init instanceof MethodCallExpr mce
-                        && mce.getNameAsString().equals("headList")
-                        && !mce.getArguments().isEmpty()
-                        && mce.getArgument(0) instanceof NameExpr ne
-                        && ne.getNameAsString().equals(cursorName)) {
-                    return decl.getNameAsString();
-                }
-            }
-        }
-        // Recurse into if-else blocks
-        if (stmt instanceof IfStmt is) {
-            var found = findHeadListVar(is.getThenStmt(), cursorName);
-            if (found != null) return found;
-            if (is.getElseStmt().isPresent()) {
-                found = findHeadListVar(is.getElseStmt().get(), cursorName);
-                if (found != null) return found;
-            }
-        }
-        if (stmt instanceof BlockStmt bs) {
-            for (var s : bs.getStatements()) {
-                var found = findHeadListVarInStmt(s, cursorName);
-                if (found != null) return found;
-            }
-        }
-        return null;
-    }
-
-    /** Check if fstPair(varName) or sndPair(varName) appears in the body. */
-    private static boolean bodyCallsPairOpOn(Statement body, String varName) {
-        var stmts = blockStmts(body);
-        for (var stmt : stmts) {
-            if (containsPairOpOnVar(stmt, varName)) return true;
-        }
-        return false;
-    }
-
-    private static boolean containsPairOpOnVar(com.github.javaparser.ast.Node node, String varName) {
-        if (node instanceof MethodCallExpr mce) {
-            var name = mce.getNameAsString();
-            if ((name.equals("fstPair") || name.equals("sndPair"))
-                    && !mce.getArguments().isEmpty()
-                    && mce.getArgument(0) instanceof NameExpr ne
-                    && ne.getNameAsString().equals(varName)) {
-                return true;
-            }
-        }
-        for (var child : node.getChildNodes()) {
-            if (containsPairOpOnVar(child, varName)) return true;
-        }
-        return false;
-    }
-
-    /** Check if a statement tree contains any call to the given method name. */
-    private static boolean bodyContainsMethodCall(Statement body, String methodName) {
-        var stmts = blockStmts(body);
-        for (var stmt : stmts) {
-            if (containsMethodCallExpr(stmt, methodName)) return true;
-        }
-        return false;
-    }
-
-    /** Recursively check if a node tree contains a MethodCallExpr with the given name. */
-    private static boolean containsMethodCallExpr(com.github.javaparser.ast.Node node, String methodName) {
-        if (node instanceof MethodCallExpr mce && mce.getNameAsString().equals(methodName)) {
-            return true;
-        }
-        for (var child : node.getChildNodes()) {
-            if (containsMethodCallExpr(child, methodName)) return true;
-        }
-        return false;
-    }
-
-    /**
-     * Find accumulator name from break patterns:
-     *   1. Standalone assignment before if-with-break: acc = val; if (cond) { break; }
-     *   2. Assignment inside if-with-break: if (cond) { acc = val; break; }
-     */
     private String findAccumulatorInBreakPattern(List<Statement> stmts) {
-        // Check for standalone assignment to a pre-loop variable (covers pattern: acc = expr; if (...) { break; })
-        for (var stmt : stmts) {
-            if (stmt instanceof ExpressionStmt es
-                    && es.getExpression() instanceof AssignExpr ae
-                    && ae.getTarget() instanceof NameExpr ne) {
-                var name = ne.getNameAsString();
-                if (symbolTable.lookup(name).isPresent()) return name;
-            }
-        }
-        // Check for assignment inside if-blocks with break
-        for (var stmt : stmts) {
-            if (stmt instanceof IfStmt is) {
-                var accName = findAccumulatorInBlock(is.getThenStmt());
-                if (accName != null) return accName;
-                if (is.getElseStmt().isPresent()) {
-                    accName = findAccumulatorInBlock(is.getElseStmt().get());
-                    if (accName != null) return accName;
-                }
-            }
-        }
-        return null;
+        return AccumulatorTypeAnalyzer.findAccumulatorInBreakPattern(stmts, symbolTable::lookup);
     }
 
-    private String findAccumulatorInBlock(Statement stmt) {
-        List<Statement> inner;
-        if (stmt instanceof BlockStmt bs) inner = bs.getStatements();
-        else inner = List.of(stmt);
-        // Look for pattern: acc = val; break;
-        for (int i = 0; i < inner.size() - 1; i++) {
-            if (inner.get(i) instanceof ExpressionStmt es
-                    && es.getExpression() instanceof AssignExpr ae
-                    && ae.getTarget() instanceof NameExpr ne
-                    && inner.get(i + 1) instanceof BreakStmt) {
-                var name = ne.getNameAsString();
-                if (symbolTable.lookup(name).isPresent()) return name;
-            }
-        }
-        return null;
-    }
+    // --- Multi-accumulator helpers (delegate to LoopBodyGenerator) ---
 
-    // --- Multi-accumulator helpers ---
-
-    /** Pack accumulator values into a Data list: MkCons(encode(v1), MkCons(encode(v2), ...MkNilData)) */
     private PirTerm packAccumulators(List<String> names, List<PirType> types) {
-        PirTerm result = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilData),
-                new PirTerm.Const(Constant.unit()));
-        for (int i = names.size() - 1; i >= 0; i--) {
-            var value = new PirTerm.Var(names.get(i), types.get(i));
-            var encoded = PirHelpers.wrapEncode(value, types.get(i));
-            result = new PirTerm.App(
-                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkCons), encoded),
-                    result);
-        }
-        return result;
+        return loopBody.packAccumulators(names, types);
     }
 
-    /** Wrap body with Let bindings that unpack each accumulator from a Data list tuple */
     private PirTerm unpackAccumulators(PirTerm tuple, List<String> names, List<PirType> types, PirTerm body) {
-        var tupleVar = new PirTerm.Var("__t", new PirType.ListType(new PirType.DataType()));
-        PirTerm result = body;
-        for (int i = names.size() - 1; i >= 0; i--) {
-            PirTerm accessor = tupleVar;
-            for (int j = 0; j < i; j++) {
-                accessor = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), accessor);
-            }
-            accessor = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), accessor);
-            var decoded = PirHelpers.wrapDecode(accessor, types.get(i));
-            result = new PirTerm.Let(names.get(i), decoded, result);
-        }
-        return new PirTerm.Let("__t", tuple, result);
+        return loopBody.unpackAccumulators(tuple, names, types, body);
     }
 
-    /** Compile multi-acc loop body: process stmts, acc assignments become Let shadows, pack at end */
     private PirTerm generateMultiAccBody(Statement bodyStmt, List<String> accNames, List<PirType> accTypes) {
-        var stmts = blockStmts(bodyStmt);
-        return generateMultiAccStatements(stmts, 0, accNames, accTypes);
+        return loopBody.generateMultiAccBody(bodyStmt, accNames, accTypes);
     }
 
-    private PirTerm generateMultiAccStatements(List<Statement> stmts, int index,
-                                                List<String> accNames, List<PirType> accTypes) {
-        if (index >= stmts.size()) {
-            return packAccumulators(accNames, accTypes); // repack at body end
-        }
-        var stmt = stmts.get(index);
-
-        if (stmt instanceof ExpressionStmt es) {
-            if (es.getExpression() instanceof AssignExpr ae
-                    && ae.getTarget() instanceof NameExpr ne
-                    && accNames.contains(ne.getNameAsString())) {
-                var value = generateExpression(ae.getValue());
-                var rest = generateMultiAccStatements(stmts, index + 1, accNames, accTypes);
-                return new PirTerm.Let(ne.getNameAsString(), value, rest);
-            }
-            // Non-accumulator assignment: shadow with Let binding
-            if (es.getExpression() instanceof AssignExpr ae
-                    && ae.getTarget() instanceof NameExpr ne) {
-                var value = generateExpression(ae.getValue());
-                var rest = generateMultiAccStatements(stmts, index + 1, accNames, accTypes);
-                return new PirTerm.Let(ne.getNameAsString(), value, rest);
-            }
-            if (es.getExpression() instanceof VariableDeclarationExpr vde) {
-                var decl = vde.getVariable(0);
-                var name = decl.getNameAsString();
-                var initExpr = decl.getInitializer().orElseThrow(
-                        () -> new CompilerException("Variable must be initialized: " + name
-                                + ". Hint: On-chain variables need initial values, e.g. var " + name + " = BigInteger.ZERO;"));
-                var value = generateExpression(initExpr);
-                var pirType = inferType(decl.getType(), value, initExpr);
-                symbolTable.define(name, pirType);
-                var rest = generateMultiAccStatements(stmts, index + 1, accNames, accTypes);
-                return new PirTerm.Let(name, value, rest);
-            }
-            // Other expression: evaluate, discard, continue
-            var expr = generateExpression(es.getExpression());
-            var rest = generateMultiAccStatements(stmts, index + 1, accNames, accTypes);
-            return new PirTerm.Let("_", expr, rest);
-        }
-        if (stmt instanceof IfStmt is) {
-            var cond = generateExpression(is.getCondition());
-            var thenTerm = generateMultiAccBody(is.getThenStmt(), accNames, accTypes);
-            var elseTerm = is.getElseStmt()
-                    .map(e -> generateMultiAccBody(e, accNames, accTypes))
-                    .orElse(packAccumulators(accNames, accTypes));
-            var ifExpr = new PirTerm.IfThenElse(cond, thenTerm, elseTerm);
-            if (index + 1 < stmts.size()) {
-                // After if, unpack the result back into acc vars, then continue
-                var rest = generateMultiAccStatements(stmts, index + 1, accNames, accTypes);
-                return unpackAccumulators(ifExpr, accNames, accTypes.stream().toList(), rest);
-            }
-            return ifExpr;
-        }
-        if (stmt instanceof WhileStmt ws) {
-            // Nested while inside multi-acc body: generate the inner loop standalone,
-            // then rebind any accumulators it modified, and continue multi-acc processing.
-            var innerAccs = detectForEachAccumulators(ws.getBody());
-            var innerResult = generateWhileStmt(ws, List.of(ws), 0);
-
-            if (innerAccs.size() == 1) {
-                // Single-acc inner loop returns the scalar accumulator value
-                var rest = generateMultiAccStatements(stmts, index + 1, accNames, accTypes);
-                return new PirTerm.Let(innerAccs.get(0), innerResult, rest);
-            } else if (innerAccs.size() > 1) {
-                // Multi-acc inner loop returns a tuple — unpack into individual vars
-                var innerTypes = innerAccs.stream()
-                        .map(n -> symbolTable.lookup(n).orElse(new PirType.DataType()))
-                        .toList();
-                var rest = generateMultiAccStatements(stmts, index + 1, accNames, accTypes);
-                return unpackAccumulators(innerResult, innerAccs, innerTypes, rest);
-            } else {
-                // No-acc inner loop (side-effect only)
-                var rest = generateMultiAccStatements(stmts, index + 1, accNames, accTypes);
-                return new PirTerm.Let("_nested", innerResult, rest);
-            }
-        }
-        if (stmt instanceof ForEachStmt fes) {
-            var innerAccs = detectForEachAccumulators(fes.getBody());
-            var innerResult = generateForEachStmt(fes, List.of(fes), 0);
-
-            if (innerAccs.size() == 1) {
-                var rest = generateMultiAccStatements(stmts, index + 1, accNames, accTypes);
-                return new PirTerm.Let(innerAccs.get(0), innerResult, rest);
-            } else if (innerAccs.size() > 1) {
-                var innerTypes = innerAccs.stream()
-                        .map(n -> symbolTable.lookup(n).orElse(new PirType.DataType()))
-                        .toList();
-                var rest = generateMultiAccStatements(stmts, index + 1, accNames, accTypes);
-                return unpackAccumulators(innerResult, innerAccs, innerTypes, rest);
-            } else {
-                var rest = generateMultiAccStatements(stmts, index + 1, accNames, accTypes);
-                return new PirTerm.Let("_nested", innerResult, rest);
-            }
-        }
-        throw enrichedError("Unsupported in multi-acc loop body: " + stmt.getClass().getSimpleName(),
-                "Inside multi-accumulator loops, only variable declarations, assignments, and if/else are supported.",
-                stmt);
-    }
-
-    /** Compile multi-acc loop body with break support */
     private PirTerm generateMultiAccBreakAwareBody(Statement bodyStmt, List<String> accNames,
                                                      List<PirType> accTypes,
                                                      Function<PirTerm, PirTerm> continueFn) {
-        var stmts = blockStmts(bodyStmt);
-        return generateMultiAccBreakAwareStmts(stmts, 0, accNames, accTypes, continueFn);
+        return loopBody.generateMultiAccBreakAwareBody(bodyStmt, accNames, accTypes, continueFn);
     }
 
-    private PirTerm generateMultiAccBreakAwareStmts(List<Statement> stmts, int index,
-                                                      List<String> accNames, List<PirType> accTypes,
-                                                      Function<PirTerm, PirTerm> continueFn) {
-        if (index >= stmts.size()) {
-            // End of body without break: continue with repacked tuple
-            return continueFn.apply(packAccumulators(accNames, accTypes));
-        }
-
-        var stmt = stmts.get(index);
-
-        if (stmt instanceof BreakStmt) {
-            // break → return packed tuple (no recursion)
-            return packAccumulators(accNames, accTypes);
-        }
-
-        if (stmt instanceof ExpressionStmt es) {
-            if (es.getExpression() instanceof AssignExpr ae
-                    && ae.getTarget() instanceof NameExpr ne
-                    && accNames.contains(ne.getNameAsString())) {
-                var value = generateExpression(ae.getValue());
-                // Check if next statement is break
-                if (index + 1 < stmts.size() && stmts.get(index + 1) instanceof BreakStmt) {
-                    // acc = val; break; → shadow acc, pack and return
-                    var rest = packAccumulators(accNames, accTypes);
-                    return new PirTerm.Let(ne.getNameAsString(), value, rest);
-                }
-                var rest = generateMultiAccBreakAwareStmts(stmts, index + 1, accNames, accTypes, continueFn);
-                return new PirTerm.Let(ne.getNameAsString(), value, rest);
-            }
-            // Non-accumulator assignment: shadow with Let binding
-            if (es.getExpression() instanceof AssignExpr ae
-                    && ae.getTarget() instanceof NameExpr ne) {
-                var value = generateExpression(ae.getValue());
-                var rest = generateMultiAccBreakAwareStmts(stmts, index + 1, accNames, accTypes, continueFn);
-                return new PirTerm.Let(ne.getNameAsString(), value, rest);
-            }
-            if (es.getExpression() instanceof VariableDeclarationExpr vde) {
-                var decl = vde.getVariable(0);
-                var name = decl.getNameAsString();
-                var initExpr = decl.getInitializer().orElseThrow(
-                        () -> new CompilerException("Variable must be initialized: " + name
-                                + ". Hint: On-chain variables need initial values, e.g. var " + name + " = BigInteger.ZERO;"));
-                var value = generateExpression(initExpr);
-                var pirType = inferType(decl.getType(), value, initExpr);
-                symbolTable.define(name, pirType);
-                var rest = generateMultiAccBreakAwareStmts(stmts, index + 1, accNames, accTypes, continueFn);
-                return new PirTerm.Let(name, value, rest);
-            }
-            var expr = generateExpression(es.getExpression());
-            var rest = generateMultiAccBreakAwareStmts(stmts, index + 1, accNames, accTypes, continueFn);
-            return new PirTerm.Let("_", expr, rest);
-        }
-
-        if (stmt instanceof IfStmt is) {
-            var cond = generateExpression(is.getCondition());
-            boolean thenBreaks = containsBreak(is.getThenStmt());
-            boolean elseBreaks = is.getElseStmt().map(this::containsBreak).orElse(false);
-
-            PirTerm thenTerm;
-            PirTerm elseTerm;
-
-            if (thenBreaks) {
-                thenTerm = generateMultiAccBreakAwareBody(is.getThenStmt(), accNames, accTypes, _ -> packAccumulators(accNames, accTypes));
-            } else {
-                thenTerm = generateMultiAccBreakAwareBody(is.getThenStmt(), accNames, accTypes, continueFn);
-            }
-            if (is.getElseStmt().isPresent()) {
-                if (elseBreaks) {
-                    elseTerm = generateMultiAccBreakAwareBody(is.getElseStmt().get(), accNames, accTypes, _ -> packAccumulators(accNames, accTypes));
-                } else {
-                    elseTerm = generateMultiAccBreakAwareBody(is.getElseStmt().get(), accNames, accTypes, continueFn);
-                }
-            } else {
-                // No else: fall through
-                if (thenBreaks) {
-                    elseTerm = generateMultiAccBreakAwareStmts(stmts, index + 1, accNames, accTypes, continueFn);
-                    return new PirTerm.IfThenElse(cond, thenTerm, elseTerm);
-                }
-                elseTerm = packAccumulators(accNames, accTypes); // placeholder
-            }
-
-            var ifExpr = new PirTerm.IfThenElse(cond, thenTerm, elseTerm);
-            if (index + 1 < stmts.size() && !(thenBreaks && !is.getElseStmt().isPresent())) {
-                // After if: unpack and continue
-                var rest = generateMultiAccBreakAwareStmts(stmts, index + 1, accNames, accTypes, continueFn);
-                return unpackAccumulators(ifExpr, accNames, accTypes, rest);
-            }
-            return ifExpr;
-        }
-
-        if (stmt instanceof WhileStmt ws) {
-            var innerAccs = detectForEachAccumulators(ws.getBody());
-            var innerResult = generateWhileStmt(ws, List.of(ws), 0);
-
-            if (innerAccs.size() == 1) {
-                var rest = generateMultiAccBreakAwareStmts(stmts, index + 1, accNames, accTypes, continueFn);
-                return new PirTerm.Let(innerAccs.get(0), innerResult, rest);
-            } else if (innerAccs.size() > 1) {
-                var innerTypes = innerAccs.stream()
-                        .map(n -> symbolTable.lookup(n).orElse(new PirType.DataType()))
-                        .toList();
-                var rest = generateMultiAccBreakAwareStmts(stmts, index + 1, accNames, accTypes, continueFn);
-                return unpackAccumulators(innerResult, innerAccs, innerTypes, rest);
-            } else {
-                var rest = generateMultiAccBreakAwareStmts(stmts, index + 1, accNames, accTypes, continueFn);
-                return new PirTerm.Let("_nested", innerResult, rest);
-            }
-        }
-        if (stmt instanceof ForEachStmt fes) {
-            var innerAccs = detectForEachAccumulators(fes.getBody());
-            var innerResult = generateForEachStmt(fes, List.of(fes), 0);
-
-            if (innerAccs.size() == 1) {
-                var rest = generateMultiAccBreakAwareStmts(stmts, index + 1, accNames, accTypes, continueFn);
-                return new PirTerm.Let(innerAccs.get(0), innerResult, rest);
-            } else if (innerAccs.size() > 1) {
-                var innerTypes = innerAccs.stream()
-                        .map(n -> symbolTable.lookup(n).orElse(new PirType.DataType()))
-                        .toList();
-                var rest = generateMultiAccBreakAwareStmts(stmts, index + 1, accNames, accTypes, continueFn);
-                return unpackAccumulators(innerResult, innerAccs, innerTypes, rest);
-            } else {
-                var rest = generateMultiAccBreakAwareStmts(stmts, index + 1, accNames, accTypes, continueFn);
-                return new PirTerm.Let("_nested", innerResult, rest);
-            }
-        }
-        throw enrichedError("Unsupported in multi-acc break-aware body: " + stmt.getClass().getSimpleName(),
-                "Inside multi-accumulator loops with break, only variable declarations, assignments, if/else, and break are supported.",
-                stmt);
-    }
-
-    private PirTerm generateWhileStmt(WhileStmt ws, List<Statement> followingStmts, int followingIndex) {
+    PirTerm generateWhileStmt(WhileStmt ws, List<Statement> followingStmts, int followingIndex) {
         if (containsReturn(ws.getBody())) {
             throw enrichedError(
                     "'return' is not supported inside while loop body",
@@ -2642,8 +1579,7 @@ public class PirGenerator {
                             forEachAccumulatorVar = accName;
                             breakContinueFn = continueFn;
 
-                            var bodyTerm = withLoopBodyFlag(() ->
-                                    generateBreakAwareBody(ws.getBody(), accName, accType, continueFn));
+                            var bodyTerm = generateBreakAwareBody(ws.getBody(), accName, accType, continueFn);
 
                             forEachAccumulatorVar = prevAcc;
                             breakContinueFn = prevBreak;
@@ -2658,7 +1594,7 @@ public class PirGenerator {
                 String prev = forEachAccumulatorVar;
                 forEachAccumulatorVar = accName;
                 var condition = generateExpression(ws.getCondition());
-                var bodyTerm = withLoopBodyFlag(() -> generateSingleAccBody(ws.getBody(), accName, accType));
+                var bodyTerm = generateSingleAccBody(ws.getBody(), accName, accType);
                 forEachAccumulatorVar = prev;
 
                 symbolTable.popScope();
@@ -2717,8 +1653,7 @@ public class PirGenerator {
                             multiAccVars = new LinkedHashSet<>(accNames);
 
                             var bodyTerm = unpackAccumulators(tupleVar, accNames, accTypesFinal,
-                                    withLoopBodyFlag(() ->
-                                            generateMultiAccBreakAwareBody(ws.getBody(), accNames, accTypesFinal, continueFn)));
+                                    generateMultiAccBreakAwareBody(ws.getBody(), accNames, accTypesFinal, continueFn));
 
                             multiAccVars = prevMultiAcc;
                             symbolTable.popScope();
@@ -2745,7 +1680,7 @@ public class PirGenerator {
 
                 var tupleVar = new PirTerm.Var(tupleAccName, tupleAccType);
                 var bodyTerm = unpackAccumulators(tupleVar, accumulators, accTypes,
-                        withLoopBodyFlag(() -> generateMultiAccBody(ws.getBody(), accumulators, accTypes)));
+                        generateMultiAccBody(ws.getBody(), accumulators, accTypes));
 
                 multiAccVars = prevMultiAcc;
                 symbolTable.popScope();
@@ -2769,7 +1704,7 @@ public class PirGenerator {
         } else {
             // --- No accumulator: existing side-effect-only while loop ---
             var condition = generateExpression(ws.getCondition());
-            var bodyTerm = withLoopBodyFlag(() -> generateStatement(ws.getBody()));
+            var bodyTerm = generateStatement(ws.getBody());
 
             var whileResult = desugarer.desugarWhile(condition, bodyTerm);
 
@@ -3100,107 +2035,17 @@ public class PirGenerator {
 
     // --- Helpers ---
 
-    private PirType inferType(com.github.javaparser.ast.type.Type declType, PirTerm initValue,
-                               Expression initExpr) {
-        // If an explicit type is given (not 'var'), resolve it directly
-        if (!(declType instanceof com.github.javaparser.ast.type.VarType)) {
-            return typeResolver.resolve(declType);
-        }
-        // For 'var', try to infer from the original JavaParser expression first
-        // (needed for record field access that returns ListType, MapType, etc.)
-        var exprType = resolveExpressionType(initExpr);
-        if (!(exprType instanceof PirType.DataType)) {
-            return exprType;
-        }
-        // Fall back to inferring from the PIR term
-        return inferPirType(initValue);
+    PirType inferType(com.github.javaparser.ast.type.Type declType, PirTerm initValue,
+                       Expression initExpr) {
+        return typeInference.inferType(declType, initValue, initExpr);
     }
 
     private PirType inferPirType(PirTerm term) {
-        if (term instanceof PirTerm.Const c) {
-            return switch (c.value()) {
-                case Constant.IntegerConst _ -> new PirType.IntegerType();
-                case Constant.BoolConst _ -> new PirType.BoolType();
-                case Constant.StringConst _ -> new PirType.StringType();
-                case Constant.ByteStringConst _ -> new PirType.ByteStringType();
-                case Constant.UnitConst _ -> new PirType.UnitType();
-                default -> new PirType.DataType();
-            };
-        }
-        if (term instanceof PirTerm.App app) {
-            // For builtin applications, infer from the builtin function
-            PirTerm fn = app.function();
-            // Two-arg builtins: App(App(Builtin(f), a), b)
-            if (fn instanceof PirTerm.App innerApp && innerApp.function() instanceof PirTerm.Builtin b) {
-                return inferBuiltinReturnType(b.fun());
-            }
-            // One-arg builtins: App(Builtin(f), a)
-            if (fn instanceof PirTerm.Builtin b) {
-                // FstPair(UnConstrData(x)) → IntegerType (constr tag)
-                if (b.fun() == DefaultFun.FstPair
-                        && app.argument() instanceof PirTerm.App argApp
-                        && argApp.function() instanceof PirTerm.Builtin argB
-                        && argB.fun() == DefaultFun.UnConstrData) {
-                    return new PirType.IntegerType();
-                }
-                return inferBuiltinReturnType(b.fun());
-            }
-            // For applications of Var/lambda with known FunType, peel return type
-            var fnType = inferPirType(fn);
-            if (fnType instanceof PirType.FunType ft) {
-                return ft.returnType();
-            }
-        }
-        if (term instanceof PirTerm.Var v) {
-            return v.type();
-        }
-        if (term instanceof PirTerm.IfThenElse ite) {
-            return inferPirType(ite.thenBranch());
-        }
-        if (term instanceof PirTerm.Let let) {
-            return inferPirType(let.body());
-        }
-        if (term instanceof PirTerm.LetRec letRec) {
-            return inferPirType(letRec.body());
-        }
-        return new PirType.DataType();
+        return typeInference.inferPirType(term);
     }
 
     private PirType inferBuiltinReturnType(DefaultFun fun) {
-        return switch (fun) {
-            case AddInteger, SubtractInteger, MultiplyInteger, DivideInteger,
-                 QuotientInteger, RemainderInteger, ModInteger,
-                 LengthOfByteString, ByteStringToInteger, UnIData,
-                 LengthOfArray, LookupCoin -> new PirType.IntegerType();
-            case EqualsInteger, LessThanInteger, LessThanEqualsInteger,
-                 EqualsByteString, LessThanByteString, LessThanEqualsByteString,
-                 EqualsString, EqualsData, NullList,
-                 Bls12_381_G1_equal, Bls12_381_G2_equal, Bls12_381_finalVerify,
-                 ValueContains -> new PirType.BoolType();
-            case AppendByteString, SliceByteString, ConsByteString,
-                 Sha2_256, Sha3_256, Blake2b_256, EncodeUtf8, UnBData,
-                 Bls12_381_G1_compress, Bls12_381_G2_compress,
-                 // BLS G1/G2 element-returning operations (native UPLC BLS constants, treated as opaque bytes)
-                 Bls12_381_G1_add, Bls12_381_G1_neg, Bls12_381_G1_scalarMul,
-                 Bls12_381_G1_hashToGroup, Bls12_381_G1_uncompress,
-                 Bls12_381_G2_add, Bls12_381_G2_neg, Bls12_381_G2_scalarMul,
-                 Bls12_381_G2_hashToGroup, Bls12_381_G2_uncompress,
-                 // Miller loop result-returning operations (also opaque BLS constants)
-                 Bls12_381_millerLoop, Bls12_381_mulMlResult,
-                 // Multi-scalar multiplication results
-                 Bls12_381_G1_multiScalarMul, Bls12_381_G2_multiScalarMul -> new PirType.ByteStringType();
-            case AppendString, DecodeUtf8 -> new PirType.StringType();
-            // List-returning builtins: these return List(Data) in UPLC
-            case UnListData, TailList, MkCons, MkNilData,
-                 DropList, MultiIndexArray -> new PirType.ListType(new PirType.DataType());
-            // Map-returning builtins: these return List(Pair(Data,Data)) in UPLC
-            case UnMapData, MkNilPairData -> new PirType.MapType(new PirType.DataType(), new PirType.DataType());
-            // Array-returning builtins
-            case ListToArray -> new PirType.ArrayType(new PirType.DataType());
-            // IndexArray, InsertCoin, UnionValue, ValueData, UnValueData, ScaleValue intentionally
-            // fall through to DataType — actual types are resolved by TypeMethodRegistry or are opaque.
-            default -> new PirType.DataType();
-        };
+        return typeInference.inferBuiltinReturnType(fun);
     }
 
     private static PirTerm builtinApp2(DefaultFun fun, PirTerm a, PirTerm b) {
@@ -3218,7 +2063,7 @@ public class PirGenerator {
      * @param suggestion a helpful suggestion for fixing the error, or null
      * @param node       the AST node for source location extraction
      */
-    private static CompilerException enrichedError(String msg, String suggestion, Node node) {
+    static CompilerException enrichedError(String msg, String suggestion, Node node) {
         var location = extractLocation(node);
         var fullMsg = new StringBuilder();
         if (!location.isEmpty()) {
@@ -3296,74 +2141,7 @@ public class PirGenerator {
         return "";
     }
 
-    /**
-     * Find which variable names from `candidates` are referenced in a PIR term.
-     * Used to determine which pre-loop variables need to be re-bound after a while loop.
-     */
-    private static Set<String> findReferencedVars(PirTerm term, Map<String, PirType> candidates) {
-        var result = new LinkedHashSet<String>();
-        collectReferencedVars(term, candidates, result);
-        return result;
-    }
-
-    private static void collectReferencedVars(PirTerm term, Map<String, PirType> candidates, Set<String> result) {
-        switch (term) {
-            case PirTerm.Var v -> { if (candidates.containsKey(v.name())) result.add(v.name()); }
-            case PirTerm.Let l -> {
-                collectReferencedVars(l.value(), candidates, result);
-                collectReferencedVars(l.body(), candidates, result);
-            }
-            case PirTerm.LetRec lr -> {
-                for (var b : lr.bindings()) collectReferencedVars(b.value(), candidates, result);
-                collectReferencedVars(lr.body(), candidates, result);
-            }
-            case PirTerm.Lam lam -> collectReferencedVars(lam.body(), candidates, result);
-            case PirTerm.App app -> {
-                collectReferencedVars(app.function(), candidates, result);
-                collectReferencedVars(app.argument(), candidates, result);
-            }
-            case PirTerm.IfThenElse ite -> {
-                collectReferencedVars(ite.cond(), candidates, result);
-                collectReferencedVars(ite.thenBranch(), candidates, result);
-                collectReferencedVars(ite.elseBranch(), candidates, result);
-            }
-            case PirTerm.DataConstr dc -> { for (var f : dc.fields()) collectReferencedVars(f, candidates, result); }
-            case PirTerm.DataMatch dm -> {
-                collectReferencedVars(dm.scrutinee(), candidates, result);
-                for (var b : dm.branches()) collectReferencedVars(b.body(), candidates, result);
-            }
-            case PirTerm.Trace t -> {
-                collectReferencedVars(t.message(), candidates, result);
-                collectReferencedVars(t.body(), candidates, result);
-            }
-            case PirTerm.Const _, PirTerm.Builtin _, PirTerm.Error _ -> {}
-        }
-    }
-
-    /**
-     * Wrap a PIR term with Let re-bindings for pre-loop variables that are referenced in the term.
-     * This fixes the post-while-loop variable corruption bug where LetRec scope boundaries
-     * from while loop desugaring block access to outer Let bindings.
-     */
     private static PirTerm rebindPreLoopVars(PirTerm rest, Map<String, PirType> preLoopVars, Set<String> accumulatorNames) {
-        // Filter out accumulator names — they are already rebound by unpackAccumulators
-        var candidates = new LinkedHashMap<>(preLoopVars);
-        for (var accName : accumulatorNames) {
-            candidates.remove(accName);
-        }
-        if (candidates.isEmpty()) return rest;
-
-        var referenced = findReferencedVars(rest, candidates);
-        if (referenced.isEmpty()) return rest;
-
-        // Wrap rest with Let re-bindings: Let(name, Var(name, type), rest)
-        // This creates a fresh binding that captures the pre-loop variable value
-        // inside the scope that the LetRec transformation produces.
-        PirTerm result = rest;
-        for (var name : referenced) {
-            var type = candidates.get(name);
-            result = new PirTerm.Let(name, new PirTerm.Var(name, type), result);
-        }
-        return result;
+        return LoopBodyGenerator.rebindPreLoopVars(rest, preLoopVars, accumulatorNames);
     }
 }

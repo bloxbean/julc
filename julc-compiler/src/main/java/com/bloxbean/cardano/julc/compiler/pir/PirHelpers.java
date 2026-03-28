@@ -3,6 +3,9 @@ package com.bloxbean.cardano.julc.compiler.pir;
 import com.bloxbean.cardano.julc.core.Constant;
 import com.bloxbean.cardano.julc.core.DefaultFun;
 
+import com.github.javaparser.ast.stmt.BlockStmt;
+import com.github.javaparser.ast.stmt.Statement;
+
 import java.math.BigInteger;
 import java.util.List;
 
@@ -277,6 +280,25 @@ public final class PirHelpers {
                 new PirTerm.Let("t_" + suffix, target, search));
     }
 
+    /** Check if a PIR term contains a Var reference with the given name (for self-recursion detection). */
+    public static boolean containsVarRef(PirTerm term, String name) {
+        return switch (term) {
+            case PirTerm.Var v -> v.name().equals(name);
+            case PirTerm.Let l -> containsVarRef(l.value(), name) || containsVarRef(l.body(), name);
+            case PirTerm.LetRec lr -> lr.bindings().stream().anyMatch(b -> containsVarRef(b.value(), name))
+                    || containsVarRef(lr.body(), name);
+            case PirTerm.Lam lam -> containsVarRef(lam.body(), name);
+            case PirTerm.App app -> containsVarRef(app.function(), name) || containsVarRef(app.argument(), name);
+            case PirTerm.IfThenElse ite -> containsVarRef(ite.cond(), name)
+                    || containsVarRef(ite.thenBranch(), name) || containsVarRef(ite.elseBranch(), name);
+            case PirTerm.DataConstr dc -> dc.fields().stream().anyMatch(f -> containsVarRef(f, name));
+            case PirTerm.DataMatch dm -> containsVarRef(dm.scrutinee(), name)
+                    || dm.branches().stream().anyMatch(b -> containsVarRef(b.body(), name));
+            case PirTerm.Trace t -> containsVarRef(t.message(), name) || containsVarRef(t.body(), name);
+            case PirTerm.Const _, PirTerm.Builtin _, PirTerm.Error _ -> false;
+        };
+    }
+
     /** Convenience: None value (ConstrData(1, [])). */
     public static PirTerm mkNone() {
         var mkNil = new PirTerm.App(new PirTerm.Builtin(DefaultFun.MkNilData),
@@ -292,6 +314,12 @@ public final class PirHelpers {
         var fields = builtinApp2(DefaultFun.MkCons, value, mkNil);
         return builtinApp2(DefaultFun.ConstrData,
                 new PirTerm.Const(Constant.integer(BigInteger.ZERO)), fields);
+    }
+
+    /** Extract statements from a BlockStmt, or wrap a single statement in a list. */
+    public static List<Statement> blockStmts(Statement stmt) {
+        if (stmt instanceof BlockStmt bs) return bs.getStatements();
+        return List.of(stmt);
     }
 
     /** Convenience: empty pair list (MkNilPairData(unit)). */
