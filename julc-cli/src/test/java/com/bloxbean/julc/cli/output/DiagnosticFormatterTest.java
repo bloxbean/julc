@@ -16,7 +16,7 @@ class DiagnosticFormatterTest {
                 "unexpected type",
                 "MyValidator.java", 14, 8);
         String formatted = DiagnosticFormatter.format(diag);
-        assertTrue(formatted.contains("MyValidator.java:14:8"));
+        assertTrue(formatted.contains("./MyValidator.java:14:8"));
         assertTrue(formatted.contains("unexpected type"));
     }
 
