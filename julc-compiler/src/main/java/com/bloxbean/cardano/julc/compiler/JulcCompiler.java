@@ -22,7 +22,6 @@ import com.github.javaparser.StaticJavaParser;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
-import com.github.javaparser.ast.body.RecordDeclaration;
 import com.github.javaparser.ast.expr.FieldAccessExpr;
 import com.github.javaparser.ast.expr.MemberValuePair;
 import com.github.javaparser.ast.expr.NormalAnnotationExpr;
@@ -32,7 +31,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
-import java.util.stream.Stream;
 
 /**
  * Main compiler facade. Orchestrates the pipeline:
@@ -58,6 +56,23 @@ public class JulcCompiler {
 
     private record ParamField(String name, PirType pirType, String javaType) {}
     private record StaticField(String name, PirType pirType, com.github.javaparser.ast.expr.Expression initExpr) {}
+    private record CompiledStaticField(String name, PirTerm initPir) {}
+
+    /** Stdlib class FQCNs — must match StdlibRegistry registration keys. */
+    private static final Set<String> STDLIB_FQCNS = Set.of(
+            "com.bloxbean.cardano.julc.stdlib.Builtins",
+            "com.bloxbean.cardano.julc.stdlib.lib.ContextsLib",
+            "com.bloxbean.cardano.julc.stdlib.lib.ListsLib",
+            "com.bloxbean.cardano.julc.stdlib.lib.MapLib",
+            "com.bloxbean.cardano.julc.stdlib.lib.ValuesLib",
+            "com.bloxbean.cardano.julc.stdlib.lib.OutputLib",
+            "com.bloxbean.cardano.julc.stdlib.lib.MathLib",
+            "com.bloxbean.cardano.julc.stdlib.lib.IntervalLib",
+            "com.bloxbean.cardano.julc.stdlib.lib.CryptoLib",
+            "com.bloxbean.cardano.julc.stdlib.lib.ByteStringLib",
+            "com.bloxbean.cardano.julc.stdlib.lib.BitwiseLib",
+            "com.bloxbean.cardano.julc.stdlib.lib.AddressLib"
+    );
 
     /** Typed Data subtypes that must not be used with @Param. */
     private static final Set<String> BANNED_PARAM_TYPES = Set.of(
@@ -192,21 +207,7 @@ public class JulcCompiler {
         var knownFqcns = new LinkedHashSet<String>();
         knownFqcns.addAll(typeResolver.allRegisteredFqcns());
         knownFqcns.addAll(TypeResolver.ledgerHashFqcns());
-        // Stdlib class FQCNs — must match StdlibRegistry registration keys
-        knownFqcns.addAll(Set.of(
-                "com.bloxbean.cardano.julc.stdlib.Builtins",
-                "com.bloxbean.cardano.julc.stdlib.lib.ContextsLib",
-                "com.bloxbean.cardano.julc.stdlib.lib.ListsLib",
-                "com.bloxbean.cardano.julc.stdlib.lib.MapLib",
-                "com.bloxbean.cardano.julc.stdlib.lib.ValuesLib",
-                "com.bloxbean.cardano.julc.stdlib.lib.OutputLib",
-                "com.bloxbean.cardano.julc.stdlib.lib.MathLib",
-                "com.bloxbean.cardano.julc.stdlib.lib.IntervalLib",
-                "com.bloxbean.cardano.julc.stdlib.lib.CryptoLib",
-                "com.bloxbean.cardano.julc.stdlib.lib.ByteStringLib",
-                "com.bloxbean.cardano.julc.stdlib.lib.BitwiseLib",
-                "com.bloxbean.cardano.julc.stdlib.lib.AddressLib"
-        ));
+        knownFqcns.addAll(STDLIB_FQCNS);
         for (var libCu : libraryCus) {
             for (var cls : libCu.findAll(ClassOrInterfaceDeclaration.class)) {
                 if (!cls.isInterface()) {
@@ -288,7 +289,6 @@ public class JulcCompiler {
                 TypeMethodRegistry.defaultRegistry(), null, options);
 
         // 11b. Compile static field initializers
-        record CompiledStaticField(String name, PirTerm initPir) {}
         var compiledStaticFields = new ArrayList<CompiledStaticField>();
         for (var sf : staticFields) {
             var initPir = pirGenerator.generateExpression(sf.initExpr);
@@ -621,20 +621,7 @@ public class JulcCompiler {
         var knownFqcns = new LinkedHashSet<String>();
         knownFqcns.addAll(typeResolver.allRegisteredFqcns());
         knownFqcns.addAll(TypeResolver.ledgerHashFqcns());
-        knownFqcns.addAll(Set.of(
-                "com.bloxbean.cardano.julc.stdlib.Builtins",
-                "com.bloxbean.cardano.julc.stdlib.lib.ContextsLib",
-                "com.bloxbean.cardano.julc.stdlib.lib.ListsLib",
-                "com.bloxbean.cardano.julc.stdlib.lib.MapLib",
-                "com.bloxbean.cardano.julc.stdlib.lib.ValuesLib",
-                "com.bloxbean.cardano.julc.stdlib.lib.OutputLib",
-                "com.bloxbean.cardano.julc.stdlib.lib.MathLib",
-                "com.bloxbean.cardano.julc.stdlib.lib.IntervalLib",
-                "com.bloxbean.cardano.julc.stdlib.lib.CryptoLib",
-                "com.bloxbean.cardano.julc.stdlib.lib.ByteStringLib",
-                "com.bloxbean.cardano.julc.stdlib.lib.BitwiseLib",
-                "com.bloxbean.cardano.julc.stdlib.lib.AddressLib"
-        ));
+        knownFqcns.addAll(STDLIB_FQCNS);
         for (var libCu : libraryCus) {
             for (var cls : libCu.findAll(ClassOrInterfaceDeclaration.class)) {
                 if (!cls.isInterface()) {
@@ -690,7 +677,6 @@ public class JulcCompiler {
         var pirGenerator = new PirGenerator(typeResolver, symbolTable, effectiveLookup,
                 TypeMethodRegistry.defaultRegistry(), null, options);
 
-        record CompiledStaticField(String name, PirTerm initPir) {}
         var compiledStaticFields = new ArrayList<CompiledStaticField>();
         for (var sf : staticFields) {
             var initPir = pirGenerator.generateExpression(sf.initExpr);
@@ -793,105 +779,12 @@ public class JulcCompiler {
     private void compileLibraryMethods(List<CompilationUnit> libCus, TypeResolver typeResolver,
                                        LibraryMethodRegistry registry, StdlibLookup effectiveLookup,
                                        Set<String> knownFqcns) {
-        // Multi-pass compilation: retry CUs that fail due to unresolved cross-library references.
-        // Each pass compiles CUs whose dependencies are already available, progressively growing
-        // the registry until all CUs are compiled or no further progress can be made.
-        var remaining = new ArrayList<>(libCus);
-        boolean progress = true;
-        while (progress && !remaining.isEmpty()) {
-            progress = false;
-            var nextRemaining = new ArrayList<CompilationUnit>();
-            for (var libCu : remaining) {
-                try {
-                    compileSingleLibraryCu(libCu, typeResolver, registry, effectiveLookup, knownFqcns);
-                    progress = true;
-                } catch (Exception e) {
-                    nextRemaining.add(libCu);
-                }
-            }
-            remaining = nextRemaining;
-        }
-        // Final pass: compile any remaining CUs (will throw with proper error if unresolvable)
-        for (var libCu : remaining) {
-            compileSingleLibraryCu(libCu, typeResolver, registry, effectiveLookup, knownFqcns);
-        }
+        new LibraryCompiler(options).compile(libCus, typeResolver, registry, effectiveLookup, knownFqcns);
     }
 
-    private void compileSingleLibraryCu(CompilationUnit libCu, TypeResolver typeResolver,
-                                         LibraryMethodRegistry registry, StdlibLookup effectiveLookup,
-                                         Set<String> knownFqcns) {
-        // Set ImportResolver for this library CU
-        var libImportResolver = new ImportResolver(libCu, knownFqcns);
-        typeResolver.setCurrentImportResolver(libImportResolver);
-
-        for (var cls : libCu.findAll(ClassOrInterfaceDeclaration.class)) {
-            if (cls.isInterface()) continue;
-            var className = cls.getNameAsString();
-            // Use FQCN for library class name
-            var classNameFqcn = cls.getFullyQualifiedName().orElse(className);
-
-            // Detect static fields with initializers in library classes
-            var libStaticFields = findStaticFields(cls, typeResolver);
-
-            // Set up a local symbol table with qualified names for intra-library calls
-            var libSymbolTable = new SymbolTable();
-            for (var sf : libStaticFields) {
-                libSymbolTable.define(sf.name, sf.pirType);
-            }
-            for (var method : cls.getMethods()) {
-                if (method.isStatic()) {
-                    var mType = computeMethodType(method, typeResolver);
-                    libSymbolTable.define(classNameFqcn + "." + method.getNameAsString(), mType);
-                }
-            }
-
-            // Use progressive lookup: stdlib + already-compiled libraries from previous CUs
-            var composedLookup = new CompositeStdlibLookup(effectiveLookup, registry);
-
-            // Compile each static method (pass FQCN className for qualified name resolution)
-            var libPirGenerator = new PirGenerator(typeResolver, libSymbolTable, composedLookup,
-                    TypeMethodRegistry.defaultRegistry(), classNameFqcn);
-
-            // Compile static field initializers
-            record LibCompiledField(String name, PirTerm initPir) {}
-            var compiledLibFields = new ArrayList<LibCompiledField>();
-            for (var sf : libStaticFields) {
-                var initPir = libPirGenerator.generateExpression(sf.initExpr);
-                compiledLibFields.add(new LibCompiledField(sf.name, initPir));
-            }
-
-            for (var method : cls.getMethods()) {
-                if (method.isStatic()) {
-                    var pirBody = libPirGenerator.generateMethod(method);
-                    // Wrap method body with static field Let bindings
-                    for (int i = compiledLibFields.size() - 1; i >= 0; i--) {
-                        var sf = compiledLibFields.get(i);
-                        pirBody = new PirTerm.Let(sf.name(), sf.initPir(), pirBody);
-                    }
-                    var mType = computeMethodType(method, typeResolver);
-                    registry.register(classNameFqcn, method.getNameAsString(), mType, pirBody);
-                }
-            }
-        }
-    }
-
-    /** Check if a PIR term contains a Var reference with the given name (for self-recursion detection). */
+    /** Delegate to PirHelpers for self-recursion detection. */
     private static boolean containsVarRef(PirTerm term, String name) {
-        return switch (term) {
-            case PirTerm.Var v -> v.name().equals(name);
-            case PirTerm.Let l -> containsVarRef(l.value(), name) || containsVarRef(l.body(), name);
-            case PirTerm.LetRec lr -> lr.bindings().stream().anyMatch(b -> containsVarRef(b.value(), name))
-                    || containsVarRef(lr.body(), name);
-            case PirTerm.Lam lam -> containsVarRef(lam.body(), name);
-            case PirTerm.App app -> containsVarRef(app.function(), name) || containsVarRef(app.argument(), name);
-            case PirTerm.IfThenElse ite -> containsVarRef(ite.cond(), name)
-                    || containsVarRef(ite.thenBranch(), name) || containsVarRef(ite.elseBranch(), name);
-            case PirTerm.DataConstr dc -> dc.fields().stream().anyMatch(f -> containsVarRef(f, name));
-            case PirTerm.DataMatch dm -> containsVarRef(dm.scrutinee(), name)
-                    || dm.branches().stream().anyMatch(b -> containsVarRef(b.body(), name));
-            case PirTerm.Trace t -> containsVarRef(t.message(), name) || containsVarRef(t.body(), name);
-            case PirTerm.Const _, PirTerm.Builtin _, PirTerm.Error _ -> false;
-        };
+        return PirHelpers.containsVarRef(term, name);
     }
 
     /**
