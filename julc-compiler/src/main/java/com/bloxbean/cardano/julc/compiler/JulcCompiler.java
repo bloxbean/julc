@@ -71,7 +71,9 @@ public class JulcCompiler {
             "com.bloxbean.cardano.julc.stdlib.lib.CryptoLib",
             "com.bloxbean.cardano.julc.stdlib.lib.ByteStringLib",
             "com.bloxbean.cardano.julc.stdlib.lib.BitwiseLib",
-            "com.bloxbean.cardano.julc.stdlib.lib.AddressLib"
+            "com.bloxbean.cardano.julc.stdlib.lib.AddressLib",
+            "com.bloxbean.cardano.julc.stdlib.lib.BlsLib",
+            "com.bloxbean.cardano.julc.stdlib.lib.NativeValueLib"
     );
 
     /** Typed Data subtypes that must not be used with @Param. */
