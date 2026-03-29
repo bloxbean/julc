@@ -17,6 +17,7 @@ import picocli.CommandLine.Command;
                 BuildCommand.class,
                 CheckCommand.class,
                 EvalCommand.class,
+                ReplCommand.class,
                 BlueprintCommand.class,
                 UplcCommand.class,
                 VersionCommand.class,

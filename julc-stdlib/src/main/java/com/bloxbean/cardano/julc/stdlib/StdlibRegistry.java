@@ -216,6 +216,30 @@ public final class StdlibRegistry implements StdlibLookup {
     }
 
     /**
+     * Returns the set of method names registered for a given class.
+     * Matches by simple name (e.g., "ListsLib") or FQCN against registry keys.
+     *
+     * @param className the simple class name or FQCN
+     * @return set of method names, or empty set if class has no registered methods
+     */
+    public java.util.Set<String> methodsForClass(String className) {
+        var methods = new java.util.TreeSet<String>();
+        // Direct prefix match (works for FQCN keys)
+        String directPrefix = className + ".";
+        // Simple name match: look for ".ClassName." within FQCN keys
+        String simplePrefix = "." + className + ".";
+        for (var key : registry.keySet()) {
+            if (key.startsWith(directPrefix)) {
+                methods.add(key.substring(directPrefix.length()));
+            } else if (key.contains(simplePrefix)) {
+                int idx = key.indexOf(simplePrefix) + simplePrefix.length();
+                methods.add(key.substring(idx));
+            }
+        }
+        return methods;
+    }
+
+    /**
      * Returns the set of all registered class FQCNs.
      * Used to populate ImportResolver's knownFqcns so that imports of stdlib classes
      * (e.g., {@code import com.bloxbean.cardano.julc.stdlib.Builtins;}) resolve correctly.
