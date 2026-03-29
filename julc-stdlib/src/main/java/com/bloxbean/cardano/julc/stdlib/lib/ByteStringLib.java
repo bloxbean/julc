@@ -78,6 +78,11 @@ public class ByteStringLib {
         return Builtins.integerToByteString(endian, width, i);
     }
 
+    /** Convert integer to bytestring. Accepts arbitrary-precision BigInteger. */
+    public static byte[] integerToByteString(boolean endian, long width, BigInteger i) {
+        return Builtins.integerToByteString(endian, width, i);
+    }
+
     /** Convert bytestring to integer. Returns arbitrary-precision BigInteger. */
     public static BigInteger byteStringToInteger(boolean endian, byte[] bs) {
         return Builtins.byteStringToInteger(endian, bs);

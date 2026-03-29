@@ -253,6 +253,7 @@ final class TypeInferenceHelper {
                  ValueContains -> new PirType.BoolType();
             case AppendByteString, SliceByteString, ConsByteString,
                  Sha2_256, Sha3_256, Blake2b_256, EncodeUtf8, UnBData,
+                 IntegerToByteString,
                  Bls12_381_G1_compress, Bls12_381_G2_compress,
                  Bls12_381_G1_add, Bls12_381_G1_neg, Bls12_381_G1_scalarMul,
                  Bls12_381_G1_hashToGroup, Bls12_381_G1_uncompress,

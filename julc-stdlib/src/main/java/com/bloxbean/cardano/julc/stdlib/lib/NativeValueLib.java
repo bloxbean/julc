@@ -4,6 +4,8 @@ import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary;
 import com.bloxbean.cardano.julc.stdlib.Builtins;
 
+import java.math.BigInteger;
+
 /**
  * Native MaryEra Value operations using PV11 builtins (CIP-153).
  * <p>
@@ -39,12 +41,12 @@ public class NativeValueLib {
     }
 
     /** Insert or update a token quantity in a Value. */
-    public static PlutusData insertCoin(byte[] policyId, byte[] tokenName, long amount, PlutusData value) {
+    public static PlutusData insertCoin(byte[] policyId, byte[] tokenName, BigInteger amount, PlutusData value) {
         return Builtins.insertCoin(policyId, tokenName, amount, value);
     }
 
     /** Look up a token quantity. Returns 0 if absent. */
-    public static long lookupCoin(byte[] policyId, byte[] tokenName, PlutusData value) {
+    public static BigInteger lookupCoin(byte[] policyId, byte[] tokenName, PlutusData value) {
         return Builtins.lookupCoin(policyId, tokenName, value);
     }
 
@@ -59,7 +61,7 @@ public class NativeValueLib {
     }
 
     /** Scale all quantities by a scalar. */
-    public static PlutusData scale(long scalar, PlutusData value) {
+    public static PlutusData scale(BigInteger scalar, PlutusData value) {
         return Builtins.scaleValue(scalar, value);
     }
 }

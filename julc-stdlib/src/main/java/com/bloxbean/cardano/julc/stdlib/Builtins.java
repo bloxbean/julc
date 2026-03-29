@@ -298,10 +298,19 @@ public final class Builtins {
         return Arrays.compare(toBytes(a), toBytes(b)) <= 0;
     }
 
-    /** Convert integer to bytestring with given endianness and width. */
-    public static byte[] integerToByteString(boolean bigEndian, long width, long i) {
-        var bi = BigInteger.valueOf(i);
-        byte[] raw = bi.toByteArray();
+    /** Convert integer to bytestring with given endianness and width. Accepts arbitrary-precision BigInteger. */
+    public static byte[] integerToByteString(boolean bigEndian, long width, BigInteger i) {
+        if (i.signum() < 0) {
+            throw new IllegalArgumentException("integerToByteString: negative integer");
+        }
+        if (i.signum() == 0) {
+            int w = (int) width;
+            if (w > 0) {
+                return new byte[w]; // zero-padded
+            }
+            return new byte[0];
+        }
+        byte[] raw = i.toByteArray();
         // Strip leading zero sign byte if present
         if (raw.length > 1 && raw[0] == 0) {
             raw = Arrays.copyOfRange(raw, 1, raw.length);
@@ -316,6 +325,11 @@ public final class Builtins {
             reverseInPlace(raw);
         }
         return raw;
+    }
+
+    /** Convert integer to bytestring with given endianness and width. Delegates to BigInteger overload. */
+    public static byte[] integerToByteString(boolean bigEndian, long width, long i) {
+        return integerToByteString(bigEndian, width, BigInteger.valueOf(i));
     }
 
     /** Convert bytestring to integer with given endianness. Returns arbitrary-precision BigInteger. */
@@ -870,25 +884,13 @@ public final class Builtins {
     // PV11 MaryEraValue Operations (CIP-153)
     // =========================================================================
 
-    /**
-     * Insert or update a token quantity in a native Value. PV11 only.
-     *
-     * @apiNote On-chain, the UPLC builtin accepts arbitrary-precision integers. The {@code long}
-     *          parameter here covers the practical range for token quantities but will truncate
-     *          values outside {@code Long.MIN_VALUE..Long.MAX_VALUE}.
-     */
-    public static PlutusData insertCoin(byte[] policyId, byte[] tokenName, long amount, PlutusData value) {
+    /** Insert or update a token quantity in a native Value. PV11 only. */
+    public static PlutusData insertCoin(byte[] policyId, byte[] tokenName, BigInteger amount, PlutusData value) {
         throw new UnsupportedOperationException("Builtins.insertCoin: on-chain only — use Julc VM for off-chain evaluation");
     }
 
-    /**
-     * Look up a token quantity in a native Value. Returns 0 if absent. PV11 only.
-     *
-     * @apiNote On-chain, the UPLC builtin returns an arbitrary-precision integer. The {@code long}
-     *          return type here covers the practical range but will truncate values outside
-     *          {@code Long.MIN_VALUE..Long.MAX_VALUE}.
-     */
-    public static long lookupCoin(byte[] policyId, byte[] tokenName, PlutusData value) {
+    /** Look up a token quantity in a native Value. Returns 0 if absent. PV11 only. */
+    public static BigInteger lookupCoin(byte[] policyId, byte[] tokenName, PlutusData value) {
         throw new UnsupportedOperationException("Builtins.lookupCoin: on-chain only — use Julc VM for off-chain evaluation");
     }
 
@@ -913,7 +915,7 @@ public final class Builtins {
     }
 
     /** Scale all quantities in a native Value by a scalar. PV11 only. */
-    public static PlutusData scaleValue(long scalar, PlutusData value) {
+    public static PlutusData scaleValue(BigInteger scalar, PlutusData value) {
         throw new UnsupportedOperationException("Builtins.scaleValue: on-chain only — use Julc VM for off-chain evaluation");
     }
 

@@ -181,6 +181,36 @@ class ByteStringLibTest {
             BigInteger back = eval.call("byteStringToInteger", true, bs).asInteger();
             assertEquals(BigInteger.valueOf(256), back);
         }
+
+        @Test
+        void bigIntegerLargeValue() {
+            // ZK field element: 2^256
+            BigInteger large = BigInteger.TWO.pow(256);
+            byte[] bs = eval.call("integerToByteString", true, 0L, large).asByteString();
+            BigInteger back = eval.call("byteStringToInteger", true, bs).asInteger();
+            assertEquals(large, back);
+        }
+
+        @Test
+        void bigIntegerRoundTrip() {
+            // Value larger than Long.MAX_VALUE
+            BigInteger value = BigInteger.valueOf(Long.MAX_VALUE).multiply(BigInteger.TEN);
+            byte[] bs = eval.call("integerToByteString", true, 0L, value).asByteString();
+            BigInteger back = eval.call("byteStringToInteger", true, bs).asInteger();
+            assertEquals(value, back);
+        }
+
+        @Test
+        void bigIntegerZero() {
+            byte[] bs = eval.call("integerToByteString", true, 0L, BigInteger.ZERO).asByteString();
+            assertEquals(0, bs.length);
+        }
+
+        @Test
+        void bigIntegerNegativeThrows() {
+            assertThrows(Exception.class, () ->
+                    eval.call("integerToByteString", true, 0L, BigInteger.valueOf(-1)));
+        }
     }
 
     @Nested
