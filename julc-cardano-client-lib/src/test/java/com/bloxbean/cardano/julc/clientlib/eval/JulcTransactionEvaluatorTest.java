@@ -31,8 +31,10 @@ class JulcTransactionEvaluatorTest {
 
     static PlutusV3Script alwaysTrueScript;
     static PlutusV3Script alwaysFalseScript;
+    static PlutusV3Script comparisonFailScript;
     static String alwaysTrueHash;
     static String alwaysFalseHash;
+    static String comparisonFailHash;
 
     // V2 scripts (3-arg calling convention: datum, redeemer, scriptContext)
     static PlutusV2Script v2AlwaysTrueScript;
@@ -58,6 +60,20 @@ class JulcTransactionEvaluatorTest {
                 Term.lam("ctx", Term.error()));
         alwaysFalseScript = JulcScriptAdapter.fromProgram(alwaysFalseProgram);
         alwaysFalseHash = JulcScriptAdapter.scriptHash(alwaysFalseProgram);
+
+        // Comparison-fail: a script that does a comparison and fails
+        // (\ctx -> ifThenElse(lessThanEqualsInteger(5, 3), (), ERROR))
+        // LessThanEqualsInteger returns False, so IfThenElse takes the Error branch
+        var compare = Term.apply(Term.apply(Term.builtin(DefaultFun.LessThanEqualsInteger),
+                Term.const_(Constant.integer(5))),
+                Term.const_(Constant.integer(3)));
+        var ifThenElse = Term.apply(Term.apply(Term.apply(Term.force(Term.builtin(DefaultFun.IfThenElse)),
+                compare),
+                Term.const_(Constant.unit())),
+                Term.error());
+        var comparisonFailProgram = Program.plutusV3(Term.lam("ctx", ifThenElse));
+        comparisonFailScript = JulcScriptAdapter.fromProgram(comparisonFailProgram);
+        comparisonFailHash = JulcScriptAdapter.scriptHash(comparisonFailProgram);
 
         // V2 always-true (3-arg: \datum redeemer ctx -> ())
         var v2AlwaysTrueProgram = Program.plutusV2(
@@ -400,6 +416,155 @@ class JulcTransactionEvaluatorTest {
         assertTrue(result.isSuccessful(), "Expected success but got: " + result.getResponse());
         assertEquals(1, result.getValue().size());
         assertEquals(RedeemerTag.Spend, result.getValue().getFirst().getRedeemerTag());
+    }
+
+    // --- Builtin Trace Tests ---
+
+    @Test
+    void builtinTrace_defaultEnabled_failureContainsComparisonValues() throws Exception {
+        // Default: builtin trace is on — failure messages should include builtin values
+        String scriptAddr = buildScriptAddress(comparisonFailHash);
+        String txHash = "de".repeat(32);
+
+        Utxo inputUtxo = Utxo.builder()
+                .txHash(txHash)
+                .outputIndex(0)
+                .address(scriptAddr)
+                .amount(List.of(Amount.lovelace(BigInteger.valueOf(5_000_000))))
+                .build();
+
+        var redeemer = Redeemer.builder()
+                .tag(RedeemerTag.Spend)
+                .index(BigInteger.ZERO)
+                .data(new BigIntPlutusData(BigInteger.ZERO))
+                .exUnits(ExUnits.builder()
+                        .mem(BigInteger.ZERO)
+                        .steps(BigInteger.ZERO)
+                        .build())
+                .build();
+
+        var tx = Transaction.builder()
+                .body(TransactionBody.builder()
+                        .inputs(List.of(new TransactionInput(txHash, 0)))
+                        .outputs(List.of())
+                        .fee(BigInteger.valueOf(200_000))
+                        .build())
+                .witnessSet(TransactionWitnessSet.builder()
+                        .redeemers(List.of(redeemer))
+                        .plutusV3Scripts(List.of(comparisonFailScript))
+                        .build())
+                .build();
+
+        var evaluator = createEvaluator(null);
+        // No explicit enableBuiltinTrace() call — it's on by default!
+        byte[] cbor = tx.serialize();
+        var result = evaluator.evaluateTx(cbor, Set.of(inputUtxo));
+
+        assertFalse(result.isSuccessful());
+        // Error message should contain the comparison builtin with actual values
+        String errorMsg = result.getResponse();
+        assertTrue(errorMsg.contains("LessThanEqualsInteger"),
+                "Error should mention the comparison builtin, got: " + errorMsg);
+        assertTrue(errorMsg.contains("False"),
+                "Error should show the comparison result was False, got: " + errorMsg);
+    }
+
+    @Test
+    void builtinTrace_explicitlyDisabled_failureOmitsBuiltinValues() throws Exception {
+        // Developer explicitly disables builtin trace for production
+        String scriptAddr = buildScriptAddress(comparisonFailHash);
+        String txHash = "de".repeat(32);
+
+        Utxo inputUtxo = Utxo.builder()
+                .txHash(txHash)
+                .outputIndex(0)
+                .address(scriptAddr)
+                .amount(List.of(Amount.lovelace(BigInteger.valueOf(5_000_000))))
+                .build();
+
+        var redeemer = Redeemer.builder()
+                .tag(RedeemerTag.Spend)
+                .index(BigInteger.ZERO)
+                .data(new BigIntPlutusData(BigInteger.ZERO))
+                .exUnits(ExUnits.builder()
+                        .mem(BigInteger.ZERO)
+                        .steps(BigInteger.ZERO)
+                        .build())
+                .build();
+
+        var tx = Transaction.builder()
+                .body(TransactionBody.builder()
+                        .inputs(List.of(new TransactionInput(txHash, 0)))
+                        .outputs(List.of())
+                        .fee(BigInteger.valueOf(200_000))
+                        .build())
+                .witnessSet(TransactionWitnessSet.builder()
+                        .redeemers(List.of(redeemer))
+                        .plutusV3Scripts(List.of(comparisonFailScript))
+                        .build())
+                .build();
+
+        var evaluator = createEvaluator(null);
+        evaluator.enableBuiltinTrace(false);  // explicitly off for production
+        byte[] cbor = tx.serialize();
+        var result = evaluator.evaluateTx(cbor, Set.of(inputUtxo));
+
+        assertFalse(result.isSuccessful());
+        // Error message should NOT contain builtin details
+        String errorMsg = result.getResponse();
+        assertFalse(errorMsg.contains("LessThanEqualsInteger"),
+                "With builtin trace off, error should not include builtin details, got: " + errorMsg);
+    }
+
+    @Test
+    void builtinTraceOnly_withoutExecutionTrace() throws Exception {
+        // Developer enables only builtin trace (lightweight), not execution trace
+        String scriptAddr = buildScriptAddress(comparisonFailHash);
+        String txHash = "de".repeat(32);
+
+        Utxo inputUtxo = Utxo.builder()
+                .txHash(txHash)
+                .outputIndex(0)
+                .address(scriptAddr)
+                .amount(List.of(Amount.lovelace(BigInteger.valueOf(5_000_000))))
+                .build();
+
+        var redeemer = Redeemer.builder()
+                .tag(RedeemerTag.Spend)
+                .index(BigInteger.ZERO)
+                .data(new BigIntPlutusData(BigInteger.ZERO))
+                .exUnits(ExUnits.builder()
+                        .mem(BigInteger.ZERO)
+                        .steps(BigInteger.ZERO)
+                        .build())
+                .build();
+
+        var tx = Transaction.builder()
+                .body(TransactionBody.builder()
+                        .inputs(List.of(new TransactionInput(txHash, 0)))
+                        .outputs(List.of())
+                        .fee(BigInteger.valueOf(200_000))
+                        .build())
+                .witnessSet(TransactionWitnessSet.builder()
+                        .redeemers(List.of(redeemer))
+                        .plutusV3Scripts(List.of(comparisonFailScript))
+                        .build())
+                .build();
+
+        var evaluator = createEvaluator(null);
+        evaluator.enableBuiltinTrace(true);   // lightweight diagnostics (default)
+        evaluator.enableTracing(false);        // no heavy execution trace
+        byte[] cbor = tx.serialize();
+        var result = evaluator.evaluateTx(cbor, Set.of(inputUtxo));
+
+        assertFalse(result.isSuccessful());
+        // Builtin values should be in the error message
+        String errorMsg = result.getResponse();
+        assertTrue(errorMsg.contains("LessThanEqualsInteger"),
+                "Builtin trace should be present, got: " + errorMsg);
+        // Execution trace should be absent (not enabled)
+        assertTrue(evaluator.getLastTraces().isEmpty(),
+                "Execution traces should be empty when execution trace is not enabled");
     }
 
     // --- V2 Tests ---

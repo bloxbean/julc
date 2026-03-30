@@ -10,7 +10,9 @@ import com.bloxbean.cardano.julc.vm.java.builtins.BuiltinRuntime;
 import com.bloxbean.cardano.julc.vm.java.builtins.BuiltinTable;
 import com.bloxbean.cardano.julc.vm.java.cost.CostTracker;
 import com.bloxbean.cardano.julc.vm.java.cost.MachineCosts.StepKind;
+import com.bloxbean.cardano.julc.vm.java.trace.BuiltinTraceCollector;
 import com.bloxbean.cardano.julc.vm.java.trace.ExecutionTraceCollector;
+import com.bloxbean.cardano.julc.vm.trace.BuiltinExecution;
 import com.bloxbean.cardano.julc.vm.trace.ExecutionTraceEntry;
 
 import java.util.ArrayDeque;
@@ -38,6 +40,7 @@ public final class CekMachine {
     private final BuiltinTable.VersionedBuiltinTable builtinTable;
     private final SourceMap sourceMap;
     private final ExecutionTraceCollector executionTraceCollector;
+    private final BuiltinTraceCollector builtinTraceCollector;
 
     // Machine state
     private Term currentTerm;
@@ -60,15 +63,33 @@ public final class CekMachine {
         this(costTracker, language, null, false);
     }
 
-    /** Create a CekMachine with optional cost tracking, language version, source map and tracing. */
+    /**
+     * Create a CekMachine with optional cost tracking, language version, source map and tracing.
+     * Builtin trace is enabled by default.
+     */
     public CekMachine(CostTracker costTracker, PlutusLanguage language,
                       SourceMap sourceMap, boolean tracingEnabled) {
+        this(costTracker, language, sourceMap, tracingEnabled, true);
+    }
+
+    /**
+     * Create a CekMachine with fine-grained trace control.
+     *
+     * @param costTracker         optional cost tracking
+     * @param language            Plutus language version
+     * @param sourceMap           optional source map for source-level diagnostics
+     * @param executionTraceEnabled  true to record per-step execution trace (requires sourceMap)
+     * @param builtinTraceEnabled    true to record last N builtin executions with argument values
+     */
+    public CekMachine(CostTracker costTracker, PlutusLanguage language,
+                      SourceMap sourceMap, boolean executionTraceEnabled, boolean builtinTraceEnabled) {
         this.costTracker = costTracker;
         this.language = language;
         this.builtinTable = BuiltinTable.forLanguage(language);
         this.sourceMap = sourceMap;
-        this.executionTraceCollector = (tracingEnabled && sourceMap != null && !sourceMap.isEmpty())
+        this.executionTraceCollector = (executionTraceEnabled && sourceMap != null && !sourceMap.isEmpty())
                 ? new ExecutionTraceCollector(costTracker) : null;
+        this.builtinTraceCollector = builtinTraceEnabled ? new BuiltinTraceCollector(20) : null;
     }
 
     /**
@@ -120,6 +141,12 @@ public final class CekMachine {
     public List<ExecutionTraceEntry> getExecutionTrace() {
         if (executionTraceCollector == null) return List.of();
         return executionTraceCollector.getEntries();
+    }
+
+    /** Returns the last N builtin executions (empty if builtin tracing is disabled). */
+    public List<BuiltinExecution> getBuiltinTrace() {
+        if (builtinTraceCollector == null) return List.of();
+        return builtinTraceCollector.getEntries();
     }
 
     // === COMPUTE phase ===
@@ -341,7 +368,18 @@ public final class CekMachine {
         }
 
         BuiltinRuntime runtime = builtinTable.getRuntime(vb.fun());
-        return runtime.execute(vb.collectedArgs());
+        try {
+            CekValue result = runtime.execute(vb.collectedArgs());
+            if (builtinTraceCollector != null) {
+                builtinTraceCollector.record(vb.fun(), vb.collectedArgs(), result);
+            }
+            return result;
+        } catch (Exception e) {
+            if (builtinTraceCollector != null) {
+                builtinTraceCollector.recordError(vb.fun(), vb.collectedArgs(), e);
+            }
+            throw e;
+        }
     }
 
     private void chargeStep(StepKind kind) {

@@ -3,10 +3,11 @@ package com.bloxbean.cardano.julc.testkit;
 import com.bloxbean.cardano.julc.compiler.CompileResult;
 import com.bloxbean.cardano.julc.compiler.CompilerOptions;
 import com.bloxbean.cardano.julc.core.Term;
-import com.bloxbean.cardano.julc.core.source.SourceLocation;
-import com.bloxbean.cardano.julc.core.source.SourceMap;
 import com.bloxbean.cardano.julc.vm.EvalResult;
+import com.bloxbean.cardano.julc.vm.trace.BuiltinExecution;
 import com.bloxbean.cardano.julc.vm.trace.ExecutionTraceEntry;
+import com.bloxbean.cardano.julc.vm.trace.FailureReportBuilder;
+import com.bloxbean.cardano.julc.vm.trace.FailureReportFormatter;
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
@@ -53,6 +54,7 @@ public final class JulcEval {
     private boolean sourceMapEnabled;
     private boolean tracingEnabled;
     private volatile List<ExecutionTraceEntry> lastExecutionTrace = List.of();
+    private volatile List<BuiltinExecution> lastBuiltinTrace = List.of();
 
     private JulcEval(String javaSource, Class<?> sourceClass, Path sourceRoot,
                      com.bloxbean.cardano.julc.core.PlutusData[] params) {
@@ -132,6 +134,25 @@ public final class JulcEval {
     }
 
     /**
+     * Alias for {@link #sourceMap()} that communicates intent to retrieve builtin trace.
+     * <p>
+     * Since builtin trace is always collected by the VM, this just ensures the
+     * source map is set (for error location resolution) and that builtin trace
+     * is captured after evaluation. Functionally identical to {@code sourceMap()}.
+     * <p>
+     * Example:
+     * <pre>{@code
+     * var eval = JulcEval.forClass(MyValidator.class).builtinTrace();
+     * eval.call("validate", data).asBoolean();
+     * System.out.println(eval.getLastBuiltinTrace());
+     * }</pre>
+     */
+    public JulcEval builtinTrace() {
+        this.sourceMapEnabled = true;
+        return this;
+    }
+
+    /**
      * Enable execution tracing. Implies {@link #sourceMap()}.
      * After each call, the execution trace is accessible via {@link #getLastExecutionTrace()}
      * and {@link #formatLastTrace()}.
@@ -170,6 +191,14 @@ public final class JulcEval {
      */
     public String formatLastBudgetSummary() {
         return ExecutionTraceEntry.formatSummary(lastExecutionTrace);
+    }
+
+    /**
+     * Returns the builtin trace from the most recent call.
+     * Builtin tracing is always on by default — no opt-in required.
+     */
+    public List<BuiltinExecution> getLastBuiltinTrace() {
+        return lastBuiltinTrace;
     }
 
     // --- Interface proxy ---
@@ -281,6 +310,7 @@ public final class JulcEval {
             }
         } finally {
             this.lastExecutionTrace = vm.getLastExecutionTrace();
+            this.lastBuiltinTrace = vm.getLastBuiltinTrace();
             vm.setTracingEnabled(false);
             vm.setSourceMap(null);
         }
@@ -289,18 +319,18 @@ public final class JulcEval {
             return s.resultTerm();
         }
 
-        // Resolve source location for error message
-        var location = ValidatorTest.resolveErrorLocation(result, compiled.sourceMap());
-        var errorMsg = switch (result) {
-            case EvalResult.Failure f -> "Evaluation failed: " + f.error();
-            case EvalResult.BudgetExhausted b -> "Budget exhausted: " + b.consumed();
-            default -> "Evaluation failed: " + result;
-        };
-        if (location != null) {
-            errorMsg += "\n  at " + location;
-        }
-        if (tracingEnabled && !lastExecutionTrace.isEmpty()) {
-            errorMsg += "\n" + ExecutionTraceEntry.format(lastExecutionTrace);
+        // Build rich error report (reuses FailureReportBuilder+FailureReportFormatter)
+        var report = FailureReportBuilder.build(result, compiled.sourceMap(),
+                lastExecutionTrace, lastBuiltinTrace);
+        String errorMsg;
+        if (report != null) {
+            errorMsg = FailureReportFormatter.format(report);
+        } else {
+            errorMsg = switch (result) {
+                case EvalResult.Failure f -> "Evaluation failed: " + f.error();
+                case EvalResult.BudgetExhausted b -> "Budget exhausted: " + b.consumed();
+                default -> "Evaluation failed: " + result;
+            };
         }
         throw new com.bloxbean.cardano.julc.vm.TermExtractor.ExtractionException(errorMsg);
     }

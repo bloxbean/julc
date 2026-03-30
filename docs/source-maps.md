@@ -16,6 +16,9 @@ generated them.
 - [Enabling Source Maps](#enabling-source-maps) — Gradle plugin, annotation processor, programmatic
 - [Usage Patterns](#usage-patterns) — ContractTest, assertions, logging
 - [Execution Tracing](#execution-tracing) — step-by-step trace with budget per line
+- [Builtin Trace](#builtin-trace) — lightweight failure diagnostics
+- [Failure Reports](#failure-reports) — structured diagnostic objects
+- [Choosing the Right Diagnostic Level](#choosing-the-right-diagnostic-level)
 - [Using with QuickTxBuilder](#using-with-quicktxbuilder-julctransactionevaluator) — cardano-client-lib integration
 - [What Gets Mapped](#what-gets-mapped) — which Java constructs produce source map entries
 - [How It Works](#how-it-works) — SourceMap internals
@@ -318,6 +321,195 @@ cost descending — making it easy to find optimization targets.
 
 ---
 
+## Builtin Trace
+
+Builtin trace records the **last 20 builtin function executions** in a ring buffer — function
+name, arguments, and result. It answers **"what values caused the failure?"**, complementary
+to source maps ("where?") and execution tracing ("what path?").
+
+Key properties:
+- **Always on** by default — no compile-time or runtime flags needed
+- **Negligible overhead** — ring buffer of 20 entries, lazy string formatting (hot path stores raw refs)
+- **No source map required** — useful for pre-compiled `.plutus` files in the CLI
+- **SPI-agnostic** — works with any VM backend (uses string summaries, not impl-specific types)
+
+### Comparison
+
+| Aspect | Source Map | Builtin Trace | Execution Trace |
+|--------|-----------|---------------|-----------------|
+| Answers | Where did it fail? | What values caused it? | What path did execution take? |
+| Overhead | Compile-time only | Negligible (ring buffer) | Heavy (per-step recording) |
+| Opt-in | Compile with sourceMap=true | **Always on** (default) | Enable tracing + source map |
+| Output | `MyValidator.java:42` | `EqualsInteger(5, 3) → False` | Full step-by-step trace |
+| Use case | Locate error in source | Quick failure diagnosis | Budget profiling |
+
+### Usage from each entry point
+
+#### JulcEval (fluent API)
+
+```java
+var eval = JulcEval.forClass(MyValidator.class).builtinTrace();
+eval.call("validate", data).asBoolean();
+// On failure: rich FailureReport in exception message
+// After any call:
+List<BuiltinExecution> trace = eval.getLastBuiltinTrace();
+```
+
+> **Note:** `.builtinTrace()` is an alias for `.sourceMap()` — it communicates intent. Builtin
+> trace is always collected regardless.
+
+#### ValidatorTest (static API)
+
+```java
+// Lightweight: builtin trace only (no execution tracing overhead)
+var traced = ValidatorTest.evaluateWithBuiltinTrace(compiled, args);
+traced.builtinTrace(); // → List<BuiltinExecution>
+
+// Lightweight diagnostics: returns FailureReport on failure
+FailureReport report = ValidatorTest.evaluateWithBuiltinDiagnostics(compiled, args);
+if (report != null) System.out.println(FailureReportFormatter.format(report));
+
+// Full diagnostics: both execution trace + builtin trace
+FailureReport report = ValidatorTest.evaluateWithDiagnostics(compiled, args);
+
+// Assert with rich error message on failure
+ValidatorTest.assertValidatesWithDiagnostics(compiled, args);
+```
+
+#### ContractTest (instance methods)
+
+```java
+class MyTest extends ContractTest {
+    @Test void test() {
+        var compiled = compileValidatorWithSourceMap(MyValidator.class);
+
+        // Lightweight eval (no execution tracing)
+        var result = evaluateWithBuiltinTrace(compiled, ctx);
+
+        // Access builtin trace from shared VM
+        List<BuiltinExecution> trace = getLastBuiltinTrace();
+        for (var exec : trace) {
+            System.out.println(exec); // EqualsInteger(5, 3) → False
+        }
+    }
+}
+```
+
+#### CLI (`julc eval`)
+
+```bash
+$ julc eval my-validator.plutus
+FAIL: Error term encountered
+  EqualsInteger(5, 3) → False
+
+  Last builtins:
+    UnIData(<Data>) → 5
+    UnIData(<Data>) → 3
+    EqualsInteger(5, 3) → False
+
+  Budget: CPU=1,234,567  Mem=45,678
+```
+
+The CLI automatically collects builtin trace and uses `AnsiFailureReportFormatter` for
+colored terminal output.
+
+#### Programmatic (JulcVm directly)
+
+```java
+var vm = JulcVm.create();
+EvalResult result = vm.evaluateWithArgs(program, List.of(args));
+
+// Always available after evaluation
+List<BuiltinExecution> trace = vm.getLastBuiltinTrace();
+
+// Optionally disable (if overhead matters in tight loops)
+vm.setBuiltinTraceEnabled(false);
+```
+
+### Advantages
+
+- Zero configuration — always collected, no compile-time or runtime flags needed
+- Negligible overhead — ring buffer of 20 entries, lazy string formatting
+- Pinpoints the **exact comparison that failed** — `findCauseBuiltin()` scans backwards for
+  False-returning comparisons (`EqualsInteger`, `LessThanInteger`, `EqualsByteString`, etc.)
+- Works without source maps — useful for pre-compiled `.plutus` files
+- SPI-agnostic — works with any VM backend
+
+### Limitations
+
+- Only last 20 builtins — earlier operations are lost (ring buffer)
+- No source location per builtin — builtins aren't mapped to Java lines (use source map for that)
+- Values are summarized — ByteStrings truncated to 16 hex chars, strings to 20 chars, complex
+  values shown as `<Data>`, `[N elems]`, `<Pair>`
+- Cannot be disabled per-call from testkit APIs (always collected if VM supports it; disable via
+  `JulcVm.setBuiltinTraceEnabled(false)`)
+
+---
+
+## Failure Reports
+
+`FailureReport` is a structured record that bundles all diagnostic context for a failed
+evaluation: error message, source location, last builtins, execution trace, budget, and
+trace messages.
+
+### Building a FailureReport
+
+`FailureReportBuilder.build()` constructs a report from an evaluation result and optional traces:
+
+```java
+FailureReport report = FailureReportBuilder.build(result, sourceMap, executionTrace, builtinTrace);
+
+// Convenience overloads:
+FailureReport report = FailureReportBuilder.build(result, sourceMap);  // no traces
+FailureReport report = FailureReportBuilder.build(result);             // no source map or traces
+```
+
+Returns `null` if the result is a `Success`.
+
+### Formatting
+
+`FailureReportFormatter.format(report)` produces plain text output:
+
+```
+FAIL at .(VestingValidator.java:42)  return deadline <= currentSlot
+  LessThanEqualsInteger(5, 3) → False
+
+  Last builtins:
+    UnIData(<Data>) → 5
+    UnIData(<Data>) → 3
+    LessThanEqualsInteger(5, 3) → False
+
+  Budget: CPU=1,234,567  Mem=45,678
+```
+
+The header shows the source location (if available) or the error message. The highlighted
+"cause" line is the last comparison builtin that returned `False`, identified by
+`report.findCauseBuiltin()`.
+
+For CLI output, `AnsiFailureReportFormatter` adds ANSI colors: `FAIL` in red, builtin names
+in cyan, `→ False` in red, `→ True` in green, budget in dim.
+
+---
+
+## Choosing the Right Diagnostic Level
+
+From lightest to heaviest:
+
+1. **No diagnostics** — `ValidatorTest.evaluate()` / `ContractTest.evaluate()` — fastest,
+   just success/failure + budget
+2. **Builtin trace only** — `evaluateWithBuiltinTrace()` — adds "what values failed?"
+   at negligible cost
+3. **Builtin diagnostics** — `evaluateWithBuiltinDiagnostics()` — returns structured
+   `FailureReport` with source location + builtins
+4. **Full diagnostics** — `evaluateWithDiagnostics()` — adds per-step execution trace
+   for budget profiling
+
+> **Note:** Builtin trace is always collected by the VM (enabled by default). The difference
+> between levels 1 and 2 is whether you *retrieve* the trace, not whether it's *recorded*.
+> For zero-overhead production evaluation, disable with `vm.setBuiltinTraceEnabled(false)`.
+
+---
+
 ## Using with QuickTxBuilder (JulcTransactionEvaluator)
 
 For offchain integration with cardano-client-lib's `QuickTxBuilder`, use
@@ -504,6 +696,53 @@ ExecutionTraceEntry.formatSummary(entries)   // → String (multi-line, with vis
 // toString() uses IntelliJ-clickable format: "at .(File.java:42)"
 ```
 
+### `BuiltinExecution`
+
+```java
+record BuiltinExecution(DefaultFun fun, String argSummary, String resultSummary)
+// toString() → "EqualsInteger(5, 3) → False"
+```
+
+Values are summarized: ByteStrings truncated to 16 hex chars (`#a1b2c3...`), strings to 20
+chars, complex values shown as `<Data>`, `[N elems]`, `<Pair>`.
+
+### `FailureReport`
+
+```java
+record FailureReport(
+    String errorMessage,            // VM error message
+    SourceLocation sourceLocation,  // Java source location (nullable)
+    List<BuiltinExecution> lastBuiltins,   // last N builtin executions
+    List<ExecutionTraceEntry> lastSteps,    // last N execution trace entries
+    ExBudget consumed,              // budget consumed
+    List<String> traceMessages      // Builtins.trace() messages
+)
+
+report.findCauseBuiltin()   // → last comparison builtin returning False, or null
+```
+
+### `FailureReportBuilder`
+
+```java
+FailureReportBuilder.build(result, sourceMap, executionTrace, builtinTrace) // → FailureReport or null
+FailureReportBuilder.build(result, sourceMap)   // no traces
+FailureReportBuilder.build(result)              // no source map or traces
+```
+
+### `FailureReportFormatter`
+
+```java
+FailureReportFormatter.format(report)   // → plain text multi-line string
+```
+
+### `JulcVm` (builtin trace)
+
+```java
+vm.getLastBuiltinTrace()            // → List<BuiltinExecution> (empty if disabled)
+vm.setBuiltinTraceEnabled(false)    // disable for zero-overhead production eval
+vm.setBuiltinTraceEnabled(true)     // re-enable (enabled by default)
+```
+
 ### `ValidatorTest`
 
 ```java
@@ -515,22 +754,34 @@ ValidatorTest.compileWithSourceMap(javaSource)
 // Evaluate with execution tracing
 ValidatorTest.evaluateWithTrace(compiled, args...)  // → EvalWithTrace
 
+// Evaluate with builtin trace only (lightweight, no execution tracing)
+ValidatorTest.evaluateWithBuiltinTrace(compiled, args...)  // → EvalWithTrace
+
+// Diagnostics: builtin-only (lightweight) or full (with execution trace)
+ValidatorTest.evaluateWithBuiltinDiagnostics(compiled, args...)  // → FailureReport or null
+ValidatorTest.evaluateWithDiagnostics(compiled, args...)          // → FailureReport or null
+
 // Resolve error location
 ValidatorTest.resolveErrorLocation(result, sourceMap) // → SourceLocation or null
 
 // Assert with source location in error message
 ValidatorTest.assertValidatesWithSourceMap(compileResult, args...)
 ValidatorTest.assertRejectsWithSourceMap(compileResult, args...)
+
+// Assert with rich diagnostics (FailureReport) on failure
+ValidatorTest.assertValidatesWithDiagnostics(compiled, args...)
 ```
 
 ### `EvalWithTrace`
 
 ```java
-record EvalWithTrace(EvalResult result, List<ExecutionTraceEntry> trace)
+record EvalWithTrace(EvalResult result, List<ExecutionTraceEntry> trace,
+                     List<BuiltinExecution> builtinTrace)
 
 evalWithTrace.formatTrace()          // → formatted step-by-step trace
 evalWithTrace.formatBudgetSummary()  // → formatted per-location budget summary
 evalWithTrace.result()               // → the underlying EvalResult
+evalWithTrace.builtinTrace()         // → List<BuiltinExecution>
 ```
 
 ### `ContractTest`
@@ -543,8 +794,12 @@ compileValidatorWithSourceMap(MyValidator.class, sourceRoot)
 // Evaluate with tracing
 evaluateWithTrace(compiled, args...)     // → EvalResult (trace stored internally)
 
-// Access last execution trace
+// Evaluate with builtin trace only (no execution tracing)
+evaluateWithBuiltinTrace(compiled, args...)  // → EvalResult (trace stored internally)
+
+// Access last traces
 getLastExecutionTrace()                  // → List<ExecutionTraceEntry>
+getLastBuiltinTrace()                    // → List<BuiltinExecution>
 formatExecutionTrace()                   // → formatted step-by-step trace
 formatBudgetSummary()                    // → formatted per-location budget summary
 
@@ -562,8 +817,15 @@ logResult("testName", result, sourceMap)
 ### `JulcEval`
 
 ```java
-JulcEval.forClass(MyClass.class).sourceMap()   // enable source maps
-JulcEval.forSource(javaString).sourceMap()     // works with inline source too
+JulcEval.forClass(MyClass.class).sourceMap()       // enable source maps
+JulcEval.forClass(MyClass.class).builtinTrace()    // alias for sourceMap() — communicates intent
+JulcEval.forClass(MyClass.class).trace()           // enable execution tracing (implies sourceMap)
+JulcEval.forSource(javaString).sourceMap()         // works with inline source too
+
+eval.getLastBuiltinTrace()                         // → List<BuiltinExecution>
+eval.getLastExecutionTrace()                       // → List<ExecutionTraceEntry>
+eval.formatLastTrace()                             // → formatted step-by-step trace
+eval.formatLastBudgetSummary()                     // → formatted per-location budget summary
 ```
 
 ### `JulcScriptLoader`

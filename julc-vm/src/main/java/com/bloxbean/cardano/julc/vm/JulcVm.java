@@ -3,6 +3,7 @@ package com.bloxbean.cardano.julc.vm;
 import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.core.Program;
 import com.bloxbean.cardano.julc.core.source.SourceMap;
+import com.bloxbean.cardano.julc.vm.trace.BuiltinExecution;
 import com.bloxbean.cardano.julc.vm.trace.ExecutionTraceEntry;
 
 import java.util.Comparator;
@@ -192,12 +193,31 @@ public final class JulcVm {
      * When enabled (and a source map is set), each statement-level CEK step
      * is recorded with its Java source location.
      * <p>
+     * This is the heavier tracing option — for lightweight diagnostics, use
+     * {@link #setBuiltinTraceEnabled(boolean)} instead.
+     * <p>
      * No-op if the active provider does not support tracing.
      *
-     * @param enabled true to enable tracing, false to disable
+     * @param enabled true to enable execution tracing, false to disable
      */
     public void setTracingEnabled(boolean enabled) {
         provider.setTracingEnabled(enabled);
+    }
+
+    /**
+     * Enable or disable builtin trace collection.
+     * When enabled, the last N builtin executions (function name, argument values,
+     * result value) are recorded. This is lightweight and useful for showing
+     * <em>what values</em> caused a validator failure.
+     * <p>
+     * Enabled by default. Disable for zero-overhead production evaluation.
+     * <p>
+     * No-op if the active provider does not support builtin tracing.
+     *
+     * @param enabled true to enable builtin tracing, false to disable
+     */
+    public void setBuiltinTraceEnabled(boolean enabled) {
+        provider.setBuiltinTraceEnabled(enabled);
     }
 
     /**
@@ -207,6 +227,14 @@ public final class JulcVm {
      */
     public List<ExecutionTraceEntry> getLastExecutionTrace() {
         return provider.getLastExecutionTrace();
+    }
+
+    /**
+     * Returns the last N builtin executions from the most recent evaluation.
+     * Empty list if builtin tracing was disabled or the active provider does not support this.
+     */
+    public List<BuiltinExecution> getLastBuiltinTrace() {
+        return provider.getLastBuiltinTrace();
     }
 
     /** The name of the active VM provider. */

@@ -71,6 +71,7 @@ public class CekJavaBenchmark {
     @Setup(Level.Trial)
     public void setup() throws IOException {
         provider = new JavaVmProvider();
+        provider.setBuiltinTraceEnabled(false);
         program = UplcFlatDecoder.decodeProgram(loadFlatBytes(file));
     }
 

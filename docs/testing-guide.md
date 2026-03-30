@@ -29,7 +29,7 @@ provides a layered testing approach so you can catch bugs early:
 5. [ValidatorTest — Static Utility API](#5-validatortest--static-utility-api) — compile, evaluate, method eval
 6. [Budget and Trace Assertions](#6-budget-and-trace-assertions) — budget limits, traces, script size
 7. [Property-Based Testing with jqwik](#7-property-based-testing-with-jqwik) — CardanoArbitraries, BudgetCollector, ArbitraryScriptContext
-8. [Source Map Debugging](#8-source-map-debugging) — error locations, execution tracing
+8. [Source Map Debugging](#8-source-map-debugging) — error locations, execution tracing, builtin trace
 9. [Integration Testing with Yaci DevKit](#9-integration-testing-with-yaci-devkit) — devnet, admin API
 10. [Testing Patterns and Best Practices](#10-testing-patterns-and-best-practices) — compile-once, sealed interfaces, @Param
 11. [Quick Reference](#11-quick-reference) — which tool for which scenario
@@ -1106,6 +1106,28 @@ System.out.println(evalTrace.formatTrace());
 
 System.out.println(evalTrace.formatBudgetSummary());
 // Per-location budget breakdown
+```
+
+### Builtin Trace (Lightweight Failure Diagnostics)
+
+For quick failure diagnosis without execution tracing overhead, use **builtin trace** — it
+records the last 20 builtin executions and highlights the comparison that returned `False`.
+See [Builtin Trace](source-maps.md#builtin-trace) in the Source Maps guide for full details.
+
+```java
+// Lightweight: builtin trace only (no execution tracing overhead)
+var traced = ValidatorTest.evaluateWithBuiltinTrace(compiled, args);
+traced.builtinTrace(); // → List<BuiltinExecution>
+
+// Returns structured FailureReport on failure, null on success
+FailureReport report = ValidatorTest.evaluateWithBuiltinDiagnostics(compiled, args);
+if (report != null) System.out.println(FailureReportFormatter.format(report));
+
+// Full diagnostics (execution trace + builtin trace)
+FailureReport report = ValidatorTest.evaluateWithDiagnostics(compiled, args);
+
+// Assert with rich error message on failure
+ValidatorTest.assertValidatesWithDiagnostics(compiled, args);
 ```
 
 ### Enabling Source Maps in Gradle

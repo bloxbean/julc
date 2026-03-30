@@ -4,6 +4,7 @@ import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.core.Program;
 import com.bloxbean.cardano.julc.core.Term;
 import com.bloxbean.cardano.julc.core.source.SourceMap;
+import com.bloxbean.cardano.julc.vm.trace.BuiltinExecution;
 import com.bloxbean.cardano.julc.vm.trace.ExecutionTraceEntry;
 
 import java.util.List;
@@ -91,20 +92,47 @@ public interface JulcVmProvider {
      * When enabled (and a source map is set), each statement-level CEK step
      * is recorded with its Java source location.
      * <p>
+     * This is the heavier tracing option — for lightweight diagnostics, use
+     * {@link #setBuiltinTraceEnabled(boolean)} instead.
+     * <p>
      * Providers that do not support tracing ignore this call.
      *
-     * @param enabled true to enable tracing, false to disable
+     * @param enabled true to enable execution tracing, false to disable
      */
     default void setTracingEnabled(boolean enabled) {
         // Default: ignore (provider does not support tracing)
     }
 
     /**
+     * Enable or disable builtin trace collection.
+     * When enabled, the last N builtin executions (function name, argument values,
+     * result value) are recorded in a ring buffer. This is lightweight and useful
+     * for showing <em>what values</em> caused a validator failure.
+     * <p>
+     * Enabled by default. Disable for zero-overhead production evaluation.
+     * <p>
+     * Providers that do not support builtin tracing ignore this call.
+     *
+     * @param enabled true to enable builtin tracing, false to disable
+     */
+    default void setBuiltinTraceEnabled(boolean enabled) {
+        // Default: ignore (provider does not support builtin tracing)
+    }
+
+    /**
      * Returns the execution trace from the most recent evaluation.
-     * Empty list if tracing was disabled, no source map was set, or
+     * Empty list if execution tracing was disabled, no source map was set, or
      * the provider does not support tracing.
      */
     default List<ExecutionTraceEntry> getLastExecutionTrace() {
+        return List.of();
+    }
+
+    /**
+     * Returns the last N builtin executions from the most recent evaluation.
+     * Empty list if builtin tracing was disabled or the provider does not support this.
+     */
+    default List<BuiltinExecution> getLastBuiltinTrace() {
         return List.of();
     }
 

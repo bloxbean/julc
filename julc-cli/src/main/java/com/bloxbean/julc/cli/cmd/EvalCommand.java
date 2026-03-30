@@ -7,12 +7,15 @@ import com.bloxbean.cardano.julc.core.text.UplcParser;
 import com.bloxbean.cardano.julc.core.text.UplcPrinter;
 import com.bloxbean.cardano.julc.vm.EvalResult;
 import com.bloxbean.cardano.julc.vm.JulcVm;
+import com.bloxbean.cardano.julc.vm.trace.FailureReportBuilder;
 import com.bloxbean.julc.cli.output.AnsiColors;
+import com.bloxbean.julc.cli.output.AnsiFailureReportFormatter;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Parameters;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 @Command(name = "eval", description = "Evaluate a UPLC program")
 public class EvalCommand implements Runnable {
@@ -26,6 +29,7 @@ public class EvalCommand implements Runnable {
             Program program = loadProgram(file);
             JulcVm vm = JulcVm.create();
             EvalResult result = vm.evaluate(program);
+            var builtinTrace = vm.getLastBuiltinTrace();
 
             switch (result) {
                 case EvalResult.Success s -> {
@@ -39,19 +43,23 @@ public class EvalCommand implements Runnable {
                     }
                 }
                 case EvalResult.Failure f -> {
-                    System.out.println(AnsiColors.red("Failure: " + f.error()));
-                    System.out.println("  CPU:    " + f.consumed().cpuSteps());
-                    System.out.println("  Memory: " + f.consumed().memoryUnits());
-                    if (!f.traces().isEmpty()) {
-                        System.out.println("  Traces:");
-                        f.traces().forEach(t -> System.out.println("    " + t));
+                    var report = FailureReportBuilder.build(f, null, List.of(), builtinTrace);
+                    if (report != null) {
+                        System.out.println(AnsiFailureReportFormatter.format(report));
+                    } else {
+                        System.out.println(AnsiColors.red("Failure: " + f.error()));
                     }
                     System.exit(1);
                 }
                 case EvalResult.BudgetExhausted b -> {
-                    System.out.println(AnsiColors.red("Budget exhausted"));
-                    System.out.println("  CPU:    " + b.consumed().cpuSteps());
-                    System.out.println("  Memory: " + b.consumed().memoryUnits());
+                    var report = FailureReportBuilder.build(b, null, List.of(), builtinTrace);
+                    if (report != null) {
+                        System.out.println(AnsiFailureReportFormatter.format(report));
+                    } else {
+                        System.out.println(AnsiColors.red("Budget exhausted"));
+                        System.out.println("  CPU:    " + b.consumed().cpuSteps());
+                        System.out.println("  Memory: " + b.consumed().memoryUnits());
+                    }
                     System.exit(1);
                 }
             }
