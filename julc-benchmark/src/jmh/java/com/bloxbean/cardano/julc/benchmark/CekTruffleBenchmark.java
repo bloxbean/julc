@@ -68,6 +68,7 @@ public class CekTruffleBenchmark {
     @Setup(Level.Trial)
     public void setup() throws IOException {
         provider = new TruffleVmProvider();
+        provider.setBuiltinTraceEnabled(false);
         program = UplcFlatDecoder.decodeProgram(CekJavaBenchmark.loadFlatBytes(file));
     }
 

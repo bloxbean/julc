@@ -14,6 +14,7 @@ import com.bloxbean.cardano.julc.ledger.Voter;
 import com.bloxbean.cardano.julc.stdlib.Builtins;
 import com.bloxbean.cardano.julc.vm.EvalResult;
 import com.bloxbean.cardano.julc.vm.JulcVm;
+import com.bloxbean.cardano.julc.vm.trace.BuiltinExecution;
 import com.bloxbean.cardano.julc.vm.trace.ExecutionTraceEntry;
 
 import java.io.IOException;
@@ -382,9 +383,29 @@ public abstract class ContractTest {
      * @return the evaluation result
      */
     protected EvalResult evaluateWithTrace(CompileResult compiled, PlutusData... args) {
+        return doEvaluate(compiled, true, args);
+    }
+
+    /**
+     * Evaluate a compiled program with source map but WITHOUT execution tracing.
+     * Retrieves the builtin trace (always collected by the VM) for lightweight diagnostics.
+     *
+     * @param compiled the compile result (with source map)
+     * @param args     the PlutusData arguments
+     * @return the evaluation result
+     */
+    protected EvalResult evaluateWithBuiltinTrace(CompileResult compiled, PlutusData... args) {
+        return doEvaluate(compiled, false, args);
+    }
+
+    /**
+     * Shared evaluate helper — sets source map, optionally enables tracing,
+     * evaluates, and cleans up the shared VM state.
+     */
+    private EvalResult doEvaluate(CompileResult compiled, boolean tracing, PlutusData... args) {
         var v = vm();
         v.setSourceMap(compiled.sourceMap());
-        v.setTracingEnabled(true);
+        if (tracing) v.setTracingEnabled(true);
         try {
             if (args.length == 0) {
                 return v.evaluate(compiled.program());
@@ -394,6 +415,14 @@ public abstract class ContractTest {
             v.setTracingEnabled(false);
             v.setSourceMap(null);
         }
+    }
+
+    /**
+     * Returns the builtin trace from the most recent evaluation.
+     * Builtin tracing is always on by default — no opt-in required.
+     */
+    protected java.util.List<BuiltinExecution> getLastBuiltinTrace() {
+        return vm().getLastBuiltinTrace();
     }
 
     /**

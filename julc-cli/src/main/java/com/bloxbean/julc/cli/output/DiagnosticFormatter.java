@@ -18,7 +18,7 @@ public final class DiagnosticFormatter {
             case WARNING -> AnsiColors.yellow("warning");
             case INFO -> AnsiColors.blue("info");
         };
-        sb.append(d.fileName()).append(':').append(d.line()).append(':').append(d.column())
+        sb.append("./").append(d.fileName()).append(':').append(d.line()).append(':').append(d.column())
                 .append(": ").append(levelStr).append(": ").append(d.message());
         if (d.hasSuggestion()) {
             sb.append("\n  ").append(AnsiColors.dim("suggestion: " + d.suggestion()));
