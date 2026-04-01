@@ -417,13 +417,20 @@ colored terminal output.
 
 ```java
 var vm = JulcVm.create();
-EvalResult result = vm.evaluateWithArgs(program, List.of(args));
 
-// Always available after evaluation
-List<BuiltinExecution> trace = vm.getLastBuiltinTrace();
+// Per-evaluation options — thread-safe, no shared state
+var options = EvalOptions.DEFAULT
+        .withSourceMap(sourceMap)
+        .withTracing(true);
+EvalResult result = vm.evaluateWithArgs(program, List.of(args), options);
 
-// Optionally disable (if overhead matters in tight loops)
-vm.setBuiltinTraceEnabled(false);
+// Traces are in the result
+List<BuiltinExecution> trace = result.builtinTrace();
+List<ExecutionTraceEntry> execTrace = result.executionTrace();
+
+// Disable builtin trace for zero-overhead production eval
+var prodOptions = EvalOptions.DEFAULT.withBuiltinTrace(false);
+EvalResult result2 = vm.evaluate(program, prodOptions);
 ```
 
 ### Advantages
@@ -735,12 +742,21 @@ FailureReportBuilder.build(result)              // no source map or traces
 FailureReportFormatter.format(report)   // → plain text multi-line string
 ```
 
-### `JulcVm` (builtin trace)
+### `EvalResult` (traces)
 
 ```java
-vm.getLastBuiltinTrace()            // → List<BuiltinExecution> (empty if disabled)
-vm.setBuiltinTraceEnabled(false)    // disable for zero-overhead production eval
-vm.setBuiltinTraceEnabled(true)     // re-enable (enabled by default)
+result.builtinTrace()               // → List<BuiltinExecution> (empty if disabled)
+result.executionTrace()             // → List<ExecutionTraceEntry> (empty if tracing off)
+```
+
+### `EvalOptions` (per-evaluation configuration)
+
+```java
+EvalOptions.DEFAULT                             // no source map, no tracing, builtin trace ON
+EvalOptions.DEFAULT.withSourceMap(sourceMap)     // enable source maps
+EvalOptions.DEFAULT.withTracing(true)           // enable execution tracing
+EvalOptions.DEFAULT.withBuiltinTrace(false)     // disable builtin trace (zero-overhead)
+new EvalOptions(sourceMap, true, true)          // all three at once
 ```
 
 ### `ValidatorTest`
@@ -752,10 +768,10 @@ ValidatorTest.compileValidatorWithSourceMap(MyValidator.class, sourceRoot)
 ValidatorTest.compileWithSourceMap(javaSource)
 
 // Evaluate with execution tracing
-ValidatorTest.evaluateWithTrace(compiled, args...)  // → EvalWithTrace
+ValidatorTest.evaluateWithTrace(compiled, args...)  // → EvalResult (with traces)
 
 // Evaluate with builtin trace only (lightweight, no execution tracing)
-ValidatorTest.evaluateWithBuiltinTrace(compiled, args...)  // → EvalWithTrace
+ValidatorTest.evaluateWithBuiltinTrace(compiled, args...)  // → EvalResult (with builtin trace)
 
 // Diagnostics: builtin-only (lightweight) or full (with execution trace)
 ValidatorTest.evaluateWithBuiltinDiagnostics(compiled, args...)  // → FailureReport or null
@@ -770,18 +786,6 @@ ValidatorTest.assertRejectsWithSourceMap(compileResult, args...)
 
 // Assert with rich diagnostics (FailureReport) on failure
 ValidatorTest.assertValidatesWithDiagnostics(compiled, args...)
-```
-
-### `EvalWithTrace`
-
-```java
-record EvalWithTrace(EvalResult result, List<ExecutionTraceEntry> trace,
-                     List<BuiltinExecution> builtinTrace)
-
-evalWithTrace.formatTrace()          // → formatted step-by-step trace
-evalWithTrace.formatBudgetSummary()  // → formatted per-location budget summary
-evalWithTrace.result()               // → the underlying EvalResult
-evalWithTrace.builtinTrace()         // → List<BuiltinExecution>
 ```
 
 ### `ContractTest`

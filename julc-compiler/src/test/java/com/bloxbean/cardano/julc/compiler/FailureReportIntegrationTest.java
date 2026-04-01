@@ -4,6 +4,7 @@ import com.bloxbean.cardano.julc.core.DefaultFun;
 import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
 import com.bloxbean.cardano.julc.testkit.ValidatorTest;
+import com.bloxbean.cardano.julc.vm.EvalOptions;
 import com.bloxbean.cardano.julc.vm.EvalResult;
 import com.bloxbean.cardano.julc.vm.JulcVm;
 import com.bloxbean.cardano.julc.vm.trace.FailureReportBuilder;
@@ -71,14 +72,14 @@ class FailureReportIntegrationTest {
         assertTrue(compiled.hasSourceMap());
 
         var vm = JulcVm.create();
-        vm.setSourceMap(compiled.sourceMap());
+        var evalOptions = EvalOptions.DEFAULT.withSourceMap(compiled.sourceMap());
 
-        var result = vm.evaluateWithArgs(compiled.program(), List.of(buildMintingCtx()));
+        var result = vm.evaluateWithArgs(compiled.program(), List.of(buildMintingCtx()), evalOptions);
 
         assertInstanceOf(EvalResult.Failure.class, result, "Validator should fail: " + result);
 
         // Verify builtin trace contains comparison with actual values
-        var builtinTrace = vm.getLastBuiltinTrace();
+        var builtinTrace = result.builtinTrace();
         assertFalse(builtinTrace.isEmpty(), "BuiltinTrace should capture builtins");
 
         var compEntry = builtinTrace.stream()
@@ -93,8 +94,7 @@ class FailureReportIntegrationTest {
                 "Should contain amount value 5. Got: " + compEntry.argSummary());
 
         // Build and format FailureReport
-        var report = FailureReportBuilder.build(result, compiled.sourceMap(),
-                List.of(), builtinTrace);
+        var report = FailureReportBuilder.build(result, compiled.sourceMap());
         assertNotNull(report);
 
         var formatted = FailureReportFormatter.format(report);
@@ -102,8 +102,6 @@ class FailureReportIntegrationTest {
         assertTrue(formatted.contains("False"), "Report should contain → False");
         assertTrue(formatted.contains("Last builtins:"), "Report should show builtins section");
         assertTrue(formatted.contains("CPU="), "Report should show budget");
-
-        vm.setSourceMap(null);
     }
 
     @Test
@@ -114,13 +112,13 @@ class FailureReportIntegrationTest {
         assertFalse(compiled.hasErrors(), "Compilation should succeed: " + compiled.diagnostics());
 
         var vm = JulcVm.create();
-        vm.setSourceMap(compiled.sourceMap());
+        var evalOptions = EvalOptions.DEFAULT.withSourceMap(compiled.sourceMap());
 
-        var result = vm.evaluateWithArgs(compiled.program(), List.of(buildMintingCtx()));
+        var result = vm.evaluateWithArgs(compiled.program(), List.of(buildMintingCtx()), evalOptions);
 
         assertInstanceOf(EvalResult.Failure.class, result, "Validator should fail: " + result);
 
-        var builtinTrace = vm.getLastBuiltinTrace();
+        var builtinTrace = result.builtinTrace();
         var equalsEntry = builtinTrace.stream()
                 .filter(e -> e.fun() == DefaultFun.EqualsInteger
                         && "False".equals(e.resultSummary()))
@@ -131,8 +129,6 @@ class FailureReportIntegrationTest {
                 "Should contain value 99. Got: " + equalsEntry.argSummary());
         assertTrue(equalsEntry.argSummary().contains("42"),
                 "Should contain value 42. Got: " + equalsEntry.argSummary());
-
-        vm.setSourceMap(null);
     }
 
     @Test
@@ -142,13 +138,13 @@ class FailureReportIntegrationTest {
         var compiled = compiler.compile(ALWAYS_PASS_MINT);
 
         var vm = JulcVm.create();
-        vm.setSourceMap(compiled.sourceMap());
+        var evalOptions = EvalOptions.DEFAULT.withSourceMap(compiled.sourceMap());
 
-        var result = vm.evaluateWithArgs(compiled.program(), List.of(buildMintingCtx()));
+        var result = vm.evaluateWithArgs(compiled.program(), List.of(buildMintingCtx()), evalOptions);
         assertTrue(result.isSuccess(), "Validator should succeed: " + result);
 
         // BuiltinTrace is still active on success (ring buffer captured builtins from ScriptContext deconstruction)
-        var builtinTrace = vm.getLastBuiltinTrace();
+        var builtinTrace = result.builtinTrace();
         // Even a trivial validator that returns true will have some builtins from ScriptContext processing
         // (at minimum the IfThenElse guard). But an always-true may have zero if it's optimized away.
         // Just verify the API works without crashing.
@@ -156,8 +152,6 @@ class FailureReportIntegrationTest {
 
         // FailureReportBuilder returns null for success
         assertNull(FailureReportBuilder.build(result, compiled.sourceMap()));
-
-        vm.setSourceMap(null);
     }
 
     @Test

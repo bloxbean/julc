@@ -4,7 +4,6 @@ import com.bloxbean.cardano.julc.core.Constant;
 import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.core.Program;
 import com.bloxbean.cardano.julc.core.Term;
-import com.bloxbean.cardano.julc.core.source.SourceMap;
 import com.bloxbean.cardano.julc.vm.*;
 import com.bloxbean.cardano.julc.vm.java.cost.*;
 import com.bloxbean.cardano.julc.vm.truffle.convert.NodeToTermConverter;
@@ -12,7 +11,6 @@ import com.bloxbean.cardano.julc.vm.truffle.convert.TermToNodeConverter;
 import com.bloxbean.cardano.julc.vm.truffle.node.UplcNode;
 import com.bloxbean.cardano.julc.vm.truffle.node.UplcRootNode;
 import com.bloxbean.cardano.julc.vm.truffle.runtime.UplcRuntimeException;
-import com.bloxbean.cardano.julc.vm.trace.ExecutionTraceEntry;
 import com.oracle.truffle.api.frame.FrameDescriptor;
 
 import java.util.List;
@@ -29,30 +27,13 @@ import java.util.List;
  * <p>
  * Cost model infrastructure is shared with julc-vm-java, guaranteeing
  * exact budget parity.
+ * <p>
  */
 public class TruffleVmProvider implements JulcVmProvider {
 
     private volatile CostModelParser.ParsedCostModel customV1CostModel;
     private volatile CostModelParser.ParsedCostModel customV2CostModel;
     private volatile CostModelParser.ParsedCostModel customV3CostModel;
-    private volatile SourceMap sourceMap;
-    private volatile boolean tracingEnabled;
-    private volatile List<ExecutionTraceEntry> lastExecutionTrace = List.of();
-
-    @Override
-    public void setSourceMap(SourceMap sourceMap) {
-        this.sourceMap = sourceMap;
-    }
-
-    @Override
-    public void setTracingEnabled(boolean enabled) {
-        this.tracingEnabled = enabled;
-    }
-
-    @Override
-    public List<ExecutionTraceEntry> getLastExecutionTrace() {
-        return lastExecutionTrace;
-    }
 
     @Override
     public void setCostModelParams(long[] costModelValues, PlutusLanguage language,
@@ -66,21 +47,24 @@ public class TruffleVmProvider implements JulcVmProvider {
     }
 
     @Override
-    public EvalResult evaluate(Program program, PlutusLanguage language, ExBudget budget) {
-        return evaluateInternal(program.term(), language, budget);
+    public EvalResult evaluate(Program program, PlutusLanguage language, ExBudget budget,
+                               EvalOptions options) {
+        return evaluateInternal(program.term(), language, budget, options);
     }
 
     @Override
     public EvalResult evaluateWithArgs(Program program, PlutusLanguage language,
-                                       List<PlutusData> args, ExBudget budget) {
+                                       List<PlutusData> args, ExBudget budget,
+                                       EvalOptions options) {
         Term term = program.term();
         for (var arg : args) {
             term = new Term.Apply(term, new Term.Const(Constant.data(arg)));
         }
-        return evaluateInternal(term, language, budget);
+        return evaluateInternal(term, language, budget, options);
     }
 
-    private EvalResult evaluateInternal(Term term, PlutusLanguage language, ExBudget budget) {
+    private EvalResult evaluateInternal(Term term, PlutusLanguage language, ExBudget budget,
+                                        EvalOptions options) {
         // Set up cost tracking (shared with julc-vm-java)
         MachineCosts mc;
         BuiltinCostModel bcm;
@@ -93,13 +77,14 @@ public class TruffleVmProvider implements JulcVmProvider {
             bcm = DefaultCostModel.defaultBuiltinCostModel(language);
         }
         var costTracker = new CostTracker(mc, bcm, budget);
-        var context = new UplcContext(costTracker, language, tracingEnabled);
+        var context = new UplcContext(costTracker, language,
+                options.tracingEnabled(), options.builtinTraceEnabled());
 
         try {
             // Charge startup cost (inside try for budget exhaustion handling)
             costTracker.chargeMachineStep(MachineCosts.StepKind.STARTUP);
             // Convert Term → Truffle AST
-            UplcNode bodyNode = TermToNodeConverter.convert(term, this.sourceMap);
+            UplcNode bodyNode = TermToNodeConverter.convert(term, options.sourceMap());
             var fd = FrameDescriptor.newBuilder().build();
             var rootNode = new UplcRootNode(fd, bodyNode);
 
@@ -108,16 +93,13 @@ public class TruffleVmProvider implements JulcVmProvider {
 
             // Convert result → Term
             Term resultTerm = NodeToTermConverter.toTerm(result);
-            this.lastExecutionTrace = context.getExecutionTrace();
-            return new EvalResult.Success(resultTerm, costTracker.consumed(), context.getTraces());
+            return new EvalResult.Success(resultTerm, costTracker.consumed(), context.getTraces(),
+                    context.getExecutionTrace(), context.getBuiltinTrace());
 
         } catch (BudgetExhaustedException e) {
-            this.lastExecutionTrace = context.getExecutionTrace();
-            Term failedTerm = e.failedTerm();
             return new EvalResult.BudgetExhausted(costTracker.consumed(), context.getTraces(),
-                    failedTerm);
+                    e.failedTerm(), context.getExecutionTrace(), context.getBuiltinTrace());
         } catch (UplcRuntimeException e) {
-            this.lastExecutionTrace = context.getExecutionTrace();
             String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
             // Enhance with source location if available
             if (e.getLocation() != null && e.getLocation().getSourceSection() != null) {
@@ -125,17 +107,16 @@ public class TruffleVmProvider implements JulcVmProvider {
                 errorMsg = errorMsg + " at " + ss.getSource().getName() + ":" + ss.getStartLine();
             }
             return new EvalResult.Failure(errorMsg, costTracker.consumed(), context.getTraces(),
-                    e.getFailedTerm());
+                    e.getFailedTerm(), context.getExecutionTrace(), context.getBuiltinTrace());
         } catch (com.bloxbean.cardano.julc.vm.java.CekEvaluationException e) {
             // Builtin errors from julc-vm-java implementations
-            this.lastExecutionTrace = context.getExecutionTrace();
             String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
             return new EvalResult.Failure(errorMsg, costTracker.consumed(), context.getTraces(),
-                    e.failedTerm());
+                    e.failedTerm(), context.getExecutionTrace(), context.getBuiltinTrace());
         } catch (Exception e) {
-            this.lastExecutionTrace = context.getExecutionTrace();
             String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
-            return new EvalResult.Failure(errorMsg, costTracker.consumed(), context.getTraces());
+            return new EvalResult.Failure(errorMsg, costTracker.consumed(), context.getTraces(),
+                    null, context.getExecutionTrace(), context.getBuiltinTrace());
         }
     }
 

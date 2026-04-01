@@ -46,6 +46,9 @@ public abstract class ContractTest {
      */
     private JulcVm vm;
 
+    /** The result from the most recent evaluation. */
+    private EvalResult lastResult;
+
     /**
      * Returns the shared JulcVm instance, creating it on first access.
      */
@@ -404,17 +407,17 @@ public abstract class ContractTest {
      */
     private EvalResult doEvaluate(CompileResult compiled, boolean tracing, PlutusData... args) {
         var v = vm();
-        v.setSourceMap(compiled.sourceMap());
-        if (tracing) v.setTracingEnabled(true);
-        try {
-            if (args.length == 0) {
-                return v.evaluate(compiled.program());
-            }
-            return v.evaluateWithArgs(compiled.program(), java.util.List.of(args));
-        } finally {
-            v.setTracingEnabled(false);
-            v.setSourceMap(null);
+        var options = com.bloxbean.cardano.julc.vm.EvalOptions.DEFAULT
+                .withSourceMap(compiled.sourceMap())
+                .withTracing(tracing);
+        EvalResult result;
+        if (args.length == 0) {
+            result = v.evaluate(compiled.program(), options);
+        } else {
+            result = v.evaluateWithArgs(compiled.program(), java.util.List.of(args), options);
         }
+        this.lastResult = result;
+        return result;
     }
 
     /**
@@ -422,7 +425,8 @@ public abstract class ContractTest {
      * Builtin tracing is always on by default — no opt-in required.
      */
     protected java.util.List<BuiltinExecution> getLastBuiltinTrace() {
-        return vm().getLastBuiltinTrace();
+        var r = lastResult;
+        return r != null ? r.builtinTrace() : java.util.List.of();
     }
 
     /**
@@ -430,7 +434,8 @@ public abstract class ContractTest {
      * Call after {@link #evaluateWithTrace}.
      */
     protected java.util.List<ExecutionTraceEntry> getLastExecutionTrace() {
-        return vm().getLastExecutionTrace();
+        var r = lastResult;
+        return r != null ? r.executionTrace() : java.util.List.of();
     }
 
     /**

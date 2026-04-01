@@ -3,6 +3,7 @@ package com.bloxbean.cardano.julc.vm.truffle;
 import com.bloxbean.cardano.julc.core.*;
 import com.bloxbean.cardano.julc.core.source.SourceLocation;
 import com.bloxbean.cardano.julc.core.source.SourceMap;
+import com.bloxbean.cardano.julc.vm.EvalOptions;
 import com.bloxbean.cardano.julc.vm.EvalResult;
 import com.bloxbean.cardano.julc.vm.PlutusLanguage;
 import com.bloxbean.cardano.julc.vm.trace.ExecutionTraceEntry;
@@ -26,9 +27,9 @@ class ExecutionTraceTest {
     void tracingDisabledByDefault() {
         var program = new Program(1, 0, 0,
                 Term.const_(Constant.integer(BigInteger.ONE)));
-        provider.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
+        var result = provider.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
 
-        assertTrue(provider.getLastExecutionTrace().isEmpty(),
+        assertTrue(result.executionTrace().isEmpty(),
                 "Trace should be empty when tracing is disabled");
     }
 
@@ -43,13 +44,12 @@ class ExecutionTraceTest {
         positions.put(applyTerm, new SourceLocation("Test.java", 10, 1, "identity(42)"));
         var sourceMap = SourceMap.of(positions);
 
-        provider.setSourceMap(sourceMap);
-        provider.setTracingEnabled(true);
+        var options = new EvalOptions(sourceMap, true, true);
         var result = provider.evaluate(
-                new Program(1, 0, 0, applyTerm), PlutusLanguage.PLUTUS_V3, null);
+                new Program(1, 0, 0, applyTerm), PlutusLanguage.PLUTUS_V3, null, options);
 
         assertInstanceOf(EvalResult.Success.class, result);
-        var trace = provider.getLastExecutionTrace();
+        var trace = result.executionTrace();
         assertFalse(trace.isEmpty(), "Trace should have entries when enabled with source map");
 
         // Should contain an Apply entry for Test.java:10
@@ -60,16 +60,15 @@ class ExecutionTraceTest {
 
     @Test
     void tracingEnabledButNoSourceMap_emptyTrace() {
-        provider.setSourceMap(null);
-        provider.setTracingEnabled(true);
+        var options = new EvalOptions(null, true, true);
 
         var program = new Program(1, 0, 0,
                 Term.apply(
                         Term.lam("x", Term.var(new NamedDeBruijn("x", 1))),
                         Term.const_(Constant.integer(BigInteger.ONE))));
-        provider.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
+        var result = provider.evaluate(program, PlutusLanguage.PLUTUS_V3, null, options);
 
-        assertTrue(provider.getLastExecutionTrace().isEmpty(),
+        assertTrue(result.executionTrace().isEmpty(),
                 "Trace should be empty when no source map");
     }
 
@@ -89,11 +88,10 @@ class ExecutionTraceTest {
         positions.put(outerApply, new SourceLocation("Math.java", 5, 1, "3 + 4"));
         var sourceMap = SourceMap.of(positions);
 
-        provider.setSourceMap(sourceMap);
-        provider.setTracingEnabled(true);
-        provider.evaluate(new Program(1, 0, 0, outerApply), PlutusLanguage.PLUTUS_V3, null);
+        var options = new EvalOptions(sourceMap, true, true);
+        var result = provider.evaluate(new Program(1, 0, 0, outerApply), PlutusLanguage.PLUTUS_V3, null, options);
 
-        var trace = provider.getLastExecutionTrace();
+        var trace = result.executionTrace();
         long line5Count = trace.stream()
                 .filter(e -> "Math.java".equals(e.fileName()) && e.line() == 5)
                 .count();
@@ -114,11 +112,10 @@ class ExecutionTraceTest {
         positions.put(outerApply, new SourceLocation("Math.java", 6, 1, "add(3, 4)"));
         var sourceMap = SourceMap.of(positions);
 
-        provider.setSourceMap(sourceMap);
-        provider.setTracingEnabled(true);
-        provider.evaluate(new Program(1, 0, 0, outerApply), PlutusLanguage.PLUTUS_V3, null);
+        var options = new EvalOptions(sourceMap, true, true);
+        var result = provider.evaluate(new Program(1, 0, 0, outerApply), PlutusLanguage.PLUTUS_V3, null, options);
 
-        var trace = provider.getLastExecutionTrace();
+        var trace = result.executionTrace();
         assertTrue(trace.size() >= 2, "Different lines should produce separate entries. Got: " + trace);
     }
 
@@ -138,15 +135,13 @@ class ExecutionTraceTest {
         var sourceMap = SourceMap.of(positions);
 
         // With tracing
-        provider.setSourceMap(sourceMap);
-        provider.setTracingEnabled(true);
+        var tracedOptions = new EvalOptions(sourceMap, true, true);
         var resultTraced = provider.evaluate(
-                new Program(1, 0, 0, app), PlutusLanguage.PLUTUS_V3, null);
+                new Program(1, 0, 0, app), PlutusLanguage.PLUTUS_V3, null, tracedOptions);
 
         // Without tracing
-        provider.setTracingEnabled(false);
         var resultUntraced = provider.evaluate(
-                new Program(1, 0, 0, app), PlutusLanguage.PLUTUS_V3, null);
+                new Program(1, 0, 0, app), PlutusLanguage.PLUTUS_V3, null, EvalOptions.DEFAULT);
 
         assertEquals(resultTraced.budgetConsumed().cpuSteps(),
                 resultUntraced.budgetConsumed().cpuSteps(),
@@ -168,11 +163,10 @@ class ExecutionTraceTest {
         positions.put(forceTerm, new SourceLocation("Test.java", 3, 1, "force(delay(7))"));
         var sourceMap = SourceMap.of(positions);
 
-        provider.setSourceMap(sourceMap);
-        provider.setTracingEnabled(true);
-        provider.evaluate(new Program(1, 0, 0, forceTerm), PlutusLanguage.PLUTUS_V3, null);
+        var options = new EvalOptions(sourceMap, true, true);
+        var result = provider.evaluate(new Program(1, 0, 0, forceTerm), PlutusLanguage.PLUTUS_V3, null, options);
 
-        var trace = provider.getLastExecutionTrace();
+        var trace = result.executionTrace();
         boolean hasForce = trace.stream().anyMatch(e -> "Force".equals(e.nodeType()));
         assertTrue(hasForce, "Should have a Force entry. Got: " + trace);
     }
@@ -188,11 +182,10 @@ class ExecutionTraceTest {
         positions.put(caseTerm, new SourceLocation("Test.java", 15, 1, "switch(x)"));
         var sourceMap = SourceMap.of(positions);
 
-        provider.setSourceMap(sourceMap);
-        provider.setTracingEnabled(true);
-        provider.evaluate(new Program(1, 1, 0, caseTerm), PlutusLanguage.PLUTUS_V3, null);
+        var options = new EvalOptions(sourceMap, true, true);
+        var result = provider.evaluate(new Program(1, 1, 0, caseTerm), PlutusLanguage.PLUTUS_V3, null, options);
 
-        var trace = provider.getLastExecutionTrace();
+        var trace = result.executionTrace();
         boolean hasCase = trace.stream().anyMatch(e -> "Case".equals(e.nodeType()));
         assertTrue(hasCase, "Should have a Case entry. Got: " + trace);
     }
@@ -205,13 +198,12 @@ class ExecutionTraceTest {
         positions.put(errorTerm, new SourceLocation("Test.java", 42, 1, "error()"));
         var sourceMap = SourceMap.of(positions);
 
-        provider.setSourceMap(sourceMap);
-        provider.setTracingEnabled(true);
+        var options = new EvalOptions(sourceMap, true, true);
         var result = provider.evaluate(
-                new Program(1, 0, 0, errorTerm), PlutusLanguage.PLUTUS_V3, null);
+                new Program(1, 0, 0, errorTerm), PlutusLanguage.PLUTUS_V3, null, options);
 
         assertInstanceOf(EvalResult.Failure.class, result);
-        var trace = provider.getLastExecutionTrace();
+        var trace = result.executionTrace();
         boolean hasError = trace.stream().anyMatch(e ->
                 "Error".equals(e.nodeType()) && e.line() == 42);
         assertTrue(hasError, "Should have an Error entry at line 42. Got: " + trace);
@@ -229,11 +221,10 @@ class ExecutionTraceTest {
         positions1.put(apply1, new SourceLocation("First.java", 1, 1, "first"));
         var sourceMap1 = SourceMap.of(positions1);
 
-        provider.setSourceMap(sourceMap1);
-        provider.setTracingEnabled(true);
-        provider.evaluate(new Program(1, 0, 0, apply1), PlutusLanguage.PLUTUS_V3, null);
+        var options1 = new EvalOptions(sourceMap1, true, true);
+        var result1 = provider.evaluate(new Program(1, 0, 0, apply1), PlutusLanguage.PLUTUS_V3, null, options1);
 
-        var trace1 = provider.getLastExecutionTrace();
+        var trace1 = result1.executionTrace();
         assertFalse(trace1.isEmpty());
         assertTrue(trace1.stream().anyMatch(e -> "First.java".equals(e.fileName())));
 
@@ -246,10 +237,10 @@ class ExecutionTraceTest {
         positions2.put(apply2, new SourceLocation("Second.java", 2, 1, "second"));
         var sourceMap2 = SourceMap.of(positions2);
 
-        provider.setSourceMap(sourceMap2);
-        provider.evaluate(new Program(1, 0, 0, apply2), PlutusLanguage.PLUTUS_V3, null);
+        var options2 = new EvalOptions(sourceMap2, true, true);
+        var result2 = provider.evaluate(new Program(1, 0, 0, apply2), PlutusLanguage.PLUTUS_V3, null, options2);
 
-        var trace2 = provider.getLastExecutionTrace();
+        var trace2 = result2.executionTrace();
         // Second trace should NOT contain First.java entries
         boolean hasFirst = trace2.stream().anyMatch(e -> "First.java".equals(e.fileName()));
         assertFalse(hasFirst, "Second trace should not contain entries from first evaluation");
@@ -271,11 +262,10 @@ class ExecutionTraceTest {
         // innerApply is NOT mapped
         var sourceMap = SourceMap.of(positions);
 
-        provider.setSourceMap(sourceMap);
-        provider.setTracingEnabled(true);
-        provider.evaluate(new Program(1, 0, 0, outerApply), PlutusLanguage.PLUTUS_V3, null);
+        var options = new EvalOptions(sourceMap, true, true);
+        var result = provider.evaluate(new Program(1, 0, 0, outerApply), PlutusLanguage.PLUTUS_V3, null, options);
 
-        var trace = provider.getLastExecutionTrace();
+        var trace = result.executionTrace();
         // All entries should be from Test.java:10 (the mapped one)
         for (var entry : trace) {
             assertEquals("Test.java", entry.fileName());
@@ -298,11 +288,10 @@ class ExecutionTraceTest {
         positions.put(outerApply, new SourceLocation("Math.java", 6, 1, "3 + 4"));
         var sourceMap = SourceMap.of(positions);
 
-        provider.setSourceMap(sourceMap);
-        provider.setTracingEnabled(true);
-        provider.evaluate(new Program(1, 0, 0, outerApply), PlutusLanguage.PLUTUS_V3, null);
+        var options = new EvalOptions(sourceMap, true, true);
+        var result = provider.evaluate(new Program(1, 0, 0, outerApply), PlutusLanguage.PLUTUS_V3, null, options);
 
-        var trace = provider.getLastExecutionTrace();
+        var trace = result.executionTrace();
         assertFalse(trace.isEmpty());
         // At least one entry should have non-zero cpuDelta
         boolean hasNonZeroCpu = trace.stream().anyMatch(e -> e.cpuDelta() > 0);
@@ -324,11 +313,10 @@ class ExecutionTraceTest {
         positions.put(outerApply, new SourceLocation("Math.java", 5, 1, "3 + 4"));
         var sourceMap = SourceMap.of(positions);
 
-        provider.setSourceMap(sourceMap);
-        provider.setTracingEnabled(true);
-        provider.evaluate(new Program(1, 0, 0, outerApply), PlutusLanguage.PLUTUS_V3, null);
+        var options = new EvalOptions(sourceMap, true, true);
+        var result = provider.evaluate(new Program(1, 0, 0, outerApply), PlutusLanguage.PLUTUS_V3, null, options);
 
-        var trace = provider.getLastExecutionTrace();
+        var trace = result.executionTrace();
         // Should be deduped to 1 entry
         long line5Count = trace.stream()
                 .filter(e -> "Math.java".equals(e.fileName()) && e.line() == 5)

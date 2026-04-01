@@ -3,8 +3,6 @@ package com.bloxbean.cardano.julc.testkit;
 import com.bloxbean.cardano.julc.compiler.CompileResult;
 import com.bloxbean.cardano.julc.core.source.SourceMap;
 import com.bloxbean.cardano.julc.vm.EvalResult;
-import com.bloxbean.cardano.julc.vm.trace.BuiltinExecution;
-import com.bloxbean.cardano.julc.vm.trace.ExecutionTraceEntry;
 import com.bloxbean.cardano.julc.vm.trace.FailureReport;
 import com.bloxbean.cardano.julc.vm.trace.FailureReportBuilder;
 import com.bloxbean.cardano.julc.vm.trace.FailureReportFormatter;
@@ -184,18 +182,8 @@ public final class BudgetAssertions {
      * Describe a result with source location info if a source map is available.
      */
     public static String describeResult(EvalResult result, SourceMap sourceMap) {
-        return describeResult(result, sourceMap, List.of(), List.of());
-    }
-
-    /**
-     * Describe a result with full diagnostic context.
-     */
-    public static String describeResult(EvalResult result, SourceMap sourceMap,
-                                         List<ExecutionTraceEntry> executionTrace,
-                                         List<BuiltinExecution> builtinTrace) {
         if (!result.isSuccess()) {
-            FailureReport report = FailureReportBuilder.build(
-                    result, sourceMap, executionTrace, builtinTrace);
+            FailureReport report = FailureReportBuilder.build(result, sourceMap);
             if (report != null) {
                 return FailureReportFormatter.format(report);
             }
