@@ -7,7 +7,10 @@ import com.bloxbean.cardano.julc.vm.EvalResult;
 import java.util.List;
 
 /**
- * Builds a {@link FailureReport} from an {@link EvalResult} and optional diagnostic traces.
+ * Builds a {@link FailureReport} from an {@link EvalResult}.
+ * <p>
+ * Traces (execution trace and builtin trace) are read directly from the
+ * {@code EvalResult}, which carries them as part of the evaluation output.
  */
 public final class FailureReportBuilder {
 
@@ -16,15 +19,11 @@ public final class FailureReportBuilder {
     /**
      * Build a FailureReport from a failed evaluation result.
      *
-     * @param result         the failed EvalResult (Failure or BudgetExhausted)
-     * @param sourceMap      the source map for resolving error locations (nullable)
-     * @param executionTrace the execution trace entries (nullable or empty)
-     * @param builtinTrace   the last N builtin executions (nullable or empty)
+     * @param result    the failed EvalResult (Failure or BudgetExhausted)
+     * @param sourceMap the source map for resolving error locations (nullable)
      * @return the structured failure report, or null if the result is a Success
      */
-    public static FailureReport build(EvalResult result, SourceMap sourceMap,
-                                       List<ExecutionTraceEntry> executionTrace,
-                                       List<BuiltinExecution> builtinTrace) {
+    public static FailureReport build(EvalResult result, SourceMap sourceMap) {
         if (result instanceof EvalResult.Success) return null;
 
         String errorMessage = switch (result) {
@@ -49,24 +48,17 @@ public final class FailureReportBuilder {
         return new FailureReport(
                 errorMessage,
                 location,
-                builtinTrace != null ? builtinTrace : List.of(),
-                executionTrace != null ? executionTrace : List.of(),
+                result.builtinTrace(),
+                result.executionTrace(),
                 result.budgetConsumed(),
                 result.traces()
         );
     }
 
     /**
-     * Build a FailureReport with only a source map (no builtin/execution traces).
-     */
-    public static FailureReport build(EvalResult result, SourceMap sourceMap) {
-        return build(result, sourceMap, List.of(), List.of());
-    }
-
-    /**
-     * Build a FailureReport with no source map or traces.
+     * Build a FailureReport with no source map.
      */
     public static FailureReport build(EvalResult result) {
-        return build(result, null, List.of(), List.of());
+        return build(result, null);
     }
 }

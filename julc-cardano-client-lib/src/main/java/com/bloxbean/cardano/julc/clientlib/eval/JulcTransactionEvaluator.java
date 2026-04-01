@@ -21,7 +21,6 @@ import com.bloxbean.cardano.julc.vm.EvalResult;
 import com.bloxbean.cardano.julc.vm.ExBudget;
 import com.bloxbean.cardano.julc.vm.JulcVm;
 import com.bloxbean.cardano.julc.vm.PlutusLanguage;
-import com.bloxbean.cardano.julc.vm.trace.BuiltinExecution;
 import com.bloxbean.cardano.julc.vm.trace.ExecutionTraceEntry;
 import com.bloxbean.cardano.julc.vm.trace.FailureReportBuilder;
 import com.bloxbean.cardano.julc.vm.trace.FailureReportFormatter;
@@ -253,41 +252,21 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
                         }
                     }
 
-                    // c. Configure source map and tracing on the provider
-                    var vmProvider = getProvider();
+                    // c. Build per-evaluation options
                     SourceMap activeSourceMap = scriptSourceMaps.get(scriptHash);
-                    if (activeSourceMap != null) {
-                        vmProvider.setSourceMap(activeSourceMap);
-                    }
-                    vmProvider.setBuiltinTraceEnabled(builtinTraceEnabled);
-                    if (executionTraceEnabled) {
-                        vmProvider.setTracingEnabled(true);
-                    }
+                    var evalOptions = new com.bloxbean.cardano.julc.vm.EvalOptions(
+                            activeSourceMap, executionTraceEnabled, builtinTraceEnabled);
 
                     // d. Use pre-registered program if available (preserves Term identity)
                     Program evalProgram = scriptPrograms.containsKey(scriptHash)
                             ? scriptPrograms.get(scriptHash) : resolved.program();
 
-                    // e. Evaluate with try-finally for provider state reset
-                    List<ExecutionTraceEntry> executionTrace;
-                    List<BuiltinExecution> builtinTrace;
-                    EvalResult evalResult;
-                    try {
-                        var langVm = JulcVm.withProvider(vmProvider, resolved.language());
-                        evalResult = langVm.evaluateWithArgs(
-                                evalProgram, args, maxBudget);
-                        executionTrace = executionTraceEnabled
-                                ? vmProvider.getLastExecutionTrace() : List.of();
-                        builtinTrace = builtinTraceEnabled
-                                ? vmProvider.getLastBuiltinTrace() : List.of();
-                    } finally {
-                        if (activeSourceMap != null) {
-                            vmProvider.setSourceMap(null);
-                        }
-                        if (executionTraceEnabled) {
-                            vmProvider.setTracingEnabled(false);
-                        }
-                    }
+                    // e. Evaluate — traces are captured in the EvalResult
+                    var langVm = JulcVm.withProvider(getProvider(), resolved.language());
+                    EvalResult evalResult = langVm.evaluateWithArgs(
+                            evalProgram, args, maxBudget, evalOptions);
+                    var executionTrace = evalResult.executionTrace();
+                    var builtinTrace = evalResult.builtinTrace();
 
                     // f. Capture trace (prints to stdout + stores in collectedTraces)
                     String key = redeemer.getTag() + "[" + redeemer.getIndex() + "]";
@@ -311,16 +290,14 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
                                     ? Collections.unmodifiableMap(collectedTraces) : Map.of();
                             return Result.error(formatEvalError(
                                     redeemer, "Script evaluation failed for", failure,
-                                    failure.error(), activeSourceMap,
-                                    executionTrace, builtinTrace));
+                                    failure.error(), activeSourceMap));
                         }
                         case EvalResult.BudgetExhausted exhausted -> {
                             lastTraces = collectedTraces != null
                                     ? Collections.unmodifiableMap(collectedTraces) : Map.of();
                             return Result.error(formatEvalError(
                                     redeemer, "Budget exhausted for", exhausted,
-                                    exhausted.consumed().toString(), activeSourceMap,
-                                    executionTrace, builtinTrace));
+                                    exhausted.consumed().toString(), activeSourceMap));
                         }
                     }
                 } catch (Exception e) {
@@ -597,11 +574,9 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
     // ---- Error formatting with source map support ----
 
     private String formatEvalError(Redeemer redeemer, String prefix, EvalResult result,
-                                    String fallbackDetail, SourceMap sourceMap,
-                                    List<ExecutionTraceEntry> executionTrace,
-                                    List<BuiltinExecution> builtinTrace) {
+                                    String fallbackDetail, SourceMap sourceMap) {
         var redeemerKey = redeemer.getTag() + "[" + redeemer.getIndex() + "]";
-        var report = FailureReportBuilder.build(result, sourceMap, executionTrace, builtinTrace);
+        var report = FailureReportBuilder.build(result, sourceMap);
         if (report != null) {
             return prefix + " " + redeemerKey + ":\n"
                     + FailureReportFormatter.format(report);

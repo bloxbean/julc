@@ -7,8 +7,6 @@ import com.bloxbean.cardano.julc.core.Term;
 import com.bloxbean.cardano.julc.core.source.SourceMap;
 import com.bloxbean.cardano.julc.vm.*;
 import com.bloxbean.cardano.julc.vm.java.cost.*;
-import com.bloxbean.cardano.julc.vm.trace.BuiltinExecution;
-import com.bloxbean.cardano.julc.vm.trace.ExecutionTraceEntry;
 
 import java.util.List;
 
@@ -25,11 +23,6 @@ public class JavaVmProvider implements JulcVmProvider {
     private volatile CostModelParser.ParsedCostModel customV1CostModel;
     private volatile CostModelParser.ParsedCostModel customV2CostModel;
     private volatile CostModelParser.ParsedCostModel customV3CostModel;
-    private volatile SourceMap sourceMap;
-    private volatile boolean tracingEnabled;
-    private volatile boolean builtinTraceEnabled = true;
-    private volatile List<ExecutionTraceEntry> lastExecutionTrace = List.of();
-    private volatile List<BuiltinExecution> lastBuiltinTrace = List.of();
 
     @Override
     public void setCostModelParams(long[] costModelValues, PlutusLanguage language,
@@ -43,22 +36,25 @@ public class JavaVmProvider implements JulcVmProvider {
     }
 
     @Override
-    public EvalResult evaluate(Program program, PlutusLanguage language, ExBudget budget) {
-        return evaluateInternal(program.term(), language, budget);
+    public EvalResult evaluate(Program program, PlutusLanguage language, ExBudget budget,
+                               EvalOptions options) {
+        return evaluateInternal(program.term(), language, budget, options);
     }
 
     @Override
     public EvalResult evaluateWithArgs(Program program, PlutusLanguage language,
-                                       List<PlutusData> args, ExBudget budget) {
+                                       List<PlutusData> args, ExBudget budget,
+                                       EvalOptions options) {
         // Apply each argument as a Data constant
         Term term = program.term();
         for (var arg : args) {
             term = new Term.Apply(term, new Term.Const(Constant.data(arg)));
         }
-        return evaluateInternal(term, language, budget);
+        return evaluateInternal(term, language, budget, options);
     }
 
-    private EvalResult evaluateInternal(Term term, PlutusLanguage language, ExBudget budget) {
+    private EvalResult evaluateInternal(Term term, PlutusLanguage language, ExBudget budget,
+                                        EvalOptions options) {
         MachineCosts mc;
         BuiltinCostModel bcm;
         var parsed = getCustomCostModel(language);
@@ -70,24 +66,24 @@ public class JavaVmProvider implements JulcVmProvider {
             bcm = DefaultCostModel.defaultBuiltinCostModel(language);
         }
         var costTracker = new CostTracker(mc, bcm, budget);
-        var machine = new CekMachine(costTracker, language, sourceMap, tracingEnabled, builtinTraceEnabled);
+        var machine = new CekMachine(costTracker, language,
+                options.sourceMap(), options.tracingEnabled(), options.builtinTraceEnabled());
         try {
             CekValue result = machine.evaluate(term);
             Term resultTerm = ValueConverter.toTerm(result);
-            return new EvalResult.Success(resultTerm, costTracker.consumed(), machine.getTraces());
+            return new EvalResult.Success(resultTerm, costTracker.consumed(), machine.getTraces(),
+                    machine.getExecutionTrace(), machine.getBuiltinTrace());
         } catch (BudgetExhaustedException e) {
             return new EvalResult.BudgetExhausted(costTracker.consumed(), machine.getTraces(),
-                    e.failedTerm());
+                    e.failedTerm(), machine.getExecutionTrace(), machine.getBuiltinTrace());
         } catch (CekEvaluationException e) {
             String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
             return new EvalResult.Failure(errorMsg, costTracker.consumed(), machine.getTraces(),
-                    e.failedTerm());
+                    e.failedTerm(), machine.getExecutionTrace(), machine.getBuiltinTrace());
         } catch (Exception e) {
             String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
-            return new EvalResult.Failure(errorMsg, costTracker.consumed(), machine.getTraces());
-        } finally {
-            lastExecutionTrace = machine.getExecutionTrace();
-            lastBuiltinTrace = machine.getBuiltinTrace();
+            return new EvalResult.Failure(errorMsg, costTracker.consumed(), machine.getTraces(),
+                    null, machine.getExecutionTrace(), machine.getBuiltinTrace());
         }
     }
 
@@ -97,31 +93,6 @@ public class JavaVmProvider implements JulcVmProvider {
             case PLUTUS_V2 -> customV2CostModel;
             case PLUTUS_V3 -> customV3CostModel;
         };
-    }
-
-    @Override
-    public void setSourceMap(SourceMap sourceMap) {
-        this.sourceMap = sourceMap;
-    }
-
-    @Override
-    public void setTracingEnabled(boolean enabled) {
-        this.tracingEnabled = enabled;
-    }
-
-    @Override
-    public void setBuiltinTraceEnabled(boolean enabled) {
-        this.builtinTraceEnabled = enabled;
-    }
-
-    @Override
-    public List<ExecutionTraceEntry> getLastExecutionTrace() {
-        return lastExecutionTrace;
-    }
-
-    @Override
-    public List<BuiltinExecution> getLastBuiltinTrace() {
-        return lastBuiltinTrace;
     }
 
     @Override

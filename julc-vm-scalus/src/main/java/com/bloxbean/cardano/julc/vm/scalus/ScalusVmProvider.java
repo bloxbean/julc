@@ -27,6 +27,10 @@ import java.util.List;
  * <p>
  * Discovered via {@link java.util.ServiceLoader} when {@code plutus-vm-scalus}
  * is on the classpath.
+ * <p>
+ * Note: This provider does not support source maps, execution tracing, or builtin
+ * trace collection. {@link EvalOptions} is accepted but ignored — traces in the
+ * returned {@link EvalResult} will always be empty.
  */
 public class ScalusVmProvider implements JulcVmProvider {
 
@@ -65,13 +69,15 @@ public class ScalusVmProvider implements JulcVmProvider {
     }
 
     @Override
-    public EvalResult evaluate(Program program, PlutusLanguage language, ExBudget budget) {
+    public EvalResult evaluate(Program program, PlutusLanguage language, ExBudget budget,
+                               EvalOptions options) {
         return evaluateInternal(program, language);
     }
 
     @Override
     public EvalResult evaluateWithArgs(Program program, PlutusLanguage language,
-                                       List<PlutusData> args, ExBudget budget) {
+                                       List<PlutusData> args, ExBudget budget,
+                                       EvalOptions options) {
         try {
             // FLAT-encode the base program (without args) to bridge to Scalus types
             byte[] flatBytes = UplcFlatEncoder.encodeProgram(program);

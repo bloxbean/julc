@@ -8,11 +8,10 @@ import com.bloxbean.cardano.julc.core.Program;
 import com.bloxbean.cardano.julc.core.source.SourceLocation;
 import com.bloxbean.cardano.julc.core.source.SourceMap;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
+import com.bloxbean.cardano.julc.vm.EvalOptions;
 import com.bloxbean.cardano.julc.vm.EvalResult;
 import com.bloxbean.cardano.julc.vm.ExBudget;
 import com.bloxbean.cardano.julc.vm.JulcVm;
-import com.bloxbean.cardano.julc.vm.trace.BuiltinExecution;
-import com.bloxbean.cardano.julc.vm.trace.ExecutionTraceEntry;
 import com.bloxbean.cardano.julc.vm.trace.FailureReport;
 import com.bloxbean.cardano.julc.vm.trace.FailureReportBuilder;
 import com.bloxbean.cardano.julc.vm.trace.FailureReportFormatter;
@@ -535,25 +534,22 @@ public final class ValidatorTest {
 
     /**
      * Evaluate a compiled program with source map but WITHOUT execution tracing.
-     * Retrieves the builtin trace (always collected by the VM) for lightweight diagnostics.
+     * The result carries the builtin trace (always collected by the VM) for lightweight diagnostics.
      * <p>
      * This is cheaper than {@link #evaluateWithTrace} because it does not enable
      * per-step execution tracing.
      *
      * @param compiled the compile result (with source map)
      * @param args     the PlutusData arguments
-     * @return the result with empty execution trace and populated builtin trace
+     * @return the EvalResult (with builtin trace, empty execution trace)
      */
-    public static EvalWithTrace evaluateWithBuiltinTrace(CompileResult compiled, PlutusData... args) {
+    public static EvalResult evaluateWithBuiltinTrace(CompileResult compiled, PlutusData... args) {
         return doEvaluate(compiled, false, args);
     }
 
     /**
      * Evaluate a compiled program with builtin-only diagnostics (no execution tracing).
      * Returns a {@link FailureReport} if the evaluation fails, or null on success.
-     * <p>
-     * Lighter-weight alternative to {@link #evaluateWithDiagnostics} — useful for
-     * diagnosing validator failures without the overhead of full execution tracing.
      *
      * @param compiled the compile result (with source map)
      * @param args     the PlutusData arguments
@@ -567,35 +563,14 @@ public final class ValidatorTest {
 
     /**
      * Evaluate a compiled program with source map and execution tracing enabled.
-     * Returns an {@link EvalWithTrace} containing both the result and the trace.
+     * The result carries both the execution trace and builtin trace.
      *
      * @param compiled the compile result (with source map)
      * @param args     the PlutusData arguments
-     * @return the result and execution trace
+     * @return the EvalResult (with execution trace and builtin trace)
      */
-    public static EvalWithTrace evaluateWithTrace(CompileResult compiled, PlutusData... args) {
+    public static EvalResult evaluateWithTrace(CompileResult compiled, PlutusData... args) {
         return doEvaluate(compiled, true, args);
-    }
-
-    /**
-     * Holds an evaluation result together with its execution trace and builtin trace.
-     */
-    public record EvalWithTrace(EvalResult result, List<ExecutionTraceEntry> trace,
-                                 List<BuiltinExecution> builtinTrace) {
-        /** Backward-compatible constructor (no builtin trace). */
-        public EvalWithTrace(EvalResult result, List<ExecutionTraceEntry> trace) {
-            this(result, trace, List.of());
-        }
-
-        /** Format the trace as a readable multi-line string. */
-        public String formatTrace() {
-            return ExecutionTraceEntry.format(trace);
-        }
-
-        /** Format a per-file/line budget summary with visit counts. */
-        public String formatBudgetSummary() {
-            return ExecutionTraceEntry.formatSummary(trace);
-        }
     }
 
     // --- Diagnostic evaluation ---
@@ -630,31 +605,26 @@ public final class ValidatorTest {
     }
 
     /**
-     * Shared evaluate helper — creates a VM, sets source map, optionally enables tracing,
-     * evaluates, and collects traces. The VM is throwaway (no cleanup needed).
+     * Shared evaluate helper — creates a VM, configures options, evaluates.
      */
-    private static EvalWithTrace doEvaluate(CompileResult compiled, boolean tracing, PlutusData... args) {
+    private static EvalResult doEvaluate(CompileResult compiled, boolean tracing, PlutusData... args) {
         var vm = JulcVm.create();
-        vm.setSourceMap(compiled.sourceMap());
-        if (tracing) vm.setTracingEnabled(true);
-        EvalResult result;
+        var options = EvalOptions.DEFAULT
+                .withSourceMap(compiled.sourceMap())
+                .withTracing(tracing);
         if (args.length == 0) {
-            result = vm.evaluate(compiled.program());
+            return vm.evaluate(compiled.program(), options);
         } else {
-            result = vm.evaluateWithArgs(compiled.program(), List.of(args));
+            return vm.evaluateWithArgs(compiled.program(), List.of(args), options);
         }
-        var executionTrace = tracing ? vm.getLastExecutionTrace() : List.<ExecutionTraceEntry>of();
-        var builtinTrace = vm.getLastBuiltinTrace();
-        return new EvalWithTrace(result, executionTrace, builtinTrace);
     }
 
     /**
      * Build a FailureReport if evaluation failed, null otherwise.
      */
-    private static FailureReport buildReportIfFailed(EvalWithTrace traced, SourceMap sourceMap) {
-        if (traced.result().isSuccess()) return null;
-        return FailureReportBuilder.build(traced.result(), sourceMap,
-                traced.trace(), traced.builtinTrace());
+    private static FailureReport buildReportIfFailed(EvalResult result, SourceMap sourceMap) {
+        if (result.isSuccess()) return null;
+        return FailureReportBuilder.build(result, sourceMap);
     }
 
     private static String formatResult(EvalResult result) {

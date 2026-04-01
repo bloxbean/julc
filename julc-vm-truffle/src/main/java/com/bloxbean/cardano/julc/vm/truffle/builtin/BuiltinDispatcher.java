@@ -69,13 +69,26 @@ public final class BuiltinDispatcher {
         // Charge builtin cost — exactly as CekMachine.executeBuiltin() does
         context.getCostTracker().chargeBuiltin(fun, cekArgs);
 
-        // Execute
+        // Execute and record builtin trace
         if (PASS_THROUGH_BUILTINS.contains(fun)) {
-            return executePassThrough(fun, truffleArgs, cekArgs);
+            try {
+                Object result = executePassThrough(fun, truffleArgs, cekArgs);
+                context.recordBuiltin(fun, cekArgs, toCekValue(result));
+                return result;
+            } catch (Exception e) {
+                context.recordBuiltinError(fun, cekArgs, e);
+                throw e;
+            }
         } else {
             BuiltinRuntime runtime = context.getBuiltinTable().getRuntime(fun);
-            CekValue result = runtime.execute(cekArgs);
-            return fromCekValue(result);
+            try {
+                CekValue result = runtime.execute(cekArgs);
+                context.recordBuiltin(fun, cekArgs, result);
+                return fromCekValue(result);
+            } catch (Exception e) {
+                context.recordBuiltinError(fun, cekArgs, e);
+                throw e;
+            }
         }
     }
 

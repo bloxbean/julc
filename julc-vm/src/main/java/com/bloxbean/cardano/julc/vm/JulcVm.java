@@ -2,9 +2,6 @@ package com.bloxbean.cardano.julc.vm;
 
 import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.core.Program;
-import com.bloxbean.cardano.julc.core.source.SourceMap;
-import com.bloxbean.cardano.julc.vm.trace.BuiltinExecution;
-import com.bloxbean.cardano.julc.vm.trace.ExecutionTraceEntry;
 
 import java.util.Comparator;
 import java.util.List;
@@ -22,9 +19,10 @@ import java.util.ServiceLoader;
  * // Evaluate a program
  * EvalResult result = vm.evaluate(program);
  *
- * // Evaluate with arguments
- * EvalResult result = vm.evaluateWithArgs(program,
- *     List.of(datum, redeemer, scriptContext));
+ * // Evaluate with arguments and options
+ * var options = EvalOptions.DEFAULT.withSourceMap(sourceMap).withTracing(true);
+ * EvalResult result = vm.evaluateWithArgs(program, List.of(ctx), options);
+ * // Traces are in the result: result.executionTrace(), result.builtinTrace()
  * }</pre>
  *
  * @see JulcVmProvider
@@ -124,117 +122,62 @@ public final class JulcVm {
         return new JulcVm(provider, language);
     }
 
-    /**
-     * Evaluate a UPLC program with unlimited budget.
-     */
+    // --- Evaluate with default options ---
+
+    /** Evaluate a UPLC program with unlimited budget and default options. */
     public EvalResult evaluate(Program program) {
         return provider.evaluate(program, language, null);
     }
 
-    /**
-     * Evaluate a UPLC program with a maximum budget.
-     */
+    /** Evaluate a UPLC program with a maximum budget and default options. */
     public EvalResult evaluate(Program program, ExBudget budget) {
         return provider.evaluate(program, language, budget);
     }
 
-    /**
-     * Evaluate a UPLC program applied to the given arguments, with unlimited budget.
-     * <p>
-     * Arguments are applied as PlutusData constants.
-     */
+    /** Evaluate with arguments, unlimited budget, default options. */
     public EvalResult evaluateWithArgs(Program program, List<PlutusData> args) {
         return provider.evaluateWithArgs(program, language, args, null);
     }
 
-    /**
-     * Evaluate a UPLC program applied to the given arguments, with a maximum budget.
-     */
+    /** Evaluate with arguments, maximum budget, default options. */
     public EvalResult evaluateWithArgs(Program program, List<PlutusData> args, ExBudget budget) {
         return provider.evaluateWithArgs(program, language, args, budget);
     }
+
+    // --- Evaluate with explicit options ---
+
+    /** Evaluate a UPLC program with per-evaluation options and unlimited budget. */
+    public EvalResult evaluate(Program program, EvalOptions options) {
+        return provider.evaluate(program, language, null, options);
+    }
+
+    /** Evaluate a UPLC program with per-evaluation options and a maximum budget. */
+    public EvalResult evaluate(Program program, ExBudget budget, EvalOptions options) {
+        return provider.evaluate(program, language, budget, options);
+    }
+
+    /** Evaluate with arguments, per-evaluation options, and unlimited budget. */
+    public EvalResult evaluateWithArgs(Program program, List<PlutusData> args, EvalOptions options) {
+        return provider.evaluateWithArgs(program, language, args, null, options);
+    }
+
+    /** Evaluate with arguments, per-evaluation options, and a maximum budget. */
+    public EvalResult evaluateWithArgs(Program program, List<PlutusData> args,
+                                       ExBudget budget, EvalOptions options) {
+        return provider.evaluateWithArgs(program, language, args, budget, options);
+    }
+
+    // --- Configuration ---
 
     /**
      * Set the cost model parameter values for a specific Plutus language version.
      * Values must be in the canonical order (matching the on-chain costModels array).
      * <p>
-     * Mixed-version transactions require calling this once per language version
-     * present in the transaction (V1, V2, and/or V3).
-     * <p>
-     * The protocol version determines which builtins are available and therefore
-     * the expected parameter count. New builtins are added to all language versions
-     * (V1/V2/V3) in each protocol version, so V1/V2 arrays grow over time too.
-     *
-     * @param costModelValues       ordered array of cost model parameter values
-     * @param language              the Plutus language version these parameters are for
-     * @param protocolMajorVersion  the protocol major version (e.g. 9 for Chang, 10 for Plomin)
-     * @param protocolMinorVersion  the protocol minor version
+     * This is shared/global configuration set once at startup — not per-evaluation.
      */
     public void setCostModelParams(long[] costModelValues, PlutusLanguage language,
                                    int protocolMajorVersion, int protocolMinorVersion) {
         provider.setCostModelParams(costModelValues, language, protocolMajorVersion, protocolMinorVersion);
-    }
-
-    /**
-     * Set the source map for debugging support.
-     * When set, evaluation errors can include the originating Java source location,
-     * and execution tracing can map CEK steps back to Java source lines.
-     * <p>
-     * No-op if the active provider does not support source maps.
-     *
-     * @param sourceMap the source map from compilation (nullable — pass null to disable)
-     */
-    public void setSourceMap(SourceMap sourceMap) {
-        provider.setSourceMap(sourceMap);
-    }
-
-    /**
-     * Enable or disable execution tracing.
-     * When enabled (and a source map is set), each statement-level CEK step
-     * is recorded with its Java source location.
-     * <p>
-     * This is the heavier tracing option — for lightweight diagnostics, use
-     * {@link #setBuiltinTraceEnabled(boolean)} instead.
-     * <p>
-     * No-op if the active provider does not support tracing.
-     *
-     * @param enabled true to enable execution tracing, false to disable
-     */
-    public void setTracingEnabled(boolean enabled) {
-        provider.setTracingEnabled(enabled);
-    }
-
-    /**
-     * Enable or disable builtin trace collection.
-     * When enabled, the last N builtin executions (function name, argument values,
-     * result value) are recorded. This is lightweight and useful for showing
-     * <em>what values</em> caused a validator failure.
-     * <p>
-     * Enabled by default. Disable for zero-overhead production evaluation.
-     * <p>
-     * No-op if the active provider does not support builtin tracing.
-     *
-     * @param enabled true to enable builtin tracing, false to disable
-     */
-    public void setBuiltinTraceEnabled(boolean enabled) {
-        provider.setBuiltinTraceEnabled(enabled);
-    }
-
-    /**
-     * Returns the execution trace from the most recent evaluation.
-     * Empty list if tracing was disabled, no source map was set, or
-     * the active provider does not support tracing.
-     */
-    public List<ExecutionTraceEntry> getLastExecutionTrace() {
-        return provider.getLastExecutionTrace();
-    }
-
-    /**
-     * Returns the last N builtin executions from the most recent evaluation.
-     * Empty list if builtin tracing was disabled or the active provider does not support this.
-     */
-    public List<BuiltinExecution> getLastBuiltinTrace() {
-        return provider.getLastBuiltinTrace();
     }
 
     /** The name of the active VM provider. */

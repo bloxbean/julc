@@ -2,6 +2,7 @@ package com.bloxbean.cardano.julc.benchmark;
 
 import com.bloxbean.cardano.julc.core.Program;
 import com.bloxbean.cardano.julc.core.flat.UplcFlatDecoder;
+import com.bloxbean.cardano.julc.vm.EvalOptions;
 import com.bloxbean.cardano.julc.vm.EvalResult;
 import com.bloxbean.cardano.julc.vm.PlutusLanguage;
 import com.bloxbean.cardano.julc.vm.java.JavaVmProvider;
@@ -65,19 +66,20 @@ public class CekJavaBenchmark {
     })
     String file;
 
+    private static final EvalOptions BENCH_OPTIONS = EvalOptions.DEFAULT.withBuiltinTrace(false);
+
     private Program program;
     private JavaVmProvider provider;
 
     @Setup(Level.Trial)
     public void setup() throws IOException {
         provider = new JavaVmProvider();
-        provider.setBuiltinTraceEnabled(false);
         program = UplcFlatDecoder.decodeProgram(loadFlatBytes(file));
     }
 
     @Benchmark
     public EvalResult bench() {
-        return provider.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
+        return provider.evaluate(program, PlutusLanguage.PLUTUS_V3, null, BENCH_OPTIONS);
     }
 
     static byte[] loadFlatBytes(String filename) throws IOException {

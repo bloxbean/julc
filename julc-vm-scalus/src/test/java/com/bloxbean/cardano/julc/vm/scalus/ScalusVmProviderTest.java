@@ -702,9 +702,9 @@ class ScalusVmProviderTest {
             // The default JulcVmProvider.setCostModelParams should be a no-op.
             JulcVmProvider mockProvider = new JulcVmProvider() {
                 @Override
-                public EvalResult evaluate(Program p, PlutusLanguage l, ExBudget b) { return null; }
+                public EvalResult evaluate(Program p, PlutusLanguage l, ExBudget b, EvalOptions o) { return null; }
                 @Override
-                public EvalResult evaluateWithArgs(Program p, PlutusLanguage l, List<PlutusData> a, ExBudget b) { return null; }
+                public EvalResult evaluateWithArgs(Program p, PlutusLanguage l, List<PlutusData> a, ExBudget b, EvalOptions o) { return null; }
                 @Override
                 public String name() { return "test"; }
                 @Override

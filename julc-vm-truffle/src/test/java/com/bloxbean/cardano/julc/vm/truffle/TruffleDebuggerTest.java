@@ -3,6 +3,7 @@ package com.bloxbean.cardano.julc.vm.truffle;
 import com.bloxbean.cardano.julc.core.*;
 import com.bloxbean.cardano.julc.core.source.SourceLocation;
 import com.bloxbean.cardano.julc.core.source.SourceMap;
+import com.bloxbean.cardano.julc.vm.EvalOptions;
 import com.bloxbean.cardano.julc.vm.EvalResult;
 import com.bloxbean.cardano.julc.vm.ExBudget;
 import com.bloxbean.cardano.julc.vm.PlutusLanguage;
@@ -116,9 +117,8 @@ class TruffleDebuggerTest {
         positions.put(constTerm, new SourceLocation("Test.java", 1, 1, "42"));
         var sourceMap = SourceMap.of(positions);
 
-        provider.setSourceMap(sourceMap);
-        var result = provider.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
-        provider.setSourceMap(null); // cleanup
+        var options = new EvalOptions(sourceMap, false, true);
+        var result = provider.evaluate(program, PlutusLanguage.PLUTUS_V3, null, options);
 
         assertInstanceOf(EvalResult.Success.class, result);
         var success = (EvalResult.Success) result;
@@ -138,9 +138,8 @@ class TruffleDebuggerTest {
         positions.put(add, new SourceLocation("Test.java", 5, 1, "3 + 4"));
         var sourceMap = SourceMap.of(positions);
 
-        provider.setSourceMap(sourceMap);
-        var result = provider.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
-        provider.setSourceMap(null);
+        var options = new EvalOptions(sourceMap, false, true);
+        var result = provider.evaluate(program, PlutusLanguage.PLUTUS_V3, null, options);
 
         assertInstanceOf(EvalResult.Success.class, result);
         var constTerm = (Term.Const) ((EvalResult.Success) result).resultTerm();
@@ -158,9 +157,8 @@ class TruffleDebuggerTest {
         positions.put(errorTerm, new SourceLocation("Validator.java", 42, 10, "error()"));
         var sourceMap = SourceMap.of(positions);
 
-        provider.setSourceMap(sourceMap);
-        var result = provider.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
-        provider.setSourceMap(null);
+        var options = new EvalOptions(sourceMap, false, true);
+        var result = provider.evaluate(program, PlutusLanguage.PLUTUS_V3, null, options);
 
         assertInstanceOf(EvalResult.Failure.class, result);
         var failure = (EvalResult.Failure) result;
@@ -184,7 +182,6 @@ class TruffleDebuggerTest {
         var program = new Program(1, 0, 0, app);
 
         // Without source map
-        provider.setSourceMap(null);
         var resultNoMap = provider.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
         assertInstanceOf(EvalResult.Success.class, resultNoMap);
 
@@ -193,9 +190,8 @@ class TruffleDebuggerTest {
         positions.put(app, new SourceLocation("Test.java", 1, 1, "addTen(5)"));
         var sourceMap = SourceMap.of(positions);
 
-        provider.setSourceMap(sourceMap);
-        var resultWithMap = provider.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
-        provider.setSourceMap(null);
+        var options = new EvalOptions(sourceMap, false, true);
+        var resultWithMap = provider.evaluate(program, PlutusLanguage.PLUTUS_V3, null, options);
 
         assertInstanceOf(EvalResult.Success.class, resultWithMap);
 
@@ -232,9 +228,8 @@ class TruffleDebuggerTest {
         positions.put(delayTerm, new SourceLocation("Test.java", 3, 7, "delay(7)"));
         var sourceMap = SourceMap.of(positions);
 
-        provider.setSourceMap(sourceMap);
-        var result = provider.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
-        provider.setSourceMap(null);
+        var options = new EvalOptions(sourceMap, false, true);
+        var result = provider.evaluate(program, PlutusLanguage.PLUTUS_V3, null, options);
 
         assertInstanceOf(EvalResult.Success.class, result);
         var constTerm = (Term.Const) ((EvalResult.Success) result).resultTerm();
@@ -254,9 +249,8 @@ class TruffleDebuggerTest {
         positions.put(caseTerm, new SourceLocation("Test.java", 15, 1, "switch(constr)"));
         var sourceMap = SourceMap.of(positions);
 
-        provider.setSourceMap(sourceMap);
-        var result = provider.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
-        provider.setSourceMap(null);
+        var options = new EvalOptions(sourceMap, false, true);
+        var result = provider.evaluate(program, PlutusLanguage.PLUTUS_V3, null, options);
 
         assertInstanceOf(EvalResult.Success.class, result);
         var constTerm = (Term.Const) ((EvalResult.Success) result).resultTerm();

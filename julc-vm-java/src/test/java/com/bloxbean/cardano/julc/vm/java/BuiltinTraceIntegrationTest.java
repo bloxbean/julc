@@ -5,6 +5,7 @@ import com.bloxbean.cardano.julc.core.DefaultFun;
 import com.bloxbean.cardano.julc.core.Term;
 import com.bloxbean.cardano.julc.core.source.SourceLocation;
 import com.bloxbean.cardano.julc.core.source.SourceMap;
+import com.bloxbean.cardano.julc.vm.EvalOptions;
 import com.bloxbean.cardano.julc.vm.EvalResult;
 import com.bloxbean.cardano.julc.vm.PlutusLanguage;
 import com.bloxbean.cardano.julc.vm.java.cost.*;
@@ -120,21 +121,19 @@ class BuiltinTraceIntegrationTest {
         var provider = new JavaVmProvider();
         var dummy = new Term.Const(Constant.integer(0));
         var sourceMap = createSourceMap(dummy, "Test.java", 1, "dummy");
-        provider.setSourceMap(sourceMap);
 
         var add = applyBuiltin(DefaultFun.AddInteger,
                 new Term.Const(Constant.integer(3)),
                 new Term.Const(Constant.integer(5)));
         var program = new com.bloxbean.cardano.julc.core.Program(1, 1, 0, add);
 
-        var result = provider.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
+        var options = new EvalOptions(sourceMap, false, true);
+        var result = provider.evaluate(program, PlutusLanguage.PLUTUS_V3, null, options);
         assertInstanceOf(EvalResult.Success.class, result);
 
-        var builtinTrace = provider.getLastBuiltinTrace();
+        var builtinTrace = result.builtinTrace();
         assertFalse(builtinTrace.isEmpty());
         assertEquals(DefaultFun.AddInteger, builtinTrace.getFirst().fun());
-
-        provider.setSourceMap(null);
     }
 
     @Test
@@ -219,21 +218,20 @@ class BuiltinTraceIntegrationTest {
         // Default: builtin trace enabled
         var result1 = provider.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
         assertInstanceOf(EvalResult.Success.class, result1);
-        assertFalse(provider.getLastBuiltinTrace().isEmpty(),
+        assertFalse(result1.builtinTrace().isEmpty(),
                 "Builtin trace should be on by default");
 
         // Disable builtin trace
-        provider.setBuiltinTraceEnabled(false);
-        var result2 = provider.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
+        var result2 = provider.evaluate(program, PlutusLanguage.PLUTUS_V3, null,
+                EvalOptions.DEFAULT.withBuiltinTrace(false));
         assertInstanceOf(EvalResult.Success.class, result2);
-        assertTrue(provider.getLastBuiltinTrace().isEmpty(),
-                "Builtin trace should be empty when disabled via provider");
+        assertTrue(result2.builtinTrace().isEmpty(),
+                "Builtin trace should be empty when disabled via options");
 
-        // Re-enable
-        provider.setBuiltinTraceEnabled(true);
+        // Re-enable (default)
         var result3 = provider.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
         assertInstanceOf(EvalResult.Success.class, result3);
-        assertFalse(provider.getLastBuiltinTrace().isEmpty(),
+        assertFalse(result3.builtinTrace().isEmpty(),
                 "Builtin trace should be captured again after re-enabling");
     }
 

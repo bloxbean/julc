@@ -296,32 +296,25 @@ public final class JulcEval {
         }
 
         var vm = com.bloxbean.cardano.julc.vm.JulcVm.create();
-        vm.setSourceMap(compiled.sourceMap());
-        if (tracingEnabled) {
-            vm.setTracingEnabled(true);
-        }
+        var evalOpts = com.bloxbean.cardano.julc.vm.EvalOptions.DEFAULT
+                .withSourceMap(compiled.sourceMap())
+                .withTracing(tracingEnabled);
         var allArgs = MethodEvaluator.buildAllArgs(params, args);
         EvalResult result;
-        try {
-            if (allArgs.isEmpty()) {
-                result = vm.evaluate(compiled.program());
-            } else {
-                result = vm.evaluateWithArgs(compiled.program(), allArgs);
-            }
-        } finally {
-            this.lastExecutionTrace = vm.getLastExecutionTrace();
-            this.lastBuiltinTrace = vm.getLastBuiltinTrace();
-            vm.setTracingEnabled(false);
-            vm.setSourceMap(null);
+        if (allArgs.isEmpty()) {
+            result = vm.evaluate(compiled.program(), evalOpts);
+        } else {
+            result = vm.evaluateWithArgs(compiled.program(), allArgs, evalOpts);
         }
+        this.lastExecutionTrace = result.executionTrace();
+        this.lastBuiltinTrace = result.builtinTrace();
 
         if (result instanceof EvalResult.Success s) {
             return s.resultTerm();
         }
 
         // Build rich error report (reuses FailureReportBuilder+FailureReportFormatter)
-        var report = FailureReportBuilder.build(result, compiled.sourceMap(),
-                lastExecutionTrace, lastBuiltinTrace);
+        var report = FailureReportBuilder.build(result, compiled.sourceMap());
         String errorMsg;
         if (report != null) {
             errorMsg = FailureReportFormatter.format(report);

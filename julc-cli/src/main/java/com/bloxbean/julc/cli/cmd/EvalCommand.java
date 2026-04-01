@@ -15,7 +15,6 @@ import picocli.CommandLine.Parameters;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 
 @Command(name = "eval", description = "Evaluate a UPLC program")
 public class EvalCommand implements Runnable {
@@ -29,7 +28,6 @@ public class EvalCommand implements Runnable {
             Program program = loadProgram(file);
             JulcVm vm = JulcVm.create();
             EvalResult result = vm.evaluate(program);
-            var builtinTrace = vm.getLastBuiltinTrace();
 
             switch (result) {
                 case EvalResult.Success s -> {
@@ -43,7 +41,7 @@ public class EvalCommand implements Runnable {
                     }
                 }
                 case EvalResult.Failure f -> {
-                    var report = FailureReportBuilder.build(f, null, List.of(), builtinTrace);
+                    var report = FailureReportBuilder.build(f, null);
                     if (report != null) {
                         System.out.println(AnsiFailureReportFormatter.format(report));
                     } else {
@@ -52,7 +50,7 @@ public class EvalCommand implements Runnable {
                     System.exit(1);
                 }
                 case EvalResult.BudgetExhausted b -> {
-                    var report = FailureReportBuilder.build(b, null, List.of(), builtinTrace);
+                    var report = FailureReportBuilder.build(b, null);
                     if (report != null) {
                         System.out.println(AnsiFailureReportFormatter.format(report));
                     } else {

@@ -23,7 +23,8 @@ class JulcVmTest {
         List<PlutusData> lastArgs;
 
         @Override
-        public EvalResult evaluate(Program program, PlutusLanguage language, ExBudget budget) {
+        public EvalResult evaluate(Program program, PlutusLanguage language, ExBudget budget,
+                                   EvalOptions options) {
             evaluateCallCount++;
             lastLanguage = language;
             lastBudget = budget;
@@ -35,7 +36,8 @@ class JulcVmTest {
 
         @Override
         public EvalResult evaluateWithArgs(Program program, PlutusLanguage language,
-                                           List<PlutusData> args, ExBudget budget) {
+                                           List<PlutusData> args, ExBudget budget,
+                                           EvalOptions options) {
             evaluateWithArgsCallCount++;
             lastLanguage = language;
             lastArgs = args;
