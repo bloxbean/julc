@@ -27,7 +27,7 @@ public class SubsetValidator extends VoidVisitorAdapter<Void> {
 
     public List<CompilerDiagnostic> validate(CompilationUnit cu) {
         diagnostics.clear();
-        cu.getStorage().ifPresent(s -> fileName = s.getFileName());
+        cu.getStorage().ifPresent(s -> fileName = s.getPath().toString());
         cu.accept(this, null);
         return List.copyOf(diagnostics);
     }
