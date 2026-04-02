@@ -131,7 +131,7 @@ public class PirGenerator {
         if (!options.isSourceMapEnabled() || term == null || javaNode == null) return;
         javaNode.getRange().ifPresent(range -> {
             var fileName = javaNode.findCompilationUnit()
-                    .flatMap(cu -> cu.getStorage().map(s -> s.getPath().toString()))
+                    .flatMap(cu -> cu.getStorage().map(s -> s.getFileName()))
                     .orElse(null);
             // Use a short fragment of the Java expression for display
             var fragment = javaNode.toString();

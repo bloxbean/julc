@@ -391,7 +391,7 @@ public class TypeRegistrar {
             }
             var cu = node.findCompilationUnit();
             if (cu.isPresent() && cu.get().getStorage().isPresent()) {
-                fileName = cu.get().getStorage().get().getPath().toString();
+                fileName = cu.get().getStorage().get().getFileName();
             }
         }
         var diag = new CompilerDiagnostic(CompilerDiagnostic.Level.ERROR, message, fileName, line, col);

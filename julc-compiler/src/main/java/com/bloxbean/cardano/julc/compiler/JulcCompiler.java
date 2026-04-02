@@ -441,7 +441,7 @@ public class JulcCompiler {
             var epMethod = entrypointMethod != null ? entrypointMethod : entrypointInfos.getFirst().method();
             epMethod.getRange().ifPresent(range -> {
                 var fileName = epMethod.findCompilationUnit()
-                        .flatMap(cu -> cu.getStorage().map(s -> s.getPath().toString()))
+                        .flatMap(cu -> cu.getStorage().map(s -> s.getFileName()))
                         .orElse(null);
                 var loc = new SourceLocation(fileName, range.begin.line, range.begin.column,
                         "validator returned false");
