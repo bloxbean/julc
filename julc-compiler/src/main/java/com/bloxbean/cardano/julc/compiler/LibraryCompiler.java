@@ -44,7 +44,15 @@ final class LibraryCompiler {
                 try {
                     compileSingleCu(libCu, typeResolver, registry, effectiveLookup, knownFqcns);
                     progress = true;
+                } catch (CompilerException e) {
+                    // Expected: unresolved cross-library reference — will retry
+                    nextRemaining.add(libCu);
                 } catch (Exception e) {
+                    // Unexpected: likely a compiler bug. Retry to avoid blocking the user,
+                    // but warn so developers can investigate.
+                    var cuName = libCu.getStorage().map(s -> s.getFileName()).orElse("<unknown>");
+                    options.warnf("Unexpected error compiling library %s (will retry): %s: %s",
+                            cuName, e.getClass().getSimpleName(), e.getMessage());
                     nextRemaining.add(libCu);
                 }
             }
