@@ -10,7 +10,7 @@ If you find a bug or have a feature request, please [open a GitHub issue](https:
 
 ## Prerequisites
 
-- **Java 24+** (Temurin recommended)
+- **Java 25+** (Temurin recommended)
 - **Gradle 9+**
 - **Git**
 - **Optional**: [Yaci Devkit](https://github.com/bloxbean/yaci-devkit) for end-to-end tests (must be started externally; admin API runs on port 10000)
@@ -36,7 +36,7 @@ If you find a bug or have a feature request, please [open a GitHub issue](https:
    ./gradlew test
    ```
 
-4. **IDE setup**: Import as a Gradle project and ensure the Java 24 toolchain is configured.
+4. **IDE setup**: Import as a Gradle project and ensure the Java 25 toolchain is configured.
 
 ## Project Structure
 
@@ -113,7 +113,7 @@ Use imperative mood with a descriptive subject. Examples from the project:
    ./gradlew build -PskipSigning=true
    ```
 4. Push your branch and open a PR against `main`
-5. CI runs automatically (JDK 24 Temurin, `./gradlew build`). All tests must pass.
+5. CI runs automatically (JDK 25 Temurin, `./gradlew build`). All tests must pass.
 6. Test results are uploaded as artifacts with 14-day retention.
 
 ## Testing

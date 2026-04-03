@@ -70,10 +70,10 @@ public final class GradleProjectScaffolder {
                 }
 
                 java {
-                    sourceCompatibility = JavaVersion.VERSION_24
-                    targetCompatibility = JavaVersion.VERSION_24
+                    sourceCompatibility = JavaVersion.VERSION_25
+                    targetCompatibility = JavaVersion.VERSION_25
                     toolchain {
-                        languageVersion = JavaLanguageVersion.of(24)
+                        languageVersion = JavaLanguageVersion.of(25)
                     }
                 }
 

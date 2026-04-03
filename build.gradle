@@ -43,10 +43,10 @@ subprojects {
     apply plugin: 'java-library'
 
     java {
-        sourceCompatibility = JavaVersion.VERSION_24
-        targetCompatibility = JavaVersion.VERSION_24
+        sourceCompatibility = JavaVersion.VERSION_25
+        targetCompatibility = JavaVersion.VERSION_25
         toolchain {
-            languageVersion = JavaLanguageVersion.of(24)
+            languageVersion = JavaLanguageVersion.of(25)
         }
     }
 
@@ -64,7 +64,7 @@ subprojects {
 
     tasks.withType(Javadoc).configureEach {
         options.encoding = 'UTF-8'
-        options.addStringOption('-release', '24')
+        options.addStringOption('-release', '25')
 //        options.addBooleanOption('-enable-preview', true)
         options.addStringOption('Xdoclint:none', '-quiet')
     }

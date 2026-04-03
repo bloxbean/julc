@@ -244,7 +244,7 @@ assertTrue(evalResult.isSuccess());
 
 ## Requirements
 
-- **Java 24+**
+- **Java 25+**
 - **Gradle 9+**
 
 ## Documentation

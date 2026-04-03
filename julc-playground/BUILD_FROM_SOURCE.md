@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- **JDK 24+** (GraalVM recommended for native image)
+- **JDK 25+** (GraalVM recommended for native image)
 - **Node.js 20+** and **npm** (for frontend build only)
 
 ## Backend Only (no frontend)
