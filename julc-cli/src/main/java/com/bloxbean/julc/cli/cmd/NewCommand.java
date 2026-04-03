@@ -116,11 +116,11 @@ public class NewCommand implements Runnable {
 
     private void printJavaVersionWarning() {
         int javaVersion = Runtime.version().feature();
-        if (javaVersion < 24) {
+        if (javaVersion < 25) {
             System.out.println();
-            System.out.println(AnsiColors.yellow("Warning: Java 24+ is required. Detected: Java " + javaVersion));
-            System.out.println(AnsiColors.yellow("  Install GraalVM JDK 24:"));
-            System.out.println(AnsiColors.yellow("    macOS/Linux: sdk install java 24.0.1-graal"));
+            System.out.println(AnsiColors.yellow("Warning: Java 25+ is required. Detected: Java " + javaVersion));
+            System.out.println(AnsiColors.yellow("  Install GraalVM JDK 25:"));
+            System.out.println(AnsiColors.yellow("    macOS/Linux: sdk install java 25.0.2-graal"));
             System.out.println(AnsiColors.yellow("    Windows:     Download from https://www.graalvm.org/downloads/"));
         }
     }

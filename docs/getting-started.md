@@ -31,7 +31,7 @@ machine.
 
 ## 1. Prerequisites
 
-- **Java 24+** (GraalVM recommended for best performance)
+- **Java 25+** (GraalVM recommended for best performance)
 - **Gradle 9+** (or Maven 3.9+)
 - Familiarity with Cardano's eUTxO model and the concept of validators, datums,
   and redeemers
@@ -149,7 +149,7 @@ test {
             <artifactId>maven-compiler-plugin</artifactId>
             <version>3.13.0</version>
             <configuration>
-                <release>24</release>
+                <release>25</release>
                 <annotationProcessorPaths>
                     <path>
                         <groupId>com.bloxbean.cardano</groupId>
@@ -167,7 +167,7 @@ test {
 
 JuLC uses sealed interfaces, records, pattern matching, and switch expressions.
 These features are fully standardized since Java 21, so no `--enable-preview` flag
-is needed with Java 24+.
+is needed with Java 25+.
 
 ---
 

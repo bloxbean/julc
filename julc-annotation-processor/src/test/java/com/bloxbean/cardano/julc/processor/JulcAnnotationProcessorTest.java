@@ -314,7 +314,7 @@ class JulcAnnotationProcessorTest {
 
             var options = new ArrayList<>(List.of(
                     "--enable-preview",
-                    "--source", "24",
+                    "--source", "25",
                     "-proc:only",
                     "-processor", JulcAnnotationProcessor.class.getName()
             ));

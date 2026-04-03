@@ -18,7 +18,8 @@ public record CompilerDiagnostic(Level level, String message, String fileName, i
     @Override
     public String toString() {
         var sb = new StringBuilder();
-        sb.append(level).append(" ").append(fileName).append(":").append(line).append(":").append(column);
+        sb.append(level).append(" at .(").append(fileName).append(":").append(line).append(")");
+        sb.append(":").append(column);
         sb.append(" - ").append(message);
         if (hasSuggestion()) {
             sb.append(" (suggestion: ").append(suggestion).append(")");

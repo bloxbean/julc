@@ -158,6 +158,11 @@ public class JulcCompiler {
             libraryCus.add(parseSource(librarySources.get(i), "library[" + i + "]"));
         }
 
+        return doCompileFromCus(validatorCu, libraryCus, captureDetails);
+    }
+
+    private CompileResult doCompileFromCus(CompilationUnit validatorCu, List<CompilationUnit> libraryCus,
+                                            boolean captureDetails) {
         // 2. Validate subset on all compilation units
         var subsetValidator = new SubsetValidator();
         var diagnostics = new ArrayList<>(subsetValidator.validate(validatorCu));
@@ -494,21 +499,33 @@ public class JulcCompiler {
 
     /**
      * Compile a validator from a source file.
+     * The original file path is preserved in the CompilationUnit for diagnostics and source maps.
      */
     public CompileResult compile(Path sourceFile) throws IOException {
-        return compile(Files.readString(sourceFile));
+        return compileFromPaths(sourceFile, List.of());
     }
 
     /**
      * Compile a validator from a source file with library files.
+     * Original file paths are preserved in CompilationUnits for diagnostics and source maps.
      */
     public CompileResult compile(Path validatorFile, List<Path> libraryFiles) throws IOException {
-        var validatorSource = Files.readString(validatorFile);
-        var librarySources = new ArrayList<String>();
-        for (var libFile : libraryFiles) {
-            librarySources.add(Files.readString(libFile));
+        return compileFromPaths(validatorFile, libraryFiles);
+    }
+
+    private CompileResult compileFromPaths(Path validatorFile, List<Path> libraryFiles) throws IOException {
+        StaticJavaParser.getParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
+
+        options.logf("Parsing %d source(s) (1 validator + %d libraries)",
+                1 + libraryFiles.size(), libraryFiles.size());
+        var validatorCu = parseSource(Files.readString(validatorFile), "validator", validatorFile);
+        var libraryCus = new ArrayList<CompilationUnit>();
+        for (int i = 0; i < libraryFiles.size(); i++) {
+            var libFile = libraryFiles.get(i);
+            libraryCus.add(parseSource(Files.readString(libFile), "library[" + i + "]", libFile));
         }
-        return compile(validatorSource, librarySources);
+
+        return doCompileFromCus(validatorCu, libraryCus, false);
     }
 
     /**
@@ -895,11 +912,19 @@ public class JulcCompiler {
     // --- Helper methods ---
 
     private CompilationUnit parseSource(String source, String label) {
+        return parseSource(source, label, null);
+    }
+
+    private CompilationUnit parseSource(String source, String label, Path originalPath) {
         try {
             var cu = StaticJavaParser.parse(source);
-            // Set synthetic storage so source maps can resolve filenames
-            cu.findFirst(ClassOrInterfaceDeclaration.class)
-                    .ifPresent(cls -> cu.setStorage(Path.of(cls.getNameAsString() + ".java")));
+            // Preserve real file path when available; otherwise use synthetic ClassName.java
+            if (originalPath != null) {
+                cu.setStorage(originalPath);
+            } else {
+                cu.findFirst(ClassOrInterfaceDeclaration.class)
+                        .ifPresent(cls -> cu.setStorage(Path.of(cls.getNameAsString() + ".java")));
+            }
             return cu;
         } catch (Exception e) {
             throw new CompilerException("Failed to parse " + label + " source: " + e.getMessage());

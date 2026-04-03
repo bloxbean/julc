@@ -58,8 +58,8 @@ public final class MavenProjectScaffolder {
 
                     <properties>
                         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-                        <maven.compiler.source>24</maven.compiler.source>
-                        <maven.compiler.target>24</maven.compiler.target>
+                        <maven.compiler.source>25</maven.compiler.source>
+                        <maven.compiler.target>25</maven.compiler.target>
                         <julc.version>%s</julc.version>
                         <cardano-client-lib.version>%s</cardano-client-lib.version>
                         <junit.version>5.11.4</junit.version>
@@ -128,8 +128,8 @@ public final class MavenProjectScaffolder {
                                 <artifactId>maven-compiler-plugin</artifactId>
                                 <version>3.13.0</version>
                                 <configuration>
-                                    <source>24</source>
-                                    <target>24</target>
+                                    <source>25</source>
+                                    <target>25</target>
                                     <compilerArgs>
                                         <arg>-Ajulc.projectName=${project.name}</arg>
                                         <arg>-Ajulc.projectVersion=${project.version}</arg>
