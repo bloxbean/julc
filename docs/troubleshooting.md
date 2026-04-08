@@ -1509,3 +1509,4 @@ static boolean mint(PlutusData redeemer, ScriptContext ctx) { ... }
 @Entrypoint(purpose = Purpose.SPEND)
 static boolean spend(Optional<PlutusData> datum, PlutusData redeemer, ScriptContext ctx) { ... }
 ```
+

@@ -3609,9 +3609,6 @@ class StdlibCompileEvalTest {
         // H. Cross-library MapLib call with field-access map (known limitation)
         // ================================================================
 
-        @Disabled("Known limitation: MapLib static methods expect MapData, but field-access maps are pair lists. " +
-                  "Calling MapLib.member(txInfo.withdrawals(), key) double-unwraps because the library body " +
-                  "calls Builtins.unMapData() on an already-unwrapped pair list.")
         @Test
         void mapLibMemberOnFieldAccessMap_knownLimitation() {
             var source = """

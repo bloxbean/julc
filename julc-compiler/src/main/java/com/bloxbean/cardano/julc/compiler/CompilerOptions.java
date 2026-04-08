@@ -53,4 +53,11 @@ public class CompilerOptions {
     public void logf(String fmt, Object... args) {
         if (verbose) logger.accept("[julc] " + String.format(fmt, args));
     }
+
+    /**
+     * Log a warning unconditionally (not gated by verbose mode).
+     */
+    public void warnf(String fmt, Object... args) {
+        logger.accept("[julc] WARN: " + String.format(fmt, args));
+    }
 }
