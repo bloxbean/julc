@@ -8,20 +8,30 @@ import type {
   VariantInfo,
 } from '../api/client';
 
-export const source = writable(`contract "SimpleTransfer" version "1.0" purpose spending
-params:
-    receiver : PubKeyHash
-rule "Receiver can spend"
-when
-    Transaction( signedBy: receiver )
-then allow
-default: deny
-`);
+const DEFAULT_JAVA_SOURCE = `import java.math.BigInteger;
+
+@Validator
+class SimpleValidator {
+    static boolean isPositive(BigInteger x) {
+        return x > 0;
+    }
+
+    @Entrypoint
+    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+        return isPositive(42);
+    }
+}
+`;
+
+export const source = writable(DEFAULT_JAVA_SOURCE);
+export const librarySource = writable<string>('');
+export const editorTab = writable<'validator' | 'library'>('validator');
 
 export const diagnostics = writable<Diagnostic[]>([]);
 export const checkResult = writable<CheckResponse | null>(null);
-export const javaSource = writable<string | null>(null);
+export const pirText = writable<string | null>(null);
 export const uplcText = writable<string | null>(null);
+export const blueprintJson = writable<string | null>(null);
 export const compileResult = writable<CompileResponse | null>(null);
 export const evalResult = writable<EvaluateResponse | null>(null);
 

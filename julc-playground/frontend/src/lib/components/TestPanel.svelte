@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import {
     source, params, datumName, datumFields, redeemerVariants, redeemerFields,
-    purpose, evalResult, isEvaluating, contractName
+    purpose, evalResult, isEvaluating, contractName, librarySource
   } from '../stores/editor';
   import { api, type ScenarioItem } from '../api/client';
   import BudgetMeter from './BudgetMeter.svelte';
@@ -35,12 +35,16 @@
     selectedScenario = '';
   }
 
+  let scenarioError = false;
+
   async function loadScenarios(p: string) {
+    scenarioError = false;
     try {
       const res = await api.scenarios(p);
       scenarios = res.scenarios;
     } catch {
       scenarios = [];
+      scenarioError = true;
     }
   }
 
@@ -60,7 +64,9 @@
 
   function inputType(type: string): string {
     switch (type) {
-      case 'Integer': case 'Lovelace': case 'POSIXTime': return 'number';
+      case 'Integer': case 'Lovelace': case 'POSIXTime':
+      case 'BigInteger': // Java type
+        return 'number';
       default: return 'text';
     }
   }
@@ -69,11 +75,12 @@
     switch (type) {
       case 'PubKeyHash': case 'ValidatorHash': case 'ScriptHash':
       case 'PolicyId': case 'TokenName': case 'DatumHash': case 'TxId':
-      case 'ByteString': return 'hex bytes (e.g. 0101...01)';
-      case 'Integer': return '0';
+      case 'ByteString': case 'byte[]': return 'hex bytes (e.g. 0101...01)';
+      case 'Integer': case 'BigInteger': return '0';
       case 'Lovelace': return 'lovelace amount';
       case 'POSIXTime': return 'POSIX milliseconds';
-      case 'Boolean': return 'true or false';
+      case 'Boolean': case 'boolean': return 'true or false';
+      case 'Data': case 'PlutusData': return 'PlutusData value';
       default: return 'value';
     }
   }
@@ -84,6 +91,7 @@
     try {
       const body: any = {
         source: $source,
+        librarySource: $librarySource || undefined,
       };
 
       // Params

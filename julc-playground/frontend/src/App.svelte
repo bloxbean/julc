@@ -4,6 +4,7 @@
   import DiagnosticsPanel from './lib/components/DiagnosticsPanel.svelte';
   import PipelineView from './lib/components/PipelineView.svelte';
   import TestPanel from './lib/components/TestPanel.svelte';
+  import EvalPanel from './lib/components/EvalPanel.svelte';
   import ExamplePicker from './lib/components/ExamplePicker.svelte';
   import { isChecking, contractName, purpose, diagnostics } from './lib/stores/editor';
 
@@ -25,7 +26,7 @@
   <!-- Toolbar -->
   <header class="toolbar">
     <div class="toolbar-left">
-      <span class="logo">JRL Playground</span>
+      <span class="logo">JuLC Playground</span>
       {#if $contractName}
         <span class="contract-info">
           {$contractName}
@@ -63,10 +64,13 @@
       </div>
     </div>
 
-    <!-- Right: Pipeline + Test -->
+    <!-- Right: Pipeline + Eval + Test -->
     <div class="right-panel">
       <div class="pipeline-area">
         <PipelineView />
+      </div>
+      <div class="eval-area">
+        <EvalPanel />
       </div>
       <div class="test-area">
         <TestPanel />
@@ -185,6 +189,11 @@
     height: 40%;
     border-bottom: 1px solid var(--border);
     overflow: hidden;
+  }
+
+  .eval-area {
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--border);
   }
 
   .test-area {
