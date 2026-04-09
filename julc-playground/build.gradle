@@ -7,7 +7,7 @@ plugins {
 description = 'julc-playground - Online JRL editor and testing playground'
 
 application {
-    mainClass = 'com.bloxbean.julc.playground.JrlPlaygroundServer'
+    mainClass = 'com.bloxbean.julc.playground.JulcPlaygroundServer'
 }
 
 dependencies {
