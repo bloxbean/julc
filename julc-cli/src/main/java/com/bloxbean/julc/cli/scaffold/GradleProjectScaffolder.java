@@ -106,6 +106,7 @@ public final class GradleProjectScaffolder {
 
                 test {
                     useJUnitPlatform()
+                    failOnNoDiscoveredTests = false
                 }
                 """.formatted(group, julcVersion, cclVersion);
     }
