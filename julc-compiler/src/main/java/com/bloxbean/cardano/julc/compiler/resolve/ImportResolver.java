@@ -21,6 +21,8 @@ import java.util.*;
 public class ImportResolver {
 
     private static final String LEDGER_PKG = "com.bloxbean.cardano.julc.ledger";
+    private static final String STDLIB_PKG = "com.bloxbean.cardano.julc.stdlib";
+    private static final String STDLIB_LIB_PKG = "com.bloxbean.cardano.julc.stdlib.lib";
 
     private final String packageName;
     private final Map<String, String> explicitImports;   // "Value" -> "com.bloxbean.cardano.julc.ledger.Value"
@@ -57,9 +59,11 @@ public class ImportResolver {
             this.packageName = null;
         }
 
-        // Always add implicit ledger wildcard (like Java's java.lang.*)
-        if (!wildcardPackages.contains(LEDGER_PKG)) {
-            wildcardPackages.add(LEDGER_PKG);
+        // Always add implicit wildcards (like Java's java.lang.*)
+        for (var pkg : List.of(LEDGER_PKG, STDLIB_PKG, STDLIB_LIB_PKG)) {
+            if (!wildcardPackages.contains(pkg)) {
+                wildcardPackages.add(pkg);
+            }
         }
     }
 

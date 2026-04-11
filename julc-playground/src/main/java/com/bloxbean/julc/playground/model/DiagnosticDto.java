@@ -1,6 +1,6 @@
 package com.bloxbean.julc.playground.model;
 
-import com.bloxbean.cardano.julc.jrl.check.JrlDiagnostic;
+import com.bloxbean.cardano.julc.compiler.error.CompilerDiagnostic;
 
 public record DiagnosticDto(
         String level,
@@ -12,16 +12,15 @@ public record DiagnosticDto(
         Integer endCol,
         String suggestion
 ) {
-    public static DiagnosticDto from(JrlDiagnostic d) {
-        var range = d.sourceRange();
+    public static DiagnosticDto from(CompilerDiagnostic d) {
         return new DiagnosticDto(
                 d.level().name(),
-                d.code(),
+                null,
                 d.message(),
-                range != null ? range.startLine() : null,
-                range != null ? range.startCol() : null,
-                range != null ? range.endLine() : null,
-                range != null ? range.endCol() : null,
+                d.line() > 0 ? d.line() : null,
+                d.column() > 0 ? d.column() : null,
+                null,
+                null,
                 d.suggestion()
         );
     }

@@ -1,14 +1,15 @@
 const BASE = import.meta.env.VITE_API_URL || '';
 
-async function post<T>(path: string, body: unknown): Promise<T> {
+async function post<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+    signal,
   });
-  if (!res.ok && res.status !== 408 && res.status !== 429) {
-    throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-  }
+  if (res.status === 408) throw new Error('Request timed out. Please try with simpler code.');
+  if (res.status === 429) throw new Error('Rate limit exceeded. Please slow down.');
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
   return res.json();
 }
 
@@ -52,14 +53,13 @@ export interface CheckResponse {
   diagnostics: Diagnostic[];
 }
 
-export interface TranspileResponse {
-  javaSource: string | null;
-  diagnostics: Diagnostic[];
-}
-
 export interface CompileResponse {
   uplcText: string | null;
   javaSource: string | null;
+  pirText: string | null;
+  blueprintJson: string | null;
+  compiledCode: string | null;
+  scriptHash: string | null;
   scriptSizeBytes: number;
   scriptSizeFormatted: string | null;
   params: FieldInfo[];
@@ -75,9 +75,21 @@ export interface EvaluateResponse {
   diagnostics: Diagnostic[];
 }
 
+export interface EvalExpressionResponse {
+  success: boolean;
+  result: string | null;
+  type: string | null;
+  budgetCpu: number;
+  budgetMem: number;
+  traces: string[];
+  error: string | null;
+  uplc: string | null;
+}
+
 export interface ExampleItem {
   name: string;
   source: string;
+  language: string;
 }
 
 export interface ScenarioItem {
@@ -92,11 +104,13 @@ export interface ScenarioItem {
 }
 
 export const api = {
-  check: (source: string) => post<CheckResponse>('/api/check', { source }),
-  transpile: (source: string) => post<TranspileResponse>('/api/transpile', { source }),
-  compile: (source: string) => post<CompileResponse>('/api/compile', { source }),
+  check: (source: string, signal?: AbortSignal) =>
+    post<CheckResponse>('/api/check', { source }, signal),
+  compile: (source: string, librarySource?: string) =>
+    post<CompileResponse>('/api/compile', { source, librarySource: librarySource || undefined }),
   evaluate: (body: {
     source: string;
+    librarySource?: string;
     paramValues?: Record<string, string>;
     scenario?: { signers?: string[]; validRangeAfter?: number; validRangeBefore?: number };
     datum?: Record<string, string>;
@@ -104,6 +118,8 @@ export const api = {
   }) => post<EvaluateResponse>('/api/evaluate', body),
   examples: () => get<ExampleItem[]>('/api/examples'),
   example: (name: string) => get<ExampleItem>(`/api/examples/${name}`),
+  evalExpression: (expression: string) =>
+    post<EvalExpressionResponse>('/api/eval', { expression }),
   scenarios: (purpose: string) =>
     get<{ purpose: string; scenarios: ScenarioItem[] }>(`/api/scenarios/${purpose}`),
 };

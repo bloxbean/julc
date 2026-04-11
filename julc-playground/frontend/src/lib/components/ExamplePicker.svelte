@@ -4,37 +4,52 @@
 
   export let onSelect: (source: string) => void;
 
-  let examples: ExampleItem[] = [];
+  let allExamples: ExampleItem[] = [];
   let selected = '';
+  let loadError = false;
 
   onMount(async () => {
     try {
-      examples = await api.examples();
+      allExamples = await api.examples();
     } catch {
-      examples = [];
+      allExamples = [];
+      loadError = true;
     }
   });
 
   async function handleChange() {
     if (!selected) return;
-    const ex = examples.find(e => e.name === selected);
+    const ex = allExamples.find(e => e.name === selected);
     if (ex) {
       onSelect(ex.source);
     }
   }
+
+  function displayName(name: string): string {
+    return name.replace('.java', '');
+  }
 </script>
 
 <div class="example-picker">
-  <select bind:value={selected} on:change={handleChange}>
-    <option value="">Load example...</option>
-    {#each examples as ex}
-      <option value={ex.name}>{ex.name.replace('.jrl', '')}</option>
-    {/each}
-  </select>
+  {#if loadError}
+    <span class="load-error">Failed to load examples</span>
+  {:else}
+    <select bind:value={selected} on:change={handleChange}>
+      <option value="">Load example...</option>
+      {#each allExamples as ex}
+        <option value={ex.name}>{displayName(ex.name)}</option>
+      {/each}
+    </select>
+  {/if}
 </div>
 
 <style>
   .example-picker select {
     font-size: 12px;
+  }
+
+  .load-error {
+    font-size: 11px;
+    color: var(--error);
   }
 </style>

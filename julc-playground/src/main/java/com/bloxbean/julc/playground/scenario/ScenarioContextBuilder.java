@@ -1,10 +1,11 @@
 package com.bloxbean.julc.playground.scenario;
 
 import com.bloxbean.cardano.julc.core.PlutusData;
-import com.bloxbean.cardano.julc.jrl.ast.*;
 import com.bloxbean.cardano.julc.ledger.*;
+import com.bloxbean.julc.playground.model.FieldDto;
 import com.bloxbean.julc.playground.model.RedeemerInput;
 import com.bloxbean.julc.playground.model.ScenarioOverrides;
+import com.bloxbean.julc.playground.model.VariantDto;
 import com.bloxbean.cardano.julc.testkit.ScriptContextTestBuilder;
 
 import java.math.BigInteger;
@@ -13,49 +14,110 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Builds ScriptContext PlutusData from scenario overrides and AST metadata.
+ * Builds ScriptContext PlutusData from scenario overrides and metadata.
  */
 public final class ScenarioContextBuilder {
 
     private ScenarioContextBuilder() {}
 
     /**
-     * Build a complete ScriptContext as PlutusData for VM evaluation.
+     * Build a ScriptContext using purpose string and pre-built datum/redeemer.
      */
     public static PlutusData buildContext(
-            ContractNode ast,
+            String purpose,
             ScenarioOverrides scenario,
-            Map<String, String> datumValues,
-            RedeemerInput redeemerInput) {
+            PlutusData datum,
+            PlutusData redeemer) {
 
-        PurposeType purpose = ast.purpose();
-        if (purpose == null) {
-            throw new IllegalArgumentException("Multi-validator contracts are not yet supported in playground");
-        }
-
-        PlutusData datum = buildDatum(ast.datum(), datumValues);
-        PlutusData redeemer = buildRedeemer(ast.redeemer(), redeemerInput);
-
-        return switch (purpose) {
-            case SPENDING -> buildSpendingContext(scenario, datum, redeemer);
-            case MINTING -> buildMintingContext(scenario, redeemer);
+        return switch (purpose.toUpperCase()) {
+            case "SPENDING" -> buildSpendingContext(scenario, datum, redeemer);
+            case "MINTING" -> buildMintingContext(scenario, redeemer);
             default -> throw new IllegalArgumentException("Unsupported purpose: " + purpose);
         };
     }
 
     /**
-     * Build param values as PlutusData list from user-provided strings + AST type info.
+     * Build datum PlutusData from FieldDto list and user-provided values.
      */
-    public static List<PlutusData> buildParamValues(List<ParamNode> paramNodes, Map<String, String> values) {
-        var result = new ArrayList<PlutusData>();
-        for (var param : paramNodes) {
-            String value = values.get(param.name());
-            if (value == null || value.isBlank()) {
-                throw new IllegalArgumentException("Missing param value: " + param.name());
-            }
-            result.add(convertValue(value, param.type()));
+    public static PlutusData buildDatumFromFields(List<FieldDto> fields, Map<String, String> values) {
+        if (fields == null || fields.isEmpty() || values == null || values.isEmpty()) {
+            return null;
         }
-        return result;
+
+        var data = new ArrayList<PlutusData>();
+        for (var field : fields) {
+            String value = values.get(field.name());
+            if (value == null || value.isBlank()) {
+                throw new IllegalArgumentException("Missing datum field: " + field.name());
+            }
+            data.add(convertValue(value, field.type()));
+        }
+        return PlutusData.constr(0, data.toArray(PlutusData[]::new));
+    }
+
+    /**
+     * Build redeemer PlutusData from variant/field DTOs and user input.
+     */
+    public static PlutusData buildRedeemerFromMetadata(
+            List<VariantDto> variants,
+            List<FieldDto> fields,
+            RedeemerInput input) {
+
+        if (input == null) {
+            return PlutusData.constr(0);
+        }
+
+        if (variants != null && !variants.isEmpty()) {
+            int tag = input.variant();
+            if (tag < 0 || tag >= variants.size()) {
+                return PlutusData.constr(tag);
+            }
+            var variant = variants.get(tag);
+            if (variant.fields().isEmpty() || input.fields() == null || input.fields().isEmpty()) {
+                return PlutusData.constr(tag);
+            }
+            var data = new ArrayList<PlutusData>();
+            for (var field : variant.fields()) {
+                String value = input.fields().get(field.name());
+                if (value == null) {
+                    throw new IllegalArgumentException("Missing redeemer field: " + field.name());
+                }
+                data.add(convertValue(value, field.type()));
+            }
+            return PlutusData.constr(tag, data.toArray(PlutusData[]::new));
+        }
+
+        if (fields != null && !fields.isEmpty()) {
+            if (input.fields() == null || input.fields().isEmpty()) {
+                return PlutusData.constr(0);
+            }
+            var data = new ArrayList<PlutusData>();
+            for (var field : fields) {
+                String value = input.fields().get(field.name());
+                if (value == null) {
+                    throw new IllegalArgumentException("Missing redeemer field: " + field.name());
+                }
+                data.add(convertValue(value, field.type()));
+            }
+            return PlutusData.constr(0, data.toArray(PlutusData[]::new));
+        }
+
+        return PlutusData.constr(input.variant());
+    }
+
+    /**
+     * Convert a string value to PlutusData based on a type name string.
+     * Handles both display names (ByteString, Integer) and
+     * Java source type names (byte[], BigInteger) from Java validators.
+     */
+    public static PlutusData convertValue(String value, String typeName) {
+        return switch (typeName) {
+            case "Integer", "BigInteger", "POSIXTime", "Lovelace" -> PlutusData.integer(Long.parseLong(value));
+            case "boolean", "Boolean" -> PlutusData.constr(Boolean.parseBoolean(value) ? 1 : 0);
+            case "byte[]", "ByteString", "PubKeyHash", "ValidatorHash", "ScriptHash",
+                 "PolicyId", "TokenName", "DatumHash", "TxId" -> PlutusData.bytes(hexToBytes(value));
+            default -> PlutusData.integer(0);
+        };
     }
 
     private static PlutusData buildSpendingContext(
@@ -103,92 +165,6 @@ public final class ScenarioContextBuilder {
         } else if (scenario.validRangeBefore() != null) {
             builder.validRange(Interval.before(BigInteger.valueOf(scenario.validRangeBefore())));
         }
-    }
-
-    /**
-     * Build datum PlutusData from field name→value map and AST type info.
-     */
-    static PlutusData buildDatum(DatumDeclNode datumDecl, Map<String, String> values) {
-        if (datumDecl == null || values == null || values.isEmpty()) {
-            return null;
-        }
-
-        var fields = new ArrayList<PlutusData>();
-        for (var field : datumDecl.fields()) {
-            String value = values.get(field.name());
-            if (value == null || value.isBlank()) {
-                throw new IllegalArgumentException("Missing datum field: " + field.name());
-            }
-            fields.add(convertValue(value, field.type()));
-        }
-        return PlutusData.constr(0, fields.toArray(PlutusData[]::new));
-    }
-
-    /**
-     * Build redeemer PlutusData from variant tag + field values.
-     */
-    static PlutusData buildRedeemer(RedeemerDeclNode redeemerDecl, RedeemerInput input) {
-        if (input == null) {
-            return PlutusData.constr(0);
-        }
-
-        if (redeemerDecl == null) {
-            return PlutusData.constr(input.variant());
-        }
-
-        if (redeemerDecl.isVariantStyle()) {
-            var variants = redeemerDecl.variants();
-            int tag = input.variant();
-            if (tag < 0 || tag >= variants.size()) {
-                return PlutusData.constr(tag);
-            }
-
-            var variant = variants.get(tag);
-            if (variant.fields().isEmpty() || input.fields() == null || input.fields().isEmpty()) {
-                return PlutusData.constr(tag);
-            }
-
-            var fields = new ArrayList<PlutusData>();
-            for (var field : variant.fields()) {
-                String value = input.fields().get(field.name());
-                if (value == null) {
-                    throw new IllegalArgumentException("Missing redeemer field: " + field.name());
-                }
-                fields.add(convertValue(value, field.type()));
-            }
-            return PlutusData.constr(tag, fields.toArray(PlutusData[]::new));
-        } else {
-            // Record-style redeemer
-            if (input.fields() == null || input.fields().isEmpty()) {
-                return PlutusData.constr(0);
-            }
-            var fields = new ArrayList<PlutusData>();
-            for (var field : redeemerDecl.fields()) {
-                String value = input.fields().get(field.name());
-                if (value == null) {
-                    throw new IllegalArgumentException("Missing redeemer field: " + field.name());
-                }
-                fields.add(convertValue(value, field.type()));
-            }
-            return PlutusData.constr(0, fields.toArray(PlutusData[]::new));
-        }
-    }
-
-    /**
-     * Convert a string value to PlutusData based on JRL type.
-     */
-    static PlutusData convertValue(String value, TypeRef type) {
-        String typeName = switch (type) {
-            case TypeRef.SimpleType s -> s.name();
-            default -> "Data";
-        };
-        return switch (typeName) {
-            case "Integer", "POSIXTime", "Lovelace" -> PlutusData.integer(Long.parseLong(value));
-            case "Boolean" -> PlutusData.constr(Boolean.parseBoolean(value) ? 1 : 0);
-            case "ByteString", "PubKeyHash", "ValidatorHash", "ScriptHash",
-                 "PolicyId", "TokenName", "DatumHash", "TxId" -> PlutusData.bytes(hexToBytes(value));
-            default -> PlutusData.integer(0);
-        };
     }
 
     static byte[] hexToBytes(String hex) {

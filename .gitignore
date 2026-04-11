@@ -44,3 +44,4 @@ bin/
 /.claude/
 /.idea/
 .jqwik-database
+/.playwright-mcp/

@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { javaSource, uplcText, compileResult, isCompiling, source } from '../stores/editor';
+  import { pirText, uplcText, blueprintJson, compileResult, isCompiling, source, librarySource, diagnostics } from '../stores/editor';
   import { api } from '../api/client';
 
-  let activeTab: 'java' | 'uplc' = 'java';
+  let activeTab: 'pir' | 'uplc' | 'compiled' | 'blueprint' = 'pir';
 
   let compileError: string | null = null;
 
@@ -10,19 +10,19 @@
     isCompiling.set(true);
     compileError = null;
     try {
-      const res = await api.compile($source);
-      javaSource.set(res.javaSource);
+      const res = await api.compile($source, $librarySource || undefined);
+      pirText.set(res.pirText);
       uplcText.set(res.uplcText);
+      blueprintJson.set(res.blueprintJson);
       compileResult.set(res);
-      // Show compile diagnostics in the diagnostics panel
       if (res.diagnostics && res.diagnostics.length > 0) {
-        const { diagnostics } = await import('../stores/editor');
         diagnostics.set(res.diagnostics);
       }
     } catch (err: any) {
       compileError = err.message || 'Compilation failed';
-      javaSource.set(null);
+      pirText.set(null);
       uplcText.set(null);
+      blueprintJson.set(null);
       compileResult.set(null);
     } finally {
       isCompiling.set(false);
@@ -33,11 +33,17 @@
 <div class="pipeline-view">
   <div class="pipeline-header">
     <div class="tabs">
-      <button class:active={activeTab === 'java'} on:click={() => activeTab = 'java'}>
-        Generated Java
+      <button class:active={activeTab === 'pir'} on:click={() => activeTab = 'pir'}>
+        PIR
       </button>
       <button class:active={activeTab === 'uplc'} on:click={() => activeTab = 'uplc'}>
         UPLC
+      </button>
+      <button class:active={activeTab === 'compiled'} on:click={() => activeTab = 'compiled'}>
+        Compiled
+      </button>
+      <button class:active={activeTab === 'blueprint'} on:click={() => activeTab = 'blueprint'}>
+        Blueprint
       </button>
     </div>
     <div class="actions">
@@ -60,8 +66,29 @@
     {#if compileError}
       <div class="compile-error">{compileError}</div>
     {/if}
-    {#if activeTab === 'java'}
-      <pre class="code-output">{$javaSource ?? 'Click "Compile" to generate Java code'}</pre>
+    {#if activeTab === 'pir'}
+      <pre class="code-output">{$pirText ?? 'Click "Compile" to generate PIR'}</pre>
+    {:else if activeTab === 'compiled'}
+      {#if $compileResult?.compiledCode}
+        <div class="compiled-section">
+          <div class="compiled-field">
+            <span class="compiled-label">Script Hash</span>
+            <pre class="compiled-value">{$compileResult.scriptHash}</pre>
+          </div>
+          <div class="compiled-field">
+            <span class="compiled-label">Size</span>
+            <pre class="compiled-value">{$compileResult.scriptSizeFormatted} ({$compileResult.scriptSizeBytes} bytes)</pre>
+          </div>
+          <div class="compiled-field">
+            <span class="compiled-label">CBOR Hex (Double-encoded)</span>
+            <pre class="compiled-value cbor-hex">{$compileResult.compiledCode}</pre>
+          </div>
+        </div>
+      {:else}
+        <pre class="code-output">Click "Compile" to generate compiled code</pre>
+      {/if}
+    {:else if activeTab === 'blueprint'}
+      <pre class="code-output">{$blueprintJson ?? 'Click "Compile" to generate Blueprint'}</pre>
     {:else}
       <pre class="code-output">{$uplcText ?? 'Click "Compile" to generate UPLC'}</pre>
     {/if}
@@ -88,13 +115,14 @@
   .tabs {
     display: flex;
     gap: 4px;
+    flex-wrap: wrap;
   }
 
   .tabs button {
     background: none;
     color: var(--text-secondary);
-    padding: 4px 12px;
-    font-size: 12px;
+    padding: 4px 8px;
+    font-size: 11px;
     border-radius: 4px;
   }
 
@@ -111,6 +139,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-shrink: 0;
   }
 
   .script-info {
@@ -143,5 +172,43 @@
     white-space: pre-wrap;
     word-break: break-all;
     margin: 0;
+  }
+
+  .compiled-section {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .compiled-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .compiled-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    letter-spacing: 0.5px;
+  }
+
+  .compiled-value {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin: 0;
+    padding: 6px 8px;
+    background: var(--bg-primary);
+    border-radius: 4px;
+    word-break: break-all;
+    white-space: pre-wrap;
+    user-select: all;
+  }
+
+  .cbor-hex {
+    font-size: 11px;
+    line-height: 1.4;
   }
 </style>

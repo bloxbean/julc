@@ -38,6 +38,10 @@ public class CompilationSandbox {
         }
     }
 
+    public int availableSlots() {
+        return semaphore.availablePermits();
+    }
+
     public void shutdown() {
         executor.shutdownNow();
     }
