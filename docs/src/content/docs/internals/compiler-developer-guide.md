@@ -1,52 +1,10 @@
-# JuLC Compiler Developer Guide
+---
+title: "JuLC Compiler Developer Guide"
+description: "JuLC Compiler Developer Guide - JuLC documentation"
+---
 
 A comprehensive guide for developers who maintain, debug, or extend the JuLC compiler — the Java-to-UPLC compiler for Cardano smart contracts.
 
-## Table of Contents
-
-**Part I: Foundations**
-1. [Introduction](#1-introduction)
-2. [Conceptual Background: UPLC, PIR, and Data Encoding](#2-conceptual-background-uplc-pir-and-data-encoding)
-3. [Module Architecture](#3-module-architecture)
-4. [The Type System](#4-the-type-system)
-
-**Part II: Compilation Pipeline**
-5. [Pipeline Overview](#5-pipeline-overview)
-6. [Phase 1: Parsing and Validation](#6-phase-1-parsing-and-validation)
-7. [Phase 2: Type Registration](#7-phase-2-type-registration)
-8. [Phase 3: PIR Generation](#8-phase-3-pir-generation)
-9. [Phase 4: Loop Desugaring](#9-phase-4-loop-desugaring)
-10. [Phase 5: Pattern Matching](#10-phase-5-pattern-matching)
-11. [Phase 6: Validator Wrapping](#11-phase-6-validator-wrapping)
-12. [Phase 7: UPLC Generation and Optimization](#12-phase-7-uplc-generation-and-optimization)
-13. [Phase 8: Library Compilation](#13-phase-8-library-compilation)
-
-**Part III: Subsystem Deep Dives**
-14. [The Symbol Table](#14-the-symbol-table)
-15. [The Type Method Registry](#15-the-type-method-registry)
-16. [The Stdlib Registry](#16-the-stdlib-registry)
-17. [Error Reporting](#17-error-reporting)
-
-**Part IV: How-To Recipes**
-18. [How to Add a New Instance Method](#18-how-to-add-a-new-instance-method)
-19. [How to Add a New Builtin Function](#19-how-to-add-a-new-builtin-function)
-20. [How to Add a New Java Type Mapping](#20-how-to-add-a-new-java-type-mapping)
-21. [How to Add a New Stdlib Library](#21-how-to-add-a-new-stdlib-library)
-22. [How to Add a New Ledger Type](#22-how-to-add-a-new-ledger-type)
-23. [How to Add a New Optimization Pass](#23-how-to-add-a-new-optimization-pass)
-24. [How to Trace Through a Compilation](#24-how-to-trace-through-a-compilation)
-
-**Part V: Reference**
-25. [Known Compiler Limitations](#25-known-compiler-limitations)
-26. [Debugging Techniques](#26-debugging-techniques)
-27. [Testing Patterns](#27-testing-patterns)
-28. [Architecture Decision Records](#28-architecture-decision-records)
-29. [Glossary](#29-glossary)
-30. [Quick Reference: File Index](#30-quick-reference-file-index)
-
----
-
-# Part I: Foundations
 
 ## 1. Introduction
 

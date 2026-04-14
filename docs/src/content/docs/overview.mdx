@@ -1,0 +1,51 @@
+---
+title: JuLC Documentation
+description: Comprehensive documentation for JuLC — the Java UPLC Compiler for Cardano
+---
+
+import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Welcome to the JuLC documentation. JuLC compiles a safe subset of Java to Plutus V3 UPLC for Cardano smart contracts.
+
+## New to JuLC?
+
+<CardGrid>
+  <LinkCard title="Write Your First Contract" description="Scaffold a project with the julc CLI, write a validator, compile, and test — in under 10 minutes" href="/first-contract/" />
+  <LinkCard title="Getting Started" description="Comprehensive guide: all language features, data modeling, collections, deployment" href="/getting-started/" />
+</CardGrid>
+
+## Guides
+
+<CardGrid>
+  <LinkCard title="Advanced Guide" description="Low-level patterns, raw Data access, PlutusData manipulation" href="/guides/advanced-guide/" />
+  <LinkCard title="For-Loop Patterns" description="For-each, while loops, accumulators, nested loops" href="/guides/for-loop-patterns/" />
+  <LinkCard title="Testing Guide" description="Unit tests, property-based fuzzing, budget analysis, integration tests" href="/guides/testing-guide/" />
+  <LinkCard title="Source Maps" description="Runtime error location, trace diagnostics" href="/guides/source-maps/" />
+</CardGrid>
+
+## Standard Library
+
+<LinkCard title="Library Reference" description="All 13 stdlib libraries: Lists, Maps, Values, Math, Crypto, Bitwise, and more" href="/stdlib/stdlib-guide/" />
+
+## Reference
+
+<CardGrid>
+  <LinkCard title="API Reference" description="All supported types, operators, methods, and ledger access" href="/reference/api-reference/" />
+  <LinkCard title="Library Developer Guide" description="Write and publish @OnchainLibrary modules" href="/reference/library-developer-guide/" />
+  <LinkCard title="Examples" description="12 example validators with source code" href="/reference/examples/" />
+  <LinkCard title="Troubleshooting" description="Every compiler error mapped with causes and solutions" href="/reference/troubleshooting/" />
+</CardGrid>
+
+## Internals
+
+For compiler contributors:
+
+<CardGrid>
+  <LinkCard title="Compiler Design" description="Architecture, compilation pipeline, PIR generation" href="/internals/compiler-design/" />
+  <LinkCard title="Compiler Developer Guide" description="Development setup, debugging, extending the compiler" href="/internals/compiler-developer-guide/" />
+</CardGrid>
+
+## Example Repositories
+
+- [julc-helloworld](https://github.com/bloxbean/julc-helloworld) — Simple vesting contract with tests
+- [julc-examples](https://github.com/bloxbean/julc-examples) — Advanced validators and patterns

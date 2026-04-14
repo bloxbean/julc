@@ -1,0 +1,117 @@
+---
+import { createHighlighter } from 'shiki'
+
+const step1Code = `dependencies {
+    implementation "com.bloxbean.cardano:julc-stdlib:\${julcVersion}"
+    implementation "com.bloxbean.cardano:julc-ledger-api:\${julcVersion}"
+    annotationProcessor "com.bloxbean.cardano:julc-annotation-processor:\${julcVersion}"
+
+    testImplementation "com.bloxbean.cardano:julc-testkit:\${julcVersion}"
+    testRuntimeOnly "com.bloxbean.cardano:julc-vm-scalus:\${julcVersion}"
+}`
+
+const step2Code = `@SpendingValidator
+public class VestingValidator {
+    record VestingDatum(PubKeyHash beneficiary, BigInteger deadline) {}
+
+    @Entrypoint
+    static boolean validate(VestingDatum datum, PlutusData redeemer, ScriptContext ctx) {
+        TxInfo txInfo = ctx.txInfo();
+
+        // Check beneficiary signed
+        boolean signed = txInfo.signatories().contains(datum.beneficiary());
+
+        return signed;
+    }
+}`
+
+const step3Code = `// Load compiled script at runtime
+PlutusV3Script script = JulcScriptLoader.load(VestingValidator.class);`
+
+const highlighter = await createHighlighter({
+  themes: ['github-dark'],
+  langs: ['java', 'groovy'],
+})
+
+const step1Html = highlighter.codeToHtml(step1Code, { lang: 'groovy', theme: 'github-dark' })
+const step2Html = highlighter.codeToHtml(step2Code, { lang: 'java', theme: 'github-dark' })
+const step3Html = highlighter.codeToHtml(step3Code, { lang: 'java', theme: 'github-dark' })
+---
+<section class="bg-[#111118] py-20 sm:py-28">
+  <div class="mx-auto max-w-4xl px-6">
+    <h2 class="text-center text-3xl font-bold tracking-tight text-white sm:text-4xl">
+      Get started in 3 steps
+    </h2>
+    <div class="mt-14 space-y-10">
+      <!-- Step 1 -->
+      <div>
+        <div class="flex items-center gap-3 mb-4">
+          <span class="flex h-9 w-9 items-center justify-center rounded-full bg-[#D4600E] text-sm font-bold text-white shadow-lg shadow-[#D4600E]/20">1</span>
+          <h3 class="text-lg font-semibold text-white">Add dependencies</h3>
+        </div>
+        <div class="overflow-hidden rounded-xl border border-white/5 bg-[#0d1117]">
+          <div class="flex items-center border-b border-white/5 px-4 py-2.5">
+            <span class="text-xs text-[#6b7280]" style="font-family: var(--font-mono)">build.gradle</span>
+          </div>
+          <div class="shiki-container" set:html={step1Html} />
+        </div>
+      </div>
+
+      <!-- Step 2 -->
+      <div>
+        <div class="flex items-center gap-3 mb-4">
+          <span class="flex h-9 w-9 items-center justify-center rounded-full bg-[#D4600E] text-sm font-bold text-white shadow-lg shadow-[#D4600E]/20">2</span>
+          <h3 class="text-lg font-semibold text-white">Write a validator</h3>
+        </div>
+        <div class="overflow-hidden rounded-xl border border-white/5 bg-[#0d1117]">
+          <div class="flex items-center gap-2 border-b border-white/5 px-4 py-2.5">
+            <div class="h-2.5 w-2.5 rounded-full bg-red-500/50"></div>
+            <div class="h-2.5 w-2.5 rounded-full bg-yellow-500/50"></div>
+            <div class="h-2.5 w-2.5 rounded-full bg-green-500/50"></div>
+            <span class="ml-2 text-xs text-[#6b7280]" style="font-family: var(--font-mono)">VestingValidator.java</span>
+          </div>
+          <div class="shiki-container" set:html={step2Html} />
+        </div>
+      </div>
+
+      <!-- Step 3 -->
+      <div>
+        <div class="flex items-center gap-3 mb-4">
+          <span class="flex h-9 w-9 items-center justify-center rounded-full bg-[#D4600E] text-sm font-bold text-white shadow-lg shadow-[#D4600E]/20">3</span>
+          <h3 class="text-lg font-semibold text-white">Build and load</h3>
+        </div>
+        <p class="mb-3 text-sm text-[#a1a1aa]">
+          Run <code class="text-[#D4600E]" style="font-family: var(--font-mono)">./gradlew build</code> &mdash; the annotation processor compiles your validator to UPLC. Load at runtime:
+        </p>
+        <div class="overflow-hidden rounded-xl border border-white/5 bg-[#0d1117]">
+          <div class="flex items-center border-b border-white/5 px-4 py-2.5">
+            <span class="text-xs text-[#6b7280]" style="font-family: var(--font-mono)">java</span>
+          </div>
+          <div class="shiki-container" set:html={step3Html} />
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-12 text-center">
+      <a href="/getting-started/" class="inline-flex items-center gap-2 text-[#D4600E] hover:text-[#f5a66a] font-semibold transition-colors">
+        Read the full guide
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+      </a>
+    </div>
+  </div>
+</section>
+
+<style>
+  .shiki-container :global(pre) {
+    margin: 0;
+    padding: 1.25rem;
+    background: transparent !important;
+    font-size: 13px;
+    line-height: 1.7;
+    font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', 'Courier New', monospace;
+    overflow-x: auto;
+  }
+  .shiki-container :global(code) {
+    font-family: inherit;
+  }
+</style>

@@ -45,3 +45,4 @@ bin/
 /.idea/
 .jqwik-database
 /.playwright-mcp/
+/doc-site-bak/

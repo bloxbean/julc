@@ -1,0 +1,13 @@
+---
+const { head } = Astro.locals.starlightRoute;
+---
+
+{head.map(({ tag: Tag, attrs, content }) => <Tag {...attrs} set:html={content} />)}
+
+{/* Apply saved color scheme before first paint to prevent FOUC */}
+<script is:inline>
+  (function() {
+    var scheme = typeof localStorage !== 'undefined' && localStorage.getItem('julc-color-scheme');
+    if (scheme) document.documentElement.setAttribute('data-color-scheme', scheme);
+  })();
+</script>

@@ -1,27 +1,10 @@
-# JuLC Standard Library Usage Guide
+---
+title: "JuLC Standard Library Usage Guide"
+description: "JuLC Standard Library Usage Guide - JuLC documentation"
+---
 
 The JuLC standard library provides 13 on-chain libraries in the `com.bloxbean.cardano.julc.stdlib.lib` package. Each library is annotated with `@OnchainLibrary` and compiled from Java source to UPLC. All methods are `static` and can be called directly from your validator code.
 
-## Table of Contents
-
-- [Overview](#overview)
-- [Quick Reference](#quick-reference)
-- [ContextsLib -- Script Context Operations](#contextslib----script-context-operations)
-- [ListsLib -- List Operations](#listslib----list-operations)
-- [ValuesLib -- Value Manipulation](#valueslib----value-manipulation)
-- [MapLib -- Association List Operations](#maplib----association-list-operations)
-- [OutputLib -- Transaction Output Utilities](#outputlib----transaction-output-utilities)
-- [MathLib -- Mathematical Operations](#mathlib----mathematical-operations)
-- [IntervalLib -- Time Interval Operations](#intervallib----time-interval-operations)
-- [CryptoLib -- Cryptographic Operations](#cryptolib----cryptographic-operations)
-- [ByteStringLib -- ByteString Operations](#bytestringlib----bytestring-operations)
-- [BitwiseLib -- Bitwise Operations](#bitwiselib----bitwise-operations)
-- [AddressLib -- Address Operations](#addresslib----address-operations)
-- [BlsLib -- BLS12-381 Curve Operations](#blslib----bls12-381-curve-operations)
-- [NativeValueLib -- Native Value Operations (PV11)](#nativevaluelib----native-value-operations-pv11)
-- [Important Notes and Caveats](#important-notes-and-caveats)
-
----
 
 ## Overview
 

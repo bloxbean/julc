@@ -1,0 +1,76 @@
+/* JuLC brand overrides for Starlight */
+
+/* ── Default (Orange) ── */
+:root {
+  --sl-color-accent-low: #1a0a02;
+  --sl-color-accent: #D4600E;
+  --sl-color-accent-high: #f5a66a;
+  --sl-color-white: #ffffff;
+  --sl-color-gray-1: #eceef2;
+  --sl-color-gray-2: #c0c2c7;
+  --sl-color-gray-3: #888b96;
+  --sl-color-gray-4: #545861;
+  --sl-color-gray-5: #353841;
+  --sl-color-gray-6: #24272f;
+  --sl-color-black: #17191e;
+  --sl-font-system: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  --sl-font-system-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, monospace;
+}
+
+[data-theme='light'] {
+  --sl-color-accent-low: #fff3eb;
+  --sl-color-accent: #D4600E;
+  --sl-color-accent-high: #7a3508;
+}
+
+/* ── Ocean Blue ── */
+:root[data-color-scheme='ocean'] {
+  --sl-color-accent-low: #021a2e;
+  --sl-color-accent: #2563eb;
+  --sl-color-accent-high: #93bbfd;
+}
+
+:root[data-color-scheme='ocean'][data-theme='light'] {
+  --sl-color-accent-low: #eff6ff;
+  --sl-color-accent: #2563eb;
+  --sl-color-accent-high: #1d4ed8;
+}
+
+/* ── Emerald ── */
+:root[data-color-scheme='emerald'] {
+  --sl-color-accent-low: #021a12;
+  --sl-color-accent: #059669;
+  --sl-color-accent-high: #6ee7b7;
+}
+
+:root[data-color-scheme='emerald'][data-theme='light'] {
+  --sl-color-accent-low: #ecfdf5;
+  --sl-color-accent: #059669;
+  --sl-color-accent-high: #047857;
+}
+
+/* ── Purple ── */
+:root[data-color-scheme='purple'] {
+  --sl-color-accent-low: #13021a;
+  --sl-color-accent: #7c3aed;
+  --sl-color-accent-high: #c4b5fd;
+}
+
+:root[data-color-scheme='purple'][data-theme='light'] {
+  --sl-color-accent-low: #f5f3ff;
+  --sl-color-accent: #7c3aed;
+  --sl-color-accent-high: #6d28d9;
+}
+
+/* ── Teal ── */
+:root[data-color-scheme='teal'] {
+  --sl-color-accent-low: #021a1a;
+  --sl-color-accent: #0d9488;
+  --sl-color-accent-high: #5eead4;
+}
+
+:root[data-color-scheme='teal'][data-theme='light'] {
+  --sl-color-accent-low: #f0fdfa;
+  --sl-color-accent: #0d9488;
+  --sl-color-accent-high: #0f766e;
+}

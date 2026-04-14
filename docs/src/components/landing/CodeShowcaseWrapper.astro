@@ -1,0 +1,83 @@
+---
+import { createHighlighter } from 'shiki'
+import CodeShowcase from './CodeShowcase.svelte'
+
+const codes = [
+  {
+    label: 'Spending',
+    filename: 'VestingValidator.java',
+    code: `@SpendingValidator
+public class VestingValidator {
+    record VestingDatum(PubKeyHash beneficiary, BigInteger deadline) {}
+
+    @Entrypoint
+    static boolean validate(VestingDatum datum, PlutusData redeemer, ScriptContext ctx) {
+        TxInfo txInfo = ctx.txInfo();
+
+        boolean signed = txInfo.signatories().contains(datum.beneficiary());
+
+        boolean pastDeadline = IntervalLib.finiteLowerBound(txInfo.validRange())
+            .compareTo(datum.deadline()) > 0;
+
+        return signed && pastDeadline;
+    }
+}`,
+  },
+  {
+    label: 'Minting',
+    filename: 'TokenPolicy.java',
+    code: `@MintingValidator
+public class TokenPolicy {
+    sealed interface Action permits Mint, Burn {}
+    record Mint(BigInteger amount) implements Action {}
+    record Burn() implements Action {}
+
+    @Entrypoint
+    static boolean validate(Action action, ScriptContext ctx) {
+        TxInfo txInfo = ctx.txInfo();
+        return switch (action) {
+            case Mint m ->
+                m.amount().compareTo(BigInteger.ZERO) > 0
+                && !txInfo.signatories().isEmpty();
+            case Burn b -> true;
+        };
+    }
+}`,
+  },
+  {
+    label: 'Multi-Validator',
+    filename: 'TokenManager.java',
+    code: `@MultiValidator
+public class TokenManager {
+
+    @Entrypoint(purpose = Purpose.MINT)
+    static boolean mint(PlutusData redeemer, ScriptContext ctx) {
+        return !ctx.txInfo().signatories().isEmpty();
+    }
+
+    @Entrypoint(purpose = Purpose.SPEND)
+    static boolean spend(PlutusData datum, PlutusData redeemer, ScriptContext ctx) {
+        // Ensure token is burned when UTxO is spent
+        Value mint = ctx.txInfo().mint();
+        return mint.lovelaceOf().compareTo(BigInteger.ZERO) >= 0;
+    }
+}`,
+  },
+]
+
+const highlighter = await createHighlighter({
+  themes: ['github-dark'],
+  langs: ['java'],
+})
+
+const tabs = codes.map((t) => ({
+  label: t.label,
+  filename: t.filename,
+  html: highlighter.codeToHtml(t.code, {
+    lang: 'java',
+    theme: 'github-dark',
+  }),
+}))
+---
+
+<CodeShowcase client:visible tabs={tabs} />

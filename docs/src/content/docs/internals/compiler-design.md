@@ -1,50 +1,10 @@
-# JuLC Compiler Design
+---
+title: "JuLC Compiler Design"
+description: "JuLC Compiler Design - JuLC documentation"
+---
 
 A progressive guide to the JuLC compiler architecture — from high-level overview to internal implementation details. Intended for anyone from first-time contributors to seasoned compiler engineers.
 
-## Table of Contents
-
-**Level 1: The Big Picture**
-1. [What is JuLC?](#1-what-is-julc)
-2. [How Cardano Smart Contracts Work](#2-how-cardano-smart-contracts-work)
-3. [From Java to On-Chain: The 10,000-Foot View](#3-from-java-to-on-chain-the-10000-foot-view)
-
-**Level 2: Module Architecture**
-4. [Project Modules](#4-project-modules)
-5. [Module Dependency Graph](#5-module-dependency-graph)
-6. [Key Data Types Across Modules](#6-key-data-types-across-modules)
-
-**Level 3: The Compilation Pipeline**
-7. [Pipeline Overview](#7-pipeline-overview)
-8. [Phase 1: Parsing and Validation](#8-phase-1-parsing-and-validation)
-9. [Phase 2: Type Registration](#9-phase-2-type-registration)
-10. [Phase 3: PIR Generation](#10-phase-3-pir-generation)
-11. [Phase 4: Loop Desugaring](#11-phase-4-loop-desugaring)
-12. [Phase 5: UPLC Generation](#12-phase-5-uplc-generation)
-13. [Phase 6: Optimization](#13-phase-6-optimization)
-14. [Phase 7: Wrapping and Encoding](#14-phase-7-wrapping-and-encoding)
-
-**Level 4: Compiler Internals**
-15. [The PIR Intermediate Representation](#15-the-pir-intermediate-representation)
-16. [The Type System](#16-the-type-system)
-17. [Data Encoding: The Bridge Between Java and Plutus](#17-data-encoding-the-bridge-between-java-and-plutus)
-18. [PirGenerator and Its Extracted Helpers](#18-pirgenerator-and-its-extracted-helpers)
-19. [Method Call Dispatch](#19-method-call-dispatch)
-20. [The Standard Library](#20-the-standard-library)
-21. [Library Compilation](#21-library-compilation)
-
-**Level 5: Execution and Testing**
-22. [The Virtual Machine](#22-the-virtual-machine)
-23. [The Testing Framework](#23-the-testing-framework)
-24. [End-to-End: A Validator's Journey](#24-end-to-end-a-validators-journey)
-
-**Appendices**
-- [A. File Index](#appendix-a-file-index)
-- [B. Glossary](#appendix-b-glossary)
-
----
-
-# Level 1: The Big Picture
 
 ## 1. What is JuLC?
 

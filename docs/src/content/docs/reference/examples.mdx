@@ -1,0 +1,69 @@
+---
+title: Examples
+description: Example validators demonstrating JuLC features and patterns
+---
+
+import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Explore real-world validator examples from the [julc-examples](https://github.com/bloxbean/julc-examples) repository. Each example demonstrates specific JuLC features and patterns.
+
+## Getting Started Examples
+
+<CardGrid>
+  <Card title="Vesting Validator" icon="rocket">
+    Time-locked vesting contract. Demonstrates basic datum, redeemer, and `ScriptContext` usage with beneficiary + deadline checks.
+  </Card>
+  <Card title="NFT Minting Policy" icon="star">
+    One-shot NFT minting. Shows `@MintingValidator`, policy ID validation, and mint quantity checks.
+  </Card>
+</CardGrid>
+
+## Advanced Validators
+
+<CardGrid>
+  <Card title="Multi-Sig Validator" icon="pencil">
+    Multi-signature authorization. Demonstrates list operations on `signatories`, counting required signatures.
+  </Card>
+  <Card title="Realistic Vesting" icon="open-book">
+    Full-featured vesting with interval checking, multiple beneficiaries, and proper deadline validation using `IntervalLib`.
+  </Card>
+  <Card title="Realistic Minting" icon="seti:lock">
+    Minting policy with authorization. Uses sealed interface redeemer (`Mint`/`Burn`), signatory checks, and mint value validation.
+  </Card>
+  <Card title="Output Value Check" icon="approve-check-circle">
+    UTxO output validation. Demonstrates `OutputLib` for checking values paid to addresses, lovelace amounts, and token presence.
+  </Card>
+</CardGrid>
+
+## Conway Governance
+
+<CardGrid>
+  <Card title="Withdraw Validator" icon="forward-slash">
+    Staking reward withdrawal. Shows `@WithdrawValidator` annotation and reward-specific `ScriptContext` handling.
+  </Card>
+  <Card title="Voting Validator" icon="comment">
+    Governance voting. Demonstrates `@VotingValidator` and Conway-era governance features.
+  </Card>
+</CardGrid>
+
+## Testing Patterns
+
+<CardGrid>
+  <Card title="Feature Showcase" icon="puzzle">
+    Comprehensive test demonstrating all language features: records, sealed interfaces, switch, loops, lambdas, HOFs, stdlib usage.
+  </Card>
+  <Card title="Debug Vesting" icon="magnifier">
+    Debugging techniques with `Builtins.trace()`, source maps, and failure diagnostics.
+  </Card>
+  <Card title="Minting Property Test" icon="random">
+    Property-based testing with jqwik. Generates random redeemers and checks minting invariants.
+  </Card>
+  <Card title="Vesting Property Test" icon="random">
+    Property-based testing for vesting logic. Generates random deadlines, beneficiaries, and signatories.
+  </Card>
+</CardGrid>
+
+## Quick Links
+
+- [julc-helloworld](https://github.com/bloxbean/julc-helloworld) — Minimal starter project
+- [julc-examples source](https://github.com/bloxbean/julc-examples) — Full source code for all examples above

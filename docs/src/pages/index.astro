@@ -1,0 +1,59 @@
+---
+import '../styles/landing.css'
+import LandingNavbar from '../components/landing/LandingNavbar.astro'
+import HeroSection from '../components/landing/HeroSection.astro'
+import WhyJulcCards from '../components/landing/WhyJulcCards.astro'
+import CodeShowcaseWrapper from '../components/landing/CodeShowcaseWrapper.astro'
+import FeaturesGrid from '../components/landing/FeaturesGrid.astro'
+import TerminalDemo from '../components/landing/TerminalDemo.svelte'
+import QuickStartSteps from '../components/landing/QuickStartSteps.astro'
+import EcosystemSection from '../components/landing/EcosystemSection.astro'
+import LandingFooter from '../components/landing/LandingFooter.astro'
+---
+
+<html lang="en" class="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>JuLC — Java UPLC Compiler for Cardano</title>
+  <meta name="description" content="Write Cardano smart contracts in Java and compile them to Plutus V3 UPLC. Familiar language, powerful compiler, efficient on-chain code." />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+</head>
+<body class="bg-[#0a0a0f] text-[#e4e4e7] font-[Inter,system-ui,sans-serif] antialiased">
+  <LandingNavbar />
+  <main>
+    <HeroSection />
+    <WhyJulcCards />
+    <section class="bg-[#0a0a0f] py-20 sm:py-28">
+      <div class="mx-auto max-w-5xl px-6">
+        <h2 class="text-center text-3xl font-bold tracking-tight text-white sm:text-4xl mb-4">
+          Write validators in Java
+        </h2>
+        <p class="mx-auto max-w-2xl text-center text-[#a1a1aa] mb-12">
+          Familiar syntax, typed ledger access, and pattern matching on datum types.
+          The annotation processor compiles to UPLC during your Gradle build.
+        </p>
+        <CodeShowcaseWrapper />
+      </div>
+    </section>
+    <FeaturesGrid />
+    <section class="bg-[#0a0a0f] py-20 sm:py-28">
+      <div class="mx-auto max-w-6xl px-6">
+        <div class="text-center mb-12">
+          <h2 class="text-3xl font-bold tracking-tight text-white sm:text-4xl">julc CLI</h2>
+          <p class="mt-4 text-lg text-[#a1a1aa]">
+            A complete command-line toolkit. Scaffold, compile, test, and explore.
+          </p>
+        </div>
+        <TerminalDemo client:visible />
+      </div>
+    </section>
+    <QuickStartSteps />
+    <EcosystemSection />
+  </main>
+  <LandingFooter />
+</body>
+</html>

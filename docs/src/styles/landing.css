@@ -1,0 +1,15 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand: #D4600E;
+  --color-brand-dark: #b8520c;
+  --color-brand-light: #f5a66a;
+  --color-brand-glow: rgba(212, 96, 14, 0.15);
+  --color-surface-dark: #0a0a0f;
+  --color-surface: #111118;
+  --color-surface-light: #1a1a24;
+  --color-surface-border: #2a2a35;
+  --color-text: #e4e4e7;
+  --color-text-muted: #a1a1aa;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, monospace;
+}
