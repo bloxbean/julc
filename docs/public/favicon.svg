@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <defs>
+    <linearGradient id="fg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f5a66a"/>
+      <stop offset="100%" stop-color="#D4600E"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="32" height="32" rx="4" fill="#0a0a0f"/>
+
+  <!-- Compact interlocking mark (scaled to 32x32) -->
+  <g transform="translate(4,4)">
+    <!-- Path B (dim) -->
+    <rect x="10" y="7" width="14" height="3" fill="#E5E5E5" opacity="0.2"/>
+    <rect x="21" y="7" width="3" height="17" fill="#E5E5E5" opacity="0.2"/>
+    <rect x="0" y="21" width="24" height="3" fill="#E5E5E5" opacity="0.2"/>
+    <rect x="0" y="14" width="3" height="10" fill="#E5E5E5" opacity="0.2"/>
+
+    <!-- Breaks -->
+    <rect x="0" y="6" width="4" height="5" fill="#0a0a0f"/>
+    <rect x="-1" y="13" width="4" height="4" fill="#0a0a0f"/>
+
+    <!-- Path A (orange) -->
+    <rect x="0" y="0" width="24" height="3" fill="url(#fg)"/>
+    <rect x="0" y="0" width="3" height="17" fill="url(#fg)"/>
+    <rect x="0" y="14" width="14" height="3" fill="url(#fg)"/>
+    <rect x="21" y="0" width="3" height="10" fill="url(#fg)"/>
+
+    <!-- B over A -->
+    <rect x="21" y="13" width="3" height="5" fill="#E5E5E5" opacity="0.2"/>
+    <rect x="-1" y="21" width="4" height="3" fill="#E5E5E5" opacity="0.2"/>
+  </g>
+</svg>

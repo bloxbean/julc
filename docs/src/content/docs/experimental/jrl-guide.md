@@ -1,34 +1,12 @@
-# JRL (JuLC Rule Language) Guide (Experimental)
+---
+title: "JRL (JuLC Rule Language) Guide (Experimental)"
+description: "JRL (JuLC Rule Language) Guide (Experimental) - JuLC documentation"
+---
 
 Write Cardano smart contracts using a simple, declarative rule language — no Java
 knowledge required. JRL compiles to UPLC through JuLC, producing the same
 efficient Plutus V3 scripts as hand-written Java validators.
 
-## Table of Contents
-
-- [What is JRL?](#what-is-jrl) — overview and motivation
-- [Quick Start with julc CLI](#quick-start-with-julc-cli) — install, create, compile
-- [Contract Structure](#contract-structure) — anatomy of a JRL file
-- [Types](#types) — supported data types
-- [Parameters](#parameters) — compile-time configuration
-- [Datum Declaration](#datum-declaration) — on-chain state
-- [Record Declarations](#record-declarations) — custom data types
-- [Redeemer Declaration](#redeemer-declaration) — action types
-- [Rules](#rules) — condition/action pairs
-- [Fact Patterns](#fact-patterns) — matching on context, datum, redeemer
-- [Expressions](#expressions) — operators, comparisons, function calls
-- [Default Action](#default-action) — fallback behavior
-- [Trace Messages](#trace-messages) — debugging output
-- [Comments](#comments) — documentation
-- [Complete Examples](#complete-examples) — vesting, minting, auction
-- [Multi-Validator Contracts](#multi-validator-contracts) — multiple validators per file
-- [Error Messages](#error-messages) — common errors and fixes
-- [JRL vs Java — When to Use Which](#jrl-vs-java--when-to-use-which)
-- [How JRL Compiles](#how-jrl-compiles) — compilation pipeline
-- [Programmatic Usage](#programmatic-usage) — Java API
-- [Tips and Best Practices](#tips-and-best-practices)
-
----
 
 ## What is JRL?
 

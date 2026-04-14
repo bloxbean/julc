@@ -1,0 +1,313 @@
+---
+import ThreeHeroBackground from './ThreeHeroBackground.svelte'
+---
+<section class="relative overflow-hidden pt-28 pb-16 sm:pt-36 sm:pb-24 bg-[#0a0a0f]">
+  <!-- 3D Data Flow Network background -->
+  <ThreeHeroBackground client:only="svelte" />
+  <div class="relative z-10 mx-auto max-w-6xl px-6">
+    <!-- Two-column: text left, illustration right -->
+    <div class="flex flex-col lg:flex-row items-center gap-12 lg:gap-16">
+
+      <!-- Left: text content -->
+      <div class="flex-1 text-center lg:text-left">
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl lg:text-[3.25rem] leading-tight">
+          Write Cardano Smart Contracts
+          <br />
+          <span class="text-[#D4600E]">in Java</span>
+        </h1>
+
+        <p class="mt-6 max-w-xl text-lg leading-8 text-[#a1a1aa] mx-auto lg:mx-0">
+          Compile a safe subset of Java to Plutus V3 UPLC. Familiar language,
+          powerful compiler, efficient on-chain code.
+        </p>
+
+        <div class="mt-8 flex items-center justify-center lg:justify-start gap-4">
+          <a
+            href="/first-contract/"
+            class="rounded-lg bg-[#D4600E] px-7 py-3.5 text-sm font-semibold text-white shadow-lg shadow-[#D4600E]/25 hover:bg-[#b8520c] hover:shadow-[#D4600E]/35 transition-all duration-200"
+          >
+            Get Started
+          </a>
+          <a
+            href="https://github.com/bloxbean/julc"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="rounded-lg border border-white/10 bg-white/5 px-7 py-3.5 text-sm font-semibold text-white hover:bg-white/10 hover:border-white/20 transition-all duration-200"
+          >
+            GitHub
+          </a>
+        </div>
+      </div>
+
+      <!-- Right: developer workspace illustration -->
+      <div class="flex-1 w-full max-w-2xl lg:max-w-none">
+        <svg viewBox="0 0 580 440" class="w-full" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="editorBg" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#1e1e2e"/>
+              <stop offset="100%" stop-color="#14141f"/>
+            </linearGradient>
+            <linearGradient id="orangeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#f5a66a"/>
+              <stop offset="100%" stop-color="#D4600E"/>
+            </linearGradient>
+            <linearGradient id="tealGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#5eead4"/>
+              <stop offset="100%" stop-color="#14b8a6"/>
+            </linearGradient>
+            <radialGradient id="glowCenter" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#D4600E" stop-opacity="0.35"/>
+              <stop offset="100%" stop-color="#D4600E" stop-opacity="0"/>
+            </radialGradient>
+            <radialGradient id="tealGlow" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#14b8a6" stop-opacity="0.2"/>
+              <stop offset="100%" stop-color="#14b8a6" stop-opacity="0"/>
+            </radialGradient>
+            <filter id="softGlow">
+              <feGaussianBlur stdDeviation="4" result="blur"/>
+              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+            <filter id="cardGlow">
+              <feGaussianBlur stdDeviation="8" result="blur"/>
+              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+          </defs>
+
+          <!-- ═══ CODE EDITOR WINDOW ═══ -->
+          <g transform="translate(0, 15)">
+            <!-- Editor shadow -->
+            <rect x="4" y="4" width="360" height="280" rx="14" fill="#000" opacity="0.3" filter="url(#cardGlow)"/>
+            <!-- Editor frame -->
+            <rect width="360" height="280" rx="14" fill="url(#editorBg)" stroke="#2a2a3a" stroke-width="1.5"/>
+            <!-- Title bar -->
+            <rect width="360" height="34" rx="14" fill="#1a1a28"/>
+            <rect y="22" width="360" height="12" fill="#1a1a28"/>
+            <!-- Traffic lights -->
+            <circle cx="20" cy="17" r="5.5" fill="#ff5f57" opacity="0.75"/>
+            <circle cx="38" cy="17" r="5.5" fill="#febc2e" opacity="0.75"/>
+            <circle cx="56" cy="17" r="5.5" fill="#28c840" opacity="0.75"/>
+            <!-- Filename tab -->
+            <rect x="120" y="6" width="160" height="22" rx="6" fill="#14141f" opacity="0.5"/>
+            <text x="200" y="21" text-anchor="middle" fill="#8b8fa3" font-size="10" font-family="'JetBrains Mono', monospace">VestingValidator.java</text>
+
+            <!-- Line numbers gutter -->
+            <rect x="0" y="34" width="28" height="246" fill="#16161e" rx="0"/>
+            <g fill="#4a4a5a" font-size="9" font-family="'JetBrains Mono', monospace" text-anchor="end">
+              <text x="24" y="56">1</text>
+              <text x="24" y="72">2</text>
+              <text x="24" y="88">3</text>
+              <text x="24" y="104">4</text>
+              <text x="24" y="120">5</text>
+              <text x="24" y="136">6</text>
+              <text x="24" y="152">7</text>
+              <text x="24" y="168">8</text>
+              <text x="24" y="184">9</text>
+              <text x="24" y="200">10</text>
+              <text x="24" y="216">11</text>
+              <text x="24" y="232">12</text>
+              <text x="24" y="248">13</text>
+              <text x="24" y="264">14</text>
+            </g>
+
+            <!-- Active line highlight -->
+            <rect x="28" y="126" width="330" height="16" rx="0" fill="#D4600E" opacity="0.07"/>
+
+            <!-- Syntax highlighted Java code -->
+            <!-- Using careful x-positioning: each char ~6px at font-size 10 -->
+            <g font-size="10" font-family="'JetBrains Mono', monospace">
+              <!-- 1: @SpendingValidator -->
+              <text x="34" y="56" fill="#DCDCAA">@SpendingValidator</text>
+              <!-- 2: public class VestingValidator { -->
+              <text x="34" y="72" fill="#569cd6">public</text>
+              <text x="74" y="72" fill="#569cd6"> class </text>
+              <text x="116" y="72" fill="#4EC9B0">VestingValidator</text>
+              <text x="214" y="72" fill="#d4d4d4"> &#123;</text>
+              <!-- 3:   record VestingDatum(..) {} -->
+              <text x="46" y="88" fill="#569cd6">record </text>
+              <text x="88" y="88" fill="#4EC9B0">VestingDatum</text>
+              <text x="164" y="88" fill="#d4d4d4">(..) &#123;&#125;</text>
+              <!-- 4: blank -->
+              <!-- 5:   @Entrypoint -->
+              <text x="46" y="120" fill="#DCDCAA">@Entrypoint</text>
+              <!-- 6:   static boolean validate(..) { -->
+              <text x="46" y="136" fill="#569cd6">static </text>
+              <text x="86" y="136" fill="#569cd6">boolean </text>
+              <text x="138" y="136" fill="#dcdcaa">validate</text>
+              <text x="190" y="136" fill="#d4d4d4">(..) &#123;</text>
+              <!-- 7:     TxInfo txInfo = ctx.txInfo(); -->
+              <text x="58" y="152" fill="#4EC9B0">TxInfo</text>
+              <text x="96" y="152" fill="#9cdcfe"> txInfo</text>
+              <text x="134" y="152" fill="#d4d4d4"> = ctx.txInfo();</text>
+              <!-- 8:     boolean signed = txInfo -->
+              <text x="58" y="168" fill="#569cd6">boolean </text>
+              <text x="106" y="168" fill="#9cdcfe">signed</text>
+              <text x="144" y="168" fill="#d4d4d4"> = txInfo</text>
+              <!-- 9:       .signatories() -->
+              <text x="70" y="184" fill="#d4d4d4">.signatories()</text>
+              <!-- 10:      .contains(datum...); -->
+              <text x="70" y="200" fill="#d4d4d4">.contains(</text>
+              <text x="134" y="200" fill="#9cdcfe">datum</text>
+              <text x="164" y="200" fill="#d4d4d4">...);</text>
+              <!-- 11:    return signed; -->
+              <text x="58" y="216" fill="#c586c0">return</text>
+              <text x="98" y="216" fill="#9cdcfe"> signed</text>
+              <text x="140" y="216" fill="#d4d4d4">;</text>
+              <!-- 12:   } -->
+              <text x="46" y="232" fill="#d4d4d4">&#125;</text>
+              <!-- 13: } -->
+              <text x="34" y="248" fill="#d4d4d4">&#125;</text>
+              <!-- 14: blank -->
+            </g>
+
+            <!-- Cursor blink on active line -->
+            <rect x="218" y="128" width="1.5" height="12" fill="#D4600E" opacity="0.9">
+              <animate attributeName="opacity" values="0.9;0.15;0.9" dur="1.2s" repeatCount="indefinite"/>
+            </rect>
+
+            <!-- Minimap (right gutter) -->
+            <rect x="338" y="34" width="20" height="246" fill="#12121a"/>
+            <g opacity="0.15">
+              <rect x="340" y="40" width="16" height="2" rx="1" fill="#D4600E"/>
+              <rect x="340" y="46" width="14" height="2" rx="1" fill="#569cd6"/>
+              <rect x="340" y="52" width="12" height="2" rx="1" fill="#4EC9B0"/>
+              <rect x="340" y="62" width="10" height="2" rx="1" fill="#DCDCAA"/>
+              <rect x="340" y="68" width="16" height="2" rx="1" fill="#569cd6"/>
+              <rect x="340" y="74" width="14" height="2" rx="1" fill="#9cdcfe"/>
+              <rect x="340" y="80" width="11" height="2" rx="1" fill="#d4d4d4"/>
+              <rect x="340" y="86" width="13" height="2" rx="1" fill="#d4d4d4"/>
+              <rect x="340" y="92" width="9" height="2" rx="1" fill="#c586c0"/>
+              <rect x="340" y="98" width="6" height="2" rx="1" fill="#d4d4d4"/>
+              <rect x="340" y="104" width="4" height="2" rx="1" fill="#d4d4d4"/>
+            </g>
+          </g>
+
+          <!-- ═══ FLOW: ANIMATED COMPILATION STREAM ═══ -->
+          <g>
+            <!-- Primary flow path -->
+            <path id="flowPath1" d="M365,155 C410,155 430,180 445,210" fill="none" stroke="url(#orangeGrad)" stroke-width="2" stroke-dasharray="6 8" opacity="0.3"/>
+            <!-- Secondary flow path to on-chain -->
+            <path id="flowPath2" d="M445,210 C460,240 470,280 485,320" fill="none" stroke="url(#tealGrad)" stroke-width="1.5" stroke-dasharray="4 6" opacity="0.25"/>
+
+            <!-- Animated particles on primary path -->
+            <circle r="3.5" fill="#D4600E" filter="url(#softGlow)">
+              <animateMotion dur="2s" repeatCount="indefinite"><mpath href="#flowPath1"/></animateMotion>
+            </circle>
+            <circle r="2.5" fill="#f5a66a" opacity="0.8">
+              <animateMotion dur="2s" repeatCount="indefinite" begin="0.7s"><mpath href="#flowPath1"/></animateMotion>
+            </circle>
+            <!-- Animated particles on secondary path -->
+            <circle r="2.5" fill="#14b8a6" opacity="0.8" filter="url(#softGlow)">
+              <animateMotion dur="2.5s" repeatCount="indefinite" begin="0.3s"><mpath href="#flowPath2"/></animateMotion>
+            </circle>
+            <circle r="2" fill="#5eead4" opacity="0.6">
+              <animateMotion dur="2.5s" repeatCount="indefinite" begin="1.5s"><mpath href="#flowPath2"/></animateMotion>
+            </circle>
+          </g>
+
+          <!-- ═══ JULC COMPILER BADGE (glassmorphism) ═══ -->
+          <g transform="translate(440, 100)">
+            <!-- Outer glow -->
+            <circle r="50" fill="url(#glowCenter)" opacity="0.5"/>
+            <!-- Glass circle -->
+            <circle r="38" fill="#1a0a02" opacity="0.9" stroke="#D4600E" stroke-width="2"/>
+            <circle r="38" fill="url(#glowCenter)"/>
+            <!-- Inner ring accent -->
+            <circle r="30" fill="none" stroke="#D4600E" stroke-width="0.5" opacity="0.3"/>
+            <!-- Text -->
+            <text y="-6" text-anchor="middle" fill="#f5a66a" font-size="13" font-family="'JetBrains Mono', monospace" font-weight="700">JuLC</text>
+            <text y="12" text-anchor="middle" fill="#D4600E" font-size="9" font-weight="600" font-family="'JetBrains Mono', monospace">compile</text>
+            <!-- Rotating ring -->
+            <circle r="44" fill="none" stroke="#D4600E" stroke-width="1" stroke-dasharray="10 8" opacity="0.25">
+              <animateTransform attributeName="transform" type="rotate" from="0" to="360" dur="15s" repeatCount="indefinite"/>
+            </circle>
+            <!-- Counter-rotating ring -->
+            <circle r="50" fill="none" stroke="#f5a66a" stroke-width="0.5" stroke-dasharray="4 16" opacity="0.15">
+              <animateTransform attributeName="transform" type="rotate" from="360" to="0" dur="25s" repeatCount="indefinite"/>
+            </circle>
+          </g>
+
+          <!-- ═══ UPLC OUTPUT (glassmorphism card) ═══ -->
+          <g transform="translate(380, 210)">
+            <!-- Card glow -->
+            <rect x="-8" y="-8" width="156" height="106" rx="16" fill="#14b8a6" opacity="0.05" filter="url(#cardGlow)"/>
+            <!-- Card background -->
+            <rect width="140" height="90" rx="12" fill="#0a1a1a" opacity="0.95" stroke="#14b8a6" stroke-width="1.2"/>
+            <!-- Glass shine -->
+            <rect width="140" height="45" rx="12" fill="url(#tealGlow)" opacity="0.15"/>
+            <!-- Header -->
+            <rect x="10" y="8" width="50" height="16" rx="4" fill="#14b8a6" opacity="0.15"/>
+            <text x="35" y="20" text-anchor="middle" fill="#5eead4" font-size="9" font-weight="700" font-family="'JetBrains Mono', monospace">UPLC</text>
+            <!-- Bytecode lines -->
+            <text x="12" y="40" fill="#5eead4" font-size="8" font-family="'JetBrains Mono', monospace" opacity="0.7">4d01000033222</text>
+            <text x="12" y="54" fill="#5eead4" font-size="8" font-family="'JetBrains Mono', monospace" opacity="0.55">220051a003375</text>
+            <text x="12" y="68" fill="#5eead4" font-size="8" font-family="'JetBrains Mono', monospace" opacity="0.4">60ae1b003f5e..</text>
+            <!-- Status indicator -->
+            <circle cx="124" cy="16" r="4" fill="#14b8a6" opacity="0.6">
+              <animate attributeName="opacity" values="0.6;0.2;0.6" dur="2s" repeatCount="indefinite"/>
+            </circle>
+          </g>
+
+          <!-- ═══ CARDANO ON-CHAIN (prominent) ═══ -->
+          <g transform="translate(395, 330)">
+            <!-- Background glow -->
+            <ellipse cx="55" cy="10" rx="70" ry="30" fill="#14b8a6" opacity="0.04" filter="url(#cardGlow)"/>
+
+            <!-- Blockchain hexagons - larger and glowing -->
+            <g>
+              <!-- Hex 1 -->
+              <polygon points="0,-14 12,-7 12,7 0,14 -12,7 -12,-7" fill="#0a1a1a" stroke="#14b8a6" stroke-width="1.2" transform="translate(15,8)"/>
+              <polygon points="0,-8 7,-4 7,4 0,8 -7,4 -7,-4" fill="#14b8a6" opacity="0.1" transform="translate(15,8)"/>
+              <!-- Connection line -->
+              <line x1="27" y1="8" x2="38" y2="8" stroke="#14b8a6" stroke-width="1.2" opacity="0.5"/>
+              <!-- Hex 2 -->
+              <polygon points="0,-14 12,-7 12,7 0,14 -12,7 -12,-7" fill="#0a1a1a" stroke="#14b8a6" stroke-width="1.2" transform="translate(50,8)"/>
+              <polygon points="0,-8 7,-4 7,4 0,8 -7,4 -7,-4" fill="#14b8a6" opacity="0.15" transform="translate(50,8)"/>
+              <!-- Connection line -->
+              <line x1="62" y1="8" x2="73" y2="8" stroke="#14b8a6" stroke-width="1.2" opacity="0.5"/>
+              <!-- Hex 3 (highlighted - newest block) -->
+              <polygon points="0,-14 12,-7 12,7 0,14 -12,7 -12,-7" fill="#0a1a1a" stroke="#5eead4" stroke-width="1.5" transform="translate(85,8)"/>
+              <polygon points="0,-8 7,-4 7,4 0,8 -7,4 -7,-4" fill="#14b8a6" opacity="0.25" transform="translate(85,8)"/>
+              <!-- Pulsing glow on newest block -->
+              <circle cx="85" cy="8" r="18" fill="#14b8a6" opacity="0.08">
+                <animate attributeName="r" values="18;22;18" dur="2s" repeatCount="indefinite"/>
+                <animate attributeName="opacity" values="0.08;0.03;0.08" dur="2s" repeatCount="indefinite"/>
+              </circle>
+            </g>
+
+            <!-- Label -->
+            <rect x="22" y="30" width="70" height="18" rx="9" fill="#14b8a6" opacity="0.1"/>
+            <text x="57" y="42" text-anchor="middle" fill="#5eead4" font-size="8.5" font-weight="600" font-family="Inter, sans-serif" opacity="0.7">on-chain</text>
+          </g>
+
+          <!-- ═══ DECORATIVE ELEMENTS ═══ -->
+          <!-- Java coffee cup -->
+          <g transform="translate(20, 315)" opacity="0.12">
+            <path d="M5,0 h16 v18 c0,5 -3.5,7 -8,7 s-8,-2 -8,-7z" fill="none" stroke="#f5a66a" stroke-width="1.3"/>
+            <path d="M21,4 h4 c2.5,0 4,2 4,4 s-1.5,4 -4,4 h-4" fill="none" stroke="#f5a66a" stroke-width="1.3"/>
+            <path d="M10,-5 Q11,-10 13,-5" fill="none" stroke="#f5a66a" stroke-width="0.9"/>
+            <path d="M15,-5 Q16,-10 18,-5" fill="none" stroke="#f5a66a" stroke-width="0.9"/>
+          </g>
+
+          <!-- Lambda symbol -->
+          <g transform="translate(495, 170)" opacity="0.08">
+            <text font-size="50" fill="#D4600E" font-family="serif">&#x03BB;</text>
+          </g>
+
+          <!-- Floating dots -->
+          <circle cx="400" cy="40" r="2.5" fill="#D4600E" opacity="0.12">
+            <animate attributeName="cy" values="40;32;40" dur="4s" repeatCount="indefinite"/>
+          </circle>
+          <circle cx="540" cy="200" r="2" fill="#14b8a6" opacity="0.15">
+            <animate attributeName="cy" values="200;192;200" dur="3.5s" repeatCount="indefinite"/>
+          </circle>
+          <circle cx="520" cy="350" r="2" fill="#5eead4" opacity="0.1">
+            <animate attributeName="cy" values="350;344;350" dur="5s" repeatCount="indefinite"/>
+          </circle>
+          <circle cx="370" cy="400" r="1.5" fill="#f5a66a" opacity="0.08">
+            <animate attributeName="cy" values="400;395;400" dur="4.5s" repeatCount="indefinite"/>
+          </circle>
+        </svg>
+      </div>
+    </div>
+  </div>
+</section>

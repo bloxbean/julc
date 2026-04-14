@@ -1,4 +1,7 @@
-# JuLC Compiler Troubleshooting Guide
+---
+title: "JuLC Compiler Troubleshooting Guide"
+description: "JuLC Compiler Troubleshooting Guide - JuLC documentation"
+---
 
 This guide maps every compiler, validation, configuration, and runtime error to its
 cause and solution. All error messages shown here are taken directly from the JuLC
@@ -6,16 +9,6 @@ source code.
 
 ---
 
-## Table of Contents
-
-1. [Compilation Errors (PirGenerator)](#1-compilation-errors-pirgenerator)
-2. [Validation Errors (SubsetValidator)](#2-validation-errors-subsetvalidator)
-3. [Configuration Errors (JulcCompiler)](#3-configuration-errors-julccompiler)
-4. [Type Resolution Errors](#4-type-resolution-errors)
-5. [Runtime Errors](#5-runtime-errors)
-6. [Common Mistakes](#6-common-mistakes)
-
----
 
 ## 1. Compilation Errors (PirGenerator)
 

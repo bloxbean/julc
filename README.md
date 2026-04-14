@@ -72,7 +72,7 @@ JuLC compiles a safe subset of Java to UPLC. Key limitations to be aware of:
 - **No `Function.apply()`** — lambdas work with HOFs (`list.map(x -> ...)`, `list.filter(...)`) but cannot be stored in `Function<T,R>` variables and called via `.apply()`
 - **Immutable variables** — variables cannot be reassigned except as loop accumulators in `while`/`for-each`
 
-For the full list of compiler limitations and workarounds, see the [Compiler Limitations](docs/getting-started.md#16-compiler-limitations) section in the Getting Started guide.
+For the full list of compiler limitations and workarounds, see the [Compiler Limitations](docs/src/content/docs/getting-started.md#16-compiler-limitations) section in the Getting Started guide.
 
 ## Examples Repositories
 - [julc-helloworld](https://github.com/bloxbean/julc-helloworld) - A simple vesting contract with on-chain and off-chain code, plus tests
@@ -97,7 +97,7 @@ dependencies {
 }
 ```
 
-For detailed dependencies, check the [getting started](docs/getting-started.md) guide or the `julc-helloworld` example at https://github.com/bloxbean/julc-helloworld.
+For detailed dependencies, check the [getting started](docs/src/content/docs/getting-started.md) guide or the `julc-helloworld` example at https://github.com/bloxbean/julc-helloworld.
 
 ### Current Preview Version
 
@@ -251,14 +251,14 @@ assertTrue(evalResult.isSuccess());
 
 | Guide | Description |
 |-------|-------------|
-| [Getting Started](docs/getting-started.md) | Comprehensive guide: validators, data modeling, collections, control flow, stdlib, testing, deployment |
-| [API Reference](docs/api-reference.md) | All supported types, operators, methods, and ledger access |
-| [Standard Library Guide](docs/stdlib-guide.md) | All 11 stdlib libraries with usage examples |
-| [Advanced Guide](docs/advanced-guide.md) | Low-level PlutusData patterns, type casting, raw list/map manipulation, debugging |
-| [For-Loop Patterns](docs/for-loop-patterns.md) | For-each, while, nested loops, multi-accumulator, break |
-| [Library Developer Guide](docs/library-developer-guide.md) | Writing `@OnchainLibrary` modules and PIR API |
-| [Troubleshooting](docs/troubleshooting.md) | Every compiler error, common mistakes, and FAQ |
-| [Compiler Developer Guide](docs/compiler-developer-guide.md) | Internal architecture for compiler contributors |
+| [Getting Started](docs/src/content/docs/getting-started.md) | Comprehensive guide: validators, data modeling, collections, control flow, stdlib, testing, deployment |
+| [API Reference](docs/src/content/docs/reference/api-reference.md) | All supported types, operators, methods, and ledger access |
+| [Standard Library Guide](docs/src/content/docs/stdlib/stdlib-guide.md) | All 13 stdlib libraries with usage examples |
+| [Advanced Guide](docs/src/content/docs/guides/advanced-guide.md) | Low-level PlutusData patterns, type casting, raw list/map manipulation, debugging |
+| [For-Loop Patterns](docs/src/content/docs/guides/for-loop-patterns.md) | For-each, while, nested loops, multi-accumulator, break |
+| [Library Developer Guide](docs/src/content/docs/reference/library-developer-guide.md) | Writing `@OnchainLibrary` modules and PIR API |
+| [Troubleshooting](docs/src/content/docs/reference/troubleshooting.md) | Every compiler error, common mistakes, and FAQ |
+| [Compiler Developer Guide](docs/src/content/docs/internals/compiler-developer-guide.md) | Internal architecture for compiler contributors |
 
 ## License
 

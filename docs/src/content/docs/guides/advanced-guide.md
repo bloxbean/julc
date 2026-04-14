@@ -1,4 +1,7 @@
-# JuLC Advanced Guide: Low-Level Patterns
+---
+title: "JuLC Advanced Guide: Low-Level Patterns"
+description: "JuLC Advanced Guide: Low-Level Patterns - JuLC documentation"
+---
 
 This guide covers low-level programming patterns for developers who need to go beyond
 the typed API provided by JuLC's ledger types and stdlib libraries. It assumes
@@ -7,28 +10,6 @@ stdlib usage) as covered in the getting-started guide.
 
 ---
 
-## Table of Contents
-
-1. [Introduction](#1-introduction)
-2. [PlutusData Encoding/Decoding](#2-plutusdata-encodingdecoding)
-3. [Type Casting Patterns](#3-type-casting-patterns)
-4. [Low-Level List Manipulation](#4-low-level-list-manipulation)
-5. [Map Construction and Pair Manipulation](#5-map-construction-and-pair-manipulation)
-6. [Raw Value Manipulation](#6-raw-value-manipulation)
-7. [Working with Raw PlutusData](#7-working-with-raw-plutusdata)
-8. [Debugging and Tracing](#8-debugging-and-tracing)
-9. [Budget Measurement and Optimization](#9-budget-measurement-and-optimization)
-10. [Cross-Library Call Patterns](#10-cross-library-call-patterns)
-11. [Complex Sealed Interface Hierarchies](#11-complex-sealed-interface-hierarchies)
-12. [Recursion Patterns](#12-recursion-patterns)
-13. [@NewType Zero-Cost Type Aliases](#13-newtype-zero-cost-type-aliases)
-14. [Optional Support](#14-optional-support)
-15. [Tuple2/Tuple3 Generic Support](#15-tuple2tuple3-generic-support)
-16. [Nested Loops](#16-nested-loops)
-17. [Higher-Order Functions (HOFs)](#17-higher-order-functions-hofs)
-18. [Byte Array Constants](#18-byte-array-constants)
-
----
 
 ## 1. Introduction
 
@@ -1552,7 +1533,7 @@ for (var group : groups) {
 }
 ```
 
-For detailed patterns including multi-accumulator nested loops, see [For-Loop Patterns](for-loop-patterns.md).
+For detailed patterns including multi-accumulator nested loops, see [For-Loop Patterns](/guides/for-loop-patterns/).
 
 ---
 
@@ -1577,7 +1558,7 @@ Variable capture is supported. Block body lambdas and chaining (`list.filter(...
 
 Note: `map()` wraps lambda results to Data — the returned list has `DataType` elements. Use `Builtins.unIData()` etc. when extracting values from mapped results.
 
-For the full HOF reference, see [Standard Library Guide — HOFs](stdlib-guide.md).
+For the full HOF reference, see [Standard Library Guide — HOFs](/stdlib/stdlib-guide/).
 
 ---
 

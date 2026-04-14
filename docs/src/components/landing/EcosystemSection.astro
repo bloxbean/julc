@@ -1,0 +1,64 @@
+---
+const modules = [
+  { name: 'julc-compiler', desc: 'Java source to UPLC compiler', color: '#D4600E' },
+  { name: 'julc-stdlib', desc: '13 on-chain standard libraries', color: '#f59e0b' },
+  { name: 'julc-testkit', desc: 'Local validator testing & fuzzing', color: '#10b981' },
+  { name: 'julc-vm', desc: 'Pluggable VM with Scalus backend', color: '#6366f1' },
+  { name: 'julc-cli', desc: 'CLI: scaffold, compile, REPL', color: '#8b5cf6' },
+  { name: 'julc-gradle-plugin', desc: 'Build integration & annotation processing', color: '#ec4899' },
+]
+---
+<section class="bg-[#0a0a0f] py-20 sm:py-28 relative overflow-hidden">
+  <!-- Constellation SVG background -->
+  <svg class="absolute inset-0 w-full h-full opacity-[0.07]" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <radialGradient id="nodeGlow">
+        <stop offset="0%" stop-color="#D4600E" stop-opacity="0.6"/>
+        <stop offset="100%" stop-color="#D4600E" stop-opacity="0"/>
+      </radialGradient>
+    </defs>
+    <!-- Connection lines -->
+    <line x1="50%" y1="50%" x2="20%" y2="25%" stroke="#D4600E" stroke-width="0.5" opacity="0.3"/>
+    <line x1="50%" y1="50%" x2="80%" y2="25%" stroke="#D4600E" stroke-width="0.5" opacity="0.3"/>
+    <line x1="50%" y1="50%" x2="15%" y2="75%" stroke="#D4600E" stroke-width="0.5" opacity="0.3"/>
+    <line x1="50%" y1="50%" x2="85%" y2="75%" stroke="#D4600E" stroke-width="0.5" opacity="0.3"/>
+    <line x1="50%" y1="50%" x2="50%" y2="15%" stroke="#D4600E" stroke-width="0.5" opacity="0.3"/>
+    <line x1="50%" y1="50%" x2="50%" y2="85%" stroke="#D4600E" stroke-width="0.5" opacity="0.3"/>
+    <!-- Central node -->
+    <circle cx="50%" cy="50%" r="30" fill="url(#nodeGlow)"/>
+    <circle cx="50%" cy="50%" r="4" fill="#D4600E"/>
+    <!-- Outer nodes -->
+    <circle cx="20%" cy="25%" r="3" fill="#f59e0b" opacity="0.5"/>
+    <circle cx="80%" cy="25%" r="3" fill="#10b981" opacity="0.5"/>
+    <circle cx="15%" cy="75%" r="3" fill="#6366f1" opacity="0.5"/>
+    <circle cx="85%" cy="75%" r="3" fill="#8b5cf6" opacity="0.5"/>
+    <circle cx="50%" cy="15%" r="3" fill="#ec4899" opacity="0.5"/>
+    <circle cx="50%" cy="85%" r="3" fill="#D4600E" opacity="0.5"/>
+  </svg>
+
+  <div class="relative mx-auto max-w-6xl px-6">
+    <h2 class="text-center text-3xl font-bold tracking-tight text-white sm:text-4xl">
+      Modular architecture
+    </h2>
+    <p class="mt-4 text-center text-[#a1a1aa] max-w-2xl mx-auto">
+      Pick the modules you need. Every component is independently versioned and published to Maven Central.
+    </p>
+    <div class="mt-14 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {modules.map((m) => (
+        <div class="rounded-xl border border-white/5 bg-white/[0.02] p-5 hover:border-white/10 transition-colors">
+          <div class="flex items-center gap-3 mb-2">
+            <div class="h-2.5 w-2.5 rounded-full" style={`background: ${m.color}`}></div>
+            <code class="text-sm font-semibold text-white font-[var(--font-mono)]">{m.name}</code>
+          </div>
+          <p class="text-sm text-[#a1a1aa]">{m.desc}</p>
+        </div>
+      ))}
+    </div>
+    <div class="mt-10 text-center">
+      <a href="https://github.com/bloxbean/julc" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 text-[#a1a1aa] hover:text-white transition-colors text-sm">
+        View on GitHub
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
+      </a>
+    </div>
+  </div>
+</section>

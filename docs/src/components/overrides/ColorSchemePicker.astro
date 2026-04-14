@@ -1,0 +1,143 @@
+---
+/**
+ * Color scheme picker for the JuLC documentation site.
+ * Lets users choose from several accent color schemes.
+ * Persists selection in localStorage and applies via data-color-scheme attribute.
+ */
+const schemes = [
+  { label: 'Orange', value: 'orange' },
+  { label: 'Ocean', value: 'ocean' },
+  { label: 'Emerald', value: 'emerald' },
+  { label: 'Purple', value: 'purple' },
+  { label: 'Teal', value: 'teal' },
+]
+---
+
+<starlight-color-scheme>
+  <label>
+    <span class="sr-only">Color scheme</span>
+    <svg class="icon label-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="5" />
+      <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+    </svg>
+    <select autocomplete="off">
+      {schemes.map(({ value, label }) => (
+        <option value={value} selected={value === 'orange'}>{label}</option>
+      ))}
+    </select>
+    <svg class="icon caret" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
+      <path d="M12 16l-6-6h12z" />
+    </svg>
+  </label>
+</starlight-color-scheme>
+
+{/* Inline script to prevent FOUC — apply saved scheme immediately */}
+<script is:inline>
+  (function() {
+    var scheme = typeof localStorage !== 'undefined' && localStorage.getItem('julc-color-scheme');
+    if (scheme) document.documentElement.setAttribute('data-color-scheme', scheme);
+  })();
+</script>
+
+<script>
+  const storageKey = 'julc-color-scheme';
+
+  function loadScheme(): string {
+    if (typeof localStorage !== 'undefined') {
+      return localStorage.getItem(storageKey) || 'orange';
+    }
+    return 'orange';
+  }
+
+  function applyScheme(scheme: string): void {
+    document.documentElement.setAttribute('data-color-scheme', scheme);
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(storageKey, scheme);
+    }
+    // Update all pickers on the page
+    document.querySelectorAll('starlight-color-scheme select').forEach((el) => {
+      if (el instanceof HTMLSelectElement) el.value = scheme;
+    });
+  }
+
+  class StarlightColorScheme extends HTMLElement {
+    constructor() {
+      super();
+      const select = this.querySelector('select');
+      if (select) {
+        const saved = loadScheme();
+        select.value = saved;
+        applyScheme(saved);
+        select.addEventListener('change', (e) => {
+          if (e.currentTarget instanceof HTMLSelectElement) {
+            applyScheme(e.currentTarget.value);
+          }
+        });
+      }
+    }
+  }
+  customElements.define('starlight-color-scheme', StarlightColorScheme);
+</script>
+
+<style>
+  label {
+    --sl-label-icon-size: 0.875rem;
+    --sl-caret-size: 1.25rem;
+    --sl-inline-padding: 0.5rem;
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    color: var(--sl-color-gray-2);
+  }
+
+  label:hover {
+    color: var(--sl-color-white);
+  }
+
+  .icon {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    pointer-events: none;
+  }
+
+  .label-icon {
+    font-size: var(--sl-label-icon-size);
+    inset-inline-start: 0;
+    width: var(--sl-label-icon-size);
+    height: var(--sl-label-icon-size);
+  }
+
+  .caret {
+    font-size: var(--sl-caret-size);
+    inset-inline-end: 0;
+    width: var(--sl-caret-size);
+    height: var(--sl-caret-size);
+  }
+
+  select {
+    border: 0;
+    padding-block: 0.625rem;
+    padding-inline: calc(var(--sl-label-icon-size) + var(--sl-inline-padding) + 0.25rem)
+      calc(var(--sl-caret-size) + var(--sl-inline-padding) + 0.25rem);
+    margin-inline: calc(var(--sl-inline-padding) * -1);
+    width: calc(6.25em + var(--sl-inline-padding) * 2);
+    background-color: transparent;
+    text-overflow: ellipsis;
+    color: inherit;
+    cursor: pointer;
+    appearance: none;
+  }
+
+  option {
+    background-color: var(--sl-color-bg-nav);
+    color: var(--sl-color-gray-1);
+  }
+
+  @media (min-width: 50rem) {
+    select {
+      font-size: var(--sl-text-sm);
+    }
+  }
+</style>

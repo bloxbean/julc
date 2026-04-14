@@ -1,24 +1,10 @@
-# JuLC API Reference
+---
+title: "JuLC API Reference"
+description: "JuLC API Reference - JuLC documentation"
+---
 
 This document covers all supported Java operations in the JuLC compiler, the standard library functions, and the typed ledger access API.
 
-## Table of Contents
-
-- [Supported Types](#supported-types) — primitives, collections, PlutusData
-- [Operators](#operators) — arithmetic, comparison, logical
-- [Control Flow](#control-flow) — if/else, switch, loops
-- [Variable Declarations](#variable-declarations) — var, final
-- [Records](#records) — data modeling
-- [Helper Methods](#helper-methods) — static methods, recursion
-- [Lambda Expressions](#lambda-expressions) — HOFs, map/filter/fold
-- [Typed Ledger Access](#typed-ledger-access) — ScriptContext, TxInfo, Value
-- [Instance Methods](#instance-methods) — list, map, value, pair methods
-- [Standard Library Reference](#standard-library-reference) — all stdlib modules
-- [Annotations Reference](#annotations-reference) — @Validator, @Param, @OnchainLibrary
-- [Testing Utilities](#testing-utilities) — ValidatorTest, JulcEval, BudgetAssertions
-- [Complete Example](#complete-example) — full validator walkthrough
-
----
 
 ## Supported Types
 
@@ -214,7 +200,7 @@ for (var item : list) {
     }
 }
 ```
-Desugared to a recursive fold. Supports single/multi-accumulator, break, and nesting. See [For-Loop Patterns](for-loop-patterns.md).
+Desugared to a recursive fold. Supports single/multi-accumulator, break, and nesting. See [For-Loop Patterns](/guides/for-loop-patterns/).
 
 ### While Loop
 ```java
@@ -470,7 +456,7 @@ Raw `PlutusData` variables support `.equals()` and `==`/`!=` operators using `Eq
 
 ## Standard Library Reference
 
-Import from `com.bloxbean.cardano.julc.stdlib.lib.*` in validators. See [Standard Library Guide](stdlib-guide.md) for comprehensive documentation.
+Import from `com.bloxbean.cardano.julc.stdlib.lib.*` in validators. See [Standard Library Guide](/stdlib/stdlib-guide/) for comprehensive documentation.
 
 ### ContextsLib
 
@@ -664,7 +650,7 @@ Note: `sha2_256`, `sha3_256`, `blake2b_256`, `blake2b_224`, `keccak_256`, and `v
 
 ### BlsLib
 
-BLS12-381 elliptic curve operations. Available on PV10+. See [Standard Library Guide](stdlib-guide.md#blslib----bls12-381-curve-operations) for full documentation.
+BLS12-381 elliptic curve operations. Available on PV10+. See [Standard Library Guide](/stdlib/stdlib-guide/#blslib----bls12-381-curve-operations) for full documentation.
 
 | Method | Args | Description |
 |--------|------|-------------|
@@ -683,7 +669,7 @@ BLS12-381 elliptic curve operations. Available on PV10+. See [Standard Library G
 
 ### NativeValueLib (PV11)
 
-> **Protocol Version 11+ only.** Native MaryEra Value operations via CIP-153 builtins. For PV10 networks, use `ValuesLib`. See [Standard Library Guide](stdlib-guide.md#nativevaluelib----native-value-operations-pv11) for full documentation.
+> **Protocol Version 11+ only.** Native MaryEra Value operations via CIP-153 builtins. For PV10 networks, use `ValuesLib`. See [Standard Library Guide](/stdlib/stdlib-guide/#nativevaluelib----native-value-operations-pv11) for full documentation.
 
 | Method | Args | Description |
 |--------|------|-------------|

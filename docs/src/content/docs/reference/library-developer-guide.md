@@ -1,18 +1,10 @@
-# JuLC Library Developer Guide
+---
+title: "JuLC Library Developer Guide"
+description: "JuLC Library Developer Guide - JuLC documentation"
+---
 
 This guide explains how to write, publish, and test on-chain libraries for JuLC, the Java-to-UPLC compiler for Cardano smart contracts.
 
-## Table of Contents
-
-1. [Introduction](#1-introduction)
-2. [Approach 1: Java Source Libraries (@OnchainLibrary)](#2-approach-1-java-source-libraries-onchainlibrary) — recommended approach
-3. [Publishing and Distribution](#3-publishing-and-distribution) — JAR packaging, META-INF
-4. [Testing Libraries](#4-testing-libraries) — unit tests, JulcEval, integration
-5. [Approach 2: PIR API (Advanced)](#5-approach-2-pir-api-advanced) — low-level PIR term generation
-6. [Builtins.java Reference](#6-builtinsjava-reference) — all available builtins
-7. [Checklist for Adding a New Library Function](#7-checklist-for-adding-a-new-library-function)
-
----
 
 ## 1. Introduction
 
@@ -392,7 +384,7 @@ Cross-library calls work as long as:
 2. The called library's source is discoverable (either in the same project, or bundled via `META-INF/plutus-sources/` in a JAR dependency).
 3. The import statement (or same-package reference) is present so the resolver can find the dependency.
 
-> **Cross-Library BytesData Param Bug**: When calling a stdlib library method that takes `BytesData`/`MapData` typed parameters from user code, the compiler may skip Data encoding at the call boundary if the caller has a variable of the same type. **Workaround**: Pass `PlutusData` typed variables (not `BytesData`/`MapData`) when calling across library boundaries. See [Troubleshooting](troubleshooting.md) for details.
+> **Cross-Library BytesData Param Bug**: When calling a stdlib library method that takes `BytesData`/`MapData` typed parameters from user code, the compiler may skip Data encoding at the call boundary if the caller has a variable of the same type. **Workaround**: Pass `PlutusData` typed variables (not `BytesData`/`MapData`) when calling across library boundaries. See [Troubleshooting](/reference/troubleshooting/) for details.
 
 > **@NewType records in library parameters**: `@NewType` records resolve to their underlying primitive type at compile time. When accepting `@NewType` parameters in library methods, the parameter will be the underlying type (e.g., `byte[]` for a `@NewType` wrapping `byte[]`).
 

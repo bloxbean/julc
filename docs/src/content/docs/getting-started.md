@@ -1,4 +1,7 @@
-# Getting Started with JuLC
+---
+title: "Getting Started with JuLC"
+description: "Getting Started with JuLC - JuLC documentation"
+---
 
 Write Cardano smart contracts in Java and compile them to Plutus V3 UPLC.
 
@@ -8,26 +11,6 @@ ordinary Java classes with records, sealed interfaces, and switch expressions. T
 compiler turns them into efficient Plutus scripts that run on the Cardano CEK
 machine.
 
-## Table of Contents
-
-1. [Prerequisites](#1-prerequisites)
-2. [Project Setup](#2-project-setup) — Gradle, Maven, annotation processor
-3. [Your First Validator](#3-your-first-validator) — spending validator walkthrough
-4. [Conway Validator Types](#4-conway-validator-types) — minting, staking, voting, proposing
-5. [Data Modeling](#5-data-modeling) — records, sealed interfaces, switch
-6. [Collections](#6-collections) — lists, maps, tuples
-7. [Typed Ledger Access](#7-typed-ledger-access) — ScriptContext, TxInfo, Value
-8. [Control Flow](#8-control-flow) — if/else, loops, recursion
-9. [Standard Library](#9-standard-library) — stdlib overview
-10. [User Libraries (@OnchainLibrary)](#10-user-libraries-onchainlibrary) — reusable on-chain modules
-11. [Parameterized Validators (@Param)](#11-parameterized-validators-param) — compile-time parameters
-12. [Lambda Expressions and HOFs](#12-lambda-expressions-and-hofs) — map, filter, fold
-13. [Compiling](#13-compiling) — Gradle plugin, annotation processor, CLI
-14. [Testing](#14-testing) — ValidatorTest, ScriptContextTestBuilder, JulcEval
-15. [Deploying](#15-deploying) — cardano-client-lib integration
-16. [Compiler Limitations](#16-compiler-limitations) — what Java features are not supported
-
----
 
 ## 1. Prerequisites
 
@@ -553,7 +536,7 @@ For casting `PlutusData` to typed records (e.g., datums, redeemers), use `Plutus
 MyDatum datum = PlutusData.cast(rawDatumData, MyDatum.class);
 ```
 
-See the [Advanced Guide](advanced-guide.md#plutusdatacast--clean-type-casting) for full details.
+See the [Advanced Guide](/guides/advanced-guide/#plutusdatacast--clean-type-casting) for full details.
 
 ---
 
@@ -850,7 +833,7 @@ for (PubKeyHash sig : txInfo.signatories()) {
 ```
 
 For full loop patterns, accumulator rules, and examples, see
-[for-loop-patterns.md](for-loop-patterns.md).
+[for-loop-patterns.md](/guides/for-loop-patterns/).
 
 ### 8.5 While Loops
 
@@ -865,7 +848,7 @@ while (!Builtins.nullList(current)) {
 }
 ```
 
-For details, see [for-loop-patterns.md](for-loop-patterns.md).
+For details, see [for-loop-patterns.md](/guides/for-loop-patterns/).
 
 ### 8.6 Nested Loops
 
@@ -914,7 +897,7 @@ when your validator references them.
 | `BitwiseLib` | `andByteString`, `orByteString`, `xorByteString`, `complementByteString`, `readBit`, `writeBits`, `shiftByteString`, `rotateByteString`, `countSetBits`, `findFirstSetBit` |
 | `AddressLib` | `credentialHash`, `isScriptAddress`, `isPubKeyAddress`, `paymentCredential` |
 
-For full method signatures and usage examples, see [stdlib-guide.md](stdlib-guide.md).
+For full method signatures and usage examples, see [stdlib-guide.md](/stdlib/stdlib-guide/).
 
 ---
 
@@ -980,7 +963,7 @@ transitively. When publishing a library as a JAR, the Gradle plugin bundles the
 Java source under `META-INF/plutus-sources/` so consumers can auto-discover and
 compile it.
 
-For full details, see [library-developer-guide.md](library-developer-guide.md).
+For full details, see [library-developer-guide.md](/reference/library-developer-guide/).
 
 ---
 
