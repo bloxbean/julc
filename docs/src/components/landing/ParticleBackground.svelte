@@ -34,8 +34,9 @@
   }
 
   function init() {
-    const w = window.innerWidth
-    const h = window.innerHeight
+    const parent = canvas.parentElement
+    const w = parent.clientWidth
+    const h = parent.clientHeight
     canvas.width = w
     canvas.height = h
     particles = []
@@ -171,8 +172,9 @@
   }
 
   function handleMouseMove(e) {
-    mouseX = e.clientX
-    mouseY = e.clientY
+    const rect = canvas.getBoundingClientRect()
+    mouseX = e.clientX - rect.left
+    mouseY = e.clientY - rect.top
   }
 
   function handleMouseLeave() {
@@ -223,24 +225,10 @@
 
 <style>
   .particle-bg {
-    position: fixed;
+    position: absolute;
     inset: 0;
     z-index: 0;
-    background-color: #0a0a0f;
-    -webkit-mask-image: linear-gradient(
-      to bottom,
-      black 0%,
-      black 40vh,
-      rgba(0, 0, 0, 0.15) 80vh,
-      rgba(0, 0, 0, 0.05) 100vh
-    );
-    mask-image: linear-gradient(
-      to bottom,
-      black 0%,
-      black 40vh,
-      rgba(0, 0, 0, 0.15) 80vh,
-      rgba(0, 0, 0, 0.05) 100vh
-    );
+    overflow: hidden;
   }
 
   canvas {
