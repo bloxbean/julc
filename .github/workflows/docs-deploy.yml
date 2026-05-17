@@ -32,7 +32,6 @@ jobs:
       - name: Build website
         env:
           JULC_EXAMPLES_DIR: ${{ github.workspace }}/julc-examples
-          JULC_REQUIRE_EXAMPLES: "1"
         run: |
           cd docs
           npm run build

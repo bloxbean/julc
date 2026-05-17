@@ -546,12 +546,11 @@ export async function generateCatalog({ logger } = {}) {
     log(`[catalog] could not load diagnostics.json: ${err.message}`);
   }
 
-  // ---- Examples index (sibling julc-examples repo)
-  // The catalog advertises /ai/examples.json as a stable AI-facing endpoint.
-  // If the sibling repo is missing, we still tolerate the local-dev case
-  // (warning only), but `JULC_REQUIRE_EXAMPLES=1` (set by CI/deploy) makes
-  // the absence a hard build failure so the deployed site never ships a
-  // 404 at the advertised endpoint. Phase B review feedback (issue #3).
+  // ---- Examples index (optional sibling julc-examples repo)
+  // The catalog advertises /ai/examples.json as a stable AI-facing endpoint,
+  // but julc-examples is a separate repository and may not have generated its
+  // AI index yet. Keep docs deploy independent by publishing a small fallback
+  // index instead of failing the entire site build.
   let examples = null;
   for (const candidate of EXAMPLES_INDEX_CANDIDATES) {
     try {
@@ -568,10 +567,14 @@ export async function generateCatalog({ logger } = {}) {
       EXAMPLES_INDEX_CANDIDATES.join(', ') +
       '. Check out https://github.com/bloxbean/julc-examples as a sibling ' +
       'directory of this repo, or set JULC_EXAMPLES_DIR to that checkout.';
-    if (process.env.JULC_REQUIRE_EXAMPLES === '1') {
-      throw new Error('[catalog] ' + msg);
-    }
     log('[catalog] WARN: ' + msg);
+    examples = {
+      schemaVersion: 1,
+      sourceRepository: 'https://github.com/bloxbean/julc-examples',
+      generated: false,
+      examples: [],
+      message: 'No generated examples index was available during this docs build.',
+    };
   }
 
   return {
