@@ -1,0 +1,13 @@
+{
+  "name": "JuLC",
+  "tokens": {
+    "black": "#000000",
+    "ink": "#0B0B0D",
+    "paper": "#FFFFFF",
+    "surface": "#F5F5F5",
+    "orange": "#F89820",
+    "indigo": "#4F46E5",
+    "muted": "#6B7280",
+    "line": "#1A1A1F"
+  }
+}
