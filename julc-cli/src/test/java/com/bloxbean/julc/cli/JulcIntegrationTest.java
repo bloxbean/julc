@@ -35,6 +35,9 @@ class JulcIntegrationTest {
         assertTrue(Files.exists(ProjectLayout.testDir(projectRoot).resolve("AlwaysSucceedsTest.java")));
         assertTrue(Files.isDirectory(ProjectLayout.stdlibDir(projectRoot)));
         assertTrue(Files.exists(ProjectLayout.lockFile(projectRoot)));
+        // AI agent guides — auto-dropped by AgentsTemplate.
+        assertTrue(Files.exists(projectRoot.resolve("AGENTS.md")), "AGENTS.md must be scaffolded");
+        assertTrue(Files.exists(projectRoot.resolve("CLAUDE.md")), "CLAUDE.md must be scaffolded");
 
         // 2. Build
         var config = TomlParser.parse(ProjectLayout.tomlFile(projectRoot));
@@ -209,7 +212,7 @@ class JulcIntegrationTest {
         // Verify starter files have package declaration
         String validator = Files.readString(projectRoot.resolve("src/main/java/com/myorg/testgradle/AlwaysSucceeds.java"));
         assertTrue(validator.contains("package com.myorg.testgradle;"));
-        assertTrue(validator.contains("@Validator"));
+        assertTrue(validator.contains("@SpendingValidator"));
 
         String test = Files.readString(projectRoot.resolve("src/test/java/com/myorg/testgradle/AlwaysSucceedsTest.java"));
         assertTrue(test.contains("package com.myorg.testgradle;"));
@@ -217,6 +220,10 @@ class JulcIntegrationTest {
         assertTrue(test.contains("compileValidatorWithSourceMap"));
         assertTrue(test.contains("TestDataBuilder"));
         assertTrue(test.contains("evaluateWithTrace"));
+
+        // AI agent guides — auto-dropped by AgentsTemplate.
+        assertTrue(Files.exists(projectRoot.resolve("AGENTS.md")), "AGENTS.md must be scaffolded");
+        assertTrue(Files.exists(projectRoot.resolve("CLAUDE.md")), "CLAUDE.md must be scaffolded");
 
         // No julc.toml or .julc/ directory
         assertFalse(Files.exists(projectRoot.resolve("julc.toml")));
@@ -259,12 +266,18 @@ class JulcIntegrationTest {
         // Verify starter files have package declaration
         String validator = Files.readString(projectRoot.resolve("src/main/java/com/myorg/testmaven/AlwaysSucceeds.java"));
         assertTrue(validator.contains("package com.myorg.testmaven;"));
+        assertTrue(validator.contains("@SpendingValidator"),
+                "Maven starter must use the recommended @SpendingValidator idiom");
 
         String test = Files.readString(projectRoot.resolve("src/test/java/com/myorg/testmaven/AlwaysSucceedsTest.java"));
         assertTrue(test.contains("package com.myorg.testmaven;"));
         assertTrue(test.contains("compileValidatorWithSourceMap"));
         assertTrue(test.contains("TestDataBuilder"));
         assertTrue(test.contains("evaluateWithTrace"));
+
+        // AI agent guides — auto-dropped by AgentsTemplate.
+        assertTrue(Files.exists(projectRoot.resolve("AGENTS.md")), "AGENTS.md must be scaffolded");
+        assertTrue(Files.exists(projectRoot.resolve("CLAUDE.md")), "CLAUDE.md must be scaffolded");
 
         // No julc.toml or .julc/ directory
         assertFalse(Files.exists(projectRoot.resolve("julc.toml")));
