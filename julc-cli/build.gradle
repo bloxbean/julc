@@ -61,37 +61,6 @@ tasks.register('generateVersionProperties') {
 sourceSets.main.resources.srcDir versionPropsDir
 processResources.dependsOn generateVersionProperties
 
-// --- Bundle examples-index.json from sibling julc-examples checkout ---
-// Phase D review (user-perspective + Codex P2#5): a Homebrew install has no
-// access to ../julc-examples, so the julc_examples_search/get tools were
-// silently nonfunctional. Now we vendor the index into the CLI JAR so the
-// tools work offline. The examples *source* still requires the sibling repo,
-// but the metadata search works everywhere.
-def examplesIndexCopyDir = file("${buildDir}/generated/examples-index")
-def siblingExamplesIndex = file('../../julc-examples/ai/examples-index.json')
-
-tasks.register('bundleExamplesIndex') {
-    description = 'Copy examples-index.json from sibling julc-examples checkout into resources, if present.'
-    inputs.file(siblingExamplesIndex).optional()
-    outputs.dir(examplesIndexCopyDir)
-    outputs.upToDateWhen { siblingExamplesIndex.exists() && new File(examplesIndexCopyDir, 'julc-examples/ai/examples-index.json').exists() }
-    doLast {
-        def dst = new File(examplesIndexCopyDir, 'julc-examples/ai/examples-index.json')
-        dst.parentFile.mkdirs()
-        if (siblingExamplesIndex.exists()) {
-            dst.text = siblingExamplesIndex.text
-            logger.lifecycle("[julc-cli] bundled examples-index.json (${dst.length()} bytes)")
-        } else {
-            // Write a stub so the resource path exists; the tool degrades gracefully.
-            dst.text = '{"schemaVersion":1,"examples":[],"$comment":"sibling julc-examples checkout was not present at build time; examples search returns empty"}'
-            logger.lifecycle("[julc-cli] sibling julc-examples not found at ${siblingExamplesIndex}; bundling empty stub")
-        }
-    }
-}
-
-sourceSets.main.resources.srcDir examplesIndexCopyDir
-processResources.dependsOn bundleExamplesIndex
-
 // --- Bundle stdlib sources into a ZIP for project scaffolding ---
 def stdlibSourcesZipDir = file("${buildDir}/generated/stdlib-zip")
 

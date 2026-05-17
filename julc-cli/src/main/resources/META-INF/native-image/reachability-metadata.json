@@ -295,7 +295,6 @@
     {"glob": "META-INF/julc/stdlib-sources.zip"},
     {"glob": "META-INF/services/*"},
     {"glob": "diagnostics.json"},
-    {"glob": "julc-examples/ai/examples-index.json"},
     {"glob": "julc-version.properties"},
     {"glob": "META-INF/julc/wrappers/**"}
   ]

@@ -5,7 +5,6 @@ import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.spec.McpSchema;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -13,7 +12,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -29,9 +27,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * <ol>
  *   <li>{@code JULC_EXAMPLES_DIR} env var, if set.</li>
  *   <li>Sibling {@code ../julc-examples/ai/examples-index.json}.</li>
- *   <li>Bundled JAR resource at {@code /julc-examples/ai/examples-index.json}
- *       (future: built into the CLI distribution).</li>
- *   <li>If none is present, the tool returns a graceful "not bundled" message
+ *   <li>If none is present, the tool returns a graceful "not configured" message
  *       pointing at the hosted endpoint.</li>
  * </ol>
  */
@@ -193,13 +189,6 @@ public final class ExamplesTools {
             }
             String relativeSource = (String) match.get("source");
             body.put("sourcePath", relativeSource);
-            if (includeSource && relativeSource != null && idx.repoRoot == null) {
-                // Bundled-only mode: the index is in the JAR but the source
-                // files aren't. Tell the agent where to fetch them.
-                body.put("sourceTextError",
-                        "Source content not bundled; fetch from " +
-                        "https://github.com/bloxbean/julc-examples/blob/main/" + relativeSource);
-            }
             if (includeSource && relativeSource != null && idx.repoRoot != null) {
                 // Phase D review (Codex P1#1): the index is external data
                 // and a malicious entry could set source: "../../.ssh/id_rsa".
@@ -241,9 +230,9 @@ public final class ExamplesTools {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("found", false);
         body.put("message",
-                "examples-index.json not found locally. Set the JULC_EXAMPLES_DIR env var to " +
-                        "the julc-examples checkout, or fetch the index from " +
-                        "https://julc.dev/ai/examples.json.");
+                "examples-index.json is not bundled with julc-cli. Set JULC_EXAMPLES_DIR " +
+                        "to a local https://github.com/bloxbean/julc-examples checkout, " +
+                        "or fetch the hosted index from https://julc.dev/ai/examples.json.");
         return body;
     }
 
@@ -269,31 +258,13 @@ public final class ExamplesTools {
                 List<Map<String, Object>> examples = (List<Map<String, Object>>) root.get("examples");
                 if (examples == null) continue;
                 var idx = new ExamplesIndex(repoRoot.toAbsolutePath().normalize(),
-                        Objects.requireNonNullElse(examples, List.of()));
+                        examples);
                 CACHED.set(idx);
                 return idx;
             } catch (Exception e) {
                 // Try next candidate.
             }
         }
-        // Bundled JAR resource produced by the `bundleExamplesIndex` Gradle
-        // task. Phase D review remediation (user-perspective + Codex P2#5):
-        // Homebrew installs ship without a sibling julc-examples checkout,
-        // so we vendor the index. Source-file *content* is not bundled —
-        // julc_example_get with includeSource will note `sourceTextError:
-        // not bundled` in that case.
-        try (InputStream in = ExamplesTools.class.getResourceAsStream("/julc-examples/ai/examples-index.json")) {
-            if (in != null) {
-                String body = new String(in.readAllBytes());
-                Map<String, Object> root = jsonMapper.readValue(body, Map.class);
-                List<Map<String, Object>> examples = (List<Map<String, Object>>) root.get("examples");
-                if (examples != null && !examples.isEmpty()) {
-                    var idx = new ExamplesIndex(null, examples);
-                    CACHED.set(idx);
-                    return idx;
-                }
-            }
-        } catch (Exception ignored) {}
 
         CACHED.set(ExamplesIndex.MISSING);
         return null;
