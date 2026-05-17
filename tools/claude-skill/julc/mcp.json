@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "julc": {
+      "command": "julc",
+      "args": ["mcp"],
+      "description": "JuLC compiler, linter, evaluator, stdlib/ledger/diagnostic catalogs, and tagged examples corpus over MCP stdio.",
+      "homepage": "https://julc.dev/ai/"
+    }
+  }
+}

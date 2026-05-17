@@ -1,5 +1,14 @@
 <p align="center">
-  <img src="static/logo-light.svg" alt="JuLC Logo" width="300"/>
+  <img src="static/julc-logo.svg" height="200" alt="JuLC — Java UPLC Compiler for Cardano" width="100%"/>
+</p>
+
+<p align="center">
+  <a href="https://github.com/bloxbean/julc/actions/workflows/build.yml"><img src="https://github.com/bloxbean/julc/actions/workflows/build.yml/badge.svg" alt="Build & Test"/></a>
+  <a href="https://central.sonatype.com/artifact/com.bloxbean.cardano/julc-core"><img src="https://img.shields.io/maven-central/v/com.bloxbean.cardano/julc-core.svg?label=Maven%20Central" alt="Maven Central"/></a>
+  <a href="https://github.com/bloxbean/julc/releases"><img src="https://img.shields.io/github/v/release/bloxbean/julc?include_prereleases&label=release" alt="GitHub Release"/></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/bloxbean/julc.svg" alt="License"/></a>
+  <img src="https://img.shields.io/badge/Java-25-orange.svg" alt="Java 25"/>
+  <img src="https://img.shields.io/badge/Plutus-V3-blue.svg" alt="Plutus V3"/>
 </p>
 
 > ## **Warning**

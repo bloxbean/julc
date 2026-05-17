@@ -11,6 +11,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Checkout examples corpus
+        uses: actions/checkout@v4
+        with:
+          repository: bloxbean/julc-examples
+          path: julc-examples
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -23,6 +30,9 @@ jobs:
           npm ci
 
       - name: Build website
+        env:
+          JULC_EXAMPLES_DIR: ${{ github.workspace }}/julc-examples
+          JULC_REQUIRE_EXAMPLES: "1"
         run: |
           cd docs
           npm run build

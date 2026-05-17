@@ -20,6 +20,7 @@ import picocli.CommandLine.Command;
                 ReplCommand.class,
                 BlueprintCommand.class,
                 UplcCommand.class,
+                McpCommand.class,
                 VersionCommand.class,
                 CommandLine.HelpCommand.class
         }

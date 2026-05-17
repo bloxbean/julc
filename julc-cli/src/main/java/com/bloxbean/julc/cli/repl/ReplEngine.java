@@ -407,6 +407,9 @@ public final class ReplEngine {
         var sb = new StringBuilder();
         for (var d : diagnostics) {
             if (d.isError()) {
+                if (d.hasCode()) {
+                    sb.append('[').append(d.code()).append("] ");
+                }
                 sb.append(d.message());
                 if (d.hasSuggestion()) {
                     sb.append("\n  suggestion: ").append(d.suggestion());

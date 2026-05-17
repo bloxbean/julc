@@ -54,18 +54,23 @@ public final class ProjectScaffolder {
                     default: deny
                     """);
         } else {
+            // Use a typed record redeemer + @SpendingValidator. Models the
+            // idiomatic JuLC pattern (no raw PlutusData) so the file the AI
+            // sees in a fresh project matches the rules in AGENTS.md.
             Files.writeString(ProjectLayout.srcDir(projectRoot).resolve("AlwaysSucceeds.java"),
                     """
-                    import com.bloxbean.cardano.julc.stdlib.annotation.Validator;
+                    import com.bloxbean.cardano.julc.stdlib.annotation.SpendingValidator;
                     import com.bloxbean.cardano.julc.stdlib.annotation.Entrypoint;
                     import com.bloxbean.cardano.julc.ledger.ScriptContext;
-                    import com.bloxbean.cardano.julc.core.PlutusData;
 
-                    @Validator
+                    @SpendingValidator
                     public class AlwaysSucceeds {
 
+                        record Datum() {}
+                        record Redeemer() {}
+
                         @Entrypoint
-                        public static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                        public static boolean validate(Datum datum, Redeemer redeemer, ScriptContext ctx) {
                             return true;
                         }
                     }
@@ -94,6 +99,9 @@ public final class ProjectScaffolder {
         // Install stdlib sources
         String sha256 = StdlibInstaller.installFromEmbedded(projectRoot);
         StdlibInstaller.writeLock(projectRoot, sha256);
+
+        // AI agent guide (AGENTS.md + CLAUDE.md)
+        AgentsTemplate.write(projectRoot, projectName);
 
         // Generate IntelliJ project files
         IdeaConfigGenerator.generate(projectRoot, projectName);

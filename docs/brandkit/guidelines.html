@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>JuLC — Brand Guidelines</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet"/>
+<style>
+  @page { size: A4; margin: 18mm; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; font-family: 'Inter Tight', system-ui, sans-serif; color: #0B0B0D; }
+  body { padding: 32px 48px; max-width: 920px; margin: 0 auto; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+  h1 { font-size: 64px; letter-spacing: -3px; margin: 0 0 8px; font-weight: 800; }
+  h2 { font-size: 28px; letter-spacing: -0.5px; margin: 36px 0 14px; font-weight: 700; border-top: 1px solid #0B0B0D22; padding-top: 16px; }
+  h3 { font-size: 16px; letter-spacing: 0.5px; text-transform: uppercase; color: #6B7280; margin: 20px 0 10px; }
+  p { line-height: 1.55; font-size: 14.5px; }
+  .lede { font-size: 18px; color: #6B7280; max-width: 640px; }
+  .grid { display: grid; gap: 12px; }
+  .swatches { grid-template-columns: repeat(3, 1fr); }
+  .swatch { padding: 18px; border-radius: 6px; min-height: 110px; display: flex; flex-direction: column; justify-content: space-between; }
+  .swatch .name { font-weight: 700; font-size: 16px; }
+  .swatch .hex { font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+  .swatch.light { color: #0B0B0D; border: 1px solid #0B0B0D22; }
+  .swatch.dark { color: #FFFFFF; }
+  .row { display: flex; gap: 24px; align-items: center; }
+  .box { background: #F5F5F5; border-radius: 8px; padding: 24px; }
+  .box.dark { background: #000000; color: #FFFFFF; }
+  .pad { display: inline-block; padding: 32px; }
+  .caption { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #6B7280; letter-spacing: 1.2px; text-transform: uppercase; }
+  .dont { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .dont > div { background: #F5F5F5; border-radius: 6px; padding: 14px; text-align: center; position: relative; }
+  .dont .x { position: absolute; top: 6px; right: 8px; color: #DC2626; font-weight: 700; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #0B0B0D14; }
+  th { font-weight: 600; color: #6B7280; }
+  .pagebreak { page-break-before: always; }
+  .accent-dot { color: #F89820; }
+</style>
+</head>
+<body>
+
+<div style="display:flex; justify-content:space-between; align-items:flex-end; border-bottom: 1px solid #0B0B0D22; padding-bottom: 18px;">
+  <div>
+    <div class="mono" style="font-size:11px; letter-spacing:2px; color:#F89820; text-transform:uppercase;">Brand Guidelines · v1.0</div>
+    <h1>JuLC<span class="accent-dot">.</span></h1>
+    <p class="lede">Java → UPLC. Cardano smart contracts in the language enterprise already knows.</p>
+  </div>
+  <img src="logo/svg/julc-mark-black-on-transparent.svg" width="120" height="120"/>
+</div>
+
+<h2>The mark</h2>
+<p>The JuLC mark is a custom monogram built from a single ribbon outline forming the lambda (λ) of UPLC. Always use the official artwork. Never reconstruct or redraw.</p>
+
+<div class="grid" style="grid-template-columns: 1fr 1fr; margin-top: 12px;">
+  <div class="box"><img src="logo/svg/julc-mark-black-on-transparent.svg" width="220" height="220"/><div class="caption" style="margin-top:8px">Black on light</div></div>
+  <div class="box dark"><img src="logo/svg/julc-mark-white-on-transparent.svg" width="220" height="220"/><div class="caption" style="margin-top:8px; color:#9CA3AF">White on dark</div></div>
+</div>
+
+<h2>Lockup</h2>
+<p>Use the horizontal lockup whenever space allows. The accent dot after JuLC is part of the wordmark.</p>
+<div class="box" style="text-align:center;"><img src="lockup/svg/julc-lockup-black.svg" width="640"/></div>
+
+<div class="pagebreak"></div>
+
+<h2>Color</h2>
+<div class="grid swatches">
+  <div class="swatch dark" style="background:#000000;"><div class="name">Black</div><div class="hex">#000000</div></div>
+  <div class="swatch dark" style="background:#0B0B0D;"><div class="name">Ink</div><div class="hex">#0B0B0D</div></div>
+  <div class="swatch light" style="background:#FFFFFF;"><div class="name">Paper</div><div class="hex">#FFFFFF</div></div>
+  <div class="swatch dark" style="background:#F89820;"><div class="name">Java Orange</div><div class="hex">#F89820</div></div>
+  <div class="swatch dark" style="background:#4F46E5;"><div class="name">Indigo</div><div class="hex">#4F46E5</div></div>
+  <div class="swatch light" style="background:#F5F5F5;"><div class="name">Surface</div><div class="hex">#F5F5F5</div></div>
+</div>
+
+<h3>Distribution</h3>
+<div style="display:flex; height:28px; border-radius:4px; overflow:hidden;">
+  <div style="flex:60; background:#000000;"></div>
+  <div style="flex:30; background:#FFFFFF; border:1px solid #E5E7EB;"></div>
+  <div style="flex:8; background:#F89820;"></div>
+  <div style="flex:2; background:#4F46E5;"></div>
+</div>
+<p class="caption" style="margin-top:6px">60 / 30 / 8 / 2 — black, paper, orange, indigo</p>
+
+<h2>Typography</h2>
+<table>
+  <tr><th>Role</th><th>Family</th><th>Weights</th><th>Usage</th></tr>
+  <tr><td>Display</td><td>Inter Tight</td><td>400 / 600 / 800</td><td>Headlines, wordmark, editorial</td></tr>
+  <tr><td>Mono</td><td>JetBrains Mono</td><td>400 / 500 / 700</td><td>Code, labels, terminal, metadata</td></tr>
+</table>
+
+<h2>Construction</h2>
+<div class="row">
+  <div class="box" style="position:relative; padding:48px;">
+    <div style="position:absolute; inset:24px; border:1px dashed #4F46E5; border-radius:4px;"></div>
+    <img src="logo/svg/julc-mark-black-on-transparent.svg" width="160" height="160"/>
+  </div>
+  <div>
+    <h3>Clear space · ½X</h3>
+    <p>Always preserve at least <strong>½X</strong> of clear space around the mark, where X is the cap-height.</p>
+    <h3>Minimum size</h3>
+    <p>Mark scales to <strong>16px</strong>. Below that, use a solid square fallback.</p>
+  </div>
+</div>
+
+<h2>Don'ts</h2>
+<div class="dont">
+  <div><span class="x">✕</span><div style="transform:scaleX(1.4); height:80px; display:flex; align-items:center; justify-content:center;"><img src="logo/svg/julc-mark-black-on-transparent.svg" width="64"/></div><div class="caption">Stretch</div></div>
+  <div><span class="x">✕</span><div style="transform:rotate(18deg); height:80px; display:flex; align-items:center; justify-content:center;"><img src="logo/svg/julc-mark-black-on-transparent.svg" width="64"/></div><div class="caption">Rotate</div></div>
+  <div><span class="x">✕</span><div style="height:80px; display:flex; align-items:center; justify-content:center;"><img src="logo/svg/julc-mark-orange-on-black.svg" width="64"/></div><div class="caption">Recolor parts</div></div>
+  <div><span class="x">✕</span><div style="height:80px; display:flex; align-items:center; justify-content:center; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.4));"><img src="logo/svg/julc-mark-black-on-transparent.svg" width="64"/></div><div class="caption">Add shadow</div></div>
+</div>
+
+<h2>Contact</h2>
+<p class="mono" style="font-size:13px;">julc.dev · github.com/bloxbean/julc · MIT</p>
+
+</body>
+</html>

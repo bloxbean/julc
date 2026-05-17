@@ -3,6 +3,7 @@ import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 import svelte from '@astrojs/svelte';
 import tailwindcss from '@tailwindcss/vite';
+import llmsIntegration from './scripts/llms-integration.mjs';
 
 export default defineConfig({
   site: 'https://julc.dev',
@@ -24,6 +25,13 @@ export default defineConfig({
         { label: 'Overview', slug: 'overview' },
         { label: 'Write Your First Contract', slug: 'first-contract' },
         { label: 'Getting Started', slug: 'getting-started' },
+        {
+          label: 'AI Agents',
+          items: [
+            { label: 'Using JuLC with AI', slug: 'ai' },
+            { label: 'AI Starter Pack', slug: 'ai/starter-pack' },
+          ],
+        },
         {
           label: 'Guides',
           items: [
@@ -53,6 +61,7 @@ export default defineConfig({
           collapsed: true,
           items: [
             { label: 'Compiler Design', slug: 'internals/compiler-design' },
+            { label: 'Java to UPLC End to End', slug: 'internals/java-to-uplc-end-to-end' },
             { label: 'Compiler Developer Guide', slug: 'internals/compiler-developer-guide' },
           ],
         },
@@ -66,6 +75,7 @@ export default defineConfig({
       ],
     }),
     svelte(),
+    llmsIntegration(),
   ],
   vite: {
     plugins: [tailwindcss()],

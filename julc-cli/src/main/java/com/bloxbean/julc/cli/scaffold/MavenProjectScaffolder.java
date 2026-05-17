@@ -39,6 +39,9 @@ public final class MavenProjectScaffolder {
         // Starter test (same as Gradle)
         Files.writeString(testJava.resolve("AlwaysSucceedsTest.java"), testTemplate(pkg));
 
+        // AI agent guide (AGENTS.md + CLAUDE.md)
+        AgentsTemplate.write(root, projectName);
+
         // Extract Maven wrapper
         WrapperExtractor.extractMavenWrapper(root);
     }
@@ -165,19 +168,23 @@ public final class MavenProjectScaffolder {
     }
 
     private static String validatorTemplate(String pkg) {
+        // Idiomatic JuLC: @SpendingValidator + typed datum/redeemer records.
+        // Matches the rules in the AGENTS.md guide auto-dropped by AgentsTemplate.
         return """
                 package %s;
 
-                import com.bloxbean.cardano.julc.stdlib.annotation.Validator;
+                import com.bloxbean.cardano.julc.stdlib.annotation.SpendingValidator;
                 import com.bloxbean.cardano.julc.stdlib.annotation.Entrypoint;
                 import com.bloxbean.cardano.julc.ledger.ScriptContext;
-                import com.bloxbean.cardano.julc.core.PlutusData;
 
-                @Validator
+                @SpendingValidator
                 public class AlwaysSucceeds {
 
+                    record Datum() {}
+                    record Redeemer() {}
+
                     @Entrypoint
-                    public static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                    public static boolean validate(Datum datum, Redeemer redeemer, ScriptContext ctx) {
                         return true;
                     }
                 }
