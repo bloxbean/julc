@@ -1,0 +1,769 @@
+{
+  "schemaVersion": 1,
+  "$comment": "Tagged index of julc-examples for AI agent retrieval. Each entry has stable metadata that the future MCP julc_examples_search tool can query: difficulty, concepts, cipRelevance, kind, and optional canonical. Examples flagged canonical:true are the recommended first-look set for an AI agent learning JuLC — idiomatic patterns covering the breadth of validators, minting policies, sealed-interface redeemers, HOFs, and on-chain libraries. Source files are paths within this repo.",
+  "repo": "https://github.com/bloxbean/julc-examples",
+  "concepts": {
+    "spending-validator": "Uses @SpendingValidator with (datum, redeemer, ScriptContext) entrypoint",
+    "minting-policy": "Uses @MintingValidator (or @MintingPolicy) with (redeemer, ScriptContext) entrypoint",
+    "parameterized-validator": "Uses @Param fields baked in at compile time",
+    "sealed-interface-redeemer": "Redeemer is a sealed interface with multiple permitted record variants, dispatched via switch",
+    "multi-sig": "Validates multiple signatures in the transaction signatories list",
+    "datum-state-transition": "Spending validator that checks an output datum reflects an updated state from the input datum",
+    "value-arithmetic": "Uses ValuesLib add/subtract/eq/leq/geq for multi-asset value comparison",
+    "lovelace-payment-check": "Uses OutputLib.lovelacePaidTo / paidAtLeast",
+    "interval-deadline": "Uses IntervalLib.contains for time-based deadline enforcement",
+    "hof-lambda": "Uses higher-order functions (list.map / filter / any / all / find / foldl) with inline lambdas",
+    "for-each-loop": "Uses for-each over JulcList<T> or JulcMap<K,V>",
+    "while-loop": "Uses while loop with explicit accumulator",
+    "nested-loops": "Loops within loops (outer for-each / while + inner)",
+    "recursion": "Self-recursive helper method (LetRec)",
+    "mutual-recursion": "Two mutually recursive helpers (Bekic's theorem)",
+    "onchain-library": "Uses or defines a @OnchainLibrary helper class",
+    "onchain-library-shared": "Demonstrates sharing a library across multiple validators",
+    "address-credential-switch": "Switches on Credential / sealed-interface to filter by credential type",
+    "merkle-proof": "Verifies a Merkle proof on-chain",
+    "linked-list": "On-chain linked-list pattern (head pointer + next pointer datums)",
+    "atomic-swap": "Atomic swap pattern between two parties",
+    "lending": "Collateral / loan / liquidation pattern",
+    "treasury": "Treasury / vault / multi-sig fund management",
+    "auction": "First-price / dutch / english auction pattern",
+    "escrow": "Buyer-seller escrow with refund path",
+    "vesting": "Time-locked vesting with beneficiary release",
+    "htlc": "Hashed time-locked contract",
+    "lottery": "On-chain lottery / random selection",
+    "crowdfund": "Crowdfunding / threshold-funding pattern",
+    "payment-splitter": "Splits an incoming payment across multiple recipients",
+    "factory": "Factory pattern that mints child scripts/tokens",
+    "upgradeable": "Upgradeable proxy / versioned logic pattern",
+    "nft-minting": "NFT minting with metadata",
+    "cip-68-metadata": "CIP-68 metadata-on-chain NFT",
+    "one-shot-mint": "Single-mint policy bound to a specific UTxO",
+    "raw-plutusdata-interop": "Uses raw PlutusData for interop (acceptable case, not anti-pattern)",
+    "wingriders-benchmark": "Real-world DEX validator used for performance benchmarking",
+    "multi-validator": "Uses @MultiValidator to combine multiple purposes (mint + spend etc.) in one script class",
+    "optional-type": "Uses Optional<T> for nullable / maybe-absent values",
+    "tuple-access": "Uses Tuple2/Tuple3 with .first()/.second()/.third() field access",
+    "output-datum-switch": "Switches on the OutputDatum sealed interface (NoOutputDatum/OutputDatumHash/InlineDatum)",
+    "inline-datum": "Reads metadata or state from an InlineDatum on a UTxO",
+    "signatory-check": "Verifies that specific PubKeyHashes appear in TxInfo.signatories()",
+    "script-context-fields": "Reads multiple fields off ScriptContext / TxInfo / ScriptInfo (typed access, not raw PlutusData)",
+    "value-singleton": "Constructs a single-asset Value via Value.singleton or Value.lovelace",
+    "policy-id-token-name": "Manipulates PolicyId / TokenName newtype wrappers explicitly"
+  },
+  "examples": [
+    {
+      "id": "vesting-validator",
+      "name": "VestingValidator",
+      "title": "Time-locked vesting",
+      "summary": "Spending validator that releases funds to a beneficiary. Demonstrates typed datum/redeemer records and signatory checks.",
+      "source": "src/main/java/com/example/validators/VestingValidator.java",
+      "kind": "spending-validator",
+      "difficulty": "beginner",
+      "canonical": true,
+      "concepts": [
+        "spending-validator",
+        "parameterized-validator",
+        "vesting",
+        "for-each-loop",
+        "value-arithmetic",
+        "signatory-check"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "escrow-validator",
+      "name": "EscrowValidator",
+      "title": "Buyer-seller escrow with refund",
+      "summary": "Two-party escrow with both a complete path (buyer + seller signatures + payment) and a refund path (seller signature + past deadline). Reuses ValidationUtils @OnchainLibrary helpers.",
+      "source": "src/main/java/com/example/validators/EscrowValidator.java",
+      "kind": "spending-validator",
+      "difficulty": "beginner",
+      "concepts": [
+        "spending-validator",
+        "escrow",
+        "interval-deadline",
+        "onchain-library",
+        "for-each-loop"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "auction-validator",
+      "name": "AuctionValidator",
+      "title": "Auction with sealed-interface redeemer",
+      "summary": "Two-variant sealed interface redeemer (Bid / Close) dispatched via switch expression. Different field counts per variant.",
+      "source": "src/main/java/com/example/validators/AuctionValidator.java",
+      "kind": "spending-validator",
+      "difficulty": "beginner",
+      "canonical": true,
+      "concepts": [
+        "spending-validator",
+        "sealed-interface-redeemer",
+        "auction",
+        "signatory-check"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "multisig-treasury",
+      "name": "MultiSigTreasury",
+      "title": "2-of-N multi-signature treasury",
+      "summary": "Spending validator requiring two distinct signers from the datum.",
+      "source": "src/main/java/com/example/validators/MultiSigTreasury.java",
+      "kind": "spending-validator",
+      "difficulty": "beginner",
+      "concepts": [
+        "spending-validator",
+        "multi-sig",
+        "treasury"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "multisig-minting",
+      "name": "MultiSigMinting",
+      "title": "Multi-action minting policy",
+      "summary": "Three-variant sealed interface redeemer (MintByAuthority / BurnByOwner / MintByMultiSig). Demonstrates @MintingValidator with no datum.",
+      "source": "src/main/java/com/example/validators/MultiSigMinting.java",
+      "kind": "minting-policy",
+      "difficulty": "beginner",
+      "concepts": [
+        "minting-policy",
+        "sealed-interface-redeemer",
+        "multi-sig"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "one-shot-mint",
+      "name": "OneShotMintPolicy",
+      "title": "One-shot UTxO-bound minting",
+      "summary": "Parameterized minting policy that can only mint when a specific UTxO is consumed. The canonical pattern for unique NFTs.",
+      "source": "src/main/java/com/example/validators/OneShotMintPolicy.java",
+      "kind": "minting-policy",
+      "difficulty": "intermediate",
+      "canonical": true,
+      "concepts": [
+        "minting-policy",
+        "parameterized-validator",
+        "one-shot-mint",
+        "for-each-loop",
+        "script-context-fields"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "guarded-minting",
+      "name": "GuardedMinting",
+      "title": "Authority-guarded minting",
+      "summary": "Minting policy that requires a parameterized authority signature.",
+      "source": "src/main/java/com/example/validators/GuardedMinting.java",
+      "kind": "minting-policy",
+      "difficulty": "beginner",
+      "concepts": [
+        "minting-policy",
+        "parameterized-validator"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "output-check-validator",
+      "name": "OutputCheckValidator",
+      "title": "Minimum payment to recipient",
+      "summary": "Demonstrates OutputLib usage: lovelacePaidTo, countOutputsAt. Datum stores a typed Address.",
+      "source": "src/main/java/com/example/validators/OutputCheckValidator.java",
+      "kind": "spending-validator",
+      "difficulty": "beginner",
+      "canonical": true,
+      "concepts": [
+        "spending-validator",
+        "lovelace-payment-check",
+        "script-context-fields"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "whitelist-treasury",
+      "name": "WhitelistTreasuryValidator",
+      "title": "Whitelist-restricted treasury",
+      "summary": "Spending validator that only allows whitelisted signers to spend, using a list-membership check.",
+      "source": "src/main/java/com/example/validators/WhitelistTreasuryValidator.java",
+      "kind": "spending-validator",
+      "difficulty": "beginner",
+      "concepts": [
+        "spending-validator",
+        "treasury",
+        "for-each-loop"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "token-distribution",
+      "name": "TokenDistributionValidator",
+      "title": "Multi-beneficiary distribution with HOFs",
+      "summary": "Treasury that distributes tokens to a list of beneficiaries. Showcases higher-order functions: list.all, list.any, list.filter with lambda variable capture and block bodies. Sealed interface redeemer (Distribute / Cancel). Switches on Credential.",
+      "source": "src/main/java/com/example/validators/TokenDistributionValidator.java",
+      "kind": "spending-validator",
+      "difficulty": "intermediate",
+      "canonical": true,
+      "concepts": [
+        "spending-validator",
+        "parameterized-validator",
+        "treasury",
+        "hof-lambda",
+        "for-each-loop",
+        "address-credential-switch",
+        "sealed-interface-redeemer",
+        "signatory-check"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "mpf-registry",
+      "name": "MpfRegistryValidator",
+      "title": "Merkle Patricia Forestry registry",
+      "summary": "Registry validator using Merkle Patricia Forestry for compact on-chain set membership. Uses self-recursive helpers and the MPF library.",
+      "source": "src/main/java/com/example/validators/MpfRegistryValidator.java",
+      "kind": "spending-validator",
+      "difficulty": "advanced",
+      "concepts": [
+        "spending-validator",
+        "merkle-proof",
+        "recursion",
+        "onchain-library"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "merkle-patricia-forestry",
+      "name": "MerklePatriciaForestry",
+      "title": "Merkle Patricia Forestry verification library",
+      "summary": "@OnchainLibrary providing MPF proof verification primitives. Used by MpfRegistryValidator. Demonstrates self-recursive UPLC compilation.",
+      "source": "src/main/java/com/example/mpf/MerklePatriciaForestry.java",
+      "kind": "onchain-library",
+      "difficulty": "advanced",
+      "concepts": [
+        "onchain-library",
+        "merkle-proof",
+        "recursion"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "cip68-nft",
+      "name": "Cip68Nft",
+      "title": "CIP-68 NFT with on-chain metadata",
+      "summary": "CIP-68 multi-validator with a reference NFT (label 100) carrying inline-datum metadata and a user NFT (label 222). Demonstrates @MultiValidator (MINT + SPEND), parameterized validator, two sealed-interface redeemers, OutputDatum switch, Credential switch, and HOF lambda with block body.",
+      "source": "src/main/java/com/example/nft/onchain/Cip68Nft.java",
+      "kind": "minting-policy",
+      "difficulty": "advanced",
+      "canonical": true,
+      "concepts": [
+        "minting-policy",
+        "spending-validator",
+        "multi-validator",
+        "nft-minting",
+        "cip-68-metadata",
+        "parameterized-validator",
+        "sealed-interface-redeemer",
+        "output-datum-switch",
+        "inline-datum",
+        "address-credential-switch",
+        "hof-lambda",
+        "value-singleton",
+        "script-context-fields"
+      ],
+      "cipRelevance": [
+        "CIP-68"
+      ]
+    },
+    {
+      "id": "linked-list-validator",
+      "name": "LinkedListValidator",
+      "title": "On-chain linked list pattern",
+      "summary": "Demonstrates the on-chain linked list pattern used to represent unbounded sets of UTxOs (head/tail pointers in datums). Note: uses raw PlutusData casts for the linked-list manipulation — advanced pattern, not the recommended idiom for new code.",
+      "source": "src/main/java/com/example/linkedlist/onchain/LinkedListValidator.java",
+      "kind": "spending-validator",
+      "difficulty": "advanced",
+      "concepts": [
+        "spending-validator",
+        "linked-list",
+        "datum-state-transition",
+        "raw-plutusdata-interop"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "linked-list-lib",
+      "name": "LinkedListLib",
+      "title": "Linked-list helper library",
+      "summary": "@OnchainLibrary for the linked-list pattern. Companion to LinkedListValidator. Note: uses raw PlutusData throughout — advanced pattern, not the recommended idiom for new code.",
+      "source": "src/main/java/com/example/linkedlist/onchain/LinkedListLib.java",
+      "kind": "onchain-library",
+      "difficulty": "advanced",
+      "concepts": [
+        "onchain-library",
+        "linked-list",
+        "raw-plutusdata-interop"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "swap-order",
+      "name": "SwapOrder",
+      "title": "Atomic swap order",
+      "summary": "Atomic swap between two parties with redeemer-driven cancel/execute paths.",
+      "source": "src/main/java/com/example/swap/onchain/SwapOrder.java",
+      "kind": "spending-validator",
+      "difficulty": "intermediate",
+      "concepts": [
+        "spending-validator",
+        "atomic-swap",
+        "sealed-interface-redeemer"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "collateral-loan",
+      "name": "CollateralLoan",
+      "title": "Collateralized lending",
+      "summary": "Lending validator with collateral, loan, and liquidation paths.",
+      "source": "src/main/java/com/example/lending/onchain/CollateralLoan.java",
+      "kind": "spending-validator",
+      "difficulty": "advanced",
+      "concepts": [
+        "spending-validator",
+        "lending",
+        "sealed-interface-redeemer",
+        "interval-deadline"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "uverify-v1",
+      "name": "UVerifyV1",
+      "title": "UVerify protocol — main validator",
+      "summary": "Main validator of the UVerify protocol (multi-script content verification). Real-world reference; uses proxy + fee pot pattern.",
+      "source": "src/main/java/com/example/uverify/onchain/UVerifyV1.java",
+      "kind": "spending-validator",
+      "difficulty": "advanced",
+      "concepts": [
+        "spending-validator",
+        "upgradeable"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "uverify-proxy",
+      "name": "UVerifyProxy",
+      "title": "UVerify upgradeable proxy",
+      "summary": "Proxy validator delegating to a versioned logic script. Pattern for upgradeable on-chain logic.",
+      "source": "src/main/java/com/example/uverify/onchain/UVerifyProxy.java",
+      "kind": "spending-validator",
+      "difficulty": "advanced",
+      "concepts": [
+        "spending-validator",
+        "upgradeable"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "uverify-fee-pot",
+      "name": "UVerifyFeePot",
+      "title": "UVerify fee collection",
+      "summary": "Fee accumulator validator for the UVerify protocol.",
+      "source": "src/main/java/com/example/uverify/onchain/UVerifyFeePot.java",
+      "kind": "spending-validator",
+      "difficulty": "advanced",
+      "concepts": [
+        "spending-validator",
+        "treasury"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "uverify-tx-lib",
+      "name": "UVerifyTxLib",
+      "title": "UVerify shared on-chain helpers",
+      "summary": "@OnchainLibrary used by all UVerify scripts.",
+      "source": "src/main/java/com/example/uverify/onchain/UVerifyTxLib.java",
+      "kind": "onchain-library",
+      "difficulty": "advanced",
+      "concepts": [
+        "onchain-library",
+        "onchain-library-shared"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "cf-vesting",
+      "name": "CfVestingValidator",
+      "title": "Cardano Foundation: Vesting template",
+      "summary": "CF reference implementation of a vesting contract.",
+      "source": "src/main/java/com/example/cftemplates/vesting/onchain/CfVestingValidator.java",
+      "kind": "spending-validator",
+      "difficulty": "intermediate",
+      "concepts": [
+        "spending-validator",
+        "vesting",
+        "interval-deadline"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "cf-escrow",
+      "name": "CfEscrowValidator",
+      "title": "Cardano Foundation: Escrow template",
+      "summary": "CF reference implementation of an escrow contract. Used as the JuLC vs Haskell budget benchmark target (matches Haskell exactly). Note: uses raw PlutusData casts in places — not the recommended idiom for new code.",
+      "source": "src/main/java/com/example/cftemplates/escrow/onchain/CfEscrowValidator.java",
+      "kind": "spending-validator",
+      "difficulty": "intermediate",
+      "concepts": [
+        "spending-validator",
+        "escrow",
+        "raw-plutusdata-interop"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "cf-auction",
+      "name": "CfAuctionValidator",
+      "title": "Cardano Foundation: Auction template",
+      "summary": "CF reference implementation of an auction. Note: uses raw PlutusData casts in places — not the recommended idiom for new code.",
+      "source": "src/main/java/com/example/cftemplates/auction/onchain/CfAuctionValidator.java",
+      "kind": "spending-validator",
+      "difficulty": "intermediate",
+      "concepts": [
+        "spending-validator",
+        "auction",
+        "sealed-interface-redeemer",
+        "raw-plutusdata-interop"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "cf-htlc",
+      "name": "CfHtlcValidator",
+      "title": "Cardano Foundation: HTLC template",
+      "summary": "Hashed time-locked contract reference implementation.",
+      "source": "src/main/java/com/example/cftemplates/htlc/onchain/CfHtlcValidator.java",
+      "kind": "spending-validator",
+      "difficulty": "intermediate",
+      "concepts": [
+        "spending-validator",
+        "htlc",
+        "interval-deadline"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "cf-lottery",
+      "name": "CfLotteryValidator",
+      "title": "Cardano Foundation: Lottery template",
+      "summary": "On-chain lottery reference implementation.",
+      "source": "src/main/java/com/example/cftemplates/lottery/onchain/CfLotteryValidator.java",
+      "kind": "spending-validator",
+      "difficulty": "intermediate",
+      "concepts": [
+        "spending-validator",
+        "lottery"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "cf-crowdfund",
+      "name": "CfCrowdfundValidator",
+      "title": "Cardano Foundation: Crowdfund template",
+      "summary": "Threshold-funded crowdfunding reference implementation.",
+      "source": "src/main/java/com/example/cftemplates/crowdfund/onchain/CfCrowdfundValidator.java",
+      "kind": "spending-validator",
+      "difficulty": "intermediate",
+      "concepts": [
+        "spending-validator",
+        "crowdfund"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "cf-payment-splitter",
+      "name": "CfPaymentSplitterValidator",
+      "title": "Cardano Foundation: Payment splitter",
+      "summary": "Splits an incoming payment across multiple recipients.",
+      "source": "src/main/java/com/example/cftemplates/paymentsplitter/onchain/CfPaymentSplitterValidator.java",
+      "kind": "spending-validator",
+      "difficulty": "beginner",
+      "concepts": [
+        "spending-validator",
+        "payment-splitter"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "cf-bet",
+      "name": "CfBetValidator",
+      "title": "Cardano Foundation: Bet template",
+      "summary": "Two-party betting contract.",
+      "source": "src/main/java/com/example/cftemplates/bet/onchain/CfBetValidator.java",
+      "kind": "spending-validator",
+      "difficulty": "intermediate",
+      "concepts": [
+        "spending-validator"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "cf-price-bet",
+      "name": "CfPriceBetValidator",
+      "title": "Cardano Foundation: Price bet (oracle)",
+      "summary": "Price-feed-based betting contract using oracle data.",
+      "source": "src/main/java/com/example/cftemplates/pricebet/onchain/CfPriceBetValidator.java",
+      "kind": "spending-validator",
+      "difficulty": "advanced",
+      "concepts": [
+        "spending-validator"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "cf-simple-transfer",
+      "name": "CfSimpleTransferValidator",
+      "title": "Cardano Foundation: Simple transfer",
+      "summary": "Minimal spending validator demonstrating the simplest correct shape.",
+      "source": "src/main/java/com/example/cftemplates/simpletransfer/onchain/CfSimpleTransferValidator.java",
+      "kind": "spending-validator",
+      "difficulty": "beginner",
+      "concepts": [
+        "spending-validator"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "cf-simple-wallet",
+      "name": "CfSimpleWalletValidator",
+      "title": "Cardano Foundation: Simple wallet",
+      "summary": "Minimal wallet validator. Companion to CfWalletFundsValidator.",
+      "source": "src/main/java/com/example/cftemplates/simplewallet/onchain/CfSimpleWalletValidator.java",
+      "kind": "spending-validator",
+      "difficulty": "beginner",
+      "concepts": [
+        "spending-validator"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "cf-wallet-funds",
+      "name": "CfWalletFundsValidator",
+      "title": "Cardano Foundation: Wallet funds tracker",
+      "summary": "Tracks wallet funds via datum-state transitions.",
+      "source": "src/main/java/com/example/cftemplates/simplewallet/onchain/CfWalletFundsValidator.java",
+      "kind": "spending-validator",
+      "difficulty": "intermediate",
+      "concepts": [
+        "spending-validator",
+        "datum-state-transition"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "cf-vault",
+      "name": "CfVaultValidator",
+      "title": "Cardano Foundation: Vault",
+      "summary": "Personal vault with time-locked withdrawals.",
+      "source": "src/main/java/com/example/cftemplates/vault/onchain/CfVaultValidator.java",
+      "kind": "spending-validator",
+      "difficulty": "intermediate",
+      "concepts": [
+        "spending-validator",
+        "treasury",
+        "interval-deadline"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "cf-storage",
+      "name": "CfStorageValidator",
+      "title": "Cardano Foundation: Datum storage",
+      "summary": "On-chain key-value store via datum, demonstrating datum-state transitions.",
+      "source": "src/main/java/com/example/cftemplates/storage/onchain/CfStorageValidator.java",
+      "kind": "spending-validator",
+      "difficulty": "intermediate",
+      "concepts": [
+        "spending-validator",
+        "datum-state-transition"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "cf-identity",
+      "name": "CfIdentityValidator",
+      "title": "Cardano Foundation: Identity registration",
+      "summary": "On-chain identity registration template.",
+      "source": "src/main/java/com/example/cftemplates/identity/onchain/CfIdentityValidator.java",
+      "kind": "spending-validator",
+      "difficulty": "intermediate",
+      "concepts": [
+        "spending-validator"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "cf-anonymous-data",
+      "name": "CfAnonymousDataValidator",
+      "title": "Cardano Foundation: Anonymous data",
+      "summary": "Anonymous data publication pattern.",
+      "source": "src/main/java/com/example/cftemplates/anonymousdata/onchain/CfAnonymousDataValidator.java",
+      "kind": "spending-validator",
+      "difficulty": "intermediate",
+      "concepts": [
+        "spending-validator"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "cf-token-transfer",
+      "name": "CfTokenTransferValidator",
+      "title": "Cardano Foundation: Token transfer with policies",
+      "summary": "Token transfer with multi-asset value validation.",
+      "source": "src/main/java/com/example/cftemplates/tokentransfer/onchain/CfTokenTransferValidator.java",
+      "kind": "spending-validator",
+      "difficulty": "intermediate",
+      "concepts": [
+        "spending-validator",
+        "value-arithmetic"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "cf-atomic-tx",
+      "name": "CfAtomicTxValidator",
+      "title": "Cardano Foundation: Atomic transaction (multi-validator)",
+      "summary": "Combined multi-validator demonstrating Cardano's native atomicity: a minting policy requires a secret password while the spending validator always succeeds. If the mint fails the whole transaction fails. Demonstrates @MultiValidator with multiple @Entrypoint(purpose=...) methods.",
+      "source": "src/main/java/com/example/cftemplates/atomictx/onchain/CfAtomicTxValidator.java",
+      "kind": "minting-policy",
+      "difficulty": "advanced",
+      "concepts": [
+        "minting-policy",
+        "spending-validator",
+        "multi-validator"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "cf-factory",
+      "name": "CfFactoryValidator",
+      "title": "Cardano Foundation: Factory",
+      "summary": "Factory pattern that mints child product scripts. Companion to CfProductValidator.",
+      "source": "src/main/java/com/example/cftemplates/factory/onchain/CfFactoryValidator.java",
+      "kind": "minting-policy",
+      "difficulty": "advanced",
+      "concepts": [
+        "minting-policy",
+        "factory"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "cf-product",
+      "name": "CfProductValidator",
+      "title": "Cardano Foundation: Factory product",
+      "summary": "Product validator instantiated by CfFactoryValidator.",
+      "source": "src/main/java/com/example/cftemplates/factory/onchain/CfProductValidator.java",
+      "kind": "spending-validator",
+      "difficulty": "advanced",
+      "concepts": [
+        "spending-validator",
+        "factory"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "cf-proxy",
+      "name": "CfProxyValidator",
+      "title": "Cardano Foundation: Upgradeable proxy",
+      "summary": "Proxy validator pattern for upgradeable scripts. Used with CfScriptLogicV1 / V2.",
+      "source": "src/main/java/com/example/cftemplates/upgradeableproxy/onchain/CfProxyValidator.java",
+      "kind": "spending-validator",
+      "difficulty": "advanced",
+      "concepts": [
+        "spending-validator",
+        "upgradeable"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "cf-script-logic-v1",
+      "name": "CfScriptLogicV1",
+      "title": "Cardano Foundation: Proxy logic V1",
+      "summary": "First version of the upgradeable proxy logic.",
+      "source": "src/main/java/com/example/cftemplates/upgradeableproxy/onchain/CfScriptLogicV1.java",
+      "kind": "spending-validator",
+      "difficulty": "advanced",
+      "concepts": [
+        "spending-validator",
+        "upgradeable"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "cf-script-logic-v2",
+      "name": "CfScriptLogicV2",
+      "title": "Cardano Foundation: Proxy logic V2",
+      "summary": "Upgraded version of the proxy logic.",
+      "source": "src/main/java/com/example/cftemplates/upgradeableproxy/onchain/CfScriptLogicV2.java",
+      "kind": "spending-validator",
+      "difficulty": "advanced",
+      "concepts": [
+        "spending-validator",
+        "upgradeable"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "wingriders-pool",
+      "name": "WingRidersPoolValidator",
+      "title": "WingRiders DEX pool validator (benchmark)",
+      "summary": "Real-world DEX pool validator from WingRiders. Used for the JuLC vs Plinth/Aiken/Plutarch CPU/mem benchmark — JuLC at ~20-37M CPU/req vs Plinth 723M, Aiken 164M, Plutarch 121M.",
+      "source": "src/main/java/com/example/benchmark/wingriders/WingRidersPoolValidator.java",
+      "kind": "spending-validator",
+      "difficulty": "advanced",
+      "concepts": [
+        "spending-validator",
+        "wingriders-benchmark",
+        "value-arithmetic",
+        "for-each-loop"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "wingriders-request",
+      "name": "WingRidersRequestValidator",
+      "title": "WingRiders DEX request validator (benchmark)",
+      "summary": "Real-world DEX request validator from WingRiders. Used in the benchmark suite.",
+      "source": "src/main/java/com/example/benchmark/wingriders/WingRidersRequestValidator.java",
+      "kind": "spending-validator",
+      "difficulty": "advanced",
+      "concepts": [
+        "spending-validator",
+        "wingriders-benchmark"
+      ],
+      "cipRelevance": []
+    },
+    {
+      "id": "validation-utils",
+      "name": "ValidationUtils",
+      "title": "Shared validation @OnchainLibrary",
+      "summary": "Reusable on-chain helper used by EscrowValidator and others. Demonstrates @OnchainLibrary authoring pattern.",
+      "source": "src/main/java/com/example/util/ValidationUtils.java",
+      "kind": "onchain-library",
+      "difficulty": "beginner",
+      "canonical": true,
+      "concepts": [
+        "onchain-library",
+        "onchain-library-shared",
+        "signatory-check",
+        "interval-deadline"
+      ],
+      "cipRelevance": []
+    }
+  ]
+}

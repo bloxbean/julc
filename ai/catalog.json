@@ -1,0 +1,5105 @@
+{
+  "schemaVersion": 1,
+  "julcVersion": "0.1.0-pre12",
+  "generatedAt": "2026-05-17T08:09:51.487Z",
+  "counts": {
+    "stdlibClasses": 13,
+    "stdlibMethods": 170,
+    "ledgerTypes": 33,
+    "diagnostics": 30,
+    "examples": 47
+  },
+  "stdlib": {
+    "AddressLib": {
+      "fqcn": "com.bloxbean.cardano.julc.stdlib.lib.AddressLib",
+      "summary": "Address operations compiled from Java source to UPLC.",
+      "methodCount": 4,
+      "methods": [
+        {
+          "name": "credentialHash",
+          "signature": "byte[] credentialHash(Address address)",
+          "params": [
+            {
+              "name": "address",
+              "type": "Address"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Extract the hash from the payment credential of an address. Works for both PubKeyCredential and ScriptCredential. Uses chained field access: Credential variant -> hash wrapper -> byte[]."
+        },
+        {
+          "name": "isScriptAddress",
+          "signature": "boolean isScriptAddress(Address address)",
+          "params": [
+            {
+              "name": "address",
+              "type": "Address"
+            }
+          ],
+          "returns": "boolean",
+          "doc": "Check if an address has a ScriptCredential (tag == 1)."
+        },
+        {
+          "name": "isPubKeyAddress",
+          "signature": "boolean isPubKeyAddress(Address address)",
+          "params": [
+            {
+              "name": "address",
+              "type": "Address"
+            }
+          ],
+          "returns": "boolean",
+          "doc": "Check if an address has a PubKeyCredential (tag == 0)."
+        },
+        {
+          "name": "paymentCredential",
+          "signature": "Credential paymentCredential(Address address)",
+          "params": [
+            {
+              "name": "address",
+              "type": "Address"
+            }
+          ],
+          "returns": "Credential",
+          "doc": "Extract the payment credential from an address."
+        }
+      ]
+    },
+    "BitwiseLib": {
+      "fqcn": "com.bloxbean.cardano.julc.stdlib.lib.BitwiseLib",
+      "summary": "Bitwise operations on ByteStrings compiled from Java source to UPLC.",
+      "methodCount": 9,
+      "methods": [
+        {
+          "name": "andByteString",
+          "signature": "byte[] andByteString(boolean padding, byte[] a, byte[] b)",
+          "params": [
+            {
+              "name": "padding",
+              "type": "boolean"
+            },
+            {
+              "name": "a",
+              "type": "byte[]"
+            },
+            {
+              "name": "b",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Bitwise AND of two bytestrings with padding semantics."
+        },
+        {
+          "name": "orByteString",
+          "signature": "byte[] orByteString(boolean padding, byte[] a, byte[] b)",
+          "params": [
+            {
+              "name": "padding",
+              "type": "boolean"
+            },
+            {
+              "name": "a",
+              "type": "byte[]"
+            },
+            {
+              "name": "b",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Bitwise OR of two bytestrings with padding semantics."
+        },
+        {
+          "name": "xorByteString",
+          "signature": "byte[] xorByteString(boolean padding, byte[] a, byte[] b)",
+          "params": [
+            {
+              "name": "padding",
+              "type": "boolean"
+            },
+            {
+              "name": "a",
+              "type": "byte[]"
+            },
+            {
+              "name": "b",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Bitwise XOR of two bytestrings with padding semantics."
+        },
+        {
+          "name": "complementByteString",
+          "signature": "byte[] complementByteString(byte[] bs)",
+          "params": [
+            {
+              "name": "bs",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Bitwise complement of a bytestring."
+        },
+        {
+          "name": "readBit",
+          "signature": "boolean readBit(byte[] bs, long index)",
+          "params": [
+            {
+              "name": "bs",
+              "type": "byte[]"
+            },
+            {
+              "name": "index",
+              "type": "long"
+            }
+          ],
+          "returns": "boolean",
+          "doc": "Read a bit at a given index."
+        },
+        {
+          "name": "shiftByteString",
+          "signature": "byte[] shiftByteString(byte[] bs, long n)",
+          "params": [
+            {
+              "name": "bs",
+              "type": "byte[]"
+            },
+            {
+              "name": "n",
+              "type": "long"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Shift a bytestring by n bits."
+        },
+        {
+          "name": "rotateByteString",
+          "signature": "byte[] rotateByteString(byte[] bs, long n)",
+          "params": [
+            {
+              "name": "bs",
+              "type": "byte[]"
+            },
+            {
+              "name": "n",
+              "type": "long"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Rotate a bytestring by n bits."
+        },
+        {
+          "name": "countSetBits",
+          "signature": "long countSetBits(byte[] bs)",
+          "params": [
+            {
+              "name": "bs",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "long",
+          "doc": "Count the number of set bits (1s) in a bytestring."
+        },
+        {
+          "name": "findFirstSetBit",
+          "signature": "long findFirstSetBit(byte[] bs)",
+          "params": [
+            {
+              "name": "bs",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "long",
+          "doc": "Find the index of the first set bit, or -1 if none."
+        }
+      ]
+    },
+    "BlsLib": {
+      "fqcn": "com.bloxbean.cardano.julc.stdlib.lib.BlsLib",
+      "summary": "BLS12-381 elliptic curve operations compiled from Java source to UPLC.",
+      "methodCount": 19,
+      "methods": [
+        {
+          "name": "g1Add",
+          "signature": "byte[] g1Add(byte[] a, byte[] b)",
+          "params": [
+            {
+              "name": "a",
+              "type": "byte[]"
+            },
+            {
+              "name": "b",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Add two G1 elements."
+        },
+        {
+          "name": "g1Neg",
+          "signature": "byte[] g1Neg(byte[] a)",
+          "params": [
+            {
+              "name": "a",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Negate a G1 element."
+        },
+        {
+          "name": "g1ScalarMul",
+          "signature": "byte[] g1ScalarMul(BigInteger scalar, byte[] g1)",
+          "params": [
+            {
+              "name": "scalar",
+              "type": "BigInteger"
+            },
+            {
+              "name": "g1",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Scalar multiplication of a G1 element."
+        },
+        {
+          "name": "g1Equal",
+          "signature": "boolean g1Equal(byte[] a, byte[] b)",
+          "params": [
+            {
+              "name": "a",
+              "type": "byte[]"
+            },
+            {
+              "name": "b",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "boolean",
+          "doc": "Check equality of two G1 elements."
+        },
+        {
+          "name": "g1Compress",
+          "signature": "byte[] g1Compress(byte[] g1)",
+          "params": [
+            {
+              "name": "g1",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Compress a G1 element to 48 bytes."
+        },
+        {
+          "name": "g1Uncompress",
+          "signature": "byte[] g1Uncompress(byte[] compressed)",
+          "params": [
+            {
+              "name": "compressed",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Uncompress a 48-byte compressed G1 element."
+        },
+        {
+          "name": "g1HashToGroup",
+          "signature": "byte[] g1HashToGroup(byte[] msg, byte[] dst)",
+          "params": [
+            {
+              "name": "msg",
+              "type": "byte[]"
+            },
+            {
+              "name": "dst",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Hash a message to a G1 element using the given domain separation tag."
+        },
+        {
+          "name": "g2Add",
+          "signature": "byte[] g2Add(byte[] a, byte[] b)",
+          "params": [
+            {
+              "name": "a",
+              "type": "byte[]"
+            },
+            {
+              "name": "b",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Add two G2 elements."
+        },
+        {
+          "name": "g2Neg",
+          "signature": "byte[] g2Neg(byte[] a)",
+          "params": [
+            {
+              "name": "a",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Negate a G2 element."
+        },
+        {
+          "name": "g2ScalarMul",
+          "signature": "byte[] g2ScalarMul(BigInteger scalar, byte[] g2)",
+          "params": [
+            {
+              "name": "scalar",
+              "type": "BigInteger"
+            },
+            {
+              "name": "g2",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Scalar multiplication of a G2 element."
+        },
+        {
+          "name": "g2Equal",
+          "signature": "boolean g2Equal(byte[] a, byte[] b)",
+          "params": [
+            {
+              "name": "a",
+              "type": "byte[]"
+            },
+            {
+              "name": "b",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "boolean",
+          "doc": "Check equality of two G2 elements."
+        },
+        {
+          "name": "g2Compress",
+          "signature": "byte[] g2Compress(byte[] g2)",
+          "params": [
+            {
+              "name": "g2",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Compress a G2 element to 96 bytes."
+        },
+        {
+          "name": "g2Uncompress",
+          "signature": "byte[] g2Uncompress(byte[] compressed)",
+          "params": [
+            {
+              "name": "compressed",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Uncompress a 96-byte compressed G2 element."
+        },
+        {
+          "name": "g2HashToGroup",
+          "signature": "byte[] g2HashToGroup(byte[] msg, byte[] dst)",
+          "params": [
+            {
+              "name": "msg",
+              "type": "byte[]"
+            },
+            {
+              "name": "dst",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Hash a message to a G2 element using the given domain separation tag."
+        },
+        {
+          "name": "millerLoop",
+          "signature": "byte[] millerLoop(byte[] g1, byte[] g2)",
+          "params": [
+            {
+              "name": "g1",
+              "type": "byte[]"
+            },
+            {
+              "name": "g2",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Compute the Miller loop pairing of a G1 and G2 element."
+        },
+        {
+          "name": "mulMlResult",
+          "signature": "byte[] mulMlResult(byte[] a, byte[] b)",
+          "params": [
+            {
+              "name": "a",
+              "type": "byte[]"
+            },
+            {
+              "name": "b",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Multiply two Miller loop results."
+        },
+        {
+          "name": "finalVerify",
+          "signature": "boolean finalVerify(byte[] a, byte[] b)",
+          "params": [
+            {
+              "name": "a",
+              "type": "byte[]"
+            },
+            {
+              "name": "b",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "boolean",
+          "doc": "Final verification of two Miller loop results. Returns true if the pairing check passes."
+        },
+        {
+          "name": "g1MultiScalarMul",
+          "signature": "byte[] g1MultiScalarMul(PlutusData scalars, PlutusData points)",
+          "params": [
+            {
+              "name": "scalars",
+              "type": "PlutusData"
+            },
+            {
+              "name": "points",
+              "type": "PlutusData"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Multi-scalar multiplication on G1. Takes a list of scalars and a list of G1 elements."
+        },
+        {
+          "name": "g2MultiScalarMul",
+          "signature": "byte[] g2MultiScalarMul(PlutusData scalars, PlutusData points)",
+          "params": [
+            {
+              "name": "scalars",
+              "type": "PlutusData"
+            },
+            {
+              "name": "points",
+              "type": "PlutusData"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Multi-scalar multiplication on G2. Takes a list of scalars and a list of G2 elements."
+        }
+      ]
+    },
+    "ByteStringLib": {
+      "fqcn": "com.bloxbean.cardano.julc.stdlib.lib.ByteStringLib",
+      "summary": "ByteString operations compiled from Java source to UPLC.",
+      "methodCount": 25,
+      "methods": [
+        {
+          "name": "at",
+          "signature": "long at(byte[] bs, long index)",
+          "params": [
+            {
+              "name": "bs",
+              "type": "byte[]"
+            },
+            {
+              "name": "index",
+              "type": "long"
+            }
+          ],
+          "returns": "long",
+          "doc": "Get the byte at a given index (0-255)."
+        },
+        {
+          "name": "cons",
+          "signature": "byte[] cons(long byte_, byte[] bs)",
+          "params": [
+            {
+              "name": "byte_",
+              "type": "long"
+            },
+            {
+              "name": "bs",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Prepend a byte (0-255) to a bytestring."
+        },
+        {
+          "name": "slice",
+          "signature": "byte[] slice(byte[] bs, long start, long length)",
+          "params": [
+            {
+              "name": "bs",
+              "type": "byte[]"
+            },
+            {
+              "name": "start",
+              "type": "long"
+            },
+            {
+              "name": "length",
+              "type": "long"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Extract a slice: slice(bs, start, length)."
+        },
+        {
+          "name": "length",
+          "signature": "long length(byte[] bs)",
+          "params": [
+            {
+              "name": "bs",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "long",
+          "doc": "Get the length of a bytestring."
+        },
+        {
+          "name": "drop",
+          "signature": "byte[] drop(byte[] bs, long n)",
+          "params": [
+            {
+              "name": "bs",
+              "type": "byte[]"
+            },
+            {
+              "name": "n",
+              "type": "long"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Drop the first n bytes from a bytestring."
+        },
+        {
+          "name": "take",
+          "signature": "byte[] take(byte[] bs, long n)",
+          "params": [
+            {
+              "name": "bs",
+              "type": "byte[]"
+            },
+            {
+              "name": "n",
+              "type": "long"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Take the first n bytes from a bytestring."
+        },
+        {
+          "name": "append",
+          "signature": "byte[] append(byte[] a, byte[] b)",
+          "params": [
+            {
+              "name": "a",
+              "type": "byte[]"
+            },
+            {
+              "name": "b",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Concatenate two bytestrings."
+        },
+        {
+          "name": "empty",
+          "signature": "byte[] empty()",
+          "params": [],
+          "returns": "byte[]",
+          "doc": "An empty bytestring."
+        },
+        {
+          "name": "zeros",
+          "signature": "byte[] zeros(long n)",
+          "params": [
+            {
+              "name": "n",
+              "type": "long"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Create a bytestring of n zero bytes."
+        },
+        {
+          "name": "equals",
+          "signature": "boolean equals(byte[] a, byte[] b)",
+          "params": [
+            {
+              "name": "a",
+              "type": "byte[]"
+            },
+            {
+              "name": "b",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "boolean",
+          "doc": "Compare two bytestrings for equality."
+        },
+        {
+          "name": "lessThan",
+          "signature": "boolean lessThan(byte[] a, byte[] b)",
+          "params": [
+            {
+              "name": "a",
+              "type": "byte[]"
+            },
+            {
+              "name": "b",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "boolean",
+          "doc": "Lexicographic comparison: a < b."
+        },
+        {
+          "name": "lessThanEquals",
+          "signature": "boolean lessThanEquals(byte[] a, byte[] b)",
+          "params": [
+            {
+              "name": "a",
+              "type": "byte[]"
+            },
+            {
+              "name": "b",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "boolean",
+          "doc": "Lexicographic comparison: a <= b."
+        },
+        {
+          "name": "integerToByteString",
+          "signature": "byte[] integerToByteString(boolean endian, long width, long i)",
+          "params": [
+            {
+              "name": "endian",
+              "type": "boolean"
+            },
+            {
+              "name": "width",
+              "type": "long"
+            },
+            {
+              "name": "i",
+              "type": "long"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Convert integer to bytestring."
+        },
+        {
+          "name": "integerToByteString",
+          "signature": "byte[] integerToByteString(boolean endian, long width, BigInteger i)",
+          "params": [
+            {
+              "name": "endian",
+              "type": "boolean"
+            },
+            {
+              "name": "width",
+              "type": "long"
+            },
+            {
+              "name": "i",
+              "type": "BigInteger"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Convert integer to bytestring. Accepts arbitrary-precision BigInteger."
+        },
+        {
+          "name": "byteStringToInteger",
+          "signature": "BigInteger byteStringToInteger(boolean endian, byte[] bs)",
+          "params": [
+            {
+              "name": "endian",
+              "type": "boolean"
+            },
+            {
+              "name": "bs",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "BigInteger",
+          "doc": "Convert bytestring to integer. Returns arbitrary-precision BigInteger."
+        },
+        {
+          "name": "encodeUtf8",
+          "signature": "byte[] encodeUtf8(PlutusData s)",
+          "params": [
+            {
+              "name": "s",
+              "type": "PlutusData"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Encode a string as UTF-8 bytestring."
+        },
+        {
+          "name": "decodeUtf8",
+          "signature": "PlutusData decodeUtf8(byte[] bs)",
+          "params": [
+            {
+              "name": "bs",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "PlutusData",
+          "doc": "Decode a UTF-8 bytestring."
+        },
+        {
+          "name": "serialiseData",
+          "signature": "byte[] serialiseData(PlutusData d)",
+          "params": [
+            {
+              "name": "d",
+              "type": "PlutusData"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Serialise a Data value to CBOR bytes."
+        },
+        {
+          "name": "hexNibble",
+          "signature": "long hexNibble(long n)",
+          "params": [
+            {
+              "name": "n",
+              "type": "long"
+            }
+          ],
+          "returns": "long",
+          "doc": "Map a nibble (0-15) to its lowercase ASCII hex char ('0'-'9', 'a'-'f')."
+        },
+        {
+          "name": "toHex",
+          "signature": "byte[] toHex(byte[] bs)",
+          "params": [
+            {
+              "name": "bs",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Convert a bytestring to its lowercase hex representation. Each byte becomes two hex characters (e.g. 0xDE → \"de\")."
+        },
+        {
+          "name": "toHexStep",
+          "signature": "byte[] toHexStep(byte[] bs, long idx, byte[] acc)",
+          "params": [
+            {
+              "name": "bs",
+              "type": "byte[]"
+            },
+            {
+              "name": "idx",
+              "type": "long"
+            },
+            {
+              "name": "acc",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Recursive helper: process bytes from index down to 0, prepending hex chars."
+        },
+        {
+          "name": "intToDecimalString",
+          "signature": "byte[] intToDecimalString(BigInteger n)",
+          "params": [
+            {
+              "name": "n",
+              "type": "BigInteger"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Convert a non-negative integer to its decimal string representation as UTF-8 bytes. E.g. 42 → \"42\" (as byte[]{52, 50})."
+        },
+        {
+          "name": "intToDecimalStep",
+          "signature": "byte[] intToDecimalStep(BigInteger n, byte[] acc)",
+          "params": [
+            {
+              "name": "n",
+              "type": "BigInteger"
+            },
+            {
+              "name": "acc",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Recursive helper: divmod by 10, prepend digit char."
+        },
+        {
+          "name": "utf8ToInteger",
+          "signature": "BigInteger utf8ToInteger(byte[] bs)",
+          "params": [
+            {
+              "name": "bs",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "BigInteger",
+          "doc": "Parse a UTF-8 decimal string (e.g. bytes of \"42\") to an integer. Inverse of #intToDecimalString(BigInteger). Assumes all bytes are ASCII digits ('0'-'9'). No sign handling."
+        },
+        {
+          "name": "utf8ToIntegerStep",
+          "signature": "BigInteger utf8ToIntegerStep(byte[] bs, long idx, long len, BigInteger acc)",
+          "params": [
+            {
+              "name": "bs",
+              "type": "byte[]"
+            },
+            {
+              "name": "idx",
+              "type": "long"
+            },
+            {
+              "name": "len",
+              "type": "long"
+            },
+            {
+              "name": "acc",
+              "type": "BigInteger"
+            }
+          ],
+          "returns": "BigInteger",
+          "doc": "Recursive helper: accumulate decimal value left-to-right."
+        }
+      ]
+    },
+    "ContextsLib": {
+      "fqcn": "com.bloxbean.cardano.julc.stdlib.lib.ContextsLib",
+      "summary": "Script context operations compiled from Java source to UPLC.",
+      "methodCount": 23,
+      "methods": [
+        {
+          "name": "trace",
+          "signature": "void trace(String message)",
+          "params": [
+            {
+              "name": "message",
+              "type": "String"
+            }
+          ],
+          "returns": "void",
+          "doc": "Emits a trace message. On-chain becomes UPLC Trace builtin. Body is a no-op — the compiler uses the PIR-registered version."
+        },
+        {
+          "name": "getTxInfo",
+          "signature": "TxInfo getTxInfo(ScriptContext ctx)",
+          "params": [
+            {
+              "name": "ctx",
+              "type": "ScriptContext"
+            }
+          ],
+          "returns": "TxInfo",
+          "doc": "Extracts the TxInfo from a ScriptContext."
+        },
+        {
+          "name": "getRedeemer",
+          "signature": "PlutusData getRedeemer(ScriptContext ctx)",
+          "params": [
+            {
+              "name": "ctx",
+              "type": "ScriptContext"
+            }
+          ],
+          "returns": "PlutusData",
+          "doc": "Extracts the redeemer from a ScriptContext."
+        },
+        {
+          "name": "txInfoInputs",
+          "signature": "JulcList<TxInInfo> txInfoInputs(TxInfo txInfo)",
+          "params": [
+            {
+              "name": "txInfo",
+              "type": "TxInfo"
+            }
+          ],
+          "returns": "JulcList<TxInInfo>",
+          "doc": "Extracts the list of inputs from a TxInfo."
+        },
+        {
+          "name": "txInfoOutputs",
+          "signature": "JulcList<TxOut> txInfoOutputs(TxInfo txInfo)",
+          "params": [
+            {
+              "name": "txInfo",
+              "type": "TxInfo"
+            }
+          ],
+          "returns": "JulcList<TxOut>",
+          "doc": "Extracts the list of outputs from a TxInfo."
+        },
+        {
+          "name": "txInfoSignatories",
+          "signature": "JulcList<PubKeyHash> txInfoSignatories(TxInfo txInfo)",
+          "params": [
+            {
+              "name": "txInfo",
+              "type": "TxInfo"
+            }
+          ],
+          "returns": "JulcList<PubKeyHash>",
+          "doc": "Extracts the signatories list from a TxInfo."
+        },
+        {
+          "name": "txInfoValidRange",
+          "signature": "Interval txInfoValidRange(TxInfo txInfo)",
+          "params": [
+            {
+              "name": "txInfo",
+              "type": "TxInfo"
+            }
+          ],
+          "returns": "Interval",
+          "doc": "Extracts the valid range from a TxInfo."
+        },
+        {
+          "name": "txInfoMint",
+          "signature": "Value txInfoMint(TxInfo txInfo)",
+          "params": [
+            {
+              "name": "txInfo",
+              "type": "TxInfo"
+            }
+          ],
+          "returns": "Value",
+          "doc": "Extracts the mint field from a TxInfo."
+        },
+        {
+          "name": "txInfoFee",
+          "signature": "BigInteger txInfoFee(TxInfo txInfo)",
+          "params": [
+            {
+              "name": "txInfo",
+              "type": "TxInfo"
+            }
+          ],
+          "returns": "BigInteger",
+          "doc": "Extracts the fee from a TxInfo."
+        },
+        {
+          "name": "txInfoId",
+          "signature": "TxId txInfoId(TxInfo txInfo)",
+          "params": [
+            {
+              "name": "txInfo",
+              "type": "TxInfo"
+            }
+          ],
+          "returns": "TxId",
+          "doc": "Extracts the txId from a TxInfo."
+        },
+        {
+          "name": "txInfoRefInputs",
+          "signature": "JulcList<TxInInfo> txInfoRefInputs(TxInfo txInfo)",
+          "params": [
+            {
+              "name": "txInfo",
+              "type": "TxInfo"
+            }
+          ],
+          "returns": "JulcList<TxInInfo>",
+          "doc": "Extracts reference inputs from TxInfo."
+        },
+        {
+          "name": "txInfoWithdrawals",
+          "signature": "JulcMap<Credential, BigInteger> txInfoWithdrawals(TxInfo txInfo)",
+          "params": [
+            {
+              "name": "txInfo",
+              "type": "TxInfo"
+            }
+          ],
+          "returns": "JulcMap<Credential, BigInteger>",
+          "doc": "Extracts withdrawals map from TxInfo."
+        },
+        {
+          "name": "txInfoRedeemers",
+          "signature": "JulcMap<ScriptPurpose, PlutusData> txInfoRedeemers(TxInfo txInfo)",
+          "params": [
+            {
+              "name": "txInfo",
+              "type": "TxInfo"
+            }
+          ],
+          "returns": "JulcMap<ScriptPurpose, PlutusData>",
+          "doc": "Extracts redeemers map from TxInfo."
+        },
+        {
+          "name": "signedBy",
+          "signature": "boolean signedBy(TxInfo txInfo, byte[] pkh)",
+          "params": [
+            {
+              "name": "txInfo",
+              "type": "TxInfo"
+            },
+            {
+              "name": "pkh",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "boolean",
+          "doc": "Checks whether a given PubKeyHash is in the signatories list."
+        },
+        {
+          "name": "getSpendingDatum",
+          "signature": "Optional<PlutusData> getSpendingDatum(ScriptContext ctx)",
+          "params": [
+            {
+              "name": "ctx",
+              "type": "ScriptContext"
+            }
+          ],
+          "returns": "Optional<PlutusData>",
+          "doc": "Extracts the optional datum from a spending ScriptContext. Returns Optional.of(datum) for SpendingScript with datum, Optional.empty() otherwise."
+        },
+        {
+          "name": "findOwnInput",
+          "signature": "Optional<TxInInfo> findOwnInput(ScriptContext ctx)",
+          "params": [
+            {
+              "name": "ctx",
+              "type": "ScriptContext"
+            }
+          ],
+          "returns": "Optional<TxInInfo>",
+          "doc": "Finds the own input for a spending validator. Returns Optional."
+        },
+        {
+          "name": "ownInputScriptHash",
+          "signature": "byte[] ownInputScriptHash(ScriptContext ctx)",
+          "params": [
+            {
+              "name": "ctx",
+              "type": "ScriptContext"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Extracts the script credential hash from the own input's address."
+        },
+        {
+          "name": "ownHash",
+          "signature": "byte[] ownHash(ScriptContext ctx)",
+          "params": [
+            {
+              "name": "ctx",
+              "type": "ScriptContext"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Extracts the own script hash from the ScriptContext's ScriptInfo. Minting -> policyId. Others -> script credential hash from own input."
+        },
+        {
+          "name": "getContinuingOutputs",
+          "signature": "JulcList<TxOut> getContinuingOutputs(ScriptContext ctx)",
+          "params": [
+            {
+              "name": "ctx",
+              "type": "ScriptContext"
+            }
+          ],
+          "returns": "JulcList<TxOut>",
+          "doc": "Returns outputs that pay to the same address as the own spending input."
+        },
+        {
+          "name": "valueSpent",
+          "signature": "JulcList<Value> valueSpent(TxInfo txInfo)",
+          "params": [
+            {
+              "name": "txInfo",
+              "type": "TxInfo"
+            }
+          ],
+          "returns": "JulcList<Value>",
+          "doc": "Collects the values of all inputs as a list."
+        },
+        {
+          "name": "valuePaid",
+          "signature": "JulcList<Value> valuePaid(TxInfo txInfo, Address addr)",
+          "params": [
+            {
+              "name": "txInfo",
+              "type": "TxInfo"
+            },
+            {
+              "name": "addr",
+              "type": "Address"
+            }
+          ],
+          "returns": "JulcList<Value>",
+          "doc": "Filters outputs by address and returns their values as a list."
+        },
+        {
+          "name": "scriptOutputsAt",
+          "signature": "JulcList<TxOut> scriptOutputsAt(TxInfo txInfo, byte[] scriptHash)",
+          "params": [
+            {
+              "name": "txInfo",
+              "type": "TxInfo"
+            },
+            {
+              "name": "scriptHash",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "JulcList<TxOut>",
+          "doc": "Filters outputs whose address has a ScriptCredential matching the given hash."
+        },
+        {
+          "name": "findDatum",
+          "signature": "Optional<PlutusData> findDatum(TxInfo txInfo, PlutusData hash)",
+          "params": [
+            {
+              "name": "txInfo",
+              "type": "TxInfo"
+            },
+            {
+              "name": "hash",
+              "type": "PlutusData"
+            }
+          ],
+          "returns": "Optional<PlutusData>",
+          "doc": "Searches the txInfo datums map for a datum matching the given hash. Returns Optional."
+        }
+      ]
+    },
+    "CryptoLib": {
+      "fqcn": "com.bloxbean.cardano.julc.stdlib.lib.CryptoLib",
+      "summary": "Cryptographic hash and signature verification operations compiled from Java source to UPLC.",
+      "methodCount": 9,
+      "methods": [
+        {
+          "name": "sha2_256",
+          "signature": "byte[] sha2_256(byte[] bs)",
+          "params": [
+            {
+              "name": "bs",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "SHA2-256 hash."
+        },
+        {
+          "name": "blake2b_256",
+          "signature": "byte[] blake2b_256(byte[] bs)",
+          "params": [
+            {
+              "name": "bs",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Blake2b-256 hash."
+        },
+        {
+          "name": "verifyEd25519Signature",
+          "signature": "boolean verifyEd25519Signature(byte[] key, byte[] msg, byte[] sig)",
+          "params": [
+            {
+              "name": "key",
+              "type": "byte[]"
+            },
+            {
+              "name": "msg",
+              "type": "byte[]"
+            },
+            {
+              "name": "sig",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "boolean",
+          "doc": "Verify an Ed25519 signature."
+        },
+        {
+          "name": "sha3_256",
+          "signature": "byte[] sha3_256(byte[] bs)",
+          "params": [
+            {
+              "name": "bs",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "SHA3-256 hash."
+        },
+        {
+          "name": "blake2b_224",
+          "signature": "byte[] blake2b_224(byte[] bs)",
+          "params": [
+            {
+              "name": "bs",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Blake2b-224 hash (commonly used for key hashes)."
+        },
+        {
+          "name": "keccak_256",
+          "signature": "byte[] keccak_256(byte[] bs)",
+          "params": [
+            {
+              "name": "bs",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Keccak-256 hash."
+        },
+        {
+          "name": "verifyEcdsaSecp256k1",
+          "signature": "boolean verifyEcdsaSecp256k1(byte[] vk, byte[] msg, byte[] sig)",
+          "params": [
+            {
+              "name": "vk",
+              "type": "byte[]"
+            },
+            {
+              "name": "msg",
+              "type": "byte[]"
+            },
+            {
+              "name": "sig",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "boolean",
+          "doc": "Verify ECDSA secp256k1 signature."
+        },
+        {
+          "name": "verifySchnorrSecp256k1",
+          "signature": "boolean verifySchnorrSecp256k1(byte[] vk, byte[] msg, byte[] sig)",
+          "params": [
+            {
+              "name": "vk",
+              "type": "byte[]"
+            },
+            {
+              "name": "msg",
+              "type": "byte[]"
+            },
+            {
+              "name": "sig",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "boolean",
+          "doc": "Verify Schnorr secp256k1 signature."
+        },
+        {
+          "name": "ripemd_160",
+          "signature": "byte[] ripemd_160(byte[] bs)",
+          "params": [
+            {
+              "name": "bs",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "RIPEMD-160 hash."
+        }
+      ]
+    },
+    "IntervalLib": {
+      "fqcn": "com.bloxbean.cardano.julc.stdlib.lib.IntervalLib",
+      "summary": "Interval / POSIXTimeRange operations compiled from Java source to UPLC.",
+      "methodCount": 9,
+      "methods": [
+        {
+          "name": "contains",
+          "signature": "boolean contains(Interval interval, BigInteger point)",
+          "params": [
+            {
+              "name": "interval",
+              "type": "Interval"
+            },
+            {
+              "name": "point",
+              "type": "BigInteger"
+            }
+          ],
+          "returns": "boolean",
+          "doc": "Checks whether a point in time is contained within an interval."
+        },
+        {
+          "name": "always",
+          "signature": "Interval always()",
+          "params": [],
+          "returns": "Interval",
+          "doc": "Builds the \"always\" interval: (-inf, +inf)."
+        },
+        {
+          "name": "after",
+          "signature": "Interval after(BigInteger t)",
+          "params": [
+            {
+              "name": "t",
+              "type": "BigInteger"
+            }
+          ],
+          "returns": "Interval",
+          "doc": "Builds the interval [t, +inf)."
+        },
+        {
+          "name": "before",
+          "signature": "Interval before(BigInteger t)",
+          "params": [
+            {
+              "name": "t",
+              "type": "BigInteger"
+            }
+          ],
+          "returns": "Interval",
+          "doc": "Builds the interval (-inf, t]."
+        },
+        {
+          "name": "between",
+          "signature": "Interval between(BigInteger low, BigInteger high)",
+          "params": [
+            {
+              "name": "low",
+              "type": "BigInteger"
+            },
+            {
+              "name": "high",
+              "type": "BigInteger"
+            }
+          ],
+          "returns": "Interval",
+          "doc": "Builds the interval [low, high] (both inclusive)."
+        },
+        {
+          "name": "never",
+          "signature": "Interval never()",
+          "params": [],
+          "returns": "Interval",
+          "doc": "Builds the empty interval (PosInf, NegInf)."
+        },
+        {
+          "name": "isEmpty",
+          "signature": "boolean isEmpty(Interval interval)",
+          "params": [
+            {
+              "name": "interval",
+              "type": "Interval"
+            }
+          ],
+          "returns": "boolean",
+          "doc": "Checks if an interval is empty (lower is PosInf or upper is NegInf)."
+        },
+        {
+          "name": "finiteUpperBound",
+          "signature": "BigInteger finiteUpperBound(Interval interval)",
+          "params": [
+            {
+              "name": "interval",
+              "type": "Interval"
+            }
+          ],
+          "returns": "BigInteger",
+          "doc": "Extract the finite upper bound time, or return -1 if not finite."
+        },
+        {
+          "name": "finiteLowerBound",
+          "signature": "BigInteger finiteLowerBound(Interval interval)",
+          "params": [
+            {
+              "name": "interval",
+              "type": "Interval"
+            }
+          ],
+          "returns": "BigInteger",
+          "doc": "Extract the finite lower bound time, or return -1 if not finite."
+        }
+      ]
+    },
+    "ListsLib": {
+      "fqcn": "com.bloxbean.cardano.julc.stdlib.lib.ListsLib",
+      "summary": "List operations compiled from Java source to UPLC.",
+      "methodCount": 17,
+      "methods": [
+        {
+          "name": "empty",
+          "signature": "JulcList<PlutusData> empty()",
+          "params": [],
+          "returns": "JulcList<PlutusData>",
+          "doc": "Return an empty list."
+        },
+        {
+          "name": "prepend",
+          "signature": "JulcList<PlutusData> prepend(JulcList<PlutusData> list, PlutusData element)",
+          "params": [
+            {
+              "name": "list",
+              "type": "JulcList<PlutusData>"
+            },
+            {
+              "name": "element",
+              "type": "PlutusData"
+            }
+          ],
+          "returns": "JulcList<PlutusData>",
+          "doc": "Prepend an element to the front of a list."
+        },
+        {
+          "name": "length",
+          "signature": "long length(JulcList<PlutusData> list)",
+          "params": [
+            {
+              "name": "list",
+              "type": "JulcList<PlutusData>"
+            }
+          ],
+          "returns": "long",
+          "doc": "Return the number of elements in the list."
+        },
+        {
+          "name": "isEmpty",
+          "signature": "boolean isEmpty(JulcList<PlutusData> list)",
+          "params": [
+            {
+              "name": "list",
+              "type": "JulcList<PlutusData>"
+            }
+          ],
+          "returns": "boolean",
+          "doc": "Return true if the list is empty."
+        },
+        {
+          "name": "head",
+          "signature": "PlutusData head(JulcList<PlutusData> list)",
+          "params": [
+            {
+              "name": "list",
+              "type": "JulcList<PlutusData>"
+            }
+          ],
+          "returns": "PlutusData",
+          "doc": "Return the first element of the list."
+        },
+        {
+          "name": "tail",
+          "signature": "JulcList<PlutusData> tail(JulcList<PlutusData> list)",
+          "params": [
+            {
+              "name": "list",
+              "type": "JulcList<PlutusData>"
+            }
+          ],
+          "returns": "JulcList<PlutusData>",
+          "doc": "Return all elements except the first."
+        },
+        {
+          "name": "reverse",
+          "signature": "JulcList<PlutusData> reverse(JulcList<PlutusData> list)",
+          "params": [
+            {
+              "name": "list",
+              "type": "JulcList<PlutusData>"
+            }
+          ],
+          "returns": "JulcList<PlutusData>",
+          "doc": "Reverse a list."
+        },
+        {
+          "name": "concat",
+          "signature": "JulcList<PlutusData> concat(JulcList<PlutusData> a, JulcList<PlutusData> b)",
+          "params": [
+            {
+              "name": "a",
+              "type": "JulcList<PlutusData>"
+            },
+            {
+              "name": "b",
+              "type": "JulcList<PlutusData>"
+            }
+          ],
+          "returns": "JulcList<PlutusData>",
+          "doc": "Concatenate two lists."
+        },
+        {
+          "name": "nth",
+          "signature": "PlutusData nth(JulcList<PlutusData> list, long n)",
+          "params": [
+            {
+              "name": "list",
+              "type": "JulcList<PlutusData>"
+            },
+            {
+              "name": "n",
+              "type": "long"
+            }
+          ],
+          "returns": "PlutusData",
+          "doc": "Get element at index n (0-based)."
+        },
+        {
+          "name": "take",
+          "signature": "JulcList<PlutusData> take(JulcList<PlutusData> list, long n)",
+          "params": [
+            {
+              "name": "list",
+              "type": "JulcList<PlutusData>"
+            },
+            {
+              "name": "n",
+              "type": "long"
+            }
+          ],
+          "returns": "JulcList<PlutusData>",
+          "doc": "Take the first n elements from a list."
+        },
+        {
+          "name": "drop",
+          "signature": "JulcList<PlutusData> drop(JulcList<PlutusData> list, long n)",
+          "params": [
+            {
+              "name": "list",
+              "type": "JulcList<PlutusData>"
+            },
+            {
+              "name": "n",
+              "type": "long"
+            }
+          ],
+          "returns": "JulcList<PlutusData>",
+          "doc": "Drop the first n elements from a list."
+        },
+        {
+          "name": "contains",
+          "signature": "boolean contains(JulcList<PlutusData> list, PlutusData target)",
+          "params": [
+            {
+              "name": "list",
+              "type": "JulcList<PlutusData>"
+            },
+            {
+              "name": "target",
+              "type": "PlutusData"
+            }
+          ],
+          "returns": "boolean",
+          "doc": "Return true if list contains target (using EqualsData)."
+        },
+        {
+          "name": "containsInt",
+          "signature": "boolean containsInt(JulcList<PlutusData> list, BigInteger target)",
+          "params": [
+            {
+              "name": "list",
+              "type": "JulcList<PlutusData>"
+            },
+            {
+              "name": "target",
+              "type": "BigInteger"
+            }
+          ],
+          "returns": "boolean",
+          "doc": "Check if a list of integers contains the given value. Uses EqualsInteger."
+        },
+        {
+          "name": "hasDuplicateInts",
+          "signature": "boolean hasDuplicateInts(JulcList<PlutusData> list)",
+          "params": [
+            {
+              "name": "list",
+              "type": "JulcList<PlutusData>"
+            }
+          ],
+          "returns": "boolean",
+          "doc": "Check if a list of integers contains any duplicate. O(n^2). Delegates to #hasDuplicates."
+        },
+        {
+          "name": "hasDuplicateBytes",
+          "signature": "boolean hasDuplicateBytes(JulcList<PlutusData> list)",
+          "params": [
+            {
+              "name": "list",
+              "type": "JulcList<PlutusData>"
+            }
+          ],
+          "returns": "boolean",
+          "doc": "Check if a list of bytestrings contains any duplicate. O(n^2). Delegates to #hasDuplicates."
+        },
+        {
+          "name": "hasDuplicates",
+          "signature": "boolean hasDuplicates(JulcList<PlutusData> list)",
+          "params": [
+            {
+              "name": "list",
+              "type": "JulcList<PlutusData>"
+            }
+          ],
+          "returns": "boolean",
+          "doc": "Check if a list contains any duplicate element. O(n^2). For each element, searches the tail using EqualsData."
+        },
+        {
+          "name": "containsBytes",
+          "signature": "boolean containsBytes(JulcList<PlutusData> list, byte[] target)",
+          "params": [
+            {
+              "name": "list",
+              "type": "JulcList<PlutusData>"
+            },
+            {
+              "name": "target",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "boolean",
+          "doc": "Check if a list of bytestrings contains the given target. Uses EqualsByteString."
+        }
+      ]
+    },
+    "MapLib": {
+      "fqcn": "com.bloxbean.cardano.julc.stdlib.lib.MapLib",
+      "summary": "Map (association list) operations compiled from Java source to UPLC.",
+      "methodCount": 10,
+      "methods": [
+        {
+          "name": "empty",
+          "signature": "JulcMap<PlutusData, PlutusData> empty()",
+          "params": [],
+          "returns": "JulcMap<PlutusData, PlutusData>",
+          "doc": "Return an empty map."
+        },
+        {
+          "name": "lookup",
+          "signature": "Optional<PlutusData> lookup(JulcMap<PlutusData, PlutusData> map, PlutusData key)",
+          "params": [
+            {
+              "name": "map",
+              "type": "JulcMap<PlutusData, PlutusData>"
+            },
+            {
+              "name": "key",
+              "type": "PlutusData"
+            }
+          ],
+          "returns": "Optional<PlutusData>",
+          "doc": "Look up a key. Returns Optional.of(value) if found, Optional.empty() if not."
+        },
+        {
+          "name": "member",
+          "signature": "boolean member(JulcMap<PlutusData, PlutusData> map, PlutusData key)",
+          "params": [
+            {
+              "name": "map",
+              "type": "JulcMap<PlutusData, PlutusData>"
+            },
+            {
+              "name": "key",
+              "type": "PlutusData"
+            }
+          ],
+          "returns": "boolean",
+          "doc": "Check if key exists in map."
+        },
+        {
+          "name": "insert",
+          "signature": "JulcMap<PlutusData, PlutusData> insert(JulcMap<PlutusData, PlutusData> map, PlutusData key, PlutusData value)",
+          "params": [
+            {
+              "name": "map",
+              "type": "JulcMap<PlutusData, PlutusData>"
+            },
+            {
+              "name": "key",
+              "type": "PlutusData"
+            },
+            {
+              "name": "value",
+              "type": "PlutusData"
+            }
+          ],
+          "returns": "JulcMap<PlutusData, PlutusData>",
+          "doc": "Insert key-value pair (prepends; shadows existing)."
+        },
+        {
+          "name": "delete",
+          "signature": "JulcMap<PlutusData, PlutusData> delete(JulcMap<PlutusData, PlutusData> map, PlutusData key)",
+          "params": [
+            {
+              "name": "map",
+              "type": "JulcMap<PlutusData, PlutusData>"
+            },
+            {
+              "name": "key",
+              "type": "PlutusData"
+            }
+          ],
+          "returns": "JulcMap<PlutusData, PlutusData>",
+          "doc": "Delete a key from the map."
+        },
+        {
+          "name": "keys",
+          "signature": "JulcList<PlutusData> keys(JulcMap<PlutusData, PlutusData> map)",
+          "params": [
+            {
+              "name": "map",
+              "type": "JulcMap<PlutusData, PlutusData>"
+            }
+          ],
+          "returns": "JulcList<PlutusData>",
+          "doc": "Extract all keys from a map as a list."
+        },
+        {
+          "name": "values",
+          "signature": "JulcList<PlutusData> values(JulcMap<PlutusData, PlutusData> map)",
+          "params": [
+            {
+              "name": "map",
+              "type": "JulcMap<PlutusData, PlutusData>"
+            }
+          ],
+          "returns": "JulcList<PlutusData>",
+          "doc": "Extract all values from a map as a list."
+        },
+        {
+          "name": "toList",
+          "signature": "JulcMap<PlutusData, PlutusData> toList(JulcMap<PlutusData, PlutusData> map)",
+          "params": [
+            {
+              "name": "map",
+              "type": "JulcMap<PlutusData, PlutusData>"
+            }
+          ],
+          "returns": "JulcMap<PlutusData, PlutusData>",
+          "doc": "Convert map to pair list (identity — MapType vars already hold pair lists)."
+        },
+        {
+          "name": "fromList",
+          "signature": "JulcMap<PlutusData, PlutusData> fromList(PlutusData list)",
+          "params": [
+            {
+              "name": "list",
+              "type": "PlutusData"
+            }
+          ],
+          "returns": "JulcMap<PlutusData, PlutusData>",
+          "doc": "Construct map from pair list (MapData)."
+        },
+        {
+          "name": "size",
+          "signature": "long size(JulcMap<PlutusData, PlutusData> map)",
+          "params": [
+            {
+              "name": "map",
+              "type": "JulcMap<PlutusData, PlutusData>"
+            }
+          ],
+          "returns": "long",
+          "doc": "Count entries in the map."
+        }
+      ]
+    },
+    "MathLib": {
+      "fqcn": "com.bloxbean.cardano.julc.stdlib.lib.MathLib",
+      "summary": "Mathematical operations compiled from Java source to UPLC.",
+      "methodCount": 8,
+      "methods": [
+        {
+          "name": "abs",
+          "signature": "BigInteger abs(BigInteger x)",
+          "params": [
+            {
+              "name": "x",
+              "type": "BigInteger"
+            }
+          ],
+          "returns": "BigInteger",
+          "doc": "Returns the absolute value of an integer."
+        },
+        {
+          "name": "max",
+          "signature": "BigInteger max(BigInteger a, BigInteger b)",
+          "params": [
+            {
+              "name": "a",
+              "type": "BigInteger"
+            },
+            {
+              "name": "b",
+              "type": "BigInteger"
+            }
+          ],
+          "returns": "BigInteger",
+          "doc": "Returns the maximum of two integers."
+        },
+        {
+          "name": "min",
+          "signature": "BigInteger min(BigInteger a, BigInteger b)",
+          "params": [
+            {
+              "name": "a",
+              "type": "BigInteger"
+            },
+            {
+              "name": "b",
+              "type": "BigInteger"
+            }
+          ],
+          "returns": "BigInteger",
+          "doc": "Returns the minimum of two integers."
+        },
+        {
+          "name": "divMod",
+          "signature": "Tuple2<BigInteger, BigInteger> divMod(BigInteger a, BigInteger b)",
+          "params": [
+            {
+              "name": "a",
+              "type": "BigInteger"
+            },
+            {
+              "name": "b",
+              "type": "BigInteger"
+            }
+          ],
+          "returns": "Tuple2<BigInteger, BigInteger>",
+          "doc": "Returns division and modulo as a Tuple2."
+        },
+        {
+          "name": "quotRem",
+          "signature": "Tuple2<BigInteger, BigInteger> quotRem(BigInteger a, BigInteger b)",
+          "params": [
+            {
+              "name": "a",
+              "type": "BigInteger"
+            },
+            {
+              "name": "b",
+              "type": "BigInteger"
+            }
+          ],
+          "returns": "Tuple2<BigInteger, BigInteger>",
+          "doc": "Returns quotient and remainder as a Tuple2."
+        },
+        {
+          "name": "pow",
+          "signature": "BigInteger pow(BigInteger base, BigInteger exp)",
+          "params": [
+            {
+              "name": "base",
+              "type": "BigInteger"
+            },
+            {
+              "name": "exp",
+              "type": "BigInteger"
+            }
+          ],
+          "returns": "BigInteger",
+          "doc": "Returns base raised to the power of exp."
+        },
+        {
+          "name": "expMod",
+          "signature": "BigInteger expMod(BigInteger base, BigInteger exp, BigInteger mod)",
+          "params": [
+            {
+              "name": "base",
+              "type": "BigInteger"
+            },
+            {
+              "name": "exp",
+              "type": "BigInteger"
+            },
+            {
+              "name": "mod",
+              "type": "BigInteger"
+            }
+          ],
+          "returns": "BigInteger",
+          "doc": "Returns (base^exp) mod modulus using the builtin ExpModInteger operation."
+        },
+        {
+          "name": "sign",
+          "signature": "BigInteger sign(BigInteger x)",
+          "params": [
+            {
+              "name": "x",
+              "type": "BigInteger"
+            }
+          ],
+          "returns": "BigInteger",
+          "doc": "Returns -1 if negative, 0 if zero, 1 if positive."
+        }
+      ]
+    },
+    "NativeValueLib": {
+      "fqcn": "com.bloxbean.cardano.julc.stdlib.lib.NativeValueLib",
+      "summary": "Native MaryEra Value operations using PV11 builtins (CIP-153).",
+      "methodCount": 7,
+      "methods": [
+        {
+          "name": "fromData",
+          "signature": "PlutusData fromData(PlutusData mapData)",
+          "params": [
+            {
+              "name": "mapData",
+              "type": "PlutusData"
+            }
+          ],
+          "returns": "PlutusData",
+          "doc": "Convert Map-encoded PlutusData to native Value."
+        },
+        {
+          "name": "toData",
+          "signature": "PlutusData toData(PlutusData value)",
+          "params": [
+            {
+              "name": "value",
+              "type": "PlutusData"
+            }
+          ],
+          "returns": "PlutusData",
+          "doc": "Convert native Value back to Map-encoded PlutusData."
+        },
+        {
+          "name": "insertCoin",
+          "signature": "PlutusData insertCoin(byte[] policyId, byte[] tokenName, BigInteger amount, PlutusData value)",
+          "params": [
+            {
+              "name": "policyId",
+              "type": "byte[]"
+            },
+            {
+              "name": "tokenName",
+              "type": "byte[]"
+            },
+            {
+              "name": "amount",
+              "type": "BigInteger"
+            },
+            {
+              "name": "value",
+              "type": "PlutusData"
+            }
+          ],
+          "returns": "PlutusData",
+          "doc": "Insert or update a token quantity in a Value."
+        },
+        {
+          "name": "lookupCoin",
+          "signature": "BigInteger lookupCoin(byte[] policyId, byte[] tokenName, PlutusData value)",
+          "params": [
+            {
+              "name": "policyId",
+              "type": "byte[]"
+            },
+            {
+              "name": "tokenName",
+              "type": "byte[]"
+            },
+            {
+              "name": "value",
+              "type": "PlutusData"
+            }
+          ],
+          "returns": "BigInteger",
+          "doc": "Look up a token quantity. Returns 0 if absent."
+        },
+        {
+          "name": "union",
+          "signature": "PlutusData union(PlutusData a, PlutusData b)",
+          "params": [
+            {
+              "name": "a",
+              "type": "PlutusData"
+            },
+            {
+              "name": "b",
+              "type": "PlutusData"
+            }
+          ],
+          "returns": "PlutusData",
+          "doc": "Merge two Values by adding quantities."
+        },
+        {
+          "name": "contains",
+          "signature": "boolean contains(PlutusData a, PlutusData b)",
+          "params": [
+            {
+              "name": "a",
+              "type": "PlutusData"
+            },
+            {
+              "name": "b",
+              "type": "PlutusData"
+            }
+          ],
+          "returns": "boolean",
+          "doc": "Check if Value a contains at least Value b (a >= b element-wise)."
+        },
+        {
+          "name": "scale",
+          "signature": "PlutusData scale(BigInteger scalar, PlutusData value)",
+          "params": [
+            {
+              "name": "scalar",
+              "type": "BigInteger"
+            },
+            {
+              "name": "value",
+              "type": "PlutusData"
+            }
+          ],
+          "returns": "PlutusData",
+          "doc": "Scale all quantities by a scalar."
+        }
+      ]
+    },
+    "OutputLib": {
+      "fqcn": "com.bloxbean.cardano.julc.stdlib.lib.OutputLib",
+      "summary": "Transaction output utility operations compiled from Java source to UPLC.",
+      "methodCount": 14,
+      "methods": [
+        {
+          "name": "txOutAddress",
+          "signature": "Address txOutAddress(TxOut txOut)",
+          "params": [
+            {
+              "name": "txOut",
+              "type": "TxOut"
+            }
+          ],
+          "returns": "Address",
+          "doc": "Extract the address from a TxOut."
+        },
+        {
+          "name": "txOutValue",
+          "signature": "Value txOutValue(TxOut txOut)",
+          "params": [
+            {
+              "name": "txOut",
+              "type": "TxOut"
+            }
+          ],
+          "returns": "Value",
+          "doc": "Extract the value from a TxOut."
+        },
+        {
+          "name": "txOutDatum",
+          "signature": "OutputDatum txOutDatum(TxOut txOut)",
+          "params": [
+            {
+              "name": "txOut",
+              "type": "TxOut"
+            }
+          ],
+          "returns": "OutputDatum",
+          "doc": "Extract the datum from a TxOut."
+        },
+        {
+          "name": "outputsAt",
+          "signature": "JulcList<TxOut> outputsAt(JulcList<TxOut> outputs, Address address)",
+          "params": [
+            {
+              "name": "outputs",
+              "type": "JulcList<TxOut>"
+            },
+            {
+              "name": "address",
+              "type": "Address"
+            }
+          ],
+          "returns": "JulcList<TxOut>",
+          "doc": "Return all outputs sent to the given address."
+        },
+        {
+          "name": "countOutputsAt",
+          "signature": "long countOutputsAt(JulcList<TxOut> outputs, Address address)",
+          "params": [
+            {
+              "name": "outputs",
+              "type": "JulcList<TxOut>"
+            },
+            {
+              "name": "address",
+              "type": "Address"
+            }
+          ],
+          "returns": "long",
+          "doc": "Count the number of outputs sent to the given address."
+        },
+        {
+          "name": "uniqueOutputAt",
+          "signature": "TxOut uniqueOutputAt(JulcList<TxOut> outputs, Address address)",
+          "params": [
+            {
+              "name": "outputs",
+              "type": "JulcList<TxOut>"
+            },
+            {
+              "name": "address",
+              "type": "Address"
+            }
+          ],
+          "returns": "TxOut",
+          "doc": "Return the unique output at the given address. Aborts if not exactly one match."
+        },
+        {
+          "name": "outputsWithToken",
+          "signature": "JulcList<TxOut> outputsWithToken(JulcList<TxOut> outputs, byte[] policyId, byte[] tokenName)",
+          "params": [
+            {
+              "name": "outputs",
+              "type": "JulcList<TxOut>"
+            },
+            {
+              "name": "policyId",
+              "type": "byte[]"
+            },
+            {
+              "name": "tokenName",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "JulcList<TxOut>",
+          "doc": "Return all outputs containing the specified token (amount > 0)."
+        },
+        {
+          "name": "valueHasToken",
+          "signature": "boolean valueHasToken(Value value, byte[] policyId, byte[] tokenName)",
+          "params": [
+            {
+              "name": "value",
+              "type": "Value"
+            },
+            {
+              "name": "policyId",
+              "type": "byte[]"
+            },
+            {
+              "name": "tokenName",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "boolean",
+          "doc": "Check if a value contains any amount of the specified token."
+        },
+        {
+          "name": "lovelacePaidTo",
+          "signature": "BigInteger lovelacePaidTo(JulcList<TxOut> outputs, Address address)",
+          "params": [
+            {
+              "name": "outputs",
+              "type": "JulcList<TxOut>"
+            },
+            {
+              "name": "address",
+              "type": "Address"
+            }
+          ],
+          "returns": "BigInteger",
+          "doc": "Sum the lovelace in all outputs sent to the given address."
+        },
+        {
+          "name": "paidAtLeast",
+          "signature": "boolean paidAtLeast(JulcList<TxOut> outputs, Address address, BigInteger minLovelace)",
+          "params": [
+            {
+              "name": "outputs",
+              "type": "JulcList<TxOut>"
+            },
+            {
+              "name": "address",
+              "type": "Address"
+            },
+            {
+              "name": "minLovelace",
+              "type": "BigInteger"
+            }
+          ],
+          "returns": "boolean",
+          "doc": "Check if the total lovelace paid to the address meets the minimum threshold."
+        },
+        {
+          "name": "getInlineDatum",
+          "signature": "PlutusData getInlineDatum(TxOut txOut)",
+          "params": [
+            {
+              "name": "txOut",
+              "type": "TxOut"
+            }
+          ],
+          "returns": "PlutusData",
+          "doc": "Extract the inline datum from a TxOut. Aborts if the datum is not inline."
+        },
+        {
+          "name": "resolveDatum",
+          "signature": "PlutusData resolveDatum(TxOut txOut, JulcMap<PlutusData, PlutusData> datumsMap)",
+          "params": [
+            {
+              "name": "txOut",
+              "type": "TxOut"
+            },
+            {
+              "name": "datumsMap",
+              "type": "JulcMap<PlutusData, PlutusData>"
+            }
+          ],
+          "returns": "PlutusData",
+          "doc": "Resolve the datum from a TxOut: inline datum is returned directly, datum hash is looked up in the datums map, NoDatum aborts."
+        },
+        {
+          "name": "findOutputWithToken",
+          "signature": "TxOut findOutputWithToken(JulcList<TxOut> outputs, byte[] scriptHash, byte[] policyId, byte[] tokenName)",
+          "params": [
+            {
+              "name": "outputs",
+              "type": "JulcList<TxOut>"
+            },
+            {
+              "name": "scriptHash",
+              "type": "byte[]"
+            },
+            {
+              "name": "policyId",
+              "type": "byte[]"
+            },
+            {
+              "name": "tokenName",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "TxOut",
+          "doc": "Find the first output at a script address (identified by scriptHash) containing the specified token with inline datum. Aborts if not found."
+        },
+        {
+          "name": "findInputWithToken",
+          "signature": "TxInInfo findInputWithToken(JulcList<TxInInfo> inputs, byte[] scriptHash, byte[] policyId, byte[] tokenName)",
+          "params": [
+            {
+              "name": "inputs",
+              "type": "JulcList<TxInInfo>"
+            },
+            {
+              "name": "scriptHash",
+              "type": "byte[]"
+            },
+            {
+              "name": "policyId",
+              "type": "byte[]"
+            },
+            {
+              "name": "tokenName",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "TxInInfo",
+          "doc": "Find the first input at a script address containing the specified token with inline datum. Aborts if not found."
+        }
+      ]
+    },
+    "ValuesLib": {
+      "fqcn": "com.bloxbean.cardano.julc.stdlib.lib.ValuesLib",
+      "summary": "Value manipulation operations compiled from Java source to UPLC.",
+      "methodCount": 16,
+      "methods": [
+        {
+          "name": "lovelaceOf",
+          "signature": "BigInteger lovelaceOf(Value value)",
+          "params": [
+            {
+              "name": "value",
+              "type": "Value"
+            }
+          ],
+          "returns": "BigInteger",
+          "doc": "Extracts the lovelace (ADA) amount from a Value."
+        },
+        {
+          "name": "containsPolicy",
+          "signature": "boolean containsPolicy(Value value, byte[] policyId)",
+          "params": [
+            {
+              "name": "value",
+              "type": "Value"
+            },
+            {
+              "name": "policyId",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "boolean",
+          "doc": "Check if a policy ID (as bytes) exists in a Value."
+        },
+        {
+          "name": "geq",
+          "signature": "boolean geq(Value a, Value b)",
+          "params": [
+            {
+              "name": "a",
+              "type": "Value"
+            },
+            {
+              "name": "b",
+              "type": "Value"
+            }
+          ],
+          "returns": "boolean",
+          "doc": "Checks if lovelaceOf(a) >= lovelaceOf(b)."
+        },
+        {
+          "name": "assetOf",
+          "signature": "BigInteger assetOf(Value value, byte[] policyId, byte[] tokenName)",
+          "params": [
+            {
+              "name": "value",
+              "type": "Value"
+            },
+            {
+              "name": "policyId",
+              "type": "byte[]"
+            },
+            {
+              "name": "tokenName",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "BigInteger",
+          "doc": "Extracts the amount of a specific asset. Returns 0 if not found."
+        },
+        {
+          "name": "geqMultiAsset",
+          "signature": "boolean geqMultiAsset(Value a, Value b)",
+          "params": [
+            {
+              "name": "a",
+              "type": "Value"
+            },
+            {
+              "name": "b",
+              "type": "Value"
+            }
+          ],
+          "returns": "boolean",
+          "doc": "Checks if value a >= value b for ALL policy/token pairs (multi-asset)."
+        },
+        {
+          "name": "leq",
+          "signature": "boolean leq(Value a, Value b)",
+          "params": [
+            {
+              "name": "a",
+              "type": "Value"
+            },
+            {
+              "name": "b",
+              "type": "Value"
+            }
+          ],
+          "returns": "boolean",
+          "doc": "Checks if value a <= value b (multi-asset)."
+        },
+        {
+          "name": "eq",
+          "signature": "boolean eq(Value a, Value b)",
+          "params": [
+            {
+              "name": "a",
+              "type": "Value"
+            },
+            {
+              "name": "b",
+              "type": "Value"
+            }
+          ],
+          "returns": "boolean",
+          "doc": "Checks if two values are equal (multi-asset)."
+        },
+        {
+          "name": "isZero",
+          "signature": "boolean isZero(Value value)",
+          "params": [
+            {
+              "name": "value",
+              "type": "Value"
+            }
+          ],
+          "returns": "boolean",
+          "doc": "Checks if a value is zero (all amounts == 0)."
+        },
+        {
+          "name": "singleton",
+          "signature": "Value singleton(byte[] policyId, byte[] tokenName, BigInteger amount)",
+          "params": [
+            {
+              "name": "policyId",
+              "type": "byte[]"
+            },
+            {
+              "name": "tokenName",
+              "type": "byte[]"
+            },
+            {
+              "name": "amount",
+              "type": "BigInteger"
+            }
+          ],
+          "returns": "Value",
+          "doc": "Constructs a Value containing a single asset: Map[(policy, Map[(token, amount)])]."
+        },
+        {
+          "name": "negate",
+          "signature": "Value negate(Value value)",
+          "params": [
+            {
+              "name": "value",
+              "type": "Value"
+            }
+          ],
+          "returns": "Value",
+          "doc": "Negates all amounts in a value."
+        },
+        {
+          "name": "flatten",
+          "signature": "JulcList<PlutusData> flatten(Value value)",
+          "params": [
+            {
+              "name": "value",
+              "type": "Value"
+            }
+          ],
+          "returns": "JulcList<PlutusData>",
+          "doc": "Flattens a Value into a list of (policy, token, amount) triples as ConstrData(0, [p, t, amt])."
+        },
+        {
+          "name": "flattenTyped",
+          "signature": "JulcList<AssetEntry> flattenTyped(Value value)",
+          "params": [
+            {
+              "name": "value",
+              "type": "Value"
+            }
+          ],
+          "returns": "JulcList<AssetEntry>",
+          "doc": "Typed variant of #flatten(Value) that returns `JulcList`. Each element provides typed field access: `entry.policyId()`, `entry.tokenName()`, `entry.amount()`."
+        },
+        {
+          "name": "add",
+          "signature": "Value add(Value a, Value b)",
+          "params": [
+            {
+              "name": "a",
+              "type": "Value"
+            },
+            {
+              "name": "b",
+              "type": "Value"
+            }
+          ],
+          "returns": "Value",
+          "doc": "Adds two Values together (union, adding amounts for matching policy/token)."
+        },
+        {
+          "name": "subtract",
+          "signature": "Value subtract(Value a, Value b)",
+          "params": [
+            {
+              "name": "a",
+              "type": "Value"
+            },
+            {
+              "name": "b",
+              "type": "Value"
+            }
+          ],
+          "returns": "Value",
+          "doc": "Subtracts value b from value a: add(a, negate(b))."
+        },
+        {
+          "name": "countTokensWithQty",
+          "signature": "BigInteger countTokensWithQty(Value mint, byte[] policyId, BigInteger expectedQty)",
+          "params": [
+            {
+              "name": "mint",
+              "type": "Value"
+            },
+            {
+              "name": "policyId",
+              "type": "byte[]"
+            },
+            {
+              "name": "expectedQty",
+              "type": "BigInteger"
+            }
+          ],
+          "returns": "BigInteger",
+          "doc": "Count tokens with a specific quantity under a specific policy in a Value/mint. E.g., count how many tokens were minted with qty=1 under a given policy."
+        },
+        {
+          "name": "findTokenName",
+          "signature": "byte[] findTokenName(Value mint, byte[] policyId, BigInteger expectedQty)",
+          "params": [
+            {
+              "name": "mint",
+              "type": "Value"
+            },
+            {
+              "name": "policyId",
+              "type": "byte[]"
+            },
+            {
+              "name": "expectedQty",
+              "type": "BigInteger"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Find the first token name with a specific quantity under a specific policy. Returns empty bytestring if not found."
+        }
+      ]
+    }
+  },
+  "ledger": {
+    "Address": {
+      "name": "Address",
+      "kind": "record",
+      "fqcn": "com.bloxbean.cardano.julc.ledger.Address",
+      "doc": "A Cardano address: a payment credential and optional staking credential.",
+      "fields": [
+        {
+          "name": "credential",
+          "type": "Credential"
+        },
+        {
+          "name": "stakingCredential",
+          "type": "Optional<StakingCredential>"
+        }
+      ],
+      "methods": []
+    },
+    "Committee": {
+      "name": "Committee",
+      "kind": "record",
+      "fqcn": "com.bloxbean.cardano.julc.ledger.Committee",
+      "doc": "A governance committee.",
+      "fields": [
+        {
+          "name": "members",
+          "type": "JulcMap<Credential, BigInteger>"
+        },
+        {
+          "name": "quorum",
+          "type": "Rational"
+        }
+      ],
+      "methods": []
+    },
+    "Credential": {
+      "name": "Credential",
+      "kind": "sealed",
+      "fqcn": "com.bloxbean.cardano.julc.ledger.Credential",
+      "doc": "A credential: either a public key hash or a script hash.",
+      "variants": [
+        {
+          "name": "PubKeyCredential",
+          "fields": [
+            {
+              "name": "hash",
+              "type": "PubKeyHash"
+            }
+          ],
+          "doc": null
+        },
+        {
+          "name": "ScriptCredential",
+          "fields": [
+            {
+              "name": "hash",
+              "type": "ScriptHash"
+            }
+          ],
+          "doc": null
+        }
+      ]
+    },
+    "DRep": {
+      "name": "DRep",
+      "kind": "sealed",
+      "fqcn": "com.bloxbean.cardano.julc.ledger.DRep",
+      "doc": "A delegated representative (DRep).",
+      "variants": [
+        {
+          "name": "DRepCredential",
+          "fields": [
+            {
+              "name": "credential",
+              "type": "Credential"
+            }
+          ],
+          "doc": null
+        },
+        {
+          "name": "AlwaysAbstain",
+          "fields": [],
+          "doc": null
+        },
+        {
+          "name": "AlwaysNoConfidence",
+          "fields": [],
+          "doc": null
+        }
+      ]
+    },
+    "DatumHash": {
+      "name": "DatumHash",
+      "kind": "record",
+      "fqcn": "com.bloxbean.cardano.julc.ledger.DatumHash",
+      "doc": "A datum hash (typically 32 bytes). No byte-length validation — length enforcement is a ledger rule, not a type invariant.",
+      "fields": [
+        {
+          "name": "hash",
+          "type": "byte[]"
+        }
+      ],
+      "methods": [
+        {
+          "name": "hash",
+          "static": false,
+          "signature": "byte[] hash()",
+          "params": [],
+          "returns": "byte[]",
+          "doc": null
+        },
+        {
+          "name": "of",
+          "static": true,
+          "signature": "DatumHash of(byte[] hash)",
+          "params": [
+            {
+              "name": "hash",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "DatumHash",
+          "doc": null
+        }
+      ]
+    },
+    "Delegatee": {
+      "name": "Delegatee",
+      "kind": "sealed",
+      "fqcn": "com.bloxbean.cardano.julc.ledger.Delegatee",
+      "doc": "A delegation target.",
+      "variants": [
+        {
+          "name": "Stake",
+          "fields": [
+            {
+              "name": "poolId",
+              "type": "PubKeyHash"
+            }
+          ],
+          "doc": null
+        },
+        {
+          "name": "Vote",
+          "fields": [
+            {
+              "name": "dRep",
+              "type": "DRep"
+            }
+          ],
+          "doc": null
+        },
+        {
+          "name": "StakeVote",
+          "fields": [
+            {
+              "name": "poolId",
+              "type": "PubKeyHash"
+            },
+            {
+              "name": "dRep",
+              "type": "DRep"
+            }
+          ],
+          "doc": null
+        }
+      ]
+    },
+    "GovernanceAction": {
+      "name": "GovernanceAction",
+      "kind": "sealed",
+      "fqcn": "com.bloxbean.cardano.julc.ledger.GovernanceAction",
+      "doc": "A governance action (7 variants).",
+      "variants": [
+        {
+          "name": "ParameterChange",
+          "fields": [
+            {
+              "name": "id",
+              "type": "Optional<GovernanceActionId>"
+            },
+            {
+              "name": "parameters",
+              "type": "PlutusData"
+            },
+            {
+              "name": "constitutionScript",
+              "type": "Optional<ScriptHash>"
+            }
+          ],
+          "doc": null
+        },
+        {
+          "name": "HardForkInitiation",
+          "fields": [
+            {
+              "name": "id",
+              "type": "Optional<GovernanceActionId>"
+            },
+            {
+              "name": "protocolVersion",
+              "type": "ProtocolVersion"
+            }
+          ],
+          "doc": null
+        },
+        {
+          "name": "TreasuryWithdrawals",
+          "fields": [
+            {
+              "name": "withdrawals",
+              "type": "JulcMap<Credential, BigInteger>"
+            },
+            {
+              "name": "constitutionScript",
+              "type": "Optional<ScriptHash>"
+            }
+          ],
+          "doc": null
+        },
+        {
+          "name": "NoConfidence",
+          "fields": [
+            {
+              "name": "id",
+              "type": "Optional<GovernanceActionId>"
+            }
+          ],
+          "doc": null
+        },
+        {
+          "name": "UpdateCommittee",
+          "fields": [
+            {
+              "name": "id",
+              "type": "Optional<GovernanceActionId>"
+            },
+            {
+              "name": "removedMembers",
+              "type": "JulcList<Credential>"
+            },
+            {
+              "name": "addedMembers",
+              "type": "JulcMap<Credential, BigInteger>"
+            },
+            {
+              "name": "newQuorum",
+              "type": "Rational"
+            }
+          ],
+          "doc": null
+        },
+        {
+          "name": "NewConstitution",
+          "fields": [
+            {
+              "name": "id",
+              "type": "Optional<GovernanceActionId>"
+            },
+            {
+              "name": "constitution",
+              "type": "Optional<ScriptHash>"
+            }
+          ],
+          "doc": null
+        },
+        {
+          "name": "InfoAction",
+          "fields": [],
+          "doc": null
+        }
+      ]
+    },
+    "GovernanceActionId": {
+      "name": "GovernanceActionId",
+      "kind": "record",
+      "fqcn": "com.bloxbean.cardano.julc.ledger.GovernanceActionId",
+      "doc": "A governance action identifier.",
+      "fields": [
+        {
+          "name": "txId",
+          "type": "TxId"
+        },
+        {
+          "name": "govActionIx",
+          "type": "BigInteger"
+        }
+      ],
+      "methods": []
+    },
+    "Interval": {
+      "name": "Interval",
+      "kind": "record",
+      "fqcn": "com.bloxbean.cardano.julc.ledger.Interval",
+      "doc": "A time interval with lower and upper bounds.",
+      "fields": [
+        {
+          "name": "from",
+          "type": "IntervalBound"
+        },
+        {
+          "name": "to",
+          "type": "IntervalBound"
+        }
+      ],
+      "methods": [
+        {
+          "name": "always",
+          "static": true,
+          "signature": "Interval always()",
+          "params": [],
+          "returns": "Interval",
+          "doc": "The interval containing all values: (-inf, +inf)."
+        },
+        {
+          "name": "never",
+          "static": true,
+          "signature": "Interval never()",
+          "params": [],
+          "returns": "Interval",
+          "doc": "The empty interval: (+inf, -inf)."
+        },
+        {
+          "name": "after",
+          "static": true,
+          "signature": "Interval after(BigInteger time)",
+          "params": [
+            {
+              "name": "time",
+              "type": "BigInteger"
+            }
+          ],
+          "returns": "Interval",
+          "doc": "The interval [time, +inf)."
+        },
+        {
+          "name": "before",
+          "static": true,
+          "signature": "Interval before(BigInteger time)",
+          "params": [
+            {
+              "name": "time",
+              "type": "BigInteger"
+            }
+          ],
+          "returns": "Interval",
+          "doc": "The interval (-inf, time]."
+        },
+        {
+          "name": "between",
+          "static": true,
+          "signature": "Interval between(BigInteger from, BigInteger to)",
+          "params": [
+            {
+              "name": "from",
+              "type": "BigInteger"
+            },
+            {
+              "name": "to",
+              "type": "BigInteger"
+            }
+          ],
+          "returns": "Interval",
+          "doc": "The interval [from, to]."
+        }
+      ]
+    },
+    "IntervalBound": {
+      "name": "IntervalBound",
+      "kind": "record",
+      "fqcn": "com.bloxbean.cardano.julc.ledger.IntervalBound",
+      "doc": "A bound of an interval with inclusivity flag.",
+      "fields": [
+        {
+          "name": "boundType",
+          "type": "IntervalBoundType"
+        },
+        {
+          "name": "isInclusive",
+          "type": "boolean"
+        }
+      ],
+      "methods": []
+    },
+    "IntervalBoundType": {
+      "name": "IntervalBoundType",
+      "kind": "sealed",
+      "fqcn": "com.bloxbean.cardano.julc.ledger.IntervalBoundType",
+      "doc": "The type of an interval bound: negative infinity, finite, or positive infinity.",
+      "variants": [
+        {
+          "name": "NegInf",
+          "fields": [],
+          "doc": null
+        },
+        {
+          "name": "Finite",
+          "fields": [
+            {
+              "name": "time",
+              "type": "BigInteger"
+            }
+          ],
+          "doc": null
+        },
+        {
+          "name": "PosInf",
+          "fields": [],
+          "doc": null
+        }
+      ]
+    },
+    "OutputDatum": {
+      "name": "OutputDatum",
+      "kind": "sealed",
+      "fqcn": "com.bloxbean.cardano.julc.ledger.OutputDatum",
+      "doc": "Datum attached to a transaction output.",
+      "variants": [
+        {
+          "name": "NoOutputDatum",
+          "fields": [],
+          "doc": null
+        },
+        {
+          "name": "OutputDatumHash",
+          "fields": [
+            {
+              "name": "hash",
+              "type": "DatumHash"
+            }
+          ],
+          "doc": null
+        },
+        {
+          "name": "OutputDatumInline",
+          "fields": [
+            {
+              "name": "datum",
+              "type": "PlutusData"
+            }
+          ],
+          "doc": null
+        }
+      ]
+    },
+    "PolicyId": {
+      "name": "PolicyId",
+      "kind": "record",
+      "fqcn": "com.bloxbean.cardano.julc.ledger.PolicyId",
+      "doc": "A minting policy ID (typically 28 bytes, or 0 bytes for ADA). No byte-length validation — length enforcement is a ledger rule, not a type invariant.",
+      "fields": [
+        {
+          "name": "hash",
+          "type": "byte[]"
+        }
+      ],
+      "methods": [
+        {
+          "name": "hash",
+          "static": false,
+          "signature": "byte[] hash()",
+          "params": [],
+          "returns": "byte[]",
+          "doc": null
+        },
+        {
+          "name": "of",
+          "static": true,
+          "signature": "PolicyId of(byte[] hash)",
+          "params": [
+            {
+              "name": "hash",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "PolicyId",
+          "doc": null
+        }
+      ]
+    },
+    "ProposalProcedure": {
+      "name": "ProposalProcedure",
+      "kind": "record",
+      "fqcn": "com.bloxbean.cardano.julc.ledger.ProposalProcedure",
+      "doc": "A governance proposal procedure.",
+      "fields": [
+        {
+          "name": "deposit",
+          "type": "BigInteger"
+        },
+        {
+          "name": "returnAddress",
+          "type": "Credential"
+        },
+        {
+          "name": "governanceAction",
+          "type": "GovernanceAction"
+        }
+      ],
+      "methods": []
+    },
+    "ProtocolVersion": {
+      "name": "ProtocolVersion",
+      "kind": "record",
+      "fqcn": "com.bloxbean.cardano.julc.ledger.ProtocolVersion",
+      "doc": "A protocol version (major, minor).",
+      "fields": [
+        {
+          "name": "major",
+          "type": "BigInteger"
+        },
+        {
+          "name": "minor",
+          "type": "BigInteger"
+        }
+      ],
+      "methods": []
+    },
+    "PubKeyHash": {
+      "name": "PubKeyHash",
+      "kind": "record",
+      "fqcn": "com.bloxbean.cardano.julc.ledger.PubKeyHash",
+      "doc": "A public key hash (typically 28 bytes). No byte-length validation — length enforcement is a ledger rule, not a type invariant.",
+      "fields": [
+        {
+          "name": "hash",
+          "type": "byte[]"
+        }
+      ],
+      "methods": [
+        {
+          "name": "hash",
+          "static": false,
+          "signature": "byte[] hash()",
+          "params": [],
+          "returns": "byte[]",
+          "doc": null
+        },
+        {
+          "name": "of",
+          "static": true,
+          "signature": "PubKeyHash of(byte[] hash)",
+          "params": [
+            {
+              "name": "hash",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "PubKeyHash",
+          "doc": null
+        }
+      ]
+    },
+    "Rational": {
+      "name": "Rational",
+      "kind": "record",
+      "fqcn": "com.bloxbean.cardano.julc.ledger.Rational",
+      "doc": "A rational number (numerator / denominator).",
+      "fields": [
+        {
+          "name": "numerator",
+          "type": "BigInteger"
+        },
+        {
+          "name": "denominator",
+          "type": "BigInteger"
+        }
+      ],
+      "methods": []
+    },
+    "ScriptContext": {
+      "name": "ScriptContext",
+      "kind": "record",
+      "fqcn": "com.bloxbean.cardano.julc.ledger.ScriptContext",
+      "doc": "V3 script context: transaction info + redeemer + script info.",
+      "fields": [
+        {
+          "name": "txInfo",
+          "type": "TxInfo"
+        },
+        {
+          "name": "redeemer",
+          "type": "PlutusData"
+        },
+        {
+          "name": "scriptInfo",
+          "type": "ScriptInfo"
+        }
+      ],
+      "methods": []
+    },
+    "ScriptHash": {
+      "name": "ScriptHash",
+      "kind": "record",
+      "fqcn": "com.bloxbean.cardano.julc.ledger.ScriptHash",
+      "doc": "A script hash (typically 28 bytes). No byte-length validation — length enforcement is a ledger rule, not a type invariant.",
+      "fields": [
+        {
+          "name": "hash",
+          "type": "byte[]"
+        }
+      ],
+      "methods": [
+        {
+          "name": "hash",
+          "static": false,
+          "signature": "byte[] hash()",
+          "params": [],
+          "returns": "byte[]",
+          "doc": null
+        },
+        {
+          "name": "of",
+          "static": true,
+          "signature": "ScriptHash of(byte[] hash)",
+          "params": [
+            {
+              "name": "hash",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "ScriptHash",
+          "doc": null
+        }
+      ]
+    },
+    "ScriptInfo": {
+      "name": "ScriptInfo",
+      "kind": "sealed",
+      "fqcn": "com.bloxbean.cardano.julc.ledger.ScriptInfo",
+      "doc": "Information about the currently executing script (6 variants).",
+      "variants": [
+        {
+          "name": "MintingScript",
+          "fields": [
+            {
+              "name": "policyId",
+              "type": "PolicyId"
+            }
+          ],
+          "doc": null
+        },
+        {
+          "name": "SpendingScript",
+          "fields": [
+            {
+              "name": "txOutRef",
+              "type": "TxOutRef"
+            },
+            {
+              "name": "datum",
+              "type": "Optional<PlutusData>"
+            }
+          ],
+          "doc": null
+        },
+        {
+          "name": "RewardingScript",
+          "fields": [
+            {
+              "name": "credential",
+              "type": "Credential"
+            }
+          ],
+          "doc": null
+        },
+        {
+          "name": "CertifyingScript",
+          "fields": [
+            {
+              "name": "index",
+              "type": "BigInteger"
+            },
+            {
+              "name": "cert",
+              "type": "TxCert"
+            }
+          ],
+          "doc": null
+        },
+        {
+          "name": "VotingScript",
+          "fields": [
+            {
+              "name": "voter",
+              "type": "Voter"
+            }
+          ],
+          "doc": null
+        },
+        {
+          "name": "ProposingScript",
+          "fields": [
+            {
+              "name": "index",
+              "type": "BigInteger"
+            },
+            {
+              "name": "procedure",
+              "type": "ProposalProcedure"
+            }
+          ],
+          "doc": null
+        }
+      ]
+    },
+    "ScriptPurpose": {
+      "name": "ScriptPurpose",
+      "kind": "sealed",
+      "fqcn": "com.bloxbean.cardano.julc.ledger.ScriptPurpose",
+      "doc": "The purpose of a script execution (6 variants).",
+      "variants": [
+        {
+          "name": "Minting",
+          "fields": [
+            {
+              "name": "policyId",
+              "type": "PolicyId"
+            }
+          ],
+          "doc": null
+        },
+        {
+          "name": "Spending",
+          "fields": [
+            {
+              "name": "txOutRef",
+              "type": "TxOutRef"
+            }
+          ],
+          "doc": null
+        },
+        {
+          "name": "Rewarding",
+          "fields": [
+            {
+              "name": "credential",
+              "type": "Credential"
+            }
+          ],
+          "doc": null
+        },
+        {
+          "name": "Certifying",
+          "fields": [
+            {
+              "name": "index",
+              "type": "BigInteger"
+            },
+            {
+              "name": "cert",
+              "type": "TxCert"
+            }
+          ],
+          "doc": null
+        },
+        {
+          "name": "Voting",
+          "fields": [
+            {
+              "name": "voter",
+              "type": "Voter"
+            }
+          ],
+          "doc": null
+        },
+        {
+          "name": "Proposing",
+          "fields": [
+            {
+              "name": "index",
+              "type": "BigInteger"
+            },
+            {
+              "name": "procedure",
+              "type": "ProposalProcedure"
+            }
+          ],
+          "doc": null
+        }
+      ]
+    },
+    "StakingCredential": {
+      "name": "StakingCredential",
+      "kind": "sealed",
+      "fqcn": "com.bloxbean.cardano.julc.ledger.StakingCredential",
+      "doc": "A staking credential: either a hash-based credential or a pointer.",
+      "variants": [
+        {
+          "name": "StakingHash",
+          "fields": [
+            {
+              "name": "credential",
+              "type": "Credential"
+            }
+          ],
+          "doc": null
+        },
+        {
+          "name": "StakingPtr",
+          "fields": [
+            {
+              "name": "slot",
+              "type": "BigInteger"
+            },
+            {
+              "name": "txIndex",
+              "type": "BigInteger"
+            },
+            {
+              "name": "certIndex",
+              "type": "BigInteger"
+            }
+          ],
+          "doc": null
+        }
+      ]
+    },
+    "TokenName": {
+      "name": "TokenName",
+      "kind": "record",
+      "fqcn": "com.bloxbean.cardano.julc.ledger.TokenName",
+      "doc": "A token name (typically 0-32 bytes). No byte-length validation — length enforcement is a ledger rule, not a type invariant.",
+      "fields": [
+        {
+          "name": "name",
+          "type": "byte[]"
+        }
+      ],
+      "methods": [
+        {
+          "name": "name",
+          "static": false,
+          "signature": "byte[] name()",
+          "params": [],
+          "returns": "byte[]",
+          "doc": null
+        },
+        {
+          "name": "of",
+          "static": true,
+          "signature": "TokenName of(byte[] name)",
+          "params": [
+            {
+              "name": "name",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "TokenName",
+          "doc": null
+        }
+      ]
+    },
+    "TxCert": {
+      "name": "TxCert",
+      "kind": "sealed",
+      "fqcn": "com.bloxbean.cardano.julc.ledger.TxCert",
+      "doc": "A transaction certificate (V3 Conway era, 11 variants).",
+      "variants": [
+        {
+          "name": "RegStaking",
+          "fields": [
+            {
+              "name": "credential",
+              "type": "Credential"
+            },
+            {
+              "name": "deposit",
+              "type": "Optional<BigInteger>"
+            }
+          ],
+          "doc": null
+        },
+        {
+          "name": "UnRegStaking",
+          "fields": [
+            {
+              "name": "credential",
+              "type": "Credential"
+            },
+            {
+              "name": "refund",
+              "type": "Optional<BigInteger>"
+            }
+          ],
+          "doc": null
+        },
+        {
+          "name": "DelegStaking",
+          "fields": [
+            {
+              "name": "credential",
+              "type": "Credential"
+            },
+            {
+              "name": "delegatee",
+              "type": "Delegatee"
+            }
+          ],
+          "doc": null
+        },
+        {
+          "name": "RegDeleg",
+          "fields": [
+            {
+              "name": "credential",
+              "type": "Credential"
+            },
+            {
+              "name": "delegatee",
+              "type": "Delegatee"
+            },
+            {
+              "name": "deposit",
+              "type": "BigInteger"
+            }
+          ],
+          "doc": null
+        },
+        {
+          "name": "RegDRep",
+          "fields": [
+            {
+              "name": "credential",
+              "type": "Credential"
+            },
+            {
+              "name": "deposit",
+              "type": "BigInteger"
+            }
+          ],
+          "doc": null
+        },
+        {
+          "name": "UpdateDRep",
+          "fields": [
+            {
+              "name": "credential",
+              "type": "Credential"
+            }
+          ],
+          "doc": null
+        },
+        {
+          "name": "UnRegDRep",
+          "fields": [
+            {
+              "name": "credential",
+              "type": "Credential"
+            },
+            {
+              "name": "refund",
+              "type": "BigInteger"
+            }
+          ],
+          "doc": null
+        },
+        {
+          "name": "PoolRegister",
+          "fields": [
+            {
+              "name": "poolId",
+              "type": "PubKeyHash"
+            },
+            {
+              "name": "poolVfr",
+              "type": "PubKeyHash"
+            }
+          ],
+          "doc": null
+        },
+        {
+          "name": "PoolRetire",
+          "fields": [
+            {
+              "name": "pubKeyHash",
+              "type": "PubKeyHash"
+            },
+            {
+              "name": "epoch",
+              "type": "BigInteger"
+            }
+          ],
+          "doc": null
+        },
+        {
+          "name": "AuthHotCommittee",
+          "fields": [
+            {
+              "name": "cold",
+              "type": "Credential"
+            },
+            {
+              "name": "hot",
+              "type": "Credential"
+            }
+          ],
+          "doc": null
+        },
+        {
+          "name": "ResignColdCommittee",
+          "fields": [
+            {
+              "name": "cold",
+              "type": "Credential"
+            }
+          ],
+          "doc": null
+        }
+      ]
+    },
+    "TxId": {
+      "name": "TxId",
+      "kind": "record",
+      "fqcn": "com.bloxbean.cardano.julc.ledger.TxId",
+      "doc": "A transaction ID (typically 32 bytes). No byte-length validation — length enforcement is a ledger rule, not a type invariant.",
+      "fields": [
+        {
+          "name": "hash",
+          "type": "byte[]"
+        }
+      ],
+      "methods": [
+        {
+          "name": "hash",
+          "static": false,
+          "signature": "byte[] hash()",
+          "params": [],
+          "returns": "byte[]",
+          "doc": null
+        },
+        {
+          "name": "of",
+          "static": true,
+          "signature": "TxId of(byte[] hash)",
+          "params": [
+            {
+              "name": "hash",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "TxId",
+          "doc": null
+        }
+      ]
+    },
+    "TxInInfo": {
+      "name": "TxInInfo",
+      "kind": "record",
+      "fqcn": "com.bloxbean.cardano.julc.ledger.TxInInfo",
+      "doc": "An input being consumed or referenced by a transaction.",
+      "fields": [
+        {
+          "name": "outRef",
+          "type": "TxOutRef"
+        },
+        {
+          "name": "resolved",
+          "type": "TxOut"
+        }
+      ],
+      "methods": []
+    },
+    "TxInfo": {
+      "name": "TxInfo",
+      "kind": "record",
+      "fqcn": "com.bloxbean.cardano.julc.ledger.TxInfo",
+      "doc": "V3 (Conway) transaction info with 16 fields.",
+      "fields": [
+        {
+          "name": "inputs",
+          "type": "JulcList<TxInInfo>"
+        },
+        {
+          "name": "referenceInputs",
+          "type": "JulcList<TxInInfo>"
+        },
+        {
+          "name": "outputs",
+          "type": "JulcList<TxOut>"
+        },
+        {
+          "name": "fee",
+          "type": "BigInteger"
+        },
+        {
+          "name": "mint",
+          "type": "Value"
+        },
+        {
+          "name": "certificates",
+          "type": "JulcList<TxCert>"
+        },
+        {
+          "name": "withdrawals",
+          "type": "JulcMap<Credential, BigInteger>"
+        },
+        {
+          "name": "validRange",
+          "type": "Interval"
+        },
+        {
+          "name": "signatories",
+          "type": "JulcList<PubKeyHash>"
+        },
+        {
+          "name": "redeemers",
+          "type": "JulcMap<ScriptPurpose, PlutusData>"
+        },
+        {
+          "name": "datums",
+          "type": "JulcMap<DatumHash, PlutusData>"
+        },
+        {
+          "name": "id",
+          "type": "TxId"
+        },
+        {
+          "name": "votes",
+          "type": "JulcMap<Voter, JulcMap<GovernanceActionId, Vote>>"
+        },
+        {
+          "name": "proposalProcedures",
+          "type": "JulcList<ProposalProcedure>"
+        },
+        {
+          "name": "currentTreasuryAmount",
+          "type": "Optional<BigInteger>"
+        },
+        {
+          "name": "treasuryDonation",
+          "type": "Optional<BigInteger>"
+        }
+      ],
+      "methods": []
+    },
+    "TxOut": {
+      "name": "TxOut",
+      "kind": "record",
+      "fqcn": "com.bloxbean.cardano.julc.ledger.TxOut",
+      "doc": "A transaction output.",
+      "fields": [
+        {
+          "name": "address",
+          "type": "Address"
+        },
+        {
+          "name": "value",
+          "type": "Value"
+        },
+        {
+          "name": "datum",
+          "type": "OutputDatum"
+        },
+        {
+          "name": "referenceScript",
+          "type": "Optional<ScriptHash>"
+        }
+      ],
+      "methods": []
+    },
+    "TxOutRef": {
+      "name": "TxOutRef",
+      "kind": "record",
+      "fqcn": "com.bloxbean.cardano.julc.ledger.TxOutRef",
+      "doc": "A reference to a transaction output (TxId + output index).",
+      "fields": [
+        {
+          "name": "txId",
+          "type": "TxId"
+        },
+        {
+          "name": "index",
+          "type": "BigInteger"
+        }
+      ],
+      "methods": []
+    },
+    "ValidatorHash": {
+      "name": "ValidatorHash",
+      "kind": "record",
+      "fqcn": "com.bloxbean.cardano.julc.ledger.ValidatorHash",
+      "doc": "A validator hash (typically 28 bytes, semantically an alias for ScriptHash). No byte-length validation — length enforcement is a ledger rule, not a type invariant.",
+      "fields": [
+        {
+          "name": "hash",
+          "type": "byte[]"
+        }
+      ],
+      "methods": [
+        {
+          "name": "hash",
+          "static": false,
+          "signature": "byte[] hash()",
+          "params": [],
+          "returns": "byte[]",
+          "doc": null
+        },
+        {
+          "name": "of",
+          "static": true,
+          "signature": "ValidatorHash of(byte[] hash)",
+          "params": [
+            {
+              "name": "hash",
+              "type": "byte[]"
+            }
+          ],
+          "returns": "ValidatorHash",
+          "doc": null
+        }
+      ]
+    },
+    "Value": {
+      "name": "Value",
+      "kind": "record",
+      "fqcn": "com.bloxbean.cardano.julc.ledger.Value",
+      "doc": "A multi-asset value: JulcMap&lt;PolicyId, JulcMap&lt;TokenName, BigInteger&gt;&gt;.",
+      "fields": [
+        {
+          "name": "inner",
+          "type": "JulcMap<PolicyId, JulcMap<TokenName, BigInteger>>"
+        }
+      ],
+      "methods": [
+        {
+          "name": "zero",
+          "static": true,
+          "signature": "Value zero()",
+          "params": [],
+          "returns": "Value",
+          "doc": null
+        },
+        {
+          "name": "lovelace",
+          "static": true,
+          "signature": "Value lovelace(BigInteger amount)",
+          "params": [
+            {
+              "name": "amount",
+              "type": "BigInteger"
+            }
+          ],
+          "returns": "Value",
+          "doc": null
+        },
+        {
+          "name": "singleton",
+          "static": true,
+          "signature": "Value singleton(PolicyId policyId, TokenName tokenName, BigInteger quantity)",
+          "params": [
+            {
+              "name": "policyId",
+              "type": "PolicyId"
+            },
+            {
+              "name": "tokenName",
+              "type": "TokenName"
+            },
+            {
+              "name": "quantity",
+              "type": "BigInteger"
+            }
+          ],
+          "returns": "Value",
+          "doc": null
+        },
+        {
+          "name": "lovelaceOf",
+          "static": false,
+          "signature": "BigInteger lovelaceOf()",
+          "params": [],
+          "returns": "BigInteger",
+          "doc": null
+        },
+        {
+          "name": "containsPolicy",
+          "static": false,
+          "signature": "boolean containsPolicy(PolicyId policyId)",
+          "params": [
+            {
+              "name": "policyId",
+              "type": "PolicyId"
+            }
+          ],
+          "returns": "boolean",
+          "doc": null
+        },
+        {
+          "name": "assetOf",
+          "static": false,
+          "signature": "BigInteger assetOf(PolicyId policyId, TokenName tokenName)",
+          "params": [
+            {
+              "name": "policyId",
+              "type": "PolicyId"
+            },
+            {
+              "name": "tokenName",
+              "type": "TokenName"
+            }
+          ],
+          "returns": "BigInteger",
+          "doc": null
+        },
+        {
+          "name": "isEmpty",
+          "static": false,
+          "signature": "boolean isEmpty()",
+          "params": [],
+          "returns": "boolean",
+          "doc": null
+        },
+        {
+          "name": "merge",
+          "static": false,
+          "signature": "Value merge(Value other)",
+          "params": [
+            {
+              "name": "other",
+              "type": "Value"
+            }
+          ],
+          "returns": "Value",
+          "doc": "Merge two values by adding all token quantities. Equivalent to on-chain ValuesLib.add()."
+        }
+      ]
+    },
+    "Vote": {
+      "name": "Vote",
+      "kind": "sealed",
+      "fqcn": "com.bloxbean.cardano.julc.ledger.Vote",
+      "doc": "A governance vote.",
+      "variants": [
+        {
+          "name": "VoteNo",
+          "fields": [],
+          "doc": null
+        },
+        {
+          "name": "VoteYes",
+          "fields": [],
+          "doc": null
+        },
+        {
+          "name": "Abstain",
+          "fields": [],
+          "doc": null
+        }
+      ]
+    },
+    "Voter": {
+      "name": "Voter",
+      "kind": "sealed",
+      "fqcn": "com.bloxbean.cardano.julc.ledger.Voter",
+      "doc": "A governance voter.",
+      "variants": [
+        {
+          "name": "CommitteeVoter",
+          "fields": [
+            {
+              "name": "credential",
+              "type": "Credential"
+            }
+          ],
+          "doc": null
+        },
+        {
+          "name": "DRepVoter",
+          "fields": [
+            {
+              "name": "credential",
+              "type": "Credential"
+            }
+          ],
+          "doc": null
+        },
+        {
+          "name": "StakePoolVoter",
+          "fields": [
+            {
+              "name": "pubKeyHash",
+              "type": "PubKeyHash"
+            }
+          ],
+          "doc": null
+        }
+      ]
+    }
+  },
+  "diagnostics": {
+    "schemaVersion": 1,
+    "julcVersion": "0.1.0-pre12",
+    "$comment": "Authoritative catalog of JuLC compiler diagnostics. Each entry has a stable JULC#### code, a generated Java constant, an emitted-message template, a one-line root cause, a canonical fix snippet, and optionally example bad/good code. Consumed by: (1) generated DiagnosticCodes.java, (2) the MCP julc_explain_diagnostic tool, (3) docs/AI catalog resources, (4) future full compiler diagnostic coverage tests.",
+    "categories": {
+      "SYNTAX": "Java syntax forms not supported in the on-chain subset",
+      "TYPE": "Type system errors (resolution, mismatches, generics)",
+      "VALIDATOR": "Validator class / @Entrypoint structure",
+      "CONTROL_FLOW": "Control-flow restrictions (return, break, while, switch)",
+      "LIBRARY": "@OnchainLibrary and @Param errors",
+      "STDLIB": "Stdlib method usage errors (wrong arity, missing args)",
+      "PIR": "PIR generation errors (internal pipeline)"
+    },
+    "diagnostics": [
+      {
+        "code": "JULC0001",
+        "constant": "METHOD_BODY_MISSING",
+        "status": "planned",
+        "title": "Method must have a body",
+        "category": "VALIDATOR",
+        "severity": "error",
+        "template": "Method must have a body: {0}",
+        "summary": "An abstract or interface method was found where the compiler expects a concrete method body. On-chain code cannot contain abstract methods.",
+        "fix": "Provide a body for every method in your validator class.",
+        "example": {
+          "bad": "@SpendingValidator\npublic class MyValidator {\n    @Entrypoint\n    public abstract boolean validate(Data redeemer, ScriptContext ctx);\n}",
+          "good": "@SpendingValidator\npublic class MyValidator {\n    @Entrypoint\n    public static boolean validate(Data redeemer, ScriptContext ctx) {\n        return true;\n    }\n}"
+        }
+      },
+      {
+        "code": "JULC0002",
+        "constant": "VARIABLE_UNINITIALIZED",
+        "status": "planned",
+        "title": "Variable must be initialized",
+        "category": "SYNTAX",
+        "severity": "error",
+        "template": "Variable must be initialized: {0}",
+        "summary": "A local variable was declared without an initializer. UPLC has no notion of uninitialized state.",
+        "fix": "Initialize at declaration, e.g. `var x = BigInteger.ZERO;`. Re-bind via a new `var` if you need a different value later (UPLC is single-assignment).",
+        "example": {
+          "bad": "var x;\nx = 5;",
+          "good": "var x = BigInteger.valueOf(5);"
+        }
+      },
+      {
+        "code": "JULC0003",
+        "constant": "RETURN_INSIDE_WHILE",
+        "status": "planned",
+        "title": "Cannot return inside while loop",
+        "category": "CONTROL_FLOW",
+        "severity": "error",
+        "template": "Cannot return inside while loop",
+        "summary": "`return` statements are not allowed inside `while` loops. UPLC `while` is desugared to a fixed-point `LetRec` that needs an explicit accumulator.",
+        "fix": "Use a boolean accumulator and return after the loop. `break` works inside `for-each` if you only need early termination.",
+        "example": {
+          "bad": "while (i.compareTo(n) < 0) {\n    if (matches(i)) return true;\n    i = i.add(BigInteger.ONE);\n}\nreturn false;",
+          "good": "boolean found = false;\nvar i = BigInteger.ZERO;\nwhile (i.compareTo(n) < 0 && !found) {\n    if (matches(i)) found = true;\n    i = i.add(BigInteger.ONE);\n}\nreturn found;"
+        }
+      },
+      {
+        "code": "JULC0004",
+        "constant": "BREAK_OUTSIDE_LOOP",
+        "status": "planned",
+        "title": "break statement outside of a loop",
+        "category": "CONTROL_FLOW",
+        "severity": "error",
+        "template": "break statement outside of a loop",
+        "summary": "`break` was used outside of a `for-each` or `while` loop body.",
+        "fix": "Place the `break` inside a loop, or refactor to use early `return` from a helper method."
+      },
+      {
+        "code": "JULC0005",
+        "constant": "SWITCH_NOT_EXHAUSTIVE",
+        "status": "planned",
+        "title": "Switch is not exhaustive on sealed interface",
+        "category": "CONTROL_FLOW",
+        "severity": "error",
+        "template": "Switch on sealed interface {0} is not exhaustive. Missing cases: {1}",
+        "summary": "A `switch` expression on a sealed interface is missing one or more permitted variants.",
+        "fix": "Add the missing case branches or include a `default ->` branch to handle all remaining variants.",
+        "example": {
+          "bad": "sealed interface Action permits A, B, C {}\n// ...\nreturn switch (action) {\n    case A a -> ...;\n    case B b -> ...;\n    // missing C\n};",
+          "good": "return switch (action) {\n    case A a -> ...;\n    case B b -> ...;\n    case C c -> ...;\n};"
+        }
+      },
+      {
+        "code": "JULC0006",
+        "constant": "METHOD_MISSING_RETURN",
+        "status": "planned",
+        "title": "Method does not return on all paths",
+        "category": "CONTROL_FLOW",
+        "severity": "error",
+        "template": "Method {0} may not return a value on all execution paths",
+        "summary": "A non-void method has at least one execution path that does not return a value.",
+        "fix": "Ensure every if/else branch returns, or add a fallthrough return at the end of the method."
+      },
+      {
+        "code": "JULC0007",
+        "constant": "SWITCH_REQUIRES_SEALED_INTERFACE",
+        "status": "planned",
+        "title": "Switch expression requires a sealed interface type",
+        "category": "TYPE",
+        "severity": "error",
+        "template": "switch expression requires a sealed interface type, got: {0}",
+        "summary": "`switch` was used on a non-sealed type. Records (including `Tuple2`/`Tuple3`) cannot be switched on.",
+        "fix": "Use field access (`pair.first()`, `pair.second()`) for records. Reserve `switch` for sealed interfaces with permitted record variants."
+      },
+      {
+        "code": "JULC0008",
+        "constant": "ENTRYPOINT_WRONG_PARAMETER_COUNT",
+        "status": "emitted",
+        "title": "@Entrypoint method has wrong parameter count",
+        "category": "VALIDATOR",
+        "severity": "error",
+        "template": "{0} entrypoint must have {1} parameters{2}, found {3} in {4}.{5}(){6}",
+        "summary": "The @Entrypoint method's parameter count doesn't match the validator kind. SpendingValidator entrypoints take 2 or 3 params (datum, redeemer, ctx); other validators take 2 (redeemer, ctx).",
+        "fix": "Adjust the entrypoint signature to match the validator annotation. Spending: `(Datum, Redeemer, ScriptContext)`. Others: `(Redeemer, ScriptContext)`."
+      },
+      {
+        "code": "JULC0009",
+        "constant": "ENTRYPOINT_MISSING",
+        "status": "emitted",
+        "title": "No @Entrypoint method found",
+        "category": "VALIDATOR",
+        "severity": "error",
+        "template": "No @Entrypoint method found in {0}",
+        "summary": "The validator class has no method annotated `@Entrypoint`.",
+        "fix": "Annotate exactly one `public static` method with `@Entrypoint`. The method must return `boolean` (or `void` for newer signature shapes)."
+      },
+      {
+        "code": "JULC0010",
+        "constant": "VALIDATOR_ANNOTATION_MISSING",
+        "status": "emitted",
+        "title": "No validator annotation found",
+        "category": "VALIDATOR",
+        "severity": "error",
+        "template": "No validator annotation found{0}",
+        "summary": "The class has no validator annotation. Expected one of @SpendingValidator, @MintingValidator, @CertifyingValidator, @WithdrawValidator, @VotingValidator, @ProposingValidator (or @MultiValidator).",
+        "fix": "Add the appropriate validator annotation at the class level."
+      },
+      {
+        "code": "JULC0011",
+        "constant": "UNDEFINED_VARIABLE",
+        "status": "planned",
+        "title": "Undefined variable",
+        "category": "TYPE",
+        "severity": "error",
+        "template": "Undefined variable: {0}",
+        "summary": "A variable was referenced that is not in scope. Most commonly: typo, used before declared, or shadowed inside a switch case binding.",
+        "fix": "Check spelling and declaration order. If a switch case binds a field with the same name as your method parameter, rename one of them — the field shadows the parameter inside the case body (see JULC0021)."
+      },
+      {
+        "code": "JULC0012",
+        "constant": "TYPE_RESOLUTION_FAILED",
+        "status": "planned",
+        "title": "Cannot resolve type",
+        "category": "TYPE",
+        "severity": "error",
+        "template": "Cannot resolve type: {0}",
+        "summary": "The compiler could not resolve a type reference. The class may not be on the classpath, may not be a registered ledger/stdlib type, or may not be a valid on-chain type.",
+        "fix": "Ensure the type is imported and is one of: a record, sealed interface, ledger type, JulcList/JulcMap/Optional/Tuple, or primitive (BigInteger, byte[], boolean, String)."
+      },
+      {
+        "code": "JULC0013",
+        "constant": "PARAM_RAW_PLUTUS_DATA",
+        "status": "emitted",
+        "title": "Banned @Param type",
+        "category": "LIBRARY",
+        "severity": "error",
+        "template": "@Param type ''{0}'' is not allowed. @Param values are always raw Data at runtime; using a typed Data subtype causes the compiler to misinterpret the runtime representation.",
+        "summary": "@Param fields cannot be raw `PlutusData` subtypes (`PlutusData.BytesData`, `PlutusData.MapData`, `PlutusData.ListData`, `PlutusData.IntData`) — these confuse the parameter wrapping pipeline.",
+        "fix": "Use byte[], BigInteger, typed records, redeemers, or @Param PlutusData only for opaque data."
+      },
+      {
+        "code": "JULC0014",
+        "constant": "ARRAY_UNSUPPORTED",
+        "status": "planned",
+        "title": "Arrays are not supported (except byte[])",
+        "category": "SYNTAX",
+        "severity": "error",
+        "template": "arrays are not supported on-chain",
+        "summary": "Java arrays other than `byte[]` are not supported on-chain.",
+        "fix": "Use `JulcList<T>` or `List<T>` instead of `T[]`."
+      },
+      {
+        "code": "JULC0015",
+        "constant": "TRY_CATCH_UNSUPPORTED",
+        "status": "emitted",
+        "title": "try/catch is not supported on-chain",
+        "category": "SYNTAX",
+        "severity": "error",
+        "template": "try/catch is not supported on-chain",
+        "summary": "UPLC has no exception model — only `error` (immediate script failure).",
+        "fix": "Use if/else checks instead of exception handling"
+      },
+      {
+        "code": "JULC0016",
+        "constant": "THROW_UNSUPPORTED",
+        "status": "emitted",
+        "title": "throw is not supported on-chain",
+        "category": "SYNTAX",
+        "severity": "error",
+        "template": "throw is not supported on-chain",
+        "summary": "There is no exception machinery in UPLC.",
+        "fix": "Return false from the validator to reject a transaction"
+      },
+      {
+        "code": "JULC0017",
+        "constant": "NULL_UNSUPPORTED",
+        "status": "emitted",
+        "title": "null is not supported on-chain",
+        "category": "SYNTAX",
+        "severity": "error",
+        "template": "null is not supported on-chain",
+        "summary": "There is no `null` value in the on-chain type system.",
+        "fix": "Use Optional<T> (Optional.of(x) / Optional.empty()) to represent absence of a value"
+      },
+      {
+        "code": "JULC0018",
+        "constant": "C_STYLE_FOR_UNSUPPORTED",
+        "status": "emitted",
+        "title": "C-style for loops are not supported",
+        "category": "SYNTAX",
+        "severity": "error",
+        "template": "C-style for loops are not supported on-chain",
+        "summary": "Only `for-each` (`for (var x : list)`) and `while` loops are supported on-chain.",
+        "fix": "Use for-each over a list or while loops instead"
+      },
+      {
+        "code": "JULC0019",
+        "constant": "DO_WHILE_UNSUPPORTED",
+        "status": "emitted",
+        "title": "do-while loops are not supported",
+        "category": "SYNTAX",
+        "severity": "error",
+        "template": "do-while loops are not supported on-chain",
+        "summary": "Do-while is not supported on-chain.",
+        "fix": "Use while loops or for-each instead"
+      },
+      {
+        "code": "JULC0020",
+        "constant": "FLOATING_POINT_UNSUPPORTED",
+        "status": "planned",
+        "title": "Floating-point types are not supported",
+        "category": "TYPE",
+        "severity": "error",
+        "template": "floating point types (float/double) are not supported on-chain",
+        "summary": "`float` and `double` have no UPLC equivalent.",
+        "fix": "Use `BigInteger` for integer math. For fractional values, scale up (e.g. parts-per-million) and do integer math, or use `Rational` from the ledger types when modelling protocol params."
+      },
+      {
+        "code": "JULC0021",
+        "constant": "SWITCH_FIELD_SHADOWS_PARAMETER",
+        "status": "lintOnly",
+        "title": "Switch case field name shadows method parameter",
+        "category": "CONTROL_FLOW",
+        "severity": "warning",
+        "template": "Switch case binding name shadows a method parameter",
+        "summary": "When a sealed-interface variant has a field with the same name as a method parameter, the field binding silently shadows the parameter inside the switch case body. The compiler may not always catch this — be vigilant.",
+        "fix": "Always use distinct names. Example: rename `time` parameter to `point` when switching on `IntervalBoundType.Finite(time)`.",
+        "example": {
+          "bad": "boolean check(IntervalBound bound, BigInteger time) {\n    return switch (bound) {\n        case Finite f -> f.time().compareTo(time) > 0; // 'time' = field, NOT param\n    };\n}",
+          "good": "boolean check(IntervalBound bound, BigInteger point) {\n    return switch (bound) {\n        case Finite f -> f.time().compareTo(point) > 0;\n    };\n}"
+        }
+      },
+      {
+        "code": "JULC0022",
+        "constant": "LAMBDA_STORED_IN_VARIABLE_UNSUPPORTED",
+        "status": "planned",
+        "title": "Lambda cannot be stored in a variable",
+        "category": "SYNTAX",
+        "severity": "error",
+        "template": "Lambda cannot be stored in a variable",
+        "summary": "Lambdas must be passed inline as arguments to higher-order functions. Storing a lambda in a `Function<X,Y>` variable and calling `.apply(...)` is not supported.",
+        "fix": "Pass the lambda directly: `list.map(x -> ...)`, `list.filter(p -> ...)`. If you need to share lambda logic, extract it as a regular static method (not as a lambda)."
+      },
+      {
+        "code": "JULC0023",
+        "constant": "MUTUAL_RECURSION_TOO_LARGE",
+        "status": "planned",
+        "title": "Mutually recursive bindings with more than 2 participants not supported",
+        "category": "PIR",
+        "severity": "error",
+        "template": "Mutually recursive bindings with more than 2 participants not yet supported: {0}",
+        "summary": "JuLC supports self-recursion and mutual recursion between exactly 2 helpers (via Bekic's theorem). Three or more mutually recursive functions are not supported.",
+        "fix": "Refactor: combine the helpers into a single function with an accumulator, or break the recursion via an explicit dispatch on a sealed interface."
+      },
+      {
+        "code": "JULC0024",
+        "constant": "UNKNOWN_METHOD_ON_TYPE",
+        "status": "planned",
+        "title": "Unknown method on type",
+        "category": "STDLIB",
+        "severity": "error",
+        "template": "Unknown method: {0}",
+        "summary": "A method was called that doesn't exist on the receiver type. Likely the AI invented a method that isn't in the stdlib.",
+        "fix": "Check the stdlib catalog at https://julc.dev/ai/catalog.json or the stdlib reference at https://julc.dev/stdlib/stdlib-guide/. Common: `JulcList<T>` has `head/tail/get/size/isEmpty/contains/prepend/reverse/concat/take/drop/map/filter/any/all/find`."
+      },
+      {
+        "code": "JULC0025",
+        "constant": "STDLIB_METHOD_WRONG_ARITY",
+        "status": "planned",
+        "title": "Stdlib method called with wrong number of arguments",
+        "category": "STDLIB",
+        "severity": "error",
+        "template": "Stdlib method called with wrong number of arguments: {0}",
+        "summary": "A stdlib method was called with the wrong arity. Examples: `list.map()` requires a function argument, `list.contains()` requires an element argument, `map.insert()` requires (key, value).",
+        "fix": "See the message itself — it includes a `Usage:` hint with the correct signature."
+      },
+      {
+        "code": "JULC0026",
+        "constant": "NEWTYPE_WRONG_FIELD_COUNT",
+        "status": "planned",
+        "title": "@NewType requires exactly one field",
+        "category": "TYPE",
+        "severity": "error",
+        "template": "@NewType record {0} must have exactly one field",
+        "summary": "@NewType is a single-field record wrapper around a primitive (byte[], BigInteger, String, boolean). Multi-field @NewType records are not allowed.",
+        "fix": "Reduce to one field, or remove @NewType and use a plain record (which compiles to ConstrData)."
+      },
+      {
+        "code": "JULC0027",
+        "constant": "NEWTYPE_UNSUPPORTED_FIELD_TYPE",
+        "status": "planned",
+        "title": "Unsupported @NewType field type",
+        "category": "TYPE",
+        "severity": "error",
+        "template": "Unsupported @NewType field type: {0}",
+        "summary": "@NewType's underlying field must be a primitive: `byte[]`, `BigInteger`, `String`, or `boolean`.",
+        "fix": "Change the underlying field to a supported primitive, or remove @NewType."
+      },
+      {
+        "code": "JULC0028",
+        "constant": "SOURCE_PARSE_FAILED",
+        "status": "planned",
+        "title": "Failed to parse source",
+        "category": "PIR",
+        "severity": "error",
+        "template": "Failed to parse {0} source: {1}",
+        "summary": "The Java source could not be parsed. Usually a syntax error in the source file.",
+        "fix": "Check the file with a Java IDE or `javac` — the JuLC compiler relies on JavaParser to produce a clean AST."
+      },
+      {
+        "code": "JULC0029",
+        "constant": "DUPLICATE_TYPE_DECLARATION",
+        "status": "planned",
+        "title": "Duplicate record / sealed interface type",
+        "category": "TYPE",
+        "severity": "error",
+        "template": "Duplicate type declaration: {0}",
+        "summary": "Two different declarations registered the same type name.",
+        "fix": "Rename one of the types, or ensure they are not both on the compilation classpath."
+      },
+      {
+        "code": "JULC0030",
+        "constant": "CIRCULAR_TYPE_DEPENDENCY",
+        "status": "planned",
+        "title": "Circular type dependency detected",
+        "category": "TYPE",
+        "severity": "error",
+        "template": "Circular type dependency detected among: {0}",
+        "summary": "Type registration found a cycle that cannot be resolved.",
+        "fix": "Break the cycle by introducing a parameterized record or refactoring the involved types."
+      }
+    ]
+  },
+  "examples": {
+    "schemaVersion": 1,
+    "$comment": "Tagged index of julc-examples for AI agent retrieval. Each entry has stable metadata that the future MCP julc_examples_search tool can query: difficulty, concepts, cipRelevance, kind, and optional canonical. Examples flagged canonical:true are the recommended first-look set for an AI agent learning JuLC — idiomatic patterns covering the breadth of validators, minting policies, sealed-interface redeemers, HOFs, and on-chain libraries. Source files are paths within this repo.",
+    "repo": "https://github.com/bloxbean/julc-examples",
+    "concepts": {
+      "spending-validator": "Uses @SpendingValidator with (datum, redeemer, ScriptContext) entrypoint",
+      "minting-policy": "Uses @MintingValidator (or @MintingPolicy) with (redeemer, ScriptContext) entrypoint",
+      "parameterized-validator": "Uses @Param fields baked in at compile time",
+      "sealed-interface-redeemer": "Redeemer is a sealed interface with multiple permitted record variants, dispatched via switch",
+      "multi-sig": "Validates multiple signatures in the transaction signatories list",
+      "datum-state-transition": "Spending validator that checks an output datum reflects an updated state from the input datum",
+      "value-arithmetic": "Uses ValuesLib add/subtract/eq/leq/geq for multi-asset value comparison",
+      "lovelace-payment-check": "Uses OutputLib.lovelacePaidTo / paidAtLeast",
+      "interval-deadline": "Uses IntervalLib.contains for time-based deadline enforcement",
+      "hof-lambda": "Uses higher-order functions (list.map / filter / any / all / find / foldl) with inline lambdas",
+      "for-each-loop": "Uses for-each over JulcList<T> or JulcMap<K,V>",
+      "while-loop": "Uses while loop with explicit accumulator",
+      "nested-loops": "Loops within loops (outer for-each / while + inner)",
+      "recursion": "Self-recursive helper method (LetRec)",
+      "mutual-recursion": "Two mutually recursive helpers (Bekic's theorem)",
+      "onchain-library": "Uses or defines a @OnchainLibrary helper class",
+      "onchain-library-shared": "Demonstrates sharing a library across multiple validators",
+      "address-credential-switch": "Switches on Credential / sealed-interface to filter by credential type",
+      "merkle-proof": "Verifies a Merkle proof on-chain",
+      "linked-list": "On-chain linked-list pattern (head pointer + next pointer datums)",
+      "atomic-swap": "Atomic swap pattern between two parties",
+      "lending": "Collateral / loan / liquidation pattern",
+      "treasury": "Treasury / vault / multi-sig fund management",
+      "auction": "First-price / dutch / english auction pattern",
+      "escrow": "Buyer-seller escrow with refund path",
+      "vesting": "Time-locked vesting with beneficiary release",
+      "htlc": "Hashed time-locked contract",
+      "lottery": "On-chain lottery / random selection",
+      "crowdfund": "Crowdfunding / threshold-funding pattern",
+      "payment-splitter": "Splits an incoming payment across multiple recipients",
+      "factory": "Factory pattern that mints child scripts/tokens",
+      "upgradeable": "Upgradeable proxy / versioned logic pattern",
+      "nft-minting": "NFT minting with metadata",
+      "cip-68-metadata": "CIP-68 metadata-on-chain NFT",
+      "one-shot-mint": "Single-mint policy bound to a specific UTxO",
+      "raw-plutusdata-interop": "Uses raw PlutusData for interop (acceptable case, not anti-pattern)",
+      "wingriders-benchmark": "Real-world DEX validator used for performance benchmarking",
+      "multi-validator": "Uses @MultiValidator to combine multiple purposes (mint + spend etc.) in one script class",
+      "optional-type": "Uses Optional<T> for nullable / maybe-absent values",
+      "tuple-access": "Uses Tuple2/Tuple3 with .first()/.second()/.third() field access",
+      "output-datum-switch": "Switches on the OutputDatum sealed interface (NoOutputDatum/OutputDatumHash/InlineDatum)",
+      "inline-datum": "Reads metadata or state from an InlineDatum on a UTxO",
+      "signatory-check": "Verifies that specific PubKeyHashes appear in TxInfo.signatories()",
+      "script-context-fields": "Reads multiple fields off ScriptContext / TxInfo / ScriptInfo (typed access, not raw PlutusData)",
+      "value-singleton": "Constructs a single-asset Value via Value.singleton or Value.lovelace",
+      "policy-id-token-name": "Manipulates PolicyId / TokenName newtype wrappers explicitly"
+    },
+    "examples": [
+      {
+        "id": "vesting-validator",
+        "name": "VestingValidator",
+        "title": "Time-locked vesting",
+        "summary": "Spending validator that releases funds to a beneficiary. Demonstrates typed datum/redeemer records and signatory checks.",
+        "source": "src/main/java/com/example/validators/VestingValidator.java",
+        "kind": "spending-validator",
+        "difficulty": "beginner",
+        "canonical": true,
+        "concepts": [
+          "spending-validator",
+          "parameterized-validator",
+          "vesting",
+          "for-each-loop",
+          "value-arithmetic",
+          "signatory-check"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "escrow-validator",
+        "name": "EscrowValidator",
+        "title": "Buyer-seller escrow with refund",
+        "summary": "Two-party escrow with both a complete path (buyer + seller signatures + payment) and a refund path (seller signature + past deadline). Reuses ValidationUtils @OnchainLibrary helpers.",
+        "source": "src/main/java/com/example/validators/EscrowValidator.java",
+        "kind": "spending-validator",
+        "difficulty": "beginner",
+        "concepts": [
+          "spending-validator",
+          "escrow",
+          "interval-deadline",
+          "onchain-library",
+          "for-each-loop"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "auction-validator",
+        "name": "AuctionValidator",
+        "title": "Auction with sealed-interface redeemer",
+        "summary": "Two-variant sealed interface redeemer (Bid / Close) dispatched via switch expression. Different field counts per variant.",
+        "source": "src/main/java/com/example/validators/AuctionValidator.java",
+        "kind": "spending-validator",
+        "difficulty": "beginner",
+        "canonical": true,
+        "concepts": [
+          "spending-validator",
+          "sealed-interface-redeemer",
+          "auction",
+          "signatory-check"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "multisig-treasury",
+        "name": "MultiSigTreasury",
+        "title": "2-of-N multi-signature treasury",
+        "summary": "Spending validator requiring two distinct signers from the datum.",
+        "source": "src/main/java/com/example/validators/MultiSigTreasury.java",
+        "kind": "spending-validator",
+        "difficulty": "beginner",
+        "concepts": [
+          "spending-validator",
+          "multi-sig",
+          "treasury"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "multisig-minting",
+        "name": "MultiSigMinting",
+        "title": "Multi-action minting policy",
+        "summary": "Three-variant sealed interface redeemer (MintByAuthority / BurnByOwner / MintByMultiSig). Demonstrates @MintingValidator with no datum.",
+        "source": "src/main/java/com/example/validators/MultiSigMinting.java",
+        "kind": "minting-policy",
+        "difficulty": "beginner",
+        "concepts": [
+          "minting-policy",
+          "sealed-interface-redeemer",
+          "multi-sig"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "one-shot-mint",
+        "name": "OneShotMintPolicy",
+        "title": "One-shot UTxO-bound minting",
+        "summary": "Parameterized minting policy that can only mint when a specific UTxO is consumed. The canonical pattern for unique NFTs.",
+        "source": "src/main/java/com/example/validators/OneShotMintPolicy.java",
+        "kind": "minting-policy",
+        "difficulty": "intermediate",
+        "canonical": true,
+        "concepts": [
+          "minting-policy",
+          "parameterized-validator",
+          "one-shot-mint",
+          "for-each-loop",
+          "script-context-fields"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "guarded-minting",
+        "name": "GuardedMinting",
+        "title": "Authority-guarded minting",
+        "summary": "Minting policy that requires a parameterized authority signature.",
+        "source": "src/main/java/com/example/validators/GuardedMinting.java",
+        "kind": "minting-policy",
+        "difficulty": "beginner",
+        "concepts": [
+          "minting-policy",
+          "parameterized-validator"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "output-check-validator",
+        "name": "OutputCheckValidator",
+        "title": "Minimum payment to recipient",
+        "summary": "Demonstrates OutputLib usage: lovelacePaidTo, countOutputsAt. Datum stores a typed Address.",
+        "source": "src/main/java/com/example/validators/OutputCheckValidator.java",
+        "kind": "spending-validator",
+        "difficulty": "beginner",
+        "canonical": true,
+        "concepts": [
+          "spending-validator",
+          "lovelace-payment-check",
+          "script-context-fields"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "whitelist-treasury",
+        "name": "WhitelistTreasuryValidator",
+        "title": "Whitelist-restricted treasury",
+        "summary": "Spending validator that only allows whitelisted signers to spend, using a list-membership check.",
+        "source": "src/main/java/com/example/validators/WhitelistTreasuryValidator.java",
+        "kind": "spending-validator",
+        "difficulty": "beginner",
+        "concepts": [
+          "spending-validator",
+          "treasury",
+          "for-each-loop"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "token-distribution",
+        "name": "TokenDistributionValidator",
+        "title": "Multi-beneficiary distribution with HOFs",
+        "summary": "Treasury that distributes tokens to a list of beneficiaries. Showcases higher-order functions: list.all, list.any, list.filter with lambda variable capture and block bodies. Sealed interface redeemer (Distribute / Cancel). Switches on Credential.",
+        "source": "src/main/java/com/example/validators/TokenDistributionValidator.java",
+        "kind": "spending-validator",
+        "difficulty": "intermediate",
+        "canonical": true,
+        "concepts": [
+          "spending-validator",
+          "parameterized-validator",
+          "treasury",
+          "hof-lambda",
+          "for-each-loop",
+          "address-credential-switch",
+          "sealed-interface-redeemer",
+          "signatory-check"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "mpf-registry",
+        "name": "MpfRegistryValidator",
+        "title": "Merkle Patricia Forestry registry",
+        "summary": "Registry validator using Merkle Patricia Forestry for compact on-chain set membership. Uses self-recursive helpers and the MPF library.",
+        "source": "src/main/java/com/example/validators/MpfRegistryValidator.java",
+        "kind": "spending-validator",
+        "difficulty": "advanced",
+        "concepts": [
+          "spending-validator",
+          "merkle-proof",
+          "recursion",
+          "onchain-library"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "merkle-patricia-forestry",
+        "name": "MerklePatriciaForestry",
+        "title": "Merkle Patricia Forestry verification library",
+        "summary": "@OnchainLibrary providing MPF proof verification primitives. Used by MpfRegistryValidator. Demonstrates self-recursive UPLC compilation.",
+        "source": "src/main/java/com/example/mpf/MerklePatriciaForestry.java",
+        "kind": "onchain-library",
+        "difficulty": "advanced",
+        "concepts": [
+          "onchain-library",
+          "merkle-proof",
+          "recursion"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "cip68-nft",
+        "name": "Cip68Nft",
+        "title": "CIP-68 NFT with on-chain metadata",
+        "summary": "CIP-68 multi-validator with a reference NFT (label 100) carrying inline-datum metadata and a user NFT (label 222). Demonstrates @MultiValidator (MINT + SPEND), parameterized validator, two sealed-interface redeemers, OutputDatum switch, Credential switch, and HOF lambda with block body.",
+        "source": "src/main/java/com/example/nft/onchain/Cip68Nft.java",
+        "kind": "minting-policy",
+        "difficulty": "advanced",
+        "canonical": true,
+        "concepts": [
+          "minting-policy",
+          "spending-validator",
+          "multi-validator",
+          "nft-minting",
+          "cip-68-metadata",
+          "parameterized-validator",
+          "sealed-interface-redeemer",
+          "output-datum-switch",
+          "inline-datum",
+          "address-credential-switch",
+          "hof-lambda",
+          "value-singleton",
+          "script-context-fields"
+        ],
+        "cipRelevance": [
+          "CIP-68"
+        ]
+      },
+      {
+        "id": "linked-list-validator",
+        "name": "LinkedListValidator",
+        "title": "On-chain linked list pattern",
+        "summary": "Demonstrates the on-chain linked list pattern used to represent unbounded sets of UTxOs (head/tail pointers in datums). Note: uses raw PlutusData casts for the linked-list manipulation — advanced pattern, not the recommended idiom for new code.",
+        "source": "src/main/java/com/example/linkedlist/onchain/LinkedListValidator.java",
+        "kind": "spending-validator",
+        "difficulty": "advanced",
+        "concepts": [
+          "spending-validator",
+          "linked-list",
+          "datum-state-transition",
+          "raw-plutusdata-interop"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "linked-list-lib",
+        "name": "LinkedListLib",
+        "title": "Linked-list helper library",
+        "summary": "@OnchainLibrary for the linked-list pattern. Companion to LinkedListValidator. Note: uses raw PlutusData throughout — advanced pattern, not the recommended idiom for new code.",
+        "source": "src/main/java/com/example/linkedlist/onchain/LinkedListLib.java",
+        "kind": "onchain-library",
+        "difficulty": "advanced",
+        "concepts": [
+          "onchain-library",
+          "linked-list",
+          "raw-plutusdata-interop"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "swap-order",
+        "name": "SwapOrder",
+        "title": "Atomic swap order",
+        "summary": "Atomic swap between two parties with redeemer-driven cancel/execute paths.",
+        "source": "src/main/java/com/example/swap/onchain/SwapOrder.java",
+        "kind": "spending-validator",
+        "difficulty": "intermediate",
+        "concepts": [
+          "spending-validator",
+          "atomic-swap",
+          "sealed-interface-redeemer"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "collateral-loan",
+        "name": "CollateralLoan",
+        "title": "Collateralized lending",
+        "summary": "Lending validator with collateral, loan, and liquidation paths.",
+        "source": "src/main/java/com/example/lending/onchain/CollateralLoan.java",
+        "kind": "spending-validator",
+        "difficulty": "advanced",
+        "concepts": [
+          "spending-validator",
+          "lending",
+          "sealed-interface-redeemer",
+          "interval-deadline"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "uverify-v1",
+        "name": "UVerifyV1",
+        "title": "UVerify protocol — main validator",
+        "summary": "Main validator of the UVerify protocol (multi-script content verification). Real-world reference; uses proxy + fee pot pattern.",
+        "source": "src/main/java/com/example/uverify/onchain/UVerifyV1.java",
+        "kind": "spending-validator",
+        "difficulty": "advanced",
+        "concepts": [
+          "spending-validator",
+          "upgradeable"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "uverify-proxy",
+        "name": "UVerifyProxy",
+        "title": "UVerify upgradeable proxy",
+        "summary": "Proxy validator delegating to a versioned logic script. Pattern for upgradeable on-chain logic.",
+        "source": "src/main/java/com/example/uverify/onchain/UVerifyProxy.java",
+        "kind": "spending-validator",
+        "difficulty": "advanced",
+        "concepts": [
+          "spending-validator",
+          "upgradeable"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "uverify-fee-pot",
+        "name": "UVerifyFeePot",
+        "title": "UVerify fee collection",
+        "summary": "Fee accumulator validator for the UVerify protocol.",
+        "source": "src/main/java/com/example/uverify/onchain/UVerifyFeePot.java",
+        "kind": "spending-validator",
+        "difficulty": "advanced",
+        "concepts": [
+          "spending-validator",
+          "treasury"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "uverify-tx-lib",
+        "name": "UVerifyTxLib",
+        "title": "UVerify shared on-chain helpers",
+        "summary": "@OnchainLibrary used by all UVerify scripts.",
+        "source": "src/main/java/com/example/uverify/onchain/UVerifyTxLib.java",
+        "kind": "onchain-library",
+        "difficulty": "advanced",
+        "concepts": [
+          "onchain-library",
+          "onchain-library-shared"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "cf-vesting",
+        "name": "CfVestingValidator",
+        "title": "Cardano Foundation: Vesting template",
+        "summary": "CF reference implementation of a vesting contract.",
+        "source": "src/main/java/com/example/cftemplates/vesting/onchain/CfVestingValidator.java",
+        "kind": "spending-validator",
+        "difficulty": "intermediate",
+        "concepts": [
+          "spending-validator",
+          "vesting",
+          "interval-deadline"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "cf-escrow",
+        "name": "CfEscrowValidator",
+        "title": "Cardano Foundation: Escrow template",
+        "summary": "CF reference implementation of an escrow contract. Used as the JuLC vs Haskell budget benchmark target (matches Haskell exactly). Note: uses raw PlutusData casts in places — not the recommended idiom for new code.",
+        "source": "src/main/java/com/example/cftemplates/escrow/onchain/CfEscrowValidator.java",
+        "kind": "spending-validator",
+        "difficulty": "intermediate",
+        "concepts": [
+          "spending-validator",
+          "escrow",
+          "raw-plutusdata-interop"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "cf-auction",
+        "name": "CfAuctionValidator",
+        "title": "Cardano Foundation: Auction template",
+        "summary": "CF reference implementation of an auction. Note: uses raw PlutusData casts in places — not the recommended idiom for new code.",
+        "source": "src/main/java/com/example/cftemplates/auction/onchain/CfAuctionValidator.java",
+        "kind": "spending-validator",
+        "difficulty": "intermediate",
+        "concepts": [
+          "spending-validator",
+          "auction",
+          "sealed-interface-redeemer",
+          "raw-plutusdata-interop"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "cf-htlc",
+        "name": "CfHtlcValidator",
+        "title": "Cardano Foundation: HTLC template",
+        "summary": "Hashed time-locked contract reference implementation.",
+        "source": "src/main/java/com/example/cftemplates/htlc/onchain/CfHtlcValidator.java",
+        "kind": "spending-validator",
+        "difficulty": "intermediate",
+        "concepts": [
+          "spending-validator",
+          "htlc",
+          "interval-deadline"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "cf-lottery",
+        "name": "CfLotteryValidator",
+        "title": "Cardano Foundation: Lottery template",
+        "summary": "On-chain lottery reference implementation.",
+        "source": "src/main/java/com/example/cftemplates/lottery/onchain/CfLotteryValidator.java",
+        "kind": "spending-validator",
+        "difficulty": "intermediate",
+        "concepts": [
+          "spending-validator",
+          "lottery"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "cf-crowdfund",
+        "name": "CfCrowdfundValidator",
+        "title": "Cardano Foundation: Crowdfund template",
+        "summary": "Threshold-funded crowdfunding reference implementation.",
+        "source": "src/main/java/com/example/cftemplates/crowdfund/onchain/CfCrowdfundValidator.java",
+        "kind": "spending-validator",
+        "difficulty": "intermediate",
+        "concepts": [
+          "spending-validator",
+          "crowdfund"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "cf-payment-splitter",
+        "name": "CfPaymentSplitterValidator",
+        "title": "Cardano Foundation: Payment splitter",
+        "summary": "Splits an incoming payment across multiple recipients.",
+        "source": "src/main/java/com/example/cftemplates/paymentsplitter/onchain/CfPaymentSplitterValidator.java",
+        "kind": "spending-validator",
+        "difficulty": "beginner",
+        "concepts": [
+          "spending-validator",
+          "payment-splitter"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "cf-bet",
+        "name": "CfBetValidator",
+        "title": "Cardano Foundation: Bet template",
+        "summary": "Two-party betting contract.",
+        "source": "src/main/java/com/example/cftemplates/bet/onchain/CfBetValidator.java",
+        "kind": "spending-validator",
+        "difficulty": "intermediate",
+        "concepts": [
+          "spending-validator"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "cf-price-bet",
+        "name": "CfPriceBetValidator",
+        "title": "Cardano Foundation: Price bet (oracle)",
+        "summary": "Price-feed-based betting contract using oracle data.",
+        "source": "src/main/java/com/example/cftemplates/pricebet/onchain/CfPriceBetValidator.java",
+        "kind": "spending-validator",
+        "difficulty": "advanced",
+        "concepts": [
+          "spending-validator"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "cf-simple-transfer",
+        "name": "CfSimpleTransferValidator",
+        "title": "Cardano Foundation: Simple transfer",
+        "summary": "Minimal spending validator demonstrating the simplest correct shape.",
+        "source": "src/main/java/com/example/cftemplates/simpletransfer/onchain/CfSimpleTransferValidator.java",
+        "kind": "spending-validator",
+        "difficulty": "beginner",
+        "concepts": [
+          "spending-validator"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "cf-simple-wallet",
+        "name": "CfSimpleWalletValidator",
+        "title": "Cardano Foundation: Simple wallet",
+        "summary": "Minimal wallet validator. Companion to CfWalletFundsValidator.",
+        "source": "src/main/java/com/example/cftemplates/simplewallet/onchain/CfSimpleWalletValidator.java",
+        "kind": "spending-validator",
+        "difficulty": "beginner",
+        "concepts": [
+          "spending-validator"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "cf-wallet-funds",
+        "name": "CfWalletFundsValidator",
+        "title": "Cardano Foundation: Wallet funds tracker",
+        "summary": "Tracks wallet funds via datum-state transitions.",
+        "source": "src/main/java/com/example/cftemplates/simplewallet/onchain/CfWalletFundsValidator.java",
+        "kind": "spending-validator",
+        "difficulty": "intermediate",
+        "concepts": [
+          "spending-validator",
+          "datum-state-transition"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "cf-vault",
+        "name": "CfVaultValidator",
+        "title": "Cardano Foundation: Vault",
+        "summary": "Personal vault with time-locked withdrawals.",
+        "source": "src/main/java/com/example/cftemplates/vault/onchain/CfVaultValidator.java",
+        "kind": "spending-validator",
+        "difficulty": "intermediate",
+        "concepts": [
+          "spending-validator",
+          "treasury",
+          "interval-deadline"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "cf-storage",
+        "name": "CfStorageValidator",
+        "title": "Cardano Foundation: Datum storage",
+        "summary": "On-chain key-value store via datum, demonstrating datum-state transitions.",
+        "source": "src/main/java/com/example/cftemplates/storage/onchain/CfStorageValidator.java",
+        "kind": "spending-validator",
+        "difficulty": "intermediate",
+        "concepts": [
+          "spending-validator",
+          "datum-state-transition"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "cf-identity",
+        "name": "CfIdentityValidator",
+        "title": "Cardano Foundation: Identity registration",
+        "summary": "On-chain identity registration template.",
+        "source": "src/main/java/com/example/cftemplates/identity/onchain/CfIdentityValidator.java",
+        "kind": "spending-validator",
+        "difficulty": "intermediate",
+        "concepts": [
+          "spending-validator"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "cf-anonymous-data",
+        "name": "CfAnonymousDataValidator",
+        "title": "Cardano Foundation: Anonymous data",
+        "summary": "Anonymous data publication pattern.",
+        "source": "src/main/java/com/example/cftemplates/anonymousdata/onchain/CfAnonymousDataValidator.java",
+        "kind": "spending-validator",
+        "difficulty": "intermediate",
+        "concepts": [
+          "spending-validator"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "cf-token-transfer",
+        "name": "CfTokenTransferValidator",
+        "title": "Cardano Foundation: Token transfer with policies",
+        "summary": "Token transfer with multi-asset value validation.",
+        "source": "src/main/java/com/example/cftemplates/tokentransfer/onchain/CfTokenTransferValidator.java",
+        "kind": "spending-validator",
+        "difficulty": "intermediate",
+        "concepts": [
+          "spending-validator",
+          "value-arithmetic"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "cf-atomic-tx",
+        "name": "CfAtomicTxValidator",
+        "title": "Cardano Foundation: Atomic transaction (multi-validator)",
+        "summary": "Combined multi-validator demonstrating Cardano's native atomicity: a minting policy requires a secret password while the spending validator always succeeds. If the mint fails the whole transaction fails. Demonstrates @MultiValidator with multiple @Entrypoint(purpose=...) methods.",
+        "source": "src/main/java/com/example/cftemplates/atomictx/onchain/CfAtomicTxValidator.java",
+        "kind": "minting-policy",
+        "difficulty": "advanced",
+        "concepts": [
+          "minting-policy",
+          "spending-validator",
+          "multi-validator"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "cf-factory",
+        "name": "CfFactoryValidator",
+        "title": "Cardano Foundation: Factory",
+        "summary": "Factory pattern that mints child product scripts. Companion to CfProductValidator.",
+        "source": "src/main/java/com/example/cftemplates/factory/onchain/CfFactoryValidator.java",
+        "kind": "minting-policy",
+        "difficulty": "advanced",
+        "concepts": [
+          "minting-policy",
+          "factory"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "cf-product",
+        "name": "CfProductValidator",
+        "title": "Cardano Foundation: Factory product",
+        "summary": "Product validator instantiated by CfFactoryValidator.",
+        "source": "src/main/java/com/example/cftemplates/factory/onchain/CfProductValidator.java",
+        "kind": "spending-validator",
+        "difficulty": "advanced",
+        "concepts": [
+          "spending-validator",
+          "factory"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "cf-proxy",
+        "name": "CfProxyValidator",
+        "title": "Cardano Foundation: Upgradeable proxy",
+        "summary": "Proxy validator pattern for upgradeable scripts. Used with CfScriptLogicV1 / V2.",
+        "source": "src/main/java/com/example/cftemplates/upgradeableproxy/onchain/CfProxyValidator.java",
+        "kind": "spending-validator",
+        "difficulty": "advanced",
+        "concepts": [
+          "spending-validator",
+          "upgradeable"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "cf-script-logic-v1",
+        "name": "CfScriptLogicV1",
+        "title": "Cardano Foundation: Proxy logic V1",
+        "summary": "First version of the upgradeable proxy logic.",
+        "source": "src/main/java/com/example/cftemplates/upgradeableproxy/onchain/CfScriptLogicV1.java",
+        "kind": "spending-validator",
+        "difficulty": "advanced",
+        "concepts": [
+          "spending-validator",
+          "upgradeable"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "cf-script-logic-v2",
+        "name": "CfScriptLogicV2",
+        "title": "Cardano Foundation: Proxy logic V2",
+        "summary": "Upgraded version of the proxy logic.",
+        "source": "src/main/java/com/example/cftemplates/upgradeableproxy/onchain/CfScriptLogicV2.java",
+        "kind": "spending-validator",
+        "difficulty": "advanced",
+        "concepts": [
+          "spending-validator",
+          "upgradeable"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "wingriders-pool",
+        "name": "WingRidersPoolValidator",
+        "title": "WingRiders DEX pool validator (benchmark)",
+        "summary": "Real-world DEX pool validator from WingRiders. Used for the JuLC vs Plinth/Aiken/Plutarch CPU/mem benchmark — JuLC at ~20-37M CPU/req vs Plinth 723M, Aiken 164M, Plutarch 121M.",
+        "source": "src/main/java/com/example/benchmark/wingriders/WingRidersPoolValidator.java",
+        "kind": "spending-validator",
+        "difficulty": "advanced",
+        "concepts": [
+          "spending-validator",
+          "wingriders-benchmark",
+          "value-arithmetic",
+          "for-each-loop"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "wingriders-request",
+        "name": "WingRidersRequestValidator",
+        "title": "WingRiders DEX request validator (benchmark)",
+        "summary": "Real-world DEX request validator from WingRiders. Used in the benchmark suite.",
+        "source": "src/main/java/com/example/benchmark/wingriders/WingRidersRequestValidator.java",
+        "kind": "spending-validator",
+        "difficulty": "advanced",
+        "concepts": [
+          "spending-validator",
+          "wingriders-benchmark"
+        ],
+        "cipRelevance": []
+      },
+      {
+        "id": "validation-utils",
+        "name": "ValidationUtils",
+        "title": "Shared validation @OnchainLibrary",
+        "summary": "Reusable on-chain helper used by EscrowValidator and others. Demonstrates @OnchainLibrary authoring pattern.",
+        "source": "src/main/java/com/example/util/ValidationUtils.java",
+        "kind": "onchain-library",
+        "difficulty": "beginner",
+        "canonical": true,
+        "concepts": [
+          "onchain-library",
+          "onchain-library-shared",
+          "signatory-check",
+          "interval-deadline"
+        ],
+        "cipRelevance": []
+      }
+    ]
+  }
+}

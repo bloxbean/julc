@@ -1,0 +1,70 @@
+# JuLC
+
+julcVersion: 0.1.0-pre12
+generatedAt: 2026-05-17T08:09:51.448Z
+
+> JuLC compiles a safe subset of Java to Plutus V3 UPLC for Cardano smart contracts. Java developers write validators as ordinary classes (records, sealed interfaces, switch expressions); the compiler produces efficient Plutus scripts.
+
+Key facts an AI agent should know before generating JuLC code:
+
+- JuLC is for **on-chain** smart contract code (validators, minting policies). Off-chain transaction building uses cardano-client-lib, which is a separate Java library.
+- Target: **Plutus V3 only** (Conway era).
+- Validators are annotated `@SpendingValidator`, `@MintingValidator`, `@CertifyingValidator`, `@WithdrawValidator`, `@VotingValidator`, or `@ProposingValidator`. The entrypoint is a `static` method annotated `@Entrypoint`.
+- **Always prefer high-level ledger type classes** — `TxOut`, `Value`, `Address`, `OutputDatum`, `Credential`, sealed-interface variants (e.g. `Vote.Yes`), `JulcList<T>`, `JulcMap<K,V>`, `Optional<T>`, `Tuple2`/`Tuple3` — over raw `PlutusData.ConstrData/IntData/BytesData/MapData/ListData`. Raw `PlutusData` constructors (subtypes: `ConstrData`, `IntData`, `BytesData`, `MapData`, `ListData`) are an **anti-pattern** in nearly all on-chain code.
+- The Java subset is restricted: no mutation after assignment, no lambda `.apply()`, no uninitialized variables, no `return` inside `while` loops, no reflection, no I/O.
+- Stdlib lives in `com.bloxbean.cardano.julc.stdlib.lib.*` and is imported per library: `ContextsLib`, `ListsLib`, `ValuesLib`, `MapLib`, `OutputLib`, `MathLib`, `IntervalLib`, `CryptoLib`, `ByteStringLib`, `BitwiseLib`, `AddressLib`, `BlsLib`, `NativeValueLib`.
+
+## Start here for AI agents
+
+- [AI Starter Pack](https://julc.dev/ai/starter-pack/): The single best file to ingest. Distills what AI agents need to write correct JuLC on first try (limitations, anti-patterns, idioms, error→fix table, canonical examples).
+- [llms-full.txt](https://julc.dev/llms-full.txt): All JuLC docs concatenated as a single markdown file (~50–150K tokens). Ingest this for full coverage.
+- [Using JuLC with AI agents](https://julc.dev/ai/): Install snippets for Claude Code, Cursor, Continue, ChatGPT, and other AI tools.
+
+## AI
+
+- [Using JuLC with AI Agents](https://julc.dev/ai/): How to use Claude Code, Cursor, Continue, ChatGPT, and other AI tools to write JuLC smart contracts.
+- [JuLC AI Starter Pack](https://julc.dev/ai/starter-pack/): Everything an AI agent needs to write correct JuLC on first try. Ingest this file before generating JuLC code.
+- [MCP closed-loop walkthrough](https://julc.dev/ai/transcripts/closed-loop-walkthrough/): Real captured transcript of an AI agent compiling, fixing, and evaluating a JuLC vesting validator through the julc mcp server.
+
+## Overview
+
+- [JuLC Documentation](https://julc.dev/overview/): Comprehensive documentation for JuLC — the Java UPLC Compiler for Cardano
+
+## Getting Started
+
+- [Write Your First JuLC Contract](https://julc.dev/first-contract/): Step-by-step guide to scaffolding a project, writing a validator, compiling, and testing with the julc CLI
+- [Getting Started with JuLC](https://julc.dev/getting-started/): Getting Started with JuLC - JuLC documentation
+
+## Guides
+
+- [JuLC Advanced Guide: Low-Level Patterns](https://julc.dev/guides/advanced-guide/): JuLC Advanced Guide: Low-Level Patterns - JuLC documentation
+- [For-Each Loop Patterns](https://julc.dev/guides/for-loop-patterns/): For-Each Loop Patterns - JuLC documentation
+- [Testing Guide](https://julc.dev/guides/testing-guide/): Testing Guide - JuLC documentation
+- [Source Maps — Runtime Error Location Reporting](https://julc.dev/guides/source-maps/): Source Maps — Runtime Error Location Reporting - JuLC documentation
+
+## Standard Library
+
+- [JuLC Standard Library Usage Guide](https://julc.dev/stdlib/stdlib-guide/): JuLC Standard Library Usage Guide - JuLC documentation
+
+## Reference
+
+- [JuLC API Reference](https://julc.dev/reference/api-reference/): JuLC API Reference - JuLC documentation
+- [JuLC Library Developer Guide](https://julc.dev/reference/library-developer-guide/): JuLC Library Developer Guide - JuLC documentation
+- [Examples](https://julc.dev/reference/examples/): Example validators demonstrating JuLC features and patterns
+- [JuLC Compiler Troubleshooting Guide](https://julc.dev/reference/troubleshooting/): JuLC Compiler Troubleshooting Guide - JuLC documentation
+
+## Internals
+
+- [JuLC Compiler Design](https://julc.dev/internals/compiler-design/): JuLC Compiler Design - JuLC documentation
+- [Java to UPLC End to End](https://julc.dev/internals/java-to-uplc-end-to-end/): A beginner-friendly deep dive into how JuLC compiles Java to PIR, UPLC, FLAT bytes, and Cardano script CBOR.
+- [JuLC Compiler Developer Guide](https://julc.dev/internals/compiler-developer-guide/): JuLC Compiler Developer Guide - JuLC documentation
+
+## Experimental
+
+- [JRL (JuLC Rule Language) Guide (Experimental)](https://julc.dev/experimental/jrl-guide/): JRL (JuLC Rule Language) Guide (Experimental) - JuLC documentation
+
+## Source code and examples
+
+- Repo: https://github.com/bloxbean/julc
+- Real-world examples: https://github.com/bloxbean/julc-examples (cftemplates, nft, uverify, mpf, linkedlist, swap, lending, validators) — these are the canonical reference for idiomatic JuLC.
+- Hello world: https://github.com/bloxbean/julc-helloworld
