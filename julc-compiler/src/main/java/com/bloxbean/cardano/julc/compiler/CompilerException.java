@@ -16,6 +16,11 @@ public class CompilerException extends RuntimeException {
         this.diagnostics = List.copyOf(diagnostics);
     }
 
+    public CompilerException(String message, CompilerDiagnostic diagnostic) {
+        super(message);
+        this.diagnostics = List.of(diagnostic);
+    }
+
     public CompilerException(String message) {
         super(message);
         this.diagnostics = List.of();

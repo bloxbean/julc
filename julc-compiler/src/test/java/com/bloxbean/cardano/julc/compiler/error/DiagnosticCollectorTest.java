@@ -91,4 +91,60 @@ class DiagnosticCollectorTest {
         assertEquals(0, diag.line());
         assertEquals(0, diag.column());
     }
+
+    @Test
+    void errorWithCode_attachesStableCode() {
+        var collector = new DiagnosticCollector("test.java");
+        var cu = StaticJavaParser.parse("class A { void m() { int x = 42; } }");
+        var literal = cu.findFirst(IntegerLiteralExpr.class).orElseThrow();
+
+        collector.errorWithCode(literal, "JULC0003", "Cannot return inside while loop",
+                "Use a boolean accumulator and return after the loop");
+
+        var diag = collector.getDiagnostics().get(0);
+        assertEquals("JULC0003", diag.code());
+        assertTrue(diag.hasCode());
+        assertTrue(diag.toString().contains("[JULC0003]"),
+                "toString should surface the code for log readability");
+    }
+
+    @Test
+    void errorWithGeneratedCode_formatsTemplateAndUsesCatalogFix() {
+        var collector = new DiagnosticCollector("test.java");
+        var cu = StaticJavaParser.parse("class A { void m() { int x = 42; } }");
+        var literal = cu.findFirst(IntegerLiteralExpr.class).orElseThrow();
+
+        collector.errorWithCode(literal, DiagnosticCodes.PARAM_RAW_PLUTUS_DATA,
+                "PlutusData.BytesData");
+
+        var diag = collector.getDiagnostics().get(0);
+        assertEquals("JULC0013", diag.code());
+        assertEquals("@Param type 'PlutusData.BytesData' is not allowed. "
+                + "@Param values are always raw Data at runtime; using a typed Data subtype "
+                + "causes the compiler to misinterpret the runtime representation.", diag.message());
+        assertEquals(DiagnosticCodes.PARAM_RAW_PLUTUS_DATA.fix(), diag.suggestion());
+    }
+
+    @Test
+    void errorWithCode_withoutNode_isStillStructured() {
+        var collector = new DiagnosticCollector("test.java");
+        collector.errorWithCode("JULC0010", "No validator annotation found",
+                "Add @SpendingValidator / @MintingValidator / etc.");
+
+        var diag = collector.getDiagnostics().get(0);
+        assertEquals("JULC0010", diag.code());
+        assertEquals(0, diag.line());
+    }
+
+    @Test
+    void diagnosticsWithoutCode_remainBackwardsCompatible() {
+        var collector = new DiagnosticCollector("test.java");
+        collector.error("Legacy error without code");
+
+        var diag = collector.getDiagnostics().get(0);
+        assertNull(diag.code());
+        assertFalse(diag.hasCode());
+        assertFalse(diag.toString().contains("[null]"),
+                "toString must not embed [null] for code-less diagnostics");
+    }
 }

@@ -64,6 +64,13 @@ class ParamTypeValidationTest {
     }
 
     @Test
+    void testParamFullyQualifiedBytesDataRejected() {
+        var ex = expectCompileError("com.bloxbean.cardano.julc.core.PlutusData.BytesData");
+        assertTrue(ex.diagnostics().stream().anyMatch(CompilerDiagnostic::isError));
+        assertTrue(ex.getMessage().contains("BytesData"));
+    }
+
+    @Test
     void testParamPlutusDataAccepted() {
         var source = VALIDATOR_TEMPLATE.formatted("PlutusData");
         var result = new JulcCompiler().compile(source);
@@ -106,6 +113,7 @@ class ParamTypeValidationTest {
                 .filter(CompilerDiagnostic::isError)
                 .findFirst()
                 .orElseThrow();
+        assertEquals("JULC0013", errorDiag.code());
         assertTrue(errorDiag.hasSuggestion());
         assertTrue(errorDiag.suggestion().contains("PlutusData"));
     }

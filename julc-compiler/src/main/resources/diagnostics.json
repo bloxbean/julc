@@ -1,0 +1,366 @@
+{
+  "schemaVersion": 1,
+  "julcVersion": "@julcVersion@",
+  "$comment": "Authoritative catalog of JuLC compiler diagnostics. Each entry has a stable JULC#### code, a generated Java constant, an emitted-message template, a one-line root cause, a canonical fix snippet, and optionally example bad/good code. Consumed by: (1) generated DiagnosticCodes.java, (2) the MCP julc_explain_diagnostic tool, (3) docs/AI catalog resources, (4) future full compiler diagnostic coverage tests.",
+  "categories": {
+    "SYNTAX": "Java syntax forms not supported in the on-chain subset",
+    "TYPE": "Type system errors (resolution, mismatches, generics)",
+    "VALIDATOR": "Validator class / @Entrypoint structure",
+    "CONTROL_FLOW": "Control-flow restrictions (return, break, while, switch)",
+    "LIBRARY": "@OnchainLibrary and @Param errors",
+    "STDLIB": "Stdlib method usage errors (wrong arity, missing args)",
+    "PIR": "PIR generation errors (internal pipeline)"
+  },
+  "diagnostics": [
+    {
+      "code": "JULC0001",
+      "constant": "METHOD_BODY_MISSING",
+      "status": "planned",
+      "title": "Method must have a body",
+      "category": "VALIDATOR",
+      "severity": "error",
+      "template": "Method must have a body: {0}",
+      "summary": "An abstract or interface method was found where the compiler expects a concrete method body. On-chain code cannot contain abstract methods.",
+      "fix": "Provide a body for every method in your validator class.",
+      "example": {
+        "bad": "@SpendingValidator\npublic class MyValidator {\n    @Entrypoint\n    public abstract boolean validate(Data redeemer, ScriptContext ctx);\n}",
+        "good": "@SpendingValidator\npublic class MyValidator {\n    @Entrypoint\n    public static boolean validate(Data redeemer, ScriptContext ctx) {\n        return true;\n    }\n}"
+      }
+    },
+    {
+      "code": "JULC0002",
+      "constant": "VARIABLE_UNINITIALIZED",
+      "status": "planned",
+      "title": "Variable must be initialized",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "Variable must be initialized: {0}",
+      "summary": "A local variable was declared without an initializer. UPLC has no notion of uninitialized state.",
+      "fix": "Initialize at declaration, e.g. `var x = BigInteger.ZERO;`. Re-bind via a new `var` if you need a different value later (UPLC is single-assignment).",
+      "example": {
+        "bad": "var x;\nx = 5;",
+        "good": "var x = BigInteger.valueOf(5);"
+      }
+    },
+    {
+      "code": "JULC0003",
+      "constant": "RETURN_INSIDE_WHILE",
+      "status": "planned",
+      "title": "Cannot return inside while loop",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "Cannot return inside while loop",
+      "summary": "`return` statements are not allowed inside `while` loops. UPLC `while` is desugared to a fixed-point `LetRec` that needs an explicit accumulator.",
+      "fix": "Use a boolean accumulator and return after the loop. `break` works inside `for-each` if you only need early termination.",
+      "example": {
+        "bad": "while (i.compareTo(n) < 0) {\n    if (matches(i)) return true;\n    i = i.add(BigInteger.ONE);\n}\nreturn false;",
+        "good": "boolean found = false;\nvar i = BigInteger.ZERO;\nwhile (i.compareTo(n) < 0 && !found) {\n    if (matches(i)) found = true;\n    i = i.add(BigInteger.ONE);\n}\nreturn found;"
+      }
+    },
+    {
+      "code": "JULC0004",
+      "constant": "BREAK_OUTSIDE_LOOP",
+      "status": "planned",
+      "title": "break statement outside of a loop",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "break statement outside of a loop",
+      "summary": "`break` was used outside of a `for-each` or `while` loop body.",
+      "fix": "Place the `break` inside a loop, or refactor to use early `return` from a helper method."
+    },
+    {
+      "code": "JULC0005",
+      "constant": "SWITCH_NOT_EXHAUSTIVE",
+      "status": "planned",
+      "title": "Switch is not exhaustive on sealed interface",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "Switch on sealed interface {0} is not exhaustive. Missing cases: {1}",
+      "summary": "A `switch` expression on a sealed interface is missing one or more permitted variants.",
+      "fix": "Add the missing case branches or include a `default ->` branch to handle all remaining variants.",
+      "example": {
+        "bad": "sealed interface Action permits A, B, C {}\n// ...\nreturn switch (action) {\n    case A a -> ...;\n    case B b -> ...;\n    // missing C\n};",
+        "good": "return switch (action) {\n    case A a -> ...;\n    case B b -> ...;\n    case C c -> ...;\n};"
+      }
+    },
+    {
+      "code": "JULC0006",
+      "constant": "METHOD_MISSING_RETURN",
+      "status": "planned",
+      "title": "Method does not return on all paths",
+      "category": "CONTROL_FLOW",
+      "severity": "error",
+      "template": "Method {0} may not return a value on all execution paths",
+      "summary": "A non-void method has at least one execution path that does not return a value.",
+      "fix": "Ensure every if/else branch returns, or add a fallthrough return at the end of the method."
+    },
+    {
+      "code": "JULC0007",
+      "constant": "SWITCH_REQUIRES_SEALED_INTERFACE",
+      "status": "planned",
+      "title": "Switch expression requires a sealed interface type",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "switch expression requires a sealed interface type, got: {0}",
+      "summary": "`switch` was used on a non-sealed type. Records (including `Tuple2`/`Tuple3`) cannot be switched on.",
+      "fix": "Use field access (`pair.first()`, `pair.second()`) for records. Reserve `switch` for sealed interfaces with permitted record variants."
+    },
+    {
+      "code": "JULC0008",
+      "constant": "ENTRYPOINT_WRONG_PARAMETER_COUNT",
+      "status": "emitted",
+      "title": "@Entrypoint method has wrong parameter count",
+      "category": "VALIDATOR",
+      "severity": "error",
+      "template": "{0} entrypoint must have {1} parameters{2}, found {3} in {4}.{5}(){6}",
+      "summary": "The @Entrypoint method's parameter count doesn't match the validator kind. SpendingValidator entrypoints take 2 or 3 params (datum, redeemer, ctx); other validators take 2 (redeemer, ctx).",
+      "fix": "Adjust the entrypoint signature to match the validator annotation. Spending: `(Datum, Redeemer, ScriptContext)`. Others: `(Redeemer, ScriptContext)`."
+    },
+    {
+      "code": "JULC0009",
+      "constant": "ENTRYPOINT_MISSING",
+      "status": "emitted",
+      "title": "No @Entrypoint method found",
+      "category": "VALIDATOR",
+      "severity": "error",
+      "template": "No @Entrypoint method found in {0}",
+      "summary": "The validator class has no method annotated `@Entrypoint`.",
+      "fix": "Annotate exactly one `public static` method with `@Entrypoint`. The method must return `boolean` (or `void` for newer signature shapes)."
+    },
+    {
+      "code": "JULC0010",
+      "constant": "VALIDATOR_ANNOTATION_MISSING",
+      "status": "emitted",
+      "title": "No validator annotation found",
+      "category": "VALIDATOR",
+      "severity": "error",
+      "template": "No validator annotation found{0}",
+      "summary": "The class has no validator annotation. Expected one of @SpendingValidator, @MintingValidator, @CertifyingValidator, @WithdrawValidator, @VotingValidator, @ProposingValidator (or @MultiValidator).",
+      "fix": "Add the appropriate validator annotation at the class level."
+    },
+    {
+      "code": "JULC0011",
+      "constant": "UNDEFINED_VARIABLE",
+      "status": "planned",
+      "title": "Undefined variable",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "Undefined variable: {0}",
+      "summary": "A variable was referenced that is not in scope. Most commonly: typo, used before declared, or shadowed inside a switch case binding.",
+      "fix": "Check spelling and declaration order. If a switch case binds a field with the same name as your method parameter, rename one of them — the field shadows the parameter inside the case body (see JULC0021)."
+    },
+    {
+      "code": "JULC0012",
+      "constant": "TYPE_RESOLUTION_FAILED",
+      "status": "planned",
+      "title": "Cannot resolve type",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "Cannot resolve type: {0}",
+      "summary": "The compiler could not resolve a type reference. The class may not be on the classpath, may not be a registered ledger/stdlib type, or may not be a valid on-chain type.",
+      "fix": "Ensure the type is imported and is one of: a record, sealed interface, ledger type, JulcList/JulcMap/Optional/Tuple, or primitive (BigInteger, byte[], boolean, String)."
+    },
+    {
+      "code": "JULC0013",
+      "constant": "PARAM_RAW_PLUTUS_DATA",
+      "status": "emitted",
+      "title": "Banned @Param type",
+      "category": "LIBRARY",
+      "severity": "error",
+      "template": "@Param type ''{0}'' is not allowed. @Param values are always raw Data at runtime; using a typed Data subtype causes the compiler to misinterpret the runtime representation.",
+      "summary": "@Param fields cannot be raw `PlutusData` subtypes (`PlutusData.BytesData`, `PlutusData.MapData`, `PlutusData.ListData`, `PlutusData.IntData`) — these confuse the parameter wrapping pipeline.",
+      "fix": "Use byte[], BigInteger, typed records, redeemers, or @Param PlutusData only for opaque data."
+    },
+    {
+      "code": "JULC0014",
+      "constant": "ARRAY_UNSUPPORTED",
+      "status": "planned",
+      "title": "Arrays are not supported (except byte[])",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "arrays are not supported on-chain",
+      "summary": "Java arrays other than `byte[]` are not supported on-chain.",
+      "fix": "Use `JulcList<T>` or `List<T>` instead of `T[]`."
+    },
+    {
+      "code": "JULC0015",
+      "constant": "TRY_CATCH_UNSUPPORTED",
+      "status": "emitted",
+      "title": "try/catch is not supported on-chain",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "try/catch is not supported on-chain",
+      "summary": "UPLC has no exception model — only `error` (immediate script failure).",
+      "fix": "Use if/else checks instead of exception handling"
+    },
+    {
+      "code": "JULC0016",
+      "constant": "THROW_UNSUPPORTED",
+      "status": "emitted",
+      "title": "throw is not supported on-chain",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "throw is not supported on-chain",
+      "summary": "There is no exception machinery in UPLC.",
+      "fix": "Return false from the validator to reject a transaction"
+    },
+    {
+      "code": "JULC0017",
+      "constant": "NULL_UNSUPPORTED",
+      "status": "emitted",
+      "title": "null is not supported on-chain",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "null is not supported on-chain",
+      "summary": "There is no `null` value in the on-chain type system.",
+      "fix": "Use Optional<T> (Optional.of(x) / Optional.empty()) to represent absence of a value"
+    },
+    {
+      "code": "JULC0018",
+      "constant": "C_STYLE_FOR_UNSUPPORTED",
+      "status": "emitted",
+      "title": "C-style for loops are not supported",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "C-style for loops are not supported on-chain",
+      "summary": "Only `for-each` (`for (var x : list)`) and `while` loops are supported on-chain.",
+      "fix": "Use for-each over a list or while loops instead"
+    },
+    {
+      "code": "JULC0019",
+      "constant": "DO_WHILE_UNSUPPORTED",
+      "status": "emitted",
+      "title": "do-while loops are not supported",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "do-while loops are not supported on-chain",
+      "summary": "Do-while is not supported on-chain.",
+      "fix": "Use while loops or for-each instead"
+    },
+    {
+      "code": "JULC0020",
+      "constant": "FLOATING_POINT_UNSUPPORTED",
+      "status": "planned",
+      "title": "Floating-point types are not supported",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "floating point types (float/double) are not supported on-chain",
+      "summary": "`float` and `double` have no UPLC equivalent.",
+      "fix": "Use `BigInteger` for integer math. For fractional values, scale up (e.g. parts-per-million) and do integer math, or use `Rational` from the ledger types when modelling protocol params."
+    },
+    {
+      "code": "JULC0021",
+      "constant": "SWITCH_FIELD_SHADOWS_PARAMETER",
+      "status": "lintOnly",
+      "title": "Switch case field name shadows method parameter",
+      "category": "CONTROL_FLOW",
+      "severity": "warning",
+      "template": "Switch case binding name shadows a method parameter",
+      "summary": "When a sealed-interface variant has a field with the same name as a method parameter, the field binding silently shadows the parameter inside the switch case body. The compiler may not always catch this — be vigilant.",
+      "fix": "Always use distinct names. Example: rename `time` parameter to `point` when switching on `IntervalBoundType.Finite(time)`.",
+      "example": {
+        "bad": "boolean check(IntervalBound bound, BigInteger time) {\n    return switch (bound) {\n        case Finite f -> f.time().compareTo(time) > 0; // 'time' = field, NOT param\n    };\n}",
+        "good": "boolean check(IntervalBound bound, BigInteger point) {\n    return switch (bound) {\n        case Finite f -> f.time().compareTo(point) > 0;\n    };\n}"
+      }
+    },
+    {
+      "code": "JULC0022",
+      "constant": "LAMBDA_STORED_IN_VARIABLE_UNSUPPORTED",
+      "status": "planned",
+      "title": "Lambda cannot be stored in a variable",
+      "category": "SYNTAX",
+      "severity": "error",
+      "template": "Lambda cannot be stored in a variable",
+      "summary": "Lambdas must be passed inline as arguments to higher-order functions. Storing a lambda in a `Function<X,Y>` variable and calling `.apply(...)` is not supported.",
+      "fix": "Pass the lambda directly: `list.map(x -> ...)`, `list.filter(p -> ...)`. If you need to share lambda logic, extract it as a regular static method (not as a lambda)."
+    },
+    {
+      "code": "JULC0023",
+      "constant": "MUTUAL_RECURSION_TOO_LARGE",
+      "status": "planned",
+      "title": "Mutually recursive bindings with more than 2 participants not supported",
+      "category": "PIR",
+      "severity": "error",
+      "template": "Mutually recursive bindings with more than 2 participants not yet supported: {0}",
+      "summary": "JuLC supports self-recursion and mutual recursion between exactly 2 helpers (via Bekic's theorem). Three or more mutually recursive functions are not supported.",
+      "fix": "Refactor: combine the helpers into a single function with an accumulator, or break the recursion via an explicit dispatch on a sealed interface."
+    },
+    {
+      "code": "JULC0024",
+      "constant": "UNKNOWN_METHOD_ON_TYPE",
+      "status": "planned",
+      "title": "Unknown method on type",
+      "category": "STDLIB",
+      "severity": "error",
+      "template": "Unknown method: {0}",
+      "summary": "A method was called that doesn't exist on the receiver type. Likely the AI invented a method that isn't in the stdlib.",
+      "fix": "Check the stdlib catalog at https://julc.dev/ai/catalog.json or the stdlib reference at https://julc.dev/stdlib/stdlib-guide/. Common: `JulcList<T>` has `head/tail/get/size/isEmpty/contains/prepend/reverse/concat/take/drop/map/filter/any/all/find`."
+    },
+    {
+      "code": "JULC0025",
+      "constant": "STDLIB_METHOD_WRONG_ARITY",
+      "status": "planned",
+      "title": "Stdlib method called with wrong number of arguments",
+      "category": "STDLIB",
+      "severity": "error",
+      "template": "Stdlib method called with wrong number of arguments: {0}",
+      "summary": "A stdlib method was called with the wrong arity. Examples: `list.map()` requires a function argument, `list.contains()` requires an element argument, `map.insert()` requires (key, value).",
+      "fix": "See the message itself — it includes a `Usage:` hint with the correct signature."
+    },
+    {
+      "code": "JULC0026",
+      "constant": "NEWTYPE_WRONG_FIELD_COUNT",
+      "status": "planned",
+      "title": "@NewType requires exactly one field",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "@NewType record {0} must have exactly one field",
+      "summary": "@NewType is a single-field record wrapper around a primitive (byte[], BigInteger, String, boolean). Multi-field @NewType records are not allowed.",
+      "fix": "Reduce to one field, or remove @NewType and use a plain record (which compiles to ConstrData)."
+    },
+    {
+      "code": "JULC0027",
+      "constant": "NEWTYPE_UNSUPPORTED_FIELD_TYPE",
+      "status": "planned",
+      "title": "Unsupported @NewType field type",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "Unsupported @NewType field type: {0}",
+      "summary": "@NewType's underlying field must be a primitive: `byte[]`, `BigInteger`, `String`, or `boolean`.",
+      "fix": "Change the underlying field to a supported primitive, or remove @NewType."
+    },
+    {
+      "code": "JULC0028",
+      "constant": "SOURCE_PARSE_FAILED",
+      "status": "planned",
+      "title": "Failed to parse source",
+      "category": "PIR",
+      "severity": "error",
+      "template": "Failed to parse {0} source: {1}",
+      "summary": "The Java source could not be parsed. Usually a syntax error in the source file.",
+      "fix": "Check the file with a Java IDE or `javac` — the JuLC compiler relies on JavaParser to produce a clean AST."
+    },
+    {
+      "code": "JULC0029",
+      "constant": "DUPLICATE_TYPE_DECLARATION",
+      "status": "planned",
+      "title": "Duplicate record / sealed interface type",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "Duplicate type declaration: {0}",
+      "summary": "Two different declarations registered the same type name.",
+      "fix": "Rename one of the types, or ensure they are not both on the compilation classpath."
+    },
+    {
+      "code": "JULC0030",
+      "constant": "CIRCULAR_TYPE_DEPENDENCY",
+      "status": "planned",
+      "title": "Circular type dependency detected",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "Circular type dependency detected among: {0}",
+      "summary": "Type registration found a cycle that cannot be resolved.",
+      "fix": "Break the cycle by introducing a parameterized record or refactoring the involved types."
+    }
+  ]
+}

@@ -2,6 +2,7 @@ package com.bloxbean.cardano.julc.compiler;
 
 import com.bloxbean.cardano.julc.compiler.codegen.ValidatorWrapper;
 import com.bloxbean.cardano.julc.compiler.error.CompilerDiagnostic;
+import com.bloxbean.cardano.julc.compiler.error.DiagnosticInfo;
 import com.bloxbean.cardano.julc.compiler.pir.*;
 import com.bloxbean.cardano.julc.compiler.resolve.ImportResolver;
 import com.bloxbean.cardano.julc.compiler.resolve.LedgerSourceLoader;
@@ -20,6 +21,7 @@ import com.bloxbean.cardano.julc.core.source.SourceMap;
 import com.github.javaparser.ParserConfiguration;
 import com.github.javaparser.StaticJavaParser;
 import com.github.javaparser.ast.CompilationUnit;
+import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.expr.FieldAccessExpr;
@@ -31,6 +33,11 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
+
+import static com.bloxbean.cardano.julc.compiler.error.DiagnosticCodes.ENTRYPOINT_MISSING;
+import static com.bloxbean.cardano.julc.compiler.error.DiagnosticCodes.ENTRYPOINT_WRONG_PARAMETER_COUNT;
+import static com.bloxbean.cardano.julc.compiler.error.DiagnosticCodes.PARAM_RAW_PLUTUS_DATA;
+import static com.bloxbean.cardano.julc.compiler.error.DiagnosticCodes.VALIDATOR_ANNOTATION_MISSING;
 
 /**
  * Main compiler facade. Orchestrates the pipeline:
@@ -79,10 +86,20 @@ public class JulcCompiler {
     /** Typed Data subtypes that must not be used with @Param. */
     private static final Set<String> BANNED_PARAM_TYPES = Set.of(
             "PlutusData.BytesData", "BytesData",
+            "com.bloxbean.cardano.julc.core.PlutusData.BytesData",
             "PlutusData.MapData", "MapData",
+            "com.bloxbean.cardano.julc.core.PlutusData.MapData",
             "PlutusData.ListData", "ListData",
-            "PlutusData.IntData", "IntData"
+            "com.bloxbean.cardano.julc.core.PlutusData.ListData",
+            "PlutusData.IntData", "IntData",
+            "com.bloxbean.cardano.julc.core.PlutusData.IntData"
     );
+
+    private static final String SPENDING_ENTRYPOINT_PARAMS_SUGGESTION =
+            "Use (Redeemer, ScriptContext) for no-datum spending validators, or " +
+                    "(Datum, Redeemer, ScriptContext) when the script receives an inline datum.";
+    private static final String NON_SPENDING_ENTRYPOINT_PARAMS_SUGGESTION =
+            "Use exactly (Redeemer, ScriptContext) for non-spending validator entrypoints.";
 
     private final StdlibLookup stdlibLookup;
     private final CompilerOptions options;
@@ -962,7 +979,12 @@ public class JulcCompiler {
                 }
             }
         }
-        throw new CompilerException("No validator annotation found (e.g. @SpendingValidator, @MintingValidator)");
+        throw validationError(VALIDATOR_ANNOTATION_MISSING,
+                "Add exactly one validator annotation at the class level, such as " +
+                        "@SpendingValidator, @MintingValidator, @WithdrawValidator, " +
+                        "@CertifyingValidator, @VotingValidator, @ProposingValidator, or @MultiValidator.",
+                null,
+                " (e.g. @SpendingValidator, @MintingValidator)");
     }
 
     private ScriptPurpose getScriptPurpose(ClassOrInterfaceDeclaration cls) {
@@ -1002,7 +1024,10 @@ public class JulcCompiler {
         if (cls.getAnnotationByName("MultiValidator").isPresent()) {
             return ScriptPurpose.MULTI;
         }
-        throw new CompilerException("No validator annotation found on " + cls.getNameAsString());
+        throw validationError(VALIDATOR_ANNOTATION_MISSING,
+                "Add the appropriate validator annotation at the class level.",
+                cls,
+                " on " + cls.getNameAsString());
     }
 
     private MethodDeclaration findEntrypoint(ClassOrInterfaceDeclaration cls) {
@@ -1011,7 +1036,10 @@ public class JulcCompiler {
                 return method;
             }
         }
-        throw new CompilerException("No @Entrypoint method found in " + cls.getNameAsString());
+        throw validationError(ENTRYPOINT_MISSING,
+                "Annotate exactly one public static validator method with @Entrypoint.",
+                cls,
+                cls.getNameAsString());
     }
 
     /** Map Purpose enum name to ScriptInfo tag. */
@@ -1078,7 +1106,10 @@ public class JulcCompiler {
         }
 
         if (entrypoints.isEmpty()) {
-            throw new CompilerException("No @Entrypoint method found in @MultiValidator " + cls.getNameAsString());
+            throw validationError(ENTRYPOINT_MISSING,
+                    "Add a public static @Entrypoint method. For auto-dispatch, annotate each entrypoint with purpose=Purpose.<KIND>.",
+                    cls,
+                    "@MultiValidator " + cls.getNameAsString());
         }
 
         // Check for mixing DEFAULT and explicit purposes
@@ -1101,9 +1132,16 @@ public class JulcCompiler {
             }
             int paramCount = entrypoints.get(0).method.getParameters().size();
             if (paramCount != 2) {
-                throw new CompilerException("@MultiValidator manual dispatch entrypoint must have 2 parameters "
-                        + "(redeemer, scriptContext), found " + paramCount
-                        + " in " + cls.getNameAsString() + "." + entrypoints.get(0).method.getNameAsString() + "()");
+                throw validationError(ENTRYPOINT_WRONG_PARAMETER_COUNT,
+                        "Use exactly (Redeemer, ScriptContext) for manual @MultiValidator dispatch.",
+                        entrypoints.get(0).method,
+                        "@MultiValidator manual dispatch",
+                        "2",
+                        " (redeemer, scriptContext)",
+                        paramCount,
+                        cls.getNameAsString(),
+                        entrypoints.get(0).method.getNameAsString(),
+                        "");
             }
         } else {
             // Mode 1: auto-dispatch — check for duplicates and param counts
@@ -1116,14 +1154,29 @@ public class JulcCompiler {
                 int paramCount = ep.method.getParameters().size();
                 if (ep.purposeName.equals("SPEND")) {
                     if (paramCount < 2 || paramCount > 3) {
-                        throw new CompilerException("@Entrypoint(purpose=Purpose.SPEND) must have 2 or 3 parameters, "
-                                + "found " + paramCount + " in " + cls.getNameAsString() + "." + ep.method.getNameAsString() + "()");
+                        throw validationError(ENTRYPOINT_WRONG_PARAMETER_COUNT,
+                                SPENDING_ENTRYPOINT_PARAMS_SUGGESTION,
+                                ep.method,
+                                "@Entrypoint(purpose=Purpose.SPEND)",
+                                "2 or 3",
+                                "",
+                                paramCount,
+                                cls.getNameAsString(),
+                                ep.method.getNameAsString(),
+                                "");
                     }
                 } else {
                     if (paramCount != 2) {
-                        throw new CompilerException("@Entrypoint(purpose=Purpose." + ep.purposeName + ") must have 2 parameters "
-                                + "(redeemer, scriptContext), found " + paramCount
-                                + " in " + cls.getNameAsString() + "." + ep.method.getNameAsString() + "()");
+                        throw validationError(ENTRYPOINT_WRONG_PARAMETER_COUNT,
+                                NON_SPENDING_ENTRYPOINT_PARAMS_SUGGESTION,
+                                ep.method,
+                                "@Entrypoint(purpose=Purpose." + ep.purposeName + ")",
+                                "2",
+                                " (redeemer, scriptContext)",
+                                paramCount,
+                                cls.getNameAsString(),
+                                ep.method.getNameAsString(),
+                                "");
                     }
                 }
             }
@@ -1138,9 +1191,16 @@ public class JulcCompiler {
         if (purpose == ScriptPurpose.SPENDING) {
             // Spending validators: 2 params (redeemer, ctx) or 3 params (datum, redeemer, ctx)
             if (paramCount < 2 || paramCount > 3) {
-                throw new CompilerException("@SpendingValidator entrypoint must have 2 or 3 parameters "
-                        + "(datum, redeemer, scriptContext), found " + paramCount
-                        + " in " + cls.getNameAsString() + "." + entrypoint.getNameAsString() + "()");
+                throw validationError(ENTRYPOINT_WRONG_PARAMETER_COUNT,
+                        SPENDING_ENTRYPOINT_PARAMS_SUGGESTION,
+                        entrypoint,
+                        "@SpendingValidator",
+                        "2 or 3",
+                        " (datum, redeemer, scriptContext)",
+                        paramCount,
+                        cls.getNameAsString(),
+                        entrypoint.getNameAsString(),
+                        "");
             }
         } else {
             // Non-spending validators: 2 params (redeemer, scriptContext)
@@ -1154,12 +1214,39 @@ public class JulcCompiler {
                     default -> "@" + purpose.name();
                 };
                 String hint = paramCount == 3 ? " Did you mean @SpendingValidator?" : "";
-                throw new CompilerException(annotation + " entrypoint must have 2 parameters "
-                        + "(redeemer, scriptContext), found " + paramCount
-                        + " in " + cls.getNameAsString() + "." + entrypoint.getNameAsString() + "()."
-                        + hint);
+                throw validationError(ENTRYPOINT_WRONG_PARAMETER_COUNT,
+                        NON_SPENDING_ENTRYPOINT_PARAMS_SUGGESTION,
+                        entrypoint,
+                        annotation,
+                        "2",
+                        " (redeemer, scriptContext)",
+                        paramCount,
+                        cls.getNameAsString(),
+                        entrypoint.getNameAsString(),
+                        "." + hint);
             }
         }
+    }
+
+    private static CompilerException validationError(DiagnosticInfo info, String suggestion,
+                                                     Node node, Object... args) {
+        String message = info.format(args);
+        int line = 0;
+        int column = 0;
+        if (node != null && node.getBegin().isPresent()) {
+            var pos = node.getBegin().get();
+            line = pos.line;
+            column = pos.column;
+        }
+        var diagnostic = new CompilerDiagnostic(
+                CompilerDiagnostic.Level.ERROR,
+                message,
+                "<source>",
+                line,
+                column,
+                suggestion,
+                info.code());
+        return new CompilerException(message, diagnostic);
     }
 
     private List<ParamField> findParamFields(ClassOrInterfaceDeclaration cls, TypeResolver typeResolver,
@@ -1177,11 +1264,10 @@ public class JulcCompiler {
                     }
                     diagnostics.add(new CompilerDiagnostic(
                             CompilerDiagnostic.Level.ERROR,
-                            "@Param type '" + javaType + "' is not allowed. "
-                                    + "@Param values are always raw Data at runtime; using a typed Data subtype "
-                                    + "causes the compiler to misinterpret the runtime representation.",
+                            PARAM_RAW_PLUTUS_DATA.format(javaType),
                             "<source>", line, col,
-                            "Use @Param PlutusData instead of @Param " + javaType));
+                            PARAM_RAW_PLUTUS_DATA.fix(),
+                            PARAM_RAW_PLUTUS_DATA.code()));
                     continue;
                 }
                 for (var variable : field.getVariables()) {
