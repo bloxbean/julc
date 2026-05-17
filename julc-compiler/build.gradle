@@ -23,6 +23,150 @@ dependencies {
     testRuntimeOnly project(':julc-vm-scalus')
 }
 
+def diagnosticCatalogFile = layout.projectDirectory.file('src/main/resources/diagnostics.json')
+def diagnosticCodesFile = layout.projectDirectory.file(
+        'src/main/java/com/bloxbean/cardano/julc/compiler/error/DiagnosticCodes.java')
+
+def renderDiagnosticCodes = { File catalogFile, File outputFile ->
+    def root = new groovy.json.JsonSlurper().parse(catalogFile)
+    def entries = root.diagnostics ?: []
+    if (entries.isEmpty()) {
+        throw new GradleException("${catalogFile} contains no diagnostics")
+    }
+
+    def required = ['code', 'constant', 'severity', 'category', 'template', 'fix']
+    def codes = new LinkedHashSet<String>()
+    def constants = new LinkedHashSet<String>()
+    entries.each { entry ->
+        required.each { field ->
+            if (!entry.containsKey(field) || entry[field] == null || entry[field].toString().isBlank()) {
+                throw new GradleException("Diagnostic entry ${entry.code ?: '<unknown>'} is missing '${field}'")
+            }
+        }
+        if (!(entry.code ==~ /JULC\d{4}/)) {
+            throw new GradleException("Invalid diagnostic code '${entry.code}'")
+        }
+        if (!(entry.constant ==~ /[A-Z][A-Z0-9_]*/)) {
+            throw new GradleException("Invalid diagnostic constant '${entry.constant}'")
+        }
+        if (!codes.add(entry.code.toString())) {
+            throw new GradleException("Duplicate diagnostic code '${entry.code}'")
+        }
+        if (!constants.add(entry.constant.toString())) {
+            throw new GradleException("Duplicate diagnostic constant '${entry.constant}'")
+        }
+    }
+
+    def javaString = { Object raw ->
+        def value = raw == null ? '' : raw.toString()
+        def sb = new StringBuilder('"')
+        value.each { ch ->
+            if (ch == '\\') {
+                sb.append('\\\\')
+            } else if (ch == '"') {
+                sb.append('\\"')
+            } else if (ch == '\n') {
+                sb.append('\\n')
+            } else if (ch == '\r') {
+                sb.append('\\r')
+            } else if (ch == '\t') {
+                sb.append('\\t')
+            } else {
+                int c = ch.charAt(0)
+                if (c < 0x20 || c > 0x7e) {
+                    sb.append(String.format('\\u%04x', c))
+                } else {
+                    sb.append(ch)
+                }
+            }
+        }
+        sb.append('"')
+        sb.toString()
+    }
+
+    def sorted = entries.toSorted { a, b -> a.constant.toString() <=> b.constant.toString() }
+    def out = new StringBuilder()
+    out.append('// GENERATED FROM julc-compiler/src/main/resources/diagnostics.json\n')
+    out.append('// DO NOT EDIT - run `./gradlew :julc-compiler:generateDiagnosticCodes` and commit.\n')
+    out.append('package com.bloxbean.cardano.julc.compiler.error;\n\n')
+    out.append('public final class DiagnosticCodes {\n')
+    out.append('    private DiagnosticCodes() {}\n\n')
+
+    sorted.eachWithIndex { entry, idx ->
+        def level = entry.severity.toString().toUpperCase(java.util.Locale.ROOT)
+        out.append("    public static final DiagnosticInfo ${entry.constant} = new DiagnosticInfo(\n")
+        out.append("            ${javaString(entry.code)},\n")
+        out.append("            ${javaString(entry.constant)},\n")
+        out.append("            CompilerDiagnostic.Level.${level},\n")
+        out.append("            ${javaString(entry.category)},\n")
+        out.append("            ${javaString(entry.template)},\n")
+        out.append("            ${javaString(entry.fix)});\n")
+        if (idx < sorted.size() - 1) {
+            out.append('\n')
+        }
+    }
+
+    out.append('\n\n')
+    out.append('    private static final java.util.List<DiagnosticInfo> ALL = java.util.List.of(\n')
+    sorted.eachWithIndex { entry, idx ->
+        out.append("            ${entry.constant}")
+        out.append(idx < sorted.size() - 1 ? ',\n' : '\n')
+    }
+    out.append('    );\n\n')
+    out.append('    private static final java.util.Map<String, DiagnosticInfo> BY_CODE = ALL.stream()\n')
+    out.append('            .collect(java.util.stream.Collectors.toUnmodifiableMap(\n')
+    out.append('                    DiagnosticInfo::code,\n')
+    out.append('                    info -> info));\n\n')
+    out.append('    public static java.util.List<DiagnosticInfo> all() {\n')
+    out.append('        return ALL;\n')
+    out.append('    }\n\n')
+    out.append('    public static java.util.Optional<DiagnosticInfo> find(String code) {\n')
+    out.append('        return java.util.Optional.ofNullable(BY_CODE.get(code));\n')
+    out.append('    }\n')
+    out.append('}\n')
+
+    outputFile.parentFile.mkdirs()
+    outputFile.text = out.toString()
+}
+
+tasks.register('generateDiagnosticCodes') {
+    description = 'Generate DiagnosticCodes.java from diagnostics.json.'
+    group = 'build'
+    inputs.file(diagnosticCatalogFile)
+    outputs.file(diagnosticCodesFile)
+    doLast {
+        renderDiagnosticCodes(diagnosticCatalogFile.asFile, diagnosticCodesFile.asFile)
+    }
+}
+
+tasks.register('verifyDiagnosticCodes') {
+    description = 'Verify checked-in DiagnosticCodes.java matches diagnostics.json.'
+    group = 'verification'
+    inputs.file(diagnosticCatalogFile)
+    inputs.file(diagnosticCodesFile)
+    doLast {
+        def expected = new File(temporaryDir, 'DiagnosticCodes.java')
+        renderDiagnosticCodes(diagnosticCatalogFile.asFile, expected)
+        def actual = diagnosticCodesFile.asFile
+        if (!actual.exists() || expected.text != actual.text) {
+            throw new GradleException(
+                    'DiagnosticCodes.java is out of date. Run ./gradlew :julc-compiler:generateDiagnosticCodes and commit the result.')
+        }
+    }
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('verifyDiagnosticCodes')
+}
+
+tasks.named('processResources') {
+    filteringCharset = 'UTF-8'
+    inputs.property('julcVersion', project.version)
+    filesMatching('diagnostics.json') {
+        filter { line -> line.replace('@julcVersion@', project.version.toString()) }
+    }
+}
+
 publishing {
     publications {
         mavenJava(MavenPublication) {

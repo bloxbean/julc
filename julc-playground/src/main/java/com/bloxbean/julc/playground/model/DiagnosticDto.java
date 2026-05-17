@@ -15,7 +15,7 @@ public record DiagnosticDto(
     public static DiagnosticDto from(CompilerDiagnostic d) {
         return new DiagnosticDto(
                 d.level().name(),
-                null,
+                d.code(),
                 d.message(),
                 d.line() > 0 ? d.line() : null,
                 d.column() > 0 ? d.column() : null,

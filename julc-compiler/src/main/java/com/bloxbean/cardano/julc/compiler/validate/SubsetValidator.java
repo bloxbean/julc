@@ -1,6 +1,7 @@
 package com.bloxbean.cardano.julc.compiler.validate;
 
 import com.bloxbean.cardano.julc.compiler.error.CompilerDiagnostic;
+import com.bloxbean.cardano.julc.compiler.error.DiagnosticInfo;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.NodeList;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
@@ -13,6 +14,12 @@ import com.github.javaparser.ast.visitor.VoidVisitorAdapter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+
+import static com.bloxbean.cardano.julc.compiler.error.DiagnosticCodes.C_STYLE_FOR_UNSUPPORTED;
+import static com.bloxbean.cardano.julc.compiler.error.DiagnosticCodes.DO_WHILE_UNSUPPORTED;
+import static com.bloxbean.cardano.julc.compiler.error.DiagnosticCodes.NULL_UNSUPPORTED;
+import static com.bloxbean.cardano.julc.compiler.error.DiagnosticCodes.THROW_UNSUPPORTED;
+import static com.bloxbean.cardano.julc.compiler.error.DiagnosticCodes.TRY_CATCH_UNSUPPORTED;
 
 /**
  * Validates that Java source uses only the supported subset for on-chain compilation.
@@ -33,14 +40,32 @@ public class SubsetValidator extends VoidVisitorAdapter<Void> {
     }
 
     private void error(com.github.javaparser.ast.Node node, String message) {
-        error(node, message, null);
+        error(node, (String) null, message, null);
     }
 
     private void error(com.github.javaparser.ast.Node node, String message, String suggestion) {
+        error(node, (String) null, message, suggestion);
+    }
+
+    /**
+     * Emit an error with a stable diagnostics catalog code (e.g. JULC0015).
+     * The code is consumed by the AI tooling (MCP `julc_explain_diagnostic`,
+     * starter pack §7) to surface the canonical root cause and fix.
+     */
+    private void error(com.github.javaparser.ast.Node node, String code,
+                       String message, String suggestion) {
         int line = node.getBegin().map(p -> p.line).orElse(0);
         int col = node.getBegin().map(p -> p.column).orElse(0);
         diagnostics.add(new CompilerDiagnostic(
-                CompilerDiagnostic.Level.ERROR, message, fileName, line, col, suggestion));
+                CompilerDiagnostic.Level.ERROR, message, fileName, line, col, suggestion, code));
+    }
+
+    private void error(com.github.javaparser.ast.Node node, DiagnosticInfo info,
+                       String suggestion, Object... args) {
+        int line = node.getBegin().map(p -> p.line).orElse(0);
+        int col = node.getBegin().map(p -> p.column).orElse(0);
+        diagnostics.add(new CompilerDiagnostic(
+                info.level(), info.format(args), fileName, line, col, suggestion, info.code()));
     }
 
     private void warning(com.github.javaparser.ast.Node node, String message) {
@@ -63,15 +88,13 @@ public class SubsetValidator extends VoidVisitorAdapter<Void> {
 
     @Override
     public void visit(TryStmt n, Void arg) {
-        error(n, "try/catch is not supported on-chain",
-                "Use if/else checks instead of exception handling");
+        error(n, TRY_CATCH_UNSUPPORTED, TRY_CATCH_UNSUPPORTED.fix());
         super.visit(n, arg);
     }
 
     @Override
     public void visit(ThrowStmt n, Void arg) {
-        error(n, "throw is not supported on-chain",
-                "Return false from the validator to reject a transaction");
+        error(n, THROW_UNSUPPORTED, THROW_UNSUPPORTED.fix());
         super.visit(n, arg);
     }
 
@@ -84,8 +107,7 @@ public class SubsetValidator extends VoidVisitorAdapter<Void> {
 
     @Override
     public void visit(ForStmt n, Void arg) {
-        error(n, "C-style for loops are not supported on-chain",
-                "Use for-each over a list or while loops instead");
+        error(n, C_STYLE_FOR_UNSUPPORTED, C_STYLE_FOR_UNSUPPORTED.fix());
         super.visit(n, arg);
     }
 
@@ -116,8 +138,7 @@ public class SubsetValidator extends VoidVisitorAdapter<Void> {
 
     @Override
     public void visit(DoStmt n, Void arg) {
-        error(n, "do-while loops are not supported on-chain",
-                "Use while loops or for-each instead");
+        error(n, DO_WHILE_UNSUPPORTED, DO_WHILE_UNSUPPORTED.fix());
         super.visit(n, arg);
     }
 
@@ -167,8 +188,7 @@ public class SubsetValidator extends VoidVisitorAdapter<Void> {
 
     @Override
     public void visit(NullLiteralExpr n, Void arg) {
-        error(n, "null is not supported on-chain",
-                "Use Optional<T> to represent absence of a value");
+        error(n, NULL_UNSUPPORTED, NULL_UNSUPPORTED.fix());
         super.visit(n, arg);
     }
 

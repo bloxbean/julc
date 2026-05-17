@@ -31,6 +31,37 @@ class DiagnosticFormatterTest {
     }
 
     @Test
+    void formatShowsCodeWhenPresent() {
+        // When a diagnostic carries a stable JULC#### code, the formatter
+        // must surface it inline so users / AI agents can look up the
+        // canonical fix in /ai/diagnostics.json.
+        var diag = new CompilerDiagnostic(
+                CompilerDiagnostic.Level.ERROR,
+                "try/catch is not supported on-chain",
+                "T.java", 5, 9, "Use if/else instead", "JULC0015");
+        String formatted = DiagnosticFormatter.format(diag);
+        assertTrue(formatted.contains("[JULC0015]"),
+                "formatter must surface the diagnostic code");
+        assertTrue(formatted.contains("try/catch is not supported"),
+                "formatter must still include the message");
+    }
+
+    @Test
+    void formatOmitsCodeBracketsWhenAbsent() {
+        // Backwards compat: legacy code-less diagnostics must not render
+        // a stray `[null]` in the output.
+        var diag = new CompilerDiagnostic(
+                CompilerDiagnostic.Level.ERROR,
+                "legacy error",
+                "T.java", 1, 1);
+        String formatted = DiagnosticFormatter.format(diag);
+        assertFalse(formatted.contains("[null]"),
+                "code-less diagnostics must not render '[null]'");
+        assertFalse(formatted.contains("[]"),
+                "code-less diagnostics must not render empty brackets");
+    }
+
+    @Test
     void formatAllShowsSummary() {
         var diags = List.of(
                 new CompilerDiagnostic(CompilerDiagnostic.Level.ERROR, "e1", "a.java", 1, 1),
