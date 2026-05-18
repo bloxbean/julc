@@ -118,21 +118,16 @@ public final class LibrarySourceResolver {
      */
     public static Map<String, String> scanClasspathSources(ClassLoader classLoader) {
         var result = new LinkedHashMap<String, String>();
-        // Primary: use every index.txt manifest (works with both file: and jar: protocols)
-        boolean foundIndex = false;
+        // JARs must ship index.txt for reliable discovery. Loose file-system
+        // directories are also scanned to support IDE/dev/test classpaths.
         try {
             var indexes = classLoader.getResources(PLUTUS_SOURCES_INDEX);
             while (indexes.hasMoreElements()) {
-                foundIndex = true;
                 scanIndexedSources(indexes.nextElement(), result);
-            }
-            if (foundIndex) {
-                return result;
             }
         } catch (IOException e) {
             // Fall through to directory scan
         }
-        // Fallback: file-system directory scan (for development/IDE usage)
         try {
             var resources = classLoader.getResources(PLUTUS_SOURCES_DIR);
             while (resources.hasMoreElements()) {
