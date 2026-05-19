@@ -60,12 +60,10 @@ public final class ReplCompleter implements Completer {
         // 2. From stdlib source files on classpath (MapLib, MathLib, ByteStringLib, etc.)
         var librarySources = LibrarySourceResolver.scanClasspathSources(
                 Thread.currentThread().getContextClassLoader());
-        for (var entry : librarySources.entrySet()) {
-            String className = entry.getKey();
-            String source = entry.getValue();
-            Set<String> methods = extractPublicStaticMethods(source);
+        for (var librarySource : librarySources.values()) {
+            Set<String> methods = extractPublicStaticMethods(librarySource.source());
             if (!methods.isEmpty()) {
-                methodsByClass.computeIfAbsent(className, k -> new TreeSet<>()).addAll(methods);
+                methodsByClass.computeIfAbsent(librarySource.simpleName(), k -> new TreeSet<>()).addAll(methods);
             }
         }
 

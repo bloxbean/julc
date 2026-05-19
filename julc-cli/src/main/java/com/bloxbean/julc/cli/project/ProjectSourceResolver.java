@@ -1,5 +1,6 @@
 package com.bloxbean.julc.cli.project;
 
+import com.bloxbean.cardano.julc.compiler.LibrarySource;
 import com.bloxbean.cardano.julc.compiler.LibrarySourceResolver;
 
 import java.util.LinkedHashMap;
@@ -19,14 +20,14 @@ public final class ProjectSourceResolver {
      * @param userLibraries user library name->source map from ProjectScanner
      * @return merged library pool
      */
-    public static Map<String, String> buildPool(Map<String, String> userLibraries) {
+    public static Map<String, LibrarySource> buildPool(Map<String, String> userLibraries) {
         // 1. Classpath stdlib (META-INF/plutus-sources/ from julc-stdlib JAR)
         var pool = new LinkedHashMap<>(
                 LibrarySourceResolver.scanClasspathSources(
                         ProjectSourceResolver.class.getClassLoader()));
 
         // 2. User sources override classpath sources
-        pool.putAll(userLibraries);
+        LibrarySourceResolver.librarySourcesFrom(userLibraries).forEach(pool::put);
 
         return pool;
     }
@@ -38,7 +39,7 @@ public final class ProjectSourceResolver {
      * @param pool            the complete library pool
      * @return resolved library sources in dependency order
      */
-    public static List<String> resolve(String validatorSource, Map<String, String> pool) {
+    public static List<String> resolve(String validatorSource, Map<String, ?> pool) {
         return LibrarySourceResolver.resolve(validatorSource, pool);
     }
 }

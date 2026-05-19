@@ -20,9 +20,9 @@ import java.util.Map;
 public final class TestRunner {
 
     private final JulcVm vm;
-    private final Map<String, String> libraryPool;
+    private final Map<String, ?> libraryPool;
 
-    public TestRunner(Map<String, String> libraryPool) {
+    public TestRunner(Map<String, ?> libraryPool) {
         this.vm = JulcVm.create();
         this.libraryPool = libraryPool;
     }

@@ -8,7 +8,7 @@ import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.jar.JarEntry;
@@ -74,10 +74,9 @@ class LibrarySourceResolverTest {
                 class MyValidator {}
                 """;
 
-        String sumTestSource = "class SumTest { static int sum(int a, int b) { return a + b; } }";
+        String sumTestSource = "package com.example.util; class SumTest { static int sum(int a, int b) { return a + b; } }";
 
-        Map<String, String> pool = new LinkedHashMap<>();
-        pool.put("SumTest", sumTestSource);
+        Map<String, LibrarySource> pool = pool(sumTestSource);
 
         var resolved = LibrarySourceResolver.resolve(validatorSource, pool);
 
@@ -95,16 +94,18 @@ class LibrarySourceResolverTest {
                 """;
 
         String mathUtilsSource = """
+                package com.example.util;
                 import com.example.util.Helper;
 
                 class MathUtils { static int max(int a, int b) { return Helper.compare(a, b); } }
                 """;
 
-        String helperSource = "class Helper { static int compare(int a, int b) { return a > b ? a : b; } }";
+        String helperSource = """
+                package com.example.util;
+                class Helper { static int compare(int a, int b) { return a > b ? a : b; } }
+                """;
 
-        Map<String, String> pool = new LinkedHashMap<>();
-        pool.put("MathUtils", mathUtilsSource);
-        pool.put("Helper", helperSource);
+        Map<String, LibrarySource> pool = pool(mathUtilsSource, helperSource);
 
         var resolved = LibrarySourceResolver.resolve(validatorSource, pool);
 
@@ -124,14 +125,11 @@ class LibrarySourceResolverTest {
                 """;
 
         // Both A and B depend on C
-        String aSource = "import com.example.C;\nclass A {}";
-        String bSource = "import com.example.C;\nclass B {}";
-        String cSource = "class C {}";
+        String aSource = "package com.example;\nimport com.example.C;\nclass A {}";
+        String bSource = "package com.example;\nimport com.example.C;\nclass B {}";
+        String cSource = "package com.example;\nclass C {}";
 
-        Map<String, String> pool = new LinkedHashMap<>();
-        pool.put("A", aSource);
-        pool.put("B", bSource);
-        pool.put("C", cSource);
+        Map<String, LibrarySource> pool = pool(aSource, bSource, cSource);
 
         var resolved = LibrarySourceResolver.resolve(validatorSource, pool);
 
@@ -151,12 +149,29 @@ class LibrarySourceResolverTest {
                 class MyValidator {}
                 """;
 
-        Map<String, String> pool = new LinkedHashMap<>();
+        Map<String, LibrarySource> pool = Map.of();
         // Pool is empty — no libraries available
 
         var resolved = LibrarySourceResolver.resolve(validatorSource, pool);
 
         assertTrue(resolved.isEmpty());
+    }
+
+    @Test
+    void resolve_acceptsLegacyStringSourcePool() {
+        String validatorSource = """
+                import com.example.util.SumTest;
+
+                @Validator
+                class MyValidator {}
+                """;
+
+        String sumTestSource = "package com.example.util; class SumTest {}";
+        Map<String, String> legacyPool = Map.of("SumTest", sumTestSource);
+
+        var resolved = LibrarySourceResolver.resolve(validatorSource, legacyPool);
+
+        assertEquals(List.of(sumTestSource), resolved);
     }
 
     @Test
@@ -235,8 +250,7 @@ class LibrarySourceResolverTest {
                 }
                 """;
 
-        Map<String, String> pool = new LinkedHashMap<>();
-        pool.put("MathLib", mathLibSource);
+        Map<String, LibrarySource> pool = pool(mathLibSource);
 
         var resolved = LibrarySourceResolver.resolve(validatorSource, pool);
 
@@ -267,9 +281,7 @@ class LibrarySourceResolverTest {
                 }
                 """;
 
-        Map<String, String> pool = new LinkedHashMap<>();
-        pool.put("A", aSource);
-        pool.put("B", bSource);
+        Map<String, LibrarySource> pool = pool(aSource, bSource);
 
         var resolved = LibrarySourceResolver.resolve(validatorSource, pool);
 
@@ -299,11 +311,11 @@ class LibrarySourceResolverTest {
                 firstJar.toUri().toURL(),
                 secondJar.toUri().toURL()
         }, null)) {
-            Map<String, String> result = LibrarySourceResolver.scanClasspathSources(classLoader);
+            Map<String, LibrarySource> result = LibrarySourceResolver.scanClasspathSources(classLoader);
 
             assertEquals(2, result.size());
-            assertTrue(result.get("FirstLib").contains("class FirstLib"));
-            assertTrue(result.get("SecondLib").contains("class SecondLib"));
+            assertTrue(result.get("com.example.FirstLib").source().contains("class FirstLib"));
+            assertTrue(result.get("com.example.SecondLib").source().contains("class SecondLib"));
         }
     }
 
@@ -321,7 +333,7 @@ class LibrarySourceResolverTest {
         }
 
         try (var classLoader = new URLClassLoader(new URL[]{jar.toUri().toURL()}, null)) {
-            Map<String, String> result = LibrarySourceResolver.scanClasspathSources(classLoader);
+            Map<String, LibrarySource> result = LibrarySourceResolver.scanClasspathSources(classLoader);
 
             assertTrue(result.isEmpty());
         }
@@ -346,14 +358,130 @@ class LibrarySourceResolverTest {
                 jar.toUri().toURL(),
                 classesDir.toUri().toURL()
         }, null)) {
-            Map<String, String> result = LibrarySourceResolver.scanClasspathSources(classLoader);
+            Map<String, LibrarySource> result = LibrarySourceResolver.scanClasspathSources(classLoader);
 
             assertEquals(3, result.size());
-            assertTrue(result.get("SharedLib").contains("fromJar"));
-            assertFalse(result.get("SharedLib").contains("fromLooseDir"));
-            assertTrue(result.get("IndexedOnlyLib").contains("class IndexedOnlyLib"));
-            assertTrue(result.get("LooseOnlyLib").contains("class LooseOnlyLib"));
+            assertTrue(result.get("com.example.SharedLib").source().contains("fromJar"));
+            assertFalse(result.get("com.example.SharedLib").source().contains("fromLooseDir"));
+            assertTrue(result.get("com.example.IndexedOnlyLib").source().contains("class IndexedOnlyLib"));
+            assertTrue(result.get("com.example.LooseOnlyLib").source().contains("class LooseOnlyLib"));
         }
+    }
+
+    @Test
+    void resolve_usesExplicitImportToDisambiguateDuplicateSimpleNames() {
+        String validatorSource = """
+                import com.left.Utils;
+
+                class MyValidator {
+                    static boolean validate() {
+                        return Utils.check();
+                    }
+                }
+                """;
+
+        String leftSource = """
+                package com.left;
+                class Utils { static boolean check() { return true; } }
+                """;
+        String rightSource = """
+                package com.right;
+                class Utils { static boolean check() { return false; } }
+                """;
+
+        var resolved = LibrarySourceResolver.resolve(validatorSource, pool(leftSource, rightSource));
+
+        assertEquals(1, resolved.size());
+        assertEquals(leftSource, resolved.get(0));
+    }
+
+    @Test
+    void resolve_explicitImportWinsOverSamePackageSimpleName() {
+        String validatorSource = """
+                package com.validator;
+
+                import com.left.Utils;
+
+                class MyValidator {
+                    static boolean validate() {
+                        return Utils.check();
+                    }
+                }
+                """;
+
+        String leftSource = """
+                package com.left;
+                class Utils { static boolean check() { return true; } }
+                """;
+        String samePackageSource = """
+                package com.validator;
+                class Utils { static boolean check() { return false; } }
+                """;
+
+        var resolved = LibrarySourceResolver.resolve(validatorSource, pool(leftSource, samePackageSource));
+
+        assertEquals(1, resolved.size());
+        assertEquals(leftSource, resolved.get(0));
+    }
+
+    @Test
+    void resolve_findsFullyQualifiedStaticCall() {
+        String validatorSource = """
+                class MyValidator {
+                    static boolean validate() {
+                        return com.example.Utils.check();
+                    }
+                }
+                """;
+
+        String source = """
+                package com.example;
+                class Utils { static boolean check() { return true; } }
+                """;
+
+        var resolved = LibrarySourceResolver.resolve(validatorSource, pool(source));
+
+        assertEquals(List.of(source), resolved);
+    }
+
+    @Test
+    void resolve_reportsAmbiguousUnqualifiedSimpleName() {
+        String validatorSource = """
+                class MyValidator {
+                    static boolean validate() {
+                        return Utils.check();
+                    }
+                }
+                """;
+
+        String leftSource = "package com.left; class Utils { static boolean check() { return true; } }";
+        String rightSource = "package com.right; class Utils { static boolean check() { return false; } }";
+
+        CompilerException ex = assertThrows(CompilerException.class,
+                () -> LibrarySourceResolver.resolve(validatorSource, pool(leftSource, rightSource)));
+
+        assertTrue(ex.getMessage().contains("Ambiguous on-chain library reference 'Utils'"));
+        assertTrue(ex.getMessage().contains("com.left.Utils"));
+        assertTrue(ex.getMessage().contains("com.right.Utils"));
+    }
+
+    @Test
+    void resolve_supportsWildcardImportsAsPackageScan() {
+        String validatorSource = """
+                import com.example.*;
+
+                class MyValidator {
+                    static boolean validate() {
+                        return Utils.check();
+                    }
+                }
+                """;
+
+        String source = "package com.example; class Utils { static boolean check() { return true; } }";
+
+        var resolved = LibrarySourceResolver.resolve(validatorSource, pool(source));
+
+        assertEquals(List.of(source), resolved);
     }
 
     private static Path createPlutusSourcesJar(Path jar, Map<String, String> sources) throws Exception {
@@ -376,5 +504,14 @@ class LibrarySourceResolverTest {
         out.putNextEntry(new JarEntry(name));
         out.write(content.getBytes(StandardCharsets.UTF_8));
         out.closeEntry();
+    }
+
+    private static Map<String, LibrarySource> pool(String... sources) {
+        var pool = new java.util.LinkedHashMap<String, LibrarySource>();
+        for (String source : sources) {
+            LibrarySource librarySource = LibrarySourceResolver.librarySource(source);
+            pool.put(librarySource.fqcn(), librarySource);
+        }
+        return pool;
     }
 }

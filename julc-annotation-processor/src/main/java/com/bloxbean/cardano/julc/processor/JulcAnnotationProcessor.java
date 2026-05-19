@@ -4,9 +4,9 @@ import com.bloxbean.cardano.julc.blueprint.BlueprintConfig;
 import com.bloxbean.cardano.julc.blueprint.BlueprintGenerator;
 import com.bloxbean.cardano.julc.clientlib.JulcScriptAdapter;
 import com.bloxbean.cardano.julc.clientlib.ValidatorOutput;
-import com.bloxbean.cardano.julc.compiler.CompileResult;
 import com.bloxbean.cardano.julc.compiler.CompilerException;
 import com.bloxbean.cardano.julc.compiler.CompilerOptions;
+import com.bloxbean.cardano.julc.compiler.LibrarySource;
 import com.bloxbean.cardano.julc.compiler.LibrarySourceResolver;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
 import com.bloxbean.cardano.julc.core.source.SourceMapSerializer;
@@ -64,11 +64,11 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
     /** Accumulated compiled validators for CIP-57 blueprint generation. */
     private final List<BlueprintGenerator.CompiledValidator> compiledValidators = new ArrayList<>();
 
-    /** Same-project @OnchainLibrary sources: simple name → source string */
-    private final Map<String, String> sameProjectLibraries = new LinkedHashMap<>();
+    /** Same-project @OnchainLibrary sources: FQCN -> source metadata */
+    private final Map<String, LibrarySource> sameProjectLibraries = new LinkedHashMap<>();
 
-    /** Classpath library sources: simple name → source string */
-    private final Map<String, String> classpathLibraries = new LinkedHashMap<>();
+    /** Classpath library sources: FQCN -> source metadata */
+    private final Map<String, LibrarySource> classpathLibraries = new LinkedHashMap<>();
 
     /** Whether classpath scanning has been done */
     private boolean classpathScanned = false;
@@ -132,7 +132,10 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
         for (Element element : roundEnv.getElementsAnnotatedWith(
                 findTypeElement("com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary"))) {
             String simpleName = element.getSimpleName().toString();
-            if (sameProjectLibraries.containsKey(simpleName)) {
+            String fqcn = element instanceof TypeElement typeElement
+                    ? typeElement.getQualifiedName().toString()
+                    : simpleName;
+            if (sameProjectLibraries.containsKey(fqcn)) {
                 continue;
             }
             try {
@@ -140,7 +143,7 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
                 if (path != null) {
                     String source = path.getCompilationUnit().getSourceFile()
                             .getCharContent(true).toString();
-                    sameProjectLibraries.put(simpleName, source);
+                    sameProjectLibraries.put(fqcn, LibrarySourceResolver.librarySourceFromSimpleName(simpleName, source));
                 }
             } catch (IOException e) {
                 processingEnv.getMessager().printMessage(Diagnostic.Kind.WARNING,
@@ -270,17 +273,6 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
         // Merge same-project + classpath into one pool (same-project takes precedence)
         var pool = new LinkedHashMap<>(classpathLibraries);
         pool.putAll(sameProjectLibraries);
-
-        // Add same-package libraries that aren't explicitly imported
-        String validatorPkg = LibrarySourceResolver.extractPackageName(validatorSource);
-        if (!validatorPkg.isEmpty()) {
-            for (var entry : sameProjectLibraries.entrySet()) {
-                String libPkg = LibrarySourceResolver.extractPackageName(entry.getValue());
-                if (validatorPkg.equals(libPkg)) {
-                    pool.put(entry.getKey(), entry.getValue());
-                }
-            }
-        }
 
         return LibrarySourceResolver.resolve(validatorSource, pool);
     }

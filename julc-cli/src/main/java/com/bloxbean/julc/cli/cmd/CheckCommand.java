@@ -4,6 +4,7 @@ import com.bloxbean.julc.cli.check.TestDiscovery;
 import com.bloxbean.julc.cli.check.TestReporter;
 import com.bloxbean.julc.cli.check.TestResult;
 import com.bloxbean.julc.cli.check.TestRunner;
+import com.bloxbean.cardano.julc.compiler.LibrarySourceResolver;
 import com.bloxbean.julc.cli.mcp.lint.LintEngine;
 import com.bloxbean.julc.cli.mcp.lint.LintFinding;
 import com.bloxbean.julc.cli.output.AnsiColors;
@@ -58,7 +59,7 @@ public class CheckCommand implements Runnable {
             var srcScan = ProjectScanner.scan(ProjectLayout.srcDir(root));
             var pool = ProjectSourceResolver.buildPool(srcScan.libraries());
             // Also add src/ validators as libraries (tests may reference them)
-            pool.putAll(srcScan.validators());
+            LibrarySourceResolver.librarySourcesFrom(srcScan.validators()).forEach(pool::put);
 
             // Lint pass — runs across all .java sources in src/ and test/.
             boolean lintHadErrors = false;
@@ -83,7 +84,7 @@ public class CheckCommand implements Runnable {
             var results = new ArrayList<TestResult>();
             for (var test : tests) {
                 // Add the test source file itself to the pool temporarily
-                pool.put(test.className(), test.source());
+                LibrarySourceResolver.putLibrarySource(pool, test.className(), test.source());
                 results.add(runner.run(test));
             }
 

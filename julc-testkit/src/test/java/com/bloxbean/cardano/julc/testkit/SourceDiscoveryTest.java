@@ -60,6 +60,15 @@ class SourceDiscoveryTest {
     }
 
     @Test
+    void compileFqcn_discoversTransitiveSamePackageLibrary() {
+        CompileResult result = SourceDiscovery.compile(
+                "com.example.libs.ValidatorUsesTransitiveSamePackageLibrary", TEST_SOURCE_ROOT);
+        assertNotNull(result);
+        assertFalse(result.hasErrors(), "Expected no errors: " + result.diagnostics());
+        assertNotNull(result.program());
+    }
+
+    @Test
     void compileFqcn_nonExistentClassGivesClearError() {
         var error = assertThrows(AssertionError.class, () ->
                 SourceDiscovery.compile("com.example.NonExistent", TEST_SOURCE_ROOT));

@@ -1,6 +1,8 @@
 package com.bloxbean.cardano.julc.gradle;
 
+import com.bloxbean.cardano.julc.compiler.LibrarySourceResolver;
 import org.gradle.api.DefaultTask;
+import org.gradle.api.GradleException;
 import org.gradle.api.file.DirectoryProperty;
 import org.gradle.api.tasks.*;
 
@@ -45,7 +47,6 @@ public abstract class BundleJulcSourcesTask extends DefaultTask {
 
         List<File> javaFiles = SourceScanner.findJavaFiles(srcDir);
         List<String> bundledEntries = new ArrayList<>();
-        int bundled = 0;
 
         for (File javaFile : javaFiles) {
             String source = Files.readString(javaFile.toPath());
@@ -57,6 +58,7 @@ public abstract class BundleJulcSourcesTask extends DefaultTask {
             Path relativePath = srcDir.toPath().relativize(javaFile.toPath());
             Path targetFile = metaInfDir.resolve(relativePath);
             String indexEntry = relativePath.toString().replace(File.separatorChar, '/');
+            validatePackageMatchesPath(javaFile, source, indexEntry);
 
             Files.createDirectories(targetFile.getParent());
             Files.writeString(targetFile, source, StandardCharsets.UTF_8);
@@ -64,10 +66,9 @@ public abstract class BundleJulcSourcesTask extends DefaultTask {
 
             getLogger().lifecycle("Bundled {} → META-INF/plutus-sources/{}",
                     javaFile.getName(), relativePath);
-            bundled++;
         }
 
-        if (bundled == 0) {
+        if (bundledEntries.isEmpty()) {
             getLogger().lifecycle("No @OnchainLibrary sources found to bundle in {}", srcDir);
         } else {
             Collections.sort(bundledEntries);
@@ -75,6 +76,27 @@ public abstract class BundleJulcSourcesTask extends DefaultTask {
             Files.writeString(metaInfDir.resolve("index.txt"),
                     String.join("\n", bundledEntries) + "\n",
                     StandardCharsets.UTF_8);
+        }
+    }
+
+    private static void validatePackageMatchesPath(File javaFile, String source, String indexEntry) {
+        String packageName = LibrarySourceResolver.extractPackageName(source);
+        String fileClassName = javaFile.getName().replace(".java", "");
+        String sourceClassName = LibrarySourceResolver.extractTopLevelTypeName(source)
+                .orElseThrow(() -> new GradleException("Could not determine @OnchainLibrary class name in " + javaFile));
+        if (!fileClassName.equals(sourceClassName)) {
+            throw new GradleException("@OnchainLibrary class/path mismatch for " + javaFile
+                    + ": source declares " + sourceClassName
+                    + " but source path is " + indexEntry);
+        }
+
+        String expectedEntry = packageName.isBlank()
+                ? javaFile.getName()
+                : packageName.replace('.', '/') + "/" + javaFile.getName();
+        if (!expectedEntry.equals(indexEntry)) {
+            throw new GradleException("@OnchainLibrary package/path mismatch for " + javaFile
+                    + ": declared package expects " + expectedEntry
+                    + " but source path is " + indexEntry);
         }
     }
 

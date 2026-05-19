@@ -2,6 +2,7 @@ package com.bloxbean.cardano.julc.testkit;
 
 import com.bloxbean.cardano.julc.compiler.CompileResult;
 import com.bloxbean.cardano.julc.compiler.CompilerOptions;
+import com.bloxbean.cardano.julc.compiler.LibrarySource;
 import com.bloxbean.cardano.julc.compiler.LibrarySourceResolver;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
@@ -76,7 +77,7 @@ public final class SourceDiscovery {
         }
 
         // Build library pool and resolve dependencies
-        Map<String, String> pool = buildLibraryPool(validatorSource, sourceRoot);
+        Map<String, LibrarySource> pool = buildLibraryPool(validatorSource, sourceRoot);
         List<String> libSources = LibrarySourceResolver.resolve(validatorSource, pool);
 
         // Compile with stdlib
@@ -131,7 +132,7 @@ public final class SourceDiscovery {
             throw new AssertionError("Cannot read validator source: " + sourceFile, e);
         }
 
-        Map<String, String> pool = buildLibraryPool(validatorSource, sourceRoot);
+        Map<String, LibrarySource> pool = buildLibraryPool(validatorSource, sourceRoot);
         List<String> libSources = LibrarySourceResolver.resolve(validatorSource, pool);
 
         var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), options);
@@ -149,8 +150,8 @@ public final class SourceDiscovery {
      * Build the available library pool from same-project sources (Tier 1)
      * and classpath META-INF/plutus-sources/ (Tier 2).
      */
-    private static Map<String, String> buildLibraryPool(String validatorSource, Path sourceRoot) {
-        var pool = new LinkedHashMap<String, String>();
+    private static Map<String, LibrarySource> buildLibraryPool(String validatorSource, Path sourceRoot) {
+        var pool = new LinkedHashMap<String, LibrarySource>();
 
         // Tier 2: Classpath sources (added first, lower precedence)
         pool.putAll(LibrarySourceResolver.scanClasspathSources(
@@ -159,7 +160,6 @@ public final class SourceDiscovery {
         // Tier 1: Same-project sources from import paths (higher precedence)
         Map<String, String> importPaths = LibrarySourceResolver.extractImportPaths(validatorSource);
         for (var entry : importPaths.entrySet()) {
-            String simpleName = entry.getKey();
             String fullPath = entry.getValue();
 
             // Convert package path to file system path
@@ -168,7 +168,7 @@ public final class SourceDiscovery {
                 try {
                     String src = Files.readString(sourceFile);
                     if (src.contains("@OnchainLibrary")) {
-                        pool.put(simpleName, src);
+                        LibrarySourceResolver.putLibrarySource(pool, entry.getKey(), src);
                     }
                 } catch (IOException e) {
                     // skip unreadable files
@@ -176,24 +176,14 @@ public final class SourceDiscovery {
             }
         }
 
+        for (String wildcardPackage : LibrarySourceResolver.extractWildcardImportPackages(validatorSource)) {
+            addPackageSources(pool, sourceRoot, wildcardPackage);
+        }
+
         // Tier 1b: Same-package sources (no import needed in Java)
         String pkg = LibrarySourceResolver.extractPackageName(validatorSource);
         if (!pkg.isEmpty()) {
-            Path pkgDir = sourceRoot.resolve(pkg.replace('.', '/'));
-            if (Files.isDirectory(pkgDir)) {
-                try (var stream = Files.list(pkgDir)) {
-                    stream.filter(p -> p.toString().endsWith(".java"))
-                            .forEach(p -> {
-                                try {
-                                    String src = Files.readString(p);
-                                    if (src.contains("@OnchainLibrary")) {
-                                        String name = p.getFileName().toString().replace(".java", "");
-                                        pool.putIfAbsent(name, src);
-                                    }
-                                } catch (IOException ignored) {}
-                            });
-                } catch (IOException ignored) {}
-            }
+            addPackageSourcesIfAbsent(pool, sourceRoot, pkg);
         }
 
         // Also scan transitive imports from already-found sources
@@ -236,7 +226,7 @@ public final class SourceDiscovery {
             throw new AssertionError("Cannot read source: " + sourceFile, e);
         }
 
-        Map<String, String> pool = buildLibraryPool(source, sourceRoot);
+        Map<String, LibrarySource> pool = buildLibraryPool(source, sourceRoot);
         List<String> libSources = LibrarySourceResolver.resolve(source, pool);
 
         var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry());
@@ -280,7 +270,7 @@ public final class SourceDiscovery {
             throw new AssertionError("Cannot read source for " + fqcn + ": " + sourceFile, e);
         }
 
-        Map<String, String> pool = buildLibraryPool(source, sourceRoot);
+        Map<String, LibrarySource> pool = buildLibraryPool(source, sourceRoot);
         List<String> libSources = LibrarySourceResolver.resolve(source, pool);
 
         var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry());
@@ -297,24 +287,23 @@ public final class SourceDiscovery {
     /**
      * Recursively discover same-project sources referenced by already-found libraries.
      */
-    private static void addTransitiveSameProjectSources(Map<String, String> pool, Path sourceRoot) {
+    private static void addTransitiveSameProjectSources(Map<String, LibrarySource> pool, Path sourceRoot) {
         boolean changed = true;
         while (changed) {
             changed = false;
             var snapshot = new LinkedHashMap<>(pool);
-            for (String libSource : snapshot.values()) {
-                Map<String, String> importPaths = LibrarySourceResolver.extractImportPaths(libSource);
+            for (LibrarySource librarySource : snapshot.values()) {
+                Map<String, String> importPaths = LibrarySourceResolver.extractImportPaths(librarySource.source());
                 for (var entry : importPaths.entrySet()) {
-                    String simpleName = entry.getKey();
-                    if (pool.containsKey(simpleName)) continue;
-
                     String fullPath = entry.getValue();
+                    if (pool.containsKey(fullPath)) continue;
+
                     Path sourceFile = sourceRoot.resolve(fullPath.replace('.', '/') + ".java");
                     if (Files.exists(sourceFile)) {
                         try {
                             String src = Files.readString(sourceFile);
                             if (src.contains("@OnchainLibrary")) {
-                                pool.put(simpleName, src);
+                                LibrarySourceResolver.putLibrarySource(pool, entry.getKey(), src);
                                 changed = true;
                             }
                         } catch (IOException e) {
@@ -322,7 +311,60 @@ public final class SourceDiscovery {
                         }
                     }
                 }
+
+                for (String wildcardPackage : LibrarySourceResolver.extractWildcardImportPackages(librarySource.source())) {
+                    if (addPackageSources(pool, sourceRoot, wildcardPackage)) {
+                        changed = true;
+                    }
+                }
+
+                if (!librarySource.packageName().isEmpty()
+                        && addPackageSourcesIfAbsent(pool, sourceRoot, librarySource.packageName())) {
+                    changed = true;
+                }
             }
         }
+    }
+
+    private static boolean addPackageSources(Map<String, LibrarySource> pool, Path sourceRoot, String packageName) {
+        return addPackageSources(pool, sourceRoot, packageName, false);
+    }
+
+    private static boolean addPackageSourcesIfAbsent(Map<String, LibrarySource> pool, Path sourceRoot, String packageName) {
+        return addPackageSources(pool, sourceRoot, packageName, true);
+    }
+
+    private static boolean addPackageSources(Map<String, LibrarySource> pool,
+                                             Path sourceRoot,
+                                             String packageName,
+                                             boolean preserveExisting) {
+        Path pkgDir = sourceRoot.resolve(packageName.replace('.', '/'));
+        if (!Files.isDirectory(pkgDir)) {
+            return false;
+        }
+
+        final boolean[] changed = {false};
+        try (var stream = Files.list(pkgDir)) {
+            stream.filter(p -> p.toString().endsWith(".java"))
+                    .forEach(p -> {
+                        try {
+                            String src = Files.readString(p);
+                            if (src.contains("@OnchainLibrary")) {
+                                String name = p.getFileName().toString().replace(".java", "");
+                                LibrarySource librarySource = LibrarySourceResolver.librarySourceFromSimpleName(name, src);
+                                if (preserveExisting) {
+                                    if (!pool.containsKey(librarySource.fqcn())) {
+                                        pool.put(librarySource.fqcn(), librarySource);
+                                        changed[0] = true;
+                                    }
+                                } else {
+                                    LibrarySource previous = pool.put(librarySource.fqcn(), librarySource);
+                                    changed[0] = previous == null || !previous.source().equals(librarySource.source());
+                                }
+                            }
+                        } catch (IOException ignored) {}
+                    });
+        } catch (IOException ignored) {}
+        return changed[0];
     }
 }

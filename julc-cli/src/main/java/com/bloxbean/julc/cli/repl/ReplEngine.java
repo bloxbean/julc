@@ -3,10 +3,10 @@ package com.bloxbean.julc.cli.repl;
 import com.bloxbean.cardano.julc.compiler.CompileResult;
 import com.bloxbean.cardano.julc.compiler.CompilerException;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
+import com.bloxbean.cardano.julc.compiler.LibrarySource;
 import com.bloxbean.cardano.julc.compiler.LibrarySourceResolver;
 import com.bloxbean.cardano.julc.compiler.error.CompilerDiagnostic;
 import com.bloxbean.cardano.julc.core.PlutusData;
-import com.bloxbean.cardano.julc.core.text.UplcPrinter;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
 import com.bloxbean.cardano.julc.vm.EvalResult;
 import com.bloxbean.cardano.julc.vm.ExBudget;
@@ -26,7 +26,7 @@ public final class ReplEngine {
 
     private final JulcCompiler compiler;
     private final JulcVm vm;
-    private final Map<String, String> libraryPool;
+    private final Map<String, LibrarySource> libraryPool;
     private final MethodDocExtractor docExtractor;
     private final List<String> userImports = new ArrayList<>();
     private boolean showBudget = true;
@@ -274,10 +274,11 @@ public final class ReplEngine {
         methods.addAll(StdlibRegistry.defaultRegistry().methodsForClass(className));
 
         // Scan source file for public static methods
-        String source = libraryPool.get(className);
-        if (source != null) {
-            methods.addAll(ReplCompleter.extractPublicStaticMethods(source));
-        }
+        libraryPool.values().stream()
+                .filter(librarySource -> librarySource.simpleName().equals(className))
+                .findFirst()
+                .ifPresent(librarySource ->
+                        methods.addAll(ReplCompleter.extractPublicStaticMethods(librarySource.source())));
 
         if (methods.isEmpty()) {
             return new ReplResult.Error("No methods found for class: " + className);
