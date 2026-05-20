@@ -6,11 +6,8 @@ import org.gradle.api.tasks.*;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 /**
@@ -44,7 +41,6 @@ public abstract class BundleJulcSourcesTask extends DefaultTask {
         Path metaInfDir = outDir.toPath().resolve("META-INF/plutus-sources");
 
         List<File> javaFiles = SourceScanner.findJavaFiles(srcDir);
-        List<String> bundledEntries = new ArrayList<>();
         int bundled = 0;
 
         for (File javaFile : javaFiles) {
@@ -56,11 +52,9 @@ public abstract class BundleJulcSourcesTask extends DefaultTask {
             // Compute relative path to preserve package structure
             Path relativePath = srcDir.toPath().relativize(javaFile.toPath());
             Path targetFile = metaInfDir.resolve(relativePath);
-            String indexEntry = relativePath.toString().replace(File.separatorChar, '/');
 
             Files.createDirectories(targetFile.getParent());
-            Files.writeString(targetFile, source, StandardCharsets.UTF_8);
-            bundledEntries.add(indexEntry);
+            Files.writeString(targetFile, source);
 
             getLogger().lifecycle("Bundled {} → META-INF/plutus-sources/{}",
                     javaFile.getName(), relativePath);
@@ -69,12 +63,6 @@ public abstract class BundleJulcSourcesTask extends DefaultTask {
 
         if (bundled == 0) {
             getLogger().lifecycle("No @OnchainLibrary sources found to bundle in {}", srcDir);
-        } else {
-            Collections.sort(bundledEntries);
-            Files.createDirectories(metaInfDir);
-            Files.writeString(metaInfDir.resolve("index.txt"),
-                    String.join("\n", bundledEntries) + "\n",
-                    StandardCharsets.UTF_8);
         }
     }
 

@@ -1,18 +1,10 @@
 package com.bloxbean.cardano.julc.compiler;
 
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
-import java.net.URL;
-import java.net.URLClassLoader;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
-import java.util.jar.JarEntry;
-import java.util.jar.JarOutputStream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -284,97 +276,5 @@ class LibrarySourceResolverTest {
 
         assertNotNull(result);
         // May or may not be empty depending on test classpath, but should not throw
-    }
-
-    @Test
-    void scanClasspathSources_readsEveryIndexOnClasspath(@TempDir Path tempDir) throws Exception {
-        Path firstJar = createPlutusSourcesJar(tempDir.resolve("first.jar"), Map.of(
-                "com/example/FirstLib.java", "package com.example; class FirstLib {}"
-        ));
-        Path secondJar = createPlutusSourcesJar(tempDir.resolve("second.jar"), Map.of(
-                "com/example/SecondLib.java", "package com.example; class SecondLib {}"
-        ));
-
-        try (var classLoader = new URLClassLoader(new URL[]{
-                firstJar.toUri().toURL(),
-                secondJar.toUri().toURL()
-        }, null)) {
-            Map<String, String> result = LibrarySourceResolver.scanClasspathSources(classLoader);
-
-            assertEquals(2, result.size());
-            assertTrue(result.get("FirstLib").contains("class FirstLib"));
-            assertTrue(result.get("SecondLib").contains("class SecondLib"));
-        }
-    }
-
-    @Test
-    void scanClasspathSources_doesNotDiscoverJarSourcesWithoutIndex(@TempDir Path tempDir) throws Exception {
-        Path jar = tempDir.resolve("source-only.jar");
-        try (var out = new JarOutputStream(Files.newOutputStream(jar))) {
-            addJarDirectory(out, "META-INF/");
-            addJarDirectory(out, "META-INF/plutus-sources/");
-            addJarDirectory(out, "META-INF/plutus-sources/com/");
-            addJarDirectory(out, "META-INF/plutus-sources/com/example/");
-            addJarEntry(out,
-                    "META-INF/plutus-sources/com/example/SourceOnlyLib.java",
-                    "package com.example; class SourceOnlyLib {}");
-        }
-
-        try (var classLoader = new URLClassLoader(new URL[]{jar.toUri().toURL()}, null)) {
-            Map<String, String> result = LibrarySourceResolver.scanClasspathSources(classLoader);
-
-            assertTrue(result.isEmpty());
-        }
-    }
-
-    @Test
-    void scanClasspathSources_readsIndexedJarsAndLooseFilesystemDirs(@TempDir Path tempDir) throws Exception {
-        Path jar = createPlutusSourcesJar(tempDir.resolve("indexed.jar"), Map.of(
-                "com/example/SharedLib.java", "package com.example; class SharedLib { static int fromJar() { return 1; } }",
-                "com/example/IndexedOnlyLib.java", "package com.example; class IndexedOnlyLib {}"
-        ));
-
-        Path classesDir = tempDir.resolve("classes");
-        Path looseSourcesDir = classesDir.resolve("META-INF/plutus-sources/com/example");
-        Files.createDirectories(looseSourcesDir);
-        Files.writeString(looseSourcesDir.resolve("SharedLib.java"),
-                "package com.example; class SharedLib { static int fromLooseDir() { return 2; } }");
-        Files.writeString(looseSourcesDir.resolve("LooseOnlyLib.java"),
-                "package com.example; class LooseOnlyLib {}");
-
-        try (var classLoader = new URLClassLoader(new URL[]{
-                jar.toUri().toURL(),
-                classesDir.toUri().toURL()
-        }, null)) {
-            Map<String, String> result = LibrarySourceResolver.scanClasspathSources(classLoader);
-
-            assertEquals(3, result.size());
-            assertTrue(result.get("SharedLib").contains("fromJar"));
-            assertFalse(result.get("SharedLib").contains("fromLooseDir"));
-            assertTrue(result.get("IndexedOnlyLib").contains("class IndexedOnlyLib"));
-            assertTrue(result.get("LooseOnlyLib").contains("class LooseOnlyLib"));
-        }
-    }
-
-    private static Path createPlutusSourcesJar(Path jar, Map<String, String> sources) throws Exception {
-        try (var out = new JarOutputStream(Files.newOutputStream(jar))) {
-            addJarEntry(out, "META-INF/plutus-sources/index.txt",
-                    String.join("\n", sources.keySet()) + "\n");
-            for (var entry : sources.entrySet()) {
-                addJarEntry(out, "META-INF/plutus-sources/" + entry.getKey(), entry.getValue());
-            }
-        }
-        return jar;
-    }
-
-    private static void addJarDirectory(JarOutputStream out, String name) throws Exception {
-        out.putNextEntry(new JarEntry(name));
-        out.closeEntry();
-    }
-
-    private static void addJarEntry(JarOutputStream out, String name, String content) throws Exception {
-        out.putNextEntry(new JarEntry(name));
-        out.write(content.getBytes(StandardCharsets.UTF_8));
-        out.closeEntry();
     }
 }
