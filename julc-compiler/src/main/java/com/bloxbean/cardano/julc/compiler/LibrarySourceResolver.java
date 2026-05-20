@@ -1,6 +1,7 @@
 package com.bloxbean.cardano.julc.compiler;
 
 import java.io.*;
+import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -22,6 +23,9 @@ import java.util.regex.Pattern;
  * {@code SourceDiscovery} (test-time) to avoid duplicating resolution logic.
  */
 public final class LibrarySourceResolver {
+
+    private static final String PLUTUS_SOURCES_DIR = "META-INF/plutus-sources/";
+    private static final String PLUTUS_SOURCES_INDEX = PLUTUS_SOURCES_DIR + "index.txt";
 
     /**
      * Regex matching Java import statements.
@@ -114,32 +118,18 @@ public final class LibrarySourceResolver {
      */
     public static Map<String, String> scanClasspathSources(ClassLoader classLoader) {
         var result = new LinkedHashMap<String, String>();
-        // Primary: use index.txt manifest (works with both file: and jar: protocols)
-        try (var indexStream = classLoader.getResourceAsStream("META-INF/plutus-sources/index.txt")) {
-            if (indexStream != null) {
-                var indexContent = new String(indexStream.readAllBytes(), StandardCharsets.UTF_8);
-                for (String entry : indexContent.split("\n")) {
-                    entry = entry.strip();
-                    if (entry.isEmpty() || !entry.endsWith(".java")) continue;
-                    var resourcePath = "META-INF/plutus-sources/" + entry;
-                    try (var sourceStream = classLoader.getResourceAsStream(resourcePath)) {
-                        if (sourceStream != null) {
-                            var source = new String(sourceStream.readAllBytes(), StandardCharsets.UTF_8);
-                            var fileName = entry.contains("/")
-                                    ? entry.substring(entry.lastIndexOf('/') + 1) : entry;
-                            var simpleName = fileName.replace(".java", "");
-                            result.putIfAbsent(simpleName, source);
-                        }
-                    }
-                }
-                return result;
+        // JARs must ship index.txt for reliable discovery. Loose file-system
+        // directories are also scanned to support IDE/dev/test classpaths.
+        try {
+            var indexes = classLoader.getResources(PLUTUS_SOURCES_INDEX);
+            while (indexes.hasMoreElements()) {
+                scanIndexedSources(indexes.nextElement(), result);
             }
         } catch (IOException e) {
             // Fall through to directory scan
         }
-        // Fallback: file-system directory scan (for development/IDE usage)
         try {
-            var resources = classLoader.getResources("META-INF/plutus-sources/");
+            var resources = classLoader.getResources(PLUTUS_SOURCES_DIR);
             while (resources.hasMoreElements()) {
                 URL resourceUrl = resources.nextElement();
                 if ("file".equals(resourceUrl.getProtocol())) {
@@ -150,6 +140,32 @@ public final class LibrarySourceResolver {
             // Silently ignore
         }
         return result;
+    }
+
+    private static void scanIndexedSources(URL indexUrl, Map<String, String> result) throws IOException {
+        try (var indexStream = indexUrl.openStream()) {
+            var indexContent = new String(indexStream.readAllBytes(), StandardCharsets.UTF_8);
+            for (String entry : indexContent.split("\n")) {
+                entry = entry.strip();
+                if (entry.isEmpty() || !entry.endsWith(".java")) continue;
+                try (var sourceStream = resolveIndexedSourceUrl(indexUrl, entry).openStream()) {
+                    var source = new String(sourceStream.readAllBytes(), StandardCharsets.UTF_8);
+                    var fileName = entry.contains("/")
+                            ? entry.substring(entry.lastIndexOf('/') + 1) : entry;
+                    var simpleName = fileName.replace(".java", "");
+                    result.putIfAbsent(simpleName, source);
+                }
+            }
+        }
+    }
+
+    private static URL resolveIndexedSourceUrl(URL indexUrl, String entry) throws IOException {
+        String indexPath = indexUrl.toExternalForm();
+        int lastSlash = indexPath.lastIndexOf('/');
+        if (lastSlash < 0) {
+            throw new IOException("Invalid source index URL: " + indexUrl);
+        }
+        return URI.create(indexPath.substring(0, lastSlash + 1) + entry).toURL();
     }
 
     private static void scanFileSystemSources(File dir, Map<String, String> result) {
