@@ -3,6 +3,7 @@ package com.bloxbean.julc.cli.mcp.tools;
 import com.bloxbean.cardano.julc.compiler.CompileResult;
 import com.bloxbean.cardano.julc.compiler.CompilerException;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
+import com.bloxbean.cardano.julc.compiler.LibrarySource;
 import com.bloxbean.cardano.julc.compiler.LibrarySourceResolver;
 import com.bloxbean.cardano.julc.core.Constant;
 import com.bloxbean.cardano.julc.core.Term;
@@ -138,10 +139,10 @@ public final class TestTool {
         // Build the library pool for cross-source resolution. We pretend each
         // librarySource has a class name matching its declared class — same
         // shape TestRunner uses on disk.
-        Map<String, String> libraryPool = new LinkedHashMap<>();
+        Map<String, LibrarySource> libraryPool = new LinkedHashMap<>();
         for (var ls : librarySources) {
             String name = extractFirstClassName(ls);
-            if (name != null) libraryPool.put(name, ls);
+            if (name != null) LibrarySourceResolver.putLibrarySource(libraryPool, name, ls);
         }
         var resolvedLibs = LibrarySourceResolver.resolve(src, libraryPool);
         var vm = JulcVm.create();

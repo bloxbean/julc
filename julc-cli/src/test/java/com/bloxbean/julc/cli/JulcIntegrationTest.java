@@ -11,6 +11,7 @@ import com.bloxbean.julc.cli.scaffold.ProjectScaffolder;
 import com.bloxbean.cardano.julc.clientlib.JulcScriptAdapter;
 import com.bloxbean.cardano.julc.compiler.CompilerOptions;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
+import com.bloxbean.cardano.julc.compiler.LibrarySourceResolver;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -74,11 +75,11 @@ class JulcIntegrationTest {
         assertEquals(2, tests.size());
 
         var testPool = ProjectSourceResolver.buildPool(scanResult.libraries());
-        testPool.putAll(scanResult.validators());
+        LibrarySourceResolver.librarySourcesFrom(scanResult.validators()).forEach(testPool::put);
         var runner = new TestRunner(testPool);
 
         for (var test : tests) {
-            testPool.put(test.className(), test.source());
+            LibrarySourceResolver.putLibrarySource(testPool, test.className(), test.source());
             var testResult = runner.run(test);
             assertTrue(testResult.passed(), "Test " + test.methodName() + " should pass: " + testResult.error());
             assertTrue(testResult.budget().cpuSteps() > 0);
@@ -114,12 +115,12 @@ class JulcIntegrationTest {
         assertTrue(tests.stream().anyMatch(t -> t.className().equals("ContextTest")));
 
         var testPool = ProjectSourceResolver.buildPool(scanResult.libraries());
-        testPool.putAll(scanResult.validators());
+        LibrarySourceResolver.librarySourcesFrom(scanResult.validators()).forEach(testPool::put);
         var runner = new TestRunner(testPool);
 
         for (var test : tests) {
             if (test.className().equals("ContextTest")) {
-                testPool.put(test.className(), test.source());
+                LibrarySourceResolver.putLibrarySource(testPool, test.className(), test.source());
                 var result = runner.run(test);
                 assertTrue(result.passed(), "ContextTest should pass: " + result.error());
                 assertTrue(result.budget().cpuSteps() > 0);

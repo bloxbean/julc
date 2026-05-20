@@ -34,6 +34,28 @@ class ProjectScannerTest {
     }
 
     @Test
+    void scanKeysLibrariesByFqcnToAvoidSimpleNameCollisions(@TempDir Path tempDir) throws IOException {
+        Path left = tempDir.resolve("com/left/Utils.java");
+        Path right = tempDir.resolve("com/right/Utils.java");
+        Files.createDirectories(left.getParent());
+        Files.createDirectories(right.getParent());
+        Files.writeString(left, """
+                package com.left;
+                public class Utils {}
+                """);
+        Files.writeString(right, """
+                package com.right;
+                public class Utils {}
+                """);
+
+        var result = ProjectScanner.scan(tempDir);
+
+        assertEquals(2, result.libraries().size());
+        assertTrue(result.libraries().containsKey("com.left.Utils"));
+        assertTrue(result.libraries().containsKey("com.right.Utils"));
+    }
+
+    @Test
     void scanDetectsAllAnnotations(@TempDir Path tempDir) throws IOException {
         String[] annotations = {
                 "@Validator", "@SpendingValidator", "@MintingPolicy",

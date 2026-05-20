@@ -1,13 +1,18 @@
 package com.bloxbean.cardano.julc.gradle;
 
+import com.bloxbean.cardano.julc.compiler.LibrarySourceResolver;
 import org.gradle.api.DefaultTask;
+import org.gradle.api.GradleException;
 import org.gradle.api.file.DirectoryProperty;
 import org.gradle.api.tasks.*;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -41,7 +46,7 @@ public abstract class BundleJulcSourcesTask extends DefaultTask {
         Path metaInfDir = outDir.toPath().resolve("META-INF/plutus-sources");
 
         List<File> javaFiles = SourceScanner.findJavaFiles(srcDir);
-        int bundled = 0;
+        List<String> bundledEntries = new ArrayList<>();
 
         for (File javaFile : javaFiles) {
             String source = Files.readString(javaFile.toPath());
@@ -52,17 +57,50 @@ public abstract class BundleJulcSourcesTask extends DefaultTask {
             // Compute relative path to preserve package structure
             Path relativePath = srcDir.toPath().relativize(javaFile.toPath());
             Path targetFile = metaInfDir.resolve(relativePath);
+            String indexEntry = relativePath.toString().replace(File.separatorChar, '/');
+            validatePackageMatchesPath(javaFile, source, indexEntry);
 
             Files.createDirectories(targetFile.getParent());
-            Files.writeString(targetFile, source);
+            Files.writeString(targetFile, source, StandardCharsets.UTF_8);
+            bundledEntries.add(indexEntry);
 
             getLogger().lifecycle("Bundled {} → META-INF/plutus-sources/{}",
                     javaFile.getName(), relativePath);
-            bundled++;
         }
 
-        if (bundled == 0) {
+        if (bundledEntries.isEmpty()) {
             getLogger().lifecycle("No @OnchainLibrary sources found to bundle in {}", srcDir);
+        } else {
+            Collections.sort(bundledEntries);
+            Files.createDirectories(metaInfDir);
+            Files.writeString(metaInfDir.resolve("index.txt"),
+                    String.join("\n", bundledEntries) + "\n",
+                    StandardCharsets.UTF_8);
+        }
+    }
+
+    private static void validatePackageMatchesPath(File javaFile, String source, String indexEntry) {
+        String packageName = LibrarySourceResolver.extractPackageName(source);
+        String fileClassName = javaFile.getName().replace(".java", "");
+        String sourceClassName = LibrarySourceResolver.extractTopLevelTypeName(source)
+                .orElseThrow(() -> new GradleException("Could not determine @OnchainLibrary class name in " + javaFile));
+        if (!LibrarySourceResolver.hasTopLevelOnchainLibraryAnnotation(source, sourceClassName)) {
+            throw new GradleException("@OnchainLibrary must be declared on the top-level class in " + javaFile
+                    + ". Nested on-chain libraries are not supported.");
+        }
+        if (!fileClassName.equals(sourceClassName)) {
+            throw new GradleException("@OnchainLibrary class/path mismatch for " + javaFile
+                    + ": source declares " + sourceClassName
+                    + " but source path is " + indexEntry);
+        }
+
+        String expectedEntry = packageName.isBlank()
+                ? javaFile.getName()
+                : packageName.replace('.', '/') + "/" + javaFile.getName();
+        if (!expectedEntry.equals(indexEntry)) {
+            throw new GradleException("@OnchainLibrary package/path mismatch for " + javaFile
+                    + ": declared package expects " + expectedEntry
+                    + " but source path is " + indexEntry);
         }
     }
 

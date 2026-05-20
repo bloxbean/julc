@@ -86,10 +86,10 @@ class MethodDocExtractorTest {
 
     @BeforeAll
     static void setup() {
-        extractor = new MethodDocExtractor(Map.of(
+        extractor = new MethodDocExtractor(com.bloxbean.cardano.julc.compiler.LibrarySourceResolver.librarySourcesFrom(Map.of(
                 "MathLib", SAMPLE_SOURCE,
                 "MapLib", MAP_SOURCE,
-                "Bare", NO_JAVADOC_SOURCE));
+                "Bare", NO_JAVADOC_SOURCE)));
     }
 
     @Test
@@ -318,7 +318,7 @@ class MethodDocExtractorTest {
     void realLibraryPool_mathLibPow() {
         var pool = com.bloxbean.cardano.julc.compiler.LibrarySourceResolver.scanClasspathSources(
                 Thread.currentThread().getContextClassLoader());
-        if (pool.containsKey("MathLib")) {
+        if (pool.values().stream().anyMatch(source -> source.simpleName().equals("MathLib"))) {
             var realExtractor = new MethodDocExtractor(pool);
             var doc = realExtractor.lookupMethod("MathLib.pow");
             assertNotNull(doc, "MathLib.pow should be found in real stdlib");
@@ -332,7 +332,7 @@ class MethodDocExtractorTest {
     void realLibraryPool_classDocExists() {
         var pool = com.bloxbean.cardano.julc.compiler.LibrarySourceResolver.scanClasspathSources(
                 Thread.currentThread().getContextClassLoader());
-        if (pool.containsKey("MapLib")) {
+        if (pool.values().stream().anyMatch(source -> source.simpleName().equals("MapLib"))) {
             var realExtractor = new MethodDocExtractor(pool);
             var doc = realExtractor.lookupClass("MapLib");
             assertNotNull(doc);

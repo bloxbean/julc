@@ -2,6 +2,7 @@ package com.bloxbean.julc.playground.api;
 
 import com.bloxbean.cardano.julc.compiler.CompilerException;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
+import com.bloxbean.cardano.julc.compiler.LibrarySource;
 import com.bloxbean.cardano.julc.compiler.LibrarySourceResolver;
 import com.bloxbean.cardano.julc.core.PlutusData;
 
@@ -28,9 +29,9 @@ public class EvaluateController {
 
     private final JulcCompiler julcCompiler;
     private final CompilationSandbox sandbox;
-    private final java.util.Map<String, String> cachedLibSources;
+    private final java.util.Map<String, LibrarySource> cachedLibSources;
 
-    public EvaluateController(JulcCompiler julcCompiler, CompilationSandbox sandbox, java.util.Map<String, String> cachedLibSources) {
+    public EvaluateController(JulcCompiler julcCompiler, CompilationSandbox sandbox, java.util.Map<String, LibrarySource> cachedLibSources) {
         this.julcCompiler = julcCompiler;
         this.sandbox = sandbox;
         this.cachedLibSources = cachedLibSources;

@@ -1,5 +1,7 @@
 package com.bloxbean.julc.cli.project;
 
+import com.bloxbean.cardano.julc.compiler.LibrarySourceResolver;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -22,7 +24,7 @@ public final class ProjectScanner {
 
     public record ScanResult(
             Map<String, String> validators,  // simpleName -> source (.java validators)
-            Map<String, String> libraries,   // simpleName -> source (.java libraries)
+            Map<String, String> libraries,   // FQCN -> source (.java libraries)
             Map<String, String> jrlFiles     // simpleName -> source (.jrl files)
     ) {}
 
@@ -50,7 +52,7 @@ public final class ProjectScanner {
                                 if (VALIDATOR_PATTERN.matcher(source).find()) {
                                     validators.put(simpleName, source);
                                 } else {
-                                    libraries.put(simpleName, source);
+                                    libraries.put(libraryKey(simpleName, source), source);
                                 }
                             } else if (fileName.endsWith(".jrl")) {
                                 String source = Files.readString(p);
@@ -77,5 +79,11 @@ public final class ProjectScanner {
         if (source.contains("@VotingValidator")) return "PlutusScriptV3-Voting";
         if (source.contains("@ProposingValidator")) return "PlutusScriptV3-Proposing";
         return "PlutusScriptV3";
+    }
+
+    private static String libraryKey(String simpleName, String source) {
+        String packageName = LibrarySourceResolver.extractPackageName(source);
+        String className = LibrarySourceResolver.extractTopLevelTypeName(source).orElse(simpleName);
+        return packageName.isBlank() ? className : packageName + "." + className;
     }
 }

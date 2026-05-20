@@ -2,6 +2,7 @@ package com.bloxbean.julc.playground.repl;
 
 import com.bloxbean.cardano.julc.compiler.CompileResult;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
+import com.bloxbean.cardano.julc.compiler.LibrarySource;
 import com.bloxbean.cardano.julc.compiler.LibrarySourceResolver;
 import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.core.Term;
@@ -44,7 +45,7 @@ public final class PlaygroundEvaluator {
 
     private final JulcCompiler compiler;
     private final JulcVm vm;
-    private final Map<String, String> libraryPool;
+    private final Map<String, LibrarySource> libraryPool;
 
     public PlaygroundEvaluator() {
         this.compiler = new JulcCompiler(StdlibRegistry.defaultRegistry());

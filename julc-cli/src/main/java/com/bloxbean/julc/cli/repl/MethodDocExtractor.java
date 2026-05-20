@@ -1,5 +1,6 @@
 package com.bloxbean.julc.cli.repl;
 
+import com.bloxbean.cardano.julc.compiler.LibrarySource;
 import com.bloxbean.julc.cli.output.AnsiColors;
 
 import java.util.*;
@@ -50,13 +51,16 @@ public final class MethodDocExtractor {
             Pattern.compile("(?:public\\s+)?class\\s+(\\w+)");
 
     /**
-     * Build the doc extractor from a library pool (className -> Java source).
+     * Build the doc extractor from a library pool (FQCN -> Java source metadata, or legacy className -> source).
      */
-    public MethodDocExtractor(Map<String, String> libraryPool) {
+    public MethodDocExtractor(Map<String, ?> libraryPool) {
         for (var entry : libraryPool.entrySet()) {
-            String className = entry.getKey();
-            String source = entry.getValue();
-            extractFromSource(className, source);
+            Object value = entry.getValue();
+            if (value instanceof LibrarySource librarySource) {
+                extractFromSource(librarySource.simpleName(), librarySource.source());
+            } else if (value instanceof String source) {
+                extractFromSource(simpleName(entry.getKey()), source);
+            }
         }
     }
 
@@ -125,6 +129,11 @@ public final class MethodDocExtractor {
         extractMethodDocs(className, source, methodNames);
 
         classDocs.put(className, new ClassDoc(className, classJavadoc, List.copyOf(methodNames)));
+    }
+
+    private static String simpleName(String name) {
+        int lastDot = name.lastIndexOf('.');
+        return lastDot < 0 ? name : name.substring(lastDot + 1);
     }
 
     private void extractMethodDocs(String className, String source, List<String> methodNames) {

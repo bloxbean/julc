@@ -13,14 +13,14 @@ class ProjectSourceResolverTest {
         var pool = ProjectSourceResolver.buildPool(Map.of());
         // Should include stdlib sources from classpath (ListsLib, MapLib, etc.)
         assertFalse(pool.isEmpty(), "Pool should include classpath stdlib sources");
-        assertTrue(pool.containsKey("ListsLib"), "Pool should contain ListsLib");
+        assertTrue(pool.containsKey("com.bloxbean.cardano.julc.stdlib.lib.ListsLib"), "Pool should contain ListsLib");
     }
 
     @Test
     void buildPoolUserSourcesOverrideClasspath() {
-        String customSource = "public class ListsLib { /* custom */ }";
+        String customSource = "package com.bloxbean.cardano.julc.stdlib.lib; public class ListsLib { /* custom */ }";
         var pool = ProjectSourceResolver.buildPool(Map.of("ListsLib", customSource));
-        assertEquals(customSource, pool.get("ListsLib"));
+        assertEquals(customSource, pool.get("com.bloxbean.cardano.julc.stdlib.lib.ListsLib").source());
     }
 
     @Test
@@ -40,7 +40,8 @@ class ProjectSourceResolverTest {
                 public class Util { }
                 """;
 
-        var pool = Map.of("Helper", helperSource, "Util", utilSource);
+        var pool = com.bloxbean.cardano.julc.compiler.LibrarySourceResolver.librarySourcesFrom(
+                Map.of("Helper", helperSource, "Util", utilSource));
         var resolved = ProjectSourceResolver.resolve(validatorSource, pool);
         assertEquals(2, resolved.size());
     }

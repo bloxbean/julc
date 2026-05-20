@@ -50,6 +50,8 @@ public @interface OnchainLibrary {
 
 A library class must:
 - Be annotated with `@OnchainLibrary`.
+- Be a top-level class. Nested `@OnchainLibrary` classes are not supported by source discovery or JAR packaging.
+- Declare a package, and keep the source file under the matching package path.
 - Contain only `public static` methods.
 - Follow the supported Java subset (see Section 2.5 for details).
 
@@ -431,6 +433,7 @@ com/example/mylib/HelperLib.java
 ```
 
 This manifest enables reliable source discovery from both file-system directories and JAR archives.
+Each entry's path is also the library identity used by consumers: `com/example/mylib/TokenUtils.java` maps to `com.example.mylib.TokenUtils`. The declared package and top-level class name must match that path. The official Gradle plugin validates this and fails the build if the file is misplaced or the `@OnchainLibrary` annotation is on a nested class.
 
 **Example from the standard library (`julc-stdlib`):**
 

@@ -1,6 +1,7 @@
 package com.bloxbean.julc.playground.api;
 
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
+import com.bloxbean.cardano.julc.compiler.LibrarySource;
 import com.bloxbean.julc.playground.model.EvaluateRequest;
 import com.bloxbean.julc.playground.model.EvaluateResponse;
 import com.bloxbean.julc.playground.model.ScenarioOverrides;
@@ -21,7 +22,7 @@ class EvaluateControllerTest {
     static final ObjectMapper mapper = new ObjectMapper();
     static final JulcCompiler julcCompiler = new JulcCompiler();
     static final CompilationSandbox sandbox = new CompilationSandbox(2, 30);
-    static final java.util.Map<String, String> cachedLibs =
+    static final java.util.Map<String, LibrarySource> cachedLibs =
             com.bloxbean.cardano.julc.compiler.LibrarySourceResolver.scanClasspathSources(
                     JulcCompiler.class.getClassLoader());
     static final EvaluateController controller = new EvaluateController(julcCompiler, sandbox, cachedLibs);
