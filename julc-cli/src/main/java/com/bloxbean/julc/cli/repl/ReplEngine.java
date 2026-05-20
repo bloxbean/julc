@@ -32,10 +32,14 @@ public final class ReplEngine {
     private boolean showBudget = true;
 
     public ReplEngine() {
+        this(LibrarySourceResolver.scanClasspathSources(
+                Thread.currentThread().getContextClassLoader()));
+    }
+
+    ReplEngine(Map<String, LibrarySource> libraryPool) {
         this.compiler = new JulcCompiler(StdlibRegistry.defaultRegistry());
         this.vm = JulcVm.create();
-        this.libraryPool = LibrarySourceResolver.scanClasspathSources(
-                Thread.currentThread().getContextClassLoader());
+        this.libraryPool = new LinkedHashMap<>(libraryPool);
         this.docExtractor = new MethodDocExtractor(libraryPool);
     }
 
@@ -274,9 +278,15 @@ public final class ReplEngine {
         methods.addAll(StdlibRegistry.defaultRegistry().methodsForClass(className));
 
         // Scan source file for public static methods
-        libraryPool.values().stream()
-                .filter(librarySource -> librarySource.simpleName().equals(className))
-                .findFirst()
+        List<LibrarySource> matches = libraryPool.values().stream()
+                .filter(librarySource -> librarySource.fqcn().equals(className)
+                        || librarySource.simpleName().equals(className))
+                .toList();
+        if (!className.contains(".") && matches.size() > 1) {
+            return new ReplResult.Error("Ambiguous library class '" + className + "'. Use one of: "
+                    + matches.stream().map(LibrarySource::fqcn).sorted().toList());
+        }
+        matches.stream().findFirst()
                 .ifPresent(librarySource ->
                         methods.addAll(ReplCompleter.extractPublicStaticMethods(librarySource.source())));
 

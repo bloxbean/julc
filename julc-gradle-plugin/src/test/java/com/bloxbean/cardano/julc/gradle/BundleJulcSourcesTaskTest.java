@@ -114,4 +114,35 @@ class BundleJulcSourcesTaskTest {
         assertTrue(ex.getMessage().contains("class/path mismatch"));
         assertTrue(ex.getMessage().contains("DifferentName"));
     }
+
+    @Test
+    void bundleFailsWhenOnchainLibraryIsNested(@TempDir Path tempDir) throws Exception {
+        Path sourceDir = tempDir.resolve("src/main/java");
+        Path librarySource = sourceDir.resolve("com/example/Outer.java");
+        Files.createDirectories(librarySource.getParent());
+        Files.writeString(librarySource, """
+                package com.example;
+
+                import com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary;
+
+                public final class Outer {
+                    @OnchainLibrary
+                    static final class Inner {
+                        static boolean check() { return true; }
+                    }
+                }
+                """);
+
+        Project project = ProjectBuilder.builder()
+                .withProjectDir(tempDir.toFile())
+                .build();
+        BundleJulcSourcesTask task = project.getTasks()
+                .create("bundleJulcSources", BundleJulcSourcesTask.class);
+        task.getSourceDir().set(sourceDir.toFile());
+        task.getOutputDir().set(tempDir.resolve("build/resources/main").toFile());
+
+        GradleException ex = assertThrows(GradleException.class, task::bundle);
+        assertTrue(ex.getMessage().contains("top-level class"));
+        assertTrue(ex.getMessage().contains("Nested on-chain libraries are not supported"));
+    }
 }

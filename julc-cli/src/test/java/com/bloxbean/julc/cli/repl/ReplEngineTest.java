@@ -1,7 +1,11 @@
 package com.bloxbean.julc.cli.repl;
 
+import com.bloxbean.cardano.julc.compiler.LibrarySource;
+import com.bloxbean.cardano.julc.compiler.LibrarySourceResolver;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+
+import java.util.LinkedHashMap;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -122,6 +126,61 @@ class ReplEngineTest {
     void methodsCommand_noClassName_returnsError() {
         var result = engine.evaluate(":methods");
         assertInstanceOf(ReplResult.Error.class, result);
+    }
+
+    @Test
+    void methodsCommand_reportsAmbiguousLibrarySimpleName() {
+        var pool = new LinkedHashMap<String, LibrarySource>();
+        var left = LibrarySourceResolver.librarySource("""
+                package com.left;
+                public final class Utils {
+                    public static boolean leftOnly() { return true; }
+                }
+                """);
+        var right = LibrarySourceResolver.librarySource("""
+                package com.right;
+                public final class Utils {
+                    public static boolean rightOnly() { return true; }
+                }
+                """);
+        pool.put(left.fqcn(), left);
+        pool.put(right.fqcn(), right);
+        var localEngine = new ReplEngine(pool);
+
+        var result = localEngine.evaluate(":methods Utils");
+
+        assertInstanceOf(ReplResult.Error.class, result);
+        var message = ((ReplResult.Error) result).message();
+        assertTrue(message.contains("Ambiguous library class 'Utils'"));
+        assertTrue(message.contains("com.left.Utils"));
+        assertTrue(message.contains("com.right.Utils"));
+    }
+
+    @Test
+    void methodsCommand_acceptsFqcnForDuplicateLibrarySimpleName() {
+        var pool = new LinkedHashMap<String, LibrarySource>();
+        var left = LibrarySourceResolver.librarySource("""
+                package com.left;
+                public final class Utils {
+                    public static boolean leftOnly() { return true; }
+                }
+                """);
+        var right = LibrarySourceResolver.librarySource("""
+                package com.right;
+                public final class Utils {
+                    public static boolean rightOnly() { return true; }
+                }
+                """);
+        pool.put(left.fqcn(), left);
+        pool.put(right.fqcn(), right);
+        var localEngine = new ReplEngine(pool);
+
+        var result = localEngine.evaluate(":methods com.left.Utils");
+
+        assertInstanceOf(ReplResult.MetaOutput.class, result);
+        var text = ((ReplResult.MetaOutput) result).text();
+        assertTrue(text.contains("leftOnly"));
+        assertFalse(text.contains("rightOnly"));
     }
 
     @Test

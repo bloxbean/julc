@@ -284,6 +284,38 @@ class JulcAnnotationProcessorTest {
                 () -> JulcScriptLoader.load(JulcAnnotationProcessorTest.class));
     }
 
+    @Test
+    void rejectsNestedOnchainLibrary() throws Exception {
+        var source = """
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                import java.math.BigInteger;
+
+                @Validator
+                class UsesNested {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        return true;
+                    }
+                }
+
+                class Outer {
+                    @OnchainLibrary
+                    static class Inner {
+                        public static boolean check() {
+                            return true;
+                        }
+                    }
+                }
+                """;
+
+        var result = compileWithProcessor(source, "UsesNested");
+
+        assertFalse(result.success(), "Nested @OnchainLibrary should be rejected");
+        assertTrue(result.diagnostics().stream()
+                        .anyMatch(diagnostic -> diagnostic.getMessage(null).contains("top-level class")),
+                "Expected top-level diagnostic, got: " + result.diagnostics());
+    }
+
     // --- Compilation infrastructure ---
 
     record CompileOutput(boolean success, List<Diagnostic<? extends JavaFileObject>> diagnostics) {}

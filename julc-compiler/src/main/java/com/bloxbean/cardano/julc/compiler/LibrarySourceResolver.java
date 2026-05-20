@@ -1,10 +1,12 @@
 package com.bloxbean.cardano.julc.compiler;
 
 import com.bloxbean.cardano.julc.compiler.error.DiagnosticCollector;
+import com.github.javaparser.JavaParser;
 import com.github.javaparser.ParserConfiguration;
-import com.github.javaparser.StaticJavaParser;
+import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.ImportDeclaration;
 import com.github.javaparser.ast.Node;
+import com.github.javaparser.ast.expr.FieldAccessExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 
 import java.io.File;
@@ -75,6 +77,10 @@ public final class LibrarySourceResolver {
             "(?m)^\\s*(?:public\\s+)?(?:final\\s+|abstract\\s+|sealed\\s+|non-sealed\\s+)*" +
                     "(?:class|record|interface|enum)\\s+([A-Z][a-zA-Z0-9_]*)");
 
+    private static final Pattern STATIC_REFERENCE_PATTERN = Pattern.compile(
+            "\\b(([a-z_][a-zA-Z0-9_]*\\.)*[A-Z][a-zA-Z0-9_]*(?:\\.[A-Z][a-zA-Z0-9_]*)*)" +
+                    "\\s*\\.\\s*[a-zA-Z_][a-zA-Z0-9_]*\\s*(?:\\(|\\b)");
+
     private LibrarySourceResolver() {}
 
     /**
@@ -104,18 +110,16 @@ public final class LibrarySourceResolver {
     }
 
     /**
-     * Extract class names referenced via {@code ClassName.method(} patterns.
+     * Extract class names referenced via static {@code ClassName.member} patterns.
      * This catches same-package references that don't require imports.
      *
      * @param source the Java source code
-     * @return set of simple class names referenced in static-call patterns
+     * @return set of simple class names referenced in static member patterns
      */
     public static Set<String> extractReferencedClassNames(String source) {
-        var pattern = Pattern.compile("\\b([A-Z][a-zA-Z0-9_]*)\\s*\\.\\s*[a-z_][a-zA-Z0-9_]*\\s*\\(");
         var result = new LinkedHashSet<String>();
-        var matcher = pattern.matcher(source);
-        while (matcher.find()) {
-            result.add(matcher.group(1));
+        for (ClassReference reference : extractFallbackClassReferences(source)) {
+            result.add(reference.simpleName());
         }
         return result;
     }
@@ -171,10 +175,16 @@ public final class LibrarySourceResolver {
         return result;
     }
 
+    /**
+     * Add a legacy string library source to an FQCN-keyed pool.
+     * <p>
+     * The source should declare its package. If it is intentionally package-less,
+     * pass an FQCN as {@code simpleName} so imports can still resolve it.
+     */
     public static void putLibrarySource(Map<String, LibrarySource> target, String simpleName, String source) {
         LibrarySource librarySource;
         try {
-            librarySource = librarySource(source);
+            librarySource = librarySourceFromLegacyKey(simpleName, source);
         } catch (IllegalArgumentException e) {
             librarySource = librarySourceFromSimpleName(simpleName, source);
         }
@@ -272,13 +282,14 @@ public final class LibrarySourceResolver {
     /**
      * Resolve library sources transitively from a pool of available libraries.
      * <p>
-     * Starting from the given source's imports and static {@code ClassName.method()}
+     * Starting from the given source's imports and static {@code ClassName.member}
      * references, looks up each library by fully qualified class name. Ambiguous
      * unqualified references fail with a compiler diagnostic instead of picking an
      * arbitrary classpath winner.
      *
      * @param source             the root source whose imports to resolve
-     * @param availableLibraries map of FQCN to library source metadata
+     * @param availableLibraries map of FQCN to library source metadata, or a legacy
+     *                           map of class name/FQCN to source string
      * @return list of resolved library source strings (in discovery order)
      */
     public static List<String> resolve(String source, Map<String, ?> availableLibraries) {
@@ -409,9 +420,7 @@ public final class LibrarySourceResolver {
                                                     String packageName,
                                                     DiagnosticCollector diagnostics) {
         try {
-            StaticJavaParser.getParserConfiguration()
-                    .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
-            var cu = StaticJavaParser.parse(source);
+            var cu = parseCompilationUnit(source);
             var resolvedPackageName = packageName == null || packageName.isBlank()
                     ? cu.getPackageDeclaration().map(pd -> pd.getName().asString()).orElse("")
                     : packageName;
@@ -436,13 +445,13 @@ public final class LibrarySourceResolver {
             cu.findAll(MethodCallExpr.class).forEach(methodCall -> methodCall.getScope().ifPresent(scope -> {
                 classReferenceFromScope(scope).ifPresent(staticReferences::add);
             }));
+            cu.findAll(FieldAccessExpr.class).forEach(fieldAccess ->
+                    classReferenceFromScope(fieldAccess.getScope()).ifPresent(staticReferences::add));
 
             return new SourceContext(resolvedPackageName, importsBySimpleName, wildcardPackages, staticReferences);
         } catch (RuntimeException e) {
             var fallbackPackageName = packageName == null ? extractPackageName(source) : packageName;
-            var staticReferences = extractReferencedClassNames(source).stream()
-                    .map(simpleName -> new ClassReference(simpleName, null, null))
-                    .toList();
+            var staticReferences = extractFallbackClassReferences(source);
             return new SourceContext(fallbackPackageName, extractImportPaths(source),
                     extractWildcardImportPackages(source), staticReferences);
         }
@@ -479,6 +488,22 @@ public final class LibrarySourceResolver {
         return new LibrarySource(fqcn, simpleName, packageName, resourcePath, source);
     }
 
+    private static LibrarySource librarySourceFromLegacyKey(String key, String source) {
+        Objects.requireNonNull(source, "source");
+        if (key == null || key.isBlank()) {
+            return librarySource(source);
+        }
+        String packageName = extractPackageName(source);
+        if (packageName.isBlank() && key.contains(".")) {
+            String fqcn = key;
+            String resolvedSimpleName = simpleName(fqcn);
+            String resolvedPackageName = packageName(fqcn);
+            String resourcePath = resolvedPackageName.replace('.', '/') + "/" + resolvedSimpleName + ".java";
+            return new LibrarySource(fqcn, resolvedSimpleName, resolvedPackageName, resourcePath, source);
+        }
+        return librarySource(source);
+    }
+
     private static String fqcnFromResourcePath(String resourcePath) {
         String normalized = normalizeResourcePath(resourcePath);
         return normalized.substring(0, normalized.length() - ".java".length()).replace('/', '.');
@@ -486,9 +511,7 @@ public final class LibrarySourceResolver {
 
     public static Optional<String> extractTopLevelTypeName(String source) {
         try {
-            StaticJavaParser.getParserConfiguration()
-                    .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
-            var cu = StaticJavaParser.parse(source);
+            var cu = parseCompilationUnit(source);
             if (!cu.getTypes().isEmpty()) {
                 return Optional.of(cu.getTypes().get(0).getNameAsString());
             }
@@ -497,6 +520,32 @@ public final class LibrarySourceResolver {
         }
         Matcher matcher = TYPE_PATTERN.matcher(source);
         return matcher.find() ? Optional.of(matcher.group(1)) : Optional.empty();
+    }
+
+    public static boolean hasTopLevelOnchainLibraryAnnotation(String source, String typeName) {
+        try {
+            var cu = parseCompilationUnit(source);
+            return cu.getTypes().stream()
+                    .filter(type -> type.getNameAsString().equals(typeName))
+                    .anyMatch(type -> type.getAnnotations().stream()
+                            .anyMatch(annotation -> "OnchainLibrary".equals(simpleName(annotation.getNameAsString()))));
+        } catch (RuntimeException ignored) {
+            String regex = "(?m)^\\s*@(?:[a-zA-Z_][a-zA-Z0-9_]*\\.)*OnchainLibrary(?:\\([^)]*\\))?\\s*" +
+                    "(?:public\\s+|protected\\s+|private\\s+|static\\s+|final\\s+|abstract\\s+|sealed\\s+|non-sealed\\s+)*" +
+                    "(?:class|record|interface|enum)\\s+" + Pattern.quote(typeName) + "\\b";
+            return Pattern.compile(regex).matcher(source).find();
+        }
+    }
+
+    private static CompilationUnit parseCompilationUnit(String source) {
+        var configuration = new ParserConfiguration()
+                .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
+        var result = new JavaParser(configuration).parse(source);
+        if (!result.isSuccessful()) {
+            throw new IllegalArgumentException("Could not parse Java source: " + result.getProblems());
+        }
+        return result.getResult().orElseThrow(() ->
+                new IllegalArgumentException("Could not parse Java source: " + result.getProblems()));
     }
 
     private static String simpleName(String fqcn) {
@@ -515,6 +564,19 @@ public final class LibrarySourceResolver {
 
     private static Optional<ClassReference> classReferenceFromScope(Node scope) {
         String scopeText = scope.toString();
+        return classReferenceFromText(scopeText, scope);
+    }
+
+    private static List<ClassReference> extractFallbackClassReferences(String source) {
+        var result = new ArrayList<ClassReference>();
+        Matcher matcher = STATIC_REFERENCE_PATTERN.matcher(source);
+        while (matcher.find()) {
+            classReferenceFromText(matcher.group(1), null).ifPresent(result::add);
+        }
+        return result;
+    }
+
+    private static Optional<ClassReference> classReferenceFromText(String scopeText, Node node) {
         String className = simpleName(scopeText);
         if (!looksLikeClassName(className)) {
             return Optional.empty();
@@ -522,7 +584,7 @@ public final class LibrarySourceResolver {
         String fqcn = scopeText.contains(".") && Character.isLowerCase(scopeText.charAt(0))
                 ? scopeText
                 : null;
-        return Optional.of(new ClassReference(className, fqcn, scope));
+        return Optional.of(new ClassReference(className, fqcn, node));
     }
 
     private static String normalizeResourcePath(String resourcePath) {

@@ -84,6 +84,10 @@ public abstract class BundleJulcSourcesTask extends DefaultTask {
         String fileClassName = javaFile.getName().replace(".java", "");
         String sourceClassName = LibrarySourceResolver.extractTopLevelTypeName(source)
                 .orElseThrow(() -> new GradleException("Could not determine @OnchainLibrary class name in " + javaFile));
+        if (!LibrarySourceResolver.hasTopLevelOnchainLibraryAnnotation(source, sourceClassName)) {
+            throw new GradleException("@OnchainLibrary must be declared on the top-level class in " + javaFile
+                    + ". Nested on-chain libraries are not supported.");
+        }
         if (!fileClassName.equals(sourceClassName)) {
             throw new GradleException("@OnchainLibrary class/path mismatch for " + javaFile
                     + ": source declares " + sourceClassName

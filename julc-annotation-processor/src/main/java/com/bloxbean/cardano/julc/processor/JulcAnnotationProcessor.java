@@ -16,6 +16,7 @@ import com.sun.source.util.Trees;
 import javax.annotation.processing.*;
 import javax.lang.model.SourceVersion;
 import javax.lang.model.element.Element;
+import javax.lang.model.element.NestingKind;
 import javax.lang.model.element.TypeElement;
 import javax.tools.Diagnostic;
 import javax.tools.StandardLocation;
@@ -131,10 +132,17 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
     private void collectSameProjectLibraries(RoundEnvironment roundEnv) {
         for (Element element : roundEnv.getElementsAnnotatedWith(
                 findTypeElement("com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary"))) {
-            String simpleName = element.getSimpleName().toString();
-            String fqcn = element instanceof TypeElement typeElement
-                    ? typeElement.getQualifiedName().toString()
-                    : simpleName;
+            if (!(element instanceof TypeElement typeElement)) {
+                continue;
+            }
+            String simpleName = typeElement.getSimpleName().toString();
+            if (typeElement.getNestingKind() != NestingKind.TOP_LEVEL) {
+                processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
+                        "@OnchainLibrary must be declared on a top-level class. Nested on-chain libraries are not supported.",
+                        element);
+                continue;
+            }
+            String fqcn = typeElement.getQualifiedName().toString();
             if (sameProjectLibraries.containsKey(fqcn)) {
                 continue;
             }

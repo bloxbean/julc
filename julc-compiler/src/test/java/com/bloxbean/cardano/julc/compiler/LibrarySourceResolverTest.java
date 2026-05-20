@@ -175,6 +175,26 @@ class LibrarySourceResolverTest {
     }
 
     @Test
+    void resolve_acceptsLegacyFqcnKeyForPackageLessSource() {
+        String validatorSource = """
+                import com.example.util.SumTest;
+
+                class MyValidator {
+                    static boolean validate() {
+                        return SumTest.check();
+                    }
+                }
+                """;
+
+        String sumTestSource = "class SumTest { static boolean check() { return true; } }";
+        Map<String, String> legacyPool = Map.of("com.example.util.SumTest", sumTestSource);
+
+        var resolved = LibrarySourceResolver.resolve(validatorSource, legacyPool);
+
+        assertEquals(List.of(sumTestSource), resolved);
+    }
+
+    @Test
     void extractPackageName_findsPackage() {
         String source = """
                 package com.example.validators;
@@ -442,6 +462,70 @@ class LibrarySourceResolverTest {
         var resolved = LibrarySourceResolver.resolve(validatorSource, pool(source));
 
         assertEquals(List.of(source), resolved);
+    }
+
+    @Test
+    void resolve_findsStaticFieldReference() {
+        String validatorSource = """
+                package com.example;
+
+                class MyValidator {
+                    static boolean validate() {
+                        return Constants.ALLOWED;
+                    }
+                }
+                """;
+
+        String source = """
+                package com.example;
+                class Constants { static final boolean ALLOWED = true; }
+                """;
+
+        var resolved = LibrarySourceResolver.resolve(validatorSource, pool(source));
+
+        assertEquals(List.of(source), resolved);
+    }
+
+    @Test
+    void resolve_findsFullyQualifiedStaticFieldReference() {
+        String validatorSource = """
+                class MyValidator {
+                    static boolean validate() {
+                        return com.left.Constants.ALLOWED;
+                    }
+                }
+                """;
+
+        String leftSource = """
+                package com.left;
+                class Constants { static final boolean ALLOWED = true; }
+                """;
+        String rightSource = """
+                package com.right;
+                class Constants { static final boolean ALLOWED = false; }
+                """;
+
+        var resolved = LibrarySourceResolver.resolve(validatorSource, pool(leftSource, rightSource));
+
+        assertEquals(List.of(leftSource), resolved);
+    }
+
+    @Test
+    void resolve_parseFallbackPreservesFullyQualifiedStaticCall() {
+        String validatorSource = """
+                class MyValidator {
+                    static boolean validate() {
+                        return com.left.Utils.check(;
+                    }
+                }
+                """;
+
+        String leftSource = "package com.left; class Utils { static boolean check() { return true; } }";
+        String rightSource = "package com.right; class Utils { static boolean check() { return false; } }";
+
+        var resolved = LibrarySourceResolver.resolve(validatorSource, pool(leftSource, rightSource));
+
+        assertEquals(List.of(leftSource), resolved);
     }
 
     @Test
