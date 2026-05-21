@@ -20,7 +20,7 @@ class SourceMapCompilerTest {
                 import com.bloxbean.cardano.julc.ledger.*;
                 import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                @Validator
+                @SpendingValidator
                 class SimpleValidator {
                     @Entrypoint
                     public static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -45,7 +45,7 @@ class SourceMapCompilerTest {
                 import com.bloxbean.cardano.julc.ledger.*;
                 import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                @Validator
+                @SpendingValidator
                 class SimpleValidator {
                     @Entrypoint
                     public static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -69,7 +69,7 @@ class SourceMapCompilerTest {
                 import com.bloxbean.cardano.julc.ledger.*;
                 import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                @Validator
+                @SpendingValidator
                 class ConditionalValidator {
                     @Entrypoint
                     public static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -121,7 +121,7 @@ class SourceMapCompilerTest {
                 import com.bloxbean.cardano.julc.ledger.*;
                 import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                @Validator
+                @SpendingValidator
                 class ErrorValidator {
                     @Entrypoint
                     public static boolean validate(PlutusData redeemer, ScriptContext ctx) {

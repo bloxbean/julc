@@ -35,7 +35,7 @@ class ReturnPathAnalysisTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -53,7 +53,7 @@ class ReturnPathAnalysisTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -74,7 +74,7 @@ class ReturnPathAnalysisTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -96,7 +96,7 @@ class ReturnPathAnalysisTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -117,7 +117,7 @@ class ReturnPathAnalysisTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 static boolean helper(long x) {
                     if (x > 0) {
@@ -150,7 +150,7 @@ class ReturnPathAnalysisTest {
             record Mint(long amt) implements Action {}
             record Burn(long amt) implements Action {}
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -172,7 +172,7 @@ class ReturnPathAnalysisTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 static boolean isEmpty(long x) {
                     long y = x + 1;
@@ -195,7 +195,7 @@ class ReturnPathAnalysisTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -214,7 +214,7 @@ class ReturnPathAnalysisTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -239,7 +239,7 @@ class ReturnPathAnalysisTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {

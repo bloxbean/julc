@@ -40,7 +40,7 @@ class SwitchExhaustivenessTest {
             record Rect(long w, long h) implements Shape {}
             record Triangle(long a, long b, long c) implements Shape {}
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -70,7 +70,7 @@ class SwitchExhaustivenessTest {
             record Burn(long amt) implements Action {}
             record Transfer(long amt) implements Action {}
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -103,7 +103,7 @@ class SwitchExhaustivenessTest {
             record Burn(long amt) implements Action {}
             record Transfer(long amt) implements Action {}
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -144,7 +144,7 @@ class SwitchExhaustivenessTest {
             record Mint(long amt) implements Action {}
             record Burn(long amt) implements Action {}
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -182,7 +182,7 @@ class SwitchExhaustivenessTest {
             record Rect(long w, long h) implements Shape {}
             record Triangle(long a, long b, long c) implements Shape {}
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -208,7 +208,7 @@ class SwitchExhaustivenessTest {
             record True() implements Bool {}
             record False() implements Bool {}
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -239,7 +239,7 @@ class SwitchExhaustivenessTest {
             record Mint(long amt) implements Action {}
             record Burn(long amt) implements Action {}
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -269,7 +269,7 @@ class SwitchExhaustivenessTest {
             record Mint(long amt) implements Action {}
             record Burn(long amt) implements Action {}
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -296,7 +296,7 @@ class SwitchExhaustivenessTest {
             record Sub(long a, long b) implements Op {}
             record Mul(long a, long b) implements Op {}
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {

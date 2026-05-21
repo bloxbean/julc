@@ -24,7 +24,7 @@ class CheckControllerTest {
             var body = mapper.writeValueAsString(new CheckRequest("""
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class SimpleValidator {
                         @Entrypoint
                         static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -48,6 +48,24 @@ class CheckControllerTest {
             var res = client.post("/api/check", body);
             var json = mapper.readValue(res.body().string(), CheckResponse.class);
             assertFalse(json.valid());
+        });
+    }
+
+    @Test
+    void onchainLibraryValidatorRoleConflict_returnsError() {
+        JavalinTest.test(app(), (server, client) -> {
+            var body = mapper.writeValueAsString(new CheckRequest("""
+                    @OnchainLibrary
+                    @SpendingValidator
+                    class Confused {}
+                    """));
+
+            var res = client.post("/api/check", body);
+            var json = mapper.readValue(res.body().string(), CheckResponse.class);
+
+            assertFalse(json.valid());
+            assertTrue(json.diagnostics().getFirst().message()
+                    .contains("must not combine @OnchainLibrary"));
         });
     }
 

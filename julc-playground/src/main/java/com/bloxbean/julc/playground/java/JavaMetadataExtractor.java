@@ -1,14 +1,12 @@
 package com.bloxbean.julc.playground.java;
 
-import com.bloxbean.cardano.julc.compiler.error.CompilerDiagnostic;
+import com.bloxbean.cardano.julc.compiler.JavaSourceIntrospector;
 import com.bloxbean.cardano.julc.compiler.validate.SubsetValidator;
 import com.bloxbean.julc.playground.model.*;
-import com.github.javaparser.ParseProblemException;
+import com.github.javaparser.JavaParser;
 import com.github.javaparser.ParserConfiguration;
-import com.github.javaparser.StaticJavaParser;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
-import com.github.javaparser.ast.body.FieldDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.body.RecordDeclaration;
 
@@ -16,7 +14,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.IntStream;
 
 /**
  * Extracts contract metadata from Java validator source code.
@@ -26,17 +23,11 @@ import java.util.stream.IntStream;
  */
 public final class JavaMetadataExtractor {
 
-    private static final List<String> VALIDATOR_ANNOTATIONS = List.of(
-            "Validator", "SpendingValidator",
-            "MintingPolicy", "MintingValidator",
-            "WithdrawValidator", "CertifyingValidator",
-            "VotingValidator", "ProposingValidator",
-            "MultiValidator"
-    );
+    private static final List<String> VALIDATOR_ANNOTATIONS =
+            JavaSourceIntrospector.SUPPORTED_VALIDATOR_ANNOTATIONS;
 
     private static final Map<String, String> ANNOTATION_TO_PURPOSE = Map.of(
             "SpendingValidator", "SPENDING",
-            "MintingPolicy", "MINTING",
             "MintingValidator", "MINTING",
             "WithdrawValidator", "WITHDRAW",
             "CertifyingValidator", "CERTIFYING",
@@ -71,15 +62,13 @@ public final class JavaMetadataExtractor {
      * Returns a CheckResponse with the same structure the frontend expects.
      */
     public static CheckResponse extract(String source) {
-        StaticJavaParser.getParserConfiguration()
-                .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
-
         CompilationUnit cu;
-        try {
-            cu = StaticJavaParser.parse(source);
-        } catch (ParseProblemException e) {
+        var parser = new JavaParser(new ParserConfiguration()
+                .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21));
+        var parseResult = parser.parse(source);
+        if (!parseResult.isSuccessful() || parseResult.getResult().isEmpty()) {
             var diagnostics = new ArrayList<DiagnosticDto>();
-            for (var problem : e.getProblems()) {
+            for (var problem : parseResult.getProblems()) {
                 String msg = problem.getMessage();
                 // Extract just the first line (before "Problem stacktrace")
                 int stackIdx = msg.indexOf("Problem stacktrace");
@@ -93,9 +82,8 @@ public final class JavaMetadataExtractor {
                 diagnostics.add(new DiagnosticDto("ERROR", null, "Parse error", null, null, null, null, null));
             }
             return new CheckResponse(false, null, null, List.of(), null, List.of(), List.of(), List.of(), diagnostics);
-        } catch (Exception e) {
-            return errorResponse("Parse error: " + e.getMessage());
         }
+        cu = parseResult.getResult().get();
 
         // Run subset validation
         var subsetValidator = new SubsetValidator();
@@ -106,8 +94,24 @@ public final class JavaMetadataExtractor {
         ClassOrInterfaceDeclaration validatorClass = null;
         String annotationName = null;
         for (var type : cu.findAll(ClassOrInterfaceDeclaration.class)) {
+            var roleConflict = JavaSourceIntrospector.roleConflictOn(type);
+            if (roleConflict.isPresent()) {
+                diagnostics.add(new DiagnosticDto("ERROR", null,
+                        roleConflict.get().message(),
+                        null, null, null, null, null));
+                return new CheckResponse(false, null, null, List.of(), null,
+                        List.of(), List.of(), List.of(), diagnostics);
+            }
+            if (JavaSourceIntrospector.hasLegacyValidatorAnnotation(type)) {
+                var legacy = JavaSourceIntrospector.legacyValidatorAnnotationsOn(type).get(0);
+                diagnostics.add(new DiagnosticDto("ERROR", null,
+                        JavaSourceIntrospector.legacyAnnotationMigrationMessage(legacy, type.getNameAsString()),
+                        null, null, null, null, null));
+                return new CheckResponse(false, null, null, List.of(), null,
+                        List.of(), List.of(), List.of(), diagnostics);
+            }
             for (var ann : VALIDATOR_ANNOTATIONS) {
-                if (type.getAnnotationByName(ann).isPresent()) {
+                if (JavaSourceIntrospector.hasAnnotation(type, ann)) {
                     validatorClass = type;
                     annotationName = ann;
                     break;
@@ -118,7 +122,7 @@ public final class JavaMetadataExtractor {
 
         if (validatorClass == null) {
             diagnostics.add(new DiagnosticDto("ERROR", null,
-                    "No validator annotation found. Add @Validator, @SpendingValidator, @MintingPolicy, etc.",
+                    "No validator annotation found. Add @SpendingValidator, @MintingValidator, etc.",
                     null, null, null, null, null));
             return new CheckResponse(false, null, null, List.of(), null, List.of(), List.of(), List.of(), diagnostics);
         }
@@ -182,12 +186,12 @@ public final class JavaMetadataExtractor {
         String mapped = ANNOTATION_TO_PURPOSE.get(annotationName);
         if (mapped != null) return mapped;
 
-        // @Validator — determine from entrypoint param count
+        // @SpendingValidator — determine from entrypoint param count
         var entrypoint = findEntrypoint(cls);
         if (entrypoint != null && entrypoint.getParameters().size() >= 3) {
             return "SPENDING";
         }
-        // Default to SPENDING for @Validator with unknown param count
+        // Default to SPENDING for spending validators with unknown param count
         return "SPENDING";
     }
 

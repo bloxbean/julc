@@ -145,12 +145,12 @@ class JulcIntegrationTest {
 
         // Validator using the library
         Files.writeString(srcDir.resolve("MyValidator.java"), """
-                import com.bloxbean.cardano.julc.stdlib.annotation.Validator;
+                import com.bloxbean.cardano.julc.stdlib.annotation.SpendingValidator;
                 import com.bloxbean.cardano.julc.stdlib.annotation.Entrypoint;
                 import com.bloxbean.cardano.julc.ledger.ScriptContext;
                 import com.bloxbean.cardano.julc.core.PlutusData;
 
-                @Validator
+                @SpendingValidator
                 public class MyValidator {
                     @Entrypoint
                     public static boolean validate(PlutusData redeemer, ScriptContext ctx) {

@@ -71,7 +71,7 @@ class PlutusDataCastTest {
         var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class TestValidator {
                     record MyDatum(BigInteger amount, byte[] owner) {}
 
@@ -101,7 +101,7 @@ class PlutusDataCastTest {
                 import java.math.BigInteger;
                 import com.bloxbean.cardano.julc.core.types.JulcMap;
 
-                @Validator
+                @SpendingValidator
                 class TestValidator {
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -132,7 +132,7 @@ class PlutusDataCastTest {
                 import java.math.BigInteger;
                 import com.bloxbean.cardano.julc.core.types.JulcList;
 
-                @Validator
+                @SpendingValidator
                 class TestValidator {
                     record Wrapper(JulcList<PlutusData> items) {}
 
@@ -164,7 +164,7 @@ class PlutusDataCastTest {
         var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class TestValidator {
                     record Point(BigInteger x, BigInteger y) {}
 
@@ -193,7 +193,7 @@ class PlutusDataCastTest {
         var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class TestValidator {
                     sealed interface Action permits Mint, Burn {}
                     record Mint(BigInteger amount) implements Action {}
@@ -229,7 +229,7 @@ class PlutusDataCastTest {
                 import java.math.BigInteger;
                 import com.bloxbean.cardano.julc.ledger.api.v3.Value;
 
-                @Validator
+                @SpendingValidator
                 class TestValidator {
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -257,7 +257,7 @@ class PlutusDataCastTest {
         var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class TestValidator {
                     record MyDatum(BigInteger amount, byte[] owner) {}
 
@@ -286,7 +286,7 @@ class PlutusDataCastTest {
         var castSource = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class TestValidator {
                     record MyDatum(BigInteger amount) {}
 
@@ -300,7 +300,7 @@ class PlutusDataCastTest {
         var doubleCastSource = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class TestValidator {
                     record MyDatum(BigInteger amount) {}
 
@@ -343,7 +343,7 @@ class PlutusDataCastTest {
         var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class TestValidator {
                     record Wrapper(BigInteger inner) {}
 
@@ -371,7 +371,7 @@ class PlutusDataCastTest {
         var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class TestValidator {
                     record MyDatum(BigInteger amount) {}
 
@@ -401,7 +401,7 @@ class PlutusDataCastTest {
         var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class TestValidator {
                     record MyDatum(BigInteger amount) {}
 

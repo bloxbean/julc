@@ -13,7 +13,7 @@ JuLC (Java UPLC Compiler) compiles a subset of Java into Untyped Plutus Lambda C
 ```
 ┌─────────────────┐          ┌─────────────────┐          ┌──────────────┐
 │   Java Source    │  ──────► │  JuLC Compiler   │  ──────► │  UPLC Program │
-│  (@Validator)    │          │  (julc-compiler)  │          │  (on-chain)   │
+│ (@SpendingValidator)│       │  (julc-compiler)  │          │  (on-chain)   │
 └─────────────────┘          └─────────────────┘          └──────────────┘
 ```
 
@@ -152,7 +152,7 @@ JuLC is organized into focused modules. Here are the key ones grouped by role:
 
 | Module | Role |
 |--------|------|
-| `julc-onchain-api` | Annotations (`@Validator`, `@Entrypoint`, `@Param`, `@OnchainLibrary`) + off-chain stubs for IDE support |
+| `julc-onchain-api` | Annotations (`@SpendingValidator`, `@MintingValidator`, `@Entrypoint`, `@Param`, `@OnchainLibrary`) + off-chain stubs for IDE support |
 | `julc-testkit` | `ValidatorTest` base class for JUnit-based validator testing |
 | `julc-testkit-jqwik` | Property-based testing support |
 | `julc-annotation-processor` | Java annotation processor — compiles validators at build time |
@@ -1099,7 +1099,7 @@ class MyValidatorTest extends ValidatorTest {
 @Test
 void testFeature() {
     var source = """
-        @Validator
+        @SpendingValidator
         public class Test {
             @Entrypoint
             public static boolean validate(PlutusData redeemer, PlutusData ctx) {

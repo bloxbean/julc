@@ -14,7 +14,7 @@ import java.lang.annotation.Target;
  * <p>
  * Example:
  * <pre>{@code
- * @Validator
+ * @SpendingValidator
  * class TokenValidator {
  *     @Param byte[] tokenPolicyId;
  *     @Param BigInteger minAmount;
@@ -26,8 +26,8 @@ import java.lang.annotation.Target;
  * }
  * }</pre>
  *
- * @see Validator
- * @see MintingPolicy
+ * @see SpendingValidator
+ * @see MintingValidator
  */
 @Target(ElementType.FIELD)
 @Retention(RetentionPolicy.RUNTIME)

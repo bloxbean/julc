@@ -68,7 +68,7 @@ class BigIntegerCompatTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -92,7 +92,7 @@ class BigIntegerCompatTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -119,7 +119,7 @@ class BigIntegerCompatTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -143,7 +143,7 @@ class BigIntegerCompatTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -170,7 +170,7 @@ class BigIntegerCompatTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -194,7 +194,7 @@ class BigIntegerCompatTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -218,7 +218,7 @@ class BigIntegerCompatTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -246,7 +246,7 @@ class BigIntegerCompatTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         record MyRedeemer(BigInteger no) {}
 
@@ -275,7 +275,7 @@ class BigIntegerCompatTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         record MyRedeemer(BigInteger no) {}
 
@@ -305,7 +305,7 @@ class BigIntegerCompatTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         record VestingDatum(byte[] beneficiary, BigInteger deadline) {}
 
@@ -340,7 +340,7 @@ class BigIntegerCompatTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         record MyDatum(BigInteger value) {}
 
@@ -375,7 +375,7 @@ class BigIntegerCompatTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class VestingValidator {
                         record VestingDatum(byte[] beneficiary, BigInteger deadline) {}
                         record VestingRedeemer(BigInteger no) {}
@@ -420,7 +420,7 @@ class BigIntegerCompatTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class VestingValidator {
                         record VestingDatum(byte[] beneficiary, BigInteger deadline) {}
                         record VestingRedeemer(BigInteger no) {}

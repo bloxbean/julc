@@ -459,8 +459,8 @@ This phase catches unsupported language constructs before PIR generation. That i
 The compiler finds the annotated class and determines the script purpose:
 
 ```text
-@Validator / @SpendingValidator -> SPENDING
-@MintingPolicy / @MintingValidator -> MINTING
+@SpendingValidator -> SPENDING
+@MintingValidator -> MINTING
 @WithdrawValidator -> WITHDRAW
 @CertifyingValidator -> CERTIFYING
 @VotingValidator -> VOTING

@@ -857,8 +857,7 @@ public class MyValidator {
 }
 ```
 
-**Recognized annotations:** `@Validator`, `@SpendingValidator`, `@MintingPolicy`,
-`@MintingValidator`, `@WithdrawValidator`, `@CertifyingValidator`,
+**Recognized annotations:** `@SpendingValidator`, `@MintingValidator`, `@WithdrawValidator`, `@CertifyingValidator`,
 `@VotingValidator`, `@ProposingValidator`
 
 ---
@@ -917,7 +916,7 @@ public static boolean validate(Data datum, Data redeemer, ScriptContext ctx) { .
 
 ---
 
-### 3.5 `@MintingValidator/@MintingPolicy entrypoint must have 2 parameters`
+### 3.5 `@MintingValidator entrypoint must have 2 parameters`
 
 **Full message:** `<annotation> entrypoint must have 2 parameters (redeemer,
 scriptContext), found <n> in <Class>.<method>(). Did you mean
@@ -931,8 +930,8 @@ If you specified 3 parameters, the compiler asks if you meant to use
 `@SpendingValidator` if you need a datum parameter.
 
 ```java
-// WRONG: 3 params on a minting policy
-@MintingPolicy
+// WRONG: 3 params on a minting validator
+@MintingValidator
 public class MyPolicy {
     @Entrypoint
     public static boolean validate(Data datum, Data redeemer, ScriptContext ctx) { ... }
@@ -940,7 +939,7 @@ public class MyPolicy {
 }
 
 // CORRECT
-@MintingPolicy
+@MintingValidator
 public class MyPolicy {
     @Entrypoint
     public static boolean validate(Data redeemer, ScriptContext ctx) { ... }
@@ -960,7 +959,7 @@ the validator source instead.
 ```java
 // WRONG: library file with validator annotation
 @OnchainLibrary
-@MintingPolicy  // this is not allowed on a library
+@MintingValidator  // this is not allowed on a library
 public class HelperLib { ... }
 
 // CORRECT
@@ -1391,8 +1390,8 @@ long amount = ValuesLib.assetOf(value, myPolicy, tokenName);
 
 | Annotation | Purpose | Entrypoint params |
 |---|---|---|
-| `@SpendingValidator` / `@Validator` | Validates spending from a script address | 2 (redeemer, ctx) or 3 (datum, redeemer, ctx) |
-| `@MintingPolicy` / `@MintingValidator` | Validates minting/burning tokens | 2 (redeemer, ctx) |
+| `@SpendingValidator` | Validates spending from a script address | 2 (redeemer, ctx) or 3 (datum, redeemer, ctx) |
+| `@MintingValidator` | Validates minting/burning tokens | 2 (redeemer, ctx) |
 | `@WithdrawValidator` | Validates reward withdrawals | 2 (redeemer, ctx) |
 | `@CertifyingValidator` | Validates certificate actions | 2 (redeemer, ctx) |
 | `@VotingValidator` | Validates governance votes | 2 (redeemer, ctx) |
@@ -1502,4 +1501,3 @@ static boolean mint(PlutusData redeemer, ScriptContext ctx) { ... }
 @Entrypoint(purpose = Purpose.SPEND)
 static boolean spend(Optional<PlutusData> datum, PlutusData redeemer, ScriptContext ctx) { ... }
 ```
-

@@ -139,7 +139,7 @@ class LambdaExpressionTest {
             var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class MyValidator {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -158,7 +158,7 @@ class LambdaExpressionTest {
             var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class MyValidator {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -176,7 +176,7 @@ class LambdaExpressionTest {
             var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class MyValidator {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -194,7 +194,7 @@ class LambdaExpressionTest {
             var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class MyValidator {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -212,7 +212,7 @@ class LambdaExpressionTest {
             var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class MyValidator {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -233,7 +233,7 @@ class LambdaExpressionTest {
             var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class MyValidator {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {

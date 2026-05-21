@@ -85,13 +85,13 @@ class BlueprintTest {
     @Test
     void schemaGeneratorExtractsSpendingValidator() {
         String source = """
-                import com.bloxbean.cardano.julc.stdlib.annotation.Validator;
+                import com.bloxbean.cardano.julc.stdlib.annotation.SpendingValidator;
                 import com.bloxbean.cardano.julc.stdlib.annotation.Entrypoint;
                 import com.bloxbean.cardano.julc.ledger.ScriptContext;
                 import com.bloxbean.cardano.julc.core.PlutusData;
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 public class MyValidator {
                     public sealed interface MyDatum permits DatumA, DatumB {}
                     public record DatumA(byte[] owner, BigInteger amount) implements MyDatum {}
@@ -146,12 +146,12 @@ class BlueprintTest {
     @Test
     void schemaGeneratorExtractsMintingValidator() {
         String source = """
-                import com.bloxbean.cardano.julc.stdlib.annotation.MintingPolicy;
+                import com.bloxbean.cardano.julc.stdlib.annotation.MintingValidator;
                 import com.bloxbean.cardano.julc.stdlib.annotation.Entrypoint;
                 import com.bloxbean.cardano.julc.ledger.ScriptContext;
                 import com.bloxbean.cardano.julc.core.PlutusData;
 
-                @MintingPolicy
+                @MintingValidator
                 public class MyMinter {
                     @Entrypoint
                     public static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -166,5 +166,41 @@ class BlueprintTest {
         assertNotNull(schema.redeemer());
         assertEquals("redeemer", schema.redeemer().title());
         assertTrue(schema.redeemer().ref().contains("Data"));
+    }
+
+    @Test
+    void schemaGeneratorIgnoresValidatorAnnotationTextInComments() {
+        String source = """
+                /**
+                 * Mentions @SpendingValidator but does not declare it.
+                 */
+                public class Helper {}
+                """;
+
+        assertNull(SchemaGenerator.extract(source));
+    }
+
+    @Test
+    void schemaGeneratorRejectsLegacyValidatorAnnotation() {
+        String source = """
+                @Validator
+                public class OldValidator {}
+                """;
+
+        var ex = assertThrows(IllegalArgumentException.class, () -> SchemaGenerator.extract(source));
+        assertTrue(ex.getMessage().contains("Use @SpendingValidator instead"));
+    }
+
+    @Test
+    void schemaGeneratorRejectsOnchainLibraryValidatorRoleConflict() {
+        String source = """
+                @OnchainLibrary
+                @SpendingValidator
+                public class Confused {}
+                """;
+
+        var ex = assertThrows(IllegalArgumentException.class, () -> SchemaGenerator.extract(source));
+        assertTrue(ex.getMessage().contains("must not combine @OnchainLibrary"));
+        assertTrue(ex.getMessage().contains("@SpendingValidator"));
     }
 }

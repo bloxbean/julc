@@ -14,7 +14,7 @@ class ProjectScannerTest {
     @Test
     void scanSeparatesValidatorsFromLibraries(@TempDir Path tempDir) throws IOException {
         Files.writeString(tempDir.resolve("MyValidator.java"), """
-                @Validator
+                @SpendingValidator
                 public class MyValidator {
                     @Entrypoint
                     public static boolean validate(PlutusData r, ScriptContext ctx) { return true; }
@@ -58,9 +58,9 @@ class ProjectScannerTest {
     @Test
     void scanDetectsAllAnnotations(@TempDir Path tempDir) throws IOException {
         String[] annotations = {
-                "@Validator", "@SpendingValidator", "@MintingPolicy",
-                "@MintingValidator", "@WithdrawValidator", "@CertifyingValidator",
-                "@VotingValidator", "@ProposingValidator"
+                "@SpendingValidator", "@MintingValidator", "@WithdrawValidator",
+                "@CertifyingValidator", "@VotingValidator", "@ProposingValidator",
+                "@MultiValidator"
         };
         for (int i = 0; i < annotations.length; i++) {
             Files.writeString(tempDir.resolve("V" + i + ".java"),
@@ -70,6 +70,59 @@ class ProjectScannerTest {
         var result = ProjectScanner.scan(tempDir);
         assertEquals(annotations.length, result.validators().size());
         assertEquals(0, result.libraries().size());
+    }
+
+    @Test
+    void scanIgnoresValidatorAnnotationTextInComments(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("Helper.java"), """
+                /**
+                 * Mentions @SpendingValidator but is not a validator.
+                 */
+                public class Helper {}
+                """);
+
+        var result = ProjectScanner.scan(tempDir);
+
+        assertTrue(result.validators().isEmpty());
+        assertEquals(1, result.libraries().size());
+        assertTrue(result.libraries().containsKey("Helper"));
+    }
+
+    @Test
+    void scanRejectsLegacyValidatorAnnotations(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("Old.java"), """
+                @Validator
+                public class Old {}
+                """);
+
+        var ex = assertThrows(IllegalArgumentException.class, () -> ProjectScanner.scan(tempDir));
+        assertTrue(ex.getMessage().contains("Use @SpendingValidator instead"));
+    }
+
+    @Test
+    void scanRejectsOnchainLibraryValidatorRoleConflict(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("Confused.java"), """
+                @OnchainLibrary
+                @SpendingValidator
+                public class Confused {}
+                """);
+
+        var ex = assertThrows(IllegalArgumentException.class, () -> ProjectScanner.scan(tempDir));
+        assertTrue(ex.getMessage().contains("must not combine @OnchainLibrary"));
+        assertTrue(ex.getMessage().contains("@SpendingValidator"));
+    }
+
+    @Test
+    void scanReportsParseErrorForPrefilteredValidatorCandidate(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("Broken.java"), """
+                // @SpendingValidator
+                class Broken {
+                """);
+
+        var ex = assertThrows(IllegalArgumentException.class, () -> ProjectScanner.scan(tempDir));
+
+        assertTrue(ex.getMessage().contains("Could not parse validator candidate"));
+        assertTrue(ex.getMessage().contains("Broken.java"));
     }
 
     @Test
@@ -87,9 +140,18 @@ class ProjectScannerTest {
 
     @Test
     void resolveScriptType() {
-        assertEquals("PlutusScriptV3-Minting", ProjectScanner.resolveScriptType("@MintingPolicy class X {}"));
         assertEquals("PlutusScriptV3-Minting", ProjectScanner.resolveScriptType("@MintingValidator class X {}"));
         assertEquals("PlutusScriptV3-Withdraw", ProjectScanner.resolveScriptType("@WithdrawValidator class X {}"));
-        assertEquals("PlutusScriptV3", ProjectScanner.resolveScriptType("@Validator class X {}"));
+        assertEquals("PlutusScriptV3", ProjectScanner.resolveScriptType("@SpendingValidator class X {}"));
+        assertEquals("PlutusScriptV3", ProjectScanner.resolveScriptType("""
+                /** Mentions @MintingValidator in a comment. */
+                class X {}
+                """));
+        var conflict = assertThrows(IllegalArgumentException.class,
+                () -> ProjectScanner.resolveScriptType("@OnchainLibrary @SpendingValidator class X {}"));
+        assertTrue(conflict.getMessage().contains("must not combine @OnchainLibrary"));
+        var ex = assertThrows(IllegalArgumentException.class,
+                () -> ProjectScanner.resolveScriptType("@MintingPolicy class X {}"));
+        assertTrue(ex.getMessage().contains("Use @MintingValidator instead"));
     }
 }

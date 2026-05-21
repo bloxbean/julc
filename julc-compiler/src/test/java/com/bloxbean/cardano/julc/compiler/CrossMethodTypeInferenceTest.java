@@ -19,7 +19,7 @@ class CrossMethodTypeInferenceTest {
         var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class MyValidator {
                     static boolean isEqual(long a, long b) {
                         return a == b;
@@ -49,7 +49,7 @@ class CrossMethodTypeInferenceTest {
         var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class MyValidator {
                     static boolean isEqual(BigInteger a, BigInteger b) {
                         return a == b;
@@ -75,7 +75,7 @@ class CrossMethodTypeInferenceTest {
     @Test
     void helperWithByteArrayParamUsesEqualsByteString() {
         var source = """
-                @Validator
+                @SpendingValidator
                 class MyValidator {
                     record BsHolder(byte[] a, byte[] b) {}
 
@@ -105,7 +105,7 @@ class CrossMethodTypeInferenceTest {
         var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class MyValidator {
                     static BigInteger doubleIt(BigInteger x) {
                         return x + x;
@@ -134,7 +134,7 @@ class CrossMethodTypeInferenceTest {
         var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class MyValidator {
                     static BigInteger addOne(BigInteger x) {
                         return x + 1;
@@ -167,7 +167,7 @@ class CrossMethodTypeInferenceTest {
         var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class MyValidator {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -192,7 +192,7 @@ class CrossMethodTypeInferenceTest {
         var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class MyValidator {
                     static BigInteger compute(BigInteger x) {
                         return x * 2 + 1;
@@ -226,7 +226,7 @@ class CrossMethodTypeInferenceTest {
         var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class MyValidator {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -245,7 +245,7 @@ class CrossMethodTypeInferenceTest {
     @Test
     void helperWithStringParamUsesEqualsString() {
         var source = """
-                @Validator
+                @SpendingValidator
                 class MyValidator {
                     static boolean matches(String a, String b) {
                         return a == b;

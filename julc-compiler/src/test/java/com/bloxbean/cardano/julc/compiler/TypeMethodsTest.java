@@ -71,7 +71,7 @@ class TypeMethodsTest {
         @Test
         void stringEqualsOperator() {
             var source = """
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -89,7 +89,7 @@ class TypeMethodsTest {
         @Test
         void stringNotEqualsOperator() {
             var source = """
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -107,7 +107,7 @@ class TypeMethodsTest {
         @Test
         void stringEqualsMethod() {
             var source = """
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -128,7 +128,7 @@ class TypeMethodsTest {
         @Test
         void stringPlusOperator() {
             var source = """
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -150,7 +150,7 @@ class TypeMethodsTest {
         @Test
         void byteStringEqualsOperator() {
             var source = """
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         record MyDatum(byte[] hash1, byte[] hash2) {}
 
@@ -177,7 +177,7 @@ class TypeMethodsTest {
         @Test
         void byteStringNotEqualsOperator() {
             var source = """
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         record MyDatum(byte[] hash1, byte[] hash2) {}
 
@@ -208,7 +208,7 @@ class TypeMethodsTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         record MyDatum(byte[] a, byte[] b) {}
 
@@ -240,7 +240,7 @@ class TypeMethodsTest {
         @Test
         void boolEqualsTrue() {
             var source = """
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -258,7 +258,7 @@ class TypeMethodsTest {
         @Test
         void boolNotEquals() {
             var source = """
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -281,7 +281,7 @@ class TypeMethodsTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         record MyDatum(byte[] data) {}
 
@@ -309,7 +309,7 @@ class TypeMethodsTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         record MyDatum(byte[] data) {}
 
@@ -341,7 +341,7 @@ class TypeMethodsTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -361,7 +361,7 @@ class TypeMethodsTest {
         @Test
         void listTailChainedIsEmpty() {
             var source = """
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -387,7 +387,7 @@ class TypeMethodsTest {
         @Test
         void listTailNotEmpty() {
             var source = """
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -418,7 +418,7 @@ class TypeMethodsTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -436,7 +436,7 @@ class TypeMethodsTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -457,7 +457,7 @@ class TypeMethodsTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -475,7 +475,7 @@ class TypeMethodsTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -496,7 +496,7 @@ class TypeMethodsTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -514,7 +514,7 @@ class TypeMethodsTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -532,7 +532,7 @@ class TypeMethodsTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -550,7 +550,7 @@ class TypeMethodsTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -572,7 +572,7 @@ class TypeMethodsTest {
                     import java.math.BigInteger;
                     import java.util.Optional;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         record MyDatum(Optional<BigInteger> value) {}
 
@@ -603,7 +603,7 @@ class TypeMethodsTest {
                     import java.math.BigInteger;
                     import java.util.Optional;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         record MyDatum(Optional<BigInteger> value) {}
 
@@ -634,7 +634,7 @@ class TypeMethodsTest {
                     import java.math.BigInteger;
                     import java.util.Optional;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         record MyDatum(Optional<BigInteger> value) {}
 
@@ -665,7 +665,7 @@ class TypeMethodsTest {
                     import java.math.BigInteger;
                     import java.util.Optional;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         record MyDatum(Optional<BigInteger> value) {}
 
@@ -696,7 +696,7 @@ class TypeMethodsTest {
         @Test
         void dataEqualsOperator() {
             var source = """
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -714,7 +714,7 @@ class TypeMethodsTest {
         @Test
         void dataEqualsMethod() {
             var source = """
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -737,7 +737,7 @@ class TypeMethodsTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -755,7 +755,7 @@ class TypeMethodsTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -773,7 +773,7 @@ class TypeMethodsTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -791,7 +791,7 @@ class TypeMethodsTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -809,7 +809,7 @@ class TypeMethodsTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -827,7 +827,7 @@ class TypeMethodsTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -845,7 +845,7 @@ class TypeMethodsTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -863,7 +863,7 @@ class TypeMethodsTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -881,7 +881,7 @@ class TypeMethodsTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -899,7 +899,7 @@ class TypeMethodsTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -917,7 +917,7 @@ class TypeMethodsTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -935,7 +935,7 @@ class TypeMethodsTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -953,7 +953,7 @@ class TypeMethodsTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -978,7 +978,7 @@ class TypeMethodsTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -996,7 +996,7 @@ class TypeMethodsTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -1014,7 +1014,7 @@ class TypeMethodsTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -1032,7 +1032,7 @@ class TypeMethodsTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -1050,7 +1050,7 @@ class TypeMethodsTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -1068,7 +1068,7 @@ class TypeMethodsTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -1087,7 +1087,7 @@ class TypeMethodsTest {
         @Test
         void sizeOfEmptyList() {
             var source = """
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -1111,7 +1111,7 @@ class TypeMethodsTest {
         @Test
         void tailThenHead() {
             var source = """
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -1144,7 +1144,7 @@ class TypeMethodsTest {
                     import java.math.BigInteger;
                     import java.util.Optional;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         record MyDatum(Optional<BigInteger> value) {}
 
@@ -1175,7 +1175,7 @@ class TypeMethodsTest {
         @Test
         void emptyStringEquals() {
             var source = """
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -1198,7 +1198,7 @@ class TypeMethodsTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         record MyDatum(byte[] data) {}
 
@@ -1229,7 +1229,7 @@ class TypeMethodsTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         record MyDatum(BigInteger amount, byte[] owner) {}
 
@@ -1279,7 +1279,7 @@ class TypeMethodsTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         record Inner(BigInteger no, BigInteger amount) {}
                         record Outer(Inner inner) {}
@@ -1306,7 +1306,7 @@ class TypeMethodsTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         record Inner(BigInteger value) {}
                         record Outer(Inner nested) {}
@@ -1331,7 +1331,7 @@ class TypeMethodsTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         record Inner(BigInteger amount) {}
                         record Outer(Inner inner) {}
@@ -1360,7 +1360,7 @@ class TypeMethodsTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         record Level3(BigInteger value) {}
                         record Level2(Level3 c) {}
@@ -1390,7 +1390,7 @@ class TypeMethodsTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         record Inner(byte[] hash) {}
                         record Outer(Inner inner) {}
@@ -1415,7 +1415,7 @@ class TypeMethodsTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         record Inner(BigInteger amount, BigInteger limit) {}
                         record Outer(Inner inner) {}
@@ -1443,7 +1443,7 @@ class TypeMethodsTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -1461,7 +1461,7 @@ class TypeMethodsTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -1482,7 +1482,7 @@ class TypeMethodsTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         record MyDatum(PlutusData cred) {}
 
@@ -1515,7 +1515,7 @@ class TypeMethodsTest {
                     import java.math.BigInteger;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         record MyDatum(PlutusData wrapped) {}
 
@@ -1547,7 +1547,7 @@ class TypeMethodsTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         record MyDatum(PlutusData cred1, PlutusData cred2) {}
 
@@ -1589,7 +1589,7 @@ class TypeMethodsTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         sealed interface Cred permits ScriptCred, PubKeyCred {}
                         record ScriptCred(byte[] hash) implements Cred {}
@@ -1625,7 +1625,7 @@ class TypeMethodsTest {
                     import java.math.BigInteger;
                     import com.bloxbean.cardano.julc.core.types.JulcList;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         sealed interface Cred permits ScriptCred, PubKeyCred {}
                         record ScriptCred(byte[] hash) implements Cred {}
@@ -1662,7 +1662,7 @@ class TypeMethodsTest {
                     import java.math.BigInteger;
                     import com.bloxbean.cardano.julc.core.types.JulcList;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         sealed interface Cred permits ScriptCred, PubKeyCred {}
                         record ScriptCred(byte[] hash) implements Cred {}

@@ -66,7 +66,7 @@ class ParameterizedValidatorTest {
     @Test
     void singleByteArrayParam() {
         var source = """
-                @Validator
+                @SpendingValidator
                 class TokenValidator {
                     @Param byte[] owner;
 
@@ -99,7 +99,7 @@ class ParameterizedValidatorTest {
         var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class ThresholdValidator {
                     @Param BigInteger threshold;
 
@@ -127,7 +127,7 @@ class ParameterizedValidatorTest {
         var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class MultiParamValidator {
                     @Param byte[] tokenPolicyId;
                     @Param BigInteger minAmount;
@@ -162,7 +162,7 @@ class ParameterizedValidatorTest {
         var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class DatumParamValidator {
                     @Param BigInteger requiredAmount;
 
@@ -198,7 +198,7 @@ class ParameterizedValidatorTest {
         var source = """
                 import java.math.BigInteger;
 
-                @MintingPolicy
+                @MintingValidator
                 class ParamMint {
                     @Param byte[] requiredSigner;
 
@@ -227,7 +227,7 @@ class ParameterizedValidatorTest {
         var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class ArithValidator {
                     @Param BigInteger base;
 
@@ -253,7 +253,7 @@ class ParameterizedValidatorTest {
     @Test
     void customTypeParam() {
         var source = """
-                @Validator
+                @SpendingValidator
                 class CustomParamValidator {
                     record TokenConfig(byte[] policyId, byte[] assetName) {}
 
@@ -290,7 +290,7 @@ class ParameterizedValidatorTest {
         var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class TwoParamValidator {
                     @Param byte[] owner;
                     @Param BigInteger amount;
@@ -322,7 +322,7 @@ class ParameterizedValidatorTest {
         var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class SimpleValidator {
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -349,7 +349,7 @@ class ParameterizedValidatorTest {
         var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class InfoValidator {
                     @Param byte[] owner;
                     @Param BigInteger minStake;
@@ -374,7 +374,7 @@ class ParameterizedValidatorTest {
     @Test
     void compileResultNonParameterized() {
         var source = """
-                @Validator
+                @SpendingValidator
                 class PlainValidator {
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -390,7 +390,7 @@ class ParameterizedValidatorTest {
     @Test
     void stringParam() {
         var source = """
-                @Validator
+                @SpendingValidator
                 class StringParamValidator {
                     @Param String msg;
 
@@ -421,7 +421,7 @@ class ParameterizedValidatorTest {
         var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class MultiStringValidator {
                     @Param BigInteger no;
                     @Param String msg;
@@ -462,7 +462,7 @@ class ParameterizedValidatorTest {
                 }
                 """;
         var validatorSource = """
-                @Validator
+                @SpendingValidator
                 class ParamLibValidator {
                     @Param byte[] owner;
 
@@ -501,7 +501,7 @@ class ParameterizedValidatorTest {
         var validatorSource = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class ParamLibValidator2 {
                     @Param BigInteger threshold;
 
@@ -540,7 +540,7 @@ class ParameterizedValidatorTest {
         var validatorSource = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class ParamIntLibValidator {
                     @Param BigInteger threshold;
 

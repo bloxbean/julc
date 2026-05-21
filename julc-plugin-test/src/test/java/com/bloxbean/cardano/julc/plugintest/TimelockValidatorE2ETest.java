@@ -33,7 +33,7 @@ class TimelockValidatorE2ETest extends PluginTestBase {
     static final String TIMELOCK_VALIDATOR = """
             import com.bloxbean.cardano.julc.core.PlutusData;
 
-            @Validator
+            @SpendingValidator
             class TimelockValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {

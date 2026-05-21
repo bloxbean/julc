@@ -29,7 +29,7 @@ class FeatureShowcaseTest {
         static final String SOURCE = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class HelperDemo {
                     static BigInteger add(BigInteger a, BigInteger b) {
                         return a + b;
@@ -72,7 +72,7 @@ class FeatureShowcaseTest {
         static final String SOURCE = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class SealedDemo {
                     sealed interface Shape {
                         record Circle(BigInteger radius) implements Shape {}
@@ -108,7 +108,7 @@ class FeatureShowcaseTest {
         static final String SOURCE = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class BooleanDemo {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -142,7 +142,7 @@ class FeatureShowcaseTest {
         static final String SOURCE = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class IfElseDemo {
                     static BigInteger abs(BigInteger x) {
                         if (x < 0) {
@@ -181,7 +181,7 @@ class FeatureShowcaseTest {
         static final String SOURCE = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class ArithmeticDemo {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -218,7 +218,7 @@ class FeatureShowcaseTest {
         static final String SOURCE = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class ChainDemo {
                     static BigInteger double_(BigInteger x) {
                         return x + x;
@@ -261,7 +261,7 @@ class FeatureShowcaseTest {
         static final String SOURCE = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class LetDemo {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {

@@ -2,6 +2,7 @@ package com.bloxbean.cardano.julc.testkit;
 
 import com.bloxbean.cardano.julc.compiler.CompileResult;
 import com.bloxbean.cardano.julc.compiler.CompilerOptions;
+import com.bloxbean.cardano.julc.compiler.JavaSourceIntrospector;
 import com.bloxbean.cardano.julc.compiler.LibrarySource;
 import com.bloxbean.cardano.julc.compiler.LibrarySourceResolver;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
@@ -13,6 +14,7 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Auto-discovers validator source files and their library dependencies
@@ -167,8 +169,9 @@ public final class SourceDiscovery {
             if (Files.exists(sourceFile)) {
                 try {
                     String src = Files.readString(sourceFile);
-                    if (src.contains("@OnchainLibrary")) {
-                        LibrarySourceResolver.putLibrarySource(pool, entry.getKey(), src);
+                    var librarySource = librarySource(sourceFile, src);
+                    if (librarySource.isPresent()) {
+                        pool.put(librarySource.get().fqcn(), librarySource.get());
                     }
                 } catch (IOException e) {
                     // skip unreadable files
@@ -302,8 +305,9 @@ public final class SourceDiscovery {
                     if (Files.exists(sourceFile)) {
                         try {
                             String src = Files.readString(sourceFile);
-                            if (src.contains("@OnchainLibrary")) {
-                                LibrarySourceResolver.putLibrarySource(pool, entry.getKey(), src);
+                            var transitiveSource = librarySource(sourceFile, src);
+                            if (transitiveSource.isPresent()) {
+                                pool.put(transitiveSource.get().fqcn(), transitiveSource.get());
                                 changed = true;
                             }
                         } catch (IOException e) {
@@ -349,9 +353,9 @@ public final class SourceDiscovery {
                     .forEach(p -> {
                         try {
                             String src = Files.readString(p);
-                            if (src.contains("@OnchainLibrary")) {
-                                String name = p.getFileName().toString().replace(".java", "");
-                                LibrarySource librarySource = LibrarySourceResolver.librarySourceFromSimpleName(name, src);
+                            var candidate = librarySource(p, src);
+                            if (candidate.isPresent()) {
+                                LibrarySource librarySource = candidate.get();
                                 if (preserveExisting) {
                                     if (!pool.containsKey(librarySource.fqcn())) {
                                         pool.put(librarySource.fqcn(), librarySource);
@@ -366,5 +370,34 @@ public final class SourceDiscovery {
                     });
         } catch (IOException ignored) {}
         return changed[0];
+    }
+
+    private static Optional<LibrarySource> librarySource(Path sourceFile, String source) {
+        if (!JavaSourceIntrospector.mightContainOnchainLibraryAnnotation(source)) {
+            return Optional.empty();
+        }
+
+        JavaSourceIntrospector.SourceInfo sourceInfo;
+        try {
+            sourceInfo = JavaSourceIntrospector.inspect(source);
+        } catch (JavaSourceIntrospector.SourceParseException e) {
+            throw new AssertionError("Could not parse @OnchainLibrary candidate "
+                    + sourceFile + ": " + e.problems(), e);
+        }
+
+        sourceInfo.firstRoleConflict()
+                .ifPresent(conflict -> {
+                    throw new AssertionError(conflict.message());
+                });
+
+        if (!sourceInfo.nestedOnchainLibraries().isEmpty()) {
+            var nested = sourceInfo.nestedOnchainLibraries().get(0);
+            throw new AssertionError("@OnchainLibrary must be declared on a top-level class in "
+                    + sourceFile + ". Nested on-chain library " + nested.simpleName()
+                    + " is not supported.");
+        }
+
+        return sourceInfo.topLevelOnchainLibrary()
+                .map(type -> LibrarySourceResolver.librarySourceFromSimpleName(type.simpleName(), source));
     }
 }

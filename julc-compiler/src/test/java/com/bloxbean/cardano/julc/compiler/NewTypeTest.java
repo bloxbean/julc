@@ -45,7 +45,7 @@ class NewTypeTest {
                     import com.bloxbean.cardano.julc.ledger.*;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -69,7 +69,7 @@ class NewTypeTest {
                     import com.bloxbean.cardano.julc.ledger.*;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -92,7 +92,7 @@ class NewTypeTest {
                     import com.bloxbean.cardano.julc.ledger.*;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -123,7 +123,7 @@ class NewTypeTest {
                     import com.bloxbean.cardano.julc.stdlib.annotation.NewType;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @NewType
                         record MyHash(byte[] hash) {}
@@ -150,7 +150,7 @@ class NewTypeTest {
                     import com.bloxbean.cardano.julc.stdlib.annotation.NewType;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @NewType
                         record MyHash(byte[] hash) {}
@@ -178,7 +178,7 @@ class NewTypeTest {
                     import com.bloxbean.cardano.julc.stdlib.annotation.NewType;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @NewType
                         record MyHash(byte[] hash) {}
@@ -205,7 +205,7 @@ class NewTypeTest {
                     import com.bloxbean.cardano.julc.stdlib.annotation.NewType;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @NewType
                         record Amount(BigInteger value) {}
@@ -232,7 +232,7 @@ class NewTypeTest {
                     import com.bloxbean.cardano.julc.stdlib.annotation.NewType;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @NewType
                         record Amount(BigInteger value) {}
@@ -257,7 +257,7 @@ class NewTypeTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.annotation.NewType;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @NewType
                         record Bad(byte[] a, byte[] b) {}
@@ -280,7 +280,7 @@ class NewTypeTest {
                     import java.util.List;
                     import com.bloxbean.cardano.julc.stdlib.annotation.NewType;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @NewType
                         record Bad(List<byte[]> items) {}

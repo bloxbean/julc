@@ -24,7 +24,7 @@ class NFTMintingPolicyTest {
     static final String NFT_MINT_SOURCE = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class NFTMintingPolicy {
                 sealed interface Action {
                     record Mint(BigInteger amount) implements Action {}
@@ -53,7 +53,7 @@ class NFTMintingPolicyTest {
     static final String NFT_BURN_SOURCE = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class NFTBurnPolicy {
                 static boolean validateBurn(BigInteger amount) {
                     return amount < 0;
@@ -73,7 +73,7 @@ class NFTMintingPolicyTest {
     static final String NFT_INVALID_MINT = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class NFTInvalidPolicy {
                 static boolean validateMint(BigInteger amount) {
                     return amount > 0;

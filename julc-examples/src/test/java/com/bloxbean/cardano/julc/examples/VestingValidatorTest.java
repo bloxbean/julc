@@ -23,7 +23,7 @@ class VestingValidatorTest {
     static final String ALWAYS_TRUE_VESTING = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class VestingValidator {
                 static boolean isPastDeadline(BigInteger currentTime, BigInteger deadline) {
                     return currentTime > deadline;
@@ -46,7 +46,7 @@ class VestingValidatorTest {
     static final String REJECTING_VESTING = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class VestingValidator {
                 static boolean isPastDeadline(BigInteger currentTime, BigInteger deadline) {
                     return currentTime > deadline;
@@ -65,7 +65,7 @@ class VestingValidatorTest {
     static final String COMPLEX_VESTING = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class VestingValidator {
                 static BigInteger double_(BigInteger x) {
                     return x + x;

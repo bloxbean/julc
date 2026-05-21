@@ -2,7 +2,7 @@ package com.example.validators;
 
 import java.math.BigInteger;
 
-@Validator
+@SpendingValidator
 class SimpleValidator {
     @Entrypoint
     static boolean validate(BigInteger redeemer, BigInteger ctx) {

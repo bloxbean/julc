@@ -10,7 +10,7 @@ import com.bloxbean.cardano.julc.core.PlutusData;
  * - Multiple list method calls on the same list
  * - List.size() for count verification
  */
-@Validator
+@SpendingValidator
 class TypedMultiSigValidator {
     record Keys(PlutusData key1, PlutusData key2) {}
 

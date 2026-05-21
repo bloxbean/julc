@@ -7,7 +7,7 @@ import java.lang.annotation.Target;
 
 /**
  * Marks a class as an on-chain library whose static methods can be called
- * from {@link Validator} or {@link MintingPolicy} classes.
+ * from validator classes such as {@link SpendingValidator} or {@link MintingValidator}.
  * <p>
  * Library classes must contain only {@code public static} methods that follow
  * the same Java subset as validators (no try/catch, no null, etc.).

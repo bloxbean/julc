@@ -6,7 +6,7 @@ import com.bloxbean.cardano.julc.core.PlutusData;
  * The redeemer contains two PubKeyHashes (key1, key2).
  * Both must appear in the transaction signatories.
  */
-@Validator
+@SpendingValidator
 class MultiSigValidator {
     record Keys(PlutusData key1, PlutusData key2) {}
 

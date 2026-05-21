@@ -41,7 +41,7 @@ class DebugVestingTest extends ContractTest {
      * 1. The transaction is signed by the beneficiary
      * 2. The current time is past the deadline
      *
-     * This is the EXACT logic that would go into a @Validator class.
+     * This is the exact logic that would go into a spending validator class.
      * It's written here as a regular static method for direct debugging.
      */
     static boolean vestingValidate(byte[] beneficiary, BigInteger deadline,
@@ -191,7 +191,7 @@ class DebugVestingTest extends ContractTest {
         static final String VALIDATOR_WITH_LIB = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class AuctionValidator {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {

@@ -20,7 +20,7 @@ class SecurityAnalyzerIntegrationTest {
     private static final HexFormat HEX = HexFormat.of();
 
     static final String ALWAYS_TRUE_SOURCE = """
-            @Validator
+            @SpendingValidator
             class AlwaysTrue {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -32,7 +32,7 @@ class SecurityAnalyzerIntegrationTest {
     static final String VALUE_MANIPULATION_SOURCE = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class ValueValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, ScriptContext ctx) {

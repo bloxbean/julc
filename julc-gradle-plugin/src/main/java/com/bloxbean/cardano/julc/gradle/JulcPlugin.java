@@ -4,6 +4,7 @@ import org.gradle.api.Plugin;
 import org.gradle.api.Project;
 import org.gradle.api.plugins.JavaPlugin;
 import org.gradle.api.plugins.JavaPluginExtension;
+import org.gradle.api.tasks.TaskProvider;
 import org.gradle.api.tasks.SourceSet;
 
 /**
@@ -46,7 +47,8 @@ public class JulcPlugin implements Plugin<Project> {
         });
 
         // 3. Register bundleJulcSources task
-        project.getTasks().register("bundleJulcSources", BundleJulcSourcesTask.class, task -> {
+        TaskProvider<BundleJulcSourcesTask> bundleJulcSources =
+                project.getTasks().register("bundleJulcSources", BundleJulcSourcesTask.class, task -> {
             task.setGroup("julc");
             task.setDescription("Bundle @OnchainLibrary sources into META-INF/plutus-sources/");
         });
@@ -72,17 +74,17 @@ public class JulcPlugin implements Plugin<Project> {
                         }
                     });
 
-            // Configure bundleJulcSources: source from main java srcDirs, output to resources
-            p.getTasks().named("bundleJulcSources", BundleJulcSourcesTask.class, task -> {
+            // Configure bundleJulcSources: source from main java srcDirs, output to
+            // a task-owned generated resources directory. Registering the task as
+            // a resource source lets Gradle infer processResources dependencies.
+            bundleJulcSources.configure(task -> {
                 // Default: scan src/main/java for @OnchainLibrary files
                 task.getSourceDir().convention(
                         p.getLayout().getProjectDirectory().dir("src/main/java"));
                 task.getOutputDir().convention(
-                        p.getLayout().getBuildDirectory().dir("resources/main"));
+                        p.getLayout().getBuildDirectory().dir("generated/julc/resources/main"));
             });
-
-            // Wire bundleJulcSources to run before jar
-            p.getTasks().named("jar").configure(t -> t.dependsOn("bundleJulcSources"));
+            mainSourceSet.getResources().srcDir(bundleJulcSources);
         });
 
         // 5. Wire compileJulc into build lifecycle

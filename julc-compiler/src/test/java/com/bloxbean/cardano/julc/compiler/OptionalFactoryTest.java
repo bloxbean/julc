@@ -38,7 +38,7 @@ class OptionalFactoryTest {
             import java.math.BigInteger;
             import java.util.Optional;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -61,7 +61,7 @@ class OptionalFactoryTest {
             import java.math.BigInteger;
             import java.util.Optional;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -84,7 +84,7 @@ class OptionalFactoryTest {
             import java.math.BigInteger;
             import java.util.Optional;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -108,7 +108,7 @@ class OptionalFactoryTest {
             import java.math.BigInteger;
             import java.util.Optional;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -131,7 +131,7 @@ class OptionalFactoryTest {
             import java.math.BigInteger;
             import java.util.Optional;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -156,7 +156,7 @@ class OptionalFactoryTest {
             import java.util.Optional;
             import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {

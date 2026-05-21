@@ -77,7 +77,7 @@ class MultiFileCompilerTest {
         static final String VALIDATOR_USING_LIB = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class AuctionValidator {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -106,7 +106,7 @@ class MultiFileCompilerTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class MultiMethodValidator {
                         @Entrypoint
                         static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -150,7 +150,7 @@ class MultiFileCompilerTest {
         static final String VALIDATOR_USING_BOTH = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class MultiLibValidator {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -194,7 +194,7 @@ class MultiFileCompilerTest {
         static final String VALIDATOR_WITH_SHARED_TYPE = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class PointValidator {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -228,7 +228,7 @@ class MultiFileCompilerTest {
             var badLib = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class FakeValidator {
                         @Entrypoint
                         static boolean validate(BigInteger r, BigInteger c) { return true; }
@@ -237,7 +237,7 @@ class MultiFileCompilerTest {
             var validator = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class MyValidator {
                         @Entrypoint
                         static boolean validate(BigInteger r, BigInteger c) { return true; }
@@ -249,11 +249,11 @@ class MultiFileCompilerTest {
         }
 
         @Test
-        void rejectsLibraryWithMintingPolicyAnnotation() {
+        void rejectsLibraryWithMintingValidatorAnnotation() {
             var badLib = """
                     import java.math.BigInteger;
 
-                    @MintingPolicy
+                    @MintingValidator
                     class FakePolicy {
                         @Entrypoint
                         static boolean validate(BigInteger r, BigInteger c) { return true; }
@@ -262,7 +262,7 @@ class MultiFileCompilerTest {
             var validator = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class MyValidator {
                         @Entrypoint
                         static boolean validate(BigInteger r, BigInteger c) { return true; }
@@ -289,7 +289,7 @@ class MultiFileCompilerTest {
 
                     record Datum(BigInteger value) {}
 
-                    @Validator
+                    @SpendingValidator
                     class DupValidator {
                         @Entrypoint
                         static boolean validate(BigInteger r, BigInteger c) { return true; }
@@ -311,7 +311,7 @@ class MultiFileCompilerTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class SimpleValidator {
                         @Entrypoint
                         static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -328,7 +328,7 @@ class MultiFileCompilerTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class SimpleValidator {
                         @Entrypoint
                         static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -355,7 +355,7 @@ class MultiFileCompilerTest {
             java.nio.file.Files.writeString(tmpFile, """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -380,7 +380,7 @@ class MultiFileCompilerTest {
             java.nio.file.Files.writeString(tmpValidator, """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class Validator {
                         @Entrypoint
                         static boolean validate(BigInteger r, BigInteger c) {
@@ -436,7 +436,7 @@ class MultiFileCompilerTest {
         static final String VALIDATOR_A = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class OrderValidator {
                     @Entrypoint
                     static boolean validate(OrderDatum redeemer, BigInteger ctx) {
@@ -449,7 +449,7 @@ class MultiFileCompilerTest {
         static final String VALIDATOR_B = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class SettlementValidator {
                     @Entrypoint
                     static boolean validate(OrderDatum redeemer, BigInteger ctx) {
@@ -530,7 +530,7 @@ class MultiFileCompilerTest {
             var validator = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class BoolValidator {
                         @Entrypoint
                         static boolean validate(BigInteger r, BigInteger c) {
@@ -549,7 +549,7 @@ class MultiFileCompilerTest {
             var validator = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class BoolRejectValidator {
                         @Entrypoint
                         static boolean validate(BigInteger r, BigInteger c) {
@@ -585,7 +585,7 @@ class MultiFileCompilerTest {
             var validator = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -612,7 +612,7 @@ class MultiFileCompilerTest {
                     }
                     """;
             var validator = """
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -641,7 +641,7 @@ class MultiFileCompilerTest {
                     }
                     """;
             var validator = """
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -669,7 +669,7 @@ class MultiFileCompilerTest {
                     }
                     """;
             var validator = """
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -699,7 +699,7 @@ class MultiFileCompilerTest {
             var validator = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TokenValidator {
                         @Entrypoint
                         static boolean validate(Action redeemer, PlutusData ctx) {
@@ -730,7 +730,7 @@ class MultiFileCompilerTest {
             var validator = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TokenValidator2 {
                         @Entrypoint
                         static boolean validate(Action2 redeemer, PlutusData ctx) {
@@ -763,7 +763,7 @@ class MultiFileCompilerTest {
             var validator = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class OrderValidator {
                         @Entrypoint
                         static boolean validate(Order redeemer, PlutusData ctx) {
@@ -795,7 +795,7 @@ class MultiFileCompilerTest {
             var validator = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class ConfigValidator {
                         @Entrypoint
                         static boolean validate(Config redeemer, PlutusData ctx) {
@@ -837,7 +837,7 @@ class MultiFileCompilerTest {
             var validator = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TokenValidator {
                         @Entrypoint
                         static boolean validate(TokenAction redeemer, PlutusData ctx) {
@@ -875,7 +875,7 @@ class MultiFileCompilerTest {
             var validator = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -910,7 +910,7 @@ class MultiFileCompilerTest {
             var validator = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -950,7 +950,7 @@ class MultiFileCompilerTest {
                     import com.a.ProofStep;
                     import com.a.Branch;
 
-                    @Validator
+                    @SpendingValidator
                     class ScopeValidator {
                         @Entrypoint
                         static boolean validate(ProofStep redeemer, PlutusData ctx) {
@@ -984,7 +984,7 @@ class MultiFileCompilerTest {
                     import com.a.Action;
                     import com.a.Mint;
 
-                    @Validator
+                    @SpendingValidator
                     class MintValidator {
                         @Entrypoint
                         static boolean validate(Action redeemer, PlutusData ctx) {

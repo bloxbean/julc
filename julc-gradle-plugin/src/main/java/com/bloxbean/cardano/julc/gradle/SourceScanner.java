@@ -31,16 +31,4 @@ final class SourceScanner {
         }
     }
 
-    /** Check if source contains a validator annotation. */
-    static boolean isValidatorSource(String source) {
-        return source.contains("@Validator") || source.contains("@MintingPolicy")
-                || source.contains("@SpendingValidator") || source.contains("@MintingValidator")
-                || source.contains("@WithdrawValidator") || source.contains("@CertifyingValidator")
-                || source.contains("@VotingValidator") || source.contains("@ProposingValidator");
-    }
-
-    /** Check if source is an on-chain library (should be compiled alongside validators). */
-    static boolean isLibrarySource(String source) {
-        return source.contains("@OnchainLibrary");
-    }
 }

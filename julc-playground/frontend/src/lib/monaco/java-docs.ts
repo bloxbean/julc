@@ -208,10 +208,8 @@ export const METHOD_DOCS: Record<string, Record<string, MethodDoc>> = {
 
 /** Annotation documentation. */
 export const ANNOTATION_DOCS: Record<string, string> = {
-  Validator: 'Generic validator — purpose inferred from entrypoint parameter count',
   SpendingValidator: 'Spending validator — validates spending of UTxOs (2 or 3 params: [datum,] redeemer, ctx)',
-  MintingPolicy: 'Minting policy — validates minting/burning of tokens (2 params: redeemer, ctx)',
-  MintingValidator: 'Minting validator — alias for @MintingPolicy',
+  MintingValidator: 'Minting validator — validates minting/burning of tokens (2 params: redeemer, ctx)',
   WithdrawValidator: 'Withdraw validator — validates reward withdrawals',
   CertifyingValidator: 'Certifying validator — validates certificate operations',
   VotingValidator: 'Voting validator — validates governance votes (Conway era)',

@@ -50,7 +50,7 @@ Build artifact: `build/classes/META-INF/plutus/MyValidator.plutus.json` — the 
 - **Local variables** declared with `var` or explicit type, **must be initialized at declaration**, and **are immutable after assignment** (single-assignment).
 - **Method calls** to `@OnchainLibrary` static methods, stdlib (`ContextsLib`, `ListsLib`, etc.), instance methods on `JulcList`/`JulcMap`/`String`/`byte[]`/`BigInteger`, and `Builtins.*` (Plutus builtins).
 - **Lambdas as HOF arguments** to `list.map(...)`, `list.filter(...)`, `list.any(...)`, `list.all(...)`, `list.find(...)`, `ListsLib.foldl(...)`. Must be passed inline; cannot be stored in a variable and called via `.apply()`.
-- **Annotations**: `@SpendingValidator`, `@MintingValidator` (or legacy `@MintingPolicy`), `@CertifyingValidator`, `@WithdrawValidator`, `@VotingValidator`, `@ProposingValidator` on the class; `@Entrypoint` on the entrypoint method; `@Param` on `static` fields for parameterized validators; `@OnchainLibrary` on library classes; `@NewType` on single-field record wrappers.
+- **Annotations**: `@SpendingValidator`, `@MintingValidator`, `@CertifyingValidator`, `@WithdrawValidator`, `@VotingValidator`, `@ProposingValidator` on the class; `@Entrypoint` on the entrypoint method; `@Param` on `static` fields for parameterized validators; `@OnchainLibrary` on library classes; `@NewType` on single-field record wrappers.
 - **`BigInteger`** for integers (NOT `int`/`long` — those are accepted but converted; prefer `BigInteger` for clarity).
 - **`byte[]`** for bytestrings.
 - **`String`** is treated as `byte[]` UTF-8 in most contexts; use sparingly.
@@ -78,12 +78,12 @@ Build artifact: `build/classes/META-INF/plutus/MyValidator.plutus.json` — the 
 
 ---
 
-## 4. The `@Validator` family — entrypoint shapes
+## 4. Validator annotation entrypoint shapes
 
 | Annotation | Entrypoint signature | Purpose |
 |---|---|---|
 | `@SpendingValidator` | `static boolean validate(<Redeemer> r, ScriptContext ctx)` **or** `static boolean validate(<Datum> d, <Redeemer> r, ScriptContext ctx)` | Validate spending a UTxO; use the 2-param form when the script does not need a datum. |
-| `@MintingValidator` (or `@MintingPolicy`) | `static boolean validate(<Redeemer> r, ScriptContext ctx)` | Validate minting/burning. |
+| `@MintingValidator` | `static boolean validate(<Redeemer> r, ScriptContext ctx)` | Validate minting/burning. |
 | `@CertifyingValidator` | `static boolean validate(<Redeemer> r, ScriptContext ctx)` | Validate stake cert actions. |
 | `@WithdrawValidator` | `static boolean validate(<Redeemer> r, ScriptContext ctx)` | Validate reward withdrawal. |
 | `@VotingValidator` | `static boolean validate(<Redeemer> r, ScriptContext ctx)` | Conway voting validator. |

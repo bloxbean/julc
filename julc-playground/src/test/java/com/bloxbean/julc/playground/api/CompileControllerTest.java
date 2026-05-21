@@ -38,7 +38,7 @@ class CompileControllerTest {
             var body = mapper.writeValueAsString(new CompileRequest("""
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class SimpleValidator {
                         @Entrypoint
                         static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -106,7 +106,7 @@ class CompileControllerTest {
                 // We'll test with a source that's valid enough to parse but slow
                 var body = mapper.writeValueAsString(new CompileRequest("""
                         import java.math.BigInteger;
-                        @Validator
+                        @SpendingValidator
                         class V {
                             @Entrypoint
                             static boolean validate(BigInteger r, BigInteger c) { return true; }

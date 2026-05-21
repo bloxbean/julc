@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class VerboseCompilationTest {
 
     private static final String SIMPLE_VALIDATOR = """
-            @Validator
+            @SpendingValidator
             class SimpleValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -77,7 +77,7 @@ class VerboseCompilationTest {
                 }
                 """;
         var validatorSource = """
-                @Validator
+                @SpendingValidator
                 class LibValidator {
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -101,7 +101,7 @@ class VerboseCompilationTest {
         var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class ParamValidator {
                     @Param BigInteger threshold;
 

@@ -26,7 +26,7 @@ class DecompilerIntegrationTest {
     private static final HexFormat HEX = HexFormat.of();
 
     static final String SIMPLE_ALWAYS_TRUE = """
-            @Validator
+            @SpendingValidator
             class AlwaysTrue {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -38,7 +38,7 @@ class DecompilerIntegrationTest {
     static final String SIMPLE_ADDITION = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class AddValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -52,7 +52,7 @@ class DecompilerIntegrationTest {
     static final String IF_ELSE_VALIDATOR = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class IfElseValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -69,7 +69,7 @@ class DecompilerIntegrationTest {
     static final String HELPER_METHOD_VALIDATOR = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class HelperValidator {
                 static boolean isPositive(BigInteger n) {
                     return n > 0;

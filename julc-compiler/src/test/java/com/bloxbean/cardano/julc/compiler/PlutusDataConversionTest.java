@@ -49,7 +49,7 @@ class PlutusDataConversionTest {
                     import com.bloxbean.cardano.julc.ledger.*;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -74,7 +74,7 @@ class PlutusDataConversionTest {
                     import com.bloxbean.cardano.julc.ledger.*;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -99,7 +99,7 @@ class PlutusDataConversionTest {
                     import com.bloxbean.cardano.julc.ledger.*;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -125,7 +125,7 @@ class PlutusDataConversionTest {
                     import com.bloxbean.cardano.julc.ledger.*;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         record MyDatum(BigInteger count, byte[] owner) {}
 
@@ -152,7 +152,7 @@ class PlutusDataConversionTest {
                     import com.bloxbean.cardano.julc.ledger.*;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -179,7 +179,7 @@ class PlutusDataConversionTest {
                     import com.bloxbean.cardano.julc.ledger.*;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         record MyDatum(BigInteger count) {}
 
@@ -206,7 +206,7 @@ class PlutusDataConversionTest {
                     import com.bloxbean.cardano.julc.ledger.*;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         record MyDatum(BigInteger count, byte[] owner) {}
 
@@ -232,7 +232,7 @@ class PlutusDataConversionTest {
                     import com.bloxbean.cardano.julc.ledger.*;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         record MyDatum(BigInteger count, byte[] owner) {}
 
@@ -257,7 +257,7 @@ class PlutusDataConversionTest {
                     import com.bloxbean.cardano.julc.ledger.*;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         record StateDatum(byte[] id, byte[] owner, BigInteger fee,
                                           BigInteger feeInterval, BigInteger ttl) {}
@@ -292,7 +292,7 @@ class PlutusDataConversionTest {
                     import com.bloxbean.cardano.julc.ledger.*;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -320,7 +320,7 @@ class PlutusDataConversionTest {
                     import com.bloxbean.cardano.julc.ledger.*;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         sealed interface Action permits Mint, Burn {}
                         record Mint(BigInteger amount) implements Action {}
@@ -359,7 +359,7 @@ class PlutusDataConversionTest {
                     import com.bloxbean.cardano.julc.ledger.*;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -383,7 +383,7 @@ class PlutusDataConversionTest {
                     import com.bloxbean.cardano.julc.ledger.*;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -409,7 +409,7 @@ class PlutusDataConversionTest {
                     import com.bloxbean.cardano.julc.ledger.*;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -434,7 +434,7 @@ class PlutusDataConversionTest {
                     import com.bloxbean.cardano.julc.ledger.*;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -459,7 +459,7 @@ class PlutusDataConversionTest {
                     import com.bloxbean.cardano.julc.ledger.*;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         record MyDatum(BigInteger count, byte[] owner) {}
 

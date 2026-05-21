@@ -24,7 +24,7 @@ class CrossLibraryTypeWarningTest {
                 """;
         // Use @Param byte[] to get a ByteString-typed variable
         var validatorSource = """
-                @Validator
+                @SpendingValidator
                 class TestValidator {
                     @Param byte[] bs;
 
@@ -55,7 +55,7 @@ class CrossLibraryTypeWarningTest {
         var validatorSource = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class TestValidator {
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -83,7 +83,7 @@ class CrossLibraryTypeWarningTest {
                 }
                 """;
         var validatorSource = """
-                @Validator
+                @SpendingValidator
                 class TestValidator {
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -103,7 +103,7 @@ class CrossLibraryTypeWarningTest {
     void testNoWarningForNonLibrary() {
         // A validator with no library calls should not produce warnings
         var source = """
-                @Validator
+                @SpendingValidator
                 class TestValidator {
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -130,7 +130,7 @@ class CrossLibraryTypeWarningTest {
                 }
                 """;
         var validatorSource = """
-                @Validator
+                @SpendingValidator
                 class TestValidator {
                     @Param byte[] bs;
 
@@ -156,7 +156,7 @@ class CrossLibraryTypeWarningTest {
                 }
                 """;
         var validatorSource = """
-                @Validator
+                @SpendingValidator
                 class TestValidator {
                     @Param byte[] bs;
 
@@ -188,7 +188,7 @@ class CrossLibraryTypeWarningTest {
                 }
                 """;
         var validatorSource = """
-                @Validator
+                @SpendingValidator
                 class TestValidator {
                     @Param byte[] bs;
 

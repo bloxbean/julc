@@ -7,10 +7,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.jar.JarFile;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -79,7 +79,7 @@ class JulcPluginTest {
     }
 
     @Test
-    void compilesMintingPolicy() throws IOException {
+    void compilesMintingValidator() throws IOException {
         Files.writeString(buildFile, """
                 plugins {
                     id 'com.bloxbean.cardano.julc'
@@ -89,7 +89,7 @@ class JulcPluginTest {
         Files.writeString(plutusSrcDir.resolve("AlwaysMint.java"), """
                 import com.bloxbean.cardano.julc.core.PlutusData;
 
-                @MintingPolicy
+                @MintingValidator
                 class AlwaysMint {
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -136,6 +136,96 @@ class JulcPluginTest {
     }
 
     @Test
+    void ignoresValidatorAnnotationTextInComments() throws IOException {
+        Files.writeString(buildFile, """
+                plugins {
+                    id 'com.bloxbean.cardano.julc'
+                }
+                """);
+
+        writeAlwaysTrueValidator();
+        Files.writeString(plutusSrcDir.resolve("Helper.java"), """
+                /**
+                 * Mentions @SpendingValidator but is not a validator.
+                 */
+                class Helper {
+                    static int add(int a, int b) { return a + b; }
+                }
+                """);
+
+        BuildResult result = createRunner("compileJulc").build();
+        assertEquals(TaskOutcome.SUCCESS, result.task(":compileJulc").getOutcome());
+        assertTrue(Files.exists(testProjectDir.resolve("build/plutus/AlwaysTrue.json")));
+        assertFalse(Files.exists(testProjectDir.resolve("build/plutus/Helper.json")));
+    }
+
+    @Test
+    void rejectsLegacyValidatorAnnotation() throws IOException {
+        Files.writeString(buildFile, """
+                plugins {
+                    id 'com.bloxbean.cardano.julc'
+                }
+                """);
+
+        Files.writeString(plutusSrcDir.resolve("Old.java"), """
+                @Validator
+                class Old {
+                    @Entrypoint
+                    static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                        return true;
+                    }
+                }
+                """);
+
+        BuildResult result = createRunner("compileJulc").buildAndFail();
+        assertTrue(result.getOutput().contains("Use @SpendingValidator instead"));
+    }
+
+    @Test
+    void reportsParseErrorForValidatorCandidate() throws IOException {
+        Files.writeString(buildFile, """
+                plugins {
+                    id 'com.bloxbean.cardano.julc'
+                }
+                """);
+
+        Files.writeString(plutusSrcDir.resolve("Broken.java"), """
+                // @SpendingValidator
+                class Broken {
+                """);
+
+        BuildResult result = createRunner("compileJulc").buildAndFail();
+        assertTrue(result.getOutput().contains("Could not parse validator candidate"));
+        assertTrue(result.getOutput().contains("Broken.java"));
+    }
+
+    @Test
+    void rejectsValidatorThatAlsoDeclaresOnchainLibrary() throws IOException {
+        Files.writeString(buildFile, """
+                plugins {
+                    id 'com.bloxbean.cardano.julc'
+                }
+                """);
+
+        Files.writeString(plutusSrcDir.resolve("Confused.java"), """
+                import com.bloxbean.cardano.julc.core.PlutusData;
+
+                @OnchainLibrary
+                @SpendingValidator
+                class Confused {
+                    @Entrypoint
+                    static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                        return true;
+                    }
+                }
+                """);
+
+        BuildResult result = createRunner("compileJulc").buildAndFail();
+        assertTrue(result.getOutput().contains("must not combine @OnchainLibrary"));
+        assertTrue(result.getOutput().contains("@SpendingValidator"));
+    }
+
+    @Test
     void taskIsUpToDate() throws IOException {
         Files.writeString(buildFile, """
                 plugins {
@@ -172,7 +262,7 @@ class JulcPluginTest {
         Files.writeString(customSrcDir.resolve("AlwaysTrue.java"), """
                 import com.bloxbean.cardano.julc.core.PlutusData;
 
-                @Validator
+                @SpendingValidator
                 class AlwaysTrue {
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -188,15 +278,123 @@ class JulcPluginTest {
         assertTrue(Files.exists(outputJson), "Expected output in custom dir build/scripts/");
     }
 
+    @Test
+    void compileTestJavaUsesBundledSourcesThroughDeclaredTaskGraph() throws IOException {
+        Files.writeString(buildFile, """
+                plugins {
+                    id 'com.bloxbean.cardano.julc'
+                }
+                """);
+
+        writeLocalOnchainLibrarySource();
+        writeSimpleTestSource();
+
+        BuildResult result = createRunner("clean", "compileTestJava", "--warning-mode", "fail").build();
+        assertEquals(TaskOutcome.SUCCESS, result.task(":bundleJulcSources").getOutcome());
+        assertEquals(TaskOutcome.SUCCESS, result.task(":processResources").getOutcome());
+        assertEquals(TaskOutcome.SUCCESS, result.task(":compileTestJava").getOutcome());
+
+        Path generatedIndex = testProjectDir.resolve(
+                "build/generated/julc/resources/main/META-INF/plutus-sources/index.txt");
+        Path resourcesIndex = testProjectDir.resolve(
+                "build/resources/main/META-INF/plutus-sources/index.txt");
+        assertTrue(Files.exists(generatedIndex), "Expected bundleJulcSources to write to generated resources");
+        assertTrue(Files.exists(resourcesIndex), "Expected processResources to copy bundled sources");
+    }
+
+    @Test
+    void compileTestJavaSupportsConfigurationCache() throws IOException {
+        Files.writeString(buildFile, """
+                plugins {
+                    id 'com.bloxbean.cardano.julc'
+                }
+                """);
+
+        writeLocalOnchainLibrarySource();
+        writeSimpleTestSource();
+
+        BuildResult first = createRunner("clean", "compileTestJava", "--configuration-cache").build();
+        assertEquals(TaskOutcome.SUCCESS, first.task(":compileTestJava").getOutcome());
+
+        BuildResult second = createRunner("compileTestJava", "--configuration-cache").build();
+        assertNotNull(second.task(":compileTestJava"));
+    }
+
+    @Test
+    void jarIncludesBundledSourcesWithoutDirectJarDependency() throws IOException {
+        Files.writeString(buildFile, """
+                plugins {
+                    id 'com.bloxbean.cardano.julc'
+                }
+                """);
+
+        writeLocalOnchainLibrarySource();
+
+        BuildResult result = createRunner("clean", "jar").build();
+        assertEquals(TaskOutcome.SUCCESS, result.task(":bundleJulcSources").getOutcome());
+        assertEquals(TaskOutcome.SUCCESS, result.task(":processResources").getOutcome());
+        assertEquals(TaskOutcome.SUCCESS, result.task(":jar").getOutcome());
+
+        Path jarPath = testProjectDir.resolve("build/libs/test-project.jar");
+        try (JarFile jarFile = new JarFile(jarPath.toFile())) {
+            assertNotNull(jarFile.getEntry("META-INF/plutus-sources/index.txt"));
+            assertNotNull(jarFile.getEntry("META-INF/plutus-sources/com/example/LocalLib.java"));
+        }
+    }
+
     private void writeAlwaysTrueValidator() throws IOException {
         Files.writeString(plutusSrcDir.resolve("AlwaysTrue.java"), """
                 import com.bloxbean.cardano.julc.core.PlutusData;
 
-                @Validator
+                @SpendingValidator
                 class AlwaysTrue {
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, PlutusData ctx) {
                         return true;
+                    }
+                }
+                """);
+    }
+
+    private void writeLocalOnchainLibrarySource() throws IOException {
+        Path annotationSource = testProjectDir.resolve(
+                "src/main/java/com/bloxbean/cardano/julc/stdlib/annotation/OnchainLibrary.java");
+        Files.createDirectories(annotationSource.getParent());
+        Files.writeString(annotationSource, """
+                package com.bloxbean.cardano.julc.stdlib.annotation;
+
+                public @interface OnchainLibrary {}
+                """);
+
+        Path librarySource = testProjectDir.resolve("src/main/java/com/example/LocalLib.java");
+        Files.createDirectories(librarySource.getParent());
+        Files.writeString(librarySource, """
+                package com.example;
+
+                import com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary;
+
+                @OnchainLibrary
+                public final class LocalLib {
+                    private LocalLib() {}
+
+                    public static boolean ok() {
+                        return true;
+                    }
+                }
+                """);
+    }
+
+    private void writeSimpleTestSource() throws IOException {
+        Path testSource = testProjectDir.resolve("src/test/java/com/example/LocalLibTest.java");
+        Files.createDirectories(testSource.getParent());
+        Files.writeString(testSource, """
+                package com.example;
+
+                final class LocalLibTest {
+                    void compiles() {
+                        if (!LocalLib.ok()) {
+                            throw new AssertionError();
+                        }
                     }
                 }
                 """);

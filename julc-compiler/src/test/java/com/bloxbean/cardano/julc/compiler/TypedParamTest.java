@@ -77,7 +77,7 @@ class TypedParamTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class RecordParamValidator {
                         record TokenConfig(byte[] policyId, BigInteger minAmount) {}
 
@@ -113,7 +113,7 @@ class TypedParamTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class PolicyValidator {
                         record TokenConfig(byte[] policyId, BigInteger minAmount) {}
 
@@ -145,7 +145,7 @@ class TypedParamTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class ThresholdValidator {
                         record TokenConfig(byte[] policyId, BigInteger minAmount) {}
 
@@ -183,7 +183,7 @@ class TypedParamTest {
             var source = """
                     import com.bloxbean.cardano.julc.ledger.Credential;
 
-                    @Validator
+                    @SpendingValidator
                     class CredentialParamValidator {
                         @Param Credential cred;
 
@@ -214,7 +214,7 @@ class TypedParamTest {
             var source = """
                     import com.bloxbean.cardano.julc.ledger.Credential;
 
-                    @Validator
+                    @SpendingValidator
                     class CredentialParamValidator2 {
                         @Param Credential cred;
 
@@ -245,7 +245,7 @@ class TypedParamTest {
                     import com.bloxbean.cardano.julc.ledger.Credential;
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class CredFieldValidator {
                         @Param Credential cred;
 
@@ -279,7 +279,7 @@ class TypedParamTest {
                     record Mint(long amt) implements Action {}
                     record Burn(long amt) implements Action {}
 
-                    @Validator
+                    @SpendingValidator
                     class ActionParamValidator {
                         @Param Action action;
 
@@ -320,7 +320,7 @@ class TypedParamTest {
                     record Mint(long amt) implements Action {}
                     record Burn(long amt) implements Action {}
 
-                    @Validator
+                    @SpendingValidator
                     class ActionFailValidator {
                         @Param Action action;
 
@@ -362,7 +362,7 @@ class TypedParamTest {
                     record FungibleToken(long amount) implements Token {}
                     record NFT(byte[] name) implements Token {}
 
-                    @Validator
+                    @SpendingValidator
                     class PatternVarArgValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -397,7 +397,7 @@ class TypedParamTest {
                     record Mint(long amt) implements Action {}
                     record Burn(long amt) implements Action {}
 
-                    @Validator
+                    @SpendingValidator
                     class PatternVarReturnValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -433,7 +433,7 @@ class TypedParamTest {
                     record Point2D(long x, long y) implements Coord {}
                     record Point3D(long x, long y, long z) implements Coord {}
 
-                    @Validator
+                    @SpendingValidator
                     class BothAccessValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -478,7 +478,7 @@ class TypedParamTest {
                     record Mint(long amt) implements Action {}
                     record Burn(long amt) implements Action {}
 
-                    @Validator
+                    @SpendingValidator
                     class BothBranchesPatternVar {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -522,7 +522,7 @@ class TypedParamTest {
                     record Mint(long amt) implements Action {}
                     record Burn(long amt) implements Action {}
 
-                    @Validator
+                    @SpendingValidator
                     class UnusedPatternVar {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -557,7 +557,7 @@ class TypedParamTest {
                     record Mint(long amt) implements Action {}
                     record Burn(long amt) implements Action {}
 
-                    @Validator
+                    @SpendingValidator
                     class PatternVarEqValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -601,7 +601,7 @@ class TypedParamTest {
                     record Circle(long radius) implements Shape {}
                     record Square(long side) implements Shape {}
 
-                    @Validator
+                    @SpendingValidator
                     class InlineSealedPatternVar {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -648,7 +648,7 @@ class TypedParamTest {
         void newTypeByteArrayParamLength() {
             // @NewType byte[] decodes via UnBData. asset.length() uses LengthOfByteString.
             var source = """
-                    @Validator
+                    @SpendingValidator
                     class NewTypeParamValidator {
                         @NewType
                         record AssetName(byte[] name) {}
@@ -677,7 +677,7 @@ class TypedParamTest {
         @Test
         void newTypeByteArrayParamEmpty() {
             var source = """
-                    @Validator
+                    @SpendingValidator
                     class NewTypeEmptyValidator {
                         @NewType
                         record AssetName(byte[] name) {}
@@ -705,7 +705,7 @@ class TypedParamTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class NewTypeIntValidator {
                         @NewType
                         record Amount(BigInteger value) {}
@@ -736,7 +736,7 @@ class TypedParamTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class NewTypeArithValidator {
                         @NewType
                         record Score(BigInteger value) {}

@@ -27,7 +27,7 @@ class OutputValueCheckTest {
     static final String MIN_PAYMENT_SOURCE = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class MinPaymentValidator {
                 record MinPayment(BigInteger minLovelace) {}
 
@@ -46,7 +46,7 @@ class OutputValueCheckTest {
     static final String ANY_OUTPUT_SOURCE = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class AnyOutputValidator {
                 record MinPayment(BigInteger minLovelace) {}
 
@@ -68,7 +68,7 @@ class OutputValueCheckTest {
     static final String SUM_OUTPUTS_SOURCE = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class SumOutputsValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, ScriptContext ctx) {

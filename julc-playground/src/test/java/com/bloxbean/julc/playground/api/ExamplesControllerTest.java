@@ -45,7 +45,7 @@ class ExamplesControllerTest {
             var ex = mapper.readValue(res.body().string(), ExampleDto.class);
             assertEquals("SimpleSpending.java", ex.name());
             assertNotNull(ex.source());
-            assertTrue(ex.source().contains("@SpendingValidator") || ex.source().contains("@Validator"));
+            assertTrue(ex.source().contains("@SpendingValidator"));
         });
     }
 

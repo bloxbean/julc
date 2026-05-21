@@ -24,7 +24,7 @@ import java.util.Arrays;
 class VestingPropertyTest {
 
     static final String VESTING_SOURCE = """
-            @Validator
+            @SpendingValidator
             class VestingValidator {
                 record VestingDatum(PlutusData beneficiary, PlutusData deadline) {}
 

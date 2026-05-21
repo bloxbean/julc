@@ -26,8 +26,8 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * Annotation processor that compiles {@code @Validator} and {@code @MintingPolicy}
- * annotated classes to UPLC scripts during javac.
+ * Annotation processor that compiles supported JuLC validator annotations to
+ * UPLC scripts during javac.
  * <p>
  * The compiled script is written to {@code META-INF/plutus/<ClassName>.plutus.json}
  * in the class output directory, making it available on the classpath at runtime.
@@ -44,8 +44,6 @@ import java.util.stream.Collectors;
  * {@link JulcCompiler} for the actual compilation.
  */
 @SupportedAnnotationTypes({
-        "com.bloxbean.cardano.julc.stdlib.annotation.Validator",
-        "com.bloxbean.cardano.julc.stdlib.annotation.MintingPolicy",
         "com.bloxbean.cardano.julc.stdlib.annotation.SpendingValidator",
         "com.bloxbean.cardano.julc.stdlib.annotation.MintingValidator",
         "com.bloxbean.cardano.julc.stdlib.annotation.WithdrawValidator",
@@ -86,8 +84,6 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
     @Override
     public Set<String> getSupportedAnnotationTypes() {
         return Set.of(
-                "com.bloxbean.cardano.julc.stdlib.annotation.Validator",
-                "com.bloxbean.cardano.julc.stdlib.annotation.MintingPolicy",
                 "com.bloxbean.cardano.julc.stdlib.annotation.SpendingValidator",
                 "com.bloxbean.cardano.julc.stdlib.annotation.MintingValidator",
                 "com.bloxbean.cardano.julc.stdlib.annotation.WithdrawValidator",
@@ -110,7 +106,7 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
             classpathScanned = true;
         }
 
-        // 3. Process @Validator and @MintingPolicy elements
+        // 3. Process validator elements
         for (TypeElement annotation : annotations) {
             String annotationName = annotation.getQualifiedName().toString();
             if (annotationName.endsWith("OnchainLibrary")) {
@@ -287,8 +283,8 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
 
     private String resolveScriptType(String annotationSimpleName) {
         return switch (annotationSimpleName) {
-            case "Validator", "SpendingValidator" -> "PlutusScriptV3";
-            case "MintingPolicy", "MintingValidator" -> "PlutusScriptV3-Minting";
+            case "SpendingValidator" -> "PlutusScriptV3";
+            case "MintingValidator" -> "PlutusScriptV3-Minting";
             case "WithdrawValidator" -> "PlutusScriptV3-Withdraw";
             case "CertifyingValidator" -> "PlutusScriptV3-Certifying";
             case "VotingValidator" -> "PlutusScriptV3-Voting";

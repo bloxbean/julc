@@ -23,7 +23,7 @@ class MultiSigValidatorTest {
     static final String MULTISIG_SOURCE = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class MultiSigValidator {
                 static boolean check1(BigInteger x) {
                     return x > 0;
@@ -62,7 +62,7 @@ class MultiSigValidatorTest {
     static final String MULTISIG_FAILING = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class MultiSigValidator {
                 static boolean check1(BigInteger x) {
                     return x > 0;

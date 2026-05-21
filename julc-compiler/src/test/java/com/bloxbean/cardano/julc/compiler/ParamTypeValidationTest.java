@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class ParamTypeValidationTest {
 
     private static final String VALIDATOR_TEMPLATE = """
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Param %s x;
 
@@ -83,7 +83,7 @@ class ParamTypeValidationTest {
         var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class TestValidator {
                     @Param BigInteger x;
 
@@ -121,7 +121,7 @@ class ParamTypeValidationTest {
     @Test
     void testMultipleBadParamsReportsAll() {
         var source = """
-                @Validator
+                @SpendingValidator
                 class TestValidator {
                     @Param PlutusData.BytesData a;
                     @Param PlutusData.IntData b;

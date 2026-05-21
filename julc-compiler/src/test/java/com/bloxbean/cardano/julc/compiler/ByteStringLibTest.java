@@ -57,7 +57,7 @@ class ByteStringLibTest {
             import java.math.BigInteger;
             import com.bloxbean.cardano.julc.stdlib.lib.ByteStringLib;
 
-            @MintingPolicy
+            @MintingValidator
             class TestValidator {
                 record BsData(byte[] bs) {}
 
@@ -82,7 +82,7 @@ class ByteStringLibTest {
                 import java.math.BigInteger;
                 import com.bloxbean.cardano.julc.stdlib.lib.ByteStringLib;
 
-                @MintingPolicy
+                @MintingValidator
                 class TestValidator {
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, PlutusData ctx) {

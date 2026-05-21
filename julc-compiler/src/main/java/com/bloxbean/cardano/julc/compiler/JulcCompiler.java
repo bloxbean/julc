@@ -24,6 +24,7 @@ import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
+import com.github.javaparser.ast.body.TypeDeclaration;
 import com.github.javaparser.ast.expr.FieldAccessExpr;
 import com.github.javaparser.ast.expr.MemberValuePair;
 import com.github.javaparser.ast.expr.NormalAnnotationExpr;
@@ -51,15 +52,6 @@ public class JulcCompiler {
     public enum ScriptPurpose {
         SPENDING, MINTING, WITHDRAW, CERTIFYING, VOTING, PROPOSING, MULTI
     }
-
-    /** All annotation names recognized as validator annotations. */
-    private static final List<String> VALIDATOR_ANNOTATIONS = List.of(
-            "Validator", "SpendingValidator",
-            "MintingPolicy", "MintingValidator",
-            "WithdrawValidator", "CertifyingValidator",
-            "VotingValidator", "ProposingValidator",
-            "MultiValidator"
-    );
 
     private record ParamField(String name, PirType pirType, String javaType) {}
     private record StaticField(String name, PirType pirType, com.github.javaparser.ast.expr.Expression initExpr) {}
@@ -193,12 +185,17 @@ public class JulcCompiler {
 
         // 3. Validate: library CUs must not contain validator annotations
         for (var libCu : libraryCus) {
-            for (var type : libCu.findAll(ClassOrInterfaceDeclaration.class)) {
-                for (var ann : VALIDATOR_ANNOTATIONS) {
-                    if (type.getAnnotationByName(ann).isPresent()) {
-                        throw new CompilerException("Library source must not contain @" + ann + ": "
-                                + type.getNameAsString());
-                    }
+            for (var type : libCu.findAll(TypeDeclaration.class)) {
+                rejectRoleConflict(type);
+                var validatorAnnotations = JavaSourceIntrospector.supportedValidatorAnnotationsOn(type);
+                if (!validatorAnnotations.isEmpty()) {
+                    throw new CompilerException("Library source must not contain validator annotation @"
+                            + validatorAnnotations.get(0) + ": " + type.getNameAsString());
+                }
+                var legacyAnnotations = JavaSourceIntrospector.legacyValidatorAnnotationsOn(type);
+                if (!legacyAnnotations.isEmpty()) {
+                    throw new CompilerException(JavaSourceIntrospector.legacyAnnotationMigrationMessage(
+                            legacyAnnotations.get(0), type.getNameAsString()));
                 }
             }
         }
@@ -582,7 +579,7 @@ public class JulcCompiler {
 
     /**
      * Compile a single static method to a UPLC Program.
-     * No {@code @Validator} annotation required. The method becomes a lambda accepting Data arguments.
+     * No validator annotation required. The method becomes a lambda accepting Data arguments.
      * Auto-discovers {@code @OnchainLibrary} sources from classpath.
      *
      * @param javaSource the Java source containing the method
@@ -972,11 +969,19 @@ public class JulcCompiler {
     }
 
     private ClassOrInterfaceDeclaration findAnnotatedClass(CompilationUnit cu) {
+        for (var type : cu.findAll(TypeDeclaration.class)) {
+            rejectRoleConflict(type);
+        }
         for (var type : cu.findAll(ClassOrInterfaceDeclaration.class)) {
-            for (var ann : VALIDATOR_ANNOTATIONS) {
-                if (type.getAnnotationByName(ann).isPresent()) {
-                    return type;
-                }
+            if (JavaSourceIntrospector.hasSupportedValidatorAnnotation(type)) {
+                return type;
+            }
+        }
+        for (var type : cu.findAll(ClassOrInterfaceDeclaration.class)) {
+            var legacyAnnotations = JavaSourceIntrospector.legacyValidatorAnnotationsOn(type);
+            if (!legacyAnnotations.isEmpty()) {
+                throw new CompilerException(JavaSourceIntrospector.legacyAnnotationMigrationMessage(
+                        legacyAnnotations.get(0), type.getNameAsString()));
             }
         }
         throw validationError(VALIDATOR_ANNOTATION_MISSING,
@@ -987,41 +992,41 @@ public class JulcCompiler {
                 " (e.g. @SpendingValidator, @MintingValidator)");
     }
 
+    private static void rejectRoleConflict(TypeDeclaration<?> type) {
+        JavaSourceIntrospector.roleConflictOn(type)
+                .ifPresent(conflict -> {
+                    throw new CompilerException(conflict.message());
+                });
+    }
+
     private ScriptPurpose getScriptPurpose(ClassOrInterfaceDeclaration cls) {
         // Count how many validator annotations are present
-        var foundAnnotations = new ArrayList<String>();
-        for (var ann : VALIDATOR_ANNOTATIONS) {
-            if (cls.getAnnotationByName(ann).isPresent()) {
-                foundAnnotations.add(ann);
-            }
-        }
+        var foundAnnotations = new ArrayList<>(JavaSourceIntrospector.supportedValidatorAnnotationsOn(cls));
         if (foundAnnotations.size() > 1) {
             throw new CompilerException("Class " + cls.getNameAsString()
                     + " has multiple validator annotations: " + foundAnnotations
                     + ". Only one validator annotation is allowed per class.");
         }
 
-        if (cls.getAnnotationByName("Validator").isPresent()
-                || cls.getAnnotationByName("SpendingValidator").isPresent()) {
+        if (foundAnnotations.contains("SpendingValidator")) {
             return ScriptPurpose.SPENDING;
         }
-        if (cls.getAnnotationByName("MintingPolicy").isPresent()
-                || cls.getAnnotationByName("MintingValidator").isPresent()) {
+        if (foundAnnotations.contains("MintingValidator")) {
             return ScriptPurpose.MINTING;
         }
-        if (cls.getAnnotationByName("WithdrawValidator").isPresent()) {
+        if (foundAnnotations.contains("WithdrawValidator")) {
             return ScriptPurpose.WITHDRAW;
         }
-        if (cls.getAnnotationByName("CertifyingValidator").isPresent()) {
+        if (foundAnnotations.contains("CertifyingValidator")) {
             return ScriptPurpose.CERTIFYING;
         }
-        if (cls.getAnnotationByName("VotingValidator").isPresent()) {
+        if (foundAnnotations.contains("VotingValidator")) {
             return ScriptPurpose.VOTING;
         }
-        if (cls.getAnnotationByName("ProposingValidator").isPresent()) {
+        if (foundAnnotations.contains("ProposingValidator")) {
             return ScriptPurpose.PROPOSING;
         }
-        if (cls.getAnnotationByName("MultiValidator").isPresent()) {
+        if (foundAnnotations.contains("MultiValidator")) {
             return ScriptPurpose.MULTI;
         }
         throw validationError(VALIDATOR_ANNOTATION_MISSING,
@@ -1206,7 +1211,7 @@ public class JulcCompiler {
             // Non-spending validators: 2 params (redeemer, scriptContext)
             if (paramCount != 2) {
                 String annotation = switch (purpose) {
-                    case MINTING -> "@MintingValidator/@MintingPolicy";
+                    case MINTING -> "@MintingValidator";
                     case WITHDRAW -> "@WithdrawValidator";
                     case CERTIFYING -> "@CertifyingValidator";
                     case VOTING -> "@VotingValidator";

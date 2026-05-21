@@ -10,7 +10,7 @@ import type {
 
 const DEFAULT_JAVA_SOURCE = `import java.math.BigInteger;
 
-@Validator
+@SpendingValidator
 class SimpleValidator {
     static boolean isPositive(BigInteger x) {
         return x > 0;

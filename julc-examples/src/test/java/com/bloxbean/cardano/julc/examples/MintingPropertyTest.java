@@ -23,7 +23,7 @@ import java.util.Arrays;
 class MintingPropertyTest {
 
     static final String MINTING_SOURCE = """
-            @Validator
+            @SpendingValidator
             class SignedMintPolicy {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {

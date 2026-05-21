@@ -16,7 +16,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * End-to-end integration tests: compile real {@code @Validator} classes with source maps,
+ * End-to-end integration tests: compile real validator classes with source maps,
  * evaluate with failing arguments, and verify the BuiltinTrace + FailureReport
  * contain the expected comparison values and source location.
  */
@@ -26,7 +26,7 @@ class FailureReportIntegrationTest {
     static final String EQUALITY_FAIL_MINT = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class EqualityFailMint {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -41,7 +41,7 @@ class FailureReportIntegrationTest {
     static final String COMPARISON_FAIL_MINT = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class ComparisonFailMint {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -54,7 +54,7 @@ class FailureReportIntegrationTest {
 
     // Minting validator that always succeeds
     static final String ALWAYS_PASS_MINT = """
-            @Validator
+            @SpendingValidator
             class AlwaysPassMint {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, ScriptContext ctx) {

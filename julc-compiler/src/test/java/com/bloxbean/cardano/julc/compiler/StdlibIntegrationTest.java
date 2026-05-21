@@ -67,7 +67,7 @@ class StdlibIntegrationTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.lib.ContextsLib;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -87,7 +87,7 @@ class StdlibIntegrationTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.lib.ContextsLib;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -107,7 +107,7 @@ class StdlibIntegrationTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.lib.ContextsLib;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -132,7 +132,7 @@ class StdlibIntegrationTest {
         void unknownStdlibMethodFallsThrough() {
             // A method on a class name that isn't in the stdlib should fail compilation
             var source = """
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -154,7 +154,7 @@ class StdlibIntegrationTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         record MyDatum(BigInteger value, BigInteger deadline) {}
 
@@ -176,7 +176,7 @@ class StdlibIntegrationTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         record MyDatum(BigInteger value, BigInteger deadline) {}
 
@@ -210,7 +210,7 @@ class StdlibIntegrationTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         record MyDatum(BigInteger value, BigInteger deadline) {}
 
@@ -240,7 +240,7 @@ class StdlibIntegrationTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         record MyDatum(BigInteger value, BigInteger deadline) {}
 
@@ -272,7 +272,7 @@ class StdlibIntegrationTest {
         @Test
         void compile3ParamSpendingValidator() {
             var source = """
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData datum, PlutusData redeemer, PlutusData ctx) {
@@ -288,7 +288,7 @@ class StdlibIntegrationTest {
         @Test
         void eval3ParamAlwaysTrue() {
             var source = """
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData datum, PlutusData redeemer, PlutusData ctx) {
@@ -320,7 +320,7 @@ class StdlibIntegrationTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(BigInteger datum, PlutusData redeemer, PlutusData ctx) {
@@ -357,7 +357,7 @@ class StdlibIntegrationTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -382,7 +382,7 @@ class StdlibIntegrationTest {
         @Test
         void mintingPolicyCompiles() {
             var source = """
-                    @MintingPolicy
+                    @MintingValidator
                     class TestMint {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -398,7 +398,7 @@ class StdlibIntegrationTest {
         @Test
         void mintingPolicyAlwaysTrueAccepts() {
             var source = """
-                    @MintingPolicy
+                    @MintingValidator
                     class TestMint {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -436,7 +436,7 @@ class StdlibIntegrationTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         record Datum(BigInteger value) {}
 
@@ -459,7 +459,7 @@ class StdlibIntegrationTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         record Datum(BigInteger value) {}
 
@@ -482,7 +482,7 @@ class StdlibIntegrationTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         record Datum(BigInteger a, BigInteger b) {}
 
@@ -506,7 +506,7 @@ class StdlibIntegrationTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         record Datum(BigInteger a, BigInteger b) {}
 

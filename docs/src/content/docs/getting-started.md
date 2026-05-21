@@ -277,9 +277,8 @@ specific annotations:
 
 All annotations live in `com.bloxbean.cardano.julc.stdlib.annotation`.
 
-> **Deprecation note**: The old `@Validator` and `@MintingPolicy` annotations
-> still compile but are deprecated. Use `@SpendingValidator` and
-> `@MintingValidator` for all new code.
+> **Migration note**: The old `@Validator` and `@MintingPolicy` aliases are no
+> longer supported. Use `@SpendingValidator` and `@MintingValidator`.
 
 ### 4.1 Multi-Validators (@MultiValidator)
 
