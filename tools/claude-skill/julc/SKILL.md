@@ -1,6 +1,6 @@
 ---
 name: julc
-description: Author and review JuLC (Java → Cardano UPLC) smart contracts. TRIGGER when working in a project that contains a `julc.toml` or any `.java` file with `@SpendingValidator`, `@MintingValidator`, `@WithdrawValidator`, `@CertifyingValidator`, `@VotingValidator`, `@ProposingValidator`, `@MultiValidator`, `@Validator`, or `@OnchainLibrary`; or when the user explicitly mentions JuLC, Plutus V3, or Cardano smart contracts.
+description: Author and review JuLC (Java → Cardano UPLC) smart contracts. TRIGGER when working in a project that contains a `julc.toml` or any `.java` file with `@SpendingValidator`, `@MintingValidator`, `@WithdrawValidator`, `@CertifyingValidator`, `@VotingValidator`, `@ProposingValidator`, `@MultiValidator`, or `@OnchainLibrary`; or when the user explicitly mentions JuLC, Plutus V3, or Cardano smart contracts.
 version: 0.1.0
 ---
 

@@ -259,7 +259,7 @@ class TestkitTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class AlwaysTrueValidator {
                         @Entrypoint
                         static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -278,7 +278,7 @@ class TestkitTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class AlwaysFalseValidator {
                         @Entrypoint
                         static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -330,7 +330,7 @@ class TestkitTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class AlwaysTrue {
                         @Entrypoint
                         static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -349,7 +349,7 @@ class TestkitTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class AlwaysFalse {
                         @Entrypoint
                         static boolean validate(BigInteger redeemer, BigInteger ctx) {

@@ -2,7 +2,10 @@ package com.bloxbean.cardano.julc.testkit;
 
 import com.bloxbean.cardano.julc.compiler.CompileResult;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -66,6 +69,93 @@ class SourceDiscoveryTest {
         assertNotNull(result);
         assertFalse(result.hasErrors(), "Expected no errors: " + result.diagnostics());
         assertNotNull(result.program());
+    }
+
+    @Test
+    void compileFqcn_ignoresOnchainLibraryTextInComments(@TempDir Path tempDir) throws IOException {
+        Path pkgDir = tempDir.resolve("com/example");
+        Files.createDirectories(pkgDir);
+        Files.writeString(pkgDir.resolve("UseLib.java"), """
+                package com.example;
+
+                @SpendingValidator
+                class UseLib {
+                    @Entrypoint
+                    static boolean validate(long redeemer, long ctx) {
+                        return true;
+                    }
+                }
+                """);
+        Files.writeString(pkgDir.resolve("CommentOnly.java"), """
+                package com.example;
+
+                /** Mentions @OnchainLibrary but is not a library. */
+                class CommentOnly {}
+                """);
+
+        CompileResult result = SourceDiscovery.compile("com.example.UseLib", tempDir);
+
+        assertNotNull(result);
+        assertFalse(result.hasErrors(), "Expected no errors: " + result.diagnostics());
+    }
+
+    @Test
+    void compileFqcn_reportsParseErrorForPrefilteredLibraryCandidate(@TempDir Path tempDir) throws IOException {
+        Path pkgDir = tempDir.resolve("com/example");
+        Files.createDirectories(pkgDir);
+        Files.writeString(pkgDir.resolve("UseLib.java"), """
+                package com.example;
+
+                @SpendingValidator
+                class UseLib {
+                    @Entrypoint
+                    static boolean validate(long redeemer, long ctx) {
+                        return true;
+                    }
+                }
+                """);
+        Files.writeString(pkgDir.resolve("Broken.java"), """
+                package com.example;
+
+                // @OnchainLibrary
+                class Broken {
+                """);
+
+        var error = assertThrows(AssertionError.class,
+                () -> SourceDiscovery.compile("com.example.UseLib", tempDir));
+
+        assertTrue(error.getMessage().contains("Could not parse @OnchainLibrary candidate"));
+        assertTrue(error.getMessage().contains("Broken.java"));
+    }
+
+    @Test
+    void compileFqcn_rejectsOnchainLibraryValidatorRoleConflict(@TempDir Path tempDir) throws IOException {
+        Path pkgDir = tempDir.resolve("com/example");
+        Files.createDirectories(pkgDir);
+        Files.writeString(pkgDir.resolve("UseLib.java"), """
+                package com.example;
+
+                @SpendingValidator
+                class UseLib {
+                    @Entrypoint
+                    static boolean validate(long redeemer, long ctx) {
+                        return true;
+                    }
+                }
+                """);
+        Files.writeString(pkgDir.resolve("Confused.java"), """
+                package com.example;
+
+                @OnchainLibrary
+                @SpendingValidator
+                class Confused {}
+                """);
+
+        var error = assertThrows(AssertionError.class,
+                () -> SourceDiscovery.compile("com.example.UseLib", tempDir));
+
+        assertTrue(error.getMessage().contains("must not combine @OnchainLibrary"));
+        assertTrue(error.getMessage().contains("@SpendingValidator"));
     }
 
     @Test

@@ -37,7 +37,7 @@ class GoldenUplcTest {
     static final String SIMPLE_VALIDATOR = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class LetValidator {
                 @Entrypoint
                 static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -58,7 +58,7 @@ class GoldenUplcTest {
             import java.math.BigInteger;
             import com.bloxbean.cardano.julc.ledger.*;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(byte[] redeemer, ScriptContext ctx) {
@@ -83,7 +83,7 @@ class GoldenUplcTest {
     static final String WHILE_BREAK = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -111,7 +111,7 @@ class GoldenUplcTest {
     static final String NESTED_WHILE = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class NestedWhileSum {
                 @Entrypoint
                 static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -142,7 +142,7 @@ class GoldenUplcTest {
             import com.bloxbean.cardano.julc.ledger.*;
             import java.util.List;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -165,7 +165,7 @@ class GoldenUplcTest {
             import com.bloxbean.cardano.julc.ledger.*;
             import java.util.List;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -186,7 +186,7 @@ class GoldenUplcTest {
     static final String MULTI_ACC_WHILE = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -213,7 +213,7 @@ class GoldenUplcTest {
     static final String NESTED_WHILE_NO_ACC = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {

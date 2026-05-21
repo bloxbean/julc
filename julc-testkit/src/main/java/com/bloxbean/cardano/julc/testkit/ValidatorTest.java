@@ -86,7 +86,7 @@ public final class ValidatorTest {
     /**
      * Compile Java source to a UPLC program, then evaluate with the given arguments.
      *
-     * @param javaSource the Java source code containing a @Validator or @MintingPolicy class
+     * @param javaSource the Java source code containing a supported JuLC validator class
      * @param args       the arguments to apply (as PlutusData)
      * @return the evaluation result
      * @throws com.bloxbean.cardano.julc.compiler.CompilerException if compilation fails
@@ -242,8 +242,8 @@ public final class ValidatorTest {
     /**
      * Compile a validator with library sources to a UPLC Program.
      *
-     * @param validatorSource the validator Java source code (must contain @Validator or @MintingPolicy)
-     * @param librarySources  library Java source files (must NOT contain @Validator/@MintingPolicy)
+     * @param validatorSource the validator Java source code (must contain a supported JuLC validator annotation)
+     * @param librarySources  library Java source files (must NOT contain validator annotations)
      * @return the compiled Program
      * @throws com.bloxbean.cardano.julc.compiler.CompilerException if compilation fails
      */

@@ -111,7 +111,7 @@ class JulcScriptAdapterTest {
         var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class ThresholdValidator {
                     @Param BigInteger threshold;
 

@@ -1,6 +1,6 @@
 package com.bloxbean.cardano.julc.gradle;
 
-import com.bloxbean.cardano.julc.compiler.LibrarySourceResolver;
+import com.bloxbean.cardano.julc.compiler.JavaSourceIntrospector;
 import org.gradle.api.DefaultTask;
 import org.gradle.api.GradleException;
 import org.gradle.api.file.DirectoryProperty;
@@ -50,7 +50,23 @@ public abstract class BundleJulcSourcesTask extends DefaultTask {
 
         for (File javaFile : javaFiles) {
             String source = Files.readString(javaFile.toPath());
-            if (!source.contains("@OnchainLibrary")) {
+            if (!JavaSourceIntrospector.mightContainOnchainLibraryAnnotation(source)) {
+                continue;
+            }
+
+            JavaSourceIntrospector.SourceInfo sourceInfo = inspect(javaFile, source);
+            rejectRoleConflicts(sourceInfo);
+            if (!sourceInfo.nestedOnchainLibraries().isEmpty()) {
+                var nested = sourceInfo.nestedOnchainLibraries().get(0);
+                throw new GradleException("@OnchainLibrary must be declared on a top-level class in "
+                        + javaFile + ". Nested on-chain library " + nested.simpleName()
+                        + " is not supported.");
+            }
+
+            var libraryType = sourceInfo.topLevelOnchainLibrary();
+            if (libraryType.isEmpty()) {
+                getLogger().info("Skipping {}: text matched OnchainLibrary but no real top-level @OnchainLibrary was found",
+                        javaFile);
                 continue;
             }
 
@@ -58,7 +74,7 @@ public abstract class BundleJulcSourcesTask extends DefaultTask {
             Path relativePath = srcDir.toPath().relativize(javaFile.toPath());
             Path targetFile = metaInfDir.resolve(relativePath);
             String indexEntry = relativePath.toString().replace(File.separatorChar, '/');
-            validatePackageMatchesPath(javaFile, source, indexEntry);
+            validatePackageMatchesPath(javaFile, indexEntry, libraryType.get());
 
             Files.createDirectories(targetFile.getParent());
             Files.writeString(targetFile, source, StandardCharsets.UTF_8);
@@ -79,15 +95,28 @@ public abstract class BundleJulcSourcesTask extends DefaultTask {
         }
     }
 
-    private static void validatePackageMatchesPath(File javaFile, String source, String indexEntry) {
-        String packageName = LibrarySourceResolver.extractPackageName(source);
-        String fileClassName = javaFile.getName().replace(".java", "");
-        String sourceClassName = LibrarySourceResolver.extractTopLevelTypeName(source)
-                .orElseThrow(() -> new GradleException("Could not determine @OnchainLibrary class name in " + javaFile));
-        if (!LibrarySourceResolver.hasTopLevelOnchainLibraryAnnotation(source, sourceClassName)) {
-            throw new GradleException("@OnchainLibrary must be declared on the top-level class in " + javaFile
-                    + ". Nested on-chain libraries are not supported.");
+    private static JavaSourceIntrospector.SourceInfo inspect(File javaFile, String source) {
+        try {
+            return JavaSourceIntrospector.inspect(source);
+        } catch (JavaSourceIntrospector.SourceParseException e) {
+            throw new GradleException("Could not parse @OnchainLibrary candidate " + javaFile
+                    + ": " + e.problems(), e);
         }
+    }
+
+    private static void rejectRoleConflicts(JavaSourceIntrospector.SourceInfo sourceInfo) {
+        sourceInfo.firstRoleConflict()
+                .ifPresent(conflict -> {
+                    throw new GradleException(conflict.message());
+                });
+    }
+
+    private static void validatePackageMatchesPath(File javaFile,
+                                                   String indexEntry,
+                                                   JavaSourceIntrospector.AnnotatedType libraryType) {
+        String packageName = libraryType.packageName();
+        String fileClassName = javaFile.getName().replace(".java", "");
+        String sourceClassName = libraryType.simpleName();
         if (!fileClassName.equals(sourceClassName)) {
             throw new GradleException("@OnchainLibrary class/path mismatch for " + javaFile
                     + ": source declares " + sourceClassName

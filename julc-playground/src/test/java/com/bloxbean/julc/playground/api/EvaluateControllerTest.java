@@ -43,7 +43,7 @@ class EvaluateControllerTest {
                     """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class AlwaysTrue {
                         @Entrypoint
                         static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -70,7 +70,7 @@ class EvaluateControllerTest {
                     """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class AlwaysFalse {
                         @Entrypoint
                         static boolean validate(BigInteger redeemer, BigInteger ctx) {

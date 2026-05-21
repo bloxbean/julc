@@ -1,15 +1,12 @@
 package com.bloxbean.cardano.julc.blueprint;
 
+import com.bloxbean.cardano.julc.compiler.JavaSourceIntrospector;
+import com.github.javaparser.JavaParser;
 import com.github.javaparser.ParserConfiguration;
-import com.github.javaparser.StaticJavaParser;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.*;
-import com.github.javaparser.ast.type.ClassOrInterfaceType;
-import com.github.javaparser.ast.type.PrimitiveType;
-import com.github.javaparser.ast.type.Type;
 
 import java.util.*;
-import java.util.regex.Pattern;
 
 /**
  * Extracts CIP-57 type schemas from validator Java source.
@@ -51,21 +48,33 @@ public final class SchemaGenerator {
             Map<String, Schema> definitions
     ) {}
 
-    private static final Pattern ENTRYPOINT_PATTERN = Pattern.compile("@Entrypoint");
-    private static final Pattern VALIDATOR_PATTERN = Pattern.compile(
-            "@(Validator|SpendingValidator|MintingPolicy|MintingValidator|" +
-            "WithdrawValidator|CertifyingValidator|VotingValidator|ProposingValidator|MultiValidator)");
-
     /**
      * Extract schema from a validator source file.
      */
     public static ValidatorSchema extract(String validatorSource) {
-        StaticJavaParser.getParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
-        CompilationUnit cu = StaticJavaParser.parse(validatorSource);
+        CompilationUnit cu = parse(validatorSource);
+
+        cu.findAll(ClassOrInterfaceDeclaration.class).stream()
+                .filter(c -> !c.isInterface())
+                .flatMap(c -> JavaSourceIntrospector.roleConflictOn(c).stream())
+                .findFirst()
+                .ifPresent(conflict -> {
+                    throw new IllegalArgumentException(conflict.message());
+                });
+
+        cu.findAll(ClassOrInterfaceDeclaration.class).stream()
+                .filter(c -> !c.isInterface())
+                .filter(JavaSourceIntrospector::hasLegacyValidatorAnnotation)
+                .findFirst()
+                .ifPresent(c -> {
+                    var legacy = JavaSourceIntrospector.legacyValidatorAnnotationsOn(c).get(0);
+                    throw new IllegalArgumentException(
+                            JavaSourceIntrospector.legacyAnnotationMigrationMessage(legacy, c.getNameAsString()));
+                });
 
         var validatorClass = cu.findAll(ClassOrInterfaceDeclaration.class).stream()
                 .filter(c -> !c.isInterface())
-                .filter(c -> VALIDATOR_PATTERN.matcher(c.toString()).find())
+                .filter(JavaSourceIntrospector::hasSupportedValidatorAnnotation)
                 .findFirst()
                 .orElse(null);
         if (validatorClass == null) return null;
@@ -115,6 +124,19 @@ public final class SchemaGenerator {
         }
 
         return new ValidatorSchema(datum, redeemer, parameterSchemas, definitions);
+    }
+
+    private static CompilationUnit parse(String source) {
+        var configuration = new ParserConfiguration()
+                .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
+        var result = new JavaParser(configuration).parse(source);
+        if (!result.isSuccessful() || result.getResult().isEmpty()) {
+            var problems = result.getProblems().stream()
+                    .map(problem -> problem.getMessage())
+                    .toList();
+            throw new IllegalArgumentException("Could not parse validator source: " + problems);
+        }
+        return result.getResult().get();
     }
 
     private static Schema buildParamSchema(Parameter param, ClassOrInterfaceDeclaration validatorClass,

@@ -131,7 +131,7 @@ class LedgerTypeAccessTest {
         @Test
         void compileCtxTxInfo() {
             var source = """
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -152,7 +152,7 @@ class LedgerTypeAccessTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -179,7 +179,7 @@ class LedgerTypeAccessTest {
         void evalTxInfoSignatories() {
             // Access txInfo.signatories() — should return a list
             var source = """
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -204,7 +204,7 @@ class LedgerTypeAccessTest {
         void evalTxInfoValidRange() {
             // Access txInfo.validRange() — should return an Interval (RecordType)
             var source = """
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -223,7 +223,7 @@ class LedgerTypeAccessTest {
         void evalTxInfoId() {
             // Access txInfo.id() — should return ByteString
             var source = """
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -245,7 +245,7 @@ class LedgerTypeAccessTest {
         void evalListContains() {
             // signatories.contains(pkh)
             var source = """
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -271,7 +271,7 @@ class LedgerTypeAccessTest {
         @Test
         void evalListContainsNotFound() {
             var source = """
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -300,7 +300,7 @@ class LedgerTypeAccessTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -325,7 +325,7 @@ class LedgerTypeAccessTest {
         @Test
         void evalListIsEmpty() {
             var source = """
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -354,7 +354,7 @@ class LedgerTypeAccessTest {
         void evalChainedContains() {
             // txInfo.signatories().contains(pkh) — chained without intermediate var
             var source = """
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -380,7 +380,7 @@ class LedgerTypeAccessTest {
         void evalChainedIsEmpty() {
             // txInfo.signatories().isEmpty()
             var source = """
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -408,7 +408,7 @@ class LedgerTypeAccessTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         record VestingDatum(byte[] beneficiary, BigInteger deadline) {}
 
@@ -446,7 +446,7 @@ class LedgerTypeAccessTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         record MyDatum(PubKeyHash owner, BigInteger deadline) {}
 
@@ -471,7 +471,7 @@ class LedgerTypeAccessTest {
         void plutusDataCtxStillWorks() {
             // Old-style validator with PlutusData ctx should still compile
             var source = """
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -487,7 +487,7 @@ class LedgerTypeAccessTest {
         @Test
         void evalPlutusDataCtxStillWorks() {
             var source = """
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -512,7 +512,7 @@ class LedgerTypeAccessTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.lib.ContextsLib;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -592,7 +592,7 @@ class LedgerTypeAccessTest {
                     import com.example.TestOutputLib;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -646,7 +646,7 @@ class LedgerTypeAccessTest {
                     import com.example.TestOutputLib;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -699,7 +699,7 @@ class LedgerTypeAccessTest {
             var validator = """
                     import com.example.TestOutputLib;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -734,7 +734,7 @@ class LedgerTypeAccessTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class VestingValidator {
                         record VestingDatum(byte[] beneficiary, BigInteger deadline) {}
 
@@ -775,7 +775,7 @@ class LedgerTypeAccessTest {
             var source = """
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class VestingValidator {
                         record VestingDatum(byte[] beneficiary, BigInteger deadline) {}
 

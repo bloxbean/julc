@@ -778,7 +778,7 @@ Assume `SignedMintPolicy.java` is your minting policy in `src/main/java`:
 
 ```java
 // src/main/java/com/example/SignedMintPolicy.java
-@MintingPolicy
+@MintingValidator
 class SignedMintPolicy {
     @Entrypoint
     static boolean validate(PlutusData redeemer, PlutusData ctx) {

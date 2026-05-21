@@ -29,7 +29,7 @@ class FqcnResolutionTest {
             // via implicit ledger import, user records via simple name = FQCN
             var source = """
                     record Bid(java.math.BigInteger amount) {}
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -48,7 +48,7 @@ class FqcnResolutionTest {
             // User record in inline code (no package) should resolve correctly
             var source = """
                     record MyDatum(java.math.BigInteger value) {}
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(MyDatum datum, PlutusData redeemer, PlutusData ctx) {
@@ -65,7 +65,7 @@ class FqcnResolutionTest {
             // Ledger types (Value, Address, etc.) should resolve without explicit imports
             var source = """
                     package com.myapp;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -87,7 +87,7 @@ class FqcnResolutionTest {
             var source = """
                     package com.myapp;
                     record Bid(java.math.BigInteger amount) {}
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(Bid datum, PlutusData redeemer, PlutusData ctx) {
@@ -111,7 +111,7 @@ class FqcnResolutionTest {
                     """;
             var validator = """
                     package com.myapp;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -144,7 +144,7 @@ class FqcnResolutionTest {
             var validator = """
                     package com.myapp;
                     record Token(java.math.BigInteger amount) {}
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(Token datum, PlutusData redeemer, PlutusData ctx) {
@@ -179,7 +179,7 @@ class FqcnResolutionTest {
             var validator = """
                     package com.myapp;
                     import com.a.Utils;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -201,7 +201,7 @@ class FqcnResolutionTest {
             var source1 = """
                     package com.myapp;
                     record Bid(java.math.BigInteger amount) {}
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -233,7 +233,7 @@ class FqcnResolutionTest {
                     """;
             var validator = """
                     package com.myapp;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {

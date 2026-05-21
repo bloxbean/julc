@@ -16,7 +16,7 @@ class ErrorQualityTest {
     @Test
     void unknownTypeIncludesDidYouMean() {
         var source = """
-                @Validator
+                @SpendingValidator
                 class MyValidator {
                     record MyDatum(Strng name) {}
 
@@ -34,7 +34,7 @@ class ErrorQualityTest {
     @Test
     void unsupportedPrimitiveIncludesSupportedTypes() {
         var source = """
-                @Validator
+                @SpendingValidator
                 class MyValidator {
                     record BadRecord(float value) {}
 
@@ -76,7 +76,7 @@ class ErrorQualityTest {
     void multipleSubsetErrorsReportedTogether() {
         // Source with multiple unsupported constructs
         var source = """
-                @Validator
+                @SpendingValidator
                 class MyValidator {
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -99,7 +99,7 @@ class ErrorQualityTest {
     @Test
     void typeResolverErrorUsesCompilerException() {
         var source = """
-                @Validator
+                @SpendingValidator
                 class MyValidator {
                     record BadRecord(UnknownTypeName field) {}
 
@@ -118,7 +118,7 @@ class ErrorQualityTest {
         var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class MyValidator {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -136,7 +136,7 @@ class ErrorQualityTest {
         var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class MyValidator {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {

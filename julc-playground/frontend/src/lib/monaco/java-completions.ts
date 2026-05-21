@@ -334,7 +334,7 @@ export function registerJavaHoverProvider(monaco: typeof Monaco) {
         };
       }
 
-      // Case 3: Annotation (@Validator, @Entrypoint, etc.)
+      // Case 3: Annotation (@SpendingValidator, @Entrypoint, etc.)
       if (word.startColumn > 1 && lineContent[word.startColumn - 2] === '@') {
         const annDoc = ANNOTATION_DOCS[wordText];
         if (annDoc) {
@@ -366,9 +366,7 @@ export function registerJavaHoverProvider(monaco: typeof Monaco) {
 
 function annotationCompletions(monaco: typeof Monaco, range: Monaco.IRange): Monaco.languages.CompletionItem[] {
   return [
-    { label: '@Validator', detail: 'Generic validator (purpose from param count)', insertText: 'Validator' },
     { label: '@SpendingValidator', detail: 'Spending validator (2-3 params)', insertText: 'SpendingValidator' },
-    { label: '@MintingPolicy', detail: 'Minting policy (2 params)', insertText: 'MintingPolicy' },
     { label: '@MintingValidator', detail: 'Minting validator (2 params)', insertText: 'MintingValidator' },
     { label: '@WithdrawValidator', detail: 'Withdraw validator', insertText: 'WithdrawValidator' },
     { label: '@CertifyingValidator', detail: 'Certifying validator', insertText: 'CertifyingValidator' },
@@ -577,13 +575,13 @@ function snippets(monaco: typeof Monaco, range: Monaco.IRange): Monaco.languages
       range,
     },
     {
-      label: 'minting policy',
+      label: 'minting validator',
       kind: monaco.languages.CompletionItemKind.Snippet,
-      detail: 'Minting policy template',
+      detail: 'Minting validator template',
       insertText: [
         'import java.math.BigInteger;',
         '',
-        '@MintingPolicy',
+        '@MintingValidator',
         'class ${1:MyPolicy} {',
         '    sealed interface ${2:Action} {',
         '        record Mint() implements ${2:Action} {}',

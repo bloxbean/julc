@@ -37,7 +37,7 @@ class MultiSigValidatorE2ETest extends PluginTestBase {
     static final String MULTI_SIG_VALIDATOR = """
             import com.bloxbean.cardano.julc.core.PlutusData;
 
-            @Validator
+            @SpendingValidator
             class MultiSigValidator {
                 record Keys(PlutusData key1, PlutusData key2) {}
 

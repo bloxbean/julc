@@ -8,7 +8,7 @@ import com.bloxbean.cardano.julc.core.PlutusData;
  * The validator extracts the tx valid range from TxInfo and checks
  * that the deadline is contained within it.
  */
-@Validator
+@SpendingValidator
 class TimelockValidator {
     @Entrypoint
     static boolean validate(PlutusData redeemer, PlutusData ctx) {

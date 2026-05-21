@@ -28,7 +28,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class SpendingE2ETest extends E2ETestBase {
 
     static final String ALWAYS_TRUE_VALIDATOR = """
-            @Validator
+            @SpendingValidator
             class AlwaysTrue {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {

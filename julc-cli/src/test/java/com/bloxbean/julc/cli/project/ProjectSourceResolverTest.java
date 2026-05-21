@@ -27,7 +27,7 @@ class ProjectSourceResolverTest {
     void resolveFindsTransitiveDependencies() {
         String validatorSource = """
                 import com.example.Helper;
-                @Validator
+                @SpendingValidator
                 public class V { }
                 """;
         String helperSource = """

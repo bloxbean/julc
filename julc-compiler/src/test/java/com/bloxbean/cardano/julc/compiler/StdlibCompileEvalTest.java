@@ -236,7 +236,7 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -257,7 +257,7 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -278,7 +278,7 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -307,7 +307,7 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -328,7 +328,7 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -359,7 +359,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -378,7 +378,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -397,7 +397,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -416,7 +416,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -444,7 +444,7 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -468,7 +468,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -497,7 +497,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -521,7 +521,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -545,7 +545,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -582,7 +582,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -639,7 +639,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
                     import com.bloxbean.cardano.julc.core.types.JulcList;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -665,7 +665,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
                     import com.bloxbean.cardano.julc.core.types.JulcList;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -701,7 +701,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -733,7 +733,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -776,7 +776,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -803,7 +803,7 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -823,7 +823,7 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -855,7 +855,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.core.types.JulcMap;
                     import java.util.Optional;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -879,7 +879,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -899,7 +899,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -928,7 +928,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -951,7 +951,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -973,7 +973,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -993,7 +993,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -1013,7 +1013,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -1034,7 +1034,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -1063,7 +1063,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -1082,7 +1082,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -1101,7 +1101,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -1120,7 +1120,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -1139,7 +1139,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -1158,7 +1158,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -1186,7 +1186,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -1208,7 +1208,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -1228,7 +1228,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -1248,7 +1248,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -1269,7 +1269,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -1290,7 +1290,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -1316,7 +1316,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -1375,7 +1375,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -1399,7 +1399,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -1423,7 +1423,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -1455,7 +1455,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -1485,7 +1485,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -1515,7 +1515,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -1540,7 +1540,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -1572,7 +1572,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -1601,7 +1601,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -1632,7 +1632,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -1662,7 +1662,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -1694,7 +1694,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -1726,7 +1726,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -1758,7 +1758,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -1786,7 +1786,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -1811,7 +1811,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
                     import com.bloxbean.cardano.julc.core.types.JulcMap;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -1864,7 +1864,7 @@ class StdlibCompileEvalTest {
             var validator = """
                     import com.example.MyDataLib;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -1898,7 +1898,7 @@ class StdlibCompileEvalTest {
             var validator = """
                     import com.example.MyMathLib;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -1943,7 +1943,7 @@ class StdlibCompileEvalTest {
             var validator = """
                     import com.example.MiddleLib;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -1976,7 +1976,7 @@ class StdlibCompileEvalTest {
                     import java.util.Map;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -2005,7 +2005,7 @@ class StdlibCompileEvalTest {
                     import java.util.Map;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -2034,7 +2034,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import java.util.Map;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -2053,7 +2053,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import java.util.Map;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -2076,7 +2076,7 @@ class StdlibCompileEvalTest {
                     import java.util.Map;
                     import java.util.List;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -2101,7 +2101,7 @@ class StdlibCompileEvalTest {
                     import java.util.Map;
                     import java.util.List;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -2129,7 +2129,7 @@ class StdlibCompileEvalTest {
                     import java.util.Map;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -2157,7 +2157,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import java.util.Map;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -2182,7 +2182,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.ledger.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -2202,7 +2202,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.ledger.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -2221,7 +2221,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.ledger.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -2243,7 +2243,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.ledger.*;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -2270,7 +2270,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.ledger.*;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -2305,7 +2305,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.core.types.Tuple2;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -2324,7 +2324,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.core.types.Tuple2;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -2343,7 +2343,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.core.types.Tuple2;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -2363,7 +2363,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.core.types.Tuple2;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -2385,7 +2385,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.core.types.Tuple2;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -2406,7 +2406,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.core.types.Tuple2;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -2425,7 +2425,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.core.types.Tuple2;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -2446,7 +2446,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.core.types.Tuple2;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -2466,7 +2466,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.core.types.Tuple2;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -2486,7 +2486,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.core.types.Tuple2;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -2509,7 +2509,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.core.types.Tuple3;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -2532,7 +2532,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.core.types.Tuple3;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -2553,7 +2553,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.core.types.Tuple3;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -2581,7 +2581,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.core.types.JulcList;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -2601,7 +2601,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.core.types.JulcList;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -2623,7 +2623,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -2644,7 +2644,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -2669,7 +2669,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -2697,7 +2697,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -2718,7 +2718,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -2739,7 +2739,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -2759,7 +2759,7 @@ class StdlibCompileEvalTest {
         void julcListEmpty() {
             var source = """
                     import com.bloxbean.cardano.julc.core.types.JulcList;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -2778,7 +2778,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.core.types.JulcList;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -2797,7 +2797,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.core.types.JulcList;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -2821,7 +2821,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.core.types.JulcList;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -2847,7 +2847,7 @@ class StdlibCompileEvalTest {
         void julcMapResolvesAsMapType() {
             var source = """
                     import com.bloxbean.cardano.julc.core.types.JulcMap;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -2869,7 +2869,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -2892,7 +2892,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -2915,7 +2915,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -2957,7 +2957,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -2981,7 +2981,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -3003,7 +3003,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.ledger.api.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -3024,7 +3024,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.ledger.api.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -3045,7 +3045,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.ledger.api.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -3068,7 +3068,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -3092,7 +3092,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.ledger.api.*;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -3115,7 +3115,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.ledger.api.*;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -3142,7 +3142,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -3165,7 +3165,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -3188,7 +3188,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -3212,7 +3212,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -3233,7 +3233,7 @@ class StdlibCompileEvalTest {
         @Test
         void mapCast_isEmpty() {
             var source = """
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -3252,7 +3252,7 @@ class StdlibCompileEvalTest {
         @Test
         void mapCast_isEmptyTrue() {
             var source = """
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -3272,7 +3272,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -3295,7 +3295,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -3323,7 +3323,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -3347,7 +3347,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -3371,7 +3371,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -3395,7 +3395,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -3422,7 +3422,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.ledger.api.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -3453,7 +3453,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -3478,7 +3478,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -3506,7 +3506,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -3532,7 +3532,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -3556,7 +3556,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -3585,7 +3585,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -3617,7 +3617,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.lib.MapLib;
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -3644,7 +3644,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -3668,7 +3668,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -3692,7 +3692,7 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import java.util.Optional;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -3716,7 +3716,7 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import java.util.Optional;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -3745,7 +3745,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -3775,7 +3775,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.ledger.api.*;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -3808,7 +3808,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -3838,7 +3838,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import java.math.BigInteger;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -3897,7 +3897,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -3922,7 +3922,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -3948,7 +3948,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -3973,7 +3973,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -3999,7 +3999,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.ledger.api.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -4024,7 +4024,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.ledger.api.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -4050,7 +4050,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.ledger.api.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -4085,7 +4085,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.ledger.api.*;
                     import com.bloxbean.cardano.julc.ledger.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Param PolicyId blacklistCs;
 
@@ -4126,7 +4126,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.ledger.api.*;
                     import com.bloxbean.cardano.julc.ledger.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Param PolicyId blacklistCs;
 
@@ -4176,7 +4176,7 @@ class StdlibCompileEvalTest {
         void listMapWithTypedLambda() {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -4196,7 +4196,7 @@ class StdlibCompileEvalTest {
         void listFilterWithTypedLambda() {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -4216,7 +4216,7 @@ class StdlibCompileEvalTest {
         void listAnyWithTypedLambda() {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -4235,7 +4235,7 @@ class StdlibCompileEvalTest {
         void listAllWithTypedLambda() {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -4254,7 +4254,7 @@ class StdlibCompileEvalTest {
         void listFindWithTypedLambda() {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -4278,7 +4278,7 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import com.bloxbean.cardano.julc.core.types.JulcList;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -4300,7 +4300,7 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import com.bloxbean.cardano.julc.core.types.JulcList;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -4322,7 +4322,7 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import com.bloxbean.cardano.julc.core.types.JulcList;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -4343,7 +4343,7 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import com.bloxbean.cardano.julc.core.types.JulcList;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -4366,7 +4366,7 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import com.bloxbean.cardano.julc.core.types.JulcList;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -4389,7 +4389,7 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import com.bloxbean.cardano.julc.core.types.JulcList;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -4415,7 +4415,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.core.types.JulcList;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.ListsLib;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -4438,7 +4438,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.core.types.JulcList;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.ListsLib;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -4462,7 +4462,7 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import com.bloxbean.cardano.julc.core.types.JulcList;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -4486,7 +4486,7 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import com.bloxbean.cardano.julc.core.types.JulcList;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -4513,7 +4513,7 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import com.bloxbean.cardano.julc.core.types.JulcList;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -4535,7 +4535,7 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import com.bloxbean.cardano.julc.core.types.JulcList;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -4557,7 +4557,7 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import com.bloxbean.cardano.julc.core.types.JulcList;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -4581,7 +4581,7 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import com.bloxbean.cardano.julc.core.types.JulcList;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -4607,7 +4607,7 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import com.bloxbean.cardano.julc.core.types.JulcList;
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -4636,7 +4636,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.core.types.JulcList;
                     import com.bloxbean.cardano.julc.ledger.api.*;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -4664,7 +4664,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.core.types.JulcList;
                     import com.bloxbean.cardano.julc.ledger.api.*;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -4692,7 +4692,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.core.types.JulcList;
                     import com.bloxbean.cardano.julc.ledger.api.*;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -4721,7 +4721,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.core.types.JulcList;
                     import com.bloxbean.cardano.julc.ledger.api.*;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -4756,7 +4756,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.core.types.JulcList;
                     import com.bloxbean.cardano.julc.stdlib.lib.ListsLib;
                     import com.bloxbean.cardano.julc.ledger.api.*;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -4788,7 +4788,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.core.types.JulcList;
                     import com.bloxbean.cardano.julc.ledger.api.*;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -4825,7 +4825,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.core.types.JulcList;
                     import com.bloxbean.cardano.julc.ledger.api.*;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -4852,7 +4852,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.core.types.JulcList;
                     import com.bloxbean.cardano.julc.ledger.api.*;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -4882,7 +4882,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.core.types.JulcList;
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @NewType
                         record AssetId(byte[] id) {}
@@ -4941,7 +4941,7 @@ class StdlibCompileEvalTest {
             var validator = """
                     import com.example.MyLib;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -4973,7 +4973,7 @@ class StdlibCompileEvalTest {
             var validator = """
                     import com.example.MyLib;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -5004,7 +5004,7 @@ class StdlibCompileEvalTest {
             var validator = """
                     import com.example.MyLib;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -5041,7 +5041,7 @@ class StdlibCompileEvalTest {
                     import com.example.MyLib;
                     import com.bloxbean.cardano.julc.ledger.Address;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -5084,7 +5084,7 @@ class StdlibCompileEvalTest {
             var validator = """
                     import com.example.MyLib;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -5114,7 +5114,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -5140,7 +5140,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -5166,7 +5166,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -5187,7 +5187,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -5210,7 +5210,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -5237,7 +5237,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -5270,7 +5270,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -5290,7 +5290,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -5310,7 +5310,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -5330,7 +5330,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -5351,7 +5351,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -5371,7 +5371,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -5391,7 +5391,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -5411,7 +5411,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -5432,7 +5432,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -5453,7 +5453,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -5538,7 +5538,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
                     import java.util.Optional;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -5565,7 +5565,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
                     import java.util.Optional;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -5592,7 +5592,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
                     import java.util.Optional;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -5619,7 +5619,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
                     import java.util.Optional;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -5650,7 +5650,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
                     import java.util.Optional;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -5675,7 +5675,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
                     import java.util.Optional;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -5710,7 +5710,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -5736,7 +5736,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -5770,7 +5770,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -5809,7 +5809,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -5845,7 +5845,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -5879,7 +5879,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -5913,7 +5913,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -5945,7 +5945,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
                     import java.util.Optional;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -5976,7 +5976,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
                     import java.util.Optional;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -6012,7 +6012,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -6031,7 +6031,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -6050,7 +6050,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         static final byte[] TOKEN_NAME = "TOKEN".getBytes();
 
@@ -6078,7 +6078,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -6097,7 +6097,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -6116,7 +6116,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         static final byte[] MARKER = new byte[]{0x46, 0x41, 0x43};
 
@@ -6136,7 +6136,7 @@ class StdlibCompileEvalTest {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -6165,7 +6165,7 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import com.bloxbean.cardano.julc.stdlib.lib.ByteStringLib;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -6186,7 +6186,7 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import com.bloxbean.cardano.julc.stdlib.lib.ByteStringLib;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -6219,7 +6219,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.Builtins;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -6263,7 +6263,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
                     import com.bloxbean.cardano.julc.ledger.*;
 
-                    @MintingPolicy
+                    @MintingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -6296,7 +6296,7 @@ class StdlibCompileEvalTest {
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
                     import com.bloxbean.cardano.julc.ledger.*;
 
-                    @MintingPolicy
+                    @MintingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -6359,7 +6359,7 @@ class StdlibCompileEvalTest {
                     import java.math.BigInteger;
                     import com.bloxbean.cardano.julc.stdlib.lib.*;
 
-                    @Validator
+                    @SpendingValidator
                     class TestValidator {
                         @Entrypoint
                         static boolean validate(PlutusData redeemer, PlutusData ctx) {

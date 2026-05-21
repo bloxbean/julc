@@ -503,7 +503,7 @@ class LoopDesugarTest {
                 import java.math.BigInteger;
                 import com.bloxbean.cardano.julc.ledger.*;
 
-                @Validator
+                @SpendingValidator
                 class BreakValidator {
                     @Entrypoint
                     static boolean validate(byte[] redeemer, ScriptContext ctx) {
@@ -531,7 +531,7 @@ class LoopDesugarTest {
                 import java.math.BigInteger;
                 import com.bloxbean.cardano.julc.ledger.*;
 
-                @Validator
+                @SpendingValidator
                 class BreakValidator2 {
                     @Entrypoint
                     static boolean validate(byte[] redeemer, ScriptContext ctx) {
@@ -563,7 +563,7 @@ class LoopDesugarTest {
                 import java.math.BigInteger;
                 import com.bloxbean.cardano.julc.ledger.*;
 
-                @Validator
+                @SpendingValidator
                 class BreakAfterAssign {
                     @Entrypoint
                     static boolean validate(byte[] redeemer, ScriptContext ctx) {
@@ -591,7 +591,7 @@ class LoopDesugarTest {
                 import java.math.BigInteger;
                 import com.bloxbean.cardano.julc.ledger.*;
 
-                @Validator
+                @SpendingValidator
                 class TwoAccNoBreak {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, ScriptContext ctx) {
@@ -618,7 +618,7 @@ class LoopDesugarTest {
                 import java.math.BigInteger;
                 import com.bloxbean.cardano.julc.ledger.*;
 
-                @Validator
+                @SpendingValidator
                 class TwoAccWithBreak {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, ScriptContext ctx) {
@@ -648,7 +648,7 @@ class LoopDesugarTest {
                 import java.math.BigInteger;
                 import com.bloxbean.cardano.julc.ledger.*;
 
-                @Validator
+                @SpendingValidator
                 class NestedLoops {
                     @Entrypoint
                     static boolean validate(byte[] redeemer, ScriptContext ctx) {
@@ -679,7 +679,7 @@ class LoopDesugarTest {
                 import java.math.BigInteger;
                 import com.bloxbean.cardano.julc.ledger.*;
 
-                @Validator
+                @SpendingValidator
                 class NestedLoops {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, ScriptContext ctx) {
@@ -706,7 +706,7 @@ class LoopDesugarTest {
             var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class NestedWhile {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -735,7 +735,7 @@ class LoopDesugarTest {
             var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class MyValidator {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -753,7 +753,7 @@ class LoopDesugarTest {
             var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class MyValidator {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -883,7 +883,7 @@ class LoopDesugarTest {
             var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class CountdownValidator {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -905,7 +905,7 @@ class LoopDesugarTest {
             var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class BoolWhileValidator {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -927,7 +927,7 @@ class LoopDesugarTest {
             var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class TwoAccWhileValidator {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -951,7 +951,7 @@ class LoopDesugarTest {
             var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class BreakWhileValidator {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -976,7 +976,7 @@ class LoopDesugarTest {
             var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class SideEffectWhileValidator {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -1017,7 +1017,7 @@ class LoopDesugarTest {
             var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class CountdownEval {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -1042,7 +1042,7 @@ class LoopDesugarTest {
             var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class SumEval {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -1069,7 +1069,7 @@ class LoopDesugarTest {
             var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class BreakEval {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -1097,7 +1097,7 @@ class LoopDesugarTest {
             var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class FollowingStmtsEval {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -1125,7 +1125,7 @@ class LoopDesugarTest {
             var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class BoolMultiAccEval {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -1155,7 +1155,7 @@ class LoopDesugarTest {
             var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class BoolBreakMultiAccEval {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -1209,7 +1209,7 @@ class LoopDesugarTest {
             var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class NestedWhileSum {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -1242,7 +1242,7 @@ class LoopDesugarTest {
                 import java.math.BigInteger;
                 import com.bloxbean.cardano.julc.ledger.*;
 
-                @Validator
+                @SpendingValidator
                 class NestedForEach {
                     @Entrypoint
                     static boolean validate(byte[] redeemer, ScriptContext ctx) {
@@ -1270,7 +1270,7 @@ class LoopDesugarTest {
                 import java.math.BigInteger;
                 import com.bloxbean.cardano.julc.ledger.*;
 
-                @Validator
+                @SpendingValidator
                 class WhileInForEach {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, ScriptContext ctx) {
@@ -1298,7 +1298,7 @@ class LoopDesugarTest {
                 import java.math.BigInteger;
                 import com.bloxbean.cardano.julc.ledger.*;
 
-                @Validator
+                @SpendingValidator
                 class ForEachInWhile {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, ScriptContext ctx) {
@@ -1329,7 +1329,7 @@ class LoopDesugarTest {
             var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class ContainsDuplicate {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -1364,7 +1364,7 @@ class LoopDesugarTest {
             var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class InnerBreakOnly {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -1423,7 +1423,7 @@ class LoopDesugarTest {
             var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class TripleWhile {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -1460,7 +1460,7 @@ class LoopDesugarTest {
             var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class QuadWhile {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -1501,7 +1501,7 @@ class LoopDesugarTest {
                 import java.math.BigInteger;
                 import com.bloxbean.cardano.julc.ledger.*;
 
-                @Validator
+                @SpendingValidator
                 class TripleMixed {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, ScriptContext ctx) {
@@ -1534,7 +1534,7 @@ class LoopDesugarTest {
             var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class TripleBreak {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -1574,7 +1574,7 @@ class LoopDesugarTest {
             var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class TripleSharedAcc {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -1639,7 +1639,7 @@ class LoopDesugarTest {
             var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class IfLastStmt {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -1671,7 +1671,7 @@ class LoopDesugarTest {
             var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class CondIncrement {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -1703,7 +1703,7 @@ class LoopDesugarTest {
             var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class IfFollowedByMod {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -1732,7 +1732,7 @@ class LoopDesugarTest {
             var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class WhileIfNoElse {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -1764,7 +1764,7 @@ class LoopDesugarTest {
             var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class BreakAwareIfNoElse {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -1799,7 +1799,7 @@ class LoopDesugarTest {
             var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class NestedIfNoElse {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {

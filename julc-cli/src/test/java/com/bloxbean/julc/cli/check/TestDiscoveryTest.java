@@ -48,6 +48,34 @@ class TestDiscoveryTest {
     }
 
     @Test
+    void discoverIgnoresTestAnnotationTextInCommentsAndStrings(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("CommentOnly.java"), """
+                public class CommentOnly {
+                    // @Test should not be discovered from a comment.
+                    static final String DOC = "@Test";
+                    public static boolean helper() { return true; }
+                }
+                """);
+
+        var tests = TestDiscovery.discover(tempDir);
+
+        assertTrue(tests.isEmpty());
+    }
+
+    @Test
+    void discoverReportsParseErrorForPrefilteredTestCandidate(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("BrokenTest.java"), """
+                // @Test
+                class BrokenTest {
+                """);
+
+        var ex = assertThrows(IllegalArgumentException.class, () -> TestDiscovery.discover(tempDir));
+
+        assertTrue(ex.getMessage().contains("Could not parse @Test candidate"));
+        assertTrue(ex.getMessage().contains("BrokenTest.java"));
+    }
+
+    @Test
     void discoverEmptyDirectory(@TempDir Path tempDir) throws IOException {
         var tests = TestDiscovery.discover(tempDir);
         assertTrue(tests.isEmpty());

@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * Realistic minting policy using stdlib calls and proper ScriptContext.
  * <p>
  * Demonstrates:
- * - @MintingPolicy annotation
+ * - @MintingValidator annotation
  * - ContextsLib.getTxInfo and ContextsLib.signedBy
  * - Redeemer as authority PubKeyHash
  * - Proper V3 ScriptContext with signatories
@@ -30,7 +30,7 @@ class RealisticMintingTest {
      * and the policy checks that the tx is signed by that key.
      */
     static final String AUTHORIZED_MINT = """
-            @MintingPolicy
+            @MintingValidator
             class AuthorizedMinting {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -44,7 +44,7 @@ class RealisticMintingTest {
      * Always-true minting policy (for testing basic flow).
      */
     static final String ALWAYS_TRUE_MINT = """
-            @MintingPolicy
+            @MintingValidator
             class AlwaysTrueMint {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {

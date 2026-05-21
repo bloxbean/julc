@@ -25,7 +25,7 @@ class LibrarySourceResolverTest {
                 import com.example.lib.MathUtils;
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class MyValidator {}
                 """;
 
@@ -40,7 +40,7 @@ class LibrarySourceResolverTest {
     @Test
     void extractImportedClassNames_emptyForNoImports() {
         String source = """
-                @Validator
+                @SpendingValidator
                 class MyValidator {
                     @Entrypoint
                     static boolean validate(BigInteger r, BigInteger c) { return true; }
@@ -70,7 +70,7 @@ class LibrarySourceResolverTest {
         String validatorSource = """
                 import com.example.util.SumTest;
 
-                @Validator
+                @SpendingValidator
                 class MyValidator {}
                 """;
 
@@ -89,7 +89,7 @@ class LibrarySourceResolverTest {
         String validatorSource = """
                 import com.example.util.MathUtils;
 
-                @Validator
+                @SpendingValidator
                 class MyValidator {}
                 """;
 
@@ -120,7 +120,7 @@ class LibrarySourceResolverTest {
                 import com.example.A;
                 import com.example.B;
 
-                @Validator
+                @SpendingValidator
                 class MyValidator {}
                 """;
 
@@ -145,7 +145,7 @@ class LibrarySourceResolverTest {
                 import java.math.BigInteger;
                 import com.example.Unknown;
 
-                @Validator
+                @SpendingValidator
                 class MyValidator {}
                 """;
 
@@ -162,7 +162,7 @@ class LibrarySourceResolverTest {
         String validatorSource = """
                 import com.example.util.SumTest;
 
-                @Validator
+                @SpendingValidator
                 class MyValidator {}
                 """;
 
@@ -199,7 +199,7 @@ class LibrarySourceResolverTest {
         String source = """
                 package com.example.validators;
 
-                @Validator
+                @SpendingValidator
                 class MyValidator {}
                 """;
 
@@ -209,7 +209,7 @@ class LibrarySourceResolverTest {
     @Test
     void extractPackageName_emptyForNoPackage() {
         String source = """
-                @Validator
+                @SpendingValidator
                 class MyValidator {}
                 """;
 
@@ -252,7 +252,7 @@ class LibrarySourceResolverTest {
         String validatorSource = """
                 package com.example;
 
-                @Validator
+                @SpendingValidator
                 class MyValidator {
                     static boolean validate() {
                         var x = MathLib.abs(y);

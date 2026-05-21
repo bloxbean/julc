@@ -51,7 +51,7 @@ class ReturnInLoopTest {
             var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class TestValidator {
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -75,7 +75,7 @@ class ReturnInLoopTest {
             var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class TestValidator {
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -102,7 +102,7 @@ class ReturnInLoopTest {
             var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class TestValidator {
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -131,7 +131,7 @@ class ReturnInLoopTest {
             var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class TestValidator {
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -161,7 +161,7 @@ class ReturnInLoopTest {
             var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class TestValidator {
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -188,7 +188,7 @@ class ReturnInLoopTest {
             var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class TestValidator {
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -219,7 +219,7 @@ class ReturnInLoopTest {
                 import java.math.BigInteger;
                 import java.util.List;
 
-                @Validator
+                @SpendingValidator
                 class TestValidator {
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -244,7 +244,7 @@ class ReturnInLoopTest {
                 import java.math.BigInteger;
                 import java.util.List;
 
-                @Validator
+                @SpendingValidator
                 class TestValidator {
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -271,7 +271,7 @@ class ReturnInLoopTest {
                 import java.math.BigInteger;
                 import java.util.List;
 
-                @Validator
+                @SpendingValidator
                 class TestValidator {
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -299,7 +299,7 @@ class ReturnInLoopTest {
                 import java.util.List;
                 import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                @Validator
+                @SpendingValidator
                 class TestValidator {
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -333,7 +333,7 @@ class ReturnInLoopTest {
                 import java.math.BigInteger;
                 import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                @Validator
+                @SpendingValidator
                 class TestValidator {
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -360,7 +360,7 @@ class ReturnInLoopTest {
                 import java.math.BigInteger;
                 import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                @Validator
+                @SpendingValidator
                 class TestValidator {
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -387,7 +387,7 @@ class ReturnInLoopTest {
                 import java.math.BigInteger;
                 import com.bloxbean.cardano.julc.stdlib.Builtins;
 
-                @Validator
+                @SpendingValidator
                 class TestValidator {
                     @Entrypoint
                     static boolean validate(PlutusData redeemer, PlutusData ctx) {

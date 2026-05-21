@@ -299,7 +299,7 @@ class SealedInterfaceTest {
                 record Mint(int amt) implements Action {}
                 record Burn(int amt) implements Action {}
 
-                @Validator
+                @SpendingValidator
                 class MyValidator {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -321,7 +321,7 @@ class SealedInterfaceTest {
                 record Mint(int amt) implements Action {}
                 record Burn(int amt) implements Action {}
 
-                @Validator
+                @SpendingValidator
                 class MyValidator {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -344,7 +344,7 @@ class SealedInterfaceTest {
                 record Refund(int reason) implements Redeemer {}
                 record Cancel() implements Redeemer {}
 
-                @Validator
+                @SpendingValidator
                 class MyValidator {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -365,7 +365,7 @@ class SealedInterfaceTest {
                 record Mint(int amt) implements Action {}
                 record Burn(int amt) implements Action {}
 
-                @Validator
+                @SpendingValidator
                 class MyValidator {
                     static boolean isMint() {
                         var m = new Mint(10);

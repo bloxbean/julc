@@ -90,7 +90,7 @@ class PostLoopVariableTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -117,7 +117,7 @@ class PostLoopVariableTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -142,7 +142,7 @@ class PostLoopVariableTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -170,7 +170,7 @@ class PostLoopVariableTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -197,7 +197,7 @@ class PostLoopVariableTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -223,7 +223,7 @@ class PostLoopVariableTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -248,7 +248,7 @@ class PostLoopVariableTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -273,7 +273,7 @@ class PostLoopVariableTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -299,7 +299,7 @@ class PostLoopVariableTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -326,7 +326,7 @@ class PostLoopVariableTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -356,7 +356,7 @@ class PostLoopVariableTest {
             import java.math.BigInteger;
             import com.bloxbean.cardano.julc.ledger.*;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(byte[] redeemer, ScriptContext ctx) {
@@ -388,7 +388,7 @@ class PostLoopVariableTest {
             import java.math.BigInteger;
             import com.bloxbean.cardano.julc.ledger.*;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(byte[] redeemer, ScriptContext ctx) {
@@ -422,7 +422,7 @@ class PostLoopVariableTest {
             import java.math.BigInteger;
             import com.bloxbean.cardano.julc.ledger.*;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(byte[] redeemer, ScriptContext ctx) {
@@ -449,7 +449,7 @@ class PostLoopVariableTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -480,7 +480,7 @@ class PostLoopVariableTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -519,7 +519,7 @@ class PostLoopVariableTest {
             import java.math.BigInteger;
             import com.bloxbean.cardano.julc.ledger.*;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(byte[] redeemer, ScriptContext ctx) {
@@ -557,7 +557,7 @@ class PostLoopVariableTest {
             import java.math.BigInteger;
             import com.bloxbean.cardano.julc.ledger.*;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(byte[] redeemer, ScriptContext ctx) {
@@ -593,7 +593,7 @@ class PostLoopVariableTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 static long add(long a, long b) {
                     return a + b;
@@ -624,7 +624,7 @@ class PostLoopVariableTest {
             import java.math.BigInteger;
             import com.bloxbean.cardano.julc.ledger.*;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(byte[] redeemer, ScriptContext ctx) {
@@ -656,7 +656,7 @@ class PostLoopVariableTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {

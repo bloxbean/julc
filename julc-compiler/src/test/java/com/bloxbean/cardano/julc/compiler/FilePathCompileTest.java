@@ -22,7 +22,7 @@ class FilePathCompileTest {
     private static final String VALIDATOR_SOURCE = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class TestValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, ScriptContext ctx) {

@@ -38,7 +38,7 @@ public final class JulcScriptLoader {
      * For non-parameterized validators, returns the script directly.
      * For parameterized validators, throws with a helpful message listing required params.
      *
-     * @param validatorClass the validator class annotated with @Validator or @MintingPolicy
+     * @param validatorClass the validator class annotated with a supported JuLC validator annotation
      * @return the compiled PlutusV3Script ready for use with cardano-client-lib
      * @throws IllegalArgumentException if the validator is parameterized (use the overload with params)
      *                                  or if no compiled script is found for the class
@@ -65,7 +65,7 @@ public final class JulcScriptLoader {
      * Each parameter is converted from cardano-client-lib {@code PlutusData} to plutus-core
      * {@code PlutusData}, then applied via UPLC partial application.
      *
-     * @param validatorClass the validator class annotated with @Validator or @MintingPolicy
+     * @param validatorClass the validator class annotated with a supported JuLC validator annotation
      * @param params         the parameter values to apply (as cardano-client-lib PlutusData)
      * @return the compiled PlutusV3Script with parameters applied
      * @throws IllegalArgumentException if the param count doesn't match the validator's requirements
@@ -99,7 +99,7 @@ public final class JulcScriptLoader {
     /**
      * Get the script hash of a pre-compiled validator.
      *
-     * @param validatorClass the validator class annotated with @Validator or @MintingPolicy
+     * @param validatorClass the validator class annotated with a supported JuLC validator annotation
      * @return the script hash as hex string (28 bytes / 56 hex chars)
      * @throws IllegalArgumentException if the validator is parameterized or no compiled script is found
      */
@@ -115,7 +115,7 @@ public final class JulcScriptLoader {
     /**
      * Get the script hash of a pre-compiled parameterized validator with parameters applied.
      *
-     * @param validatorClass the validator class annotated with @Validator or @MintingPolicy
+     * @param validatorClass the validator class annotated with a supported JuLC validator annotation
      * @param params         the parameter values to apply (as cardano-client-lib PlutusData)
      * @return the script hash as hex string (28 bytes / 56 hex chars)
      */
@@ -137,7 +137,7 @@ public final class JulcScriptLoader {
     /**
      * Load the full ValidatorOutput metadata for a pre-compiled validator.
      *
-     * @param validatorClass the validator class annotated with @Validator or @MintingPolicy
+     * @param validatorClass the validator class annotated with a supported JuLC validator annotation
      * @return the ValidatorOutput containing type, description, cborHex, hash, and params
      * @throws IllegalArgumentException if no compiled script is found for the class
      */
@@ -175,7 +175,7 @@ public final class JulcScriptLoader {
      * it is loaded and reconstructed against the deserialized term tree, preserving
      * Term object identity for runtime lookups.
      *
-     * @param validatorClass the validator class annotated with @Validator or @MintingPolicy
+     * @param validatorClass the validator class annotated with a supported JuLC validator annotation
      * @return LoadResult containing script, source map (may be null), and program
      * @throws IllegalArgumentException if the validator is parameterized or no compiled script is found
      */
@@ -205,7 +205,7 @@ public final class JulcScriptLoader {
      * preserve object identity through {@code applyParams()}, which only wraps with new
      * outer Apply nodes.
      *
-     * @param validatorClass the validator class annotated with @Validator or @MintingPolicy
+     * @param validatorClass the validator class annotated with a supported JuLC validator annotation
      * @param params         the parameter values to apply (as cardano-client-lib PlutusData)
      * @return LoadResult containing parameterized script, source map (may be null), and program
      */

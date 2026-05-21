@@ -1,23 +1,22 @@
 package com.bloxbean.julc.cli.check;
 
+import com.bloxbean.cardano.julc.compiler.JavaSourceIntrospector;
+import com.github.javaparser.JavaParser;
+import com.github.javaparser.ParserConfiguration;
+import com.github.javaparser.ast.CompilationUnit;
+import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
  * Discovers @Test-annotated static methods in test/ source files.
  */
 public final class TestDiscovery {
-
-    private static final Pattern TEST_ANNOTATION = Pattern.compile("@Test\\s");
-    private static final Pattern STATIC_METHOD = Pattern.compile(
-            "public\\s+static\\s+boolean\\s+(\\w+)\\s*\\(");
-    private static final Pattern CLASS_NAME = Pattern.compile(
-            "(?:public\\s+)?class\\s+(\\w+)");
 
     private TestDiscovery() {}
 
@@ -39,23 +38,18 @@ public final class TestDiscovery {
                     .forEach(p -> {
                         try {
                             String source = Files.readString(p);
-                            if (!TEST_ANNOTATION.matcher(source).find()) return;
+                            if (!JavaSourceIntrospector.mightContainTestAnnotation(source)) return;
 
-                            String className = extractClassName(source);
-                            if (className == null) return;
-
-                            // Find @Test annotated methods
-                            var lines = source.split("\n");
-                            for (int i = 0; i < lines.length; i++) {
-                                if (lines[i].strip().startsWith("@Test")) {
-                                    // Look ahead for the method declaration
-                                    for (int j = i + 1; j < Math.min(i + 5, lines.length); j++) {
-                                        var matcher = STATIC_METHOD.matcher(lines[j]);
-                                        if (matcher.find()) {
-                                            results.add(new TestMethod(
-                                                    p.toString(), className, matcher.group(1), source));
-                                            break;
-                                        }
+                            CompilationUnit cu = parseTestSource(p, source);
+                            for (var cls : cu.findAll(ClassOrInterfaceDeclaration.class)) {
+                                String className = cls.getNameAsString();
+                                for (var method : cls.getMethods()) {
+                                    if (JavaSourceIntrospector.hasAnnotation(method, "Test")
+                                            && method.isPublic()
+                                            && method.isStatic()
+                                            && "boolean".equals(method.getTypeAsString())) {
+                                        results.add(new TestMethod(
+                                                p.toString(), className, method.getNameAsString(), source));
                                     }
                                 }
                             }
@@ -68,8 +62,17 @@ public final class TestDiscovery {
         return results;
     }
 
-    private static String extractClassName(String source) {
-        var matcher = CLASS_NAME.matcher(source);
-        return matcher.find() ? matcher.group(1) : null;
+    private static CompilationUnit parseTestSource(Path path, String source) {
+        var configuration = new ParserConfiguration()
+                .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
+        var result = new JavaParser(configuration).parse(source);
+        if (!result.isSuccessful() || result.getResult().isEmpty()) {
+            var problems = result.getProblems().stream()
+                    .map(problem -> problem.getMessage())
+                    .toList();
+            throw new IllegalArgumentException("Could not parse @Test candidate "
+                    + path + ": " + problems);
+        }
+        return result.getResult().get();
     }
 }

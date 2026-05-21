@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class CompilationInspectionTest {
 
     private static final String SIMPLE_VALIDATOR = """
-            @Validator
+            @SpendingValidator
             class SimpleValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, ScriptContext ctx) {
@@ -97,7 +97,7 @@ class CompilationInspectionTest {
         var source = """
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class HelperValidator {
                     static boolean isPositive(long x) {
                         return x > 0;

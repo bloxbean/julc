@@ -51,7 +51,7 @@ class MethodOrderingTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class MyValidator {
                 @Entrypoint
                 static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -74,7 +74,7 @@ class MethodOrderingTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class MyValidator {
                 @Entrypoint
                 static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -101,7 +101,7 @@ class MethodOrderingTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class MyValidator {
                 @Entrypoint
                 static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -132,7 +132,7 @@ class MethodOrderingTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class MyValidator {
                 @Entrypoint
                 static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -193,7 +193,7 @@ class MethodOrderingTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class MyValidator {
                 static boolean isEven(BigInteger n) {
                     if (n == 0) {
@@ -228,7 +228,7 @@ class MethodOrderingTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class MyValidator {
                 static BigInteger fa(BigInteger n) {
                     if (n == 0) { return 1; } else { return fb(n - 1); }
@@ -259,7 +259,7 @@ class MethodOrderingTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class MyValidator {
                 static BigInteger double_(BigInteger x) {
                     return x + x;
@@ -286,7 +286,7 @@ class MethodOrderingTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class MyValidator {
                 @Entrypoint
                 static boolean validate(BigInteger redeemer, BigInteger ctx) {

@@ -4,6 +4,7 @@ import com.bloxbean.cardano.julc.blueprint.BlueprintConfig;
 import com.bloxbean.cardano.julc.blueprint.BlueprintGenerator;
 import com.bloxbean.cardano.julc.clientlib.JulcScriptAdapter;
 import com.bloxbean.cardano.julc.compiler.CompilerOptions;
+import com.bloxbean.cardano.julc.compiler.JavaSourceIntrospector;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
 import com.bloxbean.cardano.julc.core.source.SourceMapSerializer;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
@@ -23,9 +24,9 @@ import java.util.List;
 /**
  * Gradle task that compiles Plutus validator Java source files to UPLC scripts.
  * <p>
- * For each {@code .java} file in {@code sourceDir} annotated with {@code @Validator} or
- * {@code @MintingPolicy}, produces a JSON file in {@code outputDir} containing the
- * compiled CBOR hex and script hash.
+ * For each {@code .java} file in {@code sourceDir} annotated with a supported
+ * JuLC validator annotation, produces a JSON file in {@code outputDir}
+ * containing the compiled CBOR hex and script hash.
  * <p>
  * Non-validator {@code .java} files (including those annotated with {@code @OnchainLibrary})
  * are automatically treated as library sources and compiled alongside each validator.
@@ -60,14 +61,28 @@ public abstract class CompileJulcTask extends DefaultTask {
         List<File> javaFiles = findJavaFiles(srcDir);
 
         // Separate validators from library files
-        var validatorFiles = new ArrayList<File>();
+        var validatorFiles = new ArrayList<ValidatorFile>();
         var libraryFiles = new ArrayList<File>();
 
         for (File javaFile : javaFiles) {
             String source = Files.readString(javaFile.toPath());
-            if (isValidatorSource(source)) {
-                validatorFiles.add(javaFile);
+            if (!JavaSourceIntrospector.mightContainValidatorAnnotation(source)) {
+                libraryFiles.add(javaFile);
+                continue;
+            }
+
+            JavaSourceIntrospector.SourceInfo sourceInfo = inspect(javaFile, source);
+            rejectRoleConflicts(sourceInfo);
+            if (sourceInfo.legacyValidatorType().isPresent()) {
+                throw new GradleException(JavaSourceIntrospector.legacyAnnotationMigrationMessage(
+                        sourceInfo.legacyValidatorType().get()));
+            }
+            if (sourceInfo.validatorType().isPresent()) {
+                validatorFiles.add(new ValidatorFile(javaFile,
+                        sourceInfo.scriptType().orElse("PlutusScriptV3")));
             } else {
+                getLogger().info("Treating {} as a library source: text matched validator annotation but no real validator annotation was found",
+                        javaFile);
                 libraryFiles.add(javaFile);
             }
         }
@@ -81,13 +96,13 @@ public abstract class CompileJulcTask extends DefaultTask {
         int compiled = 0;
         var compiledList = new ArrayList<BlueprintGenerator.CompiledValidator>();
 
-        for (File validatorFile : validatorFiles) {
-            String validatorSource = Files.readString(validatorFile.toPath());
+        for (ValidatorFile validatorFile : validatorFiles) {
+            String validatorSource = Files.readString(validatorFile.file().toPath());
 
             // Compile with multi-file support
             var result = compiler.compile(validatorSource, librarySources);
             if (result.hasErrors()) {
-                throw new GradleException("Compilation failed for " + validatorFile.getName()
+                throw new GradleException("Compilation failed for " + validatorFile.file().getName()
                         + ": " + result.diagnostics());
             }
 
@@ -95,20 +110,18 @@ public abstract class CompileJulcTask extends DefaultTask {
             var program = result.program();
             var script = JulcScriptAdapter.fromProgram(program);
             String scriptHash = JulcScriptAdapter.scriptHash(program);
-            String validatorName = validatorFile.getName().replace(".java", "");
-
-            String scriptType = resolveScriptType(validatorSource);
+            String validatorName = validatorFile.file().getName().replace(".java", "");
 
             int sizeBytes = result.scriptSizeBytes();
             String sizeStr = result.scriptSizeFormatted();
 
-            var output = new ValidatorOutput(scriptType, validatorName,
+            var output = new ValidatorOutput(validatorFile.scriptType(), validatorName,
                     script.getCborHex(), scriptHash, sizeBytes);
 
             File outputFile = new File(outDir, validatorName + ".json");
             Files.writeString(outputFile.toPath(), output.toJson());
             getLogger().lifecycle("Compiled {} → {} (hash: {}, size: {})",
-                    validatorFile.getName(), outputFile.getName(), scriptHash, sizeStr);
+                    validatorFile.file().getName(), outputFile.getName(), scriptHash, sizeStr);
 
             // Write source map if enabled and available
             if (Boolean.TRUE.equals(getSourceMap().getOrElse(false)) && result.hasSourceMap()) {
@@ -162,20 +175,21 @@ public abstract class CompileJulcTask extends DefaultTask {
         }
     }
 
-    private static boolean isValidatorSource(String source) {
-        return source.contains("@Validator") || source.contains("@MintingPolicy")
-                || source.contains("@SpendingValidator") || source.contains("@MintingValidator")
-                || source.contains("@WithdrawValidator") || source.contains("@CertifyingValidator")
-                || source.contains("@VotingValidator") || source.contains("@ProposingValidator");
+    private record ValidatorFile(File file, String scriptType) {}
+
+    private static JavaSourceIntrospector.SourceInfo inspect(File javaFile, String source) {
+        try {
+            return JavaSourceIntrospector.inspect(source);
+        } catch (JavaSourceIntrospector.SourceParseException e) {
+            throw new GradleException("Could not parse validator candidate " + javaFile
+                    + ": " + e.problems(), e);
+        }
     }
 
-    private static String resolveScriptType(String source) {
-        if (source.contains("@MintingPolicy") || source.contains("@MintingValidator"))
-            return "PlutusScriptV3-Minting";
-        if (source.contains("@WithdrawValidator")) return "PlutusScriptV3-Withdraw";
-        if (source.contains("@CertifyingValidator")) return "PlutusScriptV3-Certifying";
-        if (source.contains("@VotingValidator")) return "PlutusScriptV3-Voting";
-        if (source.contains("@ProposingValidator")) return "PlutusScriptV3-Proposing";
-        return "PlutusScriptV3";
+    private static void rejectRoleConflicts(JavaSourceIntrospector.SourceInfo sourceInfo) {
+        sourceInfo.firstRoleConflict()
+                .ifPresent(conflict -> {
+                    throw new GradleException(conflict.message());
+                });
     }
 }

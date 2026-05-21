@@ -1,6 +1,6 @@
 import java.math.BigInteger;
 
-@MintingPolicy
+@MintingValidator
 class MintingPolicy {
     sealed interface Action {
         record Mint(BigInteger amount) implements Action {}

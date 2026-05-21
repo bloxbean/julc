@@ -11,7 +11,7 @@ import java.math.BigInteger;
  * - List instance method: txInfo.signatories().contains(datum.beneficiary())
  * - Custom record field access: datum.deadline()
  */
-@Validator
+@SpendingValidator
 class TypedVestingValidator {
     record VestingDatum(byte[] beneficiary, BigInteger deadline) {}
 

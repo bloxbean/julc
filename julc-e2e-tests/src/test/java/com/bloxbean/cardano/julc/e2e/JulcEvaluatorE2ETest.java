@@ -44,7 +44,7 @@ class JulcEvaluatorE2ETest extends E2ETestBase {
     // --- Validators ---
 
     static final String ALWAYS_TRUE_V3 = """
-            @Validator
+            @SpendingValidator
             class AlwaysTrue {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -54,7 +54,7 @@ class JulcEvaluatorE2ETest extends E2ETestBase {
             """;
 
     static final String ALWAYS_TRUE_MINT_V3 = """
-            @MintingPolicy
+            @MintingValidator
             class AlwaysTrueMint {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {

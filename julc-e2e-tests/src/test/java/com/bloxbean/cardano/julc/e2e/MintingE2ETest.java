@@ -25,7 +25,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class MintingE2ETest extends E2ETestBase {
 
     static final String ALWAYS_TRUE_MINT = """
-            @MintingPolicy
+            @MintingValidator
             class AlwaysTrueMint {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {

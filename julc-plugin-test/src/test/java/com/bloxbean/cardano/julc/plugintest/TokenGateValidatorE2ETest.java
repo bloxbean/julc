@@ -37,7 +37,7 @@ class TokenGateValidatorE2ETest extends PluginTestBase {
     static final String TOKEN_GATE_VALIDATOR = """
             import com.bloxbean.cardano.julc.core.PlutusData;
 
-            @Validator
+            @SpendingValidator
             class TokenGateValidator {
                 sealed interface Action {
                     record Spend(PlutusData owner) implements Action {}

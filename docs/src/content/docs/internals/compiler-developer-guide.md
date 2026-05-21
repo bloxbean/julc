@@ -213,7 +213,7 @@ sealed interface Shape {
 | `julc-vm` | VM SPI interface — pluggable execution backend |
 | `julc-vm-scalus` | Scalus-based VM implementation (evaluates UPLC programs) |
 | `julc-ledger-api` | Java records for Cardano ledger types (TxInfo, ScriptContext, TxOut, etc.) |
-| `julc-onchain-api` | Annotations (`@Validator`, `@Entrypoint`, `@Param`, `@OnchainLibrary`) + off-chain stubs for stdlib classes |
+| `julc-onchain-api` | Annotations (`@SpendingValidator`, `@MintingValidator`, `@Entrypoint`, `@Param`, `@OnchainLibrary`) + off-chain stubs for stdlib classes |
 | `julc-testkit` | `ValidatorTest` base class, `SourceDiscovery` for test-time compilation |
 | `julc-annotation-processor` | Java annotation processor — compiles validators at build time |
 | `julc-gradle-plugin` | Gradle plugin wrapping the annotation processor |
@@ -375,8 +375,8 @@ Java Source(s)
 ┌─────────────────────────────────────┐
 │  1. Parse                           │  JavaParser → CompilationUnit ASTs
 │  2. Validate                        │  SubsetValidator rejects unsupported constructs
-│  3. Library Check                   │  Ensure libraries don't contain @Validator
-│  4. Annotated Class Discovery       │  Find class with @Validator/@MintingPolicy/etc.
+│  3. Library Check                   │  Ensure libraries don't contain validator annotations
+│  4. Annotated Class Discovery       │  Find class with a supported validator annotation
 │  5. Script Purpose Detection        │  Map annotation → SPENDING/MINTING/WITHDRAW/...
 │  6. Type Registration               │  LedgerTypeRegistry + TypeRegistrar (topo sort)
 │  7. @Param Field Detection          │  Find @Param-annotated fields
@@ -843,8 +843,8 @@ Converted to `DataMatch` with the same structure. Missing variants are filled wi
 
 | Purpose | Annotations | Param count |
 |---------|-------------|-------------|
-| `SPENDING` | `@Validator`, `@SpendingValidator` | 2 or 3 |
-| `MINTING` | `@MintingPolicy`, `@MintingValidator` | 2 |
+| `SPENDING` | `@SpendingValidator` | 2 or 3 |
+| `MINTING` | `@MintingValidator` | 2 |
 | `WITHDRAW` | `@WithdrawValidator` | 2 |
 | `CERTIFYING` | `@CertifyingValidator` | 2 |
 | `VOTING` | `@VotingValidator` | 2 |
@@ -1397,7 +1397,7 @@ public static <T> T last(List<T> list) {
 @Test
 void testListLast() {
     var source = """
-        @Validator
+        @SpendingValidator
         public class Test {
             @Entrypoint
             public static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -1530,7 +1530,7 @@ reg.register("SortLib", "sortBy", args -> {
 @Test
 void testSort() {
     var source = """
-        @Validator
+        @SpendingValidator
         public class Test {
             @Entrypoint
             public static boolean validate(PlutusData r, PlutusData ctx) {
@@ -1637,7 +1637,7 @@ void testMyNewOptimization() {
 ### Source
 
 ```java
-@Validator
+@SpendingValidator
 public class SimpleValidator {
     @Entrypoint
     public static boolean validate(PlutusData redeemer, PlutusData scriptContext) {
@@ -1651,7 +1651,7 @@ public class SimpleValidator {
 ### Phase 1: Parse
 
 JavaParser produces an AST with:
-- `ClassOrInterfaceDeclaration` "SimpleValidator" with `@Validator`
+- `ClassOrInterfaceDeclaration` "SimpleValidator" with `@SpendingValidator`
 - `MethodDeclaration` "validate" with `@Entrypoint`
 - Two parameters: `redeemer: PlutusData`, `scriptContext: PlutusData`
 - Body: three statements (two var decls, one return)
@@ -1662,7 +1662,7 @@ SubsetValidator walks the AST. No rejected constructs found.
 
 ### Phase 5: Script Purpose
 
-`@Validator` → `SPENDING`. Two parameters → 2-param wrapper.
+`@SpendingValidator` -> `SPENDING`. Two parameters -> 2-param wrapper.
 
 ### Phase 6: Type Registration
 
@@ -1871,7 +1871,7 @@ System.out.println("Script size: " + cbor.length() / 2 + " bytes");
 void testFeature() {
     // 1. Define Java source
     var source = """
-        @Validator
+        @SpendingValidator
         public class Test {
             @Entrypoint
             public static boolean validate(PlutusData redeemer, PlutusData ctx) {

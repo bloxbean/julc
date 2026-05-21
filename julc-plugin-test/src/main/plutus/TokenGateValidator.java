@@ -6,7 +6,7 @@ import com.bloxbean.cardano.julc.core.PlutusData;
  * Defines two actions: Spend(owner) and Delegate(delegate).
  * Both require the corresponding PubKeyHash to be in the signatories.
  */
-@Validator
+@SpendingValidator
 class TokenGateValidator {
     sealed interface Action {
         record Spend(PlutusData owner) implements Action {}

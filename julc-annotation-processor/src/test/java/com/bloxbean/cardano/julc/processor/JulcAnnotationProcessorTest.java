@@ -29,7 +29,7 @@ class JulcAnnotationProcessorTest {
                 import com.bloxbean.cardano.julc.stdlib.annotation.*;
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class SimpleValidator {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -57,12 +57,12 @@ class JulcAnnotationProcessorTest {
     }
 
     @Test
-    void compilesMintingPolicyAndGeneratesJson() throws Exception {
+    void compilesMintingValidatorAndGeneratesJson() throws Exception {
         var source = """
                 import com.bloxbean.cardano.julc.stdlib.annotation.*;
                 import java.math.BigInteger;
 
-                @MintingPolicy
+                @MintingValidator
                 class SimpleMinting {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -88,7 +88,7 @@ class JulcAnnotationProcessorTest {
                 import com.bloxbean.cardano.julc.stdlib.annotation.*;
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class ParamValidator {
                     @Param byte[] owner;
                     @Param BigInteger deadline;
@@ -200,7 +200,7 @@ class JulcAnnotationProcessorTest {
                 import com.bloxbean.cardano.julc.stdlib.annotation.*;
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class BpValidator {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -230,7 +230,7 @@ class JulcAnnotationProcessorTest {
                 import com.bloxbean.cardano.julc.stdlib.annotation.*;
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class OptValidator {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -257,7 +257,7 @@ class JulcAnnotationProcessorTest {
                 import com.bloxbean.cardano.julc.stdlib.annotation.*;
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class DefValidator {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -290,7 +290,7 @@ class JulcAnnotationProcessorTest {
                 import com.bloxbean.cardano.julc.stdlib.annotation.*;
                 import java.math.BigInteger;
 
-                @Validator
+                @SpendingValidator
                 class UsesNested {
                     @Entrypoint
                     static boolean validate(BigInteger redeemer, BigInteger ctx) {

@@ -35,7 +35,7 @@ class RealisticVestingTest {
      * Uses ContextsLib.getTxInfo and ContextsLib.signedBy.
      */
     static final String VESTING_SOURCE = """
-            @Validator
+            @SpendingValidator
             class VestingValidator {
                 record VestingDatum(PlutusData beneficiary, PlutusData deadline) {}
 
@@ -54,7 +54,7 @@ class RealisticVestingTest {
      * the tx is signed by that key.
      */
     static final String SIGNED_BY_SOURCE = """
-            @Validator
+            @SpendingValidator
             class SignedByValidator {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, PlutusData ctx) {

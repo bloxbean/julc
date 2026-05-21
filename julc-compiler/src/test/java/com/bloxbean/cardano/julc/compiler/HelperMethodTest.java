@@ -42,7 +42,7 @@ class HelperMethodTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class MyValidator {
                 static BigInteger double_(BigInteger x) {
                     return x + x;
@@ -64,7 +64,7 @@ class HelperMethodTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class MyValidator {
                 static BigInteger add(BigInteger a, BigInteger b) {
                     return a + b;
@@ -89,7 +89,7 @@ class HelperMethodTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class MyValidator {
                 static BigInteger double_(BigInteger x) {
                     return x + x;
@@ -114,7 +114,7 @@ class HelperMethodTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class MyValidator {
                 static BigInteger addThree(BigInteger a, BigInteger b, BigInteger c) {
                     return a + b + c;
@@ -135,7 +135,7 @@ class HelperMethodTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class MyValidator {
                 static boolean isPositive(BigInteger x) {
                     return x > 0;
@@ -156,7 +156,7 @@ class HelperMethodTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class MyValidator {
                 static BigInteger abs(BigInteger x) {
                     if (x < 0) {
@@ -181,7 +181,7 @@ class HelperMethodTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class MyValidator {
                 static BigInteger double_(BigInteger x) {
                     return x + x;
@@ -203,7 +203,7 @@ class HelperMethodTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class MyValidator {
                 static BigInteger magicNumber() {
                     return 42;
@@ -224,7 +224,7 @@ class HelperMethodTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class MyValidator {
                 static BigInteger double_(BigInteger x) {
                     return x + x;
@@ -246,7 +246,7 @@ class HelperMethodTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class MyValidator {
                 @Entrypoint
                 static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -263,7 +263,7 @@ class HelperMethodTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class MyValidator {
                 static BigInteger compute(BigInteger x) {
                     var doubled = x + x;
@@ -286,7 +286,7 @@ class HelperMethodTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class MyValidator {
                 static BigInteger add(BigInteger a, BigInteger b) {
                     return a + b;

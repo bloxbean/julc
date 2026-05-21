@@ -35,7 +35,7 @@ class TypedVestingValidatorE2ETest extends PluginTestBase {
             import com.bloxbean.cardano.julc.core.PlutusData;
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class TypedVestingValidator {
                 record VestingDatum(byte[] beneficiary, BigInteger deadline) {}
 

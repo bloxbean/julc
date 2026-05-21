@@ -8,7 +8,7 @@ import com.bloxbean.cardano.julc.core.PlutusData;
  * - Chained method call: ctx.txInfo().signatories().contains(redeemer)
  * - No ContextsLib dependency — pure typed access
  */
-@MintingPolicy
+@MintingValidator
 class TypedMintingPolicy {
     @Entrypoint
     static boolean validate(PlutusData redeemer, ScriptContext ctx) {

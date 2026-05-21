@@ -13,7 +13,7 @@ class JulcCompilerTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class SimpleValidator {
                 @Entrypoint
                 static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -33,7 +33,7 @@ class JulcCompilerTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class CheckValidator {
                 @Entrypoint
                 static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -55,7 +55,7 @@ class JulcCompilerTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class LetValidator {
                 @Entrypoint
                 static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -71,7 +71,7 @@ class JulcCompilerTest {
     @Test
     void rejectsInvalidSubset() {
         var source = """
-            @Validator
+            @SpendingValidator
             class BadValidator {
                 @Entrypoint
                 static boolean validate(int a, int b) {
@@ -85,7 +85,7 @@ class JulcCompilerTest {
     @Test
     void rejectsMissingEntrypoint() {
         var source = """
-            @Validator
+            @SpendingValidator
             class NoEntrypoint {
                 static boolean validate(int a) { return true; }
             }
@@ -105,11 +105,11 @@ class JulcCompilerTest {
     }
 
     @Test
-    void compilesMintingPolicy() {
+    void compilesBasicMintingValidator() {
         var source = """
             import java.math.BigInteger;
 
-            @MintingPolicy
+            @MintingValidator
             class SimpleMint {
                 @Entrypoint
                 static boolean validate(BigInteger redeemer, BigInteger ctx) {
@@ -230,7 +230,7 @@ class JulcCompilerTest {
     }
 
     @Test
-    void deprecatedValidatorStillWorks() {
+    void rejectsLegacyValidatorAnnotation() {
         var source = """
             import java.math.BigInteger;
 
@@ -242,13 +242,12 @@ class JulcCompilerTest {
                 }
             }
             """;
-        var result = compiler.compile(source);
-        assertNotNull(result.program());
-        assertFalse(result.hasErrors());
+        var ex = assertThrows(CompilerException.class, () -> compiler.compile(source));
+        assertTrue(ex.getMessage().contains("Use @SpendingValidator instead"));
     }
 
     @Test
-    void deprecatedMintingPolicyStillWorks() {
+    void rejectsLegacyMintingPolicyAnnotation() {
         var source = """
             import java.math.BigInteger;
 
@@ -260,9 +259,8 @@ class JulcCompilerTest {
                 }
             }
             """;
-        var result = compiler.compile(source);
-        assertNotNull(result.program());
-        assertFalse(result.hasErrors());
+        var ex = assertThrows(CompilerException.class, () -> compiler.compile(source));
+        assertTrue(ex.getMessage().contains("Use @MintingValidator instead"));
     }
 
     @Test
@@ -294,9 +292,63 @@ class JulcCompilerTest {
     }
 
     @Test
+    void rejectsValidatorThatAlsoDeclaresOnchainLibrary() {
+        var source = """
+            import java.math.BigInteger;
+
+            @OnchainLibrary
+            @SpendingValidator
+            class Confused {
+                @Entrypoint
+                static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    return true;
+                }
+            }
+            """;
+
+        var ex = assertThrows(CompilerException.class, () -> compiler.compile(source));
+
+        assertTrue(ex.getMessage().contains("must not combine @OnchainLibrary"));
+        assertTrue(ex.getMessage().contains("@SpendingValidator"));
+    }
+
+    @Test
+    void rejectsLibraryThatCombinesOnchainLibraryAndValidatorAnnotation() {
+        var validatorSource = """
+            import java.math.BigInteger;
+
+            @SpendingValidator
+            class MainValidator {
+                @Entrypoint
+                static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    return true;
+                }
+            }
+            """;
+        var librarySource = """
+            import java.math.BigInteger;
+
+            @OnchainLibrary
+            @MintingValidator
+            class ConfusedLib {
+                @Entrypoint
+                static boolean validate(BigInteger a, BigInteger b) {
+                    return true;
+                }
+            }
+            """;
+
+        var ex = assertThrows(CompilerException.class,
+                () -> compiler.compile(validatorSource, java.util.List.of(librarySource)));
+
+        assertTrue(ex.getMessage().contains("must not combine @OnchainLibrary"));
+        assertTrue(ex.getMessage().contains("@MintingValidator"));
+    }
+
+    @Test
     void compilesBooleanLogic() {
         var source = """
-            @Validator
+            @SpendingValidator
             class BoolValidator {
                 @Entrypoint
                 static boolean validate(boolean a, boolean b) {
@@ -327,11 +379,11 @@ class JulcCompilerTest {
     }
 
     @Test
-    void rejectsMintingPolicyWith3Params() {
+    void rejectsMintingValidatorWithPolicyNamedClassAnd3Params() {
         var source = """
             import java.math.BigInteger;
 
-            @MintingPolicy
+            @MintingValidator
             class BadMintPolicy {
                 @Entrypoint
                 static boolean validate(BigInteger datum, BigInteger redeemer, BigInteger ctx) {
@@ -351,7 +403,7 @@ class JulcCompilerTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class StaticFieldValidator {
                 static BigInteger THRESHOLD = BigInteger.valueOf(42);
 
@@ -371,7 +423,7 @@ class JulcCompilerTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class StaticBoolValidator {
                 static boolean ALLOW = true;
 
@@ -391,7 +443,7 @@ class JulcCompilerTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class MultiStaticValidator {
                 static BigInteger MIN = BigInteger.valueOf(10);
                 static BigInteger MAX = BigInteger.valueOf(100);
@@ -412,7 +464,7 @@ class JulcCompilerTest {
         var source = """
             import java.math.BigInteger;
 
-            @Validator
+            @SpendingValidator
             class HelperStaticValidator {
                 static BigInteger LIMIT = BigInteger.valueOf(50);
 

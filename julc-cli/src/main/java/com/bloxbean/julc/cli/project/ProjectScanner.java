@@ -1,5 +1,6 @@
 package com.bloxbean.julc.cli.project;
 
+import com.bloxbean.cardano.julc.compiler.JavaSourceIntrospector;
 import com.bloxbean.cardano.julc.compiler.LibrarySourceResolver;
 
 import java.io.IOException;
@@ -7,7 +8,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
@@ -15,10 +15,6 @@ import java.util.stream.Stream;
  * in a single directory walk.
  */
 public final class ProjectScanner {
-
-    private static final Pattern VALIDATOR_PATTERN = Pattern.compile(
-            "@(Validator|SpendingValidator|MintingPolicy|MintingValidator|" +
-            "WithdrawValidator|CertifyingValidator|VotingValidator|ProposingValidator|MultiValidator)");
 
     private ProjectScanner() {}
 
@@ -49,8 +45,19 @@ public final class ProjectScanner {
                             if (fileName.endsWith(".java")) {
                                 String source = Files.readString(p);
                                 String simpleName = fileName.replace(".java", "");
-                                if (VALIDATOR_PATTERN.matcher(source).find()) {
-                                    validators.put(simpleName, source);
+                                if (JavaSourceIntrospector.mightContainValidatorAnnotation(source)) {
+                                    var sourceInfo = inspect(p, source);
+                                    rejectRoleConflicts(sourceInfo);
+                                    if (sourceInfo.legacyValidatorType().isPresent()) {
+                                        throw new IllegalArgumentException(
+                                                JavaSourceIntrospector.legacyAnnotationMigrationMessage(
+                                                        sourceInfo.legacyValidatorType().get()));
+                                    }
+                                    if (sourceInfo.validatorType().isPresent()) {
+                                        validators.put(sourceInfo.validatorType().get().simpleName(), source);
+                                    } else {
+                                        libraries.put(libraryKey(simpleName, source), source);
+                                    }
                                 } else {
                                     libraries.put(libraryKey(simpleName, source), source);
                                 }
@@ -72,13 +79,32 @@ public final class ProjectScanner {
      * Determine the script type from validator annotations.
      */
     public static String resolveScriptType(String source) {
-        if (source.contains("@MintingPolicy") || source.contains("@MintingValidator"))
-            return "PlutusScriptV3-Minting";
-        if (source.contains("@WithdrawValidator")) return "PlutusScriptV3-Withdraw";
-        if (source.contains("@CertifyingValidator")) return "PlutusScriptV3-Certifying";
-        if (source.contains("@VotingValidator")) return "PlutusScriptV3-Voting";
-        if (source.contains("@ProposingValidator")) return "PlutusScriptV3-Proposing";
-        return "PlutusScriptV3";
+        if (!JavaSourceIntrospector.mightContainValidatorAnnotation(source)) {
+            return "PlutusScriptV3";
+        }
+        var sourceInfo = JavaSourceIntrospector.inspect(source);
+        rejectRoleConflicts(sourceInfo);
+        if (sourceInfo.legacyValidatorType().isPresent()) {
+            throw new IllegalArgumentException(JavaSourceIntrospector.legacyAnnotationMigrationMessage(
+                    sourceInfo.legacyValidatorType().get()));
+        }
+        return sourceInfo.scriptType().orElse("PlutusScriptV3");
+    }
+
+    private static void rejectRoleConflicts(JavaSourceIntrospector.SourceInfo sourceInfo) {
+        sourceInfo.firstRoleConflict()
+                .ifPresent(conflict -> {
+                    throw new IllegalArgumentException(conflict.message());
+                });
+    }
+
+    private static JavaSourceIntrospector.SourceInfo inspect(Path path, String source) {
+        try {
+            return JavaSourceIntrospector.inspect(source);
+        } catch (JavaSourceIntrospector.SourceParseException e) {
+            throw new IllegalArgumentException("Could not parse validator candidate "
+                    + path + ": " + e.problems(), e);
+        }
     }
 
     private static String libraryKey(String simpleName, String source) {

@@ -522,21 +522,6 @@ public final class LibrarySourceResolver {
         return matcher.find() ? Optional.of(matcher.group(1)) : Optional.empty();
     }
 
-    public static boolean hasTopLevelOnchainLibraryAnnotation(String source, String typeName) {
-        try {
-            var cu = parseCompilationUnit(source);
-            return cu.getTypes().stream()
-                    .filter(type -> type.getNameAsString().equals(typeName))
-                    .anyMatch(type -> type.getAnnotations().stream()
-                            .anyMatch(annotation -> "OnchainLibrary".equals(simpleName(annotation.getNameAsString()))));
-        } catch (RuntimeException ignored) {
-            String regex = "(?m)^\\s*@(?:[a-zA-Z_][a-zA-Z0-9_]*\\.)*OnchainLibrary(?:\\([^)]*\\))?\\s*" +
-                    "(?:public\\s+|protected\\s+|private\\s+|static\\s+|final\\s+|abstract\\s+|sealed\\s+|non-sealed\\s+)*" +
-                    "(?:class|record|interface|enum)\\s+" + Pattern.quote(typeName) + "\\b";
-            return Pattern.compile(regex).matcher(source).find();
-        }
-    }
-
     private static CompilationUnit parseCompilationUnit(String source) {
         var configuration = new ParserConfiguration()
                 .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);

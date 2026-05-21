@@ -29,7 +29,7 @@ class TypedMintingPolicyE2ETest extends PluginTestBase {
     static final String TYPED_MINTING_POLICY = """
             import com.bloxbean.cardano.julc.core.PlutusData;
 
-            @MintingPolicy
+            @MintingValidator
             class TypedMintingPolicy {
                 @Entrypoint
                 static boolean validate(PlutusData redeemer, ScriptContext ctx) {
