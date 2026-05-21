@@ -16,7 +16,8 @@ This document is the canonical architecture reference for JuLC. It consolidates 
 
 **Root Gradle project:** `julc`
 **Package prefix:** `com.bloxbean.cardano.julc`
-**Plutus version:** V3 only (Conway era). No V1/V2 support.
+**Compiler Plutus target:** V3 only (Conway era), represented in code by `PlutusTarget.CURRENT`.
+**VM evaluation:** V1, V2, and V3 external scripts can be evaluated through `JulcVm` by selecting the appropriate `PlutusLanguage`.
 **Java build toolchain:** 24 (Temurin)
 **Gradle:** 9.2.0
 
@@ -60,6 +61,7 @@ This document is the canonical architecture reference for JuLC. It consolidates 
 - **VM SPI:** `JulcVmProvider` is discovered via `ServiceLoader`. The highest-priority provider wins. This allows swapping the Scalus backend for a future pure-Java CEK machine without API changes.
 - **Scala isolation:** Only `julc-vm-scalus` has a Scala dependency. All other modules are pure Java.
 - **BOM:** `julc-bom` provides consistent version alignment across all modules for downstream consumers.
+- **Script metadata:** Generated validator JSON uses a cardano-cli-style text-envelope `type` such as `PlutusScriptV3`; script purpose is emitted separately as lowercase metadata such as `spending` or `minting`.
 
 ### Dependency Flow
 

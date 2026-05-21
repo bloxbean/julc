@@ -1,5 +1,6 @@
 package com.bloxbean.julc.cli.cmd.blueprint;
 
+import com.bloxbean.cardano.julc.core.PlutusTarget;
 import com.bloxbean.julc.cli.cmd.EvalCommand;
 import com.bloxbean.julc.cli.output.AnsiColors;
 import com.bloxbean.julc.cli.project.ProjectLayout;
@@ -34,11 +35,11 @@ public class ConvertCommand implements Runnable {
             // cardano-cli TextEnvelope format
             String textEnvelope = """
                     {
-                        "type": "PlutusScriptV3",
+                        "type": "%s",
                         "description": "",
                         "cborHex": "%s"
                     }
-                    """.formatted(hex);
+                    """.formatted(PlutusTarget.CURRENT.textEnvelopeType(), hex);
 
             if (outFile != null) {
                 Files.writeString(outFile, textEnvelope);

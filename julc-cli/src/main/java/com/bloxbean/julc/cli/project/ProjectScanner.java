@@ -2,6 +2,7 @@ package com.bloxbean.julc.cli.project;
 
 import com.bloxbean.cardano.julc.compiler.JavaSourceIntrospector;
 import com.bloxbean.cardano.julc.compiler.LibrarySourceResolver;
+import com.bloxbean.cardano.julc.compiler.ScriptPurposeMetadata;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -76,11 +77,11 @@ public final class ProjectScanner {
     }
 
     /**
-     * Determine the script type from validator annotations.
+     * Determine the script text-envelope type from validator annotations.
      */
     public static String resolveScriptType(String source) {
         if (!JavaSourceIntrospector.mightContainValidatorAnnotation(source)) {
-            return "PlutusScriptV3";
+            return ScriptPurposeMetadata.textEnvelopeType();
         }
         var sourceInfo = JavaSourceIntrospector.inspect(source);
         rejectRoleConflicts(sourceInfo);
@@ -88,7 +89,9 @@ public final class ProjectScanner {
             throw new IllegalArgumentException(JavaSourceIntrospector.legacyAnnotationMigrationMessage(
                     sourceInfo.legacyValidatorType().get()));
         }
-        return sourceInfo.scriptType().orElse("PlutusScriptV3");
+        return sourceInfo.scriptPurpose()
+                .map(purpose -> ScriptPurposeMetadata.textEnvelopeType())
+                .orElse(ScriptPurposeMetadata.textEnvelopeType());
     }
 
     private static void rejectRoleConflicts(JavaSourceIntrospector.SourceInfo sourceInfo) {

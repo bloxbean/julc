@@ -6,27 +6,54 @@ import java.util.List;
 /**
  * Output record for a compiled Plutus validator.
  *
- * @param type        script type, e.g. "PlutusScriptV3" or "PlutusScriptV3-Minting"
+ * @param type        script text-envelope type, e.g. "PlutusScriptV3"
+ * @param purpose     validator purpose, e.g. "spending" or "minting"; may be empty for legacy metadata
  * @param description validator name
  * @param cborHex     double-CBOR-wrapped FLAT-encoded UPLC program
  * @param hash        script hash (28 bytes hex), empty for parameterized validators
  * @param params      comma-separated param metadata, e.g. "owner:byte[],deadline:BigInteger"
  * @param sizeBytes   FLAT-encoded script size in bytes, or -1 if unknown
  */
-public record ValidatorOutput(String type, String description, String cborHex, String hash, String params, int sizeBytes) {
+public record ValidatorOutput(String type, String purpose, String description, String cborHex,
+                              String hash, String params, int sizeBytes) {
+
+    public ValidatorOutput {
+        var typeParts = splitLegacyType(type);
+        type = typeParts.type();
+        if (purpose == null || purpose.isBlank()) {
+            purpose = typeParts.purpose();
+        }
+        params = params != null ? params : "";
+    }
+
+    /**
+     * Backward-compatible constructor without purpose.
+     */
+    public ValidatorOutput(String type, String description, String cborHex,
+                           String hash, String params, int sizeBytes) {
+        this(type, "", description, cborHex, hash, params, sizeBytes);
+    }
 
     /**
      * Backward-compatible constructor without sizeBytes.
      */
     public ValidatorOutput(String type, String description, String cborHex, String hash, String params) {
-        this(type, description, cborHex, hash, params, -1);
+        this(type, "", description, cborHex, hash, params, -1);
+    }
+
+    /**
+     * Constructor with purpose and without sizeBytes.
+     */
+    public ValidatorOutput(String type, String purpose, String description,
+                           String cborHex, String hash, String params) {
+        this(type, purpose, description, cborHex, hash, params, -1);
     }
 
     /**
      * Backward-compatible constructor for non-parameterized validators.
      */
     public ValidatorOutput(String type, String description, String cborHex, String hash) {
-        this(type, description, cborHex, hash, "", -1);
+        this(type, "", description, cborHex, hash, "", -1);
     }
 
     /**
@@ -77,13 +104,15 @@ public record ValidatorOutput(String type, String description, String cborHex, S
         return """
                 {
                   "type": "%s",
+                  "purpose": "%s",
                   "description": "%s",
                   "cborHex": "%s",
                   "hash": "%s",
                   "params": "%s",
                   "sizeBytes": %d
                 }
-                """.formatted(type, description, cborHex, hash, params != null ? params : "", sizeBytes);
+                """.formatted(type, purpose != null ? purpose : "", description, cborHex,
+                hash, params != null ? params : "", sizeBytes);
     }
 
     /**
@@ -92,13 +121,32 @@ public record ValidatorOutput(String type, String description, String cborHex, S
      */
     public static ValidatorOutput fromJson(String json) {
         String type = extractField(json, "type");
+        String purpose = extractFieldOptional(json, "purpose");
         String description = extractField(json, "description");
         String cborHex = extractField(json, "cborHex");
         String hash = extractField(json, "hash");
         String params = extractFieldOptional(json, "params");
         int sizeBytes = extractIntFieldOptional(json, "sizeBytes", -1);
-        return new ValidatorOutput(type, description, cborHex, hash, params, sizeBytes);
+        return new ValidatorOutput(type, purpose, description, cborHex, hash, params, sizeBytes);
     }
+
+    private static TypeParts splitLegacyType(String type) {
+        if (type == null) {
+            return new TypeParts("", "");
+        }
+        return switch (type) {
+            case "PlutusScriptV3-Spending" -> new TypeParts("PlutusScriptV3", "spending");
+            case "PlutusScriptV3-Minting" -> new TypeParts("PlutusScriptV3", "minting");
+            case "PlutusScriptV3-Withdraw" -> new TypeParts("PlutusScriptV3", "withdraw");
+            case "PlutusScriptV3-Certifying" -> new TypeParts("PlutusScriptV3", "certifying");
+            case "PlutusScriptV3-Voting" -> new TypeParts("PlutusScriptV3", "voting");
+            case "PlutusScriptV3-Proposing" -> new TypeParts("PlutusScriptV3", "proposing");
+            case "PlutusScriptV3-Multi" -> new TypeParts("PlutusScriptV3", "multi");
+            default -> new TypeParts(type, "");
+        };
+    }
+
+    private record TypeParts(String type, String purpose) {}
 
     private static String extractField(String json, String field) {
         String key = "\"" + field + "\"";

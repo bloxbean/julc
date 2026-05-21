@@ -14,6 +14,7 @@ import com.bloxbean.cardano.julc.compiler.uplc.UplcGenerator;
 import com.bloxbean.cardano.julc.compiler.uplc.UplcOptimizer;
 import com.bloxbean.cardano.julc.compiler.util.MethodDependencyResolver;
 import com.bloxbean.cardano.julc.compiler.validate.SubsetValidator;
+import com.bloxbean.cardano.julc.core.PlutusTarget;
 import com.bloxbean.cardano.julc.core.Program;
 import com.bloxbean.cardano.julc.core.Term;
 import com.bloxbean.cardano.julc.core.source.SourceLocation;
@@ -499,7 +500,7 @@ public class JulcCompiler {
         Term capturedUplc = captureDetails ? uplcTerm : null;
 
         // 21. Create Program
-        var program = Program.plutusV3(uplcTerm);
+        var program = PlutusTarget.CURRENT.program(uplcTerm);
 
         // 22. Build ParamInfo list
         var paramInfos = paramFields.stream()
@@ -572,7 +573,7 @@ public class JulcCompiler {
     public Program compilePirToProgram(PirTerm pirTerm) {
         var uplcGenerator = new UplcGenerator();
         var uplcTerm = uplcGenerator.generate(pirTerm);
-        return Program.plutusV3(uplcTerm);
+        return PlutusTarget.CURRENT.program(uplcTerm);
     }
 
     // --- Method compilation (for expression evaluation) ---
@@ -803,7 +804,7 @@ public class JulcCompiler {
         var paramInfos = paramFields.stream()
                 .map(pf -> new CompileResult.ParamInfo(pf.name, pf.javaType))
                 .toList();
-        var program = Program.plutusV3(uplcTerm);
+        var program = PlutusTarget.CURRENT.program(uplcTerm);
         return new CompileResult(program, diagnostics, paramInfos, body, uplcTerm, sourceMap);
     }
 

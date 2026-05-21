@@ -140,8 +140,8 @@ class ProjectScannerTest {
 
     @Test
     void resolveScriptType() {
-        assertEquals("PlutusScriptV3-Minting", ProjectScanner.resolveScriptType("@MintingValidator class X {}"));
-        assertEquals("PlutusScriptV3-Withdraw", ProjectScanner.resolveScriptType("@WithdrawValidator class X {}"));
+        assertEquals("PlutusScriptV3", ProjectScanner.resolveScriptType("@MintingValidator class X {}"));
+        assertEquals("PlutusScriptV3", ProjectScanner.resolveScriptType("@WithdrawValidator class X {}"));
         assertEquals("PlutusScriptV3", ProjectScanner.resolveScriptType("@SpendingValidator class X {}"));
         assertEquals("PlutusScriptV3", ProjectScanner.resolveScriptType("""
                 /** Mentions @MintingValidator in a comment. */
