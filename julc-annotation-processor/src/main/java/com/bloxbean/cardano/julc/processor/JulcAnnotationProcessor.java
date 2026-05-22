@@ -6,9 +6,11 @@ import com.bloxbean.cardano.julc.clientlib.JulcScriptAdapter;
 import com.bloxbean.cardano.julc.clientlib.ValidatorOutput;
 import com.bloxbean.cardano.julc.compiler.CompilerException;
 import com.bloxbean.cardano.julc.compiler.CompilerOptions;
+import com.bloxbean.cardano.julc.compiler.JavaSourceIntrospector;
 import com.bloxbean.cardano.julc.compiler.LibrarySource;
 import com.bloxbean.cardano.julc.compiler.LibrarySourceResolver;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
+import com.bloxbean.cardano.julc.compiler.ScriptPurposeMetadata;
 import com.bloxbean.cardano.julc.core.source.SourceMapSerializer;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
 import com.sun.source.util.Trees;
@@ -199,7 +201,9 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
             var program = result.program();
             var script = JulcScriptAdapter.fromProgram(program);
 
-            String scriptType = resolveScriptType(annotation.getSimpleName().toString());
+            var scriptPurpose = JavaSourceIntrospector.scriptPurpose(annotation.getSimpleName().toString());
+            String scriptType = ScriptPurposeMetadata.textEnvelopeType();
+            String purpose = ScriptPurposeMetadata.jsonPurpose(scriptPurpose);
 
             // Build params string from CompileResult
             String paramsStr = result.params().stream()
@@ -213,7 +217,7 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
             int sizeBytes = result.scriptSizeBytes();
             String sizeStr = result.scriptSizeFormatted();
 
-            var output = new ValidatorOutput(scriptType, className,
+            var output = new ValidatorOutput(scriptType, purpose, className,
                     script.getCborHex(), scriptHash, paramsStr, sizeBytes);
 
             // 5. Write to META-INF/plutus/<ClassName>.plutus.json
@@ -279,19 +283,6 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
         pool.putAll(sameProjectLibraries);
 
         return LibrarySourceResolver.resolve(validatorSource, pool);
-    }
-
-    private String resolveScriptType(String annotationSimpleName) {
-        return switch (annotationSimpleName) {
-            case "SpendingValidator" -> "PlutusScriptV3";
-            case "MintingValidator" -> "PlutusScriptV3-Minting";
-            case "WithdrawValidator" -> "PlutusScriptV3-Withdraw";
-            case "CertifyingValidator" -> "PlutusScriptV3-Certifying";
-            case "VotingValidator" -> "PlutusScriptV3-Voting";
-            case "ProposingValidator" -> "PlutusScriptV3-Proposing";
-            case "MultiValidator" -> "PlutusScriptV3";
-            default -> "PlutusScriptV3";
-        };
     }
 
     /**

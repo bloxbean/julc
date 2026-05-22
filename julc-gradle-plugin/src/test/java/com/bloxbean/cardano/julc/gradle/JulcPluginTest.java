@@ -69,6 +69,7 @@ class JulcPluginTest {
 
         String json = Files.readString(outputJson);
         assertTrue(json.contains("\"type\": \"PlutusScriptV3\""));
+        assertTrue(json.contains("\"purpose\": \"spending\""));
         assertTrue(json.contains("\"description\": \"AlwaysTrue\""));
         assertTrue(json.contains("\"cborHex\":"));
         assertTrue(json.contains("\"hash\":"));
@@ -105,7 +106,8 @@ class JulcPluginTest {
         assertTrue(Files.exists(outputJson));
 
         String json = Files.readString(outputJson);
-        assertTrue(json.contains("\"type\": \"PlutusScriptV3-Minting\""));
+        assertTrue(json.contains("\"type\": \"PlutusScriptV3\""));
+        assertTrue(json.contains("\"purpose\": \"minting\""));
     }
 
     @Test

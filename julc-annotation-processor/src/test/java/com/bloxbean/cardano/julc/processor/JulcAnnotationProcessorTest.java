@@ -48,6 +48,7 @@ class JulcAnnotationProcessorTest {
         String json = Files.readString(jsonFile);
         var output = ValidatorOutput.fromJson(json);
         assertEquals("PlutusScriptV3", output.type());
+        assertEquals("spending", output.purpose());
         assertEquals("SimpleValidator", output.description());
         assertNotNull(output.cborHex());
         assertFalse(output.cborHex().isEmpty());
@@ -78,7 +79,8 @@ class JulcAnnotationProcessorTest {
         assertTrue(Files.exists(jsonFile));
 
         var output = ValidatorOutput.fromJson(Files.readString(jsonFile));
-        assertEquals("PlutusScriptV3-Minting", output.type());
+        assertEquals("PlutusScriptV3", output.type());
+        assertEquals("minting", output.purpose());
         assertEquals("SimpleMinting", output.description());
     }
 
@@ -108,6 +110,7 @@ class JulcAnnotationProcessorTest {
 
         var output = ValidatorOutput.fromJson(Files.readString(jsonFile));
         assertEquals("PlutusScriptV3", output.type());
+        assertEquals("spending", output.purpose());
         assertTrue(output.isParameterized());
         assertEquals(2, output.paramList().size());
         assertEquals("owner", output.paramList().get(0).name());
@@ -126,6 +129,7 @@ class JulcAnnotationProcessorTest {
         var parsed = ValidatorOutput.fromJson(json);
 
         assertEquals(original.type(), parsed.type());
+        assertEquals(original.purpose(), parsed.purpose());
         assertEquals(original.description(), parsed.description());
         assertEquals(original.cborHex(), parsed.cborHex());
         assertEquals(original.hash(), parsed.hash());
@@ -140,6 +144,7 @@ class JulcAnnotationProcessorTest {
         var parsed = ValidatorOutput.fromJson(json);
 
         assertEquals(original.type(), parsed.type());
+        assertEquals(original.purpose(), parsed.purpose());
         assertEquals(original.description(), parsed.description());
         assertEquals(original.cborHex(), parsed.cborHex());
         assertEquals(original.hash(), parsed.hash());
@@ -189,6 +194,7 @@ class JulcAnnotationProcessorTest {
                 """;
         var output = ValidatorOutput.fromJson(json);
         assertEquals("PlutusScriptV3", output.type());
+        assertEquals("", output.purpose());
         assertEquals("OldValidator", output.description());
         assertEquals("", output.params());
         assertFalse(output.isParameterized());

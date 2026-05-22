@@ -2,6 +2,7 @@ package com.bloxbean.cardano.julc.blueprint;
 
 import com.bloxbean.cardano.julc.clientlib.JulcScriptAdapter;
 import com.bloxbean.cardano.julc.compiler.CompileResult;
+import com.bloxbean.cardano.julc.core.PlutusTarget;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -23,7 +24,7 @@ public final class BlueprintGenerator {
         var preamble = new Blueprint.Preamble(
                 config.projectName(),
                 config.projectVersion(),
-                "v3",
+                PlutusTarget.CURRENT.languageVersion(),
                 new Blueprint.Compiler("julc", JulcVersion.VERSION)
         );
 

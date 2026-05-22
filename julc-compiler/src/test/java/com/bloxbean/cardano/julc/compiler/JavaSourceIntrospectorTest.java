@@ -40,7 +40,7 @@ class JavaSourceIntrospectorTest {
         assertEquals("Mint", info.validatorType().get().simpleName());
         assertEquals("com.example.Mint", info.validatorType().get().fqcn());
         assertEquals("MintingValidator", info.validatorType().get().annotationName());
-        assertEquals("PlutusScriptV3-Minting", info.scriptType().orElseThrow());
+        assertEquals(JulcCompiler.ScriptPurpose.MINTING, info.scriptPurpose().orElseThrow());
     }
 
     @Test
@@ -58,7 +58,7 @@ class JavaSourceIntrospectorTest {
 
         assertEquals("Withdraw", info.validatorType().orElseThrow().simpleName());
         assertEquals("WithdrawValidator", info.validatorType().orElseThrow().annotationName());
-        assertEquals("PlutusScriptV3-Withdraw", info.scriptType().orElseThrow());
+        assertEquals(JulcCompiler.ScriptPurpose.WITHDRAW, info.scriptPurpose().orElseThrow());
     }
 
     @Test

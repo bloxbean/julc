@@ -59,10 +59,6 @@ public final class JavaSourceIntrospector {
             return validatorType.map(type -> JavaSourceIntrospector.scriptPurpose(type.annotationName()));
         }
 
-        public Optional<String> scriptType() {
-            return scriptPurpose().map(JavaSourceIntrospector::scriptType);
-        }
-
         public boolean hasRoleConflicts() {
             return !roleConflicts.isEmpty();
         }
@@ -246,17 +242,6 @@ public final class JavaSourceIntrospector {
             case "ProposingValidator" -> JulcCompiler.ScriptPurpose.PROPOSING;
             case "MultiValidator" -> JulcCompiler.ScriptPurpose.MULTI;
             default -> throw new IllegalArgumentException("Unsupported validator annotation: " + annotationName);
-        };
-    }
-
-    public static String scriptType(JulcCompiler.ScriptPurpose purpose) {
-        return switch (purpose) {
-            case MINTING -> "PlutusScriptV3-Minting";
-            case WITHDRAW -> "PlutusScriptV3-Withdraw";
-            case CERTIFYING -> "PlutusScriptV3-Certifying";
-            case VOTING -> "PlutusScriptV3-Voting";
-            case PROPOSING -> "PlutusScriptV3-Proposing";
-            default -> "PlutusScriptV3";
         };
     }
 

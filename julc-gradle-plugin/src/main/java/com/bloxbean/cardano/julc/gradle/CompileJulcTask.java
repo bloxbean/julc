@@ -6,6 +6,7 @@ import com.bloxbean.cardano.julc.clientlib.JulcScriptAdapter;
 import com.bloxbean.cardano.julc.compiler.CompilerOptions;
 import com.bloxbean.cardano.julc.compiler.JavaSourceIntrospector;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
+import com.bloxbean.cardano.julc.compiler.ScriptPurposeMetadata;
 import com.bloxbean.cardano.julc.core.source.SourceMapSerializer;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
 
@@ -79,7 +80,7 @@ public abstract class CompileJulcTask extends DefaultTask {
             }
             if (sourceInfo.validatorType().isPresent()) {
                 validatorFiles.add(new ValidatorFile(javaFile,
-                        sourceInfo.scriptType().orElse("PlutusScriptV3")));
+                        sourceInfo.scriptPurpose().orElseThrow()));
             } else {
                 getLogger().info("Treating {} as a library source: text matched validator annotation but no real validator annotation was found",
                         javaFile);
@@ -115,7 +116,8 @@ public abstract class CompileJulcTask extends DefaultTask {
             int sizeBytes = result.scriptSizeBytes();
             String sizeStr = result.scriptSizeFormatted();
 
-            var output = new ValidatorOutput(validatorFile.scriptType(), validatorName,
+            var output = new ValidatorOutput(ScriptPurposeMetadata.textEnvelopeType(),
+                    ScriptPurposeMetadata.jsonPurpose(validatorFile.scriptPurpose()), validatorName,
                     script.getCborHex(), scriptHash, sizeBytes);
 
             File outputFile = new File(outDir, validatorName + ".json");
@@ -175,7 +177,7 @@ public abstract class CompileJulcTask extends DefaultTask {
         }
     }
 
-    private record ValidatorFile(File file, String scriptType) {}
+    private record ValidatorFile(File file, JulcCompiler.ScriptPurpose scriptPurpose) {}
 
     private static JavaSourceIntrospector.SourceInfo inspect(File javaFile, String source) {
         try {
