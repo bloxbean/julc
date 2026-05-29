@@ -19,7 +19,6 @@ import com.bloxbean.cardano.julc.core.source.SourceMap;
 import com.bloxbean.cardano.julc.ledger.*;
 import com.bloxbean.cardano.julc.vm.EvalResult;
 import com.bloxbean.cardano.julc.vm.ExBudget;
-import com.bloxbean.cardano.julc.vm.JulcVm;
 import com.bloxbean.cardano.julc.vm.PlutusLanguage;
 import com.bloxbean.cardano.julc.vm.trace.ExecutionTraceEntry;
 import com.bloxbean.cardano.julc.vm.trace.FailureReportBuilder;
@@ -42,6 +41,15 @@ import java.util.*;
  *     .withSigner(signer)
  *     .complete();
  * }</pre>
+ *
+ * <p><b>Thread-safety:</b> an instance is <b>not</b> thread-safe. Each {@link #evaluateTx} call
+ * (re)configures the cost model on a cached VM provider and then evaluates on it; the registered
+ * source maps/programs and trace flags are also mutable instance state. Concurrent use of a single
+ * instance can therefore race (e.g. one call reconfiguring the provider's cost model while another
+ * is evaluating). <b>Create a new {@code JulcTransactionEvaluator} per transaction / evaluation
+ * context (or confine one instance to a single thread); do not share an instance across threads.</b>
+ * Note: this warning is about this evaluator's per-call reconfiguration and mutable state.
+ * Do not rely on a cached provider inside this evaluator for concurrent evaluateTx calls.
  */
 public class JulcTransactionEvaluator implements TransactionEvaluator {
 
@@ -50,7 +58,6 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
     private final ScriptSupplier scriptSupplier;
     private final SlotConfig slotConfig;
 
-    private volatile JulcVm vm;
     private volatile com.bloxbean.cardano.julc.vm.JulcVmProvider provider;
 
     // Source map support
@@ -206,12 +213,15 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
                     Long.parseLong(params.getMaxTxExSteps()),
                     Long.parseLong(params.getMaxTxExMem()));
 
-            // 6. Create VM (lazy, cached) and configure cost models for all language versions
-            JulcVm julcVm = getOrCreateVm();
+            // 6. Resolve the VM provider (lazy, cached) and configure cost models for all language
+            //    versions. The SAME provider instance must be used for setCostModelParams AND
+            //    evaluation: cost-model params are stored per provider instance, so configuring one
+            //    instance and evaluating on another would silently fall back to the built-in defaults.
+            var vmProvider = getProvider();
             int pvMinor = params.getProtocolMinorVer() != null ? params.getProtocolMinorVer() : 0;
             for (var lang : List.of(Language.PLUTUS_V1, Language.PLUTUS_V2, Language.PLUTUS_V3)) {
                 CostModelUtil.getCostModelFromProtocolParams(params, lang)
-                        .ifPresent(cm -> julcVm.setCostModelParams(
+                        .ifPresent(cm -> vmProvider.setCostModelParams(
                                 cm.getCosts(), toPlutusLanguage(lang), pvMajor, pvMinor));
             }
 
@@ -261,10 +271,10 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
                     Program evalProgram = scriptPrograms.containsKey(scriptHash)
                             ? scriptPrograms.get(scriptHash) : resolved.program();
 
-                    // e. Evaluate — traces are captured in the EvalResult
-                    var langVm = JulcVm.withProvider(getProvider(), resolved.language());
-                    EvalResult evalResult = langVm.evaluateWithArgs(
-                            evalProgram, args, maxBudget, evalOptions);
+                    // e. Evaluate on the SAME provider configured above (not a fresh lookup), passing
+                    //    the resolved script's language explicitly.
+                    EvalResult evalResult = vmProvider.evaluateWithArgs(
+                            evalProgram, resolved.language(), args, maxBudget, evalOptions);
                     var executionTrace = evalResult.executionTrace();
                     var builtinTrace = evalResult.builtinTrace();
 
@@ -314,17 +324,6 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
         } catch (Exception e) {
             return Result.error("Transaction evaluation failed: " + e.getMessage());
         }
-    }
-
-    private JulcVm getOrCreateVm() {
-        if (vm == null) {
-            synchronized (this) {
-                if (vm == null) {
-                    vm = JulcVm.create();
-                }
-            }
-        }
-        return vm;
     }
 
     private com.bloxbean.cardano.julc.vm.JulcVmProvider getProvider() {
