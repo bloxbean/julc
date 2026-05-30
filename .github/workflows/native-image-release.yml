@@ -14,11 +14,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
+          - os: macos-14
             label: macos-aarch64
             binary: julc
-          - os: ubuntu-latest
+          - os: ubuntu-22.04
             label: linux-x86_64
+            binary: julc
+          - os: ubuntu-22.04-arm
+            label: linux-arm64
             binary: julc
           - os: windows-latest
             label: windows-x86_64
@@ -86,11 +89,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
+          - os: macos-14
             label: macos-aarch64
             binary: julc-playground
-          - os: ubuntu-latest
+          - os: ubuntu-22.04
             label: linux-x86_64
+            binary: julc-playground
+          - os: ubuntu-22.04-arm
+            label: linux-arm64
             binary: julc-playground
           - os: windows-latest
             label: windows-x86_64
@@ -212,9 +218,12 @@ jobs:
           "https://github.com/bloxbean/julc/releases/download/v${VERSION}/julc-${VERSION}-macos-aarch64.zip"
         curl -fSL -o linux.zip \
           "https://github.com/bloxbean/julc/releases/download/v${VERSION}/julc-${VERSION}-linux-x86_64.zip"
+        curl -fSL -o linux-arm.zip \
+          "https://github.com/bloxbean/julc/releases/download/v${VERSION}/julc-${VERSION}-linux-arm64.zip"
 
         MACOS_SHA=$(sha256sum macos.zip | awk '{print $1}')
         LINUX_SHA=$(sha256sum linux.zip | awk '{print $1}')
+        LINUX_ARM_SHA=$(sha256sum linux-arm.zip | awk '{print $1}')
 
         mkdir -p Formula
         cat > Formula/julc.rb << FORMULA
@@ -235,6 +244,9 @@ jobs:
             if Hardware::CPU.intel?
               url "https://github.com/bloxbean/julc/releases/download/v${VERSION}/julc-${VERSION}-linux-x86_64.zip"
               sha256 "${LINUX_SHA}"
+            elsif Hardware::CPU.arm?
+              url "https://github.com/bloxbean/julc/releases/download/v${VERSION}/julc-${VERSION}-linux-arm64.zip"
+              sha256 "${LINUX_ARM_SHA}"
             end
           end
 
@@ -261,9 +273,12 @@ jobs:
           "https://github.com/bloxbean/julc/releases/download/v${VERSION}/julc-playground-${VERSION}-macos-aarch64.zip"
         curl -fSL -o playground-linux.zip \
           "https://github.com/bloxbean/julc/releases/download/v${VERSION}/julc-playground-${VERSION}-linux-x86_64.zip"
+        curl -fSL -o playground-linux-arm.zip \
+          "https://github.com/bloxbean/julc/releases/download/v${VERSION}/julc-playground-${VERSION}-linux-arm64.zip"
 
         PG_MACOS_SHA=$(sha256sum playground-macos.zip | awk '{print $1}')
         PG_LINUX_SHA=$(sha256sum playground-linux.zip | awk '{print $1}')
+        PG_LINUX_ARM_SHA=$(sha256sum playground-linux-arm.zip | awk '{print $1}')
 
         mkdir -p Formula
         cat > Formula/julc-playground.rb << FORMULA
@@ -284,6 +299,9 @@ jobs:
             if Hardware::CPU.intel?
               url "https://github.com/bloxbean/julc/releases/download/v${VERSION}/julc-playground-${VERSION}-linux-x86_64.zip"
               sha256 "${PG_LINUX_SHA}"
+            elsif Hardware::CPU.arm?
+              url "https://github.com/bloxbean/julc/releases/download/v${VERSION}/julc-playground-${VERSION}-linux-arm64.zip"
+              sha256 "${PG_LINUX_ARM_SHA}"
             end
           end
 
