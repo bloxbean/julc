@@ -11,11 +11,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
+          - os: macos-14
             label: macos-aarch64
             binary: julc
-          - os: ubuntu-latest
+          - os: ubuntu-22.04
             label: linux-x86_64
+            binary: julc
+          - os: ubuntu-22.04-arm
+            label: linux-arm64
             binary: julc
           - os: windows-latest
             label: windows-x86_64
@@ -85,11 +88,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
+          - os: macos-14
             label: macos-aarch64
             binary: julc-playground
-          - os: ubuntu-latest
+          - os: ubuntu-22.04
             label: linux-x86_64
+            binary: julc-playground
+          - os: ubuntu-22.04-arm
+            label: linux-arm64
             binary: julc-playground
           - os: windows-latest
             label: windows-x86_64
