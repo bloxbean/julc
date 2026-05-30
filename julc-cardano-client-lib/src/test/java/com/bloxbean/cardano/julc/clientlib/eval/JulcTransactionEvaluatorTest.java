@@ -16,6 +16,7 @@ import com.bloxbean.cardano.julc.core.Term;
 import com.bloxbean.cardano.julc.vm.EvalResult;
 import com.bloxbean.cardano.julc.vm.JulcVm;
 import com.bloxbean.cardano.julc.vm.PlutusLanguage;
+import com.bloxbean.cardano.julc.vm.java.cost.CostModelParser;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
@@ -160,6 +161,94 @@ class JulcTransactionEvaluatorTest {
         assertTrue(evalResult.getExUnits().getMem().longValue() > 0
                 || evalResult.getExUnits().getSteps().longValue() > 0,
                 "Expected non-zero ExUnits");
+    }
+
+    @Test
+    void evaluateTx_usesSuppliedCostModel_notBuiltInDefault() throws Exception {
+        // Regression for the provider-instance bug: the cost model was applied to one provider
+        // instance (getOrCreateVm/JulcVm.create) but evaluation ran on another (getProvider), so the
+        // chain cost model from ProtocolParams was silently ignored and the VM's built-in default was
+        // used. We supply two PlutusV3 cost models that differ (one with every cost doubled) via
+        // ProtocolParams.costModelsRaw and assert the evaluated CPU budget changes. Pre-fix, both runs
+        // would have produced the same (built-in default) budget and this test would FAIL.
+        String scriptAddr = buildScriptAddress(alwaysTrueHash);
+        String txHash = "ab".repeat(32);
+
+        Utxo inputUtxo = Utxo.builder()
+                .txHash(txHash)
+                .outputIndex(0)
+                .address(scriptAddr)
+                .amount(List.of(Amount.lovelace(BigInteger.valueOf(5_000_000))))
+                .build();
+
+        var redeemer = Redeemer.builder()
+                .tag(RedeemerTag.Spend)
+                .index(BigInteger.ZERO)
+                .data(new BigIntPlutusData(BigInteger.ZERO))
+                .exUnits(ExUnits.builder().mem(BigInteger.ZERO).steps(BigInteger.ZERO).build())
+                .build();
+
+        var tx = Transaction.builder()
+                .body(TransactionBody.builder()
+                        .inputs(List.of(new TransactionInput(txHash, 0)))
+                        .outputs(List.of())
+                        .fee(BigInteger.valueOf(200_000))
+                        .build())
+                .witnessSet(TransactionWitnessSet.builder()
+                        .redeemers(List.of(redeemer))
+                        .plutusV3Scripts(List.of(alwaysTrueScript))
+                        .build())
+                .build();
+        byte[] cbor = tx.serialize();
+
+        // A valid PV10 PlutusV3 cost model (297 entries; pvMajor defaults to 10 in the evaluator),
+        // and a copy with every cost doubled.
+        long[] baseCosts = CostModelParser.defaultToFlatArray(10);
+        long[] scaledCosts = new long[baseCosts.length];
+        for (int i = 0; i < baseCosts.length; i++) {
+            scaledCosts[i] = baseCosts[i] * 2;
+        }
+
+        long baseCpu = evaluateV3SpendCpu(cbor, inputUtxo, baseCosts);
+        long scaledCpu = evaluateV3SpendCpu(cbor, inputUtxo, scaledCosts);
+
+        assertTrue(baseCpu > 0, "expected a non-zero CPU budget");
+        assertNotEquals(baseCpu, scaledCpu,
+                "supplied cost model must drive the budget; equal values mean the evaluator is "
+                        + "ignoring setCostModelParams and using the built-in default (the bug)");
+        assertTrue(scaledCpu > baseCpu, "doubling all costs should increase the CPU budget");
+    }
+
+    /** Evaluate the single spend redeemer with a supplied PlutusV3 cost model; return CPU steps. */
+    private long evaluateV3SpendCpu(byte[] cbor, Utxo inputUtxo, long[] v3Costs) throws Exception {
+        UtxoSupplier utxoSupplier = new UtxoSupplier() {
+            @Override
+            public List<Utxo> getPage(String address, Integer nrOfItems, Integer page,
+                    com.bloxbean.cardano.client.api.common.OrderEnum order) {
+                return List.of();
+            }
+            @Override
+            public Optional<Utxo> getTxOutput(String txHash, int outputIndex) {
+                return Optional.empty();
+            }
+        };
+        ProtocolParamsSupplier protocolParamsSupplier = () -> {
+            var params = new ProtocolParams();
+            params.setMaxTxExMem("14000000");
+            params.setMaxTxExSteps("10000000000");
+            var raw = new LinkedHashMap<String, List<Long>>();
+            var list = new ArrayList<Long>(v3Costs.length);
+            for (long c : v3Costs) {
+                list.add(c);
+            }
+            raw.put("PlutusV3", list);
+            params.setCostModelsRaw(raw);
+            return params;
+        };
+        var evaluator = new JulcTransactionEvaluator(utxoSupplier, protocolParamsSupplier, null);
+        var result = evaluator.evaluateTx(cbor, Set.of(inputUtxo));
+        assertTrue(result.isSuccessful(), "eval should succeed: " + result.getResponse());
+        return result.getValue().getFirst().getExUnits().getSteps().longValue();
     }
 
     @Test

@@ -1,6 +1,5 @@
 package com.bloxbean.cardano.julc.vm.scalus;
 
-import com.bloxbean.cardano.julc.core.Constant;
 import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.core.Program;
 import com.bloxbean.cardano.julc.core.Term;
@@ -41,10 +40,11 @@ public class ScalusVmProvider implements JulcVmProvider {
     @Override
     public void setCostModelParams(long[] costModelValues, PlutusLanguage language,
                                    int protocolMajorVersion, int protocolMinorVersion) {
-        // Map protocol major version to Scalus MajorProtocolVersion
-        MajorProtocolVersion pv = protocolMajorVersion >= 10
-                ? MajorProtocolVersion.plominPV()
-                : MajorProtocolVersion.changPV();
+        // Map the chain's protocol major version DIRECTLY to Scalus's MajorProtocolVersion
+        // (9 -> changPV, 10 -> plominPV, 11 -> vanRossemPV, and future versions). Do NOT collapse
+        // 11+ to plominPV: PlutusVM gates PV11 semantics (e.g. case-on-builtins) on
+        // protocolVersion >= vanRossemPV, so feeding the wrong version silently disables them.
+        MajorProtocolVersion pv = new MajorProtocolVersion(protocolMajorVersion);
         this.protocolVersion = pv;
 
         // Only V3 supports custom MachineParams in Scalus; V1/V2 use built-in defaults
@@ -59,10 +59,12 @@ public class ScalusVmProvider implements JulcVmProvider {
         }
         scala.collection.immutable.IndexedSeq<Object> indexedSeq = builder.result();
 
-        // Build CostModels map: Language.PlutusV3 -> indexedSeq
+        // Build CostModels map: the key MUST be the integer languageId (Language.PlutusV3.languageId() == 2,
+        // which equals the enum ordinal). MachineParams.fromCostModels() looks the model up via
+        // boxToInteger(language.ordinal()), so keying by the Language enum object caused "key not found: 2".
         scala.collection.immutable.Map<Object, scala.collection.immutable.IndexedSeq<Object>> map =
                 scala.collection.immutable.Map$.MODULE$.<Object, scala.collection.immutable.IndexedSeq<Object>>empty()
-                        .updated(Language.PlutusV3, indexedSeq);
+                        .updated(Language.PlutusV3.languageId(), indexedSeq);
 
         CostModels costModels = new CostModels(map);
         this.machineParams = MachineParams.fromCostModels(costModels, Language.PlutusV3, pv);
@@ -128,8 +130,10 @@ public class ScalusVmProvider implements JulcVmProvider {
 
             // Evaluate using evaluateDeBruijnedTerm (general evaluation,
             // does not enforce script return-value semantics like evaluateScriptDebug)
+            // Scalus 0.17.0 added a 4th 'tracing' boolean (default false); pass false to preserve
+            // the prior 3-arg behaviour (no script return-value enforcement / tracing).
             scalus.uplc.Term scalusResult = vm.evaluateDeBruijnedTerm(
-                    scalusTerm, budgetSpender, logger);
+                    scalusTerm, budgetSpender, logger, false);
 
             // Convert result
             Term resultTerm = TermConverter.fromScalus(scalusResult);
