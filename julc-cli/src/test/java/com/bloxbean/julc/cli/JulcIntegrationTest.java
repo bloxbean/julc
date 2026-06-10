@@ -200,6 +200,8 @@ class JulcIntegrationTest {
         // Verify build.gradle content
         String buildGradle = Files.readString(projectRoot.resolve("build.gradle"));
         assertTrue(buildGradle.contains("group = 'com.myorg'"));
+        assertTrue(buildGradle.contains("id 'com.bloxbean.cardano.julc' version '" + JulcVersionProvider.VERSION + "'"),
+                "Gradle template must apply the julc plugin so @OnchainLibrary sources are bundled into the jar");
         assertTrue(buildGradle.contains("julcVersion = '" + JulcVersionProvider.VERSION + "'"));
         assertTrue(buildGradle.contains("cardanoClientLibVersion = '" + JulcVersionProvider.CARDANO_CLIENT_LIB_VERSION + "'"));
         assertTrue(buildGradle.contains("julc-stdlib"));

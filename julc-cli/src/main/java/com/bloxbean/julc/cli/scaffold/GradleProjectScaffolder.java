@@ -53,6 +53,9 @@ public final class GradleProjectScaffolder {
         return """
                 plugins {
                     id 'java'
+                    // Bundles @OnchainLibrary sources into META-INF/plutus-sources/ in the jar
+                    // so downstream projects can discover and reuse them.
+                    id 'com.bloxbean.cardano.julc' version '%s'
                 }
 
                 group = '%s'
@@ -111,7 +114,7 @@ public final class GradleProjectScaffolder {
                     useJUnitPlatform()
                     failOnNoDiscoveredTests = false
                 }
-                """.formatted(group, julcVersion, cclVersion);
+                """.formatted(julcVersion, group, julcVersion, cclVersion);
     }
 
     private static String settingsGradle(String projectName) {
