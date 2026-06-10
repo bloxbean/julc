@@ -34,9 +34,6 @@ public class NewCommand implements Runnable {
     @Option(names = {"-p", "--package"}, description = "Java package name (default: <group>.<name>)")
     private String pkg;
 
-    @Option(names = {"--jrl"}, description = "Create a JRL (JuLC Rule Language) project instead of Java")
-    private boolean jrl;
-
     @Override
     public void run() {
         try {
@@ -50,9 +47,9 @@ public class NewCommand implements Runnable {
 
             switch (template) {
                 case BASIC -> {
-                    ProjectScaffolder.scaffold(projectRoot, name, jrl);
+                    ProjectScaffolder.scaffold(projectRoot, name);
                     System.out.println(AnsiColors.green(
-                            (jrl ? "JRL project" : "Project") + " created at ./" + name));
+                            "Project created at ./" + name));
                     System.out.println();
                     System.out.println("  cd " + name);
                     System.out.println("  julc build    # compile validators");

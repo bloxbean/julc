@@ -16,6 +16,10 @@ tools/claude-skill/julc/
   README.md             # this file
 ```
 
+> Note: this is the **end-user** skill — for developers writing JuLC
+> validators. JuLC compiler-developer test-automation skills live separately
+> at `.claude/commands/julc-*.md`; see `adr/025-julc-test-automation-skills.md`.
+
 ## Install
 
 1. **Install the JuLC CLI** (provides the MCP server):
