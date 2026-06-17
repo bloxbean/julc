@@ -889,7 +889,7 @@ when your validator references them.
 | `ValuesLib` | `lovelaceOf`, `assetOf`, `containsPolicy`, `geq`, `geqMultiAsset`, `leq`, `eq`, `isZero`, `singleton`, `negate`, `flatten`, `flattenTyped`, `add`, `subtract`, `countTokensWithQty`, `findTokenName` |
 | `MapLib` | `lookup`, `member`, `insert`, `delete`, `keys`, `values`, `toList`, `fromList`, `size` |
 | `OutputLib` | `txOutAddress`, `txOutValue`, `txOutDatum`, `outputsAt`, `countOutputsAt`, `uniqueOutputAt`, `outputsWithToken`, `valueHasToken`, `lovelacePaidTo`, `paidAtLeast`, `getInlineDatum`, `resolveDatum`, `findOutputWithToken`, `findInputWithToken` |
-| `MathLib` | `abs`, `max`, `min`, `divMod`, `quotRem`, `pow`, `sign`, `expMod` |
+| `MathLib` | `abs`, `max`, `min`, `floorDiv`, `floorMod`, `divMod`, `quotRem`, `pow`, `sign`, `expMod` |
 | `IntervalLib` | `contains`, `always`, `after`, `before`, `between`, `never`, `isEmpty`, `finiteUpperBound`, `finiteLowerBound` |
 | `CryptoLib` | `sha2_256`, `blake2b_256`, `sha3_256`, `blake2b_224`, `keccak_256`, `verifyEd25519Signature`, `verifyEcdsaSecp256k1`, `verifySchnorrSecp256k1`, `ripemd_160` (all hash functions also available via `Builtins.*`) |
 | `ByteStringLib` | `at`, `cons`, `slice`, `length`, `drop`, `take`, `append`, `empty`, `zeros`, `equals`, `lessThan`, `lessThanEquals`, `integerToByteString`, `byteStringToInteger`, `encodeUtf8`, `decodeUtf8`, `serialiseData`, `hexNibble`, `toHex`, `intToDecimalString`, `utf8ToInteger` |

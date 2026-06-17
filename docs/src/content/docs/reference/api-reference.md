@@ -56,9 +56,9 @@ Off-chain: backed by `JulcArrayImpl`, wrapping `java.util.List` with O(1) index 
 Generic tuples with auto-unwrapping field access based on type arguments.
 
 ```java
-Tuple2<BigInteger, byte[]> result = MathLib.divMod(a, b);
+Tuple2<BigInteger, BigInteger> result = MathLib.divMod(a, b);
 BigInteger quotient = result.first();   // auto-generates UnIData
-byte[] remainder = result.second();     // auto-generates UnBData
+BigInteger remainder = result.second(); // auto-generates UnIData
 
 // Construction auto-wraps
 var t = new Tuple2<BigInteger, BigInteger>(val1, val2);  // auto-wraps via IData
@@ -125,7 +125,7 @@ var items2 = PlutusData.cast(data, JulcList.class);                 // element t
 | `+` | `b1 + b2` | `AppendByteString` | For `byte[]` operands |
 | `-` | `a - b` | `SubtractInteger` | |
 | `*` | `a * b` | `MultiplyInteger` | |
-| `/` | `a / b` | `DivideInteger` | |
+| `/` | `a / b` | `QuotientInteger` | Truncates toward zero, matching Java |
 | `%` | `a % b` | `RemainderInteger` | |
 
 The `+` operator is type-aware: the compiler infers the operand type and dispatches to the correct builtin.
@@ -361,7 +361,7 @@ boolean hasSigner = ctx.txInfo().signatories().contains(datum.beneficiary());
 | `.add(other)` | `BigInteger` | `AddInteger` |
 | `.subtract(other)` | `BigInteger` | `SubtractInteger` |
 | `.multiply(other)` | `BigInteger` | `MultiplyInteger` |
-| `.divide(other)` | `BigInteger` | `DivideInteger` |
+| `.divide(other)` | `BigInteger` | `QuotientInteger` |
 | `.remainder(other)` | `BigInteger` | `RemainderInteger` |
 | `.mod(other)` | `BigInteger` | `ModInteger` |
 | `.signum()` | `BigInteger` | `IfThenElse` chain |
@@ -574,9 +574,13 @@ Import from `com.bloxbean.cardano.julc.stdlib.lib.*` in validators. See [Standar
 | `min(a, b)` | Integer, Integer | Minimum |
 | `pow(base, exp)` | Integer, Integer | Exponentiation |
 | `sign(x)` | Integer | Sign (-1, 0, or 1) |
-| `divMod(a, b)` | Integer, Integer | Returns Tuple2(quotient, remainder) |
+| `floorDiv(a, b)` | Integer, Integer | Floor division |
+| `floorMod(a, b)` | Integer, Integer | Floor modulo |
+| `divMod(a, b)` | Integer, Integer | Returns Tuple2(floor division, floor modulo) |
 | `quotRem(a, b)` | Integer, Integer | Returns Tuple2(quotient, remainder) |
 | `expMod(base, exp, mod)` | Integer, Integer, Integer | Modular exponentiation |
+
+Use `MathLib.floorDiv` and `MathLib.floorMod` for `BigInteger` floor division. `java.lang.Math.floorDiv` and `Math.floorMod` are valid for normal Java `int`/`long` calls, but the JDK does not provide `BigInteger` overloads for those methods.
 
 ### IntervalLib
 

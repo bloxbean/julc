@@ -3,6 +3,7 @@ package com.bloxbean.cardano.julc.compiler;
 import com.bloxbean.cardano.julc.core.*;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
 import com.bloxbean.cardano.julc.vm.JulcVm;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Nested;
@@ -795,6 +796,201 @@ class StdlibCompileEvalTest {
             var program = compileValidator(source);
             var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
             assertTrue(result.isSuccess(), "divMod(10,3) should be (3,1). Got: " + result);
+        }
+
+        @Test
+        void javaOperatorDivisionTruncatesTowardZeroForNegativeOperands() {
+            var source = """
+                    import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
+                    @SpendingValidator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            long q1 = -7 / 2;
+                            long r1 = -7 % 2;
+                            long q2 = 7 / -2;
+                            long r2 = 7 % -2;
+                            long q3 = -7 / -2;
+                            long r3 = -7 % -2;
+                            return q1 == -3 && r1 == -1 && q1 * 2 + r1 == -7
+                                && q2 == -3 && r2 == 1 && q2 * -2 + r2 == 7
+                                && q3 == 3 && r3 == -1 && q3 * -2 + r3 == -7;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
+            assertTrue(result.isSuccess(), "Java / and % should use truncating semantics. Got: " + result);
+        }
+
+        @Test
+        void bigIntegerDivideAndRemainderMatchJvmForNegativeOperands() {
+            var source = """
+                    import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
+                    @SpendingValidator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            BigInteger a = BigInteger.valueOf(-7);
+                            BigInteger b = BigInteger.valueOf(2);
+                            BigInteger c = BigInteger.valueOf(7);
+                            BigInteger d = BigInteger.valueOf(-2);
+                            BigInteger q1 = a.divide(b);
+                            BigInteger r1 = a.remainder(b);
+                            BigInteger q2 = c.divide(d);
+                            BigInteger r2 = c.remainder(d);
+                            BigInteger q3 = a.divide(d);
+                            BigInteger r3 = a.remainder(d);
+                            BigInteger q4 = c.divide(b);
+                            BigInteger r4 = c.remainder(b);
+                            return q1.equals(BigInteger.valueOf(-3))
+                                && r1.equals(BigInteger.valueOf(-1))
+                                && q1.multiply(b).add(r1).equals(a)
+                                && q2.equals(BigInteger.valueOf(-3))
+                                && r2.equals(BigInteger.ONE)
+                                && q2.multiply(d).add(r2).equals(c)
+                                && q3.equals(BigInteger.valueOf(3))
+                                && r3.equals(BigInteger.valueOf(-1))
+                                && q3.multiply(d).add(r3).equals(a)
+                                && q4.equals(BigInteger.valueOf(3))
+                                && r4.equals(BigInteger.ONE)
+                                && q4.multiply(b).add(r4).equals(c);
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
+            assertTrue(result.isSuccess(), "BigInteger.divide/remainder should match JVM semantics. Got: " + result);
+        }
+
+        @Test
+        void explicitFloorDivisionUsesPlutusDivideAndModSemantics() {
+            var source = """
+                    import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
+                    @SpendingValidator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            BigInteger a = BigInteger.valueOf(-7);
+                            BigInteger b = BigInteger.valueOf(2);
+                            BigInteger c = BigInteger.valueOf(7);
+                            BigInteger d = BigInteger.valueOf(-2);
+                            BigInteger div1 = MathLib.floorDiv(a, b);
+                            BigInteger mod1 = MathLib.floorMod(a, b);
+                            BigInteger div2 = MathLib.floorDiv(c, d);
+                            BigInteger mod2 = MathLib.floorMod(c, d);
+                            BigInteger div3 = MathLib.floorDiv(a, d);
+                            BigInteger mod3 = MathLib.floorMod(a, d);
+                            BigInteger div4 = MathLib.floorDiv(c, b);
+                            BigInteger mod4 = MathLib.floorMod(c, b);
+                            long mathDiv = Math.floorDiv(-7, 2);
+                            long mathMod = Math.floorMod(-7, 2);
+                            return div1.equals(BigInteger.valueOf(-4))
+                                && mod1.equals(BigInteger.ONE)
+                                && div1.multiply(b).add(mod1).equals(a)
+                                && div2.equals(BigInteger.valueOf(-4))
+                                && mod2.equals(BigInteger.valueOf(-1))
+                                && div2.multiply(d).add(mod2).equals(c)
+                                && div3.equals(BigInteger.valueOf(3))
+                                && mod3.equals(BigInteger.valueOf(-1))
+                                && div3.multiply(d).add(mod3).equals(a)
+                                && div4.equals(BigInteger.valueOf(3))
+                                && mod4.equals(BigInteger.ONE)
+                                && div4.multiply(b).add(mod4).equals(c)
+                                && mathDiv == -4
+                                && mathMod == 1;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
+            assertTrue(result.isSuccess(), "Explicit floor division/modulo should use floor semantics. Got: " + result);
+        }
+
+        @Test
+        void mathLibDivModAndQuotRemDifferForNegativeOperands() {
+            var source = """
+                    import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.core.types.Tuple2;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
+                    @SpendingValidator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            Tuple2 divMod = MathLib.divMod(BigInteger.valueOf(-7), BigInteger.valueOf(2));
+                            Tuple2 quotRem = MathLib.quotRem(BigInteger.valueOf(-7), BigInteger.valueOf(2));
+                            long div = Builtins.unIData(divMod.first());
+                            long mod = Builtins.unIData(divMod.second());
+                            long quot = Builtins.unIData(quotRem.first());
+                            long rem = Builtins.unIData(quotRem.second());
+                            return div == -4 && mod == 1 && quot == -3 && rem == -1;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
+            assertTrue(result.isSuccess(), "divMod should be floor pair and quotRem should be truncating pair. Got: " + result);
+        }
+
+        @Test
+        void divisionSemanticsMatchOnScalusVm() {
+            JulcVm scalusVm;
+            try {
+                scalusVm = JulcVm.create("Scalus");
+            } catch (IllegalStateException ex) {
+                Assumptions.assumeTrue(false, "Scalus provider not available: " + ex.getMessage());
+                return;
+            }
+
+            var source = """
+                    import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.core.types.Tuple2;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    import com.bloxbean.cardano.julc.stdlib.lib.*;
+
+                    @SpendingValidator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            long opQuot = -7 / 2;
+                            long opRem = -7 % 2;
+
+                            BigInteger a = BigInteger.valueOf(-7);
+                            BigInteger b = BigInteger.valueOf(2);
+                            BigInteger bigQuot = a.divide(b);
+                            BigInteger bigRem = a.remainder(b);
+                            BigInteger floorDiv = MathLib.floorDiv(a, b);
+                            BigInteger floorMod = MathLib.floorMod(a, b);
+
+                            Tuple2 divMod = MathLib.divMod(a, b);
+                            Tuple2 quotRem = MathLib.quotRem(a, b);
+
+                            return opQuot == -3
+                                && opRem == -1
+                                && bigQuot.equals(BigInteger.valueOf(-3))
+                                && bigRem.equals(BigInteger.valueOf(-1))
+                                && floorDiv.equals(BigInteger.valueOf(-4))
+                                && floorMod.equals(BigInteger.ONE)
+                                && Builtins.unIData(divMod.first()) == -4
+                                && Builtins.unIData(divMod.second()) == 1
+                                && Builtins.unIData(quotRem.first()) == -3
+                                && Builtins.unIData(quotRem.second()) == -1;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var javaResult = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
+            assertTrue(javaResult.isSuccess(), "Java VM should accept division semantics validator. Got: " + javaResult);
+            var scalusResult = scalusVm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
+            assertTrue(scalusResult.isSuccess(), "Scalus VM should accept division semantics validator. Got: " + scalusResult);
         }
 
         @Test

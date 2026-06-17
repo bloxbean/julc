@@ -103,12 +103,17 @@ class PirGeneratorTest {
 
         @Test void division() {
             var t = compile("a / b");
-            assertBuiltinApp(t, DefaultFun.DivideInteger);
+            assertBuiltinApp(t, DefaultFun.QuotientInteger);
         }
 
         @Test void remainder() {
             var t = compile("a % b");
             assertBuiltinApp(t, DefaultFun.RemainderInteger);
+        }
+
+        @Test void bigIntegerDivideMethodUsesQuotient() {
+            var t = compile("a.divide(b)");
+            assertBuiltinApp(t, DefaultFun.QuotientInteger);
         }
 
         @Test void negation() {

@@ -313,7 +313,7 @@ All imports are from `com.bloxbean.cardano.julc.stdlib.lib.*`.
 `txOutAddress(out)`, `txOutValue(out)`, `txOutDatum(out)`, `outputsAt(outputs, addr)`, `countOutputsAt(outputs, addr)`, `uniqueOutputAt(outputs, addr)`, `outputsWithToken(outputs, policy, token)`, `valueHasToken(value, policy, token)`, `lovelacePaidTo(outputs, addr)`, `paidAtLeast(outputs, addr, amount)`, `getInlineDatum(out)`, `resolveDatum(txInfo, out)`. **Prefer field access**: `out.address()`, `out.value()`, `out.datum()`.
 
 ### MathLib
-`abs(n)`, `max(a, b)`, `min(a, b)`, `divMod(a, b)` → `Tuple2`, `quotRem(a, b)` → `Tuple2`, `pow(b, e)`, `sign(n)`, `expMod(b, e, m)`.
+`abs(n)`, `max(a, b)`, `min(a, b)`, `floorDiv(a, b)`, `floorMod(a, b)`, `divMod(a, b)` → `Tuple2`, `quotRem(a, b)` → `Tuple2`, `pow(b, e)`, `sign(n)`, `expMod(b, e, m)`.
 
 ### IntervalLib
 `between(lo, hi)`, `never()`, `isEmpty(interval)`, `finiteUpperBound(interval)`, `finiteLowerBound(interval)`, `contains(interval, point)`.

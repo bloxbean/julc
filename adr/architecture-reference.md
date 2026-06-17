@@ -362,7 +362,7 @@ Library method ordering uses Kahn's algorithm on the dependency graph, with self
 | `ValuesLib` | `geqMultiAsset`, `leq`, `eq`, `isZero`, `singleton`, `negate`, `flatten`, `add`, `subtract` |
 | `OutputLib` | `txOutAddress`, `txOutValue`, `txOutDatum`, `outputsAt`, `countOutputsAt`, `uniqueOutputAt`, `outputsWithToken`, `valueHasToken`, `lovelacePaidTo`, `paidAtLeast`, `getInlineDatum`, `resolveDatum` |
 | `ContextsLib` | `txInfoMint`, `txInfoFee`, `txInfoId`, `txInfoRefInputs`, `txInfoWithdrawals`, `txInfoRedeemers`, `findOwnInput`, `getContinuingOutputs`, `findDatum`, `valueSpent`, `valuePaid`, `ownHash`, `scriptOutputsAt`, `listIndex`, `trace` |
-| `MathLib` | `abs`, `max`, `min`, `divMod`, `quotRem`, `pow`, `sign`, `expMod` |
+| `MathLib` | `abs`, `max`, `min`, `floorDiv`, `floorMod`, `divMod`, `quotRem`, `pow`, `sign`, `expMod` |
 | `IntervalLib` | `between`, `never`, `isEmpty`, `finiteUpperBound`, `finiteLowerBound` |
 | `CryptoLib` | `verifyEcdsaSecp256k1`, `verifySchnorrSecp256k1`, `ripemd_160` |
 | `ByteStringLib` | `take`, `lessThan`, `lessThanEquals`, `integerToByteString`, `byteStringToInteger`, `encodeUtf8`, `decodeUtf8`, `serialiseData` |

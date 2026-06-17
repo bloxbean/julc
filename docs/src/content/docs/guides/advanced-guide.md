@@ -1506,9 +1506,9 @@ Use `import java.util.Optional` or bare `Optional` in your validator code.
 `Tuple2<A,B>` and `Tuple3<A,B,C>` provide generic tuples with auto-unwrapping field access based on type arguments.
 
 ```java
-Tuple2<BigInteger, byte[]> result = MathLib.divMod(a, b);
+Tuple2<BigInteger, BigInteger> result = MathLib.divMod(a, b);
 BigInteger quotient = result.first();   // auto-generates UnIData
-byte[] remainder = result.second();     // auto-generates UnBData
+BigInteger remainder = result.second(); // auto-generates UnIData
 
 // Construction auto-wraps
 var t = new Tuple2<BigInteger, BigInteger>(val1, val2);  // auto-wraps via IData

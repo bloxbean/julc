@@ -583,6 +583,26 @@ public final class StdlibRegistry implements StdlibLookup {
             var lte = builtinApp2(DefaultFun.LessThanEqualsInteger, args.get(0), args.get(1));
             return new PirTerm.IfThenElse(lte, args.get(0), args.get(1));
         });
+
+        reg.register("Math", "floorDiv", args -> {
+            requireArgs("Math.floorDiv", args, 2);
+            return builtinApp2(DefaultFun.DivideInteger, args.get(0), args.get(1));
+        });
+
+        reg.register("Math", "floorMod", args -> {
+            requireArgs("Math.floorMod", args, 2);
+            return builtinApp2(DefaultFun.ModInteger, args.get(0), args.get(1));
+        });
+
+        reg.register(LIB + "MathLib", "floorDiv", args -> {
+            requireArgs("MathLib.floorDiv", args, 2);
+            return builtinApp2(DefaultFun.DivideInteger, args.get(0), args.get(1));
+        });
+
+        reg.register(LIB + "MathLib", "floorMod", args -> {
+            requireArgs("MathLib.floorMod", args, 2);
+            return builtinApp2(DefaultFun.ModInteger, args.get(0), args.get(1));
+        });
     }
 
     /**

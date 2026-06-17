@@ -45,8 +45,8 @@ public class MathLib {
      * Division by zero causes script failure on-chain (UPLC error) and ArithmeticException off-chain.
      */
     public static Tuple2<BigInteger, BigInteger> divMod(BigInteger a, BigInteger b) {
-        var div = a.divide(b);
-        var mod = a.remainder(b);
+        var div = MathLib.floorDiv(a, b);
+        var mod = MathLib.floorMod(a, b);
         return new Tuple2(Builtins.iData(div), Builtins.iData(mod));
     }
 
@@ -59,6 +59,39 @@ public class MathLib {
         var quot = a.divide(b);
         var rem = a.remainder(b);
         return new Tuple2(Builtins.iData(quot), Builtins.iData(rem));
+    }
+
+    /**
+     * Returns floor division, rounding toward negative infinity.
+     * <p>
+     * On-chain this is compiled directly to UPLC DivideInteger.
+     */
+    public static BigInteger floorDiv(BigInteger a, BigInteger b) {
+        BigInteger q = a.divide(b);
+        BigInteger r = a.remainder(b);
+        if (!r.equals(BigInteger.ZERO)
+                && ((r.compareTo(BigInteger.ZERO) < 0 && b.compareTo(BigInteger.ZERO) > 0)
+                || (r.compareTo(BigInteger.ZERO) > 0 && b.compareTo(BigInteger.ZERO) < 0))) {
+            return q.subtract(BigInteger.ONE);
+        } else {
+            return q;
+        }
+    }
+
+    /**
+     * Returns floor modulo, with the same sign as the divisor.
+     * <p>
+     * On-chain this is compiled directly to UPLC ModInteger.
+     */
+    public static BigInteger floorMod(BigInteger a, BigInteger b) {
+        BigInteger r = a.remainder(b);
+        if (!r.equals(BigInteger.ZERO)
+                && ((r.compareTo(BigInteger.ZERO) < 0 && b.compareTo(BigInteger.ZERO) > 0)
+                || (r.compareTo(BigInteger.ZERO) > 0 && b.compareTo(BigInteger.ZERO) < 0))) {
+            return r.add(b);
+        } else {
+            return r;
+        }
     }
 
     /**
