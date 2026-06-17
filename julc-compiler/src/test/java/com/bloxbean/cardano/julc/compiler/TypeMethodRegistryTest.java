@@ -4,6 +4,7 @@ import com.bloxbean.cardano.julc.compiler.pir.PirTerm;
 import com.bloxbean.cardano.julc.compiler.pir.PirType;
 import com.bloxbean.cardano.julc.compiler.pir.TypeMethodRegistry;
 import com.bloxbean.cardano.julc.core.Constant;
+import com.bloxbean.cardano.julc.core.DefaultFun;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -390,6 +391,16 @@ class TypeMethodRegistryTest {
     }
 
     @Test
+    void dispatchIntegerDivideUsesQuotientInteger() {
+        var scope = new PirTerm.Const(Constant.integer(BigInteger.valueOf(-7)));
+        var arg = new PirTerm.Const(Constant.integer(BigInteger.valueOf(2)));
+        var result = registry.dispatch(scope, "divide", List.of(arg),
+                new PirType.IntegerType(), List.of(new PirType.IntegerType()));
+        assertTrue(result.isPresent());
+        assertBuiltinApp(result.get(), DefaultFun.QuotientInteger);
+    }
+
+    @Test
     void dispatchIntegerSignumReturnsPresent() {
         var scope = new PirTerm.Const(Constant.integer(BigInteger.valueOf(42)));
         var result = registry.dispatch(scope, "signum", List.of(),
@@ -698,5 +709,14 @@ class TypeMethodRegistryTest {
         var result = registry.dispatch(scope, "abs", List.of(),
                 new PirType.IntegerType(), List.of());
         assertTrue(result.isPresent(), "IntegerType should dispatch to IntegerType.abs");
+    }
+
+    private void assertBuiltinApp(PirTerm term, DefaultFun expectedFun) {
+        assertInstanceOf(PirTerm.App.class, term);
+        var app = (PirTerm.App) term;
+        assertInstanceOf(PirTerm.App.class, app.function());
+        var innerApp = (PirTerm.App) app.function();
+        assertInstanceOf(PirTerm.Builtin.class, innerApp.function());
+        assertEquals(expectedFun, ((PirTerm.Builtin) innerApp.function()).fun());
     }
 }

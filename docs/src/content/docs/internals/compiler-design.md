@@ -967,7 +967,7 @@ These are `@OnchainLibrary`-annotated Java classes compiled from source:
 | `ValuesLib` | 9 | Multi-asset Value operations (add, subtract, compare) |
 | `ContextsLib` | 13 | ScriptContext/TxInfo field extraction helpers |
 | `OutputLib` | 8 | TxOut querying (outputsAt, lovelacePaidTo, etc.) |
-| `MathLib` | 8 | Math utilities (abs, pow, divMod, quotRem, expMod) |
+| `MathLib` | 10 | Math utilities (abs, pow, floorDiv, floorMod, divMod, quotRem, expMod) |
 | `IntervalLib` | 5 | Time interval operations |
 | `CryptoLib` | 3 | ECDSA, Schnorr, RIPEMD-160 |
 | `ByteStringLib` | 8 | ByteString manipulation |

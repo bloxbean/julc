@@ -151,7 +151,7 @@ public final class TypeMethodRegistry {
 
         reg.register("IntegerType", "divide",
                 (scope, args, scopeType, argTypes) ->
-                        PirHelpers.builtinApp2(DefaultFun.DivideInteger, scope, args.get(0)),
+                        PirHelpers.builtinApp2(DefaultFun.QuotientInteger, scope, args.get(0)),
                 scopeType -> new PirType.IntegerType());
 
         reg.register("IntegerType", "remainder",

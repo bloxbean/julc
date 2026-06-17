@@ -710,7 +710,7 @@ public class PirGenerator {
             }
             case MINUS -> builtinApp2(DefaultFun.SubtractInteger, left, right);
             case MULTIPLY -> builtinApp2(DefaultFun.MultiplyInteger, left, right);
-            case DIVIDE -> builtinApp2(DefaultFun.DivideInteger, left, right);
+            case DIVIDE -> builtinApp2(DefaultFun.QuotientInteger, left, right);
             case REMAINDER -> builtinApp2(DefaultFun.RemainderInteger, left, right);
             case EQUALS -> generateEquality(left, right, leftType, false);
             case NOT_EQUALS -> generateEquality(left, right, leftType, true);

@@ -15,7 +15,7 @@ The JuLC standard library provides 13 on-chain libraries in the `com.bloxbean.ca
 | **ValuesLib** | `com.bloxbean.cardano.julc.stdlib.lib.ValuesLib` | Multi-asset Value comparison, arithmetic, and extraction |
 | **MapLib** | `com.bloxbean.cardano.julc.stdlib.lib.MapLib` | Association list (map) lookup, insert, delete, keys/values |
 | **OutputLib** | `com.bloxbean.cardano.julc.stdlib.lib.OutputLib` | Output filtering by address/token, lovelace summation, datum extraction |
-| **MathLib** | `com.bloxbean.cardano.julc.stdlib.lib.MathLib` | abs, max, min, pow, divMod, quotRem, expMod, sign |
+| **MathLib** | `com.bloxbean.cardano.julc.stdlib.lib.MathLib` | abs, max, min, pow, floorDiv, floorMod, divMod, quotRem, expMod, sign |
 | **IntervalLib** | `com.bloxbean.cardano.julc.stdlib.lib.IntervalLib` | Time interval construction, containment, bound extraction |
 | **CryptoLib** | `com.bloxbean.cardano.julc.stdlib.lib.CryptoLib` | Hash functions and signature verification |
 | **ByteStringLib** | `com.bloxbean.cardano.julc.stdlib.lib.ByteStringLib` | ByteString slicing, comparison, encoding, serialization |
@@ -148,9 +148,13 @@ The JuLC standard library provides 13 on-chain libraries in the `com.bloxbean.ca
 | `min(a, b)` | Minimum of two integers |
 | `pow(base, exp)` | Exponentiation |
 | `sign(x)` | Sign: -1, 0, or 1 |
-| `divMod(a, b)` | Division and modulo as Tuple2 |
+| `floorDiv(a, b)` | Floor division |
+| `floorMod(a, b)` | Floor modulo |
+| `divMod(a, b)` | Floor division and modulo as Tuple2 |
 | `quotRem(a, b)` | Quotient and remainder as Tuple2 |
 | `expMod(base, exp, mod)` | Modular exponentiation |
+
+Use `MathLib.floorDiv` and `MathLib.floorMod` for `BigInteger` floor division. `java.lang.Math.floorDiv` and `Math.floorMod` are valid for normal Java `int`/`long` calls, but the JDK does not provide `BigInteger` overloads for those methods.
 
 ### IntervalLib
 
@@ -812,7 +816,9 @@ class MathExample {
 
 ### Division and Modular Arithmetic
 
-`divMod` and `quotRem` return `Tuple2<BigInteger, BigInteger>`. Use `.first()` and `.second()` to access results.
+`divMod` returns floor division and modulo. `quotRem` returns Java-style truncating quotient and remainder. Both return `Tuple2<BigInteger, BigInteger>`; use `.first()` and `.second()` to access results.
+
+Compatibility note: `MathLib.divMod` is floor-based. Code that needs Java-style truncating division should use `MathLib.quotRem`.
 
 ```java
 import com.bloxbean.cardano.julc.core.types.Tuple2;
@@ -824,7 +830,7 @@ class DivModExample {
         BigInteger a = BigInteger.valueOf(17);
         BigInteger b = BigInteger.valueOf(5);
 
-        // divMod returns (quotient, remainder)
+        // divMod returns (floor division, floor modulo)
         Tuple2<BigInteger, BigInteger> dm = MathLib.divMod(a, b);
         BigInteger quotient = dm.first();    // 3
         BigInteger remainder = dm.second();  // 2

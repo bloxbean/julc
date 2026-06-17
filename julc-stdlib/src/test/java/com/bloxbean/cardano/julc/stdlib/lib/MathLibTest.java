@@ -81,6 +81,22 @@ class MathLibTest {
             assertEquals(PlutusData.integer(2), fields.get(0));  // 7 / 3 = 2
             assertEquals(PlutusData.integer(1), fields.get(1));  // 7 % 3 = 1
         }
+
+        @Test
+        void negativeDividendUsesFloorSemantics() {
+            PlutusData result = eval.call("divMod", BigInteger.valueOf(-7), BigInteger.valueOf(2)).asData();
+            var fields = ((PlutusData.ConstrData) result).fields();
+            assertEquals(PlutusData.integer(-4), fields.get(0));
+            assertEquals(PlutusData.integer(1), fields.get(1));
+        }
+
+        @Test
+        void positiveDividendNegativeDivisorUsesFloorSemantics() {
+            PlutusData result = eval.call("divMod", BigInteger.valueOf(7), BigInteger.valueOf(-2)).asData();
+            var fields = ((PlutusData.ConstrData) result).fields();
+            assertEquals(PlutusData.integer(-4), fields.get(0));
+            assertEquals(PlutusData.integer(-1), fields.get(1));
+        }
     }
 
     @Nested
@@ -100,6 +116,50 @@ class MathLibTest {
             var fields = ((PlutusData.ConstrData) result).fields();
             assertEquals(PlutusData.integer(3), fields.get(0));  // 11 / 3 = 3
             assertEquals(PlutusData.integer(2), fields.get(1));  // 11 % 3 = 2
+        }
+
+        @Test
+        void negativeDividendUsesTruncatingSemantics() {
+            PlutusData result = eval.call("quotRem", BigInteger.valueOf(-7), BigInteger.valueOf(2)).asData();
+            var fields = ((PlutusData.ConstrData) result).fields();
+            assertEquals(PlutusData.integer(-3), fields.get(0));
+            assertEquals(PlutusData.integer(-1), fields.get(1));
+        }
+
+        @Test
+        void positiveDividendNegativeDivisorUsesTruncatingSemantics() {
+            PlutusData result = eval.call("quotRem", BigInteger.valueOf(7), BigInteger.valueOf(-2)).asData();
+            var fields = ((PlutusData.ConstrData) result).fields();
+            assertEquals(PlutusData.integer(-3), fields.get(0));
+            assertEquals(PlutusData.integer(1), fields.get(1));
+        }
+    }
+
+    @Nested
+    class FloorDivMod {
+
+        @Test
+        void negativeDividendUsesFloorSemantics() {
+            assertEquals(BigInteger.valueOf(-4),
+                    eval.call("floorDiv", BigInteger.valueOf(-7), BigInteger.valueOf(2)).asInteger());
+            assertEquals(BigInteger.ONE,
+                    eval.call("floorMod", BigInteger.valueOf(-7), BigInteger.valueOf(2)).asInteger());
+        }
+
+        @Test
+        void allSignCombinationsUseFloorSemantics() {
+            assertEquals(BigInteger.valueOf(3),
+                    eval.call("floorDiv", BigInteger.valueOf(7), BigInteger.valueOf(2)).asInteger());
+            assertEquals(BigInteger.ONE,
+                    eval.call("floorMod", BigInteger.valueOf(7), BigInteger.valueOf(2)).asInteger());
+            assertEquals(BigInteger.valueOf(-4),
+                    eval.call("floorDiv", BigInteger.valueOf(7), BigInteger.valueOf(-2)).asInteger());
+            assertEquals(BigInteger.valueOf(-1),
+                    eval.call("floorMod", BigInteger.valueOf(7), BigInteger.valueOf(-2)).asInteger());
+            assertEquals(BigInteger.valueOf(3),
+                    eval.call("floorDiv", BigInteger.valueOf(-7), BigInteger.valueOf(-2)).asInteger());
+            assertEquals(BigInteger.valueOf(-1),
+                    eval.call("floorMod", BigInteger.valueOf(-7), BigInteger.valueOf(-2)).asInteger());
         }
     }
 

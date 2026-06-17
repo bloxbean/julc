@@ -557,8 +557,8 @@ LoopBodyGenerator calls back to PirGenerator via 7 methods (1 already public, 6 
 | `+` | `AddInteger` | `AppendString` | `AppendByteString` |
 | `-` | `SubtractInteger` | — | — |
 | `*` | `MultiplyInteger` | — | — |
-| `/` | `DivideInteger` | — | — |
-| `%` | `ModInteger` | — | — |
+| `/` | `QuotientInteger` | — | — |
+| `%` | `RemainderInteger` | — | — |
 | `==` | `EqualsInteger` / `EqualsByteString` / `EqualsString` / `EqualsData` | | |
 | `<` | `LessThanInteger` | — | — |
 | `<=` | `LessThanEqualsInteger` | — | — |
@@ -1151,7 +1151,7 @@ Used for type inference in chained method calls. For example, `list.tail()` retu
 | `add(other)` | `AddInteger` |
 | `subtract(other)` | `SubtractInteger` |
 | `multiply(other)` | `MultiplyInteger` |
-| `divide(other)` | `DivideInteger` |
+| `divide(other)` | `QuotientInteger` |
 | `remainder(other)` | `RemainderInteger` |
 | `mod(other)` | `ModInteger` |
 | `signum()` | `if x < 0 then -1 else if x == 0 then 0 else 1` |
