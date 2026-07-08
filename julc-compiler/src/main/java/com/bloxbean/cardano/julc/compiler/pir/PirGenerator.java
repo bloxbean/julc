@@ -1072,8 +1072,8 @@ public class PirGenerator {
         }
         if (fieldIndex < 0) return java.util.Optional.empty();
 
-        // Optimization: when var.field() targets a switch-case pattern variable, the field
-        // was already destructured into scope by its bare name, so reuse that binding instead
+        // Optimization: when var.field() targets a switch-case pattern variable, the field was
+        // already destructured into scope (under an internal name), so reuse that binding instead
         // of re-extracting from the record Data.
         //
         // This is sound ONLY when `varName` is the pattern variable that owns `fieldName`.
@@ -1083,7 +1083,8 @@ public class PirGenerator {
         // Transfer and Box have an `amount` field) — a check-bypass miscompilation (issue #47).
         if (ownsDestructuredField(varName, fieldName)) {
             final PirType fType = fieldType;
-            return java.util.Optional.of(scope -> new PirTerm.Var(fieldName, fType));
+            final String binding = destructuredFieldBinding(varName, fieldIndex);
+            return java.util.Optional.of(scope -> new PirTerm.Var(binding, fType));
         }
 
         final int idx = fieldIndex;
@@ -1108,6 +1109,18 @@ public class PirGenerator {
             }
         }
         return false;
+    }
+
+    /**
+     * Internal binding name for the {@code fieldIndex}-th field destructured for switch-case
+     * pattern variable {@code patternVar}. Uses a reserved {@code __pfield_} prefix and the
+     * field index (not the field name) so it can never collide with a user identifier — a bare
+     * user reference to a same-named parameter/local therefore resolves to the parameter, not
+     * the destructured field (#50). Both the DataMatch field binding and the var.field() reuse
+     * reference this same name.
+     */
+    private static String destructuredFieldBinding(String patternVar, int fieldIndex) {
+        return "__pfield_" + patternVar + "_" + fieldIndex;
     }
 
     /**
@@ -1798,15 +1811,20 @@ public class PirGenerator {
                     var ctor = ctorOpt.get();
 
                     symbolTable.pushScope();
-                    // Define the field bindings in scope
+                    // Bind the destructured fields under INTERNAL names (not their bare field
+                    // names) so a user's same-named method parameter/local is never shadowed by
+                    // a bare reference (#50). Java has no record-deconstruction pattern here, so
+                    // the bare field name is never a valid user reference; var.field() access is
+                    // routed to these internal names by resolveRecordFieldAccess.
+                    var ctorFields = ctor.fields();
                     var fieldNames = new java.util.HashSet<String>();
-                    for (var field : ctor.fields()) {
-                        symbolTable.define(field.name(), field.type());
-                        fieldNames.add(field.name());
+                    for (int fi = 0; fi < ctorFields.size(); fi++) {
+                        symbolTable.define(destructuredFieldBinding(varName, fi), ctorFields.get(fi).type());
+                        fieldNames.add(ctorFields.get(fi).name());
                     }
                     // Define the pattern variable (e.g. 'b' in 'case Bid b')
                     // with RecordType so b.fieldName() redirects to the bound field
-                    var varRecordType = new PirType.RecordType(typeName, ctor.fields());
+                    var varRecordType = new PirType.RecordType(typeName, ctorFields);
                     symbolTable.define(varName, varRecordType);
                     // Record which pattern variable owns these destructured fields so that
                     // var.field() reuse is restricted to this variable (see resolveRecordFieldAccess).
@@ -1817,9 +1835,12 @@ public class PirGenerator {
 
                     patternScopes.pop();
                     symbolTable.popScope();
-                    // For DataMatch, we bind the constructor fields
+                    // For DataMatch, we bind the constructor fields under the same internal names.
                     matchEntries.add(new PatternMatchDesugarer.MatchEntry(
-                            typeName, ctor.fields().stream().map(PirType.Field::name).toList(), bodyTerm, varName));
+                            typeName,
+                            java.util.stream.IntStream.range(0, ctorFields.size())
+                                    .mapToObj(fi -> destructuredFieldBinding(varName, fi)).toList(),
+                            bodyTerm, varName));
                 }
             }
         }
