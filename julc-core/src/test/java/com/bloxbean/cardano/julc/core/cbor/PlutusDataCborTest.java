@@ -504,60 +504,56 @@ class PlutusDataCborTest {
     }
 
     @Nested
-    class CanonicalMapKeyOrdering {
+    class MapOrderPreservation {
+        // Canonical Plutus Data preserves map entry order and duplicate keys (#54): the on-chain
+        // serialiseData folds the entry list as-is and the ledger memoizes Plutus-data bytes.
+        // Canonical key sorting is a transaction-body concern handled by cardano-client-lib, NOT
+        // the Plutus-data encoder. Golden values verified against DataSerializer (Java VM) and the
+        // Plutus Data.hs reference. A regression changes on-chain script hashes / serialiseData output.
 
         @Test
-        void mapKeysCanonicalOrder() {
-            // Encode map with keys [int(2), int(1)] — output should have int(1) first
+        void mapPreservesInsertionOrder() {
+            // keys [int(2), int(1)] stay in that order — NOT sorted to int(1) first
             var data = PlutusData.map(
                     new PlutusData.Pair(PlutusData.integer(2), PlutusData.integer(20)),
                     new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(10)));
-            byte[] encoded = PlutusDataCborEncoder.encode(data);
-            String hex = HEX.formatHex(encoded);
-            // a2 = map(2), 01 0a = {1: 10}, 02 14 = {2: 20}
-            assertEquals("a2010a0214", hex,
-                    "Map keys should be canonically sorted: int(1) before int(2)");
+            // a2 = map(2), 02 14 = {2:20}, 01 0a = {1:10}
+            assertEquals("a20214010a", HEX.formatHex(PlutusDataCborEncoder.encode(data)));
         }
 
         @Test
-        void mapKeysMixedTypes() {
-            // Integer key (01) encodes to 1 byte, bytestring key (4101) encodes to 2 bytes
-            // RFC 7049 §3.9: shorter keys sort first
+        void mapMixedTypeKeysPreserveOrder() {
+            // keys [bytes(#01), int(1)] stay in insertion order — no shorter-key-first sorting
             var data = PlutusData.map(
                     new PlutusData.Pair(PlutusData.bytes(new byte[]{0x01}), PlutusData.integer(2)),
                     new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(1)));
-            byte[] encoded = PlutusDataCborEncoder.encode(data);
-            String hex = HEX.formatHex(encoded);
-            // map(2): int(1)→int(1) should come before bytes([0x01])→int(2)
-            // a2 01 01 41 01 02
-            assertEquals("a201014101" + "02", hex,
-                    "Shorter key (int) should sort before longer key (bytestring)");
+            // a2, 41 01 = bytes(#01) key, 02 = value; 01 = int(1) key, 01 = value
+            assertEquals("a24101020101", HEX.formatHex(PlutusDataCborEncoder.encode(data)));
         }
 
         @Test
-        void mapCanonicalRoundTrip() {
-            // Encode with out-of-order keys, decode, verify values preserved
+        void mapPreservesDuplicateKeys() {
+            // {1:10, 1:20} keeps BOTH entries — Plutus Data allows duplicate keys
+            var data = PlutusData.map(
+                    new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(10)),
+                    new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(20)));
+            assertEquals("a2010a0114", HEX.formatHex(PlutusDataCborEncoder.encode(data)));
+        }
+
+        @Test
+        void mapRoundTripPreservesOrder() {
+            // out-of-order keys stay in input order through encode/decode (no sorting)
             var data = PlutusData.map(
                     new PlutusData.Pair(PlutusData.integer(100), PlutusData.integer(1)),
                     new PlutusData.Pair(PlutusData.integer(2), PlutusData.integer(2)),
                     new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(3)));
-            byte[] encoded = PlutusDataCborEncoder.encode(data);
-            PlutusData decoded = PlutusDataCborDecoder.decode(encoded);
-
-            // Decoded values should be present (order may differ from input)
+            var decoded = PlutusDataCborDecoder.decode(PlutusDataCborEncoder.encode(data));
             assertInstanceOf(PlutusData.MapData.class, decoded);
-            var map = (PlutusData.MapData) decoded;
-            assertEquals(3, map.entries().size());
-
-            // Verify all key-value pairs exist
-            var entries = map.entries();
-            // After canonical sorting: int(1), int(2), int(100)
-            assertEquals(PlutusData.integer(1), entries.get(0).key());
-            assertEquals(PlutusData.integer(3), entries.get(0).value());
+            var entries = ((PlutusData.MapData) decoded).entries();
+            assertEquals(3, entries.size());
+            assertEquals(PlutusData.integer(100), entries.get(0).key());  // input order preserved
             assertEquals(PlutusData.integer(2), entries.get(1).key());
-            assertEquals(PlutusData.integer(2), entries.get(1).value());
-            assertEquals(PlutusData.integer(100), entries.get(2).key());
-            assertEquals(PlutusData.integer(1), entries.get(2).value());
+            assertEquals(PlutusData.integer(1), entries.get(2).key());
         }
     }
 

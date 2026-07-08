@@ -87,41 +87,21 @@ public final class PlutusDataCborEncoder {
         return array;
     }
 
-    // --- Map (canonical key sorting) ---
+    // --- Map (order- and duplicate-preserving) ---
 
     private static DataItem mapToDataItem(PlutusData.MapData m) {
-        var entries = m.entries();
-        if (entries.size() <= 1) {
-            Map map = new Map();
-            for (var entry : entries) {
-                map.put(toDataItem(entry.key()), toDataItem(entry.value()));
-            }
-            return map;
+        // Canonical Plutus Data preserves map entry order and duplicate keys (the on-chain
+        // serialiseData folds the entry list as-is; the ledger memoizes Plutus-data bytes and
+        // does not require canonical form). Sorting/deduplication is a transaction-body concern
+        // handled by cardano-client-lib, NOT the Plutus-data encoder. cbor-java's Map reorders
+        // and drops duplicate keys, so use an order-preserving map DataItem instead.
+        var keys = new ArrayList<DataItem>(m.entries().size());
+        var values = new ArrayList<DataItem>(m.entries().size());
+        for (var entry : m.entries()) {
+            keys.add(toDataItem(entry.key()));
+            values.add(toDataItem(entry.value()));
         }
-
-        // Sort entries by their key's CBOR byte representation (RFC 7049 §3.9).
-        // We sort ourselves rather than relying on cbor-java's canonical mode because
-        // cbor-java's Map uses DataItem.hashCode/equals which can reorder or lose entries.
-        record EncodedEntry(byte[] keyBytes, DataItem key, DataItem value) {}
-        List<EncodedEntry> sortable = new ArrayList<>(entries.size());
-        for (var entry : entries) {
-            DataItem keyDi = toDataItem(entry.key());
-            DataItem valueDi = toDataItem(entry.value());
-            byte[] keyBytes = serializeDataItem(keyDi);
-            sortable.add(new EncodedEntry(keyBytes, keyDi, valueDi));
-        }
-        sortable.sort((a, b) -> {
-            if (a.keyBytes.length != b.keyBytes.length) {
-                return Integer.compare(a.keyBytes.length, b.keyBytes.length);
-            }
-            return Arrays.compareUnsigned(a.keyBytes, b.keyBytes);
-        });
-
-        Map map = new Map();
-        for (var e : sortable) {
-            map.put(e.key, e.value);
-        }
-        return map;
+        return new OrderedMap(keys, values);
     }
 
     // --- List ---
@@ -212,7 +192,31 @@ public final class PlutusDataCborEncoder {
         }
     }
 
-    // --- Inner classes for chunked byte string support ---
+    // --- Inner classes ---
+
+    /**
+     * A CBOR map DataItem that preserves entry order and duplicate keys, unlike cbor-java's
+     * {@link Map} (which reorders and deduplicates via {@code DataItem.hashCode/equals}).
+     * Encoded as a definite-length map (major type 5) by {@link PlutusDataCborCborEncoder}.
+     */
+    static final class OrderedMap extends DataItem {
+        private final List<DataItem> keys;
+        private final List<DataItem> values;
+
+        OrderedMap(List<DataItem> keys, List<DataItem> values) {
+            super(MajorType.MAP);
+            this.keys = keys;
+            this.values = values;
+        }
+
+        List<DataItem> keys() {
+            return keys;
+        }
+
+        List<DataItem> values() {
+            return values;
+        }
+    }
 
     /**
      * A ByteString that has been split into chunks for indefinite-length encoding.
@@ -284,6 +288,23 @@ public final class PlutusDataCborEncoder {
 
         @Override
         public void encode(DataItem dataItem) throws CborException {
+            if (dataItem instanceof OrderedMap om) {
+                // Definite-length map (major type 5) preserving entry order and duplicate keys,
+                // recursing through this encoder so nested items are handled.
+                try {
+                    if (om.hasTag()) {
+                        encode(om.getTag());
+                    }
+                    writeTypeAndLength(5, om.keys.size());
+                    for (int i = 0; i < om.keys.size(); i++) {
+                        encode(om.keys.get(i));
+                        encode(om.values.get(i));
+                    }
+                } catch (java.io.IOException e) {
+                    throw new CborException("Failed to encode map", e);
+                }
+                return;
+            }
             if (dataItem instanceof Array arr && arr.isChunked()) {
                 // cbor-java 0.9's ArrayEncoder emits the 0x9f indefinite-length start for a
                 // chunked array but NOT the closing 0xff break. Emit an indefinite-length array
@@ -311,6 +332,32 @@ public final class PlutusDataCborEncoder {
                 chunkedByteStringEncoder.encode((ByteString) dataItem);
             } else {
                 super.encode(dataItem);
+            }
+        }
+
+        /** Write a CBOR major-type byte and length argument (as {@code encodeTypeAndLength} would). */
+        private void writeTypeAndLength(int majorType, long length) throws java.io.IOException {
+            int mt = majorType << 5;
+            if (length < 24) {
+                out.write(mt | (int) length);
+            } else if (length < 0x100L) {
+                out.write(mt | 24);
+                out.write((int) length);
+            } else if (length < 0x10000L) {
+                out.write(mt | 25);
+                out.write((int) (length >> 8));
+                out.write((int) (length & 0xff));
+            } else if (length < 0x100000000L) {
+                out.write(mt | 26);
+                out.write((int) (length >> 24));
+                out.write((int) ((length >> 16) & 0xff));
+                out.write((int) ((length >> 8) & 0xff));
+                out.write((int) (length & 0xff));
+            } else {
+                out.write(mt | 27);
+                for (int shift = 56; shift >= 0; shift -= 8) {
+                    out.write((int) ((length >> shift) & 0xff));
+                }
             }
         }
     }

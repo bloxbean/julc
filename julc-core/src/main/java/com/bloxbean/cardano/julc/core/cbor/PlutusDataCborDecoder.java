@@ -89,8 +89,18 @@ public final class PlutusDataCborDecoder {
                 yield new PlutusData.ListData(items);
             }
             case MAP -> {
-                var map = (Map) item;
                 var entries = new ArrayList<PlutusData.Pair>();
+                if (item instanceof PlutusDataCborEncoder.OrderedMap om) {
+                    // Order- and duplicate-preserving map produced by our own encoder
+                    // (fromDataItem(toDataItem(x)) round-trip).
+                    var keys = om.keys();
+                    var values = om.values();
+                    for (int i = 0; i < keys.size(); i++) {
+                        entries.add(new PlutusData.Pair(fromDataItem(keys.get(i)), fromDataItem(values.get(i))));
+                    }
+                    yield new PlutusData.MapData(entries);
+                }
+                var map = (Map) item;
                 Collection<DataItem> keys = map.getKeys();
                 for (var key : keys) {
                     if (key.getMajorType() == MajorType.SPECIAL) continue; // skip break codes
