@@ -134,6 +134,67 @@ class PlutusDataCborTest {
                 PlutusData.list(PlutusData.integer(2))));
     }
 
+    // ---- Canonical indefinite-length List/Constr (issue #48) ----
+    // Golden hex values verified byte-for-byte against cardano-client-lib 0.7.x and Scalus 0.17.0.
+    // Non-empty lists and constructor fields MUST use indefinite-length arrays (0x9f ... 0xff);
+    // empty collections stay definite (0x80). A regression here changes on-chain script hashes /
+    // serialiseData output.
+
+    @Test
+    void listNonEmptyIsIndefinite() {
+        assertHex("9f0102ff", PlutusData.list(PlutusData.integer(1), PlutusData.integer(2)));
+    }
+
+    @Test
+    void listEmptyIsDefinite() {
+        assertHex("80", PlutusData.list());
+    }
+
+    @Test
+    void constrNonEmptyFieldsAreIndefinite() {
+        assertHex("d8799f182aff", PlutusData.constr(0, PlutusData.integer(42)));
+        assertHex("d8799f0102ff", PlutusData.constr(0, PlutusData.integer(1), PlutusData.integer(2)));
+        assertHex("d905009f01ff", PlutusData.constr(7, PlutusData.integer(1)));
+    }
+
+    @Test
+    void constrEmptyFieldsAreDefinite() {
+        assertHex("d87980", PlutusData.constr(0));
+    }
+
+    @Test
+    void constrGeneralFormHasDefiniteOuterIndefiniteInner() {
+        // tag 130 -> CBOR tag 102, [130, 9f 05 ff]: outer 2-elem array definite, inner fields indefinite
+        assertHex("d8668218829f05ff", PlutusData.constr(130, PlutusData.integer(5)));
+    }
+
+    @Test
+    void nestedConstrListBytesMatchesCanonical() {
+        assertHex("d8799f9fd87a9f09ffff41abff",
+                PlutusData.constr(0,
+                        PlutusData.list(PlutusData.constr(1, PlutusData.integer(9))),
+                        PlutusData.bytes(new byte[]{(byte) 0xab})));
+    }
+
+    @Test
+    void constrWithLongByteStringHasBothBreaks() {
+        // >64-byte bytestring chunks (indefinite bytestring) inside indefinite constr fields:
+        // both the array and the bytestring must close with 0xff.
+        byte[] big = new byte[100];
+        for (int i = 0; i < big.length; i++) big[i] = (byte) i;
+        byte[] encoded = PlutusDataCborEncoder.encode(PlutusData.constr(0, PlutusData.bytes(big)));
+        String hex = HEX.formatHex(encoded);
+        assertEquals("d8799f", hex.substring(0, 6), "constr tag + indefinite array start");
+        assertEquals("ffff", hex.substring(hex.length() - 4), "bytestring break then array break");
+        assertRoundTrip(PlutusData.constr(0, PlutusData.bytes(big)));
+    }
+
+    private static void assertHex(String expected, PlutusData data) {
+        assertEquals(expected, HEX.formatHex(PlutusDataCborEncoder.encode(data)));
+        // and confirm the canonical bytes still decode back to the same value
+        assertEquals(data, PlutusDataCborDecoder.decode(PlutusDataCborEncoder.encode(data)));
+    }
+
     // ---- Map encoding/decoding ----
 
     @Test
@@ -220,10 +281,10 @@ class PlutusDataCborTest {
 
     @Test
     void constrWithFields() {
-        // Constr(0, [42]) → tag(121) + array([42])
+        // Constr(0, [42]) → tag(121) + INDEFINITE-length array([42]) per canonical Plutus Data.
         byte[] encoded = PlutusDataCborEncoder.encode(PlutusData.constr(0, PlutusData.integer(42)));
-        assertEquals("d879" + "81" + "182a", HEX.formatHex(encoded));
-        // d8 79 = tag(121), 81 = array(1), 18 2a = uint(42)
+        assertEquals("d879" + "9f" + "182a" + "ff", HEX.formatHex(encoded));
+        // d8 79 = tag(121), 9f = indefinite array start, 18 2a = uint(42), ff = break
     }
 
     // ---- Nested structures ----
