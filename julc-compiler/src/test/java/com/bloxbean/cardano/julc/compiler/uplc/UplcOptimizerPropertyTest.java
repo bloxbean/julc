@@ -43,7 +43,7 @@ class UplcOptimizerPropertyTest {
             DefaultFun.AppendByteString, DefaultFun.MkNilData,
             DefaultFun.ListData, DefaultFun.MapData);
 
-    @Property(tries = 1500)
+    @Property(tries = 3000)
     void optimizePreservesEvaluationOutcome(@ForAll("closedTerms") Term term) {
         var optimizedTerm = new UplcOptimizer().optimize(term);
 
@@ -73,7 +73,14 @@ class UplcOptimizerPropertyTest {
 
     @Provide
     Arbitrary<Term> closedTerms() {
-        return terms(4, 0);
+        // One in ~6 terms is a TOP-LEVEL discarded saturated builtin over
+        // constants. Embedded instances are often unreachable (buried under
+        // unapplied lambdas) or unobservable (a sibling error fails both
+        // sides identically); at the top of the term the shape is always
+        // evaluated, so a certification misclassification always flips.
+        return Arbitraries.frequencyOf(
+                Tuple.of(5, terms(4, 0)),
+                Tuple.of(1, discardedSaturatedBuiltins(terms(2, 1))));
     }
 
     /**
@@ -108,10 +115,46 @@ class UplcOptimizerPropertyTest {
                 // ... a Case whose scrutinee is a Constr (Pass 6 target) ...
                 Tuple.of(2, Combinators.combine(constrs(sub), sub.list().ofMinSize(1).ofMaxSize(3))
                         .as(Term.Case::new)),
+                // ... a discarded saturated builtin over constant arguments —
+                // the exact purity-certification surface: dropping is sound
+                // only if the application provably cannot fail on those
+                // constants (wrong types, malformed lists, out-of-range tags) ...
+                Tuple.of(2, discardedSaturatedBuiltins(subUnderLam)),
                 // ... plus standalone builtin spines and emitting traces, so
                 // effects and arity edges appear inside every other shape
                 Tuple.of(2, builtinSpines(sub)),
                 Tuple.of(2, traceApps(sub)));
+    }
+
+    /**
+     * {@code (\x -> body) (Force^typeArity(builtin) const...)} — a saturated
+     * builtin application over constant arguments in discard position. This is
+     * the decision surface of DCE's purity certification: the argument may be
+     * dropped only when the saturated application provably cannot fail on
+     * exactly those constants. Constants include wrong-typed values, content-
+     * mismatched lists, and out-of-range integers, so misclassifications in
+     * the totality/argument-type tables surface as success/failure flips.
+     */
+    private Arbitrary<Term> discardedSaturatedBuiltins(Arbitrary<Term> subUnderLam) {
+        return Arbitraries.of(BUILTIN_POOL).flatMap(fun -> {
+            var sig = BuiltinSemantics.find(fun);
+            // Body biased toward constants: a dropped-computation flip is only
+            // observable when the surviving continuation itself succeeds, and
+            // random bodies error too often to expose it
+            return Combinators.combine(
+                            Arbitraries.oneOf(constants(), subUnderLam),
+                            constants().list().ofSize(sig.valueArity()))
+                    .as((body, args) -> {
+                        Term t = Term.builtin(fun);
+                        for (int i = 0; i < sig.typeArity(); i++) {
+                            t = Term.force(t);
+                        }
+                        for (var arg : args) {
+                            t = Term.apply(t, arg);
+                        }
+                        return Term.apply(Term.lam("x", body), t);
+                    });
+        });
     }
 
     /**

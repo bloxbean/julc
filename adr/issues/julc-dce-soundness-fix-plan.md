@@ -261,10 +261,22 @@ well-formed list constants and essentially never composed the optimizer-
 targeted redex shapes) — since hardened with content-mismatched list
 constants, builtin application spines with ±1 force-arity edges and
 constant-biased arguments, saturated emitting traces, let-style discard
-redexes, and Case-on-Constr redexes with trace-biased fields. Validated by
-mutation testing: with the two fixes reverted, the hardened property test
-catches a flip in 6/6 runs of 1500 tries (was 0/6 before hardening); on the
-fixed code it is stable at 6/6 passes.
+redexes, Case-on-Constr redexes with trace-biased fields, and a top-level
+discarded-saturated-builtin-over-constants shape (the purity-certification
+decision surface; embedded instances are often unreachable or masked by
+sibling errors, so the shape is also mixed in at the term root where a
+misclassification always flips observably).
+
+**Mutation-tested per fix, with fresh jqwik state per run** (delete
+`.jqwik-database` between runs — jqwik's SAMPLE_FIRST replays a stored
+failing sample, which silently inflates repeat-run "catch rates"; per-fix
+reverts are required because under a combined mutation, shrinking can morph
+a failure of one class into a smaller witness of the other, misattributing
+coverage). At 3,000 tries per run: Case-reduction mutation caught 5/6 runs;
+list-certification mutation caught 3/6 runs (pre-hardening: 0/6 for both).
+The deterministic regressions above remain the reliable per-bug pins; the
+property test provides class-level coverage that catches these mutation
+families across CI runs. Fixed code: stable at 6/6 passes.
 
 ## 3. Phase 2 — resolution
 
