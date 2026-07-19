@@ -220,6 +220,46 @@ fail-closed on malformed data), `UplcOptimizerPropertyTest` (jqwik differential:
 eval(optimize(t)) ≡ eval(t) incl. traces, 1500 random closed terms per run),
 `BuiltinSemanticsCrossCheckTest` (104: arity drift + totality execution).
 
+## 2.8 Review follow-up (2026-07-19): two residual soundness gaps closed
+
+PR review (three independent reviewers converging) found two holes in the §2.7
+implementation; both fixed in-branch:
+
+1. **Case-of-Constr reduction reordered branch vs. fields (reachable from
+   well-formed UPLC).** The §2.3 gate `isValue(branches[tag])` was the wrong
+   condition: with `Case(Constr(0, [1, trace "f" 2]), [\first -> error])`, CEK
+   evaluates all fields (emitting the trace) before the branch errors, while the
+   reduced `((\first -> error) 1) (trace "f" 2)` starts the branch body after
+   the first application — erroring before the second field runs, losing its
+   trace. The sound condition is on the **fields**, not the branch: when every
+   field is a value, field evaluation is effect-free and moving the branch
+   computation/body across it is unobservable — the branch may then be *any*
+   term. New gate: `fields.allMatch(isValue)`, branch unconstrained. (Gating
+   fields on `isPure` would also be sound and slightly less conservative; not
+   done, to keep Pass 6 independent of the certification machinery. A
+   let-binding transform could preserve the reduction for effectful fields but
+   grows the term — counterproductive for a size-reduction pass.)
+2. **`LIST_DATA`/`LIST_PAIR_DATA` trusted `ListConst.elemType()` without
+   validating contents (defense-in-depth; needs a hand-constructed,
+   non-decodable constant).** `ListConst` does not enforce its element type, so
+   `(list data) [integer 1]` is constructible; `listData`/`mapData` reject the
+   mismatched element at runtime, yet `constantMatches` certified it — DCE would
+   flip `(\_ -> True) (listData <malformed>)` from error to True. Fixed by
+   validating element shapes in `constantMatches` **and** in `constantType`
+   (the latter is reachable independently via lazy-if branch certification;
+   content-mismatched lists now tag as plain `LIST`, which is still truthful
+   for `nullList`/`chooseList` and does not satisfy the data-typed positions).
+   Not reachable from compiled or flat-decoded programs — both only produce
+   type-consistent list constants — hence not a blocker on its own.
+
+Regression tests: `ConstrCaseSoundness.doesNotReduceWhenLaterFieldIsEffectful`
+(+ `reducesEffectfulBranchWhenFieldsAreValues` pinning the recovered
+optimization), the malformed-list DCE/lazy-if quartet in
+`DeadCodeEliminationSoundness`, and `BuiltinSemanticsTest` (julc-core).
+Known limitation of the jqwik differential test: its generator only builds
+well-formed list constants and rarely composes the branch-errors-before-
+later-effectful-field shape, which is why 1500 random terms missed both.
+
 ## 3. Phase 2 — resolution
 
 1. **Totality + value-arity table** — DONE (see §2.7): `BuiltinSemantics` records totality,

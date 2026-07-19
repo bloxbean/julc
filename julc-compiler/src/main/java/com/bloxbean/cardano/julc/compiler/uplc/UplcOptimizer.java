@@ -23,7 +23,7 @@ import java.util.List;
  *   <li>Eta reduction: Lam(x, Apply(f, Var(1))) → f when x not free in f and f is
  *       observationally function-like</li>
  *   <li>Constr/Case reduction: Case(Constr(tag, fields), branches) → apply branches[tag]
- *       to fields when the selected branch is a value</li>
+ *       to fields when every field is a value</li>
  * </ol>
  * <p>
  * <b>Soundness.</b> UPLC is strict (call-by-value): every argument is evaluated before
@@ -251,14 +251,19 @@ public class UplcOptimizer {
                 var optScrutinee = constrCaseReduce(scrutinee);
                 var optBranches = branches.stream().map(this::constrCaseReduce).toList();
                 // Case(Constr(tag, fields), branches) → apply branches[tag] to fields.
-                // The rewrite moves branch evaluation before field evaluation
-                // (CEK evaluates Constr fields first, then the selected branch),
-                // so it is gated on the branch being a value — evaluating a value
-                // early is unobservable. Field evaluation order is preserved by
-                // the nested Apply chain.
+                // The rewrite moves branch computation before field evaluation, and
+                // lets the branch body start running between field applications
+                // (CEK evaluates all Constr fields first, then the selected branch,
+                // then applies). That reordering is unobservable exactly when every
+                // field is a value: field evaluation is then effect-free, so only
+                // the branch can error, trace, or diverge — and it does so
+                // identically in both forms. The branch itself may be any term.
+                // (Gating fields on isPure instead would also be sound and slightly
+                // less conservative; isValue keeps this pass independent of the
+                // purity certification machinery.)
                 if (optScrutinee instanceof Term.Constr(var tag, var fields)
                         && tag >= 0 && tag < optBranches.size()
-                        && isValue(optBranches.get((int) tag))) {
+                        && fields.stream().allMatch(UplcOptimizer::isValue)) {
                     Term branch = optBranches.get((int) tag);
                     // Apply branch to each field
                     for (var field : fields) {
