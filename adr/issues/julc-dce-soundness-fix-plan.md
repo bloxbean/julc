@@ -256,9 +256,15 @@ Regression tests: `ConstrCaseSoundness.doesNotReduceWhenLaterFieldIsEffectful`
 (+ `reducesEffectfulBranchWhenFieldsAreValues` pinning the recovered
 optimization), the malformed-list DCE/lazy-if quartet in
 `DeadCodeEliminationSoundness`, and `BuiltinSemanticsTest` (julc-core).
-Known limitation of the jqwik differential test: its generator only builds
-well-formed list constants and rarely composes the branch-errors-before-
-later-effectful-field shape, which is why 1500 random terms missed both.
+The jqwik differential generator originally missed both flips (it only built
+well-formed list constants and essentially never composed the optimizer-
+targeted redex shapes) — since hardened with content-mismatched list
+constants, builtin application spines with ±1 force-arity edges and
+constant-biased arguments, saturated emitting traces, let-style discard
+redexes, and Case-on-Constr redexes with trace-biased fields. Validated by
+mutation testing: with the two fixes reverted, the hardened property test
+catches a flip in 6/6 runs of 1500 tries (was 0/6 before hardening); on the
+fixed code it is stable at 6/6 passes.
 
 ## 3. Phase 2 — resolution
 
