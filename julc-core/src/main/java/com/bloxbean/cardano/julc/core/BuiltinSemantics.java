@@ -254,6 +254,15 @@ public final class BuiltinSemantics {
      * Check whether a constant matches an {@link ArgType} tag.
      * {@code ANY} is not handled here (it accepts non-constant values too);
      * callers decide how to treat polymorphic positions.
+     * <p>
+     * {@code LIST_DATA}/{@code LIST_PAIR_DATA} validate the list <i>contents</i>,
+     * not just the declared element type: {@link Constant.ListConst} does not
+     * enforce that its values match {@code elemType()}, and the builtins that
+     * consume these tags ({@code listData}, {@code mapData}, {@code mkCons})
+     * reject mismatched elements at runtime — trusting the declared type alone
+     * would certify an erroring application as pure. Plain {@code LIST} needs no
+     * content check: its consumers ({@code nullList}, {@code chooseList}) never
+     * inspect elements.
      */
     public static boolean constantMatches(Constant c, ArgType t) {
         return switch (t) {
@@ -267,9 +276,13 @@ public final class BuiltinSemantics {
             case DATA -> c instanceof Constant.DataConst;
             case LIST -> c instanceof Constant.ListConst;
             case LIST_DATA -> c instanceof Constant.ListConst lc
-                    && lc.elemType().equals(DefaultUni.DATA);
+                    && lc.elemType().equals(DefaultUni.DATA)
+                    && lc.values().stream().allMatch(v -> v instanceof Constant.DataConst);
             case LIST_PAIR_DATA -> c instanceof Constant.ListConst lc
-                    && lc.elemType().equals(DefaultUni.pairOf(DefaultUni.DATA, DefaultUni.DATA));
+                    && lc.elemType().equals(DefaultUni.pairOf(DefaultUni.DATA, DefaultUni.DATA))
+                    && lc.values().stream().allMatch(v -> v instanceof Constant.PairConst pc
+                            && pc.first() instanceof Constant.DataConst
+                            && pc.second() instanceof Constant.DataConst);
             case PAIR -> c instanceof Constant.PairConst;
             case ANY -> true;
         };
@@ -278,6 +291,12 @@ public final class BuiltinSemantics {
     /**
      * The most specific {@link ArgType} tag of a constant, or null for
      * constants with no tag (BLS elements, arrays, values).
+     * <p>
+     * A list whose contents do not match its declared element type tags as
+     * plain {@code LIST}: list-ness is still true (safe for {@code nullList}/
+     * {@code chooseList}), but the data-typed claims are not — tagging it
+     * {@code LIST_DATA} would let the mismatch certify through paths that
+     * bypass {@link #constantMatches} (e.g. lazy-if branch certification).
      */
     public static ArgType constantType(Constant c) {
         return switch (c) {
@@ -287,9 +306,9 @@ public final class BuiltinSemantics {
             case Constant.BoolConst ignored -> ArgType.BOOL;
             case Constant.UnitConst ignored -> ArgType.UNIT;
             case Constant.DataConst ignored -> ArgType.DATA;
-            case Constant.ListConst lc -> lc.elemType().equals(DefaultUni.DATA)
+            case Constant.ListConst lc -> constantMatches(lc, ArgType.LIST_DATA)
                     ? ArgType.LIST_DATA
-                    : lc.elemType().equals(DefaultUni.pairOf(DefaultUni.DATA, DefaultUni.DATA))
+                    : constantMatches(lc, ArgType.LIST_PAIR_DATA)
                             ? ArgType.LIST_PAIR_DATA
                             : ArgType.LIST;
             case Constant.PairConst ignored -> ArgType.PAIR;
