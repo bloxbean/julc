@@ -352,6 +352,83 @@ class UplcOptimizerSoundnessTest {
         }
 
         @Test
+        void keepsListDataOnContentMismatchedConstant() {
+            // ListConst does not enforce its declared element type on its
+            // contents: a (list data) constant holding an integer element makes
+            // listData error at runtime, so the declared type alone must not
+            // certify the application as pure
+            var term = discard(Term.apply(Term.builtin(DefaultFun.ListData),
+                    contentMismatchedDataList()));
+            assertEquals(term, opt.deadCodeElimination(term));
+            assertFalse(vm.evaluate(Program.plutusV3(opt.optimize(term)), BUDGET).isSuccess());
+            assertEvalAgreement(term);
+        }
+
+        @Test
+        void keepsMapDataOnContentMismatchedConstant() {
+            // (list (pair data data)) constant holding a pair of integers —
+            // mapData rejects non-Data pair elements at runtime
+            var malformed = Term.const_(new Constant.ListConst(
+                    DefaultUni.pairOf(DefaultUni.DATA, DefaultUni.DATA),
+                    List.of(new Constant.PairConst(Constant.integer(1), Constant.integer(2)))));
+            var term = discard(Term.apply(Term.builtin(DefaultFun.MapData), malformed));
+            assertEquals(term, opt.deadCodeElimination(term));
+            assertFalse(vm.evaluate(Program.plutusV3(opt.optimize(term)), BUDGET).isSuccess());
+            assertEvalAgreement(term);
+        }
+
+        @Test
+        void dropsListDataOnWellFormedConstantList() {
+            // listData over a well-formed (list data) constant is total — pure
+            var term = discard(Term.apply(Term.builtin(DefaultFun.ListData),
+                    wellFormedDataList()));
+            assertEquals(boolConst(true), opt.deadCodeElimination(term));
+            assertEvalAgreement(term);
+        }
+
+        @Test
+        void keepsLazyIfReturningContentMismatchedList() {
+            // Certification of lazy-if branches goes through constantType, not
+            // constantMatches — a content-mismatched list must not certify as
+            // LIST_DATA on that path either, or listData(<lazy-if>) would be
+            // considered pure while erroring at runtime
+            var term = discard(Term.apply(Term.builtin(DefaultFun.ListData),
+                    lazyIfBothBranches(contentMismatchedDataList())));
+            assertEquals(term, opt.deadCodeElimination(term));
+            assertFalse(vm.evaluate(Program.plutusV3(opt.optimize(term)), BUDGET).isSuccess());
+            assertEvalAgreement(term);
+        }
+
+        @Test
+        void dropsLazyIfReturningWellFormedList() {
+            // The same lazy-if shape with a well-formed list still certifies
+            var term = discard(Term.apply(Term.builtin(DefaultFun.ListData),
+                    lazyIfBothBranches(wellFormedDataList())));
+            assertEquals(boolConst(true), opt.deadCodeElimination(term));
+            assertEvalAgreement(term);
+        }
+
+        /** (list data) constant whose element is not Data — invalid, but constructible. */
+        private static Term contentMismatchedDataList() {
+            return Term.const_(new Constant.ListConst(DefaultUni.DATA,
+                    List.of(Constant.integer(1))));
+        }
+
+        private static Term wellFormedDataList() {
+            return Term.const_(new Constant.ListConst(DefaultUni.DATA,
+                    List.of(Constant.data(PlutusData.integer(1)))));
+        }
+
+        /** force ((force ifThenElse) True (delay branch) (delay branch)) */
+        private static Term lazyIfBothBranches(Term branch) {
+            return Term.force(Term.apply(
+                    Term.apply(
+                            Term.apply(Term.force(Term.builtin(DefaultFun.IfThenElse)), boolConst(true)),
+                            Term.delay(branch)),
+                    Term.delay(branch)));
+        }
+
+        @Test
         void dropsIfThenElseOnBoolConstantWithPureBranches() {
             // (force ifThenElse) True 1 2 — total, typed condition, pure branches
             var term = discard(Term.apply(
@@ -565,15 +642,33 @@ class UplcOptimizerSoundnessTest {
     class ConstrCaseSoundness {
 
         @Test
-        void doesNotReduceWhenBranchIsNotAValue() {
-            // branch is an application — evaluating it before the fields would
-            // reorder observable effects
+        void doesNotReduceWhenLaterFieldIsEffectful() {
+            // Case(Constr(0, [1, trace "second-field" 2]), [\first -> error]):
+            // CEK evaluates ALL fields (emitting the trace) before the branch
+            // body errors. The reduced form ((\first -> error) 1) (trace ...)
+            // would run the branch body after the first application — erroring
+            // before the second field is evaluated and losing its trace.
+            var fields = List.of(intConst(1), traceApp("second-field", intConst(2)));
+            var branch = Term.lam("first", Term.error());
+            var term = new Term.Case(new Term.Constr(0, fields), List.of(branch));
+            assertEquals(term, opt.constrCaseReduce(term));
+            var result = vm.evaluate(Program.plutusV3(opt.optimize(term)), BUDGET);
+            assertFalse(result.isSuccess());
+            assertEquals(List.of("second-field"), result.traces());
+            assertEvalAgreement(term);
+        }
+
+        @Test
+        void reducesEffectfulBranchWhenFieldsAreValues() {
+            // branch is an application, but every field is a value — field
+            // evaluation is effect-free, so moving the branch computation
+            // across it is unobservable and the reduction may fire
             var branch = Term.apply(
                     Term.apply(Term.force(Term.builtin(DefaultFun.Trace)),
                             Term.const_(Constant.string("branch"))),
                     Term.lam("v", Term.var(1)));
             var term = new Term.Case(new Term.Constr(0, List.of(intConst(1))), List.of(branch));
-            assertEquals(term, opt.constrCaseReduce(term));
+            assertEquals(Term.apply(branch, intConst(1)), opt.constrCaseReduce(term));
             assertEvalAgreement(term);
         }
 
@@ -586,9 +681,9 @@ class UplcOptimizerSoundnessTest {
         }
 
         @Test
-        void preservesFieldEffectsWhenReducing() {
-            // Case(Constr(0, [trace "field" 1]), [\v -> v]) — the field's trace
-            // must survive the rewrite
+        void preservesFieldEffects() {
+            // Case(Constr(0, [trace "field" 1]), [\v -> v]) — the effectful
+            // field blocks the rewrite, so its trace survives trivially
             var field = traceApp("field", intConst(1));
             var term = new Term.Case(new Term.Constr(0, List.of(field)),
                     List.of(Term.lam("v", Term.var(1))));
