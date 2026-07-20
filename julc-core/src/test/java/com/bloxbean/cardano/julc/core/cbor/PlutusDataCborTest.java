@@ -3,12 +3,14 @@ package com.bloxbean.cardano.julc.core.cbor;
 import co.nstant.in.cbor.CborException;
 import co.nstant.in.cbor.CborEncoder;
 import co.nstant.in.cbor.model.DataItem;
+import co.nstant.in.cbor.model.Map;
 import com.bloxbean.cardano.julc.core.PlutusData;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayOutputStream;
 import java.math.BigInteger;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.List;
@@ -541,6 +543,68 @@ class PlutusDataCborTest {
             var data = PlutusData.map(
                     new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(10)),
                     new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(20)));
+            assertEquals("a2010a0114", HEX.formatHex(PlutusDataCborEncoder.encode(data)));
+        }
+
+        @Test
+        void nestedMapsPreserveOrderAndDuplicateKeys() {
+            var inner = PlutusData.map(
+                    new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(10)),
+                    new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(20)));
+            var data = PlutusData.map(
+                    new PlutusData.Pair(PlutusData.integer(2), inner),
+                    new PlutusData.Pair(
+                            PlutusData.integer(1),
+                            PlutusData.list(PlutusData.integer(3))));
+
+            assertEquals("a202a2010a0114019f03ff", HEX.formatHex(PlutusDataCborEncoder.encode(data)));
+            assertEquals(data, PlutusDataCborDecoder.fromDataItem(PlutusDataCborEncoder.toDataItem(data)));
+        }
+
+        @Test
+        void mapLengthAboveDirectArgumentRangeIsEncodedCorrectly() {
+            var entries = new ArrayList<PlutusData.Pair>();
+            for (int i = 0; i < 30; i++) {
+                entries.add(new PlutusData.Pair(PlutusData.integer(i), PlutusData.integer(i + 1)));
+            }
+            var data = new PlutusData.MapData(entries);
+
+            byte[] encoded = PlutusDataCborEncoder.encode(data);
+            assertEquals("b81e", HEX.formatHex(Arrays.copyOf(encoded, 2)));
+            assertEquals(data, PlutusDataCborDecoder.decode(encoded));
+        }
+
+        @Test
+        void toDataItemMapIsCompatibleWithStandardCborEncoder() throws CborException {
+            var data = PlutusData.map(
+                    new PlutusData.Pair(PlutusData.integer(2), PlutusData.integer(20)),
+                    new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(10)));
+
+            DataItem dataItem = PlutusDataCborEncoder.toDataItem(data);
+            assertInstanceOf(Map.class, dataItem);
+
+            // A stock cbor-java encoder uses its normal canonical Map view. This differs from
+            // Julc's authoritative Plutus encoding, but must remain valid and must not throw.
+            assertEquals("a2010a0214", HEX.formatHex(encodeWithStandardCborEncoder(dataItem)));
+            assertEquals("a20214010a", HEX.formatHex(PlutusDataCborEncoder.encode(data)));
+        }
+
+        @Test
+        void standardCborEncoderGetsValidDeduplicatedMapView() throws CborException {
+            var data = PlutusData.map(
+                    new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(10)),
+                    new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(20)));
+
+            DataItem dataItem = PlutusDataCborEncoder.toDataItem(data);
+
+            // cbor-java's Map retains the last value for an equal key. Keeping this compatibility
+            // view separate prevents its canonical encoder from emitting a mismatched map length.
+            byte[] standardCbor = encodeWithStandardCborEncoder(dataItem);
+            assertEquals("a10114", HEX.formatHex(standardCbor));
+            assertDoesNotThrow(() -> PlutusDataCborDecoder.decode(standardCbor));
+
+            // Direct Julc conversion and on-chain serialization remain lossless.
+            assertEquals(data, PlutusDataCborDecoder.fromDataItem(dataItem));
             assertEquals("a2010a0114", HEX.formatHex(PlutusDataCborEncoder.encode(data)));
         }
 

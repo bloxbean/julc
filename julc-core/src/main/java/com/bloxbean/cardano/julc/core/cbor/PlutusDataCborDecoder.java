@@ -93,8 +93,8 @@ public final class PlutusDataCborDecoder {
                 if (item instanceof PlutusDataCborEncoder.OrderedMap om) {
                     // Order- and duplicate-preserving map produced by our own encoder
                     // (fromDataItem(toDataItem(x)) round-trip).
-                    var keys = om.keys();
-                    var values = om.values();
+                    var keys = om.orderedKeys();
+                    var values = om.orderedValues();
                     for (int i = 0; i < keys.size(); i++) {
                         entries.add(new PlutusData.Pair(fromDataItem(keys.get(i)), fromDataItem(values.get(i))));
                     }

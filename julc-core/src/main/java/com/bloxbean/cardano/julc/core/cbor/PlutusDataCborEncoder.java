@@ -14,7 +14,7 @@ import java.util.*;
 /**
  * Encodes {@link PlutusData} to CBOR bytes following the Cardano specification.
  * <p>
- * Uses cbor-java's high-level API with canonical encoding (RFC 7049 §3.9)
+ * Uses cbor-java's high-level API with Plutus-compatible map ordering
  * and chunked byte strings for data &gt; 64 bytes (CDDL: bounded_bytes).
  * <p>
  * Constructor encoding uses compact form:
@@ -41,6 +41,11 @@ public final class PlutusDataCborEncoder {
     /**
      * Convert PlutusData to a cbor-java DataItem tree.
      * Useful for interop with libraries that work with cbor-java DataItems.
+     *
+     * <p>For maps, {@link #encode(PlutusData)} is the authoritative Plutus serialization:
+     * it preserves entry order and duplicate keys. A standard cbor-java encoder can dispatch
+     * the returned map item without a type-cast failure, but cbor-java's map model may sort
+     * entries and collapse duplicate keys.
      */
     public static DataItem toDataItem(PlutusData data) {
         return switch (data) {
@@ -199,26 +204,40 @@ public final class PlutusDataCborEncoder {
     // --- Inner classes ---
 
     /**
-     * A CBOR map DataItem that preserves entry order and duplicate keys, unlike cbor-java's
-     * {@link Map} (which reorders and deduplicates via {@code DataItem.hashCode/equals}).
-     * Encoded as a definite-length map (major type 5) by {@link PlutusDataCborCborEncoder}.
+     * A CBOR map with two representations: the raw entry sequence used by Julc to preserve
+     * order and duplicate keys, and the inherited cbor-java {@link Map} view used for interop.
+     * The latter necessarily follows cbor-java semantics and therefore deduplicates equal keys.
+     * Julc encodes the raw entries as a definite-length map via
+     * {@link PlutusDataCborCborEncoder}.
      */
-    static final class OrderedMap extends DataItem {
-        private final List<DataItem> keys;
-        private final List<DataItem> values;
+    static final class OrderedMap extends Map {
+        private final List<DataItem> orderedKeys;
+        private final List<DataItem> orderedValues;
 
         OrderedMap(List<DataItem> keys, List<DataItem> values) {
-            super(MajorType.MAP);
-            this.keys = keys;
-            this.values = values;
+            super(keys.size());
+            if (keys.size() != values.size()) {
+                throw new IllegalArgumentException("Map keys and values must have the same size");
+            }
+
+            this.orderedKeys = List.copyOf(keys);
+            this.orderedValues = List.copyOf(values);
+
+            // Populate the ordinary cbor-java Map view so its standard CborEncoder can
+            // serialize this object without casting failures. Do not expose orderedKeys
+            // through getKeys(): its canonical encoder deduplicates serialized keys, which
+            // could otherwise make the encoded entry count disagree with the map header.
+            for (int i = 0; i < orderedKeys.size(); i++) {
+                super.put(orderedKeys.get(i), orderedValues.get(i));
+            }
         }
 
-        List<DataItem> keys() {
-            return keys;
+        List<DataItem> orderedKeys() {
+            return orderedKeys;
         }
 
-        List<DataItem> values() {
-            return values;
+        List<DataItem> orderedValues() {
+            return orderedValues;
         }
     }
 
@@ -299,10 +318,12 @@ public final class PlutusDataCborEncoder {
                     if (om.hasTag()) {
                         encode(om.getTag());
                     }
-                    writeTypeAndLength(5, om.keys.size());
-                    for (int i = 0; i < om.keys.size(); i++) {
-                        encode(om.keys.get(i));
-                        encode(om.values.get(i));
+                    var keys = om.orderedKeys();
+                    var values = om.orderedValues();
+                    writeTypeAndLength(5, keys.size());
+                    for (int i = 0; i < keys.size(); i++) {
+                        encode(keys.get(i));
+                        encode(values.get(i));
                     }
                 } catch (java.io.IOException e) {
                     throw new CborException("Failed to encode map", e);
