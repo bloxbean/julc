@@ -83,6 +83,8 @@ public final class PlutusDataCborEncoder {
         // indefinite-length array (0x9f ... 0xff); empty stays definite (0x80).
         if (!fields.isEmpty()) {
             array.setChunked(true);
+            // cbor-java models the closing break as an explicit array item.
+            array.add(Special.BREAK);
         }
         return array;
     }
@@ -135,6 +137,8 @@ public final class PlutusDataCborEncoder {
         // array (0x9f ... 0xff); an empty list stays definite (0x80).
         if (!l.items().isEmpty()) {
             array.setChunked(true);
+            // Keep the public DataItem tree serializable by a standard CborEncoder.
+            array.add(Special.BREAK);
         }
         return array;
     }
@@ -274,35 +278,14 @@ public final class PlutusDataCborEncoder {
      */
     private static final class PlutusDataCborCborEncoder extends CborEncoder {
         private final ChunkedByteStringEncoder chunkedByteStringEncoder;
-        private final java.io.OutputStream out;
 
         PlutusDataCborCborEncoder(java.io.OutputStream outputStream) {
             super(outputStream);
-            this.out = outputStream;
             this.chunkedByteStringEncoder = new ChunkedByteStringEncoder(this, outputStream);
         }
 
         @Override
         public void encode(DataItem dataItem) throws CborException {
-            if (dataItem instanceof Array arr && arr.isChunked()) {
-                // cbor-java 0.9's ArrayEncoder emits the 0x9f indefinite-length start for a
-                // chunked array but NOT the closing 0xff break. Emit an indefinite-length array
-                // ourselves (0x9f ... 0xff), recursing through this encoder so nested chunked
-                // byte strings / arrays are handled too.
-                try {
-                    if (arr.hasTag()) {
-                        encode(arr.getTag());
-                    }
-                    out.write(0x9f);
-                    for (DataItem item : arr.getDataItems()) {
-                        encode(item);
-                    }
-                    out.write(0xff);
-                } catch (java.io.IOException e) {
-                    throw new CborException("Failed to encode indefinite-length array", e);
-                }
-                return;
-            }
             if (dataItem != null && dataItem.getMajorType() == MajorType.BYTE_STRING) {
                 // Handle tag first, then dispatch to our custom byte string encoder
                 if (dataItem.hasTag()) {

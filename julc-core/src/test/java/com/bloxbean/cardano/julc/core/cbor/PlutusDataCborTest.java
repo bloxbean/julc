@@ -1,9 +1,13 @@
 package com.bloxbean.cardano.julc.core.cbor;
 
+import co.nstant.in.cbor.CborException;
+import co.nstant.in.cbor.CborEncoder;
+import co.nstant.in.cbor.model.DataItem;
 import com.bloxbean.cardano.julc.core.PlutusData;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayOutputStream;
 import java.math.BigInteger;
 import java.util.Arrays;
 import java.util.HexFormat;
@@ -693,6 +697,34 @@ class PlutusDataCborTest {
             PlutusData fromDi = PlutusDataCborDecoder.fromDataItem(dataItem);
             assertEquals(data, fromDi);
         }
+
+        @Test
+        void toDataItemSerializesIndefiniteArraysWithStandardCborEncoder() throws CborException {
+            var list = PlutusData.list(PlutusData.integer(1));
+            byte[] listCbor = encodeWithStandardCborEncoder(PlutusDataCborEncoder.toDataItem(list));
+            assertEquals("9f01ff", HEX.formatHex(listCbor));
+            assertEquals(list, PlutusDataCborDecoder.decode(listCbor));
+
+            var constr = PlutusData.constr(0, PlutusData.integer(1));
+            byte[] constrCbor = encodeWithStandardCborEncoder(PlutusDataCborEncoder.toDataItem(constr));
+            assertEquals("d8799f01ff", HEX.formatHex(constrCbor));
+            assertEquals(constr, PlutusDataCborDecoder.decode(constrCbor));
+        }
+
+        @Test
+        void indefiniteArraysNestedInMapsRetainTheirBreak() {
+            var listValue = PlutusData.map(new PlutusData.Pair(
+                    PlutusData.integer(1),
+                    PlutusData.list(PlutusData.integer(2), PlutusData.integer(3))));
+            assertEquals("a1019f0203ff", HEX.formatHex(PlutusDataCborEncoder.encode(listValue)));
+            assertRoundTrip(listValue);
+
+            var constrKey = PlutusData.map(new PlutusData.Pair(
+                    PlutusData.constr(0, PlutusData.integer(7)),
+                    PlutusData.integer(1)));
+            assertEquals("a1d8799f07ff01", HEX.formatHex(PlutusDataCborEncoder.encode(constrKey)));
+            assertRoundTrip(constrKey);
+        }
     }
 
     // ---- Helper ----
@@ -701,5 +733,11 @@ class PlutusDataCborTest {
         byte[] encoded = PlutusDataCborEncoder.encode(original);
         PlutusData decoded = PlutusDataCborDecoder.decode(encoded);
         assertEquals(original, decoded, "Round-trip failed for: " + original);
+    }
+
+    private static byte[] encodeWithStandardCborEncoder(DataItem dataItem) throws CborException {
+        var output = new ByteArrayOutputStream();
+        new CborEncoder(output).encode(dataItem);
+        return output.toByteArray();
     }
 }
