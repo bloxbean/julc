@@ -42,22 +42,28 @@ public final class DataSerializer {
         } else {
             // General encoding: tag 102, then [tag, fields]
             writeTag(out, 102);
-            writeMajorArg(out, 4, 2); // array of 2
+            writeMajorArg(out, 4, 2); // outer definite array of 2: [tag, fields]
             writeUnsigned(out, tag); // the tag
-            writeDefList(out, cd.fields());
+            writeDataArray(out, cd.fields());
             return;
         }
-        writeDefList(out, cd.fields());
+        writeDataArray(out, cd.fields());
     }
 
-    private static void writeDefList(ByteArrayOutputStream out, List<PlutusData> items) {
+    /**
+     * Write a Plutus Data array (constructor fields or list items). Canonical Plutus Data uses
+     * an indefinite-length array (0x9f ... 0xff) for non-empty collections and a definite empty
+     * array (0x80) for empty ones. Shared by Constr fields and List so the two cannot drift.
+     */
+    private static void writeDataArray(ByteArrayOutputStream out, List<PlutusData> items) {
         if (items.isEmpty()) {
-            writeMajorArg(out, 4, 0); // empty array
+            writeMajorArg(out, 4, 0); // empty definite array 0x80
         } else {
-            writeMajorArg(out, 4, items.size());
+            out.write(0x9f); // indefinite-length array
             for (var item : items) {
                 writeData(out, item);
             }
+            out.write(0xff); // break
         }
     }
 
@@ -70,16 +76,7 @@ public final class DataSerializer {
     }
 
     private static void writeListData(ByteArrayOutputStream out, PlutusData.ListData ld) {
-        // Use indefinite-length list encoding for non-empty lists
-        if (ld.items().isEmpty()) {
-            writeMajorArg(out, 4, 0);
-        } else {
-            out.write(0x9f); // indefinite-length array
-            for (var item : ld.items()) {
-                writeData(out, item);
-            }
-            out.write(0xff); // break
-        }
+        writeDataArray(out, ld.items());
     }
 
     private static void writeIntData(ByteArrayOutputStream out, PlutusData.IntData id) {

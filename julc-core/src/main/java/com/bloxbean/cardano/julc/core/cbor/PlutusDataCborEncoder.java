@@ -79,6 +79,13 @@ public final class PlutusDataCborEncoder {
         for (var field : fields) {
             array.add(toDataItem(field));
         }
+        // Canonical Plutus Data encodes non-empty constructor fields as an
+        // indefinite-length array (0x9f ... 0xff); empty stays definite (0x80).
+        if (!fields.isEmpty()) {
+            array.setChunked(true);
+            // cbor-java models the closing break as an explicit array item.
+            array.add(Special.BREAK);
+        }
         return array;
     }
 
@@ -125,6 +132,13 @@ public final class PlutusDataCborEncoder {
         Array array = new Array();
         for (var item : l.items()) {
             array.add(toDataItem(item));
+        }
+        // Canonical Plutus Data encodes a non-empty list as an indefinite-length
+        // array (0x9f ... 0xff); an empty list stays definite (0x80).
+        if (!l.items().isEmpty()) {
+            array.setChunked(true);
+            // Keep the public DataItem tree serializable by a standard CborEncoder.
+            array.add(Special.BREAK);
         }
         return array;
     }
