@@ -1093,14 +1093,13 @@ public class PirGenerator {
     }
 
     /**
-     * True iff {@code varName.fieldName()} may reuse the bare {@code fieldName} binding produced
-     * by pattern destructuring instead of re-extracting from the record Data.
+     * True iff {@code varName.fieldName()} may reuse the internal binding produced by pattern
+     * destructuring instead of re-extracting from the record Data.
      * <p>
-     * The reuse emits {@code Var(fieldName)}, which resolves to the <em>innermost</em> binding of
-     * that name. So it is sound only when the innermost active pattern scope that binds
-     * {@code fieldName} is the one for {@code varName} — otherwise an inner case that destructured
-     * a same-named field would shadow it (e.g. an outer {@code a.amount()} must not pick up an
-     * inner {@code case D d}'s {@code amount}). {@code patternScopes} is iterated innermost-first.
+     * The reuse is sound only when the innermost active pattern scope that contains
+     * {@code fieldName} belongs to {@code varName}; otherwise an inner case that destructured a
+     * same-named field would shadow it (e.g. an outer {@code a.amount()} must not pick up an inner
+     * {@code case D d}'s {@code amount}). {@code patternScopes} is iterated innermost-first.
      */
     private boolean ownsDestructuredField(String varName, String fieldName) {
         for (var ps : patternScopes) { // innermost first
@@ -1113,14 +1112,12 @@ public class PirGenerator {
 
     /**
      * Internal binding name for the {@code fieldIndex}-th field destructured for switch-case
-     * pattern variable {@code patternVar}. Uses a reserved {@code __pfield_} prefix and the
-     * field index (not the field name) so it can never collide with a user identifier — a bare
-     * user reference to a same-named parameter/local therefore resolves to the parameter, not
-     * the destructured field (#50). Both the DataMatch field binding and the var.field() reuse
-     * reference this same name.
+     * pattern variable {@code patternVar}. The hyphens are valid in UPLC names but cannot appear
+     * in a Java identifier, so a source parameter/local can never collide with this binding.
+     * Both the DataMatch field binding and the var.field() reuse reference this same name.
      */
     private static String destructuredFieldBinding(String patternVar, int fieldIndex) {
-        return "__pfield_" + patternVar + "_" + fieldIndex;
+        return "__pfield-" + patternVar + "-" + fieldIndex;
     }
 
     /**

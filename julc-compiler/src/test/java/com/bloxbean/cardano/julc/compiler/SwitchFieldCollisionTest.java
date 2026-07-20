@@ -334,4 +334,34 @@ class SwitchFieldCollisionTest {
                         dataArg(PlutusData.constr(0, PlutusData.integer(2))),
                         dataArg(PlutusData.integer(99))));
     }
+
+    @Test
+    void userLocalCannotCollideWithInternalFieldBinding() {
+        // Java permits the old underscore-only internal spelling as a source identifier.
+        // A mutation back to "__pfield_" makes t.amount() resolve to this local and return 99.
+        var src = """
+                import java.math.BigInteger;
+
+                public class InternalNameCollision {
+                    sealed interface Action permits Transfer, Withdraw {}
+                    record Transfer(BigInteger amount) implements Action {}
+                    record Withdraw(BigInteger fee) implements Action {}
+
+                    public static BigInteger check(Action action) {
+                        return switch (action) {
+                            case Transfer t -> {
+                                BigInteger __pfield_t_0 = BigInteger.valueOf(99);
+                                yield t.amount();
+                            }
+                            case Withdraw w -> BigInteger.ZERO;
+                        };
+                    }
+                }
+                """;
+        var compiled = compile(src, "check");
+        // Transfer(amount=5) must read the record field, not the same-looking source local.
+        assertEquals(BigInteger.valueOf(5),
+                evalInt(compiled,
+                        dataArg(PlutusData.constr(0, PlutusData.integer(5)))));
+    }
 }

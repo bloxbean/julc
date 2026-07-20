@@ -40,9 +40,10 @@ class UplcOptimizerPropertyTest {
             DefaultFun.ChooseData, DefaultFun.ConstrData, DefaultFun.IData, DefaultFun.BData,
             DefaultFun.UnIData, DefaultFun.UnBData, DefaultFun.UnConstrData,
             DefaultFun.Sha2_256, DefaultFun.LengthOfByteString, DefaultFun.EqualsByteString,
-            DefaultFun.AppendByteString, DefaultFun.MkNilData);
+            DefaultFun.AppendByteString, DefaultFun.MkNilData,
+            DefaultFun.ListData, DefaultFun.MapData);
 
-    @Property(tries = 1500)
+    @Property(tries = 3000)
     void optimizePreservesEvaluationOutcome(@ForAll("closedTerms") Term term) {
         var optimizedTerm = new UplcOptimizer().optimize(term);
 
@@ -72,7 +73,14 @@ class UplcOptimizerPropertyTest {
 
     @Provide
     Arbitrary<Term> closedTerms() {
-        return terms(4, 0);
+        // One in ~6 terms is a TOP-LEVEL discarded saturated builtin over
+        // constants. Embedded instances are often unreachable (buried under
+        // unapplied lambdas) or unobservable (a sibling error fails both
+        // sides identically); at the top of the term the shape is always
+        // evaluated, so a certification misclassification always flips.
+        return Arbitraries.frequencyOf(
+                Tuple.of(5, terms(4, 0)),
+                Tuple.of(1, discardedSaturatedBuiltins(terms(2, 1))));
     }
 
     /**
@@ -94,7 +102,101 @@ class UplcOptimizerPropertyTest {
                 Tuple.of(2, sub.map(Term::force)),
                 Tuple.of(2, sub.map(Term::delay)),
                 Tuple.of(1, constrs(sub)),
-                Tuple.of(1, cases(sub)));
+                Tuple.of(1, cases(sub)),
+                // Redex-dense shapes aimed at the optimizer's own decision
+                // points — uniform randomness essentially never composes them
+                // (verified by mutation-testing the reverted soundness fixes):
+                // a let-style binding whose argument is often a builtin
+                // application spine (the exact shape DCE's purity gate judges;
+                // the body may or may not use the bound variable) ...
+                Tuple.of(3, Combinators.combine(subUnderLam,
+                                Arbitraries.oneOf(sub, builtinSpines(sub)))
+                        .as((body, arg) -> Term.apply(Term.lam("x", body), arg))),
+                // ... a Case whose scrutinee is a Constr (Pass 6 target) ...
+                Tuple.of(2, Combinators.combine(constrs(sub), sub.list().ofMinSize(1).ofMaxSize(3))
+                        .as(Term.Case::new)),
+                // ... a discarded saturated builtin over constant arguments —
+                // the exact purity-certification surface: dropping is sound
+                // only if the application provably cannot fail on those
+                // constants (wrong types, malformed lists, out-of-range tags) ...
+                Tuple.of(2, discardedSaturatedBuiltins(subUnderLam)),
+                // ... plus standalone builtin spines and emitting traces, so
+                // effects and arity edges appear inside every other shape
+                Tuple.of(2, builtinSpines(sub)),
+                Tuple.of(2, traceApps(sub)));
+    }
+
+    /**
+     * {@code (\x -> body) (Force^typeArity(builtin) const...)} — a saturated
+     * builtin application over constant arguments in discard position. This is
+     * the decision surface of DCE's purity certification: the argument may be
+     * dropped only when the saturated application provably cannot fail on
+     * exactly those constants. Constants include wrong-typed values, content-
+     * mismatched lists, and out-of-range integers, so misclassifications in
+     * the totality/argument-type tables surface as success/failure flips.
+     */
+    private Arbitrary<Term> discardedSaturatedBuiltins(Arbitrary<Term> subUnderLam) {
+        return Arbitraries.of(BUILTIN_POOL).flatMap(fun -> {
+            var sig = BuiltinSemantics.find(fun);
+            // Body biased toward constants: a dropped-computation flip is only
+            // observable when the surviving continuation itself succeeds, and
+            // random bodies error too often to expose it
+            return Combinators.combine(
+                            Arbitraries.oneOf(constants(), subUnderLam),
+                            constants().list().ofSize(sig.valueArity()))
+                    .as((body, args) -> {
+                        Term t = Term.builtin(fun);
+                        for (int i = 0; i < sig.typeArity(); i++) {
+                            t = Term.force(t);
+                        }
+                        for (var arg : args) {
+                            t = Term.apply(t, arg);
+                        }
+                        return Term.apply(Term.lam("x", body), t);
+                    });
+        });
+    }
+
+    /**
+     * A builtin application spine: {@code Force^k(builtin) args...}, with k
+     * within ±1 of the builtin's type arity (exercising over/under-force
+     * edges) and 0..valueArity arguments biased toward constants — including
+     * the content-mismatched list constants. These are the shapes the
+     * optimizer's value/purity analysis actually judges.
+     */
+    private Arbitrary<Term> builtinSpines(Arbitrary<Term> sub) {
+        return Arbitraries.of(BUILTIN_POOL).flatMap(fun -> {
+            var sig = BuiltinSemantics.find(fun);
+            return Combinators.combine(
+                            Arbitraries.integers().between(
+                                    Math.max(0, sig.typeArity() - 1), sig.typeArity() + 1),
+                            Arbitraries.oneOf(constants(), sub)
+                                    .list().ofMinSize(0).ofMaxSize(sig.valueArity()))
+                    .as((forces, args) -> {
+                        Term t = Term.builtin(fun);
+                        for (int i = 0; i < forces; i++) {
+                            t = Term.force(t);
+                        }
+                        for (var arg : args) {
+                            t = Term.apply(t, arg);
+                        }
+                        return t;
+                    });
+        });
+    }
+
+    /**
+     * A saturated, emitting trace: {@code (force trace) "msg" k}. Bare
+     * {@code Trace} builtins from the leaf pool almost never get force-and-
+     * string-saturated by chance, so without this shape trace-reordering bugs
+     * are invisible to the differential property.
+     */
+    private Arbitrary<Term> traceApps(Arbitrary<Term> sub) {
+        return Combinators.combine(Arbitraries.of("t1", "t2"), sub)
+                .as((msg, k) -> Term.apply(
+                        Term.apply(Term.force(Term.builtin(DefaultFun.Trace)),
+                                Term.const_(Constant.string(msg))),
+                        k));
     }
 
     private Arbitrary<Term> leaves(int binders) {
@@ -132,13 +234,27 @@ class UplcOptimizerPropertyTest {
                                 List.of(Constant.data(PlutusData.integer(3))))),
                         Term.const_(new Constant.PairConst(
                                 Constant.data(PlutusData.integer(1)),
-                                Constant.data(PlutusData.bytes(new byte[]{2}))))));
+                                Constant.data(PlutusData.bytes(new byte[]{2})))),
+                        // Content-mismatched list constants: ListConst does not
+                        // enforce its declared element type, and the optimizer
+                        // must not trust the declaration (listData/mapData/mkCons
+                        // reject the contents at runtime). Not producible by the
+                        // compiler or the flat decoder, but hand-constructible.
+                        Term.const_(new Constant.ListConst(DefaultUni.DATA,
+                                List.of(Constant.integer(1)))),
+                        Term.const_(new Constant.ListConst(
+                                DefaultUni.pairOf(DefaultUni.DATA, DefaultUni.DATA),
+                                List.of(new Constant.PairConst(
+                                        Constant.integer(1), Constant.integer(2)))))));
     }
 
     private Arbitrary<Term> constrs(Arbitrary<Term> sub) {
+        // Fields biased toward emitting traces: Constr evaluates fields
+        // eagerly, so effectful fields are what expose field/branch
+        // reordering bugs in Case reduction
         return Combinators.combine(
                         Arbitraries.longs().between(0, 2),
-                        sub.list().ofMinSize(0).ofMaxSize(3))
+                        Arbitraries.oneOf(sub, traceApps(sub)).list().ofMinSize(0).ofMaxSize(3))
                 .as(Term.Constr::new);
     }
 
