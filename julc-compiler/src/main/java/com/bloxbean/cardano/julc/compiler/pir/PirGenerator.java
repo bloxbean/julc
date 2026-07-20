@@ -1072,8 +1072,8 @@ public class PirGenerator {
         }
         if (fieldIndex < 0) return java.util.Optional.empty();
 
-        // Optimization: when var.field() targets a switch-case pattern variable, the field
-        // was already destructured into scope by its bare name, so reuse that binding instead
+        // Optimization: when var.field() targets a switch-case pattern variable, the field was
+        // already destructured into scope (under an internal name), so reuse that binding instead
         // of re-extracting from the record Data.
         //
         // This is sound ONLY when `varName` is the pattern variable that owns `fieldName`.
@@ -1083,7 +1083,8 @@ public class PirGenerator {
         // Transfer and Box have an `amount` field) — a check-bypass miscompilation (issue #47).
         if (ownsDestructuredField(varName, fieldName)) {
             final PirType fType = fieldType;
-            return java.util.Optional.of(scope -> new PirTerm.Var(fieldName, fType));
+            final String binding = destructuredFieldBinding(varName, fieldIndex);
+            return java.util.Optional.of(scope -> new PirTerm.Var(binding, fType));
         }
 
         final int idx = fieldIndex;
@@ -1092,14 +1093,13 @@ public class PirGenerator {
     }
 
     /**
-     * True iff {@code varName.fieldName()} may reuse the bare {@code fieldName} binding produced
-     * by pattern destructuring instead of re-extracting from the record Data.
+     * True iff {@code varName.fieldName()} may reuse the internal binding produced by pattern
+     * destructuring instead of re-extracting from the record Data.
      * <p>
-     * The reuse emits {@code Var(fieldName)}, which resolves to the <em>innermost</em> binding of
-     * that name. So it is sound only when the innermost active pattern scope that binds
-     * {@code fieldName} is the one for {@code varName} — otherwise an inner case that destructured
-     * a same-named field would shadow it (e.g. an outer {@code a.amount()} must not pick up an
-     * inner {@code case D d}'s {@code amount}). {@code patternScopes} is iterated innermost-first.
+     * The reuse is sound only when the innermost active pattern scope that contains
+     * {@code fieldName} belongs to {@code varName}; otherwise an inner case that destructured a
+     * same-named field would shadow it (e.g. an outer {@code a.amount()} must not pick up an inner
+     * {@code case D d}'s {@code amount}). {@code patternScopes} is iterated innermost-first.
      */
     private boolean ownsDestructuredField(String varName, String fieldName) {
         for (var ps : patternScopes) { // innermost first
@@ -1108,6 +1108,16 @@ public class PirGenerator {
             }
         }
         return false;
+    }
+
+    /**
+     * Internal binding name for the {@code fieldIndex}-th field destructured for switch-case
+     * pattern variable {@code patternVar}. The hyphens are valid in UPLC names but cannot appear
+     * in a Java identifier, so a source parameter/local can never collide with this binding.
+     * Both the DataMatch field binding and the var.field() reuse reference this same name.
+     */
+    private static String destructuredFieldBinding(String patternVar, int fieldIndex) {
+        return "__pfield-" + patternVar + "-" + fieldIndex;
     }
 
     /**
@@ -1798,15 +1808,20 @@ public class PirGenerator {
                     var ctor = ctorOpt.get();
 
                     symbolTable.pushScope();
-                    // Define the field bindings in scope
+                    // Bind the destructured fields under INTERNAL names (not their bare field
+                    // names) so a user's same-named method parameter/local is never shadowed by
+                    // a bare reference (#50). Java has no record-deconstruction pattern here, so
+                    // the bare field name is never a valid user reference; var.field() access is
+                    // routed to these internal names by resolveRecordFieldAccess.
+                    var ctorFields = ctor.fields();
                     var fieldNames = new java.util.HashSet<String>();
-                    for (var field : ctor.fields()) {
-                        symbolTable.define(field.name(), field.type());
-                        fieldNames.add(field.name());
+                    for (int fi = 0; fi < ctorFields.size(); fi++) {
+                        symbolTable.define(destructuredFieldBinding(varName, fi), ctorFields.get(fi).type());
+                        fieldNames.add(ctorFields.get(fi).name());
                     }
                     // Define the pattern variable (e.g. 'b' in 'case Bid b')
                     // with RecordType so b.fieldName() redirects to the bound field
-                    var varRecordType = new PirType.RecordType(typeName, ctor.fields());
+                    var varRecordType = new PirType.RecordType(typeName, ctorFields);
                     symbolTable.define(varName, varRecordType);
                     // Record which pattern variable owns these destructured fields so that
                     // var.field() reuse is restricted to this variable (see resolveRecordFieldAccess).
@@ -1817,9 +1832,12 @@ public class PirGenerator {
 
                     patternScopes.pop();
                     symbolTable.popScope();
-                    // For DataMatch, we bind the constructor fields
+                    // For DataMatch, we bind the constructor fields under the same internal names.
                     matchEntries.add(new PatternMatchDesugarer.MatchEntry(
-                            typeName, ctor.fields().stream().map(PirType.Field::name).toList(), bodyTerm, varName));
+                            typeName,
+                            java.util.stream.IntStream.range(0, ctorFields.size())
+                                    .mapToObj(fi -> destructuredFieldBinding(varName, fi)).toList(),
+                            bodyTerm, varName));
                 }
             }
         }

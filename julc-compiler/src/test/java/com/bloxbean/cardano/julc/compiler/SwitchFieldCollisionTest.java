@@ -8,7 +8,6 @@ import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
 import com.bloxbean.cardano.julc.vm.EvalResult;
 import com.bloxbean.cardano.julc.vm.JulcVm;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigInteger;
@@ -218,11 +217,6 @@ class SwitchFieldCollisionTest {
     }
 
     @Test
-    @Disabled("Separate known limitation from #47: destructured field names are injected into the "
-            + "general namespace, so a *bare* reference to a same-named method parameter resolves to "
-            + "the field instead. #47 fixes only qualified var.field() access. Tracked for a follow-up "
-            + "fix (stop injecting bare field names into the symbol-table namespace). This test flips "
-            + "green when that lands.")
     void fieldNameShadowsMethodParameterOfSameName() {
         // Regression for the previously-documented narrower case: a parameter named like a
         // destructured field must not be shadowed by the field binding.
@@ -249,5 +243,125 @@ class SwitchFieldCollisionTest {
                 evalInt(compiled,
                         dataArg(PlutusData.constr(0, PlutusData.integer(5))),
                         dataArg(PlutusData.integer(99))));
+    }
+
+    @Test
+    void parameterUsedAlongsidePatternFieldOfSameNameInOneBranch() {
+        // Both `amount` (the parameter) and `t.amount()` (the field) appear in the same branch
+        // and must refer to different values.
+        var src = """
+                import java.math.BigInteger;
+
+                public class Mix {
+                    sealed interface Action permits Transfer, Withdraw {}
+                    record Transfer(BigInteger amount) implements Action {}
+                    record Withdraw(BigInteger fee) implements Action {}
+
+                    public static BigInteger diff(Action action, BigInteger amount) {
+                        return switch (action) {
+                            case Transfer t -> amount.subtract(t.amount());  // param - field
+                            case Withdraw w -> BigInteger.ZERO;
+                        };
+                    }
+                }
+                """;
+        var compiled = compile(src, "diff");
+        // param amount=99, Transfer(amount=5): 99 - 5 = 94
+        assertEquals(BigInteger.valueOf(94),
+                evalInt(compiled,
+                        dataArg(PlutusData.constr(0, PlutusData.integer(5))),
+                        dataArg(PlutusData.integer(99))));
+    }
+
+    @Test
+    void outerLocalNotShadowedByDestructuredField() {
+        // A local declared before the switch, sharing a name with a field, must not be shadowed.
+        var src = """
+                import java.math.BigInteger;
+
+                public class Local {
+                    sealed interface Action permits Transfer, Withdraw {}
+                    record Transfer(BigInteger amount) implements Action {}
+                    record Withdraw(BigInteger fee) implements Action {}
+
+                    public static BigInteger pick(Action action, BigInteger seed) {
+                        BigInteger amount = seed.add(BigInteger.valueOf(1000));  // outer local 'amount'
+                        return switch (action) {
+                            case Transfer t -> amount;   // must read the outer local, not t.amount()
+                            case Withdraw w -> BigInteger.ZERO;
+                        };
+                    }
+                }
+                """;
+        var compiled = compile(src, "pick");
+        // seed=1, outer amount = 1001; Transfer(amount=5) -> must be 1001, not 5
+        assertEquals(BigInteger.valueOf(1001),
+                evalInt(compiled,
+                        dataArg(PlutusData.constr(0, PlutusData.integer(5))),
+                        dataArg(PlutusData.integer(1))));
+    }
+
+    @Test
+    void nestedSwitchParameterNotShadowedByInnerField() {
+        // Parameter 'amount' must survive both an outer and an inner destructuring of 'amount'.
+        var src = """
+                import java.math.BigInteger;
+
+                public class NestedShadow {
+                    sealed interface Outer permits A, B {}
+                    record A(BigInteger amount) implements Outer {}
+                    record B(BigInteger amount) implements Outer {}
+                    sealed interface Inner permits C, D {}
+                    record C(BigInteger amount) implements Inner {}
+                    record D(BigInteger amount) implements Inner {}
+
+                    public static BigInteger pick(Outer o, Inner i, BigInteger amount) {
+                        return switch (o) {
+                            case A a -> switch (i) {
+                                case C c -> amount;   // must read the parameter, not a/c fields
+                                case D d -> BigInteger.ZERO;
+                            };
+                            case B b -> BigInteger.ONE;
+                        };
+                    }
+                }
+                """;
+        var compiled = compile(src, "pick");
+        // A(amount=1), C(amount=2), param amount=99 -> must be 99
+        assertEquals(BigInteger.valueOf(99),
+                evalInt(compiled,
+                        dataArg(PlutusData.constr(0, PlutusData.integer(1))),
+                        dataArg(PlutusData.constr(0, PlutusData.integer(2))),
+                        dataArg(PlutusData.integer(99))));
+    }
+
+    @Test
+    void userLocalCannotCollideWithInternalFieldBinding() {
+        // Java permits the old underscore-only internal spelling as a source identifier.
+        // A mutation back to "__pfield_" makes t.amount() resolve to this local and return 99.
+        var src = """
+                import java.math.BigInteger;
+
+                public class InternalNameCollision {
+                    sealed interface Action permits Transfer, Withdraw {}
+                    record Transfer(BigInteger amount) implements Action {}
+                    record Withdraw(BigInteger fee) implements Action {}
+
+                    public static BigInteger check(Action action) {
+                        return switch (action) {
+                            case Transfer t -> {
+                                BigInteger __pfield_t_0 = BigInteger.valueOf(99);
+                                yield t.amount();
+                            }
+                            case Withdraw w -> BigInteger.ZERO;
+                        };
+                    }
+                }
+                """;
+        var compiled = compile(src, "check");
+        // Transfer(amount=5) must read the record field, not the same-looking source local.
+        assertEquals(BigInteger.valueOf(5),
+                evalInt(compiled,
+                        dataArg(PlutusData.constr(0, PlutusData.integer(5)))));
     }
 }
