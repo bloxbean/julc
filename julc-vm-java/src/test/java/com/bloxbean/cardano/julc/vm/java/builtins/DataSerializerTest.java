@@ -81,6 +81,19 @@ class DataSerializerTest {
     }
 
     @Test
+    void mapPreservesOrderAndDuplicateKeys() {
+        // Plutus Data preserves map entry order and duplicate keys (definite-length map).
+        // reordered {3:30, 1:10} stays in insertion order (NOT sorted)
+        assertBytes("a203181e010a", PlutusData.map(
+                new PlutusData.Pair(PlutusData.integer(3), PlutusData.integer(30)),
+                new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(10))));
+        // duplicate {1:10, 1:20} keeps BOTH entries
+        assertBytes("a2010a0114", PlutusData.map(
+                new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(10)),
+                new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(20))));
+    }
+
+    @Test
     void longByteStringInsideConstrHasBothBreaks() {
         byte[] big = new byte[100];
         for (int i = 0; i < big.length; i++) big[i] = (byte) i;
