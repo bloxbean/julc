@@ -82,6 +82,45 @@ PlutusData inputs = Builtins.listData(JulcList.of(pkh, recipient));
 PlutusData publicInputs = Builtins.listData(JulcList.of(pub0, pub1, pub2, pub3, pub4));
 ```
 
+#### D1 addendum (review, 2026-07-22): `.toPlutusData()` as the preferred surface
+
+ADR review asked whether `JulcList.of(pub0, ..., pub4).toPlutusData()` is possible
+instead of wrapping with `Builtins.listData(...)`. It is, and it becomes the
+preferred idiom; the implementation PR will include it:
+
+- **On-chain**: one `TypeMethodRegistry` registration per container type —
+  `ListType.toPlutusData` → apply the `ListData` builtin to the scope,
+  `MapType.toPlutusData` → `MapData`. This is the same instance-dispatch path
+  `list.head()` / `list.take(n)` already use.
+- **Off-chain**: a `toPlutusData()` default method on `JulcList` (mirroring the
+  `Builtins.listData(JulcList<?>)` element-wrapping rules) so the same source is
+  javac-legal and JVM-consistent. The name matches the existing
+  `PlutusDataConvertible.toPlutusData()` convention used by ledger records;
+  `JulcList` may extend `PlutusDataConvertible`, which additionally lets
+  `Builtins.asPlutusData(Object)` accept lists.
+- **Bonus**: the method works on *any* `JulcList`/`JulcMap` value, not just `of(...)`
+  literals — it retires the `Builtins.listData((PlutusData)(Object) list)` re-wrap
+  cast idiom found in the survey (`CfIdentityValidator`).
+
+Implementation notes to verify:
+
+1. **Chained-scope type inference**: dispatching `JulcList.of(...).toPlutusData()`
+   requires the `MkCons` chain to infer as `ListType`. If `MkCons` is missing from
+   `inferBuiltinReturnType`, the scope falls back to `DataType` and dispatch misses —
+   same bug class as the earlier `UnIData`/`UnBData` inference fixes; add the table
+   entry if needed.
+2. **JVM wrapping location**: `JulcList` lives in `julc-core`, which cannot call
+   `julc-stdlib`'s `Builtins` — the default method needs its own copy of the (small)
+   element-wrapping table, or the helper moves to `julc-core` and `Builtins.listData`
+   delegates to it.
+
+Both spellings coexist: `Builtins.listData(...)` stays as the builtin-parity form;
+docs and examples lead with `.toPlutusData()`.
+
+```java
+PlutusData publicInputs = JulcList.of(pub0, pub1, pub2, pub3, pub4).toPlutusData();
+```
+
 ### D2. Variadic `Builtins.concat(byte[], byte[], byte[]...)`
 
 - **PIR side**: registered in `StdlibRegistry.registerBuiltins` special-cases as a
@@ -238,6 +277,12 @@ addresses.
 | `julc-playground/.../JulcPlaygroundServer.java` | `::lookup` → registry object (production fix) |
 | ~14 test classes (julc-compiler, julc-e2e-tests, julc-plugin-test) | `::lookup` → registry object |
 | `docs/.../stdlib/stdlib-guide.md` | ValuesLib quick-ref rows; "Building Lists", "Unique Token Names" sections; `concat` in ByteStringLib example |
+
+Pending (D1 addendum, to land in the implementation PR):
+`JulcList.toPlutusData()` / `JulcMap.toPlutusData()` — TypeMethodRegistry
+registrations (`ListType`/`MapType` → `ListData`/`MapData`), `JulcList` default
+method + element wrapping in `julc-core`, `MkCons` entry in
+`inferBuiltinReturnType` if missing, docs updated to lead with this form.
 
 ## Tests
 
