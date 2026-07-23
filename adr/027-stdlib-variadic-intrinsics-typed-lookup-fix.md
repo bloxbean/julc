@@ -1,7 +1,7 @@
 # ADR-027: Stdlib Variadic Intrinsics, Unique Token Name Helpers, and the Typed-Lookup Bypass Fix
 
-**Date**: 2026-07-21
-**Status**: Proposed (implementation complete locally; PR to follow after ADR review)
+**Date**: 2026-07-21 (review findings folded in 2026-07-22)
+**Status**: Proposed (under review; core implementation staged locally, review follow-ups R1–R6 pending — see Implementation summary)
 
 ---
 
@@ -88,31 +88,39 @@ ADR review asked whether `JulcList.of(pub0, ..., pub4).toPlutusData()` is possib
 instead of wrapping with `Builtins.listData(...)`. It is, and it becomes the
 preferred idiom; the implementation PR will include it:
 
-- **On-chain**: one `TypeMethodRegistry` registration per container type —
-  `ListType.toPlutusData` → apply the `ListData` builtin to the scope,
-  `MapType.toPlutusData` → `MapData`. This is the same instance-dispatch path
-  `list.head()` / `list.take(n)` already use.
+- **On-chain: no compiler changes needed** (verified during review, R4). Two earlier
+  assumptions in this addendum were wrong:
+  - `PirGenerator` already auto-recognizes any no-arg `.toPlutusData()` call and
+    routes it through `PirHelpers.wrapEncode(scope, scopeType)`
+    (PirGenerator.java:1001-1004), which maps `ListType` → `ListData` and
+    `MapType` → `MapData`. No `TypeMethodRegistry` registrations are required.
+  - `MkCons` already infers as `ListType(DataType)` in `inferBuiltinReturnType`
+    (TypeInferenceHelper.java:265), so the chained scope
+    `JulcList.of(...).toPlutusData()` dispatches correctly. No inference entry is
+    required.
+
+  The first implementation step is therefore a **chained-call regression test**
+  proving `JulcList.of(...).toPlutusData()` compiles and evaluates today, locking
+  the behavior in before any JVM-side work.
 - **Off-chain**: a `toPlutusData()` default method on `JulcList` (mirroring the
   `Builtins.listData(JulcList<?>)` element-wrapping rules) so the same source is
-  javac-legal and JVM-consistent. The name matches the existing
-  `PlutusDataConvertible.toPlutusData()` convention used by ledger records;
-  `JulcList` may extend `PlutusDataConvertible`, which additionally lets
-  `Builtins.asPlutusData(Object)` accept lists.
+  javac-legal and JVM-consistent. **Module boundary (R3)**:
+  `PlutusDataConvertible` lives in `julc-ledger-api`, which declares
+  `api project(':julc-core')` — so `JulcList` (julc-core) CANNOT extend it without
+  a circular dependency. Instead, introduce a core-level conversion interface
+  (e.g. `com.bloxbean.cardano.julc.core.ToPlutusData`) that
+  `PlutusDataConvertible` extends; the element-wrapping table lives in julc-core
+  and `Builtins.listData(JulcList<?>)` delegates to it. `Builtins.asPlutusData`
+  then accepts both.
+- **`JulcMap.toPlutusData()` off-chain spec (R3)**: on-chain assoc maps (pair
+  lists) may legally contain duplicate keys, and `JulcMap`'s `keys()` + `get()`
+  surface collapses duplicates (`get` returns the first match). The off-chain
+  implementation must therefore traverse entries losslessly via `head()`/`tail()`
+  (or an internal entries view), preserving order and duplicates, wrapping each
+  key/value with the same element rules.
 - **Bonus**: the method works on *any* `JulcList`/`JulcMap` value, not just `of(...)`
   literals — it retires the `Builtins.listData((PlutusData)(Object) list)` re-wrap
   cast idiom found in the survey (`CfIdentityValidator`).
-
-Implementation notes to verify:
-
-1. **Chained-scope type inference**: dispatching `JulcList.of(...).toPlutusData()`
-   requires the `MkCons` chain to infer as `ListType`. If `MkCons` is missing from
-   `inferBuiltinReturnType`, the scope falls back to `DataType` and dispatch misses —
-   same bug class as the earlier `UnIData`/`UnBData` inference fixes; add the table
-   entry if needed.
-2. **JVM wrapping location**: `JulcList` lives in `julc-core`, which cannot call
-   `julc-stdlib`'s `Builtins` — the default method needs its own copy of the (small)
-   element-wrapping table, or the helper moves to `julc-core` and `Builtins.listData`
-   delegates to it.
 
 Both spellings coexist: `Builtins.listData(...)` stays as the builtin-parity form;
 docs and examples lead with `.toPlutusData()`.
@@ -136,6 +144,14 @@ PlutusData publicInputs = JulcList.of(pub0, pub1, pub2, pub3, pub4).toPlutusData
 
 Pattern 2 becomes `Builtins.blake2b_256(Builtins.concat(a, b, c))`.
 
+**Review finding (R5) — enforce minimum arity in the registry**: the Java API
+documents arity ≥ 2 (enforced by javac at Gradle-build call sites), but the PIR
+registration currently accepts 0 args (→ empty bytes) and 1 arg (→ identity).
+Source-string compilation paths (`JulcEval.forSource`, CLI check, playground)
+never run javac, so a 1-arg `concat` would silently no-op there. The registry
+builder will reject fewer than 2 arguments (same `requireArgs` convention as other
+registrations), with negative compilation tests.
+
 ### D3. `ValuesLib.refBytes(ref)` + `ValuesLib.uniqueTokenName(ref)`
 
 Plain Java-source stdlib methods (ordinary subset logic — no registry work needed):
@@ -154,12 +170,24 @@ public static byte[] uniqueTokenName(TxOutRef ref) {
 Design choices, made deliberately and documented in javadoc + stdlib guide:
 
 - **blake2b_256** — cheapest Plutus hash; output is exactly 32 bytes, the maximum
-  asset-name length.
+  asset-name length. Precise claim (R6): the name is **collision-resistant and
+  deterministically tied to the consumed reference**, not mathematically
+  "guaranteed unique" — uniqueness in practice relies on the minting policy
+  actually enforcing that the seed `TxOutRef` is spent in the minting
+  transaction. Javadoc and stdlib-guide wording to be aligned accordingly.
 - **Fixed 2-byte big-endian index** (`integerToByteString(true, 2, index)`) instead
-  of minimal-width (`width 0`): minimal-width encodes index 0 as *empty bytes*
-  (with a historical JVM/UPLC divergence on that exact case), whereas width 2 is
-  deterministic, JVM/UPLC-identical, and index > 65535 (impossible for real tx
-  outputs) fails loudly.
+  of minimal-width (`width 0`): minimal-width encodes index 0 as *empty bytes*,
+  whereas width 2 is deterministic and JVM/UPLC-identical for all valid indices
+  (0–65535); index > 65535 (impossible for real tx outputs) fails loudly on-chain.
+- **Review finding (R1) — JVM overflow check missing**: the UPLC builtin errors
+  when the value does not fit the requested width, but the JVM
+  `Builtins.integerToByteString` (Builtins.java:333) only pads *undersized*
+  values and never rejects *oversized* ones — `(true, 2, 65536)` returns 3 bytes
+  on the JVM while the VM throws. So the JVM/UPLC-parity claim above currently
+  holds only for indices ≤ 65535. Fix in the implementation PR: throw when
+  `raw.length > width` (width > 0), plus **direct-JVM** tests — the existing
+  `ValuesLibTest` coverage exercises only the UPLC path via `JulcEval`, which is
+  why this went unnoticed.
 - **`refBytes` exposed separately** so protocols that need a different hash keep the
   concat-and-encode part: `CryptoLib.sha2_256(ValuesLib.refBytes(ref))`. The three
   existing julc-examples derivations are protocol-fixed and are NOT migrated; the
@@ -223,13 +251,25 @@ warned about in a different subsystem.
 ### Fix
 
 Mechanical: `new JulcCompiler(stdlib::lookup)` → `new JulcCompiler(stdlib)` at all
-~40 sites (`StdlibRegistry` implements `StdlibLookup`; passing the object preserves
-the override). `CompositeStdlibLookup` already propagated the 4-arg call correctly.
+~40 **code** sites (`StdlibRegistry` implements `StdlibLookup`; passing the object
+preserves the override). `CompositeStdlibLookup` already propagated the 4-arg call
+correctly.
+
+**Review finding (R2) — documentation still teaches the broken pattern**: the
+migration covered `.java` sources only; `README.md:235` and
+`docs/src/content/docs/getting-started.md:1112` still show
+`new JulcCompiler(stdlib::lookup)`, and `getting-started.md:1168` shows
+`ValidatorTest.compile(javaSource, stdlib::lookup)`. Every user who copies these
+snippets reproduces the bug. Fix in the implementation PR: correct the three
+snippets and add an automated guard — either a repo grep check in CI
+(`JulcCompiler(.*::lookup` must not match) or the interface hardening below.
 
 **Rule going forward: never pass `registry::lookup` where a `StdlibLookup` is
 expected — pass the registry object.** A future hardening option is to remove
 `@FunctionalInterface` and make the 4-arg method abstract so the method-reference
-form no longer compiles; deferred because it is a breaking interface change.
+form no longer compiles; deferred because it is a breaking interface change, but
+worth deciding now while the project is pre-1.0 (it would make R2's guard
+unnecessary by construction).
 
 ### Second latent bug exposed by the fix
 
@@ -278,11 +318,18 @@ addresses.
 | ~14 test classes (julc-compiler, julc-e2e-tests, julc-plugin-test) | `::lookup` → registry object |
 | `docs/.../stdlib/stdlib-guide.md` | ValuesLib quick-ref rows; "Building Lists", "Unique Token Names" sections; `concat` in ByteStringLib example |
 
-Pending (D1 addendum, to land in the implementation PR):
-`JulcList.toPlutusData()` / `JulcMap.toPlutusData()` — TypeMethodRegistry
-registrations (`ListType`/`MapType` → `ListData`/`MapData`), `JulcList` default
-method + element wrapping in `julc-core`, `MkCons` entry in
-`inferBuiltinReturnType` if missing, docs updated to lead with this form.
+### Review follow-ups (2026-07-22), to land in the implementation PR
+
+| # | Item |
+|---|---|
+| R1 | JVM `Builtins.integerToByteString`: throw when the value does not fit `width` (currently pads undersized but silently returns oversized — JVM/UPLC divergence for index > 65535). Add direct-JVM tests for `refBytes`/`uniqueTokenName` alongside the existing UPLC-path tests. |
+| R2 | Fix `stdlib::lookup` snippets in `README.md:235`, `getting-started.md:1112`, `:1168`; add a CI grep guard for `JulcCompiler(.*::lookup` — or resolve via R2b: remove `@FunctionalInterface` from `StdlibLookup` and make the 4-arg method abstract (breaking; decide while pre-1.0). |
+| R3 | `.toPlutusData()` JVM side: core-level conversion interface in `julc-core` (extended by ledger-api's `PlutusDataConvertible` — direct extension is a circular dependency); element-wrapping table in julc-core with `Builtins.listData(JulcList<?>)` delegating; `JulcMap.toPlutusData()` iterates entries losslessly via `head()`/`tail()` (duplicate keys preserved). |
+| R4 | `.toPlutusData()` on-chain: NO compiler changes (PirGenerator.java:1001 wrapEncode fallback + MkCons ListType inference already cover it) — add the chained-call regression test first; drop the previously proposed TypeMethodRegistry registrations. |
+| R5 | `Builtins.concat` PIR registration: require ≥ 2 args (source-string paths bypass javac); negative compilation tests. |
+| R6 | Wording: javadoc + stdlib-guide say "collision-resistant, deterministically tied to the consumed ref" instead of "guaranteed unique"; note the policy must enforce the ref is spent. |
+
+Docs updated to lead with `.toPlutusData()` once R3/R4 land.
 
 ## Tests
 
