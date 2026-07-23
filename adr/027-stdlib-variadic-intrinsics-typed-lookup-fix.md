@@ -112,25 +112,49 @@ preferred idiom; the implementation PR will include it:
   `PlutusDataConvertible` extends; the element-wrapping table lives in julc-core
   and `Builtins.listData(JulcList<?>)` delegates to it. `Builtins.asPlutusData`
   then accepts both.
-- **`JulcMap.toPlutusData()` off-chain spec (R3)**: on-chain assoc maps (pair
+- **`JulcMap` iteration + `toPlutusData()` (R3)**: on-chain assoc maps (pair
   lists) may legally contain duplicate keys, and `JulcMap`'s `keys()` + `get()`
-  surface collapses duplicates (`get` returns the first match). Decision
-  (review, 2026-07-22): add the lossless iteration primitive
+  surface collapses duplicates (`get` returns the first match).
+
+  An earlier revision of this addendum specified
+  `entries(): JulcList<Tuple2<K,V>>` as an *identity* operation — **retracted as
+  unimplementable**: `Tuple2` is registered as a `RecordType`
+  (TypeResolver.java:316), i.e. its on-chain representation is
+  `ConstrData(0, [first, second])` — a Data value accessed via `UnConstrData` —
+  and that contract is already load-bearing (`MathLib.divMod`/`quotRem`
+  construct it). Map entries, by contrast, are **native UPLC pairs**
+  (`PairType`, accessed via `FstPair`/`SndPair` — see the `MapType.head()`
+  registration, TypeMethodRegistry.java:678: "returns native pair"). One Java
+  type cannot carry both representations: the compiler lowers `t.first()` from
+  the static type alone, so either lowering crashes on the other's values.
+
+  **Decision (review, 2026-07-22): introduce `JulcPair<K,V>`**, a core-level
+  Java type whose contract is *always a native UPLC pair*:
 
   ```java
-  /** All entries in order, duplicates preserved. On-chain: identity — the map IS a pair list. */
-  JulcList<Tuple2<K, V>> entries();
+  /** Native-pair view. On-chain: .key()/.value() → FstPair/SndPair (+ wrapDecode per K/V). */
+  public interface JulcPair<K, V> { K key(); V value(); }
   ```
 
-  On-chain it compiles to identity typed `ListType(PairType(K,V))` (one
-  `TypeMethodRegistry` registration); off-chain `JulcAssocMap` returns its
-  ordered internal pair list. `toPlutusData()` walks `entries()`, wrapping each
-  key/value with the element rules — order and duplicates preserved by
-  construction. `entries()` has standalone user value too: it retires the
-  `Object`-typed `head()`/`tail()` cast traversal. A callback-style
-  `iterate(...)` was rejected (lambdas do not compile on-chain); making
-  `JulcMap` `Iterable` is deferred (it interacts with the existing
-  for-each-on-MapType desugaring).
+  - `JulcMap.entries()` returns `JulcList<JulcPair<K,V>>` — on-chain identity
+    (the map IS a pair list), typed `ListType(PairType(K,V))`; off-chain
+    `JulcAssocMap` exposes its ordered internal pair list. Order and duplicate
+    keys preserved.
+  - `JulcMap.head()` is retyped from `Object` to `JulcPair<K,V>` — fixing the
+    existing cast-based traversal (`MapType.head()` already returns `PairType`
+    at the PIR level; the Java-side type was the gap).
+  - **Audit required**: `JulcList` operations on native-pair lists. Safe:
+    structural ops (`head`, `tail`, `size`, `isEmpty`, `take`, `drop`;
+    `MkCons`-based prepend of a pair). Unsafe and to be rejected or excluded:
+    Data-assuming ops (`contains`/`equalsData`, `toPlutusData`/`ListData`
+    wrapping, element auto-wrap) — native pairs are not Data.
+  - `JulcMap.toPlutusData()`: declared on the interface; on-chain the existing
+    `wrapEncode` fallback already maps `MapType` → `MapData` (no compiler
+    change, same as lists); off-chain `JulcAssocMap` implements it by walking
+    its entries and wrapping each key/value with the element rules.
+  - A callback-style `iterate(...)` remains rejected (lambdas do not compile
+    on-chain); making `JulcMap` `Iterable` is deferred (it interacts with the
+    existing for-each-on-MapType desugaring).
 - **Bonus**: the method works on *any* `JulcList`/`JulcMap` value, not just `of(...)`
   literals — it retires the `Builtins.listData((PlutusData)(Object) list)` re-wrap
   cast idiom found in the survey (`CfIdentityValidator`).
@@ -145,7 +169,7 @@ PlutusData publicInputs = JulcList.of(pub0, pub1, pub2, pub3, pub4).toPlutusData
 ### D2. Variadic `Builtins.concat(byte[], byte[], byte[]...)`
 
 - **PIR side**: registered in `StdlibRegistry.registerBuiltins` special-cases as a
-  right-fold of `AppendByteString` over any arity.
+  right-fold of `AppendByteString` over the call-site arity (≥ 2, per R5 below).
 - **JVM side**: a real varargs implementation in `Builtins.java` (javac enforces
   arity ≥ 2 at call sites).
 - **Why `Builtins` and not `ByteStringLib`**: `ByteStringLib` is `@OnchainLibrary`,
@@ -192,15 +216,20 @@ Design choices, made deliberately and documented in javadoc + stdlib guide:
   of minimal-width (`width 0`): minimal-width encodes index 0 as *empty bytes*,
   whereas width 2 is deterministic and JVM/UPLC-identical for all valid indices
   (0–65535); index > 65535 (impossible for real tx outputs) fails loudly on-chain.
-- **Review finding (R1) — JVM overflow check missing**: the UPLC builtin errors
-  when the value does not fit the requested width, but the JVM
-  `Builtins.integerToByteString` (Builtins.java:333) only pads *undersized*
-  values and never rejects *oversized* ones — `(true, 2, 65536)` returns 3 bytes
-  on the JVM while the VM throws. So the JVM/UPLC-parity claim above currently
-  holds only for indices ≤ 65535. Fix in the implementation PR: throw when
-  `raw.length > width` (width > 0), plus **direct-JVM** tests — the existing
-  `ValuesLibTest` coverage exercises only the UPLC path via `JulcEval`, which is
-  why this went unnoticed.
+- **Review finding (R1) — JVM width validation incomplete**: the VM validates
+  the full contract (BitwiseBuiltins.java:33): negative value → error, negative
+  width → error, width > 8192 → error, value not fitting a positive width →
+  error. The JVM `Builtins.integerToByteString` (Builtins.java:333) checks only
+  the negative *value*; it pads undersized values but (a) silently returns
+  *oversized* ones — `(true, 2, 65536)` returns 3 bytes while the VM throws —
+  (b) treats negative width like width 0 instead of throwing, and (c) casts
+  `long` width straight to `int` (overflow for huge widths, no 8192 cap). So
+  the JVM/UPLC-parity claim above currently holds only for indices ≤ 65535 with
+  sane widths. Fix in the implementation PR: validate `0 ≤ width ≤ 8192` before
+  casting/allocating and throw when the value does not fit a positive width;
+  **direct-JVM** tests for width −1, 8192, 8193, and an oversize value — the
+  existing `ValuesLibTest` coverage exercises only the UPLC path via
+  `JulcEval`, which is why this went unnoticed.
 - **`refBytes` exposed separately** so protocols that need a different hash keep the
   concat-and-encode part: `CryptoLib.sha2_256(ValuesLib.refBytes(ref))`. The three
   existing julc-examples derivations are protocol-fixed and are NOT migrated; the
@@ -246,8 +275,8 @@ is silently discarded. Every typed coercion registered there never ran:
 
 ### Blast radius
 
-`grep 'JulcCompiler(.*::lookup'` found **~40 call sites**, including four
-**production** paths:
+`grep 'JulcCompiler(.*::lookup'` found **~40 call sites**: three **production**
+paths, plus the test harnesses that masked the gap:
 
 | Site | Impact |
 |---|---|
@@ -273,16 +302,23 @@ migration covered `.java` sources only; `README.md:235` and
 `docs/src/content/docs/getting-started.md:1112` still show
 `new JulcCompiler(stdlib::lookup)`, and `getting-started.md:1168` shows
 `ValidatorTest.compile(javaSource, stdlib::lookup)`. Every user who copies these
-snippets reproduces the bug. Fix in the implementation PR: correct the three
-snippets and add an automated guard — either a repo grep check in CI
-(`JulcCompiler(.*::lookup` must not match) or the interface hardening below.
+snippets reproduces the bug.
 
-**Rule going forward: never pass `registry::lookup` where a `StdlibLookup` is
-expected — pass the registry object.** A future hardening option is to remove
-`@FunctionalInterface` and make the 4-arg method abstract so the method-reference
-form no longer compiles; deferred because it is a breaking interface change, but
-worth deciding now while the project is pre-1.0 (it would make R2's guard
-unnecessary by construction).
+**Decision (review, 2026-07-22): harden the interface now.** Remove
+`@FunctionalInterface` from `StdlibLookup` and make the 4-arg `lookup` abstract,
+so `::lookup` (and any lambda) stops compiling **anywhere** a `StdlibLookup` is
+expected — the entire bug class becomes a compile error, at every current and
+future API, with no CI guard to maintain. (A grep guard was rejected: a pattern
+like `JulcCompiler(.*::lookup` would already have missed the
+`ValidatorTest.compile(..., stdlib::lookup)` form.) Migration cost is zero
+today: a repo-wide grep confirms no lambda or method-reference implementations
+of `StdlibLookup` exist, and all three implementing classes (`StdlibRegistry`,
+`LibraryMethodRegistry`, `CompositeStdlibLookup`) already override both
+methods. The three documentation snippets are corrected as part of the same
+change. Pre-1.0 is the time for this breaking interface change.
+
+**Rule going forward: pass the registry object, never a method reference** —
+enforced by the compiler once R2 lands.
 
 ### Second latent bug exposed by the fix
 
@@ -335,9 +371,9 @@ addresses.
 
 | # | Item |
 |---|---|
-| R1 | JVM `Builtins.integerToByteString`: throw when the value does not fit `width` (currently pads undersized but silently returns oversized — JVM/UPLC divergence for index > 65535). Add direct-JVM tests for `refBytes`/`uniqueTokenName` alongside the existing UPLC-path tests. |
-| R2 | Fix `stdlib::lookup` snippets in `README.md:235`, `getting-started.md:1112`, `:1168`; add a CI grep guard for `JulcCompiler(.*::lookup` — or resolve via R2b: remove `@FunctionalInterface` from `StdlibLookup` and make the 4-arg method abstract (breaking; decide while pre-1.0). |
-| R3 | `.toPlutusData()` JVM side: core-level conversion interface in `julc-core` (extended by ledger-api's `PlutusDataConvertible` — direct extension is a circular dependency); element-wrapping table in julc-core with `Builtins.listData(JulcList<?>)` delegating; new `JulcMap.entries()` → `JulcList<Tuple2<K,V>>` as the lossless iteration primitive (on-chain identity + one TypeMethodRegistry registration; off-chain JulcAssocMap's ordered pair list); `JulcMap.toPlutusData()` walks `entries()` (order + duplicate keys preserved). |
+| R1 | JVM `Builtins.integerToByteString`: validate the full VM contract — `0 ≤ width ≤ 8192` before casting/allocating, throw when the value does not fit a positive width (currently: oversized values silently returned, negative width treated as minimal, long→int cast overflow). Direct-JVM tests for width −1/8192/8193, oversize value, plus `refBytes`/`uniqueTokenName` JVM-vs-UPLC parity. |
+| R2 | **Decided: harden `StdlibLookup`** — drop `@FunctionalInterface`, make the 4-arg `lookup` abstract; `::lookup`/lambda forms stop compiling everywhere (zero migration cost: no such implementations exist; all three implementing classes already override both methods). Fix the three doc snippets (`README.md:235`, `getting-started.md:1112`, `:1168`) in the same change. No CI grep guard needed. |
+| R3 | `.toPlutusData()` JVM side: core-level conversion interface in `julc-core` (extended by ledger-api's `PlutusDataConvertible` — direct extension is a circular dependency); element-wrapping table in julc-core with `Builtins.listData(JulcList<?>)` delegating. **Decided: new `JulcPair<K,V>`** core type mapped to native `PairType` (`.key()`/`.value()` → FstPair/SndPair); `JulcMap.entries()` → `JulcList<JulcPair<K,V>>` (on-chain identity), `JulcMap.head()` retyped `Object` → `JulcPair<K,V>`; audit `JulcList` ops on native-pair lists (structural ops safe; Data-assuming ops rejected); `JulcMap.toPlutusData()` on the interface, `JulcAssocMap` impl walks entries (order + duplicate keys preserved). |
 | R4 | `.toPlutusData()` on-chain: NO compiler changes (PirGenerator.java:1001 wrapEncode fallback + MkCons ListType inference already cover it) — add the chained-call regression test first; drop the previously proposed TypeMethodRegistry registrations. |
 | R5 | `Builtins.concat` PIR registration: require ≥ 2 args (source-string paths bypass javac); negative compilation tests. |
 | R6 | Wording: javadoc + stdlib-guide say "collision-resistant, deterministically tied to the consumed ref" instead of "guaranteed unique"; note the policy must enforce the ref is spent. |
@@ -359,23 +395,36 @@ Docs updated to lead with `.toPlutusData()` once R3/R4 land.
   `uniqueTokenName` == `blake2b_256(refBytes)` (cross-checked through a
   `CryptoLib` eval), 32-byte length, differs by index and by txId.
 
-## Verification
+## Verification (staged implementation only — pre-R1–R6)
+
+The checks below cover the staged core implementation; the R1–R6 follow-ups get
+their own verification in the implementation PR.
 
 - Full repo test suite green (`./gradlew test`, all modules, incl. the previously
   bypassed harnesses now exercising the typed path).
 - `julc-test-quick` composite gate: publish-local → gradle-plugin smoke →
   stdlib-usage smoke → error-paths (6 negative subcases) — **all PASS** against the
   freshly published `0.1.0-pre14` artifacts.
+- R4 verified empirically: chained `JulcList.of(...).toPlutusData()` and
+  variable `.toPlutusData()` compile and evaluate correctly today (scratch test
+  through `JulcEval.forSource`, to be added permanently in the implementation PR).
+- Follow-up regression pre-checks: `JulcAssocMap` is the sole `JulcMap`
+  implementor (R3 additions touch one class); no `"entries"`/`"toPlutusData"`
+  registrations exist in `TypeMethodRegistry` (no dispatch collisions); no
+  width>0 JVM callers of `integerToByteString` rely on the lenient behavior
+  (R1 throw affects only values already broken on-chain); every existing
+  `concat` call passes ≥ 2 args (R5); no lambda/method-ref `StdlibLookup`
+  implementations exist (R2 hardening is non-breaking in-repo).
 - Operational note: the `julc-smoke-gradle-stdlib-usage` skill's sample validator
   uses stale `OutputLib.outputsAt(TxInfo, ...)` signatures (current API:
   `outputsAt(JulcList<TxOut>, Address)`). The JuLC compilation succeeded; only
   javac rejected the sample. The skill fixture should be updated.
 
-## Consequences
+## Consequences (once R1–R6 land with the implementation PR)
 
 - The three verbose idioms have one-line replacements; docs lead with them.
 - Typed-lookup coercions are active in every compilation path for the first time;
-  the `::lookup` anti-pattern is documented (and a compile-time guard via making
-  the 4-arg method abstract remains an option).
+  the `::lookup` anti-pattern becomes a **compile error** (R2 hardening).
 - Static `MapLib`/`ListsLib` calls uniformly accept raw-Data and typed containers.
+- `JulcPair` gives map iteration a real Java type (`entries()`, typed `head()`).
 - Script-hash compatibility caveat above applies to the affected constructs.
