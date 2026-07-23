@@ -114,10 +114,23 @@ preferred idiom; the implementation PR will include it:
   then accepts both.
 - **`JulcMap.toPlutusData()` off-chain spec (R3)**: on-chain assoc maps (pair
   lists) may legally contain duplicate keys, and `JulcMap`'s `keys()` + `get()`
-  surface collapses duplicates (`get` returns the first match). The off-chain
-  implementation must therefore traverse entries losslessly via `head()`/`tail()`
-  (or an internal entries view), preserving order and duplicates, wrapping each
-  key/value with the same element rules.
+  surface collapses duplicates (`get` returns the first match). Decision
+  (review, 2026-07-22): add the lossless iteration primitive
+
+  ```java
+  /** All entries in order, duplicates preserved. On-chain: identity — the map IS a pair list. */
+  JulcList<Tuple2<K, V>> entries();
+  ```
+
+  On-chain it compiles to identity typed `ListType(PairType(K,V))` (one
+  `TypeMethodRegistry` registration); off-chain `JulcAssocMap` returns its
+  ordered internal pair list. `toPlutusData()` walks `entries()`, wrapping each
+  key/value with the element rules — order and duplicates preserved by
+  construction. `entries()` has standalone user value too: it retires the
+  `Object`-typed `head()`/`tail()` cast traversal. A callback-style
+  `iterate(...)` was rejected (lambdas do not compile on-chain); making
+  `JulcMap` `Iterable` is deferred (it interacts with the existing
+  for-each-on-MapType desugaring).
 - **Bonus**: the method works on *any* `JulcList`/`JulcMap` value, not just `of(...)`
   literals — it retires the `Builtins.listData((PlutusData)(Object) list)` re-wrap
   cast idiom found in the survey (`CfIdentityValidator`).
@@ -324,7 +337,7 @@ addresses.
 |---|---|
 | R1 | JVM `Builtins.integerToByteString`: throw when the value does not fit `width` (currently pads undersized but silently returns oversized — JVM/UPLC divergence for index > 65535). Add direct-JVM tests for `refBytes`/`uniqueTokenName` alongside the existing UPLC-path tests. |
 | R2 | Fix `stdlib::lookup` snippets in `README.md:235`, `getting-started.md:1112`, `:1168`; add a CI grep guard for `JulcCompiler(.*::lookup` — or resolve via R2b: remove `@FunctionalInterface` from `StdlibLookup` and make the 4-arg method abstract (breaking; decide while pre-1.0). |
-| R3 | `.toPlutusData()` JVM side: core-level conversion interface in `julc-core` (extended by ledger-api's `PlutusDataConvertible` — direct extension is a circular dependency); element-wrapping table in julc-core with `Builtins.listData(JulcList<?>)` delegating; `JulcMap.toPlutusData()` iterates entries losslessly via `head()`/`tail()` (duplicate keys preserved). |
+| R3 | `.toPlutusData()` JVM side: core-level conversion interface in `julc-core` (extended by ledger-api's `PlutusDataConvertible` — direct extension is a circular dependency); element-wrapping table in julc-core with `Builtins.listData(JulcList<?>)` delegating; new `JulcMap.entries()` → `JulcList<Tuple2<K,V>>` as the lossless iteration primitive (on-chain identity + one TypeMethodRegistry registration; off-chain JulcAssocMap's ordered pair list); `JulcMap.toPlutusData()` walks `entries()` (order + duplicate keys preserved). |
 | R4 | `.toPlutusData()` on-chain: NO compiler changes (PirGenerator.java:1001 wrapEncode fallback + MkCons ListType inference already cover it) — add the chained-call regression test first; drop the previously proposed TypeMethodRegistry registrations. |
 | R5 | `Builtins.concat` PIR registration: require ≥ 2 args (source-string paths bypass javac); negative compilation tests. |
 | R6 | Wording: javadoc + stdlib-guide say "collision-resistant, deterministically tied to the consumed ref" instead of "guaranteed unique"; note the policy must enforce the ref is spent. |
