@@ -35,11 +35,14 @@ A survey of julc-examples found this at three independent on-chain sites
 different variant (sha2_256 vs sha3_256, minimal-width vs 2-byte vs decimal-string
 index encoding).
 
-> Survey source: `github.com/bloxbean/julc-examples`, local branch
-> `fix/julc_pre13_changes` @ `f9a067e` (ahead of `origin/main`). Reviewer
-> checkouts of julc-examples may differ in content; any `stdlib::lookup` usages
-> present in other snapshots of that repo become compile errors when it
-> upgrades to a JuLC with R2's hardened `StdlibLookup`, so they self-surface.
+> Naming note — there are TWO julc-examples trees, and this ADR references
+> both: (1) the **external repo** `github.com/bloxbean/julc-examples` (branch
+> `fix/julc_pre13_changes` @ `f9a067e`) — source of the idiom survey above
+> (`UVerifyProxy`, `UVerifyTxLib`, `CfProxyValidator`); (2) the **in-repo
+> Gradle module** `julc-examples/` (settings.gradle) — location of the three
+> `ValidatorTest.compile(source, stdlib::lookup)` test sites and the README
+> snippet cited under R2. Earlier review rounds talked past each other by each
+> searching only one of the two trees.
 
 ### Compiler constraints that shaped the design
 
@@ -277,24 +280,29 @@ paths, plus the test harnesses that masked the gap:
 | `julc-playground/JulcPlaygroundServer.java:43` | Playground compilations |
 | `julc-e2e-tests`, `julc-plugin-test`, ~12 julc-compiler test classes | Test harnesses exercised the untyped path, masking the gap |
 
-The testkit paths (`ValidatorTest`, `SourceDiscovery`, `JulcEval`) passed the
-registry object correctly, which is why in-repo stdlib tests never caught it — the
-exact "works via JulcCompiler directly, broken under Gradle" split ADR-023/024
-warned about in a different subsystem.
+The default testkit paths (`ValidatorTest`, `SourceDiscovery`, `JulcEval`) passed
+the registry object correctly, which is why in-repo stdlib tests never caught it
+— the exact "works via JulcCompiler directly, broken under Gradle" split
+ADR-023/024 warned about in a different subsystem. Explicit callers of
+`ValidatorTest.compile(source, stdlib::lookup)` still reproduce the bypass.
 
 ### Fix
 
 Mechanical: `new JulcCompiler(stdlib::lookup)` → `new JulcCompiler(stdlib)` at all
-~40 **code** sites (`StdlibRegistry` implements `StdlibLookup`; passing the object
-preserves the override). `CompositeStdlibLookup` already propagated the 4-arg call
-correctly.
+~40 direct-constructor sites (`StdlibRegistry` implements `StdlibLookup`; passing
+the object preserves the override). `CompositeStdlibLookup` already propagated
+the 4-arg call correctly.
 
-**Review finding (R2) — documentation still teaches the broken pattern**: the
-migration covered `.java` sources only; `README.md:235` and
-`docs/src/content/docs/getting-started.md:1112` still show
-`new JulcCompiler(stdlib::lookup)`, and `getting-started.md:1168` shows
-`ValidatorTest.compile(javaSource, stdlib::lookup)`. Every user who copies these
-snippets reproduces the bug.
+**Review finding (R2) — remaining method-reference sites**: documentation still
+teaches the broken pattern: `README.md:235` and
+`docs/src/content/docs/getting-started.md:1112` show
+`new JulcCompiler(stdlib::lookup)`, while `getting-started.md:1168` and
+`julc-examples/README.md:35` show
+`ValidatorTest.compile(javaSource, stdlib::lookup)`. Three tracked example tests
+also pass the method reference through that overload:
+`RealisticMintingTest.java:66`, `OutputValueCheckTest.java:95`, and
+`RealisticVestingTest.java:77`. Every copied snippet or example still reproduces
+the bypass until R2 lands.
 
 **Decision (review, 2026-07-22): harden the interface now.** Remove
 `@FunctionalInterface` from `StdlibLookup` and make the 4-arg `lookup` abstract,
@@ -304,14 +312,15 @@ compile error, at every current and future API, with no CI guard to maintain.
 (A grep guard was rejected: a pattern like `JulcCompiler(.*::lookup` would
 already have missed the `ValidatorTest.compile(..., stdlib::lookup)` form.)
 
-Migration cost in-repo: no lambda or method-reference implementations of
-`StdlibLookup` exist; the three implementing **classes** (`StdlibRegistry`,
-`LibraryMethodRegistry`, `CompositeStdlibLookup`) already override both
-methods. Review round 3 found a **fourth, anonymous implementation** that does
-not — see "Third bypass" below — which the hardening flushes out at compile
-time, exactly the class of omission it exists to catch. The three
-documentation snippets are corrected as part of the same change. Pre-1.0 is
-the time for this breaking interface change.
+Migration cost in-repo is small and mechanically enforced. The three named
+implementing classes (`StdlibRegistry`, `LibraryMethodRegistry`,
+`CompositeStdlibLookup`) already override both methods. Review round 3 found a
+**fourth, anonymous implementation** that does not — see "Third bypass" below
+— which the hardening flushes out at compile time, exactly the class of
+omission it exists to catch. The three tracked julc-examples method-reference
+call sites likewise become compile errors and must pass the registry object.
+The four documentation snippets above are corrected as part of the same
+change. Pre-1.0 is the time for this breaking interface change.
 
 **Rule going forward: pass the registry object, never a method reference** —
 enforced by the compiler once R2 lands.
@@ -371,8 +380,16 @@ typed (`JulcMap`/`JulcList` variables) and raw-Data (`redeemer`) arguments.
   abstract breaks any **external** lambda, method-reference, or partial
   implementation of `StdlibLookup` at compile time — by design, since every
   such implementation silently drops typed coercions. External implementors
-  must override both methods (typically by delegating the 3-arg form to the
-  4-arg one with null types, or vice versa). Acceptable pre-1.0;
+  must override both methods. An implementation that shares behavior should
+  pass an explicit `PirType.DataType` entry for each argument when adapting an
+  untyped call to the typed form; `null` is not a portable `argTypes` contract
+  because not every lookup implementation accepts it. Acceptable pre-1.0;
+  release-noted.
+- **Java source/runtime compatibility (R3)**: declaring
+  `JulcMap.toPlutusData()` requires external `JulcMap` implementations to
+  implement the new method; invoking it against an older compiled
+  implementation may produce `AbstractMethodError`. `JulcAssocMap` is the sole
+  in-repo implementation and is updated in the same PR. Acceptable pre-1.0;
   release-noted.
 
 ---
@@ -397,7 +414,7 @@ typed (`JulcMap`/`JulcList` variables) and raw-Data (`redeemer`) arguments.
 | # | Item |
 |---|---|
 | R1 | JVM `Builtins.integerToByteString`: validate the full VM contract — `0 ≤ width ≤ 8192` before casting/allocating, throw when the value does not fit a positive width (currently: oversized values silently returned, negative width treated as minimal, long→int cast overflow). Direct-JVM tests for width −1/8192/8193, oversize value, plus `refBytes`/`uniqueTokenName` JVM-vs-UPLC parity. |
-| R2 | **Decided: harden `StdlibLookup`** — drop `@FunctionalInterface`, make the 4-arg `lookup` abstract; `::lookup`/lambda/partial forms stop compiling everywhere. In-repo migration: the three implementing classes already override both methods; **fix the anonymous `wrapWithNewTypeLookup` adapter** (JulcCompiler.java:953 — currently a LIVE typed-lookup bypass for `@NewType` compilations; add the typed override + `@NewType`-plus-typed-coercion regression test). Fix the three doc snippets (`README.md:235`, `getting-started.md:1112`, `:1168`) in the same change. No CI grep guard needed. |
+| R2 | **Decided: harden `StdlibLookup`** — drop `@FunctionalInterface`, make the 4-arg `lookup` abstract; `::lookup`/lambda/partial forms stop compiling everywhere. In-repo migration: the three named implementing classes already override both methods; **fix the anonymous `wrapWithNewTypeLookup` adapter** (JulcCompiler.java:953 — currently a LIVE typed-lookup bypass for `@NewType` compilations; add the typed override + `@NewType`-plus-typed-coercion regression test). Replace the method reference in the three tracked julc-examples tests and correct four documentation snippets (`README.md:235`, `getting-started.md:1112`, `:1168`, `julc-examples/README.md:35`). No CI grep guard needed. |
 | R3 | `.toPlutusData()` JVM side: core-level conversion interface in `julc-core` (extended by ledger-api's `PlutusDataConvertible` — direct extension is a circular dependency); element-wrapping table in julc-core with `Builtins.listData(JulcList<?>)` delegating; `JulcMap.toPlutusData()` on the interface, `JulcAssocMap` impl walks its private ordered entries (order + duplicate keys preserved; no public iteration API). Iteration surface (`JulcPair`, `entries()`, typed `head()`) split out to [ADR-028](028-julcpair-native-pair-type.md) — separate design + later PR. |
 | R4 | `.toPlutusData()` on-chain: NO compiler changes (PirGenerator.java:1001 wrapEncode fallback + MkCons ListType inference already cover it) — add the chained-call regression test first; drop the previously proposed TypeMethodRegistry registrations. |
 | R5 | `Builtins.concat` PIR registration: require ≥ 2 args (source-string paths bypass javac); negative compilation tests. |
@@ -438,8 +455,10 @@ their own verification in the implementation PR.
   registrations exist in `TypeMethodRegistry` (no dispatch collisions); no
   width>0 JVM callers of `integerToByteString` rely on the lenient behavior
   (R1 throw affects only values already broken on-chain); every existing
-  `concat` call passes ≥ 2 args (R5); no lambda/method-ref `StdlibLookup`
-  implementations exist (R2 hardening is non-breaking in-repo).
+  `concat` call passes ≥ 2 args (R5); the three named `StdlibLookup`
+  implementations already implement both lookup forms, while the anonymous
+  `@NewType` adapter and three tracked julc-examples method-reference callers
+  are the known compile-time migrations forced by R2.
 - Operational note: the `julc-smoke-gradle-stdlib-usage` skill's sample validator
   uses stale `OutputLib.outputsAt(TxInfo, ...)` signatures (current API:
   `outputsAt(JulcList<TxOut>, Address)`). The JuLC compilation succeeded; only
