@@ -35,7 +35,7 @@ class PostLoopVariableTest {
     }
 
     static Program compileWithLedger(String source) {
-        var compiler = new JulcCompiler(stdlib::lookup);
+        var compiler = new JulcCompiler(stdlib);
         var result = compiler.compile(source);
         assertFalse(result.hasErrors(), "Compilation failed: " + result.diagnostics());
         assertNotNull(result.program(), "Program should not be null");

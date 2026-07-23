@@ -25,7 +25,7 @@ class NewTypeTest {
     }
 
     static Program compileValidator(String source) {
-        var compiler = new JulcCompiler(STDLIB::lookup);
+        var compiler = new JulcCompiler(STDLIB);
         var result = compiler.compile(source);
         assertFalse(result.hasErrors(), "Compilation failed: " + result);
         assertNotNull(result.program(), "Program should not be null");
@@ -253,6 +253,64 @@ class NewTypeTest {
         }
 
         @Test
+        void newTypeLookupAdapterPreservesTypedStdlibCoercions() {
+            var source = """
+                    import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.core.types.JulcList;
+                    import com.bloxbean.cardano.julc.stdlib.annotation.NewType;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+
+                    @SpendingValidator
+                    class TestValidator {
+                        @NewType
+                        record Marker(byte[] value) {}
+
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            PlutusData actual = JulcList.of(
+                                    BigInteger.valueOf(42)).toPlutusData();
+                            return Builtins.equalsData(actual, redeemer);
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.list(PlutusData.integer(42));
+            var ctx = PlutusData.constr(
+                    0, PlutusData.integer(0), redeemer, PlutusData.integer(0));
+
+            var result = vm.evaluateWithArgs(program, List.of(ctx));
+
+            assertTrue(result.isSuccess(),
+                    "@NewType adapter must preserve JulcList.of typed encoding. Got: " + result);
+        }
+
+        @Test
+        void rejectsNewTypeOfWithWrongArity() {
+            var source = """
+                    import java.math.BigInteger;
+                    import com.bloxbean.cardano.julc.stdlib.annotation.NewType;
+
+                    @SpendingValidator
+                    class TestValidator {
+                        @NewType
+                        record Nonce(BigInteger raw) {}
+
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            var n = Nonce.of(BigInteger.ONE, BigInteger.TWO);
+                            return true;
+                        }
+                    }
+                    """;
+            var ex = assertThrows(CompilerException.class, () -> {
+                var compiler = new JulcCompiler(STDLIB);
+                compiler.compile(source);
+            }, "NewType.of() with two arguments should be rejected");
+            assertTrue(ex.getMessage().contains("requires exactly 1 argument"),
+                    "Error should name the arity rule. Got: " + ex.getMessage());
+        }
+
+        @Test
         void rejectsMultiFieldNewType() {
             var source = """
                     import com.bloxbean.cardano.julc.stdlib.annotation.NewType;
@@ -269,7 +327,7 @@ class NewTypeTest {
                     }
                     """;
             assertThrows(CompilerException.class, () -> {
-                var compiler = new JulcCompiler(STDLIB::lookup);
+                var compiler = new JulcCompiler(STDLIB);
                 compiler.compile(source);
             }, "@NewType with multiple fields should be rejected");
         }
@@ -292,7 +350,7 @@ class NewTypeTest {
                     }
                     """;
             assertThrows(CompilerException.class, () -> {
-                var compiler = new JulcCompiler(STDLIB::lookup);
+                var compiler = new JulcCompiler(STDLIB);
                 compiler.compile(source);
             }, "@NewType with non-primitive field type should be rejected");
         }

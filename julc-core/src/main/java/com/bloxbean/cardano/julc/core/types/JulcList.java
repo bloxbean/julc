@@ -1,5 +1,9 @@
 package com.bloxbean.cardano.julc.core.types;
 
+import com.bloxbean.cardano.julc.core.PlutusData;
+import com.bloxbean.cardano.julc.core.PlutusDataConversions;
+import com.bloxbean.cardano.julc.core.ToPlutusData;
+
 /**
  * Immutable list interface for on-chain and off-chain use.
  * <p>
@@ -14,7 +18,7 @@ package com.bloxbean.cardano.julc.core.types;
  *
  * @param <T> the element type
  */
-public interface JulcList<T> extends Iterable<T> {
+public interface JulcList<T> extends Iterable<T>, ToPlutusData {
 
     // --- Element access ---
 
@@ -76,19 +80,39 @@ public interface JulcList<T> extends Iterable<T> {
 
     // --- Conversion ---
 
+    /**
+     * Convert this list to Plutus Data, recursively applying JuLC's canonical
+     * element-wrapping rules.
+     */
+    @Override
+    default PlutusData.ListData toPlutusData() {
+        return PlutusDataConversions.listToPlutusData(this);
+    }
+
     /** Convert this list to an immutable array for O(1) access. PV11 only on-chain. */
     default JulcArray<T> toArray() {
         return JulcArray.fromList(this);
     }
 
-    // --- Factory methods (off-chain only — on-chain use compiler intrinsics) ---
+    // --- Factory methods (work both on-chain and off-chain) ---
+    // On-chain the compiler replaces these with intrinsics (StdlibRegistry):
+    // empty() → MkNilData, of(a, b, c) → MkCons chain with each element
+    // auto-wrapped to Data (BigInteger → IData, byte[] → BData, boolean → Constr,
+    // String → BData(utf8), PlutusData → as-is).
 
     /** Create an empty list. */
     static <T> JulcList<T> empty() {
         return new JulcArrayList<>(java.util.List.of());
     }
 
-    /** Create a list from the given elements. */
+    /**
+     * Create a list from the given elements.
+     * <p>
+     * On-chain, replaces manual {@code mkCons} chains:
+     * {@code JulcList.of(pkh, recipient)} instead of
+     * {@code Builtins.mkCons(Builtins.iData(pkh), Builtins.mkCons(Builtins.iData(recipient), Builtins.mkNilData()))}.
+     * Call {@link #toPlutusData()} when a {@code PlutusData} list is needed.
+     */
     @SafeVarargs
     static <T> JulcList<T> of(T... elements) {
         return new JulcArrayList<>(java.util.List.of(elements));

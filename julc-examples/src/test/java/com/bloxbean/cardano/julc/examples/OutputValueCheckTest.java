@@ -92,7 +92,7 @@ class OutputValueCheckTest {
     }
 
     private Program compileWithStdlib(String source) {
-        return ValidatorTest.compile(source, stdlib::lookup);
+        return ValidatorTest.compile(source, stdlib);
     }
 
     // ---- Test data builders ----

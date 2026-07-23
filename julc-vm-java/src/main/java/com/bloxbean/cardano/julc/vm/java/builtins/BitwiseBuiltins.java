@@ -30,14 +30,14 @@ public final class BitwiseBuiltins {
             throw new BuiltinException("IntegerToByteString: negative integer");
         }
 
-        int requestedLen = len.intValue();
-        if (requestedLen < 0) {
+        if (len.signum() < 0) {
             throw new BuiltinException("IntegerToByteString: negative length");
         }
         // Limit to 8192 bytes
-        if (requestedLen > 8192) {
+        if (len.compareTo(BigInteger.valueOf(8192)) > 0) {
             throw new BuiltinException("IntegerToByteString: length exceeds 8192 bytes");
         }
+        int requestedLen = len.intValueExact();
 
         byte[] bytes;
         if (value.signum() == 0) {

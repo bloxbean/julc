@@ -75,7 +75,7 @@ class GoldenUplcTest {
     @Test
     void golden_forEachSingleAcc() throws IOException {
         verifyGolden("foreach-single-acc",
-                new JulcCompiler(STDLIB::lookup).compile(FOREACH_SINGLE_ACC).program());
+                new JulcCompiler(STDLIB).compile(FOREACH_SINGLE_ACC).program());
     }
 
     // --- 3. While loop with break ---
@@ -155,7 +155,7 @@ class GoldenUplcTest {
 
     @Test
     void golden_hofMap() throws IOException {
-        verifyGolden("hof-map", new JulcCompiler(STDLIB::lookup).compile(HOF_MAP).program());
+        verifyGolden("hof-map", new JulcCompiler(STDLIB).compile(HOF_MAP).program());
     }
 
     // --- 6. HOF lambda (list.filter) ---
@@ -178,7 +178,7 @@ class GoldenUplcTest {
 
     @Test
     void golden_hofFilter() throws IOException {
-        verifyGolden("hof-filter", new JulcCompiler(STDLIB::lookup).compile(HOF_FILTER).program());
+        verifyGolden("hof-filter", new JulcCompiler(STDLIB).compile(HOF_FILTER).program());
     }
 
     // --- 7. Multi-accumulator while ---

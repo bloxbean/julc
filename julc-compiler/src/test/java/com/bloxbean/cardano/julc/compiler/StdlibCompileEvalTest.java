@@ -208,7 +208,7 @@ class StdlibCompileEvalTest {
     // ---- Compilation helpers ----
 
     static Program compileValidator(String source) {
-        var compiler = new JulcCompiler(STDLIB::lookup);
+        var compiler = new JulcCompiler(STDLIB);
         var result = compiler.compile(source);
         assertFalse(result.hasErrors(), "Compilation failed: " + result);
         assertNotNull(result.program(), "Program should not be null");
@@ -216,7 +216,7 @@ class StdlibCompileEvalTest {
     }
 
     static Program compileValidatorWithLibs(String validator, String... libs) {
-        var compiler = new JulcCompiler(STDLIB::lookup);
+        var compiler = new JulcCompiler(STDLIB);
         var result = compiler.compile(validator, List.of(libs));
         assertFalse(result.hasErrors(), "Compilation failed: " + result);
         assertNotNull(result.program(), "Program should not be null");
@@ -2069,7 +2069,7 @@ class StdlibCompileEvalTest {
                         }
                     }
                     """;
-            var compiler = new JulcCompiler(STDLIB::lookup);
+            var compiler = new JulcCompiler(STDLIB);
             var result = compiler.compile(validator, List.of(userLib));
             assertFalse(result.hasErrors(), "Compilation should succeed: " + result);
             var evalResult = vm.evaluateWithArgs(result.program(), List.of(mockCtx(PlutusData.constr(0))));
@@ -2103,7 +2103,7 @@ class StdlibCompileEvalTest {
                         }
                     }
                     """;
-            var compiler = new JulcCompiler(STDLIB::lookup);
+            var compiler = new JulcCompiler(STDLIB);
             var result = compiler.compile(validator, List.of(userLib));
             assertFalse(result.hasErrors(), "Compilation should succeed: " + result);
             var evalResult = vm.evaluateWithArgs(result.program(), List.of(mockCtx(PlutusData.integer(0))));
@@ -2148,7 +2148,7 @@ class StdlibCompileEvalTest {
                         }
                     }
                     """;
-            var compiler = new JulcCompiler(STDLIB::lookup);
+            var compiler = new JulcCompiler(STDLIB);
             var result = compiler.compile(validator, List.of(helperLib, middleLib));
             assertFalse(result.hasErrors(), "Compilation should succeed: " + result);
             var evalResult = vm.evaluateWithArgs(result.program(), List.of(mockCtx(PlutusData.integer(0))));
@@ -3029,6 +3029,98 @@ class StdlibCompileEvalTest {
             var program = compileValidator(source);
             var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
             assertTrue(result.isSuccess(), "JulcList.empty().prepend() should create single-element list. Got: " + result);
+        }
+
+        @Test
+        void julcListOfAutoWrapsBigIntegers() {
+            var source = """
+                    import com.bloxbean.cardano.julc.core.types.JulcList;
+                    @SpendingValidator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            JulcList<BigInteger> nums = JulcList.of(BigInteger.valueOf(10), BigInteger.valueOf(20));
+                            return nums.size() == 2 && nums.head() == 10 && nums.get(1) == 20;
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
+            assertTrue(result.isSuccess(), "JulcList.of(BigInteger...) should auto-wrap elements with IData. Got: " + result);
+        }
+
+        @Test
+        void julcListOfAutoWrapsByteStrings() {
+            var source = """
+                    import com.bloxbean.cardano.julc.core.types.JulcList;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    @SpendingValidator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            byte[] a = new byte[]{1, 2, 3};
+                            byte[] b = new byte[]{4, 5};
+                            JulcList<byte[]> items = JulcList.of(a, b);
+                            return items.size() == 2 && Builtins.equalsByteString(items.head(), a);
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(PlutusData.integer(0))));
+            assertTrue(result.isSuccess(), "JulcList.of(byte[]...) should auto-wrap elements with BData. Got: " + result);
+        }
+
+        @Test
+        void listDataOfJulcListReplacesMkConsChain() {
+            // The old verbose pattern:
+            //   Builtins.listData(Builtins.mkCons(Builtins.iData(pkh),
+            //       Builtins.mkCons(Builtins.iData(recipient), Builtins.mkNilData())))
+            // is now: Builtins.listData(JulcList.of(pkh, recipient))
+            var source = """
+                    import com.bloxbean.cardano.julc.core.types.JulcList;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    @SpendingValidator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            BigInteger pkh = BigInteger.valueOf(7);
+                            BigInteger recipient = BigInteger.valueOf(9);
+                            PlutusData built = Builtins.listData(JulcList.of(pkh, recipient));
+                            return Builtins.equalsData(built, redeemer);
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.list(PlutusData.integer(7), PlutusData.integer(9));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(),
+                    "listData(JulcList.of(a, b)) should equal a hand-built ListData. Got: " + result);
+        }
+
+        @Test
+        void julcListOfFiveElementsAsPublicInputs() {
+            // ZK public-inputs style: a 5-element integer list built without mkCons chains
+            var source = """
+                    import com.bloxbean.cardano.julc.core.types.JulcList;
+                    import com.bloxbean.cardano.julc.stdlib.Builtins;
+                    @SpendingValidator
+                    class TestValidator {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+                            PlutusData publicInputs = Builtins.listData(JulcList.of(
+                                    BigInteger.valueOf(1), BigInteger.valueOf(2), BigInteger.valueOf(3),
+                                    BigInteger.valueOf(4), BigInteger.valueOf(5)));
+                            return Builtins.equalsData(publicInputs, redeemer);
+                        }
+                    }
+                    """;
+            var program = compileValidator(source);
+            var redeemer = PlutusData.list(
+                    PlutusData.integer(1), PlutusData.integer(2), PlutusData.integer(3),
+                    PlutusData.integer(4), PlutusData.integer(5));
+            var result = vm.evaluateWithArgs(program, List.of(mockCtx(redeemer)));
+            assertTrue(result.isSuccess(),
+                    "5-element JulcList.of should match a hand-built 5-element ListData. Got: " + result);
         }
     }
 
@@ -4293,7 +4385,7 @@ class StdlibCompileEvalTest {
                         }
                     }
                     """;
-            var compiler = new JulcCompiler(STDLIB::lookup);
+            var compiler = new JulcCompiler(STDLIB);
             var compiled = compiler.compile(source);
             assertFalse(compiled.hasErrors(), "Compilation failed: " + compiled);
             assertTrue(compiled.isParameterized(), "Should be parameterized");
@@ -4334,7 +4426,7 @@ class StdlibCompileEvalTest {
                         }
                     }
                     """;
-            var compiler = new JulcCompiler(STDLIB::lookup);
+            var compiler = new JulcCompiler(STDLIB);
             var compiled = compiler.compile(source);
             assertFalse(compiled.hasErrors(), "Compilation failed: " + compiled);
 

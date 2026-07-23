@@ -105,6 +105,8 @@ The JuLC standard library provides 13 on-chain libraries in the `com.bloxbean.ca
 | `subtract(a, b)` | Subtract value b from value a |
 | `countTokensWithQty(mint, policy, qty)` | Count tokens with exact quantity under policy |
 | `findTokenName(mint, policy, qty)` | Find token name with exact quantity under policy |
+| `refBytes(ref)` | Seed bytes for a TxOutRef: `txId ++ 2-byte index` |
+| `uniqueTokenName(ref)` | Collision-resistant token name: `blake2b_256(refBytes(ref))` |
 
 ### MapLib
 
@@ -374,6 +376,23 @@ class ListExample {
 }
 ```
 
+### Building Lists
+
+`JulcList.of(...)` builds a fixed-size list from any number of elements. Elements are auto-wrapped to Data (`BigInteger` → IntData, `byte[]` → BytesData, `boolean` → Constr, `String` → UTF-8 BytesData, `PlutusData` → as-is). Call `.toPlutusData()` when a `PlutusData` list is needed:
+
+```java
+// Before: manual mkCons chain
+PlutusData inputs = Builtins.listData(
+        Builtins.mkCons(Builtins.iData(pkh),
+                Builtins.mkCons(Builtins.iData(recipient), Builtins.mkNilData())));
+
+// After: JulcList.of with auto-wrapping
+PlutusData inputs = JulcList.of(pkh, recipient).toPlutusData();
+
+// Works for any arity — e.g. ZK public inputs
+PlutusData publicInputs = JulcList.of(pub0, pub1, pub2, pub3, pub4).toPlutusData();
+```
+
 ### Search Operations
 
 ```java
@@ -585,6 +604,34 @@ class TokenLeakCheck {
 ```
 
 > **Tip:** Use `flattenTyped()` instead of `flatten()` whenever you need to inspect individual assets. The raw `flatten()` returns `PlutusData.ListData` requiring manual `Builtins.constrFields()` + `headList`/`tailList` destructuring.
+
+### Unique Token Names
+
+One-shot minting policies and NFT state threads commonly derive a token name from
+a `TxOutRef`. Hashing the reference produces a collision-resistant, deterministic
+32-byte name (the maximum asset-name length). Uniqueness in practice also requires
+the minting policy to enforce that the seed reference is consumed:
+
+```java
+@MintingValidator
+class OneShotMint {
+    @Entrypoint
+    static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+        TxOutRef seed = /* the UTxO this policy requires to be spent */;
+        byte[] expectedName = ValuesLib.uniqueTokenName(seed);
+        // ... check the minted token name equals expectedName
+        return true;
+    }
+}
+```
+
+The canonical derivation is `blake2b_256(txId ++ integerToByteString(true, 2, index))`. For a different hash algorithm, apply it to the seed bytes yourself:
+
+```java
+byte[] name = CryptoLib.sha2_256(ValuesLib.refBytes(seed));
+```
+
+The index is encoded as fixed 2-byte big-endian so index 0 still contributes bytes (a minimal-width encoding would drop it) and the result is identical on-chain and off-chain.
 
 ---
 
@@ -1017,6 +1064,8 @@ class ByteStringExample {
         // Construction
         byte[] withPrefix = ByteStringLib.cons(0xFF, data);
         byte[] combined = ByteStringLib.append(firstTwo, lastThree);
+        // Concatenate 3+ parts without nesting append calls
+        byte[] joined = Builtins.concat(firstTwo, lastThree, withPrefix);
         byte[] emptyBs = ByteStringLib.empty();
         byte[] zeroes = ByteStringLib.zeros(32);
 

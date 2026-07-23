@@ -1,5 +1,8 @@
 package com.bloxbean.cardano.julc.core.types;
 
+import com.bloxbean.cardano.julc.core.PlutusData;
+import com.bloxbean.cardano.julc.core.ToPlutusData;
+
 /**
  * Immutable association map interface for on-chain and off-chain use.
  * <p>
@@ -12,7 +15,7 @@ package com.bloxbean.cardano.julc.core.types;
  * @param <K> the key type
  * @param <V> the value type
  */
-public interface JulcMap<K, V> {
+public interface JulcMap<K, V> extends ToPlutusData {
 
     // --- Factory methods (off-chain only — on-chain use compiler intrinsics) ---
 
@@ -78,6 +81,15 @@ public interface JulcMap<K, V> {
 
     /** Return all values as a list. */
     JulcList<V> values();
+
+    // --- Conversion ---
+
+    /**
+     * Convert this association map to Plutus Data without collapsing duplicate
+     * keys or changing entry order.
+     */
+    @Override
+    PlutusData.MapData toPlutusData();
 
     // --- Query ---
 

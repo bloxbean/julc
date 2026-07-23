@@ -27,7 +27,7 @@ class ReturnInLoopTest {
     }
 
     static Program compileValidator(String source) {
-        var compiler = new JulcCompiler(stdlib::lookup);
+        var compiler = new JulcCompiler(stdlib);
         var result = compiler.compile(source);
         assertFalse(result.hasErrors(), "Compilation failed: " + result.diagnostics());
         assertNotNull(result.program(), "Program should not be null");
@@ -63,7 +63,7 @@ class ReturnInLoopTest {
                     }
                 }
                 """;
-            var ex = assertThrows(CompilerException.class, () -> new JulcCompiler(stdlib::lookup).compile(source));
+            var ex = assertThrows(CompilerException.class, () -> new JulcCompiler(stdlib).compile(source));
             assertTrue(ex.getMessage().contains("return"),
                     "Should mention 'return'. Got: " + ex.getMessage());
             assertTrue(ex.getMessage().contains("while"),
@@ -92,7 +92,7 @@ class ReturnInLoopTest {
                     }
                 }
                 """;
-            var ex = assertThrows(CompilerException.class, () -> new JulcCompiler(stdlib::lookup).compile(source));
+            var ex = assertThrows(CompilerException.class, () -> new JulcCompiler(stdlib).compile(source));
             assertTrue(ex.getMessage().contains("return"),
                     "Should mention 'return'. Got: " + ex.getMessage());
         }
@@ -120,7 +120,7 @@ class ReturnInLoopTest {
                     }
                 }
                 """;
-            var ex = assertThrows(CompilerException.class, () -> new JulcCompiler(stdlib::lookup).compile(source));
+            var ex = assertThrows(CompilerException.class, () -> new JulcCompiler(stdlib).compile(source));
             assertTrue(ex.getMessage().contains("return"),
                     "Should mention 'return'. Got: " + ex.getMessage());
         }
@@ -151,7 +151,7 @@ class ReturnInLoopTest {
                 """;
             // The inner while has return, so it should be caught
             // containsReturn stops at nested loops, so the INNER generateWhileStmt catches it
-            var ex = assertThrows(CompilerException.class, () -> new JulcCompiler(stdlib::lookup).compile(source));
+            var ex = assertThrows(CompilerException.class, () -> new JulcCompiler(stdlib).compile(source));
             assertTrue(ex.getMessage().contains("return"),
                     "Should catch return in inner while. Got: " + ex.getMessage());
         }
@@ -231,7 +231,7 @@ class ReturnInLoopTest {
                     }
                 }
                 """;
-            var ex = assertThrows(CompilerException.class, () -> new JulcCompiler(stdlib::lookup).compile(source));
+            var ex = assertThrows(CompilerException.class, () -> new JulcCompiler(stdlib).compile(source));
             assertTrue(ex.getMessage().contains("return"),
                     "Should mention 'return'. Got: " + ex.getMessage());
             assertTrue(ex.getMessage().contains("for-each"),
@@ -260,7 +260,7 @@ class ReturnInLoopTest {
                     }
                 }
                 """;
-            var ex = assertThrows(CompilerException.class, () -> new JulcCompiler(stdlib::lookup).compile(source));
+            var ex = assertThrows(CompilerException.class, () -> new JulcCompiler(stdlib).compile(source));
             assertTrue(ex.getMessage().contains("return"),
                     "Should mention 'return'. Got: " + ex.getMessage());
         }

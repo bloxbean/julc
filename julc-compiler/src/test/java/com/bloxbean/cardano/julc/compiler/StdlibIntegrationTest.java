@@ -35,23 +35,41 @@ class StdlibIntegrationTest {
      * Built without depending on plutus-stdlib — tests compiler plumbing only.
      */
     static StdlibLookup testStdlibLookup() {
-        return (className, methodName, args) -> {
-            if ("ContextsLib".equals(className) && "getTxInfo".equals(methodName) && args.size() == 1) {
-                // getTxInfo(ctx) = HeadList(SndPair(UnConstrData(ctx)))
-                var fields = new PirTerm.App(
-                        new PirTerm.Builtin(DefaultFun.SndPair),
-                        new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnConstrData), args.get(0)));
-                return Optional.of(new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), fields));
+        return new StdlibLookup() {
+            @Override
+            public Optional<PirTerm> lookup(
+                    String className, String methodName, List<PirTerm> args) {
+                return resolve(className, methodName, args);
             }
-            if ("ContextsLib".equals(className) && "getRedeemer".equals(methodName) && args.size() == 1) {
-                // getRedeemer(ctx) = HeadList(TailList(SndPair(UnConstrData(ctx))))
-                var fields = new PirTerm.App(
-                        new PirTerm.Builtin(DefaultFun.SndPair),
-                        new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnConstrData), args.get(0)));
-                var tail = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), fields);
-                return Optional.of(new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), tail));
+
+            @Override
+            public Optional<PirTerm> lookup(
+                    String className,
+                    String methodName,
+                    List<PirTerm> args,
+                    List<PirType> argTypes) {
+                return resolve(className, methodName, args);
             }
-            return Optional.empty();
+
+            private Optional<PirTerm> resolve(
+                    String className, String methodName, List<PirTerm> args) {
+                if ("ContextsLib".equals(className) && "getTxInfo".equals(methodName) && args.size() == 1) {
+                    // getTxInfo(ctx) = HeadList(SndPair(UnConstrData(ctx)))
+                    var fields = new PirTerm.App(
+                            new PirTerm.Builtin(DefaultFun.SndPair),
+                            new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnConstrData), args.get(0)));
+                    return Optional.of(new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), fields));
+                }
+                if ("ContextsLib".equals(className) && "getRedeemer".equals(methodName) && args.size() == 1) {
+                    // getRedeemer(ctx) = HeadList(TailList(SndPair(UnConstrData(ctx))))
+                    var fields = new PirTerm.App(
+                            new PirTerm.Builtin(DefaultFun.SndPair),
+                            new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnConstrData), args.get(0)));
+                    var tail = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), fields);
+                    return Optional.of(new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), tail));
+                }
+                return Optional.empty();
+            }
         };
     }
 
@@ -76,7 +94,7 @@ class StdlibIntegrationTest {
                         }
                     }
                     """;
-            var compiler = new JulcCompiler(STDLIB::lookup);
+            var compiler = new JulcCompiler(STDLIB);
             var result = compiler.compile(source);
             assertNotNull(result.program());
             assertFalse(result.hasErrors());
@@ -96,7 +114,7 @@ class StdlibIntegrationTest {
                         }
                     }
                     """;
-            var compiler = new JulcCompiler(STDLIB::lookup);
+            var compiler = new JulcCompiler(STDLIB);
             var result = compiler.compile(source);
             assertNotNull(result.program());
         }
@@ -116,7 +134,7 @@ class StdlibIntegrationTest {
                         }
                     }
                     """;
-            var compiler = new JulcCompiler(STDLIB::lookup);
+            var compiler = new JulcCompiler(STDLIB);
             var program = compiler.compile(source).program();
 
             // Build a valid ScriptContext: Constr(0, [txInfo, redeemer, scriptInfo])
@@ -422,7 +440,7 @@ class StdlibIntegrationTest {
     class JavaApiDelegation {
 
         private static final StdlibRegistry STDLIB = StdlibRegistry.defaultRegistry();
-        private final JulcCompiler stdlibCompiler = new JulcCompiler(STDLIB::lookup);
+        private final JulcCompiler stdlibCompiler = new JulcCompiler(STDLIB);
 
         private PlutusData mockCtx(PlutusData redeemer) {
             return PlutusData.constr(0,

@@ -1,8 +1,11 @@
 package com.bloxbean.cardano.julc.core.types;
 
+import com.bloxbean.cardano.julc.core.PlutusData;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -31,6 +34,55 @@ class JulcArrayListTest {
         JulcList<Integer> list = JulcList.of(42);
         assertEquals(1, list.size());
         assertEquals(42, list.head());
+    }
+
+    // --- Plutus Data conversion ---
+
+    @Nested
+    class PlutusDataConversion {
+        @Test
+        void convertsSupportedElementTypesInOrder() {
+            JulcList<Object> list = JulcList.of(
+                    BigInteger.valueOf(42),
+                    7L,
+                    8,
+                    new byte[]{1, 2},
+                    false,
+                    true,
+                    "hello",
+                    PlutusData.integer(9));
+
+            var result = list.toPlutusData();
+
+            assertEquals(List.of(
+                    PlutusData.integer(42),
+                    PlutusData.integer(7),
+                    PlutusData.integer(8),
+                    PlutusData.bytes(new byte[]{1, 2}),
+                    PlutusData.constr(0),
+                    PlutusData.constr(1),
+                    PlutusData.bytes("hello".getBytes(StandardCharsets.UTF_8)),
+                    PlutusData.integer(9)), result.items());
+        }
+
+        @Test
+        void recursivelyConvertsNestedLists() {
+            JulcList<Object> list = JulcList.of(
+                    (Object) JulcList.of(BigInteger.ONE, BigInteger.TWO));
+
+            assertEquals(
+                    PlutusData.list(PlutusData.list(
+                            PlutusData.integer(1),
+                            PlutusData.integer(2))),
+                    list.toPlutusData());
+        }
+
+        @Test
+        void rejectsUnsupportedElements() {
+            JulcList<Object> list = JulcList.of(new Object());
+
+            assertThrows(IllegalArgumentException.class, list::toPlutusData);
+        }
     }
 
     // --- Element access ---

@@ -94,16 +94,27 @@ public final class StdlibRegistry implements StdlibLookup {
                     List.of(new PirType.Field("value", elemType)));
             return Optional.of(new PirTerm.DataConstr(0, recordType, List.of(args.get(0))));
         }
+        // JulcList.of(a, b, ...) — wrap each element to Data before MkCons
+        if (isJulcListClass(className) && methodName.equals("of")) {
+            PirTerm result = builtinApp1(DefaultFun.MkNilData, new PirTerm.Const(Constant.unit()));
+            for (int i = args.size() - 1; i >= 0; i--) {
+                var wrapped = PirHelpers.wrapEncode(args.get(i), safeArgType(argTypes, i));
+                result = builtinApp2(DefaultFun.MkCons, wrapped, result);
+            }
+            return Optional.of(result);
+        }
+
         // ListsLib.prepend(list, elem) — wrap elem to Data before MkCons
         if (isListsLibClass(className) && methodName.equals("prepend") && args.size() == 2) {
             var wrappedElem = PirHelpers.wrapEncode(args.get(1), safeArgType(argTypes, 1));
-            return Optional.of(builtinApp2(DefaultFun.MkCons, wrappedElem, args.get(0)));
+            var list = asUplcList(args.get(0), safeArgType(argTypes, 0));
+            return Optional.of(builtinApp2(DefaultFun.MkCons, wrappedElem, list));
         }
 
         // ListsLib.contains(list, target) — wrap target, search with EqualsData
         if (isListsLibClass(className) && methodName.equals("contains") && args.size() == 2) {
             var wrappedTarget = PirHelpers.wrapEncode(args.get(1), safeArgType(argTypes, 1));
-            return Optional.of(PirHelpers.listSearch("con", args.get(0), wrappedTarget,
+            return Optional.of(PirHelpers.listSearch("con", asUplcList(args.get(0), safeArgType(argTypes, 0)), wrappedTarget,
                     new PirTerm.Const(Constant.bool(false)),
                     (elem, t, recurse) -> {
                         var eq = builtinApp2(DefaultFun.EqualsData, elem, t);
@@ -117,13 +128,14 @@ public final class StdlibRegistry implements StdlibLookup {
             var key = PirHelpers.wrapEncode(args.get(1), safeArgType(argTypes, 1));
             var value = PirHelpers.wrapEncode(args.get(2), safeArgType(argTypes, 2));
             var pair = builtinApp2(DefaultFun.MkPairData, key, value);
-            return Optional.of(builtinApp2(DefaultFun.MkCons, pair, args.get(0)));
+            return Optional.of(builtinApp2(DefaultFun.MkCons, pair,
+                    asPairList(args.get(0), safeArgType(argTypes, 0))));
         }
 
         // MapLib.member(map, key) — wrap key, pairListSearch returning bool
         if (isMapLibClass(className) && methodName.equals("member") && args.size() == 2) {
             var key = PirHelpers.wrapEncode(args.get(1), safeArgType(argTypes, 1));
-            return Optional.of(PirHelpers.pairListSearch("mb", args.get(0), key,
+            return Optional.of(PirHelpers.pairListSearch("mb", asPairList(args.get(0), safeArgType(argTypes, 0)), key,
                     new PirTerm.Const(Constant.bool(false)),
                     (h, k, goTail) -> {
                         var fstH = builtinApp1(DefaultFun.FstPair, h);
@@ -136,7 +148,7 @@ public final class StdlibRegistry implements StdlibLookup {
         // MapLib.lookup(map, key) — wrap key, pairListSearch returning Optional
         if (isMapLibClass(className) && methodName.equals("lookup") && args.size() == 2) {
             var key = PirHelpers.wrapEncode(args.get(1), safeArgType(argTypes, 1));
-            return Optional.of(PirHelpers.pairListSearch("lk", args.get(0), key,
+            return Optional.of(PirHelpers.pairListSearch("lk", asPairList(args.get(0), safeArgType(argTypes, 0)), key,
                     PirHelpers.mkNone(),
                     (h, k, goTail) -> {
                         var fstH = builtinApp1(DefaultFun.FstPair, h);
@@ -150,7 +162,7 @@ public final class StdlibRegistry implements StdlibLookup {
         // MapLib.delete(map, key) — wrap key, pairListSearch filtering out matching pair
         if (isMapLibClass(className) && methodName.equals("delete") && args.size() == 2) {
             var key = PirHelpers.wrapEncode(args.get(1), safeArgType(argTypes, 1));
-            return Optional.of(PirHelpers.pairListSearch("del", args.get(0), key,
+            return Optional.of(PirHelpers.pairListSearch("del", asPairList(args.get(0), safeArgType(argTypes, 0)), key,
                     PirHelpers.mkNilPairData(),
                     (h, k, goTail) -> {
                         var fstH = builtinApp1(DefaultFun.FstPair, h);
@@ -175,8 +187,35 @@ public final class StdlibRegistry implements StdlibLookup {
         return className.equals("MapLib") || className.equals(LIB + "MapLib");
     }
 
+    private static boolean isJulcListClass(String className) {
+        return className.equals("JulcList")
+                || className.equals("com.bloxbean.cardano.julc.core.types.JulcList");
+    }
+
     private static PirType safeArgType(List<PirType> argTypes, int index) {
         return (argTypes != null && argTypes.size() > index) ? argTypes.get(index) : new PirType.DataType();
+    }
+
+    /**
+     * Coerce a list argument to a UPLC list. ListType variables already hold UPLC lists;
+     * a DataType argument (e.g. raw redeemer Data) is ListData and needs UnListData first.
+     */
+    private static PirTerm asUplcList(PirTerm list, PirType type) {
+        if (type instanceof PirType.DataType) {
+            return builtinApp1(DefaultFun.UnListData, list);
+        }
+        return list;
+    }
+
+    /**
+     * Coerce a map argument to a UPLC pair list. MapType variables already hold pair lists;
+     * a DataType argument (e.g. raw redeemer Data) is MapData and needs UnMapData first.
+     */
+    private static PirTerm asPairList(PirTerm map, PirType type) {
+        if (type instanceof PirType.DataType) {
+            return builtinApp1(DefaultFun.UnMapData, map);
+        }
+        return map;
     }
 
     /**
@@ -488,6 +527,16 @@ public final class StdlibRegistry implements StdlibLookup {
             return new PirTerm.Const(Constant.byteString(new byte[0]));
         });
 
+        // concat: variadic — right-fold of AppendByteString over at least two args
+        reg.register(B, "concat", args -> {
+            requireMinArgs("Builtins.concat", args, 2);
+            PirTerm result = args.get(args.size() - 1);
+            for (int i = args.size() - 2; i >= 0; i--) {
+                result = builtinApp2(DefaultFun.AppendByteString, args.get(i), result);
+            }
+            return result;
+        });
+
         // toByteString: identity on-chain (value is already a ByteString)
         reg.register(B, "toByteString", args -> {
             requireArgs("Builtins.toByteString", args, 1);
@@ -690,6 +739,13 @@ public final class StdlibRegistry implements StdlibLookup {
         if (args.size() != expected) {
             throw new IllegalArgumentException(
                     method + " expects " + expected + " arguments, got " + args.size());
+        }
+    }
+
+    private static void requireMinArgs(String method, List<PirTerm> args, int minimum) {
+        if (args.size() < minimum) {
+            throw new IllegalArgumentException(
+                    method + " expects at least " + minimum + " arguments, got " + args.size());
         }
     }
 

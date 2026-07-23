@@ -66,7 +66,7 @@ abstract class PluginTestBase {
      * This is equivalent to what the Gradle plugin does at build time.
      */
     protected PlutusV3Script compileScript(String javaSource) {
-        var compiler = new JulcCompiler(stdlib::lookup);
+        var compiler = new JulcCompiler(stdlib);
         var result = compiler.compile(javaSource);
         if (result.hasErrors()) {
             throw new AssertionError("Compilation errors: " + result.diagnostics());

@@ -963,6 +963,23 @@ public class JulcCompiler {
             }
 
             @Override
+            public java.util.Optional<PirTerm> lookup(
+                    String className,
+                    String methodName,
+                    java.util.List<PirTerm> args,
+                    java.util.List<PirType> argTypes) {
+                if (methodName.equals("of") && newTypeNames.contains(className)) {
+                    if (args.size() != 1) {
+                        throw new CompilerException(className + ".of() requires exactly 1 argument, got " + args.size());
+                    }
+                    return java.util.Optional.of(args.get(0));
+                }
+                return base != null
+                        ? base.lookup(className, methodName, args, argTypes)
+                        : java.util.Optional.empty();
+            }
+
+            @Override
             public boolean hasMethodsForClass(String className) {
                 return base != null && base.hasMethodsForClass(className);
             }
