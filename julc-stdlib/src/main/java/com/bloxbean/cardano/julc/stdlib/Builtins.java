@@ -1,11 +1,12 @@
 package com.bloxbean.cardano.julc.stdlib;
 
 import com.bloxbean.cardano.julc.core.PlutusData;
+import com.bloxbean.cardano.julc.core.PlutusDataConversions;
+import com.bloxbean.cardano.julc.core.ToPlutusData;
 import com.bloxbean.cardano.julc.core.types.JulcArrayList;
 import com.bloxbean.cardano.julc.core.types.JulcAssocMap;
 import com.bloxbean.cardano.julc.core.types.JulcList;
 import com.bloxbean.cardano.julc.core.types.JulcMap;
-import com.bloxbean.cardano.julc.ledger.PlutusDataConvertible;
 
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
@@ -149,6 +150,19 @@ public final class Builtins {
     /** Wrap a list as ListData. */
     public static PlutusData.ListData listData(PlutusData list) {
         return (PlutusData.ListData) list; // already a ListData
+    }
+
+    /**
+     * Wrap a JulcList as ListData. Elements are auto-wrapped to Data using the same
+     * rules as the on-chain compiler: BigInteger/Long/Integer → IntData,
+     * byte[] → BytesData, boolean → ConstrData(0/1), String → BytesData(utf8),
+     * PlutusData → as-is, nested JulcList → ListData.
+     * <p>
+     * Pairs with {@code JulcList.of(...)}: {@code Builtins.listData(JulcList.of(a, b, c))}
+     * replaces manual {@code mkCons} chains.
+     */
+    public static PlutusData.ListData listData(JulcList<?> list) {
+        return PlutusDataConversions.listToPlutusData(list);
     }
 
     /** Wrap a map as MapData. */
@@ -300,11 +314,17 @@ public final class Builtins {
 
     /** Convert integer to bytestring with given endianness and width. Accepts arbitrary-precision BigInteger. */
     public static byte[] integerToByteString(boolean bigEndian, long width, BigInteger i) {
+        if (width < 0) {
+            throw new IllegalArgumentException("integerToByteString: negative width");
+        }
+        if (width > 8192) {
+            throw new IllegalArgumentException("integerToByteString: width exceeds 8192 bytes");
+        }
         if (i.signum() < 0) {
             throw new IllegalArgumentException("integerToByteString: negative integer");
         }
+        int w = (int) width; // Safe after the bounded validation above.
         if (i.signum() == 0) {
-            int w = (int) width;
             if (w > 0) {
                 return new byte[w]; // zero-padded
             }
@@ -315,7 +335,12 @@ public final class Builtins {
         if (raw.length > 1 && raw[0] == 0) {
             raw = Arrays.copyOfRange(raw, 1, raw.length);
         }
-        int w = (int) width;
+        int maximumLength = w == 0 ? 8192 : w;
+        if (raw.length > maximumLength) {
+            throw new IllegalArgumentException(w == 0
+                    ? "integerToByteString: result exceeds 8192 bytes"
+                    : "integerToByteString: integer does not fit in " + w + " bytes");
+        }
         if (w > 0 && raw.length < w) {
             byte[] padded = new byte[w];
             System.arraycopy(raw, 0, padded, w - raw.length, raw.length);
@@ -410,6 +435,28 @@ public final class Builtins {
     /** @see #appendByteString(PlutusData.BytesData, PlutusData.BytesData) */
     public static byte[] appendByteString(byte[] a, byte[] b) {
         return appendByteString(new PlutusData.BytesData(a), new PlutusData.BytesData(b)).value();
+    }
+
+    /**
+     * Concatenate two or more bytestrings. On-chain this compiles to a right-fold
+     * of {@code appendByteString}, replacing nested
+     * {@code appendByteString(appendByteString(a, b), c)} chains.
+     */
+    public static byte[] concat(byte[] first, byte[] second, byte[]... rest) {
+        int total = Math.addExact(first.length, second.length);
+        for (byte[] part : rest) {
+            total = Math.addExact(total, part.length);
+        }
+        byte[] result = new byte[total];
+        System.arraycopy(first, 0, result, 0, first.length);
+        int pos = first.length;
+        System.arraycopy(second, 0, result, pos, second.length);
+        pos += second.length;
+        for (byte[] part : rest) {
+            System.arraycopy(part, 0, result, pos, part.length);
+            pos += part.length;
+        }
+        return result;
     }
 
     /** @see #equalsByteString(PlutusData.BytesData, PlutusData.BytesData) */
@@ -925,11 +972,19 @@ public final class Builtins {
     // On-chain types (ScriptInfo, TxInfo, etc.) don't extend PlutusData in
     // IDE stubs. The compiler matches by method name via StdlibRegistry and
     // ignores parameter types, so these overloads simply satisfy the IDE.
-    // Off-chain, ledger records implement PlutusDataConvertible for conversion.
+    // Off-chain, core collections and ledger records implement ToPlutusData.
 
     private static PlutusData asPlutusData(Object obj) {
         if (obj instanceof PlutusData pd) return pd;
-        if (obj instanceof PlutusDataConvertible pdc) return pdc.toPlutusData();
+        if (obj instanceof ToPlutusData convertible) {
+            var converted = convertible.toPlutusData();
+            if (converted == null) {
+                throw new ClassCastException(
+                        "toPlutusData() returned null for " + obj.getClass().getName());
+            }
+            return converted;
+        }
+        if (obj == null) throw new ClassCastException("Cannot convert null to PlutusData");
         throw new ClassCastException("Cannot convert " + obj.getClass().getName() + " to PlutusData");
     }
 
@@ -1004,10 +1059,15 @@ public final class Builtins {
     public static byte[] toByteString(Object data) {
         if (data instanceof byte[] b) return b;
         if (data instanceof PlutusData.BytesData bd) return bd.value();
-        if (data instanceof PlutusDataConvertible pdc) {
-            var pd = pdc.toPlutusData();
+        if (data instanceof ToPlutusData convertible) {
+            var pd = convertible.toPlutusData();
             if (pd instanceof PlutusData.BytesData bd) return bd.value();
+            if (pd == null) {
+                throw new ClassCastException(
+                        "toPlutusData() returned null for " + data.getClass().getName());
+            }
         }
+        if (data == null) throw new ClassCastException("Cannot extract byte[] from null");
         throw new ClassCastException("Cannot extract byte[] from " + data.getClass().getName());
     }
 

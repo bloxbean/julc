@@ -74,7 +74,7 @@ class RealisticVestingTest {
     }
 
     private Program compileWithStdlib(String source) {
-        return ValidatorTest.compile(source, stdlib::lookup);
+        return ValidatorTest.compile(source, stdlib);
     }
 
     /**

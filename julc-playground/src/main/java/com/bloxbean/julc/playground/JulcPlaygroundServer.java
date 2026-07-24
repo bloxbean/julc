@@ -40,7 +40,7 @@ public class JulcPlaygroundServer {
 
     public static Javalin createApp(int port, int maxThreads, long timeoutSeconds) {
         var stdlib = com.bloxbean.cardano.julc.stdlib.StdlibRegistry.defaultRegistry();
-        var julcCompiler = new JulcCompiler(stdlib::lookup);
+        var julcCompiler = new JulcCompiler(stdlib);
         var sandbox = new CompilationSandbox(maxThreads, timeoutSeconds);
 
         // Cache stdlib source scan once at startup (classpath doesn't change at runtime)

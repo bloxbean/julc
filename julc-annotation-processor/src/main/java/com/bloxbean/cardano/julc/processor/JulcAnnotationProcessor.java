@@ -187,7 +187,7 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
             if (sourceMapEnabled) {
                 options.setSourceMapEnabled(true);
             }
-            var compiler = new JulcCompiler(stdlib::lookup, options);
+            var compiler = new JulcCompiler(stdlib, options);
             var result = compiler.compile(source, librarySources);
 
             if (result.hasErrors()) {

@@ -43,7 +43,7 @@ public class ByteStringLib {
         return Builtins.sliceByteString(0, n, bs);
     }
 
-    /** Concatenate two bytestrings. */
+    /** Concatenate two bytestrings. For 3+ parts use {@code Builtins.concat(a, b, c, ...)}. */
     public static byte[] append(byte[] a, byte[] b) {
         return Builtins.appendByteString(a, b);
     }

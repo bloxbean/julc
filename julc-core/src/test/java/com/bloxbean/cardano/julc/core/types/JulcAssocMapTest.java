@@ -1,7 +1,12 @@
 package com.bloxbean.cardano.julc.core.types;
 
+import com.bloxbean.cardano.julc.core.PlutusData;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+
+import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -21,6 +26,49 @@ class JulcAssocMapTest {
         JulcMap<String, Integer> map = JulcAssocMap.of("a", 1);
         assertEquals(1, map.size());
         assertEquals(1, map.get("a"));
+    }
+
+    // --- Plutus Data conversion ---
+
+    @Nested
+    class PlutusDataConversion {
+        @Test
+        void preservesEntryOrderAndDuplicateKeys() {
+            JulcMap<String, BigInteger> map =
+                    JulcAssocMap.of("same", BigInteger.ONE)
+                            .insert("same", BigInteger.TWO);
+
+            assertEquals(new PlutusData.MapData(List.of(
+                    new PlutusData.Pair(
+                            PlutusData.bytes("same".getBytes(StandardCharsets.UTF_8)),
+                            PlutusData.integer(2)),
+                    new PlutusData.Pair(
+                            PlutusData.bytes("same".getBytes(StandardCharsets.UTF_8)),
+                            PlutusData.integer(1)))),
+                    map.toPlutusData());
+        }
+
+        @Test
+        void recursivelyConvertsNestedMapAndListValues() {
+            JulcMap<String, Object> nested = JulcAssocMap.of(
+                    "items", JulcList.of(BigInteger.ONE, BigInteger.TWO));
+
+            assertEquals(new PlutusData.MapData(List.of(
+                    new PlutusData.Pair(
+                            PlutusData.bytes("items".getBytes(StandardCharsets.UTF_8)),
+                            PlutusData.list(
+                                    PlutusData.integer(1),
+                                    PlutusData.integer(2))))),
+                    nested.toPlutusData());
+        }
+
+        @Test
+        void rejectsUnsupportedKeysOrValues() {
+            JulcMap<Object, BigInteger> map =
+                    JulcAssocMap.of(new Object(), BigInteger.ONE);
+
+            assertThrows(IllegalArgumentException.class, map::toPlutusData);
+        }
     }
 
     // --- Lookup ---

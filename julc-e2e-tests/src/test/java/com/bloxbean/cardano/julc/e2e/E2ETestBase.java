@@ -64,7 +64,7 @@ abstract class E2ETestBase {
      * Compile Java source to a UPLC Program with stdlib support.
      */
     protected Program compile(String javaSource) {
-        var compiler = new JulcCompiler(stdlib::lookup);
+        var compiler = new JulcCompiler(stdlib);
         var result = compiler.compile(javaSource);
         if (result.hasErrors()) {
             throw new AssertionError("Compilation errors: " + result.diagnostics());

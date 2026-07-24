@@ -232,7 +232,7 @@ PlutusV3Script script = JulcScriptLoader.load(VestingValidator.class);
 
 ```java
 var stdlib = StdlibRegistry.defaultRegistry();
-var compiler = new JulcCompiler(stdlib::lookup);
+var compiler = new JulcCompiler(stdlib);
 
 var result = compiler.compile(javaSource);
 if (!result.hasErrors()) {

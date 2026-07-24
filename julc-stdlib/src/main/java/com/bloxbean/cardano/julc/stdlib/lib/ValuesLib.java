@@ -5,6 +5,7 @@ import com.bloxbean.cardano.julc.core.types.AssetEntry;
 import com.bloxbean.cardano.julc.core.types.JulcList;
 import com.bloxbean.cardano.julc.core.types.JulcMap;
 import com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary;
+import com.bloxbean.cardano.julc.ledger.TxOutRef;
 import com.bloxbean.cardano.julc.ledger.Value;
 import com.bloxbean.cardano.julc.stdlib.Builtins;
 
@@ -484,5 +485,32 @@ public class ValuesLib {
             current = Builtins.tailList(current);
         }
         return result;
+    }
+
+    /**
+     * Seed bytes uniquely identifying a TxOutRef: {@code txId ++ integerToByteString(true, 2, index)}.
+     * <p>
+     * The index is encoded as fixed 2-byte big-endian, so the result is deterministic and
+     * identical on-chain and off-chain (a width of 0 would encode index 0 as empty bytes on-chain).
+     * Fails for index &gt; 65535, which cannot occur for real transaction outputs.
+     * <p>
+     * Use this as input to a hash of your choice, e.g.
+     * {@code CryptoLib.sha2_256(ValuesLib.refBytes(ref))}, or use
+     * {@link #uniqueTokenName(TxOutRef)} for the canonical blake2b_256 derivation.
+     */
+    public static byte[] refBytes(TxOutRef ref) {
+        byte[] idxBytes = Builtins.integerToByteString(true, 2, ref.index());
+        return Builtins.appendByteString(ref.txId().hash(), idxBytes);
+    }
+
+    /**
+     * Canonical token name for a spent TxOutRef: {@code blake2b_256(refBytes(ref))}.
+     * <p>
+     * The 32-byte output (the maximum Cardano asset-name length) is
+     * collision-resistant and deterministically tied to the reference. A one-shot
+     * minting policy must also enforce that the referenced output is consumed.
+     */
+    public static byte[] uniqueTokenName(TxOutRef ref) {
+        return Builtins.blake2b_256(refBytes(ref));
     }
 }

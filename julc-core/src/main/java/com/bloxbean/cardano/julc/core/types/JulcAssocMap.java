@@ -1,5 +1,8 @@
 package com.bloxbean.cardano.julc.core.types;
 
+import com.bloxbean.cardano.julc.core.PlutusData;
+import com.bloxbean.cardano.julc.core.PlutusDataConversions;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -102,6 +105,17 @@ public final class JulcAssocMap<K, V> implements JulcMap<K, V> {
             result.add(entry.value());
         }
         return new JulcArrayList<>(result);
+    }
+
+    @Override
+    public PlutusData.MapData toPlutusData() {
+        var result = new ArrayList<PlutusData.Pair>(entries.size());
+        for (var entry : entries) {
+            result.add(new PlutusData.Pair(
+                    PlutusDataConversions.toPlutusData(entry.key()),
+                    PlutusDataConversions.toPlutusData(entry.value())));
+        }
+        return new PlutusData.MapData(result);
     }
 
     @Override

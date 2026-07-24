@@ -80,49 +80,123 @@ class LedgerTypeAccessTest {
      * Stdlib lookup that provides ContextsLib functions for backward-compat tests.
      */
     static StdlibLookup testStdlibLookup() {
-        return (className, methodName, args) -> {
-            if ("ContextsLib".equals(className) && "getTxInfo".equals(methodName) && args.size() == 1) {
-                var fields = new PirTerm.App(
-                        new PirTerm.Builtin(DefaultFun.SndPair),
-                        new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnConstrData), args.get(0)));
-                return Optional.of(new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), fields));
+        return new StdlibLookup() {
+            @Override
+            public Optional<PirTerm> lookup(
+                    String className, String methodName, List<PirTerm> args) {
+                return resolve(className, methodName, args);
             }
-            if ("ContextsLib".equals(className) && "signedBy".equals(methodName) && args.size() == 2) {
-                // Inline signedBy: extract signatories (field 8 of TxInfo), recursive search
-                var txInfoVar = new PirTerm.Var("txInfo_sb", new com.bloxbean.cardano.julc.compiler.pir.PirType.DataType());
-                var pkhVar = new PirTerm.Var("pkh_sb", new com.bloxbean.cardano.julc.compiler.pir.PirType.DataType());
-                var fieldsExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.SndPair),
-                        new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnConstrData), txInfoVar));
-                // Index 8 = signatories
-                PirTerm sigsData = fieldsExpr;
-                for (int i = 0; i < 8; i++) sigsData = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), sigsData);
-                sigsData = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), sigsData);
-                var sigsExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnListData), sigsData);
-                var pkhBs = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnBData), pkhVar);
-                // Recursive search
-                var sigListVar = new PirTerm.Var("sigList_sb", new com.bloxbean.cardano.julc.compiler.pir.PirType.ListType(new com.bloxbean.cardano.julc.compiler.pir.PirType.DataType()));
-                var targetVar = new PirTerm.Var("target_sb", new com.bloxbean.cardano.julc.compiler.pir.PirType.ByteStringType());
-                var goVar = new PirTerm.Var("go_sb", new com.bloxbean.cardano.julc.compiler.pir.PirType.FunType(
-                        new com.bloxbean.cardano.julc.compiler.pir.PirType.ListType(new com.bloxbean.cardano.julc.compiler.pir.PirType.DataType()),
-                        new com.bloxbean.cardano.julc.compiler.pir.PirType.BoolType()));
-                var nullCheck = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), sigListVar);
-                var headElem = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), sigListVar);
-                var tailExpr2 = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), sigListVar);
-                var headBs = new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnBData), headElem);
-                var equalCheck = new PirTerm.App(new PirTerm.App(new PirTerm.Builtin(DefaultFun.EqualsByteString), targetVar), headBs);
-                var recurse = new PirTerm.App(goVar, tailExpr2);
-                var ifFound = new PirTerm.IfThenElse(equalCheck, new PirTerm.Const(Constant.bool(true)), recurse);
-                var body = new PirTerm.IfThenElse(nullCheck, new PirTerm.Const(Constant.bool(false)), ifFound);
-                var goBody = new PirTerm.Lam("sigList_sb", new com.bloxbean.cardano.julc.compiler.pir.PirType.ListType(new com.bloxbean.cardano.julc.compiler.pir.PirType.DataType()), body);
-                var sigsVar = new PirTerm.Var("sigs_sb", new com.bloxbean.cardano.julc.compiler.pir.PirType.ListType(new com.bloxbean.cardano.julc.compiler.pir.PirType.DataType()));
-                var search = new PirTerm.LetRec(java.util.List.of(new PirTerm.Binding("go_sb", goBody)),
-                        new PirTerm.App(goVar, sigsVar));
-                return Optional.of(new PirTerm.Let("txInfo_sb", args.get(0),
-                        new PirTerm.Let("pkh_sb", args.get(1),
-                                new PirTerm.Let("sigs_sb", sigsExpr,
-                                        new PirTerm.Let("target_sb", pkhBs, search)))));
+
+            @Override
+            public Optional<PirTerm> lookup(
+                    String className,
+                    String methodName,
+                    List<PirTerm> args,
+                    List<PirType> argTypes) {
+                return resolve(className, methodName, args);
             }
-            return Optional.empty();
+
+            private Optional<PirTerm> resolve(
+                    String className, String methodName, List<PirTerm> args) {
+                if ("ContextsLib".equals(className)
+                        && "getTxInfo".equals(methodName)
+                        && args.size() == 1) {
+                    var fields = new PirTerm.App(
+                            new PirTerm.Builtin(DefaultFun.SndPair),
+                            new PirTerm.App(
+                                    new PirTerm.Builtin(DefaultFun.UnConstrData), args.get(0)));
+                    return Optional.of(
+                            new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), fields));
+                }
+                if ("ContextsLib".equals(className)
+                        && "signedBy".equals(methodName)
+                        && args.size() == 2) {
+                    // Inline signedBy: extract signatories (field 8 of TxInfo), recursive search
+                    var txInfoVar = new PirTerm.Var(
+                            "txInfo_sb",
+                            new com.bloxbean.cardano.julc.compiler.pir.PirType.DataType());
+                    var pkhVar = new PirTerm.Var(
+                            "pkh_sb",
+                            new com.bloxbean.cardano.julc.compiler.pir.PirType.DataType());
+                    var fieldsExpr = new PirTerm.App(
+                            new PirTerm.Builtin(DefaultFun.SndPair),
+                            new PirTerm.App(
+                                    new PirTerm.Builtin(DefaultFun.UnConstrData), txInfoVar));
+                    // Index 8 = signatories
+                    PirTerm sigsData = fieldsExpr;
+                    for (int i = 0; i < 8; i++) {
+                        sigsData =
+                                new PirTerm.App(
+                                        new PirTerm.Builtin(DefaultFun.TailList), sigsData);
+                    }
+                    sigsData =
+                            new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), sigsData);
+                    var sigsExpr =
+                            new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnListData), sigsData);
+                    var pkhBs =
+                            new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnBData), pkhVar);
+                    // Recursive search
+                    var sigListVar = new PirTerm.Var(
+                            "sigList_sb",
+                            new com.bloxbean.cardano.julc.compiler.pir.PirType.ListType(
+                                    new com.bloxbean.cardano.julc.compiler.pir.PirType.DataType()));
+                    var targetVar = new PirTerm.Var(
+                            "target_sb",
+                            new com.bloxbean.cardano.julc.compiler.pir.PirType.ByteStringType());
+                    var goVar = new PirTerm.Var(
+                            "go_sb",
+                            new com.bloxbean.cardano.julc.compiler.pir.PirType.FunType(
+                                    new com.bloxbean.cardano.julc.compiler.pir.PirType.ListType(
+                                            new com.bloxbean.cardano.julc.compiler.pir.PirType
+                                                    .DataType()),
+                                    new com.bloxbean.cardano.julc.compiler.pir.PirType.BoolType()));
+                    var nullCheck =
+                            new PirTerm.App(
+                                    new PirTerm.Builtin(DefaultFun.NullList), sigListVar);
+                    var headElem =
+                            new PirTerm.App(
+                                    new PirTerm.Builtin(DefaultFun.HeadList), sigListVar);
+                    var tailExpr2 =
+                            new PirTerm.App(
+                                    new PirTerm.Builtin(DefaultFun.TailList), sigListVar);
+                    var headBs =
+                            new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnBData), headElem);
+                    var equalCheck = new PirTerm.App(
+                            new PirTerm.App(
+                                    new PirTerm.Builtin(DefaultFun.EqualsByteString), targetVar),
+                            headBs);
+                    var recurse = new PirTerm.App(goVar, tailExpr2);
+                    var ifFound = new PirTerm.IfThenElse(
+                            equalCheck, new PirTerm.Const(Constant.bool(true)), recurse);
+                    var body = new PirTerm.IfThenElse(
+                            nullCheck, new PirTerm.Const(Constant.bool(false)), ifFound);
+                    var goBody = new PirTerm.Lam(
+                            "sigList_sb",
+                            new com.bloxbean.cardano.julc.compiler.pir.PirType.ListType(
+                                    new com.bloxbean.cardano.julc.compiler.pir.PirType.DataType()),
+                            body);
+                    var sigsVar = new PirTerm.Var(
+                            "sigs_sb",
+                            new com.bloxbean.cardano.julc.compiler.pir.PirType.ListType(
+                                    new com.bloxbean.cardano.julc.compiler.pir.PirType.DataType()));
+                    var search = new PirTerm.LetRec(
+                            java.util.List.of(new PirTerm.Binding("go_sb", goBody)),
+                            new PirTerm.App(goVar, sigsVar));
+                    return Optional.of(
+                            new PirTerm.Let(
+                                    "txInfo_sb",
+                                    args.get(0),
+                                    new PirTerm.Let(
+                                            "pkh_sb",
+                                            args.get(1),
+                                            new PirTerm.Let(
+                                                    "sigs_sb",
+                                                    sigsExpr,
+                                                    new PirTerm.Let(
+                                                            "target_sb", pkhBs, search)))));
+                }
+                return Optional.empty();
+            }
         };
     }
 
@@ -604,7 +678,7 @@ class LedgerTypeAccessTest {
                         }
                     }
                     """;
-            var compiler = new JulcCompiler(STDLIB::lookup);
+            var compiler = new JulcCompiler(STDLIB);
             var result = compiler.compile(validator, List.of(libSource));
             assertFalse(result.hasErrors(), "Compilation should succeed: " + result);
 
@@ -656,7 +730,7 @@ class LedgerTypeAccessTest {
                         }
                     }
                     """;
-            var compiler = new JulcCompiler(STDLIB::lookup);
+            var compiler = new JulcCompiler(STDLIB);
             var result = compiler.compile(validator, List.of(libSource));
             assertFalse(result.hasErrors(), "Compilation should succeed: " + result);
 
@@ -709,7 +783,7 @@ class LedgerTypeAccessTest {
                         }
                     }
                     """;
-            var compiler = new JulcCompiler(STDLIB::lookup);
+            var compiler = new JulcCompiler(STDLIB);
             var result = compiler.compile(validator, List.of(libSource));
             assertFalse(result.hasErrors(), "Compilation should succeed: " + result);
 

@@ -4,12 +4,11 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Functional interface for resolving stdlib method calls to PIR terms.
+ * Interface for resolving stdlib method calls to PIR terms.
  * <p>
  * Defined in the compiler module to avoid circular dependency with plutus-stdlib.
  * Implementations are provided by the stdlib module via StdlibRegistry.
  */
-@FunctionalInterface
 public interface StdlibLookup {
     /**
      * Look up a stdlib method and produce a PIR term for the given arguments.
@@ -23,8 +22,8 @@ public interface StdlibLookup {
 
     /**
      * Look up a stdlib method with arg type information for proper coercion.
-     * Default delegates to untyped lookup. Override to insert decode/encode coercions
-     * when caller arg types don't match callee parameter types.
+     * Implementations must handle this form explicitly so typed decode/encode
+     * coercions cannot be silently discarded by a lambda or method reference.
      *
      * @param className  the simple class name
      * @param methodName the method name
@@ -32,10 +31,8 @@ public interface StdlibLookup {
      * @param argTypes   the PIR types of each argument at the call site
      * @return the PIR term if found, empty otherwise
      */
-    default Optional<PirTerm> lookup(String className, String methodName,
-                                      List<PirTerm> args, List<PirType> argTypes) {
-        return lookup(className, methodName, args);
-    }
+    Optional<PirTerm> lookup(String className, String methodName,
+                             List<PirTerm> args, List<PirType> argTypes);
 
     /**
      * Check if this lookup has any methods registered for the given class name.

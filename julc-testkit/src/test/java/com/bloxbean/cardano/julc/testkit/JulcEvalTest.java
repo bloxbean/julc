@@ -1,6 +1,8 @@
 package com.bloxbean.cardano.julc.testkit;
 
 import com.bloxbean.cardano.julc.core.PlutusData;
+import com.bloxbean.cardano.julc.core.types.JulcList;
+import com.bloxbean.cardano.julc.core.types.JulcMap;
 import com.bloxbean.cardano.julc.ledger.PubKeyHash;
 import com.bloxbean.cardano.julc.testkit.fixtures.ParameterizedSample;
 import com.bloxbean.cardano.julc.testkit.fixtures.SampleValidator;
@@ -465,6 +467,23 @@ class JulcEvalTest {
             var result = ArgConverter.convert(new Object[]{pkh});
             assertEquals(1, result.length);
             assertInstanceOf(PlutusData.BytesData.class, result[0]);
+        }
+
+        @Test
+        void convertCoreCollectionsThroughSharedConversionContract() {
+            JulcList<BigInteger> list = JulcList.of(BigInteger.ONE);
+            JulcMap<String, BigInteger> map = JulcMap.of("key", BigInteger.TWO);
+
+            var result = ArgConverter.convert(new Object[]{list, map});
+
+            assertEquals(
+                    PlutusData.list(PlutusData.integer(1)),
+                    result[0]);
+            assertEquals(
+                    PlutusData.map(new PlutusData.Pair(
+                            PlutusData.bytes("key".getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                            PlutusData.integer(2))),
+                    result[1]);
         }
     }
 

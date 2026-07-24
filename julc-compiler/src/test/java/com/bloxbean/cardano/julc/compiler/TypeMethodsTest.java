@@ -1494,7 +1494,7 @@ class TypeMethodsTest {
                         }
                     }
                     """;
-            var compiler = new JulcCompiler(STDLIB::lookup);
+            var compiler = new JulcCompiler(STDLIB);
             var program = compiler.compile(source).program();
 
             // cred = Constr(0, [BData(bytes)])
@@ -1527,7 +1527,7 @@ class TypeMethodsTest {
                         }
                     }
                     """;
-            var compiler = new JulcCompiler(STDLIB::lookup);
+            var compiler = new JulcCompiler(STDLIB);
             var program = compiler.compile(source).program();
 
             // wrapped = Constr(0, [IData(42)])
@@ -1559,7 +1559,7 @@ class TypeMethodsTest {
                         }
                     }
                     """;
-            var compiler = new JulcCompiler(STDLIB::lookup);
+            var compiler = new JulcCompiler(STDLIB);
             var program = compiler.compile(source).program();
 
             var cred = PlutusData.constr(0, PlutusData.bytes(new byte[]{1, 2, 3}));

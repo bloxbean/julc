@@ -1109,7 +1109,7 @@ import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
 
 // With stdlib support (recommended)
 var stdlib = StdlibRegistry.defaultRegistry();
-var compiler = new JulcCompiler(stdlib::lookup);
+var compiler = new JulcCompiler(stdlib);
 
 CompileResult result = compiler.compile(javaSource);
 if (result.hasErrors()) {
@@ -1165,7 +1165,7 @@ var program = ValidatorTest.compile(javaSource);
 
 // Compile with stdlib
 var stdlib = StdlibRegistry.defaultRegistry();
-var program = ValidatorTest.compile(javaSource, stdlib::lookup);
+var program = ValidatorTest.compile(javaSource, stdlib);
 
 // Compile a validator class with auto-discovered dependencies
 var result = ValidatorTest.compileValidator(MyValidator.class);

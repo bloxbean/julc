@@ -57,7 +57,7 @@ public abstract class CompileJulcTask extends DefaultTask {
         if (Boolean.TRUE.equals(getSourceMap().getOrElse(false))) {
             options.setSourceMapEnabled(true);
         }
-        var compiler = new JulcCompiler(stdlib::lookup, options);
+        var compiler = new JulcCompiler(stdlib, options);
 
         List<File> javaFiles = findJavaFiles(srcDir);
 

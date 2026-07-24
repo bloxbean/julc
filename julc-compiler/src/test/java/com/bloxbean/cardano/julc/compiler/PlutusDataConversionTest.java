@@ -28,7 +28,7 @@ class PlutusDataConversionTest {
     }
 
     static Program compileValidator(String source) {
-        var compiler = new JulcCompiler(STDLIB::lookup);
+        var compiler = new JulcCompiler(STDLIB);
         var result = compiler.compile(source);
         assertFalse(result.hasErrors(), "Compilation failed: " + result);
         assertNotNull(result.program(), "Program should not be null");

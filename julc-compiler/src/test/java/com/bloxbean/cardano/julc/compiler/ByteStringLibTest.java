@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class ByteStringLibTest {
 
     private static final StdlibRegistry STDLIB = StdlibRegistry.defaultRegistry();
-    private final JulcCompiler compiler = new JulcCompiler(STDLIB::lookup);
+    private final JulcCompiler compiler = new JulcCompiler(STDLIB);
     private final JulcVm vm = JulcVm.create();
 
     private Program compile(String source) {

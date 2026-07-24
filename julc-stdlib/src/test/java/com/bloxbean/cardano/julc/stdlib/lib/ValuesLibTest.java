@@ -3,8 +3,12 @@ package com.bloxbean.cardano.julc.stdlib.lib;
 import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.ledger.PolicyId;
 import com.bloxbean.cardano.julc.ledger.TokenName;
+import com.bloxbean.cardano.julc.ledger.TxId;
+import com.bloxbean.cardano.julc.ledger.TxOutRef;
 import com.bloxbean.cardano.julc.ledger.Value;
+import com.bloxbean.cardano.julc.stdlib.Builtins;
 import com.bloxbean.cardano.julc.testkit.JulcEval;
+import com.bloxbean.cardano.julc.testkit.JvmCryptoProvider;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -27,6 +31,7 @@ class ValuesLibTest {
     @BeforeAll
     static void setUp() {
         eval = JulcEval.forClass(ValuesLib.class);
+        Builtins.setCryptoProvider(new JvmCryptoProvider());
     }
 
     /** Lovelace-only value. */
@@ -345,6 +350,106 @@ class ValuesLibTest {
             var mint = Value.singleton(PolicyId.of(POLICY_A), TokenName.of(TOKEN_X), BigInteger.valueOf(5));
             byte[] found = eval.call("findTokenName", mint, POLICY_A, BigInteger.ONE).asByteString();
             assertEquals(0, found.length);
+        }
+    }
+
+    // =========================================================================
+    // refBytes / uniqueTokenName
+    // =========================================================================
+
+    @Nested
+    class UniqueTokenNameTests {
+
+        final byte[] txHash = makeBytes(32, 0xCD);
+
+        TxOutRef ref(long index) {
+            return new TxOutRef(new TxId(txHash), BigInteger.valueOf(index));
+        }
+
+        byte[] expectedRefBytes(int hi, int lo) {
+            byte[] expected = new byte[34];
+            System.arraycopy(txHash, 0, expected, 0, 32);
+            expected[32] = (byte) hi;
+            expected[33] = (byte) lo;
+            return expected;
+        }
+
+        @Test
+        void refBytesIndexZero() {
+            // Index 0 must still contribute 2 bytes — the width-0 minimal encoding
+            // would drop it entirely, which is why refBytes uses fixed width 2
+            byte[] result = eval.call("refBytes", ref(0)).asByteString();
+            assertArrayEquals(expectedRefBytes(0, 0), result);
+        }
+
+        @Test
+        void refBytesSmallIndex() {
+            byte[] result = eval.call("refBytes", ref(1)).asByteString();
+            assertArrayEquals(expectedRefBytes(0, 1), result);
+        }
+
+        @Test
+        void refBytesTwoByteIndex() {
+            byte[] result = eval.call("refBytes", ref(256)).asByteString();
+            assertArrayEquals(expectedRefBytes(1, 0), result);
+        }
+
+        @Test
+        void refBytesMaxIndex() {
+            byte[] result = eval.call("refBytes", ref(65535)).asByteString();
+            assertArrayEquals(expectedRefBytes(0xFF, 0xFF), result);
+        }
+
+        @Test
+        void refBytesIndexTooLargeFails() {
+            assertThrows(Exception.class, () -> eval.call("refBytes", ref(65536)));
+        }
+
+        @Test
+        void refBytesJvmMatchesUplcAtWidthBoundaries() {
+            for (long index : new long[]{0, 1, 256, 65535}) {
+                assertArrayEquals(
+                        eval.call("refBytes", ref(index)).asByteString(),
+                        ValuesLib.refBytes(ref(index)),
+                        "JVM/UPLC mismatch at output index " + index);
+            }
+        }
+
+        @Test
+        void uniqueTokenNameIsBlake2bOfRefBytes() {
+            var cryptoEval = JulcEval.forClass(CryptoLib.class);
+            byte[] expected = cryptoEval.call("blake2b_256", expectedRefBytes(0, 7)).asByteString();
+            byte[] actual = eval.call("uniqueTokenName", ref(7)).asByteString();
+            assertArrayEquals(expected, actual);
+        }
+
+        @Test
+        void uniqueTokenNameIs32Bytes() {
+            byte[] name = eval.call("uniqueTokenName", ref(0)).asByteString();
+            assertEquals(32, name.length);
+        }
+
+        @Test
+        void uniqueTokenNameJvmMatchesUplc() {
+            assertArrayEquals(
+                    eval.call("uniqueTokenName", ref(7)).asByteString(),
+                    ValuesLib.uniqueTokenName(ref(7)));
+        }
+
+        @Test
+        void uniqueTokenNameDiffersByIndex() {
+            byte[] name0 = eval.call("uniqueTokenName", ref(0)).asByteString();
+            byte[] name1 = eval.call("uniqueTokenName", ref(1)).asByteString();
+            assertFalse(java.util.Arrays.equals(name0, name1));
+        }
+
+        @Test
+        void uniqueTokenNameDiffersByTxId() {
+            byte[] otherHash = makeBytes(32, 0xEE);
+            var otherRef = new TxOutRef(new TxId(otherHash), BigInteger.ZERO);
+            byte[] name0 = eval.call("uniqueTokenName", ref(0)).asByteString();
+            byte[] nameOther = eval.call("uniqueTokenName", otherRef).asByteString();
+            assertFalse(java.util.Arrays.equals(name0, nameOther));
         }
     }
 }
