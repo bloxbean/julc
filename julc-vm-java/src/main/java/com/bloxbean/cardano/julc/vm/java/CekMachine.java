@@ -5,6 +5,9 @@ import com.bloxbean.cardano.julc.core.DefaultFun;
 import com.bloxbean.cardano.julc.core.Term;
 import com.bloxbean.cardano.julc.core.source.SourceMap;
 import com.bloxbean.cardano.julc.vm.PlutusLanguage;
+import com.bloxbean.cardano.julc.vm.ProtocolFeatureProfile;
+import com.bloxbean.cardano.julc.vm.ProtocolFeatureRegistry;
+import com.bloxbean.cardano.julc.vm.LedgerEvaluationTarget;
 import com.bloxbean.cardano.julc.vm.java.builtins.BuiltinHelper;
 import com.bloxbean.cardano.julc.vm.java.builtins.BuiltinRuntime;
 import com.bloxbean.cardano.julc.vm.java.builtins.BuiltinTable;
@@ -37,6 +40,7 @@ public final class CekMachine {
     private final List<String> traces = new ArrayList<>();
     private final CostTracker costTracker;
     private final PlutusLanguage language;
+    private final ProtocolFeatureProfile profile;
     private final BuiltinTable.VersionedBuiltinTable builtinTable;
     private final SourceMap sourceMap;
     private final ExecutionTraceCollector executionTraceCollector;
@@ -83,13 +87,26 @@ public final class CekMachine {
      */
     public CekMachine(CostTracker costTracker, PlutusLanguage language,
                       SourceMap sourceMap, boolean executionTraceEnabled, boolean builtinTraceEnabled) {
+        this(costTracker, ProtocolFeatureRegistry.resolve(LedgerEvaluationTarget.pv10(language)),
+                sourceMap, executionTraceEnabled, builtinTraceEnabled);
+    }
+
+    /** Create a machine for one immutable protocol feature profile. */
+    public CekMachine(CostTracker costTracker, ProtocolFeatureProfile profile,
+                      SourceMap sourceMap, boolean executionTraceEnabled, boolean builtinTraceEnabled) {
         this.costTracker = costTracker;
-        this.language = language;
+        this.profile = profile;
+        this.language = profile.target().ledgerLanguage();
+        // Protocol-aware filtering is enabled in the subsequent gating slice.
         this.builtinTable = BuiltinTable.forLanguage(language);
         this.sourceMap = sourceMap;
         this.executionTraceCollector = (executionTraceEnabled && sourceMap != null && !sourceMap.isEmpty())
                 ? new ExecutionTraceCollector(costTracker) : null;
         this.builtinTraceCollector = builtinTraceEnabled ? new BuiltinTraceCollector(20) : null;
+    }
+
+    public ProtocolFeatureProfile profile() {
+        return profile;
     }
 
     /**

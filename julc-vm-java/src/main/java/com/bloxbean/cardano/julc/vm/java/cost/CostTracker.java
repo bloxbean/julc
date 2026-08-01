@@ -2,6 +2,9 @@ package com.bloxbean.cardano.julc.vm.java.cost;
 
 import com.bloxbean.cardano.julc.core.DefaultFun;
 import com.bloxbean.cardano.julc.vm.ExBudget;
+import com.bloxbean.cardano.julc.vm.LedgerEvaluationTarget;
+import com.bloxbean.cardano.julc.vm.ProtocolFeatureProfile;
+import com.bloxbean.cardano.julc.vm.ProtocolFeatureRegistry;
 import com.bloxbean.cardano.julc.vm.java.CekValue;
 
 import java.util.List;
@@ -17,6 +20,7 @@ public final class CostTracker {
 
     private final MachineCosts machineCosts;
     private final BuiltinCostModel builtinCostModel;
+    private final ProtocolFeatureProfile profile;
     private final boolean hasLimit;
     private long cpuRemaining;
     private long memRemaining;
@@ -31,8 +35,17 @@ public final class CostTracker {
      * @param budget          maximum allowed budget (null for unlimited)
      */
     public CostTracker(MachineCosts machineCosts, BuiltinCostModel builtinCostModel, ExBudget budget) {
+        this(machineCosts, builtinCostModel,
+                ProtocolFeatureRegistry.resolve(LedgerEvaluationTarget.pv10(
+                        com.bloxbean.cardano.julc.vm.PlutusLanguage.PLUTUS_V3)), budget);
+    }
+
+    /** Create a tracker for a resolved ledger profile. */
+    public CostTracker(MachineCosts machineCosts, BuiltinCostModel builtinCostModel,
+                       ProtocolFeatureProfile profile, ExBudget budget) {
         this.machineCosts = machineCosts;
         this.builtinCostModel = builtinCostModel;
+        this.profile = profile;
         if (budget != null) {
             this.hasLimit = true;
             this.cpuRemaining = budget.cpuSteps();
@@ -69,7 +82,7 @@ public final class CostTracker {
             // No cost model for this builtin — charge nothing
             return;
         }
-        long[] sizes = BuiltinCostModel.argSizes(fun, args);
+        long[] sizes = BuiltinCostModel.argSizes(profile.semanticsVariant(), fun, args);
         long cpu = costPair.cpu().apply(sizes);
         long mem = costPair.mem().apply(sizes);
         charge(cpu, mem);
@@ -85,6 +98,9 @@ public final class CostTracker {
 
     /** Total memory consumed so far (zero-allocation accessor). */
     public long memConsumed() { return memConsumed; }
+
+    /** The immutable profile used for all costing decisions. */
+    public ProtocolFeatureProfile profile() { return profile; }
 
     private void charge(long cpu, long mem) {
         cpuConsumed = CostFunction.satAdd(cpuConsumed, cpu);

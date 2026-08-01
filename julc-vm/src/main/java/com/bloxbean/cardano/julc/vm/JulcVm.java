@@ -167,6 +167,31 @@ public final class JulcVm {
         return provider.evaluateWithArgs(program, language, args, budget, options);
     }
 
+    // --- Canonical protocol-aware evaluation ---
+
+    /** Evaluate for an explicit ledger target with unlimited budget. */
+    public EvalResult evaluate(Program program, LedgerEvaluationTarget target) {
+        return provider.evaluate(program, target, null, EvalOptions.DEFAULT);
+    }
+
+    /** Evaluate for an explicit ledger target and budget. */
+    public EvalResult evaluate(Program program, LedgerEvaluationTarget target, ExBudget budget) {
+        return provider.evaluate(program, target, budget, EvalOptions.DEFAULT);
+    }
+
+    /** Evaluate for an explicit ledger target, budget, and options. */
+    public EvalResult evaluate(Program program, LedgerEvaluationTarget target,
+                               ExBudget budget, EvalOptions options) {
+        return provider.evaluate(program, target, budget, options);
+    }
+
+    /** Evaluate with arguments for an explicit ledger target. */
+    public EvalResult evaluateWithArgs(Program program, LedgerEvaluationTarget target,
+                                       List<PlutusData> args, ExBudget budget,
+                                       EvalOptions options) {
+        return provider.evaluateWithArgs(program, target, args, budget, options);
+    }
+
     // --- Configuration ---
 
     /**
@@ -178,6 +203,11 @@ public final class JulcVm {
     public void setCostModelParams(long[] costModelValues, PlutusLanguage language,
                                    int protocolMajorVersion, int protocolMinorVersion) {
         provider.setCostModelParams(costModelValues, language, protocolMajorVersion, protocolMinorVersion);
+    }
+
+    /** Set cost parameters for an explicit ledger target. */
+    public void setCostModelParams(long[] costModelValues, LedgerEvaluationTarget target) {
+        provider.setCostModelParams(costModelValues, target);
     }
 
     /** The name of the active VM provider. */

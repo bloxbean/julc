@@ -4,6 +4,7 @@ import com.bloxbean.cardano.julc.core.Constant;
 import com.bloxbean.cardano.julc.core.DefaultFun;
 import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.vm.java.CekValue;
+import com.bloxbean.cardano.julc.vm.BuiltinSemanticsVariant;
 
 import java.math.BigInteger;
 import java.util.EnumMap;
@@ -212,6 +213,15 @@ public final class BuiltinCostModel {
             default -> { }
         }
         return sizes;
+    }
+
+    /**
+     * Variant-aware costing boundary. Variant-specific wrappers are applied
+     * here as their runtime behavior is implemented.
+     */
+    public static long[] argSizes(BuiltinSemanticsVariant variant, DefaultFun fun,
+                                  List<CekValue> args) {
+        return argSizes(fun, args);
     }
 
     private static Constant idx(List<CekValue> args, int i) {
