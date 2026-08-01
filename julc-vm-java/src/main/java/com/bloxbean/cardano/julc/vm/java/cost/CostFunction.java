@@ -5,6 +5,11 @@ package com.bloxbean.cardano.julc.vm.java.cost;
  * <p>
  * Each variant computes a cost from argument sizes using a specific formula
  * matching the Plutus specification.
+ * <p>
+ * All arithmetic saturates at {@code Long.MAX_VALUE}/{@code Long.MIN_VALUE},
+ * matching Haskell's {@code SatInt} (and the Scalus {@code CostingInteger}).
+ * Saturation is reachable through builtins whose arguments are costed
+ * literally, e.g. {@code dropList} with a near-{@code maxBound} count.
  */
 public sealed interface CostFunction {
 
@@ -15,6 +20,32 @@ public sealed interface CostFunction {
      * @return the computed cost
      */
     long apply(long... sizes);
+
+    /** Saturating addition matching Haskell's {@code SatInt}. */
+    static long satAdd(long a, long b) {
+        long r = a + b;
+        // Overflow iff both operands have the same sign and the result differs
+        if (((a ^ r) & (b ^ r)) < 0) {
+            return a > 0 ? Long.MAX_VALUE : Long.MIN_VALUE;
+        }
+        return r;
+    }
+
+    /** Saturating multiplication matching Haskell's {@code SatInt}. */
+    static long satMul(long a, long b) {
+        long r = a * b;
+        if (a != 0 && (r / a != b
+                || (a == Long.MIN_VALUE && b == -1)
+                || (b == Long.MIN_VALUE && a == -1))) {
+            return ((a > 0) == (b > 0)) ? Long.MAX_VALUE : Long.MIN_VALUE;
+        }
+        return r;
+    }
+
+    /** Saturating {@code intercept + slope * x}. */
+    private static long linear(long intercept, long slope, long x) {
+        return satAdd(intercept, satMul(slope, x));
+    }
 
     /** Fixed cost independent of argument sizes. */
     record ConstantCost(long cost) implements CostFunction {
@@ -28,7 +59,7 @@ public sealed interface CostFunction {
     record LinearInX(long intercept, long slope) implements CostFunction {
         @Override
         public long apply(long... sizes) {
-            return intercept + slope * sizes[0];
+            return linear(intercept, slope, sizes[0]);
         }
     }
 
@@ -36,7 +67,7 @@ public sealed interface CostFunction {
     record LinearInY(long intercept, long slope) implements CostFunction {
         @Override
         public long apply(long... sizes) {
-            return intercept + slope * sizes[1];
+            return linear(intercept, slope, sizes[1]);
         }
     }
 
@@ -44,7 +75,7 @@ public sealed interface CostFunction {
     record LinearInZ(long intercept, long slope) implements CostFunction {
         @Override
         public long apply(long... sizes) {
-            return intercept + slope * sizes[2];
+            return linear(intercept, slope, sizes[2]);
         }
     }
 
@@ -52,7 +83,7 @@ public sealed interface CostFunction {
     record AddedSizes(long intercept, long slope) implements CostFunction {
         @Override
         public long apply(long... sizes) {
-            return intercept + slope * (sizes[0] + sizes[1]);
+            return linear(intercept, slope, satAdd(sizes[0], sizes[1]));
         }
     }
 
@@ -60,7 +91,7 @@ public sealed interface CostFunction {
     record MultipliedSizes(long intercept, long slope) implements CostFunction {
         @Override
         public long apply(long... sizes) {
-            return intercept + slope * (sizes[0] * sizes[1]);
+            return linear(intercept, slope, satMul(sizes[0], sizes[1]));
         }
     }
 
@@ -68,7 +99,7 @@ public sealed interface CostFunction {
     record MinSize(long intercept, long slope) implements CostFunction {
         @Override
         public long apply(long... sizes) {
-            return intercept + slope * Math.min(sizes[0], sizes[1]);
+            return linear(intercept, slope, Math.min(sizes[0], sizes[1]));
         }
     }
 
@@ -76,7 +107,7 @@ public sealed interface CostFunction {
     record MaxSize(long intercept, long slope) implements CostFunction {
         @Override
         public long apply(long... sizes) {
-            return intercept + slope * Math.max(sizes[0], sizes[1]);
+            return linear(intercept, slope, Math.max(sizes[0], sizes[1]));
         }
     }
 
@@ -88,7 +119,7 @@ public sealed interface CostFunction {
         @Override
         public long apply(long... sizes) {
             long diff = Math.max(minimum, sizes[0] - sizes[1]);
-            return intercept + slope * diff;
+            return linear(intercept, slope, diff);
         }
     }
 
@@ -105,7 +136,12 @@ public sealed interface CostFunction {
             if (x < y) {
                 return constant;
             }
-            long result = c00 + c01 * y + c02 * y * y + c10 * x + c11 * x * y + c20 * x * x;
+            long result = c00;
+            result = satAdd(result, satMul(c01, y));
+            result = satAdd(result, satMul(c02, satMul(y, y)));
+            result = satAdd(result, satMul(c10, x));
+            result = satAdd(result, satMul(c11, satMul(x, y)));
+            result = satAdd(result, satMul(c20, satMul(x, x)));
             return Math.max(minimum, result);
         }
     }
@@ -120,7 +156,7 @@ public sealed interface CostFunction {
             if (sizes[0] != sizes[1]) {
                 return constant;
             }
-            return intercept + slope * sizes[0];
+            return linear(intercept, slope, sizes[0]);
         }
     }
 
@@ -128,8 +164,7 @@ public sealed interface CostFunction {
     record QuadraticInY(long c0, long c1, long c2) implements CostFunction {
         @Override
         public long apply(long... sizes) {
-            long y = sizes[1];
-            return c0 + c1 * y + c2 * y * y;
+            return quadratic(c0, c1, c2, sizes[1]);
         }
     }
 
@@ -137,22 +172,27 @@ public sealed interface CostFunction {
     record QuadraticInZ(long c0, long c1, long c2) implements CostFunction {
         @Override
         public long apply(long... sizes) {
-            long z = sizes[2];
-            return c0 + c1 * z + c2 * z * z;
+            return quadratic(c0, c1, c2, sizes[2]);
         }
     }
 
+    /** Saturating {@code c0 + c1*v + c2*v*v}. */
+    private static long quadratic(long c0, long c1, long c2, long v) {
+        return satAdd(satAdd(c0, satMul(c1, v)), satMul(c2, satMul(v, v)));
+    }
+
     /**
-     * For integerToByteString memory: if y > 0, use y; otherwise intercept + slope * z.
+     * For integerToByteString memory: if y == 0, intercept + slope * z; otherwise y.
+     * Matches Plutus/Scalus, which test y == 0 (not y > 0) to select the linear form.
      */
     record LiteralInYOrLinearInZ(long intercept, long slope) implements CostFunction {
         @Override
         public long apply(long... sizes) {
             long y = sizes[1];
-            if (y > 0) {
-                return y;
+            if (y == 0) {
+                return linear(intercept, slope, sizes[2]);
             }
-            return intercept + slope * sizes[2];
+            return y;
         }
     }
 
@@ -160,7 +200,7 @@ public sealed interface CostFunction {
     record LinearInMaxYZ(long intercept, long slope) implements CostFunction {
         @Override
         public long apply(long... sizes) {
-            return intercept + slope * Math.max(sizes[1], sizes[2]);
+            return linear(intercept, slope, Math.max(sizes[1], sizes[2]));
         }
     }
 
@@ -168,7 +208,7 @@ public sealed interface CostFunction {
     record LinearInYAndZ(long intercept, long slope1, long slope2) implements CostFunction {
         @Override
         public long apply(long... sizes) {
-            return intercept + slope1 * sizes[1] + slope2 * sizes[2];
+            return satAdd(satAdd(intercept, satMul(slope1, sizes[1])), satMul(slope2, sizes[2]));
         }
     }
 
@@ -183,9 +223,10 @@ public sealed interface CostFunction {
             long base = sizes[0];
             long exp = sizes[1];
             long mod = sizes[2];
-            long cost0 = c00 + c11 * exp * mod + c12 * exp * mod * mod;
+            long expMod = satMul(exp, mod);
+            long cost0 = satAdd(satAdd(c00, satMul(c11, expMod)), satMul(c12, satMul(expMod, mod)));
             if (base > mod) {
-                return cost0 + cost0 / 2;
+                return satAdd(cost0, cost0 / 2);
             }
             return cost0;
         }
@@ -195,7 +236,7 @@ public sealed interface CostFunction {
     record LinearInU(long intercept, long slope) implements CostFunction {
         @Override
         public long apply(long... sizes) {
-            return intercept + slope * sizes[3];
+            return linear(intercept, slope, sizes[3]);
         }
     }
 
@@ -203,8 +244,7 @@ public sealed interface CostFunction {
     record QuadraticInX(long c0, long c1, long c2) implements CostFunction {
         @Override
         public long apply(long... sizes) {
-            long x = sizes[0];
-            return c0 + c1 * x + c2 * x * x;
+            return quadratic(c0, c1, c2, sizes[0]);
         }
     }
 
@@ -220,7 +260,7 @@ public sealed interface CostFunction {
             if (x < y) {
                 return constant;
             }
-            return intercept + slope1 * x + slope2 * y;
+            return satAdd(satAdd(intercept, satMul(slope1, x)), satMul(slope2, y));
         }
     }
 
@@ -235,7 +275,9 @@ public sealed interface CostFunction {
         public long apply(long... sizes) {
             long x = sizes[0];
             long y = sizes[1];
-            return c00 + c10 * x + c01 * y + c11 * x * y;
+            long result = satAdd(c00, satMul(c10, x));
+            result = satAdd(result, satMul(c01, y));
+            return satAdd(result, satMul(c11, satMul(x, y)));
         }
     }
 }

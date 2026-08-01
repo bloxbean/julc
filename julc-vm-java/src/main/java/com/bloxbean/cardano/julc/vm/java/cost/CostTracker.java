@@ -69,7 +69,7 @@ public final class CostTracker {
             // No cost model for this builtin — charge nothing
             return;
         }
-        long[] sizes = BuiltinCostModel.argSizes(args);
+        long[] sizes = BuiltinCostModel.argSizes(fun, args);
         long cpu = costPair.cpu().apply(sizes);
         long mem = costPair.mem().apply(sizes);
         charge(cpu, mem);
@@ -87,8 +87,8 @@ public final class CostTracker {
     public long memConsumed() { return memConsumed; }
 
     private void charge(long cpu, long mem) {
-        cpuConsumed += cpu;
-        memConsumed += mem;
+        cpuConsumed = CostFunction.satAdd(cpuConsumed, cpu);
+        memConsumed = CostFunction.satAdd(memConsumed, mem);
         if (hasLimit) {
             cpuRemaining -= cpu;
             memRemaining -= mem;

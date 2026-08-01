@@ -409,6 +409,75 @@ class BudgetCrossValidationTest {
                 + "(con data (B #0000000000000000000000000000000000000000000000000000000000000000))])");
     }
 
+    // === Issue #60: literal byte-size / literally-costed builtin args ===
+
+    @Test
+    void replicateByte_literalByteSize_budget() {
+        // The BBS validator case: length 64 must be costed as 8 words, not 1
+        crossValidateBudget("(program 1.0.0 [[(builtin replicateByte) (con integer 64)] (con integer 0)])");
+    }
+
+    @Test
+    void replicateByte_zeroLength_budget() {
+        crossValidateBudget("(program 1.0.0 [[(builtin replicateByte) (con integer 0)] (con integer 255)])");
+    }
+
+    @Test
+    void replicateByte_maxLength_budget() {
+        crossValidateBudget("(program 1.0.0 [[(builtin replicateByte) (con integer 8192)] (con integer 141)])");
+    }
+
+    @Test
+    void integerToByteString_width32_budget() {
+        // Width 32 must be costed as 4 words, not 1
+        crossValidateBudget("""
+                (program 1.0.0
+                  [[[(builtin integerToByteString) (con bool True)]
+                    (con integer 32)] (con integer 42)])""");
+    }
+
+    @Test
+    void integerToByteString_zeroWidth_budget() {
+        // Width 0 falls back to linear-in-z memory costing
+        crossValidateBudget("""
+                (program 1.0.0
+                  [[[(builtin integerToByteString) (con bool True)]
+                    (con integer 0)] (con integer 123456789)])""");
+    }
+
+    @Test
+    void shiftByteString_largeShift_budget() {
+        crossValidateBudget("""
+                (program 1.0.0
+                  [[(builtin shiftByteString)
+                    (con bytestring #00112233445566778899aabbccddeeff)] (con integer 100)])""");
+    }
+
+    @Test
+    void shiftByteString_negativeShift_budget() {
+        crossValidateBudget("""
+                (program 1.0.0
+                  [[(builtin shiftByteString)
+                    (con bytestring #00112233445566778899aabbccddeeff)] (con integer -100)])""");
+    }
+
+    @Test
+    void rotateByteString_budget() {
+        crossValidateBudget("""
+                (program 1.0.0
+                  [[(builtin rotateByteString)
+                    (con bytestring #00112233445566778899aabbccddeeff)] (con integer 33)])""");
+    }
+
+    @Test
+    void writeBits_budget() {
+        crossValidateBudget("""
+                (program 1.0.0
+                  [[[(builtin writeBits)
+                    (con bytestring #0000000000000000)]
+                    (con (list integer) [0, 7, 15, 33])] (con bool True)])""");
+    }
+
     // === PV11 builtin budget tests ===
 
     // --- MaryEraValue builtins ---
