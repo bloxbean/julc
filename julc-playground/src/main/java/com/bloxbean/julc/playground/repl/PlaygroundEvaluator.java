@@ -202,9 +202,9 @@ public final class PlaygroundEvaluator {
             case PlutusData.IntData i -> i.value().toString();
             case PlutusData.BytesData b -> "#" + bytesToHex(b.value());
             case PlutusData.ConstrData c -> {
-                if (c.fields().isEmpty()) yield "Constr(" + c.tag() + ")";
+                if (c.fields().isEmpty()) yield "Constr(" + c.constructorTag() + ")";
                 var fields = c.fields().stream().map(this::formatPlutusData).toList();
-                yield "Constr(" + c.tag() + ", [" + String.join(", ", fields) + "])";
+                yield "Constr(" + c.constructorTag() + ", [" + String.join(", ", fields) + "])";
             }
             case PlutusData.ListData l -> {
                 var items = l.items().stream().map(this::formatPlutusData).toList();

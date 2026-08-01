@@ -123,9 +123,7 @@ final class TermConverter {
 
             var fields = new ArrayList<PlutusData>();
             walkPList(argsPList, fields, true);
-            return PlutusData.constr(
-                    constrTag.bigInteger().intValueExact(),
-                    fields.toArray(PlutusData[]::new));
+            return new PlutusData.ConstrData(constrTag.bigInteger(), fields);
         } else if (data instanceof scalus.uplc.builtin.Data.List) {
             scala.Product list = (scala.Product) data;
             Object valuesPList = list.productElement(0);

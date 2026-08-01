@@ -60,19 +60,20 @@ public final class PlutusDataCborEncoder {
     // --- Constr ---
 
     private static DataItem constrToDataItem(PlutusData.ConstrData c) {
-        int tag = c.tag();
+        BigInteger tag = c.constructorTag();
         Array fieldsArray = fieldsToArray(c.fields());
 
-        if (tag >= 0 && tag <= 6) {
-            fieldsArray.setTag(121 + tag);
+        if (tag.signum() >= 0 && tag.compareTo(BigInteger.valueOf(6)) <= 0) {
+            fieldsArray.setTag(121 + tag.longValueExact());
             return fieldsArray;
-        } else if (tag >= 7 && tag <= 127) {
-            fieldsArray.setTag(1280 + (tag - 7));
+        } else if (tag.compareTo(BigInteger.valueOf(7)) >= 0
+                && tag.compareTo(BigInteger.valueOf(127)) <= 0) {
+            fieldsArray.setTag(1280 + (tag.longValueExact() - 7));
             return fieldsArray;
         } else {
             // General form: tag 102, [constructor_tag, fields_array]
             Array outer = new Array();
-            outer.add(new UnsignedInteger(tag));
+            outer.add(intToDataItem(tag));
             outer.add(fieldsArray);
             outer.setTag(102);
             return outer;

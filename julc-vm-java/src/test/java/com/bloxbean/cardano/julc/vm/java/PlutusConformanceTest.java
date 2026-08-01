@@ -456,7 +456,7 @@ class PlutusConformanceTest {
             case PlutusData.BytesData bsa -> b instanceof PlutusData.BytesData bsb
                     && Arrays.equals(bsa.value(), bsb.value());
             case PlutusData.ConstrData ca -> b instanceof PlutusData.ConstrData cb
-                    && ca.tag() == cb.tag()
+                    && ca.constructorTag().equals(cb.constructorTag())
                     && ca.fields().size() == cb.fields().size()
                     && dataListsEqual(ca.fields(), cb.fields());
             case PlutusData.ListData la -> b instanceof PlutusData.ListData lb

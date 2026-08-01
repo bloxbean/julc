@@ -70,7 +70,7 @@ class PlutusDataCborConformanceTest {
             }
             case PlutusData.ConstrData ca -> {
                 if (!(b instanceof PlutusData.ConstrData cb)) yield false;
-                if (ca.tag() != cb.tag()) yield false;
+                if (!ca.constructorTag().equals(cb.constructorTag())) yield false;
                 if (ca.fields().size() != cb.fields().size()) yield false;
                 for (int i = 0; i < ca.fields().size(); i++) {
                     if (!plutusDataEquivalent(ca.fields().get(i), cb.fields().get(i))) yield false;

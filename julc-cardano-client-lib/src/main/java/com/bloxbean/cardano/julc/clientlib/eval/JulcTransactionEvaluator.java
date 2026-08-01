@@ -235,7 +235,8 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
                     // a. Resolve script (with language version detection)
                     ScriptPurpose purpose = converter.redeemerToScriptPurpose(redeemer);
                     String scriptHash = resolveScriptHash(purpose, inputUtxos, converter);
-                    ResolvedScript resolved = resolveScript(tx, scriptHash, inputUtxos);
+                    ResolvedScript resolved = resolveScript(
+                            tx, scriptHash, inputUtxos, pvMajor, pvMinor);
 
                     // b. Build arguments based on script version
                     com.bloxbean.cardano.julc.core.PlutusData redeemerData =
@@ -437,23 +438,29 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
         };
     }
 
-    private ResolvedScript resolveScript(Transaction tx, String scriptHash,
-                                         Set<Utxo> inputUtxos) {
+    private ResolvedScript resolveScript(
+            Transaction tx,
+            String scriptHash,
+            Set<Utxo> inputUtxos,
+            int protocolMajor,
+            int protocolMinor) {
         var ws = tx.getWitnessSet();
 
         // 1. Check witness set PlutusV3Scripts
         List<PlutusV3Script> v3Scripts = ws.getPlutusV3Scripts();
         if (v3Scripts != null) {
             for (PlutusV3Script script : v3Scripts) {
+                String hash;
                 try {
-                    String hash = HexFormat.of().formatHex(script.getScriptHash());
-                    if (scriptHash.equals(hash)) {
-                        return new ResolvedScript(
-                                JulcScriptAdapter.toProgram(script.getCborHex()),
-                                PlutusLanguage.PLUTUS_V3);
-                    }
+                    hash = HexFormat.of().formatHex(script.getScriptHash());
                 } catch (Exception e) {
-                    // Continue searching
+                    continue;
+                }
+                if (scriptHash.equals(hash)) {
+                    return new ResolvedScript(
+                            decodeScript(script.getCborHex(), PlutusLanguage.PLUTUS_V3,
+                                    protocolMajor, protocolMinor),
+                            PlutusLanguage.PLUTUS_V3);
                 }
             }
         }
@@ -462,15 +469,17 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
         List<PlutusV2Script> v2Scripts = ws.getPlutusV2Scripts();
         if (v2Scripts != null) {
             for (PlutusV2Script script : v2Scripts) {
+                String hash;
                 try {
-                    String hash = HexFormat.of().formatHex(script.getScriptHash());
-                    if (scriptHash.equals(hash)) {
-                        return new ResolvedScript(
-                                JulcScriptAdapter.toProgram(script.getCborHex()),
-                                PlutusLanguage.PLUTUS_V2);
-                    }
+                    hash = HexFormat.of().formatHex(script.getScriptHash());
                 } catch (Exception e) {
-                    // Continue searching
+                    continue;
+                }
+                if (scriptHash.equals(hash)) {
+                    return new ResolvedScript(
+                            decodeScript(script.getCborHex(), PlutusLanguage.PLUTUS_V2,
+                                    protocolMajor, protocolMinor),
+                            PlutusLanguage.PLUTUS_V2);
                 }
             }
         }
@@ -479,15 +488,17 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
         List<PlutusV1Script> v1Scripts = ws.getPlutusV1Scripts();
         if (v1Scripts != null) {
             for (PlutusV1Script script : v1Scripts) {
+                String hash;
                 try {
-                    String hash = HexFormat.of().formatHex(script.getScriptHash());
-                    if (scriptHash.equals(hash)) {
-                        return new ResolvedScript(
-                                JulcScriptAdapter.toProgram(script.getCborHex()),
-                                PlutusLanguage.PLUTUS_V1);
-                    }
+                    hash = HexFormat.of().formatHex(script.getScriptHash());
                 } catch (Exception e) {
-                    // Continue searching
+                    continue;
+                }
+                if (scriptHash.equals(hash)) {
+                    return new ResolvedScript(
+                            decodeScript(script.getCborHex(), PlutusLanguage.PLUTUS_V1,
+                                    protocolMajor, protocolMinor),
+                            PlutusLanguage.PLUTUS_V1);
                 }
             }
         }
@@ -512,15 +523,18 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
                 PlutusScript ps = script.get();
                 if (ps instanceof PlutusV3Script v3) {
                     return new ResolvedScript(
-                            JulcScriptAdapter.toProgram(v3.getCborHex()),
+                            decodeScript(v3.getCborHex(), PlutusLanguage.PLUTUS_V3,
+                                    protocolMajor, protocolMinor),
                             PlutusLanguage.PLUTUS_V3);
                 } else if (ps instanceof PlutusV2Script v2) {
                     return new ResolvedScript(
-                            JulcScriptAdapter.toProgram(v2.getCborHex()),
+                            decodeScript(v2.getCborHex(), PlutusLanguage.PLUTUS_V2,
+                                    protocolMajor, protocolMinor),
                             PlutusLanguage.PLUTUS_V2);
                 } else if (ps instanceof PlutusV1Script v1) {
                     return new ResolvedScript(
-                            JulcScriptAdapter.toProgram(v1.getCborHex()),
+                            decodeScript(v1.getCborHex(), PlutusLanguage.PLUTUS_V1,
+                                    protocolMajor, protocolMinor),
                             PlutusLanguage.PLUTUS_V1);
                 }
             }
@@ -528,6 +542,18 @@ public class JulcTransactionEvaluator implements TransactionEvaluator {
 
         throw new IllegalStateException("Script not found: " + scriptHash
                 + ". Provide it in the witness set, reference inputs, or via ScriptSupplier.");
+    }
+
+    private Program decodeScript(
+            String cborHex,
+            PlutusLanguage language,
+            int protocolMajor,
+            int protocolMinor) {
+        return JulcScriptAdapter.toProgram(cborHex,
+                new com.bloxbean.cardano.julc.vm.LedgerEvaluationTarget(
+                        language,
+                        new com.bloxbean.cardano.julc.vm.ProtocolVersion(
+                                protocolMajor, protocolMinor)));
     }
 
     private ScriptInfo buildScriptInfo(ScriptPurpose purpose, Redeemer redeemer,

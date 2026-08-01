@@ -67,6 +67,21 @@ class ProtocolGatingParityTest {
         assertBackendParity(Program.plutusV3(shift), PlutusLanguage.PLUTUS_V3, 11);
     }
 
+    @Test
+    void constrDataIntegerAndWord64BoundariesMatchJava() {
+        var word64Maximum = BigInteger.ONE.shiftLeft(64).subtract(BigInteger.ONE);
+        var aboveWord64 = word64Maximum.add(BigInteger.ONE);
+
+        assertBackendParity(constrDataRoundTrip(BigInteger.ONE.negate(), true),
+                PlutusLanguage.PLUTUS_V3, 10);
+        assertBackendParity(constrDataRoundTrip(word64Maximum, true),
+                PlutusLanguage.PLUTUS_V3, 11);
+        assertBackendParity(constrDataRoundTrip(aboveWord64, true),
+                PlutusLanguage.PLUTUS_V3, 11);
+        assertBackendParity(constrDataRoundTrip(word64Maximum, false),
+                PlutusLanguage.PLUTUS_V1, 11);
+    }
+
     private void assertBackendParity(Program program, PlutusLanguage language, int protocol) {
         var target = new LedgerEvaluationTarget(language, new ProtocolVersion(protocol, 0));
         var javaResult = java.evaluate(program, target, null);
@@ -86,6 +101,18 @@ class ProtocolGatingParityTest {
         Term term = Term.builtin(fun);
         for (var arg : args) term = Term.apply(term, Term.const_(arg));
         return term;
+    }
+
+    private static Program constrDataRoundTrip(BigInteger tag, boolean plutusV3) {
+        var fields = new Constant.ListConst(DefaultUni.DATA, List.of());
+        var constr = Term.apply(
+                Term.apply(Term.builtin(DefaultFun.ConstrData),
+                        Term.const_(Constant.integer(tag))),
+                Term.const_(fields));
+        var unConstr = Term.apply(Term.builtin(DefaultFun.UnConstrData), constr);
+        return plutusV3
+                ? Program.plutusV3(unConstr)
+                : new Program(1, 0, 0, unConstr);
     }
 
     private static void assertFailure(EvalResult result, String expected) {

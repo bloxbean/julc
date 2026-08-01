@@ -32,18 +32,19 @@ public final class DataSerializer {
     }
 
     private static void writeConstrData(ByteArrayOutputStream out, PlutusData.ConstrData cd) {
-        int tag = cd.tag();
-        if (tag >= 0 && tag <= 6) {
+        BigInteger tag = cd.constructorTag();
+        if (tag.signum() >= 0 && tag.compareTo(BigInteger.valueOf(6)) <= 0) {
             // Compact encoding: tag 121-127
-            writeTag(out, 121 + tag);
-        } else if (tag >= 7 && tag <= 127) {
+            writeTag(out, 121 + tag.longValueExact());
+        } else if (tag.compareTo(BigInteger.valueOf(7)) >= 0
+                && tag.compareTo(BigInteger.valueOf(127)) <= 0) {
             // Compact encoding: tag 1280-1400
-            writeTag(out, 1280 + (tag - 7));
+            writeTag(out, 1280 + (tag.longValueExact() - 7));
         } else {
             // General encoding: tag 102, then [tag, fields]
             writeTag(out, 102);
             writeMajorArg(out, 4, 2); // outer definite array of 2: [tag, fields]
-            writeUnsigned(out, tag); // the tag
+            writeInteger(out, tag);
             writeDataArray(out, cd.fields());
             return;
         }
@@ -80,7 +81,10 @@ public final class DataSerializer {
     }
 
     private static void writeIntData(ByteArrayOutputStream out, PlutusData.IntData id) {
-        BigInteger value = id.value();
+        writeInteger(out, id.value());
+    }
+
+    private static void writeInteger(ByteArrayOutputStream out, BigInteger value) {
         if (value.signum() >= 0) {
             writeBigUnsigned(out, 0, value);
         } else {
@@ -112,8 +116,17 @@ public final class DataSerializer {
         writeMajorArg(out, 6, tag);
     }
 
-    private static void writeUnsigned(ByteArrayOutputStream out, long value) {
-        writeMajorArg(out, 0, value);
+    private static void writeUnsignedWord64(
+            ByteArrayOutputStream out, int major, long value) {
+        if (value >= 0) {
+            writeMajorArg(out, major, value);
+            return;
+        }
+        // Negative signed longs represent unsigned values 2^63..2^64-1.
+        out.write((major << 5) | 27);
+        for (int i = 56; i >= 0; i -= 8) {
+            out.write((int) ((value >>> i) & 0xff));
+        }
     }
 
     private static void writeMajorArg(ByteArrayOutputStream out, int major, long arg) {
@@ -142,8 +155,8 @@ public final class DataSerializer {
     }
 
     private static void writeBigUnsigned(ByteArrayOutputStream out, int major, BigInteger value) {
-        if (value.bitLength() <= 63) {
-            writeMajorArg(out, major, value.longValue());
+        if (value.bitLength() <= 64) {
+            writeUnsignedWord64(out, major, value.longValue());
         } else {
             // Big integer: tag 2 (positive) or 3 (negative) + bytestring
             writeTag(out, major == 0 ? 2 : 3);

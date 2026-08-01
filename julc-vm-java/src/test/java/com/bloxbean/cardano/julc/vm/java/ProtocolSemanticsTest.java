@@ -110,6 +110,45 @@ class ProtocolSemanticsTest {
                 bytes, indices, Constant.bool(true)), "4096-byte bound");
     }
 
+    @Test
+    void constrDataUsesIntegerInBCAndWord64InDE() {
+        BigInteger word64Maximum = BigInteger.ONE.shiftLeft(64).subtract(BigInteger.ONE);
+        BigInteger aboveWord64 = word64Maximum.add(BigInteger.ONE);
+
+        assertConstrTag(roundTripConstrTag(
+                PlutusLanguage.PLUTUS_V3, 11, BigInteger.ZERO), BigInteger.ZERO);
+        assertConstrTag(roundTripConstrTag(
+                PlutusLanguage.PLUTUS_V3, 11, word64Maximum), word64Maximum);
+        assertConstrTag(roundTripConstrTag(
+                PlutusLanguage.PLUTUS_V1, 11, word64Maximum), word64Maximum);
+        assertFailure(roundTripConstrTag(
+                PlutusLanguage.PLUTUS_V3, 11, BigInteger.ONE.negate()), "Word64");
+        assertFailure(roundTripConstrTag(
+                PlutusLanguage.PLUTUS_V3, 11, aboveWord64), "Word64");
+
+        // Pre-D/E variants pass an arbitrary Integer to Data.Constr.
+        assertConstrTag(roundTripConstrTag(
+                PlutusLanguage.PLUTUS_V3, 10, BigInteger.ONE.negate()),
+                BigInteger.ONE.negate());
+        assertConstrTag(roundTripConstrTag(
+                PlutusLanguage.PLUTUS_V2, 10, aboveWord64), aboveWord64);
+    }
+
+    private EvalResult roundTripConstrTag(
+            PlutusLanguage language, int protocol, BigInteger tag) {
+        var fields = new Constant.ListConst(DefaultUni.DATA, List.of());
+        Term constr = Term.apply(
+                Term.apply(Term.builtin(DefaultFun.ConstrData),
+                        Term.const_(Constant.integer(tag))),
+                Term.const_(fields));
+        Term unConstr = Term.apply(Term.builtin(DefaultFun.UnConstrData), constr);
+        Program program = language == PlutusLanguage.PLUTUS_V3
+                ? Program.plutusV3(unConstr)
+                : new Program(1, 0, 0, unConstr);
+        return provider.evaluate(program, new LedgerEvaluationTarget(
+                language, new ProtocolVersion(protocol, 0)), null);
+    }
+
     private EvalResult evaluate(DefaultFun fun, PlutusLanguage language, int protocol,
                                 Constant... args) {
         Term term = Term.builtin(fun);
@@ -148,5 +187,12 @@ class ProtocolSemanticsTest {
         var term = assertInstanceOf(Term.Const.class, assertSuccess(result).resultTerm());
         var bytes = assertInstanceOf(Constant.ByteStringConst.class, term.value());
         assertArrayEquals(expected, bytes.value());
+    }
+
+    private static void assertConstrTag(EvalResult result, BigInteger expected) {
+        var term = assertInstanceOf(Term.Const.class, assertSuccess(result).resultTerm());
+        var pair = assertInstanceOf(Constant.PairConst.class, term.value());
+        var tag = assertInstanceOf(Constant.IntegerConst.class, pair.first());
+        assertEquals(expected, tag.value());
     }
 }

@@ -73,6 +73,13 @@ class DataSerializerTest {
     }
 
     @Test
+    void constrGeneralFormSupportsMaxWord64Tag() {
+        var maximum = java.math.BigInteger.ONE.shiftLeft(64).subtract(java.math.BigInteger.ONE);
+        assertBytes("d866821bffffffffffffffff80",
+                PlutusData.ConstrData.fromUnsignedTag(maximum, java.util.List.of()));
+    }
+
+    @Test
     void nestedConstrListBytesMatchesCanonical() {
         assertBytes("d8799f9fd87a9f09ffff41abff",
                 PlutusData.constr(0,

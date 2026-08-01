@@ -135,11 +135,10 @@ public final class PlutusDataCborDecoder {
             BigInteger tagValue;
             if (items.get(0) instanceof UnsignedInteger ui) {
                 tagValue = ui.getValue();
-            } else if (items.get(0) instanceof NegativeInteger ni) {
-                tagValue = ni.getValue();
             } else {
                 throw new CborDecodingException(
-                        "Expected integer for Constr tag, got: " + items.get(0).getMajorType());
+                        "Expected unsigned Word64 for Constr tag, got: "
+                                + items.get(0).getMajorType());
             }
             if (items.get(1) instanceof Array fieldsArray) {
                 var fields = new ArrayList<PlutusData>();
@@ -147,9 +146,10 @@ public final class PlutusDataCborDecoder {
                     fields.add(fromDataItem(elem));
                 }
                 try {
-                    return new PlutusData.ConstrData(tagValue.intValueExact(), fields);
-                } catch (ArithmeticException e) {
-                    throw new CborDecodingException("Constr tag exceeds int range: " + tagValue, e);
+                    return PlutusData.ConstrData.fromUnsignedTag(tagValue, fields);
+                } catch (IllegalArgumentException e) {
+                    throw new CborDecodingException(
+                            "Constr tag exceeds unsigned Word64 range: " + tagValue, e);
                 }
             }
             throw new CborDecodingException("Expected array for Constr fields in general encoding");

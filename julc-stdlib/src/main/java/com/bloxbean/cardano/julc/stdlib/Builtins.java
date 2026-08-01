@@ -121,7 +121,7 @@ public final class Builtins {
 
     /** Construct a Data value from tag and fields. */
     public static PlutusData.ConstrData constrData(long tag, PlutusData fields) {
-        return new PlutusData.ConstrData((int) tag, toList(fields));
+        return new PlutusData.ConstrData(BigInteger.valueOf(tag), toList(fields));
     }
 
     /** Wrap an integer as IntData. */
@@ -178,7 +178,7 @@ public final class Builtins {
     public static PlutusData.ConstrData unConstrData(PlutusData data) {
         if (data instanceof PlutusData.ConstrData c) {
             return new PlutusData.ConstrData(0, List.of(
-                    new PlutusData.IntData(BigInteger.valueOf(c.tag())),
+                    new PlutusData.IntData(c.constructorTag()),
                     new PlutusData.ListData(c.fields())));
         }
         throw new IllegalArgumentException("unConstrData: expected Constr, got " + data);

@@ -25,6 +25,12 @@ import java.util.ServiceLoader;
  * // Traces are in the result: result.executionTrace(), result.builtinTrace()
  * }</pre>
  *
+ * <p>The language-only overloads are compatibility APIs. The Java and Truffle
+ * providers use the protocol retained with a configured cost model, or PV10
+ * when none is configured. Ledger validation should use an overload accepting
+ * {@link LedgerEvaluationTarget}; providers without protocol-aware support fail
+ * closed on that canonical path.</p>
+ *
  * @see JulcVmProvider
  */
 public final class JulcVm {
@@ -124,7 +130,10 @@ public final class JulcVm {
 
     // --- Evaluate with default options ---
 
-    /** Evaluate a UPLC program with unlimited budget and default options. */
+    /**
+     * Evaluate through the provider's language-only compatibility path.
+     * Java and Truffle default this path to PV10 when no model is configured.
+     */
     public EvalResult evaluate(Program program) {
         return provider.evaluate(program, language, null);
     }

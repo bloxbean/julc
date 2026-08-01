@@ -13,16 +13,27 @@ import java.util.List;
 public final class UplcFlatDecoder {
 
     private final FlatReader reader;
+    private final FlatDecodeLimits limits;
 
     public UplcFlatDecoder(FlatReader reader) {
+        this(reader, FlatDecodeLimits.UNBOUNDED);
+    }
+
+    public UplcFlatDecoder(FlatReader reader, FlatDecodeLimits limits) {
         this.reader = reader;
+        this.limits = java.util.Objects.requireNonNull(limits, "limits");
     }
 
     /**
      * Decode a complete program from FLAT bytes.
      */
     public static Program decodeProgram(byte[] data) {
-        var decoder = new UplcFlatDecoder(new FlatReader(data));
+        return decodeProgram(data, FlatDecodeLimits.UNBOUNDED);
+    }
+
+    /** Decode with protocol-selected ledger limits. */
+    public static Program decodeProgram(byte[] data, FlatDecodeLimits limits) {
+        var decoder = new UplcFlatDecoder(new FlatReader(data), limits);
         return decoder.readProgram();
     }
 
@@ -75,21 +86,25 @@ public final class UplcFlatDecoder {
             }
             case 8 -> { // Constr
                 long constrTag = reader.word64();
-                List<Term> fields = readTermList();
+                List<Term> fields = readTermList(limits.maxConstructorFields());
                 yield new Term.Constr(constrTag, fields);
             }
             case 9 -> { // Case
                 Term scrutinee = readTerm();
-                List<Term> branches = readTermList();
+                List<Term> branches = readTermList(Integer.MAX_VALUE);
                 yield new Term.Case(scrutinee, branches);
             }
             default -> throw new FlatDecodingException("Unknown Term tag: " + tag);
         };
     }
 
-    private List<Term> readTermList() {
+    private List<Term> readTermList(int maximumSize) {
         var terms = new ArrayList<Term>();
         while (reader.listHasNext()) {
+            if (terms.size() >= maximumSize) {
+                throw new FlatDecodingException(
+                        "Constr has more than " + maximumSize + " fields");
+            }
             terms.add(readTerm());
         }
         return terms;
@@ -102,6 +117,11 @@ public final class UplcFlatDecoder {
         var typeTags = readTypeTagList();
         int[] pos = {0};
         DefaultUni type = readUniType(typeTags, pos);
+        if (pos[0] != typeTags.size()) {
+            throw new FlatDecodingException(
+                    "Constant type header has trailing tags: "
+                            + (typeTags.size() - pos[0]));
+        }
         return readConstantValueForType(type);
     }
 
@@ -112,6 +132,11 @@ public final class UplcFlatDecoder {
     private List<Integer> readTypeTagList() {
         var tags = new ArrayList<Integer>();
         while (reader.bit()) {  // true = element present
+            if (tags.size() >= limits.maxConstantTypeNodes()) {
+                throw new FlatDecodingException(
+                        "Constant type header exceeds "
+                                + limits.maxConstantTypeNodes() + " nodes");
+            }
             int tag = reader.bits8(4);
             tags.add(tag);
         }

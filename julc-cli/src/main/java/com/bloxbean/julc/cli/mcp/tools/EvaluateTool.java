@@ -477,7 +477,8 @@ public final class EvaluateTool {
             case PlutusData.ConstrData c -> {
                 var fields = new ArrayList<Object>(c.fields().size());
                 for (var f : c.fields()) fields.add(renderPlutusData(f, depth + 1));
-                yield Map.of("constr", Map.of("tag", c.tag(), "fields", fields));
+                yield Map.of("constr", Map.of(
+                        "tag", c.constructorTag(), "fields", fields));
             }
             case PlutusData.ListData l -> {
                 var items = new ArrayList<Object>(l.items().size());

@@ -30,6 +30,11 @@ import java.util.List;
  * Note: This provider does not support source maps, execution tracing, or builtin
  * trace collection. {@link EvalOptions} is accepted but ignored — traces in the
  * returned {@link EvalResult} will always be empty.
+ *
+ * <p>The protocol-aware {@link LedgerEvaluationTarget} SPI is intentionally not
+ * implemented. Calling it fails closed through {@link JulcVmProvider}'s default
+ * method, so this backend is excluded from ADR-030's PV10/PV11 ledger-parity
+ * claim until it passes the same pinned profile matrix as Java and Truffle.</p>
  */
 public class ScalusVmProvider implements JulcVmProvider {
 

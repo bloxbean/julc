@@ -302,7 +302,7 @@ public final class UplcPrinter {
             }
             case PlutusData.ConstrData c -> {
                 sb.append("Constr ");
-                sb.append(c.tag());
+                sb.append(c.constructorTag());
                 sb.append(" [");
                 for (int i = 0; i < c.fields().size(); i++) {
                     if (i > 0) sb.append(", ");

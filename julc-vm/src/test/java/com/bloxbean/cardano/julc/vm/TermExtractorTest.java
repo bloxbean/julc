@@ -168,6 +168,17 @@ class TermExtractorTest {
             assertEquals(0, constr.tag());
             assertEquals(1, constr.fields().size());
         }
+
+        @Test
+        void preservesCompleteWord64TagFromV3ConstrTerm() {
+            var term = new Term.Constr(-1L, List.of());
+
+            var constr = assertInstanceOf(
+                    PlutusData.ConstrData.class, TermExtractor.extractData(term));
+
+            assertEquals(BigInteger.ONE.shiftLeft(64).subtract(BigInteger.ONE),
+                    constr.constructorTag());
+        }
     }
 
     @Nested
