@@ -15,8 +15,12 @@ truth:
 Contents: 999 test cases, each with `<name>.uplc` (input),
 `<name>.uplc.expected` (result), and `<name>.uplc.budget.expected` (CPU/mem
 budget). The 728 numeric budget files were generated upstream with the default
-cost model at the pinned commit (semantics variant C for PlutusV3/PV10) and are
-asserted exactly by `PlutusConformanceTest` in `julc-vm-java`.
+cost model at the pinned commit (semantics variant C). Under the real V3/PV10
+ledger profile, 236 fixtures using the PV11-only Batch 6 builtins are marked
+unavailable, as are 26 fixtures that use PV11-only `Case` on builtin constants;
+the remaining 737 fixtures include 545 exact numeric budget comparisons. This
+prevents an expected-failure fixture from passing at PV10 merely because a
+protocol gate rejected it first.
 
 Everything under this directory except this file comes verbatim from upstream —
 do not hand-edit test data. To verify the mirror:
@@ -42,14 +46,18 @@ issue #61:
   more than `maxBound::Int64` now fail
   ([#7754](https://github.com/IntersectMBO/plutus/pull/7754)).
 
-This snapshot intentionally keeps the pre-D/E (variant C / PV10) expectations
-until julc implements variant selection (issue #61 / ADR-030).
+This snapshot intentionally remains the pre-D/E profile (variant C / PV10).
+The 65 expectations that differ in the pinned node release are stored as the
+adjacent `conformance-pv11` overlay and are run as the V3/PV11/E profile. The
+shared inputs and all unchanged expectations continue to come from this base,
+so neither profile can drift independently or silently stop asserting budgets.
 
 ## Known upstream drift since the pinned commit
 
-Re-syncing to a newer commit is tied to semantics-variant support
-(issue [#61](https://github.com/bloxbean/julc/issues/61), ADR-030). Upstream
-changes after `643ddd135` include:
+The PV11 overlay is intentionally pinned to the Plutus commit shipped by
+cardano-node 11.0.1. Later Plutus `master` is outside issue
+[#61](https://github.com/bloxbean/julc/issues/61) and ADR-030. Upstream changes
+after the base commit include:
 
 - Budget files renamed `<name>.uplc.budget.expected` → `<name>.budget.expected`
   and `.flat`/`.flat.expected` encodings added
@@ -66,4 +74,5 @@ changes after `643ddd135` include:
   refactored ([#7837](https://github.com/IntersectMBO/plutus/pull/7837)); new
   duplicate-currency-ID case ([#7850](https://github.com/IntersectMBO/plutus/pull/7850)).
 
-When re-syncing, update the pinned commit, date, and this drift list.
+When changing either profile, update its pinned commit, date, expected file
+counts, and this drift list in the same change.

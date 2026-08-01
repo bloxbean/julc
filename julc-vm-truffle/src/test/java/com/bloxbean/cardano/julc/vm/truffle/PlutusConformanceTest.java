@@ -6,6 +6,7 @@ import com.bloxbean.cardano.julc.core.text.UplcPrinter;
 import com.bloxbean.cardano.julc.vm.EvalResult;
 import com.bloxbean.cardano.julc.vm.LedgerEvaluationTarget;
 import com.bloxbean.cardano.julc.vm.PlutusLanguage;
+import com.bloxbean.cardano.julc.vm.ProtocolFeatureRegistry;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;
 
@@ -24,6 +25,17 @@ class PlutusConformanceTest {
 
     private static final TruffleVmProvider PROVIDER = new TruffleVmProvider();
 
+    private static final int EXPECTED_CASE_COUNT = 999;
+    private static final int EXPECTED_BASE_NUMERIC_BUDGETS = 545;
+    private static final int EXPECTED_PV11_NUMERIC_BUDGETS = 724;
+    private static final int EXPECTED_PV10_APPLICABLE_CASES = 737;
+    private static final int EXPECTED_PV11_OVERRIDES = 65;
+    private static final int EXPECTED_PV11_BUDGET_OVERRIDES = 61;
+    private static final int EXPECTED_PV11_RESULT_OVERRIDES = 4;
+
+    private static final java.util.regex.Pattern BUDGET_PATTERN =
+            java.util.regex.Pattern.compile("cpu:\\s*(\\d+)\\s*\\|\\s*mem:\\s*(\\d+)");
+
     private static final Set<String> SKIP_DIRS = Set.of(
     );
 
@@ -34,33 +46,73 @@ class PlutusConformanceTest {
     Stream<DynamicTest> plutusConformanceTests() throws IOException, URISyntaxException {
         var conformanceDir = Paths.get(
                 Objects.requireNonNull(getClass().getResource("/conformance")).toURI());
+        var pv11OverlayDir = Paths.get(
+                Objects.requireNonNull(getClass().getResource("/conformance-pv11")).toURI());
+
+        var uplcFiles = findInputFiles(conformanceDir);
+        verifyCorpusProvenance(conformanceDir, pv11OverlayDir, uplcFiles);
+
+        var profiles = List.of(
+                new ConformanceProfile("V3/PV10/C",
+                        LedgerEvaluationTarget.pv10(PlutusLanguage.PLUTUS_V3),
+                        null,
+                        EXPECTED_PV10_APPLICABLE_CASES,
+                        EXPECTED_BASE_NUMERIC_BUDGETS),
+                new ConformanceProfile("V3/PV11/E",
+                        LedgerEvaluationTarget.pv11(PlutusLanguage.PLUTUS_V3),
+                        pv11OverlayDir,
+                        EXPECTED_CASE_COUNT,
+                        EXPECTED_PV11_NUMERIC_BUDGETS));
 
         var testCases = new ArrayList<DynamicTest>();
-        try (var walk = Files.walk(conformanceDir)) {
-            walk.filter(p -> p.toString().endsWith(".uplc"))
-                    .filter(p -> !p.toString().endsWith(".expected"))
-                    .sorted()
-                    .forEach(uplcFile -> {
-                        var expectedFile = Paths.get(uplcFile + ".expected");
-                        if (!Files.exists(expectedFile)) return;
+        for (var profile : profiles) {
+            int numericBudgetCount = countNumericBudgetComparisons(
+                    conformanceDir, profile, uplcFiles);
+            requireCount(profile.expectedNumericBudgets(), numericBudgetCount,
+                    profile.name() + " numeric budget comparisons");
 
-                        String testName = getTestName(conformanceDir, uplcFile);
+            int applicableCases = 0;
+            for (var uplcFile : uplcFiles) {
+                var relative = conformanceDir.relativize(uplcFile);
+                var expectedFile = selectExpectation(
+                        conformanceDir, profile.overlayDir(), relative + ".expected");
+                var budgetFile = selectExpectation(
+                        conformanceDir, profile.overlayDir(), relative + ".budget.expected");
+                String testName = "[" + profile.name() + "] "
+                        + getTestName(conformanceDir, uplcFile);
 
-                        if (shouldSkip(uplcFile)) {
-                            testCases.add(DynamicTest.dynamicTest("[SKIP] " + testName,
-                                    () -> org.junit.jupiter.api.Assumptions.assumeTrue(false,
-                                            "Skipped — see SKIP_DIRS/SKIP_PATH_CONTAINS")));
-                            return;
-                        }
+                if (!isApplicable(uplcFile, profile.target())) {
+                    testCases.add(DynamicTest.dynamicTest("[UNAVAILABLE] " + testName,
+                            () -> org.junit.jupiter.api.Assumptions.assumeTrue(false,
+                                    "The program uses a builtin unavailable in this ledger profile")));
+                    continue;
+                }
+                applicableCases++;
 
-                        testCases.add(DynamicTest.dynamicTest(testName,
-                                () -> runConformanceTest(uplcFile, expectedFile)));
-                    });
+                if (shouldSkip(uplcFile)) {
+                    testCases.add(DynamicTest.dynamicTest("[SKIP] " + testName,
+                            () -> org.junit.jupiter.api.Assumptions.assumeTrue(false,
+                                    "Skipped — see SKIP_DIRS/SKIP_PATH_CONTAINS")));
+                    continue;
+                }
+
+                testCases.add(DynamicTest.dynamicTest(testName,
+                        () -> runConformanceTest(
+                                uplcFile, expectedFile, budgetFile, profile.target())));
+            }
+            requireCount(profile.expectedApplicableCases(), applicableCases,
+                    profile.name() + " applicable conformance cases");
         }
+        requireCount(EXPECTED_CASE_COUNT * profiles.size(), testCases.size(),
+                "profiled conformance tests");
         return testCases.stream();
     }
 
-    private void runConformanceTest(Path uplcFile, Path expectedFile) throws IOException {
+    private void runConformanceTest(
+            Path uplcFile,
+            Path expectedFile,
+            Path budgetFile,
+            LedgerEvaluationTarget target) throws IOException {
         String input = Files.readString(uplcFile).trim();
         String expected = Files.readString(expectedFile).trim();
 
@@ -80,8 +132,7 @@ class PlutusConformanceTest {
                     "Expected parse error but parsing succeeded.\nInput: " + input);
         }
 
-        EvalResult result = PROVIDER.evaluate(program,
-                LedgerEvaluationTarget.pv11(PlutusLanguage.PLUTUS_V3), null);
+        EvalResult result = PROVIDER.evaluate(program, target, null);
 
         if ("evaluation failure".equals(expected)) {
             if (result.isSuccess()) {
@@ -130,6 +181,157 @@ class PlutusConformanceTest {
                         "Input:    " + input);
             }
         }
+
+        verifyBudget(budgetFile, result, input);
+    }
+
+    private void verifyBudget(Path budgetFile, EvalResult result, String input) throws IOException {
+        String budgetExpected = Files.readString(budgetFile).trim();
+        var matcher = BUDGET_PATTERN.matcher(budgetExpected);
+        if (!matcher.find()) {
+            if ("evaluation failure".equals(budgetExpected) || "parse error".equals(budgetExpected)) {
+                return;
+            }
+            throw new AssertionError(
+                    "Unrecognized budget file format: " + budgetFile + "\nContent: " + budgetExpected);
+        }
+
+        long expectedCpu = Long.parseLong(matcher.group(1));
+        long expectedMem = Long.parseLong(matcher.group(2));
+        var consumed = result.budgetConsumed();
+        if (consumed.cpuSteps() != expectedCpu || consumed.memoryUnits() != expectedMem) {
+            throw new AssertionError(
+                    "Budget mismatch.\n" +
+                    "Expected: cpu=" + expectedCpu + ", mem=" + expectedMem + "\n" +
+                    "Actual:   cpu=" + consumed.cpuSteps() + ", mem=" + consumed.memoryUnits() + "\n" +
+                    "Input:    " + input);
+        }
+    }
+
+    private List<Path> findInputFiles(Path conformanceDir) throws IOException {
+        try (var walk = Files.walk(conformanceDir)) {
+            return walk.filter(p -> p.toString().endsWith(".uplc"))
+                    .filter(p -> !p.toString().endsWith(".expected"))
+                    .sorted()
+                    .toList();
+        }
+    }
+
+    private void verifyCorpusProvenance(
+            Path conformanceDir, Path pv11OverlayDir, List<Path> uplcFiles) throws IOException {
+        requireCount(EXPECTED_CASE_COUNT, uplcFiles.size(), "base input cases");
+
+        var overlayFiles = new ArrayList<Path>();
+        try (var walk = Files.walk(pv11OverlayDir)) {
+            walk.filter(Files::isRegularFile)
+                    .filter(path -> !path.getFileName().toString().equals("README.md"))
+                    .sorted()
+                    .forEach(overlayFiles::add);
+        }
+        requireCount(EXPECTED_PV11_OVERRIDES, overlayFiles.size(), "PV11 overlay files");
+        requireCount(EXPECTED_PV11_BUDGET_OVERRIDES,
+                overlayFiles.stream()
+                        .filter(p -> p.toString().endsWith(".budget.expected"))
+                        .count(),
+                "PV11 budget overrides");
+        requireCount(EXPECTED_PV11_RESULT_OVERRIDES,
+                overlayFiles.stream()
+                        .filter(p -> p.toString().endsWith(".uplc.expected"))
+                        .count(),
+                "PV11 result overrides");
+
+        for (var overlayFile : overlayFiles) {
+            var baseFile = conformanceDir.resolve(pv11OverlayDir.relativize(overlayFile));
+            if (!Files.isRegularFile(baseFile)) {
+                throw new AssertionError("PV11 override has no base counterpart: " + overlayFile);
+            }
+            if (Files.readString(baseFile).trim().equals(Files.readString(overlayFile).trim())) {
+                throw new AssertionError("PV11 override does not change its base file: " + overlayFile);
+            }
+        }
+    }
+
+    private int countNumericBudgetComparisons(
+            Path conformanceDir, ConformanceProfile profile, List<Path> uplcFiles) throws IOException {
+        int count = 0;
+        for (var uplcFile : uplcFiles) {
+            if (!isApplicable(uplcFile, profile.target())) {
+                continue;
+            }
+            var relative = conformanceDir.relativize(uplcFile);
+            var budgetFile = selectExpectation(
+                    conformanceDir, profile.overlayDir(), relative + ".budget.expected");
+            if (BUDGET_PATTERN.matcher(Files.readString(budgetFile)).find()) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private boolean isApplicable(Path uplcFile, LedgerEvaluationTarget target) throws IOException {
+        try {
+            var program = UplcParser.parseProgram(Files.readString(uplcFile).trim());
+            var profile = ProtocolFeatureRegistry.resolve(target);
+            return isApplicable(program.term(), profile.availableBuiltins(),
+                    profile.caseOnBuiltinConstants());
+        } catch (Exception ignored) {
+            // Parse-error fixtures still belong to both profiles and must be asserted.
+            return true;
+        }
+    }
+
+    private boolean isApplicable(
+            Term term, Set<DefaultFun> available, boolean caseOnBuiltinConstants) {
+        return switch (term) {
+            case Term.Var _ -> true;
+            case Term.Lam lam -> isApplicable(lam.body(), available, caseOnBuiltinConstants);
+            case Term.Apply apply -> isApplicable(
+                    apply.function(), available, caseOnBuiltinConstants)
+                    && isApplicable(apply.argument(), available, caseOnBuiltinConstants);
+            case Term.Force force -> isApplicable(
+                    force.term(), available, caseOnBuiltinConstants);
+            case Term.Delay delay -> isApplicable(
+                    delay.term(), available, caseOnBuiltinConstants);
+            case Term.Const _, Term.Error _ -> true;
+            case Term.Builtin builtin -> available.contains(builtin.fun());
+            case Term.Constr constr -> constr.fields().stream()
+                    .allMatch(field -> isApplicable(
+                            field, available, caseOnBuiltinConstants));
+            case Term.Case caseTerm -> (caseOnBuiltinConstants
+                    || !(caseTerm.scrutinee() instanceof Term.Const))
+                    && isApplicable(caseTerm.scrutinee(), available, caseOnBuiltinConstants)
+                    && caseTerm.branches().stream()
+                    .allMatch(branch -> isApplicable(
+                            branch, available, caseOnBuiltinConstants));
+        };
+    }
+
+    private Path selectExpectation(Path baseDir, Path overlayDir, String relativePath) {
+        if (overlayDir != null) {
+            var overlayFile = overlayDir.resolve(relativePath);
+            if (Files.isRegularFile(overlayFile)) {
+                return overlayFile;
+            }
+        }
+        var baseFile = baseDir.resolve(relativePath);
+        if (!Files.isRegularFile(baseFile)) {
+            throw new AssertionError("Missing conformance expectation: " + baseFile);
+        }
+        return baseFile;
+    }
+
+    private void requireCount(long expected, long actual, String description) {
+        if (actual != expected) {
+            throw new AssertionError(description + ": expected " + expected + " but found " + actual);
+        }
+    }
+
+    private record ConformanceProfile(
+            String name,
+            LedgerEvaluationTarget target,
+            Path overlayDir,
+            int expectedApplicableCases,
+            int expectedNumericBudgets) {
     }
 
     // --- Structural equality (same as Java VM conformance test) ---
