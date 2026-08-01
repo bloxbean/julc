@@ -81,11 +81,8 @@ class V1V2CostModelParserTest {
     }
 
     @Test
-    void exactSchemaLengthsDoNotInferUnknownLayouts() {
+    void extraParametersDoNotInferUnknownLayouts() {
         for (var schema : SCHEMAS) {
-            assertThrows(IllegalArgumentException.class, () -> CostModelParser.parse(
-                    new long[schema.count() - 1], schema.language(), schema.protocol(), 0),
-                    "short " + schema);
             assertThrows(IllegalArgumentException.class, () -> CostModelParser.parse(
                     new long[schema.count() + 1], schema.language(), schema.protocol(), 0),
                     "long " + schema);

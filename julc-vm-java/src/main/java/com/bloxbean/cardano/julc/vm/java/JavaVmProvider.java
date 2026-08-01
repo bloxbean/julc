@@ -20,6 +20,9 @@ import java.util.List;
  */
 public class JavaVmProvider implements JulcVmProvider {
 
+    private static final System.Logger LOGGER =
+            System.getLogger(JavaVmProvider.class.getName());
+
     private volatile ConfiguredCostModel customV1CostModel;
     private volatile ConfiguredCostModel customV2CostModel;
     private volatile ConfiguredCostModel customV3CostModel;
@@ -31,6 +34,8 @@ public class JavaVmProvider implements JulcVmProvider {
                 language, new ProtocolVersion(protocolMajorVersion, protocolMinorVersion));
         var profile = ProtocolFeatureRegistry.resolve(target);
         var parsed = CostModelParser.parse(costModelValues, language, protocolMajorVersion, protocolMinorVersion);
+        parsed.warnings().forEach(warning ->
+                LOGGER.log(System.Logger.Level.WARNING, warning.message()));
         var configured = new ConfiguredCostModel(parsed, target, profile);
         switch (language) {
             case PLUTUS_V1 -> this.customV1CostModel = configured;
