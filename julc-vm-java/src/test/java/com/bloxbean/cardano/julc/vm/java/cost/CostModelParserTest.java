@@ -157,15 +157,13 @@ class CostModelParserTest {
     }
 
     @Test
-    void parse_longerArray_accepted() {
-        // Longer arrays should parse without error at PV10, using first 297
+    void parse_longerArray_rejectedAsUnknownSchema() {
         long[] flat = new long[400];
         long[] defaultFlat = CostModelParser.defaultToFlatArray();
         System.arraycopy(defaultFlat, 0, flat, 0, 297);
 
-        var parsed = CostModelParser.parse(flat);
-        assertNotNull(parsed);
-        assertEquals(DefaultCostModel.defaultMachineCosts(), parsed.machineCosts());
+        assertThrows(IllegalArgumentException.class,
+                () -> CostModelParser.parse(flat));
     }
 
     @Test
@@ -389,13 +387,12 @@ class CostModelParserTest {
     }
 
     @Test
-    void parse_pv11_longerArray_accepted() {
+    void parse_pv11_longerArray_rejectedAsUnknownSchema() {
         long[] flat = new long[400];
         long[] pv11Flat = CostModelParser.defaultToFlatArray(11);
         System.arraycopy(pv11Flat, 0, flat, 0, 350);
-        var parsed = CostModelParser.parse(flat, 11);
-        assertNotNull(parsed);
-        assertEquals(DefaultCostModel.defaultMachineCosts(), parsed.machineCosts());
+        assertThrows(IllegalArgumentException.class,
+                () -> CostModelParser.parse(flat, 11));
     }
 
     @Test

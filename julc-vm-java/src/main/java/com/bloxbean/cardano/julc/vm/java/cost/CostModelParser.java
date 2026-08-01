@@ -12,23 +12,34 @@ import static com.bloxbean.cardano.julc.vm.java.cost.CostFunction.*;
  * Parses a flat cost model parameter array (as stored on-chain in Cardano protocol parameters)
  * into {@link MachineCosts} and {@link BuiltinCostModel}.
  * <p>
- * The flat array follows the canonical ordering defined by the Plutus specification
- * ({@code PlutusLedgerApi.V3.ParamName} in the Haskell source). This is NOT purely
- * alphabetical — V3 and Plomin additions are appended at the end for backward compatibility.
- * <p>
- * Machine costs are split: 8 original CEK step types at indices 17–32, and
- * CONSTR/CASE at indices 193–196.
+ * Each flat array follows the canonical ordering of its ledger language's
+ * {@code PlutusLedgerApi.V<n>.ParamName} enumeration. The supported schemas are
+ * pinned to cardano-node 11.0.1 / Plutus 1.63.0.0 at commit
+ * {@code f92b7d7d82622a26caf456a6be33859f697e2cfc}.
+ *
+ * <p>The order is append-only rather than globally alphabetical. In particular,
+ * V1, V2, and V3 have different legacy cost-function shapes and different
+ * locations for later machine and builtin parameters.</p>
  */
 public final class CostModelParser {
 
     /** Result of parsing a flat cost model array. */
     public record ParsedCostModel(MachineCosts machineCosts, BuiltinCostModel builtinCostModel) {}
 
-    /** Expected parameter count for PlutusV1 (Alonzo era). */
+    /** Plutus V1 before PV11. Retained under the original public name. */
     public static final int V1_PARAM_COUNT = 166;
 
-    /** Expected parameter count for PlutusV2 (Babbage era). */
+    /** Plutus V2 before the PV10 Batch 4b append. Retained for compatibility. */
     public static final int V2_PARAM_COUNT = 175;
+
+    /** Plutus V2 at PV10: legacy V2 plus the two Batch 4b conversions. */
+    public static final int V2_PV10_PARAM_COUNT = 185;
+
+    /** Plutus V1 at PV11, in V1.ParamName order. */
+    public static final int V1_PV11_PARAM_COUNT = 332;
+
+    /** Plutus V2 at PV11, in V2.ParamName order. */
+    public static final int V2_PV11_PARAM_COUNT = 332;
 
     /** Expected parameter count for PlutusV3 PV10 (post-Plomin, current mainnet). */
     public static final int PV10_PARAM_COUNT = 297;
@@ -50,7 +61,7 @@ public final class CostModelParser {
      * @param values   the flat cost model array from protocol parameters
      * @param language the Plutus language version
      * @return parsed machine costs and builtin cost model
-     * @throws IllegalArgumentException if the array is too short
+     * @throws IllegalArgumentException if the target or exact schema is unsupported
      */
     public static ParsedCostModel parse(long[] values, PlutusLanguage language) {
         return parse(values, language, 10, 0);
@@ -60,15 +71,10 @@ public final class CostModelParser {
      * Parse a flat cost model parameter array for the specified Plutus language version
      * and protocol version.
      * <p>
-     * The protocol version determines the expected parameter count for ALL language
-     * versions (V1/V2/V3), since new builtins are added to all versions in each
-     * protocol version. For example, PV10 (Plomin) added bitwise builtins to V1/V2/V3,
-     * increasing the parameter count for all three.
-     * <p>
      * Currently supported:
      * <ul>
-     *   <li>V1 PV9: 166 params, PV10: 166+ (extra params accepted but unused)</li>
-     *   <li>V2 PV9: 175 params, PV10: 175+ (extra params accepted but unused)</li>
+     *   <li>V1 PV5–PV10: 166 params; PV11: 332 params</li>
+     *   <li>V2 PV7–PV9: 175 params; PV10: 185 params; PV11: 332 params</li>
      *   <li>V3 PV10: 297 params, PV11: 350 params</li>
      * </ul>
      *
@@ -77,131 +83,131 @@ public final class CostModelParser {
      * @param protocolMajorVersion the protocol major version (e.g. 9 for Chang, 10 for Plomin)
      * @param protocolMinorVersion the protocol minor version
      * @return parsed machine costs and builtin cost model
-     * @throws IllegalArgumentException if the array is too short
+     * @throws IllegalArgumentException if the target or exact schema is unsupported
      */
     public static ParsedCostModel parse(long[] values, PlutusLanguage language,
                                          int protocolMajorVersion, int protocolMinorVersion) {
+        if (protocolMinorVersion < 0) {
+            throw new IllegalArgumentException("Protocol minor version must be non-negative");
+        }
         return switch (language) {
-            case PLUTUS_V1 -> parseV1(values, protocolMajorVersion, protocolMinorVersion);
-            case PLUTUS_V2 -> parseV2(values, protocolMajorVersion, protocolMinorVersion);
+            case PLUTUS_V1 -> parseV1(values, protocolMajorVersion);
+            case PLUTUS_V2 -> parseV2(values, protocolMajorVersion);
             case PLUTUS_V3 -> parse(values, protocolMajorVersion);
         };
     }
 
     /**
-     * Parse a PlutusV1 cost model parameter array.
-     * <p>
-     * Extracts machine costs from the array. Builtin costs use V1 defaults
-     * since the V1 cost function shapes may differ from V3.
-     * <p>
-     * The protocol version is reserved for future use — when new builtins are
-     * added to V1 in a future protocol version, this method will branch on the
-     * version to parse the additional cost parameters.
-     *
-     * @param protocolMajorVersion protocol major version
-     * @param protocolMinorVersion protocol minor version
+     * Return the exact flat-array length for a known language/protocol schema.
+     * Unknown targets are not inferred from an array length.
      */
-    private static ParsedCostModel parseV1(long[] values, int protocolMajorVersion,
-                                            int protocolMinorVersion) {
-        // At PV11, V1/V2 arrays grow too — accept longer arrays but use defaults for new builtins.
-        // TODO: Parse additional V1 PV11 params when exact V1 PV11 param counts are verified.
-        if (values.length < V1_PARAM_COUNT) {
-            throw new IllegalArgumentException(
-                    "PlutusV1 cost model requires at least " + V1_PARAM_COUNT +
-                    " parameters, got " + values.length);
-        }
-        // V1 machine costs are at fixed positions within the 166-param array.
-        // The alphabetical ordering places them at the same relative positions
-        // as V3 (after the first 5 builtins), but offset differs from V3 due to
-        // different cost function shapes for V1 builtins.
-        // For correctness, use V1 defaults for builtin costs and extract machine
-        // costs from the known position.
-        // V1 machine costs are at indices 17-32 in the V1 flat array
-        // (same position as V3 — after AddInteger, AppendByteString, AppendString, BData, Blake2b_256)
-        // These 5 builtins consume 17 params in both V1 and V3 (same cost shapes for these).
-        long applyCpu = values[17];   long applyMem = values[18];
-        long builtinCpu = values[19]; long builtinMem = values[20];
-        long constCpu = values[21];   long constMem = values[22];
-        long delayCpu = values[23];   long delayMem = values[24];
-        long forceCpu = values[25];   long forceMem = values[26];
-        long lamCpu = values[27];     long lamMem = values[28];
-        long startupCpu = values[29]; long startupMem = values[30];
-        long varCpu = values[31];     long varMem = values[32];
-
-        MachineCosts mc = new MachineCosts(
-                startupCpu, startupMem,
-                varCpu, varMem,
-                lamCpu, lamMem,
-                applyCpu, applyMem,
-                forceCpu, forceMem,
-                delayCpu, delayMem,
-                constCpu, constMem,
-                builtinCpu, builtinMem,
-                0, 0,  // constrCpu/Mem — not available in V1
-                0, 0   // caseCpu/Mem — not available in V1
-        );
-
-        return new ParsedCostModel(mc, DefaultCostModel.defaultBuiltinCostModel(PlutusLanguage.PLUTUS_V1));
+    public static int expectedParameterCount(
+            PlutusLanguage language, int protocolMajorVersion) {
+        return switch (language) {
+            case PLUTUS_V1 -> {
+                if (protocolMajorVersion >= 5 && protocolMajorVersion <= 10) {
+                    yield V1_PARAM_COUNT;
+                }
+                if (protocolMajorVersion == 11) {
+                    yield V1_PV11_PARAM_COUNT;
+                }
+                throw unsupportedSchema(language, protocolMajorVersion);
+            }
+            case PLUTUS_V2 -> {
+                if (protocolMajorVersion >= 7 && protocolMajorVersion <= 9) {
+                    yield V2_PARAM_COUNT;
+                }
+                if (protocolMajorVersion == 10) {
+                    yield V2_PV10_PARAM_COUNT;
+                }
+                if (protocolMajorVersion == 11) {
+                    yield V2_PV11_PARAM_COUNT;
+                }
+                throw unsupportedSchema(language, protocolMajorVersion);
+            }
+            case PLUTUS_V3 -> {
+                if (protocolMajorVersion == 10) {
+                    yield PV10_PARAM_COUNT;
+                }
+                if (protocolMajorVersion == 11) {
+                    yield PV11_PARAM_COUNT;
+                }
+                throw unsupportedSchema(language, protocolMajorVersion);
+            }
+        };
     }
 
-    /**
-     * Parse a PlutusV2 cost model parameter array.
-     * <p>
-     * Extracts machine costs from the array. Builtin costs use V2 defaults
-     * since the V2 cost function shapes may differ from V3.
-     * <p>
-     * The protocol version is reserved for future use — when new builtins are
-     * added to V2 in a future protocol version, this method will branch on the
-     * version to parse the additional cost parameters.
-     *
-     * @param protocolMajorVersion protocol major version
-     * @param protocolMinorVersion protocol minor version
-     */
-    private static ParsedCostModel parseV2(long[] values, int protocolMajorVersion,
-                                            int protocolMinorVersion) {
-        // At PV11, V1/V2 arrays grow too — accept longer arrays but use defaults for new builtins.
-        // TODO: Parse additional V2 PV11 params when exact V2 PV11 param counts are verified.
-        if (values.length < V2_PARAM_COUNT) {
-            throw new IllegalArgumentException(
-                    "PlutusV2 cost model requires at least " + V2_PARAM_COUNT +
-                    " parameters, got " + values.length);
+    private static ParsedCostModel parseV1(long[] values, int protocolMajorVersion) {
+        requireExactSchema(values, PlutusLanguage.PLUTUS_V1, protocolMajorVersion);
+        Map<DefaultFun, BuiltinCostModel.CostPair> costs = new EnumMap<>(DefaultFun.class);
+        int[] cursor = {0};
+        LegacySemantics semantics = legacySemantics(protocolMajorVersion);
+        CommonMachineCosts machine = parseLegacyCommon(values, cursor, costs, semantics);
+        parseV1LegacyTail(values, cursor, costs, semantics);
+
+        long constrCpu = 0;
+        long constrMem = 0;
+        long caseCpu = 0;
+        long caseMem = 0;
+        if (protocolMajorVersion == 11) {
+            // V1.ParamName indices 166–174: the V2-era builtins first become
+            // available to V1 at PV11.
+            parseSerialiseAndSecp(values, cursor, costs);
+            constrCpu = next(values, cursor);
+            constrMem = next(values, cursor);
+            caseCpu = next(values, cursor);
+            caseMem = next(values, cursor);
+            parseBlsAndCrypto(values, cursor, costs);
+            parseConversions(values, cursor, costs);
+            parseBitwise(values, cursor, costs);
+            parseBatch6(values, cursor, costs);
         }
-        // V2 machine costs are at the same position as V1 (indices 17-32)
-        long applyCpu = values[17];   long applyMem = values[18];
-        long builtinCpu = values[19]; long builtinMem = values[20];
-        long constCpu = values[21];   long constMem = values[22];
-        long delayCpu = values[23];   long delayMem = values[24];
-        long forceCpu = values[25];   long forceMem = values[26];
-        long lamCpu = values[27];     long lamMem = values[28];
-        long startupCpu = values[29]; long startupMem = values[30];
-        long varCpu = values[31];     long varMem = values[32];
 
-        MachineCosts mc = new MachineCosts(
-                startupCpu, startupMem,
-                varCpu, varMem,
-                lamCpu, lamMem,
-                applyCpu, applyMem,
-                forceCpu, forceMem,
-                delayCpu, delayMem,
-                constCpu, constMem,
-                builtinCpu, builtinMem,
-                0, 0,  // constrCpu/Mem — not available in V2
-                0, 0   // caseCpu/Mem — not available in V2
-        );
+        assertConsumed(cursor, values.length, PlutusLanguage.PLUTUS_V1, protocolMajorVersion);
+        return parsed(machine, constrCpu, constrMem, caseCpu, caseMem, costs);
+    }
 
-        return new ParsedCostModel(mc, DefaultCostModel.defaultBuiltinCostModel(PlutusLanguage.PLUTUS_V2));
+    private static ParsedCostModel parseV2(long[] values, int protocolMajorVersion) {
+        requireExactSchema(values, PlutusLanguage.PLUTUS_V2, protocolMajorVersion);
+        Map<DefaultFun, BuiltinCostModel.CostPair> costs = new EnumMap<>(DefaultFun.class);
+        int[] cursor = {0};
+        LegacySemantics semantics = legacySemantics(protocolMajorVersion);
+        CommonMachineCosts machine = parseLegacyCommon(values, cursor, costs, semantics);
+        parseV2LegacyTail(values, cursor, costs, semantics);
+
+        if (protocolMajorVersion >= 10) {
+            // V2.ParamName indices 175–184, activated for V2 at PV10.
+            parseConversions(values, cursor, costs);
+        }
+
+        long constrCpu = 0;
+        long constrMem = 0;
+        long caseCpu = 0;
+        long caseMem = 0;
+        if (protocolMajorVersion == 11) {
+            constrCpu = next(values, cursor);
+            constrMem = next(values, cursor);
+            caseCpu = next(values, cursor);
+            caseMem = next(values, cursor);
+            parseBlsAndCrypto(values, cursor, costs);
+            parseBitwise(values, cursor, costs);
+            parseBatch6(values, cursor, costs);
+        }
+
+        assertConsumed(cursor, values.length, PlutusLanguage.PLUTUS_V2, protocolMajorVersion);
+        return parsed(machine, constrCpu, constrMem, caseCpu, caseMem, costs);
     }
 
     /**
      * Parse a PlutusV3 flat cost model parameter array into machine costs and builtin cost model.
      * <p>
-     * The array must have at least {@link #PV10_PARAM_COUNT} (297) elements.
+     * The array must have exactly {@link #PV10_PARAM_COUNT} (297) elements.
      * Any builtins not covered by the array (e.g., ExpModInteger in PV10) retain
      * their defaults from {@link DefaultCostModel}.
      *
      * @param values the flat cost model array from protocol parameters
      * @return parsed machine costs and builtin cost model
-     * @throws IllegalArgumentException if the array is too short
+     * @throws IllegalArgumentException if the target or exact schema is unsupported
      */
     public static ParsedCostModel parse(long[] values) {
         return parse(values, 10);
@@ -215,20 +221,10 @@ public final class CostModelParser {
      * @param values               the flat cost model array from protocol parameters
      * @param protocolMajorVersion the protocol major version
      * @return parsed machine costs and builtin cost model
-     * @throws IllegalArgumentException if the array is too short
+     * @throws IllegalArgumentException if the target or exact schema is unsupported
      */
     public static ParsedCostModel parse(long[] values, int protocolMajorVersion) {
-        if (protocolMajorVersion >= 11) {
-            if (values.length < PV11_PARAM_COUNT) {
-                throw new IllegalArgumentException(
-                        "PlutusV3 PV11 cost model requires at least " + PV11_PARAM_COUNT +
-                        " parameters, got " + values.length);
-            }
-        } else if (values.length < PV10_PARAM_COUNT) {
-            throw new IllegalArgumentException(
-                    "PlutusV3 cost model requires at least " + PV10_PARAM_COUNT +
-                    " parameters, got " + values.length);
-        }
+        requireExactSchema(values, PlutusLanguage.PLUTUS_V3, protocolMajorVersion);
 
         // Start with defaults for builtins not covered by the flat array
         var defaultModel = DefaultCostModel.defaultBuiltinCostModel(
@@ -449,7 +445,7 @@ public final class CostModelParser {
         assert c[0] == PV10_PARAM_COUNT : "Parser consumed " + c[0] + " params, expected " + PV10_PARAM_COUNT;
 
         // === PV11 builtins (indices 297–349, if present) ===
-        if (protocolMajorVersion >= 11 && values.length >= PV11_PARAM_COUNT) {
+        if (protocolMajorVersion == 11) {
             // 297-301: ExpModInteger — ExpModCost(cpu) + LinearInZ(mem)
             costs.put(DefaultFun.ExpModInteger, pair(readExpModCost(values, c), readLinearInZ(values, c)));
             // 302-304: DropList — LinearInX(cpu) + Const(mem)
@@ -499,6 +495,699 @@ public final class CostModelParser {
         return new ParsedCostModel(mc, new BuiltinCostModel(costs));
     }
 
+    // ========== V1/V2 authoritative ParamName readers ==========
+
+    /** The eight CEK step pairs shared by every historical schema. */
+    private record CommonMachineCosts(
+            long applyCpu, long applyMem,
+            long builtinCpu, long builtinMem,
+            long constCpu, long constMem,
+            long delayCpu, long delayMem,
+            long forceCpu, long forceMem,
+            long lamCpu, long lamMem,
+            long startupCpu, long startupMem,
+            long varCpu, long varMem) {
+
+        MachineCosts withConstrAndCase(
+                long constrCpu, long constrMem, long caseCpu, long caseMem) {
+            return new MachineCosts(
+                    startupCpu, startupMem,
+                    varCpu, varMem,
+                    lamCpu, lamMem,
+                    applyCpu, applyMem,
+                    forceCpu, forceMem,
+                    delayCpu, delayMem,
+                    constCpu, constMem,
+                    builtinCpu, builtinMem,
+                    constrCpu, constrMem,
+                    caseCpu, caseMem);
+        }
+    }
+
+    private enum LegacySemantics { A, B, D }
+
+    private static LegacySemantics legacySemantics(int protocolMajorVersion) {
+        if (protocolMajorVersion >= 11) {
+            return LegacySemantics.D;
+        }
+        return protocolMajorVersion >= 9 ? LegacySemantics.B : LegacySemantics.A;
+    }
+
+    /**
+     * Parse the ParamName prefix shared by V1 and V2 (indices 0–132).
+     * Their division-family coefficients describe a multiplied-sizes inner
+     * model. Semantics A/B wrap it with {@code const_above_diagonal}; D selects
+     * {@code above_and_below_diagonal} for divide/mod while retaining the same
+     * flat parameter positions.
+     */
+    private static CommonMachineCosts parseLegacyCommon(
+            long[] values,
+            int[] c,
+            Map<DefaultFun, BuiltinCostModel.CostPair> costs,
+            LegacySemantics semantics) {
+        costs.put(DefaultFun.AddInteger,
+                pair(readMaxSize(values, c), readMaxSize(values, c)));
+        costs.put(DefaultFun.AppendByteString,
+                pair(readAddedSizes(values, c), readAddedSizes(values, c)));
+        costs.put(DefaultFun.AppendString,
+                pair(readAddedSizes(values, c), readAddedSizes(values, c)));
+        costs.put(DefaultFun.BData,
+                pair(readConst(values, c), readConst(values, c)));
+        costs.put(DefaultFun.Blake2b_256,
+                pair(readLinearInX(values, c), readConst(values, c)));
+
+        var machine = new CommonMachineCosts(
+                next(values, c), next(values, c),
+                next(values, c), next(values, c),
+                next(values, c), next(values, c),
+                next(values, c), next(values, c),
+                next(values, c), next(values, c),
+                next(values, c), next(values, c),
+                next(values, c), next(values, c),
+                next(values, c), next(values, c));
+
+        costs.put(DefaultFun.ChooseData,
+                pair(readConst(values, c), readConst(values, c)));
+        costs.put(DefaultFun.ChooseList,
+                pair(readConst(values, c), readConst(values, c)));
+        costs.put(DefaultFun.ChooseUnit,
+                pair(readConst(values, c), readConst(values, c)));
+        costs.put(DefaultFun.ConsByteString,
+                pair(readLinearInY(values, c), readAddedSizes(values, c)));
+        costs.put(DefaultFun.ConstrData,
+                pair(readConst(values, c), readConst(values, c)));
+        costs.put(DefaultFun.DecodeUtf8,
+                pair(readLinearInX(values, c), readLinearInX(values, c)));
+        costs.put(DefaultFun.DivideInteger,
+                readLegacyDivision(values, c, semantics, DefaultFun.DivideInteger));
+        costs.put(DefaultFun.EncodeUtf8,
+                pair(readLinearInX(values, c), readLinearInX(values, c)));
+        costs.put(DefaultFun.EqualsByteString,
+                pair(readLinearOnDiag(values, c), readConst(values, c)));
+        costs.put(DefaultFun.EqualsData,
+                pair(readMinSize(values, c), readConst(values, c)));
+        costs.put(DefaultFun.EqualsInteger,
+                pair(readMinSize(values, c), readConst(values, c)));
+        costs.put(DefaultFun.EqualsString,
+                pair(readLinearOnDiag(values, c), readConst(values, c)));
+        costs.put(DefaultFun.FstPair,
+                pair(readConst(values, c), readConst(values, c)));
+        costs.put(DefaultFun.HeadList,
+                pair(readConst(values, c), readConst(values, c)));
+        costs.put(DefaultFun.IData,
+                pair(readConst(values, c), readConst(values, c)));
+        costs.put(DefaultFun.IfThenElse,
+                pair(readConst(values, c), readConst(values, c)));
+        costs.put(DefaultFun.IndexByteString,
+                pair(readConst(values, c), readConst(values, c)));
+        costs.put(DefaultFun.LengthOfByteString,
+                pair(readConst(values, c), readConst(values, c)));
+        costs.put(DefaultFun.LessThanByteString,
+                pair(readMinSize(values, c), readConst(values, c)));
+        costs.put(DefaultFun.LessThanEqualsByteString,
+                pair(readMinSize(values, c), readConst(values, c)));
+        costs.put(DefaultFun.LessThanEqualsInteger,
+                pair(readMinSize(values, c), readConst(values, c)));
+        costs.put(DefaultFun.LessThanInteger,
+                pair(readMinSize(values, c), readConst(values, c)));
+        costs.put(DefaultFun.ListData,
+                pair(readConst(values, c), readConst(values, c)));
+        costs.put(DefaultFun.MapData,
+                pair(readConst(values, c), readConst(values, c)));
+        costs.put(DefaultFun.MkCons,
+                pair(readConst(values, c), readConst(values, c)));
+        costs.put(DefaultFun.MkNilData,
+                pair(readConst(values, c), readConst(values, c)));
+        costs.put(DefaultFun.MkNilPairData,
+                pair(readConst(values, c), readConst(values, c)));
+        costs.put(DefaultFun.MkPairData,
+                pair(readConst(values, c), readConst(values, c)));
+        costs.put(DefaultFun.ModInteger,
+                readLegacyDivision(values, c, semantics, DefaultFun.ModInteger));
+        CostFunction multiplyCpu = semantics == LegacySemantics.A
+                ? readAddedSizes(values, c)
+                : readMultipliedSizes(values, c);
+        costs.put(DefaultFun.MultiplyInteger,
+                pair(multiplyCpu, readAddedSizes(values, c)));
+        costs.put(DefaultFun.NullList,
+                pair(readConst(values, c), readConst(values, c)));
+        costs.put(DefaultFun.QuotientInteger,
+                readLegacyDivision(values, c, semantics, DefaultFun.QuotientInteger));
+        costs.put(DefaultFun.RemainderInteger,
+                readLegacyDivision(values, c, semantics, DefaultFun.RemainderInteger));
+        return machine;
+    }
+
+    /** V1 indices 133–165. */
+    private static void parseV1LegacyTail(
+            long[] values,
+            int[] c,
+            Map<DefaultFun, BuiltinCostModel.CostPair> costs,
+            LegacySemantics semantics) {
+        costs.put(DefaultFun.Sha2_256,
+                pair(readLinearInX(values, c), readConst(values, c)));
+        costs.put(DefaultFun.Sha3_256,
+                pair(readLinearInX(values, c), readConst(values, c)));
+        parseSliceThroughUnMap(values, c, costs);
+        parseVerifyEd25519(values, c, costs, semantics);
+    }
+
+    /** V2 indices 133–174. */
+    private static void parseV2LegacyTail(
+            long[] values,
+            int[] c,
+            Map<DefaultFun, BuiltinCostModel.CostPair> costs,
+            LegacySemantics semantics) {
+        costs.put(DefaultFun.SerialiseData,
+                pair(readLinearInX(values, c), readLinearInX(values, c)));
+        costs.put(DefaultFun.Sha2_256,
+                pair(readLinearInX(values, c), readConst(values, c)));
+        costs.put(DefaultFun.Sha3_256,
+                pair(readLinearInX(values, c), readConst(values, c)));
+        parseSliceThroughUnMap(values, c, costs);
+        costs.put(DefaultFun.VerifyEcdsaSecp256k1Signature,
+                pair(readConst(values, c), readConst(values, c)));
+        parseVerifyEd25519(values, c, costs, semantics);
+        costs.put(DefaultFun.VerifySchnorrSecp256k1Signature,
+                pair(readLinearInY(values, c), readConst(values, c)));
+    }
+
+    private static void parseSliceThroughUnMap(
+            long[] values,
+            int[] c,
+            Map<DefaultFun, BuiltinCostModel.CostPair> costs) {
+        costs.put(DefaultFun.SliceByteString,
+                pair(readLinearInZ(values, c), readLinearInZ(values, c)));
+        costs.put(DefaultFun.SndPair,
+                pair(readConst(values, c), readConst(values, c)));
+        costs.put(DefaultFun.SubtractInteger,
+                pair(readMaxSize(values, c), readMaxSize(values, c)));
+        costs.put(DefaultFun.TailList,
+                pair(readConst(values, c), readConst(values, c)));
+        costs.put(DefaultFun.Trace,
+                pair(readConst(values, c), readConst(values, c)));
+        costs.put(DefaultFun.UnBData,
+                pair(readConst(values, c), readConst(values, c)));
+        costs.put(DefaultFun.UnConstrData,
+                pair(readConst(values, c), readConst(values, c)));
+        costs.put(DefaultFun.UnIData,
+                pair(readConst(values, c), readConst(values, c)));
+        costs.put(DefaultFun.UnListData,
+                pair(readConst(values, c), readConst(values, c)));
+        costs.put(DefaultFun.UnMapData,
+                pair(readConst(values, c), readConst(values, c)));
+    }
+
+    /** V1 indices 166–174; these entries already occur in V2's legacy prefix. */
+    private static void parseSerialiseAndSecp(
+            long[] values,
+            int[] c,
+            Map<DefaultFun, BuiltinCostModel.CostPair> costs) {
+        costs.put(DefaultFun.SerialiseData,
+                pair(readLinearInX(values, c), readLinearInX(values, c)));
+        costs.put(DefaultFun.VerifyEcdsaSecp256k1Signature,
+                pair(readConst(values, c), readConst(values, c)));
+        costs.put(DefaultFun.VerifySchnorrSecp256k1Signature,
+                pair(readLinearInY(values, c), readConst(values, c)));
+    }
+
+    private static void parseVerifyEd25519(
+            long[] values,
+            int[] c,
+            Map<DefaultFun, BuiltinCostModel.CostPair> costs,
+            LegacySemantics semantics) {
+        CostFunction cpu = semantics == LegacySemantics.A
+                ? readLinearInZ(values, c)
+                : readLinearInY(values, c);
+        costs.put(DefaultFun.VerifyEd25519Signature,
+                pair(cpu, readConst(values, c)));
+    }
+
+    /** BLS12-381 and direct hash parameters (44 entries). */
+    private static void parseBlsAndCrypto(
+            long[] values,
+            int[] c,
+            Map<DefaultFun, BuiltinCostModel.CostPair> costs) {
+        costs.put(DefaultFun.Bls12_381_G1_add,
+                pair(readConst(values, c), readConst(values, c)));
+        costs.put(DefaultFun.Bls12_381_G1_compress,
+                pair(readConst(values, c), readConst(values, c)));
+        costs.put(DefaultFun.Bls12_381_G1_equal,
+                pair(readConst(values, c), readConst(values, c)));
+        costs.put(DefaultFun.Bls12_381_G1_hashToGroup,
+                pair(readLinearInX(values, c), readConst(values, c)));
+        costs.put(DefaultFun.Bls12_381_G1_neg,
+                pair(readConst(values, c), readConst(values, c)));
+        costs.put(DefaultFun.Bls12_381_G1_scalarMul,
+                pair(readLinearInX(values, c), readConst(values, c)));
+        costs.put(DefaultFun.Bls12_381_G1_uncompress,
+                pair(readConst(values, c), readConst(values, c)));
+        costs.put(DefaultFun.Bls12_381_G2_add,
+                pair(readConst(values, c), readConst(values, c)));
+        costs.put(DefaultFun.Bls12_381_G2_compress,
+                pair(readConst(values, c), readConst(values, c)));
+        costs.put(DefaultFun.Bls12_381_G2_equal,
+                pair(readConst(values, c), readConst(values, c)));
+        costs.put(DefaultFun.Bls12_381_G2_hashToGroup,
+                pair(readLinearInX(values, c), readConst(values, c)));
+        costs.put(DefaultFun.Bls12_381_G2_neg,
+                pair(readConst(values, c), readConst(values, c)));
+        costs.put(DefaultFun.Bls12_381_G2_scalarMul,
+                pair(readLinearInX(values, c), readConst(values, c)));
+        costs.put(DefaultFun.Bls12_381_G2_uncompress,
+                pair(readConst(values, c), readConst(values, c)));
+        costs.put(DefaultFun.Bls12_381_finalVerify,
+                pair(readConst(values, c), readConst(values, c)));
+        costs.put(DefaultFun.Bls12_381_millerLoop,
+                pair(readConst(values, c), readConst(values, c)));
+        costs.put(DefaultFun.Bls12_381_mulMlResult,
+                pair(readConst(values, c), readConst(values, c)));
+        costs.put(DefaultFun.Keccak_256,
+                pair(readLinearInX(values, c), readConst(values, c)));
+        costs.put(DefaultFun.Blake2b_224,
+                pair(readLinearInX(values, c), readConst(values, c)));
+    }
+
+    /** Integer/ByteString conversions (10 entries). */
+    private static void parseConversions(
+            long[] values,
+            int[] c,
+            Map<DefaultFun, BuiltinCostModel.CostPair> costs) {
+        costs.put(DefaultFun.IntegerToByteString,
+                pair(readQuadraticInZ(values, c),
+                        readLiteralInYOrLinearInZ(values, c)));
+        costs.put(DefaultFun.ByteStringToInteger,
+                pair(readQuadraticInY(values, c), readLinearInY(values, c)));
+    }
+
+    /** Bitwise, shift/rotate, and RIPEMD parameters (46 entries). */
+    private static void parseBitwise(
+            long[] values,
+            int[] c,
+            Map<DefaultFun, BuiltinCostModel.CostPair> costs) {
+        costs.put(DefaultFun.AndByteString,
+                pair(readLinearInYAndZ(values, c), readLinearInMaxYZ(values, c)));
+        costs.put(DefaultFun.OrByteString,
+                pair(readLinearInYAndZ(values, c), readLinearInMaxYZ(values, c)));
+        costs.put(DefaultFun.XorByteString,
+                pair(readLinearInYAndZ(values, c), readLinearInMaxYZ(values, c)));
+        costs.put(DefaultFun.ComplementByteString,
+                pair(readLinearInX(values, c), readLinearInX(values, c)));
+        costs.put(DefaultFun.ReadBit,
+                pair(readConst(values, c), readConst(values, c)));
+        costs.put(DefaultFun.WriteBits,
+                pair(readLinearInY(values, c), readLinearInX(values, c)));
+        costs.put(DefaultFun.ReplicateByte,
+                pair(readLinearInX(values, c), readLinearInX(values, c)));
+        costs.put(DefaultFun.ShiftByteString,
+                pair(readLinearInX(values, c), readLinearInX(values, c)));
+        costs.put(DefaultFun.RotateByteString,
+                pair(readLinearInX(values, c), readLinearInX(values, c)));
+        costs.put(DefaultFun.CountSetBits,
+                pair(readLinearInX(values, c), readConst(values, c)));
+        costs.put(DefaultFun.FindFirstSetBit,
+                pair(readLinearInX(values, c), readConst(values, c)));
+        costs.put(DefaultFun.Ripemd_160,
+                pair(readLinearInX(values, c), readConst(values, c)));
+    }
+
+    /** PV11 Batch 6 parameters (53 entries). */
+    private static void parseBatch6(
+            long[] values,
+            int[] c,
+            Map<DefaultFun, BuiltinCostModel.CostPair> costs) {
+        costs.put(DefaultFun.ExpModInteger,
+                pair(readExpModCost(values, c), readLinearInZ(values, c)));
+        costs.put(DefaultFun.DropList,
+                pair(readLinearInX(values, c), readConst(values, c)));
+        costs.put(DefaultFun.LengthOfArray,
+                pair(readConst(values, c), readConst(values, c)));
+        costs.put(DefaultFun.ListToArray,
+                pair(readLinearInX(values, c), readLinearInX(values, c)));
+        costs.put(DefaultFun.IndexArray,
+                pair(readConst(values, c), readConst(values, c)));
+        costs.put(DefaultFun.Bls12_381_G1_multiScalarMul,
+                pair(readLinearInX(values, c), readConst(values, c)));
+        costs.put(DefaultFun.Bls12_381_G2_multiScalarMul,
+                pair(readLinearInX(values, c), readConst(values, c)));
+        costs.put(DefaultFun.InsertCoin,
+                pair(readLinearInU(values, c), readLinearInU(values, c)));
+        costs.put(DefaultFun.LookupCoin,
+                pair(readLinearInZ(values, c), readConst(values, c)));
+        costs.put(DefaultFun.UnionValue,
+                pair(readWithInteraction(values, c), readAddedSizes(values, c)));
+        costs.put(DefaultFun.ValueContains,
+                pair(readConstAboveDiagLinear(values, c), readConst(values, c)));
+        costs.put(DefaultFun.ValueData,
+                pair(readLinearInX(values, c), readLinearInX(values, c)));
+        costs.put(DefaultFun.UnValueData,
+                pair(readQuadraticInX(values, c), readLinearInX(values, c)));
+        costs.put(DefaultFun.ScaleValue,
+                pair(readLinearInY(values, c), readLinearInY(values, c)));
+    }
+
+    private static BuiltinCostModel.CostPair readLegacyDivision(
+            long[] values,
+            int[] c,
+            LegacySemantics semantics,
+            DefaultFun builtin) {
+        long constant = next(values, c);
+        long intercept = next(values, c);
+        long slope = next(values, c);
+        CostFunction cpu;
+        if (semantics == LegacySemantics.D
+                && (builtin == DefaultFun.DivideInteger
+                || builtin == DefaultFun.ModInteger)) {
+            cpu = new AboveAndBelowDiagonal(
+                    constant, new MultipliedSizes(intercept, slope));
+        } else {
+            // Reuse the polynomial representation with only c00 and c11
+            // active. Long.MIN_VALUE disables its newer minimum clamp.
+            cpu = new ConstAboveDiagonal(
+                    constant, intercept, 0, 0, 0, slope, 0, Long.MIN_VALUE);
+        }
+
+        long memoryIntercept = next(values, c);
+        long memoryMinimum = next(values, c);
+        long memorySlope = next(values, c);
+        CostFunction memory;
+        if (semantics == LegacySemantics.D
+                && (builtin == DefaultFun.ModInteger
+                || builtin == DefaultFun.RemainderInteger)) {
+            memory = new LinearInY2(
+                    memoryIntercept, memorySlope, memoryMinimum);
+        } else {
+            memory = new SubtractedSizes(
+                    memoryIntercept, memorySlope, memoryMinimum);
+        }
+        return pair(cpu, memory);
+    }
+
+    private static ParsedCostModel parsed(
+            CommonMachineCosts common,
+            long constrCpu,
+            long constrMem,
+            long caseCpu,
+            long caseMem,
+            Map<DefaultFun, BuiltinCostModel.CostPair> costs) {
+        return new ParsedCostModel(
+                common.withConstrAndCase(constrCpu, constrMem, caseCpu, caseMem),
+                new BuiltinCostModel(costs));
+    }
+
+    private static void requireExactSchema(
+            long[] values, PlutusLanguage language, int protocolMajorVersion) {
+        int expected = expectedParameterCount(language, protocolMajorVersion);
+        if (values.length != expected) {
+            throw new IllegalArgumentException(
+                    language + " PV" + protocolMajorVersion
+                            + " cost model requires exactly " + expected
+                            + " parameters, got " + values.length);
+        }
+    }
+
+    private static void assertConsumed(
+            int[] cursor,
+            int expected,
+            PlutusLanguage language,
+            int protocolMajorVersion) {
+        if (cursor[0] != expected) {
+            throw new IllegalStateException(
+                    language + " PV" + protocolMajorVersion + " parser consumed "
+                            + cursor[0] + " parameters; schema contains " + expected);
+        }
+    }
+
+    private static IllegalArgumentException unsupportedSchema(
+            PlutusLanguage language, int protocolMajorVersion) {
+        return new IllegalArgumentException(
+                "Unsupported cost-model schema for " + language + " at protocol version "
+                        + protocolMajorVersion
+                        + "; parser is pinned through cardano-node 11.0.1/PV11");
+    }
+
+    // ========== V1/V2 authoritative ParamName writers ==========
+
+    /**
+     * Serialize a parsed/configured model in the exact ParamName order for its
+     * ledger language and protocol version. This overload is the round-trip
+     * counterpart to {@link #parse(long[], PlutusLanguage, int, int)}.
+     */
+    public static long[] toFlatArray(
+            MachineCosts mc,
+            BuiltinCostModel bcm,
+            PlutusLanguage language,
+            int protocolMajorVersion) {
+        if (language == PlutusLanguage.PLUTUS_V3) {
+            return toFlatArray(mc, bcm, protocolMajorVersion);
+        }
+
+        long[] values = new long[expectedParameterCount(language, protocolMajorVersion)];
+        int[] c = {0};
+        writeLegacyCommon(values, c, mc, bcm);
+
+        if (language == PlutusLanguage.PLUTUS_V1) {
+            writeV1LegacyTail(values, c, bcm);
+            if (protocolMajorVersion == 11) {
+                writeSerialiseAndSecp(values, c, bcm);
+                writeConstrAndCase(values, c, mc);
+                writeBlsAndCrypto(values, c, bcm);
+                writeConversions(values, c, bcm);
+                writeBitwise(values, c, bcm);
+                writeBatch6(values, c, bcm);
+            }
+        } else {
+            writeV2LegacyTail(values, c, bcm);
+            if (protocolMajorVersion >= 10) {
+                writeConversions(values, c, bcm);
+            }
+            if (protocolMajorVersion == 11) {
+                writeConstrAndCase(values, c, mc);
+                writeBlsAndCrypto(values, c, bcm);
+                writeBitwise(values, c, bcm);
+                writeBatch6(values, c, bcm);
+            }
+        }
+
+        assertConsumed(c, values.length, language, protocolMajorVersion);
+        return values;
+    }
+
+    private static void writeLegacyCommon(
+            long[] values,
+            int[] c,
+            MachineCosts mc,
+            BuiltinCostModel bcm) {
+        writeParams(values, c, bcm.get(DefaultFun.AddInteger));
+        writeParams(values, c, bcm.get(DefaultFun.AppendByteString));
+        writeParams(values, c, bcm.get(DefaultFun.AppendString));
+        writeParams(values, c, bcm.get(DefaultFun.BData));
+        writeParams(values, c, bcm.get(DefaultFun.Blake2b_256));
+        writeCommonMachine(values, c, mc);
+        writeParams(values, c, bcm.get(DefaultFun.ChooseData));
+        writeParams(values, c, bcm.get(DefaultFun.ChooseList));
+        writeParams(values, c, bcm.get(DefaultFun.ChooseUnit));
+        writeParams(values, c, bcm.get(DefaultFun.ConsByteString));
+        writeParams(values, c, bcm.get(DefaultFun.ConstrData));
+        writeParams(values, c, bcm.get(DefaultFun.DecodeUtf8));
+        writeLegacyDivision(values, c, bcm.get(DefaultFun.DivideInteger));
+        writeParams(values, c, bcm.get(DefaultFun.EncodeUtf8));
+        writeParams(values, c, bcm.get(DefaultFun.EqualsByteString));
+        writeParams(values, c, bcm.get(DefaultFun.EqualsData));
+        writeParams(values, c, bcm.get(DefaultFun.EqualsInteger));
+        writeParams(values, c, bcm.get(DefaultFun.EqualsString));
+        writeParams(values, c, bcm.get(DefaultFun.FstPair));
+        writeParams(values, c, bcm.get(DefaultFun.HeadList));
+        writeParams(values, c, bcm.get(DefaultFun.IData));
+        writeParams(values, c, bcm.get(DefaultFun.IfThenElse));
+        writeParams(values, c, bcm.get(DefaultFun.IndexByteString));
+        writeParams(values, c, bcm.get(DefaultFun.LengthOfByteString));
+        writeParams(values, c, bcm.get(DefaultFun.LessThanByteString));
+        writeParams(values, c, bcm.get(DefaultFun.LessThanEqualsByteString));
+        writeParams(values, c, bcm.get(DefaultFun.LessThanEqualsInteger));
+        writeParams(values, c, bcm.get(DefaultFun.LessThanInteger));
+        writeParams(values, c, bcm.get(DefaultFun.ListData));
+        writeParams(values, c, bcm.get(DefaultFun.MapData));
+        writeParams(values, c, bcm.get(DefaultFun.MkCons));
+        writeParams(values, c, bcm.get(DefaultFun.MkNilData));
+        writeParams(values, c, bcm.get(DefaultFun.MkNilPairData));
+        writeParams(values, c, bcm.get(DefaultFun.MkPairData));
+        writeLegacyDivision(values, c, bcm.get(DefaultFun.ModInteger));
+        writeParams(values, c, bcm.get(DefaultFun.MultiplyInteger));
+        writeParams(values, c, bcm.get(DefaultFun.NullList));
+        writeLegacyDivision(values, c, bcm.get(DefaultFun.QuotientInteger));
+        writeLegacyDivision(values, c, bcm.get(DefaultFun.RemainderInteger));
+    }
+
+    private static void writeV1LegacyTail(
+            long[] values, int[] c, BuiltinCostModel bcm) {
+        writeParams(values, c, bcm.get(DefaultFun.Sha2_256));
+        writeParams(values, c, bcm.get(DefaultFun.Sha3_256));
+        writeSliceThroughUnMap(values, c, bcm);
+        writeParams(values, c, bcm.get(DefaultFun.VerifyEd25519Signature));
+    }
+
+    private static void writeV2LegacyTail(
+            long[] values, int[] c, BuiltinCostModel bcm) {
+        writeParams(values, c, bcm.get(DefaultFun.SerialiseData));
+        writeParams(values, c, bcm.get(DefaultFun.Sha2_256));
+        writeParams(values, c, bcm.get(DefaultFun.Sha3_256));
+        writeSliceThroughUnMap(values, c, bcm);
+        writeParams(values, c, bcm.get(DefaultFun.VerifyEcdsaSecp256k1Signature));
+        writeParams(values, c, bcm.get(DefaultFun.VerifyEd25519Signature));
+        writeParams(values, c, bcm.get(DefaultFun.VerifySchnorrSecp256k1Signature));
+    }
+
+    private static void writeSliceThroughUnMap(
+            long[] values, int[] c, BuiltinCostModel bcm) {
+        writeParams(values, c, bcm.get(DefaultFun.SliceByteString));
+        writeParams(values, c, bcm.get(DefaultFun.SndPair));
+        writeParams(values, c, bcm.get(DefaultFun.SubtractInteger));
+        writeParams(values, c, bcm.get(DefaultFun.TailList));
+        writeParams(values, c, bcm.get(DefaultFun.Trace));
+        writeParams(values, c, bcm.get(DefaultFun.UnBData));
+        writeParams(values, c, bcm.get(DefaultFun.UnConstrData));
+        writeParams(values, c, bcm.get(DefaultFun.UnIData));
+        writeParams(values, c, bcm.get(DefaultFun.UnListData));
+        writeParams(values, c, bcm.get(DefaultFun.UnMapData));
+    }
+
+    private static void writeSerialiseAndSecp(
+            long[] values, int[] c, BuiltinCostModel bcm) {
+        writeParams(values, c, bcm.get(DefaultFun.SerialiseData));
+        writeParams(values, c, bcm.get(DefaultFun.VerifyEcdsaSecp256k1Signature));
+        writeParams(values, c, bcm.get(DefaultFun.VerifySchnorrSecp256k1Signature));
+    }
+
+    private static void writeBlsAndCrypto(
+            long[] values, int[] c, BuiltinCostModel bcm) {
+        writeParams(values, c, bcm.get(DefaultFun.Bls12_381_G1_add));
+        writeParams(values, c, bcm.get(DefaultFun.Bls12_381_G1_compress));
+        writeParams(values, c, bcm.get(DefaultFun.Bls12_381_G1_equal));
+        writeParams(values, c, bcm.get(DefaultFun.Bls12_381_G1_hashToGroup));
+        writeParams(values, c, bcm.get(DefaultFun.Bls12_381_G1_neg));
+        writeParams(values, c, bcm.get(DefaultFun.Bls12_381_G1_scalarMul));
+        writeParams(values, c, bcm.get(DefaultFun.Bls12_381_G1_uncompress));
+        writeParams(values, c, bcm.get(DefaultFun.Bls12_381_G2_add));
+        writeParams(values, c, bcm.get(DefaultFun.Bls12_381_G2_compress));
+        writeParams(values, c, bcm.get(DefaultFun.Bls12_381_G2_equal));
+        writeParams(values, c, bcm.get(DefaultFun.Bls12_381_G2_hashToGroup));
+        writeParams(values, c, bcm.get(DefaultFun.Bls12_381_G2_neg));
+        writeParams(values, c, bcm.get(DefaultFun.Bls12_381_G2_scalarMul));
+        writeParams(values, c, bcm.get(DefaultFun.Bls12_381_G2_uncompress));
+        writeParams(values, c, bcm.get(DefaultFun.Bls12_381_finalVerify));
+        writeParams(values, c, bcm.get(DefaultFun.Bls12_381_millerLoop));
+        writeParams(values, c, bcm.get(DefaultFun.Bls12_381_mulMlResult));
+        writeParams(values, c, bcm.get(DefaultFun.Keccak_256));
+        writeParams(values, c, bcm.get(DefaultFun.Blake2b_224));
+    }
+
+    private static void writeConversions(
+            long[] values, int[] c, BuiltinCostModel bcm) {
+        writeParams(values, c, bcm.get(DefaultFun.IntegerToByteString));
+        writeParams(values, c, bcm.get(DefaultFun.ByteStringToInteger));
+    }
+
+    private static void writeBitwise(
+            long[] values, int[] c, BuiltinCostModel bcm) {
+        writeParams(values, c, bcm.get(DefaultFun.AndByteString));
+        writeParams(values, c, bcm.get(DefaultFun.OrByteString));
+        writeParams(values, c, bcm.get(DefaultFun.XorByteString));
+        writeParams(values, c, bcm.get(DefaultFun.ComplementByteString));
+        writeParams(values, c, bcm.get(DefaultFun.ReadBit));
+        writeParams(values, c, bcm.get(DefaultFun.WriteBits));
+        writeParams(values, c, bcm.get(DefaultFun.ReplicateByte));
+        writeParams(values, c, bcm.get(DefaultFun.ShiftByteString));
+        writeParams(values, c, bcm.get(DefaultFun.RotateByteString));
+        writeParams(values, c, bcm.get(DefaultFun.CountSetBits));
+        writeParams(values, c, bcm.get(DefaultFun.FindFirstSetBit));
+        writeParams(values, c, bcm.get(DefaultFun.Ripemd_160));
+    }
+
+    private static void writeBatch6(
+            long[] values, int[] c, BuiltinCostModel bcm) {
+        writeParams(values, c, bcm.get(DefaultFun.ExpModInteger));
+        writeParams(values, c, bcm.get(DefaultFun.DropList));
+        writeParams(values, c, bcm.get(DefaultFun.LengthOfArray));
+        writeParams(values, c, bcm.get(DefaultFun.ListToArray));
+        writeParams(values, c, bcm.get(DefaultFun.IndexArray));
+        writeParams(values, c, bcm.get(DefaultFun.Bls12_381_G1_multiScalarMul));
+        writeParams(values, c, bcm.get(DefaultFun.Bls12_381_G2_multiScalarMul));
+        writeParams(values, c, bcm.get(DefaultFun.InsertCoin));
+        writeParams(values, c, bcm.get(DefaultFun.LookupCoin));
+        writeParams(values, c, bcm.get(DefaultFun.UnionValue));
+        writeParams(values, c, bcm.get(DefaultFun.ValueContains));
+        writeParams(values, c, bcm.get(DefaultFun.ValueData));
+        writeParams(values, c, bcm.get(DefaultFun.UnValueData));
+        writeParams(values, c, bcm.get(DefaultFun.ScaleValue));
+    }
+
+    private static void writeCommonMachine(
+            long[] values, int[] c, MachineCosts mc) {
+        values[c[0]++] = mc.applyCpu();
+        values[c[0]++] = mc.applyMem();
+        values[c[0]++] = mc.builtinCpu();
+        values[c[0]++] = mc.builtinMem();
+        values[c[0]++] = mc.constCpu();
+        values[c[0]++] = mc.constMem();
+        values[c[0]++] = mc.delayCpu();
+        values[c[0]++] = mc.delayMem();
+        values[c[0]++] = mc.forceCpu();
+        values[c[0]++] = mc.forceMem();
+        values[c[0]++] = mc.lamCpu();
+        values[c[0]++] = mc.lamMem();
+        values[c[0]++] = mc.startupCpu();
+        values[c[0]++] = mc.startupMem();
+        values[c[0]++] = mc.varCpu();
+        values[c[0]++] = mc.varMem();
+    }
+
+    private static void writeConstrAndCase(
+            long[] values, int[] c, MachineCosts mc) {
+        values[c[0]++] = mc.constrCpu();
+        values[c[0]++] = mc.constrMem();
+        values[c[0]++] = mc.caseCpu();
+        values[c[0]++] = mc.caseMem();
+    }
+
+    private static void writeLegacyDivision(
+            long[] values, int[] c, BuiltinCostModel.CostPair pair) {
+        if (pair.cpu() instanceof ConstAboveDiagonal cpu) {
+            if (cpu.c01() != 0 || cpu.c02() != 0
+                    || cpu.c10() != 0 || cpu.c20() != 0) {
+                throw new IllegalArgumentException(
+                        "V1/V2 division schema can encode only multiplied_sizes inner models");
+            }
+            values[c[0]++] = cpu.constant();
+            values[c[0]++] = cpu.c00();
+            values[c[0]++] = cpu.c11();
+        } else if (pair.cpu() instanceof AboveAndBelowDiagonal cpu) {
+            if (!(cpu.model() instanceof MultipliedSizes model)) {
+                throw new IllegalArgumentException(
+                        "V1/V2 division schema requires a multiplied_sizes inner model");
+            }
+            values[c[0]++] = cpu.constant();
+            values[c[0]++] = model.intercept();
+            values[c[0]++] = model.slope();
+        } else {
+            throw new IllegalArgumentException(
+                    "V1/V2 division CPU must use a legacy diagonal model");
+        }
+
+        if (pair.mem() instanceof SubtractedSizes mem) {
+            values[c[0]++] = mem.intercept();
+            values[c[0]++] = mem.minimum();
+            values[c[0]++] = mem.slope();
+        } else if (pair.mem() instanceof LinearInY2 mem) {
+            values[c[0]++] = mem.intercept();
+            values[c[0]++] = mem.minimum();
+            values[c[0]++] = mem.slope();
+        } else {
+            throw new IllegalArgumentException(
+                    "V1/V2 division memory must use subtracted_sizes or linear_in_y2");
+        }
+    }
+
     /**
      * Build a flat cost model parameter array from the default cost model (PV10).
      * Useful for testing round-trip parsing.
@@ -513,7 +1202,7 @@ public final class CostModelParser {
      * Build a flat cost model parameter array from the default cost model
      * for the specified protocol version.
      *
-     * @param protocolMajorVersion the protocol major version (10 for PV10, 11+ for PV11)
+     * @param protocolMajorVersion the protocol major version (10 or 11)
      * @return the flat array (297 elements for PV10, 350 for PV11)
      */
     public static long[] defaultToFlatArray(int protocolMajorVersion) {
@@ -538,10 +1227,11 @@ public final class CostModelParser {
      * Build a flat cost model parameter array from the given cost model.
      *
      * @param protocolMajorVersion the protocol major version
-     * @return the flat array (297 elements for PV10, 350 for PV11+)
+     * @return the flat array (297 elements for PV10, 350 for PV11)
      */
     public static long[] toFlatArray(MachineCosts mc, BuiltinCostModel bcm, int protocolMajorVersion) {
-        int paramCount = protocolMajorVersion >= 11 ? PV11_PARAM_COUNT : PV10_PARAM_COUNT;
+        int paramCount = expectedParameterCount(
+                PlutusLanguage.PLUTUS_V3, protocolMajorVersion);
         long[] values = new long[paramCount];
         int[] c = {0};
 
@@ -657,7 +1347,7 @@ public final class CostModelParser {
         assert c[0] == PV10_PARAM_COUNT : "Writer produced " + c[0] + " params, expected " + PV10_PARAM_COUNT;
 
         // === PV11 builtins (indices 297–349) ===
-        if (protocolMajorVersion >= 11) {
+        if (protocolMajorVersion == 11) {
             writeParams(values, c, bcm.get(DefaultFun.ExpModInteger));
             writeParams(values, c, bcm.get(DefaultFun.DropList));
             writeParams(values, c, bcm.get(DefaultFun.LengthOfArray));
@@ -845,6 +1535,11 @@ public final class CostModelParser {
                 values[c[0]++] = q.c02(); values[c[0]++] = q.c10();
                 values[c[0]++] = q.c11(); values[c[0]++] = q.c20();
                 values[c[0]++] = q.minimum();
+            }
+            case LinearInY2 li -> {
+                values[c[0]++] = li.intercept();
+                values[c[0]++] = li.slope();
+                values[c[0]++] = li.minimum();
             }
             case LinearOnDiagonal ld -> {
                 values[c[0]++] = ld.constant(); values[c[0]++] = ld.intercept(); values[c[0]++] = ld.slope();
