@@ -5,7 +5,11 @@ import com.bloxbean.cardano.julc.vm.ProtocolFeatureProfile;
 
 import java.util.Objects;
 
-/** A parsed cost model atomically associated with its resolved ledger profile. */
+/**
+ * A parsed cost model atomically associated with its resolved ledger profile.
+ * Construction enforces the shared Java/Truffle completeness invariant before
+ * either backend can start CEK evaluation.
+ */
 public record ConfiguredCostModel(
         CostModelParser.ParsedCostModel costModel,
         LedgerEvaluationTarget target,
@@ -19,5 +23,6 @@ public record ConfiguredCostModel(
             throw new IllegalArgumentException(
                     "Cost model target " + target + " does not match profile " + profile.target());
         }
+        costModel.builtinCostModel().validateCompleteFor(profile);
     }
 }

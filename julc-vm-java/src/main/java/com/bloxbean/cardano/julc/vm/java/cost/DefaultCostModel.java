@@ -41,7 +41,9 @@ public final class DefaultCostModel {
             var cost = variantModel.get(fun);
             if (cost != null) filtered.put(fun, cost);
         }
-        return new BuiltinCostModel(filtered);
+        var model = new BuiltinCostModel(filtered);
+        model.validateCompleteFor(profile);
+        return model;
     }
 
     /** Select the builtin model shipped for a Haskell semantics variant. */

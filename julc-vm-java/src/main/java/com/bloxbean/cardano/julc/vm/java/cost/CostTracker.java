@@ -6,6 +6,7 @@ import com.bloxbean.cardano.julc.vm.LedgerEvaluationTarget;
 import com.bloxbean.cardano.julc.vm.ProtocolFeatureProfile;
 import com.bloxbean.cardano.julc.vm.ProtocolFeatureRegistry;
 import com.bloxbean.cardano.julc.vm.java.CekValue;
+import com.bloxbean.cardano.julc.vm.java.builtins.UnsupportedBuiltinException;
 
 import java.util.List;
 
@@ -74,13 +75,18 @@ public final class CostTracker {
      *
      * @param fun  the builtin function
      * @param args the evaluated arguments
+     * @throws UnsupportedBuiltinException if the builtin is unavailable to the profile
+     * @throws IncompleteCostModelException if an available builtin has no price
      * @throws BudgetExhaustedException if budget is exceeded
      */
     public void chargeBuiltin(DefaultFun fun, List<CekValue> args) {
+        if (!profile.isBuiltinAvailable(fun)) {
+            throw new UnsupportedBuiltinException(
+                    "Builtin " + fun + " is not available for " + profile.target());
+        }
         var costPair = builtinCostModel.get(fun);
         if (costPair == null) {
-            // No cost model for this builtin — charge nothing
-            return;
+            throw IncompleteCostModelException.missing(profile, List.of(fun));
         }
         long[] sizes = BuiltinCostModel.argSizes(profile.semanticsVariant(), fun, args);
         long cpu = costPair.cpu().apply(sizes);
