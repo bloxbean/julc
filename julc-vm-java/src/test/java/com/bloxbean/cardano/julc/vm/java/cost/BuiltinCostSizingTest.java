@@ -3,6 +3,7 @@ package com.bloxbean.cardano.julc.vm.java.cost;
 import com.bloxbean.cardano.julc.core.Constant;
 import com.bloxbean.cardano.julc.core.DefaultFun;
 import com.bloxbean.cardano.julc.core.PlutusData;
+import com.bloxbean.cardano.julc.vm.BuiltinSemanticsVariant;
 import com.bloxbean.cardano.julc.vm.java.CekValue;
 import org.junit.jupiter.api.Test;
 
@@ -115,6 +116,27 @@ class BuiltinCostSizingTest {
         assertEquals(5, BuiltinCostModel.sizeOfConstant(Constant.string("hello")));
         assertEquals(1, BuiltinCostModel.sizeOfConstant(Constant.string("😀")));
         assertEquals(0, BuiltinCostModel.sizeOfConstant(Constant.string("")));
+    }
+
+    @Test
+    void textCostedByByteLength_isSelectedOnlyForDEStringArguments() {
+        var args = List.<CekValue>of(
+                new CekValue.VCon(Constant.string("é")),
+                new CekValue.VCon(Constant.string("😀")));
+
+        assertArrayEquals(new long[]{1, 1}, BuiltinCostModel.argSizes(
+                BuiltinSemanticsVariant.C, DefaultFun.AppendString, args));
+        assertArrayEquals(new long[]{0, 1}, BuiltinCostModel.argSizes(
+                BuiltinSemanticsVariant.D, DefaultFun.AppendString, args));
+        assertArrayEquals(new long[]{0, 1}, BuiltinCostModel.argSizes(
+                BuiltinSemanticsVariant.E, DefaultFun.EqualsString, args));
+
+        var encodeArgs = List.<CekValue>of(
+                new CekValue.VCon(Constant.string("é😀")));
+        assertArrayEquals(new long[]{2}, BuiltinCostModel.argSizes(
+                BuiltinSemanticsVariant.C, DefaultFun.EncodeUtf8, encodeArgs));
+        assertArrayEquals(new long[]{1}, BuiltinCostModel.argSizes(
+                BuiltinSemanticsVariant.E, DefaultFun.EncodeUtf8, encodeArgs));
     }
 
     @Test

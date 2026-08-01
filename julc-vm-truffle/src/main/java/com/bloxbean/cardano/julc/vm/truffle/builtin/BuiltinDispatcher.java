@@ -6,6 +6,7 @@ import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.vm.java.CekValue;
 import com.bloxbean.cardano.julc.vm.java.builtins.BuiltinHelper;
 import com.bloxbean.cardano.julc.vm.java.builtins.BuiltinRuntime;
+import com.bloxbean.cardano.julc.vm.java.builtins.BuiltinSemantics;
 import com.bloxbean.cardano.julc.vm.truffle.UplcContext;
 import com.bloxbean.cardano.julc.vm.truffle.runtime.UplcBuiltinDescriptor;
 import com.bloxbean.cardano.julc.vm.truffle.runtime.UplcRuntimeException;
@@ -82,7 +83,8 @@ public final class BuiltinDispatcher {
         } else {
             BuiltinRuntime runtime = context.getBuiltinTable().getRuntime(fun);
             try {
-                CekValue result = runtime.execute(cekArgs);
+                CekValue result = BuiltinSemantics.execute(
+                        context.getProfile(), fun, runtime, cekArgs);
                 context.recordBuiltin(fun, cekArgs, result);
                 return fromCekValue(result);
             } catch (Exception e) {

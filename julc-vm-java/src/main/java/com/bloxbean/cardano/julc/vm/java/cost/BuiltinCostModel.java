@@ -221,7 +221,28 @@ public final class BuiltinCostModel {
      */
     public static long[] argSizes(BuiltinSemanticsVariant variant, DefaultFun fun,
                                   List<CekValue> args) {
-        return argSizes(fun, args);
+        long[] sizes = argSizes(fun, args);
+        if (!variant.usesUtf8StringCosting()) {
+            return sizes;
+        }
+
+        switch (fun) {
+            case AppendString, EqualsString -> {
+                applyTextCostedByByteLength(args, sizes, 0);
+                applyTextCostedByByteLength(args, sizes, 1);
+            }
+            case EncodeUtf8 -> applyTextCostedByByteLength(args, sizes, 0);
+            default -> { }
+        }
+        return sizes;
+    }
+
+    private static void applyTextCostedByByteLength(
+            List<CekValue> args, long[] sizes, int index) {
+        if (index < args.size()) {
+            Long wrappedSize = TextCostedByByteLength.sizeOf(args.get(index));
+            if (wrappedSize != null) sizes[index] = wrappedSize;
+        }
     }
 
     private static Constant idx(List<CekValue> args, int i) {

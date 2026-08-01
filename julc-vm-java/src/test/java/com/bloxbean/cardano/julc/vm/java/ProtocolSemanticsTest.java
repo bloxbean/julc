@@ -1,0 +1,152 @@
+package com.bloxbean.cardano.julc.vm.java;
+
+import com.bloxbean.cardano.julc.core.Constant;
+import com.bloxbean.cardano.julc.core.DefaultFun;
+import com.bloxbean.cardano.julc.core.DefaultUni;
+import com.bloxbean.cardano.julc.core.Program;
+import com.bloxbean.cardano.julc.core.Term;
+import com.bloxbean.cardano.julc.vm.EvalResult;
+import com.bloxbean.cardano.julc.vm.LedgerEvaluationTarget;
+import com.bloxbean.cardano.julc.vm.PlutusLanguage;
+import com.bloxbean.cardano.julc.vm.ProtocolVersion;
+import org.junit.jupiter.api.Test;
+
+import java.math.BigInteger;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+class ProtocolSemanticsTest {
+
+    private static final BigInteger CARDANO_LIMIT = BigInteger.ONE.shiftLeft(262143);
+    private final JavaVmProvider provider = new JavaVmProvider();
+
+    @Test
+    void cardanoIntegerBoundsApplyOnlyToWrappedDEArguments() {
+        BigInteger maximum = CARDANO_LIMIT.subtract(BigInteger.ONE);
+        BigInteger minimum = CARDANO_LIMIT.negate();
+
+        assertInteger(evaluate(DefaultFun.AddInteger, PlutusLanguage.PLUTUS_V3, 11,
+                Constant.integer(maximum), Constant.integer(0)), maximum);
+        assertInteger(evaluate(DefaultFun.AddInteger, PlutusLanguage.PLUTUS_V3, 11,
+                Constant.integer(minimum), Constant.integer(0)), minimum);
+
+        BigInteger above = CARDANO_LIMIT;
+        BigInteger below = minimum.subtract(BigInteger.ONE);
+        assertFailure(evaluate(DefaultFun.AddInteger, PlutusLanguage.PLUTUS_V3, 11,
+                Constant.integer(above), Constant.integer(0)), "Integer out of bounds");
+        assertFailure(evaluate(DefaultFun.LessThanInteger, PlutusLanguage.PLUTUS_V3, 11,
+                Constant.integer(below), Constant.integer(0)), "Integer out of bounds");
+
+        // Variant C accepts the same arbitrary Integer, and EqualsInteger is
+        // deliberately unwrapped even in D/E.
+        assertInteger(evaluate(DefaultFun.AddInteger, PlutusLanguage.PLUTUS_V3, 10,
+                Constant.integer(above), Constant.integer(0)), above);
+        assertBool(evaluate(DefaultFun.EqualsInteger, PlutusLanguage.PLUTUS_V3, 11,
+                Constant.integer(above), Constant.integer(above)), true);
+    }
+
+    @Test
+    void cardanoByteStringBoundsApplyOnlyAtDeclaredUnliftingPositions() {
+        byte[] maximum = new byte[65536];
+        byte[] oversized = new byte[65537];
+
+        assertSuccess(evaluate(DefaultFun.AppendByteString, PlutusLanguage.PLUTUS_V3, 11,
+                Constant.byteString(maximum), Constant.byteString(new byte[0])));
+        assertFailure(evaluate(DefaultFun.AppendByteString, PlutusLanguage.PLUTUS_V3, 11,
+                Constant.byteString(oversized), Constant.byteString(new byte[0])),
+                "ByteString overflow");
+        assertSuccess(evaluate(DefaultFun.AppendByteString, PlutusLanguage.PLUTUS_V3, 10,
+                Constant.byteString(oversized), Constant.byteString(new byte[0])));
+
+        // LengthOfByteString does not use CByteString in the pinned Haskell source.
+        assertInteger(evaluate(DefaultFun.LengthOfByteString, PlutusLanguage.PLUTUS_V3, 11,
+                Constant.byteString(oversized)), BigInteger.valueOf(oversized.length));
+    }
+
+    @Test
+    void consByteStringSelectsModuloOrWord8ByVariant() {
+        Constant integer256 = Constant.integer(256);
+        Constant tail = Constant.byteString(new byte[]{1});
+
+        assertBytes(evaluate(DefaultFun.ConsByteString, PlutusLanguage.PLUTUS_V1, 11,
+                integer256, tail), new byte[]{0, 1});       // variant D
+        assertBytes(evaluate(DefaultFun.ConsByteString, PlutusLanguage.PLUTUS_V2, 10,
+                integer256, tail), new byte[]{0, 1});       // variant B
+        assertFailure(evaluate(DefaultFun.ConsByteString, PlutusLanguage.PLUTUS_V3, 11,
+                integer256, tail), "out of range");        // variant E
+        assertFailure(evaluate(DefaultFun.ConsByteString, PlutusLanguage.PLUTUS_V3, 10,
+                integer256, tail), "out of range");        // variant C
+
+        assertBytes(evaluate(DefaultFun.ConsByteString, PlutusLanguage.PLUTUS_V1, 11,
+                Constant.integer(-1), tail), new byte[]{(byte) 0xff, 1});
+    }
+
+    @Test
+    void shiftAndRotateUseSignedInt64OnlyInDE() {
+        BigInteger beyondInt64 = BigInteger.ONE.shiftLeft(63);
+        Constant bytes = Constant.byteString(new byte[]{1});
+
+        assertSuccess(evaluate(DefaultFun.ShiftByteString, PlutusLanguage.PLUTUS_V3, 10,
+                bytes, Constant.integer(beyondInt64)));
+        assertFailure(evaluate(DefaultFun.ShiftByteString, PlutusLanguage.PLUTUS_V3, 11,
+                bytes, Constant.integer(beyondInt64)), "signed 64-bit Int");
+        assertFailure(evaluate(DefaultFun.RotateByteString, PlutusLanguage.PLUTUS_V3, 11,
+                bytes, Constant.integer(beyondInt64.negate().subtract(BigInteger.ONE))),
+                "signed 64-bit Int");
+
+        assertSuccess(evaluate(DefaultFun.ShiftByteString, PlutusLanguage.PLUTUS_V3, 11,
+                bytes, Constant.integer(Long.MIN_VALUE)));
+    }
+
+    @Test
+    void writeBitsGetsTheDE4096ByteInputLimit() {
+        Constant bytes = Constant.byteString(new byte[4097]);
+        Constant indices = new Constant.ListConst(DefaultUni.INTEGER, List.of());
+
+        assertSuccess(evaluate(DefaultFun.WriteBits, PlutusLanguage.PLUTUS_V3, 10,
+                bytes, indices, Constant.bool(true)));
+        assertFailure(evaluate(DefaultFun.WriteBits, PlutusLanguage.PLUTUS_V3, 11,
+                bytes, indices, Constant.bool(true)), "4096-byte bound");
+    }
+
+    private EvalResult evaluate(DefaultFun fun, PlutusLanguage language, int protocol,
+                                Constant... args) {
+        Term term = Term.builtin(fun);
+        for (var arg : args) term = Term.apply(term, Term.const_(arg));
+        Program program = language == PlutusLanguage.PLUTUS_V3
+                ? Program.plutusV3(term)
+                : new Program(1, 0, 0, term);
+        return provider.evaluate(program, new LedgerEvaluationTarget(
+                language, new ProtocolVersion(protocol, 0)), null);
+    }
+
+    private static EvalResult.Success assertSuccess(EvalResult result) {
+        return assertInstanceOf(EvalResult.Success.class, result,
+                () -> "Expected success, got " + result);
+    }
+
+    private static void assertFailure(EvalResult result, String message) {
+        var failure = assertInstanceOf(EvalResult.Failure.class, result,
+                () -> "Expected failure, got " + result);
+        assertTrue(failure.error().contains(message), failure::error);
+    }
+
+    private static void assertInteger(EvalResult result, BigInteger expected) {
+        var term = assertInstanceOf(Term.Const.class, assertSuccess(result).resultTerm());
+        var integer = assertInstanceOf(Constant.IntegerConst.class, term.value());
+        assertEquals(expected, integer.value());
+    }
+
+    private static void assertBool(EvalResult result, boolean expected) {
+        var term = assertInstanceOf(Term.Const.class, assertSuccess(result).resultTerm());
+        var bool = assertInstanceOf(Constant.BoolConst.class, term.value());
+        assertEquals(expected, bool.value());
+    }
+
+    private static void assertBytes(EvalResult result, byte[] expected) {
+        var term = assertInstanceOf(Term.Const.class, assertSuccess(result).resultTerm());
+        var bytes = assertInstanceOf(Constant.ByteStringConst.class, term.value());
+        assertArrayEquals(expected, bytes.value());
+    }
+}

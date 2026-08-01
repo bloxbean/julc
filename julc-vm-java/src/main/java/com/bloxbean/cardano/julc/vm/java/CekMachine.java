@@ -11,6 +11,7 @@ import com.bloxbean.cardano.julc.vm.ProtocolFeatureRegistry;
 import com.bloxbean.cardano.julc.vm.UplcVersion;
 import com.bloxbean.cardano.julc.vm.java.builtins.BuiltinHelper;
 import com.bloxbean.cardano.julc.vm.java.builtins.BuiltinRuntime;
+import com.bloxbean.cardano.julc.vm.java.builtins.BuiltinSemantics;
 import com.bloxbean.cardano.julc.vm.java.builtins.BuiltinTable;
 import com.bloxbean.cardano.julc.vm.java.cost.CostTracker;
 import com.bloxbean.cardano.julc.vm.java.cost.MachineCosts.StepKind;
@@ -387,7 +388,8 @@ public final class CekMachine {
 
         BuiltinRuntime runtime = builtinTable.getRuntime(vb.fun());
         try {
-            CekValue result = runtime.execute(vb.collectedArgs());
+            CekValue result = BuiltinSemantics.execute(
+                    profile, vb.fun(), runtime, vb.collectedArgs());
             if (builtinTraceCollector != null) {
                 builtinTraceCollector.record(vb.fun(), vb.collectedArgs(), result);
             }

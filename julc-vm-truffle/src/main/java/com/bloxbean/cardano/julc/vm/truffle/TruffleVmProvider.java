@@ -102,8 +102,8 @@ public class TruffleVmProvider implements JulcVmProvider {
             mc = configured.costModel().machineCosts();
             bcm = configured.costModel().builtinCostModel();
         } else {
-            mc = DefaultCostModel.defaultMachineCosts(target.ledgerLanguage());
-            bcm = DefaultCostModel.defaultBuiltinCostModel(target.ledgerLanguage());
+            mc = DefaultCostModel.defaultMachineCosts(profile);
+            bcm = DefaultCostModel.defaultBuiltinCostModel(profile);
         }
         var costTracker = new CostTracker(mc, bcm, profile, budget);
         var context = new UplcContext(costTracker, profile,

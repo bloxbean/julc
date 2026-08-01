@@ -231,7 +231,10 @@ public final class CostModelParser {
         }
 
         // Start with defaults for builtins not covered by the flat array
-        var defaultModel = DefaultCostModel.defaultBuiltinCostModel();
+        var defaultModel = DefaultCostModel.defaultBuiltinCostModel(
+                protocolMajorVersion >= 11
+                        ? com.bloxbean.cardano.julc.vm.BuiltinSemanticsVariant.E
+                        : com.bloxbean.cardano.julc.vm.BuiltinSemanticsVariant.C);
         Map<DefaultFun, BuiltinCostModel.CostPair> costs = new EnumMap<>(DefaultFun.class);
         for (var fun : DefaultFun.values()) {
             var pair = defaultModel.get(fun);
@@ -277,8 +280,10 @@ public final class CostModelParser {
         costs.put(DefaultFun.ConstrData, pair(readConst(values, c), readConst(values, c)));
         // 45-48: DecodeUtf8 — LinearInX(cpu) + LinearInX(mem)
         costs.put(DefaultFun.DecodeUtf8, pair(readLinearInX(values, c), readLinearInX(values, c)));
-        // 49-59: DivideInteger — ConstAboveDiagonal(8, cpu) + SubtractedSizes(3, mem)
-        costs.put(DefaultFun.DivideInteger, pair(readConstAboveDiag(values, c), readSubtractedSizes(values, c)));
+        // 49-59: DivideInteger — the same flat coefficients select a
+        // protocol-specific diagonal model shape.
+        costs.put(DefaultFun.DivideInteger, pair(
+                readDivisionCpu(values, c, protocolMajorVersion), readSubtractedSizes(values, c)));
         // 60-63: EncodeUtf8 — LinearInX(cpu) + LinearInX(mem)
         costs.put(DefaultFun.EncodeUtf8, pair(readLinearInX(values, c), readLinearInX(values, c)));
         // 64-67: EqualsByteString — LinearOnDiagonal(cpu) + Const(mem)
@@ -322,15 +327,18 @@ public final class CostModelParser {
         // 112-113: MkPairData
         costs.put(DefaultFun.MkPairData, pair(readConst(values, c), readConst(values, c)));
         // 114-123: ModInteger — ConstAboveDiagonal(8, cpu) + LinearInY(2, mem)
-        costs.put(DefaultFun.ModInteger, pair(readConstAboveDiag(values, c), readLinearInY(values, c)));
+        costs.put(DefaultFun.ModInteger, pair(
+                readDivisionCpu(values, c, protocolMajorVersion), readLinearInY(values, c)));
         // 124-127: MultiplyInteger — MultipliedSizes(cpu) + AddedSizes(mem)
         costs.put(DefaultFun.MultiplyInteger, pair(readMultipliedSizes(values, c), readAddedSizes(values, c)));
         // 128-129: NullList
         costs.put(DefaultFun.NullList, pair(readConst(values, c), readConst(values, c)));
         // 130-140: QuotientInteger — ConstAboveDiagonal(8, cpu) + SubtractedSizes(3, mem)
-        costs.put(DefaultFun.QuotientInteger, pair(readConstAboveDiag(values, c), readSubtractedSizes(values, c)));
+        costs.put(DefaultFun.QuotientInteger, pair(
+                readDivisionCpu(values, c, protocolMajorVersion), readSubtractedSizes(values, c)));
         // 141-150: RemainderInteger — ConstAboveDiagonal(8, cpu) + LinearInY(2, mem)
-        costs.put(DefaultFun.RemainderInteger, pair(readConstAboveDiag(values, c), readLinearInY(values, c)));
+        costs.put(DefaultFun.RemainderInteger, pair(
+                readDivisionCpu(values, c, protocolMajorVersion), readLinearInY(values, c)));
         // 151-154: SerialiseData — LinearInX(cpu) + LinearInX(mem)
         costs.put(DefaultFun.SerialiseData, pair(readLinearInX(values, c), readLinearInX(values, c)));
         // 155-157: Sha2_256 — LinearInX(cpu) + Const(mem)
@@ -510,7 +518,10 @@ public final class CostModelParser {
      */
     public static long[] defaultToFlatArray(int protocolMajorVersion) {
         MachineCosts mc = DefaultCostModel.defaultMachineCosts();
-        BuiltinCostModel bcm = DefaultCostModel.defaultBuiltinCostModel();
+        BuiltinCostModel bcm = DefaultCostModel.defaultBuiltinCostModel(
+                protocolMajorVersion >= 11
+                        ? com.bloxbean.cardano.julc.vm.BuiltinSemanticsVariant.E
+                        : com.bloxbean.cardano.julc.vm.BuiltinSemanticsVariant.C);
         return toFlatArray(mc, bcm, protocolMajorVersion);
     }
 
@@ -723,6 +734,17 @@ public final class CostModelParser {
                 next(v, c), next(v, c), next(v, c), next(v, c));
     }
 
+    private static CostFunction readDivisionCpu(
+            long[] v, int[] c, int protocolMajorVersion) {
+        if (protocolMajorVersion < 11) {
+            return readConstAboveDiag(v, c);
+        }
+        long constant = next(v, c);
+        return new AboveAndBelowDiagonal(constant, new QuadraticInXAndY(
+                next(v, c), next(v, c), next(v, c), next(v, c),
+                next(v, c), next(v, c), next(v, c)));
+    }
+
     private static CostFunction readLinearOnDiag(long[] v, int[] c) {
         return new LinearOnDiagonal(next(v, c), next(v, c), next(v, c));
     }
@@ -813,6 +835,16 @@ public final class CostModelParser {
                 values[c[0]++] = ca.c01();      values[c[0]++] = ca.c02();
                 values[c[0]++] = ca.c10();      values[c[0]++] = ca.c11();
                 values[c[0]++] = ca.c20();      values[c[0]++] = ca.minimum();
+            }
+            case AboveAndBelowDiagonal ab -> {
+                values[c[0]++] = ab.constant();
+                writeCostFunction(values, c, ab.model());
+            }
+            case QuadraticInXAndY q -> {
+                values[c[0]++] = q.c00(); values[c[0]++] = q.c01();
+                values[c[0]++] = q.c02(); values[c[0]++] = q.c10();
+                values[c[0]++] = q.c11(); values[c[0]++] = q.c20();
+                values[c[0]++] = q.minimum();
             }
             case LinearOnDiagonal ld -> {
                 values[c[0]++] = ld.constant(); values[c[0]++] = ld.intercept(); values[c[0]++] = ld.slope();

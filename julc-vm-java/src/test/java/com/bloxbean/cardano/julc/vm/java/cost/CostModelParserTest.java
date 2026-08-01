@@ -2,8 +2,9 @@ package com.bloxbean.cardano.julc.vm.java.cost;
 
 import com.bloxbean.cardano.julc.core.DefaultFun;
 import com.bloxbean.cardano.julc.core.text.UplcParser;
-import com.bloxbean.cardano.julc.vm.PlutusLanguage;
+import com.bloxbean.cardano.julc.vm.BuiltinSemanticsVariant;
 import com.bloxbean.cardano.julc.vm.LedgerEvaluationTarget;
+import com.bloxbean.cardano.julc.vm.PlutusLanguage;
 import com.bloxbean.cardano.julc.vm.java.JavaVmProvider;
 import org.junit.jupiter.api.Test;
 
@@ -194,7 +195,7 @@ class CostModelParserTest {
         assertEquals(DefaultCostModel.defaultMachineCosts(), parsed.machineCosts());
 
         // Verify PV11-specific builtins
-        var defaultBcm = DefaultCostModel.defaultBuiltinCostModel();
+        var defaultBcm = DefaultCostModel.defaultBuiltinCostModel(BuiltinSemanticsVariant.E);
         var parsedBcm = parsed.builtinCostModel();
 
         // DropList: LinearInX(116711, 1957) CPU + Const(4) mem
@@ -237,7 +238,7 @@ class CostModelParserTest {
         long[] flat = CostModelParser.defaultToFlatArray(11);
         var parsed = CostModelParser.parse(flat, 11);
 
-        var defaultBcm = DefaultCostModel.defaultBuiltinCostModel();
+        var defaultBcm = DefaultCostModel.defaultBuiltinCostModel(BuiltinSemanticsVariant.E);
         var parsedBcm = parsed.builtinCostModel();
 
         long[] testSizes = {1, 5, 10, 20, 100};
@@ -346,7 +347,7 @@ class CostModelParserTest {
 
     @Test
     void defaultCostModel_pv11BuiltinsHaveNonNullCosts() {
-        var bcm = DefaultCostModel.defaultBuiltinCostModel();
+        var bcm = DefaultCostModel.defaultBuiltinCostModel(BuiltinSemanticsVariant.E);
         DefaultFun[] pv11Builtins = {
                 DefaultFun.DropList, DefaultFun.LengthOfArray, DefaultFun.ListToArray,
                 DefaultFun.IndexArray, DefaultFun.Bls12_381_G1_multiScalarMul,
@@ -418,5 +419,23 @@ class CostModelParserTest {
         // WithInteractionInXAndY: c00 + c10*x + c01*y + c11*x*y
         var wi = new CostFunction.WithInteractionInXAndY(10, 3, 7, 2);
         assertEquals(10 + 3 * 5 + 7 * 4 + 2 * 5 * 4, wi.apply(5, 4));
+
+        // AboveAndBelowDiagonal orders arguments before applying its model.
+        var abd = new CostFunction.AboveAndBelowDiagonal(999,
+                new CostFunction.QuadraticInXAndY(10, 3, 2, 5, 7, 11, 0));
+        assertEquals(abd.apply(3, 10), abd.apply(10, 3));
+    }
+
+    @Test
+    void pv11DefaultsUsePinnedModelEParametersAndShapes() {
+        long[] flat = CostModelParser.defaultToFlatArray(11);
+
+        assertEquals(960, flat[54], "DivideInteger c11");
+        assertEquals(30623, flat[64], "EqualsByteString off-diagonal constant");
+        assertEquals(28755, flat[65], "EqualsByteString intercept");
+        assertEquals(75, flat[66], "EqualsByteString slope");
+        assertInstanceOf(CostFunction.AboveAndBelowDiagonal.class,
+                DefaultCostModel.defaultBuiltinCostModel(BuiltinSemanticsVariant.E)
+                        .get(DefaultFun.DivideInteger).cpu());
     }
 }

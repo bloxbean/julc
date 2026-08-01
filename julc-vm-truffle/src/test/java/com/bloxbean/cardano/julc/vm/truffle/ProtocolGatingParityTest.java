@@ -5,6 +5,7 @@ import com.bloxbean.cardano.julc.vm.*;
 import com.bloxbean.cardano.julc.vm.java.JavaVmProvider;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigInteger;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -46,6 +47,24 @@ class ProtocolGatingParityTest {
         var target = LedgerEvaluationTarget.pv11(PlutusLanguage.PLUTUS_V3);
         assertFailure(java.evaluate(program, target, null), "MultiIndexArray is not available");
         assertFailure(truffle.evaluate(program, target, null), "MultiIndexArray is not available");
+    }
+
+    @Test
+    void deRuntimeBoundariesMatchJava() {
+        var oversizedInteger = BigInteger.ONE.shiftLeft(262143);
+        var add = apply(DefaultFun.AddInteger,
+                Constant.integer(oversizedInteger), Constant.integer(0));
+        assertBackendParity(Program.plutusV3(add), PlutusLanguage.PLUTUS_V3, 10);
+        assertBackendParity(Program.plutusV3(add), PlutusLanguage.PLUTUS_V3, 11);
+
+        var cons = apply(DefaultFun.ConsByteString,
+                Constant.integer(256), Constant.byteString(new byte[]{1}));
+        assertBackendParity(new Program(1, 0, 0, cons), PlutusLanguage.PLUTUS_V1, 11);
+        assertBackendParity(Program.plutusV3(cons), PlutusLanguage.PLUTUS_V3, 11);
+
+        var shift = apply(DefaultFun.ShiftByteString,
+                Constant.byteString(new byte[]{1}), Constant.integer(BigInteger.ONE.shiftLeft(63)));
+        assertBackendParity(Program.plutusV3(shift), PlutusLanguage.PLUTUS_V3, 11);
     }
 
     private void assertBackendParity(Program program, PlutusLanguage language, int protocol) {

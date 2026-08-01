@@ -147,6 +147,36 @@ public sealed interface CostFunction {
     }
 
     /**
+     * Evaluate the nested two-argument model with the larger size first and
+     * the smaller size second. The retained constant is part of the ledger
+     * parameter schema but is deliberately unused by the Haskell evaluator.
+     */
+    record AboveAndBelowDiagonal(long constant, CostFunction model) implements CostFunction {
+        @Override
+        public long apply(long... sizes) {
+            return model.apply(Math.max(sizes[0], sizes[1]), Math.min(sizes[0], sizes[1]));
+        }
+    }
+
+    /** General quadratic in two argument sizes, clamped to a minimum. */
+    record QuadraticInXAndY(long c00, long c01, long c02,
+                            long c10, long c11, long c20,
+                            long minimum) implements CostFunction {
+        @Override
+        public long apply(long... sizes) {
+            long x = sizes[0];
+            long y = sizes[1];
+            long result = c00;
+            result = satAdd(result, satMul(c01, y));
+            result = satAdd(result, satMul(c02, satMul(y, y)));
+            result = satAdd(result, satMul(c10, x));
+            result = satAdd(result, satMul(c11, satMul(x, y)));
+            result = satAdd(result, satMul(c20, satMul(x, x)));
+            return Math.max(minimum, result);
+        }
+    }
+
+    /**
      * Linear on diagonal (when x == y), constant off diagonal.
      * Used for equality comparisons on bytestrings/strings.
      */

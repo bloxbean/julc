@@ -1,7 +1,10 @@
 package com.bloxbean.cardano.julc.vm.java.cost;
 
 import com.bloxbean.cardano.julc.core.DefaultFun;
+import com.bloxbean.cardano.julc.vm.BuiltinSemanticsVariant;
 import com.bloxbean.cardano.julc.vm.PlutusLanguage;
+import com.bloxbean.cardano.julc.vm.ProtocolFeatureProfile;
+import com.bloxbean.cardano.julc.vm.UplcVersion;
 
 import java.util.EnumMap;
 import java.util.Map;
@@ -17,6 +20,43 @@ import static com.bloxbean.cardano.julc.vm.java.cost.CostFunction.*;
 public final class DefaultCostModel {
 
     private DefaultCostModel() {}
+
+    /** Select CEK machine costs from the complete ledger evaluation profile. */
+    public static MachineCosts defaultMachineCosts(ProtocolFeatureProfile profile) {
+        if (profile.target().ledgerLanguage() == PlutusLanguage.PLUTUS_V3
+                || profile.availableUplcVersions().contains(UplcVersion.V1_1_0)) {
+            return defaultMachineCosts();
+        }
+        return defaultMachineCostsV1V2();
+    }
+
+    /**
+     * Select and filter builtin costs using the same profile that controls
+     * runtime semantics and builtin availability.
+     */
+    public static BuiltinCostModel defaultBuiltinCostModel(ProtocolFeatureProfile profile) {
+        var variantModel = defaultBuiltinCostModel(profile.semanticsVariant());
+        Map<DefaultFun, BuiltinCostModel.CostPair> filtered = new EnumMap<>(DefaultFun.class);
+        for (var fun : profile.availableBuiltins()) {
+            var cost = variantModel.get(fun);
+            if (cost != null) filtered.put(fun, cost);
+        }
+        return new BuiltinCostModel(filtered);
+    }
+
+    /** Select the builtin model shipped for a Haskell semantics variant. */
+    public static BuiltinCostModel defaultBuiltinCostModel(BuiltinSemanticsVariant variant) {
+        return switch (variant) {
+            // Variant A predates the pinned PV10/PV11 compatibility window.
+            // Preserve the existing default until historical defaults are
+            // made a separately versioned compatibility source.
+            case A -> defaultBuiltinCostModel();
+            case B -> builtinCostModelB();
+            case C -> defaultBuiltinCostModel();
+            case D -> builtinCostModelD();
+            case E -> builtinCostModelE();
+        };
+    }
 
     /**
      * Get the default machine costs for the specified Plutus language version.
@@ -89,7 +129,7 @@ public final class DefaultCostModel {
      * with V2-era cost values (used for both V1 and V2 PostConway defaults).
      */
     private static BuiltinCostModel filterAndOverrideDivision(int maxVersion) {
-        var v3 = defaultBuiltinCostModel();
+        var v3 = builtinCostModelB();
         Map<DefaultFun, BuiltinCostModel.CostPair> costs = new EnumMap<>(DefaultFun.class);
         for (var fun : DefaultFun.values()) {
             if (fun.isAvailableIn(maxVersion)) {
@@ -100,17 +140,70 @@ public final class DefaultCostModel {
             }
         }
 
-        // V1/V2 division builtins use simpler const_above_diagonal with multiplied_sizes
-        // inner model (from builtinCostModelB.json), carried forward in PostConway defaults.
-        // constant=85848, inner=MultipliedSizes(228465, 122), memory=SubtractedSizes(0,1,1)
-        var divCpu = new ConstAboveDiagonal(85848, 228465, 0, 0, 0, 122, 0, 0);
+        return new BuiltinCostModel(costs);
+    }
+
+    /** Pinned {@code builtinCostModelB.json}: model C with legacy division functions. */
+    private static BuiltinCostModel builtinCostModelB() {
+        var costs = copy(defaultBuiltinCostModel());
+        var divCpu = multipliedSizesConstAboveDiagonal();
         var divMem = new SubtractedSizes(0, 1, 1);
         costs.put(DefaultFun.DivideInteger, pair(divCpu, divMem));
         costs.put(DefaultFun.QuotientInteger, pair(divCpu, divMem));
         costs.put(DefaultFun.RemainderInteger, pair(divCpu, divMem));
         costs.put(DefaultFun.ModInteger, pair(divCpu, divMem));
-
         return new BuiltinCostModel(costs);
+    }
+
+    /** Pinned {@code builtinCostModelD.json} for V1/V2 at PV11. */
+    private static BuiltinCostModel builtinCostModelD() {
+        var costs = copy(defaultBuiltinCostModel());
+        var aboveAndBelow = new AboveAndBelowDiagonal(
+                85848, new MultipliedSizes(228465, 122));
+        var constAbove = multipliedSizesConstAboveDiagonal();
+        var subtractedMem = new SubtractedSizes(0, 1, 1);
+        var linearYMem = new LinearInY(0, 1);
+
+        costs.put(DefaultFun.DivideInteger, pair(aboveAndBelow, subtractedMem));
+        costs.put(DefaultFun.ModInteger, pair(aboveAndBelow, linearYMem));
+        costs.put(DefaultFun.QuotientInteger, pair(constAbove, subtractedMem));
+        costs.put(DefaultFun.RemainderInteger, pair(constAbove, linearYMem));
+        costs.put(DefaultFun.EqualsByteString, pair(
+                new LinearOnDiagonal(30623, 28755, 75),
+                new ConstantCost(1)));
+        return new BuiltinCostModel(costs);
+    }
+
+    /** Pinned {@code builtinCostModelE.json} for V3 at PV11. */
+    private static BuiltinCostModel builtinCostModelE() {
+        var costs = copy(defaultBuiltinCostModel());
+        var divisionCpu = new AboveAndBelowDiagonal(85848,
+                new QuadraticInXAndY(123203, 7305, -900, 1716, 960, 57, 85848));
+        costs.put(DefaultFun.DivideInteger, pair(
+                divisionCpu, new SubtractedSizes(0, 1, 1)));
+        costs.put(DefaultFun.QuotientInteger, pair(
+                divisionCpu, new SubtractedSizes(0, 1, 1)));
+        costs.put(DefaultFun.RemainderInteger, pair(
+                divisionCpu, new LinearInY(0, 1)));
+        costs.put(DefaultFun.ModInteger, pair(
+                divisionCpu, new LinearInY(0, 1)));
+        costs.put(DefaultFun.EqualsByteString, pair(
+                new LinearOnDiagonal(30623, 28755, 75),
+                new ConstantCost(1)));
+        return new BuiltinCostModel(costs);
+    }
+
+    private static CostFunction multipliedSizesConstAboveDiagonal() {
+        return new ConstAboveDiagonal(85848, 228465, 0, 0, 0, 122, 0, 0);
+    }
+
+    private static Map<DefaultFun, BuiltinCostModel.CostPair> copy(BuiltinCostModel model) {
+        Map<DefaultFun, BuiltinCostModel.CostPair> costs = new EnumMap<>(DefaultFun.class);
+        for (var fun : DefaultFun.values()) {
+            var pair = model.get(fun);
+            if (pair != null) costs.put(fun, pair);
+        }
+        return costs;
     }
 
     /** Default CEK machine step costs (Plutus V3 Conway era). */
