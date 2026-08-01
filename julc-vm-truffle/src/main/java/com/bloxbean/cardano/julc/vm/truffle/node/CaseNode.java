@@ -2,6 +2,7 @@ package com.bloxbean.cardano.julc.vm.truffle.node;
 
 import com.bloxbean.cardano.julc.core.Constant;
 import com.bloxbean.cardano.julc.core.Term;
+import com.bloxbean.cardano.julc.vm.UplcVersion;
 import com.bloxbean.cardano.julc.vm.java.cost.MachineCosts.StepKind;
 import com.bloxbean.cardano.julc.vm.truffle.UplcContext;
 import com.bloxbean.cardano.julc.vm.truffle.runtime.UplcConstrValue;
@@ -14,7 +15,7 @@ import com.oracle.truffle.api.instrumentation.Tag;
 import java.util.List;
 
 /**
- * V3 case dispatch — evaluates scrutinee, then selects and applies branch.
+ * UPLC 1.1 case dispatch — evaluates scrutinee, then selects and applies a branch.
  */
 public final class CaseNode extends UplcNode {
 
@@ -34,10 +35,10 @@ public final class CaseNode extends UplcNode {
 
     @Override
     public Object execute(Frame frame, UplcContext context) {
-        if (context.getLanguage() != com.bloxbean.cardano.julc.vm.PlutusLanguage.PLUTUS_V3) {
+        if (!context.getProfile().availableUplcVersions().contains(UplcVersion.V1_1_0)) {
             throw new UplcRuntimeException(
-                    "Case term is not available in " + context.getLanguage() +
-                    " (requires PLUTUS_V3)", getSourceTerm(), this);
+                    "Case term is not available for " + context.getProfile().target(),
+                    getSourceTerm(), this);
         }
         context.getCostTracker().chargeMachineStep(StepKind.CASE);
         context.recordTrace(this, "Case");
@@ -51,6 +52,11 @@ public final class CaseNode extends UplcNode {
             tag = (int) constr.getTag();
             fields = constr.getFields();
         } else if (scrutinee instanceof Constant c) {
+            if (!context.getProfile().caseOnBuiltinConstants()) {
+                throw new UplcRuntimeException(
+                        "Case on builtin constants is not available for "
+                                + context.getProfile().target(), getSourceTerm(), this);
+            }
             var decomposed = decomposeConstantForCase(c, branchNodes.length);
             tag = decomposed.tag;
             fields = decomposed.fields;

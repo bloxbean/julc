@@ -275,7 +275,7 @@ class TruffleVmProviderTest {
         var program = new Program(1, 0, 0, constr);
         var result = provider.evaluate(program, PlutusLanguage.PLUTUS_V1, null);
         assertInstanceOf(EvalResult.Failure.class, result);
-        assertTrue(((EvalResult.Failure) result).error().contains("PLUTUS_V3"));
+        assertTrue(((EvalResult.Failure) result).error().contains("UPLC 1.1.0"));
     }
 
     @Test

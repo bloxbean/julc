@@ -1,8 +1,7 @@
 package com.bloxbean.cardano.julc.vm.java;
 
 import com.bloxbean.cardano.julc.core.*;
-import com.bloxbean.cardano.julc.vm.EvalResult;
-import com.bloxbean.cardano.julc.vm.PlutusLanguage;
+import com.bloxbean.cardano.julc.vm.*;
 import com.bloxbean.cardano.julc.vm.java.builtins.BuiltinTable;
 import com.bloxbean.cardano.julc.vm.java.builtins.UnsupportedBuiltinException;
 import com.bloxbean.cardano.julc.vm.java.cost.CostModelParser;
@@ -34,14 +33,14 @@ class LanguageVersionTest {
             // Constr(0, [42]) — should fail for V1
             var term = new Term.Constr(0, List.of(Term.const_(Constant.integer(42))));
             var result = evaluate(term, PlutusLanguage.PLUTUS_V1);
-            assertFailureContains(result, "Constr term is not available in PLUTUS_V1");
+            assertFailureContains(result, "Constr/Case terms require UPLC 1.1.0");
         }
 
         @Test
         void v2_rejects_constr_term() {
             var term = new Term.Constr(0, List.of(Term.const_(Constant.integer(42))));
             var result = evaluate(term, PlutusLanguage.PLUTUS_V2);
-            assertFailureContains(result, "Constr term is not available in PLUTUS_V2");
+            assertFailureContains(result, "Constr/Case terms require UPLC 1.1.0");
         }
 
         @Test
@@ -72,7 +71,7 @@ class LanguageVersionTest {
                     List.of(Term.const_(Constant.integer(0)),
                             Term.const_(Constant.integer(1))));
             var result = evaluate(caseTerm, PlutusLanguage.PLUTUS_V2);
-            assertFailureContains(result, "Case term is not available in PLUTUS_V2");
+            assertFailureContains(result, "Constr/Case terms require UPLC 1.1.0");
         }
 
         @Test
@@ -82,7 +81,8 @@ class LanguageVersionTest {
                     Term.const_(Constant.bool(true)),
                     List.of(Term.const_(Constant.integer(0)),
                             Term.const_(Constant.integer(1))));
-            var result = evaluate(caseTerm, PlutusLanguage.PLUTUS_V3);
+            var result = provider.evaluate(Program.plutusV3(caseTerm),
+                    LedgerEvaluationTarget.pv11(PlutusLanguage.PLUTUS_V3), null);
             assertSuccess(result, 1);
         }
     }
@@ -143,7 +143,7 @@ class LanguageVersionTest {
             assertFalse(table.isSupported(DefaultFun.Bls12_381_G1_add));
             var ex = assertThrows(UnsupportedBuiltinException.class,
                     () -> table.getSignature(DefaultFun.Bls12_381_G1_add));
-            assertTrue(ex.getMessage().contains("requires"));
+            assertTrue(ex.getMessage().contains("not available"));
         }
 
         @Test
@@ -154,12 +154,12 @@ class LanguageVersionTest {
         }
 
         @Test
-        void v3_accepts_all_v1v2v3_builtins() {
-            var table = BuiltinTable.forLanguage(PlutusLanguage.PLUTUS_V3);
+        void v3Pv11_accepts_all_released_builtins() {
+            var table = BuiltinTable.forProfile(ProtocolFeatureRegistry.resolve(
+                    LedgerEvaluationTarget.pv11(PlutusLanguage.PLUTUS_V3)));
             for (var fun : DefaultFun.values()) {
-                if (fun.minLanguageVersion() <= 3) {
-                    assertTrue(table.isSupported(fun), "V3 table should support " + fun);
-                }
+                assertEquals(fun.flatCode() <= 100, table.isSupported(fun),
+                        "Unexpected V3/PV11 availability for " + fun);
             }
         }
     }
@@ -191,12 +191,14 @@ class LanguageVersionTest {
         }
 
         @Test
-        void pv11_builtins_have_version_3() {
-            // PV11 Batch 6 builtins are available in V3
+        void languageOnlyMetadataDoesNotImplyProtocolAvailability() {
             assertEquals(3, DefaultFun.DropList.minLanguageVersion());
             assertEquals(3, DefaultFun.MultiIndexArray.minLanguageVersion());
             assertEquals(3, DefaultFun.InsertCoin.minLanguageVersion());
             assertEquals(3, DefaultFun.Bls12_381_G1_multiScalarMul.minLanguageVersion());
+            assertFalse(ProtocolFeatureRegistry.resolve(
+                    LedgerEvaluationTarget.pv11(PlutusLanguage.PLUTUS_V3))
+                    .isBuiltinAvailable(DefaultFun.MultiIndexArray));
         }
 
         @Test
@@ -229,23 +231,23 @@ class LanguageVersionTest {
         }
 
         @Test
-        void v2_table_has_54_builtins() {
+        void v2Pv10_table_has_56_builtins() {
             var table = BuiltinTable.forLanguage(PlutusLanguage.PLUTUS_V2);
             int count = 0;
             for (var fun : DefaultFun.values()) {
                 if (table.isSupported(fun)) count++;
             }
-            assertEquals(54, count, "V2 should have 54 builtins (51 V1 + 3 V2)");
+            assertEquals(56, count, "V2/PV10 includes Batch 4b's two conversion builtins");
         }
 
         @Test
-        void v3_table_has_102_builtins() {
+        void v3Pv10_table_has_87_builtins() {
             var table = BuiltinTable.forLanguage(PlutusLanguage.PLUTUS_V3);
             int count = 0;
             for (var fun : DefaultFun.values()) {
                 if (table.isSupported(fun)) count++;
             }
-            assertEquals(102, count, "V3 should have 102 builtins (54 V2 + 34 V3 + 14 PV11)");
+            assertEquals(87, count, "V3/PV10 includes tags 0-86 only");
         }
     }
 

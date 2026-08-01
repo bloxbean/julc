@@ -1,0 +1,76 @@
+package com.bloxbean.cardano.julc.vm.truffle;
+
+import com.bloxbean.cardano.julc.core.*;
+import com.bloxbean.cardano.julc.vm.*;
+import com.bloxbean.cardano.julc.vm.java.JavaVmProvider;
+import org.junit.jupiter.api.Test;
+
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+class ProtocolGatingParityTest {
+
+    private final JavaVmProvider java = new JavaVmProvider();
+    private final TruffleVmProvider truffle = new TruffleVmProvider();
+
+    @Test
+    void batch6BoundaryMatchesJava() {
+        var term = apply(DefaultFun.ExpModInteger,
+                Constant.integer(2), Constant.integer(8), Constant.integer(17));
+        assertBackendParity(Program.plutusV3(term), PlutusLanguage.PLUTUS_V3, 10);
+        assertBackendParity(Program.plutusV3(term), PlutusLanguage.PLUTUS_V3, 11);
+    }
+
+    @Test
+    void v2Batch4bBoundaryMatchesJava() {
+        var term = apply(DefaultFun.IntegerToByteString,
+                Constant.bool(true), Constant.integer(0), Constant.integer(258));
+        var program = Program.plutusV2(term);
+        assertBackendParity(program, PlutusLanguage.PLUTUS_V2, 9);
+        assertBackendParity(program, PlutusLanguage.PLUTUS_V2, 10);
+    }
+
+    @Test
+    void caseOnBuiltinBoundaryMatchesJava() {
+        var term = new Term.Case(Term.const_(Constant.bool(true)), List.of(
+                Term.const_(Constant.integer(0)), Term.const_(Constant.integer(1))));
+        var program = Program.plutusV3(term);
+        assertBackendParity(program, PlutusLanguage.PLUTUS_V3, 10);
+        assertBackendParity(program, PlutusLanguage.PLUTUS_V3, 11);
+    }
+
+    @Test
+    void futureBuiltinIsRejectedByBothBackends() {
+        var program = Program.plutusV3(Term.builtin(DefaultFun.MultiIndexArray));
+        var target = LedgerEvaluationTarget.pv11(PlutusLanguage.PLUTUS_V3);
+        assertFailure(java.evaluate(program, target, null), "MultiIndexArray is not available");
+        assertFailure(truffle.evaluate(program, target, null), "MultiIndexArray is not available");
+    }
+
+    private void assertBackendParity(Program program, PlutusLanguage language, int protocol) {
+        var target = new LedgerEvaluationTarget(language, new ProtocolVersion(protocol, 0));
+        var javaResult = java.evaluate(program, target, null);
+        var truffleResult = truffle.evaluate(program, target, null);
+        assertEquals(javaResult.getClass(), truffleResult.getClass(),
+                () -> "Java=" + javaResult + ", Truffle=" + truffleResult);
+        if (javaResult instanceof EvalResult.Success javaSuccess) {
+            var truffleSuccess = (EvalResult.Success) truffleResult;
+            assertEquals(javaSuccess.resultTerm(), truffleSuccess.resultTerm());
+            assertEquals(javaSuccess.consumed(), truffleSuccess.consumed());
+        } else {
+            assertEquals(javaResult.budgetConsumed(), truffleResult.budgetConsumed());
+        }
+    }
+
+    private static Term apply(DefaultFun fun, Constant... args) {
+        Term term = Term.builtin(fun);
+        for (var arg : args) term = Term.apply(term, Term.const_(arg));
+        return term;
+    }
+
+    private static void assertFailure(EvalResult result, String expected) {
+        var failure = assertInstanceOf(EvalResult.Failure.class, result);
+        assertTrue(failure.error().contains(expected));
+    }
+}

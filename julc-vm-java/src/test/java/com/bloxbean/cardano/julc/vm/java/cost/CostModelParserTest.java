@@ -3,6 +3,7 @@ package com.bloxbean.cardano.julc.vm.java.cost;
 import com.bloxbean.cardano.julc.core.DefaultFun;
 import com.bloxbean.cardano.julc.core.text.UplcParser;
 import com.bloxbean.cardano.julc.vm.PlutusLanguage;
+import com.bloxbean.cardano.julc.vm.LedgerEvaluationTarget;
 import com.bloxbean.cardano.julc.vm.java.JavaVmProvider;
 import org.junit.jupiter.api.Test;
 
@@ -375,7 +376,8 @@ class CostModelParserTest {
         var program = UplcParser.parseProgram(
                 "(program 1.0.0 [[(force (builtin dropList)) (con integer 0)] (con (list integer) [1,2,3])])");
 
-        var defaultResult = defaultProvider.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
+        var defaultResult = defaultProvider.evaluate(program,
+                LedgerEvaluationTarget.pv11(PlutusLanguage.PLUTUS_V3), null);
         var customResult = customProvider.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
 
         assertTrue(defaultResult.isSuccess(), "Default should succeed: " + defaultResult);

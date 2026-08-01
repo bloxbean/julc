@@ -251,6 +251,13 @@ class BudgetCrossValidationTest {
         return javaProvider.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
     }
 
+    private EvalResult evaluateJavaPv11(String uplcProgram) {
+        Program program = UplcParser.parseProgram(uplcProgram);
+        return javaProvider.evaluate(program,
+                com.bloxbean.cardano.julc.vm.LedgerEvaluationTarget.pv11(
+                        PlutusLanguage.PLUTUS_V3), null);
+    }
+
     private void crossValidateBudgetWithLanguage(String uplcProgram, PlutusLanguage language) {
         if (!hasScalus()) {
             org.junit.jupiter.api.Assumptions.assumeTrue(false, "Scalus provider not available");
@@ -484,7 +491,7 @@ class BudgetCrossValidationTest {
 
     @Test
     void insertCoin_budget() {
-        var result = evaluateJava("""
+        var result = evaluateJavaPv11("""
                 (program 1.0.0
                   [(builtin insertCoin)
                    (con bytestring #aa) (con bytestring #bb)
@@ -497,7 +504,7 @@ class BudgetCrossValidationTest {
 
     @Test
     void lookupCoin_budget() {
-        var result = evaluateJava("""
+        var result = evaluateJavaPv11("""
                 (program 1.0.0
                   [(builtin lookupCoin)
                    (con bytestring #aa) (con bytestring #aa)
@@ -509,7 +516,7 @@ class BudgetCrossValidationTest {
 
     @Test
     void unionValue_budget() {
-        var result = evaluateJava("""
+        var result = evaluateJavaPv11("""
                 (program 1.0.0
                   [(builtin unionValue)
                    (con value [(#aa, [(#aa, 5)])])
@@ -522,7 +529,7 @@ class BudgetCrossValidationTest {
     @Test
     void valueContains_aboveDiagonal_budget() {
         // x < y (above diagonal path in ConstAboveDiagonalLinear)
-        var result = evaluateJava("""
+        var result = evaluateJavaPv11("""
                 (program 1.0.0
                   [(builtin valueContains)
                    (con value [(#aa, [(#aa, 10)])])
@@ -535,7 +542,7 @@ class BudgetCrossValidationTest {
     @Test
     void valueContains_belowDiagonal_budget() {
         // x >= y (below diagonal path in ConstAboveDiagonalLinear)
-        var result = evaluateJava("""
+        var result = evaluateJavaPv11("""
                 (program 1.0.0
                   [(builtin valueContains)
                    (con value [(#aa, [(#aa, 10), (#bb, 2800)]), (#ff, [(#88, 100)])])
@@ -547,7 +554,7 @@ class BudgetCrossValidationTest {
 
     @Test
     void valueData_budget() {
-        var result = evaluateJava("""
+        var result = evaluateJavaPv11("""
                 (program 1.0.0
                   [(builtin valueData)
                    (con value [(#aa, [(#aa, 1)]), (#bb, [(#bb, 2)])])])""");
@@ -558,7 +565,7 @@ class BudgetCrossValidationTest {
 
     @Test
     void unValueData_budget() {
-        var result = evaluateJava("""
+        var result = evaluateJavaPv11("""
                 (program 1.0.0
                   [(builtin unValueData)
                    (con data (Map [(B #aa, Map [(B #aa, I 1)]), (B #bb, Map [(B #bb, I 2)])]))])""");
@@ -569,7 +576,7 @@ class BudgetCrossValidationTest {
 
     @Test
     void scaleValue_budget() {
-        var result = evaluateJava("""
+        var result = evaluateJavaPv11("""
                 (program 1.0.0
                   [(builtin scaleValue)
                    (con integer 2)
@@ -583,7 +590,7 @@ class BudgetCrossValidationTest {
 
     @Test
     void blsG1_multiScalarMul_budget() {
-        var result = evaluateJava("""
+        var result = evaluateJavaPv11("""
                 (program 1.0.0
                   [(builtin bls12_381_G1_multiScalarMul)
                    (con (list integer) [-7843724524521392138901923801823923123123454352157])
@@ -595,7 +602,7 @@ class BudgetCrossValidationTest {
 
     @Test
     void blsG2_multiScalarMul_budget() {
-        var result = evaluateJava("""
+        var result = evaluateJavaPv11("""
                 (program 1.0.0
                   [(builtin bls12_381_G2_multiScalarMul)
                    (con (list integer) [42])
@@ -610,7 +617,7 @@ class BudgetCrossValidationTest {
     @Test
     void dropList_budget() {
         // dropList requires force (polymorphic), operates on list
-        var result = evaluateJava("""
+        var result = evaluateJavaPv11("""
                 (program 1.0.0
                   [[(force (builtin dropList)) (con integer 0)]
                    (con (list integer) [11, 22, 33])])""");
@@ -622,7 +629,7 @@ class BudgetCrossValidationTest {
     @Test
     void indexArray_budget() {
         // indexArray requires force (polymorphic), operates on array constant
-        var result = evaluateJava("""
+        var result = evaluateJavaPv11("""
                 (program 1.1.0
                   [[(force (builtin indexArray))
                     (con (array integer) [10, 20, 30])]
@@ -635,7 +642,7 @@ class BudgetCrossValidationTest {
     @Test
     void lengthOfArray_budget() {
         // lengthOfArray requires force (polymorphic)
-        var result = evaluateJava("""
+        var result = evaluateJavaPv11("""
                 (program 1.1.0
                   [(force (builtin lengthOfArray))
                    (con (array integer) [1, 2, 3])])""");

@@ -4,6 +4,7 @@ import com.bloxbean.cardano.julc.core.*;
 import com.bloxbean.cardano.julc.core.text.UplcParser;
 import com.bloxbean.cardano.julc.core.text.UplcPrinter;
 import com.bloxbean.cardano.julc.vm.EvalResult;
+import com.bloxbean.cardano.julc.vm.LedgerEvaluationTarget;
 import com.bloxbean.cardano.julc.vm.PlutusLanguage;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;
@@ -95,8 +96,8 @@ class PlutusConformanceTest {
         }
 
         // Step 2: Evaluate
-        PlutusLanguage language = detectLanguage(program);
-        EvalResult result = PROVIDER.evaluate(program, language, null);
+        EvalResult result = PROVIDER.evaluate(program,
+                LedgerEvaluationTarget.pv11(PlutusLanguage.PLUTUS_V3), null);
 
         // Step 3: Compare
         if ("evaluation failure".equals(expected)) {
@@ -307,15 +308,6 @@ class PlutusConformanceTest {
             if (!dataEqual(a.get(i).value(), b.get(i).value())) return false;
         }
         return true;
-    }
-
-    private PlutusLanguage detectLanguage(Program program) {
-        // The conformance test suite uses UPLC 1.0.0 for ALL tests, even those
-        // exercising V3-only builtins. The UPLC version alone cannot distinguish
-        // V1/V2/V3 — that's determined by the script's language tag on-chain.
-        // We default to V3 for conformance tests since the suite expects all
-        // builtins to be available.
-        return PlutusLanguage.PLUTUS_V3;
     }
 
     private boolean shouldSkip(Path uplcFile) {

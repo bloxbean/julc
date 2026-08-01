@@ -48,8 +48,7 @@ public final class UplcContext {
         this.costTracker = costTracker;
         this.profile = profile;
         this.language = profile.target().ledgerLanguage();
-        // Protocol-aware filtering is enabled in the subsequent gating slice.
-        this.builtinTable = BuiltinTable.forLanguage(language);
+        this.builtinTable = BuiltinTable.forProfile(profile);
         this.executionTraceCollector = tracingEnabled ? new ExecutionTraceCollector(costTracker) : null;
         this.builtinTraceCollector = builtinTraceEnabled ? new BuiltinTraceCollector(20) : null;
     }

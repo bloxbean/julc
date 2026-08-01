@@ -84,7 +84,7 @@ public class TruffleVmProvider implements JulcVmProvider {
         ConfiguredCostModel configured;
         try {
             profile = ProtocolFeatureRegistry.resolve(target);
-            profile.validateProgramVersion(program);
+            ProgramValidator.validate(program, profile);
             configured = getCustomCostModel(target.ledgerLanguage());
             if (configured != null && !configured.target().equals(target)) {
                 throw new UnsupportedLedgerTargetException(

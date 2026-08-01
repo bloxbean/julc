@@ -1,6 +1,7 @@
 package com.bloxbean.cardano.julc.vm.truffle.node;
 
 import com.bloxbean.cardano.julc.core.Term;
+import com.bloxbean.cardano.julc.vm.UplcVersion;
 import com.bloxbean.cardano.julc.vm.java.cost.MachineCosts.StepKind;
 import com.bloxbean.cardano.julc.vm.truffle.UplcContext;
 import com.bloxbean.cardano.julc.vm.truffle.runtime.UplcConstrValue;
@@ -9,7 +10,7 @@ import com.oracle.truffle.api.frame.Frame;
 import com.oracle.truffle.api.nodes.ExplodeLoop;
 
 /**
- * V3 constructor — evaluates fields and returns a UplcConstrValue.
+ * UPLC 1.1 constructor — evaluates fields and returns a UplcConstrValue.
  */
 public final class ConstrNode extends UplcNode {
 
@@ -25,10 +26,10 @@ public final class ConstrNode extends UplcNode {
     @Override
     @ExplodeLoop
     public Object execute(Frame frame, UplcContext context) {
-        if (context.getLanguage() != com.bloxbean.cardano.julc.vm.PlutusLanguage.PLUTUS_V3) {
+        if (!context.getProfile().availableUplcVersions().contains(UplcVersion.V1_1_0)) {
             throw new UplcRuntimeException(
-                    "Constr term is not available in " + context.getLanguage() +
-                    " (requires PLUTUS_V3)", getSourceTerm(), this);
+                    "Constr term is not available for " + context.getProfile().target(),
+                    getSourceTerm(), this);
         }
         context.getCostTracker().chargeMachineStep(StepKind.CONSTR);
 

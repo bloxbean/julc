@@ -4,6 +4,7 @@ import com.bloxbean.cardano.julc.core.*;
 import com.bloxbean.cardano.julc.core.text.UplcParser;
 import com.bloxbean.cardano.julc.core.text.UplcPrinter;
 import com.bloxbean.cardano.julc.vm.EvalResult;
+import com.bloxbean.cardano.julc.vm.LedgerEvaluationTarget;
 import com.bloxbean.cardano.julc.vm.PlutusLanguage;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;
@@ -79,8 +80,8 @@ class PlutusConformanceTest {
                     "Expected parse error but parsing succeeded.\nInput: " + input);
         }
 
-        PlutusLanguage language = PlutusLanguage.PLUTUS_V3;
-        EvalResult result = PROVIDER.evaluate(program, language, null);
+        EvalResult result = PROVIDER.evaluate(program,
+                LedgerEvaluationTarget.pv11(PlutusLanguage.PLUTUS_V3), null);
 
         if ("evaluation failure".equals(expected)) {
             if (result.isSuccess()) {

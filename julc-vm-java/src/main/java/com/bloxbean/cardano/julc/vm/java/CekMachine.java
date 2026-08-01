@@ -4,10 +4,11 @@ import com.bloxbean.cardano.julc.core.Constant;
 import com.bloxbean.cardano.julc.core.DefaultFun;
 import com.bloxbean.cardano.julc.core.Term;
 import com.bloxbean.cardano.julc.core.source.SourceMap;
+import com.bloxbean.cardano.julc.vm.LedgerEvaluationTarget;
 import com.bloxbean.cardano.julc.vm.PlutusLanguage;
 import com.bloxbean.cardano.julc.vm.ProtocolFeatureProfile;
 import com.bloxbean.cardano.julc.vm.ProtocolFeatureRegistry;
-import com.bloxbean.cardano.julc.vm.LedgerEvaluationTarget;
+import com.bloxbean.cardano.julc.vm.UplcVersion;
 import com.bloxbean.cardano.julc.vm.java.builtins.BuiltinHelper;
 import com.bloxbean.cardano.julc.vm.java.builtins.BuiltinRuntime;
 import com.bloxbean.cardano.julc.vm.java.builtins.BuiltinTable;
@@ -39,7 +40,6 @@ public final class CekMachine {
     private final ArrayDeque<CekFrame> stack = new ArrayDeque<>();
     private final List<String> traces = new ArrayList<>();
     private final CostTracker costTracker;
-    private final PlutusLanguage language;
     private final ProtocolFeatureProfile profile;
     private final BuiltinTable.VersionedBuiltinTable builtinTable;
     private final SourceMap sourceMap;
@@ -96,9 +96,7 @@ public final class CekMachine {
                       SourceMap sourceMap, boolean executionTraceEnabled, boolean builtinTraceEnabled) {
         this.costTracker = costTracker;
         this.profile = profile;
-        this.language = profile.target().ledgerLanguage();
-        // Protocol-aware filtering is enabled in the subsequent gating slice.
-        this.builtinTable = BuiltinTable.forLanguage(language);
+        this.builtinTable = BuiltinTable.forProfile(profile);
         this.sourceMap = sourceMap;
         this.executionTraceCollector = (executionTraceEnabled && sourceMap != null && !sourceMap.isEmpty())
                 ? new ExecutionTraceCollector(costTracker) : null;
@@ -215,10 +213,9 @@ public final class CekMachine {
                 // currentEnv stays the same
             }
             case Term.Constr constr -> {
-                if (language != PlutusLanguage.PLUTUS_V3) {
+                if (!profile.availableUplcVersions().contains(UplcVersion.V1_1_0)) {
                     throw new CekEvaluationException(
-                            "Constr term is not available in " + language +
-                            " (requires PLUTUS_V3)", currentTerm);
+                            "Constr term is not available for " + profile.target(), currentTerm);
                 }
                 chargeStep(StepKind.CONSTR);
                 if (constr.fields().isEmpty()) {
@@ -232,10 +229,9 @@ public final class CekMachine {
                 }
             }
             case Term.Case cs -> {
-                if (language != PlutusLanguage.PLUTUS_V3) {
+                if (!profile.availableUplcVersions().contains(UplcVersion.V1_1_0)) {
                     throw new CekEvaluationException(
-                            "Case term is not available in " + language +
-                            " (requires PLUTUS_V3)", currentTerm);
+                            "Case term is not available for " + profile.target(), currentTerm);
                 }
                 chargeStep(StepKind.CASE);
                 recordTrace("Case");
@@ -297,6 +293,11 @@ public final class CekMachine {
                     tag = (int) vc.tag();
                     fields = vc.fields();
                 } else if (currentValue instanceof CekValue.VCon vcon) {
+                    if (!profile.caseOnBuiltinConstants()) {
+                        throw new CekEvaluationException(
+                                "Case on builtin constants is not available for "
+                                        + profile.target(), currentTerm);
+                    }
                     var decomposed = decomposeConstantForCase(vcon.constant(), cf.branches().size());
                     tag = decomposed.tag;
                     fields = decomposed.fields;
