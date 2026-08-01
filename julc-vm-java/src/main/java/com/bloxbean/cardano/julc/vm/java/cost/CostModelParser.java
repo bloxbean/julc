@@ -41,6 +41,9 @@ public final class CostModelParser {
     /** Plutus V2 at PV11, in V2.ParamName order. */
     public static final int V2_PV11_PARAM_COUNT = 332;
 
+    /** Plutus V3 at PV9 (Chang), before the Plomin Batch 5 append. */
+    public static final int PV9_PARAM_COUNT = 251;
+
     /** Expected parameter count for PlutusV3 PV10 (post-Plomin, current mainnet). */
     public static final int PV10_PARAM_COUNT = 297;
 
@@ -75,7 +78,7 @@ public final class CostModelParser {
      * <ul>
      *   <li>V1 PV5–PV10: 166 params; PV11: 332 params</li>
      *   <li>V2 PV7–PV9: 175 params; PV10: 185 params; PV11: 332 params</li>
-     *   <li>V3 PV10: 297 params, PV11: 350 params</li>
+     *   <li>V3 PV9: 251 params; PV10: 297 params; PV11: 350 params</li>
      * </ul>
      *
      * @param values               the flat cost model array from protocol parameters
@@ -126,6 +129,9 @@ public final class CostModelParser {
                 throw unsupportedSchema(language, protocolMajorVersion);
             }
             case PLUTUS_V3 -> {
+                if (protocolMajorVersion == 9) {
+                    yield PV9_PARAM_COUNT;
+                }
                 if (protocolMajorVersion == 10) {
                     yield PV10_PARAM_COUNT;
                 }
@@ -216,7 +222,7 @@ public final class CostModelParser {
     /**
      * Parse a PlutusV3 flat cost model parameter array with protocol major version.
      * <p>
-     * Supports PV10 (297 params) and PV11 (350 params).
+     * Supports PV9 (251 params), PV10 (297 params), and PV11 (350 params).
      *
      * @param values               the flat cost model array from protocol parameters
      * @param protocolMajorVersion the protocol major version
@@ -416,33 +422,37 @@ public final class CostModelParser {
         // 246-250: ByteStringToInteger — QuadraticInY(cpu) + LinearInY(mem)
         costs.put(DefaultFun.ByteStringToInteger, pair(readQuadraticInY(values, c), readLinearInY(values, c)));
 
-        // === Plomin / PV10 bitwise builtins (indices 251–296) ===
-        // 251-255: AndByteString — LinearInYAndZ(cpu) + LinearInMaxYZ(mem)
-        costs.put(DefaultFun.AndByteString, pair(readLinearInYAndZ(values, c), readLinearInMaxYZ(values, c)));
-        // 256-260: OrByteString
-        costs.put(DefaultFun.OrByteString, pair(readLinearInYAndZ(values, c), readLinearInMaxYZ(values, c)));
-        // 261-265: XorByteString
-        costs.put(DefaultFun.XorByteString, pair(readLinearInYAndZ(values, c), readLinearInMaxYZ(values, c)));
-        // 266-269: ComplementByteString — LinearInX(cpu) + LinearInX(mem)
-        costs.put(DefaultFun.ComplementByteString, pair(readLinearInX(values, c), readLinearInX(values, c)));
-        // 270-271: ReadBit
-        costs.put(DefaultFun.ReadBit, pair(readConst(values, c), readConst(values, c)));
-        // 272-275: WriteBits — LinearInY(cpu) + LinearInX(mem)
-        costs.put(DefaultFun.WriteBits, pair(readLinearInY(values, c), readLinearInX(values, c)));
-        // 276-279: ReplicateByte — LinearInX(cpu) + LinearInX(mem)
-        costs.put(DefaultFun.ReplicateByte, pair(readLinearInX(values, c), readLinearInX(values, c)));
-        // 280-283: ShiftByteString — LinearInX(cpu) + LinearInX(mem)
-        costs.put(DefaultFun.ShiftByteString, pair(readLinearInX(values, c), readLinearInX(values, c)));
-        // 284-287: RotateByteString — LinearInX(cpu) + LinearInX(mem)
-        costs.put(DefaultFun.RotateByteString, pair(readLinearInX(values, c), readLinearInX(values, c)));
-        // 288-290: CountSetBits — LinearInX(cpu) + Const(mem)
-        costs.put(DefaultFun.CountSetBits, pair(readLinearInX(values, c), readConst(values, c)));
-        // 291-293: FindFirstSetBit — LinearInX(cpu) + Const(mem)
-        costs.put(DefaultFun.FindFirstSetBit, pair(readLinearInX(values, c), readConst(values, c)));
-        // 294-296: Ripemd_160 — LinearInX(cpu) + Const(mem)
-        costs.put(DefaultFun.Ripemd_160, pair(readLinearInX(values, c), readConst(values, c)));
+        if (protocolMajorVersion >= 10) {
+            // === Plomin / PV10 bitwise builtins (indices 251–296) ===
+            // 251-255: AndByteString — LinearInYAndZ(cpu) + LinearInMaxYZ(mem)
+            costs.put(DefaultFun.AndByteString, pair(readLinearInYAndZ(values, c), readLinearInMaxYZ(values, c)));
+            // 256-260: OrByteString
+            costs.put(DefaultFun.OrByteString, pair(readLinearInYAndZ(values, c), readLinearInMaxYZ(values, c)));
+            // 261-265: XorByteString
+            costs.put(DefaultFun.XorByteString, pair(readLinearInYAndZ(values, c), readLinearInMaxYZ(values, c)));
+            // 266-269: ComplementByteString — LinearInX(cpu) + LinearInX(mem)
+            costs.put(DefaultFun.ComplementByteString, pair(readLinearInX(values, c), readLinearInX(values, c)));
+            // 270-271: ReadBit
+            costs.put(DefaultFun.ReadBit, pair(readConst(values, c), readConst(values, c)));
+            // 272-275: WriteBits — LinearInY(cpu) + LinearInX(mem)
+            costs.put(DefaultFun.WriteBits, pair(readLinearInY(values, c), readLinearInX(values, c)));
+            // 276-279: ReplicateByte — LinearInX(cpu) + LinearInX(mem)
+            costs.put(DefaultFun.ReplicateByte, pair(readLinearInX(values, c), readLinearInX(values, c)));
+            // 280-283: ShiftByteString — LinearInX(cpu) + LinearInX(mem)
+            costs.put(DefaultFun.ShiftByteString, pair(readLinearInX(values, c), readLinearInX(values, c)));
+            // 284-287: RotateByteString — LinearInX(cpu) + LinearInX(mem)
+            costs.put(DefaultFun.RotateByteString, pair(readLinearInX(values, c), readLinearInX(values, c)));
+            // 288-290: CountSetBits — LinearInX(cpu) + Const(mem)
+            costs.put(DefaultFun.CountSetBits, pair(readLinearInX(values, c), readConst(values, c)));
+            // 291-293: FindFirstSetBit — LinearInX(cpu) + Const(mem)
+            costs.put(DefaultFun.FindFirstSetBit, pair(readLinearInX(values, c), readConst(values, c)));
+            // 294-296: Ripemd_160 — LinearInX(cpu) + Const(mem)
+            costs.put(DefaultFun.Ripemd_160, pair(readLinearInX(values, c), readConst(values, c)));
+        }
 
-        assert c[0] == PV10_PARAM_COUNT : "Parser consumed " + c[0] + " params, expected " + PV10_PARAM_COUNT;
+        int prePv11Count = protocolMajorVersion == 9 ? PV9_PARAM_COUNT : PV10_PARAM_COUNT;
+        assert c[0] == prePv11Count
+                : "Parser consumed " + c[0] + " params, expected " + prePv11Count;
 
         // === PV11 builtins (indices 297–349, if present) ===
         if (protocolMajorVersion == 11) {
@@ -1202,8 +1212,8 @@ public final class CostModelParser {
      * Build a flat cost model parameter array from the default cost model
      * for the specified protocol version.
      *
-     * @param protocolMajorVersion the protocol major version (10 or 11)
-     * @return the flat array (297 elements for PV10, 350 for PV11)
+     * @param protocolMajorVersion the protocol major version (9, 10, or 11)
+     * @return the flat array (251 elements for PV9, 297 for PV10, 350 for PV11)
      */
     public static long[] defaultToFlatArray(int protocolMajorVersion) {
         MachineCosts mc = DefaultCostModel.defaultMachineCosts();
@@ -1227,7 +1237,7 @@ public final class CostModelParser {
      * Build a flat cost model parameter array from the given cost model.
      *
      * @param protocolMajorVersion the protocol major version
-     * @return the flat array (297 elements for PV10, 350 for PV11)
+     * @return the flat array (251 elements for PV9, 297 for PV10, 350 for PV11)
      */
     public static long[] toFlatArray(MachineCosts mc, BuiltinCostModel bcm, int protocolMajorVersion) {
         int paramCount = expectedParameterCount(
@@ -1330,21 +1340,25 @@ public final class CostModelParser {
         writeParams(values, c, bcm.get(DefaultFun.IntegerToByteString));
         writeParams(values, c, bcm.get(DefaultFun.ByteStringToInteger));
 
-        // Plomin bitwise builtins
-        writeParams(values, c, bcm.get(DefaultFun.AndByteString));
-        writeParams(values, c, bcm.get(DefaultFun.OrByteString));
-        writeParams(values, c, bcm.get(DefaultFun.XorByteString));
-        writeParams(values, c, bcm.get(DefaultFun.ComplementByteString));
-        writeParams(values, c, bcm.get(DefaultFun.ReadBit));
-        writeParams(values, c, bcm.get(DefaultFun.WriteBits));
-        writeParams(values, c, bcm.get(DefaultFun.ReplicateByte));
-        writeParams(values, c, bcm.get(DefaultFun.ShiftByteString));
-        writeParams(values, c, bcm.get(DefaultFun.RotateByteString));
-        writeParams(values, c, bcm.get(DefaultFun.CountSetBits));
-        writeParams(values, c, bcm.get(DefaultFun.FindFirstSetBit));
-        writeParams(values, c, bcm.get(DefaultFun.Ripemd_160));
+        if (protocolMajorVersion >= 10) {
+            // Plomin bitwise builtins
+            writeParams(values, c, bcm.get(DefaultFun.AndByteString));
+            writeParams(values, c, bcm.get(DefaultFun.OrByteString));
+            writeParams(values, c, bcm.get(DefaultFun.XorByteString));
+            writeParams(values, c, bcm.get(DefaultFun.ComplementByteString));
+            writeParams(values, c, bcm.get(DefaultFun.ReadBit));
+            writeParams(values, c, bcm.get(DefaultFun.WriteBits));
+            writeParams(values, c, bcm.get(DefaultFun.ReplicateByte));
+            writeParams(values, c, bcm.get(DefaultFun.ShiftByteString));
+            writeParams(values, c, bcm.get(DefaultFun.RotateByteString));
+            writeParams(values, c, bcm.get(DefaultFun.CountSetBits));
+            writeParams(values, c, bcm.get(DefaultFun.FindFirstSetBit));
+            writeParams(values, c, bcm.get(DefaultFun.Ripemd_160));
+        }
 
-        assert c[0] == PV10_PARAM_COUNT : "Writer produced " + c[0] + " params, expected " + PV10_PARAM_COUNT;
+        int prePv11Count = protocolMajorVersion == 9 ? PV9_PARAM_COUNT : PV10_PARAM_COUNT;
+        assert c[0] == prePv11Count
+                : "Writer produced " + c[0] + " params, expected " + prePv11Count;
 
         // === PV11 builtins (indices 297–349) ===
         if (protocolMajorVersion == 11) {

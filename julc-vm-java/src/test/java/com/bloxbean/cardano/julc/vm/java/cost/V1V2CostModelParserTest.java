@@ -38,6 +38,7 @@ class V1V2CostModelParserTest {
             new Schema(PlutusLanguage.PLUTUS_V2, 9, 175),
             new Schema(PlutusLanguage.PLUTUS_V2, 10, 185),
             new Schema(PlutusLanguage.PLUTUS_V2, 11, 332),
+            new Schema(PlutusLanguage.PLUTUS_V3, 9, 251),
             new Schema(PlutusLanguage.PLUTUS_V3, 10, 297),
             new Schema(PlutusLanguage.PLUTUS_V3, 11, 350));
 
@@ -57,7 +58,7 @@ class V1V2CostModelParserTest {
         assertThrows(IllegalArgumentException.class, () ->
                 CostModelParser.expectedParameterCount(PlutusLanguage.PLUTUS_V2, 12));
         assertThrows(IllegalArgumentException.class, () ->
-                CostModelParser.expectedParameterCount(PlutusLanguage.PLUTUS_V3, 9));
+                CostModelParser.expectedParameterCount(PlutusLanguage.PLUTUS_V3, 8));
         assertThrows(IllegalArgumentException.class, () ->
                 CostModelParser.expectedParameterCount(PlutusLanguage.PLUTUS_V3, 12));
     }
