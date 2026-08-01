@@ -29,6 +29,7 @@ class ShortCostModelArrayTest {
             new Schema(PlutusLanguage.PLUTUS_V2, 9, 175),
             new Schema(PlutusLanguage.PLUTUS_V2, 10, 185),
             new Schema(PlutusLanguage.PLUTUS_V2, 11, 332),
+            new Schema(PlutusLanguage.PLUTUS_V3, 9, 251),
             new Schema(PlutusLanguage.PLUTUS_V3, 10, 297),
             new Schema(PlutusLanguage.PLUTUS_V3, 11, 350));
 
