@@ -23,6 +23,10 @@ class PlutusConformanceTest {
 
     private static final JavaVmProvider PROVIDER = new JavaVmProvider();
 
+    /** Matches the conformance suite's budget files: ({cpu: 123 | mem: 45}). */
+    private static final java.util.regex.Pattern BUDGET_PATTERN =
+            java.util.regex.Pattern.compile("cpu:\\s*(\\d+)\\s*\\|\\s*mem:\\s*(\\d+)");
+
     /** Builtins/types not yet supported. */
     private static final Set<String> SKIP_DIRS = Set.of(
     );
@@ -30,6 +34,14 @@ class PlutusConformanceTest {
     /** Path substrings that trigger skipping. */
     private static final String[] SKIP_PATH_CONTAINS = {
     };
+
+    /**
+     * Directories whose {@code .budget.expected} files are not compared.
+     * The suite's budgets are generated with the latest Plutus default cost
+     * model; entries here differ from the PV10 mainnet defaults this VM uses.
+     */
+    private static final Set<String> SKIP_BUDGET_DIRS = Set.of(
+    );
 
     @TestFactory
     Stream<DynamicTest> plutusConformanceTests() throws IOException, URISyntaxException {
@@ -134,6 +146,40 @@ class PlutusConformanceTest {
                         "Actual:   " + actualOutput + "\n" +
                         "Input:    " + input);
             }
+        }
+
+        // Step 5: Compare budget when the suite provides one
+        verifyBudget(uplcFile, result, input);
+    }
+
+    private void verifyBudget(Path uplcFile, EvalResult result, String input) throws IOException {
+        var budgetFile = Paths.get(uplcFile + ".budget.expected");
+        if (!Files.exists(budgetFile)) return;
+        for (String skipDir : SKIP_BUDGET_DIRS) {
+            if (uplcFile.toString().contains("/" + skipDir + "/")) return;
+        }
+
+        String budgetExpected = Files.readString(budgetFile).trim();
+        var matcher = BUDGET_PATTERN.matcher(budgetExpected);
+        if (!matcher.find()) {
+            if ("evaluation failure".equals(budgetExpected) || "parse error".equals(budgetExpected)) {
+                return;
+            }
+            // Fail loudly on format drift — a silently skipped budget assertion
+            // is exactly the blind spot this check exists to close
+            throw new AssertionError(
+                    "Unrecognized budget file format: " + budgetFile + "\nContent: " + budgetExpected);
+        }
+
+        long expectedCpu = Long.parseLong(matcher.group(1));
+        long expectedMem = Long.parseLong(matcher.group(2));
+        var consumed = result.budgetConsumed();
+        if (consumed.cpuSteps() != expectedCpu || consumed.memoryUnits() != expectedMem) {
+            throw new AssertionError(
+                    "Budget mismatch.\n" +
+                    "Expected: cpu=" + expectedCpu + ", mem=" + expectedMem + "\n" +
+                    "Actual:   cpu=" + consumed.cpuSteps() + ", mem=" + consumed.memoryUnits() + "\n" +
+                    "Input:    " + input);
         }
     }
 
