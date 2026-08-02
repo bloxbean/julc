@@ -3,8 +3,11 @@ package com.bloxbean.cardano.julc.vm.java.cost;
 import com.bloxbean.cardano.julc.core.DefaultFun;
 import com.bloxbean.cardano.julc.vm.PlutusLanguage;
 
+import java.util.Arrays;
 import java.util.EnumMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import static com.bloxbean.cardano.julc.vm.java.cost.CostFunction.*;
 
@@ -20,11 +23,61 @@ import static com.bloxbean.cardano.julc.vm.java.cost.CostFunction.*;
  * <p>The order is append-only rather than globally alphabetical. In particular,
  * V1, V2, and V3 have different legacy cost-function shapes and different
  * locations for later machine and builtin parameters.</p>
+ *
+ * <p>For a known schema, a missing trailing value is replaced with
+ * {@link Long#MAX_VALUE} and reported through {@link ParsedCostModel#warnings()},
+ * matching Plutus's {@code CMTooFewParamsWarn}. Extra values are rejected so a
+ * future schema cannot be mistaken for a known protocol profile.</p>
  */
 public final class CostModelParser {
 
-    /** Result of parsing a flat cost model array. */
-    public record ParsedCostModel(MachineCosts machineCosts, BuiltinCostModel builtinCostModel) {}
+    /** A non-fatal warning produced while applying a known cost-model schema. */
+    public sealed interface CostModelParseWarning permits TooFewParametersWarning {
+        PlutusLanguage language();
+
+        int protocolMajorVersion();
+
+        int expected();
+
+        int actual();
+
+        String message();
+    }
+
+    /**
+     * Equivalent to Plutus's {@code CMTooFewParamsWarn}. Missing trailing
+     * parameters are represented by {@link Long#MAX_VALUE} in the parsed model.
+     */
+    public record TooFewParametersWarning(
+            PlutusLanguage language,
+            int protocolMajorVersion,
+            int expected,
+            int actual) implements CostModelParseWarning {
+
+        @Override
+        public String message() {
+            return language + " PV" + protocolMajorVersion
+                    + " cost model has too few parameters: expected " + expected
+                    + ", got " + actual
+                    + "; missing trailing parameters were set to Long.MAX_VALUE";
+        }
+    }
+
+    /** Result of parsing a flat cost model array, including non-fatal warnings. */
+    public record ParsedCostModel(
+            MachineCosts machineCosts,
+            BuiltinCostModel builtinCostModel,
+            List<CostModelParseWarning> warnings) {
+
+        public ParsedCostModel {
+            warnings = List.copyOf(warnings);
+        }
+
+        public ParsedCostModel(
+                MachineCosts machineCosts, BuiltinCostModel builtinCostModel) {
+            this(machineCosts, builtinCostModel, List.of());
+        }
+    }
 
     /** Plutus V1 before PV11. Retained under the original public name. */
     public static final int V1_PARAM_COUNT = 166;
@@ -64,7 +117,8 @@ public final class CostModelParser {
      * @param values   the flat cost model array from protocol parameters
      * @param language the Plutus language version
      * @return parsed machine costs and builtin cost model
-     * @throws IllegalArgumentException if the target or exact schema is unsupported
+     * @throws IllegalArgumentException if the target is unsupported or the array
+     *                                  has more values than the known schema
      */
     public static ParsedCostModel parse(long[] values, PlutusLanguage language) {
         return parse(values, language, 10, 0);
@@ -86,7 +140,8 @@ public final class CostModelParser {
      * @param protocolMajorVersion the protocol major version (e.g. 9 for Chang, 10 for Plomin)
      * @param protocolMinorVersion the protocol minor version
      * @return parsed machine costs and builtin cost model
-     * @throws IllegalArgumentException if the target or exact schema is unsupported
+     * @throws IllegalArgumentException if the target is unsupported or the array
+     *                                  has more values than the known schema
      */
     public static ParsedCostModel parse(long[] values, PlutusLanguage language,
                                          int protocolMajorVersion, int protocolMinorVersion) {
@@ -144,7 +199,9 @@ public final class CostModelParser {
     }
 
     private static ParsedCostModel parseV1(long[] values, int protocolMajorVersion) {
-        requireExactSchema(values, PlutusLanguage.PLUTUS_V1, protocolMajorVersion);
+        var schema = normalizeSchema(
+                values, PlutusLanguage.PLUTUS_V1, protocolMajorVersion);
+        values = schema.values();
         Map<DefaultFun, BuiltinCostModel.CostPair> costs = new EnumMap<>(DefaultFun.class);
         int[] cursor = {0};
         LegacySemantics semantics = legacySemantics(protocolMajorVersion);
@@ -170,11 +227,14 @@ public final class CostModelParser {
         }
 
         assertConsumed(cursor, values.length, PlutusLanguage.PLUTUS_V1, protocolMajorVersion);
-        return parsed(machine, constrCpu, constrMem, caseCpu, caseMem, costs);
+        return parsed(machine, constrCpu, constrMem, caseCpu, caseMem,
+                costs, schema.warnings());
     }
 
     private static ParsedCostModel parseV2(long[] values, int protocolMajorVersion) {
-        requireExactSchema(values, PlutusLanguage.PLUTUS_V2, protocolMajorVersion);
+        var schema = normalizeSchema(
+                values, PlutusLanguage.PLUTUS_V2, protocolMajorVersion);
+        values = schema.values();
         Map<DefaultFun, BuiltinCostModel.CostPair> costs = new EnumMap<>(DefaultFun.class);
         int[] cursor = {0};
         LegacySemantics semantics = legacySemantics(protocolMajorVersion);
@@ -201,19 +261,21 @@ public final class CostModelParser {
         }
 
         assertConsumed(cursor, values.length, PlutusLanguage.PLUTUS_V2, protocolMajorVersion);
-        return parsed(machine, constrCpu, constrMem, caseCpu, caseMem, costs);
+        return parsed(machine, constrCpu, constrMem, caseCpu, caseMem,
+                costs, schema.warnings());
     }
 
     /**
      * Parse a PlutusV3 flat cost model parameter array into machine costs and builtin cost model.
      * <p>
-     * The array must have exactly {@link #PV10_PARAM_COUNT} (297) elements.
+     * The schema contains {@link #PV10_PARAM_COUNT} (297) elements. A shorter
+     * array is padded with {@link Long#MAX_VALUE} and produces a warning.
      * Any builtins not covered by the array (e.g., ExpModInteger in PV10) retain
      * their defaults from {@link DefaultCostModel}.
      *
      * @param values the flat cost model array from protocol parameters
      * @return parsed machine costs and builtin cost model
-     * @throws IllegalArgumentException if the target or exact schema is unsupported
+     * @throws IllegalArgumentException if the array contains more than 297 values
      */
     public static ParsedCostModel parse(long[] values) {
         return parse(values, 10);
@@ -227,10 +289,13 @@ public final class CostModelParser {
      * @param values               the flat cost model array from protocol parameters
      * @param protocolMajorVersion the protocol major version
      * @return parsed machine costs and builtin cost model
-     * @throws IllegalArgumentException if the target or exact schema is unsupported
+     * @throws IllegalArgumentException if the target is unsupported or the array
+     *                                  has more values than the known schema
      */
     public static ParsedCostModel parse(long[] values, int protocolMajorVersion) {
-        requireExactSchema(values, PlutusLanguage.PLUTUS_V3, protocolMajorVersion);
+        var schema = normalizeSchema(
+                values, PlutusLanguage.PLUTUS_V3, protocolMajorVersion);
+        values = schema.values();
 
         // Start with defaults for builtins not covered by the flat array
         var defaultModel = DefaultCostModel.defaultBuiltinCostModel(
@@ -502,7 +567,8 @@ public final class CostModelParser {
                 caseCpu, caseMem
         );
 
-        return new ParsedCostModel(mc, new BuiltinCostModel(costs));
+        return new ParsedCostModel(
+                mc, new BuiltinCostModel(costs), schema.warnings());
     }
 
     // ========== V1/V2 authoritative ParamName readers ==========
@@ -899,21 +965,39 @@ public final class CostModelParser {
             long constrMem,
             long caseCpu,
             long caseMem,
-            Map<DefaultFun, BuiltinCostModel.CostPair> costs) {
+            Map<DefaultFun, BuiltinCostModel.CostPair> costs,
+            List<CostModelParseWarning> warnings) {
         return new ParsedCostModel(
                 common.withConstrAndCase(constrCpu, constrMem, caseCpu, caseMem),
-                new BuiltinCostModel(costs));
+                new BuiltinCostModel(costs),
+                warnings);
     }
 
-    private static void requireExactSchema(
+    private record NormalizedSchema(
+            long[] values, List<CostModelParseWarning> warnings) {
+    }
+
+    private static NormalizedSchema normalizeSchema(
             long[] values, PlutusLanguage language, int protocolMajorVersion) {
+        Objects.requireNonNull(values, "Cost model parameters must not be null");
         int expected = expectedParameterCount(language, protocolMajorVersion);
-        if (values.length != expected) {
+        if (values.length > expected) {
             throw new IllegalArgumentException(
                     language + " PV" + protocolMajorVersion
-                            + " cost model requires exactly " + expected
+                            + " cost model accepts at most " + expected
                             + " parameters, got " + values.length);
         }
+        if (values.length == expected) {
+            return new NormalizedSchema(values, List.of());
+        }
+
+        int actual = values.length;
+        long[] padded = Arrays.copyOf(values, expected);
+        Arrays.fill(padded, actual, expected, Long.MAX_VALUE);
+        return new NormalizedSchema(
+                padded,
+                List.of(new TooFewParametersWarning(
+                        language, protocolMajorVersion, expected, actual)));
     }
 
     private static void assertConsumed(

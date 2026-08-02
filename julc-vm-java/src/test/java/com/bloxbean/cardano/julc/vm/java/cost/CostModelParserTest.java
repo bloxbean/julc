@@ -149,11 +149,14 @@ class CostModelParserTest {
     }
 
     @Test
-    void parse_wrongArrayLength_throws() {
-        assertThrows(IllegalArgumentException.class, () ->
-                CostModelParser.parse(new long[10]));
-        assertThrows(IllegalArgumentException.class, () ->
-                CostModelParser.parse(new long[296]));
+    void parse_shortArray_padsAndWarns() {
+        var parsed = CostModelParser.parse(new long[296]);
+
+        var warning = assertInstanceOf(
+                CostModelParser.TooFewParametersWarning.class,
+                assertDoesNotThrow(() -> parsed.warnings().getFirst()));
+        assertEquals(297, warning.expected());
+        assertEquals(296, warning.actual());
     }
 
     @Test
@@ -279,12 +282,14 @@ class CostModelParserTest {
     }
 
     @Test
-    void parse_pv11_wrongArrayLength_throws() {
-        // PV11 parse should reject arrays shorter than 350
-        assertThrows(IllegalArgumentException.class, () ->
-                CostModelParser.parse(new long[297], 11));
-        assertThrows(IllegalArgumentException.class, () ->
-                CostModelParser.parse(new long[349], 11));
+    void parse_pv11_shortArray_padsAndWarns() {
+        var parsed = CostModelParser.parse(new long[349], 11);
+
+        var warning = assertInstanceOf(
+                CostModelParser.TooFewParametersWarning.class,
+                parsed.warnings().getFirst());
+        assertEquals(350, warning.expected());
+        assertEquals(349, warning.actual());
     }
 
     @Test

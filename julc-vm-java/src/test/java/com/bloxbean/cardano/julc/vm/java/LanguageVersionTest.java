@@ -388,15 +388,27 @@ class LanguageVersionTest {
     class CostModelParsing {
 
         @Test
-        void v1_parser_rejects_too_short_array() {
-            assertThrows(IllegalArgumentException.class,
-                    () -> CostModelParser.parse(new long[100], PlutusLanguage.PLUTUS_V1));
+        void v1_parser_pads_too_short_array() {
+            var parsed = CostModelParser.parse(
+                    new long[100], PlutusLanguage.PLUTUS_V1);
+
+            var warning = assertInstanceOf(
+                    CostModelParser.TooFewParametersWarning.class,
+                    parsed.warnings().getFirst());
+            assertEquals(CostModelParser.V1_PARAM_COUNT, warning.expected());
+            assertEquals(100, warning.actual());
         }
 
         @Test
-        void v2_parser_rejects_too_short_array() {
-            assertThrows(IllegalArgumentException.class,
-                    () -> CostModelParser.parse(new long[100], PlutusLanguage.PLUTUS_V2));
+        void v2_parser_pads_too_short_array() {
+            var parsed = CostModelParser.parse(
+                    new long[100], PlutusLanguage.PLUTUS_V2);
+
+            var warning = assertInstanceOf(
+                    CostModelParser.TooFewParametersWarning.class,
+                    parsed.warnings().getFirst());
+            assertEquals(CostModelParser.V2_PV10_PARAM_COUNT, warning.expected());
+            assertEquals(100, warning.actual());
         }
 
         @Test
