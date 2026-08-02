@@ -104,4 +104,20 @@ class CostTrackerTest {
         assertEquals(16100, tracker.consumed().cpuSteps());
         assertEquals(200, tracker.consumed().memoryUnits());
     }
+
+    @Test
+    void restrictingBudgetUsesSaturatingSubtractionForNegativeCosts() {
+        var negativeStartup = new MachineCosts(
+                Long.MIN_VALUE, 0,
+                0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        var tracker = new CostTracker(
+                negativeStartup,
+                DefaultCostModel.defaultBuiltinCostModel(),
+                ExBudget.ZERO);
+
+        assertDoesNotThrow(() ->
+                tracker.chargeMachineStep(MachineCosts.StepKind.STARTUP));
+        assertEquals(Long.MIN_VALUE, tracker.cpuConsumed());
+    }
 }

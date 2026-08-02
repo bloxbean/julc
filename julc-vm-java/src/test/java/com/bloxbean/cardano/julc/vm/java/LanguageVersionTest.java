@@ -395,7 +395,7 @@ class LanguageVersionTest {
             var warning = assertInstanceOf(
                     CostModelParser.TooFewParametersWarning.class,
                     parsed.warnings().getFirst());
-            assertEquals(CostModelParser.V1_PARAM_COUNT, warning.expected());
+            assertEquals(CostModelParser.V1_PV11_PARAM_COUNT, warning.expected());
             assertEquals(100, warning.actual());
         }
 
@@ -407,7 +407,7 @@ class LanguageVersionTest {
             var warning = assertInstanceOf(
                     CostModelParser.TooFewParametersWarning.class,
                     parsed.warnings().getFirst());
-            assertEquals(CostModelParser.V2_PV10_PARAM_COUNT, warning.expected());
+            assertEquals(CostModelParser.V2_PV11_PARAM_COUNT, warning.expected());
             assertEquals(100, warning.actual());
         }
 
@@ -422,9 +422,10 @@ class LanguageVersionTest {
             assertNotNull(parsed);
             assertNotNull(parsed.machineCosts());
             assertNotNull(parsed.builtinCostModel());
-            // Constr/case should be 0
-            assertEquals(0, parsed.machineCosts().constrCpu());
-            assertEquals(0, parsed.machineCosts().caseCpu());
+            // The full enum tail is maxBound-padded even though these steps
+            // are unavailable in the selected pre-PV11 profile.
+            assertEquals(Long.MAX_VALUE, parsed.machineCosts().constrCpu());
+            assertEquals(Long.MAX_VALUE, parsed.machineCosts().caseCpu());
         }
 
         @Test
@@ -435,7 +436,7 @@ class LanguageVersionTest {
             }
             var parsed = CostModelParser.parse(values, PlutusLanguage.PLUTUS_V2);
             assertNotNull(parsed);
-            assertEquals(0, parsed.machineCosts().constrCpu());
+            assertEquals(Long.MAX_VALUE, parsed.machineCosts().constrCpu());
         }
 
         @Test

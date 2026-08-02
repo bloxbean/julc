@@ -31,6 +31,17 @@ public sealed interface CostFunction {
         return r;
     }
 
+    /** Saturating subtraction matching Haskell's {@code SatInt.minusSI}. */
+    static long satSub(long a, long b) {
+        long r = a - b;
+        // Overflow iff the operands have different signs and the result's sign
+        // differs from the minuend.
+        if (((a ^ b) & (a ^ r)) < 0) {
+            return a >= 0 ? Long.MAX_VALUE : Long.MIN_VALUE;
+        }
+        return r;
+    }
+
     /** Saturating multiplication matching Haskell's {@code SatInt}. */
     static long satMul(long a, long b) {
         long r = a * b;

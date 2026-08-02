@@ -4,6 +4,7 @@ import com.bloxbean.cardano.julc.core.*;
 import com.bloxbean.cardano.julc.core.source.SourceLocation;
 import com.bloxbean.cardano.julc.core.source.SourceMap;
 import com.bloxbean.cardano.julc.vm.EvalResult;
+import com.bloxbean.cardano.julc.vm.LedgerEvaluationTarget;
 import com.bloxbean.cardano.julc.vm.PlutusLanguage;
 import com.bloxbean.cardano.julc.vm.truffle.TruffleVmProvider;
 import org.junit.jupiter.api.Test;
@@ -381,6 +382,26 @@ class JulcDebuggerTest {
             var constResult = (Term.Const) ((EvalResult.Success) result).resultTerm();
             assertEquals(BigInteger.valueOf(20),
                     ((Constant.IntegerConst) constResult.value()).value());
+        }
+    }
+
+    @Test
+    void pv11TargetEnablesBatch6BuiltinsInDebugger() {
+        var array = Constant.array(DefaultUni.BOOL,
+                List.of(Constant.bool(true), Constant.bool(false), Constant.bool(true)));
+        var term = Term.apply(
+                Term.force(Term.builtin(DefaultFun.LengthOfArray)),
+                Term.const_(array));
+
+        try (var debugger = JulcDebugger.create()) {
+            var result = debugger
+                    .target(LedgerEvaluationTarget.pv11(PlutusLanguage.PLUTUS_V3))
+                    .stepThrough(term, StepEvent::resume);
+
+            var success = assertInstanceOf(EvalResult.Success.class, result);
+            var constant = assertInstanceOf(Term.Const.class, success.resultTerm());
+            var length = assertInstanceOf(Constant.IntegerConst.class, constant.value());
+            assertEquals(BigInteger.valueOf(3), length.value());
         }
     }
 }

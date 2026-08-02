@@ -11,10 +11,18 @@ import com.bloxbean.cardano.julc.core.Term;
 import com.bloxbean.cardano.julc.core.flat.FlatDecodingException;
 import com.bloxbean.cardano.julc.vm.LedgerEvaluationTarget;
 import com.bloxbean.cardano.julc.vm.PlutusLanguage;
+import co.nstant.in.cbor.CborBuilder;
+import co.nstant.in.cbor.CborDecoder;
+import co.nstant.in.cbor.CborEncoder;
+import co.nstant.in.cbor.model.ByteString;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.math.BigInteger;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.HexFormat;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -124,6 +132,36 @@ class JulcScriptAdapterTest {
     }
 
     @Test
+    void protocolAwareDecodeMatchesLedgerRemainderRule() {
+        var original = new Program(1, 0, 0, Term.const_(Constant.unit()));
+        String withGarbageRemainder = appendToInnerSerialisedScript(
+                JulcScriptAdapter.fromProgram(original).getCborHex(), (byte) 0xff);
+
+        // Plutus V1/V2 preserve historical acceptance of arbitrary bytes after
+        // the inner CBOR bytestring. V3 rejects any such remainder.
+        assertDoesNotThrow(() -> JulcScriptAdapter.toProgram(
+                withGarbageRemainder,
+                LedgerEvaluationTarget.pv11(PlutusLanguage.PLUTUS_V1)));
+        assertDoesNotThrow(() -> JulcScriptAdapter.toProgram(
+                withGarbageRemainder,
+                LedgerEvaluationTarget.pv11(PlutusLanguage.PLUTUS_V2)));
+        var error = assertThrows(RuntimeException.class, () -> JulcScriptAdapter.toProgram(
+                withGarbageRemainder,
+                LedgerEvaluationTarget.pv11(PlutusLanguage.PLUTUS_V3)));
+        assertTrue(error.getMessage().contains("trailing byte"));
+    }
+
+    @Test
+    void noTargetDecodeRetainsInnerRemainderTolerance() {
+        var original = new Program(1, 0, 0, Term.const_(Constant.unit()));
+        String withGarbageRemainder = appendToInnerSerialisedScript(
+                JulcScriptAdapter.fromProgram(original).getCborHex(), (byte) 0xff);
+
+        var decoded = assertDoesNotThrow(() -> JulcScriptAdapter.toProgram(withGarbageRemainder));
+        assertEquals(original, decoded);
+    }
+
+    @Test
     void toProgramParameterized() {
         // Compile a parameterized validator, decode it, apply CCL params, re-encode
         var source = """
@@ -161,5 +199,23 @@ class JulcScriptAdapterTest {
         var hash1 = JulcScriptAdapter.scriptHash(result.program());
         var hash2 = JulcScriptAdapter.scriptHash(concrete);
         assertNotEquals(hash1, hash2, "Parameterized and concrete scripts should differ");
+    }
+
+    private static String appendToInnerSerialisedScript(String outerCborHex, byte remainder) {
+        try {
+            byte[] outer = HexFormat.of().parseHex(outerCborHex);
+            var outerItem = new CborDecoder(new ByteArrayInputStream(outer)).decodeNext();
+            var outerBytes = assertInstanceOf(ByteString.class, outerItem).getBytes();
+            byte[] malformedInner = Arrays.copyOf(outerBytes, outerBytes.length + 1);
+            malformedInner[malformedInner.length - 1] = remainder;
+
+            var encoded = new ByteArrayOutputStream();
+            new CborEncoder(encoded).encode(new CborBuilder()
+                    .add(malformedInner)
+                    .build());
+            return HexFormat.of().formatHex(encoded.toByteArray());
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 }

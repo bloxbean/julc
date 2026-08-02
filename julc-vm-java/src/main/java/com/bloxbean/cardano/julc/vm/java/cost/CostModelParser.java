@@ -24,15 +24,17 @@ import static com.bloxbean.cardano.julc.vm.java.cost.CostFunction.*;
  * V1, V2, and V3 have different legacy cost-function shapes and different
  * locations for later machine and builtin parameters.</p>
  *
- * <p>For a known schema, a missing trailing value is replaced with
- * {@link Long#MAX_VALUE} and reported through {@link ParsedCostModel#warnings()},
- * matching Plutus's {@code CMTooFewParamsWarn}. Extra values are rejected so a
- * future schema cannot be mistaken for a known protocol profile.</p>
+ * <p>For a known language/protocol target, values are tagged against the full
+ * pinned {@code ParamName} enumeration for that language. Missing trailing
+ * values are replaced with {@link Long#MAX_VALUE}; excess values are ignored.
+ * Both cases produce the same non-fatal warnings as Plutus's
+ * {@code tagWithParamNames}.</p>
  */
 public final class CostModelParser {
 
     /** A non-fatal warning produced while applying a known cost-model schema. */
-    public sealed interface CostModelParseWarning permits TooFewParametersWarning {
+    public sealed interface CostModelParseWarning
+            permits TooFewParametersWarning, TooManyParametersWarning {
         PlutusLanguage language();
 
         int protocolMajorVersion();
@@ -60,6 +62,25 @@ public final class CostModelParser {
                     + " cost model has too few parameters: expected " + expected
                     + ", got " + actual
                     + "; missing trailing parameters were set to Long.MAX_VALUE";
+        }
+    }
+
+    /**
+     * Equivalent to Plutus's {@code CMTooManyParamsWarn}. Values after the
+     * pinned language's final {@code ParamName} are ignored.
+     */
+    public record TooManyParametersWarning(
+            PlutusLanguage language,
+            int protocolMajorVersion,
+            int expected,
+            int actual) implements CostModelParseWarning {
+
+        @Override
+        public String message() {
+            return language + " PV" + protocolMajorVersion
+                    + " cost model has too many parameters: expected " + expected
+                    + ", got " + actual
+                    + "; excess trailing parameters were ignored";
         }
     }
 
@@ -97,7 +118,7 @@ public final class CostModelParser {
     /** Plutus V3 at PV9 (Chang), before the Plomin Batch 5 append. */
     public static final int PV9_PARAM_COUNT = 251;
 
-    /** Expected parameter count for PlutusV3 PV10 (post-Plomin, current mainnet). */
+    /** Active parameter count for PlutusV3 PV10 (post-Plomin). */
     public static final int PV10_PARAM_COUNT = 297;
 
     /**
@@ -117,8 +138,7 @@ public final class CostModelParser {
      * @param values   the flat cost model array from protocol parameters
      * @param language the Plutus language version
      * @return parsed machine costs and builtin cost model
-     * @throws IllegalArgumentException if the target is unsupported or the array
-     *                                  has more values than the known schema
+     * @throws IllegalArgumentException if the target is unsupported
      */
     public static ParsedCostModel parse(long[] values, PlutusLanguage language) {
         return parse(values, language, 10, 0);
@@ -140,8 +160,7 @@ public final class CostModelParser {
      * @param protocolMajorVersion the protocol major version (e.g. 9 for Chang, 10 for Plomin)
      * @param protocolMinorVersion the protocol minor version
      * @return parsed machine costs and builtin cost model
-     * @throws IllegalArgumentException if the target is unsupported or the array
-     *                                  has more values than the known schema
+     * @throws IllegalArgumentException if the target is unsupported
      */
     public static ParsedCostModel parse(long[] values, PlutusLanguage language,
                                          int protocolMajorVersion, int protocolMinorVersion) {
@@ -198,6 +217,14 @@ public final class CostModelParser {
         };
     }
 
+    /** Full pinned {@code ParamName} enum size used by Plutus warning logic. */
+    public static int paramNameCount(PlutusLanguage language) {
+        return switch (language) {
+            case PLUTUS_V1, PLUTUS_V2 -> V1_PV11_PARAM_COUNT;
+            case PLUTUS_V3 -> PV11_PARAM_COUNT;
+        };
+    }
+
     private static ParsedCostModel parseV1(long[] values, int protocolMajorVersion) {
         var schema = normalizeSchema(
                 values, PlutusLanguage.PLUTUS_V1, protocolMajorVersion);
@@ -208,23 +235,17 @@ public final class CostModelParser {
         CommonMachineCosts machine = parseLegacyCommon(values, cursor, costs, semantics);
         parseV1LegacyTail(values, cursor, costs, semantics);
 
-        long constrCpu = 0;
-        long constrMem = 0;
-        long caseCpu = 0;
-        long caseMem = 0;
-        if (protocolMajorVersion == 11) {
-            // V1.ParamName indices 166–174: the V2-era builtins first become
-            // available to V1 at PV11.
-            parseSerialiseAndSecp(values, cursor, costs);
-            constrCpu = next(values, cursor);
-            constrMem = next(values, cursor);
-            caseCpu = next(values, cursor);
-            caseMem = next(values, cursor);
-            parseBlsAndCrypto(values, cursor, costs);
-            parseConversions(values, cursor, costs);
-            parseBitwise(values, cursor, costs);
-            parseBatch6(values, cursor, costs);
-        }
+        // Plutus 1.63 tags every input against the complete 332-name V1 enum,
+        // independently of the protocol version that will select semantics.
+        parseSerialiseAndSecp(values, cursor, costs);
+        long constrCpu = next(values, cursor);
+        long constrMem = next(values, cursor);
+        long caseCpu = next(values, cursor);
+        long caseMem = next(values, cursor);
+        parseBlsAndCrypto(values, cursor, costs);
+        parseConversions(values, cursor, costs);
+        parseBitwise(values, cursor, costs);
+        parseBatch6(values, cursor, costs);
 
         assertConsumed(cursor, values.length, PlutusLanguage.PLUTUS_V1, protocolMajorVersion);
         return parsed(machine, constrCpu, constrMem, caseCpu, caseMem,
@@ -241,24 +262,16 @@ public final class CostModelParser {
         CommonMachineCosts machine = parseLegacyCommon(values, cursor, costs, semantics);
         parseV2LegacyTail(values, cursor, costs, semantics);
 
-        if (protocolMajorVersion >= 10) {
-            // V2.ParamName indices 175–184, activated for V2 at PV10.
-            parseConversions(values, cursor, costs);
-        }
-
-        long constrCpu = 0;
-        long constrMem = 0;
-        long caseCpu = 0;
-        long caseMem = 0;
-        if (protocolMajorVersion == 11) {
-            constrCpu = next(values, cursor);
-            constrMem = next(values, cursor);
-            caseCpu = next(values, cursor);
-            caseMem = next(values, cursor);
-            parseBlsAndCrypto(values, cursor, costs);
-            parseBitwise(values, cursor, costs);
-            parseBatch6(values, cursor, costs);
-        }
+        // As for V1, consume the complete pinned enum. Availability remains a
+        // separate protocol-profile decision.
+        parseConversions(values, cursor, costs);
+        long constrCpu = next(values, cursor);
+        long constrMem = next(values, cursor);
+        long caseCpu = next(values, cursor);
+        long caseMem = next(values, cursor);
+        parseBlsAndCrypto(values, cursor, costs);
+        parseBitwise(values, cursor, costs);
+        parseBatch6(values, cursor, costs);
 
         assertConsumed(cursor, values.length, PlutusLanguage.PLUTUS_V2, protocolMajorVersion);
         return parsed(machine, constrCpu, constrMem, caseCpu, caseMem,
@@ -268,14 +281,15 @@ public final class CostModelParser {
     /**
      * Parse a PlutusV3 flat cost model parameter array into machine costs and builtin cost model.
      * <p>
-     * The schema contains {@link #PV10_PARAM_COUNT} (297) elements. A shorter
-     * array is padded with {@link Long#MAX_VALUE} and produces a warning.
-     * Any builtins not covered by the array (e.g., ExpModInteger in PV10) retain
-     * their defaults from {@link DefaultCostModel}.
+     * The pinned V3 {@code ParamName} enum contains {@link #PV11_PARAM_COUNT}
+     * (350) elements. Shorter arrays are padded with {@link Long#MAX_VALUE};
+     * longer arrays are truncated. Both cases produce the same warning class
+     * of behavior as Plutus 1.63. Protocol version selects runtime semantics,
+     * not how many names the node recognizes.
      *
      * @param values the flat cost model array from protocol parameters
      * @return parsed machine costs and builtin cost model
-     * @throws IllegalArgumentException if the array contains more than 297 values
+     * @throws IllegalArgumentException if the target is unsupported
      */
     public static ParsedCostModel parse(long[] values) {
         return parse(values, 10);
@@ -284,20 +298,21 @@ public final class CostModelParser {
     /**
      * Parse a PlutusV3 flat cost model parameter array with protocol major version.
      * <p>
-     * Supports PV9 (251 params), PV10 (297 params), and PV11 (350 params).
+     * Supports the active PV9 (251), PV10 (297), and PV11 (350) serialization
+     * lengths while tagging every input against the complete 350-name enum.
      *
      * @param values               the flat cost model array from protocol parameters
      * @param protocolMajorVersion the protocol major version
      * @return parsed machine costs and builtin cost model
-     * @throws IllegalArgumentException if the target is unsupported or the array
-     *                                  has more values than the known schema
+     * @throws IllegalArgumentException if the target is unsupported
      */
     public static ParsedCostModel parse(long[] values, int protocolMajorVersion) {
         var schema = normalizeSchema(
                 values, PlutusLanguage.PLUTUS_V3, protocolMajorVersion);
         values = schema.values();
 
-        // Start with defaults for builtins not covered by the flat array
+        // Seed JuLC-only/non-ledger entries. Every Plutus 1.63 ParamName entry
+        // below is overwritten, including maxBound padding for absent tails.
         var defaultModel = DefaultCostModel.defaultBuiltinCostModel(
                 protocolMajorVersion >= 11
                         ? com.bloxbean.cardano.julc.vm.BuiltinSemanticsVariant.E
@@ -350,7 +365,8 @@ public final class CostModelParser {
         // 49-59: DivideInteger — the same flat coefficients select a
         // protocol-specific diagonal model shape.
         costs.put(DefaultFun.DivideInteger, pair(
-                readDivisionCpu(values, c, protocolMajorVersion), readSubtractedSizes(values, c)));
+                readDivisionCpu(values, c, protocolMajorVersion, DefaultFun.DivideInteger),
+                readSubtractedSizes(values, c)));
         // 60-63: EncodeUtf8 — LinearInX(cpu) + LinearInX(mem)
         costs.put(DefaultFun.EncodeUtf8, pair(readLinearInX(values, c), readLinearInX(values, c)));
         // 64-67: EqualsByteString — LinearOnDiagonal(cpu) + Const(mem)
@@ -395,17 +411,20 @@ public final class CostModelParser {
         costs.put(DefaultFun.MkPairData, pair(readConst(values, c), readConst(values, c)));
         // 114-123: ModInteger — ConstAboveDiagonal(8, cpu) + LinearInY(2, mem)
         costs.put(DefaultFun.ModInteger, pair(
-                readDivisionCpu(values, c, protocolMajorVersion), readLinearInY(values, c)));
+                readDivisionCpu(values, c, protocolMajorVersion, DefaultFun.ModInteger),
+                readLinearInY(values, c)));
         // 124-127: MultiplyInteger — MultipliedSizes(cpu) + AddedSizes(mem)
         costs.put(DefaultFun.MultiplyInteger, pair(readMultipliedSizes(values, c), readAddedSizes(values, c)));
         // 128-129: NullList
         costs.put(DefaultFun.NullList, pair(readConst(values, c), readConst(values, c)));
         // 130-140: QuotientInteger — ConstAboveDiagonal(8, cpu) + SubtractedSizes(3, mem)
         costs.put(DefaultFun.QuotientInteger, pair(
-                readDivisionCpu(values, c, protocolMajorVersion), readSubtractedSizes(values, c)));
+                readDivisionCpu(values, c, protocolMajorVersion, DefaultFun.QuotientInteger),
+                readSubtractedSizes(values, c)));
         // 141-150: RemainderInteger — ConstAboveDiagonal(8, cpu) + LinearInY(2, mem)
         costs.put(DefaultFun.RemainderInteger, pair(
-                readDivisionCpu(values, c, protocolMajorVersion), readLinearInY(values, c)));
+                readDivisionCpu(values, c, protocolMajorVersion, DefaultFun.RemainderInteger),
+                readLinearInY(values, c)));
         // 151-154: SerialiseData — LinearInX(cpu) + LinearInX(mem)
         costs.put(DefaultFun.SerialiseData, pair(readLinearInX(values, c), readLinearInX(values, c)));
         // 155-157: Sha2_256 — LinearInX(cpu) + Const(mem)
@@ -487,8 +506,10 @@ public final class CostModelParser {
         // 246-250: ByteStringToInteger — QuadraticInY(cpu) + LinearInY(mem)
         costs.put(DefaultFun.ByteStringToInteger, pair(readQuadraticInY(values, c), readLinearInY(values, c)));
 
-        if (protocolMajorVersion >= 10) {
-            // === Plomin / PV10 bitwise builtins (indices 251–296) ===
+        {
+            // === Plomin-appended bitwise parameters (indices 251–296) ===
+            // Parsed even below PV10 when supplied early; availability remains
+            // controlled by the resolved protocol profile.
             // 251-255: AndByteString — LinearInYAndZ(cpu) + LinearInMaxYZ(mem)
             costs.put(DefaultFun.AndByteString, pair(readLinearInYAndZ(values, c), readLinearInMaxYZ(values, c)));
             // 256-260: OrByteString
@@ -515,12 +536,17 @@ public final class CostModelParser {
             costs.put(DefaultFun.Ripemd_160, pair(readLinearInX(values, c), readConst(values, c)));
         }
 
-        int prePv11Count = protocolMajorVersion == 9 ? PV9_PARAM_COUNT : PV10_PARAM_COUNT;
-        assert c[0] == prePv11Count
-                : "Parser consumed " + c[0] + " params, expected " + prePv11Count;
+        if (c[0] != PV10_PARAM_COUNT) {
+            throw new IllegalStateException(
+                    "V3 parser consumed " + c[0]
+                            + " pre-PV11 parameters; expected " + PV10_PARAM_COUNT);
+        }
 
-        // === PV11 builtins (indices 297–349, if present) ===
-        if (protocolMajorVersion == 11) {
+        // === PV11-appended parameters (indices 297–349) ===
+        // These names are present in the 1.63 enum for every V3 context. In
+        // particular an early 350-value update is retained before the PV11
+        // hard fork, while availability remains controlled by the profile.
+        {
             // 297-301: ExpModInteger — ExpModCost(cpu) + LinearInZ(mem)
             costs.put(DefaultFun.ExpModInteger, pair(readExpModCost(values, c), readLinearInZ(values, c)));
             // 302-304: DropList — LinearInX(cpu) + Const(mem)
@@ -550,7 +576,8 @@ public final class CostModelParser {
             // 346-349: ScaleValue — LinearInY(cpu) + LinearInY(mem)
             costs.put(DefaultFun.ScaleValue, pair(readLinearInY(values, c), readLinearInY(values, c)));
 
-            assert c[0] == PV11_PARAM_COUNT : "PV11 parser consumed " + c[0] + " params, expected " + PV11_PARAM_COUNT;
+            assertConsumed(c, values.length, PlutusLanguage.PLUTUS_V3,
+                    protocolMajorVersion);
         }
 
         // Build MachineCosts
@@ -980,12 +1007,15 @@ public final class CostModelParser {
     private static NormalizedSchema normalizeSchema(
             long[] values, PlutusLanguage language, int protocolMajorVersion) {
         Objects.requireNonNull(values, "Cost model parameters must not be null");
-        int expected = expectedParameterCount(language, protocolMajorVersion);
+        // Validate that the requested language/protocol target itself is known.
+        expectedParameterCount(language, protocolMajorVersion);
+        int expected = paramNameCount(language);
         if (values.length > expected) {
-            throw new IllegalArgumentException(
-                    language + " PV" + protocolMajorVersion
-                            + " cost model accepts at most " + expected
-                            + " parameters, got " + values.length);
+            int actual = values.length;
+            return new NormalizedSchema(
+                    Arrays.copyOf(values, expected),
+                    List.of(new TooManyParametersWarning(
+                            language, protocolMajorVersion, expected, actual)));
         }
         if (values.length == expected) {
             return new NormalizedSchema(values, List.of());
@@ -1441,8 +1471,11 @@ public final class CostModelParser {
         }
 
         int prePv11Count = protocolMajorVersion == 9 ? PV9_PARAM_COUNT : PV10_PARAM_COUNT;
-        assert c[0] == prePv11Count
-                : "Writer produced " + c[0] + " params, expected " + prePv11Count;
+        if (c[0] != prePv11Count) {
+            throw new IllegalStateException(
+                    "V3 writer produced " + c[0]
+                            + " pre-PV11 parameters; expected " + prePv11Count);
+        }
 
         // === PV11 builtins (indices 297–349) ===
         if (protocolMajorVersion == 11) {
@@ -1461,9 +1494,10 @@ public final class CostModelParser {
             writeParams(values, c, bcm.get(DefaultFun.UnValueData));
             writeParams(values, c, bcm.get(DefaultFun.ScaleValue));
 
-            assert c[0] == PV11_PARAM_COUNT : "PV11 writer produced " + c[0] + " params, expected " + PV11_PARAM_COUNT;
         }
 
+        assertConsumed(c, values.length, PlutusLanguage.PLUTUS_V3,
+                protocolMajorVersion);
         return values;
     }
 
@@ -1523,8 +1557,13 @@ public final class CostModelParser {
     }
 
     private static CostFunction readDivisionCpu(
-            long[] v, int[] c, int protocolMajorVersion) {
-        if (protocolMajorVersion < 11) {
+            long[] v, int[] c, int protocolMajorVersion, DefaultFun builtin) {
+        // Model E changes only divideInteger and modInteger to the symmetric
+        // above_and_below_diagonal shape. quotientInteger and remainderInteger
+        // remain const_above_diagonal at PV11.
+        if (protocolMajorVersion < 11
+                || builtin == DefaultFun.QuotientInteger
+                || builtin == DefaultFun.RemainderInteger) {
             return readConstAboveDiag(v, c);
         }
         long constant = next(v, c);

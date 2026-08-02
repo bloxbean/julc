@@ -4,7 +4,9 @@ import com.bloxbean.cardano.julc.core.Term;
 import com.bloxbean.cardano.julc.core.source.SourceMap;
 import com.bloxbean.cardano.julc.vm.EvalResult;
 import com.bloxbean.cardano.julc.vm.ExBudget;
+import com.bloxbean.cardano.julc.vm.LedgerEvaluationTarget;
 import com.bloxbean.cardano.julc.vm.PlutusLanguage;
+import com.bloxbean.cardano.julc.vm.ProtocolFeatureRegistry;
 import com.bloxbean.cardano.julc.vm.java.cost.*;
 import com.bloxbean.cardano.julc.vm.truffle.UplcContext;
 import com.bloxbean.cardano.julc.vm.truffle.UplcTruffleLanguage;
@@ -19,6 +21,7 @@ import org.graalvm.polyglot.PolyglotException;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Programmatic step-through debugger for UPLC programs at Java source level.
@@ -48,7 +51,8 @@ import java.util.List;
 public final class JulcDebugger implements AutoCloseable {
 
     private SourceMap sourceMap;
-    private PlutusLanguage language = PlutusLanguage.PLUTUS_V3;
+    private LedgerEvaluationTarget target =
+            LedgerEvaluationTarget.pv10(PlutusLanguage.PLUTUS_V3);
     private ExBudget budget;
     private final List<BreakpointSpec> breakpointSpecs = new ArrayList<>();
 
@@ -71,10 +75,18 @@ public final class JulcDebugger implements AutoCloseable {
     }
 
     /**
-     * Set the Plutus language version (default: PLUTUS_V3).
+     * Set the Plutus language version using the compatibility PV10 target.
+     * Use {@link #target(LedgerEvaluationTarget)} for PV11 debugging.
      */
     public JulcDebugger language(PlutusLanguage lang) {
-        this.language = lang;
+        this.target = LedgerEvaluationTarget.pv10(
+                Objects.requireNonNull(lang, "lang"));
+        return this;
+    }
+
+    /** Select the exact ledger language/protocol profile to debug. */
+    public JulcDebugger target(LedgerEvaluationTarget target) {
+        this.target = Objects.requireNonNull(target, "target");
         return this;
     }
 
@@ -111,10 +123,11 @@ public final class JulcDebugger implements AutoCloseable {
 
     private EvalResult executeWithDebugger(Term term, StepHandler handler, boolean stepMode) {
         // Set up cost tracking (shared with julc-vm-java)
-        MachineCosts mc = DefaultCostModel.defaultMachineCosts(language);
-        BuiltinCostModel bcm = DefaultCostModel.defaultBuiltinCostModel(language);
-        var costTracker = new CostTracker(mc, bcm, budget);
-        var uplcContext = new UplcContext(costTracker, language);
+        var profile = ProtocolFeatureRegistry.resolve(target);
+        MachineCosts mc = DefaultCostModel.defaultMachineCosts(profile);
+        BuiltinCostModel bcm = DefaultCostModel.defaultBuiltinCostModel(profile);
+        var costTracker = new CostTracker(mc, bcm, profile, budget);
+        var uplcContext = new UplcContext(costTracker, profile, false, true);
 
         try {
             // Charge startup cost

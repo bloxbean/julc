@@ -49,6 +49,12 @@ public final class CaseNode extends UplcNode {
         Object[] fields;
 
         if (scrutinee instanceof UplcConstrValue constr) {
+            // Constr tags are Word64 values represented in a signed Java long.
+            // Check the full unsigned value before narrowing it for array indexing;
+            // otherwise tags such as 2^32 wrap to branch zero.
+            if (Long.compareUnsigned(constr.getTag(), branchNodes.length) >= 0) {
+                throw throwConstrTagOutOfRange(constr.getTag());
+            }
             tag = (int) constr.getTag();
             fields = constr.getFields();
         } else if (scrutinee instanceof Constant c) {
@@ -131,6 +137,14 @@ public final class CaseNode extends UplcNode {
     private UplcRuntimeException throwTagOutOfRange(int tag) {
         throw new UplcRuntimeException(
                 "Case: tag " + tag + " out of range for " + branchNodes.length + " branches",
+                getSourceTerm(), this);
+    }
+
+    @TruffleBoundary
+    private UplcRuntimeException throwConstrTagOutOfRange(long tag) {
+        throw new UplcRuntimeException(
+                "Case: tag " + Long.toUnsignedString(tag) + " out of range for "
+                        + branchNodes.length + " branches",
                 getSourceTerm(), this);
     }
 

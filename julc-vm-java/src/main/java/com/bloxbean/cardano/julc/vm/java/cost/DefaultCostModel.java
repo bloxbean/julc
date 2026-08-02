@@ -14,8 +14,10 @@ import static com.bloxbean.cardano.julc.vm.java.cost.CostFunction.*;
 /**
  * Default Plutus cost model parameters for V1, V2, and V3.
  * <p>
- * Values are from the Cardano mainnet Conway genesis / Plutus cost model specification
- * (builtinCostModelC.json + cekMachineCostsC.json from the Plutus repository).
+ * Values are pinned to the A-E builtin and CEK models in Plutus 1.63.0.0 at
+ * {@code f92b7d7d82622a26caf456a6be33859f697e2cfc}, as shipped by
+ * cardano-node 11.0.1. The model-C constants form the common base; exact
+ * variant deltas and the historical model-A prefix are selected by profile.
  */
 public final class DefaultCostModel {
 
@@ -23,6 +25,9 @@ public final class DefaultCostModel {
 
     /** Select CEK machine costs from the complete ledger evaluation profile. */
     public static MachineCosts defaultMachineCosts(ProtocolFeatureProfile profile) {
+        if (profile.semanticsVariant() == BuiltinSemanticsVariant.A) {
+            return defaultMachineCostsA();
+        }
         if (profile.target().ledgerLanguage() == PlutusLanguage.PLUTUS_V3
                 || profile.availableUplcVersions().contains(UplcVersion.V1_1_0)) {
             return defaultMachineCosts();
@@ -49,10 +54,7 @@ public final class DefaultCostModel {
     /** Select the builtin model shipped for a Haskell semantics variant. */
     public static BuiltinCostModel defaultBuiltinCostModel(BuiltinSemanticsVariant variant) {
         return switch (variant) {
-            // Variant A predates the pinned PV10/PV11 compatibility window.
-            // Preserve the existing default until historical defaults are
-            // made a separately versioned compatibility source.
-            case A -> defaultBuiltinCostModel();
+            case A -> builtinCostModelA();
             case B -> builtinCostModelB();
             case C -> defaultBuiltinCostModel();
             case D -> builtinCostModelD();
@@ -102,6 +104,22 @@ public final class DefaultCostModel {
         );
     }
 
+    /** Pinned {@code cekMachineCostsA.json}; reachable for V1/V2 before PV9. */
+    private static MachineCosts defaultMachineCostsA() {
+        return new MachineCosts(
+                /* startupCpu */ 100,    /* startupMem */ 100,
+                /* varCpu */     23000,  /* varMem */     100,
+                /* lamCpu */     23000,  /* lamMem */     100,
+                /* applyCpu */   23000,  /* applyMem */   100,
+                /* forceCpu */   23000,  /* forceMem */   100,
+                /* delayCpu */   23000,  /* delayMem */   100,
+                /* constCpu */   23000,  /* constMem */   100,
+                /* builtinCpu */ 23000,  /* builtinMem */ 100,
+                /* constrCpu */  23000,  /* constrMem */  100,
+                /* caseCpu */    23000,  /* caseMem */    100
+        );
+    }
+
     /**
      * Default builtin cost model (Plutus V1 — 51 builtins, codes 0-50).
      * <p>
@@ -145,6 +163,34 @@ public final class DefaultCostModel {
         return new BuiltinCostModel(costs);
     }
 
+    /**
+     * Pinned reachable prefix of {@code builtinCostModelA.json}. The values are
+     * ordered by the first 175 constructors of the Plutus V2 {@code ParamName}
+     * enum at f92b7d7d8. That prefix prices every builtin reachable under
+     * variant A (V1/V2 before PV9); later enum positions are unavailable.
+     */
+    private static BuiltinCostModel builtinCostModelA() {
+        long[] params = {
+                205665, 812, 1, 1, 1000, 571, 0, 1, 1000, 24177, 4, 1, 1000, 32,
+                117366, 10475, 4, 23000, 100, 23000, 100, 23000, 100, 23000, 100,
+                23000, 100, 23000, 100, 100, 100, 23000, 100, 19537, 32, 175354,
+                32, 46417, 4, 221973, 511, 0, 1, 89141, 32, 497525, 14068, 4, 2,
+                196500, 453240, 220, 0, 1, 1, 1000, 28662, 4, 2, 245000, 216773,
+                62, 1, 1060367, 12586, 1, 208512, 421, 1, 187000, 1000, 52998, 1,
+                80436, 32, 43249, 32, 1000, 32, 80556, 1, 57667, 4, 1000, 10,
+                197145, 156, 1, 197145, 156, 1, 204924, 473, 1, 208896, 511, 1,
+                52467, 32, 64832, 32, 65493, 32, 22558, 32, 16563, 32, 76511, 32,
+                196500, 453240, 220, 0, 1, 1, 69522, 11687, 0, 1, 60091, 32,
+                196500, 453240, 220, 0, 1, 1, 196500, 453240, 220, 0, 1, 1,
+                1159724, 392670, 0, 2, 806990, 30482, 4, 1927926, 82523, 4,
+                265318, 0, 4, 0, 85931, 32, 205665, 812, 1, 1, 41182, 32,
+                212342, 32, 31220, 32, 32696, 32, 43357, 32, 32247, 32, 38314,
+                32, 35190005, 10, 57996947, 18975, 10, 39121781, 32260, 10
+        };
+        return CostModelParser.parse(
+                params, PlutusLanguage.PLUTUS_V2, 7, 0).builtinCostModel();
+    }
+
     /** Pinned {@code builtinCostModelB.json}: model C with legacy division functions. */
     private static BuiltinCostModel builtinCostModelB() {
         var costs = copy(defaultBuiltinCostModel());
@@ -164,7 +210,10 @@ public final class DefaultCostModel {
                 85848, new MultipliedSizes(228465, 122));
         var constAbove = multipliedSizesConstAboveDiagonal();
         var subtractedMem = new SubtractedSizes(0, 1, 1);
-        var linearYMem = new LinearInY(0, 1);
+        // Model D encodes these positions as linear_in_y2. Its minimum field is
+        // deliberately ignored at runtime by Plutus, but retaining the exact
+        // constructor shape is required for canonical flat-array round trips.
+        var linearYMem = new LinearInY2(0, 1, 1);
 
         costs.put(DefaultFun.DivideInteger, pair(aboveAndBelow, subtractedMem));
         costs.put(DefaultFun.ModInteger, pair(aboveAndBelow, linearYMem));
@@ -179,16 +228,18 @@ public final class DefaultCostModel {
     /** Pinned {@code builtinCostModelE.json} for V3 at PV11. */
     private static BuiltinCostModel builtinCostModelE() {
         var costs = copy(defaultBuiltinCostModel());
-        var divisionCpu = new AboveAndBelowDiagonal(85848,
+        var aboveAndBelow = new AboveAndBelowDiagonal(85848,
                 new QuadraticInXAndY(123203, 7305, -900, 1716, 960, 57, 85848));
+        var constAbove = new ConstAboveDiagonal(
+                85848, 123203, 7305, -900, 1716, 960, 57, 85848);
         costs.put(DefaultFun.DivideInteger, pair(
-                divisionCpu, new SubtractedSizes(0, 1, 1)));
+                aboveAndBelow, new SubtractedSizes(0, 1, 1)));
         costs.put(DefaultFun.QuotientInteger, pair(
-                divisionCpu, new SubtractedSizes(0, 1, 1)));
+                constAbove, new SubtractedSizes(0, 1, 1)));
         costs.put(DefaultFun.RemainderInteger, pair(
-                divisionCpu, new LinearInY(0, 1)));
+                constAbove, new LinearInY(0, 1)));
         costs.put(DefaultFun.ModInteger, pair(
-                divisionCpu, new LinearInY(0, 1)));
+                aboveAndBelow, new LinearInY(0, 1)));
         costs.put(DefaultFun.EqualsByteString, pair(
                 new LinearOnDiagonal(30623, 28755, 75),
                 new ConstantCost(1)));

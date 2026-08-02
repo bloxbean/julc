@@ -39,6 +39,21 @@ class ProtocolPropagationTest {
     }
 
     @Test
+    void configuredModelIgnoresProtocolMinorForPlutusSemantics() {
+        var provider = new TruffleVmProvider();
+        provider.setCostModelParams(CostModelParser.defaultToFlatArray(11),
+                PlutusLanguage.PLUTUS_V3, 11, 0);
+
+        var result = provider.evaluate(
+                Program.plutusV3(Term.const_(Constant.unit())),
+                new LedgerEvaluationTarget(
+                        PlutusLanguage.PLUTUS_V3, new ProtocolVersion(11, 7)),
+                null);
+
+        assertInstanceOf(EvalResult.Success.class, result);
+    }
+
+    @Test
     void explicitTargetValidatesProgramVersionBeforeExecution() {
         var provider = new TruffleVmProvider();
         var program = new Program(1, 1, 0, Term.const_(Constant.unit()));

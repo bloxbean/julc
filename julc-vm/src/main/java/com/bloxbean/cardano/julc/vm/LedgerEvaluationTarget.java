@@ -20,6 +20,17 @@ public record LedgerEvaluationTarget(
         return new LedgerEvaluationTarget(language, ProtocolVersion.PV11);
     }
 
+    /**
+     * Whether two targets select the same Plutus evaluator behavior.
+     * cardano-node supplies only the major protocol version to Plutus; the
+     * minor component is retained as provenance but is not a semantics key.
+     */
+    public boolean hasSamePlutusSemantics(LedgerEvaluationTarget other) {
+        return other != null
+                && ledgerLanguage == other.ledgerLanguage
+                && protocolVersion.major() == other.protocolVersion.major();
+    }
+
     @Override
     public String toString() {
         return ledgerLanguage + "/PV" + protocolVersion.major() + "." + protocolVersion.minor();
