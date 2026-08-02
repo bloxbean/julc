@@ -80,6 +80,30 @@ class ProtocolSemanticsTest {
 
         assertBytes(evaluate(DefaultFun.ConsByteString, PlutusLanguage.PLUTUS_V1, 11,
                 Constant.integer(-1), tail), new byte[]{(byte) 0xff, 1});
+
+        // Word8 unlifting compares the complete Integer; it must not narrow
+        // modulo 2^64 before checking the range. Variant D intentionally does
+        // use the historical modulo denotation.
+        BigInteger twoTo64 = BigInteger.ONE.shiftLeft(64);
+        assertFailure(evaluate(DefaultFun.ConsByteString, PlutusLanguage.PLUTUS_V3, 11,
+                Constant.integer(twoTo64), tail), "out of range");
+        assertBytes(evaluate(DefaultFun.ConsByteString, PlutusLanguage.PLUTUS_V1, 11,
+                Constant.integer(twoTo64), tail), new byte[]{0, 1});
+    }
+
+    @Test
+    void sliceByteStringUnliftsInt64WithoutInt32Truncation() {
+        Constant bytes = Constant.byteString(new byte[]{1, 2, 3, 4, 5});
+
+        assertBytes(evaluate(DefaultFun.SliceByteString, PlutusLanguage.PLUTUS_V3, 10,
+                Constant.integer(BigInteger.ONE.shiftLeft(31)),
+                Constant.integer(5), bytes), new byte[0]);
+        assertBytes(evaluate(DefaultFun.SliceByteString, PlutusLanguage.PLUTUS_V3, 10,
+                Constant.integer(0), Constant.integer(BigInteger.ONE.shiftLeft(32)),
+                bytes), new byte[]{1, 2, 3, 4, 5});
+        assertFailure(evaluate(DefaultFun.SliceByteString, PlutusLanguage.PLUTUS_V3, 10,
+                Constant.integer(BigInteger.ONE.shiftLeft(64)),
+                Constant.integer(1), bytes), "signed 64-bit Int");
     }
 
     @Test
@@ -108,6 +132,27 @@ class ProtocolSemanticsTest {
                 bytes, indices, Constant.bool(true)));
         assertFailure(evaluate(DefaultFun.WriteBits, PlutusLanguage.PLUTUS_V3, 11,
                 bytes, indices, Constant.bool(true)), "4096-byte bound");
+    }
+
+    @Test
+    void bitwiseIndicesAndReplicateArgumentsNeverWrapOnNarrowing() {
+        BigInteger twoTo64 = BigInteger.ONE.shiftLeft(64);
+        Constant bytes = Constant.byteString(new byte[]{1});
+
+        assertFailure(evaluate(DefaultFun.ReadBit, PlutusLanguage.PLUTUS_V3, 10,
+                bytes, Constant.integer(twoTo64)), "signed 64-bit Int");
+
+        var wrappedIndex = new Constant.ListConst(DefaultUni.INTEGER,
+                List.of(Constant.integer(twoTo64)));
+        assertFailure(evaluate(DefaultFun.WriteBits, PlutusLanguage.PLUTUS_V3, 10,
+                bytes, wrappedIndex, Constant.bool(true)), "out of range");
+
+        assertFailure(evaluate(DefaultFun.ReplicateByte, PlutusLanguage.PLUTUS_V3, 10,
+                Constant.integer(BigInteger.ONE.shiftLeft(32)), Constant.integer(65)),
+                "length exceeds 8192");
+        assertFailure(evaluate(DefaultFun.ReplicateByte, PlutusLanguage.PLUTUS_V3, 10,
+                Constant.integer(1), Constant.integer(twoTo64.add(BigInteger.valueOf(65)))),
+                "out of range");
     }
 
     @Test

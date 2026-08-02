@@ -27,10 +27,7 @@ public final class ByteStringBuiltins {
     public static CekValue consByteString(List<CekValue> args) {
         var n = asInteger(args.get(0), "ConsByteString");
         var bs = asByteString(args.get(1), "ConsByteString");
-        long val = n.longValue();
-        if (val < 0 || val > 255) {
-            throw new BuiltinException("ConsByteString: byte value out of range: " + n);
-        }
+        int val = toWord8(n, "ConsByteString");
         var result = new byte[bs.length + 1];
         result[0] = (byte) val;
         System.arraycopy(bs, 0, result, 1, bs.length);
@@ -38,17 +35,19 @@ public final class ByteStringBuiltins {
     }
 
     public static CekValue sliceByteString(List<CekValue> args) {
-        var start = asInteger(args.get(0), "SliceByteString").intValue();
-        var len = asInteger(args.get(1), "SliceByteString").intValue();
+        long start = toInt64(asInteger(args.get(0), "SliceByteString"), "SliceByteString");
+        long len = toInt64(asInteger(args.get(1), "SliceByteString"), "SliceByteString");
         var bs = asByteString(args.get(2), "SliceByteString");
 
-        // Clamp to valid range
-        int actualStart = Math.max(0, start);
-        int actualEnd = Math.min(bs.length, actualStart + Math.max(0, len));
-        if (actualStart >= bs.length || actualEnd <= actualStart) {
+        // ByteString.take/drop clamp negative and oversized Int arguments. Do
+        // all comparisons before narrowing to Java array indices.
+        long actualStart = Math.max(0L, start);
+        if (len <= 0 || actualStart >= bs.length) {
             return mkByteString(new byte[0]);
         }
-        return mkByteString(Arrays.copyOfRange(bs, actualStart, actualEnd));
+        int from = (int) actualStart;
+        int copyLength = (int) Math.min(len, (long) bs.length - actualStart);
+        return mkByteString(Arrays.copyOfRange(bs, from, from + copyLength));
     }
 
     public static CekValue lengthOfByteString(List<CekValue> args) {

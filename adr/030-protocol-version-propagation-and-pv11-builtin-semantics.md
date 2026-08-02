@@ -304,9 +304,11 @@ record ConfiguredCostModel(
 ) {}
 ```
 
-At evaluation time, a configured cost model whose target differs from the
-requested target must fail clearly. It must never silently combine PV11 prices
-with PV10 semantics or the reverse.
+At evaluation time, a configured cost model whose ledger language or protocol
+major differs from the requested target must fail clearly. The protocol minor
+is retained as provenance but is not a Plutus semantics key: cardano-node
+supplies only `MajorProtocolVersion` to Plutus. The evaluator must never
+silently combine PV11 prices with PV10 semantics or the reverse.
 
 ### D4. Provide a compatibility path with an explicit PV10 default
 
@@ -547,7 +549,9 @@ cardano-node 11.0.1 / Plutus `f92b7d7d8` baseline:
   retain a configured target or select PV10 when no model is configured.
 - Cost sizing, runtime unlifting/denotations, builtin availability, `Case`,
   UPLC-version validation, and default/model selection consume that same
-  profile. A configured model cannot be evaluated under a different target.
+  profile. A configured model cannot be evaluated under a different ledger
+  language or protocol major; minor-only differences remain compatible with
+  Plutus's major-version interface.
 - Production transaction script decoding receives the transaction's protocol
   version and ledger language. PV11 enforces a maximum constant-universe header
   size of 32 nodes and at most 1,024 fields on a `Constr` term; earlier profiles
@@ -567,6 +571,32 @@ cardano-node 11.0.1 / Plutus `f92b7d7d8` baseline:
   representation also rejects negative constructor integers that pinned
   pre-D/E Plutus can construct; JuLC reports that bridge limitation explicitly.
 
+### Post-implementation exactness audit
+
+An adversarial audit of the completed #61–#64 stack found additional edge
+cases. They are fixed in the #65 readiness branch so the claim remains tied to
+the same node/Plutus pin:
+
+- Model E uses `above_and_below_diagonal` only for `divideInteger` and
+  `modInteger`; `quotientInteger` and `remainderInteger` retain
+  `const_above_diagonal`. Tests use the wide `(1,16)` size case where the node
+  charges `85848` for quotient/remainder and `187016` for divide/mod.
+- Cost arrays are tagged against the complete pinned `ParamName` enum
+  (V1/V2: 332, V3: 350), independently of the active protocol prefix. Missing
+  values are `maxBound`-padded and excess values are truncated, with the same
+  non-fatal warnings as `tagWithParamNames`. Parameters registered before a
+  hard fork are retained without enabling the corresponding builtin early.
+- Integer-to-`Int` and integer-to-`Word8` unlifting is checked before Java
+  narrowing for `consByteString`, `sliceByteString`, `readBit`, `writeBits`,
+  and `replicateByte`. BLS multi-scalar multiplication validates every scalar
+  before applying list-zip semantics.
+- V3 rejects bytes remaining after the inner serialized-script CBOR item;
+  V1/V2 retain the pinned historical tolerance. Restricting-budget subtraction
+  uses `SatInt`-equivalent saturation.
+- Historical variant A defaults and CEK costs, variant D's canonical
+  `linear_in_y2` representation, minor-version compatibility, and explicit
+  PV11 debugger profile selection are covered by pinned regression tests.
+
 Later Plutus `master` behavior remains intentionally excluded.
 
 ## Acceptance criteria
@@ -578,7 +608,8 @@ Later Plutus `master` behavior remains intentionally excluded.
       ledger language and protocol version.
 - [x] One immutable profile reaches cost sizing, runtime semantics, builtin
       availability, and program validation.
-- [x] A configured cost model cannot be used with a different requested target.
+- [x] A configured cost model cannot be used with a different requested ledger
+      language or protocol major; protocol-minor-only differences are accepted.
 - [x] The legacy no-target API has a documented and tested PV10 default.
 - [x] The program's UPLC version is validated instead of discarded.
 
@@ -612,6 +643,12 @@ Later Plutus `master` behavior remains intentionally excluded.
 - [x] Java and Truffle pass the same explicit profile matrix.
 - [x] Scalus either passes the matrix or is excluded from the corresponding
       ledger-parity claim.
+- [x] Model-E division shapes distinguish divide/mod from quotient/remainder,
+      including the pinned wide-gap budget counterexample.
+- [x] Checked `Int`/`Word8` unlifting and full-list BLS scalar validation reject
+      values that the pinned Haskell evaluator rejects without narrowing.
+- [x] V3 serialized-script remainders fail while V1/V2 historical remainders
+      remain accepted.
 
 ### Conformance provenance
 
@@ -632,8 +669,7 @@ Later Plutus `master` behavior remains intentionally excluded.
 ## Non-goals
 
 - Changing the protocol-independent #60 sizing correction.
-- Fixing unrelated individual cost coefficients, including the independently
-  identified `UnValueData` coefficient-order mismatch.
+- Adopting cost coefficients or semantics newer than the pinned node baseline.
 - Defining compiler optimization policy; ADR-029 covers the broader PV11
   compiler and optimization roadmap.
 - Treating an unreleased future protocol version as equivalent to PV11.

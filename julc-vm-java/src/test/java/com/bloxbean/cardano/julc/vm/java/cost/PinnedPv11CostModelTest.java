@@ -1,5 +1,7 @@
 package com.bloxbean.cardano.julc.vm.java.cost;
 
+import com.bloxbean.cardano.julc.core.DefaultFun;
+import com.bloxbean.cardano.julc.vm.BuiltinSemanticsVariant;
 import org.junit.jupiter.api.Test;
 
 import java.io.BufferedReader;
@@ -8,6 +10,8 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 class PinnedPv11CostModelTest {
@@ -29,5 +33,29 @@ class PinnedPv11CostModelTest {
         }
 
         assertArrayEquals(expected, CostModelParser.defaultToFlatArray(11));
+
+        assertPinnedDivisionShapes(
+                DefaultCostModel.defaultBuiltinCostModel(BuiltinSemanticsVariant.E));
+        assertPinnedDivisionShapes(
+                CostModelParser.parse(expected, 11).builtinCostModel());
+    }
+
+    private static void assertPinnedDivisionShapes(BuiltinCostModel model) {
+        var divide = model.get(DefaultFun.DivideInteger).cpu();
+        var mod = model.get(DefaultFun.ModInteger).cpu();
+        var quotient = model.get(DefaultFun.QuotientInteger).cpu();
+        var remainder = model.get(DefaultFun.RemainderInteger).cpu();
+
+        assertInstanceOf(CostFunction.AboveAndBelowDiagonal.class, divide);
+        assertInstanceOf(CostFunction.AboveAndBelowDiagonal.class, mod);
+        assertInstanceOf(CostFunction.ConstAboveDiagonal.class, quotient);
+        assertInstanceOf(CostFunction.ConstAboveDiagonal.class, remainder);
+
+        // Wide size gaps expose the shape difference hidden by the 85848
+        // minimum clamp on small/near-diagonal examples.
+        assertEquals(187_016, divide.apply(1, 16));
+        assertEquals(187_016, mod.apply(1, 16));
+        assertEquals(85_848, quotient.apply(1, 16));
+        assertEquals(85_848, remainder.apply(1, 16));
     }
 }

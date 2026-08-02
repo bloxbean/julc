@@ -112,8 +112,8 @@ public final class CostTracker {
         cpuConsumed = CostFunction.satAdd(cpuConsumed, cpu);
         memConsumed = CostFunction.satAdd(memConsumed, mem);
         if (hasLimit) {
-            cpuRemaining -= cpu;
-            memRemaining -= mem;
+            cpuRemaining = CostFunction.satSub(cpuRemaining, cpu);
+            memRemaining = CostFunction.satSub(memRemaining, mem);
             if (cpuRemaining < 0) {
                 throw new BudgetExhaustedException(
                         "CPU budget exhausted: consumed " + cpuConsumed +

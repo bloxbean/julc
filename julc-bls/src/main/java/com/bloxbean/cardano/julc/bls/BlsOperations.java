@@ -191,9 +191,10 @@ public final class BlsOperations {
      */
     public static byte[] g1MultiScalarMul(BigInteger[] scalars, byte[][] points) {
         int len = Math.min(scalars.length, points.length);
-        // Validate scalar sizes
-        for (int i = 0; i < len; i++) {
-            checkMsmScalarSize(scalars[i]);
+        // Plutus validates the complete scalar list before applying zip
+        // semantics to the scalar/point pairs.
+        for (BigInteger scalar : scalars) {
+            checkMsmScalarSize(scalar);
         }
         return run("G1 multiScalarMul", () -> {
             P1 acc = new P1();  // identity
@@ -306,8 +307,8 @@ public final class BlsOperations {
      */
     public static byte[] g2MultiScalarMul(BigInteger[] scalars, byte[][] points) {
         int len = Math.min(scalars.length, points.length);
-        for (int i = 0; i < len; i++) {
-            checkMsmScalarSize(scalars[i]);
+        for (BigInteger scalar : scalars) {
+            checkMsmScalarSize(scalar);
         }
         return run("G2 multiScalarMul", () -> {
             P2 acc = new P2();  // identity

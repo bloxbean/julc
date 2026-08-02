@@ -102,6 +102,10 @@ class CostModelParserTest {
         for (var fun : DefaultFun.values()) {
             var defaultPair = defaultBcm.get(fun);
             if (defaultPair == null) continue;
+            // PV10's active 297-value prefix ends at tag 86. Plutus 1.63
+            // maxBound-pads the later ParamNames; they intentionally do not
+            // inherit JSON defaults in a parsed ledger context.
+            if (fun.flatCode() >= 87) continue;
 
             var parsedPair = parsedBcm.get(fun);
             assertNotNull(parsedPair, "Missing cost pair for " + fun);
@@ -155,18 +159,21 @@ class CostModelParserTest {
         var warning = assertInstanceOf(
                 CostModelParser.TooFewParametersWarning.class,
                 assertDoesNotThrow(() -> parsed.warnings().getFirst()));
-        assertEquals(297, warning.expected());
+        assertEquals(350, warning.expected());
         assertEquals(296, warning.actual());
     }
 
     @Test
-    void parse_longerArray_rejectedAsUnknownSchema() {
+    void parse_longerArray_truncatesAtPinnedEnum() {
         long[] flat = new long[400];
         long[] defaultFlat = CostModelParser.defaultToFlatArray();
         System.arraycopy(defaultFlat, 0, flat, 0, 297);
 
-        assertThrows(IllegalArgumentException.class,
-                () -> CostModelParser.parse(flat));
+        var parsed = assertDoesNotThrow(() -> CostModelParser.parse(flat));
+        var warning = assertInstanceOf(CostModelParser.TooManyParametersWarning.class,
+                parsed.warnings().getFirst());
+        assertEquals(350, warning.expected());
+        assertEquals(400, warning.actual());
     }
 
     @Test
@@ -302,10 +309,15 @@ class CostModelParserTest {
         assertNotNull(parsed);
         assertEquals(DefaultCostModel.defaultMachineCosts(), parsed.machineCosts());
 
-        // PV10 parse should NOT have PV11 builtins from parsing (they come from defaults)
+        // Plutus 1.63 tags against its complete 350-name enum. The missing
+        // post-PV10 tail is represented by maxBound rather than JSON defaults.
         var bcm = parsed.builtinCostModel();
-        // These are present because DefaultCostModel now includes them as defaults
-        assertNotNull(bcm.get(DefaultFun.DropList), "DropList should be present from defaults");
+        assertEquals(Long.MAX_VALUE,
+                bcm.get(DefaultFun.DropList).cpu().apply(1));
+        var warning = assertInstanceOf(CostModelParser.TooFewParametersWarning.class,
+                parsed.warnings().getFirst());
+        assertEquals(350, warning.expected());
+        assertEquals(297, warning.actual());
     }
 
     @Test
@@ -392,12 +404,15 @@ class CostModelParserTest {
     }
 
     @Test
-    void parse_pv11_longerArray_rejectedAsUnknownSchema() {
+    void parse_pv11_longerArray_truncatesWithWarning() {
         long[] flat = new long[400];
         long[] pv11Flat = CostModelParser.defaultToFlatArray(11);
         System.arraycopy(pv11Flat, 0, flat, 0, 350);
-        assertThrows(IllegalArgumentException.class,
-                () -> CostModelParser.parse(flat, 11));
+        var parsed = assertDoesNotThrow(() -> CostModelParser.parse(flat, 11));
+        var warning = assertInstanceOf(CostModelParser.TooManyParametersWarning.class,
+                parsed.warnings().getFirst());
+        assertEquals(350, warning.expected());
+        assertEquals(400, warning.actual());
     }
 
     @Test
@@ -439,5 +454,14 @@ class CostModelParserTest {
         assertInstanceOf(CostFunction.AboveAndBelowDiagonal.class,
                 DefaultCostModel.defaultBuiltinCostModel(BuiltinSemanticsVariant.E)
                         .get(DefaultFun.DivideInteger).cpu());
+        assertInstanceOf(CostFunction.AboveAndBelowDiagonal.class,
+                DefaultCostModel.defaultBuiltinCostModel(BuiltinSemanticsVariant.E)
+                        .get(DefaultFun.ModInteger).cpu());
+        assertInstanceOf(CostFunction.ConstAboveDiagonal.class,
+                DefaultCostModel.defaultBuiltinCostModel(BuiltinSemanticsVariant.E)
+                        .get(DefaultFun.QuotientInteger).cpu());
+        assertInstanceOf(CostFunction.ConstAboveDiagonal.class,
+                DefaultCostModel.defaultBuiltinCostModel(BuiltinSemanticsVariant.E)
+                        .get(DefaultFun.RemainderInteger).cpu());
     }
 }

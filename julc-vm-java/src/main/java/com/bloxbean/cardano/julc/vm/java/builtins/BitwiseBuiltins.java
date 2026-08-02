@@ -140,7 +140,7 @@ public final class BitwiseBuiltins {
     public static CekValue readBit(List<CekValue> args) {
         var bs = asByteString(args.get(0), "ReadBit");
         var idx = asInteger(args.get(1), "ReadBit");
-        long bitIdx = idx.longValue();
+        long bitIdx = toInt64(idx, "ReadBit");
         if (bitIdx < 0 || bitIdx >= (long)bs.length * 8) {
             throw new BuiltinException("ReadBit: index " + bitIdx + " out of range for " + bs.length + " bytes");
         }
@@ -162,12 +162,14 @@ public final class BitwiseBuiltins {
             if (!(idxConst instanceof Constant.IntegerConst ic)) {
                 throw new BuiltinException("WriteBits: index must be integer");
             }
-            long bitIdx = ic.value().longValue();
-            if (bitIdx < 0 || bitIdx >= (long)result.length * 8) {
+            BigInteger bitIdx = ic.value();
+            BigInteger bitLength = BigInteger.valueOf((long) result.length * 8);
+            if (bitIdx.signum() < 0 || bitIdx.compareTo(bitLength) >= 0) {
                 throw new BuiltinException("WriteBits: index " + bitIdx + " out of range");
             }
-            int byteIdx = (int)(bitIdx / 8);
-            int bitOffset = (int)(bitIdx % 8);
+            long exactIndex = bitIdx.longValueExact();
+            int byteIdx = (int) (exactIndex / 8);
+            int bitOffset = (int) (exactIndex % 8);
             int actualByte = result.length - 1 - byteIdx;
             if (bitValue) {
                 result[actualByte] |= (byte)(1 << bitOffset);
@@ -182,18 +184,15 @@ public final class BitwiseBuiltins {
         var len = asInteger(args.get(0), "ReplicateByte");
         var byteVal = asInteger(args.get(1), "ReplicateByte");
 
-        int length = len.intValue();
-        if (length < 0) {
+        if (len.signum() < 0) {
             throw new BuiltinException("ReplicateByte: negative length");
         }
-        if (length > 8192) {
+        if (len.compareTo(BigInteger.valueOf(8192)) > 0) {
             throw new BuiltinException("ReplicateByte: length exceeds 8192");
         }
+        int length = len.intValue();
 
-        long val = byteVal.longValue();
-        if (val < 0 || val > 255) {
-            throw new BuiltinException("ReplicateByte: byte value out of range: " + val);
-        }
+        int val = toWord8(byteVal, "ReplicateByte");
 
         byte[] result = new byte[length];
         Arrays.fill(result, (byte) val);

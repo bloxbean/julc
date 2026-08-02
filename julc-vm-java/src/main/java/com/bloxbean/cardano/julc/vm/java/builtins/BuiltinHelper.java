@@ -22,6 +22,28 @@ public final class BuiltinHelper {
         throw new BuiltinException(context + ": expected integer, got " + describeValue(v));
     }
 
+    /**
+     * Unlift an integer through Plutus's 64-bit {@code Int} representation.
+     * Conversion is checked before narrowing so arbitrary UPLC integers cannot
+     * wrap to a different valid machine integer.
+     */
+    public static long toInt64(BigInteger value, String context) {
+        try {
+            return value.longValueExact();
+        } catch (ArithmeticException e) {
+            throw new BuiltinException(
+                    context + ": integer does not fit in signed 64-bit Int: " + value, e);
+        }
+    }
+
+    /** Unlift an integer as Haskell {@code Word8}, checking the full value. */
+    public static int toWord8(BigInteger value, String context) {
+        if (value.signum() < 0 || value.compareTo(BigInteger.valueOf(255)) > 0) {
+            throw new BuiltinException(context + ": byte value out of range: " + value);
+        }
+        return value.intValue();
+    }
+
     public static byte[] asByteString(CekValue v, String context) {
         if (v instanceof CekValue.VCon(Constant.ByteStringConst bs)) {
             return bs.value();

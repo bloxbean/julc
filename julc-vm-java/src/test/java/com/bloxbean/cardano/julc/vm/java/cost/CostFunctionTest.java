@@ -201,4 +201,11 @@ class CostFunctionTest {
         // base=1, exp=1, mod=1: no penalty, cost0 = 1001
         assertEquals(1001, f.apply(1, 1, 1));
     }
+
+    @Test
+    void saturatingSubtractionMatchesSatIntAtBothBounds() {
+        assertEquals(Long.MAX_VALUE, CostFunction.satSub(0, Long.MIN_VALUE));
+        assertEquals(Long.MIN_VALUE, CostFunction.satSub(-1, Long.MAX_VALUE));
+        assertEquals(7, CostFunction.satSub(10, 3));
+    }
 }

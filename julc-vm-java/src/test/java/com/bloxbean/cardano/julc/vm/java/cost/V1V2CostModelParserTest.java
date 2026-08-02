@@ -4,8 +4,12 @@ import com.bloxbean.cardano.julc.core.Constant;
 import com.bloxbean.cardano.julc.core.DefaultFun;
 import com.bloxbean.cardano.julc.core.Program;
 import com.bloxbean.cardano.julc.core.Term;
+import com.bloxbean.cardano.julc.vm.BuiltinSemanticsVariant;
 import com.bloxbean.cardano.julc.vm.EvalResult;
+import com.bloxbean.cardano.julc.vm.LedgerEvaluationTarget;
 import com.bloxbean.cardano.julc.vm.PlutusLanguage;
+import com.bloxbean.cardano.julc.vm.ProtocolFeatureRegistry;
+import com.bloxbean.cardano.julc.vm.ProtocolVersion;
 import com.bloxbean.cardano.julc.vm.java.CekValue;
 import com.bloxbean.cardano.julc.vm.java.JavaVmProvider;
 import org.junit.jupiter.api.Test;
@@ -81,11 +85,20 @@ class V1V2CostModelParserTest {
     }
 
     @Test
-    void extraParametersDoNotInferUnknownLayouts() {
+    void valuesBeyondTheActivePrefixAreTaggedAgainstTheFullEnum() {
         for (var schema : SCHEMAS) {
-            assertThrows(IllegalArgumentException.class, () -> CostModelParser.parse(
-                    new long[schema.count() + 1], schema.language(), schema.protocol(), 0),
-                    "long " + schema);
+            var parsed = assertDoesNotThrow(() -> CostModelParser.parse(
+                    new long[schema.count() + 1], schema.language(), schema.protocol(), 0));
+            CostModelParser.CostModelParseWarning warning;
+            if (CostModelParser.paramNameCount(schema.language()) == schema.count()) {
+                warning = assertInstanceOf(CostModelParser.TooManyParametersWarning.class,
+                        parsed.warnings().getFirst());
+            } else {
+                warning = assertInstanceOf(CostModelParser.TooFewParametersWarning.class,
+                        parsed.warnings().getFirst());
+            }
+            assertEquals(CostModelParser.paramNameCount(schema.language()), warning.expected());
+            assertEquals(schema.count() + 1, warning.actual());
         }
     }
 
@@ -167,6 +180,49 @@ class V1V2CostModelParserTest {
     }
 
     @Test
+    void pinnedHistoricalVariantADefaultsMatchHaskellExactly() throws IOException {
+        long[] expectedV1 = readFlatVector(
+                "/cost-model/f92b7d7d8/plutus-v1-pv5-A.json");
+        long[] expectedV2 = readFlatVector(
+                "/cost-model/f92b7d7d8/plutus-v2-pv7-A.json");
+        var v1Profile = ProtocolFeatureRegistry.resolve(
+                new LedgerEvaluationTarget(PlutusLanguage.PLUTUS_V1,
+                        new ProtocolVersion(5, 0)));
+        var v2Profile = ProtocolFeatureRegistry.resolve(
+                new LedgerEvaluationTarget(PlutusLanguage.PLUTUS_V2,
+                        new ProtocolVersion(7, 0)));
+
+        assertEquals(166, expectedV1.length);
+        assertEquals(175, expectedV2.length);
+        assertEquals(23_000,
+                DefaultCostModel.defaultMachineCosts(v1Profile).applyCpu());
+        assertEquals(23_000,
+                DefaultCostModel.defaultMachineCosts(v2Profile).applyCpu());
+        assertArrayEquals(expectedV1, CostModelParser.toFlatArray(
+                DefaultCostModel.defaultMachineCosts(v1Profile),
+                DefaultCostModel.defaultBuiltinCostModel(BuiltinSemanticsVariant.A),
+                PlutusLanguage.PLUTUS_V1, 5));
+        assertArrayEquals(expectedV2, CostModelParser.toFlatArray(
+                DefaultCostModel.defaultMachineCosts(v2Profile),
+                DefaultCostModel.defaultBuiltinCostModel(BuiltinSemanticsVariant.A),
+                PlutusLanguage.PLUTUS_V2, 7));
+    }
+
+    @Test
+    void historicalDefaultEvaluationUsesVariantAMachineCosts() {
+        var provider = new JavaVmProvider();
+        var result = provider.evaluate(
+                Program.plutusV1(Term.const_(Constant.unit())),
+                new LedgerEvaluationTarget(PlutusLanguage.PLUTUS_V1,
+                        new ProtocolVersion(5, 0)),
+                null);
+
+        var success = assertInstanceOf(EvalResult.Success.class, result);
+        assertEquals(23_100, success.budgetConsumed().cpuSteps());
+        assertEquals(200, success.budgetConsumed().memoryUnits());
+    }
+
+    @Test
     void v2Pv10AndPv11LandmarksMatchPinnedParamNameOrder() {
         long[] pv10Values = indexedValues(CostModelParser.V2_PV10_PARAM_COUNT);
         var pv10 = CostModelParser.parse(
@@ -192,7 +248,7 @@ class V1V2CostModelParserTest {
     }
 
     @Test
-    void parsedModelsContainOnlyCoefficientsSuppliedByTheirSchema() {
+    void parsedModelsContainEveryPinnedParamNameEvenWhenTheTailWasPadded() {
         var v1 = CostModelParser.parse(
                 indexedValues(166), PlutusLanguage.PLUTUS_V1, 10, 0)
                 .builtinCostModel();
@@ -207,16 +263,11 @@ class V1V2CostModelParserTest {
                 .builtinCostModel();
 
         for (var fun : DefaultFun.values()) {
-            assertEquals(fun.flatCode() <= 50, v1.get(fun) != null,
-                    "V1/PV10 " + fun);
-            assertEquals(fun.flatCode() <= 53
-                            || fun == DefaultFun.IntegerToByteString
-                            || fun == DefaultFun.ByteStringToInteger,
-                    v2Pv10.get(fun) != null, "V2/PV10 " + fun);
-            assertEquals(fun.flatCode() <= 100, v1Pv11.get(fun) != null,
-                    "V1/PV11 " + fun);
-            assertEquals(fun.flatCode() <= 100, v2Pv11.get(fun) != null,
-                    "V2/PV11 " + fun);
+            boolean ledgerBuiltin = fun.flatCode() <= 100;
+            assertEquals(ledgerBuiltin, v1.get(fun) != null, "V1/PV10 " + fun);
+            assertEquals(ledgerBuiltin, v2Pv10.get(fun) != null, "V2/PV10 " + fun);
+            assertEquals(ledgerBuiltin, v1Pv11.get(fun) != null, "V1/PV11 " + fun);
+            assertEquals(ledgerBuiltin, v2Pv11.get(fun) != null, "V2/PV11 " + fun);
         }
     }
 
@@ -310,6 +361,11 @@ class V1V2CostModelParserTest {
         var parsed = CostModelParser.parse(values, language, 11, 0);
         assertArrayEquals(values, CostModelParser.toFlatArray(
                 parsed.machineCosts(), parsed.builtinCostModel(), language, 11));
+        var profile = ProtocolFeatureRegistry.resolve(
+                LedgerEvaluationTarget.pv11(language));
+        assertArrayEquals(values, CostModelParser.toFlatArray(
+                DefaultCostModel.defaultMachineCosts(profile),
+                DefaultCostModel.defaultBuiltinCostModel(profile), language, 11));
         assertEquals(16_000, parsed.machineCosts().constrCpu());
         assertEquals(100, parsed.machineCosts().caseMem());
 

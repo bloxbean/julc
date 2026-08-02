@@ -3,7 +3,10 @@ package com.bloxbean.cardano.julc.vm.java.cost;
 import com.bloxbean.cardano.julc.core.Constant;
 import com.bloxbean.cardano.julc.core.DefaultFun;
 import com.bloxbean.cardano.julc.vm.ExBudget;
+import com.bloxbean.cardano.julc.vm.LedgerEvaluationTarget;
 import com.bloxbean.cardano.julc.vm.PlutusLanguage;
+import com.bloxbean.cardano.julc.vm.ProtocolFeatureRegistry;
+import com.bloxbean.cardano.julc.vm.ProtocolVersion;
 import com.bloxbean.cardano.julc.vm.java.CekValue;
 import org.junit.jupiter.api.Test;
 
@@ -13,8 +16,9 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Compatibility tests for Plutus {@code CMTooFewParamsWarn}: known schemas
- * preserve their supplied prefix and pad missing names with {@code maxBound}.
+ * Compatibility tests for Plutus {@code tagWithParamNames}: supplied values
+ * are tagged against the full pinned enum, with short tails padded by
+ * {@code maxBound} and values beyond the enum truncated.
  */
 class ShortCostModelArrayTest {
 
@@ -39,8 +43,9 @@ class ShortCostModelArrayTest {
             for (int missing : List.of(1, 7, schema.count())) {
                 int actual = schema.count() - missing;
                 long[] supplied = indexedValues(actual);
-                long[] explicitlyPadded = Arrays.copyOf(supplied, schema.count());
-                Arrays.fill(explicitlyPadded, actual, schema.count(), Long.MAX_VALUE);
+                int fullCount = CostModelParser.paramNameCount(schema.language());
+                long[] explicitlyPadded = Arrays.copyOf(supplied, fullCount);
+                Arrays.fill(explicitlyPadded, actual, fullCount, Long.MAX_VALUE);
 
                 var incomplete = parse(supplied, schema);
                 var nodeEquivalent = parse(explicitlyPadded, schema);
@@ -50,13 +55,16 @@ class ShortCostModelArrayTest {
                         assertSingleWarning(incomplete, schema));
                 assertEquals(schema.language(), warning.language(), schema.toString());
                 assertEquals(schema.protocol(), warning.protocolMajorVersion(), schema.toString());
-                assertEquals(schema.count(), warning.expected(), schema.toString());
+                assertEquals(fullCount, warning.expected(), schema.toString());
                 assertEquals(actual, warning.actual(), schema.toString());
                 assertTrue(warning.message().contains("Long.MAX_VALUE"), schema.toString());
 
                 assertTrue(nodeEquivalent.warnings().isEmpty(), schema.toString());
                 assertEquals(nodeEquivalent.machineCosts(), incomplete.machineCosts(), schema.toString());
-                assertArrayEquals(explicitlyPadded, serialize(incomplete, schema), schema.toString());
+                assertCostModelsEqual(nodeEquivalent.builtinCostModel(),
+                        incomplete.builtinCostModel(), schema);
+                assertArrayEquals(Arrays.copyOf(explicitlyPadded, schema.count()),
+                        serialize(incomplete, schema), schema.toString());
                 assertArrayEquals(serialize(nodeEquivalent, schema),
                         serialize(incomplete, schema), schema.toString());
             }
@@ -64,15 +72,24 @@ class ShortCostModelArrayTest {
     }
 
     @Test
-    void exactSchemasDoNotWarnAndWarningsAreImmutable() {
+    void warningThresholdUsesTheFullLanguageEnumAndWarningsAreImmutable() {
         for (var schema : SCHEMAS) {
             var exact = parse(indexedValues(schema.count()), schema);
-            assertTrue(exact.warnings().isEmpty(), schema.toString());
+            int fullCount = CostModelParser.paramNameCount(schema.language());
+            if (schema.count() == fullCount) {
+                assertTrue(exact.warnings().isEmpty(), schema.toString());
+            } else {
+                var warning = assertInstanceOf(
+                        CostModelParser.TooFewParametersWarning.class,
+                        assertSingleWarning(exact, schema));
+                assertEquals(fullCount, warning.expected(), schema.toString());
+                assertEquals(schema.count(), warning.actual(), schema.toString());
+            }
 
             var shortModel = parse(new long[schema.count() - 1], schema);
             assertThrows(UnsupportedOperationException.class, () ->
                     shortModel.warnings().add(new CostModelParser.TooFewParametersWarning(
-                            schema.language(), schema.protocol(), schema.count(), 0)));
+                            schema.language(), schema.protocol(), fullCount, 0)));
         }
     }
 
@@ -105,11 +122,54 @@ class ShortCostModelArrayTest {
     }
 
     @Test
-    void extraParametersAndUnknownProfilesStillFail() {
+    void oversizedArraysAreTruncatedWithTheHaskellWarning() {
         for (var schema : SCHEMAS) {
-            assertThrows(IllegalArgumentException.class, () ->
-                    parse(new long[schema.count() + 1], schema), schema.toString());
+            int fullCount = CostModelParser.paramNameCount(schema.language());
+            var exactFull = parse(indexedValues(fullCount), schema);
+            var oversized = parse(indexedValues(fullCount + 1), schema);
+
+            var warning = assertInstanceOf(
+                    CostModelParser.TooManyParametersWarning.class,
+                    assertSingleWarning(oversized, schema));
+            assertEquals(fullCount, warning.expected(), schema.toString());
+            assertEquals(fullCount + 1, warning.actual(), schema.toString());
+            assertTrue(warning.message().contains("ignored"), schema.toString());
+            assertEquals(exactFull.machineCosts(), oversized.machineCosts(), schema.toString());
+            assertCostModelsEqual(exactFull.builtinCostModel(),
+                    oversized.builtinCostModel(), schema);
         }
+    }
+
+    @Test
+    void parametersRegisteredAheadOfAHardForkAreParsedButNotMadeAvailable() {
+        var pv9 = new Schema(PlutusLanguage.PLUTUS_V3, 9,
+                CostModelParser.PV9_PARAM_COUNT);
+        var withPlominTail = parse(
+                indexedValues(CostModelParser.PV10_PARAM_COUNT), pv9);
+        var warning = assertInstanceOf(CostModelParser.TooFewParametersWarning.class,
+                assertSingleWarning(withPlominTail, pv9));
+        assertEquals(CostModelParser.PV11_PARAM_COUNT, warning.expected());
+        assertEquals(CostModelParser.PV10_PARAM_COUNT, warning.actual());
+        assertEquals(new CostFunction.LinearInYAndZ(at(251), at(252), at(253)),
+                withPlominTail.builtinCostModel().get(DefaultFun.AndByteString).cpu());
+        assertFalse(ProtocolFeatureRegistry.resolve(
+                new LedgerEvaluationTarget(PlutusLanguage.PLUTUS_V3,
+                        new ProtocolVersion(9, 0)))
+                .isBuiltinAvailable(DefaultFun.AndByteString));
+
+        var pv10 = new Schema(PlutusLanguage.PLUTUS_V3, 10,
+                CostModelParser.PV10_PARAM_COUNT);
+        var withPv11Tail = parse(indexedValues(CostModelParser.PV11_PARAM_COUNT), pv10);
+        assertTrue(withPv11Tail.warnings().isEmpty());
+        assertEquals(new CostFunction.ExpModCost(at(297), at(298), at(299)),
+                withPv11Tail.builtinCostModel().get(DefaultFun.ExpModInteger).cpu());
+        assertFalse(ProtocolFeatureRegistry.resolve(
+                LedgerEvaluationTarget.pv10(PlutusLanguage.PLUTUS_V3))
+                .isBuiltinAvailable(DefaultFun.ExpModInteger));
+    }
+
+    @Test
+    void unknownProfilesStillFail() {
 
         assertThrows(IllegalArgumentException.class, () -> CostModelParser.parse(
                 new long[0], PlutusLanguage.PLUTUS_V1, 12, 0));
@@ -143,5 +203,17 @@ class ShortCostModelArrayTest {
             values[i] = 10_000L + i;
         }
         return values;
+    }
+
+    private static long at(int index) {
+        return 10_000L + index;
+    }
+
+    private static void assertCostModelsEqual(
+            BuiltinCostModel expected, BuiltinCostModel actual, Schema schema) {
+        assertEquals(expected.costedBuiltins(), actual.costedBuiltins(), schema.toString());
+        for (var fun : expected.costedBuiltins()) {
+            assertEquals(expected.get(fun), actual.get(fun), schema + " " + fun);
+        }
     }
 }
