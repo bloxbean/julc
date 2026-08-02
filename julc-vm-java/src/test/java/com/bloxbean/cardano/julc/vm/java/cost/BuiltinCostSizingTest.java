@@ -3,6 +3,7 @@ package com.bloxbean.cardano.julc.vm.java.cost;
 import com.bloxbean.cardano.julc.core.Constant;
 import com.bloxbean.cardano.julc.core.DefaultFun;
 import com.bloxbean.cardano.julc.core.PlutusData;
+import com.bloxbean.cardano.julc.vm.BuiltinSemanticsVariant;
 import com.bloxbean.cardano.julc.vm.java.CekValue;
 import org.junit.jupiter.api.Test;
 
@@ -118,12 +119,47 @@ class BuiltinCostSizingTest {
     }
 
     @Test
+    void textCostedByByteLength_isSelectedOnlyForDEStringArguments() {
+        var args = List.<CekValue>of(
+                new CekValue.VCon(Constant.string("é")),
+                new CekValue.VCon(Constant.string("😀")));
+
+        assertArrayEquals(new long[]{1, 1}, BuiltinCostModel.argSizes(
+                BuiltinSemanticsVariant.C, DefaultFun.AppendString, args));
+        assertArrayEquals(new long[]{0, 1}, BuiltinCostModel.argSizes(
+                BuiltinSemanticsVariant.D, DefaultFun.AppendString, args));
+        assertArrayEquals(new long[]{0, 1}, BuiltinCostModel.argSizes(
+                BuiltinSemanticsVariant.E, DefaultFun.EqualsString, args));
+
+        var encodeArgs = List.<CekValue>of(
+                new CekValue.VCon(Constant.string("é😀")));
+        assertArrayEquals(new long[]{2}, BuiltinCostModel.argSizes(
+                BuiltinSemanticsVariant.C, DefaultFun.EncodeUtf8, encodeArgs));
+        assertArrayEquals(new long[]{1}, BuiltinCostModel.argSizes(
+                BuiltinSemanticsVariant.E, DefaultFun.EncodeUtf8, encodeArgs));
+    }
+
+    @Test
     void pairSize_usesMaxBoundPoisonValue() {
         var pair = new Constant.PairConst(Constant.integer(1), Constant.integer(2));
         assertEquals(Long.MAX_VALUE, BuiltinCostModel.sizeOfConstant(pair));
     }
 
     // === Exact charge tests (issue #60 reproduction) ===
+
+    @Test
+    void issue60ByteLengthWrappersAreProtocolIndependent() {
+        var replicateArgs = List.<CekValue>of(intArg(64), intArg(0));
+        var integerToBytesArgs = List.<CekValue>of(
+                boolArg(true), intArg(32), intArg(42));
+
+        for (var variant : BuiltinSemanticsVariant.values()) {
+            assertArrayEquals(new long[]{8, 1}, BuiltinCostModel.argSizes(
+                    variant, DefaultFun.ReplicateByte, replicateArgs));
+            assertArrayEquals(new long[]{1, 4, 1}, BuiltinCostModel.argSizes(
+                    variant, DefaultFun.IntegerToByteString, integerToBytesArgs));
+        }
+    }
 
     @Test
     void replicateByte_chargedByLiteralByteSize() {

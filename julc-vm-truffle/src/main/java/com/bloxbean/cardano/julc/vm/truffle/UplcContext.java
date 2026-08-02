@@ -2,6 +2,9 @@ package com.bloxbean.cardano.julc.vm.truffle;
 
 import com.bloxbean.cardano.julc.core.DefaultFun;
 import com.bloxbean.cardano.julc.vm.PlutusLanguage;
+import com.bloxbean.cardano.julc.vm.LedgerEvaluationTarget;
+import com.bloxbean.cardano.julc.vm.ProtocolFeatureProfile;
+import com.bloxbean.cardano.julc.vm.ProtocolFeatureRegistry;
 import com.bloxbean.cardano.julc.vm.java.CekValue;
 import com.bloxbean.cardano.julc.vm.java.builtins.BuiltinTable;
 import com.bloxbean.cardano.julc.vm.java.cost.CostTracker;
@@ -24,6 +27,7 @@ public final class UplcContext {
 
     private final CostTracker costTracker;
     private final PlutusLanguage language;
+    private final ProtocolFeatureProfile profile;
     private final BuiltinTable.VersionedBuiltinTable builtinTable;
     private final List<String> traces = new ArrayList<>();
     private final ExecutionTraceCollector executionTraceCollector;
@@ -35,9 +39,16 @@ public final class UplcContext {
 
     public UplcContext(CostTracker costTracker, PlutusLanguage language,
                        boolean tracingEnabled, boolean builtinTraceEnabled) {
+        this(costTracker, ProtocolFeatureRegistry.resolve(LedgerEvaluationTarget.pv10(language)),
+                tracingEnabled, builtinTraceEnabled);
+    }
+
+    public UplcContext(CostTracker costTracker, ProtocolFeatureProfile profile,
+                       boolean tracingEnabled, boolean builtinTraceEnabled) {
         this.costTracker = costTracker;
-        this.language = language;
-        this.builtinTable = BuiltinTable.forLanguage(language);
+        this.profile = profile;
+        this.language = profile.target().ledgerLanguage();
+        this.builtinTable = BuiltinTable.forProfile(profile);
         this.executionTraceCollector = tracingEnabled ? new ExecutionTraceCollector(costTracker) : null;
         this.builtinTraceCollector = builtinTraceEnabled ? new BuiltinTraceCollector(20) : null;
     }
@@ -48,6 +59,10 @@ public final class UplcContext {
 
     public PlutusLanguage getLanguage() {
         return language;
+    }
+
+    public ProtocolFeatureProfile getProfile() {
+        return profile;
     }
 
     public BuiltinTable.VersionedBuiltinTable getBuiltinTable() {

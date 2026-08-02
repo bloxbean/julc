@@ -31,7 +31,7 @@ public final class DataBuiltins {
                 throw new BuiltinException("ConstrData: list element is not Data");
             }
         }
-        return mkData(new PlutusData.ConstrData(tag.intValueExact(), dataFields));
+        return mkData(new PlutusData.ConstrData(tag, dataFields));
     }
 
     public static CekValue mapData(List<CekValue> args) {
@@ -79,7 +79,7 @@ public final class DataBuiltins {
     public static CekValue unConstrData(List<CekValue> args) {
         var d = asData(args.get(0), "UnConstrData");
         if (d instanceof PlutusData.ConstrData cd) {
-            var tagConst = new Constant.IntegerConst(BigInteger.valueOf(cd.tag()));
+            var tagConst = new Constant.IntegerConst(cd.constructorTag());
             var fieldConsts = cd.fields().stream()
                     .map(f -> (Constant) new Constant.DataConst(f))
                     .toList();

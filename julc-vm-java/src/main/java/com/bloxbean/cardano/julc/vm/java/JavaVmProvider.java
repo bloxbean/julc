@@ -20,56 +20,84 @@ import java.util.List;
  */
 public class JavaVmProvider implements JulcVmProvider {
 
-    private volatile CostModelParser.ParsedCostModel customV1CostModel;
-    private volatile CostModelParser.ParsedCostModel customV2CostModel;
-    private volatile CostModelParser.ParsedCostModel customV3CostModel;
+    private volatile ConfiguredCostModel customV1CostModel;
+    private volatile ConfiguredCostModel customV2CostModel;
+    private volatile ConfiguredCostModel customV3CostModel;
 
     @Override
     public void setCostModelParams(long[] costModelValues, PlutusLanguage language,
                                    int protocolMajorVersion, int protocolMinorVersion) {
+        var target = new LedgerEvaluationTarget(
+                language, new ProtocolVersion(protocolMajorVersion, protocolMinorVersion));
+        var profile = ProtocolFeatureRegistry.resolve(target);
         var parsed = CostModelParser.parse(costModelValues, language, protocolMajorVersion, protocolMinorVersion);
+        var configured = new ConfiguredCostModel(parsed, target, profile);
         switch (language) {
-            case PLUTUS_V1 -> this.customV1CostModel = parsed;
-            case PLUTUS_V2 -> this.customV2CostModel = parsed;
-            case PLUTUS_V3 -> this.customV3CostModel = parsed;
+            case PLUTUS_V1 -> this.customV1CostModel = configured;
+            case PLUTUS_V2 -> this.customV2CostModel = configured;
+            case PLUTUS_V3 -> this.customV3CostModel = configured;
         }
     }
 
     @Override
     public EvalResult evaluate(Program program, PlutusLanguage language, ExBudget budget,
                                EvalOptions options) {
-        return evaluateInternal(program.term(), language, budget, options);
+        return evaluateInternal(program, compatibilityTargetFor(language), budget, options);
     }
 
     @Override
     public EvalResult evaluateWithArgs(Program program, PlutusLanguage language,
                                        List<PlutusData> args, ExBudget budget,
                                        EvalOptions options) {
-        // Apply each argument as a Data constant
-        Term term = program.term();
-        for (var arg : args) {
-            term = new Term.Apply(term, new Term.Const(Constant.data(arg)));
-        }
-        return evaluateInternal(term, language, budget, options);
+        return evaluateInternal(applyArgs(program, args), compatibilityTargetFor(language),
+                budget, options);
     }
 
-    private EvalResult evaluateInternal(Term term, PlutusLanguage language, ExBudget budget,
+    @Override
+    public EvalResult evaluate(Program program, LedgerEvaluationTarget target, ExBudget budget,
+                               EvalOptions options) {
+        return evaluateInternal(program, target, budget, options);
+    }
+
+    @Override
+    public EvalResult evaluateWithArgs(Program program, LedgerEvaluationTarget target,
+                                       List<PlutusData> args, ExBudget budget,
+                                       EvalOptions options) {
+        return evaluateInternal(applyArgs(program, args), target, budget, options);
+    }
+
+    private EvalResult evaluateInternal(Program program, LedgerEvaluationTarget target,
+                                        ExBudget budget,
                                         EvalOptions options) {
+        ProtocolFeatureProfile profile;
+        ConfiguredCostModel configured;
+        try {
+            profile = ProtocolFeatureRegistry.resolve(target);
+            ProgramValidator.validate(program, profile);
+            configured = getCustomCostModel(target.ledgerLanguage());
+            if (configured != null && !configured.target().equals(target)) {
+                throw new UnsupportedLedgerTargetException(
+                        "Configured cost model targets " + configured.target()
+                                + " but evaluation requested " + target);
+            }
+        } catch (RuntimeException e) {
+            return new EvalResult.Failure(messageOf(e), ExBudget.ZERO, List.of());
+        }
+
         MachineCosts mc;
         BuiltinCostModel bcm;
-        var parsed = getCustomCostModel(language);
-        if (parsed != null) {
-            mc = parsed.machineCosts();
-            bcm = parsed.builtinCostModel();
+        if (configured != null) {
+            mc = configured.costModel().machineCosts();
+            bcm = configured.costModel().builtinCostModel();
         } else {
-            mc = DefaultCostModel.defaultMachineCosts(language);
-            bcm = DefaultCostModel.defaultBuiltinCostModel(language);
+            mc = DefaultCostModel.defaultMachineCosts(profile);
+            bcm = DefaultCostModel.defaultBuiltinCostModel(profile);
         }
-        var costTracker = new CostTracker(mc, bcm, budget);
-        var machine = new CekMachine(costTracker, language,
+        var costTracker = new CostTracker(mc, bcm, profile, budget);
+        var machine = new CekMachine(costTracker, profile,
                 options.sourceMap(), options.tracingEnabled(), options.builtinTraceEnabled());
         try {
-            CekValue result = machine.evaluate(term);
+            CekValue result = machine.evaluate(program.term());
             Term resultTerm = ValueConverter.toTerm(result);
             return new EvalResult.Success(resultTerm, costTracker.consumed(), machine.getTraces(),
                     machine.getExecutionTrace(), machine.getBuiltinTrace());
@@ -81,18 +109,38 @@ public class JavaVmProvider implements JulcVmProvider {
             return new EvalResult.Failure(errorMsg, costTracker.consumed(), machine.getTraces(),
                     e.failedTerm(), machine.getExecutionTrace(), machine.getBuiltinTrace());
         } catch (Exception e) {
-            String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
-            return new EvalResult.Failure(errorMsg, costTracker.consumed(), machine.getTraces(),
+            return new EvalResult.Failure(messageOf(e), costTracker.consumed(), machine.getTraces(),
                     null, machine.getExecutionTrace(), machine.getBuiltinTrace());
         }
     }
 
-    private CostModelParser.ParsedCostModel getCustomCostModel(PlutusLanguage language) {
+    /**
+     * Return the target used by the legacy language-only API. A configured
+     * model supplies its retained target; otherwise the documented default is PV10.
+     */
+    public LedgerEvaluationTarget compatibilityTargetFor(PlutusLanguage language) {
+        var configured = getCustomCostModel(language);
+        return configured != null ? configured.target() : LedgerEvaluationTarget.pv10(language);
+    }
+
+    private ConfiguredCostModel getCustomCostModel(PlutusLanguage language) {
         return switch (language) {
             case PLUTUS_V1 -> customV1CostModel;
             case PLUTUS_V2 -> customV2CostModel;
             case PLUTUS_V3 -> customV3CostModel;
         };
+    }
+
+    private static Program applyArgs(Program program, List<PlutusData> args) {
+        Term term = program.term();
+        for (var arg : args) {
+            term = new Term.Apply(term, new Term.Const(Constant.data(arg)));
+        }
+        return new Program(program.major(), program.minor(), program.patch(), term);
+    }
+
+    private static String messageOf(Exception e) {
+        return e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
     }
 
     @Override

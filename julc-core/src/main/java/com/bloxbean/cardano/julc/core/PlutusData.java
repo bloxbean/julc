@@ -25,10 +25,74 @@ public sealed interface PlutusData {
      * A constructor application with a tag and list of fields.
      * Used to encode sum types (tagged unions) and product types.
      */
-    record ConstrData(int tag, List<PlutusData> fields) implements PlutusData {
-        public ConstrData {
-            if (tag < 0) throw new IllegalArgumentException("ConstrData tag must be non-negative: " + tag);
-            fields = List.copyOf(fields);
+    final class ConstrData implements PlutusData {
+        private final BigInteger constructorTag;
+        private final List<PlutusData> fields;
+
+        /**
+         * Compatibility constructor for ordinary schema tags. Negative int
+         * tags remain rejected as they were by the original record API.
+         */
+        public ConstrData(int tag, List<PlutusData> fields) {
+            if (tag < 0) {
+                throw new IllegalArgumentException(
+                        "ConstrData tag must be non-negative: " + tag);
+            }
+            this.constructorTag = BigInteger.valueOf(tag);
+            this.fields = List.copyOf(fields);
+        }
+
+        /** Construct the underlying Plutus {@code Data.Constr Integer [Data]}. */
+        public ConstrData(BigInteger tag, List<PlutusData> fields) {
+            this.constructorTag = Objects.requireNonNull(
+                    tag, "ConstrData tag must not be null");
+            this.fields = List.copyOf(fields);
+        }
+
+        /** Construct from the complete unsigned Word64 domain used by D/E. */
+        public static ConstrData fromUnsignedTag(
+                BigInteger tag, List<PlutusData> fields) {
+            Objects.requireNonNull(tag, "ConstrData tag must not be null");
+            if (tag.signum() < 0 || tag.bitLength() > 64) {
+                throw new IllegalArgumentException(
+                        "ConstrData tag must fit in unsigned Word64: " + tag);
+            }
+            return new ConstrData(tag, fields);
+        }
+
+        /**
+         * Checked compatibility view for callers whose schemas use int tags.
+         * Use {@link #constructorTag()} for the complete Plutus value.
+         */
+        public int tag() {
+            return constructorTag.intValueExact();
+        }
+
+        public BigInteger constructorTag() {
+            return constructorTag;
+        }
+
+        public List<PlutusData> fields() {
+            return fields;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            return o instanceof ConstrData other
+                    && constructorTag.equals(other.constructorTag)
+                    && fields.equals(other.fields);
+        }
+
+        @Override
+        public int hashCode() {
+            // Match the former record's generated component hash formula so
+            // existing int-tag values remain stable as hash-map keys.
+            return 31 * constructorTag.hashCode() + fields.hashCode();
+        }
+
+        @Override
+        public String toString() {
+            return "ConstrData[tag=" + constructorTag + ", fields=" + fields + "]";
         }
     }
 
@@ -148,9 +212,9 @@ public sealed interface PlutusData {
      */
     default int countNodes() {
         return switch (this) {
-            case ConstrData(var tag, var fields) -> {
+            case ConstrData constr -> {
                 int count = 1;
-                for (PlutusData f : fields) count += f.countNodes();
+                for (PlutusData f : constr.fields()) count += f.countNodes();
                 yield count;
             }
             case MapData(var entries) -> {
@@ -181,15 +245,15 @@ public sealed interface PlutusData {
         switch (this) {
             case IntData(var v) -> sb.append(pad).append("I ").append(v);
             case BytesData bd -> sb.append(pad).append("B #").append(HexFormat.of().formatHex(bd.value));
-            case ConstrData(var tag, var fields) -> {
-                sb.append(pad).append("Constr ").append(tag);
-                if (fields.isEmpty()) {
+            case ConstrData constr -> {
+                sb.append(pad).append("Constr ").append(constr.constructorTag());
+                if (constr.fields().isEmpty()) {
                     sb.append(" []");
                 } else {
                     sb.append(" [\n");
-                    for (int i = 0; i < fields.size(); i++) {
-                        fields.get(i).prettyPrint(sb, indent + 1);
-                        if (i < fields.size() - 1) sb.append(",");
+                    for (int i = 0; i < constr.fields().size(); i++) {
+                        constr.fields().get(i).prettyPrint(sb, indent + 1);
+                        if (i < constr.fields().size() - 1) sb.append(",");
                         sb.append("\n");
                     }
                     sb.append(pad).append("]");

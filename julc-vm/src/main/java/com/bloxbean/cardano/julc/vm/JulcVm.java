@@ -25,6 +25,12 @@ import java.util.ServiceLoader;
  * // Traces are in the result: result.executionTrace(), result.builtinTrace()
  * }</pre>
  *
+ * <p>The language-only overloads are compatibility APIs. The Java and Truffle
+ * providers use the protocol retained with a configured cost model, or PV10
+ * when none is configured. Ledger validation should use an overload accepting
+ * {@link LedgerEvaluationTarget}; providers without protocol-aware support fail
+ * closed on that canonical path.</p>
+ *
  * @see JulcVmProvider
  */
 public final class JulcVm {
@@ -124,7 +130,10 @@ public final class JulcVm {
 
     // --- Evaluate with default options ---
 
-    /** Evaluate a UPLC program with unlimited budget and default options. */
+    /**
+     * Evaluate through the provider's language-only compatibility path.
+     * Java and Truffle default this path to PV10 when no model is configured.
+     */
     public EvalResult evaluate(Program program) {
         return provider.evaluate(program, language, null);
     }
@@ -167,6 +176,31 @@ public final class JulcVm {
         return provider.evaluateWithArgs(program, language, args, budget, options);
     }
 
+    // --- Canonical protocol-aware evaluation ---
+
+    /** Evaluate for an explicit ledger target with unlimited budget. */
+    public EvalResult evaluate(Program program, LedgerEvaluationTarget target) {
+        return provider.evaluate(program, target, null, EvalOptions.DEFAULT);
+    }
+
+    /** Evaluate for an explicit ledger target and budget. */
+    public EvalResult evaluate(Program program, LedgerEvaluationTarget target, ExBudget budget) {
+        return provider.evaluate(program, target, budget, EvalOptions.DEFAULT);
+    }
+
+    /** Evaluate for an explicit ledger target, budget, and options. */
+    public EvalResult evaluate(Program program, LedgerEvaluationTarget target,
+                               ExBudget budget, EvalOptions options) {
+        return provider.evaluate(program, target, budget, options);
+    }
+
+    /** Evaluate with arguments for an explicit ledger target. */
+    public EvalResult evaluateWithArgs(Program program, LedgerEvaluationTarget target,
+                                       List<PlutusData> args, ExBudget budget,
+                                       EvalOptions options) {
+        return provider.evaluateWithArgs(program, target, args, budget, options);
+    }
+
     // --- Configuration ---
 
     /**
@@ -178,6 +212,11 @@ public final class JulcVm {
     public void setCostModelParams(long[] costModelValues, PlutusLanguage language,
                                    int protocolMajorVersion, int protocolMinorVersion) {
         provider.setCostModelParams(costModelValues, language, protocolMajorVersion, protocolMinorVersion);
+    }
+
+    /** Set cost parameters for an explicit ledger target. */
+    public void setCostModelParams(long[] costModelValues, LedgerEvaluationTarget target) {
+        provider.setCostModelParams(costModelValues, target);
     }
 
     /** The name of the active VM provider. */

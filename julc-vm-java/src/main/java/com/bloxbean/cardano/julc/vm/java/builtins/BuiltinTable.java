@@ -1,7 +1,10 @@
 package com.bloxbean.cardano.julc.vm.java.builtins;
 
 import com.bloxbean.cardano.julc.core.DefaultFun;
+import com.bloxbean.cardano.julc.vm.LedgerEvaluationTarget;
 import com.bloxbean.cardano.julc.vm.PlutusLanguage;
+import com.bloxbean.cardano.julc.vm.ProtocolFeatureProfile;
+import com.bloxbean.cardano.julc.vm.ProtocolFeatureRegistry;
 
 import java.util.EnumMap;
 import java.util.Map;
@@ -204,7 +207,7 @@ public final class BuiltinTable {
     }
 
     /**
-     * Create a version-gated builtin table for the specified Plutus language version.
+     * Create a builtin table for the legacy language-only API's PV10 profile.
      * <p>
      * Only builtins available in the given language version are included.
      * Looking up a builtin from a newer version throws {@link UnsupportedBuiltinException}.
@@ -213,22 +216,18 @@ public final class BuiltinTable {
      * @return a version-gated view of the builtin table
      */
     public static VersionedBuiltinTable forLanguage(PlutusLanguage language) {
-        int langVersion = languageToVersion(language);
+        return forProfile(ProtocolFeatureRegistry.resolve(LedgerEvaluationTarget.pv10(language)));
+    }
+
+    /** Create a builtin table from the resolved language/protocol profile. */
+    public static VersionedBuiltinTable forProfile(ProtocolFeatureProfile profile) {
         Map<DefaultFun, Entry> filtered = new EnumMap<>(DefaultFun.class);
         for (var entry : TABLE.entrySet()) {
-            if (entry.getKey().isAvailableIn(langVersion)) {
+            if (profile.isBuiltinAvailable(entry.getKey())) {
                 filtered.put(entry.getKey(), entry.getValue());
             }
         }
-        return new VersionedBuiltinTable(filtered, language);
-    }
-
-    private static int languageToVersion(PlutusLanguage language) {
-        return switch (language) {
-            case PLUTUS_V1 -> 1;
-            case PLUTUS_V2 -> 2;
-            case PLUTUS_V3 -> 3;
-        };
+        return new VersionedBuiltinTable(filtered, profile);
     }
 
     /**
@@ -237,11 +236,11 @@ public final class BuiltinTable {
      */
     public static final class VersionedBuiltinTable {
         private final Map<DefaultFun, Entry> table;
-        private final PlutusLanguage language;
+        private final ProtocolFeatureProfile profile;
 
-        private VersionedBuiltinTable(Map<DefaultFun, Entry> table, PlutusLanguage language) {
+        private VersionedBuiltinTable(Map<DefaultFun, Entry> table, ProtocolFeatureProfile profile) {
             this.table = table;
-            this.language = language;
+            this.profile = profile;
         }
 
         public BuiltinSignature getSignature(DefaultFun fun) {
@@ -249,8 +248,7 @@ public final class BuiltinTable {
             if (entry == null) {
                 if (TABLE.containsKey(fun)) {
                     throw new UnsupportedBuiltinException(
-                            "Builtin " + fun + " is not available in " + language +
-                            " (requires " + fun.minLanguageVersion() + "+)");
+                            "Builtin " + fun + " is not available for " + profile.target());
                 }
                 throw new UnsupportedBuiltinException("Builtin not supported: " + fun);
             }
@@ -262,8 +260,7 @@ public final class BuiltinTable {
             if (entry == null) {
                 if (TABLE.containsKey(fun)) {
                     throw new UnsupportedBuiltinException(
-                            "Builtin " + fun + " is not available in " + language +
-                            " (requires " + fun.minLanguageVersion() + "+)");
+                            "Builtin " + fun + " is not available for " + profile.target());
                 }
                 throw new UnsupportedBuiltinException("Builtin not supported: " + fun);
             }
@@ -275,7 +272,11 @@ public final class BuiltinTable {
         }
 
         public PlutusLanguage language() {
-            return language;
+            return profile.target().ledgerLanguage();
+        }
+
+        public ProtocolFeatureProfile profile() {
+            return profile;
         }
     }
 }

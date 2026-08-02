@@ -174,6 +174,35 @@ class PlutusDataAdapterTest {
         }
 
         @Test
+        void preservesConstructorTagsBeyondIntRange() {
+            long tag = (long) Integer.MAX_VALUE + 1;
+            var clientData = com.bloxbean.cardano.client.plutus.spec.ConstrPlutusData.builder()
+                    .alternative(tag)
+                    .data(new com.bloxbean.cardano.client.plutus.spec.ListPlutusData())
+                    .build();
+
+            var coreData = assertInstanceOf(PlutusData.ConstrData.class,
+                    PlutusDataAdapter.fromClientLib(clientData));
+            assertEquals(BigInteger.valueOf(tag), coreData.constructorTag());
+
+            var roundTrip = assertInstanceOf(
+                    com.bloxbean.cardano.client.plutus.spec.ConstrPlutusData.class,
+                    PlutusDataAdapter.toClientLib(coreData));
+            assertEquals(tag, roundTrip.getAlternative());
+        }
+
+        @Test
+        void rejectsWord64TagThatClientLibraryCannotRepresent() {
+            var word64Maximum = PlutusData.ConstrData.fromUnsignedTag(
+                    BigInteger.ONE.shiftLeft(64).subtract(BigInteger.ONE), java.util.List.of());
+
+            var error = assertThrows(IllegalArgumentException.class,
+                    () -> PlutusDataAdapter.toClientLib(word64Maximum));
+
+            assertTrue(error.getMessage().contains("cannot represent constructor tag"));
+        }
+
+        @Test
         void convertsConstrWithNullFields() {
             var clientData = com.bloxbean.cardano.client.plutus.spec.ConstrPlutusData.builder()
                     .alternative(0)

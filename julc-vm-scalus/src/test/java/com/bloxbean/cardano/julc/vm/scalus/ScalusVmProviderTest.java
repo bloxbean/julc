@@ -26,6 +26,38 @@ class ScalusVmProviderTest {
         assertEquals(50, provider.priority());
     }
 
+    @Test
+    void explicitLedgerTargetFailsClosedUntilProfileMatrixIsSupported() {
+        var program = Program.plutusV3(Term.const_(Constant.unit()));
+
+        var error = assertThrows(UnsupportedOperationException.class,
+                () -> provider.evaluate(program,
+                        LedgerEvaluationTarget.pv11(PlutusLanguage.PLUTUS_V3), null));
+
+        assertTrue(error.getMessage().contains("does not support protocol-aware evaluation"));
+    }
+
+    @Test
+    void dataConversionPreservesLargeConstructorInteger() {
+        var tag = BigInteger.ONE.shiftLeft(100);
+        var original = new PlutusData.ConstrData(tag, List.of(PlutusData.integer(42)));
+
+        var converted = TermConverter.fromScalusData(DataConverter.toScalus(original));
+
+        assertEquals(original, converted);
+    }
+
+    @Test
+    void dataConversionReportsScalusNegativeTagLimitation() {
+        var original = new PlutusData.ConstrData(
+                BigInteger.ONE.negate(), List.of());
+
+        var error = assertThrows(IllegalArgumentException.class,
+                () -> DataConverter.toScalus(original));
+
+        assertTrue(error.getMessage().contains("cannot represent negative"));
+    }
+
     @Nested
     class BasicEvaluation {
 

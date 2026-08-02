@@ -4,6 +4,8 @@ import com.bloxbean.cardano.client.plutus.spec.PlutusV3Script;
 import com.bloxbean.cardano.julc.core.Program;
 import com.bloxbean.cardano.julc.core.flat.UplcFlatDecoder;
 import com.bloxbean.cardano.julc.core.flat.UplcFlatEncoder;
+import com.bloxbean.cardano.julc.vm.LedgerEvaluationTarget;
+import com.bloxbean.cardano.julc.vm.ProtocolFeatureRegistry;
 
 import co.nstant.in.cbor.CborBuilder;
 import co.nstant.in.cbor.CborDecoder;
@@ -68,10 +70,25 @@ public final class JulcScriptAdapter {
      * @return the decoded Program
      */
     public static Program toProgram(String doubleCborHex) {
+        return toProgram(doubleCborHex, null);
+    }
+
+    /**
+     * Decode a script using the deserialization limits selected by its ledger
+     * language and protocol version.
+     */
+    public static Program toProgram(
+            String doubleCborHex, LedgerEvaluationTarget target) {
         byte[] outerBytes = HexFormat.of().parseHex(doubleCborHex);
         byte[] innerBytes = cborUnwrapBytes(outerBytes);
         byte[] flatBytes = cborUnwrapBytes(innerBytes);
-        return UplcFlatDecoder.decodeProgram(flatBytes);
+        if (target == null) {
+            // Compatibility/tooling path: callers without ledger context keep
+            // the historical unrestricted decoder.
+            return UplcFlatDecoder.decodeProgram(flatBytes);
+        }
+        var limits = ProtocolFeatureRegistry.resolve(target).decodeLimits();
+        return UplcFlatDecoder.decodeProgram(flatBytes, limits.toFlatDecodeLimits());
     }
 
     /**

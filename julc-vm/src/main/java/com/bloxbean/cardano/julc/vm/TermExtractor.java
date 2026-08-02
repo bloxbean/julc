@@ -125,7 +125,11 @@ public final class TermExtractor {
             for (var arg : constr.fields()) {
                 fields.add(extractData(arg));
             }
-            return new PlutusData.ConstrData((int) constr.tag(), fields);
+            // UPLC constructor tags are Word64. Term stores those bits in a
+            // Java long, so preserve the complete unsigned domain when this
+            // convenience conversion represents the term as Plutus Data.
+            var tag = new BigInteger(Long.toUnsignedString(constr.tag()));
+            return PlutusData.ConstrData.fromUnsignedTag(tag, fields);
         }
         throw new ExtractionException("Expected data term, got: " + term);
     }

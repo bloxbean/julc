@@ -44,6 +44,27 @@ public interface JulcVmProvider {
                                 List<PlutusData> args, ExBudget budget, EvalOptions options);
 
     /**
+     * Evaluate for an explicit ledger target. This is the canonical path for
+     * ledger validation because the target selects semantics as well as costs.
+     *
+     * <p>Providers that have not implemented protocol-aware evaluation fail
+     * closed instead of silently discarding the protocol version.</p>
+     */
+    default EvalResult evaluate(Program program, LedgerEvaluationTarget target,
+                                ExBudget budget, EvalOptions options) {
+        throw new UnsupportedOperationException(
+                name() + " provider does not support protocol-aware evaluation for " + target);
+    }
+
+    /** Evaluate a program with arguments for an explicit ledger target. */
+    default EvalResult evaluateWithArgs(Program program, LedgerEvaluationTarget target,
+                                        List<PlutusData> args, ExBudget budget,
+                                        EvalOptions options) {
+        throw new UnsupportedOperationException(
+                name() + " provider does not support protocol-aware evaluation for " + target);
+    }
+
+    /**
      * Evaluate a UPLC program with default options.
      */
     default EvalResult evaluate(Program program, PlutusLanguage language, ExBudget budget) {
@@ -56,6 +77,17 @@ public interface JulcVmProvider {
     default EvalResult evaluateWithArgs(Program program, PlutusLanguage language,
                                         List<PlutusData> args, ExBudget budget) {
         return evaluateWithArgs(program, language, args, budget, EvalOptions.DEFAULT);
+    }
+
+    /** Evaluate an explicit ledger target with default options. */
+    default EvalResult evaluate(Program program, LedgerEvaluationTarget target, ExBudget budget) {
+        return evaluate(program, target, budget, EvalOptions.DEFAULT);
+    }
+
+    /** Evaluate with arguments for an explicit ledger target and default options. */
+    default EvalResult evaluateWithArgs(Program program, LedgerEvaluationTarget target,
+                                        List<PlutusData> args, ExBudget budget) {
+        return evaluateWithArgs(program, target, args, budget, EvalOptions.DEFAULT);
     }
 
     /**
@@ -75,6 +107,12 @@ public interface JulcVmProvider {
     default void setCostModelParams(long[] costModelValues, PlutusLanguage language,
                                     int protocolMajorVersion, int protocolMinorVersion) {
         // Default: ignore (use built-in defaults)
+    }
+
+    /** Configure cost parameters for an explicit ledger target. */
+    default void setCostModelParams(long[] costModelValues, LedgerEvaluationTarget target) {
+        setCostModelParams(costModelValues, target.ledgerLanguage(),
+                target.protocolVersion().major(), target.protocolVersion().minor());
     }
 
     /** The name of this provider (for logging/debugging). */

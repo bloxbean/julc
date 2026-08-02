@@ -370,7 +370,7 @@ public final class ReplEngine {
             case PlutusData.IntData i -> i.value().toString();
             case PlutusData.BytesData b -> "#" + bytesToHex(b.value());
             case PlutusData.ConstrData c -> {
-                var sb = new StringBuilder("Constr(").append(c.tag());
+                var sb = new StringBuilder("Constr(").append(c.constructorTag());
                 if (!c.fields().isEmpty()) {
                     sb.append(", [");
                     for (int i = 0; i < c.fields().size(); i++) {

@@ -54,13 +54,22 @@ final class DataConverter {
         try {
             return switch (data) {
                 case PlutusData.ConstrData c -> {
+                    if (c.constructorTag().signum() < 0) {
+                        // Scalus Data.Constr asserts non-negative tags, while
+                        // pinned Plutus B/C can construct Data.Constr Integer
+                        // with a negative value. Keep this backend limitation
+                        // explicit instead of leaking a Scala AssertionError.
+                        throw new IllegalArgumentException(
+                                "Scalus cannot represent negative Data constructor tag "
+                                        + c.constructorTag());
+                    }
                     var scalusArgs = new ArrayList<Data>();
                     for (var field : c.fields()) {
                         scalusArgs.add(toScalus(field));
                     }
                     Object scalusList = LIST_FROM.invoke(LIST_COMPANION, (Iterable<Data>) scalusArgs);
                     yield (Data.Constr) DATA_CONSTR_CTOR.newInstance(
-                            scala.math.BigInt.apply(c.tag()), scalusList);
+                            new scala.math.BigInt(c.constructorTag()), scalusList);
                 }
                 case PlutusData.IntData i -> new Data.I(new scala.math.BigInt(i.value()));
                 case PlutusData.BytesData b -> new Data.B(new ByteString(b.value()));

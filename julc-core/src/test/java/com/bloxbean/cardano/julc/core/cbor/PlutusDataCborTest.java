@@ -642,10 +642,7 @@ class PlutusDataCborTest {
         }
 
         @Test
-        void constrTagOverflowThrows() {
-            // Tag > Integer.MAX_VALUE in general form
-            // tag 102 + array(2) + uint(2^32) + empty array
-            // d866 82 1a 00000000 80 — but we need > Integer.MAX_VALUE
+        void constrTagAboveIntRangeRoundTrips() {
             // uint(3000000000) = 1b 00000000b2d05e00 exceeds int range
             long bigTag = 3_000_000_000L;
             var sb = new StringBuilder();
@@ -656,7 +653,30 @@ class PlutusDataCborTest {
             sb.append(String.format("%016x", bigTag));
             sb.append("80");   // array(0) for fields
             byte[] cbor = HEX.parseHex(sb.toString());
-            assertThrows(CborDecodingException.class, () -> PlutusDataCborDecoder.decode(cbor));
+            var decoded = assertInstanceOf(
+                    PlutusData.ConstrData.class, PlutusDataCborDecoder.decode(cbor));
+            assertEquals(BigInteger.valueOf(bigTag), decoded.constructorTag());
+            byte[] canonical = PlutusDataCborEncoder.encode(decoded);
+            assertEquals("d866821ab2d05e0080", HEX.formatHex(canonical));
+            assertEquals(decoded, PlutusDataCborDecoder.decode(canonical));
+        }
+
+        @Test
+        void constrTagMaxWord64RoundTrips() {
+            BigInteger maximum = BigInteger.ONE.shiftLeft(64).subtract(BigInteger.ONE);
+            var data = PlutusData.ConstrData.fromUnsignedTag(maximum, List.of());
+
+            byte[] encoded = PlutusDataCborEncoder.encode(data);
+            assertEquals("d866821bffffffffffffffff80", HEX.formatHex(encoded));
+            assertEquals(data, PlutusDataCborDecoder.decode(encoded));
+        }
+
+        @Test
+        void constrDecoderRejectsNegativeTagLikePinnedHaskell() {
+            // tag(102), [negative integer -1, []]
+            byte[] encoded = HEX.parseHex("d866822080");
+            assertThrows(CborDecodingException.class,
+                    () -> PlutusDataCborDecoder.decode(encoded));
         }
 
         @Test

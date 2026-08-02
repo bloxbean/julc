@@ -4,9 +4,14 @@ import com.bloxbean.cardano.julc.core.Constant;
 import com.bloxbean.cardano.julc.core.DefaultFun;
 import com.bloxbean.cardano.julc.core.Term;
 import com.bloxbean.cardano.julc.core.source.SourceMap;
+import com.bloxbean.cardano.julc.vm.LedgerEvaluationTarget;
 import com.bloxbean.cardano.julc.vm.PlutusLanguage;
+import com.bloxbean.cardano.julc.vm.ProtocolFeatureProfile;
+import com.bloxbean.cardano.julc.vm.ProtocolFeatureRegistry;
+import com.bloxbean.cardano.julc.vm.UplcVersion;
 import com.bloxbean.cardano.julc.vm.java.builtins.BuiltinHelper;
 import com.bloxbean.cardano.julc.vm.java.builtins.BuiltinRuntime;
+import com.bloxbean.cardano.julc.vm.java.builtins.BuiltinSemantics;
 import com.bloxbean.cardano.julc.vm.java.builtins.BuiltinTable;
 import com.bloxbean.cardano.julc.vm.java.cost.CostTracker;
 import com.bloxbean.cardano.julc.vm.java.cost.MachineCosts.StepKind;
@@ -36,7 +41,7 @@ public final class CekMachine {
     private final ArrayDeque<CekFrame> stack = new ArrayDeque<>();
     private final List<String> traces = new ArrayList<>();
     private final CostTracker costTracker;
-    private final PlutusLanguage language;
+    private final ProtocolFeatureProfile profile;
     private final BuiltinTable.VersionedBuiltinTable builtinTable;
     private final SourceMap sourceMap;
     private final ExecutionTraceCollector executionTraceCollector;
@@ -83,13 +88,24 @@ public final class CekMachine {
      */
     public CekMachine(CostTracker costTracker, PlutusLanguage language,
                       SourceMap sourceMap, boolean executionTraceEnabled, boolean builtinTraceEnabled) {
+        this(costTracker, ProtocolFeatureRegistry.resolve(LedgerEvaluationTarget.pv10(language)),
+                sourceMap, executionTraceEnabled, builtinTraceEnabled);
+    }
+
+    /** Create a machine for one immutable protocol feature profile. */
+    public CekMachine(CostTracker costTracker, ProtocolFeatureProfile profile,
+                      SourceMap sourceMap, boolean executionTraceEnabled, boolean builtinTraceEnabled) {
         this.costTracker = costTracker;
-        this.language = language;
-        this.builtinTable = BuiltinTable.forLanguage(language);
+        this.profile = profile;
+        this.builtinTable = BuiltinTable.forProfile(profile);
         this.sourceMap = sourceMap;
         this.executionTraceCollector = (executionTraceEnabled && sourceMap != null && !sourceMap.isEmpty())
                 ? new ExecutionTraceCollector(costTracker) : null;
         this.builtinTraceCollector = builtinTraceEnabled ? new BuiltinTraceCollector(20) : null;
+    }
+
+    public ProtocolFeatureProfile profile() {
+        return profile;
     }
 
     /**
@@ -198,10 +214,9 @@ public final class CekMachine {
                 // currentEnv stays the same
             }
             case Term.Constr constr -> {
-                if (language != PlutusLanguage.PLUTUS_V3) {
+                if (!profile.availableUplcVersions().contains(UplcVersion.V1_1_0)) {
                     throw new CekEvaluationException(
-                            "Constr term is not available in " + language +
-                            " (requires PLUTUS_V3)", currentTerm);
+                            "Constr term is not available for " + profile.target(), currentTerm);
                 }
                 chargeStep(StepKind.CONSTR);
                 if (constr.fields().isEmpty()) {
@@ -215,10 +230,9 @@ public final class CekMachine {
                 }
             }
             case Term.Case cs -> {
-                if (language != PlutusLanguage.PLUTUS_V3) {
+                if (!profile.availableUplcVersions().contains(UplcVersion.V1_1_0)) {
                     throw new CekEvaluationException(
-                            "Case term is not available in " + language +
-                            " (requires PLUTUS_V3)", currentTerm);
+                            "Case term is not available for " + profile.target(), currentTerm);
                 }
                 chargeStep(StepKind.CASE);
                 recordTrace("Case");
@@ -280,6 +294,11 @@ public final class CekMachine {
                     tag = (int) vc.tag();
                     fields = vc.fields();
                 } else if (currentValue instanceof CekValue.VCon vcon) {
+                    if (!profile.caseOnBuiltinConstants()) {
+                        throw new CekEvaluationException(
+                                "Case on builtin constants is not available for "
+                                        + profile.target(), currentTerm);
+                    }
                     var decomposed = decomposeConstantForCase(vcon.constant(), cf.branches().size());
                     tag = decomposed.tag;
                     fields = decomposed.fields;
@@ -369,7 +388,8 @@ public final class CekMachine {
 
         BuiltinRuntime runtime = builtinTable.getRuntime(vb.fun());
         try {
-            CekValue result = runtime.execute(vb.collectedArgs());
+            CekValue result = BuiltinSemantics.execute(
+                    profile, vb.fun(), runtime, vb.collectedArgs());
             if (builtinTraceCollector != null) {
                 builtinTraceCollector.record(vb.fun(), vb.collectedArgs(), result);
             }

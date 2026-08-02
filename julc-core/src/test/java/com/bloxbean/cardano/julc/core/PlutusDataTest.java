@@ -195,6 +195,27 @@ class PlutusDataTest {
         assertThrows(IllegalArgumentException.class, () -> new PlutusData.ConstrData(-1, List.of()));
     }
 
+    @Test
+    void arbitraryIntegerConstructorTagIsRetained() {
+        BigInteger tag = BigInteger.ONE.shiftLeft(100).negate();
+        var constr = new PlutusData.ConstrData(tag, List.of());
+
+        assertEquals(tag, constr.constructorTag());
+        assertThrows(ArithmeticException.class, constr::tag);
+    }
+
+    @Test
+    void unsignedWord64ConstructorCoversFullDomain() {
+        BigInteger maximum = BigInteger.ONE.shiftLeft(64).subtract(BigInteger.ONE);
+        var constr = PlutusData.ConstrData.fromUnsignedTag(maximum, List.of());
+
+        assertEquals(maximum, constr.constructorTag());
+        assertThrows(IllegalArgumentException.class, () ->
+                PlutusData.ConstrData.fromUnsignedTag(maximum.add(BigInteger.ONE), List.of()));
+        assertThrows(IllegalArgumentException.class, () ->
+                PlutusData.ConstrData.fromUnsignedTag(BigInteger.ONE.negate(), List.of()));
+    }
+
     // --- Pair null validation ---
 
     @Test

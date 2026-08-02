@@ -8,9 +8,13 @@ import com.bloxbean.cardano.julc.core.Constant;
 import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.core.Program;
 import com.bloxbean.cardano.julc.core.Term;
+import com.bloxbean.cardano.julc.core.flat.FlatDecodingException;
+import com.bloxbean.cardano.julc.vm.LedgerEvaluationTarget;
+import com.bloxbean.cardano.julc.vm.PlutusLanguage;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigInteger;
+import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -103,6 +107,20 @@ class JulcScriptAdapterTest {
         assertEquals(original.versionString(), decoded.versionString());
         // The round-tripped term should represent the same function
         assertNotNull(decoded.term());
+    }
+
+    @Test
+    void protocolAwareDecodeAppliesPv11ConstructorLimit() {
+        var fields = Collections.nCopies(1025, Term.error());
+        var program = Program.plutusV3(new Term.Constr(0, fields));
+        var script = JulcScriptAdapter.fromProgram(program);
+
+        assertDoesNotThrow(() -> JulcScriptAdapter.toProgram(
+                script.getCborHex(),
+                LedgerEvaluationTarget.pv10(PlutusLanguage.PLUTUS_V3)));
+        assertThrows(FlatDecodingException.class, () -> JulcScriptAdapter.toProgram(
+                script.getCborHex(),
+                LedgerEvaluationTarget.pv11(PlutusLanguage.PLUTUS_V3)));
     }
 
     @Test

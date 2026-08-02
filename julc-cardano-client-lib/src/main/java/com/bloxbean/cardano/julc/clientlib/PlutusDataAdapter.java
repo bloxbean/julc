@@ -60,13 +60,13 @@ public final class PlutusDataAdapter {
             case PlutusData.BytesData(var value) ->
                     new com.bloxbean.cardano.client.plutus.spec.BytesPlutusData(value);
 
-            case PlutusData.ConstrData(var tag, var fields) -> {
+            case PlutusData.ConstrData constr -> {
                 var clientFields = new com.bloxbean.cardano.client.plutus.spec.ListPlutusData();
-                for (var field : fields) {
+                for (var field : constr.fields()) {
                     clientFields.add(toClientLib(field));
                 }
                 yield com.bloxbean.cardano.client.plutus.spec.ConstrPlutusData.builder()
-                        .alternative(tag)
+                        .alternative(toClientAlternative(constr))
                         .data(clientFields)
                         .build();
             }
@@ -104,8 +104,8 @@ public final class PlutusDataAdapter {
                     fields.add(fromClientLib(item));
                 }
             }
-            return PlutusData.constr((int) constr.getAlternative(),
-                    fields.toArray(PlutusData[]::new));
+            return new PlutusData.ConstrData(
+                    java.math.BigInteger.valueOf(constr.getAlternative()), fields);
         } else if (data instanceof com.bloxbean.cardano.client.plutus.spec.ListPlutusData list) {
             var items = new ArrayList<PlutusData>();
             for (var item : list.getPlutusDataList()) {
@@ -122,5 +122,20 @@ public final class PlutusDataAdapter {
             return PlutusData.map(entries.toArray(PlutusData.Pair[]::new));
         }
         throw new IllegalArgumentException("Unknown cardano-client-lib PlutusData type: " + data.getClass());
+    }
+
+    private static long toClientAlternative(PlutusData.ConstrData constr) {
+        try {
+            long tag = constr.constructorTag().longValueExact();
+            if (tag < 0) {
+                throw new ArithmeticException("negative constructor tag");
+            }
+            return tag;
+        } catch (ArithmeticException e) {
+            throw new IllegalArgumentException(
+                    "cardano-client-lib 0.7.2 cannot represent constructor tag "
+                            + constr.constructorTag() + " outside signed non-negative long",
+                    e);
+        }
     }
 }
