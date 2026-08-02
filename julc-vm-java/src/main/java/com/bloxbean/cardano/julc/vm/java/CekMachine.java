@@ -291,6 +291,15 @@ public final class CekMachine {
                 List<CekValue> fields;
 
                 if (currentValue instanceof CekValue.VConstr vc) {
+                    // Constr tags are Word64 values represented in a signed Java long.
+                    // Check the full unsigned value before narrowing it for List indexing;
+                    // otherwise tags such as 2^32 wrap to branch zero.
+                    if (Long.compareUnsigned(vc.tag(), cf.branches().size()) >= 0) {
+                        throw new CekEvaluationException(
+                                "Case: tag " + Long.toUnsignedString(vc.tag())
+                                        + " out of range for " + cf.branches().size()
+                                        + " branches", currentTerm);
+                    }
                     tag = (int) vc.tag();
                     fields = vc.fields();
                 } else if (currentValue instanceof CekValue.VCon vcon) {

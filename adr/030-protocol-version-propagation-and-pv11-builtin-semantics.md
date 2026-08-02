@@ -597,6 +597,10 @@ the same node/Plutus pin:
   `linear_in_y2` representation, minor-version compatibility, and explicit
   PV11 debugger profile selection are covered by pinned regression tests.
 
+The Java/Truffle evaluator is exact against node 11.0.1 within this scope; the
+sole known decode-boundary exclusion is the adversarial-input phase-1 CBOR
+wrapper divergence tracked in [#67](https://github.com/bloxbean/julc/issues/67).
+
 Later Plutus `master` behavior remains intentionally excluded.
 
 ## Acceptance criteria

@@ -83,6 +83,19 @@ class ProtocolGatingTest {
     }
 
     @Test
+    void caseOnConstructorChecksFullWord64TagBeforeNarrowing() {
+        var target = LedgerEvaluationTarget.pv10(PlutusLanguage.PLUTUS_V3);
+        for (long tag : new long[]{1L << 32, -1L}) {
+            var term = new Term.Case(new Term.Constr(tag, List.of()),
+                    List.of(Term.const_(Constant.integer(42))));
+            var program = Program.plutusV3(term);
+
+            assertFailureContains(provider.evaluate(program, target, null),
+                    "tag " + Long.toUnsignedString(tag) + " out of range");
+        }
+    }
+
+    @Test
     void programVersionControlsConstrAndCaseSyntax() {
         var invalid = new Program(1, 0, 0, new Term.Constr(0, List.of()));
         var result = provider.evaluate(invalid,

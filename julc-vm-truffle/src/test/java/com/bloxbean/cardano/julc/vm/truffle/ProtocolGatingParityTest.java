@@ -42,6 +42,22 @@ class ProtocolGatingParityTest {
     }
 
     @Test
+    void caseOnConstructorChecksFullWord64TagBeforeNarrowing() {
+        var target = LedgerEvaluationTarget.pv10(PlutusLanguage.PLUTUS_V3);
+        for (long tag : new long[]{1L << 32, -1L}) {
+            var term = new Term.Case(new Term.Constr(tag, List.of()),
+                    List.of(Term.const_(Constant.integer(42))));
+            var program = Program.plutusV3(term);
+            var expectedTag = Long.toUnsignedString(tag);
+
+            assertFailure(java.evaluate(program, target, null),
+                    "tag " + expectedTag + " out of range");
+            assertFailure(truffle.evaluate(program, target, null),
+                    "tag " + expectedTag + " out of range");
+        }
+    }
+
+    @Test
     void futureBuiltinIsRejectedByBothBackends() {
         var program = Program.plutusV3(Term.builtin(DefaultFun.MultiIndexArray));
         var target = LedgerEvaluationTarget.pv11(PlutusLanguage.PLUTUS_V3);

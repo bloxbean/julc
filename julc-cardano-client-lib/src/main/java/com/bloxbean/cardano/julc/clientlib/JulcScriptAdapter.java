@@ -83,11 +83,12 @@ public final class JulcScriptAdapter {
         byte[] outerBytes = HexFormat.of().parseHex(doubleCborHex);
         // The outer item is cardano-client-lib's transport wrapper and must be
         // a single CBOR bytestring. The inner item is the ledger
-        // SerialisedScript: Plutus V1/V2 preserve their historical tolerance
-        // for trailing bytes, while V3 rejects any remainder at phase 1.
+        // SerialisedScript: the no-target tooling path and Plutus V1/V2 preserve
+        // their historical tolerance for trailing bytes, while V3 rejects any
+        // remainder at phase 1.
         byte[] innerBytes = cborUnwrapBytes(outerBytes, false);
-        boolean allowScriptRemainder = target != null
-                && target.ledgerLanguage() != PlutusLanguage.PLUTUS_V3;
+        boolean allowScriptRemainder = target == null
+                || target.ledgerLanguage() != PlutusLanguage.PLUTUS_V3;
         byte[] flatBytes = cborUnwrapBytes(innerBytes, allowScriptRemainder);
         if (target == null) {
             // Compatibility/tooling path: callers without ledger context keep

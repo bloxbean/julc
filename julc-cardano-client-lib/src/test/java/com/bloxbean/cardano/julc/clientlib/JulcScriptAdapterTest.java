@@ -152,6 +152,16 @@ class JulcScriptAdapterTest {
     }
 
     @Test
+    void noTargetDecodeRetainsInnerRemainderTolerance() {
+        var original = new Program(1, 0, 0, Term.const_(Constant.unit()));
+        String withGarbageRemainder = appendToInnerSerialisedScript(
+                JulcScriptAdapter.fromProgram(original).getCborHex(), (byte) 0xff);
+
+        var decoded = assertDoesNotThrow(() -> JulcScriptAdapter.toProgram(withGarbageRemainder));
+        assertEquals(original, decoded);
+    }
+
+    @Test
     void toProgramParameterized() {
         // Compile a parameterized validator, decode it, apply CCL params, re-encode
         var source = """
