@@ -5,11 +5,16 @@ import com.bloxbean.cardano.julc.core.DefaultFun;
 import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.vm.java.CekValue;
 import com.bloxbean.cardano.julc.vm.BuiltinSemanticsVariant;
+import com.bloxbean.cardano.julc.vm.ProtocolFeatureProfile;
 
 import java.math.BigInteger;
+import java.util.Collections;
 import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 
 /**
  * Maps each builtin function to its CPU and memory cost functions.
@@ -25,17 +30,62 @@ import java.util.Map;
 public final class BuiltinCostModel {
 
     /** CPU and memory cost function pair for a builtin. */
-    public record CostPair(CostFunction cpu, CostFunction mem) {}
+    public record CostPair(CostFunction cpu, CostFunction mem) {
+        public CostPair {
+            if (cpu == null || mem == null) {
+                throw new IncompleteCostModelException(
+                        "A builtin cost pair must contain both CPU and memory costs"
+                                + " (cpu=" + cpu + ", mem=" + mem + ")");
+            }
+        }
+    }
 
     private final Map<DefaultFun, CostPair> costs;
 
     public BuiltinCostModel(Map<DefaultFun, CostPair> costs) {
-        this.costs = new EnumMap<>(costs);
+        Objects.requireNonNull(costs, "costs");
+        var copy = new EnumMap<DefaultFun, CostPair>(DefaultFun.class);
+        for (var entry : costs.entrySet()) {
+            if (entry.getKey() == null || entry.getValue() == null) {
+                throw new IncompleteCostModelException(
+                        "Builtin cost model entries must have a builtin and both CPU/memory costs"
+                                + " (builtin=" + entry.getKey() + ", cost=" + entry.getValue() + ")");
+            }
+            copy.put(entry.getKey(), entry.getValue());
+        }
+        this.costs = copy;
     }
 
     /** Get the cost pair for a builtin, or null if not registered. */
     public CostPair get(DefaultFun fun) {
         return costs.get(fun);
+    }
+
+    /** The builtins which have complete CPU/memory prices in this model. */
+    public Set<DefaultFun> costedBuiltins() {
+        var costed = EnumSet.noneOf(DefaultFun.class);
+        costed.addAll(costs.keySet());
+        return Collections.unmodifiableSet(costed);
+    }
+
+    /**
+     * Return the available builtins that have no complete price in this model.
+     * Builtins unavailable to the profile are deliberately ignored.
+     */
+    public Set<DefaultFun> missingCostsFor(ProtocolFeatureProfile profile) {
+        Objects.requireNonNull(profile, "profile");
+        var missing = EnumSet.noneOf(DefaultFun.class);
+        missing.addAll(profile.availableBuiltins());
+        missing.removeAll(costs.keySet());
+        return Collections.unmodifiableSet(missing);
+    }
+
+    /** Fail unless every builtin available to the profile has a price. */
+    public void validateCompleteFor(ProtocolFeatureProfile profile) {
+        var missing = missingCostsFor(profile);
+        if (!missing.isEmpty()) {
+            throw IncompleteCostModelException.missing(profile, missing);
+        }
     }
 
     /**

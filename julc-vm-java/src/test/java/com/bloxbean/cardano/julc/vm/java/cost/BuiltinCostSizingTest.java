@@ -4,6 +4,9 @@ import com.bloxbean.cardano.julc.core.Constant;
 import com.bloxbean.cardano.julc.core.DefaultFun;
 import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.vm.BuiltinSemanticsVariant;
+import com.bloxbean.cardano.julc.vm.LedgerEvaluationTarget;
+import com.bloxbean.cardano.julc.vm.PlutusLanguage;
+import com.bloxbean.cardano.julc.vm.ProtocolFeatureRegistry;
 import com.bloxbean.cardano.julc.vm.java.CekValue;
 import org.junit.jupiter.api.Test;
 
@@ -277,9 +280,12 @@ class BuiltinCostSizingTest {
     // === Helpers ===
 
     private static com.bloxbean.cardano.julc.vm.ExBudget charge(DefaultFun fun, CekValue... args) {
+        var profile = ProtocolFeatureRegistry.resolve(
+                LedgerEvaluationTarget.pv11(PlutusLanguage.PLUTUS_V3));
         var tracker = new CostTracker(
-                DefaultCostModel.defaultMachineCosts(),
-                DefaultCostModel.defaultBuiltinCostModel(),
+                DefaultCostModel.defaultMachineCosts(profile),
+                DefaultCostModel.defaultBuiltinCostModel(profile),
+                profile,
                 null);
         tracker.chargeBuiltin(fun, List.of(args));
         return tracker.consumed();
