@@ -105,6 +105,20 @@ class CostFunctionTest {
     }
 
     @Test
+    void aboveAndBelowDiagonalRetainsButIgnoresConstant() {
+        var f = new CostFunction.AboveAndBelowDiagonal(
+                999_999, new CostFunction.MultipliedSizes(100, 5));
+        assertEquals(100 + 5 * 3 * 7, f.apply(3, 7));
+        assertEquals(100 + 5 * 3 * 7, f.apply(7, 3));
+    }
+
+    @Test
+    void linearInY2RetainsButIgnoresMinimum() {
+        var f = new CostFunction.LinearInY2(100, 5, 999_999);
+        assertEquals(100 + 5 * 7, f.apply(123, 7));
+    }
+
+    @Test
     void linearOnDiagonal() {
         var f = new CostFunction.LinearOnDiagonal(24548, 29498, 38);
         // Off diagonal

@@ -417,7 +417,7 @@ class LanguageVersionTest {
 
         @Test
         void v2_parser_accepts_correct_length() {
-            long[] values = new long[CostModelParser.V2_PARAM_COUNT];
+            long[] values = new long[CostModelParser.V2_PV10_PARAM_COUNT];
             for (int i = 17; i <= 32; i++) {
                 values[i] = 16000 + (i - 17) * 100;
             }

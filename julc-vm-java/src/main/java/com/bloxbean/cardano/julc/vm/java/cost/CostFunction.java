@@ -177,6 +177,20 @@ public sealed interface CostFunction {
     }
 
     /**
+     * Variant-D compatibility model backed by {@code ModelSubtractedSizes}
+     * parameters but linear only in the second argument. The minimum is
+     * retained because it occupies a ledger parameter position, although the
+     * Haskell evaluator deliberately ignores it for {@code LinearInY2}.
+     */
+    record LinearInY2(long intercept, long slope, long minimum)
+            implements CostFunction {
+        @Override
+        public long apply(long... sizes) {
+            return linear(intercept, slope, sizes[1]);
+        }
+    }
+
+    /**
      * Linear on diagonal (when x == y), constant off diagonal.
      * Used for equality comparisons on bytestrings/strings.
      */
