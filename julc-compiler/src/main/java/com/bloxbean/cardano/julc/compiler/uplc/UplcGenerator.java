@@ -509,14 +509,26 @@ public class UplcGenerator {
      */
     private static Term generateBuiltin(DefaultFun fun) {
         if (fun.flatCode() > LAST_RELEASED_PV11_BUILTIN_TAG) {
-            throw new CompilerException(
+            throw unsupportedTargetBuiltin(fun);
+        }
+        return wrapForces(Term.builtin(fun), forceCount(fun));
+    }
+
+    private static CompilerException unsupportedTargetBuiltin(DefaultFun fun) {
+        if (fun == DefaultFun.MultiIndexArray) {
+            return new CompilerException(
                     "Cannot compile " + fun + " (FLAT tag " + fun.flatCode()
                             + "): it is a future/unreleased "
                             + "CIP-156 builtin and is not available in Plutus V3 at protocol "
                             + "version 11. Use IndexArray repeatedly "
                             + "for PV11, or wait for a compiler target that explicitly enables CIP-156.");
         }
-        return wrapForces(Term.builtin(fun), forceCount(fun));
+        return new CompilerException(
+                "Cannot compile " + fun + " (FLAT tag " + fun.flatCode()
+                        + "): it is not available in the current Plutus V3/PV11 target. "
+                        + "This compiler supports released builtins through "
+                        + DefaultFun.ScaleValue + " (FLAT tag "
+                        + LAST_RELEASED_PV11_BUILTIN_TAG + ").");
     }
 
     private static Term wrapForces(Term term, int count) {

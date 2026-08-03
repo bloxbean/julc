@@ -32,4 +32,6 @@ automatic bytecode migration for an already-generated tag-101 script.
 
 The tag remains in JuLC's AST/FLAT support and Java VM for forward-development
 experiments only. That experimental implementation does not make it ledger-valid
-for PV11.
+for PV11. It also retains JuLC's legacy `(array, indices)` argument order rather
+than CIP-156's proposed indices-first signature, so it is not a conformant preview
+of the future builtin.

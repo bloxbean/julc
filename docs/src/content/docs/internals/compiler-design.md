@@ -967,13 +967,13 @@ These are `@OnchainLibrary`-annotated Java classes compiled from source:
 | `ValuesLib` | 9 | Multi-asset Value operations (add, subtract, compare) |
 | `ContextsLib` | 13 | ScriptContext/TxInfo field extraction helpers |
 | `OutputLib` | 8 | TxOut querying (outputsAt, lovelacePaidTo, etc.) |
-| `MathLib` | 10 | Math utilities (abs, pow, floorDiv, floorMod, divMod, quotRem, expMod) |
+| `MathLib` | 10 | Math utilities (abs, pow, floorDiv, floorMod, divMod, quotRem, expMod [PV11]) |
 | `IntervalLib` | 5 | Time interval operations |
 | `CryptoLib` | 3 | ECDSA, Schnorr, RIPEMD-160 |
 | `ByteStringLib` | 8 | ByteString manipulation |
 | `BitwiseLib` | 10 | Bitwise operations |
 | `AddressLib` | 3 | Address/credential utilities |
-| `BlsLib` | — | BLS12-381 operations (PV11) |
+| `BlsLib` | — | BLS12-381 operations (base PV10+, MSM PV11) |
 | `NativeValueLib` | — | Native Value operations (PV11) |
 
 ### StdlibLookup Chain

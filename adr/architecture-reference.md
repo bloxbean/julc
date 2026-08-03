@@ -108,6 +108,8 @@ julc-compiler ── julc-annotation-processor
 and Batch 6 is exactly 87-100.
 Code 101 (`MultiIndexArray`, CIP-156) is retained for FLAT and experimental VM
 development, but is future/unreleased and the current V3/PV11 compiler rejects it.
+The placeholder retains JuLC's legacy `(array, indices)` order, not CIP-156's
+proposed indices-first signature, and is not a conformant preview.
 
 ### FLAT Serialization
 

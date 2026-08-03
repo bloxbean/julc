@@ -1254,7 +1254,7 @@ public interface StdlibLookup {
 - Crypto: `sha2_256`, `blake2b_256`, `verifyEd25519Signature`, `sha3_256`, `blake2b_224`, `keccak_256`, `verifyEcdsaSecp256k1Signature`, `verifySchnorrSecp256k1Signature`, `ripemd_160`
 - Bitwise: `andByteString`, `orByteString`, `xorByteString`, `complementByteString`, `readBit`, `writeBits`, `shiftByteString`, `rotateByteString`, `countSetBits`, `findFirstSetBit`
 - Data decomposition: `constrTag`, `constrFields`
-- Math: `expModInteger`
+- Math: `expModInteger` (PV11)
 
 **ListsLib HOF methods (require lambda/LetRec — cannot be compiled from Java source):**
 

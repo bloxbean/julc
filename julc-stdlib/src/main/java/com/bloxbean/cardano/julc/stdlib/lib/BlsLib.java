@@ -11,6 +11,8 @@ import java.math.BigInteger;
  * <p>
  * Provides ergonomic wrappers around the raw {@link Builtins} BLS12-381 stubs.
  * On-chain, calls compile to the corresponding UPLC BLS12-381 builtins.
+ * Base BLS operations are available on Plutus V3/PV10; the two multi-scalar
+ * multiplication methods require PV11.
  * <p>
  * <b>Off-chain testing:</b> These methods throw {@link UnsupportedOperationException} when
  * called directly on the JVM. To test code that uses this library:
@@ -115,12 +117,12 @@ public class BlsLib {
 
     // ---- Multi-Scalar Multiplication ----
 
-    /** Multi-scalar multiplication on G1. Takes a list of scalars and a list of G1 elements. */
+    /** Multi-scalar multiplication on G1. Takes scalar and point lists. PV11 only (CIP-133). */
     public static byte[] g1MultiScalarMul(PlutusData scalars, PlutusData points) {
         return Builtins.bls12_381_G1_multiScalarMul(scalars, points);
     }
 
-    /** Multi-scalar multiplication on G2. Takes a list of scalars and a list of G2 elements. */
+    /** Multi-scalar multiplication on G2. Takes scalar and point lists. PV11 only (CIP-133). */
     public static byte[] g2MultiScalarMul(PlutusData scalars, PlutusData points) {
         return Builtins.bls12_381_G2_multiScalarMul(scalars, points);
     }

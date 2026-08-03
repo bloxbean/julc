@@ -884,12 +884,18 @@ public final class Builtins {
 
     // ---- Multi-Scalar Multiplication ----
 
-    /** Multi-scalar multiplication on BLS12-381 G1. Takes a list of scalars and a list of G1 elements. */
+    /**
+     * Multi-scalar multiplication on BLS12-381 G1. Takes a list of scalars and
+     * a list of G1 elements. PV11 only (CIP-133).
+     */
     public static byte[] bls12_381_G1_multiScalarMul(PlutusData scalars, PlutusData points) {
         throw new UnsupportedOperationException("BLS12-381 G1 multiScalarMul: on-chain only — use Julc VM for off-chain evaluation");
     }
 
-    /** Multi-scalar multiplication on BLS12-381 G2. Takes a list of scalars and a list of G2 elements. */
+    /**
+     * Multi-scalar multiplication on BLS12-381 G2. Takes a list of scalars and
+     * a list of G2 elements. PV11 only (CIP-133).
+     */
     public static byte[] bls12_381_G2_multiScalarMul(PlutusData scalars, PlutusData points) {
         throw new UnsupportedOperationException("BLS12-381 G2 multiScalarMul: on-chain only — use Julc VM for off-chain evaluation");
     }
@@ -928,6 +934,9 @@ public final class Builtins {
      * This is not released in Plutus V3/PV11. The API is retained for forward
      * development, but the current compiler always rejects calls to it. Use
      * repeated {@link #indexArray(PlutusData, long)} calls for PV11.
+     * The retained placeholder predates the proposed CIP-156 signature and uses
+     * the legacy {@code (array, indices)} order instead of CIP-156's indices-first
+     * order; it is not a conformant preview of the future builtin.
      *
      * @deprecated future/unreleased; not ledger-valid at PV11
      */

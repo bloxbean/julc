@@ -53,7 +53,10 @@ Off-chain: backed by `JulcArrayImpl`, wrapping `java.util.List` with O(1) index 
 
 `Builtins.multiIndexArray` (tag 101, CIP-156) is a separate future/unreleased
 operation. It is not valid under Plutus V3/PV11, and the current compiler
-rejects it. See the [release notes](/reference/release-notes/) for migration guidance.
+rejects it. Its retained experimental placeholder uses the legacy
+`(array, indices)` order rather than CIP-156's proposed indices-first signature
+and is not a conformant preview. See the
+[release notes](/reference/release-notes/) for migration guidance.
 
 ### Tuple2 and Tuple3
 
@@ -582,7 +585,7 @@ Import from `com.bloxbean.cardano.julc.stdlib.lib.*` in validators. See [Standar
 | `floorMod(a, b)` | Integer, Integer | Floor modulo |
 | `divMod(a, b)` | Integer, Integer | Returns Tuple2(floor division, floor modulo) |
 | `quotRem(a, b)` | Integer, Integer | Returns Tuple2(quotient, remainder) |
-| `expMod(base, exp, mod)` | Integer, Integer, Integer | Modular exponentiation |
+| `expMod(base, exp, mod)` | Integer, Integer, Integer | Modular exponentiation (PV11 only) |
 
 Use `MathLib.floorDiv` and `MathLib.floorMod` for `BigInteger` floor division. `java.lang.Math.floorDiv` and `Math.floorMod` are valid for normal Java `int`/`long` calls, but the JDK does not provide `BigInteger` overloads for those methods.
 
@@ -658,7 +661,10 @@ Note: `sha2_256`, `sha3_256`, `blake2b_256`, `blake2b_224`, `keccak_256`, and `v
 
 ### BlsLib
 
-BLS12-381 elliptic curve operations. Available on PV10+. See [Standard Library Guide](/stdlib/stdlib-guide/#blslib----bls12-381-curve-operations) for full documentation.
+BLS12-381 elliptic curve operations. Base curve and pairing methods are available
+on PV10+; multi-scalar multiplication requires PV11. See
+[Standard Library Guide](/stdlib/stdlib-guide/#blslib----bls12-381-curve-operations)
+for full documentation.
 
 | Method | Args | Description |
 |--------|------|-------------|
@@ -672,8 +678,8 @@ BLS12-381 elliptic curve operations. Available on PV10+. See [Standard Library G
 | `millerLoop(g1, g2)` | G1, G2 | Compute Miller loop pairing |
 | `mulMlResult(a, b)` | ML, ML | Multiply two Miller loop results |
 | `finalVerify(a, b)` | ML, ML | Final pairing verification |
-| `g1MultiScalarMul(scalars, points)` | List, List | Multi-scalar multiplication on G1 |
-| `g2MultiScalarMul(scalars, points)` | List, List | Multi-scalar multiplication on G2 |
+| `g1MultiScalarMul(scalars, points)` | List, List | Multi-scalar multiplication on G1 (PV11 only) |
+| `g2MultiScalarMul(scalars, points)` | List, List | Multi-scalar multiplication on G2 (PV11 only) |
 
 ### NativeValueLib (PV11)
 

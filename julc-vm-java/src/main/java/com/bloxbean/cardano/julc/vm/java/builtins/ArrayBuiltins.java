@@ -61,6 +61,8 @@ public final class ArrayBuiltins {
      * <p>
      * Experimental runtime support only: tag 101 is not ledger-valid in
      * Plutus V3/PV11.
+     * This legacy placeholder uses {@code (array, indices)} rather than the
+     * indices-first order proposed by CIP-156 and is not a conformant preview.
      */
     public static CekValue multiIndexArray(List<CekValue> args) {
         var ac = asArrayConst(args.get(0), "MultiIndexArray");
