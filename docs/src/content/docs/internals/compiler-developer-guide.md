@@ -48,7 +48,7 @@ Untyped Plutus Lambda Calculus (UPLC) is the on-chain language that Cardano node
 | 4 | `Force(Term term)` | Force evaluation of a delayed (polymorphic) term |
 | 5 | `Delay(Term term)` | Delay evaluation (create a thunk) |
 | 6 | `Const(Constant value)` | Constant value (integer, bytestring, string, bool, unit, data) |
-| 7 | `Builtin(DefaultFun fun)` | Reference to one of 102 built-in functions |
+| 7 | `Builtin(DefaultFun fun)` | Reference to one of 101 released builtins or the retained future tag 101 |
 | 8 | `Error()` | Halt evaluation (transaction fails) |
 | 9 | `Constr(long tag, List<Term> fields)` | Constructor application (Plutus V3, SOPs) |
 | 10 | `Case(Term scrutinee, List<Term> branches)` | Case/pattern matching (Plutus V3, SOPs) |
@@ -207,7 +207,7 @@ sealed interface Shape {
 
 | Module | Role |
 |--------|------|
-| `julc-core` | UPLC AST (`Term.java`), constants, `DefaultFun` enum (102 builtins), FLAT/CBOR serialization, `Program` wrapper |
+| `julc-core` | UPLC AST (`Term.java`), constants, `DefaultFun` enum (101 released builtins plus one future tag), FLAT/CBOR serialization, `Program` wrapper |
 | `julc-compiler` | The compiler itself — parsing, validation, type resolution, PIR generation, loop desugaring, pattern matching, UPLC lowering, optimization |
 | `julc-stdlib` | `StdlibRegistry` — PIR term builders for ~65 stdlib methods (builtins, HOFs, math) |
 | `julc-vm` | VM SPI interface — pluggable execution backend |
@@ -315,7 +315,7 @@ Defined in `TypeResolver.resolve(Type)`:
 | `List<T>` | `ListType(resolve(T))` | Generic |
 | `Map<K,V>` | `MapType(resolve(K), resolve(V))` | Generic |
 | `Optional<T>` | `OptionalType(resolve(T))` | Generic |
-| `JulcArray<T>` | `ArrayType(resolve(T))` | PV11 only; O(1) random access (CIP-156) |
+| `JulcArray<T>` | `ArrayType(resolve(T))` | PV11 only; O(1) random access (CIP-138) |
 | `PubKeyHash`, `ScriptHash`, `ValidatorHash`, `PolicyId`, `TokenName`, `DatumHash`, `TxId` | `ByteStringType` | Ledger hash types |
 | `StakingCredential`, `ScriptPurpose`, `Vote`, `Voter`, `DRep`, `Delegatee`, `GovernanceActionId`, `GovernanceAction`, `ProposalProcedure`, `TxCert`, `Rational`, `ProtocolVersion`, `Committee` | `DataType` | Opaque ledger types |
 | Registered records | `RecordType(...)` | User-defined or ledger records |
@@ -1254,7 +1254,7 @@ public interface StdlibLookup {
 - Crypto: `sha2_256`, `blake2b_256`, `verifyEd25519Signature`, `sha3_256`, `blake2b_224`, `keccak_256`, `verifyEcdsaSecp256k1Signature`, `verifySchnorrSecp256k1Signature`, `ripemd_160`
 - Bitwise: `andByteString`, `orByteString`, `xorByteString`, `complementByteString`, `readBit`, `writeBits`, `shiftByteString`, `rotateByteString`, `countSetBits`, `findFirstSetBit`
 - Data decomposition: `constrTag`, `constrFields`
-- Math: `expModInteger`
+- Math: `expModInteger` (PV11)
 
 **ListsLib HOF methods (require lambda/LetRec — cannot be compiled from Java source):**
 
@@ -2003,6 +2003,6 @@ ADR files are in the `adr/` directory at the project root.
 | `julc-compiler/.../validate/SubsetValidator.java` | — | Java subset enforcement |
 | `julc-compiler/.../util/MethodDependencyResolver.java` | — | Method dependency graph construction |
 | `julc-compiler/.../util/StringUtils.java` | — | String utilities (Levenshtein distance, etc.) |
-| `julc-core/.../DefaultFun.java` | — | 102 Plutus builtin functions with FLAT codes |
+| `julc-core/.../DefaultFun.java` | — | 101 released Plutus builtins (tags 0-100) plus future `MultiIndexArray` (tag 101) |
 | `julc-core/.../Term.java` | — | UPLC term AST (10 variants) |
 | `julc-stdlib/.../StdlibRegistry.java` | — | PIR term builders for ~65 stdlib methods |

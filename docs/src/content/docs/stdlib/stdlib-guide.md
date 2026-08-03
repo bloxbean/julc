@@ -15,13 +15,13 @@ The JuLC standard library provides 13 on-chain libraries in the `com.bloxbean.ca
 | **ValuesLib** | `com.bloxbean.cardano.julc.stdlib.lib.ValuesLib` | Multi-asset Value comparison, arithmetic, and extraction |
 | **MapLib** | `com.bloxbean.cardano.julc.stdlib.lib.MapLib` | Association list (map) lookup, insert, delete, keys/values |
 | **OutputLib** | `com.bloxbean.cardano.julc.stdlib.lib.OutputLib` | Output filtering by address/token, lovelace summation, datum extraction |
-| **MathLib** | `com.bloxbean.cardano.julc.stdlib.lib.MathLib` | abs, max, min, pow, floorDiv, floorMod, divMod, quotRem, expMod, sign |
+| **MathLib** | `com.bloxbean.cardano.julc.stdlib.lib.MathLib` | abs, max, min, pow, floorDiv, floorMod, divMod, quotRem, expMod (PV11), sign |
 | **IntervalLib** | `com.bloxbean.cardano.julc.stdlib.lib.IntervalLib` | Time interval construction, containment, bound extraction |
 | **CryptoLib** | `com.bloxbean.cardano.julc.stdlib.lib.CryptoLib` | Hash functions and signature verification |
 | **ByteStringLib** | `com.bloxbean.cardano.julc.stdlib.lib.ByteStringLib` | ByteString slicing, comparison, encoding, serialization |
 | **BitwiseLib** | `com.bloxbean.cardano.julc.stdlib.lib.BitwiseLib` | Bitwise AND/OR/XOR, shift, rotate, bit read/write |
 | **AddressLib** | `com.bloxbean.cardano.julc.stdlib.lib.AddressLib` | Credential extraction, address type checks |
-| **BlsLib** | `com.bloxbean.cardano.julc.stdlib.lib.BlsLib` | BLS12-381 G1/G2/pairing/MSM operations |
+| **BlsLib** | `com.bloxbean.cardano.julc.stdlib.lib.BlsLib` | BLS12-381 G1/G2/pairing operations; MSM requires PV11 |
 | **NativeValueLib** *(PV11)* | `com.bloxbean.cardano.julc.stdlib.lib.NativeValueLib` | Native MaryEra Value insert, lookup, union, contains, scale |
 
 ---
@@ -154,7 +154,7 @@ The JuLC standard library provides 13 on-chain libraries in the `com.bloxbean.ca
 | `floorMod(a, b)` | Floor modulo |
 | `divMod(a, b)` | Floor division and modulo as Tuple2 |
 | `quotRem(a, b)` | Quotient and remainder as Tuple2 |
-| `expMod(base, exp, mod)` | Modular exponentiation |
+| `expMod(base, exp, mod)` | Modular exponentiation (PV11 only) |
 
 Use `MathLib.floorDiv` and `MathLib.floorMod` for `BigInteger` floor division. `java.lang.Math.floorDiv` and `Math.floorMod` are valid for normal Java `int`/`long` calls, but the JDK does not provide `BigInteger` overloads for those methods.
 
@@ -867,6 +867,9 @@ class MathExample {
 
 Compatibility note: `MathLib.divMod` is floor-based. Code that needs Java-style truncating division should use `MathLib.quotRem`.
 
+> **PV11 only:** `MathLib.expMod` lowers to the Batch 6 `ExpModInteger`
+> builtin. The other division and modulo helpers in this section do not require PV11.
+
 ```java
 import com.bloxbean.cardano.julc.core.types.Tuple2;
 
@@ -1240,7 +1243,9 @@ class DestinationCheckExample {
 
 ## BlsLib -- BLS12-381 Curve Operations
 
-`BlsLib` wraps the Plutus V3 BLS12-381 builtins for elliptic curve cryptography. All methods are `static` and available on PV10+.
+`BlsLib` wraps the Plutus V3 BLS12-381 builtins for elliptic curve cryptography.
+All methods are `static`. Base curve and pairing methods are available on PV10+;
+`g1MultiScalarMul` and `g2MultiScalarMul` require PV11.
 
 ### Quick Reference
 
@@ -1263,8 +1268,8 @@ class DestinationCheckExample {
 | `millerLoop(g1, g2)` | Compute Miller loop pairing |
 | `mulMlResult(a, b)` | Multiply two Miller loop results |
 | `finalVerify(a, b)` | Final pairing verification |
-| `g1MultiScalarMul(scalars, points)` | Multi-scalar multiplication on G1 |
-| `g2MultiScalarMul(scalars, points)` | Multi-scalar multiplication on G2 |
+| `g1MultiScalarMul(scalars, points)` | Multi-scalar multiplication on G1 (PV11 only) |
+| `g2MultiScalarMul(scalars, points)` | Multi-scalar multiplication on G2 (PV11 only) |
 
 ### Usage
 
@@ -1448,8 +1453,16 @@ JulcList<PlutusData> mapped = outputs.map(out -> transform(out));
 
 The following features require protocol version 11 or later and will not work on PV10 networks:
 
+- **Builtins.expModInteger()** — Modular exponentiation (tag 87, CIP-109)
+- **Builtins.dropList()** — Drop the first n elements from a list (tag 88, CIP-132)
+- **JulcArray\<T\>** — Immutable arrays with O(1) random access (tags 89-91, CIP-138)
+- **BLS multi-scalar multiplication** — G1/G2 MSM operations (tags 92-93, CIP-133)
 - **NativeValueLib** — Native MaryEra Value operations (CIP-153)
-- **JulcArray\<T\>** — Immutable arrays with O(1) random access (CIP-156)
-- **Builtins.dropList()** — Drop first n elements from a list (CIP-158)
 
-These are experimental APIs that may evolve as PV11 stabilizes. BlsLib and all other existing stdlib libraries work on PV10+.
+Together these are the exact released PV11 Batch 6 set, tags 87-100.
+`Builtins.multiIndexArray` (tag 101, CIP-156) is a
+future/unreleased operation: the API remains visible for forward development,
+but the current compiler rejects it and its VM implementation is not
+ledger-valid at PV11. The retained experimental placeholder uses the legacy
+`(array, indices)` order rather than CIP-156's proposed indices-first signature,
+so it must not be treated as a conformant preview.

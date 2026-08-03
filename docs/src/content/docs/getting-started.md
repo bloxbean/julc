@@ -889,7 +889,7 @@ when your validator references them.
 | `ValuesLib` | `lovelaceOf`, `assetOf`, `containsPolicy`, `geq`, `geqMultiAsset`, `leq`, `eq`, `isZero`, `singleton`, `negate`, `flatten`, `flattenTyped`, `add`, `subtract`, `countTokensWithQty`, `findTokenName` |
 | `MapLib` | `lookup`, `member`, `insert`, `delete`, `keys`, `values`, `toList`, `fromList`, `size` |
 | `OutputLib` | `txOutAddress`, `txOutValue`, `txOutDatum`, `outputsAt`, `countOutputsAt`, `uniqueOutputAt`, `outputsWithToken`, `valueHasToken`, `lovelacePaidTo`, `paidAtLeast`, `getInlineDatum`, `resolveDatum`, `findOutputWithToken`, `findInputWithToken` |
-| `MathLib` | `abs`, `max`, `min`, `floorDiv`, `floorMod`, `divMod`, `quotRem`, `pow`, `sign`, `expMod` |
+| `MathLib` | `abs`, `max`, `min`, `floorDiv`, `floorMod`, `divMod`, `quotRem`, `pow`, `sign`, `expMod` (PV11) |
 | `IntervalLib` | `contains`, `always`, `after`, `before`, `between`, `never`, `isEmpty`, `finiteUpperBound`, `finiteLowerBound` |
 | `CryptoLib` | `sha2_256`, `blake2b_256`, `sha3_256`, `blake2b_224`, `keccak_256`, `verifyEd25519Signature`, `verifyEcdsaSecp256k1`, `verifySchnorrSecp256k1`, `ripemd_160` (all hash functions also available via `Builtins.*`) |
 | `ByteStringLib` | `at`, `cons`, `slice`, `length`, `drop`, `take`, `append`, `empty`, `zeros`, `equals`, `lessThan`, `lessThanEquals`, `integerToByteString`, `byteStringToInteger`, `encodeUtf8`, `decodeUtf8`, `serialiseData`, `hexNibble`, `toHex`, `intToDecimalString`, `utf8ToInteger` |
@@ -1479,7 +1479,7 @@ following limitations apply:
   `PlutusData`, records, sealed interfaces, `List<T>`, `Map<K,V>`, `Optional<T>`,
   `Tuple2<A,B>`, `Tuple3<A,B,C>`, `JulcArray<T>` *(PV11+)*.
 - **No float/double**: Floating-point types do not exist on-chain.
-- **No Java arrays** (except `byte[]`): Use `JulcList<T>` for collections (or `List<T>`), or `JulcArray<T>` for O(1) random access on PV11+ networks (CIP-156). `byte[]` literal arrays (`new byte[]{0x48, 0x45}`) and `"TOKEN".getBytes()` are supported as compile-time constants. `JulcList<T>` is preferred over `List<T>` because it provides IDE autocomplete for on-chain methods (`.contains()`, `.size()`, `.get()`, `.filter()`, etc.).
+- **No Java arrays** (except `byte[]`): Use `JulcList<T>` for collections (or `List<T>`), or `JulcArray<T>` for O(1) random access on PV11+ networks (CIP-138). `byte[]` literal arrays (`new byte[]{0x48, 0x45}`) and `"TOKEN".getBytes()` are supported as compile-time constants. `JulcList<T>` is preferred over `List<T>` because it provides IDE autocomplete for on-chain methods (`.contains()`, `.size()`, `.get()`, `.filter()`, etc.).
 - **No class inheritance**: Only records and sealed interfaces are supported for
   data types.
 

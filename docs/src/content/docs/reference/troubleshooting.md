@@ -750,7 +750,7 @@ var data = new byte[32];
 // Use ByteString for byte arrays, or List<T> for element lists
 ```
 
-> **PV11 Note:** From protocol version 11, `JulcArray<T>` provides O(1) random-access arrays via CIP-156 builtins. Use `list.toArray()` to convert a list.
+> **PV11 Note:** From protocol version 11, `JulcArray<T>` provides O(1) random-access arrays via CIP-138 builtins. Use `list.toArray()` to convert a list.
 
 ---
 
@@ -772,7 +772,7 @@ var first = Builtins.headList(items);
 var nth = ListsLib.nth(items, 2);
 ```
 
-> **PV11 Note:** From protocol version 11, `JulcArray<T>` provides O(1) random-access arrays via CIP-156 builtins. Use `list.toArray()` to convert a list, then `arr.get(index)` for O(1) access.
+> **PV11 Note:** From protocol version 11, `JulcArray<T>` provides O(1) random-access arrays via CIP-138 builtins. Use `list.toArray()` to convert a list, then `arr.get(index)` for O(1) access.
 
 ---
 
@@ -1007,7 +1007,7 @@ public record MyData(BigInteger amount, byte[] hash) {}
 
 **Fix:** Use `List<T>` instead of arrays.
 
-> **PV11 Note:** From protocol version 11, `JulcArray<T>` provides O(1) random-access arrays via CIP-156 builtins. Use `list.toArray()` to convert a list.
+> **PV11 Note:** From protocol version 11, `JulcArray<T>` provides O(1) random-access arrays via CIP-138 builtins. Use `list.toArray()` to convert a list.
 
 ---
 

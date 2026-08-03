@@ -139,7 +139,7 @@ class DefaultFunTest {
         assertEquals(expectedCode, DefaultFun.valueOf(name).flatCode());
     }
 
-    // --- V3 bitwise and hash ---
+    // --- Pre-PV11 V3 bitwise and hash additions ---
 
     @ParameterizedTest
     @CsvSource({
@@ -158,17 +158,17 @@ class DefaultFunTest {
             "RotateByteString, 83",
             "CountSetBits, 84",
             "FindFirstSetBit, 85",
-            "Ripemd_160, 86",
-            "ExpModInteger, 87"
+            "Ripemd_160, 86"
     })
     void v3BitwiseAndHash(String name, int expectedCode) {
         assertEquals(expectedCode, DefaultFun.valueOf(name).flatCode());
     }
 
-    // --- V4 additions ---
+    // --- Released PV11 Batch 6 ---
 
     @ParameterizedTest
     @CsvSource({
+            "ExpModInteger, 87",
             "DropList, 88",
             "LengthOfArray, 89",
             "ListToArray, 90",
@@ -181,11 +181,15 @@ class DefaultFunTest {
             "ValueContains, 97",
             "ValueData, 98",
             "UnValueData, 99",
-            "ScaleValue, 100",
-            "MultiIndexArray, 101"
+            "ScaleValue, 100"
     })
-    void v4Additions(String name, int expectedCode) {
+    void pv11Batch6(String name, int expectedCode) {
         assertEquals(expectedCode, DefaultFun.valueOf(name).flatCode());
+    }
+
+    @Test
+    void futureMultiIndexArrayKeepsItsExperimentalFlatTag() {
+        assertEquals(101, DefaultFun.MultiIndexArray.flatCode());
     }
 
     // --- fromFlatCode ---

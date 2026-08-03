@@ -55,6 +55,7 @@ const SECTIONS = [
     title: 'Reference',
     files: [
       'reference/api-reference.md',
+      'reference/release-notes.md',
       'reference/library-developer-guide.md',
       'reference/examples.mdx',
       'reference/troubleshooting.md',

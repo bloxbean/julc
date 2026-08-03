@@ -426,6 +426,7 @@ public final class StdlibRegistry implements StdlibLookup {
             {"dropList",                      DefaultFun.DropList},
             // PV11 Array operations (2-arg)
             {"indexArray",                    DefaultFun.IndexArray},
+            // Kept registered so UplcGenerator emits the centralized future/unreleased diagnostic.
             {"multiIndexArray",               DefaultFun.MultiIndexArray},
             // PV11 MaryEraValue operations (2-arg)
             {"unionValue",                    DefaultFun.UnionValue},

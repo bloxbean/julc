@@ -16,9 +16,10 @@ import static com.bloxbean.cardano.julc.vm.java.cost.CostFunction.*;
  * into {@link MachineCosts} and {@link BuiltinCostModel}.
  * <p>
  * Each flat array follows the canonical ordering of its ledger language's
- * {@code PlutusLedgerApi.V<n>.ParamName} enumeration. The supported schemas are
- * pinned to cardano-node 11.0.1 / Plutus 1.63.0.0 at commit
- * {@code f92b7d7d82622a26caf456a6be33859f697e2cfc}.
+ * {@code PlutusLedgerApi.V<n>.ParamName} enumeration. Supported schemas extend
+ * through PV11; their ordering was verified against Plutus 1.63.0.0 at commit
+ * {@code f92b7d7d82622a26caf456a6be33859f697e2cfc}, as shipped by
+ * cardano-node 11.0.1.
  *
  * <p>The order is append-only rather than globally alphabetical. In particular,
  * V1, V2, and V3 have different legacy cost-function shapes and different
@@ -124,7 +125,8 @@ public final class CostModelParser {
     /**
      * Expected parameter count for PlutusV3 PV11 (post-Chang+2).
      * <p>
-     * Adds 53 params: ExpModInteger (5, moved from defaults-only to array) + 13 PV11 builtins (48).
+     * Adds 53 params: ExpModInteger (5, moved from defaults-only to array) + the
+     * remaining 13 PV11 Batch 6 builtins (48).
      * Canonical ordering from Haskell ParamName.hs.
      */
     public static final int PV11_PARAM_COUNT = 350;
@@ -1047,7 +1049,7 @@ public final class CostModelParser {
         return new IllegalArgumentException(
                 "Unsupported cost-model schema for " + language + " at protocol version "
                         + protocolMajorVersion
-                        + "; parser is pinned through cardano-node 11.0.1/PV11");
+                        + "; parser supports schemas through PV11");
     }
 
     // ========== V1/V2 authoritative ParamName writers ==========

@@ -313,7 +313,7 @@ All imports are from `com.bloxbean.cardano.julc.stdlib.lib.*`.
 `txOutAddress(out)`, `txOutValue(out)`, `txOutDatum(out)`, `outputsAt(outputs, addr)`, `countOutputsAt(outputs, addr)`, `uniqueOutputAt(outputs, addr)`, `outputsWithToken(outputs, policy, token)`, `valueHasToken(value, policy, token)`, `lovelacePaidTo(outputs, addr)`, `paidAtLeast(outputs, addr, amount)`, `getInlineDatum(out)`, `resolveDatum(txInfo, out)`. **Prefer field access**: `out.address()`, `out.value()`, `out.datum()`.
 
 ### MathLib
-`abs(n)`, `max(a, b)`, `min(a, b)`, `floorDiv(a, b)`, `floorMod(a, b)`, `divMod(a, b)` → `Tuple2`, `quotRem(a, b)` → `Tuple2`, `pow(b, e)`, `sign(n)`, `expMod(b, e, m)`.
+`abs(n)`, `max(a, b)`, `min(a, b)`, `floorDiv(a, b)`, `floorMod(a, b)`, `divMod(a, b)` → `Tuple2`, `quotRem(a, b)` → `Tuple2`, `pow(b, e)`, `sign(n)`, `expMod(b, e, m)` (PV11 only).
 
 ### IntervalLib
 `between(lo, hi)`, `never()`, `isEmpty(interval)`, `finiteUpperBound(interval)`, `finiteLowerBound(interval)`, `contains(interval, point)`.
@@ -331,7 +331,8 @@ All imports are from `com.bloxbean.cardano.julc.stdlib.lib.*`.
 `credentialHash(addr)` → `byte[]`, `isScriptAddress(addr)`, `isPubKeyAddress(addr)`, `paymentCredential(addr)` → `Credential`.
 
 ### BlsLib (Plutus V3)
-G1/G2 add/scale/neg, pairing, MSM, and `bls12_381_finalVerify`.
+G1/G2 add/scale/neg, pairing, and `bls12_381_finalVerify` are available on
+PV10+; multi-scalar multiplication (MSM) requires PV11.
 
 ### NativeValueLib (PV11)
 Native Mary-era `Value` operations.

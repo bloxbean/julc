@@ -581,7 +581,8 @@ When source maps are enabled, optimization is skipped to preserve term identity 
 
 ### Phase 11: Create `Program`
 
-JuLC currently emits Plutus V3:
+JuLC currently emits Plutus V3 under its PV11 compiler
+contract:
 
 ```java
 var program = Program.plutusV3(uplcTerm);
@@ -592,6 +593,10 @@ That means the version is:
 ```text
 1.1.0
 ```
+
+The `Program` stores the UPLC version, not the ledger protocol version. JuLC's
+compiler policy therefore enforces the PV11 builtin boundary while lowering;
+future tag 101 (`MultiIndexArray`) is rejected before a script is produced.
 
 ### Phase 12: Encode
 

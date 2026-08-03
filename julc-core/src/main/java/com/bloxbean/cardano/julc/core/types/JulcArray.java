@@ -3,7 +3,7 @@ package com.bloxbean.cardano.julc.core.types;
 /**
  * Immutable array interface for O(1) random access on-chain.
  * <p>
- * <b>PV11 only</b> — Arrays use PV11 Batch 6 builtins (CIP-156) and are available
+ * <b>PV11 only</b> — Arrays use PV11 Batch 6 builtins (CIP-138) and are available
  * from protocol version 11 onwards. They will not work on PV10 networks.
  * <p>
  * On-chain: the JuLC compiler resolves {@code JulcArray<T>} to {@code ArrayType(resolve(T))}.

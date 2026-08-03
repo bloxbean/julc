@@ -217,15 +217,14 @@ public final class BuiltinSemantics {
         total(DefaultFun.CountSetBits, 0, I, B);
         total(DefaultFun.FindFirstSetBit, 0, I, B);
 
-        // === V3 Modular exponentiation (CIP-109) ===
+        // === PV11 Batch 6: modular exponentiation (CIP-109) ===
         partial(DefaultFun.ExpModInteger, 0, 3);        // non-invertible cases
 
-        // === PV11 Batch 6 (conservative until semantics are locked in) ===
+        // === PV11 Batch 6: tags 88-100 ===
         partial(DefaultFun.DropList, 1, 2);
         partial(DefaultFun.LengthOfArray, 1, 1);
         partial(DefaultFun.ListToArray, 1, 1);
         partial(DefaultFun.IndexArray, 1, 2);
-        partial(DefaultFun.MultiIndexArray, 1, 2);
         partial(DefaultFun.Bls12_381_G1_multiScalarMul, 0, 2);
         partial(DefaultFun.Bls12_381_G2_multiScalarMul, 0, 2);
         partial(DefaultFun.InsertCoin, 0, 4);
@@ -235,6 +234,9 @@ public final class BuiltinSemantics {
         partial(DefaultFun.ValueData, 0, 1);
         partial(DefaultFun.UnValueData, 0, 1);
         partial(DefaultFun.ScaleValue, 0, 2);
+
+        // === Future/unreleased (CIP-156), retained for experimental VM use ===
+        partial(DefaultFun.MultiIndexArray, 1, 2);
     }
 
     /**

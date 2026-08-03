@@ -951,7 +951,7 @@ Complete listing of all `Builtins` methods, grouped by category. Each method map
 
 | Method | Signature | UPLC Builtin |
 |--------|-----------|-------------|
-| `expModInteger` | `(long base, long exp, long mod) -> long` | `ExpModInteger` |
+| `expModInteger` (PV11) | `(long base, long exp, long mod) -> long` | `ExpModInteger` |
 
 ### Error and Trace
 

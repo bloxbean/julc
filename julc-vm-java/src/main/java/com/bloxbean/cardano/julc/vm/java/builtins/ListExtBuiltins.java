@@ -7,7 +7,7 @@ import java.util.List;
 import static com.bloxbean.cardano.julc.vm.java.builtins.BuiltinHelper.*;
 
 /**
- * Extended list operation builtins (PV11 Batch 6, CIP-158).
+ * Extended list operation builtins (PV11 Batch 6, CIP-132).
  */
 public final class ListExtBuiltins {
 
