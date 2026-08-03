@@ -83,13 +83,16 @@ public final class JulcScriptAdapter {
         byte[] outerBytes = HexFormat.of().parseHex(doubleCborHex);
         // The outer item is cardano-client-lib's transport wrapper and must be
         // a single CBOR bytestring. The inner item is the ledger
-        // SerialisedScript: the no-target tooling path and Plutus V1/V2 preserve
-        // their historical tolerance for trailing bytes, while V3 rejects any
-        // remainder at phase 1.
+        // SerialisedScript. Its wrapper shape is checked for every path because
+        // cborg's decodeBytes accepts only an untagged, definite-length byte
+        // string. Independently, the no-target tooling path and Plutus V1/V2
+        // preserve their historical tolerance for trailing bytes, while V3
+        // rejects any remainder at phase 1.
         byte[] innerBytes = cborUnwrapBytes(outerBytes, false);
         boolean allowScriptRemainder = target == null
                 || target.ledgerLanguage() != PlutusLanguage.PLUTUS_V3;
-        byte[] flatBytes = cborUnwrapBytes(innerBytes, allowScriptRemainder);
+        byte[] flatBytes = cborUnwrapSerialisedScript(
+                innerBytes, allowScriptRemainder);
         if (target == null) {
             // Compatibility/tooling path: callers without ledger context keep
             // the historical unrestricted decoder.
@@ -128,6 +131,35 @@ public final class JulcScriptAdapter {
         } catch (Exception e) {
             throw new RuntimeException("CBOR unwrapping failed", e);
         }
+    }
+
+    /**
+     * Decode the ledger's inner {@code SerialisedScript} exactly like cborg's
+     * {@code decodeBytes}: only raw headers {@code 0x40..0x5b} are accepted.
+     * This deliberately accepts non-canonical definite-length encodings while
+     * rejecting tags, indefinite-length byte strings, and reserved headers
+     * before cbor-java can normalize them.
+     */
+    private static byte[] cborUnwrapSerialisedScript(
+            byte[] cborData, boolean allowRemainder) {
+        if (cborData.length == 0) {
+            throw invalidSerialisedScriptWrapper();
+        }
+
+        int initialByte = Byte.toUnsignedInt(cborData[0]);
+        if (initialByte < 0x40 || initialByte > 0x5b) {
+            throw invalidSerialisedScriptWrapper();
+        }
+
+        // cbor-java still validates the declared length and payload. The raw
+        // header check above only preserves information it would otherwise
+        // discard while decoding tags or joining indefinite chunks.
+        return cborUnwrapBytes(cborData, allowRemainder);
+    }
+
+    private static RuntimeException invalidSerialisedScriptWrapper() {
+        return new RuntimeException(
+                "CBOR SerialisedScript must be an untagged definite-length bytestring");
     }
 
     private static byte[] cborWrapBytes(byte[] data) {

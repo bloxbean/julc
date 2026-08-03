@@ -16,10 +16,12 @@ import co.nstant.in.cbor.CborDecoder;
 import co.nstant.in.cbor.CborEncoder;
 import co.nstant.in.cbor.model.ByteString;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.Executable;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.math.BigInteger;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HexFormat;
@@ -162,6 +164,40 @@ class JulcScriptAdapterTest {
     }
 
     @Test
+    void rejectsTaggedInnerSerialisedScriptForEveryDecodeTarget() {
+        String tagged = tagInnerSerialisedScript(validV1ScriptCbor());
+
+        assertRejectedForEveryDecodeTarget(tagged);
+    }
+
+    @Test
+    void rejectsIndefiniteLengthInnerSerialisedScriptForEveryDecodeTarget() {
+        String indefinite = makeInnerSerialisedScriptIndefinite(validV1ScriptCbor());
+
+        assertRejectedForEveryDecodeTarget(indefinite);
+    }
+
+    @Test
+    void acceptsNonCanonicalEightByteDefiniteLengthHeader() {
+        var original = new Program(1, 0, 0, Term.const_(Constant.unit()));
+        String nonCanonical = useEightByteLengthForInnerSerialisedScript(
+                JulcScriptAdapter.fromProgram(original).getCborHex());
+
+        assertEquals(original, JulcScriptAdapter.toProgram(nonCanonical));
+        for (var language : PlutusLanguage.values()) {
+            assertEquals(original, JulcScriptAdapter.toProgram(
+                    nonCanonical, LedgerEvaluationTarget.pv11(language)));
+        }
+    }
+
+    @Test
+    void rejectsHeaderImmediatelyAboveDefiniteByteStringRange() {
+        String reservedHeader = replaceInnerInitialByte(validV1ScriptCbor(), (byte) 0x5c);
+
+        assertRejectedForEveryDecodeTarget(reservedHeader);
+    }
+
+    @Test
     void toProgramParameterized() {
         // Compile a parameterized validator, decode it, apply CCL params, re-encode
         var source = """
@@ -202,16 +238,86 @@ class JulcScriptAdapterTest {
     }
 
     private static String appendToInnerSerialisedScript(String outerCborHex, byte remainder) {
+        byte[] inner = unwrapOuterCbor(outerCborHex);
+        byte[] withRemainder = Arrays.copyOf(inner, inner.length + 1);
+        withRemainder[withRemainder.length - 1] = remainder;
+        return wrapOuterCbor(withRemainder);
+    }
+
+    private static String validV1ScriptCbor() {
+        var program = new Program(1, 0, 0, Term.const_(Constant.unit()));
+        return JulcScriptAdapter.fromProgram(program).getCborHex();
+    }
+
+    private static void assertRejectedForEveryDecodeTarget(String cborHex) {
+        assertInvalidInnerWrapper(() -> JulcScriptAdapter.toProgram(cborHex));
+        for (var language : PlutusLanguage.values()) {
+            assertInvalidInnerWrapper(() -> JulcScriptAdapter.toProgram(
+                    cborHex, LedgerEvaluationTarget.pv11(language)));
+        }
+    }
+
+    private static void assertInvalidInnerWrapper(Executable decode) {
+        var error = assertThrows(RuntimeException.class, decode);
+        assertTrue(error.getMessage().contains("untagged definite-length bytestring"),
+                "Unexpected error: " + error.getMessage());
+    }
+
+    private static String tagInnerSerialisedScript(String outerCborHex) {
+        byte[] inner = unwrapOuterCbor(outerCborHex);
+        byte[] tagged = new byte[inner.length + 2];
+        tagged[0] = (byte) 0xd8;
+        tagged[1] = 0x18;
+        System.arraycopy(inner, 0, tagged, 2, inner.length);
+        return wrapOuterCbor(tagged);
+    }
+
+    private static String makeInnerSerialisedScriptIndefinite(String outerCborHex) {
+        byte[] inner = unwrapOuterCbor(outerCborHex);
+        byte[] indefinite = new byte[inner.length + 2];
+        indefinite[0] = 0x5f;
+        System.arraycopy(inner, 0, indefinite, 1, inner.length);
+        indefinite[indefinite.length - 1] = (byte) 0xff;
+        return wrapOuterCbor(indefinite);
+    }
+
+    private static String useEightByteLengthForInnerSerialisedScript(String outerCborHex) {
+        byte[] inner = unwrapOuterCbor(outerCborHex);
+        try {
+            var innerItem = new CborDecoder(new ByteArrayInputStream(inner)).decodeNext();
+            byte[] flat = assertInstanceOf(ByteString.class, innerItem).getBytes();
+            byte[] nonCanonical = ByteBuffer.allocate(9 + flat.length)
+                    .put((byte) 0x5b)
+                    .putLong(flat.length)
+                    .put(flat)
+                    .array();
+            return wrapOuterCbor(nonCanonical);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private static String replaceInnerInitialByte(String outerCborHex, byte replacement) {
+        byte[] inner = unwrapOuterCbor(outerCborHex);
+        inner[0] = replacement;
+        return wrapOuterCbor(inner);
+    }
+
+    private static byte[] unwrapOuterCbor(String outerCborHex) {
         try {
             byte[] outer = HexFormat.of().parseHex(outerCborHex);
             var outerItem = new CborDecoder(new ByteArrayInputStream(outer)).decodeNext();
-            var outerBytes = assertInstanceOf(ByteString.class, outerItem).getBytes();
-            byte[] malformedInner = Arrays.copyOf(outerBytes, outerBytes.length + 1);
-            malformedInner[malformedInner.length - 1] = remainder;
+            return assertInstanceOf(ByteString.class, outerItem).getBytes();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
 
+    private static String wrapOuterCbor(byte[] inner) {
+        try {
             var encoded = new ByteArrayOutputStream();
             new CborEncoder(encoded).encode(new CborBuilder()
-                    .add(malformedInner)
+                    .add(inner)
                     .build());
             return HexFormat.of().formatHex(encoded.toByteArray());
         } catch (Exception e) {

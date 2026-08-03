@@ -593,13 +593,20 @@ the same node/Plutus pin:
 - V3 rejects bytes remaining after the inner serialized-script CBOR item;
   V1/V2 retain the pinned historical tolerance. Restricting-budget subtraction
   uses `SatInt`-equivalent saturation.
+- The inner ledger `SerialisedScript` accepts exactly cborg `decodeBytes`'
+  untagged, definite-length header range (`0x40..0x5b`). Tagged, indefinite,
+  and reserved forms are rejected before cbor-java can normalize them, while
+  non-canonical definite lengths remain accepted. This shape check deliberately
+  also applies to the no-target tooling path: its trailing-remainder tolerance
+  is historical behavior, whereas accepting alternate wrapper shapes was not.
 - Historical variant A defaults and CEK costs, variant D's canonical
   `linear_in_y2` representation, minor-version compatibility, and explicit
   PV11 debugger profile selection are covered by pinned regression tests.
 
-The Java/Truffle evaluator is exact against node 11.0.1 within this scope; the
-sole known decode-boundary exclusion is the adversarial-input phase-1 CBOR
-wrapper divergence tracked in [#67](https://github.com/bloxbean/julc/issues/67).
+The Java/Truffle evaluator and client-library ledger decode path are exact
+against node 11.0.1 within this scope, including adversarial inner-wrapper
+inputs. Permissive format-inspection tools outside ledger evaluation remain
+outside this claim.
 
 Later Plutus `master` behavior remains intentionally excluded.
 
@@ -653,6 +660,9 @@ Later Plutus `master` behavior remains intentionally excluded.
       values that the pinned Haskell evaluator rejects without narrowing.
 - [x] V3 serialized-script remainders fail while V1/V2 historical remainders
       remain accepted.
+- [x] Inner serialized-script CBOR accepts raw headers `0x40..0x5b`, including
+      non-canonical definite lengths, while tagged, indefinite, and reserved
+      wrappers fail for V1, V2, V3, and the no-target tooling path.
 
 ### Conformance provenance
 
