@@ -1479,7 +1479,7 @@ following limitations apply:
   `PlutusData`, records, sealed interfaces, `List<T>`, `Map<K,V>`, `Optional<T>`,
   `Tuple2<A,B>`, `Tuple3<A,B,C>`, `JulcArray<T>` *(PV11+)*.
 - **No float/double**: Floating-point types do not exist on-chain.
-- **No Java arrays** (except `byte[]`): Use `JulcList<T>` for collections (or `List<T>`), or `JulcArray<T>` for O(1) random access on PV11+ networks (CIP-156). `byte[]` literal arrays (`new byte[]{0x48, 0x45}`) and `"TOKEN".getBytes()` are supported as compile-time constants. `JulcList<T>` is preferred over `List<T>` because it provides IDE autocomplete for on-chain methods (`.contains()`, `.size()`, `.get()`, `.filter()`, etc.).
+- **No Java arrays** (except `byte[]`): Use `JulcList<T>` for collections (or `List<T>`), or `JulcArray<T>` for O(1) random access on PV11+ networks (CIP-138). `byte[]` literal arrays (`new byte[]{0x48, 0x45}`) and `"TOKEN".getBytes()` are supported as compile-time constants. `JulcList<T>` is preferred over `List<T>` because it provides IDE autocomplete for on-chain methods (`.contains()`, `.size()`, `.get()`, `.filter()`, etc.).
 - **No class inheritance**: Only records and sealed interfaces are supported for
   data types.
 

@@ -25,7 +25,7 @@ This document covers all supported Java operations in the JuLC compiler, the sta
 | `@NewType` records | Underlying type | Zero-cost alias (identity on-chain) |
 | `PubKeyHash`, `PolicyId`, `TokenName`, `TxId`, `ScriptHash`, `ValidatorHash`, `DatumHash` | ByteString | Ledger hash types |
 | `Value` | Map(Pair) | Named RecordType with instance methods |
-| `JulcArray<T>` *(PV11)* | BuiltinArray | O(1) random access array (CIP-156). PV11+ only |
+| `JulcArray<T>` *(PV11)* | BuiltinArray | O(1) random access array (CIP-138). PV11+ only |
 
 ### JulcList and JulcMap
 
@@ -38,7 +38,7 @@ JulcMap<Credential, BigInteger> withdrawals = txInfo.withdrawals();
 
 ### JulcArray (PV11)
 
-> **Protocol Version 11+ only.** Arrays use CIP-156 builtins and are not available on PV10 networks.
+> **Protocol Version 11+ only.** Base Array operations use CIP-138 builtins and are not available on PV10 networks.
 
 `JulcArray<T>` is an immutable array interface providing O(1) random access on-chain. Create from a list via `list.toArray()` or `JulcArray.fromList(list)`.
 
@@ -50,6 +50,10 @@ long len = arr.length();                         // LengthOfArray builtin
 ```
 
 Off-chain: backed by `JulcArrayImpl`, wrapping `java.util.List` with O(1) index access.
+
+`Builtins.multiIndexArray` (tag 101, CIP-156) is a separate future/unreleased
+operation. It is not valid under Plutus V3/PV11, and the current compiler
+rejects it. See the [release notes](/reference/release-notes/) for migration guidance.
 
 ### Tuple2 and Tuple3
 

@@ -104,7 +104,10 @@ julc-compiler ── julc-annotation-processor
 
 ### DefaultFun (Built-in Functions)
 
-102 enum values (codes 0-101) covering Plutus V1 through V4. JuLC targets V3 (codes 0-87). V4 builtins (88-101) are defined in the enum but not used by the compiler.
+102 enum values (codes 0-101). Under the PV11 contract, codes 0-100 are released
+and Batch 6 is exactly 87-100.
+Code 101 (`MultiIndexArray`, CIP-156) is retained for FLAT and experimental VM
+development, but is future/unreleased and the current V3/PV11 compiler rejects it.
 
 ### FLAT Serialization
 
@@ -406,9 +409,13 @@ List methods `map`, `filter`, `any`, `all`, `find` are available as both static 
 
 ## 8. Ledger API
 
-### V3-Only Decision
+### Current V3/PV11 Compiler Target
 
-JuLC targets Plutus V3 exclusively. V3 scripts receive a single `ScriptContext` argument as `Data` (rather than V1/V2's three separate arguments). This simplifies the wrapper and aligns with the Conway era.
+JuLC currently targets the Plutus V3/PV11 feature set. V3
+scripts receive a single `ScriptContext` argument as `Data` (rather than
+V1/V2's three separate arguments). Configurable compiler targets are separate
+roadmap work; until then, the compiler must not emit features outside this
+profile.
 
 ### Registered Ledger Types
 

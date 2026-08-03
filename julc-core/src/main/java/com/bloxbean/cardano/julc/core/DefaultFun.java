@@ -1,7 +1,8 @@
 package com.bloxbean.cardano.julc.core;
 
 /**
- * All 102 Plutus Core built-in functions (V1 through V3).
+ * The 101 builtins released through PV11, plus the
+ * future/experimental {@link #MultiIndexArray} builtin.
  * <p>
  * Each entry has a 7-bit FLAT encoding code that must match the Plutus specification exactly.
  * The codes are contiguous from 0 to 101.
@@ -10,9 +11,14 @@ package com.bloxbean.cardano.julc.core;
  * <ul>
  *   <li>V1 (0-50): Integer, ByteString, String, Crypto, Control, Pair, List, Data ops</li>
  *   <li>V2 (51-53): SerialiseData, SECP256k1 signature verification</li>
- *   <li>V3 (54-87): BLS12-381, bitwise ops, hash functions, integer/bytestring conversion (CIP-381/121/122/123/127/109)</li>
- *   <li>V3 PV11 Batch 6 (88-101): Array ops, DropList, BLS MSM, MaryEraValue ops (CIP-156/158/153/133)</li>
+ *   <li>Pre-PV11 V3 additions (54-86): BLS12-381, bitwise ops, hash functions,
+ *       and integer/bytestring conversion (CIP-381/121/122/123/127)</li>
+ *   <li>PV11 Batch 6 (87-100): modular exponentiation, list drop, base Array,
+ *       BLS MSM, and MaryEraValue operations (CIP-109/132/138/133/153)</li>
+ *   <li>Future/unreleased (101): MultiIndexArray (CIP-156)</li>
  * </ul>
+ * Ledger availability depends on both language and protocol version; the enum
+ * itself deliberately retains future tags for FLAT and VM experimentation.
  */
 public enum DefaultFun {
 
@@ -139,13 +145,13 @@ public enum DefaultFun {
     // RIPEMD-160 hash (V3, CIP-127)
     Ripemd_160(86),
 
-    // Modular exponentiation (V3, CIP-109)
+    // Modular exponentiation (PV11 Batch 6, CIP-109)
     ExpModInteger(87),
 
-    // List extensions (PV11 Batch 6, CIP-158)
+    // List extensions (PV11 Batch 6, CIP-132)
     DropList(88),
 
-    // Array operations (PV11 Batch 6, CIP-156)
+    // Base Array operations (PV11 Batch 6, CIP-138)
     LengthOfArray(89),
     ListToArray(90),
     IndexArray(91),
@@ -163,7 +169,7 @@ public enum DefaultFun {
     UnValueData(99),
     ScaleValue(100),
 
-    // Array multi-index (PV11 Batch 6, CIP-156)
+    // Future/unreleased Array multi-index operation (CIP-156); not valid at PV11
     MultiIndexArray(101);
 
     private final int flatCode;
@@ -178,19 +184,24 @@ public enum DefaultFun {
     }
 
     /**
-     * The minimum Plutus language version that includes this builtin.
+     * A legacy, language-only grouping for this builtin.
      * <p>
      * Returns 1 for V1 builtins (codes 0-50), 2 for V2 (51-53),
-     * 3 for V3 (54-101, includes PV11 Batch 6).
+     * and 3 for later tags (54-101). This is not a ledger-availability check:
+     * protocol versions can enable later batches for V1/V2, and tag 101 is not
+     * released at PV11 even though it belongs to the V3-era AST.
      */
     public int minLanguageVersion() {
         if (flatCode <= 50) return 1;
         if (flatCode <= 53) return 2;
-        return 3;  // codes 54-101 all available in V3 (PV11 Batch 6)
+        return 3;
     }
 
     /**
-     * Check if this builtin is available in the given Plutus language version.
+     * Check the legacy language-only grouping for this builtin.
+     * <p>
+     * This method does not account for protocol-version activation. Ledger and
+     * evaluator code must use the protocol feature profile instead.
      *
      * @param languageVersion 1 for PlutusV1, 2 for PlutusV2, 3 for PlutusV3
      * @return true if the builtin is available in that version

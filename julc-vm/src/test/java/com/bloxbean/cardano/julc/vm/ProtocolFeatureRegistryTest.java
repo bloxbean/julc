@@ -6,6 +6,7 @@ import com.bloxbean.cardano.julc.core.Program;
 import com.bloxbean.cardano.julc.core.Term;
 import org.junit.jupiter.api.Test;
 
+import java.util.EnumSet;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -56,6 +57,35 @@ class ProtocolFeatureRegistryTest {
         for (var language : PlutusLanguage.values()) {
             assertFalse(profile(language, 11).isBuiltinAvailable(DefaultFun.MultiIndexArray));
         }
+    }
+
+    @Test
+    void pv11Batch6ExactlyMatchesPinnedHaskellBaseline() {
+        // PlutusLedgerApi.Common.Versions.batch6 at f92b7d7d8.
+        var expected = Set.of(
+                DefaultFun.ExpModInteger,
+                DefaultFun.DropList,
+                DefaultFun.LengthOfArray,
+                DefaultFun.ListToArray,
+                DefaultFun.IndexArray,
+                DefaultFun.Bls12_381_G1_multiScalarMul,
+                DefaultFun.Bls12_381_G2_multiScalarMul,
+                DefaultFun.InsertCoin,
+                DefaultFun.LookupCoin,
+                DefaultFun.UnionValue,
+                DefaultFun.ValueContains,
+                DefaultFun.ValueData,
+                DefaultFun.UnValueData,
+                DefaultFun.ScaleValue);
+
+        var newlyAvailable = EnumSet.copyOf(
+                profile(PlutusLanguage.PLUTUS_V3, 11).availableBuiltins());
+        newlyAvailable.removeAll(
+                profile(PlutusLanguage.PLUTUS_V3, 10).availableBuiltins());
+
+        assertEquals(expected, newlyAvailable);
+        assertEquals(EnumSet.range(DefaultFun.ExpModInteger, DefaultFun.ScaleValue), newlyAvailable);
+        assertFalse(newlyAvailable.contains(DefaultFun.MultiIndexArray));
     }
 
     @Test

@@ -771,15 +771,15 @@ public final class Builtins {
     }
 
     // =========================================================================
-    // Math operations
+    // PV11 Batch 6 math operation (CIP-109)
     // =========================================================================
 
-    /** Modular exponentiation: (base^exp) mod modulus. */
+    /** Modular exponentiation: (base^exp) mod modulus. PV11 only (CIP-109). */
     public static long expModInteger(long base, long exp, long mod) {
         return BigInteger.valueOf(base).modPow(BigInteger.valueOf(exp), BigInteger.valueOf(mod)).longValue();
     }
 
-    /** Modular exponentiation with BigInteger: (base^exp) mod modulus. */
+    /** Modular exponentiation with BigInteger: (base^exp) mod modulus. PV11 only (CIP-109). */
     public static BigInteger expModInteger(BigInteger base, BigInteger exp, BigInteger mod) {
         return base.modPow(exp, mod);
     }
@@ -895,7 +895,7 @@ public final class Builtins {
     }
 
     // =========================================================================
-    // PV11 List Extensions (CIP-158)
+    // PV11 List Extensions (CIP-132)
     // =========================================================================
 
     /** Drop the first n elements from a list. PV11 only. */
@@ -904,7 +904,7 @@ public final class Builtins {
     }
 
     // =========================================================================
-    // PV11 Array Operations (CIP-156)
+    // PV11 Base Array Operations (CIP-138)
     // =========================================================================
 
     /** Convert a list to an immutable array for O(1) random access. PV11 only. */
@@ -922,9 +922,19 @@ public final class Builtins {
         throw new UnsupportedOperationException("Builtins.indexArray: on-chain only — use Julc VM for off-chain evaluation");
     }
 
-    /** Get multiple elements at the given indices. PV11 only. */
+    /**
+     * Future CIP-156 operation for selecting multiple array indices.
+     * <p>
+     * This is not released in Plutus V3/PV11. The API is retained for forward
+     * development, but the current compiler always rejects calls to it. Use
+     * repeated {@link #indexArray(PlutusData, long)} calls for PV11.
+     *
+     * @deprecated future/unreleased; not ledger-valid at PV11
+     */
+    @Deprecated(forRemoval = false)
     public static PlutusData multiIndexArray(PlutusData array, PlutusData indices) {
-        throw new UnsupportedOperationException("Builtins.multiIndexArray: on-chain only — use Julc VM for off-chain evaluation");
+        throw new UnsupportedOperationException(
+                "Builtins.multiIndexArray: future/unreleased CIP-156 builtin; not ledger-valid at PV11");
     }
 
     // =========================================================================

@@ -187,7 +187,8 @@ shape-level soundness argument in the code):
 
 1. **`BuiltinSemantics` (julc-core)** carries type arity, value arity, totality, declared
    argument types, and a **result type** per builtin. The vm-java cross-check test
-   verifies arities against `BuiltinTable` for all 102 builtins and **executes every
+   verifies arities against `BuiltinTable` for all 102 enum entries (101 released
+   builtins plus the retained future tag 101) and **executes every
    claimed-total builtin** on typical + edge samples of its declared arg types. That
    execution check immediately caught a misclassification: `constrData` errors on tags
    outside int range, so it is total only at `CONSTR_TAG` (constant in [0, MAX_INT]).

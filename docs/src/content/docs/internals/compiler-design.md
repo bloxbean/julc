@@ -130,7 +130,7 @@ JuLC is organized into focused modules. Here are the key ones grouped by role:
 
 | Module | Role | Key Types |
 |--------|------|-----------|
-| `julc-core` | UPLC AST, constants, serialization | `Term` (10 variants), `DefaultFun` (102 builtins), `PlutusData`, `Program` |
+| `julc-core` | UPLC AST, constants, serialization | `Term` (10 variants), `DefaultFun` (101 released builtins plus one future tag), `PlutusData`, `Program` |
 | `julc-ledger-api` | Java records for all Cardano V3 ledger types | `ScriptContext`, `TxInfo`, `TxOut`, `Value`, `Address`, `Credential` + 35 more |
 
 ### Compiler (the main event)
@@ -247,7 +247,7 @@ sealed interface Term {
     record Force(Term term)                           // Force polymorphic term
     record Delay(Term term)                           // Delay evaluation (thunk)
     record Const(Constant value)                      // Constant value
-    record Builtin(DefaultFun fun)                    // Built-in function (102 total)
+    record Builtin(DefaultFun fun)                    // Builtin enum entry (101 released + 1 future)
     record Error()                                    // Halt execution
     record Constr(long tag, List<Term> fields)        // Constructor (Plutus V3)
     record Case(Term scrutinee, List<Term> branches)  // Case match (Plutus V3)
@@ -292,7 +292,7 @@ sealed interface PirType {
     record PairType(PirType first, PirType second)
     record MapType(PirType keyType, PirType valueType)
     record OptionalType(PirType elemType)
-    record ArrayType(PirType elemType)    // PV11, CIP-156
+    record ArrayType(PirType elemType)    // PV11, CIP-138
 
     // Functions
     record FunType(PirType paramType, PirType returnType)
@@ -1260,7 +1260,7 @@ After optimization, the validator becomes equivalent to `\ctx -> Unit` (always s
 | File | Role |
 |------|------|
 | `julc-core/.../Term.java` | UPLC term AST (10 variants) |
-| `julc-core/.../DefaultFun.java` | 102 Plutus builtin functions |
+| `julc-core/.../DefaultFun.java` | 101 released Plutus builtins (tags 0-100) plus future `MultiIndexArray` (tag 101) |
 | `julc-core/.../PlutusData.java` | Universal on-chain data encoding |
 | `julc-stdlib/.../StdlibRegistry.java` | PIR term builders for ~65 stdlib methods |
 | `julc-vm/.../JulcVmProvider.java` | VM SPI interface |

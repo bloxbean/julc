@@ -14,7 +14,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Tests for {@link JulcArray} — PV11 array operations (CIP-156).
+ * Tests for {@link JulcArray} — PV11 base Array operations (CIP-138).
  * On-chain tests use JulcEval to compile and evaluate through the UPLC VM.
  * Off-chain tests use JulcArrayImpl directly.
  */
@@ -138,37 +138,6 @@ class JulcArrayTest {
                         new PlutusData.IntData(BigInteger.valueOf(20)),
                         new PlutusData.IntData(BigInteger.valueOf(30))));
                 assertEquals(20, eval.call("test", list).asLong());
-            }
-        }
-
-        @Nested
-        class MultiIndex {
-
-            @Test
-            @org.junit.jupiter.api.Disabled("MultiIndexArray not yet supported by Scalus VM backend — works with julc-vm-java")
-            void selectMultiple() {
-                var eval = JulcEval.forSource(IMPORTS + """
-                        class T {
-                            static BigInteger test(PlutusData data) {
-                                var list = Builtins.unListData(data);
-                                var arr = Builtins.listToArray(list);
-                                var indices = Builtins.mkCons(
-                                    Builtins.iData(0),
-                                    Builtins.mkCons(Builtins.iData(2), Builtins.mkNilData()));
-                                var result = Builtins.multiIndexArray(arr, indices);
-                                var first = Builtins.unIData(Builtins.headList(result));
-                                var rest = Builtins.tailList(result);
-                                var second = Builtins.unIData(Builtins.headList(rest));
-                                return first.add(second);
-                            }
-                        }
-                        """);
-                var list = new PlutusData.ListData(List.of(
-                        new PlutusData.IntData(BigInteger.valueOf(10)),
-                        new PlutusData.IntData(BigInteger.valueOf(20)),
-                        new PlutusData.IntData(BigInteger.valueOf(30))));
-                // arr[0] + arr[2] = 10 + 30 = 40
-                assertEquals(40, eval.call("test", list).asLong());
             }
         }
 

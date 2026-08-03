@@ -570,19 +570,19 @@ public final class DefaultCostModel {
                 new LinearInX(1964219, 24520),
                 new ConstantCost(3)));
 
-        // === V3 Modular exponentiation (CIP-109) ===
+        // === PV11 Batch 6: modular exponentiation (CIP-109) ===
         costs.put(DefaultFun.ExpModInteger, pair(
                 new ExpModCost(607153, 231697, 53144),
                 new LinearInZ(0, 1)));
 
         // === PV11 Batch 6 builtins ===
 
-        // List extensions (CIP-158)
+        // List extensions (CIP-132)
         costs.put(DefaultFun.DropList, pair(
                 new LinearInX(116711, 1957),
                 new ConstantCost(4)));
 
-        // Array operations (CIP-156)
+        // Base Array operations (CIP-138)
         costs.put(DefaultFun.LengthOfArray, pair(
                 new ConstantCost(231883),
                 new ConstantCost(10)));
@@ -624,7 +624,8 @@ public final class DefaultCostModel {
                 new LinearInY(1000, 277577),
                 new LinearInY(12, 21)));
 
-        // MultiIndexArray — JuLC-specific (code 101), not in on-chain cost params.
+        // Future/unreleased MultiIndexArray (CIP-156, code 101). Experimental VM
+        // support only; absent from PV11 on-chain cost parameters.
         // Estimated costs based on IndexArray.
         costs.put(DefaultFun.MultiIndexArray, pair(
                 new ConstantCost(232010),

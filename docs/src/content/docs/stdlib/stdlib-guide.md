@@ -1448,8 +1448,14 @@ JulcList<PlutusData> mapped = outputs.map(out -> transform(out));
 
 The following features require protocol version 11 or later and will not work on PV10 networks:
 
+- **Builtins.expModInteger()** — Modular exponentiation (tag 87, CIP-109)
+- **Builtins.dropList()** — Drop the first n elements from a list (tag 88, CIP-132)
+- **JulcArray\<T\>** — Immutable arrays with O(1) random access (tags 89-91, CIP-138)
+- **BLS multi-scalar multiplication** — G1/G2 MSM operations (tags 92-93, CIP-133)
 - **NativeValueLib** — Native MaryEra Value operations (CIP-153)
-- **JulcArray\<T\>** — Immutable arrays with O(1) random access (CIP-156)
-- **Builtins.dropList()** — Drop first n elements from a list (CIP-158)
 
-These are experimental APIs that may evolve as PV11 stabilizes. BlsLib and all other existing stdlib libraries work on PV10+.
+Together these are the exact released PV11 Batch 6 set, tags 87-100.
+`Builtins.multiIndexArray` (tag 101, CIP-156) is a
+future/unreleased operation: the API remains visible for forward development,
+but the current compiler rejects it and its VM implementation is not
+ledger-valid at PV11.

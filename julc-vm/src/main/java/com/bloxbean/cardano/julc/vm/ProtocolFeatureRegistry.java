@@ -7,10 +7,11 @@ import java.util.EnumSet;
 import java.util.Set;
 
 /**
- * Table-driven ledger feature mapping pinned to cardano-node 11.0.1 / Plutus
- * 1.63.0.0 ({@code f92b7d7d82622a26caf456a6be33859f697e2cfc}).
- * Protocol versions newer than PV11 are deliberately rejected until the
- * compatibility baseline is explicitly upgraded.
+ * Table-driven ledger feature mapping supported through PV11. The mapping was
+ * verified against Plutus 1.63.0.0
+ * ({@code f92b7d7d82622a26caf456a6be33859f697e2cfc}), as shipped by
+ * cardano-node 11.0.1. Protocol versions newer than PV11 are deliberately
+ * rejected until the supported protocol profile is explicitly upgraded.
  */
 public final class ProtocolFeatureRegistry {
 
@@ -32,7 +33,7 @@ public final class ProtocolFeatureRegistry {
         if (protocol > MAX_SUPPORTED_PROTOCOL_MAJOR) {
             throw new UnsupportedLedgerTargetException(
                     "Protocol version " + target.protocolVersion()
-                            + " is newer than the pinned cardano-node 11.0.1/PV11 baseline");
+                            + " is newer than the supported PV11 profile");
         }
 
         int introduced = introducedIn(target.ledgerLanguage());

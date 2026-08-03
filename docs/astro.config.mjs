@@ -51,6 +51,7 @@ export default defineConfig({
           label: 'Reference',
           items: [
             { label: 'API Reference', slug: 'reference/api-reference' },
+            { label: 'Release Notes', slug: 'reference/release-notes' },
             { label: 'Library Developer Guide', slug: 'reference/library-developer-guide' },
             { label: 'Examples', slug: 'reference/examples' },
             { label: 'Troubleshooting', slug: 'reference/troubleshooting' },

@@ -12,7 +12,9 @@ import java.util.Map;
 /**
  * Master registry mapping {@link DefaultFun} to its signature and runtime implementation.
  * <p>
- * Covers all V1/V2/V3 builtins including PV11 Batch 6.
+ * Covers all V1/V2/V3 builtins through PV11 Batch 6. The raw table also keeps
+ * an experimental implementation of future tag 101; protocol-profile views
+ * exclude it from Plutus V3/PV11 evaluation.
  * <p>
  * Use {@link #forLanguage(PlutusLanguage)} to get a version-gated view that only
  * includes builtins available in the specified Plutus language version.
@@ -143,16 +145,18 @@ public final class BuiltinTable {
         // === V3 RIPEMD-160 (CIP-127) ===
         reg(DefaultFun.Ripemd_160,              0, 1, CryptoBuiltins::ripemd_160);
 
-        // === V3 Modular exponentiation (CIP-109) ===
+        // === PV11 Batch 6: modular exponentiation (CIP-109) ===
         reg(DefaultFun.ExpModInteger,           0, 3, IntegerBuiltins::expModInteger);
 
-        // === PV11 Batch 6: List extensions (CIP-158) ===
+        // === PV11 Batch 6: List extensions (CIP-132) ===
         reg(DefaultFun.DropList,                1, 2, ListExtBuiltins::dropList);
 
-        // === PV11 Batch 6: Array operations (CIP-156) ===
+        // === PV11 Batch 6: base Array operations (CIP-138) ===
         reg(DefaultFun.LengthOfArray,           1, 1, ArrayBuiltins::lengthOfArray);
         reg(DefaultFun.ListToArray,             1, 1, ArrayBuiltins::listToArray);
         reg(DefaultFun.IndexArray,              1, 2, ArrayBuiltins::indexArray);
+
+        // === Future/unreleased: MultiIndexArray (CIP-156), experimental VM only ===
         reg(DefaultFun.MultiIndexArray,         1, 2, ArrayBuiltins::multiIndexArray);
 
         // === PV11 Batch 6: BLS12-381 multi-scalar multiplication (CIP-133) ===

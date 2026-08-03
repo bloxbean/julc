@@ -111,7 +111,7 @@ public class MathLib {
         return result;
     }
 
-    /** Returns (base^exp) mod modulus using the builtin ExpModInteger operation. */
+    /** Returns (base^exp) mod modulus using the PV11 Batch 6 ExpModInteger operation (CIP-109). */
     public static BigInteger expMod(BigInteger base, BigInteger exp, BigInteger mod) {
         return Builtins.expModInteger(base, exp, mod);
     }

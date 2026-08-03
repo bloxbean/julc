@@ -187,7 +187,7 @@ class LanguageVersionTest {
         @Test
         void v3_builtins_have_version_3() {
             assertEquals(3, DefaultFun.Bls12_381_G1_add.minLanguageVersion());
-            assertEquals(3, DefaultFun.ExpModInteger.minLanguageVersion()); // last V3 (code 87)
+            assertEquals(3, DefaultFun.ExpModInteger.minLanguageVersion()); // first Batch 6 tag (87)
         }
 
         @Test

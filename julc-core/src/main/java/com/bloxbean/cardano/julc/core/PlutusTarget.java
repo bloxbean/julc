@@ -3,9 +3,10 @@ package com.bloxbean.cardano.julc.core;
 /**
  * JuLC's compile target for generated scripts.
  * <p>
- * JuLC currently emits Plutus V3 scripts. The VM/evaluator can execute other
- * Plutus language versions when given external scripts, but compiler output is
- * intentionally pinned to this target.
+ * JuLC currently emits Plutus V3 scripts under the PV11 feature contract. The
+ * VM/evaluator can execute other language/protocol profiles when given external
+ * scripts, but the compiler target is intentionally fixed until configurable
+ * compiler targeting is implemented.
  */
 public enum PlutusTarget {
     V3("v3", "PlutusScriptV3", 1, 1, 0);

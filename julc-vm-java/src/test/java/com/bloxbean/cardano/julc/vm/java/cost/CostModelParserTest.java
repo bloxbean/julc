@@ -5,6 +5,7 @@ import com.bloxbean.cardano.julc.core.text.UplcParser;
 import com.bloxbean.cardano.julc.vm.BuiltinSemanticsVariant;
 import com.bloxbean.cardano.julc.vm.LedgerEvaluationTarget;
 import com.bloxbean.cardano.julc.vm.PlutusLanguage;
+import com.bloxbean.cardano.julc.vm.ProtocolFeatureRegistry;
 import com.bloxbean.cardano.julc.vm.java.JavaVmProvider;
 import org.junit.jupiter.api.Test;
 
@@ -254,7 +255,7 @@ class CostModelParserTest {
         for (var fun : DefaultFun.values()) {
             var defaultPair = defaultBcm.get(fun);
             if (defaultPair == null) continue;
-            // MultiIndexArray is JuLC-specific, not in PV11 flat array
+            // Future MultiIndexArray is not in the PV11 flat array.
             if (fun == DefaultFun.MultiIndexArray) continue;
 
             var parsedPair = parsedBcm.get(fun);
@@ -363,20 +364,29 @@ class CostModelParserTest {
     @Test
     void defaultCostModel_pv11BuiltinsHaveNonNullCosts() {
         var bcm = DefaultCostModel.defaultBuiltinCostModel(BuiltinSemanticsVariant.E);
-        DefaultFun[] pv11Builtins = {
-                DefaultFun.DropList, DefaultFun.LengthOfArray, DefaultFun.ListToArray,
+        DefaultFun[] releasedPv11Builtins = {
+                DefaultFun.ExpModInteger, DefaultFun.DropList,
+                DefaultFun.LengthOfArray, DefaultFun.ListToArray,
                 DefaultFun.IndexArray, DefaultFun.Bls12_381_G1_multiScalarMul,
                 DefaultFun.Bls12_381_G2_multiScalarMul, DefaultFun.InsertCoin,
                 DefaultFun.LookupCoin, DefaultFun.UnionValue, DefaultFun.ValueContains,
-                DefaultFun.ValueData, DefaultFun.UnValueData, DefaultFun.ScaleValue,
-                DefaultFun.MultiIndexArray
+                DefaultFun.ValueData, DefaultFun.UnValueData, DefaultFun.ScaleValue
         };
-        for (var fun : pv11Builtins) {
+        for (var fun : releasedPv11Builtins) {
             var pair = bcm.get(fun);
             assertNotNull(pair, "Missing cost pair for PV11 builtin: " + fun);
             assertNotNull(pair.cpu(), "Null CPU cost for " + fun);
             assertNotNull(pair.mem(), "Null mem cost for " + fun);
         }
+    }
+
+    @Test
+    void defaultCostModel_keepsFutureMultiIndexCostForExperimentalVmOnly() {
+        var bcm = DefaultCostModel.defaultBuiltinCostModel(BuiltinSemanticsVariant.E);
+        assertNotNull(bcm.get(DefaultFun.MultiIndexArray));
+        assertFalse(ProtocolFeatureRegistry.resolve(
+                        LedgerEvaluationTarget.pv11(PlutusLanguage.PLUTUS_V3))
+                .isBuiltinAvailable(DefaultFun.MultiIndexArray));
     }
 
     @Test

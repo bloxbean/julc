@@ -10,7 +10,8 @@ import java.util.List;
 import static com.bloxbean.cardano.julc.vm.java.builtins.BuiltinHelper.*;
 
 /**
- * Array operation builtins (PV11 Batch 6, CIP-156).
+ * Base Array operation builtins (PV11 Batch 6, CIP-138), plus the
+ * future/experimental CIP-156 multi-index operation.
  */
 public final class ArrayBuiltins {
 
@@ -57,6 +58,9 @@ public final class ArrayBuiltins {
     /**
      * MultiIndexArray: force=1, arity=2 → (array, indices_list)
      * Returns a list of elements at the given indices.
+     * <p>
+     * Experimental runtime support only: tag 101 is not ledger-valid in
+     * Plutus V3/PV11.
      */
     public static CekValue multiIndexArray(List<CekValue> args) {
         var ac = asArrayConst(args.get(0), "MultiIndexArray");

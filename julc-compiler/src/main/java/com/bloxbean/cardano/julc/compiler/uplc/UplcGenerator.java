@@ -22,6 +22,8 @@ import java.util.*;
  */
 public class UplcGenerator {
 
+    private static final int LAST_RELEASED_PV11_BUILTIN_TAG = DefaultFun.ScaleValue.flatCode();
+
     private final Deque<String> scope = new ArrayDeque<>();
 
     /** PIR term → source location (provided by PirGenerator when source maps are enabled). */
@@ -99,7 +101,7 @@ public class UplcGenerator {
 
             case PirTerm.Const(var value) -> Term.const_(value);
 
-            case PirTerm.Builtin(var fun) -> wrapForces(Term.builtin(fun), forceCount(fun));
+            case PirTerm.Builtin(var fun) -> generateBuiltin(fun);
 
             case PirTerm.Lam(var param, _, var body) -> {
                 scope.push(param);
@@ -498,6 +500,23 @@ public class UplcGenerator {
             // 0 Forces (monomorphic)
             default -> 0;
         };
+    }
+
+    /**
+     * Enforce the current compiler's Plutus V3/PV11 target at the final
+     * common lowering boundary. This catches direct PIR, public Builtins calls,
+     * library wrappers, and every JulcCompiler entry point.
+     */
+    private static Term generateBuiltin(DefaultFun fun) {
+        if (fun.flatCode() > LAST_RELEASED_PV11_BUILTIN_TAG) {
+            throw new CompilerException(
+                    "Cannot compile " + fun + " (FLAT tag " + fun.flatCode()
+                            + "): it is a future/unreleased "
+                            + "CIP-156 builtin and is not available in Plutus V3 at protocol "
+                            + "version 11. Use IndexArray repeatedly "
+                            + "for PV11, or wait for a compiler target that explicitly enables CIP-156.");
+        }
+        return wrapForces(Term.builtin(fun), forceCount(fun));
     }
 
     private static Term wrapForces(Term term, int count) {

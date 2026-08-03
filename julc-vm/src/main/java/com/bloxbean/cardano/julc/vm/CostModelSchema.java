@@ -1,6 +1,6 @@
 package com.bloxbean.cardano.julc.vm;
 
-/** Known flat cost-model schemas at the cardano-node 11.0.1 compatibility baseline. */
+/** Known flat cost-model schemas through PV11. */
 public enum CostModelSchema {
     PLUTUS_V1_LEGACY(166),
     PLUTUS_V1_PV11(332),
