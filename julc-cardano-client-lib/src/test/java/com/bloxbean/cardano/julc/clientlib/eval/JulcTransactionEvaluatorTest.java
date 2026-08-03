@@ -17,9 +17,15 @@ import com.bloxbean.cardano.julc.vm.EvalResult;
 import com.bloxbean.cardano.julc.vm.JulcVm;
 import com.bloxbean.cardano.julc.vm.PlutusLanguage;
 import com.bloxbean.cardano.julc.vm.java.cost.CostModelParser;
+import co.nstant.in.cbor.CborBuilder;
+import co.nstant.in.cbor.CborDecoder;
+import co.nstant.in.cbor.CborEncoder;
+import co.nstant.in.cbor.model.ByteString;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.math.BigInteger;
 import java.util.*;
 
@@ -433,6 +439,53 @@ class JulcTransactionEvaluatorTest {
 
         assertTrue(result.isSuccessful(), "Expected success but got: " + result.getResponse());
         assertEquals(1, result.getValue().size());
+    }
+
+    @Test
+    void evaluateTx_rejectsTaggedInnerSerialisedScriptFromSupplier() throws Exception {
+        String scriptAddr = buildScriptAddress(alwaysTrueHash);
+        String txHash = "ac".repeat(32);
+
+        Utxo inputUtxo = Utxo.builder()
+                .txHash(txHash)
+                .outputIndex(0)
+                .address(scriptAddr)
+                .amount(List.of(Amount.lovelace(BigInteger.valueOf(5_000_000))))
+                .build();
+
+        var redeemer = Redeemer.builder()
+                .tag(RedeemerTag.Spend)
+                .index(BigInteger.ZERO)
+                .data(new BigIntPlutusData(BigInteger.ZERO))
+                .exUnits(ExUnits.builder()
+                        .mem(BigInteger.ZERO)
+                        .steps(BigInteger.ZERO)
+                        .build())
+                .build();
+
+        var tx = Transaction.builder()
+                .body(TransactionBody.builder()
+                        .inputs(List.of(new TransactionInput(txHash, 0)))
+                        .outputs(List.of())
+                        .fee(BigInteger.valueOf(200_000))
+                        .build())
+                .witnessSet(TransactionWitnessSet.builder()
+                        .redeemers(List.of(redeemer))
+                        .build())
+                .build();
+
+        var taggedScript = PlutusV3Script.builder()
+                .cborHex(tagInnerSerialisedScript(alwaysTrueScript.getCborHex()))
+                .build();
+        ScriptSupplier scriptSupplier = hash -> alwaysTrueHash.equals(hash)
+                ? Optional.of(taggedScript)
+                : Optional.empty();
+
+        var result = createEvaluator(scriptSupplier).evaluateTx(tx.serialize(), Set.of(inputUtxo));
+
+        assertFalse(result.isSuccessful());
+        assertTrue(result.getResponse().contains("untagged definite-length bytestring"),
+                "Unexpected evaluator response: " + result.getResponse());
     }
 
     @Test
@@ -1059,6 +1112,27 @@ class JulcTransactionEvaluatorTest {
 
         return new JulcTransactionEvaluator(
                 utxoSupplier, protocolParamsSupplier, scriptSupplier);
+    }
+
+    private static String tagInnerSerialisedScript(String outerCborHex) {
+        try {
+            byte[] outer = HexFormat.of().parseHex(outerCborHex);
+            var outerItem = new CborDecoder(new ByteArrayInputStream(outer)).decodeNext();
+            byte[] inner = assertInstanceOf(ByteString.class, outerItem).getBytes();
+
+            byte[] tagged = new byte[inner.length + 2];
+            tagged[0] = (byte) 0xd8;
+            tagged[1] = 0x18;
+            System.arraycopy(inner, 0, tagged, 2, inner.length);
+
+            var encoded = new ByteArrayOutputStream();
+            new CborEncoder(encoded).encode(new CborBuilder()
+                    .add(tagged)
+                    .build());
+            return HexFormat.of().formatHex(encoded.toByteArray());
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     /**
