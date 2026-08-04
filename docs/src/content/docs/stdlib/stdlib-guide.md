@@ -1352,7 +1352,7 @@ for (TxOut out : outputs) {
 
 ### Cross-Library BytesData Parameter Bug
 
-When calling stdlib methods that take `BytesData`/`MapData` typed parameters from user code, pass `PlutusData` (not the specific subtype) to avoid type confusion at the UPLC boundary. See the project MEMORY.md for details.
+When calling stdlib methods that take `BytesData`/`MapData` typed parameters from user code, pass `PlutusData` (not the specific subtype) to avoid type confusion at the UPLC boundary. 
 
 ### Value.assetOf() Needs BData Arguments
 
