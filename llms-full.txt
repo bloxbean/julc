@@ -2,8 +2,8 @@
 
 > Single-file dump of the JuLC docsite, suitable for AI agent ingestion.
 
-julcVersion: 0.1.0-pre12
-Generated: 2026-05-17T08:09:51.448Z
+julcVersion: 0.1.0-pre16
+Generated: 2026-08-04T12:57:39.904Z
 Site: https://julc.dev
 Repo: https://github.com/bloxbean/julc
 Examples: https://github.com/bloxbean/julc-examples
@@ -22,6 +22,7 @@ Examples: https://github.com/bloxbean/julc-examples
 - [Guides → Source Maps — Runtime Error Location Reporting](https://julc.dev/guides/source-maps/)
 - [Standard Library → JuLC Standard Library Usage Guide](https://julc.dev/stdlib/stdlib-guide/)
 - [Reference → JuLC API Reference](https://julc.dev/reference/api-reference/)
+- [Reference → Release Notes](https://julc.dev/reference/release-notes/)
 - [Reference → JuLC Library Developer Guide](https://julc.dev/reference/library-developer-guide/)
 - [Reference → Examples](https://julc.dev/reference/examples/)
 - [Reference → JuLC Compiler Troubleshooting Guide](https://julc.dev/reference/troubleshooting/)
@@ -341,7 +342,7 @@ Build artifact: `build/classes/META-INF/plutus/MyValidator.plutus.json` — the 
 - **Local variables** declared with `var` or explicit type, **must be initialized at declaration**, and **are immutable after assignment** (single-assignment).
 - **Method calls** to `@OnchainLibrary` static methods, stdlib (`ContextsLib`, `ListsLib`, etc.), instance methods on `JulcList`/`JulcMap`/`String`/`byte[]`/`BigInteger`, and `Builtins.*` (Plutus builtins).
 - **Lambdas as HOF arguments** to `list.map(...)`, `list.filter(...)`, `list.any(...)`, `list.all(...)`, `list.find(...)`, `ListsLib.foldl(...)`. Must be passed inline; cannot be stored in a variable and called via `.apply()`.
-- **Annotations**: `@SpendingValidator`, `@MintingValidator` (or legacy `@MintingPolicy`), `@CertifyingValidator`, `@WithdrawValidator`, `@VotingValidator`, `@ProposingValidator` on the class; `@Entrypoint` on the entrypoint method; `@Param` on `static` fields for parameterized validators; `@OnchainLibrary` on library classes; `@NewType` on single-field record wrappers.
+- **Annotations**: `@SpendingValidator`, `@MintingValidator`, `@CertifyingValidator`, `@WithdrawValidator`, `@VotingValidator`, `@ProposingValidator` on the class; `@Entrypoint` on the entrypoint method; `@Param` on `static` fields for parameterized validators; `@OnchainLibrary` on library classes; `@NewType` on single-field record wrappers.
 - **`BigInteger`** for integers (NOT `int`/`long` — those are accepted but converted; prefer `BigInteger` for clarity).
 - **`byte[]`** for bytestrings.
 - **`String`** is treated as `byte[]` UTF-8 in most contexts; use sparingly.
@@ -369,12 +370,12 @@ Build artifact: `build/classes/META-INF/plutus/MyValidator.plutus.json` — the 
 
 ---
 
-#### 4. The `@Validator` family — entrypoint shapes
+#### 4. Validator annotation entrypoint shapes
 
 | Annotation | Entrypoint signature | Purpose |
 |---|---|---|
 | `@SpendingValidator` | `static boolean validate(<Redeemer> r, ScriptContext ctx)` **or** `static boolean validate(<Datum> d, <Redeemer> r, ScriptContext ctx)` | Validate spending a UTxO; use the 2-param form when the script does not need a datum. |
-| `@MintingValidator` (or `@MintingPolicy`) | `static boolean validate(<Redeemer> r, ScriptContext ctx)` | Validate minting/burning. |
+| `@MintingValidator` | `static boolean validate(<Redeemer> r, ScriptContext ctx)` | Validate minting/burning. |
 | `@CertifyingValidator` | `static boolean validate(<Redeemer> r, ScriptContext ctx)` | Validate stake cert actions. |
 | `@WithdrawValidator` | `static boolean validate(<Redeemer> r, ScriptContext ctx)` | Validate reward withdrawal. |
 | `@VotingValidator` | `static boolean validate(<Redeemer> r, ScriptContext ctx)` | Conway voting validator. |
@@ -604,7 +605,7 @@ All imports are from `com.bloxbean.cardano.julc.stdlib.lib.*`.
 `txOutAddress(out)`, `txOutValue(out)`, `txOutDatum(out)`, `outputsAt(outputs, addr)`, `countOutputsAt(outputs, addr)`, `uniqueOutputAt(outputs, addr)`, `outputsWithToken(outputs, policy, token)`, `valueHasToken(value, policy, token)`, `lovelacePaidTo(outputs, addr)`, `paidAtLeast(outputs, addr, amount)`, `getInlineDatum(out)`, `resolveDatum(txInfo, out)`. **Prefer field access**: `out.address()`, `out.value()`, `out.datum()`.
 
 ##### MathLib
-`abs(n)`, `max(a, b)`, `min(a, b)`, `divMod(a, b)` → `Tuple2`, `quotRem(a, b)` → `Tuple2`, `pow(b, e)`, `sign(n)`, `expMod(b, e, m)`.
+`abs(n)`, `max(a, b)`, `min(a, b)`, `floorDiv(a, b)`, `floorMod(a, b)`, `divMod(a, b)` → `Tuple2`, `quotRem(a, b)` → `Tuple2`, `pow(b, e)`, `sign(n)`, `expMod(b, e, m)` (PV11 only).
 
 ##### IntervalLib
 `between(lo, hi)`, `never()`, `isEmpty(interval)`, `finiteUpperBound(interval)`, `finiteLowerBound(interval)`, `contains(interval, point)`.
@@ -622,7 +623,8 @@ All imports are from `com.bloxbean.cardano.julc.stdlib.lib.*`.
 `credentialHash(addr)` → `byte[]`, `isScriptAddress(addr)`, `isPubKeyAddress(addr)`, `paymentCredential(addr)` → `Credential`.
 
 ##### BlsLib (Plutus V3)
-G1/G2 add/scale/neg, pairing, MSM, and `bls12_381_finalVerify`.
+G1/G2 add/scale/neg, pairing, and `bls12_381_finalVerify` are available on
+PV10+; multi-scalar multiplication (MSM) requires PV11.
 
 ##### NativeValueLib (PV11)
 Native Mary-era `Value` operations.
@@ -680,8 +682,8 @@ Plutus builtins exposed by the Java API include `equalsByteString`, `equalsData`
 - `byte[] millerLoop(byte[] g1, byte[] g2)` — Compute the Miller loop pairing of a G1 and G2 element.
 - `byte[] mulMlResult(byte[] a, byte[] b)` — Multiply two Miller loop results.
 - `boolean finalVerify(byte[] a, byte[] b)` — Final verification of two Miller loop results. Returns true if the pairing check passes.
-- `byte[] g1MultiScalarMul(PlutusData scalars, PlutusData points)` — Multi-scalar multiplication on G1. Takes a list of scalars and a list of G1 elements.
-- `byte[] g2MultiScalarMul(PlutusData scalars, PlutusData points)` — Multi-scalar multiplication on G2. Takes a list of scalars and a list of G2 elements.
+- `byte[] g1MultiScalarMul(PlutusData scalars, PlutusData points)` — Multi-scalar multiplication on G1. Takes scalar and point lists. PV11 only (CIP-133).
+- `byte[] g2MultiScalarMul(PlutusData scalars, PlutusData points)` — Multi-scalar multiplication on G2. Takes scalar and point lists. PV11 only (CIP-133).
 
 ###### ByteStringLib
 
@@ -693,7 +695,7 @@ Plutus builtins exposed by the Java API include `equalsByteString`, `equalsData`
 - `long length(byte[] bs)` — Get the length of a bytestring.
 - `byte[] drop(byte[] bs, long n)` — Drop the first n bytes from a bytestring.
 - `byte[] take(byte[] bs, long n)` — Take the first n bytes from a bytestring.
-- `byte[] append(byte[] a, byte[] b)` — Concatenate two bytestrings.
+- `byte[] append(byte[] a, byte[] b)` — Concatenate two bytestrings. For 3+ parts use `Builtins.concat(a, b, c, ...)`.
 - `byte[] empty()` — An empty bytestring.
 - `byte[] zeros(long n)` — Create a bytestring of n zero bytes.
 - `boolean equals(byte[] a, byte[] b)` — Compare two bytestrings for equality.
@@ -815,8 +817,10 @@ Plutus builtins exposed by the Java API include `equalsByteString`, `equalsData`
 - `BigInteger min(BigInteger a, BigInteger b)` — Returns the minimum of two integers.
 - `Tuple2<BigInteger, BigInteger> divMod(BigInteger a, BigInteger b)` — Returns division and modulo as a Tuple2.
 - `Tuple2<BigInteger, BigInteger> quotRem(BigInteger a, BigInteger b)` — Returns quotient and remainder as a Tuple2.
+- `BigInteger floorDiv(BigInteger a, BigInteger b)` — Returns floor division, rounding toward negative infinity.
+- `BigInteger floorMod(BigInteger a, BigInteger b)` — Returns floor modulo, with the same sign as the divisor.
 - `BigInteger pow(BigInteger base, BigInteger exp)` — Returns base raised to the power of exp.
-- `BigInteger expMod(BigInteger base, BigInteger exp, BigInteger mod)` — Returns (base^exp) mod modulus using the builtin ExpModInteger operation.
+- `BigInteger expMod(BigInteger base, BigInteger exp, BigInteger mod)` — Returns (base^exp) mod modulus using the PV11 Batch 6 ExpModInteger operation (CIP-109).
 - `BigInteger sign(BigInteger x)` — Returns -1 if negative, 0 if zero, 1 if positive.
 
 ###### NativeValueLib
@@ -870,6 +874,8 @@ Plutus builtins exposed by the Java API include `equalsByteString`, `equalsData`
 - `Value subtract(Value a, Value b)` — Subtracts value b from value a: add(a, negate(b)).
 - `BigInteger countTokensWithQty(Value mint, byte[] policyId, BigInteger expectedQty)` — Count tokens with a specific quantity under a specific policy in a Value/mint. E.g., count how many tokens were minted with qty=1 under a given policy.
 - `byte[] findTokenName(Value mint, byte[] policyId, BigInteger expectedQty)` — Find the first token name with a specific quantity under a specific policy. Returns empty bytestring if not found.
+- `byte[] refBytes(TxOutRef ref)` — Seed bytes uniquely identifying a TxOutRef: `txId ++ integerToByteString(true, 2, index)`.
+- `byte[] uniqueTokenName(TxOutRef ref)` — Canonical token name for a spent TxOutRef: `blake2b_256(refBytes(ref))`.
 
 <!-- catalog:stdlib-end -->
 
@@ -2151,9 +2157,8 @@ specific annotations:
 
 All annotations live in `com.bloxbean.cardano.julc.stdlib.annotation`.
 
-> **Deprecation note**: The old `@Validator` and `@MintingPolicy` annotations
-> still compile but are deprecated. Use `@SpendingValidator` and
-> `@MintingValidator` for all new code.
+> **Migration note**: The old `@Validator` and `@MintingPolicy` aliases are no
+> longer supported. Use `@SpendingValidator` and `@MintingValidator`.
 
 ##### 4.1 Multi-Validators (@MultiValidator)
 
@@ -2764,7 +2769,7 @@ when your validator references them.
 | `ValuesLib` | `lovelaceOf`, `assetOf`, `containsPolicy`, `geq`, `geqMultiAsset`, `leq`, `eq`, `isZero`, `singleton`, `negate`, `flatten`, `flattenTyped`, `add`, `subtract`, `countTokensWithQty`, `findTokenName` |
 | `MapLib` | `lookup`, `member`, `insert`, `delete`, `keys`, `values`, `toList`, `fromList`, `size` |
 | `OutputLib` | `txOutAddress`, `txOutValue`, `txOutDatum`, `outputsAt`, `countOutputsAt`, `uniqueOutputAt`, `outputsWithToken`, `valueHasToken`, `lovelacePaidTo`, `paidAtLeast`, `getInlineDatum`, `resolveDatum`, `findOutputWithToken`, `findInputWithToken` |
-| `MathLib` | `abs`, `max`, `min`, `divMod`, `quotRem`, `pow`, `sign`, `expMod` |
+| `MathLib` | `abs`, `max`, `min`, `floorDiv`, `floorMod`, `divMod`, `quotRem`, `pow`, `sign`, `expMod` (PV11) |
 | `IntervalLib` | `contains`, `always`, `after`, `before`, `between`, `never`, `isEmpty`, `finiteUpperBound`, `finiteLowerBound` |
 | `CryptoLib` | `sha2_256`, `blake2b_256`, `sha3_256`, `blake2b_224`, `keccak_256`, `verifyEd25519Signature`, `verifyEcdsaSecp256k1`, `verifySchnorrSecp256k1`, `ripemd_160` (all hash functions also available via `Builtins.*`) |
 | `ByteStringLib` | `at`, `cons`, `slice`, `length`, `drop`, `take`, `append`, `empty`, `zeros`, `equals`, `lessThan`, `lessThanEquals`, `integerToByteString`, `byteStringToInteger`, `encodeUtf8`, `decodeUtf8`, `serialiseData`, `hexNibble`, `toHex`, `intToDecimalString`, `utf8ToInteger` |
@@ -2984,7 +2989,7 @@ import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
 
 // With stdlib support (recommended)
 var stdlib = StdlibRegistry.defaultRegistry();
-var compiler = new JulcCompiler(stdlib::lookup);
+var compiler = new JulcCompiler(stdlib);
 
 CompileResult result = compiler.compile(javaSource);
 if (result.hasErrors()) {
@@ -3040,7 +3045,7 @@ var program = ValidatorTest.compile(javaSource);
 
 // Compile with stdlib
 var stdlib = StdlibRegistry.defaultRegistry();
-var program = ValidatorTest.compile(javaSource, stdlib::lookup);
+var program = ValidatorTest.compile(javaSource, stdlib);
 
 // Compile a validator class with auto-discovered dependencies
 var result = ValidatorTest.compileValidator(MyValidator.class);
@@ -3354,7 +3359,7 @@ following limitations apply:
   `PlutusData`, records, sealed interfaces, `List<T>`, `Map<K,V>`, `Optional<T>`,
   `Tuple2<A,B>`, `Tuple3<A,B,C>`, `JulcArray<T>` *(PV11+)*.
 - **No float/double**: Floating-point types do not exist on-chain.
-- **No Java arrays** (except `byte[]`): Use `JulcList<T>` for collections (or `List<T>`), or `JulcArray<T>` for O(1) random access on PV11+ networks (CIP-156). `byte[]` literal arrays (`new byte[]{0x48, 0x45}`) and `"TOKEN".getBytes()` are supported as compile-time constants. `JulcList<T>` is preferred over `List<T>` because it provides IDE autocomplete for on-chain methods (`.contains()`, `.size()`, `.get()`, `.filter()`, etc.).
+- **No Java arrays** (except `byte[]`): Use `JulcList<T>` for collections (or `List<T>`), or `JulcArray<T>` for O(1) random access on PV11+ networks (CIP-138). `byte[]` literal arrays (`new byte[]{0x48, 0x45}`) and `"TOKEN".getBytes()` are supported as compile-time constants. `JulcList<T>` is preferred over `List<T>` because it provides IDE autocomplete for on-chain methods (`.contains()`, `.size()`, `.get()`, `.filter()`, etc.).
 - **No class inheritance**: Only records and sealed interfaces are supported for
   data types.
 
@@ -4944,9 +4949,9 @@ Use `import java.util.Optional` or bare `Optional` in your validator code.
 `Tuple2<A,B>` and `Tuple3<A,B,C>` provide generic tuples with auto-unwrapping field access based on type arguments.
 
 ```java
-Tuple2<BigInteger, byte[]> result = MathLib.divMod(a, b);
+Tuple2<BigInteger, BigInteger> result = MathLib.divMod(a, b);
 BigInteger quotient = result.first();   // auto-generates UnIData
-byte[] remainder = result.second();     // auto-generates UnBData
+BigInteger remainder = result.second(); // auto-generates UnIData
 
 // Construction auto-wraps
 var t = new Tuple2<BigInteger, BigInteger>(val1, val2);  // auto-wraps via IData
@@ -6427,7 +6432,7 @@ Assume `SignedMintPolicy.java` is your minting policy in `src/main/java`:
 
 ```java
 // src/main/java/com/example/SignedMintPolicy.java
-@MintingPolicy
+@MintingValidator
 class SignedMintPolicy {
     @Entrypoint
     static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -7951,13 +7956,13 @@ The JuLC standard library provides 13 on-chain libraries in the `com.bloxbean.ca
 | **ValuesLib** | `com.bloxbean.cardano.julc.stdlib.lib.ValuesLib` | Multi-asset Value comparison, arithmetic, and extraction |
 | **MapLib** | `com.bloxbean.cardano.julc.stdlib.lib.MapLib` | Association list (map) lookup, insert, delete, keys/values |
 | **OutputLib** | `com.bloxbean.cardano.julc.stdlib.lib.OutputLib` | Output filtering by address/token, lovelace summation, datum extraction |
-| **MathLib** | `com.bloxbean.cardano.julc.stdlib.lib.MathLib` | abs, max, min, pow, divMod, quotRem, expMod, sign |
+| **MathLib** | `com.bloxbean.cardano.julc.stdlib.lib.MathLib` | abs, max, min, pow, floorDiv, floorMod, divMod, quotRem, expMod (PV11), sign |
 | **IntervalLib** | `com.bloxbean.cardano.julc.stdlib.lib.IntervalLib` | Time interval construction, containment, bound extraction |
 | **CryptoLib** | `com.bloxbean.cardano.julc.stdlib.lib.CryptoLib` | Hash functions and signature verification |
 | **ByteStringLib** | `com.bloxbean.cardano.julc.stdlib.lib.ByteStringLib` | ByteString slicing, comparison, encoding, serialization |
 | **BitwiseLib** | `com.bloxbean.cardano.julc.stdlib.lib.BitwiseLib` | Bitwise AND/OR/XOR, shift, rotate, bit read/write |
 | **AddressLib** | `com.bloxbean.cardano.julc.stdlib.lib.AddressLib` | Credential extraction, address type checks |
-| **BlsLib** | `com.bloxbean.cardano.julc.stdlib.lib.BlsLib` | BLS12-381 G1/G2/pairing/MSM operations |
+| **BlsLib** | `com.bloxbean.cardano.julc.stdlib.lib.BlsLib` | BLS12-381 G1/G2/pairing operations; MSM requires PV11 |
 | **NativeValueLib** *(PV11)* | `com.bloxbean.cardano.julc.stdlib.lib.NativeValueLib` | Native MaryEra Value insert, lookup, union, contains, scale |
 
 ---
@@ -8041,6 +8046,8 @@ The JuLC standard library provides 13 on-chain libraries in the `com.bloxbean.ca
 | `subtract(a, b)` | Subtract value b from value a |
 | `countTokensWithQty(mint, policy, qty)` | Count tokens with exact quantity under policy |
 | `findTokenName(mint, policy, qty)` | Find token name with exact quantity under policy |
+| `refBytes(ref)` | Seed bytes for a TxOutRef: `txId ++ 2-byte index` |
+| `uniqueTokenName(ref)` | Collision-resistant token name: `blake2b_256(refBytes(ref))` |
 
 ##### MapLib
 
@@ -8084,9 +8091,13 @@ The JuLC standard library provides 13 on-chain libraries in the `com.bloxbean.ca
 | `min(a, b)` | Minimum of two integers |
 | `pow(base, exp)` | Exponentiation |
 | `sign(x)` | Sign: -1, 0, or 1 |
-| `divMod(a, b)` | Division and modulo as Tuple2 |
+| `floorDiv(a, b)` | Floor division |
+| `floorMod(a, b)` | Floor modulo |
+| `divMod(a, b)` | Floor division and modulo as Tuple2 |
 | `quotRem(a, b)` | Quotient and remainder as Tuple2 |
-| `expMod(base, exp, mod)` | Modular exponentiation |
+| `expMod(base, exp, mod)` | Modular exponentiation (PV11 only) |
+
+Use `MathLib.floorDiv` and `MathLib.floorMod` for `BigInteger` floor division. `java.lang.Math.floorDiv` and `Math.floorMod` are valid for normal Java `int`/`long` calls, but the JDK does not provide `BigInteger` overloads for those methods.
 
 ##### IntervalLib
 
@@ -8306,6 +8317,23 @@ class ListExample {
 }
 ```
 
+##### Building Lists
+
+`JulcList.of(...)` builds a fixed-size list from any number of elements. Elements are auto-wrapped to Data (`BigInteger` → IntData, `byte[]` → BytesData, `boolean` → Constr, `String` → UTF-8 BytesData, `PlutusData` → as-is). Call `.toPlutusData()` when a `PlutusData` list is needed:
+
+```java
+// Before: manual mkCons chain
+PlutusData inputs = Builtins.listData(
+        Builtins.mkCons(Builtins.iData(pkh),
+                Builtins.mkCons(Builtins.iData(recipient), Builtins.mkNilData())));
+
+// After: JulcList.of with auto-wrapping
+PlutusData inputs = JulcList.of(pkh, recipient).toPlutusData();
+
+// Works for any arity — e.g. ZK public inputs
+PlutusData publicInputs = JulcList.of(pub0, pub1, pub2, pub3, pub4).toPlutusData();
+```
+
 ##### Search Operations
 
 ```java
@@ -8517,6 +8545,34 @@ class TokenLeakCheck {
 ```
 
 > **Tip:** Use `flattenTyped()` instead of `flatten()` whenever you need to inspect individual assets. The raw `flatten()` returns `PlutusData.ListData` requiring manual `Builtins.constrFields()` + `headList`/`tailList` destructuring.
+
+##### Unique Token Names
+
+One-shot minting policies and NFT state threads commonly derive a token name from
+a `TxOutRef`. Hashing the reference produces a collision-resistant, deterministic
+32-byte name (the maximum asset-name length). Uniqueness in practice also requires
+the minting policy to enforce that the seed reference is consumed:
+
+```java
+@MintingValidator
+class OneShotMint {
+    @Entrypoint
+    static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+        TxOutRef seed = /* the UTxO this policy requires to be spent */;
+        byte[] expectedName = ValuesLib.uniqueTokenName(seed);
+        // ... check the minted token name equals expectedName
+        return true;
+    }
+}
+```
+
+The canonical derivation is `blake2b_256(txId ++ integerToByteString(true, 2, index))`. For a different hash algorithm, apply it to the seed bytes yourself:
+
+```java
+byte[] name = CryptoLib.sha2_256(ValuesLib.refBytes(seed));
+```
+
+The index is encoded as fixed 2-byte big-endian so index 0 still contributes bytes (a minimal-width encoding would drop it) and the result is identical on-chain and off-chain.
 
 ---
 
@@ -8748,7 +8804,12 @@ class MathExample {
 
 ##### Division and Modular Arithmetic
 
-`divMod` and `quotRem` return `Tuple2<BigInteger, BigInteger>`. Use `.first()` and `.second()` to access results.
+`divMod` returns floor division and modulo. `quotRem` returns Java-style truncating quotient and remainder. Both return `Tuple2<BigInteger, BigInteger>`; use `.first()` and `.second()` to access results.
+
+Compatibility note: `MathLib.divMod` is floor-based. Code that needs Java-style truncating division should use `MathLib.quotRem`.
+
+> **PV11 only:** `MathLib.expMod` lowers to the Batch 6 `ExpModInteger`
+> builtin. The other division and modulo helpers in this section do not require PV11.
 
 ```java
 import com.bloxbean.cardano.julc.core.types.Tuple2;
@@ -8760,7 +8821,7 @@ class DivModExample {
         BigInteger a = BigInteger.valueOf(17);
         BigInteger b = BigInteger.valueOf(5);
 
-        // divMod returns (quotient, remainder)
+        // divMod returns (floor division, floor modulo)
         Tuple2<BigInteger, BigInteger> dm = MathLib.divMod(a, b);
         BigInteger quotient = dm.first();    // 3
         BigInteger remainder = dm.second();  // 2
@@ -8947,6 +9008,8 @@ class ByteStringExample {
         // Construction
         byte[] withPrefix = ByteStringLib.cons(0xFF, data);
         byte[] combined = ByteStringLib.append(firstTwo, lastThree);
+        // Concatenate 3+ parts without nesting append calls
+        byte[] joined = Builtins.concat(firstTwo, lastThree, withPrefix);
         byte[] emptyBs = ByteStringLib.empty();
         byte[] zeroes = ByteStringLib.zeros(32);
 
@@ -9121,7 +9184,9 @@ class DestinationCheckExample {
 
 #### BlsLib -- BLS12-381 Curve Operations
 
-`BlsLib` wraps the Plutus V3 BLS12-381 builtins for elliptic curve cryptography. All methods are `static` and available on PV10+.
+`BlsLib` wraps the Plutus V3 BLS12-381 builtins for elliptic curve cryptography.
+All methods are `static`. Base curve and pairing methods are available on PV10+;
+`g1MultiScalarMul` and `g2MultiScalarMul` require PV11.
 
 ##### Quick Reference
 
@@ -9144,8 +9209,8 @@ class DestinationCheckExample {
 | `millerLoop(g1, g2)` | Compute Miller loop pairing |
 | `mulMlResult(a, b)` | Multiply two Miller loop results |
 | `finalVerify(a, b)` | Final pairing verification |
-| `g1MultiScalarMul(scalars, points)` | Multi-scalar multiplication on G1 |
-| `g2MultiScalarMul(scalars, points)` | Multi-scalar multiplication on G2 |
+| `g1MultiScalarMul(scalars, points)` | Multi-scalar multiplication on G1 (PV11 only) |
+| `g2MultiScalarMul(scalars, points)` | Multi-scalar multiplication on G2 (PV11 only) |
 
 ##### Usage
 
@@ -9228,7 +9293,7 @@ for (TxOut out : outputs) {
 
 ##### Cross-Library BytesData Parameter Bug
 
-When calling stdlib methods that take `BytesData`/`MapData` typed parameters from user code, pass `PlutusData` (not the specific subtype) to avoid type confusion at the UPLC boundary. See the project MEMORY.md for details.
+When calling stdlib methods that take `BytesData`/`MapData` typed parameters from user code, pass `PlutusData` (not the specific subtype) to avoid type confusion at the UPLC boundary. 
 
 ##### Value.assetOf() Needs BData Arguments
 
@@ -9329,11 +9394,19 @@ JulcList<PlutusData> mapped = outputs.map(out -> transform(out));
 
 The following features require protocol version 11 or later and will not work on PV10 networks:
 
+- **Builtins.expModInteger()** — Modular exponentiation (tag 87, CIP-109)
+- **Builtins.dropList()** — Drop the first n elements from a list (tag 88, CIP-132)
+- **JulcArray\<T\>** — Immutable arrays with O(1) random access (tags 89-91, CIP-138)
+- **BLS multi-scalar multiplication** — G1/G2 MSM operations (tags 92-93, CIP-133)
 - **NativeValueLib** — Native MaryEra Value operations (CIP-153)
-- **JulcArray\<T\>** — Immutable arrays with O(1) random access (CIP-156)
-- **Builtins.dropList()** — Drop first n elements from a list (CIP-158)
 
-These are experimental APIs that may evolve as PV11 stabilizes. BlsLib and all other existing stdlib libraries work on PV10+.
+Together these are the exact released PV11 Batch 6 set, tags 87-100.
+`Builtins.multiIndexArray` (tag 101, CIP-156) is a
+future/unreleased operation: the API remains visible for forward development,
+but the current compiler rejects it and its VM implementation is not
+ledger-valid at PV11. The retained experimental placeholder uses the legacy
+`(array, indices)` order rather than CIP-156's proposed indices-first signature,
+so it must not be treated as a conformant preview.
 
 ---
 
@@ -9368,7 +9441,7 @@ This document covers all supported Java operations in the JuLC compiler, the sta
 | `@NewType` records | Underlying type | Zero-cost alias (identity on-chain) |
 | `PubKeyHash`, `PolicyId`, `TokenName`, `TxId`, `ScriptHash`, `ValidatorHash`, `DatumHash` | ByteString | Ledger hash types |
 | `Value` | Map(Pair) | Named RecordType with instance methods |
-| `JulcArray<T>` *(PV11)* | BuiltinArray | O(1) random access array (CIP-156). PV11+ only |
+| `JulcArray<T>` *(PV11)* | BuiltinArray | O(1) random access array (CIP-138). PV11+ only |
 
 ##### JulcList and JulcMap
 
@@ -9381,7 +9454,7 @@ JulcMap<Credential, BigInteger> withdrawals = txInfo.withdrawals();
 
 ##### JulcArray (PV11)
 
-> **Protocol Version 11+ only.** Arrays use CIP-156 builtins and are not available on PV10 networks.
+> **Protocol Version 11+ only.** Base Array operations use CIP-138 builtins and are not available on PV10 networks.
 
 `JulcArray<T>` is an immutable array interface providing O(1) random access on-chain. Create from a list via `list.toArray()` or `JulcArray.fromList(list)`.
 
@@ -9394,14 +9467,21 @@ long len = arr.length();                         // LengthOfArray builtin
 
 Off-chain: backed by `JulcArrayImpl`, wrapping `java.util.List` with O(1) index access.
 
+`Builtins.multiIndexArray` (tag 101, CIP-156) is a separate future/unreleased
+operation. It is not valid under Plutus V3/PV11, and the current compiler
+rejects it. Its retained experimental placeholder uses the legacy
+`(array, indices)` order rather than CIP-156's proposed indices-first signature
+and is not a conformant preview. See the
+[release notes](/reference/release-notes/) for migration guidance.
+
 ##### Tuple2 and Tuple3
 
 Generic tuples with auto-unwrapping field access based on type arguments.
 
 ```java
-Tuple2<BigInteger, byte[]> result = MathLib.divMod(a, b);
+Tuple2<BigInteger, BigInteger> result = MathLib.divMod(a, b);
 BigInteger quotient = result.first();   // auto-generates UnIData
-byte[] remainder = result.second();     // auto-generates UnBData
+BigInteger remainder = result.second(); // auto-generates UnIData
 
 // Construction auto-wraps
 var t = new Tuple2<BigInteger, BigInteger>(val1, val2);  // auto-wraps via IData
@@ -9468,7 +9548,7 @@ var items2 = PlutusData.cast(data, JulcList.class);                 // element t
 | `+` | `b1 + b2` | `AppendByteString` | For `byte[]` operands |
 | `-` | `a - b` | `SubtractInteger` | |
 | `*` | `a * b` | `MultiplyInteger` | |
-| `/` | `a / b` | `DivideInteger` | |
+| `/` | `a / b` | `QuotientInteger` | Truncates toward zero, matching Java |
 | `%` | `a % b` | `RemainderInteger` | |
 
 The `+` operator is type-aware: the compiler infers the operand type and dispatches to the correct builtin.
@@ -9704,7 +9784,7 @@ boolean hasSigner = ctx.txInfo().signatories().contains(datum.beneficiary());
 | `.add(other)` | `BigInteger` | `AddInteger` |
 | `.subtract(other)` | `BigInteger` | `SubtractInteger` |
 | `.multiply(other)` | `BigInteger` | `MultiplyInteger` |
-| `.divide(other)` | `BigInteger` | `DivideInteger` |
+| `.divide(other)` | `BigInteger` | `QuotientInteger` |
 | `.remainder(other)` | `BigInteger` | `RemainderInteger` |
 | `.mod(other)` | `BigInteger` | `ModInteger` |
 | `.signum()` | `BigInteger` | `IfThenElse` chain |
@@ -9917,9 +9997,13 @@ Import from `com.bloxbean.cardano.julc.stdlib.lib.*` in validators. See [Standar
 | `min(a, b)` | Integer, Integer | Minimum |
 | `pow(base, exp)` | Integer, Integer | Exponentiation |
 | `sign(x)` | Integer | Sign (-1, 0, or 1) |
-| `divMod(a, b)` | Integer, Integer | Returns Tuple2(quotient, remainder) |
+| `floorDiv(a, b)` | Integer, Integer | Floor division |
+| `floorMod(a, b)` | Integer, Integer | Floor modulo |
+| `divMod(a, b)` | Integer, Integer | Returns Tuple2(floor division, floor modulo) |
 | `quotRem(a, b)` | Integer, Integer | Returns Tuple2(quotient, remainder) |
-| `expMod(base, exp, mod)` | Integer, Integer, Integer | Modular exponentiation |
+| `expMod(base, exp, mod)` | Integer, Integer, Integer | Modular exponentiation (PV11 only) |
+
+Use `MathLib.floorDiv` and `MathLib.floorMod` for `BigInteger` floor division. `java.lang.Math.floorDiv` and `Math.floorMod` are valid for normal Java `int`/`long` calls, but the JDK does not provide `BigInteger` overloads for those methods.
 
 ##### IntervalLib
 
@@ -9993,7 +10077,10 @@ Note: `sha2_256`, `sha3_256`, `blake2b_256`, `blake2b_224`, `keccak_256`, and `v
 
 ##### BlsLib
 
-BLS12-381 elliptic curve operations. Available on PV10+. See [Standard Library Guide](/stdlib/stdlib-guide/#blslib----bls12-381-curve-operations) for full documentation.
+BLS12-381 elliptic curve operations. Base curve and pairing methods are available
+on PV10+; multi-scalar multiplication requires PV11. See
+[Standard Library Guide](/stdlib/stdlib-guide/#blslib----bls12-381-curve-operations)
+for full documentation.
 
 | Method | Args | Description |
 |--------|------|-------------|
@@ -10007,8 +10094,8 @@ BLS12-381 elliptic curve operations. Available on PV10+. See [Standard Library G
 | `millerLoop(g1, g2)` | G1, G2 | Compute Miller loop pairing |
 | `mulMlResult(a, b)` | ML, ML | Multiply two Miller loop results |
 | `finalVerify(a, b)` | ML, ML | Final pairing verification |
-| `g1MultiScalarMul(scalars, points)` | List, List | Multi-scalar multiplication on G1 |
-| `g2MultiScalarMul(scalars, points)` | List, List | Multi-scalar multiplication on G2 |
+| `g1MultiScalarMul(scalars, points)` | List, List | Multi-scalar multiplication on G1 (PV11 only) |
+| `g2MultiScalarMul(scalars, points)` | List, List | Multi-scalar multiplication on G2 (PV11 only) |
 
 ##### NativeValueLib (PV11)
 
@@ -10126,6 +10213,47 @@ class VestingValidator {
 
 ---
 
+## Release Notes
+
+Source: https://julc.dev/reference/release-notes/
+
+> JuLC release notes and migration guidance
+
+#### Upcoming release: PV11 builtin contract correction
+
+JuLC's current compiler targets the Plutus V3/PV11 feature set. This contract
+was verified against Plutus 1.63.0.0
+(`f92b7d7d82622a26caf456a6be33859f697e2cfc`), as shipped by cardano-node 11.0.1.
+
+The released PV11 Batch 6 is exactly:
+
+| Tags | Builtins | Specification |
+|---|---|---|
+| 87 | `ExpModInteger` | CIP-109 |
+| 88 | `DropList` | CIP-132 |
+| 89-91 | `LengthOfArray`, `ListToArray`, `IndexArray` | CIP-138 |
+| 92-93 | BLS12-381 G1/G2 multi-scalar multiplication | CIP-133 |
+| 94-100 | Native MaryEraValue operations | CIP-153 |
+
+##### `multiIndexArray` migration warning
+
+Earlier JuLC previews exposed `Builtins.multiIndexArray` as if it were a PV11
+builtin and could generate FLAT tag 101. Tag 101 is the future CIP-156 operation;
+it is not part of PV11, and scripts containing it are not valid for that target.
+
+The current compiler now rejects `multiIndexArray` with a compile-time diagnostic.
+Recompile affected scripts and replace the call with repeated `IndexArray`
+operations (for typed arrays, repeated `array.get(index)` calls). There is no
+automatic bytecode migration for an already-generated tag-101 script.
+
+The tag remains in JuLC's AST/FLAT support and Java VM for forward-development
+experiments only. That experimental implementation does not make it ledger-valid
+for PV11. It also retains JuLC's legacy `(array, indices)` argument order rather
+than CIP-156's proposed indices-first signature, so it is not a conformant preview
+of the future builtin.
+
+---
+
 ## JuLC Library Developer Guide
 
 Source: https://julc.dev/reference/library-developer-guide/
@@ -10178,6 +10306,8 @@ public @interface OnchainLibrary {
 
 A library class must:
 - Be annotated with `@OnchainLibrary`.
+- Be a top-level class. Nested `@OnchainLibrary` classes are not supported by source discovery or JAR packaging.
+- Declare a package, and keep the source file under the matching package path.
 - Contain only `public static` methods.
 - Follow the supported Java subset (see Section 2.5 for details).
 
@@ -10559,6 +10689,7 @@ com/example/mylib/HelperLib.java
 ```
 
 This manifest enables reliable source discovery from both file-system directories and JAR archives.
+Each entry's path is also the library identity used by consumers: `com/example/mylib/TokenUtils.java` maps to `com.example.mylib.TokenUtils`. The declared package and top-level class name must match that path. The official Gradle plugin validates this and fails the build if the file is misplaced or the `@OnchainLibrary` annotation is on a nested class.
 
 **Example from the standard library (`julc-stdlib`):**
 
@@ -11076,7 +11207,7 @@ Complete listing of all `Builtins` methods, grouped by category. Each method map
 
 | Method | Signature | UPLC Builtin |
 |--------|-----------|-------------|
-| `expModInteger` | `(long base, long exp, long mod) -> long` | `ExpModInteger` |
+| `expModInteger` (PV11) | `(long base, long exp, long mod) -> long` | `ExpModInteger` |
 
 ##### Error and Trace
 
@@ -11943,7 +12074,7 @@ var data = new byte[32];
 // Use ByteString for byte arrays, or List<T> for element lists
 ```
 
-> **PV11 Note:** From protocol version 11, `JulcArray<T>` provides O(1) random-access arrays via CIP-156 builtins. Use `list.toArray()` to convert a list.
+> **PV11 Note:** From protocol version 11, `JulcArray<T>` provides O(1) random-access arrays via CIP-138 builtins. Use `list.toArray()` to convert a list.
 
 ---
 
@@ -11965,7 +12096,7 @@ var first = Builtins.headList(items);
 var nth = ListsLib.nth(items, 2);
 ```
 
-> **PV11 Note:** From protocol version 11, `JulcArray<T>` provides O(1) random-access arrays via CIP-156 builtins. Use `list.toArray()` to convert a list, then `arr.get(index)` for O(1) access.
+> **PV11 Note:** From protocol version 11, `JulcArray<T>` provides O(1) random-access arrays via CIP-138 builtins. Use `list.toArray()` to convert a list, then `arr.get(index)` for O(1) access.
 
 ---
 
@@ -12050,8 +12181,7 @@ public class MyValidator {
 }
 ```
 
-**Recognized annotations:** `@Validator`, `@SpendingValidator`, `@MintingPolicy`,
-`@MintingValidator`, `@WithdrawValidator`, `@CertifyingValidator`,
+**Recognized annotations:** `@SpendingValidator`, `@MintingValidator`, `@WithdrawValidator`, `@CertifyingValidator`,
 `@VotingValidator`, `@ProposingValidator`
 
 ---
@@ -12110,7 +12240,7 @@ public static boolean validate(Data datum, Data redeemer, ScriptContext ctx) { .
 
 ---
 
-##### 3.5 `@MintingValidator/@MintingPolicy entrypoint must have 2 parameters`
+##### 3.5 `@MintingValidator entrypoint must have 2 parameters`
 
 **Full message:** `<annotation> entrypoint must have 2 parameters (redeemer,
 scriptContext), found <n> in <Class>.<method>(). Did you mean
@@ -12124,8 +12254,8 @@ If you specified 3 parameters, the compiler asks if you meant to use
 `@SpendingValidator` if you need a datum parameter.
 
 ```java
-// WRONG: 3 params on a minting policy
-@MintingPolicy
+// WRONG: 3 params on a minting validator
+@MintingValidator
 public class MyPolicy {
     @Entrypoint
     public static boolean validate(Data datum, Data redeemer, ScriptContext ctx) { ... }
@@ -12133,7 +12263,7 @@ public class MyPolicy {
 }
 
 // CORRECT
-@MintingPolicy
+@MintingValidator
 public class MyPolicy {
     @Entrypoint
     public static boolean validate(Data redeemer, ScriptContext ctx) { ... }
@@ -12153,7 +12283,7 @@ the validator source instead.
 ```java
 // WRONG: library file with validator annotation
 @OnchainLibrary
-@MintingPolicy  // this is not allowed on a library
+@MintingValidator  // this is not allowed on a library
 public class HelperLib { ... }
 
 // CORRECT
@@ -12201,7 +12331,7 @@ public record MyData(BigInteger amount, byte[] hash) {}
 
 **Fix:** Use `List<T>` instead of arrays.
 
-> **PV11 Note:** From protocol version 11, `JulcArray<T>` provides O(1) random-access arrays via CIP-156 builtins. Use `list.toArray()` to convert a list.
+> **PV11 Note:** From protocol version 11, `JulcArray<T>` provides O(1) random-access arrays via CIP-138 builtins. Use `list.toArray()` to convert a list.
 
 ---
 
@@ -12584,8 +12714,8 @@ long amount = ValuesLib.assetOf(value, myPolicy, tokenName);
 
 | Annotation | Purpose | Entrypoint params |
 |---|---|---|
-| `@SpendingValidator` / `@Validator` | Validates spending from a script address | 2 (redeemer, ctx) or 3 (datum, redeemer, ctx) |
-| `@MintingPolicy` / `@MintingValidator` | Validates minting/burning tokens | 2 (redeemer, ctx) |
+| `@SpendingValidator` | Validates spending from a script address | 2 (redeemer, ctx) or 3 (datum, redeemer, ctx) |
+| `@MintingValidator` | Validates minting/burning tokens | 2 (redeemer, ctx) |
 | `@WithdrawValidator` | Validates reward withdrawals | 2 (redeemer, ctx) |
 | `@CertifyingValidator` | Validates certificate actions | 2 (redeemer, ctx) |
 | `@VotingValidator` | Validates governance votes | 2 (redeemer, ctx) |
@@ -12717,7 +12847,7 @@ JuLC (Java UPLC Compiler) compiles a subset of Java into Untyped Plutus Lambda C
 ```
 ┌─────────────────┐          ┌─────────────────┐          ┌──────────────┐
 │   Java Source    │  ──────► │  JuLC Compiler   │  ──────► │  UPLC Program │
-│  (@Validator)    │          │  (julc-compiler)  │          │  (on-chain)   │
+│ (@SpendingValidator)│       │  (julc-compiler)  │          │  (on-chain)   │
 └─────────────────┘          └─────────────────┘          └──────────────┘
 ```
 
@@ -12834,7 +12964,7 @@ JuLC is organized into focused modules. Here are the key ones grouped by role:
 
 | Module | Role | Key Types |
 |--------|------|-----------|
-| `julc-core` | UPLC AST, constants, serialization | `Term` (10 variants), `DefaultFun` (102 builtins), `PlutusData`, `Program` |
+| `julc-core` | UPLC AST, constants, serialization | `Term` (10 variants), `DefaultFun` (101 released builtins plus one future tag), `PlutusData`, `Program` |
 | `julc-ledger-api` | Java records for all Cardano V3 ledger types | `ScriptContext`, `TxInfo`, `TxOut`, `Value`, `Address`, `Credential` + 35 more |
 
 ##### Compiler (the main event)
@@ -12856,7 +12986,7 @@ JuLC is organized into focused modules. Here are the key ones grouped by role:
 
 | Module | Role |
 |--------|------|
-| `julc-onchain-api` | Annotations (`@Validator`, `@Entrypoint`, `@Param`, `@OnchainLibrary`) + off-chain stubs for IDE support |
+| `julc-onchain-api` | Annotations (`@SpendingValidator`, `@MintingValidator`, `@Entrypoint`, `@Param`, `@OnchainLibrary`) + off-chain stubs for IDE support |
 | `julc-testkit` | `ValidatorTest` base class for JUnit-based validator testing |
 | `julc-testkit-jqwik` | Property-based testing support |
 | `julc-annotation-processor` | Java annotation processor — compiles validators at build time |
@@ -12951,7 +13081,7 @@ sealed interface Term {
     record Force(Term term)                           // Force polymorphic term
     record Delay(Term term)                           // Delay evaluation (thunk)
     record Const(Constant value)                      // Constant value
-    record Builtin(DefaultFun fun)                    // Built-in function (102 total)
+    record Builtin(DefaultFun fun)                    // Builtin enum entry (101 released + 1 future)
     record Error()                                    // Halt execution
     record Constr(long tag, List<Term> fields)        // Constructor (Plutus V3)
     record Case(Term scrutinee, List<Term> branches)  // Case match (Plutus V3)
@@ -12996,7 +13126,7 @@ sealed interface PirType {
     record PairType(PirType first, PirType second)
     record MapType(PirType keyType, PirType valueType)
     record OptionalType(PirType elemType)
-    record ArrayType(PirType elemType)    // PV11, CIP-156
+    record ArrayType(PirType elemType)    // PV11, CIP-138
 
     // Functions
     record FunType(PirType paramType, PirType returnType)
@@ -13671,13 +13801,13 @@ These are `@OnchainLibrary`-annotated Java classes compiled from source:
 | `ValuesLib` | 9 | Multi-asset Value operations (add, subtract, compare) |
 | `ContextsLib` | 13 | ScriptContext/TxInfo field extraction helpers |
 | `OutputLib` | 8 | TxOut querying (outputsAt, lovelacePaidTo, etc.) |
-| `MathLib` | 8 | Math utilities (abs, pow, divMod, quotRem, expMod) |
+| `MathLib` | 10 | Math utilities (abs, pow, floorDiv, floorMod, divMod, quotRem, expMod [PV11]) |
 | `IntervalLib` | 5 | Time interval operations |
 | `CryptoLib` | 3 | ECDSA, Schnorr, RIPEMD-160 |
 | `ByteStringLib` | 8 | ByteString manipulation |
 | `BitwiseLib` | 10 | Bitwise operations |
 | `AddressLib` | 3 | Address/credential utilities |
-| `BlsLib` | — | BLS12-381 operations (PV11) |
+| `BlsLib` | — | BLS12-381 operations (base PV10+, MSM PV11) |
 | `NativeValueLib` | — | Native Value operations (PV11) |
 
 ##### StdlibLookup Chain
@@ -13803,7 +13933,7 @@ class MyValidatorTest extends ValidatorTest {
 @Test
 void testFeature() {
     var source = """
-        @Validator
+        @SpendingValidator
         public class Test {
             @Entrypoint
             public static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -13964,7 +14094,7 @@ After optimization, the validator becomes equivalent to `\ctx -> Unit` (always s
 | File | Role |
 |------|------|
 | `julc-core/.../Term.java` | UPLC term AST (10 variants) |
-| `julc-core/.../DefaultFun.java` | 102 Plutus builtin functions |
+| `julc-core/.../DefaultFun.java` | 101 released Plutus builtins (tags 0-100) plus future `MultiIndexArray` (tag 101) |
 | `julc-core/.../PlutusData.java` | Universal on-chain data encoding |
 | `julc-stdlib/.../StdlibRegistry.java` | PIR term builders for ~65 stdlib methods |
 | `julc-vm/.../JulcVmProvider.java` | VM SPI interface |
@@ -14466,8 +14596,8 @@ This phase catches unsupported language constructs before PIR generation. That i
 The compiler finds the annotated class and determines the script purpose:
 
 ```text
-@Validator / @SpendingValidator -> SPENDING
-@MintingPolicy / @MintingValidator -> MINTING
+@SpendingValidator -> SPENDING
+@MintingValidator -> MINTING
 @WithdrawValidator -> WITHDRAW
 @CertifyingValidator -> CERTIFYING
 @VotingValidator -> VOTING
@@ -14588,7 +14718,8 @@ When source maps are enabled, optimization is skipped to preserve term identity 
 
 ##### Phase 11: Create `Program`
 
-JuLC currently emits Plutus V3:
+JuLC currently emits Plutus V3 under its PV11 compiler
+contract:
 
 ```java
 var program = Program.plutusV3(uplcTerm);
@@ -14599,6 +14730,10 @@ That means the version is:
 ```text
 1.1.0
 ```
+
+The `Program` stores the UPLC version, not the ledger protocol version. JuLC's
+compiler policy therefore enforces the PV11 builtin boundary while lowering;
+future tag 101 (`MultiIndexArray`) is rejected before a script is produced.
 
 ##### Phase 12: Encode
 
@@ -15461,7 +15596,7 @@ Untyped Plutus Lambda Calculus (UPLC) is the on-chain language that Cardano node
 | 4 | `Force(Term term)` | Force evaluation of a delayed (polymorphic) term |
 | 5 | `Delay(Term term)` | Delay evaluation (create a thunk) |
 | 6 | `Const(Constant value)` | Constant value (integer, bytestring, string, bool, unit, data) |
-| 7 | `Builtin(DefaultFun fun)` | Reference to one of 102 built-in functions |
+| 7 | `Builtin(DefaultFun fun)` | Reference to one of 101 released builtins or the retained future tag 101 |
 | 8 | `Error()` | Halt evaluation (transaction fails) |
 | 9 | `Constr(long tag, List<Term> fields)` | Constructor application (Plutus V3, SOPs) |
 | 10 | `Case(Term scrutinee, List<Term> branches)` | Case/pattern matching (Plutus V3, SOPs) |
@@ -15620,13 +15755,13 @@ sealed interface Shape {
 
 | Module | Role |
 |--------|------|
-| `julc-core` | UPLC AST (`Term.java`), constants, `DefaultFun` enum (102 builtins), FLAT/CBOR serialization, `Program` wrapper |
+| `julc-core` | UPLC AST (`Term.java`), constants, `DefaultFun` enum (101 released builtins plus one future tag), FLAT/CBOR serialization, `Program` wrapper |
 | `julc-compiler` | The compiler itself — parsing, validation, type resolution, PIR generation, loop desugaring, pattern matching, UPLC lowering, optimization |
 | `julc-stdlib` | `StdlibRegistry` — PIR term builders for ~65 stdlib methods (builtins, HOFs, math) |
 | `julc-vm` | VM SPI interface — pluggable execution backend |
 | `julc-vm-scalus` | Scalus-based VM implementation (evaluates UPLC programs) |
 | `julc-ledger-api` | Java records for Cardano ledger types (TxInfo, ScriptContext, TxOut, etc.) |
-| `julc-onchain-api` | Annotations (`@Validator`, `@Entrypoint`, `@Param`, `@OnchainLibrary`) + off-chain stubs for stdlib classes |
+| `julc-onchain-api` | Annotations (`@SpendingValidator`, `@MintingValidator`, `@Entrypoint`, `@Param`, `@OnchainLibrary`) + off-chain stubs for stdlib classes |
 | `julc-testkit` | `ValidatorTest` base class, `SourceDiscovery` for test-time compilation |
 | `julc-annotation-processor` | Java annotation processor — compiles validators at build time |
 | `julc-gradle-plugin` | Gradle plugin wrapping the annotation processor |
@@ -15728,7 +15863,7 @@ Defined in `TypeResolver.resolve(Type)`:
 | `List<T>` | `ListType(resolve(T))` | Generic |
 | `Map<K,V>` | `MapType(resolve(K), resolve(V))` | Generic |
 | `Optional<T>` | `OptionalType(resolve(T))` | Generic |
-| `JulcArray<T>` | `ArrayType(resolve(T))` | PV11 only; O(1) random access (CIP-156) |
+| `JulcArray<T>` | `ArrayType(resolve(T))` | PV11 only; O(1) random access (CIP-138) |
 | `PubKeyHash`, `ScriptHash`, `ValidatorHash`, `PolicyId`, `TokenName`, `DatumHash`, `TxId` | `ByteStringType` | Ledger hash types |
 | `StakingCredential`, `ScriptPurpose`, `Vote`, `Voter`, `DRep`, `Delegatee`, `GovernanceActionId`, `GovernanceAction`, `ProposalProcedure`, `TxCert`, `Rational`, `ProtocolVersion`, `Committee` | `DataType` | Opaque ledger types |
 | Registered records | `RecordType(...)` | User-defined or ledger records |
@@ -15788,8 +15923,8 @@ Java Source(s)
 ┌─────────────────────────────────────┐
 │  1. Parse                           │  JavaParser → CompilationUnit ASTs
 │  2. Validate                        │  SubsetValidator rejects unsupported constructs
-│  3. Library Check                   │  Ensure libraries don't contain @Validator
-│  4. Annotated Class Discovery       │  Find class with @Validator/@MintingPolicy/etc.
+│  3. Library Check                   │  Ensure libraries don't contain validator annotations
+│  4. Annotated Class Discovery       │  Find class with a supported validator annotation
 │  5. Script Purpose Detection        │  Map annotation → SPENDING/MINTING/WITHDRAW/...
 │  6. Type Registration               │  LedgerTypeRegistry + TypeRegistrar (topo sort)
 │  7. @Param Field Detection          │  Find @Param-annotated fields
@@ -15970,8 +16105,8 @@ LoopBodyGenerator calls back to PirGenerator via 7 methods (1 already public, 6 
 | `+` | `AddInteger` | `AppendString` | `AppendByteString` |
 | `-` | `SubtractInteger` | — | — |
 | `*` | `MultiplyInteger` | — | — |
-| `/` | `DivideInteger` | — | — |
-| `%` | `ModInteger` | — | — |
+| `/` | `QuotientInteger` | — | — |
+| `%` | `RemainderInteger` | — | — |
 | `==` | `EqualsInteger` / `EqualsByteString` / `EqualsString` / `EqualsData` | | |
 | `<` | `LessThanInteger` | — | — |
 | `<=` | `LessThanEqualsInteger` | — | — |
@@ -16256,8 +16391,8 @@ Converted to `DataMatch` with the same structure. Missing variants are filled wi
 
 | Purpose | Annotations | Param count |
 |---------|-------------|-------------|
-| `SPENDING` | `@Validator`, `@SpendingValidator` | 2 or 3 |
-| `MINTING` | `@MintingPolicy`, `@MintingValidator` | 2 |
+| `SPENDING` | `@SpendingValidator` | 2 or 3 |
+| `MINTING` | `@MintingValidator` | 2 |
 | `WITHDRAW` | `@WithdrawValidator` | 2 |
 | `CERTIFYING` | `@CertifyingValidator` | 2 |
 | `VOTING` | `@VotingValidator` | 2 |
@@ -16564,7 +16699,7 @@ Used for type inference in chained method calls. For example, `list.tail()` retu
 | `add(other)` | `AddInteger` |
 | `subtract(other)` | `SubtractInteger` |
 | `multiply(other)` | `MultiplyInteger` |
-| `divide(other)` | `DivideInteger` |
+| `divide(other)` | `QuotientInteger` |
 | `remainder(other)` | `RemainderInteger` |
 | `mod(other)` | `ModInteger` |
 | `signum()` | `if x < 0 then -1 else if x == 0 then 0 else 1` |
@@ -16667,7 +16802,7 @@ public interface StdlibLookup {
 - Crypto: `sha2_256`, `blake2b_256`, `verifyEd25519Signature`, `sha3_256`, `blake2b_224`, `keccak_256`, `verifyEcdsaSecp256k1Signature`, `verifySchnorrSecp256k1Signature`, `ripemd_160`
 - Bitwise: `andByteString`, `orByteString`, `xorByteString`, `complementByteString`, `readBit`, `writeBits`, `shiftByteString`, `rotateByteString`, `countSetBits`, `findFirstSetBit`
 - Data decomposition: `constrTag`, `constrFields`
-- Math: `expModInteger`
+- Math: `expModInteger` (PV11)
 
 **ListsLib HOF methods (require lambda/LetRec — cannot be compiled from Java source):**
 
@@ -16810,7 +16945,7 @@ public static <T> T last(List<T> list) {
 @Test
 void testListLast() {
     var source = """
-        @Validator
+        @SpendingValidator
         public class Test {
             @Entrypoint
             public static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -16943,7 +17078,7 @@ reg.register("SortLib", "sortBy", args -> {
 @Test
 void testSort() {
     var source = """
-        @Validator
+        @SpendingValidator
         public class Test {
             @Entrypoint
             public static boolean validate(PlutusData r, PlutusData ctx) {
@@ -17050,7 +17185,7 @@ void testMyNewOptimization() {
 ##### Source
 
 ```java
-@Validator
+@SpendingValidator
 public class SimpleValidator {
     @Entrypoint
     public static boolean validate(PlutusData redeemer, PlutusData scriptContext) {
@@ -17064,7 +17199,7 @@ public class SimpleValidator {
 ##### Phase 1: Parse
 
 JavaParser produces an AST with:
-- `ClassOrInterfaceDeclaration` "SimpleValidator" with `@Validator`
+- `ClassOrInterfaceDeclaration` "SimpleValidator" with `@SpendingValidator`
 - `MethodDeclaration` "validate" with `@Entrypoint`
 - Two parameters: `redeemer: PlutusData`, `scriptContext: PlutusData`
 - Body: three statements (two var decls, one return)
@@ -17075,7 +17210,7 @@ SubsetValidator walks the AST. No rejected constructs found.
 
 ##### Phase 5: Script Purpose
 
-`@Validator` → `SPENDING`. Two parameters → 2-param wrapper.
+`@SpendingValidator` -> `SPENDING`. Two parameters -> 2-param wrapper.
 
 ##### Phase 6: Type Registration
 
@@ -17284,7 +17419,7 @@ System.out.println("Script size: " + cbor.length() / 2 + " bytes");
 void testFeature() {
     // 1. Define Java source
     var source = """
-        @Validator
+        @SpendingValidator
         public class Test {
             @Entrypoint
             public static boolean validate(PlutusData redeemer, PlutusData ctx) {
@@ -17416,7 +17551,7 @@ ADR files are in the `adr/` directory at the project root.
 | `julc-compiler/.../validate/SubsetValidator.java` | — | Java subset enforcement |
 | `julc-compiler/.../util/MethodDependencyResolver.java` | — | Method dependency graph construction |
 | `julc-compiler/.../util/StringUtils.java` | — | String utilities (Levenshtein distance, etc.) |
-| `julc-core/.../DefaultFun.java` | — | 102 Plutus builtin functions with FLAT codes |
+| `julc-core/.../DefaultFun.java` | — | 101 released Plutus builtins (tags 0-100) plus future `MultiIndexArray` (tag 101) |
 | `julc-core/.../Term.java` | — | UPLC term AST (10 variants) |
 | `julc-stdlib/.../StdlibRegistry.java` | — | PIR term builders for ~65 stdlib methods |
 

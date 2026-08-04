@@ -1,4 +1,4 @@
-<!-- julcVersion: 0.1.0-pre12 -->
+<!-- julcVersion: 0.1.0-pre16 -->
 
 > **Read this entire document before generating any JuLC code.** It distills the JuLC subset of Java, the on-chain idioms, the compiler's known limitations, and the error patterns that AI agents most commonly get wrong. Following the rules here will save many compile-fail-retry cycles.
 
@@ -47,7 +47,7 @@ Build artifact: `build/classes/META-INF/plutus/MyValidator.plutus.json` — the 
 - **Local variables** declared with `var` or explicit type, **must be initialized at declaration**, and **are immutable after assignment** (single-assignment).
 - **Method calls** to `@OnchainLibrary` static methods, stdlib (`ContextsLib`, `ListsLib`, etc.), instance methods on `JulcList`/`JulcMap`/`String`/`byte[]`/`BigInteger`, and `Builtins.*` (Plutus builtins).
 - **Lambdas as HOF arguments** to `list.map(...)`, `list.filter(...)`, `list.any(...)`, `list.all(...)`, `list.find(...)`, `ListsLib.foldl(...)`. Must be passed inline; cannot be stored in a variable and called via `.apply()`.
-- **Annotations**: `@SpendingValidator`, `@MintingValidator` (or legacy `@MintingPolicy`), `@CertifyingValidator`, `@WithdrawValidator`, `@VotingValidator`, `@ProposingValidator` on the class; `@Entrypoint` on the entrypoint method; `@Param` on `static` fields for parameterized validators; `@OnchainLibrary` on library classes; `@NewType` on single-field record wrappers.
+- **Annotations**: `@SpendingValidator`, `@MintingValidator`, `@CertifyingValidator`, `@WithdrawValidator`, `@VotingValidator`, `@ProposingValidator` on the class; `@Entrypoint` on the entrypoint method; `@Param` on `static` fields for parameterized validators; `@OnchainLibrary` on library classes; `@NewType` on single-field record wrappers.
 - **`BigInteger`** for integers (NOT `int`/`long` — those are accepted but converted; prefer `BigInteger` for clarity).
 - **`byte[]`** for bytestrings.
 - **`String`** is treated as `byte[]` UTF-8 in most contexts; use sparingly.
@@ -75,12 +75,12 @@ Build artifact: `build/classes/META-INF/plutus/MyValidator.plutus.json` — the 
 
 ---
 
-## 4. The `@Validator` family — entrypoint shapes
+## 4. Validator annotation entrypoint shapes
 
 | Annotation | Entrypoint signature | Purpose |
 |---|---|---|
 | `@SpendingValidator` | `static boolean validate(<Redeemer> r, ScriptContext ctx)` **or** `static boolean validate(<Datum> d, <Redeemer> r, ScriptContext ctx)` | Validate spending a UTxO; use the 2-param form when the script does not need a datum. |
-| `@MintingValidator` (or `@MintingPolicy`) | `static boolean validate(<Redeemer> r, ScriptContext ctx)` | Validate minting/burning. |
+| `@MintingValidator` | `static boolean validate(<Redeemer> r, ScriptContext ctx)` | Validate minting/burning. |
 | `@CertifyingValidator` | `static boolean validate(<Redeemer> r, ScriptContext ctx)` | Validate stake cert actions. |
 | `@WithdrawValidator` | `static boolean validate(<Redeemer> r, ScriptContext ctx)` | Validate reward withdrawal. |
 | `@VotingValidator` | `static boolean validate(<Redeemer> r, ScriptContext ctx)` | Conway voting validator. |
@@ -310,7 +310,7 @@ All imports are from `com.bloxbean.cardano.julc.stdlib.lib.*`.
 `txOutAddress(out)`, `txOutValue(out)`, `txOutDatum(out)`, `outputsAt(outputs, addr)`, `countOutputsAt(outputs, addr)`, `uniqueOutputAt(outputs, addr)`, `outputsWithToken(outputs, policy, token)`, `valueHasToken(value, policy, token)`, `lovelacePaidTo(outputs, addr)`, `paidAtLeast(outputs, addr, amount)`, `getInlineDatum(out)`, `resolveDatum(txInfo, out)`. **Prefer field access**: `out.address()`, `out.value()`, `out.datum()`.
 
 ### MathLib
-`abs(n)`, `max(a, b)`, `min(a, b)`, `divMod(a, b)` → `Tuple2`, `quotRem(a, b)` → `Tuple2`, `pow(b, e)`, `sign(n)`, `expMod(b, e, m)`.
+`abs(n)`, `max(a, b)`, `min(a, b)`, `floorDiv(a, b)`, `floorMod(a, b)`, `divMod(a, b)` → `Tuple2`, `quotRem(a, b)` → `Tuple2`, `pow(b, e)`, `sign(n)`, `expMod(b, e, m)` (PV11 only).
 
 ### IntervalLib
 `between(lo, hi)`, `never()`, `isEmpty(interval)`, `finiteUpperBound(interval)`, `finiteLowerBound(interval)`, `contains(interval, point)`.
@@ -328,7 +328,8 @@ All imports are from `com.bloxbean.cardano.julc.stdlib.lib.*`.
 `credentialHash(addr)` → `byte[]`, `isScriptAddress(addr)`, `isPubKeyAddress(addr)`, `paymentCredential(addr)` → `Credential`.
 
 ### BlsLib (Plutus V3)
-G1/G2 add/scale/neg, pairing, MSM, and `bls12_381_finalVerify`.
+G1/G2 add/scale/neg, pairing, and `bls12_381_finalVerify` are available on
+PV10+; multi-scalar multiplication (MSM) requires PV11.
 
 ### NativeValueLib (PV11)
 Native Mary-era `Value` operations.
@@ -386,8 +387,8 @@ Plutus builtins exposed by the Java API include `equalsByteString`, `equalsData`
 - `byte[] millerLoop(byte[] g1, byte[] g2)` — Compute the Miller loop pairing of a G1 and G2 element.
 - `byte[] mulMlResult(byte[] a, byte[] b)` — Multiply two Miller loop results.
 - `boolean finalVerify(byte[] a, byte[] b)` — Final verification of two Miller loop results. Returns true if the pairing check passes.
-- `byte[] g1MultiScalarMul(PlutusData scalars, PlutusData points)` — Multi-scalar multiplication on G1. Takes a list of scalars and a list of G1 elements.
-- `byte[] g2MultiScalarMul(PlutusData scalars, PlutusData points)` — Multi-scalar multiplication on G2. Takes a list of scalars and a list of G2 elements.
+- `byte[] g1MultiScalarMul(PlutusData scalars, PlutusData points)` — Multi-scalar multiplication on G1. Takes scalar and point lists. PV11 only (CIP-133).
+- `byte[] g2MultiScalarMul(PlutusData scalars, PlutusData points)` — Multi-scalar multiplication on G2. Takes scalar and point lists. PV11 only (CIP-133).
 
 #### ByteStringLib
 
@@ -399,7 +400,7 @@ Plutus builtins exposed by the Java API include `equalsByteString`, `equalsData`
 - `long length(byte[] bs)` — Get the length of a bytestring.
 - `byte[] drop(byte[] bs, long n)` — Drop the first n bytes from a bytestring.
 - `byte[] take(byte[] bs, long n)` — Take the first n bytes from a bytestring.
-- `byte[] append(byte[] a, byte[] b)` — Concatenate two bytestrings.
+- `byte[] append(byte[] a, byte[] b)` — Concatenate two bytestrings. For 3+ parts use `Builtins.concat(a, b, c, ...)`.
 - `byte[] empty()` — An empty bytestring.
 - `byte[] zeros(long n)` — Create a bytestring of n zero bytes.
 - `boolean equals(byte[] a, byte[] b)` — Compare two bytestrings for equality.
@@ -521,8 +522,10 @@ Plutus builtins exposed by the Java API include `equalsByteString`, `equalsData`
 - `BigInteger min(BigInteger a, BigInteger b)` — Returns the minimum of two integers.
 - `Tuple2<BigInteger, BigInteger> divMod(BigInteger a, BigInteger b)` — Returns division and modulo as a Tuple2.
 - `Tuple2<BigInteger, BigInteger> quotRem(BigInteger a, BigInteger b)` — Returns quotient and remainder as a Tuple2.
+- `BigInteger floorDiv(BigInteger a, BigInteger b)` — Returns floor division, rounding toward negative infinity.
+- `BigInteger floorMod(BigInteger a, BigInteger b)` — Returns floor modulo, with the same sign as the divisor.
 - `BigInteger pow(BigInteger base, BigInteger exp)` — Returns base raised to the power of exp.
-- `BigInteger expMod(BigInteger base, BigInteger exp, BigInteger mod)` — Returns (base^exp) mod modulus using the builtin ExpModInteger operation.
+- `BigInteger expMod(BigInteger base, BigInteger exp, BigInteger mod)` — Returns (base^exp) mod modulus using the PV11 Batch 6 ExpModInteger operation (CIP-109).
 - `BigInteger sign(BigInteger x)` — Returns -1 if negative, 0 if zero, 1 if positive.
 
 #### NativeValueLib
@@ -576,6 +579,8 @@ Plutus builtins exposed by the Java API include `equalsByteString`, `equalsData`
 - `Value subtract(Value a, Value b)` — Subtracts value b from value a: add(a, negate(b)).
 - `BigInteger countTokensWithQty(Value mint, byte[] policyId, BigInteger expectedQty)` — Count tokens with a specific quantity under a specific policy in a Value/mint. E.g., count how many tokens were minted with qty=1 under a given policy.
 - `byte[] findTokenName(Value mint, byte[] policyId, BigInteger expectedQty)` — Find the first token name with a specific quantity under a specific policy. Returns empty bytestring if not found.
+- `byte[] refBytes(TxOutRef ref)` — Seed bytes uniquely identifying a TxOutRef: `txId ++ integerToByteString(true, 2, index)`.
+- `byte[] uniqueTokenName(TxOutRef ref)` — Canonical token name for a spent TxOutRef: `blake2b_256(refBytes(ref))`.
 
 <!-- catalog:stdlib-end -->
 

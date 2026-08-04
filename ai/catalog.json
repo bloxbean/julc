@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "julcVersion": "0.1.0-pre12",
-  "generatedAt": "2026-05-17T08:09:51.487Z",
+  "julcVersion": "0.1.0-pre16",
+  "generatedAt": "2026-08-04T12:57:39.946Z",
   "counts": {
     "stdlibClasses": 13,
-    "stdlibMethods": 170,
+    "stdlibMethods": 174,
     "ledgerTypes": 33,
     "diagnostics": 30,
     "examples": 47
@@ -483,7 +483,7 @@
             }
           ],
           "returns": "byte[]",
-          "doc": "Multi-scalar multiplication on G1. Takes a list of scalars and a list of G1 elements."
+          "doc": "Multi-scalar multiplication on G1. Takes scalar and point lists. PV11 only (CIP-133)."
         },
         {
           "name": "g2MultiScalarMul",
@@ -499,7 +499,7 @@
             }
           ],
           "returns": "byte[]",
-          "doc": "Multi-scalar multiplication on G2. Takes a list of scalars and a list of G2 elements."
+          "doc": "Multi-scalar multiplication on G2. Takes scalar and point lists. PV11 only (CIP-133)."
         }
       ]
     },
@@ -618,7 +618,7 @@
             }
           ],
           "returns": "byte[]",
-          "doc": "Concatenate two bytestrings."
+          "doc": "Concatenate two bytestrings. For 3+ parts use `Builtins.concat(a, b, c, ...)`."
         },
         {
           "name": "empty",
@@ -1823,7 +1823,7 @@
     "MathLib": {
       "fqcn": "com.bloxbean.cardano.julc.stdlib.lib.MathLib",
       "summary": "Mathematical operations compiled from Java source to UPLC.",
-      "methodCount": 8,
+      "methodCount": 10,
       "methods": [
         {
           "name": "abs",
@@ -1902,6 +1902,38 @@
           "doc": "Returns quotient and remainder as a Tuple2."
         },
         {
+          "name": "floorDiv",
+          "signature": "BigInteger floorDiv(BigInteger a, BigInteger b)",
+          "params": [
+            {
+              "name": "a",
+              "type": "BigInteger"
+            },
+            {
+              "name": "b",
+              "type": "BigInteger"
+            }
+          ],
+          "returns": "BigInteger",
+          "doc": "Returns floor division, rounding toward negative infinity."
+        },
+        {
+          "name": "floorMod",
+          "signature": "BigInteger floorMod(BigInteger a, BigInteger b)",
+          "params": [
+            {
+              "name": "a",
+              "type": "BigInteger"
+            },
+            {
+              "name": "b",
+              "type": "BigInteger"
+            }
+          ],
+          "returns": "BigInteger",
+          "doc": "Returns floor modulo, with the same sign as the divisor."
+        },
+        {
           "name": "pow",
           "signature": "BigInteger pow(BigInteger base, BigInteger exp)",
           "params": [
@@ -1935,7 +1967,7 @@
             }
           ],
           "returns": "BigInteger",
-          "doc": "Returns (base^exp) mod modulus using the builtin ExpModInteger operation."
+          "doc": "Returns (base^exp) mod modulus using the PV11 Batch 6 ExpModInteger operation (CIP-109)."
         },
         {
           "name": "sign",
@@ -2320,7 +2352,7 @@
     "ValuesLib": {
       "fqcn": "com.bloxbean.cardano.julc.stdlib.lib.ValuesLib",
       "summary": "Value manipulation operations compiled from Java source to UPLC.",
-      "methodCount": 16,
+      "methodCount": 18,
       "methods": [
         {
           "name": "lovelaceOf",
@@ -2573,6 +2605,30 @@
           ],
           "returns": "byte[]",
           "doc": "Find the first token name with a specific quantity under a specific policy. Returns empty bytestring if not found."
+        },
+        {
+          "name": "refBytes",
+          "signature": "byte[] refBytes(TxOutRef ref)",
+          "params": [
+            {
+              "name": "ref",
+              "type": "TxOutRef"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Seed bytes uniquely identifying a TxOutRef: `txId ++ integerToByteString(true, 2, index)`."
+        },
+        {
+          "name": "uniqueTokenName",
+          "signature": "byte[] uniqueTokenName(TxOutRef ref)",
+          "params": [
+            {
+              "name": "ref",
+              "type": "TxOutRef"
+            }
+          ],
+          "returns": "byte[]",
+          "doc": "Canonical token name for a spent TxOutRef: `blake2b_256(refBytes(ref))`."
         }
       ]
     }
@@ -3969,7 +4025,7 @@
   },
   "diagnostics": {
     "schemaVersion": 1,
-    "julcVersion": "0.1.0-pre12",
+    "julcVersion": "0.1.0-pre16",
     "$comment": "Authoritative catalog of JuLC compiler diagnostics. Each entry has a stable JULC#### code, a generated Java constant, an emitted-message template, a one-line root cause, a canonical fix snippet, and optionally example bad/good code. Consumed by: (1) generated DiagnosticCodes.java, (2) the MCP julc_explain_diagnostic tool, (3) docs/AI catalog resources, (4) future full compiler diagnostic coverage tests.",
     "categories": {
       "SYNTAX": "Java syntax forms not supported in the on-chain subset",
