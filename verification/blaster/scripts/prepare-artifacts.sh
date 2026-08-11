@@ -7,6 +7,7 @@ REPO_DIR="$(cd "${VERIFY_DIR}/../.." && pwd)"
 GENERATED_DIR="${VERIFY_DIR}/generated"
 ARTIFACT_DIR="${VERIFY_DIR}/artifacts"
 UPDATE_LOCK=false
+FIXTURE_CATALOG="${VERIFY_DIR}/config/fixtures.json"
 
 if [[ "${1:-}" == "--update-lock" ]]; then
   UPDATE_LOCK=true
@@ -22,10 +23,25 @@ for command_name in java jq git; do
   fi
 done
 
+if ! jq -e '
+    .schemaVersion == 1 and
+    (.fixtures | type == "array" and length > 0) and
+    ([.fixtures[].id] | length == (unique | length)) and
+    ([.fixtures[].validatorTitle] | all(type == "string" and length > 0)) and
+    ([.fixtures[].scriptPurpose] | all(. == "spending" or . == "minting"))
+  ' "${FIXTURE_CATALOG}" >/dev/null; then
+  echo "COULD-NOT-EVALUATE: invalid or duplicate fixture catalogue entries" >&2
+  exit 2
+fi
+
 mkdir -p "${GENERATED_DIR}" "${ARTIFACT_DIR}"
 
 cd "${REPO_DIR}"
-./gradlew :julc-cli:shadowJar -PskipSigning=true
+gradle_args=(:julc-cli:shadowJar -PskipSigning=true)
+if [[ "${JULC_GRADLE_OFFLINE:-false}" == "true" ]]; then
+  gradle_args+=(--offline)
+fi
+./gradlew "${gradle_args[@]}"
 JULC_JAR="${REPO_DIR}/julc-cli/build/libs/julc.jar"
 
 if [[ ! -f "${JULC_JAR}" ]]; then
@@ -56,6 +72,7 @@ is_supported_tag() {
 prepare_fixture() {
   local fixture_id="$1"
   local validator_title="$2"
+  local script_purpose="$3"
   local fixture_dir="${VERIFY_DIR}/fixtures/${fixture_id}"
   local fixture_generated="${GENERATED_DIR}/${fixture_id}"
 
@@ -85,24 +102,26 @@ prepare_fixture() {
   fi
 
   jq --arg fixture "${fixture_id}" \
-    '. + {fixture: $fixture} | del(.compiledCode)' \
+    --arg scriptPurpose "${script_purpose}" \
+    '. + {fixture: $fixture, scriptPurpose: $scriptPurpose} | del(.compiledCode)' \
     "${metadata_file}" > "${fixture_generated}/lock-entry.json"
 }
 
-prepare_fixture "smoke" "VerificationDatumGate"
-prepare_fixture "typed-multisig" "VerificationMultiSig"
-prepare_fixture "typed-multisig-broken" "VerificationMultiSig"
+while IFS=$'\t' read -r fixture_id validator_title script_purpose; do
+  prepare_fixture "${fixture_id}" "${validator_title}" "${script_purpose}"
+done < <(jq -r '.fixtures[] | [.id, .validatorTitle, .scriptPurpose] | @tsv' \
+  "${FIXTURE_CATALOG}")
 
-jq -s '{schemaVersion: 1, artifacts: sort_by(.fixture)}' \
+jq -s '{schemaVersion: 2, artifacts: sort_by(.fixture)}' \
   "${GENERATED_DIR}"/*/lock-entry.json > "${GENERATED_DIR}/artifact-lock.json"
 
 if [[ "${UPDATE_LOCK}" == true ]]; then
   cp "${GENERATED_DIR}/artifact-lock.json" "${ARTIFACT_DIR}/artifact-lock.json"
-  for fixture_id in smoke typed-multisig typed-multisig-broken; do
+  while IFS= read -r fixture_id; do
     source_hex="$(find "${GENERATED_DIR}/${fixture_id}" -maxdepth 1 \
       -name '*.compiledCode.hex' -type f -print -quit)"
     cp "${source_hex}" "${ARTIFACT_DIR}/${fixture_id}.compiledCode.hex"
-  done
+  done < <(jq -r '.fixtures[].id' "${FIXTURE_CATALOG}")
   echo "Updated committed artifact lock and imported hex artifacts."
 elif [[ ! -f "${ARTIFACT_DIR}/artifact-lock.json" ]]; then
   echo "COULD-NOT-EVALUATE: artifact lock is missing; run with --update-lock" >&2
@@ -112,14 +131,14 @@ elif ! diff -u "${ARTIFACT_DIR}/artifact-lock.json" \
   echo "COULD-NOT-EVALUATE: generated artifact metadata differs from the lock" >&2
   exit 2
 else
-  for fixture_id in smoke typed-multisig typed-multisig-broken; do
+  while IFS= read -r fixture_id; do
     generated_hex="$(find "${GENERATED_DIR}/${fixture_id}" -maxdepth 1 \
       -name '*.compiledCode.hex' -type f -print -quit)"
     if ! cmp -s "${ARTIFACT_DIR}/${fixture_id}.compiledCode.hex" "${generated_hex}"; then
       echo "COULD-NOT-EVALUATE: ${fixture_id} compiledCode differs from the lock" >&2
       exit 2
     fi
-  done
+  done < <(jq -r '.fixtures[].id' "${FIXTURE_CATALOG}")
 fi
 
 dirty=false

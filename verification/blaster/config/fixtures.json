@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "fixtures": [
+    {
+      "id": "smoke",
+      "validatorTitle": "VerificationDatumGate",
+      "scriptPurpose": "spending"
+    },
+    {
+      "id": "typed-multisig",
+      "validatorTitle": "VerificationMultiSig",
+      "scriptPurpose": "spending"
+    },
+    {
+      "id": "typed-multisig-broken",
+      "validatorTitle": "VerificationMultiSig",
+      "scriptPurpose": "spending"
+    },
+    {
+      "id": "state-thread",
+      "validatorTitle": "VerificationStateThread",
+      "scriptPurpose": "spending"
+    },
+    {
+      "id": "state-thread-broken",
+      "validatorTitle": "VerificationStateThreadBroken",
+      "scriptPurpose": "spending"
+    },
+    {
+      "id": "controlled-mint",
+      "validatorTitle": "VerificationControlledMint",
+      "scriptPurpose": "minting"
+    },
+    {
+      "id": "controlled-mint-broken",
+      "validatorTitle": "VerificationControlledMintBroken",
+      "scriptPurpose": "minting"
+    }
+  ]
+}

@@ -1,7 +1,11 @@
 # JuLC Blaster Verification PoC
 
-This directory implements Milestone A of
-[`ADR-002`](../../adr/verification/002-milestone-a-blaster-poc.md).
+This directory implements Milestones A and B of the JuLC verification strategy:
+
+- [`ADR-002`](../../adr/verification/002-milestone-a-blaster-poc.md) establishes
+  exact-artifact compatibility; and
+- [`ADR-003`](../../adr/verification/003-milestone-b-useful-contract-verification.md)
+  establishes bounded, production-shaped spending and minting properties.
 
 It compiles dedicated validators through JuLC's production CLI, exports the
 exact double-CBOR blueprint artifacts, validates their script hashes and UPLC
@@ -42,21 +46,54 @@ Run the complete available verification:
 verification/blaster/scripts/verify.sh
 ```
 
-The driver fails closed with exit code 2 and a `COULD-NOT-EVALUATE` message
+Prepare all pinned dependencies, then reproduce evidence without dependency
+downloads:
+
+```bash
+verification/blaster/scripts/acquire-dependencies.sh
+verification/blaster/scripts/verify-offline.sh
+```
+
+The drivers fail closed with exit code 2 and a `COULD-NOT-EVALUATE` message
 when tool versions, artifacts, builtin coverage, or verification prerequisites
 do not match the pinned profile.
 
-## Current implementation status
+## Milestone B evidence
 
 - Production JuLC compilation fixtures: implemented.
 - Exact-title blueprint export and independent script-hash check: implemented.
 - UPLC builtin inventory and pinned coverage gate: implemented.
-- Checked CEK result preserving step exhaustion: scaffolded.
-- Smoke artifact property and schema-shape counterexample: implemented.
-- Broken multisig counterexample with a two-key datum: implemented.
-- Correct multisig authorization: solver-undetermined at the pinned timeout;
-  reported as `COULD-NOT-EVALUATE`.
-- CI workflow: pending successful local Lean build.
+- State-thread owner authorization, strict state increase, raw value
+  preservation, and output-reference commitment: `SMT-VALID`.
+- State-thread double-satisfaction composition: `KERNEL-PROVED`.
+- Controlled-mint authority and exact singleton mint shape: `SMT-VALID`.
+- Own-policy singleton composition: `KERNEL-PROVED` under the ledger currency
+  membership premise.
+- Correct-fixture non-vacuity controls and both vulnerable mutations:
+  counterexamples found as expected.
+- Counterexample metadata is bound to the committed UPLC and script hashes.
+- CI separates pinned acquisition from the offline evidence phase and pins all
+  actions by commit SHA.
+
+The first-element transaction discipline is part of the verified contract
+domain. This suite does not establish compiler-wide correctness or all Cardano
+ledger validity rules. The Milestone A recursive multisig claim remains a
+non-gating `COULD-NOT-EVALUATE` legacy result.
 
 Blaster's current solver-valid results trust Z3 and its SMT translation. They
 must be reported as `SMT-VALID`, not `KERNEL-PROVED`.
+
+## Important implementation findings
+
+- JuLC record decoding currently permits unexpected constructor tags and
+  trailing fields.
+- Several typed ledger accessor/coercion expressions did not enforce the full
+  source-level equality suggested by their Java types. Milestone B uses raw
+  `PlutusData` at those representation boundaries.
+- `BigInteger.compareTo(constant) == 0` on decoded constructor tags produced an
+  unsatisfiable artifact path during the state-thread iteration. Comparing the
+  complete expected `PlutusData` structure restored non-vacuity and made the
+  intended constraint explicit.
+- Lake does not track `#import_uplc` hex files as ordinary source dependencies.
+  The driver directly recompiles every artifact-importing Lean module so stale
+  `.olean` files cannot silently certify older bytes.

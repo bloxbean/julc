@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "propertyId": "controlled-mint-broken.authority",
+  "fixture": "controlled-mint-broken",
+  "source": "fixtures/controlled-mint-broken/src/VerificationControlledMintBroken.java",
+  "omittedCheck": "fixed-authority signatory requirement",
+  "compiledCodeSha256": "6e643ea754da9c41db7fcd6422aee28b431f488bbc7f0a6b583680854ba82ef0",
+  "cardanoScriptHash": "354cb0462a693dd73b689b49c9437de51adfcf1ec35ffb5aae75e102",
+  "expectedResult": "REFUTED",
+  "witness": {
+    "signatories": [],
+    "quantity": 1,
+    "mintShape": "one policy with one token",
+    "violation": "the artifact succeeds without the fixed authority in txInfoSignatories"
+  },
+  "profile": "config/verification-profile.json"
+}

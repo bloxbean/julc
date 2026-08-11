@@ -1,6 +1,128 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "artifacts": [
+    {
+      "artifactId": "verification-controlled-mint",
+      "title": "VerificationControlledMint",
+      "compiledCodeSha256": "e773468610bf715869a0506a872223ab1ca4719af3ce7978bc33b3e74fd6b12c",
+      "cardanoScriptHash": "72a608e033fd79100cde24163a7ce234c32a33fc422c46648ea63b01",
+      "uplcVersion": "1.1.0",
+      "builtins": [
+        {
+          "name": "EqualsInteger",
+          "flatTag": 7
+        },
+        {
+          "name": "EqualsByteString",
+          "flatTag": 15
+        },
+        {
+          "name": "IfThenElse",
+          "flatTag": 26
+        },
+        {
+          "name": "FstPair",
+          "flatTag": 29
+        },
+        {
+          "name": "SndPair",
+          "flatTag": 30
+        },
+        {
+          "name": "HeadList",
+          "flatTag": 33
+        },
+        {
+          "name": "TailList",
+          "flatTag": 34
+        },
+        {
+          "name": "NullList",
+          "flatTag": 35
+        },
+        {
+          "name": "UnConstrData",
+          "flatTag": 42
+        },
+        {
+          "name": "UnMapData",
+          "flatTag": 43
+        },
+        {
+          "name": "UnListData",
+          "flatTag": 44
+        },
+        {
+          "name": "UnIData",
+          "flatTag": 45
+        },
+        {
+          "name": "UnBData",
+          "flatTag": 46
+        }
+      ],
+      "fixture": "controlled-mint",
+      "scriptPurpose": "minting"
+    },
+    {
+      "artifactId": "verification-controlled-mint-broken",
+      "title": "VerificationControlledMintBroken",
+      "compiledCodeSha256": "6e643ea754da9c41db7fcd6422aee28b431f488bbc7f0a6b583680854ba82ef0",
+      "cardanoScriptHash": "354cb0462a693dd73b689b49c9437de51adfcf1ec35ffb5aae75e102",
+      "uplcVersion": "1.1.0",
+      "builtins": [
+        {
+          "name": "EqualsInteger",
+          "flatTag": 7
+        },
+        {
+          "name": "EqualsByteString",
+          "flatTag": 15
+        },
+        {
+          "name": "IfThenElse",
+          "flatTag": 26
+        },
+        {
+          "name": "FstPair",
+          "flatTag": 29
+        },
+        {
+          "name": "SndPair",
+          "flatTag": 30
+        },
+        {
+          "name": "HeadList",
+          "flatTag": 33
+        },
+        {
+          "name": "TailList",
+          "flatTag": 34
+        },
+        {
+          "name": "NullList",
+          "flatTag": 35
+        },
+        {
+          "name": "UnConstrData",
+          "flatTag": 42
+        },
+        {
+          "name": "UnMapData",
+          "flatTag": 43
+        },
+        {
+          "name": "UnIData",
+          "flatTag": 45
+        },
+        {
+          "name": "UnBData",
+          "flatTag": 46
+        }
+      ],
+      "fixture": "controlled-mint-broken",
+      "scriptPurpose": "minting"
+    },
     {
       "artifactId": "verification-datum-gate",
       "title": "VerificationDatumGate",
@@ -37,7 +159,130 @@
           "flatTag": 45
         }
       ],
-      "fixture": "smoke"
+      "fixture": "smoke",
+      "scriptPurpose": "spending"
+    },
+    {
+      "artifactId": "verification-state-thread",
+      "title": "VerificationStateThread",
+      "compiledCodeSha256": "d87079a29f74bde16bba0868c99424af23a24f72b7fc604b8b7ebfdaef4967db",
+      "cardanoScriptHash": "5f8ca35eed5f3e3b25a00536da41a858164222df6ce636cadaaaef1d",
+      "uplcVersion": "1.1.0",
+      "builtins": [
+        {
+          "name": "EqualsInteger",
+          "flatTag": 7
+        },
+        {
+          "name": "LessThanInteger",
+          "flatTag": 8
+        },
+        {
+          "name": "EqualsByteString",
+          "flatTag": 15
+        },
+        {
+          "name": "IfThenElse",
+          "flatTag": 26
+        },
+        {
+          "name": "SndPair",
+          "flatTag": 30
+        },
+        {
+          "name": "MkCons",
+          "flatTag": 32
+        },
+        {
+          "name": "HeadList",
+          "flatTag": 33
+        },
+        {
+          "name": "TailList",
+          "flatTag": 34
+        },
+        {
+          "name": "NullList",
+          "flatTag": 35
+        },
+        {
+          "name": "ConstrData",
+          "flatTag": 37
+        },
+        {
+          "name": "IData",
+          "flatTag": 40
+        },
+        {
+          "name": "UnConstrData",
+          "flatTag": 42
+        },
+        {
+          "name": "UnListData",
+          "flatTag": 44
+        },
+        {
+          "name": "UnIData",
+          "flatTag": 45
+        },
+        {
+          "name": "UnBData",
+          "flatTag": 46
+        },
+        {
+          "name": "EqualsData",
+          "flatTag": 47
+        },
+        {
+          "name": "MkNilData",
+          "flatTag": 49
+        }
+      ],
+      "fixture": "state-thread",
+      "scriptPurpose": "spending"
+    },
+    {
+      "artifactId": "verification-state-thread-broken",
+      "title": "VerificationStateThreadBroken",
+      "compiledCodeSha256": "9ccc8b638b33394dae919549200bdef483abdcc56178e7bc0f22617d9c8ef148",
+      "cardanoScriptHash": "2fd937fddbbcdf6c4e97bfcb29d065184e980c3f199ba23be122f509",
+      "uplcVersion": "1.1.0",
+      "builtins": [
+        {
+          "name": "EqualsInteger",
+          "flatTag": 7
+        },
+        {
+          "name": "LessThanInteger",
+          "flatTag": 8
+        },
+        {
+          "name": "IfThenElse",
+          "flatTag": 26
+        },
+        {
+          "name": "SndPair",
+          "flatTag": 30
+        },
+        {
+          "name": "HeadList",
+          "flatTag": 33
+        },
+        {
+          "name": "TailList",
+          "flatTag": 34
+        },
+        {
+          "name": "UnConstrData",
+          "flatTag": 42
+        },
+        {
+          "name": "UnIData",
+          "flatTag": 45
+        }
+      ],
+      "fixture": "state-thread-broken",
+      "scriptPurpose": "spending"
     },
     {
       "artifactId": "verification-multi-sig",
@@ -83,7 +328,8 @@
           "flatTag": 46
         }
       ],
-      "fixture": "typed-multisig"
+      "fixture": "typed-multisig",
+      "scriptPurpose": "spending"
     },
     {
       "artifactId": "verification-multi-sig",
@@ -129,7 +375,8 @@
           "flatTag": 46
         }
       ],
-      "fixture": "typed-multisig-broken"
+      "fixture": "typed-multisig-broken",
+      "scriptPurpose": "spending"
     }
   ]
 }

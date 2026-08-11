@@ -8,6 +8,8 @@
   "fuel": {
     "smoke": 10000,
     "typedMultisig": 4000,
+    "stateThread": 30000,
+    "controlledMint": 30000,
     "exhaustionControl": 1
   },
   "dependencies": {

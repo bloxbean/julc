@@ -5,6 +5,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VERIFY_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 TOOLS_DIR="${VERIFY_DIR}/.tools"
 INSTALL_DIR="${TOOLS_DIR}/z3-4.15.2"
+CHECK_ONLY=false
+
+if [[ "${1:-}" == "--check" ]]; then
+  CHECK_ONLY=true
+elif [[ $# -ne 0 ]]; then
+  echo "Usage: $0 [--check]" >&2
+  exit 2
+fi
 
 if [[ -x "${INSTALL_DIR}/bin/z3" ]]; then
   version="$(${INSTALL_DIR}/bin/z3 --version)"
@@ -13,6 +21,11 @@ if [[ -x "${INSTALL_DIR}/bin/z3" ]]; then
     exit 0
   fi
   echo "Existing local Z3 has unexpected version: ${version}" >&2
+  exit 2
+fi
+
+if [[ "${CHECK_ONLY}" == true ]]; then
+  echo "COULD-NOT-EVALUATE: pinned Z3 is not installed at ${INSTALL_DIR}" >&2
   exit 2
 fi
 

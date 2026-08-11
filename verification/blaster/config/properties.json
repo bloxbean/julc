@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "properties": [
+    {
+      "id": "state-thread.owner-authorization",
+      "fixture": "state-thread",
+      "scriptPurpose": "spending",
+      "threat": "unauthorized state transition",
+      "result": "ESTABLISHED",
+      "evidence": "SMT-VALID",
+      "domain": "first input is the current spending input; first input, output, and signatory exist"
+    },
+    {
+      "id": "state-thread.value-preservation",
+      "fixture": "state-thread",
+      "scriptPurpose": "spending",
+      "threat": "locked-value loss or substitution",
+      "result": "ESTABLISHED",
+      "evidence": "SMT-VALID",
+      "domain": "raw Data equality of the first resolved input and first output values"
+    },
+    {
+      "id": "state-thread.output-ref-commitment",
+      "fixture": "state-thread",
+      "scriptPurpose": "spending",
+      "threat": "one continuing output satisfying distinct inputs",
+      "result": "ESTABLISHED",
+      "evidence": "SMT-VALID",
+      "domain": "first output has an inline datum containing the current output reference and next state"
+    },
+    {
+      "id": "state-thread.double-satisfaction",
+      "fixture": "state-thread",
+      "scriptPurpose": "spending",
+      "threat": "shared successor state for distinct inputs",
+      "result": "ESTABLISHED",
+      "evidence": "KERNEL-PROVED",
+      "domain": "two executions use the same successor output commitment"
+    },
+    {
+      "id": "state-thread-broken.output-ref-commitment",
+      "fixture": "state-thread-broken",
+      "scriptPurpose": "spending",
+      "threat": "missing input/output binding",
+      "result": "REFUTED",
+      "evidence": "COUNTEREXAMPLE",
+      "counterexample": "counterexamples/state-thread-broken.output-ref-commitment.json"
+    },
+    {
+      "id": "controlled-mint.authority",
+      "fixture": "controlled-mint",
+      "scriptPurpose": "minting",
+      "threat": "unauthorized minting",
+      "result": "ESTABLISHED",
+      "evidence": "SMT-VALID",
+      "domain": "first signatory and exact singleton mint-map shape"
+    },
+    {
+      "id": "controlled-mint.exact-mint",
+      "fixture": "controlled-mint",
+      "scriptPurpose": "minting",
+      "threat": "extra token or quantity minting",
+      "result": "ESTABLISHED",
+      "evidence": "SMT-VALID",
+      "domain": "mint map contains one policy and one token with redeemer quantity one"
+    },
+    {
+      "id": "controlled-mint.own-policy-composition",
+      "fixture": "controlled-mint",
+      "scriptPurpose": "minting",
+      "threat": "singleton mint shape attributed to the wrong policy",
+      "result": "ESTABLISHED",
+      "evidence": "KERNEL-PROVED",
+      "domain": "ledger currency membership plus singleton mint-map shape"
+    },
+    {
+      "id": "controlled-mint-broken.authority",
+      "fixture": "controlled-mint-broken",
+      "scriptPurpose": "minting",
+      "threat": "missing signer check",
+      "result": "REFUTED",
+      "evidence": "COUNTEREXAMPLE",
+      "counterexample": "counterexamples/controlled-mint-broken.authority.json"
+    }
+  ]
+}

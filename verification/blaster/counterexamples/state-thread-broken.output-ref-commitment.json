@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "propertyId": "state-thread-broken.output-ref-commitment",
+  "fixture": "state-thread-broken",
+  "source": "fixtures/state-thread-broken/src/VerificationStateThreadBroken.java",
+  "omittedCheck": "owner authorization, value preservation, and successor output commitment",
+  "compiledCodeSha256": "9ccc8b638b33394dae919549200bdef483abdcc56178e7bc0f22617d9c8ef148",
+  "cardanoScriptHash": "2fd937fddbbcdf6c4e97bfcb29d065184e980c3f199ba23be122f509",
+  "expectedResult": "REFUTED",
+  "witness": {
+    "domain": "first spending input is the current output reference and a first output exists",
+    "successCondition": "nextState is greater than current state",
+    "violation": "the first output has no output datum and therefore does not commit to the consumed output reference"
+  },
+  "profile": "config/verification-profile.json"
+}
