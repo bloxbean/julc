@@ -498,7 +498,7 @@ final class LoopBodyGenerator {
     private PirTerm handleNestedLoop(WhileStmt ws, List<Statement> stmts, int index,
                                       StmtContinuation continuation) {
         var innerAccs = gen.detectForEachAccumulators(ws.getBody());
-        var innerResult = gen.generateWhileStmt(ws, List.of(ws), 0);
+        var innerResult = gen.generateWhileStmt(ws, List.of(ws), 0, null);
         return bindNestedLoopResult(innerAccs, innerResult, stmts, index, continuation);
     }
 
@@ -506,7 +506,7 @@ final class LoopBodyGenerator {
     private PirTerm handleNestedForEach(ForEachStmt fes, List<Statement> stmts, int index,
                                          StmtContinuation continuation) {
         var innerAccs = gen.detectForEachAccumulators(fes.getBody());
-        var innerResult = gen.generateForEachStmt(fes, List.of(fes), 0);
+        var innerResult = gen.generateForEachStmt(fes, List.of(fes), 0, null);
         return bindNestedLoopResult(innerAccs, innerResult, stmts, index, continuation);
     }
 
