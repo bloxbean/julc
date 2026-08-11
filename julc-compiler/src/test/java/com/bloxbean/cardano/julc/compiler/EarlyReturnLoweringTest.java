@@ -1,5 +1,6 @@
 package com.bloxbean.cardano.julc.compiler;
 
+import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.testkit.JulcEval;
 import org.junit.jupiter.api.Test;
 
@@ -26,6 +27,11 @@ class EarlyReturnLoweringTest {
             import java.math.BigInteger;
 
             class EarlyReturns {
+
+                sealed interface Action {
+                    record Mint(BigInteger amount) implements Action {}
+                    record Burn(BigInteger amount) implements Action {}
+                }
 
                 // Control: top-level early return, no else. Handled by the
                 // if-fallthrough path and has always been correct.
@@ -136,8 +142,58 @@ class EarlyReturnLoweringTest {
                     }
                     return BigInteger.valueOf(100);
                 }
+
+                // Two conditional levels: an instanceof pattern followed by a
+                // nested guard. The else returns, while the successful then-path
+                // uses the pattern variable and falls through to return true.
+                static boolean twoLevelInstanceOfReturns(Action action) {
+                    if (action instanceof Action.Mint mint) {
+                        if (mint.amount().compareTo(BigInteger.ZERO) <= 0) {
+                            return false;
+                        }
+                        BigInteger normalized = mint.amount().add(BigInteger.ONE);
+                    } else {
+                        return false;
+                    }
+                    return true;
+                }
+
+                // Five conditional levels, starting with an instanceof pattern.
+                // Every enclosing level has its own continuation, and each one
+                // uses the pattern variable to verify that its scope is preserved.
+                static BigInteger fiveLevelInstanceOfContinuations(
+                        Action action, BigInteger b, BigInteger c, BigInteger d) {
+                    if (action instanceof Action.Mint mint) {
+                        if (mint.amount().compareTo(BigInteger.ZERO) > 0) {
+                            if (b.compareTo(BigInteger.ZERO) > 0) {
+                                if (c.compareTo(BigInteger.ZERO) > 0) {
+                                    if (d.compareTo(BigInteger.ZERO) < 0) {
+                                        return BigInteger.valueOf(-1);
+                                    }
+                                    BigInteger afterD = mint.amount().add(d);
+                                    return afterD;
+                                }
+                                BigInteger afterC = mint.amount().add(c).add(BigInteger.valueOf(30));
+                                return afterC;
+                            }
+                            BigInteger afterB = mint.amount().add(b).add(BigInteger.valueOf(20));
+                            return afterB;
+                        }
+                        BigInteger afterAmount = mint.amount().add(BigInteger.TEN);
+                        return afterAmount;
+                    }
+                    return BigInteger.valueOf(100);
+                }
             }
             """);
+
+    private static PlutusData mint(long amount) {
+        return PlutusData.constr(0, PlutusData.integer(amount));
+    }
+
+    private static PlutusData burn(long amount) {
+        return PlutusData.constr(1, PlutusData.integer(amount));
+    }
 
     @Test
     void topLevelEarlyReturnControl() {
@@ -209,5 +265,31 @@ class EarlyReturnLoweringTest {
                 BigInteger.ONE, BigInteger.ONE, BigInteger.ONE, BigInteger.valueOf(-4)).asInteger());
         assertEquals(BigInteger.valueOf(6), eval.call("fourLevelContinuations",
                 BigInteger.ONE, BigInteger.ONE, BigInteger.ONE, BigInteger.valueOf(5)).asInteger());
+    }
+
+    @Test
+    void twoLevelInstanceOfReturnAndFallThroughPreservePatternScope() {
+        assertFalse(eval.call("twoLevelInstanceOfReturns", mint(0)).asBoolean(),
+                "nested return inside the instanceof branch must reject");
+        assertTrue(eval.call("twoLevelInstanceOfReturns", mint(3)).asBoolean(),
+                "the Mint branch must use its pattern variable and then fall through");
+        assertFalse(eval.call("twoLevelInstanceOfReturns", burn(3)).asBoolean(),
+                "the returning else branch must bypass the trailing return true");
+    }
+
+    @Test
+    void fiveLevelInstanceOfContinuationsComposeAndPreservePatternScope() {
+        assertEquals(BigInteger.valueOf(100), eval.call("fiveLevelInstanceOfContinuations",
+                burn(5), BigInteger.ONE, BigInteger.ONE, BigInteger.ONE).asInteger());
+        assertEquals(BigInteger.valueOf(8), eval.call("fiveLevelInstanceOfContinuations",
+                mint(-2), BigInteger.ONE, BigInteger.ONE, BigInteger.ONE).asInteger());
+        assertEquals(BigInteger.valueOf(23), eval.call("fiveLevelInstanceOfContinuations",
+                mint(5), BigInteger.valueOf(-2), BigInteger.ONE, BigInteger.ONE).asInteger());
+        assertEquals(BigInteger.valueOf(32), eval.call("fiveLevelInstanceOfContinuations",
+                mint(5), BigInteger.ONE, BigInteger.valueOf(-3), BigInteger.ONE).asInteger());
+        assertEquals(BigInteger.valueOf(-1), eval.call("fiveLevelInstanceOfContinuations",
+                mint(5), BigInteger.ONE, BigInteger.ONE, BigInteger.valueOf(-4)).asInteger());
+        assertEquals(BigInteger.valueOf(11), eval.call("fiveLevelInstanceOfContinuations",
+                mint(5), BigInteger.ONE, BigInteger.ONE, BigInteger.valueOf(6)).asInteger());
     }
 }
