@@ -1,0 +1,135 @@
+{
+  "schemaVersion": 1,
+  "artifacts": [
+    {
+      "artifactId": "verification-datum-gate",
+      "title": "VerificationDatumGate",
+      "compiledCodeSha256": "2647961bae9e59e2354c4f26c290f9186a1ae23d64fe77dd29ec5ff2e2063661",
+      "cardanoScriptHash": "b0472b63196e0e96ebacece32847281d8f12eaaf60d0bbc0ccfed693",
+      "uplcVersion": "1.1.0",
+      "builtins": [
+        {
+          "name": "EqualsInteger",
+          "flatTag": 7
+        },
+        {
+          "name": "IfThenElse",
+          "flatTag": 26
+        },
+        {
+          "name": "SndPair",
+          "flatTag": 30
+        },
+        {
+          "name": "HeadList",
+          "flatTag": 33
+        },
+        {
+          "name": "TailList",
+          "flatTag": 34
+        },
+        {
+          "name": "UnConstrData",
+          "flatTag": 42
+        },
+        {
+          "name": "UnIData",
+          "flatTag": 45
+        }
+      ],
+      "fixture": "smoke"
+    },
+    {
+      "artifactId": "verification-multi-sig",
+      "title": "VerificationMultiSig",
+      "compiledCodeSha256": "ddbe7cde14b8bbfb65620b41b1c9bcb51565edd7bf8ffd4d4b316ba701d2b970",
+      "cardanoScriptHash": "1d6cc40ae0682b62790d031e9940ad78068156cecae08919c4f276e5",
+      "uplcVersion": "1.1.0",
+      "builtins": [
+        {
+          "name": "EqualsByteString",
+          "flatTag": 15
+        },
+        {
+          "name": "IfThenElse",
+          "flatTag": 26
+        },
+        {
+          "name": "SndPair",
+          "flatTag": 30
+        },
+        {
+          "name": "HeadList",
+          "flatTag": 33
+        },
+        {
+          "name": "TailList",
+          "flatTag": 34
+        },
+        {
+          "name": "NullList",
+          "flatTag": 35
+        },
+        {
+          "name": "UnConstrData",
+          "flatTag": 42
+        },
+        {
+          "name": "UnListData",
+          "flatTag": 44
+        },
+        {
+          "name": "UnBData",
+          "flatTag": 46
+        }
+      ],
+      "fixture": "typed-multisig"
+    },
+    {
+      "artifactId": "verification-multi-sig",
+      "title": "VerificationMultiSig",
+      "compiledCodeSha256": "8e4df164a3234c40368b59786bb4a11bd2e7d993e43619455edf66abac2b2dd1",
+      "cardanoScriptHash": "6c41e1b7042a7ea0568501221c5a3ffa7284079bdaa237d09b50b2bc",
+      "uplcVersion": "1.1.0",
+      "builtins": [
+        {
+          "name": "EqualsByteString",
+          "flatTag": 15
+        },
+        {
+          "name": "IfThenElse",
+          "flatTag": 26
+        },
+        {
+          "name": "SndPair",
+          "flatTag": 30
+        },
+        {
+          "name": "HeadList",
+          "flatTag": 33
+        },
+        {
+          "name": "TailList",
+          "flatTag": 34
+        },
+        {
+          "name": "NullList",
+          "flatTag": 35
+        },
+        {
+          "name": "UnConstrData",
+          "flatTag": 42
+        },
+        {
+          "name": "UnListData",
+          "flatTag": 44
+        },
+        {
+          "name": "UnBData",
+          "flatTag": 46
+        }
+      ],
+      "fixture": "typed-multisig-broken"
+    }
+  ]
+}

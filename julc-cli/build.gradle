@@ -26,6 +26,9 @@ dependencies {
     implementation 'info.picocli:picocli:4.7.7'
     annotationProcessor 'info.picocli:picocli-codegen:4.7.7'
 
+    // Exact blueprint entry selection and machine-readable artifact metadata.
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
+
     implementation 'org.jline:jline:3.27.1'
 
     // Model Context Protocol SDK — powers the `julc mcp` subcommand which

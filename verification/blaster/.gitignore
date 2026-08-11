@@ -1,0 +1,5 @@
+/.lake/
+/.tools/
+/generated/
+/results/
+/fixtures/*/build/
