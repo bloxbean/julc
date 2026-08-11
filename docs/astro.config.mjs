@@ -42,6 +42,12 @@ export default defineConfig({
           ],
         },
         {
+          label: 'Best Practices',
+          items: [
+            { label: 'Conditionals and Script Size', slug: 'best-practices/conditionals' },
+          ],
+        },
+        {
           label: 'Standard Library',
           items: [
             { label: 'Library Reference', slug: 'stdlib/stdlib-guide' },

@@ -76,6 +76,35 @@ Build artifact: `build/classes/META-INF/plutus/MyValidator.plutus.json` — the 
 - 🚫 **Same parameter name as a sealed-interface constructor field.** See limitation 6.4.
 - 🚫 **Calling `.hash()` on a value that is already a hash type** (double-unwrap).
 
+### 3.4 Conditional control flow and script size
+
+- An `if` does **not** need an `else`. Nested `if` statements and code following them
+  retain normal Java behavior.
+- Prefer linear guard clauses for independent validation rules:
+
+  ```java
+  if (!validAmount(datum)) {
+      return false;
+  }
+  if (!ownerSigned(ctx, datum)) {
+      return false;
+  }
+  return validateOutputs(ctx);
+  ```
+
+- Put cheap, safe checks before expensive checks so invalid transactions stop early.
+- When branches mix early returns with fallthrough, code after the conditional becomes
+  the continuation of every branch that can reach it. If several branches reach a large
+  common block, extract that block into a static helper so its generated body is defined
+  once.
+- Do **not** move unsafe operations (such as `list.head()`, division, indexing, or data
+  decoding) before their guards merely to reduce size. UPLC evaluation is strict.
+- For sealed types, prefer an exhaustive `switch` expression that produces a value.
+  Do not generate a statement-style switch containing `return` in its cases.
+
+Full examples and the reasoning behind these rules:
+[Conditionals and Script Size](/best-practices/conditionals/).
+
 ---
 
 ## 4. Validator annotation entrypoint shapes
@@ -585,6 +614,8 @@ For deeper patterns, consult [`julc-examples`](https://github.com/bloxbean/julc-
 - ❌ **`@Param PlutusData.BytesData/MapData/ListData/IntData`.** Banned.
 - ❌ **Three-way mutual recursion.** Refactor.
 - ❌ **Calling `.hash()` on a value that is already hash bytes.** Causes double-unwrap.
+- ❌ **Repeating a large common block after deeply branching early-return logic.** Keep
+  common work in one helper and use guard clauses where they express the rules clearly.
 
 ---
 
@@ -613,6 +644,7 @@ Before writing any JuLC code, verify the agent can answer "yes" to each:
 8. ✅ Are switch case binding names different from method parameter names?
 9. ✅ Am I using `@SpendingValidator` / `@MintingValidator` etc. correctly with a `static @Entrypoint` method?
 10. ✅ Have I imported from `com.bloxbean.cardano.julc.ledger.*` and `com.bloxbean.cardano.julc.stdlib.lib.*`?
+11. ✅ Have I used guard clauses and kept any large shared continuation in one helper?
 
 If yes to all → write the code. If unsure on any → re-read the relevant section above.
 

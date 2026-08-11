@@ -21,6 +21,7 @@ import com.bloxbean.cardano.julc.compiler.util.StringUtils;
 import java.math.BigInteger;
 import java.util.*;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 /**
  * Compiles JavaParser AST to PIR terms.
@@ -302,8 +303,20 @@ public class PirGenerator {
     }
 
     private PirTerm generateStatements(List<Statement> stmts, int index) {
+        return generateStatements(stmts, index, null);
+    }
+
+    /**
+     * Generate a statement list with an explicit fall-through continuation.
+     *
+     * <p>{@code cont} is the term to run when execution falls off the end of this
+     * statement list without hitting a {@code return} (e.g. the statements after an
+     * enclosing if whose branch this list is). {@code null} means the legacy value
+     * position: falling off the end yields {@code unit}.
+     */
+    private PirTerm generateStatements(List<Statement> stmts, int index, Supplier<PirTerm> cont) {
         if (index >= stmts.size()) {
-            return new PirTerm.Const(Constant.unit());
+            return cont == null ? new PirTerm.Const(Constant.unit()) : cont.get();
         }
         var stmt = stmts.get(index);
         if (stmt instanceof ReturnStmt rs) {
@@ -325,7 +338,7 @@ public class PirGenerator {
                 var value = generateExpression(initExpr);
                 var pirType = inferType(decl.getType(), value, initExpr);
                 symbolTable.define(name, pirType);
-                var body = generateStatements(stmts, index + 1);
+                var body = generateStatements(stmts, index + 1, cont);
                 return new PirTerm.Let(name, value, body);
             }
             // Accumulator assignment in for-each fold: return value as the new accumulator
@@ -338,17 +351,17 @@ public class PirGenerator {
             }
             // Non-declaration expression statement: evaluate and continue
             var expr = generateExpression(es.getExpression());
-            var rest = generateStatements(stmts, index + 1);
+            var rest = generateStatements(stmts, index + 1, cont);
             return new PirTerm.Let("_", expr, rest);
         }
         if (stmt instanceof IfStmt is) {
-            return generateIfStmt(is, stmts, index);
+            return generateIfStmt(is, stmts, index, cont);
         }
         if (stmt instanceof ForEachStmt fes) {
-            return generateForEachStmt(fes, stmts, index);
+            return generateForEachStmt(fes, stmts, index, cont);
         }
         if (stmt instanceof WhileStmt ws) {
-            return generateWhileStmt(ws, stmts, index);
+            return generateWhileStmt(ws, stmts, index, cont);
         }
         if (stmt instanceof BreakStmt) {
             // break outside break-aware context: return current accumulator
@@ -363,33 +376,51 @@ public class PirGenerator {
                 "Only variable declarations, if/else, for-each, while, return, and expression statements are supported on-chain.",
                 stmt);
         // Skip unsupported statement and continue with remaining statements
-        return generateStatements(stmts, index + 1);
+        return generateStatements(stmts, index + 1, cont);
     }
 
-    private PirTerm generateIfStmt(IfStmt is, List<Statement> followingStmts, int followingIndex) {
+    private PirTerm generateIfStmt(IfStmt is, List<Statement> followingStmts, int followingIndex,
+            Supplier<PirTerm> cont) {
         boolean hasFollowing = followingIndex + 1 < followingStmts.size();
-        boolean noElse = is.getElseStmt().isEmpty();
-        boolean thenReturns = thenBranchReturns(is.getThenStmt());
+        boolean thenHasReturn = containsMethodReturn(is.getThenStmt());
+        boolean elseHasReturn = is.getElseStmt().map(PirGenerator::containsMethodReturn).orElse(false);
 
-        // If-fallthrough optimization: when the then-branch returns, there is no else,
-        // and there are following statements, use the following statements as the else-branch
-        // of the IfThenElse instead of wrapping in a Let (where rest would always execute).
-        // This makes `if (cond) { return X; } return Y;` work correctly.
-        if (hasFollowing && noElse && thenReturns) {
-            var rest = generateStatements(followingStmts, followingIndex + 1);
+        // Early-return-aware lowering: when a branch contains a `return`, the statements
+        // after the if (plus the enclosing fall-through continuation) become each branch's
+        // continuation. A path that returns short-circuits them; a path that falls through
+        // runs them. This subsumes the old `if (cond) { return X; } rest` fallthrough
+        // optimization and fixes the miscompilation where `Let("_if", ifExpr, rest)`
+        // discarded a branch's return value and ran `rest` unconditionally.
+        if (thenHasReturn || elseHasReturn) {
+            // Generate the after-if term eagerly in the CURRENT scope (not a branch scope),
+            // so names in it cannot resolve against branch-local variables. Both branches
+            // share the same term instance; only branches that actually fall through embed it.
+            symbolTable.pushScope();
+            var afterIfTerm = generateStatements(followingStmts, followingIndex + 1, cont);
+            symbolTable.popScope();
+            Supplier<PirTerm> afterIf = () -> afterIfTerm;
+
+            PirTerm result;
             if (is.getCondition() instanceof InstanceOfExpr ioe && ioe.getPattern().isPresent()
                     && ioe.getPattern().get() instanceof TypePatternExpr tpe) {
-                // For instanceof pattern, generate with rest as the else-branch
-                return generateInstanceOfIf(ioe, tpe, is.getThenStmt(), rest);
+                var elseTerm = is.getElseStmt()
+                        .map(e -> generateBranchWithCont(e, afterIf))
+                        .orElse(afterIfTerm);
+                result = generateInstanceOfIfCps(ioe, tpe, is.getThenStmt(), elseTerm, afterIf);
             } else {
                 var cond = generateExpression(is.getCondition());
-                var thenTerm = generateStatement(is.getThenStmt());
-                var result = new PirTerm.IfThenElse(cond, thenTerm, rest);
-                recordPosition(result, is);
-                return result;
+                var thenTerm = generateBranchWithCont(is.getThenStmt(), afterIf);
+                var elseTerm = is.getElseStmt()
+                        .map(e -> generateBranchWithCont(e, afterIf))
+                        .orElse(afterIfTerm);
+                result = new PirTerm.IfThenElse(cond, thenTerm, elseTerm);
             }
+            recordPosition(result, is);
+            return result;
         }
 
+        // No `return` anywhere in the branches: evaluate the if for effect and continue
+        // (legacy shape, preserved for generated-code stability).
         PirTerm ifExpr;
         if (is.getCondition() instanceof InstanceOfExpr ioe && ioe.getPattern().isPresent()
                 && ioe.getPattern().get() instanceof TypePatternExpr tpe) {
@@ -404,34 +435,50 @@ public class PirGenerator {
         }
         recordPosition(ifExpr, is);
 
-        // If there are statements following the if, wrap in a let
-        if (hasFollowing) {
-            var rest = generateStatements(followingStmts, followingIndex + 1);
+        // If there are statements following the if (or an enclosing continuation to
+        // fall through to), wrap in a let
+        if (hasFollowing || cont != null) {
+            var rest = generateStatements(followingStmts, followingIndex + 1, cont);
             return new PirTerm.Let("_if", ifExpr, rest);
         }
         return ifExpr;
     }
 
     /**
-     * Check if a then-branch contains a return statement, meaning execution should not
-     * fall through to subsequent statements when the condition is true.
+     * Generate an if-branch with an explicit fall-through continuation: statements in the
+     * branch that return produce their value; falling off the end of the branch continues
+     * with {@code cont}.
      */
-    private boolean thenBranchReturns(Statement thenStmt) {
-        if (thenStmt instanceof ReturnStmt) {
+    private PirTerm generateBranchWithCont(Statement branch, Supplier<PirTerm> cont) {
+        if (branch instanceof BlockStmt block) {
+            symbolTable.pushScope();
+            var result = generateStatements(block.getStatements(), 0, cont);
+            symbolTable.popScope();
+            return result;
+        }
+        return generateStatements(List.of(branch), 0, cont);
+    }
+
+    /**
+     * True when {@code stmt} contains a {@code return} belonging to the enclosing method
+     * (returns inside nested lambdas or local methods do not count).
+     */
+    private static boolean containsMethodReturn(Statement stmt) {
+        if (stmt instanceof ReturnStmt) {
             return true;
         }
-        if (thenStmt instanceof BlockStmt block) {
-            var stmts = block.getStatements();
-            if (!stmts.isEmpty()) {
-                var last = stmts.get(stmts.size() - 1);
-                if (last instanceof ReturnStmt) {
-                    return true;
+        for (var ret : stmt.findAll(ReturnStmt.class)) {
+            Node cur = ret.getParentNode().orElse(null);
+            boolean nested = false;
+            while (cur != null && cur != stmt) {
+                if (cur instanceof LambdaExpr || cur instanceof MethodDeclaration) {
+                    nested = true;
+                    break;
                 }
-                // Also check for nested if with return (e.g., if (a) { if (b) { return X; } return Y; })
-                if (last instanceof IfStmt nestedIf) {
-                    return thenBranchReturns(nestedIf.getThenStmt())
-                            && nestedIf.getElseStmt().map(this::thenBranchReturns).orElse(false);
-                }
+                cur = cur.getParentNode().orElse(null);
+            }
+            if (!nested) {
+                return true;
             }
         }
         return false;
@@ -503,6 +550,27 @@ public class PirGenerator {
     }
 
     /**
+     * Generate an instanceof if-statement whose then-branch has an explicit fall-through
+     * continuation (early-return-aware lowering).
+     */
+    private PirTerm generateInstanceOfIfCps(InstanceOfExpr ioe, TypePatternExpr tpe,
+            Statement thenStmt, PirTerm elseTerm, Supplier<PirTerm> cont) {
+        var condTerm = generateInstanceOf(ioe);
+
+        var varName = tpe.getName().asString();
+        var varType = typeResolver.resolve(tpe.getType());
+
+        symbolTable.pushScope();
+        symbolTable.define(varName, varType);
+        var scrutineeTerm = generateExpression(ioe.getExpression());
+        var thenBody = generateBranchWithCont(thenStmt, cont);
+        var thenTerm = new PirTerm.Let(varName, scrutineeTerm, thenBody);
+        symbolTable.popScope();
+
+        return new PirTerm.IfThenElse(condTerm, thenTerm, elseTerm);
+    }
+
+    /**
      * Generate an instanceof if-statement with a pre-computed else term.
      * Used by the fallthrough optimization to pass following statements as the else-branch.
      */
@@ -556,10 +624,10 @@ public class PirGenerator {
             return new PirTerm.IfThenElse(cond, thenTerm, elseTerm);
         }
         if (stmt instanceof ForEachStmt fes) {
-            return generateForEachStmt(fes, List.of(stmt), 0);
+            return generateForEachStmt(fes, List.of(stmt), 0, null);
         }
         if (stmt instanceof WhileStmt ws) {
-            return generateWhileStmt(ws, List.of(stmt), 0);
+            return generateWhileStmt(ws, List.of(stmt), 0, null);
         }
         throw enrichedError("Unsupported statement: " + stmt.getClass().getSimpleName(),
                 "Only variable declarations, if/else, for-each, while, return, and expression statements are supported on-chain.",
@@ -1294,7 +1362,8 @@ public class PirGenerator {
                 oce);
     }
 
-    PirTerm generateForEachStmt(ForEachStmt fes, List<Statement> followingStmts, int followingIndex) {
+    PirTerm generateForEachStmt(ForEachStmt fes, List<Statement> followingStmts, int followingIndex,
+            Supplier<PirTerm> cont) {
         if (containsReturn(fes.getBody())) {
             throw enrichedError(
                     "'return' is not supported inside for-each loop body",
@@ -1391,9 +1460,9 @@ public class PirGenerator {
             }
 
             // Rebind accumulator with fold result for following statements
-            if (followingIndex + 1 < followingStmts.size()) {
+            if (followingIndex + 1 < followingStmts.size() || cont != null) {
                 symbolTable.define(accName, accType);
-                var rest = generateStatements(followingStmts, followingIndex + 1);
+                var rest = generateStatements(followingStmts, followingIndex + 1, cont);
                 // Re-bind pre-loop variables to fix scope corruption from LetRec boundary
                 rest = rebindPreLoopVars(rest, preLoopVars, Set.of(accName));
                 return new PirTerm.Let(accName, foldResult, rest);
@@ -1470,11 +1539,11 @@ public class PirGenerator {
             }
 
             // After loop: unpack final tuple into individual vars for following statements
-            if (followingIndex + 1 < followingStmts.size()) {
+            if (followingIndex + 1 < followingStmts.size() || cont != null) {
                 for (int i = 0; i < accumulators.size(); i++) {
                     symbolTable.define(accumulators.get(i), accTypes.get(i));
                 }
-                var rest = generateStatements(followingStmts, followingIndex + 1);
+                var rest = generateStatements(followingStmts, followingIndex + 1, cont);
                 // Re-bind pre-loop variables to fix scope corruption from LetRec boundary
                 rest = rebindPreLoopVars(rest, preLoopVars, new LinkedHashSet<>(accumulators));
                 return unpackAccumulators(foldResult, accumulators, accTypes, rest);
@@ -1503,8 +1572,8 @@ public class PirGenerator {
                     new PirTerm.Const(Constant.unit()), new PirType.UnitType(),
                     bodyTerm, elemType);
 
-            if (followingIndex + 1 < followingStmts.size()) {
-                var rest = generateStatements(followingStmts, followingIndex + 1);
+            if (followingIndex + 1 < followingStmts.size() || cont != null) {
+                var rest = generateStatements(followingStmts, followingIndex + 1, cont);
                 return new PirTerm.Let("_forEach", forEachResult, rest);
             }
             return forEachResult;
@@ -1583,7 +1652,8 @@ public class PirGenerator {
         return loopBody.generateMultiAccBreakAwareBody(bodyStmt, accNames, accTypes, continueFn);
     }
 
-    PirTerm generateWhileStmt(WhileStmt ws, List<Statement> followingStmts, int followingIndex) {
+    PirTerm generateWhileStmt(WhileStmt ws, List<Statement> followingStmts, int followingIndex,
+            Supplier<PirTerm> cont) {
         if (containsReturn(ws.getBody())) {
             throw enrichedError(
                     "'return' is not supported inside while loop body",
@@ -1649,9 +1719,9 @@ public class PirGenerator {
             }
 
             // Rebind accumulator with while result for following statements
-            if (followingIndex + 1 < followingStmts.size()) {
+            if (followingIndex + 1 < followingStmts.size() || cont != null) {
                 symbolTable.define(accName, accType);
-                var rest = generateStatements(followingStmts, followingIndex + 1);
+                var rest = generateStatements(followingStmts, followingIndex + 1, cont);
                 // Re-bind pre-loop variables to fix scope corruption from LetRec boundary
                 rest = rebindPreLoopVars(rest, preLoopVars, Set.of(accName));
                 return new PirTerm.Let(accName, whileResult, rest);
@@ -1735,11 +1805,11 @@ public class PirGenerator {
             }
 
             // After loop: unpack final tuple into individual vars for following statements
-            if (followingIndex + 1 < followingStmts.size()) {
+            if (followingIndex + 1 < followingStmts.size() || cont != null) {
                 for (int i = 0; i < accumulators.size(); i++) {
                     symbolTable.define(accumulators.get(i), accTypes.get(i));
                 }
-                var rest = generateStatements(followingStmts, followingIndex + 1);
+                var rest = generateStatements(followingStmts, followingIndex + 1, cont);
                 // Re-bind pre-loop variables to fix scope corruption from LetRec boundary
                 rest = rebindPreLoopVars(rest, preLoopVars, new LinkedHashSet<>(accumulators));
                 return unpackAccumulators(whileResult, accumulators, accTypes, rest);
@@ -1753,8 +1823,8 @@ public class PirGenerator {
 
             var whileResult = desugarer.desugarWhile(condition, bodyTerm);
 
-            if (followingIndex + 1 < followingStmts.size()) {
-                var rest = generateStatements(followingStmts, followingIndex + 1);
+            if (followingIndex + 1 < followingStmts.size() || cont != null) {
+                var rest = generateStatements(followingStmts, followingIndex + 1, cont);
                 return new PirTerm.Let("_while", whileResult, rest);
             }
             return whileResult;
