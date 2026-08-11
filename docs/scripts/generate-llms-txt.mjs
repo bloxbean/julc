@@ -48,6 +48,10 @@ const SECTIONS = [
     ],
   },
   {
+    title: 'Best Practices',
+    files: ['best-practices/conditionals.md'],
+  },
+  {
     title: 'Standard Library',
     files: ['stdlib/stdlib-guide.md'],
   },
