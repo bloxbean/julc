@@ -33,9 +33,18 @@ julc new <project-name>
 # Build validators (compile Java to UPLC)
 julc build
 
+# Generate a pinned Lean/Blaster verification workspace from the blueprint
+julc verify init . --validator MyValidator --purpose spending
+
 # Show version
 julc --version
 ```
+
+`julc verify init` validates the exact blueprint artifact and script hash,
+checks builtin coverage, generates strict CIP-57 `IsData` definitions, and
+creates a pinned Lean project with reusable security-property predicates. The
+generated manifest starts as `COULD-NOT-EVALUATE` until you specialize and
+prove the contract property and add a vulnerable negative control.
 
 ## Documentation
 

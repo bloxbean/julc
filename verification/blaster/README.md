@@ -7,6 +7,13 @@ This directory implements Milestones A and B of the JuLC verification strategy:
 - [`ADR-003`](../../adr/verification/003-milestone-b-useful-contract-verification.md)
   establishes bounded, production-shaped spending and minting properties.
 
+Milestone C's reusable adoption workflow is implemented by `julc verify init`;
+see
+[`ADR-004`](../../adr/verification/004-milestone-c-reusable-verification-integration.md).
+It generates a standalone pinned workspace, strict schema-derived `IsData`
+instances, templates, and a truthful unproved obligation from a built JuLC
+blueprint.
+
 It compiles dedicated validators through JuLC's production CLI, exports the
 exact double-CBOR blueprint artifacts, validates their script hashes and UPLC
 builtin inventories, and builds a pinned Lean/Blaster project.

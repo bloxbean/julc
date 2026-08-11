@@ -68,7 +68,7 @@ public class ArtifactCommand implements Callable<Integer> {
         }
     }
 
-    static ArtifactMetadata inspect(Path blueprintFile, String title) throws Exception {
+    public static ArtifactMetadata inspect(Path blueprintFile, String title) throws Exception {
         if (!Files.isRegularFile(blueprintFile)) {
             throw new IllegalArgumentException("Blueprint not found: " + blueprintFile);
         }
@@ -168,9 +168,9 @@ public class ArtifactCommand implements Callable<Integer> {
         return normalized;
     }
 
-    record BuiltinUse(String name, int flatTag) { }
+    public record BuiltinUse(String name, int flatTag) { }
 
-    record ArtifactMetadata(
+    public record ArtifactMetadata(
             String artifactId,
             String title,
             String compiledCode,
