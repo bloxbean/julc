@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 
 import java.math.BigInteger;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -90,6 +91,51 @@ class EarlyReturnLoweringTest {
                     }
                     return a.add(BigInteger.TEN);
                 }
+
+                // Four nested levels with returns in both then and else branches.
+                // Every rejecting path must bypass the final return true.
+                static boolean fourLevelMixedReturns(
+                        BigInteger a, BigInteger b, BigInteger c, BigInteger d) {
+                    if (a.compareTo(BigInteger.ZERO) > 0) {
+                        if (b.compareTo(BigInteger.ZERO) > 0) {
+                            if (c.compareTo(BigInteger.ZERO) > 0) {
+                                if (d.compareTo(BigInteger.ZERO) <= 0) {
+                                    return false;
+                                }
+                            } else {
+                                return false;
+                            }
+                        } else {
+                            return false;
+                        }
+                    } else {
+                        return false;
+                    }
+                    return true;
+                }
+
+                // Each nesting level has a different fall-through continuation.
+                // This verifies that continuations compose in lexical order and
+                // that the deepest return bypasses all enclosing continuations.
+                static BigInteger fourLevelContinuations(
+                        BigInteger a, BigInteger b, BigInteger c, BigInteger d) {
+                    if (a.compareTo(BigInteger.ZERO) > 0) {
+                        if (b.compareTo(BigInteger.ZERO) > 0) {
+                            if (c.compareTo(BigInteger.ZERO) > 0) {
+                                if (d.compareTo(BigInteger.ZERO) < 0) {
+                                    return BigInteger.valueOf(-1);
+                                }
+                                BigInteger afterD = d.add(BigInteger.ONE);
+                                return afterD;
+                            }
+                            BigInteger afterC = c.add(BigInteger.TEN);
+                            return afterC;
+                        }
+                        BigInteger afterB = b.add(BigInteger.valueOf(20));
+                        return afterB;
+                    }
+                    return BigInteger.valueOf(100);
+                }
             }
             """);
 
@@ -131,9 +177,37 @@ class EarlyReturnLoweringTest {
 
     @Test
     void nonBooleanEarlyReturnMustShortCircuit() {
-        org.junit.jupiter.api.Assertions.assertEquals(BigInteger.valueOf(-1),
+        assertEquals(BigInteger.valueOf(-1),
                 eval.call("integerEarlyReturn", BigInteger.valueOf(-5)).asInteger());
-        org.junit.jupiter.api.Assertions.assertEquals(BigInteger.valueOf(15),
+        assertEquals(BigInteger.valueOf(15),
                 eval.call("integerEarlyReturn", BigInteger.valueOf(5)).asInteger());
+    }
+
+    @Test
+    void fourLevelMixedReturnsMustShortCircuitAtEveryDepth() {
+        assertFalse(eval.call("fourLevelMixedReturns",
+                BigInteger.valueOf(-1), BigInteger.ONE, BigInteger.ONE, BigInteger.ONE).asBoolean());
+        assertFalse(eval.call("fourLevelMixedReturns",
+                BigInteger.ONE, BigInteger.valueOf(-1), BigInteger.ONE, BigInteger.ONE).asBoolean());
+        assertFalse(eval.call("fourLevelMixedReturns",
+                BigInteger.ONE, BigInteger.ONE, BigInteger.valueOf(-1), BigInteger.ONE).asBoolean());
+        assertFalse(eval.call("fourLevelMixedReturns",
+                BigInteger.ONE, BigInteger.ONE, BigInteger.ONE, BigInteger.ZERO).asBoolean());
+        assertTrue(eval.call("fourLevelMixedReturns",
+                BigInteger.ONE, BigInteger.ONE, BigInteger.ONE, BigInteger.ONE).asBoolean());
+    }
+
+    @Test
+    void fourLevelFallThroughContinuationsComposeInLexicalOrder() {
+        assertEquals(BigInteger.valueOf(100), eval.call("fourLevelContinuations",
+                BigInteger.valueOf(-1), BigInteger.ONE, BigInteger.ONE, BigInteger.ONE).asInteger());
+        assertEquals(BigInteger.valueOf(18), eval.call("fourLevelContinuations",
+                BigInteger.ONE, BigInteger.valueOf(-2), BigInteger.ONE, BigInteger.ONE).asInteger());
+        assertEquals(BigInteger.valueOf(7), eval.call("fourLevelContinuations",
+                BigInteger.ONE, BigInteger.ONE, BigInteger.valueOf(-3), BigInteger.ONE).asInteger());
+        assertEquals(BigInteger.valueOf(-1), eval.call("fourLevelContinuations",
+                BigInteger.ONE, BigInteger.ONE, BigInteger.ONE, BigInteger.valueOf(-4)).asInteger());
+        assertEquals(BigInteger.valueOf(6), eval.call("fourLevelContinuations",
+                BigInteger.ONE, BigInteger.ONE, BigInteger.ONE, BigInteger.valueOf(5)).asInteger());
     }
 }
