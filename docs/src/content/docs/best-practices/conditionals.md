@@ -289,6 +289,3 @@ Before optimizing a validator, ask:
 - Would one well-named helper keep that common block in one place?
 - Am I preserving guards before operations that can fail?
 - Have I measured both serialized script size and execution budget?
-
-For compiler-level PIR and UPLC examples, see
-[PIR and UPLC `if`/`else` lowering](https://github.com/bloxbean/julc/blob/main/adr/issues/pir-uplc-if-else-lowering.md).
