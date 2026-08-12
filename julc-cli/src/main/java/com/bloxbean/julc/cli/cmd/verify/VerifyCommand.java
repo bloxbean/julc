@@ -8,6 +8,7 @@ import picocli.CommandLine.Command;
         description = "Generate and run formal-verification workspaces",
         subcommands = {
                 VerifyInitCommand.class,
+                VerifyRunCommand.class,
                 CommandLine.HelpCommand.class
         }
 )
