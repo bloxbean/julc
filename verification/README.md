@@ -6,7 +6,7 @@ automation.
 
 ## What is available today
 
-There are two ways to explore the current integration:
+There are three ways to explore the current integration:
 
 1. `verification/blaster` is the committed Milestone A/B evidence suite. It
    verifies the repository's state-thread and controlled-mint fixtures against
@@ -17,6 +17,9 @@ There are two ways to explore the current integration:
    generated security property is intentionally false and unproved: a contract
    author must replace it with a reviewed, contract-specific property and add a
    negative control.
+3. `verification/c2` is the committed Milestone C.2 codec evidence. It
+   generates real spending and minting workspaces and checks the exact boolean,
+   optional, list, map, and nested decoders emitted by `julc verify init`.
 
 The integration does not prove that every JuLC program is safe. It checks
 explicit properties for one exact compiled artifact. Solver-valid Blaster
@@ -181,25 +184,43 @@ The generated-workspace flow currently supports:
 
 - Plutus V3 spending validators and minting policies;
 - named single-constructor records and sealed multi-constructor variants;
-- integer and byte-string fields, plus supported references between named
-  nonrecursive definitions;
+- integers, byte strings, booleans, optional values, lists, maps, and arbitrary
+  nonrecursive nesting of those forms;
+- supported references between named nonrecursive definitions;
 - the exact UPLC stored in `build/plutus/plutus.json`; and
 - UPLC builtin tags 0–88 and 92–93 under the pinned Blaster profile.
 
 It currently rejects or cannot evaluate:
 
-- lists, maps, optional values, booleans in generated Lean schemas, and
-  recursive schemas;
+- recursive schemas;
 - unnamed or opaque datum/redeemer schema shapes;
 - builtin tags outside the pinned coverage set;
 - non-V3 artifacts; and
 - any workspace whose artifact hash, dependency revision, or tool version does
   not match its manifest.
 
-Blueprint support for those containers is complete; translating them into
-strict Lean encoders/decoders is Milestone C.2. Productive recursion remains
-Milestone C.3. Both are tracked in
+Generated Lean uses `JulcList α` for Plutus `Data.List` and `JulcMap κ υ` for
+Plutus `Data.Map`. `JulcMap` is an ordered association list: duplicate keys are
+validated and preserved, matching JuLC's compiler/runtime behavior rather than
+adding a Java `Map` uniqueness assumption. Equality is structural
+association-list equality, so entry order and duplicates matter even when two
+values have the same lookup behavior.
+
+Productive recursion remains Milestone C.3. It is tracked in
 [`ADR-004`](../adr/verification/004-milestone-c-reusable-verification-integration.md).
+
+## Reproduce the Milestone C.2 codec evidence
+
+The C.2 suite builds real JuLC container contracts, runs `julc verify init`,
+checks dependency revisions, compiles spending and minting harnesses, and
+compiles strict positive and malformed codec examples:
+
+```bash
+verification/c2/scripts/verify.sh
+```
+
+See [`verification/c2/README.md`](c2/README.md) for the tested cases and map
+semantics.
 
 ## Reproduce the committed evidence suite
 

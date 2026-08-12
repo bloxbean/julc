@@ -39,7 +39,8 @@ public final class VerificationProjectGenerator {
             "structure", "syntax", "theorem", "then", "universe", "where",
             "with");
     private static final Set<String> RESERVED_TYPE_NAMES = Set.of(
-            "ByteString", "Data", "Integer", "IsData", "ScriptContext");
+            "Bool", "ByteString", "Data", "Integer", "IsData", "JulcList", "JulcMap",
+            "Option", "ScriptContext");
     private static final Set<String> USER_OWNED_FILES = Set.of("SecurityProperty.lean");
 
     private VerificationProjectGenerator() { }
@@ -113,7 +114,7 @@ public final class VerificationProjectGenerator {
                 verifyScript(leanId, artifactId, artifact.compiledCodeSha256()));
         files.put("README.md", readme(leanId, validatorTitle, purpose));
         files.put("verification-manifest.json",
-                manifest(blueprint, artifact, purpose, fuel, schemas.names()));
+                manifest(blueprint, artifact, purpose, fuel, schemas.leanTypes()));
 
         writeAtomically(output, files);
         return new GenerationResult(output, artifactId, leanId, files.keySet().stream().toList());
@@ -155,7 +156,7 @@ public final class VerificationProjectGenerator {
         Set<String> normalized = new HashSet<>();
         for (String name : needed) {
             JsonNode schema = all.get(name);
-            if (primitiveType(schema) != null) {
+            if (!requiresNamedDefinition(schema)) {
                 continue;
             }
             if (!hasIdentifierCharacters(name)) {
@@ -181,13 +182,79 @@ public final class VerificationProjectGenerator {
                 .append("open CardanoLedgerApi.IsData.Class\n")
                 .append("open PlutusCore.ByteString (ByteString)\n")
                 .append("open PlutusCore.Data (Data)\n")
-                .append("open PlutusCore.Integer (Integer)\n\n");
+                .append("open PlutusCore.Integer (Integer)\n\n")
+                .append(containerSupport());
 
         for (String original : names.keySet()) {
             source.append(generateDefinition(original, names.get(original), all, names));
         }
         source.append("end JulcGenerated.Schemas\n");
-        return new SchemaGeneration(source.toString(), names);
+
+        Map<String, String> leanTypes = new LinkedHashMap<>();
+        for (String original : needed) {
+            leanTypes.put(original,
+                    schemaType(all.get(original), all, names, original, true));
+        }
+        return new SchemaGeneration(source.toString(), leanTypes);
+    }
+
+    private static String containerSupport() {
+        return """
+                /-- A Plutus `Data.List` whose elements all satisfy their CIP-57 schema. -/
+                structure JulcList (α : Type) where
+                  items : List α
+                deriving Repr
+
+                private def decodeDataList [IsData α] : List Data → Option (List α)
+                  | [] => some []
+                  | value :: rest =>
+                      match IsData.fromData value, decodeDataList rest with
+                      | some decoded, some decodedRest => some (decoded :: decodedRest)
+                      | _, _ => none
+
+                private def encodeDataList [IsData α] : List α → List Data
+                  | [] => []
+                  | value :: rest => IsData.toData value :: encodeDataList rest
+
+                instance [IsData α] : IsData (JulcList α) where
+                  toData values := Data.List (encodeDataList values.items)
+                  fromData
+                  | Data.List values =>
+                      match decodeDataList values with
+                      | some decoded => some ⟨decoded⟩
+                      | none => none
+                  | _ => none
+
+                /-- A Plutus `Data.Map`; ordered association-list entries are preserved. -/
+                structure JulcMap (κ υ : Type) where
+                  entries : List (κ × υ)
+                deriving Repr
+
+                private def decodeDataMap [IsData κ] [IsData υ] :
+                    List (Data × Data) → Option (List (κ × υ))
+                  | [] => some []
+                  | (key, value) :: rest =>
+                      match IsData.fromData key, IsData.fromData value, decodeDataMap rest with
+                      | some decodedKey, some decodedValue, some decodedRest =>
+                          some ((decodedKey, decodedValue) :: decodedRest)
+                      | _, _, _ => none
+
+                private def encodeDataMap [IsData κ] [IsData υ] :
+                    List (κ × υ) → List (Data × Data)
+                  | [] => []
+                  | (key, value) :: rest =>
+                      (IsData.toData key, IsData.toData value) :: encodeDataMap rest
+
+                instance [IsData κ] [IsData υ] : IsData (JulcMap κ υ) where
+                  toData values := Data.Map (encodeDataMap values.entries)
+                  fromData
+                  | Data.Map entries =>
+                      match decodeDataMap entries with
+                      | some decoded => some ⟨decoded⟩
+                      | none => none
+                  | _ => none
+
+                """;
     }
 
     private static String generateDefinition(
@@ -337,33 +404,167 @@ public final class VerificationProjectGenerator {
     }
 
     private static String schemaType(
-            JsonNode field,
+            JsonNode schema,
             Map<String, JsonNode> definitions,
             Map<String, String> names,
             String owner) throws UnsupportedVerificationException {
-        String ref = field.path("$ref").asText(null);
-        if (ref == null) {
-            String primitive = primitiveType(field);
-            if (primitive != null) {
-                return primitive;
+        return schemaType(schema, definitions, names, owner, false);
+    }
+
+    private static String schemaType(
+            JsonNode schema,
+            Map<String, JsonNode> definitions,
+            Map<String, String> names,
+            String owner,
+            boolean definitionRoot) throws UnsupportedVerificationException {
+        String ref = schema.path("$ref").asText(null);
+        if (ref != null) {
+            String referenced = referenceName(ref);
+            JsonNode target = definitions.get(referenced);
+            if (target == null) {
+                throw new UnsupportedVerificationException("Unknown schema reference '" + ref + "'");
             }
-            throw new UnsupportedVerificationException(
-                    "Inline or unsupported field schema in definition '" + owner + "'");
+            String named = names.get(referenced);
+            return named != null
+                    ? named
+                    : schemaType(target, definitions, names, referenced, true);
         }
-        String referenced = referenceName(ref);
-        JsonNode target = definitions.get(referenced);
-        if (target == null) {
-            throw new UnsupportedVerificationException("Unknown schema reference '" + ref + "'");
-        }
-        String primitive = primitiveType(target);
+
+        String primitive = primitiveType(schema);
         if (primitive != null) {
             return primitive;
         }
-        String named = names.get(referenced);
-        if (named == null) {
-            throw unsupported(referenced, target);
+
+        return switch (schema.path("dataType").asText()) {
+            case "list" -> {
+                JsonNode items = schema.path("items");
+                if (items.isMissingNode()) {
+                    throw malformedContainer(owner, "list schema requires items");
+                }
+                yield "JulcList (" + schemaType(items, definitions, names, owner) + ")";
+            }
+            case "map" -> {
+                JsonNode keys = schema.path("keys");
+                JsonNode values = schema.path("values");
+                if (keys.isMissingNode() || values.isMissingNode()) {
+                    throw malformedContainer(owner, "map schema requires keys and values");
+                }
+                yield "JulcMap (" + schemaType(keys, definitions, names, owner) + ") ("
+                        + schemaType(values, definitions, names, owner) + ")";
+            }
+            default -> {
+                if (isBooleanSchema(schema)) {
+                    yield "Bool";
+                }
+                JsonNode optionalValue = optionalValueSchema(schema);
+                if (optionalValue != null) {
+                    yield "Option (" + schemaType(optionalValue, definitions, names, owner) + ")";
+                }
+                String named = names.get(owner);
+                if (named != null && definitionRoot) {
+                    yield named;
+                }
+                throw new UnsupportedVerificationException(
+                        "Inline or unsupported field schema in definition '" + owner + "'");
+            }
+        };
+    }
+
+    private static boolean requiresNamedDefinition(JsonNode schema) {
+        return primitiveType(schema) == null
+                && !"list".equals(schema.path("dataType").asText())
+                && !"map".equals(schema.path("dataType").asText())
+                && !isBooleanSchema(schema)
+                && optionalValueSchema(schema) == null;
+    }
+
+    private static boolean isBooleanSchema(JsonNode schema) {
+        JsonNode alternatives = schema.path("anyOf");
+        return alternatives.isArray()
+                && alternatives.size() == 2
+                && isConstructor(alternatives.get(0), "False", 0, 0)
+                && isConstructor(alternatives.get(1), "True", 1, 0);
+    }
+
+    private static JsonNode optionalValueSchema(JsonNode schema) {
+        JsonNode alternatives = schema.path("anyOf");
+        if (!alternatives.isArray() || alternatives.size() != 2
+                || !isConstructor(alternatives.get(0), "Some", 0, 1)
+                || !isConstructor(alternatives.get(1), "None", 1, 0)) {
+            return null;
         }
-        return named;
+        return alternatives.get(0).path("fields").get(0);
+    }
+
+    private static boolean isConstructor(
+            JsonNode schema, String title, int index, int fieldCount) {
+        JsonNode fields = schema.path("fields");
+        return "constructor".equals(schema.path("dataType").asText())
+                && title.equals(schema.path("title").asText())
+                && schema.path("index").canConvertToInt()
+                && schema.path("index").asInt() == index
+                && fields.isArray()
+                && fields.size() == fieldCount;
+    }
+
+    private static UnsupportedVerificationException malformedContainer(
+            String owner, String detail) {
+        return new UnsupportedVerificationException(
+                "Malformed container schema in definition '" + owner + "': " + detail);
+    }
+
+    private static void collectInlineDependencies(
+            JsonNode schema,
+            String owner,
+            Map<String, JsonNode> definitions,
+            Set<String> needed,
+            Set<String> active) throws UnsupportedVerificationException {
+        String ref = schema.path("$ref").asText(null);
+        if (ref != null) {
+            collectNeeded(referenceName(ref), definitions, needed, active);
+            return;
+        }
+        if (primitiveType(schema) != null) {
+            return;
+        }
+        switch (schema.path("dataType").asText()) {
+            case "list" -> {
+                JsonNode items = schema.path("items");
+                if (items.isMissingNode()) {
+                    throw malformedContainer(owner, "list schema requires items");
+                }
+                collectInlineDependencies(items, owner, definitions, needed, active);
+                return;
+            }
+            case "map" -> {
+                JsonNode keys = schema.path("keys");
+                JsonNode values = schema.path("values");
+                if (keys.isMissingNode() || values.isMissingNode()) {
+                    throw malformedContainer(owner, "map schema requires keys and values");
+                }
+                collectInlineDependencies(keys, owner, definitions, needed, active);
+                collectInlineDependencies(values, owner, definitions, needed, active);
+                return;
+            }
+            default -> {
+                JsonNode alternatives = schema.path("anyOf");
+                if (!alternatives.isArray() || alternatives.isEmpty()) {
+                    throw unsupported(owner, schema);
+                }
+                for (JsonNode alternative : alternatives) {
+                    if (!"constructor".equals(alternative.path("dataType").asText())) {
+                        throw unsupported(owner, alternative);
+                    }
+                    JsonNode fields = alternative.path("fields");
+                    if (!fields.isArray()) {
+                        throw unsupported(owner, alternative);
+                    }
+                    for (JsonNode field : fields) {
+                        collectInlineDependencies(field, owner, definitions, needed, active);
+                    }
+                }
+            }
+        }
     }
 
     private static String primitiveType(JsonNode schema) {
@@ -404,29 +605,7 @@ public final class VerificationProjectGenerator {
             return;
         }
         active.add(name);
-        if (primitiveType(schema) == null) {
-            JsonNode anyOf = schema.path("anyOf");
-            if (!anyOf.isArray()) {
-                throw unsupported(name, schema);
-            }
-            for (JsonNode alternative : anyOf) {
-                JsonNode fields = alternative.path("fields");
-                if (!fields.isArray()) {
-                    throw unsupported(name, alternative);
-                }
-                for (JsonNode field : fields) {
-                    String ref = field.path("$ref").asText(null);
-                    if (ref == null) {
-                        if (primitiveType(field) == null) {
-                            throw new UnsupportedVerificationException(
-                                    "Inline field schema is unsupported in definition '" + name + "'");
-                        }
-                    } else {
-                        collectNeeded(referenceName(ref), definitions, needed, active);
-                    }
-                }
-            }
-        }
+        collectInlineDependencies(schema, name, definitions, needed, active);
         active.remove(name);
         needed.add(name);
     }
@@ -450,7 +629,7 @@ public final class VerificationProjectGenerator {
             ArtifactCommand.ArtifactMetadata artifact,
             String purpose,
             int fuel,
-            Map<String, String> schemaNames) throws IOException {
+            Map<String, String> leanTypes) throws IOException {
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("schemaVersion", 1);
         root.put("generatedBy", "julc verify init");
@@ -474,7 +653,7 @@ public final class VerificationProjectGenerator {
                 "PlutusCoreBlaster", PLUTUS_CORE_REV,
                 "CardanoLedgerApiBlaster", LEDGER_API_REV));
         root.put("builtins", artifact.builtins());
-        root.put("schemas", schemaNames.entrySet().stream()
+        root.put("schemas", leanTypes.entrySet().stream()
                 .map(entry -> Map.of("cip57", entry.getKey(), "lean", entry.getValue()))
                 .toList());
         root.put("properties", List.of(Map.of(
@@ -883,7 +1062,7 @@ public final class VerificationProjectGenerator {
     private record Field(String name, String type) { }
     private record Constructor(String name, int index, List<Field> fields) { }
 
-    public record SchemaGeneration(String source, Map<String, String> names) { }
+    public record SchemaGeneration(String source, Map<String, String> leanTypes) { }
     public record GenerationResult(
             Path outputDirectory, String artifactId, String leanNamespace, List<String> files) { }
 }

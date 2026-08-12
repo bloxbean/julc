@@ -314,6 +314,9 @@ Milestone C.2 exits when supported collection/optional contracts require no
 handwritten Lean encodings and the generated representation has been checked
 against the exact JuLC artifact encoding.
 
+**Implemented:** See
+[ADR-006 — Lean Containers and Optional Values](006-milestone-c2-lean-containers-and-optionals.md).
+
 ### Milestone C.3: productive recursive ADTs
 
 Recursive data requires a separate milestone because schema generation,

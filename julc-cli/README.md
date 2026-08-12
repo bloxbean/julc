@@ -48,6 +48,10 @@ checks builtin coverage, generates strict CIP-57 `IsData` definitions, and
 creates a pinned Lean project with reusable security-property predicates. The
 generated manifest starts as `COULD-NOT-EVALUATE` until you specialize and
 prove the contract property and add a vulnerable negative control.
+Generated Lean supports nonrecursive records and variants containing integers,
+bytes, booleans, optional values, lists, maps, and nested combinations. Maps
+remain ordered association lists and preserve duplicate keys, matching JuLC's
+on-chain representation.
 
 Normal `julc build` derives CIP-57 schemas directly from the compiler's
 resolved contract types and fails if it cannot describe the boundary
