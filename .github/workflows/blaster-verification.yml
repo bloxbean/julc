@@ -50,11 +50,11 @@ jobs:
           use-github-cache: false
           lake-package-directory: verification/blaster
 
-      - name: Acquire pinned dependencies
-        run: verification/blaster/scripts/acquire-dependencies.sh
+      - name: Build JuLC verification runner
+        run: ./gradlew :julc-cli:shadowJar -PskipSigning=true
 
-      - name: Produce evidence without dependency downloads
-        run: verification/blaster/scripts/verify-offline.sh
+      - name: Produce managed verification evidence
+        run: java -jar julc-cli/build/libs/julc.jar verify run verification/blaster --backend local
 
       - name: Upload verification evidence
         if: always()
@@ -64,5 +64,7 @@ jobs:
           path: |
             verification/blaster/generated/run-manifest.json
             verification/blaster/results/*.log
+            verification/blaster/verification-result.json
+            verification/blaster/verification-results/*.log
           if-no-files-found: error
           retention-days: 30

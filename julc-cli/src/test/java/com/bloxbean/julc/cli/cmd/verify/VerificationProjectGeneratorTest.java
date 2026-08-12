@@ -37,6 +37,8 @@ class VerificationProjectGeneratorTest {
 
         assertEquals("state-gate", result.artifactId());
         assertTrue(Files.isExecutable(output.resolve("scripts/verify.sh")));
+        assertTrue(Files.readString(output.resolve(".gitignore"))
+                .contains("/verification-result.json"));
         assertTrue(Files.readString(output.resolve("CheckedExecution.lean"))
                 .contains("defaultFunSemanticsVariantE"));
         assertTrue(Files.readString(output.resolve("CheckedExecution.lean"))
@@ -278,6 +280,12 @@ class VerificationProjectGeneratorTest {
         VerificationProjectGenerator.generate(
                 blueprint, "StateGate", "spending", 100, output, true);
         assertEquals("-- specialized property\n", Files.readString(securityProperty));
+
+        Path gitignore = output.resolve(".gitignore");
+        Files.writeString(gitignore, "/local-review-notes/\n");
+        VerificationProjectGenerator.generate(
+                blueprint, "StateGate", "spending", 100, output, true);
+        assertEquals("/local-review-notes/\n", Files.readString(gitignore));
     }
 
     @Test
@@ -286,8 +294,12 @@ class VerificationProjectGeneratorTest {
         assertTrue(commandLine.getSubcommands().containsKey("verify"));
         assertTrue(commandLine.getSubcommands().get("verify")
                 .getSubcommands().containsKey("init"));
+        assertTrue(commandLine.getSubcommands().get("verify")
+                .getSubcommands().containsKey("run"));
         assertTrue(commandLine.getSubcommands().get("verify").getSubcommands().get("init")
                 .getCommandSpec().findOption("--recursive-depth") != null);
+        assertTrue(commandLine.getSubcommands().get("verify").getSubcommands().get("run")
+                .getCommandSpec().findOption("--backend") != null);
     }
 
     @Test

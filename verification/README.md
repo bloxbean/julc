@@ -6,7 +6,9 @@ automation.
 
 ## What is available today
 
-There are four ways to explore the current integration:
+There are four ways to explore the current integration. `julc verify run`
+provides the managed execution path for both a generated workspace and the
+committed evidence suite:
 
 1. `verification/blaster` is the committed Milestone A/B evidence suite. It
    verifies the repository's state-thread and controlled-mint fixtures against
@@ -32,15 +34,23 @@ on Blaster are `KERNEL-PROVED`.
 
 ## Prerequisites
 
-For the generated-workspace flow, install:
+The simplest generated-workspace setup is Docker Engine or Docker Desktop with
+BuildKit. Docker is
+optional: the CLI builds a JuLC-owned image containing the pinned Lean and Z3
+versions, then runs the proof phase with container networking disabled. The
+host needs JuLC and Docker (plus a JDK when using the development JAR) and
+network access during the initial image/dependency acquisition.
+
+For a native local run, install:
 
 - JuLC built from this branch;
 - Lean 4.24.0 and Lake, normally through `elan`;
-- Z3 4.15.2;
+- Z3 4.15.2, or allow JuLC to provision its checksum-pinned release into the
+  workspace-local tool cache;
 - Git, ripgrep (`rg`), and `xxd`; and
 - network access for the initial Lake dependency acquisition.
 
-You do not install the three Blaster projects manually. The generated
+You do not install the three Blaster projects manually with either backend. The generated
 `lakefile.lean` pins them and Lake fetches them. The generated verification
 script checks tool versions, dependency revisions, and the artifact hash before
 compiling any claim.
@@ -89,21 +99,38 @@ verification/<artifact-id>/
 ├── *Verification.lean         artifact-specific harness
 ├── lakefile.lean              pinned Blaster dependencies
 ├── lean-toolchain             pinned Lean version
-└── scripts/verify.sh          fail-closed verification driver
+├── verification-runner.json   versioned managed execution plan
+└── scripts/verify.sh          fail-closed expert/audit driver
 ```
 
-Acquire the pinned dependencies and compile the generated workspace:
+Run the managed workflow from the project root. `auto` uses the exact local
+toolchain when available and otherwise uses Docker:
+
+```bash
+julc verify run verification/<artifact-id>
+```
+
+Choose a backend explicitly when needed:
+
+```bash
+julc verify run verification/<artifact-id> --backend local
+julc verify run verification/<artifact-id> --backend docker
+```
+
+The command writes `verification-result.json` plus acquisition and proof logs
+under `verification-results/`. The initial generated workspace truthfully exits
+2 with:
+
+```text
+COULD-NOT-EVALUATE: workspace compiles; specialize securityProperty and add a theorem plus negative control
+```
+
+For auditing or debugging, the transparent low-level sequence remains:
 
 ```bash
 cd verification/<artifact-id>
 lake update
 scripts/verify.sh
-```
-
-The initial result is expected to be:
-
-```text
-COULD-NOT-EVALUATE: workspace compiles; specialize securityProperty and add a theorem plus negative control
 ```
 
 That message is a safety property of the workflow, not a failed proof. The
@@ -122,9 +149,10 @@ Regeneration with `--force` preserves `SecurityProperty.lean`, but review the
 generated diff and artifact identity whenever the Java source or compiler
 changes.
 
-At present this step requires Lean and Cardano ledger-model knowledge. A future
-`julc verify run` or containerized backend is intended to provision and execute
-the pinned toolchain, but it is not implemented yet.
+At present authoring this contract-specific property requires Lean and Cardano
+ledger-model knowledge. `julc verify run` manages execution and classification;
+it does not invent the property. Milestone C.5 begins the Java annotation path
+with `@RequiresSigner`.
 
 ## Supported boundary today
 
@@ -280,6 +308,16 @@ contains reviewed properties and negative controls:
 verification/blaster/scripts/acquire-dependencies.sh
 verification/blaster/scripts/verify-offline.sh
 ```
+
+Or run the same reviewed suite through the managed local runner:
+
+```bash
+julc verify run verification/blaster --backend local
+```
+
+This legacy repository suite rebuilds Java fixtures outside a standalone
+verification workspace, so its Docker backend is intentionally disabled. Newly
+generated workspaces support both local and Docker execution.
 
 See [`verification/blaster/README.md`](blaster/README.md) for its additional
 JDK and `jq` prerequisites, the individual commands, verified properties, and

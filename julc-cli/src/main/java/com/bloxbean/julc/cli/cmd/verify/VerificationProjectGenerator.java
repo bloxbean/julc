@@ -45,7 +45,8 @@ public final class VerificationProjectGenerator {
     private static final Set<String> RESERVED_TYPE_NAMES = Set.of(
             "Bool", "ByteString", "Data", "Integer", "IsData", "JulcList", "JulcMap",
             "Option", "ScriptContext");
-    private static final Set<String> USER_OWNED_FILES = Set.of("SecurityProperty.lean");
+    private static final Set<String> USER_OWNED_FILES = Set.of(
+            "SecurityProperty.lean", ".gitignore");
     private static final int DEFAULT_RECURSIVE_DEPTH = 4;
 
     private VerificationProjectGenerator() { }
@@ -118,6 +119,13 @@ public final class VerificationProjectGenerator {
         }
 
         Map<String, String> files = new LinkedHashMap<>();
+        files.put(".gitignore", """
+                # Initial JuLC verification workspace ignores; preserved by --force.
+                /.lake/
+                /.julc/
+                /verification-results/
+                /verification-result.json
+                """);
         files.put("lean-toolchain", "leanprover/lean4:" + LEAN_VERSION + "\n");
         files.put("lakefile.lean", lakefile());
         files.put("GeneratedSchemas.lean", schemas.source());
@@ -130,12 +138,16 @@ public final class VerificationProjectGenerator {
                 artifact.compiledCode() + "\n");
         files.put("config/blaster-builtins.txt",
                 "# " + GENERATED_MARKER + "\n0-88\n92-93\n");
-        files.put("scripts/verify.sh",
-                verifyScript(leanId, artifactId, artifact.compiledCodeSha256()));
+        String verifyScript = verifyScript(leanId, artifactId, artifact.compiledCodeSha256());
+        files.put("scripts/verify.sh", verifyScript);
+        String runnerPlan = runnerPlan(artifactId,
+                VerificationFiles.sha256(verifyScript.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        files.put("verification-runner.json", runnerPlan);
         files.put("README.md", readme(leanId, validatorTitle, purpose, recursiveDepth));
         files.put("verification-manifest.json",
                 manifest(blueprint, artifact, purpose, fuel, recursiveDepth,
-                        schemas.leanTypes()));
+                        schemas.leanTypes(), VerificationFiles.sha256(
+                                runnerPlan.getBytes(java.nio.charset.StandardCharsets.UTF_8))));
 
         writeAtomically(output, files);
         return new GenerationResult(output, artifactId, leanId, files.keySet().stream().toList());
@@ -1210,7 +1222,8 @@ public final class VerificationProjectGenerator {
             String purpose,
             int fuel,
             int recursiveDepth,
-            Map<String, String> leanTypes) throws IOException {
+            Map<String, String> leanTypes,
+            String runnerPlanSha256) throws IOException {
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("schemaVersion", 1);
         root.put("generatedBy", "julc verify init");
@@ -1230,6 +1243,7 @@ public final class VerificationProjectGenerator {
         root.put("recursiveDepth", recursiveDepth);
         root.put("leanVersion", "4.24.0");
         root.put("z3Version", "4.15.2");
+        root.put("runnerPlanSha256", runnerPlanSha256);
         root.put("dependencies", Map.of(
                 "Lean-blaster", BLASTER_REV,
                 "PlutusCoreBlaster", PLUTUS_CORE_REV,
@@ -1269,6 +1283,39 @@ public final class VerificationProjectGenerator {
                   roots := #[`GeneratedSchemas, `PropertyTemplates, `CheckedExecution,
                     `SecurityProperty]
                 """.formatted(BLASTER_REV, PLUTUS_CORE_REV, LEDGER_API_REV);
+    }
+
+    private static String runnerPlan(String artifactId, String verifyScriptSha256) throws IOException {
+        Map<String, Object> root = new LinkedHashMap<>();
+        root.put("schemaVersion", 1);
+        root.put("kind", "generated-workspace");
+        root.put("manifest", "verification-manifest.json");
+        root.put("timeoutSeconds", 1800);
+        root.put("acquire", List.of(
+                Map.of(
+                        "id", "lake-update",
+                        "command", List.of("lake", "update"),
+                        "maxAttempts", 3,
+                        "expectedExitCodes", List.of(0)),
+                Map.of(
+                        "id", "build-pinned-dependencies",
+                        "command", List.of(
+                                "lake", "build",
+                                "@PlutusCore/PlutusCore",
+                                "@CardanoLedgerApi/CardanoLedgerApi",
+                                "@Blaster/Blaster",
+                                "GeneratedVerificationSupport"),
+                        "expectedExitCodes", List.of(0))));
+        root.put("verify", List.of(Map.of(
+                "id", "compile-unspecialized-property",
+                "command", List.of("scripts/verify.sh"),
+                "executableSha256", verifyScriptSha256,
+                "expectedExitCodes", List.of(2),
+                "requiredOutput", "workspace compiles; specialize securityProperty",
+                "propertyId", artifactId + ".security-property",
+                "result", "COULD-NOT-EVALUATE",
+                "reason", "property-not-specialized")));
+        return JSON.writeValueAsString(root) + "\n";
     }
 
     private static String checkedExecution() {
@@ -1513,7 +1560,18 @@ public final class VerificationProjectGenerator {
                 an unbounded proof. Use `recursiveDataWithinBound` when a property deliberately
                 restricts recursive input data. General claims require a reviewed Lean induction.
 
-                Required tools are Lean 4.24.0/Lake, Z3 4.15.2, Git, and ripgrep.
+                Run the workspace through JuLC's managed runner:
+
+                ```bash
+                julc verify run .
+                ```
+
+                `--backend auto` is the default. Use `--backend docker` to avoid
+                installing host Lean and Z3, or `--backend local` to require the local
+                pinned toolchain. The Docker proof phase runs without container networking.
+
+                The local backend requires Lean 4.24.0/Lake, Git, and an exact Z3
+                4.15.2 (which JuLC can install into the workspace-local tool cache).
 
                 `GeneratedSchemas.lean` contains strict CIP-57-derived `IsData`
                 instances. `PropertyTemplates.lean` contains reusable predicates, and
@@ -1522,12 +1580,9 @@ public final class VerificationProjectGenerator {
                 `SecurityProperty.lean` is user-owned and deliberately defines
                 `securityProperty` as `False`; `--force` regeneration preserves this file.
                 Replace it with a reviewed threat-model property, add a Blaster theorem and
-                a vulnerable negative control to `%sVerification.lean`, then run:
-
-                ```bash
-                lake update
-                scripts/verify.sh
-                ```
+                a vulnerable negative control to `%sVerification.lean`, then update the
+                generated runner plan's property protocol through a future supported JuLC
+                property command. The expert `scripts/verify.sh` remains available for audit.
 
                 A successful compilation is still reported as `COULD-NOT-EVALUATE` until the
                 property is specialized and proved. Solver-valid claims must be labeled
