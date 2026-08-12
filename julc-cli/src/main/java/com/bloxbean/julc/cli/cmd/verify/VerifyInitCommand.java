@@ -32,6 +32,10 @@ public class VerifyInitCommand implements Callable<Integer> {
             description = "Positive Blaster preprocessing fuel")
     private int fuel;
 
+    @Option(names = "--recursive-depth", defaultValue = "4",
+            description = "Positive bound for recursive-domain verification experiments")
+    private int recursiveDepth;
+
     @Option(names = "--force",
             description = "Overwrite generator-owned files in an existing workspace")
     private boolean force;
@@ -49,7 +53,7 @@ public class VerifyInitCommand implements Callable<Integer> {
             }
             var result = VerificationProjectGenerator.generate(
                     blueprint, validatorTitle, purpose.name().toLowerCase(Locale.ROOT), fuel,
-                    output, force);
+                    recursiveDepth, output, force);
             System.out.println("Generated verification workspace for " + validatorTitle
                     + " at " + result.outputDirectory());
             System.out.println("Initial result: COULD-NOT-EVALUATE (property-not-specialized)");

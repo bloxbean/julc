@@ -93,7 +93,7 @@ public final class SchemaGenerator {
     /** Convert a contract schema using a validator-specific definition namespace. */
     public static ValidatorSchema from(ContractSchema contractSchema, String namespace) {
         Objects.requireNonNull(contractSchema, "contractSchema");
-        var converter = new Converter(namespace);
+        var converter = new Converter(namespace, contractSchema.namedDefinitions());
         Schema datum = contractSchema.datum() == null
                 ? null
                 : converter.root(contractSchema.datum());
@@ -106,12 +106,14 @@ public final class SchemaGenerator {
 
     private static final class Converter {
         private final String namespace;
+        private final Map<String, PirType> namedDefinitions;
         private final Map<String, Schema> definitions = new LinkedHashMap<>();
         private final Map<String, PirType> definitionTypes = new LinkedHashMap<>();
         private final List<String> inProgress = new ArrayList<>();
 
-        private Converter(String namespace) {
+        private Converter(String namespace, Map<String, PirType> namedDefinitions) {
             this.namespace = namespace == null || namespace.isBlank() ? null : namespace;
+            this.namedDefinitions = namedDefinitions;
         }
 
         private Schema root(ContractSchema.Argument argument) {
@@ -130,7 +132,8 @@ public final class SchemaGenerator {
         }
 
         private void ensureDefinition(String key, PirType type) {
-            PirType canonicalType = canonicalType(type);
+            PirType resolvedType = resolveNamed(type);
+            PirType canonicalType = canonicalType(resolvedType);
             var existingType = definitionTypes.get(key);
             if (existingType != null) {
                 if (!existingType.equals(canonicalType)) {
@@ -144,9 +147,9 @@ public final class SchemaGenerator {
             }
             definitionTypes.put(key, canonicalType);
             inProgress.add(key);
-            Schema schema = schemaForDefinition(type);
+            Schema schema = schemaForDefinition(resolvedType);
             inProgress.removeLast();
-            definitions.put(key, schema.titled(namedTitle(type, key)));
+            definitions.put(key, schema.titled(namedTitle(resolvedType, key)));
         }
 
         private Schema schemaFor(PirType type, String title) {
@@ -167,6 +170,7 @@ public final class SchemaGenerator {
                         Schema.constructor("None", 1, List.of())));
                 case PirType.RecordType record -> namedReference(record);
                 case PirType.SumType sum -> namedReference(sum);
+                case PirType.NamedTypeRef ref -> namedReference(ref);
                 case PirType.UnitType _ -> Schema.constructor("Unit", 0, List.of());
                 case PirType.PairType _, PirType.ArrayType _, PirType.FunType _ ->
                         throw new SchemaGenerationException(
@@ -214,6 +218,7 @@ public final class SchemaGenerator {
                         + definitionKey(optional.elemType());
                 case PirType.RecordType record -> namedKey(record.name());
                 case PirType.SumType sum -> namedKey(sum.name());
+                case PirType.NamedTypeRef ref -> namedKey(ref.name());
                 case PirType.UnitType _ -> "@julc:Unit";
                 case PirType.PairType _, PirType.ArrayType _, PirType.FunType _ ->
                         throw new SchemaGenerationException(
@@ -252,6 +257,7 @@ public final class SchemaGenerator {
                                                         field.name(), canonicalType(field.type())))
                                                 .toList()))
                                 .toList());
+                case PirType.NamedTypeRef ref -> ref;
                 default -> type;
             };
         }
@@ -260,6 +266,7 @@ public final class SchemaGenerator {
             return switch (type) {
                 case PirType.RecordType record -> record.name();
                 case PirType.SumType sum -> sum.name();
+                case PirType.NamedTypeRef ref -> ref.name();
                 default -> fallback;
             };
         }
@@ -268,8 +275,19 @@ public final class SchemaGenerator {
             return switch (type) {
                 case PirType.RecordType record -> namedDefinition(record);
                 case PirType.SumType sum -> namedDefinition(sum);
+                case PirType.NamedTypeRef ref -> schemaForDefinition(resolveNamed(ref));
                 default -> schemaFor(type, null);
             };
+        }
+
+        private PirType resolveNamed(PirType type) {
+            if (!(type instanceof PirType.NamedTypeRef ref)) return type;
+            PirType definition = namedDefinitions.get(ref.stableId());
+            if (definition == null) {
+                throw new SchemaGenerationException(
+                        "Unknown recursive compiler type '" + ref.stableId() + "'");
+            }
+            return definition;
         }
 
         private static String jsonPointer(String key) {

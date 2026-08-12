@@ -586,7 +586,8 @@ public class UplcGenerator {
             }
             case PirType.StringType _ -> Term.apply(Term.builtin(DefaultFun.BData),
                     Term.apply(Term.builtin(DefaultFun.EncodeUtf8), value));
-            case PirType.DataType _, PirType.RecordType _, PirType.SumType _ -> value; // Already Data
+            case PirType.DataType _, PirType.RecordType _, PirType.SumType _,
+                    PirType.NamedTypeRef _ -> value; // Already Data
             default -> value; // Pass through for unknown types
         };
     }

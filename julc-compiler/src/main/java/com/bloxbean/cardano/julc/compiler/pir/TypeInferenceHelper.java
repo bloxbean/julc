@@ -34,7 +34,8 @@ final class TypeInferenceHelper {
      */
     PirType resolveExpressionType(Expression expr) {
         if (expr instanceof NameExpr ne) {
-            return symbolTable.lookup(ne.getNameAsString()).orElse(new PirType.DataType());
+            return typeResolver.resolveNamed(
+                    symbolTable.lookup(ne.getNameAsString()).orElse(new PirType.DataType()));
         }
         if (expr instanceof MethodCallExpr mce && mce.getScope().isPresent()) {
             return resolveMethodCallReturnType(mce);
@@ -109,9 +110,12 @@ final class TypeInferenceHelper {
         // If scope is itself a method call, resolve recursively
         if (scopeExpr instanceof MethodCallExpr innerMce && mce.getArguments().isEmpty()) {
             var innerType = resolveMethodCallReturnType(innerMce);
+            innerType = typeResolver.resolveNamed(innerType);
             if (innerType instanceof PirType.RecordType rt) {
                 for (var field : rt.fields()) {
-                    if (field.name().equals(methodName)) return field.type();
+                    if (field.name().equals(methodName)) {
+                        return typeResolver.resolveNamed(field.type());
+                    }
                 }
             }
             if (innerType instanceof PirType.ListType && methodName.equals("tail")) {
@@ -141,6 +145,7 @@ final class TypeInferenceHelper {
 
         // TypeMethodRegistry return type resolution
         var scopeType = resolveExpressionType(scopeExpr);
+        scopeType = typeResolver.resolveNamed(scopeType);
         var returnType = typeMethodRegistry.resolveReturnType(scopeType, methodName);
         if (returnType.isPresent()) return returnType.get();
 
@@ -166,10 +171,13 @@ final class TypeInferenceHelper {
 
         PirType type = varType.get();
         if (type instanceof PirType.OptionalType opt) type = opt.elemType();
+        type = typeResolver.resolveNamed(type);
         if (!(type instanceof PirType.RecordType rt)) return java.util.Optional.empty();
 
         for (var field : rt.fields()) {
-            if (field.name().equals(fieldName)) return java.util.Optional.of(field.type());
+            if (field.name().equals(fieldName)) {
+                return java.util.Optional.of(typeResolver.resolveNamed(field.type()));
+            }
         }
         return java.util.Optional.empty();
     }

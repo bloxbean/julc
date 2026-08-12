@@ -359,6 +359,9 @@ Milestone C.3 exits when productive recursive datum/redeemer types can be
 generated without handwritten encodings, bounded symbolic coverage is
 reported honestly, and unbounded claims require explicit inductive proofs.
 
+**Detailed plan:** See
+[ADR-008 — Productive Recursive ADTs](008-milestone-c3-productive-recursive-adts.md).
+
 ### Documentation deliverable
 
 Each milestone must update
@@ -512,6 +515,12 @@ artifact-importing module to avoid stale `.olean` evidence. Until a property is
 specialized, the manifest and script both report `COULD-NOT-EVALUATE`; the
 script exits 2 after a successful scaffold compilation.
 
+C.2 extends generated schemas with strict boolean, optional, list, and map
+codecs. C.3 adds productive self and mutual recursive Java ADTs, recursive
+CIP-57 references, total recursive Lean codecs, and a `--recursive-depth`
+setting that is explicitly separate from CEK fuel. Unbounded recursive claims
+still require a reviewed Lean induction theorem.
+
 Implementation iteration found that a fresh generated project cannot directly
 invoke Lean before Lake has built the dependency graph. The final script first
 builds a support library, then uses direct Lean compilation only for freshness.
@@ -520,14 +529,14 @@ on an interactive shell. Final ownership review also split the editable
 security property from generator-owned plumbing so `--force` cannot erase a
 developer's specialized property.
 
-Validation covered single-constructor records, multi-constructor variants,
-deterministic forced regeneration, preservation of unknown user files,
-recursive/unsupported schemas, normalized-name collisions, non-V3 blueprints,
-nonpositive fuel, purpose mismatch, and unsupported builtin tags. Freshly
-generated state-thread spending and controlled-mint workspaces both compiled
-their schemas, checked-execution API, templates, and exact artifact imports,
-then exited with the expected truthful result 2. The complete `julc-cli` test
-suite and Milestone B offline evidence suite also passed.
+Validation covers records, variants, nested containers, productive self and
+mutual recursion, deterministic forced regeneration, preservation of unknown
+user files, nonproductive/unsupported schemas, normalized-name collisions,
+non-V3 blueprints, nonpositive fuel/depth, purpose mismatch, and unsupported
+builtin tags. Freshly generated spending and minting workspaces compile their
+schemas, checked-execution API, templates, and exact artifact imports, then
+exit with the expected truthful result 2. The full Gradle suite and Milestone
+A/B offline evidence suite remain regression gates.
 
 This status does not mean Blaster supports PV11 tags 89–91 or 94–100. The CLI
 turns those artifacts into an explicit fail-closed result. Completing their
@@ -540,7 +549,7 @@ integration.
 ### Positive
 
 - New validators no longer require hand-built Lean project plumbing or manual
-  record/variant encodings.
+  record, variant, container, or productive-recursive encodings.
 - Strict generated decoding prevents properties from accidentally inheriting
   JuLC's permissive record decoder behavior.
 - Artifact identity, semantics, fuel, and builtin coverage are consistent with
@@ -549,7 +558,8 @@ integration.
 
 ### Negative
 
-- The initial schema subset excludes common collection and recursive shapes.
+- Arrays, pairs, functions, opaque boundary schemas, and nonproductive
+  recursive cycles remain unsupported by generated verification schemas.
 - The generated workspace still requires a property author who understands the
   contract's threat model and Cardano ledger context.
 - Blaster/Z3 results retain the Milestone B trusted base.

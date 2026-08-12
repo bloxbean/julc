@@ -272,6 +272,46 @@ class BlueprintTest {
     }
 
     @Test
+    void emitsRecursiveCip57ReferenceFromCompilerOwnedTypeGraph() {
+        String source = """
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                import com.bloxbean.cardano.julc.ledger.ScriptContext;
+                import java.math.BigInteger;
+
+                @SpendingValidator
+                class RecursiveBlueprintGate {
+                    sealed interface Node permits End, Cons {}
+                    record End() implements Node {}
+                    record Cons(BigInteger value, Node next) implements Node {}
+                    record Datum(Node root) {}
+                    record Redeemer(BigInteger expected) {}
+
+                    @Entrypoint
+                    static boolean validate(Datum datum, Redeemer redeemer,
+                                            ScriptContext ctx) {
+                        return true;
+                    }
+                }
+                """;
+
+        var compiled = new JulcCompiler().compileContract(source);
+        var schema = SchemaGenerator.from(compiled.contractSchema());
+        var node = schema.definitions().get("Node");
+        assertNotNull(node);
+        var cons = node.anyOf().stream()
+                .filter(constructor -> constructor.title().equals("Cons"))
+                .findFirst().orElseThrow();
+        assertEquals("#/definitions/Node", cons.fields().get(1).ref());
+
+        var blueprint = BlueprintGenerator.generate(
+                new BlueprintConfig("recursive", "1"),
+                List.of(new BlueprintGenerator.CompiledValidator(
+                        "RecursiveBlueprintGate", compiled.compileResult(),
+                        compiled.contractSchema())));
+        assertDoesNotThrow(blueprint::toJson);
+    }
+
+    @Test
     void pinnedOfficialMetaSchemaRejectsMalformedBlueprint() {
         var error = assertThrows(IllegalArgumentException.class,
                 () -> BlueprintValidator.validate("{\"validators\": []}"));

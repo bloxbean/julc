@@ -37,7 +37,8 @@ julc build
 julc build --no-blueprint
 
 # Generate a pinned Lean/Blaster verification workspace from the blueprint
-julc verify init . --validator MyValidator --purpose spending
+julc verify init . --validator MyValidator --purpose spending \
+  --recursive-depth 4
 
 # Show version
 julc --version
@@ -48,17 +49,22 @@ checks builtin coverage, generates strict CIP-57 `IsData` definitions, and
 creates a pinned Lean project with reusable security-property predicates. The
 generated manifest starts as `COULD-NOT-EVALUATE` until you specialize and
 prove the contract property and add a vulnerable negative control.
-Generated Lean supports nonrecursive records and variants containing integers,
-bytes, booleans, optional values, lists, maps, and nested combinations. Maps
-remain ordered association lists and preserve duplicate keys, matching JuLC's
-on-chain representation.
+Generated Lean supports records and variants containing integers, bytes,
+booleans, optional values, lists, maps, and nested combinations, including
+productive self and mutual recursion. Maps remain ordered association lists
+and preserve duplicate keys, matching JuLC's on-chain representation.
+
+`--recursive-depth` bounds generated recursive-domain experiments and is
+separate from `--fuel`, which controls CEK execution. Exhausting either bound
+is inconclusive, never a successful proof or validator rejection. Unbounded
+recursive claims require an explicit Lean induction theorem.
 
 Normal `julc build` derives CIP-57 schemas directly from the compiler's
 resolved contract types and fails if it cannot describe the boundary
-truthfully. It supports nonrecursive records and sealed variants containing
-integers, bytes, strings, booleans, lists, maps, optionals, and nested
-combinations. The blueprint is validated locally against a pinned official
-CIP-57 meta-schema.
+truthfully. It supports productive recursive records and sealed variants
+containing integers, bytes, strings, booleans, lists, maps, optionals, and
+nested combinations. The blueprint is validated locally against a pinned
+official CIP-57 meta-schema.
 
 Use `julc build --no-blueprint` (alias `--skip-blueprint`) only when you
 deliberately need raw `.uplc`, `.compiledCode.hex`, and `.script-hash` outputs
