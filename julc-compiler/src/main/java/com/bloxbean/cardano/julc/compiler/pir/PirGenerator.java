@@ -1017,6 +1017,7 @@ public class PirGenerator {
         // Chained record field access: scope.innerRecord().field()
         if (args.isEmpty() && scopeExpr instanceof MethodCallExpr innerMce) {
             var scopeType = resolveMethodCallReturnType(innerMce);
+            scopeType = typeResolver.resolveNamed(scopeType);
             if (scopeType instanceof PirType.RecordType rt) {
                 for (int i = 0; i < rt.fields().size(); i++) {
                     if (rt.fields().get(i).name().equals(methodName)) {
@@ -1034,6 +1035,7 @@ public class PirGenerator {
         {
             var scopeType = resolveExpressionType(scopeExpr);
             if (scopeType instanceof PirType.DataType) scopeType = inferPirType(scope);
+            scopeType = typeResolver.resolveNamed(scopeType);
 
             var compiledArgs = new ArrayList<PirTerm>();
             var argPirTypes = new ArrayList<PirType>();
@@ -1124,6 +1126,7 @@ public class PirGenerator {
         if (type instanceof PirType.OptionalType opt) {
             type = opt.elemType();
         }
+        type = typeResolver.resolveNamed(type);
         if (!(type instanceof PirType.RecordType rt)) {
             return java.util.Optional.empty();
         }
@@ -1835,10 +1838,12 @@ public class PirGenerator {
         var selector = generateExpression(se.getSelector());
         // Determine the sum type from the selector's type
         var selectorType = inferPirType(selector);
+        selectorType = typeResolver.resolveNamed(selectorType);
         // Fallback: if PIR-level inference returns DataType, try resolving from the Java AST.
         // This handles cases like txOut.datum() where field extraction PIR loses the SumType info.
         if (!(selectorType instanceof PirType.SumType) && se.getSelector() instanceof Expression selectorExpr) {
             var astType = resolveExpressionType(selectorExpr);
+            astType = typeResolver.resolveNamed(astType);
             if (astType instanceof PirType.SumType) {
                 selectorType = astType;
             }

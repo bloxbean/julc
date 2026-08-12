@@ -54,12 +54,16 @@ verify_workspace() {
   java -jar "${JULC_JAR}" verify init "${VERIFY_DIR}/fixtures/${fixture}" \
     --validator "${validator}" \
     --purpose "${purpose}" \
+    --recursive-depth 4 \
     --out-dir "${output}" \
     --force
 
-  if rg -n '(^|[[:space:]])(sorry|admit)([[:space:]]|$)' \
+  [[ "$(jq -r '.recursiveDepth' "${output}/verification-manifest.json")" == "4" ]]
+  rg -q 'recursiveVerificationDepth : Nat := 4' "${output}/PropertyTemplates.lean"
+
+  if rg -n '(^|[[:space:]])(sorry|admit|axiom|unsafe|partial)([[:space:]]|$)' \
       --glob '*.lean' "${output}" "${VERIFY_DIR}/CodecTests.lean"; then
-    echo "COULD-NOT-EVALUATE: C.2 workspace contains sorry or admit" >&2
+    echo "COULD-NOT-EVALUATE: C.3 project-owned Lean contains an admission" >&2
     exit 2
   fi
 
@@ -78,16 +82,16 @@ verify_workspace() {
   printf '%s\n' "${generated_result}"
   if [[ ${generated_status} -ne 2 ]] ||
       [[ "${generated_result}" != *"workspace compiles; specialize securityProperty"* ]]; then
-    echo "COULD-NOT-EVALUATE: generated verification driver did not reach its safe initial result" >&2
+    echo "COULD-NOT-EVALUATE: generated C.3 driver did not reach its safe initial result" >&2
     exit 2
   fi
 
-  if [[ "${purpose}" == "spending" ]]; then
+  if [[ "${purpose}" == "minting" ]]; then
     lake env lean --root="${REPO_DIR}" "${VERIFY_DIR}/CodecTests.lean"
   fi
 }
 
-verify_workspace spending VerificationContainersSpending spending
-verify_workspace minting VerificationContainersMinting minting
+verify_workspace minting VerificationRecursiveMinting minting
+verify_workspace spending VerificationRecursiveSpending spending
 
-echo "ESTABLISHED: Milestone C.2 generated container codecs and workspaces compile"
+echo "ESTABLISHED: Milestone C.3 recursive schemas, codecs, depth, and induction compile"

@@ -1411,7 +1411,9 @@ public class JulcCompiler {
                 .map(field -> new ContractSchema.Argument(
                         field.name(), field.pirType(), field.sourceLocation()))
                 .toList();
-        return new ContractSchema(purpose.name().toLowerCase(Locale.ROOT), datum, redeemer, parameters);
+        return new ContractSchema(
+                purpose.name().toLowerCase(Locale.ROOT), datum, redeemer, parameters,
+                typeResolver.namedDefinitions());
     }
 
     private ContractSchema.Argument schemaArgument(

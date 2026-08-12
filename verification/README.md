@@ -6,7 +6,7 @@ automation.
 
 ## What is available today
 
-There are three ways to explore the current integration:
+There are four ways to explore the current integration:
 
 1. `verification/blaster` is the committed Milestone A/B evidence suite. It
    verifies the repository's state-thread and controlled-mint fixtures against
@@ -20,6 +20,10 @@ There are three ways to explore the current integration:
 3. `verification/c2` is the committed Milestone C.2 codec evidence. It
    generates real spending and minting workspaces and checks the exact boolean,
    optional, list, map, and nested decoders emitted by `julc verify init`.
+4. `verification/c3` is the Milestone C.3 productive-recursion evidence. It
+   builds recursive Java contracts, generates recursive CIP-57 and Lean codecs,
+   and kernel-checks concrete round trips plus an unbounded codec-composition
+   theorem proved by induction.
 
 The integration does not prove that every JuLC program is safe. It checks
 explicit properties for one exact compiled artifact. Solver-valid Blaster
@@ -57,15 +61,17 @@ From a JuLC project containing `julc.toml`:
 
 ```bash
 julc build
-julc verify init . --validator MyValidator --purpose spending
+julc verify init . --validator MyValidator --purpose spending \
+  --recursive-depth 4
 ```
 
 `julc build` derives the datum, redeemer, and parameter schemas from the same
 resolved compiler type model that produces UPLC. Its generated blueprint can
-faithfully describe nonrecursive records and sealed variants containing
+faithfully describe records and sealed variants containing
 integers, byte strings, strings, booleans, lists, maps, optional values, and
-nested combinations of those types. A successful build validates the document
-offline against the repository-pinned CIP-57 meta-schema.
+nested combinations of those types. Productive self and mutual recursion is
+supported. A successful build validates the document offline against the
+repository-pinned CIP-57 meta-schema.
 
 For a minting policy, use `--purpose minting`. The validator title must exactly
 match its title in `build/plutus/plutus.json`.
@@ -130,9 +136,27 @@ Normal `julc build` supports:
 
 - explicitly opaque `PlutusData`;
 - integers, byte strings, strings, and booleans;
-- lists, maps, optional values, and arbitrary nonrecursive nesting;
+- lists, maps, optional values, and arbitrary nesting;
 - named single-constructor records and sealed multi-constructor variants; and
-- compiler-supported references between named, nonrecursive definitions.
+- productive self and mutual references between named definitions.
+
+A recursive type must have a finite construction path. This is supported:
+
+```java
+sealed interface Node permits End, Cons {}
+record End() implements Node {}
+record Cons(BigInteger value, Node next) implements Node {}
+```
+
+This is rejected at its Java source location because it has no finite value
+without relying on `null`:
+
+```java
+record Bad(BigInteger value, Bad next) {}
+```
+
+Recursion under `Optional<T>`, `List<T>`, and `Map<K,V>` is also supported;
+their empty constructors provide a finite base value.
 
 Unsupported or ambiguous boundary types fail blueprint generation at their
 Java source location. They are never silently described as opaque data.
@@ -185,14 +209,15 @@ The generated-workspace flow currently supports:
 - Plutus V3 spending validators and minting policies;
 - named single-constructor records and sealed multi-constructor variants;
 - integers, byte strings, booleans, optional values, lists, maps, and arbitrary
-  nonrecursive nesting of those forms;
-- supported references between named nonrecursive definitions;
+  nesting of those forms;
+- productive self-recursive and mutually recursive named definitions;
 - the exact UPLC stored in `build/plutus/plutus.json`; and
 - UPLC builtin tags 0–88 and 92–93 under the pinned Blaster profile.
 
 It currently rejects or cannot evaluate:
 
-- recursive schemas;
+- nonproductive recursive cycles and recursive aliases that are not named
+  constructor definitions;
 - unnamed or opaque datum/redeemer schema shapes;
 - builtin tags outside the pinned coverage set;
 - non-V3 artifacts; and
@@ -206,8 +231,11 @@ adding a Java `Map` uniqueness assumption. Equality is structural
 association-list equality, so entry order and duplicates matter even when two
 values have the same lookup behavior.
 
-Productive recursion remains Milestone C.3. It is tracked in
-[`ADR-004`](../adr/verification/004-milestone-c-reusable-verification-integration.md).
+`--recursive-depth` is a positive bound for generated recursive-domain
+experiments. It is recorded separately from `--fuel`, which controls CEK
+preprocessing/evaluation. Reaching either limit is `COULD-NOT-EVALUATE`, not a
+validator rejection or a proof. General recursive claims still require a Lean
+induction theorem and must be reported separately from bounded Blaster results.
 
 ## Reproduce the Milestone C.2 codec evidence
 
@@ -221,6 +249,27 @@ verification/c2/scripts/verify.sh
 
 See [`verification/c2/README.md`](c2/README.md) for the tested cases and map
 semantics.
+
+## Reproduce the Milestone C.3 recursion evidence
+
+The C.3 suite builds real productive recursive spending and minting contracts,
+runs `julc verify init --recursive-depth 4`, compiles both pinned Lean/Blaster
+workspaces, checks strict malformed/depth-exhaustion cases, preserves duplicate
+map entries, and kernel-checks unbounded `decode(encode(value))` theorems,
+including the actual generated `IsData` instance path:
+
+```bash
+verification/c3/scripts/verify.sh
+```
+
+The expected terminal result is:
+
+```text
+ESTABLISHED: Milestone C.3 recursive schemas, codecs, depth, and induction compile
+```
+
+See [`verification/c3/README.md`](c3/README.md) and
+[`ADR-008`](../adr/verification/008-milestone-c3-productive-recursive-adts.md).
 
 ## Reproduce the committed evidence suite
 

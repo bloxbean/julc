@@ -54,6 +54,7 @@ class VerificationProjectGeneratorTest {
         assertEquals("E", manifest.path("builtinSemanticsVariant").asText());
         assertEquals(11, manifest.path("protocolVersion").asInt());
         assertEquals(12345, manifest.path("fuel").asInt());
+        assertEquals(4, manifest.path("recursiveDepth").asInt());
         assertEquals("COULD-NOT-EVALUATE",
                 manifest.path("properties").get(0).path("result").asText());
 
@@ -160,6 +161,58 @@ class VerificationProjectGeneratorTest {
     }
 
     @Test
+    void generatesProductiveRecursiveSumsAndContainerCodecs() throws Exception {
+        String source = """
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                import com.bloxbean.cardano.julc.ledger.ScriptContext;
+                import java.math.BigInteger;
+                import java.util.List;
+                import java.util.Map;
+                import java.util.Optional;
+
+                @MintingValidator
+                class RecursiveContainerGate {
+                    sealed interface Node permits End, Cons {}
+                    record End() implements Node {}
+                    record Cons(BigInteger value, Optional<Node> next) implements Node {}
+                    record Tree(List<Tree> children) {}
+                    record Graph(Map<BigInteger, Graph> edges) {}
+                    record Redeemer(Node node, Tree tree, Graph graph) {}
+
+                    @Entrypoint
+                    static boolean validate(Redeemer redeemer, ScriptContext ctx) {
+                        return true;
+                    }
+                }
+                """;
+        var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry()).compileContract(source);
+        var blueprint = BlueprintGenerator.generate(
+                new BlueprintConfig("recursive-generator-test", "1"),
+                List.of(new BlueprintGenerator.CompiledValidator(
+                        "RecursiveContainerGate", compiled.compileResult(),
+                        compiled.contractSchema())));
+        var document = JSON.readTree(blueprint.toJson());
+
+        var result = VerificationProjectGenerator.generateSchemas(
+                document.path("definitions"), document.path("validators").get(0));
+
+        assertTrue(result.source().contains("inductive Node where"));
+        assertTrue(result.source().contains("| End"));
+        assertTrue(result.source().contains("| Cons (value : Integer) (next : Option (Node))"));
+        assertTrue(result.source().contains("inductive Tree where"));
+        assertTrue(result.source().contains("children : JulcList (Tree)"));
+        assertTrue(result.source().contains("inductive Graph where"));
+        assertTrue(result.source().contains("edges : JulcMap (Integer) (Graph)"));
+        assertTrue(result.source().contains("def encodeNode : Node → Data"));
+        assertTrue(result.source().contains("def decodeNode : Nat → Data → Option Node"));
+        assertTrue(result.source().contains("decodeOptionalWith"));
+        assertTrue(result.source().contains("decodeJulcListWith"));
+        assertTrue(result.source().contains("decodeJulcMapWith"));
+        assertFalse(result.source().contains("partial def"));
+        assertFalse(result.source().contains("sorry"));
+    }
+
+    @Test
     void rejectsMalformedContainerSchema() throws Exception {
         var document = JSON.readTree("""
                 {
@@ -233,6 +286,8 @@ class VerificationProjectGeneratorTest {
         assertTrue(commandLine.getSubcommands().containsKey("verify"));
         assertTrue(commandLine.getSubcommands().get("verify")
                 .getSubcommands().containsKey("init"));
+        assertTrue(commandLine.getSubcommands().get("verify").getSubcommands().get("init")
+                .getCommandSpec().findOption("--recursive-depth") != null);
     }
 
     @Test
@@ -243,6 +298,26 @@ class VerificationProjectGeneratorTest {
                         blueprint, "StateGate", "spending", 0,
                         tempDir.resolve("zero"), false));
         assertTrue(error.getMessage().contains("positive"));
+    }
+
+    @Test
+    void recordsRecursiveDepthSeparatelyFromCekFuel() throws Exception {
+        Path output = tempDir.resolve("recursive-depth");
+        VerificationProjectGenerator.generate(
+                writeBlueprint(), "StateGate", "spending", 20000, 7, output, false);
+
+        var manifest = JSON.readTree(
+                output.resolve("verification-manifest.json").toFile());
+        assertEquals(20000, manifest.path("fuel").asInt());
+        assertEquals(7, manifest.path("recursiveDepth").asInt());
+        assertTrue(Files.readString(output.resolve("PropertyTemplates.lean"))
+                .contains("recursiveVerificationDepth : Nat := 7"));
+
+        var error = assertThrows(IllegalArgumentException.class,
+                () -> VerificationProjectGenerator.generate(
+                        writeBlueprint(), "StateGate", "spending", 20000, 0,
+                        tempDir.resolve("bad-depth"), false));
+        assertTrue(error.getMessage().contains("Recursive verification depth"));
     }
 
     @Test
@@ -283,6 +358,130 @@ class VerificationProjectGeneratorTest {
                 () -> VerificationProjectGenerator.generateSchemas(
                         document.path("definitions"), document.path("validators").get(0)));
         assertTrue(error.getMessage().contains("Recursive"));
+    }
+
+    @Test
+    void generatesProductiveMutualRecursiveGroup() throws Exception {
+        var document = JSON.readTree("""
+                {
+                  "validators": [{
+                    "title": "Gate",
+                    "redeemer": {"schema": {"$ref": "#/definitions/Left"}}
+                  }],
+                  "definitions": {
+                    "Left": {"anyOf": [
+                      {"title": "LeftEnd", "dataType": "constructor", "index": 0,
+                       "fields": []},
+                      {"title": "ToRight", "dataType": "constructor", "index": 1,
+                       "fields": [{"title": "next", "$ref": "#/definitions/Right"}]}
+                    ]},
+                    "Right": {"anyOf": [
+                      {"title": "RightEnd", "dataType": "constructor", "index": 0,
+                       "fields": []},
+                      {"title": "ToLeft", "dataType": "constructor", "index": 1,
+                       "fields": [{"title": "next", "$ref": "#/definitions/Left"}]}
+                    ]}
+                  }
+                }
+                """);
+
+        var result = VerificationProjectGenerator.generateSchemas(
+                document.path("definitions"), document.path("validators").get(0));
+
+        assertTrue(result.source().contains("mutual\n  inductive Right where"));
+        assertTrue(result.source().contains("  inductive Left where"));
+        assertTrue(result.source().contains("def encodeRight : Right → Data"));
+        assertTrue(result.source().contains("def decodeLeft : Nat → Data → Option Left"));
+    }
+
+    @Test
+    void rejectsNonproductiveMutualSchema() throws Exception {
+        var document = JSON.readTree("""
+                {
+                  "validators": [{
+                    "title": "Gate",
+                    "redeemer": {"schema": {"$ref": "#/definitions/Left"}}
+                  }],
+                  "definitions": {
+                    "Left": {"anyOf": [{
+                      "title": "Left", "dataType": "constructor", "index": 0,
+                      "fields": [{"title": "next", "$ref": "#/definitions/Right"}]
+                    }]},
+                    "Right": {"anyOf": [{
+                      "title": "Right", "dataType": "constructor", "index": 0,
+                      "fields": [{"title": "next", "$ref": "#/definitions/Left"}]
+                    }]}
+                  }
+                }
+                """);
+
+        var error = assertThrows(UnsupportedVerificationException.class,
+                () -> VerificationProjectGenerator.generateSchemas(
+                        document.path("definitions"), document.path("validators").get(0)));
+
+        assertTrue(error.getMessage().contains("no finite base constructor"));
+        assertTrue(error.getMessage().contains("Left"));
+        assertTrue(error.getMessage().contains("Right"));
+    }
+
+    @Test
+    void rejectsDanglingRecursiveReference() throws Exception {
+        var document = JSON.readTree("""
+                {
+                  "validators": [{
+                    "title": "Gate",
+                    "redeemer": {"schema": {"$ref": "#/definitions/Node"}}
+                  }],
+                  "definitions": {
+                    "Node": {"anyOf": [
+                      {"title": "End", "dataType": "constructor", "index": 0,
+                       "fields": []},
+                      {"title": "Cons", "dataType": "constructor", "index": 1,
+                       "fields": [{"title": "next", "$ref": "#/definitions/Missing"}]}
+                    ]}
+                  }
+                }
+                """);
+
+        var error = assertThrows(UnsupportedVerificationException.class,
+                () -> VerificationProjectGenerator.generateSchemas(
+                        document.path("definitions"), document.path("validators").get(0)));
+
+        assertTrue(error.getMessage().contains("Unknown schema definition 'Missing'"));
+    }
+
+    @Test
+    void followsContainerAliasesWhenOrderingNamedLeanDefinitions() throws Exception {
+        var document = JSON.readTree("""
+                {
+                  "validators": [{
+                    "title": "Gate",
+                    "redeemer": {"schema": {"$ref": "#/definitions/Envelope"}}
+                  }],
+                  "definitions": {
+                    "Envelope": {"anyOf": [{
+                      "title": "Envelope", "dataType": "constructor", "index": 0,
+                      "fields": [{"title": "nodes", "$ref": "#/definitions/NodeList"}]
+                    }]},
+                    "NodeList": {
+                      "dataType": "list", "items": {"$ref": "#/definitions/Node"}
+                    },
+                    "Node": {"anyOf": [{
+                      "title": "Node", "dataType": "constructor", "index": 0,
+                      "fields": [{"title": "value", "dataType": "integer"}]
+                    }]}
+                  }
+                }
+                """);
+
+        var result = VerificationProjectGenerator.generateSchemas(
+                document.path("definitions"), document.path("validators").get(0));
+
+        int node = result.source().indexOf("structure Node where");
+        int envelope = result.source().indexOf("structure Envelope where");
+        assertTrue(node >= 0 && envelope > node,
+                "named dependencies reached through an alias must be declared first");
+        assertEquals("JulcList (Node)", result.leanTypes().get("NodeList"));
     }
 
     @Test

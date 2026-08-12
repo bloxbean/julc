@@ -207,6 +207,7 @@ public class LibraryMethodRegistry implements StdlibLookup {
             case PirType.FunType ft -> pirTypeName(ft.paramType()) + " -> " + pirTypeName(ft.returnType());
             case PirType.RecordType rt -> rt.name();
             case PirType.SumType st -> st.name();
+            case PirType.NamedTypeRef ref -> ref.name();
             case PirType.OptionalType ot -> "Optional[" + pirTypeName(ot.elemType()) + "]";
             case PirType.ArrayType at -> "Array[" + pirTypeName(at.elemType()) + "]";
         };

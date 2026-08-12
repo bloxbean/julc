@@ -10,13 +10,17 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.PriorityQueue;
 import java.util.Set;
 
 /** Deterministically generates a pinned Blaster workspace from a CIP-57 blueprint. */
@@ -42,6 +46,7 @@ public final class VerificationProjectGenerator {
             "Bool", "ByteString", "Data", "Integer", "IsData", "JulcList", "JulcMap",
             "Option", "ScriptContext");
     private static final Set<String> USER_OWNED_FILES = Set.of("SecurityProperty.lean");
+    private static final int DEFAULT_RECURSIVE_DEPTH = 4;
 
     private VerificationProjectGenerator() { }
 
@@ -52,8 +57,23 @@ public final class VerificationProjectGenerator {
             int fuel,
             Path outputDirectory,
             boolean force) throws Exception {
+        return generate(blueprintFile, validatorTitle, purpose, fuel,
+                DEFAULT_RECURSIVE_DEPTH, outputDirectory, force);
+    }
+
+    public static GenerationResult generate(
+            Path blueprintFile,
+            String validatorTitle,
+            String purpose,
+            int fuel,
+            int recursiveDepth,
+            Path outputDirectory,
+            boolean force) throws Exception {
         if (fuel <= 0) {
             throw new IllegalArgumentException("Verification fuel must be positive");
+        }
+        if (recursiveDepth <= 0) {
+            throw new IllegalArgumentException("Recursive verification depth must be positive");
         }
         if (!purpose.equals("spending") && !purpose.equals("minting")) {
             throw new IllegalArgumentException("Purpose must be spending or minting");
@@ -101,7 +121,7 @@ public final class VerificationProjectGenerator {
         files.put("lean-toolchain", "leanprover/lean4:" + LEAN_VERSION + "\n");
         files.put("lakefile.lean", lakefile());
         files.put("GeneratedSchemas.lean", schemas.source());
-        files.put("PropertyTemplates.lean", propertyTemplates());
+        files.put("PropertyTemplates.lean", propertyTemplates(recursiveDepth));
         files.put("CheckedExecution.lean", checkedExecution());
         files.put("SecurityProperty.lean", securityProperty());
         files.put(leanId + "Verification.lean",
@@ -112,9 +132,10 @@ public final class VerificationProjectGenerator {
                 "# " + GENERATED_MARKER + "\n0-88\n92-93\n");
         files.put("scripts/verify.sh",
                 verifyScript(leanId, artifactId, artifact.compiledCodeSha256()));
-        files.put("README.md", readme(leanId, validatorTitle, purpose));
+        files.put("README.md", readme(leanId, validatorTitle, purpose, recursiveDepth));
         files.put("verification-manifest.json",
-                manifest(blueprint, artifact, purpose, fuel, schemas.leanTypes()));
+                manifest(blueprint, artifact, purpose, fuel, recursiveDepth,
+                        schemas.leanTypes()));
 
         writeAtomically(output, files);
         return new GenerationResult(output, artifactId, leanId, files.keySet().stream().toList());
@@ -152,6 +173,18 @@ public final class VerificationProjectGenerator {
             collectNeeded(root, all, needed, new HashSet<>());
         }
 
+        Map<String, Set<String>> allDependencies = namedDependencyGraph(needed, all);
+        for (List<String> group : dependencyGroups(allDependencies)) {
+            boolean recursive = group.size() > 1
+                    || allDependencies.getOrDefault(group.getFirst(), Set.of())
+                            .contains(group.getFirst());
+            if (recursive && group.stream()
+                    .anyMatch(name -> !requiresNamedDefinition(all.get(name)))) {
+                throw new UnsupportedVerificationException(
+                        "Recursive schema aliases must use named constructor definitions: " + group);
+            }
+        }
+
         Map<String, String> names = new LinkedHashMap<>();
         Set<String> normalized = new HashSet<>();
         for (String name : needed) {
@@ -185,8 +218,18 @@ public final class VerificationProjectGenerator {
                 .append("open PlutusCore.Integer (Integer)\n\n")
                 .append(containerSupport());
 
-        for (String original : names.keySet()) {
-            source.append(generateDefinition(original, names.get(original), all, names));
+        Map<String, Set<String>> dependencyGraph = namedDependencyGraph(names.keySet(), all);
+        for (List<String> group : dependencyGroups(dependencyGraph)) {
+            boolean recursive = group.size() > 1
+                    || dependencyGraph.getOrDefault(group.getFirst(), Set.of())
+                            .contains(group.getFirst());
+            if (recursive) {
+                validateProductiveSchemas(group, all);
+                source.append(generateRecursiveGroup(group, all, names));
+            } else {
+                String original = group.getFirst();
+                source.append(generateDefinition(original, names.get(original), all, names));
+            }
         }
         source.append("end JulcGenerated.Schemas\n");
 
@@ -200,10 +243,60 @@ public final class VerificationProjectGenerator {
 
     private static String containerSupport() {
         return """
+                mutual
+                  def dataDepth : Data → Nat
+                    | Data.Constr _ fields => dataListDepth fields + 1
+                    | Data.Map entries => dataMapDepth entries + 1
+                    | Data.List items => dataListDepth items + 1
+                    | Data.I _ => 1
+                    | Data.B _ => 1
+
+                  def dataListDepth : List Data → Nat
+                    | [] => 0
+                    | value :: rest => max (dataDepth value) (dataListDepth rest)
+
+                  def dataMapDepth : List (Data × Data) → Nat
+                    | [] => 0
+                    | (key, value) :: rest =>
+                        max (max (dataDepth key) (dataDepth value)) (dataMapDepth rest)
+                end
+
+                private def encodeOptionalWith (encode : α → Data) : Option α → Data
+                  | none => mkDataConstr 1 []
+                  | some value => mkDataConstr 0 [encode value]
+
+                private def decodeOptionalWith
+                    (decode : Data → Option α) : Data → Option (Option α)
+                  | Data.Constr 1 [] => some none
+                  | Data.Constr 0 [value] =>
+                      match decode value with
+                      | some decoded => some (some decoded)
+                      | none => none
+                  | _ => none
+
                 /-- A Plutus `Data.List` whose elements all satisfy their CIP-57 schema. -/
                 structure JulcList (α : Type) where
                   items : List α
                 deriving Repr
+
+                private def encodeJulcListWith
+                    (encode : α → Data) : JulcList α → Data
+                  | ⟨items⟩ => Data.List (items.map encode)
+
+                private def decodeJulcListWith
+                    (decode : Data → Option α) : Data → Option (JulcList α)
+                  | Data.List values =>
+                      let rec go : List Data → Option (List α)
+                        | [] => some []
+                        | value :: rest =>
+                            match decode value, go rest with
+                            | some decoded, some decodedRest =>
+                                some (decoded :: decodedRest)
+                            | _, _ => none
+                      match go values with
+                      | some decoded => some ⟨decoded⟩
+                      | none => none
+                  | _ => none
 
                 private def decodeDataList [IsData α] : List Data → Option (List α)
                   | [] => some []
@@ -229,6 +322,22 @@ public final class VerificationProjectGenerator {
                 structure JulcMap (κ υ : Type) where
                   entries : List (κ × υ)
                 deriving Repr
+
+                private def decodeJulcMapWith
+                    (decodeKey : Data → Option κ)
+                    (decodeValue : Data → Option υ) : Data → Option (JulcMap κ υ)
+                  | Data.Map entries =>
+                      let rec go : List (Data × Data) → Option (List (κ × υ))
+                        | [] => some []
+                        | (key, value) :: rest =>
+                            match decodeKey key, decodeValue value, go rest with
+                            | some decodedKey, some decodedValue, some decodedRest =>
+                                some ((decodedKey, decodedValue) :: decodedRest)
+                            | _, _, _ => none
+                      match go entries with
+                      | some decoded => some ⟨decoded⟩
+                      | none => none
+                  | _ => none
 
                 private def decodeDataMap [IsData κ] [IsData υ] :
                     List (Data × Data) → Option (List (κ × υ))
@@ -258,6 +367,56 @@ public final class VerificationProjectGenerator {
     }
 
     private static String generateDefinition(
+            String original,
+            String typeName,
+            Map<String, JsonNode> definitions,
+            Map<String, String> names) throws UnsupportedVerificationException {
+        List<Constructor> constructors = constructors(original, typeName, definitions, names);
+
+        boolean structure = constructors.size() == 1 && !constructors.getFirst().fields().isEmpty();
+        var out = new StringBuilder();
+        if (structure) {
+            Constructor ctor = constructors.getFirst();
+            out.append("structure ").append(typeName).append(" where\n");
+            for (Field field : ctor.fields()) {
+                out.append("  ").append(field.name()).append(" : ").append(field.type()).append("\n");
+            }
+            out.append("deriving Repr\n\n")
+                    .append("instance : IsData ").append(typeName).append(" where\n")
+                    .append("  toData x := mkDataConstr ").append(ctor.index()).append(" ")
+                    .append(dataList(ctor.fields(), field -> "IsData.toData x." + field.name()))
+                    .append("\n")
+                    .append("  fromData\n")
+                    .append(fromDataBranch(ctor, "some { " + assignments(ctor.fields()) + " }"))
+                    .append("  | _ => none\n\n");
+        } else {
+            out.append("inductive ").append(typeName).append(" where\n");
+            appendConstructors(out, constructors, "  ");
+            out.append("deriving Repr\n\n")
+                    .append("instance : IsData ").append(typeName).append(" where\n")
+                    .append("  toData\n");
+            for (Constructor ctor : constructors) {
+                out.append("  | .").append(ctor.name());
+                for (Field field : ctor.fields()) {
+                    out.append(" ").append(field.name());
+                }
+                out.append(" => mkDataConstr ").append(ctor.index()).append(" ")
+                        .append(dataList(ctor.fields(), field -> "IsData.toData " + field.name()))
+                        .append("\n");
+            }
+            out.append("  fromData\n");
+            for (Constructor ctor : constructors) {
+                String value = "some (." + ctor.name()
+                        + ctor.fields().stream().map(field -> " " + field.name())
+                        .reduce("", String::concat) + ")";
+                out.append(fromDataBranch(ctor, value));
+            }
+            out.append("  | _ => none\n\n");
+        }
+        return out.toString();
+    }
+
+    private static List<Constructor> constructors(
             String original,
             String typeName,
             Map<String, JsonNode> definitions,
@@ -299,57 +458,288 @@ public final class VerificationProjectGenerator {
             List<Field> fields = fields(original, alternative.path("fields"), definitions, names);
             constructors.add(new Constructor(ctorName, constructorIndex, fields));
         }
+        return constructors;
+    }
 
-        boolean structure = constructors.size() == 1 && !constructors.getFirst().fields().isEmpty();
-        var out = new StringBuilder();
-        if (structure) {
-            Constructor ctor = constructors.getFirst();
-            out.append("structure ").append(typeName).append(" where\n");
+    private static void appendConstructors(
+            StringBuilder out, List<Constructor> constructors, String indent) {
+        for (Constructor ctor : constructors) {
+            out.append(indent).append("| ").append(ctor.name());
             for (Field field : ctor.fields()) {
-                out.append("  ").append(field.name()).append(" : ").append(field.type()).append("\n");
+                out.append(" (").append(field.name()).append(" : ").append(field.type()).append(")");
             }
-            out.append("deriving Repr\n\n")
-                    .append("instance : IsData ").append(typeName).append(" where\n")
-                    .append("  toData x := mkDataConstr ").append(ctor.index()).append(" ")
-                    .append(dataList(ctor.fields(), field -> "IsData.toData x." + field.name()))
-                    .append("\n")
-                    .append("  fromData\n")
-                    .append(fromDataBranch(ctor, "some { " + assignments(ctor.fields()) + " }"))
-                    .append("  | _ => none\n\n");
+            out.append("\n");
+        }
+    }
+
+    private static String generateRecursiveGroup(
+            List<String> group,
+            Map<String, JsonNode> definitions,
+            Map<String, String> names) throws UnsupportedVerificationException {
+        Set<String> members = Set.copyOf(group);
+        var constructorsByType = new LinkedHashMap<String, List<Constructor>>();
+        for (String original : group) {
+            constructorsByType.put(original,
+                    constructors(original, names.get(original), definitions, names));
+        }
+
+        var containers = new LinkedHashMap<String, RecursiveContainer>();
+        for (var constructors : constructorsByType.values()) {
+            for (Constructor constructor : constructors) {
+                for (Field field : constructor.fields()) {
+                    registerRecursiveContainers(
+                            field.schema(), members, containers, names.get(group.getFirst()));
+                }
+            }
+        }
+
+        var out = new StringBuilder();
+        if (group.size() == 1) {
+            String original = group.getFirst();
+            out.append("inductive ").append(names.get(original)).append(" where\n");
+            appendConstructors(out, constructorsByType.get(original), "  ");
+            out.append("deriving Repr\n\n");
         } else {
-            out.append("inductive ").append(typeName).append(" where\n");
-            for (Constructor ctor : constructors) {
-                out.append("  | ").append(ctor.name());
-                for (Field field : ctor.fields()) {
-                    out.append(" (").append(field.name()).append(" : ").append(field.type()).append(")");
-                }
-                out.append("\n");
+            out.append("mutual\n");
+            for (String original : group) {
+                out.append("  inductive ").append(names.get(original)).append(" where\n");
+                appendConstructors(out, constructorsByType.get(original), "    ");
             }
-            out.append("deriving Repr\n\n")
-                    .append("instance : IsData ").append(typeName).append(" where\n")
-                    .append("  toData\n");
-            for (Constructor ctor : constructors) {
-                out.append("  | .").append(ctor.name());
-                for (Field field : ctor.fields()) {
-                    out.append(" ").append(field.name());
-                }
-                out.append(" => mkDataConstr ").append(ctor.index()).append(" ")
-                        .append(dataList(ctor.fields(), field -> "IsData.toData " + field.name()))
+            out.append("end\n\nderiving instance Repr for ")
+                    .append(group.stream().map(names::get).reduce((a, b) -> a + ", " + b)
+                            .orElseThrow())
+                    .append("\n\n");
+        }
+
+        out.append("mutual\n");
+        for (String original : group) {
+            String typeName = names.get(original);
+            out.append("  def encode").append(typeName).append(" : ")
+                    .append(typeName).append(" → Data\n");
+            for (Constructor constructor : constructorsByType.get(original)) {
+                out.append("    | .").append(constructor.name());
+                for (Field field : constructor.fields()) out.append(" ").append(field.name());
+                out.append(" => mkDataConstr ").append(constructor.index()).append(" ")
+                        .append(dataList(constructor.fields(), field -> encodeRecursiveSchema(
+                                field.schema(), field.name(), members, names, containers)))
                         .append("\n");
             }
-            out.append("  fromData\n");
-            for (Constructor ctor : constructors) {
-                String value = "some (." + ctor.name()
-                        + ctor.fields().stream().map(field -> " " + field.name())
-                        .reduce("", String::concat) + ")";
-                out.append(fromDataBranch(ctor, value));
+            out.append("\n");
+        }
+        for (RecursiveContainer container : containers.values()) {
+            appendRecursiveContainerEncoder(
+                    out, container, members, definitions, names, containers);
+        }
+        out.append("end\n\n");
+
+        out.append("mutual\n");
+        for (String original : group) {
+            String typeName = names.get(original);
+            out.append("  def decode").append(typeName)
+                    .append(" : Nat → Data → Option ").append(typeName).append("\n")
+                    .append("    | 0, _ => none\n");
+            for (Constructor constructor : constructorsByType.get(original)) {
+                boolean usesDepth = false;
+                for (Field field : constructor.fields()) {
+                    if (containsReferenceTo(field.schema(), members)) {
+                        usesDepth = true;
+                        break;
+                    }
+                }
+                out.append("    | ").append(usesDepth ? "depth" : "_")
+                        .append(" + 1, Data.Constr ").append(constructor.index()).append(" ")
+                        .append(dataList(constructor.fields(), field -> "r_" + field.name()))
+                        .append(" =>\n");
+                if (constructor.fields().isEmpty()) {
+                    out.append("        some (").append(typeName).append(".")
+                            .append(constructor.name()).append(")\n");
+                    continue;
+                }
+                var decodedFields = new ArrayList<String>();
+                for (Field field : constructor.fields()) {
+                    decodedFields.add(decodeRecursiveSchema(
+                            field.schema(), "r_" + field.name(), "depth", members, names));
+                }
+                out.append("        match ")
+                        .append(String.join(", ", decodedFields))
+                        .append(" with\n        | ")
+                        .append(constructor.fields().stream()
+                                .map(field -> "some " + field.name())
+                                .reduce((a, b) -> a + ", " + b).orElseThrow())
+                        .append(" => some (").append(typeName).append(".")
+                        .append(constructor.name())
+                        .append(constructor.fields().stream()
+                                .map(field -> " " + field.name()).reduce("", String::concat))
+                        .append(")\n        | ")
+                        .append(constructor.fields().stream().map(field -> "_")
+                                .reduce((a, b) -> a + ", " + b).orElseThrow())
+                        .append(" => none\n");
             }
-            out.append("  | _ => none\n\n");
+            out.append("    | _ + 1, _ => none\n\n");
+        }
+        out.append("end\n\n");
+
+        for (String original : group) {
+            String typeName = names.get(original);
+            out.append("instance : IsData ").append(typeName).append(" where\n")
+                    .append("  toData := encode").append(typeName).append("\n")
+                    .append("  fromData value := decode").append(typeName)
+                    .append(" (dataDepth value + 1) value\n\n");
         }
         return out.toString();
     }
 
-    private static String fromDataBranch(Constructor ctor, String success) {
+    private static void registerRecursiveContainers(
+            JsonNode schema,
+            Set<String> group,
+            Map<String, RecursiveContainer> containers,
+            String prefix) throws UnsupportedVerificationException {
+        String ref = schema.path("$ref").asText(null);
+        if (ref != null) return;
+        JsonNode optional = optionalValueSchema(schema);
+        String dataType = schema.path("dataType").asText();
+        boolean container = dataType.equals("list") || dataType.equals("map") || optional != null;
+        if (container && containsReferenceTo(schema, group)) {
+            String key = schema.toString();
+            containers.computeIfAbsent(key, ignored -> new RecursiveContainer(
+                    "encode" + prefix + "Container" + containers.size(), schema));
+        }
+        if (dataType.equals("list")) {
+            registerRecursiveContainers(schema.path("items"), group, containers, prefix);
+        } else if (dataType.equals("map")) {
+            registerRecursiveContainers(schema.path("keys"), group, containers, prefix);
+            registerRecursiveContainers(schema.path("values"), group, containers, prefix);
+        } else if (optional != null) {
+            registerRecursiveContainers(optional, group, containers, prefix);
+        }
+    }
+
+    private static boolean containsReferenceTo(JsonNode schema, Set<String> targets)
+            throws UnsupportedVerificationException {
+        String ref = schema.path("$ref").asText(null);
+        if (ref != null) return targets.contains(referenceName(ref));
+        JsonNode optional = optionalValueSchema(schema);
+        if (optional != null && containsReferenceTo(optional, targets)) return true;
+        for (String child : List.of("items", "keys", "values")) {
+            JsonNode value = schema.path(child);
+            if (!value.isMissingNode() && containsReferenceTo(value, targets)) return true;
+        }
+        return false;
+    }
+
+    private static String encodeRecursiveSchema(
+            JsonNode schema,
+            String value,
+            Set<String> group,
+            Map<String, String> names,
+            Map<String, RecursiveContainer> containers)
+            throws UnsupportedVerificationException {
+        String ref = schema.path("$ref").asText(null);
+        if (ref != null) {
+            String referenced = referenceName(ref);
+            if (group.contains(referenced)) return "encode" + names.get(referenced) + " " + value;
+        }
+        RecursiveContainer container = containers.get(schema.toString());
+        if (container != null) return container.function() + " " + value;
+        return "IsData.toData " + value;
+    }
+
+    private static String decodeRecursiveSchema(
+            JsonNode schema,
+            String data,
+            String depth,
+            Set<String> group,
+            Map<String, String> names) throws UnsupportedVerificationException {
+        String ref = schema.path("$ref").asText(null);
+        if (ref != null) {
+            String referenced = referenceName(ref);
+            if (group.contains(referenced)) {
+                return "decode" + names.get(referenced) + " " + depth + " " + data;
+            }
+            return "IsData.fromData " + data;
+        }
+        String dataType = schema.path("dataType").asText();
+        if (dataType.equals("list") && containsReferenceTo(schema, group)) {
+            return "decodeJulcListWith (fun value => "
+                    + decodeRecursiveSchema(schema.path("items"), "value", depth, group, names)
+                    + ") " + data;
+        }
+        if (dataType.equals("map") && containsReferenceTo(schema, group)) {
+            return "decodeJulcMapWith (fun key => "
+                    + decodeRecursiveSchema(schema.path("keys"), "key", depth, group, names)
+                    + ") (fun value => "
+                    + decodeRecursiveSchema(schema.path("values"), "value", depth, group, names)
+                    + ") " + data;
+        }
+        JsonNode optional = optionalValueSchema(schema);
+        if (optional != null && containsReferenceTo(schema, group)) {
+            return "decodeOptionalWith (fun value => "
+                    + decodeRecursiveSchema(optional, "value", depth, group, names)
+                    + ") " + data;
+        }
+        return "IsData.fromData " + data;
+    }
+
+    private static void appendRecursiveContainerEncoder(
+            StringBuilder out,
+            RecursiveContainer container,
+            Set<String> group,
+            Map<String, JsonNode> definitions,
+            Map<String, String> names,
+            Map<String, RecursiveContainer> containers) throws UnsupportedVerificationException {
+        JsonNode schema = container.schema();
+        String dataType = schema.path("dataType").asText();
+        String type = schemaType(schema, definitions, names, names.keySet().iterator().next());
+        if (dataType.equals("list")) {
+            JsonNode items = schema.path("items");
+            String itemType = schemaType(items, definitions, names, "recursive-list");
+            out.append("  def ").append(container.function()).append(" : ")
+                    .append(type).append(" → Data\n")
+                    .append("    | ⟨items⟩ => Data.List (").append(container.function())
+                    .append("Items items)\n\n")
+                    .append("  def ").append(container.function()).append("Items : List ")
+                    .append(itemType).append(" → List Data\n")
+                    .append("    | [] => []\n")
+                    .append("    | value :: rest => ")
+                    .append(encodeRecursiveSchema(items, "value", group, names, containers))
+                    .append(" :: ").append(container.function()).append("Items rest\n\n");
+            return;
+        }
+        if (dataType.equals("map")) {
+            JsonNode keys = schema.path("keys");
+            JsonNode values = schema.path("values");
+            String keyType = schemaType(keys, definitions, names, "recursive-map-key");
+            String valueType = schemaType(values, definitions, names, "recursive-map-value");
+            out.append("  def ").append(container.function()).append(" : ")
+                    .append(type).append(" → Data\n")
+                    .append("    | ⟨entries⟩ => Data.Map (").append(container.function())
+                    .append("Entries entries)\n\n")
+                    .append("  def ").append(container.function())
+                    .append("Entries : List (").append(keyType).append(" × ")
+                    .append(valueType).append(") → List (Data × Data)\n")
+                    .append("    | [] => []\n")
+                    .append("    | (key, value) :: rest => (")
+                    .append(encodeRecursiveSchema(keys, "key", group, names, containers))
+                    .append(", ")
+                    .append(encodeRecursiveSchema(values, "value", group, names, containers))
+                    .append(") :: ").append(container.function()).append("Entries rest\n\n");
+            return;
+        }
+        JsonNode optional = optionalValueSchema(schema);
+        if (optional != null) {
+            out.append("  def ").append(container.function()).append(" : ")
+                    .append(type).append(" → Data\n")
+                    .append("    | none => mkDataConstr 1 []\n")
+                    .append("    | some value => mkDataConstr 0 [")
+                    .append(encodeRecursiveSchema(optional, "value", group, names, containers))
+                    .append("]\n\n");
+            return;
+        }
+        throw new UnsupportedVerificationException("Unsupported recursive container schema");
+    }
+
+    private static String fromDataBranch(Constructor ctor, String success)
+            throws UnsupportedVerificationException {
         var out = new StringBuilder("  | Data.Constr ")
                 .append(ctor.index()).append(" ")
                 .append(dataList(ctor.fields(), field -> "r_" + field.name()))
@@ -397,7 +787,8 @@ public final class VerificationProjectGenerator {
                 throw new UnsupportedVerificationException(
                         "Field names collide in schema definition '" + owner + "'");
             }
-            result.add(new Field(name, schemaType(field, definitions, names, owner)));
+            result.add(new Field(
+                    name, schemaType(field, definitions, names, owner), field));
             index++;
         }
         return result;
@@ -598,8 +989,7 @@ public final class VerificationProjectGenerator {
             throw new UnsupportedVerificationException("Unknown schema definition '" + name + "'");
         }
         if (active.contains(name)) {
-            throw new UnsupportedVerificationException(
-                    "Recursive schema definition is not supported: '" + name + "'");
+            return;
         }
         if (needed.contains(name)) {
             return;
@@ -608,6 +998,196 @@ public final class VerificationProjectGenerator {
         collectInlineDependencies(schema, name, definitions, needed, active);
         active.remove(name);
         needed.add(name);
+    }
+
+    private static Map<String, Set<String>> namedDependencyGraph(
+            Set<String> names, Map<String, JsonNode> definitions)
+            throws UnsupportedVerificationException {
+        var graph = new LinkedHashMap<String, Set<String>>();
+        for (String name : names) {
+            var dependencies = new LinkedHashSet<String>();
+            collectNamedDependencies(
+                    definitions.get(name), names, definitions, dependencies, new HashSet<>());
+            graph.put(name, dependencies);
+        }
+        return graph;
+    }
+
+    private static void collectNamedDependencies(
+            JsonNode schema,
+            Set<String> names,
+            Map<String, JsonNode> definitions,
+            Set<String> dependencies,
+            Set<String> activeAliases)
+            throws UnsupportedVerificationException {
+        String ref = schema.path("$ref").asText(null);
+        if (ref != null) {
+            String referenced = referenceName(ref);
+            if (names.contains(referenced)) {
+                dependencies.add(referenced);
+                return;
+            }
+            JsonNode alias = definitions.get(referenced);
+            if (alias == null) {
+                throw new UnsupportedVerificationException(
+                        "Unknown schema definition '" + referenced + "'");
+            }
+            if (activeAliases.add(referenced)) {
+                collectNamedDependencies(
+                        alias, names, definitions, dependencies, activeAliases);
+                activeAliases.remove(referenced);
+            }
+            return;
+        }
+        for (String child : List.of("fields", "anyOf", "items", "keys", "values")) {
+            JsonNode value = schema.path(child);
+            if (value.isArray()) {
+                for (JsonNode item : value) {
+                    collectNamedDependencies(
+                            item, names, definitions, dependencies, activeAliases);
+                }
+            } else if (!value.isMissingNode()) {
+                collectNamedDependencies(
+                        value, names, definitions, dependencies, activeAliases);
+            }
+        }
+    }
+
+    private static List<List<String>> dependencyGroups(Map<String, Set<String>> graph) {
+        var index = new int[] {0};
+        var indexes = new HashMap<String, Integer>();
+        var lowLinks = new HashMap<String, Integer>();
+        var stack = new ArrayDeque<String>();
+        var onStack = new HashSet<String>();
+        var components = new ArrayList<List<String>>();
+        for (String node : graph.keySet()) {
+            if (!indexes.containsKey(node)) {
+                strongConnect(node, graph, index, indexes, lowLinks,
+                        stack, onStack, components);
+            }
+        }
+
+        var order = new HashMap<String, Integer>();
+        int position = 0;
+        for (String node : graph.keySet()) order.put(node, position++);
+        components.forEach(component -> component.sort(Comparator.comparingInt(order::get)));
+
+        var componentOf = new HashMap<String, Integer>();
+        for (int i = 0; i < components.size(); i++) {
+            for (String node : components.get(i)) componentOf.put(node, i);
+        }
+        var dependencies = new ArrayList<Set<Integer>>();
+        var inDegree = new int[components.size()];
+        for (int i = 0; i < components.size(); i++) dependencies.add(new LinkedHashSet<>());
+        for (var entry : graph.entrySet()) {
+            int owner = componentOf.get(entry.getKey());
+            for (String dependency : entry.getValue()) {
+                int target = componentOf.get(dependency);
+                if (owner != target && dependencies.get(owner).add(target)) inDegree[owner]++;
+            }
+        }
+
+        var ready = new PriorityQueue<Integer>(Comparator.comparingInt(component ->
+                order.get(components.get(component).getFirst())));
+        for (int i = 0; i < inDegree.length; i++) if (inDegree[i] == 0) ready.add(i);
+        var result = new ArrayList<List<String>>();
+        while (!ready.isEmpty()) {
+            int completed = ready.remove();
+            result.add(components.get(completed));
+            for (int owner = 0; owner < dependencies.size(); owner++) {
+                if (dependencies.get(owner).contains(completed) && --inDegree[owner] == 0) {
+                    ready.add(owner);
+                }
+            }
+        }
+        return result;
+    }
+
+    private static void strongConnect(
+            String node,
+            Map<String, Set<String>> graph,
+            int[] nextIndex,
+            Map<String, Integer> indexes,
+            Map<String, Integer> lowLinks,
+            ArrayDeque<String> stack,
+            Set<String> onStack,
+            List<List<String>> components) {
+        int nodeIndex = nextIndex[0]++;
+        indexes.put(node, nodeIndex);
+        lowLinks.put(node, nodeIndex);
+        stack.push(node);
+        onStack.add(node);
+        for (String dependency : graph.getOrDefault(node, Set.of())) {
+            if (!indexes.containsKey(dependency)) {
+                strongConnect(dependency, graph, nextIndex, indexes, lowLinks,
+                        stack, onStack, components);
+                lowLinks.put(node, Math.min(lowLinks.get(node), lowLinks.get(dependency)));
+            } else if (onStack.contains(dependency)) {
+                lowLinks.put(node, Math.min(lowLinks.get(node), indexes.get(dependency)));
+            }
+        }
+        if (lowLinks.get(node).equals(indexes.get(node))) {
+            var component = new ArrayList<String>();
+            String member;
+            do {
+                member = stack.pop();
+                onStack.remove(member);
+                component.add(member);
+            } while (!member.equals(node));
+            components.add(component);
+        }
+    }
+
+    private static void validateProductiveSchemas(
+            List<String> group, Map<String, JsonNode> definitions)
+            throws UnsupportedVerificationException {
+        Set<String> members = Set.copyOf(group);
+        var productive = new LinkedHashSet<String>();
+        boolean changed;
+        do {
+            changed = false;
+            for (String name : group) {
+                if (!productive.contains(name)
+                        && schemaCanTerminate(definitions.get(name), members, productive)) {
+                    productive.add(name);
+                    changed = true;
+                }
+            }
+        } while (changed);
+        if (!productive.containsAll(group)) {
+            var rejected = group.stream().filter(name -> !productive.contains(name)).toList();
+            throw new UnsupportedVerificationException(
+                    "Recursive schema has no finite base constructor: " + rejected);
+        }
+    }
+
+    private static boolean schemaCanTerminate(
+            JsonNode schema, Set<String> group, Set<String> productive)
+            throws UnsupportedVerificationException {
+        String ref = schema.path("$ref").asText(null);
+        if (ref != null) {
+            String referenced = referenceName(ref);
+            return !group.contains(referenced) || productive.contains(referenced);
+        }
+        String dataType = schema.path("dataType").asText();
+        if (dataType.equals("list") || dataType.equals("map")) return true;
+        if (primitiveType(schema) != null || optionalValueSchema(schema) != null) return true;
+        JsonNode alternatives = schema.path("anyOf");
+        if (!alternatives.isArray()) return false;
+        for (JsonNode alternative : alternatives) {
+            JsonNode fields = alternative.path("fields");
+            if (fields.isArray()) {
+                boolean allProductive = true;
+                for (JsonNode field : fields) {
+                    if (!schemaCanTerminate(field, group, productive)) {
+                        allProductive = false;
+                        break;
+                    }
+                }
+                if (allProductive) return true;
+            }
+        }
+        return false;
     }
 
     private static JsonNode exactValidator(JsonNode blueprint, String title) {
@@ -629,6 +1209,7 @@ public final class VerificationProjectGenerator {
             ArtifactCommand.ArtifactMetadata artifact,
             String purpose,
             int fuel,
+            int recursiveDepth,
             Map<String, String> leanTypes) throws IOException {
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("schemaVersion", 1);
@@ -646,6 +1227,7 @@ public final class VerificationProjectGenerator {
         root.put("builtinSemanticsVariant", "E");
         root.put("artifactFormat", "double_cbor_hex");
         root.put("fuel", fuel);
+        root.put("recursiveDepth", recursiveDepth);
         root.put("leanVersion", "4.24.0");
         root.put("z3Version", "4.15.2");
         root.put("dependencies", Map.of(
@@ -749,10 +1331,11 @@ public final class VerificationProjectGenerator {
                 """;
     }
 
-    private static String propertyTemplates() {
+    private static String propertyTemplates(int recursiveDepth) {
         return """
                 /- Generated by `julc verify init`; reusable predicates, not theorem claims. -/
                 import CardanoLedgerApi.V3
+                import GeneratedSchemas
 
                 namespace JulcGenerated.PropertyTemplates
 
@@ -761,6 +1344,12 @@ public final class VerificationProjectGenerator {
                 open PlutusCore.ByteString (ByteString)
                 open PlutusCore.Data (Data)
                 open PlutusCore.Integer (Integer)
+
+                /-- Bound for generated recursive-domain experiments; distinct from CEK fuel. -/
+                def recursiveVerificationDepth : Nat := %d
+
+                def recursiveDataWithinBound (value : Data) : Prop :=
+                  JulcGenerated.Schemas.dataDepth value ≤ recursiveVerificationDepth
 
                 def firstSignerAuthorized (authority : ByteString) (ctx : ScriptContext) : Prop :=
                   match ctx.scriptContextTxInfo.txInfoSignatories with
@@ -784,7 +1373,7 @@ public final class VerificationProjectGenerator {
                   | [] => False
 
                 end JulcGenerated.PropertyTemplates
-                """;
+                """.formatted(recursiveDepth);
     }
 
     private static String validatorModule(
@@ -910,13 +1499,19 @@ public final class VerificationProjectGenerator {
                 BLASTER_REV, PLUTUS_CORE_REV, LEDGER_API_REV, leanId, leanId);
     }
 
-    private static String readme(String leanId, String validatorTitle, String purpose) {
+    private static String readme(
+            String leanId, String validatorTitle, String purpose, int recursiveDepth) {
         return """
                 # Generated JuLC verification workspace
 
                 This workspace was generated for `%s` (%s) by `julc verify init`.
                 The artifact, profile, fuel, and dependency pins are recorded in
                 `verification-manifest.json`.
+
+                Recursive-domain experiments default to depth `%d`. This is separate from
+                CEK `fuel`: reaching the recursive bound is not validator failure and is not
+                an unbounded proof. Use `recursiveDataWithinBound` when a property deliberately
+                restricts recursive input data. General claims require a reviewed Lean induction.
 
                 Required tools are Lean 4.24.0/Lake, Z3 4.15.2, Git, and ripgrep.
 
@@ -937,7 +1532,7 @@ public final class VerificationProjectGenerator {
                 A successful compilation is still reported as `COULD-NOT-EVALUATE` until the
                 property is specialized and proved. Solver-valid claims must be labeled
                 `SMT-VALID`; ordinary Lean proofs may be labeled `KERNEL-PROVED`.
-                """.formatted(validatorTitle, purpose, leanId);
+                """.formatted(validatorTitle, purpose, recursiveDepth, leanId);
     }
 
     private static void writeAtomically(Path output, Map<String, String> files)
@@ -1034,9 +1629,11 @@ public final class VerificationProjectGenerator {
         return result;
     }
 
-    private static String dataList(List<Field> fields, FieldRenderer renderer) {
-        return "[" + fields.stream().map(renderer::render)
-                .reduce((a, b) -> a + ", " + b).orElse("") + "]";
+    private static String dataList(List<Field> fields, FieldRenderer renderer)
+            throws UnsupportedVerificationException {
+        var rendered = new ArrayList<String>();
+        for (Field field : fields) rendered.add(renderer.render(field));
+        return "[" + String.join(", ", rendered) + "]";
     }
 
     private static String assignments(List<Field> fields) {
@@ -1056,11 +1653,12 @@ public final class VerificationProjectGenerator {
 
     @FunctionalInterface
     private interface FieldRenderer {
-        String render(Field field);
+        String render(Field field) throws UnsupportedVerificationException;
     }
 
-    private record Field(String name, String type) { }
+    private record Field(String name, String type, JsonNode schema) { }
     private record Constructor(String name, int index, List<Field> fields) { }
+    private record RecursiveContainer(String function, JsonNode schema) { }
 
     public record SchemaGeneration(String source, Map<String, String> leanTypes) { }
     public record GenerationResult(
