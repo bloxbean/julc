@@ -29,7 +29,7 @@ could_not_evaluate() {
   exit 2
 }
 
-for command_name in lean lake z3 jq git; do
+for command_name in lean lake z3 jq git rg; do
   command -v "${command_name}" >/dev/null 2>&1 || \
     could_not_evaluate "${command_name} is not installed"
 done
