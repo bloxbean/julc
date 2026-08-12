@@ -25,6 +25,7 @@ dependencies {
         api project(':julc-annotation-processor')
         api project(':julc-decompiler')
         api project(':julc-analysis')
+        api project(':julc-verification')
     }
 }
 

@@ -1,0 +1,4 @@
+[project]
+name = "julc-verification-c5-authorized"
+version = "0.1.0"
+compiler = "local"

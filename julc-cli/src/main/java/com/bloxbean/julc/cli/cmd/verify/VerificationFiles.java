@@ -3,6 +3,7 @@ package com.bloxbean.julc.cli.cmd.verify;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
@@ -12,6 +13,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.util.Comparator;
+import java.util.Map;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -83,7 +85,7 @@ final class VerificationFiles {
                     .filter(path -> !containsSegment(root.relativize(path), ".lake"))
                     .filter(path -> !containsSegment(root.relativize(path),
                             "verification-results"))
-                    .sorted()
+                    .sorted(Comparator.comparing(path -> relativeUnix(root, path)))
                     .toList();
         }
         for (Path path : leanFiles) {
@@ -94,6 +96,38 @@ final class VerificationFiles {
             }
         }
         return leanFiles;
+    }
+
+    static String leanTreeHash(Path workspace) throws IOException {
+        var output = new ByteArrayOutputStream();
+        Path root = workspace.toRealPath();
+        for (Path path : projectLeanFiles(workspace)) {
+            output.write(relativeUnix(root, path.toRealPath())
+                    .getBytes(StandardCharsets.UTF_8));
+            output.write(0);
+            output.write(Files.readAllBytes(path));
+            output.write(0);
+        }
+        return sha256(output.toByteArray());
+    }
+
+    private static String relativeUnix(Path root, Path path) {
+        return root.relativize(path).toString().replace('\\', '/');
+    }
+
+    static String leanTreeHash(Map<String, String> files) throws IOException {
+        var output = new ByteArrayOutputStream();
+        for (var entry : files.entrySet().stream()
+                .filter(entry -> entry.getKey().endsWith(".lean"))
+                .sorted(Map.Entry.comparingByKey())
+                .toList()) {
+            output.write(entry.getKey().replace('\\', '/')
+                    .getBytes(StandardCharsets.UTF_8));
+            output.write(0);
+            output.write(entry.getValue().getBytes(StandardCharsets.UTF_8));
+            output.write(0);
+        }
+        return sha256(output.toByteArray());
     }
 
     private static boolean containsSegment(Path path, String segment) {

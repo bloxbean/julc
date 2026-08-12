@@ -89,6 +89,71 @@ class VerificationRunnerTest {
     }
 
     @Test
+    void versionTwoMapsObservedExitAndMarkerToResult() throws Exception {
+        Path workspace = workspace("observed-result", VerificationOutcome.SMT_VALID, false);
+        Path planFile = workspace.resolve(VerificationRunner.PLAN_FILE);
+        var plan = (com.fasterxml.jackson.databind.node.ObjectNode)
+                VerificationFiles.JSON.readTree(planFile.toFile());
+        plan.put("schemaVersion", 2);
+        var step = (com.fasterxml.jackson.databind.node.ObjectNode)
+                plan.path("verify").get(0);
+        step.remove(List.of("expectedExitCodes", "requiredOutput", "result", "reason"));
+        var outcomes = step.putArray("outcomes");
+        outcomes.addObject()
+                .put("exitCode", 3)
+                .put("requiredOutput", "RESULT-MARKER")
+                .put("result", "REFUTED")
+                .put("reason", "counterexample");
+        VerificationFiles.JSON.writeValue(planFile.toFile(), plan);
+        bindPlan(workspace);
+
+        var result = runner(new FakeProcess(false, true, 3))
+                .run(workspace, VerificationBackendKind.LOCAL);
+
+        assertEquals("REFUTED", result.result().outcome());
+        assertEquals("counterexample", result.result().properties().getFirst().reason());
+    }
+
+    @Test
+    void vacuityStopsLaterPropertiesAndRecordsThemAsNotEvaluated() throws Exception {
+        Path workspace = workspace("vacuity-short-circuit", VerificationOutcome.SMT_VALID, false);
+        Path planFile = workspace.resolve(VerificationRunner.PLAN_FILE);
+        var plan = (com.fasterxml.jackson.databind.node.ObjectNode)
+                VerificationFiles.JSON.readTree(planFile.toFile());
+        plan.put("schemaVersion", 2);
+        var verify = (com.fasterxml.jackson.databind.node.ArrayNode) plan.path("verify");
+        var nonVacuity = (com.fasterxml.jackson.databind.node.ObjectNode) verify.get(0);
+        nonVacuity.put("id", "check-non-vacuity");
+        nonVacuity.put("propertyId", "example.non-vacuity");
+        nonVacuity.remove(List.of("expectedExitCodes", "requiredOutput", "result", "reason"));
+        nonVacuity.putArray("outcomes").addObject()
+                .put("exitCode", 4)
+                .put("requiredOutput", "RESULT-MARKER")
+                .put("result", "COULD-NOT-EVALUATE")
+                .put("reason", "property-vacuous");
+        var main = nonVacuity.deepCopy();
+        main.put("id", "prove-property");
+        main.put("propertyId", "example.property");
+        verify.add(main);
+        VerificationFiles.JSON.writeValue(planFile.toFile(), plan);
+        bindPlan(workspace);
+        var process = new FakeProcess(false, true, 4);
+
+        var result = runner(process).run(workspace, VerificationBackendKind.LOCAL);
+
+        assertEquals("COULD-NOT-EVALUATE", result.result().outcome());
+        assertEquals("property-vacuous", result.result().reason());
+        assertEquals(2, result.result().properties().size());
+        assertEquals("COULD-NOT-EVALUATE",
+                result.result().properties().get(1).outcome());
+        assertEquals("not-evaluated-vacuous",
+                result.result().properties().get(1).reason());
+        assertTrue(result.result().phases().stream().anyMatch(phaseResult ->
+                phaseResult.id().equals("prove-property")
+                        && phaseResult.status().equals("SKIPPED")));
+    }
+
+    @Test
     void timeoutFailsClosed() throws Exception {
         Path workspace = workspace("timeout", VerificationOutcome.SMT_VALID, false);
         var result = runner(new FakeProcess(true, true))
@@ -166,6 +231,55 @@ class VerificationRunnerTest {
                 .contains("\"outcome\":\"SMT-VALID\""));
         assertFalse(Files.exists(workspace.resolve("verification-results/acquire.log")));
         assertFalse(result.result().inputs().containsKey("acquireLogSha256"));
+    }
+
+    @Test
+    void propertyIrTamperingFailsBeforeExecution() throws Exception {
+        Path workspace = workspace("property-ir-tamper", VerificationOutcome.SMT_VALID, false);
+        Path property = workspace.resolve("verification-property.json");
+        Files.writeString(property, """
+                {"schemaVersion":1,"template":"julc.requires-signer/v1",
+                 "propertyId":"Example.requires-signer.owner",
+                 "ledgerValidityModeled":false}
+                """);
+        Path manifestFile = workspace.resolve("verification-manifest.json");
+        var manifest = (com.fasterxml.jackson.databind.node.ObjectNode)
+                VerificationFiles.JSON.readTree(manifestFile.toFile());
+        manifest.putObject("propertyIr")
+                .put("path", "verification-property.json")
+                .put("sha256", VerificationFiles.sha256(property))
+                .put("schemaVersion", 1)
+                .put("template", "julc.requires-signer/v1")
+                .put("propertyId", "Example.requires-signer.owner")
+                .put("sourcePath", "datum.owner");
+        VerificationFiles.JSON.writeValue(manifestFile.toFile(), manifest);
+        Files.writeString(property, Files.readString(property).replace("owner", "attacker"));
+        var process = new FakeProcess(false, true);
+
+        var result = runner(process).run(workspace, VerificationBackendKind.LOCAL);
+
+        assertEquals("COULD-NOT-EVALUATE", result.result().outcome());
+        assertEquals("artifact-identity-mismatch", result.result().reason());
+        assertTrue(process.commands.isEmpty());
+    }
+
+    @Test
+    void generatedLeanTamperingFailsBeforeExecution() throws Exception {
+        Path workspace = workspace("generated-lean-tamper", VerificationOutcome.SMT_VALID, false);
+        Path manifestFile = workspace.resolve("verification-manifest.json");
+        var manifest = (com.fasterxml.jackson.databind.node.ObjectNode)
+                VerificationFiles.JSON.readTree(manifestFile.toFile());
+        manifest.put("generatedLeanSha256", VerificationFiles.leanTreeHash(workspace));
+        VerificationFiles.JSON.writeValue(manifestFile.toFile(), manifest);
+        Files.writeString(workspace.resolve("Property.lean"),
+                "def safe : Prop := False\n");
+        var process = new FakeProcess(false, true);
+
+        var result = runner(process).run(workspace, VerificationBackendKind.LOCAL);
+
+        assertEquals("COULD-NOT-EVALUATE", result.result().outcome());
+        assertEquals("generated-source-integrity-mismatch", result.result().reason());
+        assertTrue(process.commands.isEmpty());
     }
 
     @Test
@@ -348,6 +462,8 @@ class VerificationRunnerTest {
                 "src/main/resources/META-INF/native-image/reachability-metadata.json"));
         assertTrue(metadata.contains("META-INF/julc/verification/**"));
         assertTrue(metadata.contains("VerificationRunPlan"));
+        assertTrue(metadata.contains("VerificationRunPlan$ObservedOutcome"));
+        assertTrue(metadata.contains("RequiresSignerProperty"));
     }
 
     @Test
