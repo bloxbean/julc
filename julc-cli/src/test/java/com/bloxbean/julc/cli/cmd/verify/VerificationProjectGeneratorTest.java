@@ -98,9 +98,11 @@ class VerificationProjectGeneratorTest {
         Path blueprint = writeBlueprint();
         var root = (com.fasterxml.jackson.databind.node.ObjectNode)
                 JSON.readTree(blueprint.toFile());
-        ((com.fasterxml.jackson.databind.node.ObjectNode) root.path("definitions")
-                .path("StateDatum").path("anyOf").get(0).path("fields").get(1))
-                .put("dataType", "list");
+        var unsupportedField = (com.fasterxml.jackson.databind.node.ObjectNode)
+                root.path("definitions").path("StateDatum").path("anyOf")
+                        .get(0).path("fields").get(1);
+        unsupportedField.remove("$ref");
+        unsupportedField.put("dataType", "future-container");
         JSON.writerWithDefaultPrettyPrinter().writeValue(blueprint.toFile(), root);
         Path output = tempDir.resolve("unsupported");
 
@@ -110,6 +112,96 @@ class VerificationProjectGeneratorTest {
 
         assertTrue(error.getMessage().toLowerCase(java.util.Locale.ROOT).contains("unsupported"));
         assertFalse(Files.exists(output));
+    }
+
+    @Test
+    void generatesStrictBooleanOptionalListMapAndNestedTypes() throws Exception {
+        String source = """
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                import com.bloxbean.cardano.julc.ledger.ScriptContext;
+                import java.math.BigInteger;
+                import java.util.List;
+                import java.util.Map;
+                import java.util.Optional;
+
+                @MintingValidator
+                class ContainerGate {
+                    record Redeemer(List<BigInteger> values,
+                                    Map<byte[], BigInteger> balances,
+                                    Optional<List<Map<byte[], BigInteger>>> nested,
+                                    boolean enabled) {}
+                    @Entrypoint
+                    static boolean validate(Redeemer redeemer, ScriptContext ctx) {
+                        return true;
+                    }
+                }
+                """;
+        var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry()).compileContract(source);
+        var blueprint = BlueprintGenerator.generate(
+                new BlueprintConfig("container-generator-test", "1"),
+                List.of(new BlueprintGenerator.CompiledValidator(
+                        "ContainerGate", compiled.compileResult(), compiled.contractSchema())));
+        var document = JSON.readTree(blueprint.toJson());
+
+        var result = VerificationProjectGenerator.generateSchemas(
+                document.path("definitions"), document.path("validators").get(0));
+
+        assertTrue(result.source().contains("structure JulcList (α : Type)"));
+        assertTrue(result.source().contains("structure JulcMap (κ υ : Type)"));
+        assertTrue(result.source().contains("values : JulcList (Integer)"));
+        assertTrue(result.source().contains("balances : JulcMap (ByteString) (Integer)"));
+        assertTrue(result.source().contains(
+                "nested : Option (JulcList (JulcMap (ByteString) (Integer)))"));
+        assertTrue(result.source().contains("enabled : Bool"));
+        assertTrue(result.source().contains("Data.List (encodeDataList values.items)"));
+        assertTrue(result.source().contains("Data.Map (encodeDataMap values.entries)"));
+        assertFalse(result.source().contains("inductive JulcOptional"));
+        assertEquals("Redeemer", result.leanTypes().get("Redeemer"));
+    }
+
+    @Test
+    void rejectsMalformedContainerSchema() throws Exception {
+        var document = JSON.readTree("""
+                {
+                  "validators": [{
+                    "title": "Gate",
+                    "redeemer": {"schema": {"$ref": "#/definitions/Values"}}
+                  }],
+                  "definitions": {
+                    "Values": {"dataType": "list"}
+                  }
+                }
+                """);
+
+        var error = assertThrows(UnsupportedVerificationException.class,
+                () -> VerificationProjectGenerator.generateSchemas(
+                        document.path("definitions"), document.path("validators").get(0)));
+
+        assertTrue(error.getMessage().contains("requires items"));
+    }
+
+    @Test
+    void rejectsMapWithoutKeysOrValues() throws Exception {
+        for (String mapSchema : List.of(
+                "{\"dataType\": \"map\", \"values\": {\"dataType\": \"integer\"}}",
+                "{\"dataType\": \"map\", \"keys\": {\"dataType\": \"bytes\"}}")) {
+            var document = JSON.readTree("""
+                    {
+                      "validators": [{
+                        "title": "Gate",
+                        "redeemer": {"schema": {"$ref": "#/definitions/Balances"}}
+                      }],
+                      "definitions": {"Balances": %s}
+                    }
+                    """.formatted(mapSchema));
+
+            var error = assertThrows(UnsupportedVerificationException.class,
+                    () -> VerificationProjectGenerator.generateSchemas(
+                            document.path("definitions"),
+                            document.path("validators").get(0)));
+
+            assertTrue(error.getMessage().contains("requires keys and values"));
+        }
     }
 
     @Test
@@ -191,6 +283,59 @@ class VerificationProjectGeneratorTest {
                 () -> VerificationProjectGenerator.generateSchemas(
                         document.path("definitions"), document.path("validators").get(0)));
         assertTrue(error.getMessage().contains("Recursive"));
+    }
+
+    @Test
+    void rejectsRecursionThroughContainerItems() throws Exception {
+        var document = JSON.readTree("""
+                {
+                  "validators": [{
+                    "title": "Gate",
+                    "redeemer": {"schema": {"$ref": "#/definitions/Values"}}
+                  }],
+                  "definitions": {
+                    "Values": {
+                      "dataType": "list",
+                      "items": {"$ref": "#/definitions/Values"}
+                    }
+                  }
+                }
+                """);
+
+        var error = assertThrows(UnsupportedVerificationException.class,
+                () -> VerificationProjectGenerator.generateSchemas(
+                        document.path("definitions"), document.path("validators").get(0)));
+
+        assertTrue(error.getMessage().contains("Recursive"));
+    }
+
+    @Test
+    void rejectsSchemaNamesThatShadowGeneratedBoolOrOptionTypes() throws Exception {
+        for (String schemaName : List.of("Bool", "bool", "Option", "option")) {
+            var document = JSON.readTree("""
+                    {
+                      "validators": [{
+                        "title": "Gate",
+                        "redeemer": {"schema": {"$ref": "#/definitions/%s"}}
+                      }],
+                      "definitions": {
+                        "%s": {"anyOf": [{
+                          "title": "Wrapped", "dataType": "constructor", "index": 0,
+                          "fields": [{"title": "value", "dataType": "integer"}]
+                        }]}
+                      }
+                    }
+                    """.formatted(schemaName, schemaName));
+
+            var error = assertThrows(UnsupportedVerificationException.class,
+                    () -> VerificationProjectGenerator.generateSchemas(
+                            document.path("definitions"),
+                            document.path("validators").get(0)));
+
+            assertTrue(error.getMessage().contains("conflicts with generated Lean imports"));
+            assertTrue(error.getMessage().contains(
+                    Character.toUpperCase(schemaName.charAt(0)) + schemaName.substring(1)));
+        }
     }
 
     @Test

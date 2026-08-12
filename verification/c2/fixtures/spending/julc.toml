@@ -1,0 +1,4 @@
+[project]
+name = "julc-verification-c2-spending"
+version = "0.1.0"
+compiler = "local"
