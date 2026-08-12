@@ -114,7 +114,16 @@ final class LocalVerificationBackend implements VerificationExecutionBackend {
     public List<String> command(List<String> workspaceCommand, Path workspace, boolean offline)
             throws IOException {
         validateCommand(workspaceCommand, workspace);
-        return List.copyOf(workspaceCommand);
+        String executable = workspaceCommand.getFirst();
+        if (executable.contains("/") || executable.contains("\\")) {
+            return List.copyOf(workspaceCommand);
+        }
+        Path resolved = ExecutableLocator.find(executable, System.getenv())
+                .orElseThrow(() -> new IOException(
+                        "Missing local verification tool " + executable));
+        var command = new ArrayList<String>(workspaceCommand);
+        command.set(0, resolved.toString());
+        return List.copyOf(command);
     }
 
     @Override

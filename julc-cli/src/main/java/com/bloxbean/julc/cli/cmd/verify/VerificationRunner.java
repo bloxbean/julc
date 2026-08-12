@@ -25,7 +25,7 @@ public final class VerificationRunner {
 
     public static final String PLAN_FILE = "verification-runner.json";
     public static final String RESULT_FILE = "verification-result.json";
-    private static final int PLAN_SCHEMA_VERSION = 1;
+    private static final Set<Integer> PLAN_SCHEMA_VERSIONS = Set.of(1, 2);
     private static final int RESULT_SCHEMA_VERSION = 1;
     private static final Pattern ID = Pattern.compile("[a-zA-Z0-9][a-zA-Z0-9._-]*");
     private static final Pattern COMMIT = Pattern.compile("[0-9a-f]{40}");
@@ -212,10 +212,14 @@ public final class VerificationRunner {
         if (diagnostic == null) return "preflight-failed";
         String lower = diagnostic.toLowerCase(Locale.ROOT);
         if (lower.contains("artifact hash mismatch")
-                || lower.contains("artifact lock hash mismatch")) {
+                || lower.contains("artifact lock hash mismatch")
+                || lower.contains("property ir hash mismatch")) {
             return "artifact-identity-mismatch";
         }
         if (lower.contains("executable hash mismatch")) return "executable-integrity-mismatch";
+        if (lower.contains("generated lean source hash mismatch")) {
+            return "generated-source-integrity-mismatch";
+        }
         if (lower.contains("runner plan hash mismatch")) return "runner-plan-integrity-mismatch";
         if (lower.contains("admission")) return "project-admission-detected";
         if (lower.contains("builtin")) return "unsupported-builtin";
@@ -245,30 +249,29 @@ public final class VerificationRunner {
             List<VerificationRunResult.Phase> phases,
             List<VerificationRunResult.Property> properties)
             throws IOException, InterruptedException {
-        int index = 0;
-        for (var step : steps) {
-            index++;
-            Path log = logs.resolve("%s-%02d-%s.log".formatted(phase, index, step.id()));
+        for (int stepIndex = 0; stepIndex < steps.size(); stepIndex++) {
+            var step = steps.get(stepIndex);
+            int displayIndex = stepIndex + 1;
+            Path log = logs.resolve("%s-%02d-%s.log".formatted(
+                    phase, displayIndex, step.id()));
             List<String> command = backend.command(step.command(), workspace, offline);
             int maxAttempts = step.maxAttempts() == null ? 1 : step.maxAttempts();
             VerificationProcess.ProcessResult result = null;
             var attemptLogs = new ArrayList<Path>();
             for (int attempt = 1; attempt <= maxAttempts; attempt++) {
                 Path attemptLog = maxAttempts == 1 ? log : logs.resolve(
-                        "%s-%02d-%s-attempt-%d.log".formatted(phase, index, step.id(), attempt));
+                        "%s-%02d-%s-attempt-%d.log".formatted(
+                                phase, displayIndex, step.id(), attempt));
                 attemptLogs.add(attemptLog);
                 result = process.execute(command, workspace,
                         backend.environment(backendContext, offline), timeout, attemptLog);
-                boolean complete = !result.timedOut()
-                        && step.expectedExitCodes().contains(result.exitCode())
-                        && (step.requiredOutput() == null
-                            || result.outputTail().contains(step.requiredOutput()));
+                boolean complete = !result.timedOut() && observedOutcome(step, result) != null;
                 if (complete || result.timedOut()) break;
             }
             if (maxAttempts > 1) combineAttemptLogs(log, attemptLogs);
-            boolean exitMatches = step.expectedExitCodes().contains(result.exitCode());
-            boolean markerMatches = step.requiredOutput() == null
-                    || result.outputTail().contains(step.requiredOutput());
+            VerificationRunPlan.ObservedOutcome observed = observedOutcome(step, result);
+            boolean exitMatches = expectedExitCodes(step).contains(result.exitCode());
+            boolean markerMatches = observed != null;
             String status = result.timedOut() ? "TIMED-OUT"
                     : exitMatches && markerMatches ? "PASSED" : "FAILED";
             phases.add(phase(step.id(), phase, status, result.exitCode(), workspace, log));
@@ -286,12 +289,35 @@ public final class VerificationRunner {
                         "Step '" + step.id() + "' did not emit its required result marker");
             }
             if ("verify".equals(phase) && step.propertyId() != null) {
-                var outcome = VerificationOutcome.parse(step.result());
+                var outcome = VerificationOutcome.parse(observed.result());
                 properties.add(new VerificationRunResult.Property(
-                        step.propertyId(), outcome.externalName(), step.reason()));
+                        step.propertyId(), outcome.externalName(), observed.reason()));
+                if ("property-vacuous".equals(observed.reason())) {
+                    appendVacuitySkippedSteps(steps, stepIndex + 1, phase, phases, properties);
+                    break;
+                }
             }
         }
         return null;
+    }
+
+    private static void appendVacuitySkippedSteps(
+            List<VerificationRunPlan.Step> steps,
+            int firstSkipped,
+            String phase,
+            List<VerificationRunResult.Phase> phases,
+            List<VerificationRunResult.Property> properties) {
+        for (int index = firstSkipped; index < steps.size(); index++) {
+            var skipped = steps.get(index);
+            phases.add(new VerificationRunResult.Phase(
+                    skipped.id(), phase, "SKIPPED", null, null, null));
+            if (skipped.propertyId() != null) {
+                properties.add(new VerificationRunResult.Property(
+                        skipped.propertyId(),
+                        VerificationOutcome.COULD_NOT_EVALUATE.externalName(),
+                        "not-evaluated-vacuous"));
+            }
+        }
     }
 
     private static void combineAttemptLogs(Path target, List<Path> attempts) throws IOException {
@@ -347,7 +373,7 @@ public final class VerificationRunner {
     }
 
     private static void validatePlan(VerificationRunPlan plan, Path workspace) throws IOException {
-        if (plan.schemaVersion() != PLAN_SCHEMA_VERSION) {
+        if (!PLAN_SCHEMA_VERSIONS.contains(plan.schemaVersion())) {
             throw new IOException("Unsupported verification runner schema " + plan.schemaVersion());
         }
         if (!Set.of("generated-workspace", "evidence-suite").contains(plan.kind())) {
@@ -392,8 +418,8 @@ public final class VerificationRunner {
                 throw new IOException("Bare tool step '" + step.id()
                         + "' must not declare a workspace executable hash");
             }
-            if (step.expectedExitCodes() == null || step.expectedExitCodes().isEmpty()
-                    || step.expectedExitCodes().stream().anyMatch(
+            if (expectedExitCodes(step).isEmpty()
+                    || expectedExitCodes(step).stream().anyMatch(
                             code -> code == null || code < 0 || code > 255)) {
                 throw new IOException("Verification step '" + step.id() + "' has no expected exit code");
             }
@@ -405,14 +431,65 @@ public final class VerificationRunner {
             }
         }
         for (var step : plan.verify()) {
-            if (step.propertyId() == null || !ID.matcher(step.propertyId()).matches()
-                    || step.result() == null || step.reason() == null || step.reason().isBlank()
-                    || step.requiredOutput() == null || step.requiredOutput().isBlank()) {
+            if (step.propertyId() == null || !ID.matcher(step.propertyId()).matches()) {
                 throw new IOException("Verification step '" + step.id()
-                        + "' requires a property, result, reason, and output marker");
+                        + "' requires a valid property ID");
             }
-            VerificationOutcome.parse(step.result());
+            if (step.outcomes() != null && !step.outcomes().isEmpty()) {
+                if (plan.schemaVersion() < 2 || step.result() != null || step.reason() != null
+                        || step.requiredOutput() != null || step.expectedExitCodes() != null) {
+                    throw new IOException("Verification step '" + step.id()
+                            + "' mixes static and observed outcome protocols");
+                }
+                var observations = new LinkedHashSet<String>();
+                for (var outcome : step.outcomes()) {
+                    if (outcome == null || outcome.exitCode() < 0 || outcome.exitCode() > 255
+                            || outcome.requiredOutput() == null
+                            || outcome.requiredOutput().isBlank()
+                            || outcome.reason() == null || outcome.reason().isBlank()
+                            || !observations.add(outcome.exitCode() + "\0"
+                                    + outcome.requiredOutput())) {
+                        throw new IOException("Verification step '" + step.id()
+                                + "' has an invalid observed outcome");
+                    }
+                    VerificationOutcome.parse(outcome.result());
+                }
+            } else {
+                if (step.result() == null || step.reason() == null || step.reason().isBlank()
+                        || step.requiredOutput() == null || step.requiredOutput().isBlank()) {
+                    throw new IOException("Verification step '" + step.id()
+                            + "' requires a result, reason, and output marker");
+                }
+                VerificationOutcome.parse(step.result());
+            }
         }
+    }
+
+    private static List<Integer> expectedExitCodes(VerificationRunPlan.Step step) {
+        if (step.outcomes() != null && !step.outcomes().isEmpty()) {
+            return step.outcomes().stream()
+                    .map(VerificationRunPlan.ObservedOutcome::exitCode).distinct().toList();
+        }
+        return step.expectedExitCodes() == null ? List.of() : step.expectedExitCodes();
+    }
+
+    private static VerificationRunPlan.ObservedOutcome observedOutcome(
+            VerificationRunPlan.Step step, VerificationProcess.ProcessResult result) {
+        if (result == null || result.timedOut()) return null;
+        if (step.outcomes() != null && !step.outcomes().isEmpty()) {
+            return step.outcomes().stream()
+                    .filter(outcome -> outcome.exitCode() == result.exitCode()
+                            && result.outputTail().contains(outcome.requiredOutput()))
+                    .findFirst().orElse(null);
+        }
+        if (step.expectedExitCodes() != null
+                && step.expectedExitCodes().contains(result.exitCode())
+                && (step.requiredOutput() == null
+                    || result.outputTail().contains(step.requiredOutput()))) {
+            return new VerificationRunPlan.ObservedOutcome(
+                    result.exitCode(), step.requiredOutput(), step.result(), step.reason());
+        }
+        return null;
     }
 
     private static Map<String, Object> preflight(
@@ -496,6 +573,51 @@ public final class VerificationRunner {
         artifact.put("fuel", fuel);
         artifact.put("recursiveDepth", recursiveDepth);
         artifact.put("builtins", List.copyOf(builtinEvidence));
+        if (manifest.has("generatedLeanSha256")) {
+            String expectedLeanHash = requiredHash(manifest, "generatedLeanSha256", 64);
+            if (!VerificationFiles.leanTreeHash(workspace).equals(expectedLeanHash)) {
+                throw new IOException("Generated Lean source hash mismatch");
+            }
+            artifact.put("generatedLeanSha256", expectedLeanHash);
+        }
+        if (manifest.has("propertyIr")) {
+            JsonNode propertyIr = manifest.path("propertyIr");
+            String propertyPath = requiredText(propertyIr, "path");
+            String propertyHash = requiredHash(propertyIr, "sha256", 64);
+            Path propertyFile = VerificationFiles.containedRegularFile(
+                    workspace, propertyPath, false);
+            if (!VerificationFiles.sha256(propertyFile).equals(propertyHash)) {
+                throw new IOException("Verification property IR hash mismatch");
+            }
+            JsonNode property = VerificationFiles.JSON.readTree(propertyFile.toFile());
+            if (property.path("schemaVersion").asInt(-1) != 1
+                    || property.path("schemaVersion").asInt(-1)
+                        != propertyIr.path("schemaVersion").asInt(-2)
+                    || !requiredText(property, "template")
+                        .equals(requiredText(propertyIr, "template"))
+                    || !"julc.requires-signer/v1".equals(
+                        requiredText(property, "template"))
+                    || !requiredText(property, "propertyId")
+                        .equals(requiredText(propertyIr, "propertyId"))
+                    || !requiredText(property, "validatorTitle")
+                        .equals(requiredText(manifest, "validatorTitle"))
+                    || !requiredText(property, "scriptPurpose").equals(purpose)
+                    || !requiredText(property, "sourcePath")
+                        .equals(requiredText(propertyIr, "sourcePath"))
+                    || property.path("ledgerValidityModeled").asBoolean(true)
+                    || manifest.path("ledgerValidityModeled").asBoolean(true)
+                    || !property.path("domainAssumptions").isArray()) {
+                throw new IOException("Verification property IR does not match its manifest");
+            }
+            artifact.put("propertyIrSha256", propertyHash);
+            artifact.put("propertyTemplate", requiredText(propertyIr, "template"));
+            artifact.put("propertyId", requiredText(propertyIr, "propertyId"));
+            artifact.put("propertyPath", requiredText(propertyIr, "sourcePath"));
+            artifact.put("ledgerValidityModeled", false);
+            artifact.put("fuelBounded", true);
+            artifact.put("fuelScope", "Only executions completing within the pinned CEK fuel "
+                    + "bound are covered; fuel-exhausted executions are outside the claim.");
+        }
         return Map.copyOf(artifact);
     }
 
@@ -670,6 +792,10 @@ public final class VerificationRunner {
 
     private static String aggregateReason(
             List<VerificationRunResult.Property> properties, VerificationOutcome outcome) {
+        if (properties.stream().anyMatch(
+                property -> "property-vacuous".equals(property.reason()))) {
+            return "property-vacuous";
+        }
         if (properties.size() == 1 && properties.getFirst().reason() != null) {
             return properties.getFirst().reason();
         }
@@ -687,7 +813,13 @@ public final class VerificationRunner {
         var result = new LinkedHashMap<String, String>();
         result.put("verificationManifestSha256", VerificationFiles.sha256(manifest));
         result.put("runnerPlanSha256", VerificationFiles.sha256(plan));
-        result.put("projectLeanSha256", leanTreeHash(workspace));
+        result.put("projectLeanSha256", VerificationFiles.leanTreeHash(workspace));
+        JsonNode manifestJson = VerificationFiles.JSON.readTree(manifest.toFile());
+        if (manifestJson.has("propertyIr")) {
+            Path propertyIr = VerificationFiles.containedRegularFile(
+                    workspace, requiredText(manifestJson.path("propertyIr"), "path"), false);
+            result.put("propertyIrSha256", VerificationFiles.sha256(propertyIr));
+        }
         if (runPlan.resultManifest() != null) {
             Path evidenceResult = VerificationFiles.containedPath(
                     workspace, runPlan.resultManifest());
@@ -702,18 +834,6 @@ public final class VerificationRunner {
         if (Files.isRegularFile(acquire)) result.put("acquireLogSha256", VerificationFiles.sha256(acquire));
         if (Files.isRegularFile(verify)) result.put("verifyLogSha256", VerificationFiles.sha256(verify));
         return result;
-    }
-
-    private static String leanTreeHash(Path workspace) throws IOException {
-        var output = new ByteArrayOutputStream();
-        for (Path path : VerificationFiles.projectLeanFiles(workspace)) {
-            output.write(workspace.relativize(path).toString().replace('\\', '/')
-                    .getBytes(StandardCharsets.UTF_8));
-            output.write(0);
-            output.write(Files.readAllBytes(path));
-            output.write(0);
-        }
-        return VerificationFiles.sha256(output.toByteArray());
     }
 
     private static VerificationRunResult.Phase phase(

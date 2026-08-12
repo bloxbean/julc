@@ -4,6 +4,7 @@ import com.bloxbean.cardano.julc.blueprint.BlueprintConfig;
 import com.bloxbean.cardano.julc.blueprint.BlueprintGenerator;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
+import com.bloxbean.cardano.julc.verification.RequiresSignerProperty;
 import com.bloxbean.julc.cli.JulcCommand;
 import com.bloxbean.julc.cli.cmd.blueprint.ArtifactCommand;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -64,6 +65,59 @@ class VerificationProjectGeneratorTest {
         VerificationProjectGenerator.generate(
                 blueprint, "StateGate", "spending", 12345, output, true);
         assertEquals(firstManifest, Files.readString(output.resolve("verification-manifest.json")));
+    }
+
+    @Test
+    void generatesTypedRequiresSignerWorkspaceAndObservedResultProtocol() throws Exception {
+        Path output = tempDir.resolve("requires-signer");
+        var property = new RequiresSignerProperty(
+                1, RequiresSignerProperty.TEMPLATE,
+                "StateGate.requires-signer.owner", "StateGate", "spending",
+                "datum.owner",
+                List.of(
+                        new RequiresSignerProperty.PathSegment(
+                                "root", "datum", "record:StateDatum"),
+                        new RequiresSignerProperty.PathSegment(
+                                "field", "owner", "bytes")),
+                "StateDatum", "bytes",
+                new RequiresSignerProperty.SourceReference(
+                        "StateGate.java", 4, 1, "@RequiresSigner"),
+                List.of(),
+                List.of("strict datum decoding", "complete signatory membership"),
+                false);
+
+        VerificationProjectGenerator.generateRequiresSigner(
+                writeBlueprint(), property, 1000, 4, output, false);
+
+        assertTrue(Files.isExecutable(output.resolve("scripts/verify.sh")));
+        assertTrue(Files.isExecutable(output.resolve("scripts/verify-non-vacuity.sh")));
+        String lean = Files.readString(output.resolve("SecurityProperty.lean"));
+        assertTrue(lean.contains("Option JulcGenerated.Schemas.StateDatum"));
+        assertTrue(lean.contains("txSignedBy datum.owner"));
+        assertFalse(lean.contains("firstSignerAuthorized"));
+        assertTrue(Files.readString(output.resolve("StateGateProof.lean"))
+                .contains("by\n  blaster"));
+        assertTrue(Files.readString(output.resolve("StateGateCounterexample.lean"))
+                .contains("gen-cex: 1"));
+
+        var plan = JSON.readTree(output.resolve("verification-runner.json").toFile());
+        assertEquals(2, plan.path("schemaVersion").asInt());
+        assertEquals("SMT-VALID",
+                plan.path("verify").get(1).path("outcomes").get(0).path("result").asText());
+        assertEquals("REFUTED",
+                plan.path("verify").get(1).path("outcomes").get(1).path("result").asText());
+        var manifest = JSON.readTree(output.resolve("verification-manifest.json").toFile());
+        assertEquals(VerificationFiles.sha256(output.resolve("verification-property.json")),
+                manifest.path("propertyIr").path("sha256").asText());
+        assertEquals(VerificationFiles.leanTreeHash(output),
+                manifest.path("generatedLeanSha256").asText());
+        assertFalse(manifest.path("ledgerValidityModeled").asBoolean(true));
+
+        Files.writeString(output.resolve("SecurityProperty.lean"), "stale generated property\n");
+        VerificationProjectGenerator.generateRequiresSigner(
+                writeBlueprint(), property, 1000, 4, output, true);
+        assertFalse(Files.readString(output.resolve("SecurityProperty.lean"))
+                .contains("stale generated property"));
     }
 
     @Test
@@ -296,6 +350,8 @@ class VerificationProjectGeneratorTest {
                 .getSubcommands().containsKey("init"));
         assertTrue(commandLine.getSubcommands().get("verify")
                 .getSubcommands().containsKey("run"));
+        assertTrue(commandLine.getSubcommands().get("verify")
+                .getCommandSpec().findOption("--validator") != null);
         assertTrue(commandLine.getSubcommands().get("verify").getSubcommands().get("init")
                 .getCommandSpec().findOption("--recursive-depth") != null);
         assertTrue(commandLine.getSubcommands().get("verify").getSubcommands().get("run")

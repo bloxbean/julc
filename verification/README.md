@@ -6,7 +6,7 @@ automation.
 
 ## What is available today
 
-There are four ways to explore the current integration. `julc verify run`
+There are five ways to explore the current integration. `julc verify run`
 provides the managed execution path for both a generated workspace and the
 committed evidence suite:
 
@@ -26,6 +26,11 @@ committed evidence suite:
    builds recursive Java contracts, generates recursive CIP-57 and Lean codecs,
    and kernel-checks concrete round trips plus an unbounded codec-composition
    theorem proved by induction.
+5. `julc verify --validator <Name>` is the Milestone C.5 Java-only vertical
+   slice for `@RequiresSigner("datum.owner")`. It builds the exact artifact,
+   resolves the annotation through compiler-owned types, generates the Lean
+   theorem and non-vacuity control, runs Blaster, and writes a certificate.
+   `verification/c5` contains authorized, vulnerable, and vacuous controls.
 
 The integration does not prove that every JuLC program is safe. It checks
 explicit properties for one exact compiled artifact. Solver-valid Blaster
@@ -34,12 +39,10 @@ on Blaster are `KERNEL-PROVED`.
 
 ## Prerequisites
 
-The simplest generated-workspace setup is Docker Engine or Docker Desktop with
-BuildKit. Docker is
-optional: the CLI builds a JuLC-owned image containing the pinned Lean and Z3
-versions, then runs the proof phase with container networking disabled. The
-host needs JuLC and Docker (plus a JDK when using the development JAR) and
-network access during the initial image/dependency acquisition.
+The C.5 acceptance path is the pinned local backend described below. A Docker
+backend is implemented as an optional C.4 path, but its full runtime validation
+is deliberately deferred until after C.5. Do not use Docker as release evidence
+until that follow-up gate is complete.
 
 For a native local run, install:
 
@@ -64,6 +67,68 @@ java -jar julc-cli/build/libs/julc.jar --help
 
 The examples below use `julc`; substitute
 `java -jar /path/to/julc.jar` when running the development JAR directly.
+
+## Verify a required signer without writing Lean
+
+Add the optional verification module to the validator project's Java
+dependencies and annotate one spending validator:
+
+```groovy
+dependencies {
+    implementation "com.bloxbean.cardano:julc-verification:${julcVersion}"
+}
+```
+
+```java
+import com.bloxbean.cardano.julc.verification.annotation.RequiresSigner;
+
+@RequiresSigner("datum.owner")
+@SpendingValidator
+class AuthorizedStateValidator {
+    record Datum(byte[] owner) {}
+    // ...
+}
+```
+
+Then run from the project directory:
+
+```bash
+julc verify --validator AuthorizedStateValidator --backend local
+```
+
+The normal command performs the build, property resolution, deterministic
+workspace generation, non-vacuity check, proof/counterexample query, and
+certificate generation. Developers do not edit Lean or invoke Lake. The
+result is written under `verification/<artifact-id>/verification-result.json`.
+The manifest binds the exact artifact, typed property IR, runner scripts, and
+generated Lean source hash; post-generation edits fail closed.
+
+C.5 supports exactly one direct datum field that resolves to `byte[]` or a
+compiler key-hash type. Redeemer/parameter paths, nested paths, optionals,
+multiple authorities, and minting properties fail closed for now.
+
+The guarantee is strict: if the exact artifact succeeds, the context must have
+an attached datum that strictly matches the CIP-57 constructor and arity, and
+its owner must occur anywhere in `txInfo.signatories`. JuLC's current on-chain
+record projection is more permissive about constructor tags and trailing
+fields. Consequently, merely calling `ContextsLib.signedBy` can be refuted on a
+malformed datum. The positive C.5 fixture explicitly validates its raw attached
+datum shape; see
+[`AuthorizedStateValidator.java`](c5/fixtures/authorized/src/AuthorizedStateValidator.java).
+The tool does not assume malformed inputs away, and C.5 does not change the
+core compiler or emitted UPLC merely because the annotation is present.
+
+Reproduce all C.5 controls with:
+
+```bash
+verification/c5/scripts/verify.sh
+```
+
+An `SMT-VALID` result establishes only `julc.requires-signer/v1` for the exact
+artifact under the recorded bounds and trust model. Ledger validity is not
+modeled, and the certificate does not claim that the entire contract is safe.
+In particular, it covers only executions that complete within the certificate's
+pinned CEK `fuel` bound. Paths that exhaust that bound are outside the claim.
 
 ## Generate a workspace for a validator
 
@@ -149,10 +214,10 @@ Regeneration with `--force` preserves `SecurityProperty.lean`, but review the
 generated diff and artifact identity whenever the Java source or compiler
 changes.
 
-At present authoring this contract-specific property requires Lean and Cardano
-ledger-model knowledge. `julc verify run` manages execution and classification;
-it does not invent the property. Milestone C.5 begins the Java annotation path
-with `@RequiresSigner`.
+Untemplated properties still require Lean and Cardano ledger-model knowledge.
+`julc verify run` manages their execution and classification; it does not
+invent a threat model. The C.5 `@RequiresSigner` workflow is the first narrow
+exception with a reviewed, generated theorem.
 
 ## Supported boundary today
 

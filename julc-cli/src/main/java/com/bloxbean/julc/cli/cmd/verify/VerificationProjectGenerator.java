@@ -2,6 +2,7 @@ package com.bloxbean.julc.cli.cmd.verify;
 
 import com.bloxbean.julc.cli.JulcVersionProvider;
 import com.bloxbean.julc.cli.cmd.blueprint.ArtifactCommand;
+import com.bloxbean.cardano.julc.verification.RequiresSignerProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
@@ -70,6 +71,43 @@ public final class VerificationProjectGenerator {
             int recursiveDepth,
             Path outputDirectory,
             boolean force) throws Exception {
+        return generateInternal(blueprintFile, validatorTitle, purpose, fuel,
+                recursiveDepth, outputDirectory, force, null);
+    }
+
+    /** Generates the managed C.5 workspace for one resolved signer property. */
+    public static GenerationResult generateRequiresSigner(
+            Path blueprintFile,
+            RequiresSignerProperty property,
+            int fuel,
+            int recursiveDepth,
+            Path outputDirectory,
+            boolean force) throws Exception {
+        if (property == null) throw new IllegalArgumentException("Requires-signer property is required");
+        if (!RequiresSignerProperty.TEMPLATE.equals(property.template())
+                || property.schemaVersion() != RequiresSignerProperty.SCHEMA_VERSION
+                || !"spending".equals(property.scriptPurpose())
+                || property.ledgerValidityModeled()
+                || property.path().size() != 2
+                || !"datum".equals(property.path().getFirst().name())
+                || !property.sourcePath().equals(
+                        "datum." + property.path().getLast().name())
+                || !"bytes".equals(property.ownerType())) {
+            throw new IllegalArgumentException("Unsupported requires-signer property IR");
+        }
+        return generateInternal(blueprintFile, property.validatorTitle(), "spending", fuel,
+                recursiveDepth, outputDirectory, force, property);
+    }
+
+    private static GenerationResult generateInternal(
+            Path blueprintFile,
+            String validatorTitle,
+            String purpose,
+            int fuel,
+            int recursiveDepth,
+            Path outputDirectory,
+            boolean force,
+            RequiresSignerProperty property) throws Exception {
         if (fuel <= 0) {
             throw new IllegalArgumentException("Verification fuel must be positive");
         }
@@ -131,26 +169,101 @@ public final class VerificationProjectGenerator {
         files.put("GeneratedSchemas.lean", schemas.source());
         files.put("PropertyTemplates.lean", propertyTemplates(recursiveDepth));
         files.put("CheckedExecution.lean", checkedExecution());
-        files.put("SecurityProperty.lean", securityProperty());
-        files.put(leanId + "Verification.lean",
-                validatorModule(leanId, artifactId, purpose, fuel));
+        if (property == null) {
+            files.put("SecurityProperty.lean", securityProperty());
+            files.put(leanId + "Verification.lean",
+                    validatorModule(leanId, artifactId, purpose, fuel));
+        } else {
+            String datumRoot = referenceName(
+                    validator.path("datum").path("schema").path("$ref").asText());
+            ensureRequiresSignerSchema(
+                    blueprint.path("definitions"), datumRoot,
+                    property.path().getLast().name());
+            String datumLeanType = schemas.leanTypes().get(datumRoot);
+            if (datumLeanType == null) {
+                throw new UnsupportedVerificationException(
+                        "Resolved datum schema has no generated Lean type: " + datumRoot);
+            }
+            String ownerField = leanFieldName(property.path().getLast().name());
+            files.put("SecurityProperty.lean",
+                    requiresSignerProperty(datumLeanType, ownerField));
+            files.put(leanId + "Obligation.lean",
+                    requiresSignerObligation(leanId, artifactId, fuel));
+            files.put(leanId + "Proof.lean", requiresSignerProof(leanId));
+            files.put(leanId + "Counterexample.lean", requiresSignerCounterexample(leanId));
+            files.put(leanId + "NonVacuityCounterexample.lean",
+                    nonVacuityCounterexample(leanId));
+            files.put(leanId + "VacuityProof.lean", vacuityProof(leanId));
+            files.put("verification-property.json", JSON.writeValueAsString(property) + "\n");
+        }
         files.put("artifacts/" + artifactId + ".compiledCode.hex",
                 artifact.compiledCode() + "\n");
         files.put("config/blaster-builtins.txt",
                 "# " + GENERATED_MARKER + "\n0-88\n92-93\n");
-        String verifyScript = verifyScript(leanId, artifactId, artifact.compiledCodeSha256());
+        String verifyScript = property == null
+                ? verifyScript(leanId, artifactId, artifact.compiledCodeSha256())
+                : verifyPropertyScript(leanId, artifactId, artifact.compiledCodeSha256());
         files.put("scripts/verify.sh", verifyScript);
-        String runnerPlan = runnerPlan(artifactId,
-                VerificationFiles.sha256(verifyScript.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        String nonVacuityScript = null;
+        if (property != null) {
+            nonVacuityScript = verifyNonVacuityScript(
+                    leanId, artifactId, artifact.compiledCodeSha256());
+            files.put("scripts/verify-non-vacuity.sh", nonVacuityScript);
+        }
+        String runnerPlan = property == null
+                ? runnerPlan(artifactId, VerificationFiles.sha256(
+                        verifyScript.getBytes(java.nio.charset.StandardCharsets.UTF_8)))
+                : requiresSignerRunnerPlan(property,
+                        VerificationFiles.sha256(nonVacuityScript.getBytes(
+                                java.nio.charset.StandardCharsets.UTF_8)),
+                        VerificationFiles.sha256(verifyScript.getBytes(
+                                java.nio.charset.StandardCharsets.UTF_8)));
         files.put("verification-runner.json", runnerPlan);
-        files.put("README.md", readme(leanId, validatorTitle, purpose, recursiveDepth));
+        files.put("README.md", property == null
+                ? readme(leanId, validatorTitle, purpose, recursiveDepth)
+                : requiresSignerReadme(validatorTitle, property));
+        String propertySha256 = property == null ? null : VerificationFiles.sha256(
+                files.get("verification-property.json").getBytes(
+                        java.nio.charset.StandardCharsets.UTF_8));
+        String generatedLeanSha256 = property == null
+                ? null : VerificationFiles.leanTreeHash(files);
         files.put("verification-manifest.json",
                 manifest(blueprint, artifact, purpose, fuel, recursiveDepth,
                         schemas.leanTypes(), VerificationFiles.sha256(
-                                runnerPlan.getBytes(java.nio.charset.StandardCharsets.UTF_8))));
+                                runnerPlan.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                        property, propertySha256, generatedLeanSha256));
 
-        writeAtomically(output, files);
+        writeAtomically(output, files,
+                property == null ? USER_OWNED_FILES : Set.of(".gitignore"));
         return new GenerationResult(output, artifactId, leanId, files.keySet().stream().toList());
+    }
+
+    private static void ensureRequiresSignerSchema(
+            JsonNode definitions, String datumRoot, String ownerField)
+            throws UnsupportedVerificationException {
+        JsonNode datum = definitions.path(datumRoot);
+        JsonNode alternatives = datum.path("anyOf");
+        if (!alternatives.isArray() || alternatives.size() != 1) {
+            throw new UnsupportedVerificationException(
+                    "@RequiresSigner datum must be one record definition");
+        }
+        List<JsonNode> matches = new ArrayList<>();
+        for (JsonNode field : alternatives.get(0).path("fields")) {
+            if (ownerField.equals(field.path("title").asText())) matches.add(field);
+        }
+        if (matches.size() != 1) {
+            throw new UnsupportedVerificationException(
+                    "@RequiresSigner owner field does not uniquely match the blueprint: "
+                            + ownerField);
+        }
+        JsonNode owner = matches.getFirst();
+        if (owner.has("$ref")) {
+            owner = definitions.path(referenceName(owner.path("$ref").asText()));
+        }
+        if (!"bytes".equals(owner.path("dataType").asText())) {
+            throw new UnsupportedVerificationException(
+                    "@RequiresSigner owner field is not a byte string in the blueprint");
+        }
     }
 
     static void ensureSupportedBuiltins(List<ArtifactCommand.BuiltinUse> builtins)
@@ -1223,7 +1336,10 @@ public final class VerificationProjectGenerator {
             int fuel,
             int recursiveDepth,
             Map<String, String> leanTypes,
-            String runnerPlanSha256) throws IOException {
+            String runnerPlanSha256,
+            RequiresSignerProperty property,
+            String propertySha256,
+            String generatedLeanSha256) throws IOException {
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("schemaVersion", 1);
         root.put("generatedBy", "julc verify init");
@@ -1252,10 +1368,30 @@ public final class VerificationProjectGenerator {
         root.put("schemas", leanTypes.entrySet().stream()
                 .map(entry -> Map.of("cip57", entry.getKey(), "lean", entry.getValue()))
                 .toList());
-        root.put("properties", List.of(Map.of(
-                "id", artifact.artifactId() + ".security-property",
-                "result", "COULD-NOT-EVALUATE",
-                "reason", "property-not-specialized")));
+        if (property == null) {
+            root.put("properties", List.of(Map.of(
+                    "id", artifact.artifactId() + ".security-property",
+                    "result", "COULD-NOT-EVALUATE",
+                    "reason", "property-not-specialized")));
+        } else {
+            root.put("propertyIr", Map.of(
+                    "path", "verification-property.json",
+                    "sha256", propertySha256,
+                    "schemaVersion", property.schemaVersion(),
+                    "template", property.template(),
+                    "propertyId", property.propertyId(),
+                    "sourcePath", property.sourcePath()));
+            root.put("ledgerValidityModeled", property.ledgerValidityModeled());
+            root.put("generatedLeanSha256", generatedLeanSha256);
+            root.put("domainAssumptions", property.domainAssumptions());
+            root.put("properties", List.of(
+                    Map.of("id", property.propertyId() + ".non-vacuity",
+                            "result", "COULD-NOT-EVALUATE",
+                            "reason", "not-run"),
+                    Map.of("id", property.propertyId(),
+                            "result", "COULD-NOT-EVALUATE",
+                            "reason", "not-run")));
+        }
         return JSON.writeValueAsString(root) + "\n";
     }
 
@@ -1316,6 +1452,70 @@ public final class VerificationProjectGenerator {
                 "result", "COULD-NOT-EVALUATE",
                 "reason", "property-not-specialized")));
         return JSON.writeValueAsString(root) + "\n";
+    }
+
+    private static String requiresSignerRunnerPlan(
+            RequiresSignerProperty property,
+            String nonVacuityScriptSha256,
+            String verifyScriptSha256) throws IOException {
+        Map<String, Object> root = new LinkedHashMap<>();
+        root.put("schemaVersion", 2);
+        root.put("kind", "generated-workspace");
+        root.put("manifest", "verification-manifest.json");
+        root.put("timeoutSeconds", 1800);
+        root.put("acquire", List.of(
+                Map.of(
+                        "id", "lake-update",
+                        "command", List.of("lake", "update"),
+                        "maxAttempts", 3,
+                        "expectedExitCodes", List.of(0)),
+                Map.of(
+                        "id", "build-pinned-dependencies",
+                        "command", List.of(
+                                "lake", "build",
+                                "@PlutusCore/PlutusCore",
+                                "@CardanoLedgerApi/CardanoLedgerApi",
+                                "@Blaster/Blaster",
+                                "GeneratedVerificationSupport"),
+                        "expectedExitCodes", List.of(0))));
+
+        List<Map<String, Object>> nonVacuityOutcomes = List.of(
+                observed(0, "NON-VACUOUS: successful input witness exists",
+                        "REFUTED", "expected-negative-control"),
+                observed(4, "VACUOUS: validator has no successful input",
+                        "COULD-NOT-EVALUATE", "property-vacuous"),
+                observed(2, "COULD-NOT-EVALUATE: non-vacuity",
+                        "COULD-NOT-EVALUATE", "non-vacuity-undetermined"));
+        List<Map<String, Object>> propertyOutcomes = List.of(
+                observed(0, "SMT-VALID: required signer property established",
+                        "SMT-VALID", "required-signer-established"),
+                observed(3, "REFUTED: required signer counterexample found",
+                        "REFUTED", "required-signer-counterexample"),
+                observed(2, "COULD-NOT-EVALUATE: required signer",
+                        "COULD-NOT-EVALUATE", "required-signer-undetermined"));
+        root.put("verify", List.of(
+                Map.of(
+                        "id", "check-non-vacuity",
+                        "command", List.of("scripts/verify-non-vacuity.sh"),
+                        "executableSha256", nonVacuityScriptSha256,
+                        "propertyId", property.propertyId() + ".non-vacuity",
+                        "outcomes", nonVacuityOutcomes),
+                Map.of(
+                        "id", "prove-required-signer",
+                        "command", List.of("scripts/verify.sh"),
+                        "executableSha256", verifyScriptSha256,
+                        "propertyId", property.propertyId(),
+                        "outcomes", propertyOutcomes)));
+        return JSON.writeValueAsString(root) + "\n";
+    }
+
+    private static Map<String, Object> observed(
+            int exitCode, String marker, String result, String reason) {
+        return Map.of(
+                "exitCode", exitCode,
+                "requiredOutput", marker,
+                "result", result,
+                "reason", reason);
     }
 
     private static String checkedExecution() {
@@ -1473,6 +1673,123 @@ public final class VerificationProjectGenerator {
                 """;
     }
 
+    private static String requiresSignerProperty(String datumType, String ownerField) {
+        return """
+                /- Generated from typed `@RequiresSigner` IR; do not edit. -/
+                import CardanoLedgerApi.V3
+                import GeneratedSchemas
+
+                namespace JulcGenerated.UserProperty
+
+                open CardanoLedgerApi.IsData.Class
+                open CardanoLedgerApi.V3
+                open JulcGenerated.Schemas
+
+                /--
+                Strict authorization predicate. Missing/malformed datum and non-spending
+                contexts make the predicate false; they are not domain assumptions.
+                -/
+                def securityProperty (ctx : ScriptContext) : Prop :=
+                  match ctx.scriptContextScriptInfo with
+                  | .SpendingScript _ (some datumData) =>
+                      match (IsData.fromData datumData :
+                          Option JulcGenerated.Schemas.%s) with
+                      | some datum => txSignedBy datum.%s ctx.scriptContextTxInfo = true
+                      | none => False
+                  | _ => False
+
+                end JulcGenerated.UserProperty
+                """.formatted(datumType, ownerField);
+    }
+
+    private static String requiresSignerObligation(
+            String leanId, String artifactId, int fuel) {
+        return """
+                /- Generated exact-artifact obligation for `@RequiresSigner`. -/
+                import PlutusCore.UPLC
+                import CardanoLedgerApi.V3
+                import Blaster
+                import GeneratedSchemas
+                import CheckedExecution
+                import SecurityProperty
+
+                namespace JulcGenerated.%s
+
+                open CardanoLedgerApi.V3
+                open PlutusCore.UPLC.Utils
+                open JulcGenerated.UserProperty
+
+                #import_uplc validator PlutusV3 double_cbor_hex
+                  "artifacts/%s.compiledCode.hex"
+                #prep_uplc appliedValidator validator spendingInputs %d
+
+                def requiredSignerObligation : Prop :=
+                  ∀ ctx : ScriptContext,
+                    PlutusCore.UPLC.Utils.isSuccessful (appliedValidator.prop ctx) →
+                    securityProperty ctx
+
+                def hasNoSuccessfulInput : Prop :=
+                  ∀ ctx : ScriptContext,
+                    ¬PlutusCore.UPLC.Utils.isSuccessful (appliedValidator.prop ctx)
+
+                end JulcGenerated.%s
+                """.formatted(leanId, artifactId, fuel, leanId);
+    }
+
+    private static String requiresSignerProof(String leanId) {
+        return """
+                /- Generated SMT obligation; a successful tactic result is SMT-VALID. -/
+                import %sObligation
+
+                namespace JulcGenerated.%s
+
+                theorem successfulImpliesRequiredSigner : requiredSignerObligation := by
+                  blaster
+
+                end JulcGenerated.%s
+                """.formatted(leanId, leanId, leanId);
+    }
+
+    private static String requiresSignerCounterexample(String leanId) {
+        return """
+                /- Generated counterexample query for a failed required-signer theorem. -/
+                import %sObligation
+
+                namespace JulcGenerated.%s
+
+                #blaster (gen-cex: 1) (solve-result: 1) [requiredSignerObligation]
+
+                end JulcGenerated.%s
+                """.formatted(leanId, leanId, leanId);
+    }
+
+    private static String nonVacuityCounterexample(String leanId) {
+        return """
+                /- Generated non-vacuity control: no-success must be solver-refuted. -/
+                import %sObligation
+
+                namespace JulcGenerated.%s
+
+                #blaster (gen-cex: 1) (solve-result: 1) [hasNoSuccessfulInput]
+
+                end JulcGenerated.%s
+                """.formatted(leanId, leanId, leanId);
+    }
+
+    private static String vacuityProof(String leanId) {
+        return """
+                /- Generated fallback that identifies an always-failing validator. -/
+                import %sObligation
+
+                namespace JulcGenerated.%s
+
+                theorem validatorHasNoSuccessfulInput : hasNoSuccessfulInput := by
+                  blaster
+
+                end JulcGenerated.%s
+                """.formatted(leanId, leanId, leanId);
+    }
+
     private static String verifyScript(
             String leanId, String artifactId, String compiledCodeSha256) {
         return """
@@ -1546,6 +1863,194 @@ public final class VerificationProjectGenerator {
                 BLASTER_REV, PLUTUS_CORE_REV, LEDGER_API_REV, leanId, leanId);
     }
 
+    private static String verifyPropertyScript(
+            String leanId, String artifactId, String compiledCodeSha256) {
+        return """
+                #!/usr/bin/env bash
+                set -euo pipefail
+
+                SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+                VERIFY_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+                if [[ -d "${HOME}/.elan/bin" ]]; then
+                  export PATH="${HOME}/.elan/bin:${PATH}"
+                fi
+                cd "${VERIFY_DIR}"
+
+                for tool in lake lean z3 git xxd; do
+                  command -v "${tool}" >/dev/null 2>&1 || {
+                    echo "COULD-NOT-EVALUATE: required signer missing ${tool}" >&2
+                    exit 2
+                  }
+                done
+                [[ "$(lean --version | head -n 1)" == *"4.24.0"* ]] || {
+                  echo "COULD-NOT-EVALUATE: required signer expected Lean 4.24.0" >&2
+                  exit 2
+                }
+                [[ "$(z3 --version)" == *"4.15.2"* ]] || {
+                  echo "COULD-NOT-EVALUATE: required signer expected Z3 4.15.2" >&2
+                  exit 2
+                }
+
+                if command -v sha256sum >/dev/null 2>&1; then
+                  actual_hash="$(tr -d '[:space:]' < artifacts/%s.compiledCode.hex | xxd -r -p | sha256sum | awk '{print $1}')"
+                else
+                  actual_hash="$(tr -d '[:space:]' < artifacts/%s.compiledCode.hex | xxd -r -p | shasum -a 256 | awk '{print $1}')"
+                fi
+                [[ "${actual_hash}" == "%s" ]] || {
+                  echo "COULD-NOT-EVALUATE: required signer artifact hash mismatch" >&2
+                  exit 2
+                }
+
+                while IFS=' ' read -r package expected; do
+                  actual="$(git -C ".lake/packages/${package}" rev-parse HEAD)"
+                  [[ "${actual}" == "${expected}" ]] || {
+                    echo "COULD-NOT-EVALUATE: required signer ${package} revision mismatch" >&2
+                    exit 2
+                  }
+                done <<'PINS'
+                Blaster %s
+                PlutusCore %s
+                CardanoLedgerApi %s
+                PINS
+
+                mkdir -p .lake/build/lib/lean
+                lake env lean -o .lake/build/lib/lean/GeneratedSchemas.olean GeneratedSchemas.lean
+                lake env lean -o .lake/build/lib/lean/PropertyTemplates.olean PropertyTemplates.lean
+                lake env lean -o .lake/build/lib/lean/CheckedExecution.olean CheckedExecution.lean
+                lake env lean -o .lake/build/lib/lean/SecurityProperty.olean SecurityProperty.lean
+                lake env lean -o .lake/build/lib/lean/%sObligation.olean %sObligation.lean
+
+                set +e
+                lake env lean %sProof.lean
+                proof_status=$?
+                set -e
+                if [[ ${proof_status} -eq 0 ]]; then
+                  echo "SMT-VALID: required signer property established"
+                  exit 0
+                fi
+
+                if lake env lean %sCounterexample.lean; then
+                  echo "REFUTED: required signer counterexample found"
+                  exit 3
+                fi
+                echo "COULD-NOT-EVALUATE: required signer solver result was not classifiable" >&2
+                exit 2
+                """.formatted(artifactId, artifactId, compiledCodeSha256,
+                BLASTER_REV, PLUTUS_CORE_REV, LEDGER_API_REV,
+                leanId, leanId, leanId, leanId);
+    }
+
+    private static String verifyNonVacuityScript(
+            String leanId, String artifactId, String compiledCodeSha256) {
+        return """
+                #!/usr/bin/env bash
+                set -euo pipefail
+
+                SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+                VERIFY_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+                if [[ -d "${HOME}/.elan/bin" ]]; then
+                  export PATH="${HOME}/.elan/bin:${PATH}"
+                fi
+                cd "${VERIFY_DIR}"
+
+                for tool in lake lean z3 git xxd; do
+                  command -v "${tool}" >/dev/null 2>&1 || {
+                    echo "COULD-NOT-EVALUATE: non-vacuity missing ${tool}" >&2
+                    exit 2
+                  }
+                done
+                [[ "$(lean --version | head -n 1)" == *"4.24.0"* ]] || {
+                  echo "COULD-NOT-EVALUATE: non-vacuity expected Lean 4.24.0" >&2
+                  exit 2
+                }
+                [[ "$(z3 --version)" == *"4.15.2"* ]] || {
+                  echo "COULD-NOT-EVALUATE: non-vacuity expected Z3 4.15.2" >&2
+                  exit 2
+                }
+
+                if command -v sha256sum >/dev/null 2>&1; then
+                  actual_hash="$(tr -d '[:space:]' < artifacts/%s.compiledCode.hex | xxd -r -p | sha256sum | awk '{print $1}')"
+                else
+                  actual_hash="$(tr -d '[:space:]' < artifacts/%s.compiledCode.hex | xxd -r -p | shasum -a 256 | awk '{print $1}')"
+                fi
+                [[ "${actual_hash}" == "%s" ]] || {
+                  echo "COULD-NOT-EVALUATE: non-vacuity artifact hash mismatch" >&2
+                  exit 2
+                }
+
+                while IFS=' ' read -r package expected; do
+                  actual="$(git -C ".lake/packages/${package}" rev-parse HEAD)"
+                  [[ "${actual}" == "${expected}" ]] || {
+                    echo "COULD-NOT-EVALUATE: non-vacuity ${package} revision mismatch" >&2
+                    exit 2
+                  }
+                done <<'PINS'
+                Blaster %s
+                PlutusCore %s
+                CardanoLedgerApi %s
+                PINS
+
+                mkdir -p .lake/build/lib/lean
+                lake env lean -o .lake/build/lib/lean/GeneratedSchemas.olean GeneratedSchemas.lean
+                lake env lean -o .lake/build/lib/lean/PropertyTemplates.olean PropertyTemplates.lean
+                lake env lean -o .lake/build/lib/lean/CheckedExecution.olean CheckedExecution.lean
+                lake env lean -o .lake/build/lib/lean/SecurityProperty.olean SecurityProperty.lean
+                lake env lean -o .lake/build/lib/lean/%sObligation.olean %sObligation.lean
+
+                set +e
+                lake env lean %sNonVacuityCounterexample.lean
+                witness_status=$?
+                set -e
+                if [[ ${witness_status} -eq 0 ]]; then
+                  echo "NON-VACUOUS: successful input witness exists"
+                  exit 0
+                fi
+
+                if lake env lean %sVacuityProof.lean; then
+                  echo "VACUOUS: validator has no successful input"
+                  exit 4
+                fi
+                echo "COULD-NOT-EVALUATE: non-vacuity solver result was not classifiable" >&2
+                exit 2
+                """.formatted(artifactId, artifactId, compiledCodeSha256,
+                BLASTER_REV, PLUTUS_CORE_REV, LEDGER_API_REV,
+                leanId, leanId, leanId, leanId);
+    }
+
+    private static String requiresSignerReadme(
+            String validatorTitle, RequiresSignerProperty property) {
+        return """
+                # Generated JuLC `@RequiresSigner` verification
+
+                This generated workspace checks `%s` against `%s` for the typed
+                Java path `%s`. It is generator-owned; regenerate it with:
+
+                ```bash
+                julc verify --validator %s
+                ```
+
+                `verification-property.json` is the canonical typed property IR.
+                `verification-manifest.json` binds it to the exact compiled UPLC,
+                Cardano script hash, ledger API revision, solver, and execution bounds.
+                `verification-result.json` is the machine-readable certificate.
+
+                The guarantee is deliberately strict: successful exact UPLC execution
+                implies a spending context with an attached, strictly decoded datum whose
+                selected owner occurs anywhere in `txInfo.signatories`. No ledger-validity
+                predicate is modeled in this profile, and the result does not claim that the
+                entire contract is safe.
+
+                `SMT-VALID` covers only executions that complete within the CEK `fuel`
+                bound recorded in the manifest and certificate. A path that exhausts this
+                bound is outside the established claim; increase the bound and rerun when
+                the selected fuel does not cover the intended execution paths.
+
+                The runner first checks non-vacuity, then either establishes the property as
+                `SMT-VALID`, retains a raw Blaster model as `REFUTED`, or fails closed.
+                """.formatted(validatorTitle, property.template(), property.sourcePath(),
+                validatorTitle);
+    }
+
     private static String readme(
             String leanId, String validatorTitle, String purpose, int recursiveDepth) {
         return """
@@ -1590,7 +2095,8 @@ public final class VerificationProjectGenerator {
                 """.formatted(validatorTitle, purpose, recursiveDepth, leanId);
     }
 
-    private static void writeAtomically(Path output, Map<String, String> files)
+    private static void writeAtomically(
+            Path output, Map<String, String> files, Set<String> userOwnedFiles)
             throws IOException {
         Path parent = output.getParent();
         if (parent == null) {
@@ -1603,7 +2109,8 @@ public final class VerificationProjectGenerator {
                 Path target = staging.resolve(entry.getKey());
                 Files.createDirectories(target.getParent());
                 Files.writeString(target, entry.getValue());
-                if (entry.getKey().equals("scripts/verify.sh")) {
+                if (entry.getKey().startsWith("scripts/")
+                        && entry.getKey().endsWith(".sh")) {
                     target.toFile().setExecutable(true, false);
                 }
             }
@@ -1615,7 +2122,7 @@ public final class VerificationProjectGenerator {
                 for (String relative : files.keySet()) {
                     Path source = staging.resolve(relative);
                     Path target = output.resolve(relative);
-                    if (USER_OWNED_FILES.contains(relative) && Files.exists(target)) {
+                    if (userOwnedFiles.contains(relative) && Files.exists(target)) {
                         continue;
                     }
                     Files.createDirectories(target.getParent());

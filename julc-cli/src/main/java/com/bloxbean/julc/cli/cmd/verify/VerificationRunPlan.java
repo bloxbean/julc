@@ -21,6 +21,15 @@ public record VerificationRunPlan(
             String requiredOutput,
             String propertyId,
             String result,
+            String reason,
+            List<ObservedOutcome> outcomes) {
+    }
+
+    /** An authenticated process observation mapped to one verification result. */
+    public record ObservedOutcome(
+            int exitCode,
+            String requiredOutput,
+            String result,
             String reason) {
     }
 }

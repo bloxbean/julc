@@ -1,6 +1,6 @@
 # ADR-009: Verification Product Roadmap — Managed Execution and Java Properties
 
-- **Status:** Accepted; C.4 implemented, C.5 in progress
+- **Status:** Accepted; C.4 and C.5 implemented, C.5 awaiting manual review
 - **Date:** 2026-08-12
 - **Related:**
   [ADR-001 — IOG Blaster Verification Strategy](001-iog-blaster-verification-strategy.md),
@@ -228,8 +228,9 @@ class AuthorizedStateValidator {
 }
 ```
 
-The detailed C.5 ADR will decide the final package and repeatability rules, but
-the semantic meaning is fixed here: for every context in the declared
+The detailed [C.5 ADR](011-milestone-c5-requires-signer.md) decides the final
+module boundary and repeatability rules. The semantic meaning is fixed here:
+for every context in the declared
 spending-domain model, successful execution of the exact compiled validator
 implies that the resolved owner key hash occurs among the transaction
 signatories.
@@ -259,7 +260,8 @@ that the required signer exists or signed.
 
 C.5 will:
 
-1. Parse `@RequiresSigner` during ordinary JuLC compilation.
+1. Parse `@RequiresSigner` in the optional verification module beside an
+   ordinary JuLC compilation; the core compiler does not lower the annotation.
 2. Resolve `datum.owner` through compiler-owned validator parameter and
    `PirType` metadata.
 3. Require a supported signer-compatible byte-string/key-hash type.
@@ -301,7 +303,8 @@ the supported profile do not edit Lean or invoke Lake.
 C.5 is complete when:
 
 - a correct annotated validator produces `SMT-VALID` for the named property;
-- a vulnerable validator produces a source-readable counterexample;
+- a vulnerable validator produces a source-linked refutation and retains the
+  complete raw Blaster counterexample;
 - an always-failing validator is identified by the non-vacuity check;
 - invalid property paths fail at their Java source location;
 - annotation presence has zero effect on emitted UPLC bytes;
