@@ -2,7 +2,9 @@ package com.bloxbean.cardano.julc.blueprint;
 
 import com.bloxbean.cardano.julc.clientlib.JulcScriptAdapter;
 import com.bloxbean.cardano.julc.compiler.CompileResult;
+import com.bloxbean.cardano.julc.compiler.schema.ContractSchema;
 import com.bloxbean.cardano.julc.core.PlutusTarget;
+import com.bloxbean.cardano.julc.core.Program;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -15,7 +17,17 @@ public final class BlueprintGenerator {
 
     private BlueprintGenerator() {}
 
-    public record CompiledValidator(String name, String source, CompileResult result) {}
+    public record CompiledValidator(String name, CompileResult result, ContractSchema contractSchema) {}
+
+    /** Serialize a compiled program without requiring a blueprint schema. */
+    public static String compiledCode(Program program) {
+        return JulcScriptAdapter.fromProgram(program).getCborHex();
+    }
+
+    /** Calculate the script hash without requiring a blueprint schema. */
+    public static String scriptHash(Program program) {
+        return JulcScriptAdapter.scriptHash(program);
+    }
 
     /**
      * Generate a CIP-57 blueprint from compiled validators.
@@ -33,28 +45,25 @@ public final class BlueprintGenerator {
 
         for (var cv : compiledValidators) {
             var program = cv.result().program();
-            var script = JulcScriptAdapter.fromProgram(program);
-            var hash = JulcScriptAdapter.scriptHash(program);
-            var cborHex = script.getCborHex();
+            var hash = scriptHash(program);
+            var cborHex = compiledCode(program);
             var sizeBytes = cv.result().scriptSizeBytes();
 
-            // Extract schema from source
-            SchemaGenerator.Schema datum = null;
-            SchemaGenerator.Schema redeemer = null;
-            List<SchemaGenerator.Schema> parameters = null;
-
-            try {
-                var schema = SchemaGenerator.extract(cv.source());
-                if (schema != null) {
-                    datum = schema.datum();
-                    redeemer = schema.redeemer();
-                    if (schema.parameters() != null && !schema.parameters().isEmpty()) {
-                        parameters = schema.parameters();
-                    }
-                    allDefinitions.putAll(schema.definitions());
+            String namespace = compiledValidators.size() > 1 ? cv.name() : null;
+            var schema = SchemaGenerator.from(cv.contractSchema(), namespace);
+            var datum = schema.datum();
+            var redeemer = schema.redeemer();
+            List<SchemaGenerator.Schema> parameters = schema.parameters().isEmpty()
+                    ? null
+                    : schema.parameters();
+            for (var definition : schema.definitions().entrySet()) {
+                var previous = allDefinitions.putIfAbsent(
+                        definition.getKey(), definition.getValue());
+                if (previous != null && !previous.equals(definition.getValue())) {
+                    throw new SchemaGenerator.SchemaGenerationException(
+                            "Conflicting schema definition '" + definition.getKey()
+                                    + "' across compiled validators");
                 }
-            } catch (Exception e) {
-                // Schema extraction is best-effort — don't fail the build
             }
 
             entries.add(new Blueprint.ValidatorEntry(
@@ -63,6 +72,9 @@ public final class BlueprintGenerator {
             ));
         }
 
-        return new Blueprint(preamble, entries, allDefinitions.isEmpty() ? null : allDefinitions);
+        var blueprint = new Blueprint(
+                preamble, entries, allDefinitions.isEmpty() ? null : allDefinitions);
+        BlueprintValidator.validate(blueprint.toJson());
+        return blueprint;
     }
 }

@@ -111,6 +111,119 @@ class JulcPluginTest {
     }
 
     @Test
+    void blueprintCanBeDisabledWithoutDisablingCompilation() throws IOException {
+        Files.writeString(buildFile, """
+                plugins {
+                    id 'com.bloxbean.cardano.julc'
+                }
+
+                julc {
+                    blueprint = false
+                }
+                """);
+        Files.writeString(plutusSrcDir.resolve("MultiGate.java"), """
+                import com.bloxbean.cardano.julc.core.PlutusData;
+
+                @MultiValidator
+                class MultiGate {
+                    @Entrypoint
+                    static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                        return true;
+                    }
+                }
+                """);
+
+        BuildResult result = createRunner("compileJulc").build();
+
+        assertEquals(TaskOutcome.SUCCESS, result.task(":compileJulc").getOutcome());
+        assertTrue(Files.exists(testProjectDir.resolve("build/plutus/MultiGate.json")));
+        assertFalse(Files.exists(testProjectDir.resolve("build/plutus/plutus.json")));
+    }
+
+    @Test
+    void schemaFailurePreservesLastGoodGradleOutputs() throws IOException {
+        Files.writeString(buildFile, """
+                plugins {
+                    id 'com.bloxbean.cardano.julc'
+                }
+                """);
+        writeAlwaysTrueValidator();
+        createRunner("compileJulc").build();
+        Path validatorJson = testProjectDir.resolve("build/plutus/AlwaysTrue.json");
+        Path blueprintJson = testProjectDir.resolve("build/plutus/plutus.json");
+        String oldValidator = Files.readString(validatorJson);
+        String oldBlueprint = Files.readString(blueprintJson);
+
+        Files.writeString(plutusSrcDir.resolve("AlwaysTrue.java"), """
+                import com.bloxbean.cardano.julc.core.types.JulcArray;
+                import com.bloxbean.cardano.julc.ledger.ScriptContext;
+                import java.math.BigInteger;
+
+                @SpendingValidator
+                class AlwaysTrue {
+                    record Datum(JulcArray<BigInteger> values) {}
+                    record Redeemer(BigInteger value) {}
+                    @Entrypoint
+                    static boolean validate(Datum datum, Redeemer redeemer, ScriptContext ctx) {
+                        return false;
+                    }
+                }
+                """);
+
+        createRunner("compileJulc").buildAndFail();
+
+        assertEquals(oldValidator, Files.readString(validatorJson));
+        assertEquals(oldBlueprint, Files.readString(blueprintJson));
+    }
+
+    @Test
+    void successfulGradleBuildRemovesOutputsForDeletedValidators() throws IOException {
+        Files.writeString(buildFile, """
+                plugins {
+                    id 'com.bloxbean.cardano.julc'
+                }
+                """);
+        writeAlwaysTrueValidator();
+        createRunner("compileJulc").build();
+        Path validatorJson = testProjectDir.resolve("build/plutus/AlwaysTrue.json");
+        Path blueprintJson = testProjectDir.resolve("build/plutus/plutus.json");
+        assertTrue(Files.exists(validatorJson));
+        assertTrue(Files.exists(blueprintJson));
+
+        Files.delete(plutusSrcDir.resolve("AlwaysTrue.java"));
+        BuildResult result = createRunner("compileJulc").build();
+
+        assertEquals(TaskOutcome.SUCCESS, result.task(":compileJulc").getOutcome());
+        assertFalse(Files.exists(validatorJson));
+        assertFalse(Files.exists(blueprintJson));
+    }
+
+    @Test
+    void gradleOptOutRemovesStaleAnnotationProcessorAggregate() throws IOException {
+        Files.writeString(buildFile, """
+                plugins {
+                    id 'com.bloxbean.cardano.julc'
+                }
+
+                julc {
+                    blueprint = false
+                }
+                """);
+        Path javaSource = testProjectDir.resolve("src/main/java/PlainJava.java");
+        Files.createDirectories(javaSource.getParent());
+        Files.writeString(javaSource, "class PlainJava {}\n");
+        Path stale = testProjectDir.resolve(
+                "build/classes/java/main/META-INF/plutus/plutus.json");
+        Files.createDirectories(stale.getParent());
+        Files.writeString(stale, "stale");
+
+        BuildResult result = createRunner("compileJava").build();
+
+        assertEquals(TaskOutcome.SUCCESS, result.task(":compileJava").getOutcome());
+        assertFalse(Files.exists(stale));
+    }
+
+    @Test
     void skipsNonAnnotatedFiles() throws IOException {
         Files.writeString(buildFile, """
                 plugins {

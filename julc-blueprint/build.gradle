@@ -9,7 +9,13 @@ dependencies {
     implementation project(':julc-compiler')
     implementation project(':julc-cardano-client-lib')
     implementation 'com.bloxbean.cardano:cardano-client-lib:0.7.1'
-    implementation 'com.github.javaparser:javaparser-core:3.26.3'
+    implementation('com.networknt:json-schema-validator:2.0.4') {
+        exclude group: 'com.fasterxml.jackson.dataformat', module: 'jackson-dataformat-yaml'
+        exclude group: 'com.ethlo.time', module: 'itu'
+    }
+    testImplementation project(':julc-vm')
+    testRuntimeOnly project(':julc-vm-java')
+    testRuntimeOnly 'org.slf4j:slf4j-nop:2.0.17'
 }
 
 // --- Generate version.properties at build time ---

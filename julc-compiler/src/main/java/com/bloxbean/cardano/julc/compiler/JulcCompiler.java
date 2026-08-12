@@ -10,6 +10,8 @@ import com.bloxbean.cardano.julc.compiler.resolve.LibraryMethodRegistry;
 import com.bloxbean.cardano.julc.compiler.resolve.SymbolTable;
 import com.bloxbean.cardano.julc.compiler.resolve.TypeRegistrar;
 import com.bloxbean.cardano.julc.compiler.resolve.TypeResolver;
+import com.bloxbean.cardano.julc.compiler.schema.ContractCompileResult;
+import com.bloxbean.cardano.julc.compiler.schema.ContractSchema;
 import com.bloxbean.cardano.julc.compiler.uplc.UplcGenerator;
 import com.bloxbean.cardano.julc.compiler.uplc.UplcOptimizer;
 import com.bloxbean.cardano.julc.compiler.util.MethodDependencyResolver;
@@ -54,9 +56,11 @@ public class JulcCompiler {
         SPENDING, MINTING, WITHDRAW, CERTIFYING, VOTING, PROPOSING, MULTI
     }
 
-    private record ParamField(String name, PirType pirType, String javaType) {}
+    private record ParamField(String name, PirType pirType, String javaType,
+                              SourceLocation sourceLocation) {}
     private record StaticField(String name, PirType pirType, com.github.javaparser.ast.expr.Expression initExpr) {}
     private record CompiledStaticField(String name, PirTerm initPir) {}
+    private record CompilationOutcome(CompileResult compileResult, ContractSchema contractSchema) {}
 
     /** Stdlib class FQCNs — must match StdlibRegistry registration keys. */
     private static final Set<String> STDLIB_FQCNS = Set.of(
@@ -156,7 +160,54 @@ public class JulcCompiler {
         return doCompile(validatorSource, librarySources, false);
     }
 
+    /**
+     * Compile a validator and capture its resolved datum, redeemer, and parameter types.
+     *
+     * <p>The returned program is produced by the same lowering path as {@link #compile(String)}.
+     * Schema capture is observational and is intended for blueprint generation.</p>
+     */
+    public ContractCompileResult compileContract(String validatorSource) {
+        var availableLibs = LibrarySourceResolver.scanClasspathSources(
+                JulcCompiler.class.getClassLoader());
+        var resolvedLibs = availableLibs.isEmpty()
+                ? List.<String>of()
+                : LibrarySourceResolver.resolve(validatorSource, availableLibs);
+        return compileContract(validatorSource, resolvedLibs);
+    }
+
+    /** Compile a validator with library sources and capture its resolved contract schema. */
+    public ContractCompileResult compileContract(
+            String validatorSource, List<String> librarySources) {
+        var outcome = doCompileOutcome(validatorSource, librarySources, false, true);
+        return new ContractCompileResult(outcome.compileResult(), outcome.contractSchema());
+    }
+
+    /** Compile with PIR/UPLC inspection details and resolved contract schema metadata. */
+    public ContractCompileResult compileContractWithDetails(String validatorSource) {
+        var availableLibs = LibrarySourceResolver.scanClasspathSources(
+                JulcCompiler.class.getClassLoader());
+        var resolvedLibs = availableLibs.isEmpty()
+                ? List.<String>of()
+                : LibrarySourceResolver.resolve(validatorSource, availableLibs);
+        return compileContractWithDetails(validatorSource, resolvedLibs);
+    }
+
+    /** Compile with PIR/UPLC inspection details and resolved contract schema metadata. */
+    public ContractCompileResult compileContractWithDetails(
+            String validatorSource, List<String> librarySources) {
+        var outcome = doCompileOutcome(validatorSource, librarySources, true, true);
+        return new ContractCompileResult(outcome.compileResult(), outcome.contractSchema());
+    }
+
     private CompileResult doCompile(String validatorSource, List<String> librarySources, boolean captureDetails) {
+        return doCompileOutcome(validatorSource, librarySources, captureDetails, false).compileResult();
+    }
+
+    private CompilationOutcome doCompileOutcome(
+            String validatorSource,
+            List<String> librarySources,
+            boolean captureDetails,
+            boolean captureContractSchema) {
         StaticJavaParser.getParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
 
         // 1. Parse all sources
@@ -168,11 +219,14 @@ public class JulcCompiler {
             libraryCus.add(parseSource(librarySources.get(i), "library[" + i + "]"));
         }
 
-        return doCompileFromCus(validatorCu, libraryCus, captureDetails);
+        return doCompileFromCus(validatorCu, libraryCus, captureDetails, captureContractSchema);
     }
 
-    private CompileResult doCompileFromCus(CompilationUnit validatorCu, List<CompilationUnit> libraryCus,
-                                            boolean captureDetails) {
+    private CompilationOutcome doCompileFromCus(
+            CompilationUnit validatorCu,
+            List<CompilationUnit> libraryCus,
+            boolean captureDetails,
+            boolean captureContractSchema) {
         // 2. Validate subset on all compilation units
         var subsetValidator = new SubsetValidator();
         var diagnostics = new ArrayList<>(subsetValidator.validate(validatorCu));
@@ -508,8 +562,12 @@ public class JulcCompiler {
                 .toList();
 
         var result = new CompileResult(program, diagnostics, paramInfos, capturedPir, capturedUplc, sourceMap);
+        ContractSchema contractSchema = captureContractSchema
+                ? buildContractSchema(scriptPurpose, entrypointMethod, entrypointInfos,
+                        paramFields, typeResolver, validatorClass)
+                : null;
         options.logf("Compilation complete: %s", result.scriptSizeFormatted());
-        return result;
+        return new CompilationOutcome(result, contractSchema);
     }
 
     /**
@@ -528,7 +586,25 @@ public class JulcCompiler {
         return compileFromPaths(validatorFile, libraryFiles);
     }
 
+    /** Compile a validator source file and capture resolved contract schema metadata. */
+    public ContractCompileResult compileContract(Path sourceFile) throws IOException {
+        return compileContract(sourceFile, List.of());
+    }
+
+    /** Compile a validator and library source files and capture contract schema metadata. */
+    public ContractCompileResult compileContract(
+            Path validatorFile, List<Path> libraryFiles) throws IOException {
+        var outcome = compileOutcomeFromPaths(validatorFile, libraryFiles, true);
+        return new ContractCompileResult(outcome.compileResult(), outcome.contractSchema());
+    }
+
     private CompileResult compileFromPaths(Path validatorFile, List<Path> libraryFiles) throws IOException {
+        return compileOutcomeFromPaths(validatorFile, libraryFiles, false).compileResult();
+    }
+
+    private CompilationOutcome compileOutcomeFromPaths(
+            Path validatorFile, List<Path> libraryFiles, boolean captureContractSchema)
+            throws IOException {
         StaticJavaParser.getParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
 
         options.logf("Parsing %d source(s) (1 validator + %d libraries)",
@@ -540,7 +616,8 @@ public class JulcCompiler {
             libraryCus.add(parseSource(Files.readString(libFile), "library[" + i + "]", libFile));
         }
 
-        return doCompileFromCus(validatorCu, libraryCus, false);
+        return doCompileFromCus(
+                validatorCu, libraryCus, false, captureContractSchema);
     }
 
     /**
@@ -1296,11 +1373,91 @@ public class JulcCompiler {
                 for (var variable : field.getVariables()) {
                     var name = variable.getNameAsString();
                     var pirType = typeResolver.resolve(field.getCommonType());
-                    result.add(new ParamField(name, pirType, javaType));
+                    result.add(new ParamField(name, pirType, javaType, sourceLocation(variable)));
                 }
             }
         }
         return result;
+    }
+
+    private ContractSchema buildContractSchema(
+            ScriptPurpose purpose,
+            MethodDeclaration entrypointMethod,
+            List<EntrypointInfo> entrypointInfos,
+            List<ParamField> paramFields,
+            TypeResolver typeResolver,
+            ClassOrInterfaceDeclaration validatorClass) {
+        if (purpose == ScriptPurpose.MULTI) {
+            var detail = entrypointInfos.isEmpty()
+                    ? "manual multi-purpose entrypoint"
+                    : "purpose-indexed entrypoints";
+            throw schemaError(validatorClass,
+                    "Blueprint schema generation does not yet support " + detail
+                            + " for @MultiValidator. Use julc build --no-blueprint until "
+                            + "purpose-indexed CIP-57 arguments are implemented.");
+        }
+
+        var methodParams = entrypointMethod.getParameters();
+        ContractSchema.Argument datum = null;
+        ContractSchema.Argument redeemer;
+        if (purpose == ScriptPurpose.SPENDING && methodParams.size() == 3) {
+            datum = schemaArgument(methodParams.get(0), typeResolver, true);
+            redeemer = schemaArgument(methodParams.get(1), typeResolver);
+        } else {
+            redeemer = schemaArgument(methodParams.get(0), typeResolver);
+        }
+
+        var parameters = paramFields.stream()
+                .map(field -> new ContractSchema.Argument(
+                        field.name(), field.pirType(), field.sourceLocation()))
+                .toList();
+        return new ContractSchema(purpose.name().toLowerCase(Locale.ROOT), datum, redeemer, parameters);
+    }
+
+    private ContractSchema.Argument schemaArgument(
+            com.github.javaparser.ast.body.Parameter parameter,
+            TypeResolver typeResolver) {
+        return schemaArgument(parameter, typeResolver, false);
+    }
+
+    private ContractSchema.Argument schemaArgument(
+            com.github.javaparser.ast.body.Parameter parameter,
+            TypeResolver typeResolver,
+            boolean unwrapLedgerDatumOptional) {
+        PirType type = typeResolver.resolve(parameter.getType());
+        if (unwrapLedgerDatumOptional && type instanceof PirType.OptionalType optional) {
+            // A spending entrypoint's Optional<T> receives ScriptInfo's ledger-level
+            // Maybe datum. CIP-57 describes the datum attached to the output: bare T.
+            type = optional.elemType();
+        }
+        return new ContractSchema.Argument(
+                parameter.getNameAsString(),
+                type,
+                sourceLocation(parameter));
+    }
+
+    private CompilerException schemaError(Node node, String message) {
+        var location = sourceLocation(node);
+        var diagnostic = new CompilerDiagnostic(
+                CompilerDiagnostic.Level.ERROR,
+                message,
+                location.fileName(),
+                location.line(),
+                location.column());
+        return new CompilerException(List.of(diagnostic));
+    }
+
+    private SourceLocation sourceLocation(Node node) {
+        int line = 0;
+        int column = 0;
+        if (node.getRange().isPresent()) {
+            line = node.getRange().get().begin.line;
+            column = node.getRange().get().begin.column;
+        }
+        String fileName = node.findCompilationUnit()
+                .flatMap(cu -> cu.getStorage().map(storage -> storage.getFileName()))
+                .orElse("<source>");
+        return new SourceLocation(fileName, line, column, node.toString());
     }
 
     /**

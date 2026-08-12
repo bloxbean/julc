@@ -98,8 +98,8 @@ class VerificationProjectGeneratorTest {
         Path blueprint = writeBlueprint();
         var root = (com.fasterxml.jackson.databind.node.ObjectNode)
                 JSON.readTree(blueprint.toFile());
-        ((com.fasterxml.jackson.databind.node.ObjectNode)
-                root.path("definitions").path("Int"))
+        ((com.fasterxml.jackson.databind.node.ObjectNode) root.path("definitions")
+                .path("StateDatum").path("anyOf").get(0).path("fields").get(1))
                 .put("dataType", "list");
         JSON.writerWithDefaultPrettyPrinter().writeValue(blueprint.toFile(), root);
         Path output = tempDir.resolve("unsupported");
@@ -108,7 +108,7 @@ class VerificationProjectGeneratorTest {
                 () -> VerificationProjectGenerator.generate(
                         blueprint, "StateGate", "spending", 100, output, false));
 
-        assertTrue(error.getMessage().contains("Unsupported schema"));
+        assertTrue(error.getMessage().toLowerCase(java.util.Locale.ROOT).contains("unsupported"));
         assertFalse(Files.exists(output));
     }
 
@@ -243,6 +243,29 @@ class VerificationProjectGeneratorTest {
     }
 
     @Test
+    void resolvesEscapedJsonPointerDefinitionNames() throws Exception {
+        var document = JSON.readTree("""
+                {
+                  "validators": [{
+                    "title": "Gate",
+                    "redeemer": {"schema": {"$ref": "#/definitions/Foo~0Bar"}}
+                  }],
+                  "definitions": {
+                    "Foo~Bar": {"anyOf": [{
+                      "title": "Only", "dataType": "constructor", "index": 0,
+                      "fields": []
+                    }]}
+                  }
+                }
+                """);
+
+        var result = VerificationProjectGenerator.generateSchemas(
+                document.path("definitions"), document.path("validators").get(0));
+
+        assertTrue(result.source().contains("inductive FooBar where"));
+    }
+
+    @Test
     void rejectsAmbiguousValidatorTitleWithoutWritingWorkspace() throws Exception {
         Path blueprint = writeBlueprint();
         var root = (com.fasterxml.jackson.databind.node.ObjectNode)
@@ -292,10 +315,11 @@ class VerificationProjectGeneratorTest {
                     }
                 }
                 """;
-        var result = new JulcCompiler(StdlibRegistry.defaultRegistry()).compile(source);
+        var result = new JulcCompiler(StdlibRegistry.defaultRegistry()).compileContract(source);
         var generated = BlueprintGenerator.generate(
                 new BlueprintConfig("verification-generator-test", "1"),
-                List.of(new BlueprintGenerator.CompiledValidator("StateGate", source, result)));
+                List.of(new BlueprintGenerator.CompiledValidator(
+                        "StateGate", result.compileResult(), result.contractSchema())));
         Path blueprint = tempDir.resolve("plutus-" + System.nanoTime() + ".json");
         Files.writeString(blueprint, generated.toJson());
         return blueprint;

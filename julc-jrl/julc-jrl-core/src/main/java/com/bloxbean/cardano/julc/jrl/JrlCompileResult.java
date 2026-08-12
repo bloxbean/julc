@@ -1,6 +1,7 @@
 package com.bloxbean.cardano.julc.jrl;
 
 import com.bloxbean.cardano.julc.compiler.CompileResult;
+import com.bloxbean.cardano.julc.compiler.schema.ContractSchema;
 import com.bloxbean.cardano.julc.jrl.ast.ContractNode;
 import com.bloxbean.cardano.julc.jrl.check.JrlDiagnostic;
 
@@ -19,8 +20,17 @@ public record JrlCompileResult(
         CompileResult compileResult,
         String generatedJavaSource,
         ContractNode ast,
-        List<JrlDiagnostic> jrlDiagnostics
+        List<JrlDiagnostic> jrlDiagnostics,
+        ContractSchema contractSchema
 ) {
+    public JrlCompileResult(
+            CompileResult compileResult,
+            String generatedJavaSource,
+            ContractNode ast,
+            List<JrlDiagnostic> jrlDiagnostics) {
+        this(compileResult, generatedJavaSource, ast, jrlDiagnostics, null);
+    }
+
     public boolean hasErrors() {
         if (jrlDiagnostics.stream().anyMatch(JrlDiagnostic::isError)) return true;
         return compileResult != null && compileResult.hasErrors();

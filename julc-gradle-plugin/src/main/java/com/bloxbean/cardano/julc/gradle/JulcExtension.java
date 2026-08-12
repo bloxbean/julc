@@ -13,6 +13,7 @@ import org.gradle.api.provider.Property;
  *   <li>{@code sourceDir} — directory containing validator Java source files (default: {@code src/main/plutus})</li>
  *   <li>{@code outputDir} — directory for compiled JSON output (default: {@code build/plutus})</li>
  *   <li>{@code sourceMap} — enable source map generation for debugging (default: {@code false})</li>
+ *   <li>{@code blueprint} — generate strict CIP-57 metadata (default: {@code true})</li>
  * </ul>
  * <p>
  * Example:
@@ -27,6 +28,7 @@ public class JulcExtension {
     private final DirectoryProperty sourceDir;
     private final DirectoryProperty outputDir;
     private final Property<Boolean> sourceMap;
+    private final Property<Boolean> blueprint;
 
     public JulcExtension(Project project) {
         ObjectFactory objects = project.getObjects();
@@ -35,6 +37,7 @@ public class JulcExtension {
         outputDir = objects.directoryProperty()
                 .convention(project.getLayout().getBuildDirectory().dir("plutus"));
         sourceMap = objects.property(Boolean.class).convention(false);
+        blueprint = objects.property(Boolean.class).convention(true);
     }
 
     public DirectoryProperty getSourceDir() {
@@ -52,5 +55,10 @@ public class JulcExtension {
      */
     public Property<Boolean> getSourceMap() {
         return sourceMap;
+    }
+
+    /** Whether compilation must also produce a complete CIP-57 blueprint. */
+    public Property<Boolean> getBlueprint() {
+        return blueprint;
     }
 }

@@ -86,6 +86,309 @@ generator must never silently substitute raw `Data` for an unsupported schema.
 Names are normalized to valid Lean identifiers and collisions are rejected.
 The manifest records the source definition name and generated Lean name.
 
+## Type-information authority and artifact boundary
+
+JuLC obtains datum, redeemer, and parameter types while compiling Java source.
+As implemented in C.1, `julc-blueprint` consumes the compiler-owned
+`ContractSchema`; it no longer reparses validator Java. It serializes that
+resolved information into `build/plutus/plutus.json` beside the compiled UPLC.
+
+The long-term source of truth should be a compiler-owned on-chain schema IR,
+not a second best-effort source parser inside `julc-blueprint`. The compiler has
+already resolved the JuLC subset, aliases, generic arguments, record layouts,
+sealed variants, and actual `PlutusData` encoding decisions. The existing
+`PirType` hierarchy already represents primitives, collections, optionals,
+records, and sum types and is a useful input, although the public schema graph
+also needs stable named references and source diagnostics.
+
+Milestone C.1 introduces or reuses that structured type graph from the
+successful compilation and uses it to complete the CIP-57 definitions in
+`plutus.json`. `julc verify init` then generates Lean only from the serialized
+CIP-57 boundary. Schema-generation failure for datum, redeemer, or parameter
+types must fail the build instead of being silently discarded.
+
+The accepted initial pipeline is:
+
+```text
+Java source
+  → JuLC parsing, type resolution, and encoding selection
+      ├─ UPLC Program
+      └─ compiler-owned on-chain schema graph
+            ↓
+        build/plutus/plutus.json
+          ├─ compiledCode and script hash
+          └─ complete CIP-57 schemas
+                    ↓
+             julc verify init .
+                    ↓
+        generated Lean types, IsData, and artifact harness
+```
+
+There must not initially be a second Java-to-Lean route. Making the verifier
+consume the same serialized artifact that external users receive exercises the
+portable boundary and prevents source and blueprint behavior from drifting.
+
+### Compiler non-regression contract
+
+The schema graph is observational compiler metadata. Introducing it must not
+change Java subset validation, PIR/UPLC lowering, optimization, builtin
+selection, parameter application, cost behavior, or generated script bytes.
+
+Prefer a new schema-aware compilation result or wrapper over changing the
+semantics of the existing `JulcCompiler.compile` API. Existing compiler callers
+that do not request blueprint metadata must continue to compile exactly as
+before. `julc build`, which promises to emit a deployable blueprint, may fail
+closed when a datum, redeemer, or parameter encoding cannot be represented
+truthfully; that is an intentional artifact-generation diagnostic, not a
+code-generation change.
+
+C.1 cannot exit unless:
+
+- the existing compiler, VM, CLI, blueprint, and end-to-end suites pass;
+- every committed Milestone A/B artifact retains its exact compiledCode bytes,
+  script hash, builtin inventory, and artifact lock;
+- representative validators compiled with and without schema capture produce
+  byte-identical UPLC;
+- schema extraction is deterministic and has no effect on diagnostics unrelated
+  to schemas; and
+- tests prove that a schema failure cannot leave a partial or apparently valid
+  blueprint while the standalone compiler API remains usable.
+
+### Explicit schema escape hatch
+
+Users must be able to compile while schema support catches up with a valid JuLC
+type, but the escape hatch must not manufacture evidence. The CLI is:
+
+```text
+julc build --no-blueprint
+```
+
+`--skip-blueprint` may be provided as a discoverable alias. This mode performs
+normal compilation and emits per-validator UPLC, compiledCode, and script-hash
+metadata, but skips schema extraction and does not create the standard
+`build/plutus/plutus.json`. If a blueprint from an earlier build exists, the
+command must remove or unmistakably invalidate that generated file, or place
+the no-blueprint outputs in a distinct directory, so it cannot be mistaken for
+the new artifact.
+
+Strict schema generation remains the default. There is deliberately no
+`--treat-unknown-as-data` mode: replacing an unsupported type with an opaque
+schema would allow transaction builders and verification properties to assume
+the wrong encoding. A Java entrypoint explicitly typed as `PlutusData` is
+different—it intentionally requests the CIP-57 unconstrained `Data` boundary
+and remains supported.
+
+Artifacts produced through `--no-blueprint` are deployable raw compiler outputs
+but are not schema-verified. `julc verify init` and any future verification or
+typed-client generator must reject them until a complete blueprint is produced.
+
+The implemented equivalents are `julc { blueprint = false }` for the Gradle
+plugin, `-Ajulc.blueprint=false` for the annotation processor, and
+`"blueprint": false` for the Playground compile request. Strict blueprint
+generation remains the default in every integration.
+
+CIP-57 remains the default input boundary for `julc verify init` because it:
+
+- travels with the exact deployable `compiledCode` and script hash;
+- permits verification when Java source is unavailable;
+- gives external tools a standard, language-neutral schema; and
+- prevents the verification generator from independently guessing compiler
+  encoding rules.
+
+An optional source-aware verification command may invoke the compiler directly
+for convenience, but it must produce the same schema IR and compare the
+resulting artifact hash with the artifact being verified. UPLC alone is not a
+replacement for this information: UPLC is untyped, so high-level record,
+variant, generic-container, and field names cannot in general be recovered
+reliably from `compiledCode`.
+
+## Collection, optional, and recursive-schema roadmap
+
+The current limitation is not inherent to CIP-57. CIP-57 defines `list`, `map`,
+`integer`, `bytes`, and `constructor` schemas, supports composition through
+subschemas, and provides reusable `definitions` and `$ref` references. See the
+[CIP-57 core vocabulary](https://cips.cardano.org/cip/CIP-57).
+
+There are two independent implementation boundaries:
+
+1. `julc-blueprint` must faithfully describe the Java type and its actual
+   on-chain encoding; and
+2. `julc verify init` must translate that schema into a strict Lean type and
+   `IsData` implementation.
+
+The blueprint boundary had to be fixed first. A correct Lean generator cannot
+recover type structure that a blueprint has already reduced to opaque `Data`.
+C.1 added `items`, `keys`, and `values`, retained nested `Optional<T>`, removed
+implicit unknown-type fallback, and made the spending datum's ledger-level
+top-level `Optional<T>` an explicit compiler-semantic exception rather than a
+source-text heuristic.
+
+### Milestone C.1: faithful JuLC CIP-57 schemas
+
+Extend `julc-blueprint` before expanding the Lean generator.
+
+Required implementation:
+
+- define a compiler-owned, immutable on-chain schema graph, seeded from the
+  resolved `PirType` information, with primitives, containers, optionals,
+  constructors, named definitions/references, and source locations;
+- attach the entrypoint datum, redeemer, and parameter schema roots to a
+  successful compilation result so `julc-blueprint` does not reparse Java or
+  repeat type resolution;
+- replace the current `SchemaGenerator` string-prefix/generic-name matching
+  with conversion from the compiler-owned graph; any transitional source
+  traversal must use structured JavaParser `Type` nodes and must be removed
+  before C.1 exits;
+- extend the internal schema model and JSON writer with CIP-57 `items`, `keys`,
+  `values`, and the applicable size/shape keywords;
+- emit `List<T>`/JuLC list types as `dataType: list` with an `items` subschema;
+- emit `Map<K,V>`/JuLC map types as `dataType: map` with `keys` and `values`
+  subschemas;
+- emit nested `Optional<T>` as its actual Plutus constructor encoding:
+  `Some x = Constr 0 [x]` and `None = Constr 1 []`;
+- reserve named definitions before traversing their fields so self and mutual
+  references become `$ref` edges rather than unbounded Java recursion;
+- remove the unknown-type-to-opaque-`Data` fallback for typed datum, redeemer,
+  and parameter positions; unsupported types must fail blueprint generation
+  with a precise diagnostic; and
+- validate every generated blueprint against the official CIP-57 meta-schema.
+
+`julc verify init .` remains a consumer of
+`build/plutus/plutus.json`; it need not parse Java. A later convenience change
+may run `julc build` automatically when the blueprint is missing or stale, but
+that command must use the same compiler/schema pipeline and verify the selected
+artifact hash. It is not a prerequisite for collection-schema correctness.
+
+Encoding conformance tests must compare the schema with JuLC's compiler and VM,
+not merely compare JSON text. For each supported type, tests construct Java
+values, compile/encode them through JuLC, and assert that the resulting
+`PlutusData` has exactly the constructor/list/map layout advertised by the
+blueprint.
+
+The initial compatibility examples are:
+
+```java
+record ListDatum(List<BigInteger> values) {}
+record MapDatum(Map<byte[], BigInteger> balances) {}
+record OptionalDatum(Optional<byte[]> owner) {}
+```
+
+If JuLC's supported on-chain API uses `JulcList` or `JulcMap` rather than the
+JDK interfaces in a given position, the schema generator must recognize the
+actual supported type and reject the unsupported spelling. It must not imply
+compiler support merely because CIP-57 can describe the data.
+
+Milestone C.1 exits when these types produce meta-schema-valid blueprints that
+round-trip against the compiler's real encoding, while unknown types fail
+closed without an opaque substitution.
+
+### Milestone C.2: Lean containers and optional values
+
+After C.1, extend `julc verify init` to consume the new schema forms.
+
+Required implementation:
+
+- consume JuLC's constructor-based boolean schema and generate a strict Lean
+  decoder for `False = Constr 0 []` and `True = Constr 1 []`;
+- generate strict `Option α` encoding compatible with JuLC's `Some`/`None`
+  constructors;
+- generate list encoders/decoders that require every `Data.List` element to
+  satisfy the item schema;
+- generate map encoders/decoders over Plutus `Data.Map`, preserving its
+  association-list representation and requiring every key and value to satisfy
+  its schema;
+- explicitly specify whether duplicate map keys are rejected, preserved, or
+  normalized, based on the compiled JuLC decoder rather than Java `Map`
+  intuition;
+- support arbitrary nonrecursive nesting such as
+  `Optional<List<Map<byte[], BigInteger>>>`; and
+- keep generated decoders strict about constructor indexes, arity, and
+  primitive shape.
+
+Tests must cover successful round trips and malformed values: wrong list item,
+wrong map key/value, invalid optional tag/arity, duplicate keys under the chosen
+policy, and nested failure paths. Generated spending and minting workspaces
+using each container form must compile against the pinned Blaster stack.
+
+Milestone C.2 exits when supported collection/optional contracts require no
+handwritten Lean encodings and the generated representation has been checked
+against the exact JuLC artifact encoding.
+
+### Milestone C.3: productive recursive ADTs
+
+Recursive data requires a separate milestone because schema generation,
+termination, and symbolic verification all become recursive.
+
+This direct record is not a valid initial target:
+
+```java
+record Node(BigInteger value, Node next) {}
+```
+
+Without `null`, it has no finite base inhabitant. On-chain recursive data must
+be productive, for example:
+
+```java
+sealed interface Node permits End, Cons {}
+record End() implements Node {}
+record Cons(BigInteger value, Node next) implements Node {}
+```
+
+Required implementation:
+
+- accept recursive or mutually recursive named definitions only when their
+  constructor graph contains a finite base case;
+- reject direct nonproductive cycles with a source diagnostic;
+- generate recursive Lean inductive declarations in dependency groups;
+- generate structurally terminating `toData` and `fromData` functions and
+  prove or test strict round-trip behaviour;
+- provide an explicit verification-depth setting for Blaster symbolic
+  execution over recursive values; and
+- separate bounded artifact evidence from general kernel-checked induction
+  lemmas, without reporting the former as an unbounded proof.
+
+Tests must cover a recursive list/tree with a base constructor, mutual
+recursion, malformed recursive encodings, nonproductive-cycle rejection,
+depth exhaustion as `COULD-NOT-EVALUATE`, and at least one composition lemma
+proved by Lean induction.
+
+Milestone C.3 exits when productive recursive datum/redeemer types can be
+generated without handwritten encodings, bounded symbolic coverage is
+reported honestly, and unbounded claims require explicit inductive proofs.
+
+### Documentation deliverable
+
+Each milestone must update
+[`verification/README.md`](../../verification/README.md) so a new user can see:
+
+- prerequisites and exact commands;
+- the boundary implemented in the current revision;
+- a minimal supported example and its expected result;
+- unsupported schemas and builtins;
+- how to author a property and negative control; and
+- how to distinguish `SMT-VALID`, `KERNEL-PROVED`, `REFUTED`, and
+  `COULD-NOT-EVALUATE`.
+
+Documentation accuracy is part of each milestone's exit criteria. Planned
+`julc verify run` or container automation must not be described as available
+until an end-to-end test exercises it.
+
+### Sequencing and status
+
+The milestones are ordered dependencies:
+
+```text
+C.1 faithful blueprint
+  → C.2 Lean containers/optionals
+    → C.3 productive recursion and induction
+```
+
+C.1 and C.2 may be delivered type-by-type, starting with `Optional`, then
+lists, then maps. C.3 must remain separate because increasing Blaster fuel is
+not a substitute for recursive reasoning. Until each increment reaches its
+exit criterion, `julc verify init` continues to reject the corresponding schema
+with `COULD-NOT-EVALUATE`.
+
 ## Artifact and builtin policy
 
 Artifact selection reuses the exact-title, independent hash validation added in

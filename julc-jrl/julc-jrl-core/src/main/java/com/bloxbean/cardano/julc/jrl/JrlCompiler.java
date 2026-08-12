@@ -40,6 +40,16 @@ public class JrlCompiler {
      * @return compile result with UPLC program and any diagnostics
      */
     public JrlCompileResult compile(String jrlSource, String fileName) {
+        return compileInternal(jrlSource, fileName, false);
+    }
+
+    /** Compile JRL and capture compiler-owned contract schema metadata. */
+    public JrlCompileResult compileContract(String jrlSource, String fileName) {
+        return compileInternal(jrlSource, fileName, true);
+    }
+
+    private JrlCompileResult compileInternal(
+            String jrlSource, String fileName, boolean captureContractSchema) {
         var allDiagnostics = new ArrayList<JrlDiagnostic>();
 
         // 1. Parse
@@ -64,6 +74,12 @@ public class JrlCompiler {
         // 4. Compile Java -> UPLC via JulcCompiler
         try {
             var julcCompiler = new JulcCompiler(stdlib);
+            if (captureContractSchema) {
+                var compiled = julcCompiler.compileContract(javaSource);
+                return new JrlCompileResult(
+                        compiled.compileResult(), javaSource, contract, allDiagnostics,
+                        compiled.contractSchema());
+            }
             CompileResult compileResult = julcCompiler.compile(javaSource);
             return new JrlCompileResult(compileResult, javaSource, contract, allDiagnostics);
         } catch (CompilerException e) {

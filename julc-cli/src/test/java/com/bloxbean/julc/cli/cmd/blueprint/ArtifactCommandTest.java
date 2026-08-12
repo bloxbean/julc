@@ -71,10 +71,11 @@ class ArtifactCommandTest {
                     }
                 }
                 """;
-        var result = new JulcCompiler(StdlibRegistry.defaultRegistry()).compile(source);
+        var result = new JulcCompiler(StdlibRegistry.defaultRegistry()).compileContract(source);
         var generated = BlueprintGenerator.generate(
                 new BlueprintConfig("artifact-test", "1"),
-                List.of(new BlueprintGenerator.CompiledValidator("Gate", source, result)));
+                List.of(new BlueprintGenerator.CompiledValidator(
+                        "Gate", result.compileResult(), result.contractSchema())));
         Path blueprint = tempDir.resolve("plutus.json");
         Files.writeString(blueprint, generated.toJson());
         return blueprint;

@@ -54,13 +54,15 @@ import java.util.stream.Collectors;
         "com.bloxbean.cardano.julc.stdlib.annotation.ProposingValidator",
         "com.bloxbean.cardano.julc.stdlib.annotation.MultiValidator"
 })
-@SupportedOptions({"julc.projectName", "julc.projectVersion", "julc.sourceMap"})
+@SupportedOptions({"julc.projectName", "julc.projectVersion", "julc.sourceMap", "julc.blueprint"})
 @SupportedSourceVersion(SourceVersion.RELEASE_24)
 public class JulcAnnotationProcessor extends AbstractProcessor {
 
     private Trees trees;
     private StdlibRegistry stdlib;
     private boolean sourceMapEnabled;
+    private boolean blueprintEnabled;
+    private boolean processingFailed;
 
     /** Accumulated compiled validators for CIP-57 blueprint generation. */
     private final List<BlueprintGenerator.CompiledValidator> compiledValidators = new ArrayList<>();
@@ -81,6 +83,8 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
         this.stdlib = StdlibRegistry.defaultRegistry();
         this.sourceMapEnabled = "true".equalsIgnoreCase(
                 processingEnv.getOptions().get("julc.sourceMap"));
+        this.blueprintEnabled = !"false".equalsIgnoreCase(
+                processingEnv.getOptions().get("julc.blueprint"));
     }
 
     @Override
@@ -120,7 +124,8 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
         }
 
         // 4. Generate CIP-57 blueprint on final round
-        if (roundEnv.processingOver() && !compiledValidators.isEmpty()) {
+        if (roundEnv.processingOver() && blueprintEnabled && !processingFailed
+                && !roundEnv.errorRaised() && !compiledValidators.isEmpty()) {
             generateBlueprint();
         }
 
@@ -188,9 +193,15 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
                 options.setSourceMapEnabled(true);
             }
             var compiler = new JulcCompiler(stdlib, options);
-            var result = compiler.compile(source, librarySources);
+            var contractResult = blueprintEnabled
+                    ? compiler.compileContract(source, librarySources)
+                    : null;
+            var result = blueprintEnabled
+                    ? contractResult.compileResult()
+                    : compiler.compile(source, librarySources);
 
             if (result.hasErrors()) {
+                processingFailed = true;
                 processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
                         "Plutus compilation failed for " + className + ": " + result.diagnostics(),
                         element);
@@ -251,7 +262,10 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
             }
 
             // Accumulate for CIP-57 blueprint generation
-            compiledValidators.add(new BlueprintGenerator.CompiledValidator(className, source, result));
+            if (blueprintEnabled) {
+                compiledValidators.add(new BlueprintGenerator.CompiledValidator(
+                        className, result, contractResult.contractSchema()));
+            }
 
             String libMsg = librarySources.isEmpty() ? "" : " (with " + librarySources.size() + " library file(s))";
             processingEnv.getMessager().printMessage(Diagnostic.Kind.NOTE,
@@ -259,13 +273,16 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
                     element);
 
         } catch (CompilerException e) {
+            processingFailed = true;
             processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
                     "Plutus compilation error: " + e.getMessage(), element);
         } catch (IOException e) {
+            processingFailed = true;
             processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
                     "I/O error writing compiled script for " + className + ": " + e.getMessage(),
                     element);
         } catch (Exception e) {
+            processingFailed = true;
             processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
                     "Unexpected compilation error for " + className + ": " + e.getClass().getSimpleName() + ": " + e.getMessage(),
                     element);
@@ -309,8 +326,8 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
             processingEnv.getMessager().printMessage(Diagnostic.Kind.NOTE,
                     "Generated CIP-57 blueprint: META-INF/plutus/plutus.json ("
                             + compiledValidators.size() + " validator(s))");
-        } catch (IOException e) {
-            processingEnv.getMessager().printMessage(Diagnostic.Kind.WARNING,
+        } catch (IOException | IllegalArgumentException e) {
+            processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
                     "Could not generate CIP-57 blueprint: " + e.getMessage());
         }
     }

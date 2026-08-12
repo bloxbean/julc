@@ -44,6 +44,7 @@ public class JulcPlugin implements Plugin<Project> {
             task.getSourceDir().set(extension.getSourceDir());
             task.getOutputDir().set(extension.getOutputDir());
             task.getSourceMap().set(extension.getSourceMap());
+            task.getBlueprint().set(extension.getBlueprint());
         });
 
         // 3. Register bundleJulcSources task
@@ -71,6 +72,13 @@ public class JulcPlugin implements Plugin<Project> {
                         });
                         if (Boolean.TRUE.equals(extension.getSourceMap().getOrElse(false))) {
                             task.getOptions().getCompilerArgs().add("-Ajulc.sourceMap=true");
+                        }
+                        if (!Boolean.TRUE.equals(extension.getBlueprint().getOrElse(true))) {
+                            task.getOptions().getCompilerArgs().add("-Ajulc.blueprint=false");
+                            // Filer cannot delete a resource from an earlier invocation.
+                            // Remove the aggregate at the owning Gradle boundary before javac.
+                            task.doFirst(ignored -> p.delete(task.getDestinationDirectory()
+                                    .file("META-INF/plutus/plutus.json").get().getAsFile()));
                         }
                     });
 

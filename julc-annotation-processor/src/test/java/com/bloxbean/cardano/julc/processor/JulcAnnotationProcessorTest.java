@@ -11,7 +11,9 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -284,6 +286,64 @@ class JulcAnnotationProcessorTest {
     }
 
     @Test
+    void blueprintCanBeDisabledWithoutDisablingCompilation() throws Exception {
+        var source = """
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                import com.bloxbean.cardano.julc.core.PlutusData;
+
+                @MultiValidator
+                class MultiWithoutBlueprint {
+                    @Entrypoint
+                    static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                        return true;
+                    }
+                }
+                """;
+
+        var result = compileWithProcessorAndOptions(source, "MultiWithoutBlueprint",
+                List.of("-Ajulc.blueprint=false"));
+
+        assertTrue(result.success(), "Compilation should succeed: " + result.diagnostics());
+        assertTrue(Files.exists(tempDir.resolve(
+                "META-INF/plutus/MultiWithoutBlueprint.plutus.json")));
+        assertFalse(Files.exists(tempDir.resolve("META-INF/plutus/plutus.json")));
+    }
+
+    @Test
+    void failedProcessingNeverPublishesAPartialAggregateBlueprint() throws Exception {
+        var sources = new LinkedHashMap<String, String>();
+        sources.put("GoodValidator", """
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                import java.math.BigInteger;
+
+                @MintingValidator
+                class GoodValidator {
+                    @Entrypoint
+                    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        return true;
+                    }
+                }
+                """);
+        sources.put("BrokenValidator", """
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                import java.math.BigInteger;
+                @MintingValidator
+                class BrokenValidator {
+                    @Entrypoint
+                    static boolean validate(float redeemer, BigInteger ctx) {
+                        return true;
+                    }
+                }
+                """);
+
+        var result = compileWithProcessorSources(sources, List.of());
+
+        assertFalse(result.success());
+        assertFalse(Files.exists(tempDir.resolve("META-INF/plutus/plutus.json")),
+                "a failed annotation-processing build must not publish a partial aggregate");
+    }
+
+    @Test
     void scriptLoaderThrowsForMissingResource() {
         // JulcScriptLoader should throw for a class with no compiled script
         assertThrows(IllegalArgumentException.class,
@@ -332,6 +392,11 @@ class JulcAnnotationProcessorTest {
 
     private CompileOutput compileWithProcessorAndOptions(String source, String className,
                                                          List<String> extraOptions) throws IOException {
+        return compileWithProcessorSources(Map.of(className, source), extraOptions);
+    }
+
+    private CompileOutput compileWithProcessorSources(Map<String, String> sources,
+                                                       List<String> extraOptions) throws IOException {
         JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
         assertNotNull(javac, "System Java compiler must be available");
 
@@ -340,15 +405,16 @@ class JulcAnnotationProcessorTest {
             // Set output directory
             fileManager.setLocation(StandardLocation.CLASS_OUTPUT, List.of(tempDir.toFile()));
 
-            // Create in-memory source file
-            var sourceFile = new SimpleJavaFileObject(
-                    URI.create("string:///" + className + ".java"),
-                    JavaFileObject.Kind.SOURCE) {
-                @Override
-                public CharSequence getCharContent(boolean ignoreEncodingErrors) {
-                    return source;
-                }
-            };
+            // Create in-memory source files
+            var sourceFiles = sources.entrySet().stream().map(entry ->
+                    new SimpleJavaFileObject(
+                            URI.create("string:///" + entry.getKey() + ".java"),
+                            JavaFileObject.Kind.SOURCE) {
+                        @Override
+                        public CharSequence getCharContent(boolean ignoreEncodingErrors) {
+                            return entry.getValue();
+                        }
+                    }).toList();
 
             var options = new ArrayList<>(List.of(
                     "--enable-preview",
@@ -359,7 +425,7 @@ class JulcAnnotationProcessorTest {
             options.addAll(extraOptions);
 
             var task = javac.getTask(null, fileManager, diagnostics,
-                    options, null, List.of(sourceFile));
+                    options, null, sourceFiles);
             boolean success = task.call();
 
             return new CompileOutput(success, diagnostics.getDiagnostics());

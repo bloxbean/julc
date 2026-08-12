@@ -1,6 +1,7 @@
 package com.bloxbean.cardano.julc.gradle;
 
 import com.bloxbean.cardano.julc.blueprint.BlueprintConfig;
+import com.bloxbean.cardano.julc.blueprint.BlueprintFileWriter;
 import com.bloxbean.cardano.julc.blueprint.BlueprintGenerator;
 import com.bloxbean.cardano.julc.clientlib.JulcScriptAdapter;
 import com.bloxbean.cardano.julc.compiler.CompilerOptions;
@@ -20,7 +21,9 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Gradle task that compiles Plutus validator Java source files to UPLC scripts.
@@ -35,7 +38,7 @@ import java.util.List;
 public abstract class CompileJulcTask extends DefaultTask {
 
     @InputDirectory
-    @SkipWhenEmpty
+    @Optional
     @PathSensitive(PathSensitivity.RELATIVE)
     public abstract DirectoryProperty getSourceDir();
 
@@ -46,15 +49,21 @@ public abstract class CompileJulcTask extends DefaultTask {
     @Optional
     public abstract Property<Boolean> getSourceMap();
 
+    @Input
+    @Optional
+    public abstract Property<Boolean> getBlueprint();
+
     @TaskAction
     public void compile() throws IOException {
         File srcDir = getSourceDir().get().getAsFile();
         File outDir = getOutputDir().get().getAsFile();
         outDir.mkdirs();
+        boolean blueprintEnabled = Boolean.TRUE.equals(getBlueprint().getOrElse(true));
+        boolean sourceMapEnabled = Boolean.TRUE.equals(getSourceMap().getOrElse(false));
 
         var stdlib = StdlibRegistry.defaultRegistry();
         var options = new CompilerOptions();
-        if (Boolean.TRUE.equals(getSourceMap().getOrElse(false))) {
+        if (sourceMapEnabled) {
             options.setSourceMapEnabled(true);
         }
         var compiler = new JulcCompiler(stdlib, options);
@@ -96,12 +105,18 @@ public abstract class CompileJulcTask extends DefaultTask {
 
         int compiled = 0;
         var compiledList = new ArrayList<BlueprintGenerator.CompiledValidator>();
+        var pendingOutputs = new ArrayList<PendingOutput>();
 
         for (ValidatorFile validatorFile : validatorFiles) {
             String validatorSource = Files.readString(validatorFile.file().toPath());
 
             // Compile with multi-file support
-            var result = compiler.compile(validatorSource, librarySources);
+            var contractResult = blueprintEnabled
+                    ? compiler.compileContract(validatorSource, librarySources)
+                    : null;
+            var result = blueprintEnabled
+                    ? contractResult.compileResult()
+                    : compiler.compile(validatorSource, librarySources);
             if (result.hasErrors()) {
                 throw new GradleException("Compilation failed for " + validatorFile.file().getName()
                         + ": " + result.diagnostics());
@@ -120,34 +135,55 @@ public abstract class CompileJulcTask extends DefaultTask {
                     ScriptPurposeMetadata.jsonPurpose(validatorFile.scriptPurpose()), validatorName,
                     script.getCborHex(), scriptHash, sizeBytes);
 
-            File outputFile = new File(outDir, validatorName + ".json");
-            Files.writeString(outputFile.toPath(), output.toJson());
-            getLogger().lifecycle("Compiled {} → {} (hash: {}, size: {})",
-                    validatorFile.file().getName(), outputFile.getName(), scriptHash, sizeStr);
-
-            // Write source map if enabled and available
-            if (Boolean.TRUE.equals(getSourceMap().getOrElse(false)) && result.hasSourceMap()) {
+            String sourceMapJson = null;
+            if (sourceMapEnabled && result.hasSourceMap()) {
                 var indexed = result.sourceMap().toIndexed(program.term());
-                String sourceMapJson = SourceMapSerializer.toJson(indexed, validatorName);
-                File smFile = new File(outDir, validatorName + ".sourcemap.json");
-                Files.writeString(smFile.toPath(), sourceMapJson);
-                getLogger().lifecycle("Generated source map: {} ({} entries)",
-                        smFile.getName(), indexed.size());
+                sourceMapJson = SourceMapSerializer.toJson(indexed, validatorName);
             }
+            pendingOutputs.add(new PendingOutput(
+                    validatorName, validatorFile.file().getName(), output.toJson(),
+                    sourceMapJson, scriptHash, sizeStr));
 
-            compiledList.add(new BlueprintGenerator.CompiledValidator(
-                    validatorName, validatorSource, result));
+            if (blueprintEnabled) {
+                compiledList.add(new BlueprintGenerator.CompiledValidator(
+                        validatorName, result, contractResult.contractSchema()));
+            }
             compiled++;
         }
 
-        // Generate CIP-57 blueprint
-        if (!compiledList.isEmpty()) {
+        // Validate the aggregate before publishing any per-validator output.
+        String blueprintJson = null;
+        if (blueprintEnabled && !compiledList.isEmpty()) {
             var config = new BlueprintConfig(
                     getProject().getName(), getProject().getVersion().toString());
             var blueprint = BlueprintGenerator.generate(config, compiledList);
-            Files.writeString(new File(outDir, "plutus.json").toPath(), blueprint.toJson());
+            blueprintJson = blueprint.toJson();
+        }
+
+        // All compilation and schema validation succeeded. Publish this build and
+        // remove validator outputs that no longer belong to the source set.
+        for (PendingOutput pending : pendingOutputs) {
+            BlueprintFileWriter.writeAtomically(
+                    outDir.toPath().resolve(pending.validatorName() + ".json"),
+                    pending.outputJson());
+            if (pending.sourceMapJson() != null) {
+                BlueprintFileWriter.writeAtomically(
+                        outDir.toPath().resolve(pending.validatorName() + ".sourcemap.json"),
+                        pending.sourceMapJson());
+            }
+            getLogger().lifecycle("Compiled {} → {}.json (hash: {}, size: {})",
+                    pending.sourceFileName(), pending.validatorName(),
+                    pending.scriptHash(), pending.size());
+        }
+        cleanupStaleOutputs(outDir, pendingOutputs);
+
+        if (blueprintEnabled && blueprintJson != null) {
+            BlueprintFileWriter.writeAtomically(
+                    outDir.toPath().resolve("plutus.json"), blueprintJson);
             getLogger().lifecycle("Generated CIP-57 blueprint: plutus.json ({} validator(s))",
                     compiledList.size());
+        } else if (!blueprintEnabled || compiled == 0) {
+            Files.deleteIfExists(outDir.toPath().resolve("plutus.json"));
         }
 
         if (compiled == 0) {
@@ -178,6 +214,39 @@ public abstract class CompileJulcTask extends DefaultTask {
     }
 
     private record ValidatorFile(File file, JulcCompiler.ScriptPurpose scriptPurpose) {}
+
+    private record PendingOutput(
+            String validatorName,
+            String sourceFileName,
+            String outputJson,
+            String sourceMapJson,
+            String scriptHash,
+            String size) {}
+
+    private void cleanupStaleOutputs(File outDir, List<PendingOutput> pendingOutputs)
+            throws IOException {
+        Set<String> validatorNames = new HashSet<>();
+        Set<String> sourceMapNames = new HashSet<>();
+        for (PendingOutput pending : pendingOutputs) {
+            validatorNames.add(pending.validatorName());
+            if (pending.sourceMapJson() != null) {
+                sourceMapNames.add(pending.validatorName());
+            }
+        }
+        try (var files = Files.list(outDir.toPath())) {
+            for (var file : files.toList()) {
+                String name = file.getFileName().toString();
+                if (name.equals("plutus.json")) continue;
+                if (name.endsWith(".sourcemap.json")) {
+                    String base = name.substring(0, name.length() - ".sourcemap.json".length());
+                    if (!sourceMapNames.contains(base)) Files.deleteIfExists(file);
+                } else if (name.endsWith(".json")) {
+                    String base = name.substring(0, name.length() - ".json".length());
+                    if (!validatorNames.contains(base)) Files.deleteIfExists(file);
+                }
+            }
+        }
+    }
 
     private static JavaSourceIntrospector.SourceInfo inspect(File javaFile, String source) {
         try {

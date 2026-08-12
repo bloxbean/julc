@@ -821,7 +821,9 @@ public final class VerificationProjectGenerator {
         if (!ref.startsWith(prefix) || ref.length() == prefix.length()) {
             throw new UnsupportedVerificationException("Unsupported schema reference '" + ref + "'");
         }
-        return ref.substring(prefix.length());
+        return ref.substring(prefix.length())
+                .replace("~1", "/")
+                .replace("~0", "~");
     }
 
     private static String leanTypeName(String raw) {

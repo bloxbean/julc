@@ -1,237 +1,290 @@
 package com.bloxbean.cardano.julc.blueprint;
 
-import com.bloxbean.cardano.julc.compiler.JavaSourceIntrospector;
-import com.github.javaparser.JavaParser;
-import com.github.javaparser.ParserConfiguration;
-import com.github.javaparser.ast.CompilationUnit;
-import com.github.javaparser.ast.body.*;
+import com.bloxbean.cardano.julc.compiler.pir.PirType;
+import com.bloxbean.cardano.julc.compiler.schema.ContractSchema;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
-/**
- * Extracts CIP-57 type schemas from validator Java source.
- * Parses entrypoint parameters, sealed interfaces, and records to build
- * the "datum", "redeemer", "parameters", and "definitions" sections.
- */
+/** Converts compiler-owned contract metadata to CIP-57 schemas. */
 public final class SchemaGenerator {
 
     private SchemaGenerator() {}
 
-    /** Schema reference or inline schema. */
-    public record Schema(String title, String ref, String dataType, String description,
-                         Integer index, List<FieldSchema> fields, List<Schema> anyOf) {
+    /** A composable CIP-57 Plutus Data schema. */
+    public record Schema(
+            String title,
+            String ref,
+            String dataType,
+            String description,
+            Integer index,
+            List<Schema> fields,
+            List<Schema> anyOf,
+            Schema items,
+            Schema keys,
+            Schema values) {
+
+        public Schema {
+            fields = fields == null ? null : List.copyOf(fields);
+            anyOf = anyOf == null ? null : List.copyOf(anyOf);
+        }
 
         static Schema ref(String title, String ref) {
-            return new Schema(title, ref, null, null, null, null, null);
+            return new Schema(title, ref, null, null, null,
+                    null, null, null, null, null);
         }
+
         static Schema primitive(String dataType) {
-            return new Schema(null, null, dataType, null, null, null, null);
+            return new Schema(null, null, dataType, null, null,
+                    null, null, null, null, null);
         }
+
         static Schema data() {
-            return new Schema("Data", null, null, "Any Plutus data.", null, null, null);
+            return new Schema(null, null, null, "Any Plutus data.", null,
+                    null, null, null, null, null);
         }
-        static Schema constructor(String title, int index, List<FieldSchema> fields) {
-            return new Schema(title, "constructor", null, null, index, fields, null);
+
+        static Schema constructor(String title, int index, List<Schema> fields) {
+            return new Schema(title, null, "constructor", null, index,
+                    fields, null, null, null, null);
         }
+
         static Schema sum(String title, List<Schema> variants) {
-            return new Schema(title, null, null, null, null, null, variants);
+            return new Schema(title, null, null, null, null,
+                    null, variants, null, null, null);
+        }
+
+        static Schema list(Schema items) {
+            return new Schema(null, null, "list", null, null,
+                    null, null, items, null, null);
+        }
+
+        static Schema map(Schema keys, Schema values) {
+            return new Schema(null, null, "map", null, null,
+                    null, null, null, keys, values);
+        }
+
+        Schema titled(String newTitle) {
+            return new Schema(newTitle, ref, dataType, description, index,
+                    fields, anyOf, items, keys, values);
         }
     }
 
-    public record FieldSchema(String title, String ref, String dataType) {}
-
-    /** Result of schema extraction for a single validator. */
+    /** CIP-57 roots and definitions for one compiled validator. */
     public record ValidatorSchema(
-            Schema datum,         // null if no datum param (minting, etc.)
+            Schema datum,
             Schema redeemer,
-            List<Schema> parameters,  // @Param fields
-            Map<String, Schema> definitions
-    ) {}
+            List<Schema> parameters,
+            Map<String, Schema> definitions) {
+        public ValidatorSchema {
+            parameters = List.copyOf(parameters);
+            definitions = Collections.unmodifiableMap(new LinkedHashMap<>(definitions));
+        }
+    }
 
-    /**
-     * Extract schema from a validator source file.
-     */
-    public static ValidatorSchema extract(String validatorSource) {
-        CompilationUnit cu = parse(validatorSource);
+    public static ValidatorSchema from(ContractSchema contractSchema) {
+        return from(contractSchema, null);
+    }
 
-        cu.findAll(ClassOrInterfaceDeclaration.class).stream()
-                .filter(c -> !c.isInterface())
-                .flatMap(c -> JavaSourceIntrospector.roleConflictOn(c).stream())
-                .findFirst()
-                .ifPresent(conflict -> {
-                    throw new IllegalArgumentException(conflict.message());
-                });
+    /** Convert a contract schema using a validator-specific definition namespace. */
+    public static ValidatorSchema from(ContractSchema contractSchema, String namespace) {
+        Objects.requireNonNull(contractSchema, "contractSchema");
+        var converter = new Converter(namespace);
+        Schema datum = contractSchema.datum() == null
+                ? null
+                : converter.root(contractSchema.datum());
+        Schema redeemer = converter.root(contractSchema.redeemer());
+        var parameters = contractSchema.parameters().stream()
+                .map(converter::root)
+                .toList();
+        return new ValidatorSchema(datum, redeemer, parameters, converter.definitions);
+    }
 
-        cu.findAll(ClassOrInterfaceDeclaration.class).stream()
-                .filter(c -> !c.isInterface())
-                .filter(JavaSourceIntrospector::hasLegacyValidatorAnnotation)
-                .findFirst()
-                .ifPresent(c -> {
-                    var legacy = JavaSourceIntrospector.legacyValidatorAnnotationsOn(c).get(0);
-                    throw new IllegalArgumentException(
-                            JavaSourceIntrospector.legacyAnnotationMigrationMessage(legacy, c.getNameAsString()));
-                });
+    private static final class Converter {
+        private final String namespace;
+        private final Map<String, Schema> definitions = new LinkedHashMap<>();
+        private final Map<String, PirType> definitionTypes = new LinkedHashMap<>();
+        private final List<String> inProgress = new ArrayList<>();
 
-        var validatorClass = cu.findAll(ClassOrInterfaceDeclaration.class).stream()
-                .filter(c -> !c.isInterface())
-                .filter(JavaSourceIntrospector::hasSupportedValidatorAnnotation)
-                .findFirst()
-                .orElse(null);
-        if (validatorClass == null) return null;
-
-        // Find entrypoint method
-        var entrypoint = validatorClass.getMethods().stream()
-                .filter(m -> m.getAnnotationByName("Entrypoint").isPresent())
-                .findFirst()
-                .orElse(null);
-        if (entrypoint == null) return null;
-
-        var definitions = new LinkedHashMap<String, Schema>();
-        var params = entrypoint.getParameters();
-        int paramCount = params.size();
-
-        // Last param is always ScriptContext — skip it
-        // For spending: (datum, redeemer, ctx) or (redeemer, ctx) when datum is Optional
-        // For minting/others: (redeemer, ctx)
-
-        Schema datum = null;
-        Schema redeemer = null;
-
-        if (paramCount == 3) {
-            // Spending with datum: (datum, redeemer, ctx)
-            var datumParam = params.get(0);
-            var redeemerParam = params.get(1);
-            datum = buildParamSchema(datumParam, validatorClass, definitions);
-            redeemer = buildParamSchema(redeemerParam, validatorClass, definitions);
-        } else if (paramCount == 2) {
-            // Minting or spending without explicit datum: (redeemer, ctx)
-            var redeemerParam = params.get(0);
-            redeemer = buildParamSchema(redeemerParam, validatorClass, definitions);
+        private Converter(String namespace) {
+            this.namespace = namespace == null || namespace.isBlank() ? null : namespace;
         }
 
-        // Extract @Param fields
-        var parameterSchemas = new ArrayList<Schema>();
-        for (var field : validatorClass.getFields()) {
-            if (field.getAnnotationByName("Param").isPresent()) {
-                for (var varDecl : field.getVariables()) {
-                    String fieldName = varDecl.getNameAsString();
-                    String typeStr = field.getElementType().asString();
-                    String defKey = mapTypeToDefinitionKey(typeStr);
-                    ensureDefinition(defKey, typeStr, validatorClass, definitions);
-                    parameterSchemas.add(Schema.ref(fieldName, "#/definitions/" + defKey));
-                }
+        private Schema root(ContractSchema.Argument argument) {
+            try {
+                String key = definitionKey(argument.type());
+                ensureDefinition(key, argument.type());
+                return Schema.ref(argument.name(), "#/definitions/" + jsonPointer(key));
+            } catch (SchemaGenerationException e) {
+                String location = argument.sourceLocation() == null
+                        ? ""
+                        : " " + argument.sourceLocation();
+                throw new SchemaGenerationException(
+                        "Cannot generate schema for contract argument '" + argument.name()
+                                + "': " + e.getMessage() + location, e);
             }
         }
 
-        return new ValidatorSchema(datum, redeemer, parameterSchemas, definitions);
-    }
+        private void ensureDefinition(String key, PirType type) {
+            PirType canonicalType = canonicalType(type);
+            var existingType = definitionTypes.get(key);
+            if (existingType != null) {
+                if (!existingType.equals(canonicalType)) {
+                    throw new SchemaGenerationException(
+                            "Schema definition name collision for '" + key + "'");
+                }
+                return;
+            }
+            if (inProgress.contains(key)) {
+                return;
+            }
+            definitionTypes.put(key, canonicalType);
+            inProgress.add(key);
+            Schema schema = schemaForDefinition(type);
+            inProgress.removeLast();
+            definitions.put(key, schema.titled(namedTitle(type, key)));
+        }
 
-    private static CompilationUnit parse(String source) {
-        var configuration = new ParserConfiguration()
-                .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
-        var result = new JavaParser(configuration).parse(source);
-        if (!result.isSuccessful() || result.getResult().isEmpty()) {
-            var problems = result.getProblems().stream()
-                    .map(problem -> problem.getMessage())
+        private Schema schemaFor(PirType type, String title) {
+            Schema schema = switch (type) {
+                case PirType.IntegerType _ -> Schema.primitive("integer");
+                case PirType.ByteStringType _ -> Schema.primitive("bytes");
+                case PirType.StringType _ -> Schema.primitive("bytes");
+                case PirType.DataType _ -> Schema.data();
+                case PirType.BoolType _ -> Schema.sum("Bool", List.of(
+                        Schema.constructor("False", 0, List.of()),
+                        Schema.constructor("True", 1, List.of())));
+                case PirType.ListType list -> Schema.list(schemaFor(list.elemType(), null));
+                case PirType.MapType map -> Schema.map(
+                        schemaFor(map.keyType(), null), schemaFor(map.valueType(), null));
+                case PirType.OptionalType optional -> Schema.sum("Optional", List.of(
+                        Schema.constructor("Some", 0,
+                                List.of(schemaFor(optional.elemType(), "value"))),
+                        Schema.constructor("None", 1, List.of())));
+                case PirType.RecordType record -> namedReference(record);
+                case PirType.SumType sum -> namedReference(sum);
+                case PirType.UnitType _ -> Schema.constructor("Unit", 0, List.of());
+                case PirType.PairType _, PirType.ArrayType _, PirType.FunType _ ->
+                        throw new SchemaGenerationException(
+                                "Unsupported compiler boundary type " + type.getClass().getSimpleName());
+            };
+            return title == null ? schema : schema.titled(title);
+        }
+
+        private Schema namedReference(PirType type) {
+            String key = definitionKey(type);
+            ensureDefinition(key, type);
+            return Schema.ref(null, "#/definitions/" + jsonPointer(key));
+        }
+
+        private Schema namedDefinition(PirType.RecordType record) {
+            var fields = record.fields().stream()
+                    .map(field -> schemaFor(field.type(), field.name()))
                     .toList();
-            throw new IllegalArgumentException("Could not parse validator source: " + problems);
+            return Schema.sum(record.name(), List.of(
+                    Schema.constructor(record.name(), 0, fields)));
         }
-        return result.getResult().get();
+
+        private Schema namedDefinition(PirType.SumType sum) {
+            var constructors = sum.constructors().stream()
+                    .map(constructor -> Schema.constructor(
+                            constructor.name(),
+                            constructor.tag(),
+                            constructor.fields().stream()
+                                    .map(field -> schemaFor(field.type(), field.name()))
+                                    .toList()))
+                    .toList();
+            return Schema.sum(sum.name(), constructors);
+        }
+
+        private String definitionKey(PirType type) {
+            return switch (type) {
+                case PirType.IntegerType _ -> "@julc:Int";
+                case PirType.ByteStringType _, PirType.StringType _ -> "@julc:ByteArray";
+                case PirType.DataType _ -> "@julc:Data";
+                case PirType.BoolType _ -> "@julc:Bool";
+                case PirType.ListType list -> "@julc:List_" + definitionKey(list.elemType());
+                case PirType.MapType map -> "@julc:Map_" + definitionKey(map.keyType())
+                        + "_" + definitionKey(map.valueType());
+                case PirType.OptionalType optional -> "@julc:Optional_"
+                        + definitionKey(optional.elemType());
+                case PirType.RecordType record -> namedKey(record.name());
+                case PirType.SumType sum -> namedKey(sum.name());
+                case PirType.UnitType _ -> "@julc:Unit";
+                case PirType.PairType _, PirType.ArrayType _, PirType.FunType _ ->
+                        throw new SchemaGenerationException(
+                                "Unsupported compiler boundary type " + type.getClass().getSimpleName());
+            };
+        }
+
+        private String namedKey(String name) {
+            return namespace == null ? name : namespace + ":" + name;
+        }
+
+        private PirType canonicalType(PirType type) {
+            return switch (type) {
+                case PirType.StringType _ -> new PirType.ByteStringType();
+                case PirType.ListType list -> new PirType.ListType(canonicalType(list.elemType()));
+                case PirType.MapType map -> new PirType.MapType(
+                        canonicalType(map.keyType()), canonicalType(map.valueType()));
+                case PirType.OptionalType optional ->
+                        new PirType.OptionalType(canonicalType(optional.elemType()));
+                case PirType.ArrayType array -> new PirType.ArrayType(canonicalType(array.elemType()));
+                case PirType.PairType pair -> new PirType.PairType(
+                        canonicalType(pair.first()), canonicalType(pair.second()));
+                case PirType.FunType fun -> new PirType.FunType(
+                        canonicalType(fun.paramType()), canonicalType(fun.returnType()));
+                case PirType.RecordType record -> new PirType.RecordType(
+                        record.name(), record.fields().stream()
+                                .map(field -> new PirType.Field(
+                                        field.name(), canonicalType(field.type())))
+                                .toList());
+                case PirType.SumType sum -> new PirType.SumType(
+                        sum.name(), sum.constructors().stream()
+                                .map(constructor -> new PirType.Constructor(
+                                        constructor.name(), constructor.tag(),
+                                        constructor.fields().stream()
+                                                .map(field -> new PirType.Field(
+                                                        field.name(), canonicalType(field.type())))
+                                                .toList()))
+                                .toList());
+                default -> type;
+            };
+        }
+
+        private String namedTitle(PirType type, String fallback) {
+            return switch (type) {
+                case PirType.RecordType record -> record.name();
+                case PirType.SumType sum -> sum.name();
+                default -> fallback;
+            };
+        }
+
+        private Schema schemaForDefinition(PirType type) {
+            return switch (type) {
+                case PirType.RecordType record -> namedDefinition(record);
+                case PirType.SumType sum -> namedDefinition(sum);
+                default -> schemaFor(type, null);
+            };
+        }
+
+        private static String jsonPointer(String key) {
+            return key.replace("~", "~0").replace("/", "~1");
+        }
     }
 
-    private static Schema buildParamSchema(Parameter param, ClassOrInterfaceDeclaration validatorClass,
-                                           Map<String, Schema> definitions) {
-        String paramName = param.getNameAsString();
-        String typeStr = param.getTypeAsString();
-
-        // Handle Optional<T> — extract inner type
-        if (typeStr.startsWith("Optional<")) {
-            typeStr = typeStr.substring("Optional<".length(), typeStr.length() - 1);
+    /** Raised when a resolved compiler type cannot be represented truthfully. */
+    public static class SchemaGenerationException extends IllegalArgumentException {
+        public SchemaGenerationException(String message) {
+            super(message);
         }
 
-        // Primitive/builtin types
-        String defKey = mapTypeToDefinitionKey(typeStr);
-        ensureDefinition(defKey, typeStr, validatorClass, definitions);
-        return Schema.ref(paramName, "#/definitions/" + defKey);
-    }
-
-    private static String mapTypeToDefinitionKey(String javaType) {
-        return switch (javaType) {
-            case "PlutusData" -> "Data";
-            case "BigInteger", "int", "long" -> "Int";
-            case "byte[]" -> "ByteArray";
-            case "String" -> "ByteArray";
-            case "boolean" -> "Bool";
-            default -> javaType; // User-defined type: use simple name
-        };
-    }
-
-    private static void ensureDefinition(String key, String javaType,
-                                         ClassOrInterfaceDeclaration validatorClass,
-                                         Map<String, Schema> definitions) {
-        if (definitions.containsKey(key)) return;
-
-        // Primitives
-        switch (key) {
-            case "Data" -> { definitions.put(key, Schema.data()); return; }
-            case "Int" -> { definitions.put(key, Schema.primitive("integer")); return; }
-            case "ByteArray" -> { definitions.put(key, Schema.primitive("bytes")); return; }
-            case "Bool" -> { definitions.put(key, Schema.primitive("boolean")); return; }
+        public SchemaGenerationException(String message, Throwable cause) {
+            super(message, cause);
         }
-
-        // Look for sealed interface (sum type) inside validator class
-        var sealedInterface = validatorClass.findAll(ClassOrInterfaceDeclaration.class).stream()
-                .filter(c -> c.isInterface() && c.getNameAsString().equals(javaType))
-                .findFirst()
-                .orElse(null);
-
-        if (sealedInterface != null) {
-            // Find all records that implement this interface
-            var variants = new ArrayList<Schema>();
-            int index = 0;
-            for (var member : validatorClass.getMembers()) {
-                if (member instanceof RecordDeclaration rd) {
-                    boolean implements_ = rd.getImplementedTypes().stream()
-                            .anyMatch(t -> t.getNameAsString().equals(javaType));
-                    if (implements_) {
-                        var fields = new ArrayList<FieldSchema>();
-                        for (var p : rd.getParameters()) {
-                            String fieldName = p.getNameAsString();
-                            String fieldType = p.getTypeAsString();
-                            String fieldDefKey = mapTypeToDefinitionKey(fieldType);
-                            ensureDefinition(fieldDefKey, fieldType, validatorClass, definitions);
-                            fields.add(new FieldSchema(fieldName, "#/definitions/" + fieldDefKey, null));
-                        }
-                        variants.add(Schema.constructor(rd.getNameAsString(), index, fields));
-                        index++;
-                    }
-                }
-            }
-            definitions.put(key, Schema.sum(javaType, variants));
-            return;
-        }
-
-        // Look for a record (single-constructor type) inside validator class
-        var record = validatorClass.findAll(RecordDeclaration.class).stream()
-                .filter(rd -> rd.getNameAsString().equals(javaType))
-                .findFirst()
-                .orElse(null);
-
-        if (record != null) {
-            var fields = new ArrayList<FieldSchema>();
-            for (var p : record.getParameters()) {
-                String fieldName = p.getNameAsString();
-                String fieldType = p.getTypeAsString();
-                String fieldDefKey = mapTypeToDefinitionKey(fieldType);
-                ensureDefinition(fieldDefKey, fieldType, validatorClass, definitions);
-                fields.add(new FieldSchema(fieldName, "#/definitions/" + fieldDefKey, null));
-            }
-            var variant = Schema.constructor(javaType, 0, fields);
-            definitions.put(key, Schema.sum(javaType, List.of(variant)));
-            return;
-        }
-
-        // Unknown type — treat as opaque Data
-        definitions.put(key, Schema.data());
     }
 }
