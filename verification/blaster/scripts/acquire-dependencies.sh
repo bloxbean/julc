@@ -11,9 +11,13 @@ cd "${REPO_DIR}"
 ./gradlew :julc-cli:shadowJar -PskipSigning=true
 
 cd "${VERIFY_DIR}"
-# The offline phase compiles artifact modules directly for freshness. Build
-# their external import root explicitly; CheckedExecution alone does not force
-# Lake to materialize PlutusCore/UPLC.olean on a fresh runner.
-lake build PlutusCore.UPLC JulcVerification.CheckedExecution
+# The offline phase compiles artifact modules directly for freshness. Build all
+# three pinned dependency libraries first so a fresh runner has every imported
+# olean without relying on a previous Lake cache.
+lake build \
+  @PlutusCore/PlutusCore \
+  @CardanoLedgerApi/CardanoLedgerApi \
+  @Blaster/Blaster \
+  JulcVerification.CheckedExecution
 
 echo "Pinned Gradle, Lean, Lake, and Z3 dependencies are ready for offline evidence."
