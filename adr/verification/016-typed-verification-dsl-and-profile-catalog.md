@@ -478,6 +478,15 @@ No public DSL is required for E.1.
 
 ### E.2: Minimal typed AST prototype
 
+**Implementation status:** complete as an experimental API on the E.2 feature
+branch. It includes a sealed generic AST, deterministic contract metamodel
+generation, strict canonical JSON, a bounded separate-JVM worker, authoritative
+post-worker validation against `ContractSchema`, and a deterministic Lean
+renderer. The equivalence fixture compiles and executes generated DSL Java and
+checks that its signer property is canonical-IR-identical and Lean-identical
+to `@RequiresSigner` lowering. The worker remains trusted-source only; process
+separation is not claimed as an OS security sandbox.
+
 1. Define sealed generic expression types and a minimal versioned IR for
    Boolean composition, integer comparison, signatories, outputs, values, and
    bounded list quantification.
