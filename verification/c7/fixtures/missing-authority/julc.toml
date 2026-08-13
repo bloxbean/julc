@@ -1,0 +1,4 @@
+[project]
+name = "julc-verification-c7-missing-authority"
+version = "0.1.0"
+compiler = "local"

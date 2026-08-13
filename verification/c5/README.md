@@ -22,5 +22,6 @@ changed property or theorem before invoking Lean.
 `SMT-VALID` is bounded by the CEK `fuel` recorded in the certificate. Execution
 paths that exhaust that fuel are not covered by the established property.
 
-The Docker backend remains an optional post-C.5 validation item. These controls
-use `--backend local` and do not require Docker.
+These controls use `--backend local` and do not require Docker. The optional
+Docker backend has also completed a full C.5 proof run with the pinned image,
+workspace-only mount, and `--network none` proof phase.

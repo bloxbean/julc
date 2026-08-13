@@ -1,6 +1,6 @@
 # ADR-010: Milestone C.4 — Managed Verification Runner
 
-- **Status:** Implemented; Docker runtime validation deferred by review decision
+- **Status:** Implemented; Docker runtime validation complete
 - **Date:** 2026-08-12
 - **Feature branch:** `feat/verification-c4-managed-runner`
 - **Related:**
@@ -267,11 +267,18 @@ plan rather than arbitrary custom scripts.
 The managed local backend has passed the generated C.3 workspace from a copied
 workspace with no `.lake` or `.julc` cache, the complete C.2 and C.3 evidence
 drivers, and the Milestone A/B suite starting without its generated run
-manifest. The Docker command/isolation behavior is unit-tested. A full Docker
-image build was attempted and failed closed because the local Docker VM had 0
-bytes free; the full Docker execution gate remains pending after Docker storage
-is freed. No signature verification was disabled to bypass that environment
-failure.
+manifest. The Docker command/isolation behavior is unit-tested. The follow-up
+gate built the digest-pinned multi-architecture image on arm64,
+checksum-verified Lean 4.24.0 and Z3 4.15.2, acquired all three exact dependency
+commits, and produced an `SMT-VALID` C.5 certificate through the Docker backend.
+The certificate records immutable image ID
+`sha256:e4fd68fd9a03e1d91bd7af14dc2cdb149a7f3e98600e5934447aef005b7df4da`
+and `dependencyDownloadsDisabledDuringVerification: true`; offline commands
+use `docker run --network none`. Host Lean and Z3 paths are not mounted.
+
+Large release downloads are split into cacheable Lean and Z3 layers. Both use
+resumable bounded retries and exact SHA-256 checks, preserving fail-closed
+behavior during transient release-asset disconnects.
 
 Regeneration with `--force` may replace the generator-owned runner plan but
 must continue preserving `SecurityProperty.lean` and unknown user files.
@@ -324,13 +331,11 @@ the implementation has passed manual review before commit.
 ## Review disposition
 
 The local backend, clean-cache generated workspace, C.2/C.3 evidence, managed
-Milestone A/B suite, structured failure paths, and affected Java regression
-suites passed. The Docker backend implementation and isolation command are
-unit-tested. Its full image/runtime exercise is deliberately carried as a
-post-C.5 follow-up because the available Docker VM had no free space; the
-failed attempt remained fail-closed and no image/signature checks were
-disabled. This deferred operational gate does not affect C.5's module boundary
-or Java property-IR implementation.
+Milestone A/B suite, structured failure paths, affected Java regression suites,
+and the full Docker image/runtime exercise passed. Docker used only the
+workspace mount, recorded the immutable built image ID, and ran both proof
+steps with container networking disabled. No image, checksum, revision, or
+admission check was disabled.
 
 ## Non-goals
 

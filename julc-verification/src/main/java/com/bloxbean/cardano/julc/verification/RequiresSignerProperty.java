@@ -17,7 +17,7 @@ public record RequiresSignerProperty(
         SourceReference source,
         List<String> domainAssumptions,
         List<String> guaranteeRules,
-        boolean ledgerValidityModeled) {
+        boolean ledgerValidityModeled) implements VerificationProperty {
 
     public static final int SCHEMA_VERSION = 1;
     public static final String TEMPLATE = "julc.requires-signer/v1";

@@ -6,7 +6,7 @@ automation.
 
 ## What is available today
 
-There are five ways to explore the current integration. `julc verify run`
+There are seven ways to explore the current integration. `julc verify run`
 provides the managed execution path for both a generated workspace and the
 committed evidence suite:
 
@@ -31,6 +31,12 @@ committed evidence suite:
    resolves the annotation through compiler-owned types, generates the Lean
    theorem and non-vacuity control, runs Blaster, and writes a certificate.
    `verification/c5` contains authorized, vulnerable, and vacuous controls.
+6. `verification/c6` is the C.6 stateful-spending profile. It composes signer
+   authorization, strict state increase, one continuing output, successor
+   datum commitment, authority retention, and structural value preservation.
+7. `verification/c7` is the C.7 controlled-mint profile. It proves fixed
+   authority, current-policy linkage, exact token/quantity/action, and no extra
+   raw assets under the current policy for both mint and burn fixtures.
 
 The integration does not prove that every JuLC program is safe. It checks
 explicit properties for one exact compiled artifact. Solver-valid Blaster
@@ -39,10 +45,10 @@ on Blaster are `KERNEL-PROVED`.
 
 ## Prerequisites
 
-The C.5 acceptance path is the pinned local backend described below. A Docker
-backend is implemented as an optional C.4 path, but its full runtime validation
-is deliberately deferred until after C.5. Do not use Docker as release evidence
-until that follow-up gate is complete.
+The native local path and optional Docker path use the same authenticated
+runner plan and result classification. The Docker backend installs the pinned
+Lean/Z3 toolchain in its image and runs proof steps with container networking
+disabled.
 
 For a native local run, install:
 
@@ -104,8 +110,9 @@ The manifest binds the exact artifact, typed property IR, runner scripts, and
 generated Lean source hash; post-generation edits fail closed.
 
 C.5 supports exactly one direct datum field that resolves to `byte[]` or a
-compiler key-hash type. Redeemer/parameter paths, nested paths, optionals,
-multiple authorities, and minting properties fail closed for now.
+compiler key-hash type. Nested paths, optionals, and multiple authorities fail
+closed for this template. Stateful spending and fixed controlled minting use
+their separately versioned C.6 and C.7 profiles below.
 
 The guarantee is strict: if the exact artifact succeeds, the context must have
 an attached datum that strictly matches the CIP-57 constructor and arity, and
@@ -129,6 +136,51 @@ artifact under the recorded bounds and trust model. Ledger validity is not
 modeled, and the certificate does not claim that the entire contract is safe.
 In particular, it covers only executions that complete within the certificate's
 pinned CEK `fuel` bound. Paths that exhaust that bound are outside the claim.
+
+## Verify a complete state transition without writing Lean
+
+Use the three-annotation profile shown in
+[`verification/c6/README.md`](c6/README.md), then run:
+
+```bash
+julc verify --validator StateMachine --backend local --fuel 3000
+```
+
+The datum must directly contain byte-string authority and integer current-state
+selections; the redeemer must directly contain the integer next-state
+selection. The v1 profile fixes `GREATER_THAN` and
+`SINGLE_CONTINUING_OUTPUT`. It proves strict decoding, complete-list signing,
+one same-full-address successor, structural input/output value equality,
+authority retention, successor/redeemer commitment, and strict increase.
+
+Run all positive, refuted, and vacuous C.6 controls with:
+
+```bash
+verification/c6/scripts/verify.sh
+```
+
+## Verify a controlled mint or burn without writing Lean
+
+Declare fixed property literals rather than choosing authority from an
+untrusted redeemer:
+
+```java
+@ControlledMint(
+    authority="4a554c435f5645524946595f415554484f524954595f303030303031",
+    tokenName="4a554c43", quantity=1, action=MintAction.MINT)
+@MintingValidator
+class ControlledTokenPolicy { /* ... */ }
+```
+
+Then run `julc verify --validator ControlledTokenPolicy --fuel 5000`. The v1
+profile requires exactly one raw entry for the `MintingScript` policy and one
+configured token beneath it; entries for other policies remain permitted.
+Use `MintAction.BURN` with the same positive magnitude to generate a negative
+expected quantity. See [`verification/c7/README.md`](c7/README.md) and run:
+
+```bash
+verification/c7/scripts/verify.sh
+```
 
 ## Generate a workspace for a validator
 
@@ -216,8 +268,8 @@ changes.
 
 Untemplated properties still require Lean and Cardano ledger-model knowledge.
 `julc verify run` manages their execution and classification; it does not
-invent a threat model. The C.5 `@RequiresSigner` workflow is the first narrow
-exception with a reviewed, generated theorem.
+invent a threat model. The C.5–C.7 annotation profiles are the reviewed,
+versioned exceptions with generated theorems.
 
 ## Supported boundary today
 
