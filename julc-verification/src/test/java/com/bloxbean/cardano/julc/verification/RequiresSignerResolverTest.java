@@ -1,10 +1,12 @@
 package com.bloxbean.cardano.julc.verification;
 
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
+import com.bloxbean.cardano.julc.core.flat.UplcFlatEncoder;
 import com.bloxbean.cardano.julc.core.text.UplcPrinter;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -66,10 +68,13 @@ class RequiresSignerResolverTest {
                 .replace("@RequiresSigner(\"datum.owner\")\n", "");
         var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry());
 
-        String annotatedUplc = UplcPrinter.print(compiler.compile(annotated).program());
-        String plainUplc = UplcPrinter.print(compiler.compile(plain).program());
+        var annotatedProgram = compiler.compile(annotated).program();
+        var plainProgram = compiler.compile(plain).program();
 
-        assertEquals(plainUplc, annotatedUplc);
+        assertEquals(UplcPrinter.print(plainProgram), UplcPrinter.print(annotatedProgram));
+        assertArrayEquals(UplcFlatEncoder.encodeProgram(plainProgram),
+                UplcFlatEncoder.encodeProgram(annotatedProgram),
+                "a verification annotation must be byte-neutral for a typed record boundary");
     }
 
     @Test

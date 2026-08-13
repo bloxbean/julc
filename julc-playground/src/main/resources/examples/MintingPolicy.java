@@ -16,7 +16,7 @@ class MintingPolicy {
     }
 
     @Entrypoint
-    static boolean validate(BigInteger redeemer, BigInteger ctx) {
+    static boolean validate(PlutusData redeemer, ScriptContext ctx) {
         BigInteger mintAmount = 1;
         return validateMint(mintAmount);
     }

@@ -1,6 +1,8 @@
 package com.bloxbean.cardano.julc.compiler;
 
 import com.bloxbean.cardano.julc.compiler.codegen.ValidatorWrapper;
+import com.bloxbean.cardano.julc.compiler.codegen.StrictBoundaryGenerator;
+import com.bloxbean.cardano.julc.compiler.codegen.StrictRecordEntrypoint;
 import com.bloxbean.cardano.julc.compiler.error.CompilerDiagnostic;
 import com.bloxbean.cardano.julc.compiler.error.DiagnosticInfo;
 import com.bloxbean.cardano.julc.compiler.pir.*;
@@ -389,6 +391,7 @@ public class JulcCompiler {
         Map<Integer, PirTerm> multiHandlers = null;
         Map<Integer, Integer> multiParamCounts = null;
         boolean isMultiAutoDispatch = false;
+        var strictRecordErrors = new ArrayList<PirTerm.Error>();
 
         boolean isExplicitPurpose = !entrypointInfos.isEmpty()
                 && entrypointInfos.stream().noneMatch(e -> e.purposeName().equals("DEFAULT"));
@@ -399,6 +402,10 @@ public class JulcCompiler {
             multiParamCounts = new LinkedHashMap<>();
             for (var ei : entrypointInfos) {
                 var handlerPir = pirGenerator.generateMethod(ei.method());
+                var transformed = transformStrictRecordEntrypoint(
+                        handlerPir, ei.method(), typeResolver);
+                handlerPir = transformed.function();
+                strictRecordErrors.addAll(transformed.errors());
                 multiHandlers.put(ei.tag(), handlerPir);
                 multiParamCounts.put(ei.tag(), ei.method().getParameters().size());
             }
@@ -407,9 +414,17 @@ public class JulcCompiler {
             // Mode 2: Manual dispatch — single DEFAULT entrypoint
             entrypointMethod = entrypointInfos.get(0).method();
             validateFn = pirGenerator.generateMethod(entrypointMethod);
+            var transformed = transformStrictRecordEntrypoint(
+                    validateFn, entrypointMethod, typeResolver);
+            validateFn = transformed.function();
+            strictRecordErrors.addAll(transformed.errors());
             options.log("PIR generation complete (manual dispatch)");
         } else {
             validateFn = pirGenerator.generateMethod(entrypointMethod);
+            var transformed = transformStrictRecordEntrypoint(
+                    validateFn, entrypointMethod, typeResolver);
+            validateFn = transformed.function();
+            strictRecordErrors.addAll(transformed.errors());
             options.log("PIR generation complete");
         }
 
@@ -475,32 +490,59 @@ public class JulcCompiler {
             }
         }
 
-        // 15. Wrap entrypoint for on-chain
-        var wrapper = new ValidatorWrapper();
+        // 15. Resolve typed transaction-time roots and wrap the entrypoint for on-chain.
+        // ScriptContext and deployer-applied @Param fields are intentionally not boundary roots.
+        var namedDefinitions = typeResolver.namedDefinitions();
+        var wrapper = new ValidatorWrapper(namedDefinitions);
         PirTerm wrappedTerm;
         if (isMultiAutoDispatch) {
             // Build datumOptional flags for auto-dispatch handlers
             Map<Integer, Boolean> multiDatumOptional = new LinkedHashMap<>();
+            Map<Integer, PirType> multiDatumTypes = new LinkedHashMap<>();
+            Map<Integer, PirType> multiRedeemerTypes = new LinkedHashMap<>();
             for (var ei : entrypointInfos) {
                 boolean datumOpt = false;
                 if (ei.tag() == 1 && ei.method().getParameters().size() == 3) {
                     var firstParamType = ei.method().getParameter(0).getTypeAsString();
                     datumOpt = firstParamType.startsWith("Optional");
+                    var datumParam = ei.method().getParameter(0);
+                    var datumType = typeResolver.resolve(datumParam.getType());
+                    ensureStrictBoundarySupported(datumParam, datumType, typeResolver);
+                    multiDatumTypes.put(ei.tag(), wrapperBoundaryType(datumType, typeResolver));
                 }
+                var redeemerParam = ei.method().getParameter(
+                        ei.tag() == 1 && ei.method().getParameters().size() == 3 ? 1 : 0);
+                var redeemerType = typeResolver.resolve(redeemerParam.getType());
+                ensureStrictBoundarySupported(redeemerParam, redeemerType, typeResolver);
+                multiRedeemerTypes.put(ei.tag(), wrapperBoundaryType(redeemerType, typeResolver));
                 multiDatumOptional.put(ei.tag(), datumOpt);
             }
-            wrappedTerm = wrapper.wrapMultiValidator(multiHandlers, multiParamCounts, multiDatumOptional);
+            wrappedTerm = wrapper.wrapMultiValidator(multiHandlers, multiParamCounts,
+                    multiDatumOptional, multiDatumTypes, multiRedeemerTypes);
         } else if (scriptPurpose == ScriptPurpose.SPENDING) {
             int paramCount = entrypointMethod.getParameters().size();
             boolean datumIsOptional = false;
+            PirType datumType = null;
             if (paramCount == 3) {
-                var firstParamType = entrypointMethod.getParameter(0).getTypeAsString();
+                var datumParam = entrypointMethod.getParameter(0);
+                var firstParamType = datumParam.getTypeAsString();
                 datumIsOptional = firstParamType.startsWith("Optional");
+                datumType = typeResolver.resolve(datumParam.getType());
+                ensureStrictBoundarySupported(datumParam, datumType, typeResolver);
             }
-            wrappedTerm = wrapper.wrapSpendingValidator(body, paramCount, datumIsOptional);
+            var redeemerParam = entrypointMethod.getParameter(paramCount == 3 ? 1 : 0);
+            var redeemerType = typeResolver.resolve(redeemerParam.getType());
+            ensureStrictBoundarySupported(redeemerParam, redeemerType, typeResolver);
+            wrappedTerm = wrapper.wrapSpendingValidator(body, paramCount, datumIsOptional,
+                    wrapperBoundaryType(datumType, typeResolver),
+                    wrapperBoundaryType(redeemerType, typeResolver));
         } else {
             // Minting, Withdraw, Certifying, Voting, Proposing, Multi(manual) all use 2-param wrapper
-            wrappedTerm = wrapper.wrapMintingPolicy(body);
+            var redeemerParam = entrypointMethod.getParameter(0);
+            var redeemerType = typeResolver.resolve(redeemerParam.getType());
+            ensureStrictBoundarySupported(redeemerParam, redeemerType, typeResolver);
+            wrappedTerm = wrapper.wrapMintingPolicy(body,
+                    wrapperBoundaryType(redeemerType, typeResolver));
         }
 
         // 15b. Register wrapper Error terms in source map (points to @Entrypoint method)
@@ -515,6 +557,9 @@ public class JulcCompiler {
                 var loc = new SourceLocation(fileName, range.begin.line, range.begin.column,
                         "validator returned false");
                 for (var errorTerm : wrapper.getErrorTerms()) {
+                    pirPositions.put(errorTerm, loc);
+                }
+                for (var errorTerm : strictRecordErrors) {
                     pirPositions.put(errorTerm, loc);
                 }
             });
@@ -1414,6 +1459,47 @@ public class JulcCompiler {
         return new ContractSchema(
                 purpose.name().toLowerCase(Locale.ROOT), datum, redeemer, parameters,
                 typeResolver.namedDefinitions());
+    }
+
+    private void ensureStrictBoundarySupported(
+            com.github.javaparser.ast.body.Parameter parameter,
+            PirType type,
+            TypeResolver typeResolver) {
+        try {
+            typeResolver.findStandaloneVariantRecord(type).ifPresent(description -> {
+                throw new IllegalArgumentException(
+                        "Unsupported strict boundary " + description
+                                + "; declare the sealed interface type instead");
+            });
+            new StrictBoundaryGenerator(typeResolver.namedDefinitions()).ensureSupported(type);
+        } catch (IllegalArgumentException ex) {
+            throw schemaError(parameter, ex.getMessage());
+        }
+    }
+
+    private StrictRecordEntrypoint.Result transformStrictRecordEntrypoint(
+            PirTerm function,
+            MethodDeclaration method,
+            TypeResolver typeResolver) {
+        var params = method.getParameters();
+        var roots = new ArrayList<StrictRecordEntrypoint.Root>();
+        int rootCount = Math.max(0, params.size() - 1); // ScriptContext is always last
+        for (int i = 0; i < rootCount; i++) {
+            var parameter = params.get(i);
+            var type = typeResolver.resolve(parameter.getType());
+            ensureStrictBoundarySupported(parameter, type, typeResolver);
+            roots.add(new StrictRecordEntrypoint.Root(
+                    parameter.getNameAsString(), type));
+        }
+        return StrictRecordEntrypoint.transform(
+                function, roots, typeResolver.namedDefinitions());
+    }
+
+    private PirType wrapperBoundaryType(PirType type, TypeResolver typeResolver) {
+        if (type == null) return null;
+        return typeResolver.resolveNamed(type) instanceof PirType.RecordType
+                ? new PirType.DataType()
+                : type;
     }
 
     private ContractSchema.Argument schemaArgument(

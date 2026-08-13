@@ -39,6 +39,7 @@ export default defineConfig({
             { label: 'For-Loop Patterns', slug: 'guides/for-loop-patterns' },
             { label: 'Testing Guide', slug: 'guides/testing-guide' },
             { label: 'Source Maps', slug: 'guides/source-maps' },
+            { label: 'Strict Data Boundaries', slug: 'guides/strict-data-boundaries' },
           ],
         },
         {

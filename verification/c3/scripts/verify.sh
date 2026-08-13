@@ -9,6 +9,7 @@ JULC_JAR="${REPO_DIR}/julc-cli/build/libs/julc.jar"
 BLASTER_REV="083bae7971414d894b56b5bbf4108c63e17bc42a"
 PLUTUS_CORE_REV="7cf5a78c54b9694ef093bf49edb5d3799b2a49c9"
 LEDGER_API_REV="5dab3c43f042b8735b6d067223baaa8d32ed28a1"
+PREP_FUEL="1000"
 
 if [[ -d "${HOME}/.elan/bin" ]]; then
   export PATH="${HOME}/.elan/bin:${PATH}"
@@ -54,11 +55,13 @@ verify_workspace() {
   java -jar "${JULC_JAR}" verify init "${VERIFY_DIR}/fixtures/${fixture}" \
     --validator "${validator}" \
     --purpose "${purpose}" \
+    --fuel "${PREP_FUEL}" \
     --recursive-depth 4 \
     --out-dir "${output}" \
     --force
 
   [[ "$(jq -r '.recursiveDepth' "${output}/verification-manifest.json")" == "4" ]]
+  [[ "$(jq -r '.fuel' "${output}/verification-manifest.json")" == "${PREP_FUEL}" ]]
   rg -q 'recursiveVerificationDepth : Nat := 4' "${output}/PropertyTemplates.lean"
 
   if rg -n '(^|[[:space:]])(sorry|admit|axiom|unsafe|partial)([[:space:]]|$)' \

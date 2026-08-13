@@ -49,6 +49,8 @@ class VerificationRunnerTest {
             assertEquals("4.24.0", first.result().toolchain().get("lean"));
             assertEquals(BLASTER,
                     first.result().dependencyCommits().get("Lean-blaster"));
+            assertEquals("legacy-leading-field-v0",
+                    first.result().artifact().get("boundarySemantics"));
             assertTrue(Files.isRegularFile(workspace.resolve("verification-results/acquire.log")));
             assertTrue(Files.isRegularFile(workspace.resolve("verification-results/verify.log")));
         }
@@ -359,6 +361,24 @@ class VerificationRunnerTest {
         assertThrows(IOException.class, () -> runner(new FakeProcess(false, true))
                 .run(workspace, VerificationBackendKind.LOCAL));
         assertFalse(Files.exists(workspace.resolve(VerificationRunner.RESULT_FILE)));
+    }
+
+    @Test
+    void rejectsUnknownBoundarySemanticsBeforeExecution() throws Exception {
+        Path workspace = workspace("unknown-boundary-semantics",
+                VerificationOutcome.SMT_VALID, false);
+        Path manifestFile = workspace.resolve("verification-manifest.json");
+        var manifest = (com.fasterxml.jackson.databind.node.ObjectNode)
+                VerificationFiles.JSON.readTree(manifestFile.toFile());
+        manifest.put("boundarySemantics", "future-unreviewed-v2");
+        VerificationFiles.JSON.writeValue(manifestFile.toFile(), manifest);
+        var process = new FakeProcess(false, true);
+
+        var result = runner(process).run(workspace, VerificationBackendKind.LOCAL);
+
+        assertEquals("COULD-NOT-EVALUATE", result.result().outcome());
+        assertEquals("unsupported-semantics-profile", result.result().reason());
+        assertTrue(process.commands.isEmpty());
     }
 
     @Test

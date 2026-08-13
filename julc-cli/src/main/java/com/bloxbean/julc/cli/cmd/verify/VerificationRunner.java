@@ -1,5 +1,6 @@
 package com.bloxbean.julc.cli.cmd.verify;
 
+import com.bloxbean.cardano.julc.compiler.DataBoundarySemantics;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -223,7 +224,10 @@ public final class VerificationRunner {
         if (lower.contains("runner plan hash mismatch")) return "runner-plan-integrity-mismatch";
         if (lower.contains("admission")) return "project-admission-detected";
         if (lower.contains("builtin")) return "unsupported-builtin";
-        if (lower.contains("semantics profile")) return "unsupported-semantics-profile";
+        if (lower.contains("semantics profile")
+                || lower.contains("boundary semantics")) {
+            return "unsupported-semantics-profile";
+        }
         return "preflight-failed";
     }
 
@@ -231,7 +235,7 @@ public final class VerificationRunner {
         var result = new LinkedHashMap<String, Object>();
         result.put("kind", "unvalidated");
         for (String field : List.of("artifactId", "validatorTitle", "compiledCodeSha256",
-                "cardanoScriptHash", "scriptPurpose")) {
+                "cardanoScriptHash", "scriptPurpose", "boundarySemantics")) {
             if (manifest.hasNonNull(field)) result.put(field, manifest.path(field).asText());
         }
         return result;
@@ -568,6 +572,14 @@ public final class VerificationRunner {
         artifact.put("compiledCodeSha256", expectedHash);
         artifact.put("cardanoScriptHash", cardanoHash);
         artifact.put("scriptPurpose", purpose);
+        String boundarySemantics = manifest.path("boundarySemantics")
+                .asText(DataBoundarySemantics.LEGACY_V0);
+        if (!Set.of(DataBoundarySemantics.STRICT_V1,
+                DataBoundarySemantics.LEGACY_V0,
+                DataBoundarySemantics.EXTERNAL_UNCLASSIFIED).contains(boundarySemantics)) {
+            throw new IOException("Unsupported data-boundary semantics " + boundarySemantics);
+        }
+        artifact.put("boundarySemantics", boundarySemantics);
         artifact.put("protocolVersion", 11);
         artifact.put("builtinSemanticsVariant", "E");
         artifact.put("fuel", fuel);

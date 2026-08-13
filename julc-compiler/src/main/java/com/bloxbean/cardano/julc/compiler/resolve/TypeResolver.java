@@ -274,6 +274,66 @@ public class TypeResolver {
         return Optional.ofNullable(variantToSumType.get(resolved));
     }
 
+    /**
+     * Find a concrete sealed-interface variant used as an independent value in
+     * a typed boundary graph. Constructor lowering encodes such a record with
+     * its parent sum tag, while an ordinary record has tag zero. Until the type
+     * model carries that nominal tag explicitly, accepting the concrete record
+     * here would make construction, schema generation, and boundary checking
+     * disagree. The sealed-interface type itself remains fully supported.
+     */
+    public Optional<String> findStandaloneVariantRecord(PirType type) {
+        return findStandaloneVariantRecord(type,
+                Collections.newSetFromMap(new IdentityHashMap<>()));
+    }
+
+    private Optional<String> findStandaloneVariantRecord(
+            PirType unresolved, Set<PirType> active) {
+        if (unresolved instanceof PirType.NamedTypeRef ref) {
+            var parent = variantToSumType.get(ref.stableId());
+            if (parent != null) return Optional.of(variantDescription(ref.name(), parent));
+            unresolved = resolveNamed(unresolved);
+        }
+        if (!active.add(unresolved)) return Optional.empty();
+        try {
+            if (unresolved instanceof PirType.RecordType record) {
+                for (var entry : variantToSumType.entrySet()) {
+                    if (recordTypes.get(entry.getKey()) == record) {
+                        return Optional.of(variantDescription(record.name(), entry.getValue()));
+                    }
+                }
+                for (var field : record.fields()) {
+                    var found = findStandaloneVariantRecord(field.type(), active);
+                    if (found.isPresent()) return found;
+                }
+            } else if (unresolved instanceof PirType.SumType sum) {
+                for (var constructor : sum.constructors()) {
+                    for (var field : constructor.fields()) {
+                        var found = findStandaloneVariantRecord(field.type(), active);
+                        if (found.isPresent()) return found;
+                    }
+                }
+            } else if (unresolved instanceof PirType.ListType list) {
+                return findStandaloneVariantRecord(list.elemType(), active);
+            } else if (unresolved instanceof PirType.MapType map) {
+                var key = findStandaloneVariantRecord(map.keyType(), active);
+                return key.isPresent()
+                        ? key
+                        : findStandaloneVariantRecord(map.valueType(), active);
+            } else if (unresolved instanceof PirType.OptionalType optional) {
+                return findStandaloneVariantRecord(optional.elemType(), active);
+            }
+            return Optional.empty();
+        } finally {
+            active.remove(unresolved);
+        }
+    }
+
+    private static String variantDescription(String variantName, PirType.SumType parent) {
+        return "variant record '" + variantName + "' of sealed interface '"
+                + parent.name() + "'";
+    }
+
     public PirType resolve(Type type) {
         if (type instanceof PrimitiveType pt) {
             return switch (pt.getType()) {
