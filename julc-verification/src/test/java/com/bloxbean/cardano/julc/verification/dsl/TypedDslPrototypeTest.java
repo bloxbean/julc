@@ -89,6 +89,25 @@ class TypedDslPrototypeTest {
                 () -> DslPropertyValidator.validate(valid, schema, 2));
     }
 
+    @Test
+    void authoritativeValidationRejectsNonIntegerAndNoncanonicalLiterals() {
+        var schema = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(validatorSource()).contractSchema();
+        var rawLean = DslPropertySet.of(new DslProperty("raw-lean",
+                new LiteralNode(DslType.BOOL, "by exact True.intro")));
+        var typeError = assertThrows(IllegalArgumentException.class,
+                () -> DslPropertyValidator.validate(rawLean, schema, 100));
+        assertEquals("DSL v1 supports only integer literals", typeError.getMessage());
+
+        var noncanonicalInteger = DslPropertySet.of(new DslProperty("leading-zero",
+                new CompareNode(CompareOperator.EQ,
+                        new LiteralNode(DslType.INTEGER, "01"),
+                        new LiteralNode(DslType.INTEGER, "1"))));
+        var formatError = assertThrows(IllegalArgumentException.class,
+                () -> DslPropertyValidator.validate(noncanonicalInteger, schema, 100));
+        assertEquals("Invalid canonical integer literal", formatError.getMessage());
+    }
+
     private Path compile(Path... sources) throws Exception {
         var compiler = ToolProvider.getSystemJavaCompiler();
         assertNotNull(compiler);

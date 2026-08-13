@@ -109,8 +109,11 @@ public final class DslPropertyValidator {
             return DslType.BOOL;
         }
         if (node instanceof LiteralNode literal) {
-            if (literal.resultType() == DslType.INTEGER
-                    && !literal.value().matches("-?(0|[1-9][0-9]*)")) {
+            if (literal.resultType() != DslType.INTEGER) {
+                throw new IllegalArgumentException(
+                        "DSL v1 supports only integer literals");
+            }
+            if (!literal.value().matches("-?(0|[1-9][0-9]*)")) {
                 throw new IllegalArgumentException("Invalid canonical integer literal");
             }
             return literal.resultType();
