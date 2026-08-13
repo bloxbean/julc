@@ -7,6 +7,7 @@ description = 'Typed Java security properties and annotation processing for JuLC
 dependencies {
     api project(':julc-compiler')
     implementation 'com.github.javaparser:javaparser-core:3.26.3'
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
     testImplementation project(':julc-stdlib')
 }
 
