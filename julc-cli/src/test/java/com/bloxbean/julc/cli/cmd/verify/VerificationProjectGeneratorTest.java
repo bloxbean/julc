@@ -7,6 +7,9 @@ import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
 import com.bloxbean.cardano.julc.verification.RequiresSignerProperty;
 import com.bloxbean.cardano.julc.verification.StatefulSpendingProperty;
 import com.bloxbean.cardano.julc.verification.ControlledMintProperty;
+import com.bloxbean.cardano.julc.verification.SellerPaymentProperty;
+import com.bloxbean.cardano.julc.verification.dsl.PropertyIrCodec;
+import com.bloxbean.cardano.julc.verification.dsl.SellerPaymentDsl;
 import com.bloxbean.julc.cli.JulcCommand;
 import com.bloxbean.julc.cli.cmd.blueprint.ArtifactCommand;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -196,6 +199,50 @@ class VerificationProjectGeneratorTest {
         var manifest = JSON.readTree(output.resolve("verification-manifest.json").toFile());
         assertEquals(ControlledMintProperty.TEMPLATE,
                 manifest.path("propertyIr").path("template").asText());
+        assertEquals(VerificationFiles.leanTreeHash(output),
+                manifest.path("generatedLeanSha256").asText());
+    }
+
+    @Test
+    void generatesExactSellerPaymentDslProfileWithLedgerDomain() throws Exception {
+        Path output = tempDir.resolve("seller-payment");
+        var dsl = SellerPaymentDsl.propertySet(
+                "StateGate.seller-paid-at-least", "owner", "state");
+        var property = new SellerPaymentProperty(
+                1, SellerPaymentProperty.TEMPLATE,
+                "StateGate.seller-paid-at-least", "StateGate", "spending",
+                "StateGatePayment.java", "owner", "state", "StateDatum",
+                PropertyIrCodec.canonicalJson(dsl),
+                List.of("validSpendingContext/v3-pinned"),
+                List.of("strict-datum", "public-key-seller-output",
+                        "lovelace-paid-at-least"), true);
+
+        VerificationProjectGenerator.generateSellerPayment(
+                writeBlueprint(), property, 2000, 4, output, false);
+
+        String security = Files.readString(output.resolve("SecurityProperty.lean"));
+        assertTrue(security.contains("Option JulcGenerated.Schemas.StateDatum"));
+        assertTrue(security.contains(".PubKeyCredential actualSeller"));
+        assertTrue(security.contains("lovelaceOf out.txOutValue >= price"));
+        assertTrue(security.contains("datum.owner datum.state out"));
+        assertTrue(security.contains("Recursor.any out in"));
+        String equivalence = Files.readString(output.resolve("LedgerDomainEquivalence.lean"));
+        assertTrue(equivalence.contains(
+                "theorem validSpendingContext_implies_blasterDomain"));
+        assertTrue(equivalence.contains("validSpendingContext"));
+        assertTrue(Files.readString(output.resolve("StateGateLedgerCorollary.lean"))
+                .contains("ledgerValidSuccessfulImpliesSellerPaidAtLeast"));
+        String obligation = Files.readString(output.resolve("StateGateObligation.lean"));
+        assertTrue(obligation.contains("blasterValidSpendingContext ctx"));
+        assertTrue(obligation.contains("isSuccessful (appliedValidator.prop ctx)"));
+        var plan = JSON.readTree(output.resolve("verification-runner.json").toFile());
+        assertEquals("seller-payment-v1-established",
+                plan.path("verify").get(1).path("outcomes").get(0)
+                        .path("reason").asText());
+        var manifest = JSON.readTree(output.resolve("verification-manifest.json").toFile());
+        assertTrue(manifest.path("ledgerValidityModeled").asBoolean());
+        assertEquals("validSpendingContext/v3-pinned",
+                manifest.path("domainAssumptions").get(0).asText());
         assertEquals(VerificationFiles.leanTreeHash(output),
                 manifest.path("generatedLeanSha256").asText());
     }
@@ -430,6 +477,10 @@ class VerificationProjectGeneratorTest {
                 .getSubcommands().containsKey("init"));
         assertTrue(commandLine.getSubcommands().get("verify")
                 .getSubcommands().containsKey("run"));
+        assertTrue(commandLine.getSubcommands().get("verify")
+                .getSubcommands().containsKey("dsl-init"));
+        assertTrue(commandLine.getSubcommands().get("verify")
+                .getSubcommands().containsKey("dsl"));
         assertTrue(commandLine.getSubcommands().get("verify")
                 .getCommandSpec().findOption("--validator") != null);
         assertTrue(commandLine.getSubcommands().get("verify").getSubcommands().get("init")

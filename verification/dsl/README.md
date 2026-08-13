@@ -29,3 +29,27 @@ The main equivalence test compiles a generated contract model and a Java
 property specification in a temporary directory, executes it in the worker,
 revalidates the returned AST, and proves that it has byte-identical canonical
 IR and identical generated Lean to the existing `@RequiresSigner` lowering.
+
+Milestone E.3 adds the first exact-UPLC vertical slice. From a built JuLC
+project, generate the metamodel and compile a trusted Java property:
+
+```bash
+julc verify dsl-init . --validator Sale \
+  --package evidence --model SaleModel \
+  --out build/verification-dsl/src/evidence/SaleModel.java
+
+javac -cp julc.jar -d build/verification-dsl/classes \
+  build/verification-dsl/src/evidence/SaleModel.java \
+  SellerPaymentSpec.java
+
+julc verify dsl . --validator Sale \
+  --spec-class evidence.SellerPaymentSpec \
+  --spec-classpath build/verification-dsl/classes \
+  --seller-field seller --price-field price \
+  --source SellerPaymentSpec.java --backend local --force
+```
+
+The accepted E.3 AST shape is intentionally fixed and reviewed. General DSL
+expressions can be represented by the prototype but are not automatically
+promoted to verification claims. See `verification/e3/README.md` for the
+positive, refuted, vacuous, and multi-satisfaction evidence controls.

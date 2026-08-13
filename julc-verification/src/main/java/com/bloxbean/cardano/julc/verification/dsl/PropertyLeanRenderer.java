@@ -20,6 +20,7 @@ public final class PropertyLeanRenderer {
             return switch (root.name()) {
                 case "context" -> "ctx";
                 case "exactUplcSucceeds" -> "exactUplcSucceeds ctx";
+                case "validSpendingContext" -> "validSpendingContext ctx";
                 case "datum" -> "strictDatum ctx";
                 default -> root.name();
             };

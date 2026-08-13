@@ -41,6 +41,7 @@ public final class DslPropertyValidator {
                 case "datum" -> DslType.DATA;
                 case "context" -> DslType.SCRIPT_CONTEXT;
                 case "exactUplcSucceeds" -> DslType.BOOL;
+                case "validSpendingContext" -> DslType.BOOL;
                 default -> variables.get(root.name());
             };
             if (expected == null || expected != root.resultType()) {

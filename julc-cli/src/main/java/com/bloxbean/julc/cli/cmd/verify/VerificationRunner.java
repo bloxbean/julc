@@ -164,7 +164,7 @@ public final class VerificationRunner {
                 toolchainEvidence(backend, backendContext),
                 verifiedDependencies,
                 true,
-                false,
+                ledgerValidityModeled(artifact),
                 artifact,
                 inputs,
                 List.copyOf(phases),
@@ -199,13 +199,17 @@ public final class VerificationRunner {
                 Map.of(),
                 Map.of(),
                 true,
-                false,
+                ledgerValidityModeled(artifact),
                 artifact,
                 inputs,
                 List.of(phase),
                 List.of());
         VerificationFiles.writeJsonAtomically(workspace.resolve(RESULT_FILE), result);
         return new RunExecution(result, diagnostic == null ? reason : diagnostic);
+    }
+
+    private static boolean ledgerValidityModeled(Map<String, Object> artifact) {
+        return Boolean.TRUE.equals(artifact.get("ledgerValidityModeled"));
     }
 
     private static String preflightReason(String diagnostic) {
@@ -591,6 +595,7 @@ public final class VerificationRunner {
             }
             JsonNode property = VerificationFiles.JSON.readTree(propertyFile.toFile());
             String template = requiredText(property, "template");
+            boolean sellerPayment = "julc.dsl.seller-paid-at-least/v1".equals(template);
             if (property.path("schemaVersion").asInt(-1) != 1
                     || property.path("schemaVersion").asInt(-1)
                         != propertyIr.path("schemaVersion").asInt(-2)
@@ -598,7 +603,8 @@ public final class VerificationRunner {
                         .equals(requiredText(propertyIr, "template"))
                     || !Set.of("julc.requires-signer/v1",
                             "julc.stateful-spending/v1",
-                            "julc.controlled-mint/v1").contains(template)
+                            "julc.controlled-mint/v1",
+                            "julc.dsl.seller-paid-at-least/v1").contains(template)
                     || !requiredText(property, "propertyId")
                         .equals(requiredText(propertyIr, "propertyId"))
                     || !requiredText(property, "validatorTitle")
@@ -606,10 +612,20 @@ public final class VerificationRunner {
                     || !requiredText(property, "scriptPurpose").equals(purpose)
                     || !requiredText(property, "sourcePath")
                         .equals(requiredText(propertyIr, "sourcePath"))
-                    || property.path("ledgerValidityModeled").asBoolean(true)
-                    || manifest.path("ledgerValidityModeled").asBoolean(true)
+                    || property.path("ledgerValidityModeled").asBoolean(!sellerPayment)
+                        != sellerPayment
+                    || manifest.path("ledgerValidityModeled").asBoolean(!sellerPayment)
+                        != sellerPayment
                     || !property.path("domainAssumptions").isArray()) {
                 throw new IOException("Verification property IR does not match its manifest");
+            }
+            if (sellerPayment
+                    && (!property.path("domainAssumptions").equals(
+                            manifest.path("domainAssumptions"))
+                        || property.path("domainAssumptions").size() != 1
+                        || !"validSpendingContext/v3-pinned".equals(
+                            property.path("domainAssumptions").path(0).asText()))) {
+                throw new IOException("Verification seller-payment domain is unsupported");
             }
             if ("julc.stateful-spending/v1".equals(template)
                     && (!"GREATER_THAN".equals(requiredText(property, "relation"))
@@ -640,7 +656,7 @@ public final class VerificationRunner {
             artifact.put("propertyTemplate", requiredText(propertyIr, "template"));
             artifact.put("propertyId", requiredText(propertyIr, "propertyId"));
             artifact.put("propertyPath", requiredText(propertyIr, "sourcePath"));
-            artifact.put("ledgerValidityModeled", false);
+            artifact.put("ledgerValidityModeled", sellerPayment);
             artifact.put("fuelBounded", true);
             artifact.put("fuelScope", "Only executions completing within the pinned CEK fuel "
                     + "bound are covered; fuel-exhausted executions are outside the claim.");
@@ -657,6 +673,10 @@ public final class VerificationRunner {
                 artifact.put("ownPolicyLinkage", "SCRIPT_INFO_CURRENCY_SYMBOL");
                 artifact.put("ownPolicyAssetShape", "EXACT_SINGLETON_RAW_ASSOCIATION_LIST");
                 artifact.put("otherPoliciesPermitted", true);
+            } else if (sellerPayment) {
+                artifact.put("domainAssumptions", List.of(
+                        "validSpendingContext/v3-pinned"));
+                artifact.put("globalMultiInputLinkageModeled", false);
             }
         }
         return Map.copyOf(artifact);

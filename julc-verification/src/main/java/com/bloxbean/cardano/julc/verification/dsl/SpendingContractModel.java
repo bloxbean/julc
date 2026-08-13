@@ -10,8 +10,11 @@ public final class SpendingContractModel {
             new RootNode("context", DslType.SCRIPT_CONTEXT));
     private final BoolExpr execution = new BoolExpr(
             new RootNode("exactUplcSucceeds", DslType.BOOL));
+    private final BoolExpr ledgerValid = new BoolExpr(
+            new RootNode("validSpendingContext", DslType.BOOL));
 
     public DatumExpr datum() { return datum; }
     public ContextExpr context() { return context; }
     public BoolExpr exactUplcSucceeds() { return execution; }
+    public BoolExpr validSpendingContext() { return ledgerValid; }
 }

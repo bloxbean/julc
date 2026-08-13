@@ -55,6 +55,7 @@ public final class ContractMetamodelGenerator {
                     public Datum datum() { return datum; }
                     public ContextExpr context() { return value.context(); }
                     public BoolExpr exactUplcSucceeds() { return value.exactUplcSucceeds(); }
+                    public BoolExpr validSpendingContext() { return value.validSpendingContext(); }
 
                     public static final class Datum {
                         private final DatumExpr value;

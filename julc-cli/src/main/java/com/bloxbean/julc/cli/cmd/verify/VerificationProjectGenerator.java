@@ -6,6 +6,7 @@ import com.bloxbean.cardano.julc.verification.RequiresSignerProperty;
 import com.bloxbean.cardano.julc.verification.StatefulSpendingProperty;
 import com.bloxbean.cardano.julc.verification.VerificationProperty;
 import com.bloxbean.cardano.julc.verification.ControlledMintProperty;
+import com.bloxbean.cardano.julc.verification.SellerPaymentProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
@@ -158,6 +159,27 @@ public final class VerificationProjectGenerator {
                 recursiveDepth, outputDirectory, force, property);
     }
 
+    /** Generates the E.3 exact-UPLC seller-paid-at-least DSL workspace. */
+    public static GenerationResult generateSellerPayment(
+            Path blueprintFile,
+            SellerPaymentProperty property,
+            int fuel,
+            int recursiveDepth,
+            Path outputDirectory,
+            boolean force) throws Exception {
+        if (property == null
+                || !SellerPaymentProperty.TEMPLATE.equals(property.template())
+                || property.schemaVersion() != SellerPaymentProperty.SCHEMA_VERSION
+                || !"spending".equals(property.scriptPurpose())
+                || !property.ledgerValidityModeled()
+                || !property.domainAssumptions().equals(
+                        List.of("validSpendingContext/v3-pinned"))) {
+            throw new IllegalArgumentException("Unsupported seller-payment DSL property IR");
+        }
+        return generateInternal(blueprintFile, property.validatorTitle(), "spending", fuel,
+                recursiveDepth, outputDirectory, force, property);
+    }
+
     private static GenerationResult generateInternal(
             Path blueprintFile,
             String validatorTitle,
@@ -224,7 +246,7 @@ public final class VerificationProjectGenerator {
                 /verification-result.json
                 """);
         files.put("lean-toolchain", "leanprover/lean4:" + LEAN_VERSION + "\n");
-        files.put("lakefile.lean", lakefile());
+        files.put("lakefile.lean", lakefile(property instanceof SellerPaymentProperty));
         files.put("GeneratedSchemas.lean", schemas.source());
         files.put("PropertyTemplates.lean", propertyTemplates(recursiveDepth));
         files.put("CheckedExecution.lean", checkedExecution());
@@ -295,6 +317,28 @@ public final class VerificationProjectGenerator {
                     nonVacuityCounterexample(leanId));
             files.put(leanId + "VacuityProof.lean", vacuityProof(leanId));
             files.put("verification-property.json", JSON.writeValueAsString(property) + "\n");
+        } else if (property instanceof SellerPaymentProperty payment) {
+            String datumRoot = referenceName(
+                    validator.path("datum").path("schema").path("$ref").asText());
+            ensureRecordField(blueprint.path("definitions"), datumRoot,
+                    payment.sellerField(), "bytes", "seller");
+            ensureRecordField(blueprint.path("definitions"), datumRoot,
+                    payment.priceField(), "integer", "price");
+            String datumLeanType = requiredLeanType(schemas, datumRoot);
+            files.put("SecurityProperty.lean", sellerPaymentProperty(
+                    datumLeanType, leanFieldName(payment.sellerField()),
+                    leanFieldName(payment.priceField())));
+            files.put("LedgerDomainEquivalence.lean", sellerPaymentDomainEquivalence());
+            files.put(leanId + "Obligation.lean",
+                    sellerPaymentObligation(leanId, artifactId, fuel));
+            files.put(leanId + "Proof.lean", sellerPaymentProof(leanId));
+            files.put(leanId + "LedgerCorollary.lean",
+                    sellerPaymentLedgerCorollary(leanId));
+            files.put(leanId + "Counterexample.lean", sellerPaymentCounterexample(leanId));
+            files.put(leanId + "NonVacuityCounterexample.lean",
+                    nonVacuityCounterexample(leanId));
+            files.put(leanId + "VacuityProof.lean", vacuityProof(leanId));
+            files.put("verification-property.json", JSON.writeValueAsString(property) + "\n");
         } else {
             throw new IllegalArgumentException("Unsupported verification property "
                     + property.template());
@@ -310,6 +354,9 @@ public final class VerificationProjectGenerator {
                             leanId, artifactId, artifact.compiledCodeSha256())
                 : property instanceof ControlledMintProperty
                     ? verifyControlledMintScript(
+                            leanId, artifactId, artifact.compiledCodeSha256())
+                : property instanceof SellerPaymentProperty
+                    ? verifySellerPaymentScript(
                             leanId, artifactId, artifact.compiledCodeSha256())
                 : verifyPropertyScript(leanId, artifactId, artifact.compiledCodeSha256());
         files.put("scripts/verify.sh", verifyScript);
@@ -334,6 +381,12 @@ public final class VerificationProjectGenerator {
                                     java.nio.charset.StandardCharsets.UTF_8)),
                             VerificationFiles.sha256(verifyScript.getBytes(
                                     java.nio.charset.StandardCharsets.UTF_8)))
+                : property instanceof SellerPaymentProperty
+                    ? sellerPaymentRunnerPlan(property,
+                            VerificationFiles.sha256(nonVacuityScript.getBytes(
+                                    java.nio.charset.StandardCharsets.UTF_8)),
+                            VerificationFiles.sha256(verifyScript.getBytes(
+                                    java.nio.charset.StandardCharsets.UTF_8)))
                 : requiresSignerRunnerPlan((RequiresSignerProperty) property,
                         VerificationFiles.sha256(nonVacuityScript.getBytes(
                                 java.nio.charset.StandardCharsets.UTF_8)),
@@ -346,6 +399,8 @@ public final class VerificationProjectGenerator {
                     ? statefulReadme(validatorTitle, stateful)
                 : property instanceof ControlledMintProperty controlled
                     ? controlledMintReadme(validatorTitle, controlled)
+                : property instanceof SellerPaymentProperty payment
+                    ? sellerPaymentReadme(validatorTitle, payment)
                 : requiresSignerReadme(
                             validatorTitle, (RequiresSignerProperty) property));
         String propertySha256 = property == null ? null : VerificationFiles.sha256(
@@ -1563,7 +1618,12 @@ public final class VerificationProjectGenerator {
         return JSON.writeValueAsString(root) + "\n";
     }
 
-    private static String lakefile() {
+    private static String lakefile(boolean sellerPayment) {
+        String roots = sellerPayment
+                ? "`GeneratedSchemas, `PropertyTemplates, `CheckedExecution, "
+                    + "`SecurityProperty, `LedgerDomainEquivalence"
+                : "`GeneratedSchemas, `PropertyTemplates, `CheckedExecution, "
+                    + "`SecurityProperty";
         return """
                 /- Generated by `julc verify init`; dependency pins are security inputs. -/
                 import Lake
@@ -1584,9 +1644,8 @@ public final class VerificationProjectGenerator {
                     "%s"
 
                 lean_lib «GeneratedVerificationSupport» where
-                  roots := #[`GeneratedSchemas, `PropertyTemplates, `CheckedExecution,
-                    `SecurityProperty]
-                """.formatted(BLASTER_REV, PLUTUS_CORE_REV, LEDGER_API_REV);
+                  roots := #[%s]
+                """.formatted(BLASTER_REV, PLUTUS_CORE_REV, LEDGER_API_REV, roots);
     }
 
     private static String runnerPlan(String artifactId, String verifyScriptSha256) throws IOException {
@@ -1665,6 +1724,21 @@ public final class VerificationProjectGenerator {
                 "controlled-mint-v1-established",
                 "controlled-mint-v1-counterexample",
                 "controlled-mint-v1-undetermined");
+    }
+
+    private static String sellerPaymentRunnerPlan(
+            VerificationProperty property,
+            String nonVacuityScriptSha256,
+            String verifyScriptSha256) throws IOException {
+        return specializedRunnerPlan(
+                property,
+                nonVacuityScriptSha256,
+                verifyScriptSha256,
+                "prove-seller-paid-at-least-v1",
+                "seller payment",
+                "seller-payment-v1-established",
+                "seller-payment-v1-counterexample",
+                "seller-payment-v1-undetermined");
     }
 
     private static String specializedRunnerPlan(
@@ -2161,6 +2235,220 @@ public final class VerificationProjectGenerator {
                 redeemerType, direction);
     }
 
+    private static String sellerPaymentProperty(
+            String datumType, String sellerField, String priceField) {
+        return """
+                /- Generated from typed seller-paid-at-least DSL IR; do not edit. -/
+                import CardanoLedgerApi.V3
+                import GeneratedSchemas
+
+                namespace JulcGenerated.UserProperty
+
+                open CardanoLedgerApi.IsData.Class
+                open CardanoLedgerApi.Recursors
+                open CardanoLedgerApi.V3
+                open JulcGenerated.Schemas
+                open PlutusCore.ByteString (ByteString)
+                open PlutusCore.Integer (Integer)
+
+                /--
+                Solver-compatible necessary ledger conditions. Balance, voter-map, and
+                optional treasury checks are omitted because pinned Blaster cannot
+                translate them in this theorem premise. This predicate therefore admits
+                a superset of ledger-valid contexts; proving over it is stronger. The
+                separate kernel bridge proves inclusion of the pinned V3 domain.
+                -/
+                def blasterValidTxInfo (ctx : ScriptContext) : Bool :=
+                  CardanoLedgerApi.V3.Contexts.validInputs ctx &&
+                  CardanoLedgerApi.V3.Contexts.validReferenceInputs ctx &&
+                  CardanoLedgerApi.V3.Contexts.validOutputs
+                      ctx.scriptContextTxInfo.txInfoOutputs &&
+                  ctx.scriptContextTxInfo.txInfoFee > 0 &&
+                  CardanoLedgerApi.V3.Contexts.validMintValue
+                      ctx.scriptContextTxInfo.txInfoMint &&
+                  CardanoLedgerApi.V3.Contexts.validWithdrawals
+                      ctx.scriptContextTxInfo.txInfoWdrl &&
+                  CardanoLedgerApi.V2.validTxRange
+                      ctx.scriptContextTxInfo.txInfoValidRange &&
+                  CardanoLedgerApi.V2.validSigners
+                      ctx.scriptContextTxInfo.txInfoSignatories &&
+                  CardanoLedgerApi.V3.Contexts.validRedeemerMap
+                      ctx.scriptContextTxInfo.txInfoRedeemers &&
+                  CardanoLedgerApi.V2.validDatumMap
+                      ctx.scriptContextTxInfo.txInfoData
+
+                def blasterValidSpendingContext (ctx : ScriptContext) : Bool :=
+                  match ctx.scriptContextScriptInfo with
+                  | .SpendingScript .. =>
+                      CardanoLedgerApi.V3.Contexts.validScriptInfo ctx &&
+                        blasterValidTxInfo ctx
+                  | _ => false
+
+                def outputPaysSellerAtLeast (seller : ByteString) (price : Integer)
+                    (out : TxOut) : Bool :=
+                  match out.txOutAddress.addressCredential with
+                  | .PubKeyCredential actualSeller =>
+                      actualSeller == seller && lovelaceOf out.txOutValue >= price
+                  | .ScriptCredential _ => false
+
+                /-- Strict datum decode and at least one qualifying seller output. -/
+                def securityProperty (ctx : ScriptContext) : Prop :=
+                  match ctx.scriptContextScriptInfo with
+                  | .SpendingScript _ (some datumData) =>
+                      match (IsData.fromData datumData :
+                          Option JulcGenerated.Schemas.%s) with
+                      | some datum =>
+                          (Recursor.any out in
+                              ctx.scriptContextTxInfo.txInfoOutputs =>
+                                outputPaysSellerAtLeast datum.%s datum.%s out) = true
+                      | none => False
+                  | _ => False
+
+                end JulcGenerated.UserProperty
+                """.formatted(datumType, sellerField, priceField);
+    }
+
+    private static String sellerPaymentDomainEquivalence() {
+        return """
+                /- Kernel-check the solver-compatible domain against pinned V3. -/
+                import SecurityProperty
+
+                namespace JulcGenerated.UserProperty
+
+                open CardanoLedgerApi.V3
+                open PlutusCore.Integer (Integer)
+
+                /-- Every pinned V3 ledger-valid spending context is in the solver domain. -/
+                theorem validSpendingContext_implies_blasterDomain
+                    (txInfo : TxInfo)
+                    (redeemer : PlutusCore.Data.Data)
+                    (ref : TxOutRef)
+                    (datum : Option CardanoLedgerApi.V2.Datum)
+                    (valid : CardanoLedgerApi.V3.Contexts.validSpendingContext
+                      ⟨txInfo, redeemer, .SpendingScript ref datum⟩ = true) :
+                    blasterValidSpendingContext
+                      ⟨txInfo, redeemer, .SpendingScript ref datum⟩ = true := by
+                  let ctx : ScriptContext :=
+                    ⟨txInfo, redeemer, .SpendingScript ref datum⟩
+                  change CardanoLedgerApi.V3.Contexts.validSpendingContext ctx = true
+                    at valid
+                  change blasterValidSpendingContext ctx = true
+                  unfold CardanoLedgerApi.V3.Contexts.validSpendingContext at valid
+                  unfold CardanoLedgerApi.V3.Contexts.validScriptContext at valid
+                  have contextParts := Bool.and_eq_true_iff.mp valid
+                  have scriptInfo := contextParts.1
+                  have txValid := contextParts.2
+                  unfold CardanoLedgerApi.V3.Contexts.validTxInfo at txValid
+                  have p1 := Bool.and_eq_true_iff.mp txValid
+                  have p2 := Bool.and_eq_true_iff.mp p1.1
+                  have p3 := Bool.and_eq_true_iff.mp p2.1
+                  have p4 := Bool.and_eq_true_iff.mp p3.1
+                  unfold blasterValidSpendingContext
+                  unfold blasterValidTxInfo
+                  apply Bool.and_eq_true_iff.mpr
+                  constructor
+                  · exact scriptInfo
+                  · exact p4.1
+
+                end JulcGenerated.UserProperty
+                """;
+    }
+
+    private static String sellerPaymentObligation(
+            String leanId, String artifactId, int fuel) {
+        return """
+                /- Generated exact-artifact seller-payment DSL obligation. -/
+                import PlutusCore.UPLC
+                import CardanoLedgerApi.V3
+                import Blaster
+                import GeneratedSchemas
+                import CheckedExecution
+                import SecurityProperty
+
+                namespace JulcGenerated.%s
+
+                open CardanoLedgerApi.V3
+                open PlutusCore.UPLC.Utils
+                open JulcGenerated.UserProperty
+
+                #import_uplc validator PlutusV3 double_cbor_hex
+                  "artifacts/%s.compiledCode.hex"
+                #prep_uplc appliedValidator validator spendingInputs %d
+
+                def sellerPaymentObligation : Prop :=
+                  ∀ ctx : ScriptContext,
+                    blasterValidSpendingContext ctx →
+                    PlutusCore.UPLC.Utils.isSuccessful (appliedValidator.prop ctx) →
+                    securityProperty ctx
+
+                def hasNoSuccessfulInput : Prop :=
+                  ∀ ctx : ScriptContext,
+                    blasterValidSpendingContext ctx →
+                    ¬PlutusCore.UPLC.Utils.isSuccessful (appliedValidator.prop ctx)
+
+                end JulcGenerated.%s
+                """.formatted(leanId, artifactId, fuel, leanId);
+    }
+
+    private static String sellerPaymentProof(String leanId) {
+        return """
+                /- Generated SMT obligation; successful result is SMT-VALID. -/
+                import %sObligation
+
+                namespace JulcGenerated.%s
+
+                theorem successfulImpliesSellerPaidAtLeast : sellerPaymentObligation := by
+                  blaster
+
+                end JulcGenerated.%s
+                """.formatted(leanId, leanId, leanId);
+    }
+
+    private static String sellerPaymentCounterexample(String leanId) {
+        return """
+                /- Generated counterexample query for seller-paid-at-least v1. -/
+                import %sObligation
+
+                namespace JulcGenerated.%s
+
+                #blaster (gen-cex: 1) (solve-result: 1) [sellerPaymentObligation]
+
+                end JulcGenerated.%s
+                """.formatted(leanId, leanId, leanId);
+    }
+
+    private static String sellerPaymentLedgerCorollary(String leanId) {
+        return """
+                /- Kernel bridge from the stronger solver domain to pinned V3 validity. -/
+                import %sProof
+                import LedgerDomainEquivalence
+
+                namespace JulcGenerated.%s
+
+                open CardanoLedgerApi.V3
+                open JulcGenerated.UserProperty
+
+                theorem ledgerValidSuccessfulImpliesSellerPaidAtLeast :
+                    ∀ (txInfo : TxInfo) (redeemer : PlutusCore.Data.Data)
+                      (ref : TxOutRef) (datum : Option CardanoLedgerApi.V2.Datum),
+                      let ctx : ScriptContext :=
+                        ⟨txInfo, redeemer, .SpendingScript ref datum⟩
+                      CardanoLedgerApi.V3.Contexts.validSpendingContext ctx = true →
+                      PlutusCore.UPLC.Utils.isSuccessful (appliedValidator.prop ctx) →
+                      securityProperty ctx := by
+                  intro txInfo redeemer ref datum
+                  dsimp only
+                  intro valid successful
+                  let ctx : ScriptContext :=
+                    ⟨txInfo, redeemer, .SpendingScript ref datum⟩
+                  exact successfulImpliesSellerPaidAtLeast ctx
+                    (validSpendingContext_implies_blasterDomain
+                      txInfo redeemer ref datum valid) successful
+
+                end JulcGenerated.%s
+                """.formatted(leanId, leanId, leanId);
+    }
+
     private static String leanByteString(String hex) {
         StringBuilder value = new StringBuilder("\"");
         for (int index = 0; index < hex.length(); index += 2) {
@@ -2416,6 +2704,30 @@ public final class VerificationProjectGenerator {
                 .replace("required signer", "controlled mint");
     }
 
+    private static String verifySellerPaymentScript(
+            String leanId, String artifactId, String compiledCodeSha256) {
+        return verifyPropertyScript(leanId, artifactId, compiledCodeSha256)
+                .replace("required signer", "seller payment")
+                .replace("lake env lean " + leanId + "Proof.lean",
+                        "lake env lean -o .lake/build/lib/lean/" + leanId
+                                + "Proof.olean " + leanId + "Proof.lean")
+                .replace("""
+                        if [[ ${proof_status} -eq 0 ]]; then
+                          echo "SMT-VALID: seller payment property established"
+                          exit 0
+                        fi
+                        """, """
+                        if [[ ${proof_status} -eq 0 ]]; then
+                          if ! lake env lean %sLedgerCorollary.lean; then
+                            echo "COULD-NOT-EVALUATE: ledger-domain kernel bridge failed" >&2
+                            exit 2
+                          fi
+                          echo "SMT-VALID: seller payment property established"
+                          exit 0
+                        fi
+                        """.formatted(leanId));
+    }
+
     private static String verifyNonVacuityScript(
             String leanId, String artifactId, String compiledCodeSha256) {
         return """
@@ -2596,6 +2908,35 @@ public final class VerificationProjectGenerator {
                 theorem; refutations retain the raw Blaster model.
                 """.formatted(validatorTitle, property.template(), property.authorityHex(),
                 property.tokenNameHex(), property.quantity(), property.action(), validatorTitle);
+    }
+
+    private static String sellerPaymentReadme(
+            String validatorTitle, SellerPaymentProperty property) {
+        return """
+                # Generated JuLC seller-paid-at-least DSL verification
+
+                This generator-owned workspace checks `%s` against `%s` using datum
+                seller field `%s` and integer price field `%s`.
+
+                The exact compiled UPLC obligation is proved over a reviewed,
+                solver-compatible superset of the pinned V3 `validSpendingContext`
+                domain. Generated Lean kernel-checks that every V3-valid spending
+                context is in that superset and checks the ledger-valid corollary after
+                Blaster succeeds. Every covered successful execution must have a
+                strictly decoded datum and at least one output to the datum seller's
+                public-key credential with at least the datum price in lovelace.
+
+                `SMT-VALID` is relative to the exact artifact, pinned ledger model,
+                Blaster/Z3 translation, and CEK fuel recorded in the certificate. It
+                does not establish global protection against multi-satisfaction: two
+                consumed sale inputs may still share one output unless a stronger
+                transaction-level property is checked.
+
+                `verification-property.json` includes the canonical DSL AST. The runner
+                checks non-vacuity in the stronger solver domain before the main theorem and
+                retains a raw counterexample for refuted validators.
+                """.formatted(validatorTitle, property.template(),
+                property.sellerField(), property.priceField());
     }
 
     private static String readme(
