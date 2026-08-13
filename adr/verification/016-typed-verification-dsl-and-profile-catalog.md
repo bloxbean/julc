@@ -498,6 +498,27 @@ separation is not claimed as an OS security sandbox.
 
 ### E.3: Payment vertical slice
 
+**Implementation status:** complete as an experimental vertical slice on the
+E.3 feature branch. `julc verify dsl-init` generates a contract-specific Java
+metamodel and `julc verify dsl` executes a trusted-source property builder in
+the bounded worker, revalidates its canonical IR, binds it to exact UPLC, and
+runs the established certificate workflow. The reviewed v1 property requires
+a strict datum, a public-key seller output, and at least the datum price in
+lovelace. A weaker or differently shaped AST is rejected before Lean
+generation.
+
+The pinned V3 validity predicate contains model clauses that this Blaster
+revision cannot translate when placed directly in the SMT theorem. E.3 does
+not drop those clauses and then claim equivalence. The SMT obligation uses a
+reviewed, solver-compatible *superset* of ledger-valid contexts; a separate
+Lean-kernel theorem establishes that every pinned V3 ledger-valid spending
+context is in that superset, and a kernel-checked corollary bridges the SMT
+result back to `validSpendingContext`. The result certificate records the
+ledger domain and fuel bound. Positive, unpaid, vacuous, and deliberately
+multi-satisfaction-vulnerable controls pass with the expected classifications.
+The local payment expression should remain experimental rather than graduate
+to `@PaysAtLeast` until global multi-input/output linkage is designed.
+
 1. Express a seller-paid-at-least property in the DSL.
 2. Check exact UPLC with an explicit ledger-valid spending domain.
 3. Include a correct validator, an unpaid-seller validator, an
