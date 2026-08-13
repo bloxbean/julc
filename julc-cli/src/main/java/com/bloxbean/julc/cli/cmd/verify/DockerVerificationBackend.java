@@ -13,7 +13,7 @@ import java.util.Map;
 final class DockerVerificationBackend implements VerificationExecutionBackend {
 
     static final String DOCKERFILE_RESOURCE = "META-INF/julc/verification/Dockerfile";
-    static final String IMAGE_TAG = "julc-verification:lean-4.24.0-z3-4.15.2-v1";
+    static final String IMAGE_TAG = "julc-verification:lean-4.24.0-z3-4.15.2-v2";
     private String imageId;
 
     DockerVerificationBackend() {

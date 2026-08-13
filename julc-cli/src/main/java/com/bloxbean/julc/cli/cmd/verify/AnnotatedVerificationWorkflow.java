@@ -6,6 +6,11 @@ import com.bloxbean.cardano.julc.compiler.JulcCompiler;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
 import com.bloxbean.cardano.julc.verification.RequiresSignerProperty;
 import com.bloxbean.cardano.julc.verification.RequiresSignerResolver;
+import com.bloxbean.cardano.julc.verification.StatefulSpendingProperty;
+import com.bloxbean.cardano.julc.verification.StatefulSpendingResolver;
+import com.bloxbean.cardano.julc.verification.VerificationProperty;
+import com.bloxbean.cardano.julc.verification.ControlledMintProperty;
+import com.bloxbean.cardano.julc.verification.ControlledMintResolver;
 import com.bloxbean.julc.cli.cmd.BuildCommand;
 import com.bloxbean.julc.cli.cmd.blueprint.ArtifactCommand;
 import com.bloxbean.julc.cli.project.ProjectLayout;
@@ -16,7 +21,7 @@ import picocli.CommandLine;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-/** Orchestrates C.5 from ordinary build through the managed proof runner. */
+/** Orchestrates supported Java property profiles from build through managed proof. */
 final class AnnotatedVerificationWorkflow {
 
     Execution run(
@@ -49,11 +54,18 @@ final class AnnotatedVerificationWorkflow {
         if (compiled.compileResult().hasErrors()) {
             throw new CompilerException(compiled.compileResult().diagnostics());
         }
-        RequiresSignerProperty property = RequiresSignerResolver.resolve(
-                        source, sourceFileName(project, validatorTitle), validatorTitle,
-                        compiled.contractSchema())
-                .orElseThrow(() -> new IllegalArgumentException("Validator '" + validatorTitle
-                        + "' has no @RequiresSigner annotation"));
+        String sourceFile = sourceFileName(project, validatorTitle);
+        VerificationProperty property = ControlledMintResolver.resolve(
+                        source, sourceFile, validatorTitle, compiled.contractSchema())
+                .<VerificationProperty>map(value -> value)
+                .orElseGet(() -> StatefulSpendingResolver.resolve(
+                        source, sourceFile, validatorTitle, compiled.contractSchema())
+                .<VerificationProperty>map(value -> value)
+                .orElseGet(() -> RequiresSignerResolver.resolve(
+                                source, sourceFile, validatorTitle,
+                                compiled.contractSchema())
+                        .orElseThrow(() -> new IllegalArgumentException("Validator '"
+                                + validatorTitle + "' has no supported verification profile"))));
 
         Path blueprint = ProjectLayout.plutusDir(project).resolve("plutus.json");
         var artifact = ArtifactCommand.inspect(blueprint, validatorTitle);
@@ -72,8 +84,17 @@ final class AnnotatedVerificationWorkflow {
         Path output = requestedOutput == null
                 ? project.resolve("verification").resolve(artifact.artifactId())
                 : requestedOutput.toAbsolutePath().normalize();
-        VerificationProjectGenerator.generateRequiresSigner(
-                blueprint, property, fuel, recursiveDepth, output, force);
+        if (property instanceof ControlledMintProperty controlled) {
+            VerificationProjectGenerator.generateControlledMint(
+                    blueprint, controlled, fuel, recursiveDepth, output, force);
+        } else if (property instanceof StatefulSpendingProperty stateful) {
+            VerificationProjectGenerator.generateStatefulSpending(
+                    blueprint, stateful, fuel, recursiveDepth, output, force);
+        } else {
+            VerificationProjectGenerator.generateRequiresSigner(
+                    blueprint, (RequiresSignerProperty) property,
+                    fuel, recursiveDepth, output, force);
+        }
         var run = new VerificationRunner().run(output, backend);
         return new Execution(output, property, run);
     }
@@ -94,6 +115,6 @@ final class AnnotatedVerificationWorkflow {
 
     record Execution(
             Path workspace,
-            RequiresSignerProperty property,
+            VerificationProperty property,
             VerificationRunner.RunExecution run) { }
 }

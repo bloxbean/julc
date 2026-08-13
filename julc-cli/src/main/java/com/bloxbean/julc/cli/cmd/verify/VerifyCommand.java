@@ -65,10 +65,14 @@ public class VerifyCommand implements Callable<Integer> {
                     + execution.workspace().resolve(VerificationRunner.RESULT_FILE));
             if (VerificationOutcome.parse(result.outcome()) == VerificationOutcome.REFUTED) {
                 System.out.println("Counterexample: the exact validator accepted a context that "
-                        + "violates @RequiresSigner(\""
-                        + execution.property().sourcePath() + "\").");
-                System.out.println("Raw Blaster model: " + execution.workspace().resolve(
-                        "verification-results/verify-02-prove-required-signer.log"));
+                        + "violates " + execution.property().template() + " ("
+                        + execution.property().sourcePath() + ").");
+                execution.run().result().phases().stream()
+                        .filter(phase -> "verify".equals(phase.phase()))
+                        .filter(phase -> phase.exitCode() != null && phase.exitCode() == 3)
+                        .map(phase -> execution.workspace().resolve(phase.log()))
+                        .findFirst()
+                        .ifPresent(path -> System.out.println("Raw Blaster model: " + path));
             }
             if (!execution.run().diagnostic().isBlank()) {
                 System.err.println(execution.run().diagnostic());

@@ -590,13 +590,15 @@ public final class VerificationRunner {
                 throw new IOException("Verification property IR hash mismatch");
             }
             JsonNode property = VerificationFiles.JSON.readTree(propertyFile.toFile());
+            String template = requiredText(property, "template");
             if (property.path("schemaVersion").asInt(-1) != 1
                     || property.path("schemaVersion").asInt(-1)
                         != propertyIr.path("schemaVersion").asInt(-2)
                     || !requiredText(property, "template")
                         .equals(requiredText(propertyIr, "template"))
-                    || !"julc.requires-signer/v1".equals(
-                        requiredText(property, "template"))
+                    || !Set.of("julc.requires-signer/v1",
+                            "julc.stateful-spending/v1",
+                            "julc.controlled-mint/v1").contains(template)
                     || !requiredText(property, "propertyId")
                         .equals(requiredText(propertyIr, "propertyId"))
                     || !requiredText(property, "validatorTitle")
@@ -609,6 +611,31 @@ public final class VerificationRunner {
                     || !property.path("domainAssumptions").isArray()) {
                 throw new IOException("Verification property IR does not match its manifest");
             }
+            if ("julc.stateful-spending/v1".equals(template)
+                    && (!"GREATER_THAN".equals(requiredText(property, "relation"))
+                        || !"SINGLE_CONTINUING_OUTPUT".equals(
+                            requiredText(property, "outputSelection")))) {
+                throw new IOException("Verification stateful profile is unsupported");
+            }
+            if ("julc.controlled-mint/v1".equals(template)) {
+                String authority = requiredText(property, "authorityHex");
+                String tokenName = property.path("tokenNameHex").asText(null);
+                String action = requiredText(property, "action");
+                java.math.BigInteger quantity;
+                try {
+                    quantity = new java.math.BigInteger(requiredText(property, "quantity"));
+                } catch (NumberFormatException invalid) {
+                    throw new IOException("Verification controlled-mint quantity is invalid",
+                            invalid);
+                }
+                if (!authority.matches("[0-9a-f]{56}")
+                        || tokenName == null
+                        || !tokenName.matches("(?:[0-9a-f]{2}){0,32}")
+                        || !("MINT".equals(action) && quantity.signum() > 0
+                            || "BURN".equals(action) && quantity.signum() < 0)) {
+                    throw new IOException("Verification controlled-mint profile is unsupported");
+                }
+            }
             artifact.put("propertyIrSha256", propertyHash);
             artifact.put("propertyTemplate", requiredText(propertyIr, "template"));
             artifact.put("propertyId", requiredText(propertyIr, "propertyId"));
@@ -617,6 +644,20 @@ public final class VerificationRunner {
             artifact.put("fuelBounded", true);
             artifact.put("fuelScope", "Only executions completing within the pinned CEK fuel "
                     + "bound are covered; fuel-exhausted executions are outside the claim.");
+            if ("julc.stateful-spending/v1".equals(template)) {
+                artifact.put("relation", "GREATER_THAN");
+                artifact.put("outputSelection", "SINGLE_CONTINUING_OUTPUT");
+                artifact.put("valueEquality", "STRUCTURAL");
+                artifact.put("globalMultiInputLinkageModeled", false);
+            } else if ("julc.controlled-mint/v1".equals(template)) {
+                artifact.put("action", requiredText(property, "action"));
+                artifact.put("authorityHex", requiredText(property, "authorityHex"));
+                artifact.put("tokenNameHex", property.path("tokenNameHex").asText());
+                artifact.put("quantity", requiredText(property, "quantity"));
+                artifact.put("ownPolicyLinkage", "SCRIPT_INFO_CURRENCY_SYMBOL");
+                artifact.put("ownPolicyAssetShape", "EXACT_SINGLETON_RAW_ASSOCIATION_LIST");
+                artifact.put("otherPoliciesPermitted", true);
+            }
         }
         return Map.copyOf(artifact);
     }

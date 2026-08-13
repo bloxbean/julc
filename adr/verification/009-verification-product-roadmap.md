@@ -1,12 +1,14 @@
 # ADR-009: Verification Product Roadmap — Managed Execution and Java Properties
 
-- **Status:** Accepted; C.4 and C.5 implemented, C.5 awaiting manual review
+- **Status:** Accepted; C.4 through C.7 implemented
 - **Date:** 2026-08-12
 - **Related:**
   [ADR-001 — IOG Blaster Verification Strategy](001-iog-blaster-verification-strategy.md),
   [ADR-004 — Milestone C Reusable Verification Integration](004-milestone-c-reusable-verification-integration.md),
   [ADR-007 — Java-Annotation Security Properties](007-java-annotation-security-properties-and-one-command-verification.md),
-  [ADR-008 — Productive Recursive ADTs](008-milestone-c3-productive-recursive-adts.md)
+  [ADR-008 — Productive Recursive ADTs](008-milestone-c3-productive-recursive-adts.md),
+  [ADR-012 — Stateful Spending Profile](012-milestone-c6-stateful-spending-profile.md),
+  [ADR-013 — Controlled Minting Profile](013-milestone-c7-controlled-minting-profile.md)
 
 ## Context
 
@@ -319,6 +321,9 @@ the listed assumptions and trust model. It may not claim that the whole
 contract is safe.
 
 ## Milestone C.6: stateful spending profile v1
+
+The detailed design and acceptance evidence are specified by
+[ADR-012](012-milestone-c6-stateful-spending-profile.md).
 
 ### Goal
 

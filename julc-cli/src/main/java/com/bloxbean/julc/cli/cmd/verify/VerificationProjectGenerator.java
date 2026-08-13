@@ -3,6 +3,9 @@ package com.bloxbean.julc.cli.cmd.verify;
 import com.bloxbean.julc.cli.JulcVersionProvider;
 import com.bloxbean.julc.cli.cmd.blueprint.ArtifactCommand;
 import com.bloxbean.cardano.julc.verification.RequiresSignerProperty;
+import com.bloxbean.cardano.julc.verification.StatefulSpendingProperty;
+import com.bloxbean.cardano.julc.verification.VerificationProperty;
+import com.bloxbean.cardano.julc.verification.ControlledMintProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
@@ -99,6 +102,62 @@ public final class VerificationProjectGenerator {
                 recursiveDepth, outputDirectory, force, property);
     }
 
+    /** Generates the managed C.6 workspace for the complete stateful profile. */
+    public static GenerationResult generateStatefulSpending(
+            Path blueprintFile,
+            StatefulSpendingProperty property,
+            int fuel,
+            int recursiveDepth,
+            Path outputDirectory,
+            boolean force) throws Exception {
+        if (property == null
+                || !StatefulSpendingProperty.TEMPLATE.equals(property.template())
+                || property.schemaVersion() != StatefulSpendingProperty.SCHEMA_VERSION
+                || !"spending".equals(property.scriptPurpose())
+                || property.ledgerValidityModeled()
+                || !"bytes".equals(property.authority().resolvedType())
+                || !"integer".equals(property.currentState().resolvedType())
+                || !"integer".equals(property.nextState().resolvedType())
+                || !"GREATER_THAN".equals(property.relation())
+                || !"SINGLE_CONTINUING_OUTPUT".equals(property.outputSelection())) {
+            throw new IllegalArgumentException("Unsupported stateful-spending property IR");
+        }
+        return generateInternal(blueprintFile, property.validatorTitle(), "spending", fuel,
+                recursiveDepth, outputDirectory, force, property);
+    }
+
+    /** Generates the managed C.7 workspace for an exact controlled-mint profile. */
+    public static GenerationResult generateControlledMint(
+            Path blueprintFile,
+            ControlledMintProperty property,
+            int fuel,
+            int recursiveDepth,
+            Path outputDirectory,
+            boolean force) throws Exception {
+        if (property == null
+                || !ControlledMintProperty.TEMPLATE.equals(property.template())
+                || property.schemaVersion() != ControlledMintProperty.SCHEMA_VERSION
+                || !"minting".equals(property.scriptPurpose())
+                || property.ledgerValidityModeled()
+                || !property.authorityHex().matches("[0-9a-f]{56}")
+                || !property.tokenNameHex().matches("(?:[0-9a-f]{2}){0,32}")
+                || !List.of("MINT", "BURN").contains(property.action())) {
+            throw new IllegalArgumentException("Unsupported controlled-mint property IR");
+        }
+        java.math.BigInteger quantity;
+        try {
+            quantity = new java.math.BigInteger(property.quantity());
+        } catch (NumberFormatException invalid) {
+            throw new IllegalArgumentException("Controlled-mint quantity is not an integer", invalid);
+        }
+        if (("MINT".equals(property.action()) && quantity.signum() <= 0)
+                || ("BURN".equals(property.action()) && quantity.signum() >= 0)) {
+            throw new IllegalArgumentException("Controlled-mint action contradicts quantity");
+        }
+        return generateInternal(blueprintFile, property.validatorTitle(), "minting", fuel,
+                recursiveDepth, outputDirectory, force, property);
+    }
+
     private static GenerationResult generateInternal(
             Path blueprintFile,
             String validatorTitle,
@@ -107,7 +166,7 @@ public final class VerificationProjectGenerator {
             int recursiveDepth,
             Path outputDirectory,
             boolean force,
-            RequiresSignerProperty property) throws Exception {
+            VerificationProperty property) throws Exception {
         if (fuel <= 0) {
             throw new IllegalArgumentException("Verification fuel must be positive");
         }
@@ -173,18 +232,18 @@ public final class VerificationProjectGenerator {
             files.put("SecurityProperty.lean", securityProperty());
             files.put(leanId + "Verification.lean",
                     validatorModule(leanId, artifactId, purpose, fuel));
-        } else {
+        } else if (property instanceof RequiresSignerProperty signer) {
             String datumRoot = referenceName(
                     validator.path("datum").path("schema").path("$ref").asText());
             ensureRequiresSignerSchema(
                     blueprint.path("definitions"), datumRoot,
-                    property.path().getLast().name());
+                    signer.path().getLast().name());
             String datumLeanType = schemas.leanTypes().get(datumRoot);
             if (datumLeanType == null) {
                 throw new UnsupportedVerificationException(
                         "Resolved datum schema has no generated Lean type: " + datumRoot);
             }
-            String ownerField = leanFieldName(property.path().getLast().name());
+            String ownerField = leanFieldName(signer.path().getLast().name());
             files.put("SecurityProperty.lean",
                     requiresSignerProperty(datumLeanType, ownerField));
             files.put(leanId + "Obligation.lean",
@@ -195,6 +254,50 @@ public final class VerificationProjectGenerator {
                     nonVacuityCounterexample(leanId));
             files.put(leanId + "VacuityProof.lean", vacuityProof(leanId));
             files.put("verification-property.json", JSON.writeValueAsString(property) + "\n");
+        } else if (property instanceof StatefulSpendingProperty stateful) {
+            String datumRoot = referenceName(
+                    validator.path("datum").path("schema").path("$ref").asText());
+            String redeemerRoot = referenceName(
+                    validator.path("redeemer").path("schema").path("$ref").asText());
+            ensureRecordField(blueprint.path("definitions"), datumRoot,
+                    stateful.authority().field(), "bytes", "stateful authority");
+            ensureRecordField(blueprint.path("definitions"), datumRoot,
+                    stateful.currentState().field(), "integer", "current state");
+            ensureRecordField(blueprint.path("definitions"), redeemerRoot,
+                    stateful.nextState().field(), "integer", "next state");
+            String datumLeanType = requiredLeanType(schemas, datumRoot);
+            String redeemerLeanType = requiredLeanType(schemas, redeemerRoot);
+            files.put("SecurityProperty.lean", statefulSpendingProperty(
+                    datumLeanType, redeemerLeanType,
+                    leanFieldName(stateful.authority().field()),
+                    leanFieldName(stateful.currentState().field()),
+                    leanFieldName(stateful.nextState().field())));
+            files.put(leanId + "Obligation.lean",
+                    statefulSpendingObligation(leanId, artifactId, fuel));
+            files.put(leanId + "Proof.lean", statefulSpendingProof(leanId));
+            files.put(leanId + "Counterexample.lean", statefulSpendingCounterexample(leanId));
+            files.put(leanId + "NonVacuityCounterexample.lean",
+                    nonVacuityCounterexample(leanId));
+            files.put(leanId + "VacuityProof.lean", vacuityProof(leanId));
+            files.put("verification-property.json", JSON.writeValueAsString(property) + "\n");
+        } else if (property instanceof ControlledMintProperty controlled) {
+            String redeemerRoot = referenceName(
+                    validator.path("redeemer").path("schema").path("$ref").asText());
+            String redeemerLeanType = requiredLeanType(schemas, redeemerRoot);
+            files.put("SecurityProperty.lean", controlledMintProperty(
+                    redeemerLeanType, controlled.authorityHex(),
+                    controlled.tokenNameHex(), controlled.quantity(), controlled.action()));
+            files.put(leanId + "Obligation.lean",
+                    controlledMintObligation(leanId, artifactId, fuel));
+            files.put(leanId + "Proof.lean", controlledMintProof(leanId));
+            files.put(leanId + "Counterexample.lean", controlledMintCounterexample(leanId));
+            files.put(leanId + "NonVacuityCounterexample.lean",
+                    nonVacuityCounterexample(leanId));
+            files.put(leanId + "VacuityProof.lean", vacuityProof(leanId));
+            files.put("verification-property.json", JSON.writeValueAsString(property) + "\n");
+        } else {
+            throw new IllegalArgumentException("Unsupported verification property "
+                    + property.template());
         }
         files.put("artifacts/" + artifactId + ".compiledCode.hex",
                 artifact.compiledCode() + "\n");
@@ -202,6 +305,12 @@ public final class VerificationProjectGenerator {
                 "# " + GENERATED_MARKER + "\n0-88\n92-93\n");
         String verifyScript = property == null
                 ? verifyScript(leanId, artifactId, artifact.compiledCodeSha256())
+                : property instanceof StatefulSpendingProperty
+                    ? verifyStatefulPropertyScript(
+                            leanId, artifactId, artifact.compiledCodeSha256())
+                : property instanceof ControlledMintProperty
+                    ? verifyControlledMintScript(
+                            leanId, artifactId, artifact.compiledCodeSha256())
                 : verifyPropertyScript(leanId, artifactId, artifact.compiledCodeSha256());
         files.put("scripts/verify.sh", verifyScript);
         String nonVacuityScript = null;
@@ -213,7 +322,19 @@ public final class VerificationProjectGenerator {
         String runnerPlan = property == null
                 ? runnerPlan(artifactId, VerificationFiles.sha256(
                         verifyScript.getBytes(java.nio.charset.StandardCharsets.UTF_8)))
-                : requiresSignerRunnerPlan(property,
+                : property instanceof StatefulSpendingProperty
+                    ? statefulRunnerPlan(property,
+                            VerificationFiles.sha256(nonVacuityScript.getBytes(
+                                    java.nio.charset.StandardCharsets.UTF_8)),
+                            VerificationFiles.sha256(verifyScript.getBytes(
+                                    java.nio.charset.StandardCharsets.UTF_8)))
+                : property instanceof ControlledMintProperty
+                    ? controlledMintRunnerPlan(property,
+                            VerificationFiles.sha256(nonVacuityScript.getBytes(
+                                    java.nio.charset.StandardCharsets.UTF_8)),
+                            VerificationFiles.sha256(verifyScript.getBytes(
+                                    java.nio.charset.StandardCharsets.UTF_8)))
+                : requiresSignerRunnerPlan((RequiresSignerProperty) property,
                         VerificationFiles.sha256(nonVacuityScript.getBytes(
                                 java.nio.charset.StandardCharsets.UTF_8)),
                         VerificationFiles.sha256(verifyScript.getBytes(
@@ -221,7 +342,12 @@ public final class VerificationProjectGenerator {
         files.put("verification-runner.json", runnerPlan);
         files.put("README.md", property == null
                 ? readme(leanId, validatorTitle, purpose, recursiveDepth)
-                : requiresSignerReadme(validatorTitle, property));
+                : property instanceof StatefulSpendingProperty stateful
+                    ? statefulReadme(validatorTitle, stateful)
+                : property instanceof ControlledMintProperty controlled
+                    ? controlledMintReadme(validatorTitle, controlled)
+                : requiresSignerReadme(
+                            validatorTitle, (RequiresSignerProperty) property));
         String propertySha256 = property == null ? null : VerificationFiles.sha256(
                 files.get("verification-property.json").getBytes(
                         java.nio.charset.StandardCharsets.UTF_8));
@@ -263,6 +389,48 @@ public final class VerificationProjectGenerator {
         if (!"bytes".equals(owner.path("dataType").asText())) {
             throw new UnsupportedVerificationException(
                     "@RequiresSigner owner field is not a byte string in the blueprint");
+        }
+    }
+
+    private static String requiredLeanType(SchemaGeneration schemas, String root)
+            throws UnsupportedVerificationException {
+        String leanType = schemas.leanTypes().get(root);
+        if (leanType == null) {
+            throw new UnsupportedVerificationException(
+                    "Resolved schema has no generated Lean type: " + root);
+        }
+        return leanType;
+    }
+
+    private static void ensureRecordField(
+            JsonNode definitions,
+            String root,
+            String fieldName,
+            String expectedDataType,
+            String role) throws UnsupportedVerificationException {
+        JsonNode definition = definitions.path(root);
+        JsonNode alternatives = definition.path("anyOf");
+        if (!alternatives.isArray() || alternatives.size() != 1
+                || !"constructor".equals(
+                        alternatives.get(0).path("dataType").asText())) {
+            throw new UnsupportedVerificationException(
+                    role + " root must be one non-recursive record definition");
+        }
+        List<JsonNode> matches = new ArrayList<>();
+        for (JsonNode field : alternatives.get(0).path("fields")) {
+            if (fieldName.equals(field.path("title").asText())) matches.add(field);
+        }
+        if (matches.size() != 1) {
+            throw new UnsupportedVerificationException(
+                    role + " field does not uniquely match the blueprint: " + fieldName);
+        }
+        JsonNode field = matches.getFirst();
+        if (field.has("$ref")) {
+            field = definitions.path(referenceName(field.path("$ref").asText()));
+        }
+        if (!expectedDataType.equals(field.path("dataType").asText())) {
+            throw new UnsupportedVerificationException(
+                    role + " field is not " + expectedDataType + " in the blueprint");
         }
     }
 
@@ -1337,7 +1505,7 @@ public final class VerificationProjectGenerator {
             int recursiveDepth,
             Map<String, String> leanTypes,
             String runnerPlanSha256,
-            RequiresSignerProperty property,
+            VerificationProperty property,
             String propertySha256,
             String generatedLeanSha256) throws IOException {
         Map<String, Object> root = new LinkedHashMap<>();
@@ -1458,6 +1626,56 @@ public final class VerificationProjectGenerator {
             RequiresSignerProperty property,
             String nonVacuityScriptSha256,
             String verifyScriptSha256) throws IOException {
+        return specializedRunnerPlan(
+                property,
+                nonVacuityScriptSha256,
+                verifyScriptSha256,
+                "prove-required-signer",
+                "required signer",
+                "required-signer-established",
+                "required-signer-counterexample",
+                "required-signer-undetermined");
+    }
+
+    private static String statefulRunnerPlan(
+            VerificationProperty property,
+            String nonVacuityScriptSha256,
+            String verifyScriptSha256) throws IOException {
+        return specializedRunnerPlan(
+                property,
+                nonVacuityScriptSha256,
+                verifyScriptSha256,
+                "prove-stateful-spending-v1",
+                "stateful spending",
+                "stateful-spending-v1-established",
+                "stateful-spending-v1-counterexample",
+                "stateful-spending-v1-undetermined");
+    }
+
+    private static String controlledMintRunnerPlan(
+            VerificationProperty property,
+            String nonVacuityScriptSha256,
+            String verifyScriptSha256) throws IOException {
+        return specializedRunnerPlan(
+                property,
+                nonVacuityScriptSha256,
+                verifyScriptSha256,
+                "prove-controlled-mint-v1",
+                "controlled mint",
+                "controlled-mint-v1-established",
+                "controlled-mint-v1-counterexample",
+                "controlled-mint-v1-undetermined");
+    }
+
+    private static String specializedRunnerPlan(
+            VerificationProperty property,
+            String nonVacuityScriptSha256,
+            String verifyScriptSha256,
+            String proofStepId,
+            String outputLabel,
+            String establishedReason,
+            String counterexampleReason,
+            String undeterminedReason) throws IOException {
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("schemaVersion", 2);
         root.put("kind", "generated-workspace");
@@ -1487,12 +1705,12 @@ public final class VerificationProjectGenerator {
                 observed(2, "COULD-NOT-EVALUATE: non-vacuity",
                         "COULD-NOT-EVALUATE", "non-vacuity-undetermined"));
         List<Map<String, Object>> propertyOutcomes = List.of(
-                observed(0, "SMT-VALID: required signer property established",
-                        "SMT-VALID", "required-signer-established"),
-                observed(3, "REFUTED: required signer counterexample found",
-                        "REFUTED", "required-signer-counterexample"),
-                observed(2, "COULD-NOT-EVALUATE: required signer",
-                        "COULD-NOT-EVALUATE", "required-signer-undetermined"));
+                observed(0, "SMT-VALID: " + outputLabel + " property established",
+                        "SMT-VALID", establishedReason),
+                observed(3, "REFUTED: " + outputLabel + " counterexample found",
+                        "REFUTED", counterexampleReason),
+                observed(2, "COULD-NOT-EVALUATE: " + outputLabel,
+                        "COULD-NOT-EVALUATE", undeterminedReason));
         root.put("verify", List.of(
                 Map.of(
                         "id", "check-non-vacuity",
@@ -1501,7 +1719,7 @@ public final class VerificationProjectGenerator {
                         "propertyId", property.propertyId() + ".non-vacuity",
                         "outcomes", nonVacuityOutcomes),
                 Map.of(
-                        "id", "prove-required-signer",
+                        "id", proofStepId,
                         "command", List.of("scripts/verify.sh"),
                         "executableSha256", verifyScriptSha256,
                         "propertyId", property.propertyId(),
@@ -1763,6 +1981,256 @@ public final class VerificationProjectGenerator {
                 """.formatted(leanId, leanId, leanId);
     }
 
+    private static String statefulSpendingProperty(
+            String datumType,
+            String redeemerType,
+            String authorityField,
+            String currentStateField,
+            String nextStateField) {
+        return """
+                /- Generated from typed `julc.stateful-spending/v1` IR; do not edit. -/
+                import CardanoLedgerApi.V3
+                import GeneratedSchemas
+
+                namespace JulcGenerated.UserProperty
+
+                open CardanoLedgerApi.IsData.Class
+                open CardanoLedgerApi.V3
+                open JulcGenerated.Schemas
+
+                def continuingOutputsAt (address : Address)
+                    (outputs : List TxOut) : List TxOut :=
+                  Recursor.findAll out in outputs => out.txOutAddress == address
+
+                /--
+                Stateful spending v1: strict current/redeemer/successor decoding,
+                authorization, one continuing output, preserved value and authority,
+                successor commitment, and a strict state increase.
+                -/
+                def securityProperty (ctx : ScriptContext) : Prop :=
+                  match ctx.scriptContextScriptInfo with
+                  | .SpendingScript _ (some datumData) =>
+                      match (IsData.fromData datumData :
+                              Option JulcGenerated.Schemas.%s),
+                            (IsData.fromData ctx.scriptContextRedeemer :
+                              Option JulcGenerated.Schemas.%s),
+                            findOwnInput ctx with
+                      | some datum, some redeemer, some ownInput =>
+                          match continuingOutputsAt
+                              ownInput.txInInfoResolved.txOutAddress
+                              ctx.scriptContextTxInfo.txInfoOutputs with
+                          | [successor] =>
+                              match successor.txOutDatum with
+                              | .OutputDatum successorData =>
+                                  match (IsData.fromData successorData :
+                                      Option JulcGenerated.Schemas.%s) with
+                                  | some nextDatum =>
+                                      txSignedBy datum.%s ctx.scriptContextTxInfo = true ∧
+                                      successor.txOutValue =
+                                        ownInput.txInInfoResolved.txOutValue ∧
+                                      nextDatum.%s = datum.%s ∧
+                                      nextDatum.%s = redeemer.%s ∧
+                                      datum.%s < redeemer.%s
+                                  | none => False
+                              | _ => False
+                          | _ => False
+                      | _, _, _ => False
+                  | _ => False
+
+                end JulcGenerated.UserProperty
+                """.formatted(datumType, redeemerType, datumType,
+                authorityField, authorityField, authorityField,
+                currentStateField, nextStateField, currentStateField, nextStateField);
+    }
+
+    private static String statefulSpendingObligation(
+            String leanId, String artifactId, int fuel) {
+        return """
+                /- Generated exact-artifact stateful-spending-v1 obligation. -/
+                import PlutusCore.UPLC
+                import CardanoLedgerApi.V3
+                import Blaster
+                import GeneratedSchemas
+                import CheckedExecution
+                import SecurityProperty
+
+                namespace JulcGenerated.%s
+
+                open CardanoLedgerApi.V3
+                open PlutusCore.UPLC.Utils
+                open JulcGenerated.UserProperty
+
+                #import_uplc validator PlutusV3 double_cbor_hex
+                  "artifacts/%s.compiledCode.hex"
+                #prep_uplc appliedValidator validator spendingInputs %d
+
+                def statefulSpendingObligation : Prop :=
+                  ∀ ctx : ScriptContext,
+                    PlutusCore.UPLC.Utils.isSuccessful (appliedValidator.prop ctx) →
+                    securityProperty ctx
+
+                def hasNoSuccessfulInput : Prop :=
+                  ∀ ctx : ScriptContext,
+                    ¬PlutusCore.UPLC.Utils.isSuccessful (appliedValidator.prop ctx)
+
+                end JulcGenerated.%s
+                """.formatted(leanId, artifactId, fuel, leanId);
+    }
+
+    private static String statefulSpendingProof(String leanId) {
+        return """
+                /- Generated SMT obligation; successful result is SMT-VALID. -/
+                import %sObligation
+
+                namespace JulcGenerated.%s
+
+                theorem successfulImpliesStatefulSpendingV1 :
+                    statefulSpendingObligation := by
+                  blaster
+
+                end JulcGenerated.%s
+                """.formatted(leanId, leanId, leanId);
+    }
+
+    private static String statefulSpendingCounterexample(String leanId) {
+        return """
+                /- Generated counterexample query for stateful-spending-v1. -/
+                import %sObligation
+
+                namespace JulcGenerated.%s
+
+                #blaster (gen-cex: 1) (solve-result: 1) [statefulSpendingObligation]
+
+                end JulcGenerated.%s
+                """.formatted(leanId, leanId, leanId);
+    }
+
+    private static String controlledMintProperty(
+            String redeemerType,
+            String authorityHex,
+            String tokenNameHex,
+            String quantity,
+            String action) {
+        String direction = "MINT".equals(action)
+                ? "configuredQuantity > 0" : "configuredQuantity < 0";
+        return """
+                /- Generated from typed `julc.controlled-mint/v1` IR; do not edit. -/
+                import CardanoLedgerApi.V3
+                import GeneratedSchemas
+
+                namespace JulcGenerated.UserProperty
+
+                open CardanoLedgerApi.IsData.Class
+                open CardanoLedgerApi.V3
+                open PlutusCore.Data (Data)
+                open PlutusCore.ByteString (ByteString)
+                open JulcGenerated.Schemas
+
+                def configuredAuthority : ByteString := %s
+                def configuredTokenName : ByteString := %s
+                def configuredQuantity : Int := %s
+
+                def ownPolicyEntries (policy : ByteString)
+                    (mint : CardanoLedgerApi.V3.MintValue) :
+                    CardanoLedgerApi.V3.MintValue :=
+                  Recursor.findAll entry in mint => entry.1 == Data.B policy
+
+                /-- Fixed authority and exact singleton asset shape under this policy. -/
+                def securityProperty (ctx : ScriptContext) : Prop :=
+                  match ctx.scriptContextScriptInfo with
+                  | .MintingScript ownPolicy =>
+                      match (IsData.fromData ctx.scriptContextRedeemer :
+                              Option JulcGenerated.Schemas.%s),
+                            ownPolicyEntries ownPolicy
+                              ctx.scriptContextTxInfo.txInfoMint with
+                      | some _,
+                          [(Data.B actualPolicy,
+                            Data.Map [(Data.B actualToken, Data.I actualQuantity)])] =>
+                              txSignedBy configuredAuthority
+                                  ctx.scriptContextTxInfo = true ∧
+                              actualPolicy = ownPolicy ∧
+                              actualToken = configuredTokenName ∧
+                              actualQuantity = configuredQuantity ∧
+                              %s
+                      | _, _ => False
+                  | _ => False
+
+                end JulcGenerated.UserProperty
+                """.formatted(
+                leanByteString(authorityHex), leanByteString(tokenNameHex), quantity,
+                redeemerType, direction);
+    }
+
+    private static String leanByteString(String hex) {
+        StringBuilder value = new StringBuilder("\"");
+        for (int index = 0; index < hex.length(); index += 2) {
+            value.append("\\x").append(hex, index, index + 2);
+        }
+        return value.append('"').toString();
+    }
+
+    private static String controlledMintObligation(
+            String leanId, String artifactId, int fuel) {
+        return """
+                /- Generated exact-artifact controlled-mint-v1 obligation. -/
+                import PlutusCore.UPLC
+                import CardanoLedgerApi.V3
+                import Blaster
+                import GeneratedSchemas
+                import CheckedExecution
+                import SecurityProperty
+
+                namespace JulcGenerated.%s
+
+                open CardanoLedgerApi.V3
+                open PlutusCore.UPLC.Utils
+                open JulcGenerated.UserProperty
+
+                #import_uplc validator PlutusV3 double_cbor_hex
+                  "artifacts/%s.compiledCode.hex"
+                #prep_uplc appliedValidator validator mintingInputs %d
+
+                def controlledMintObligation : Prop :=
+                  ∀ ctx : ScriptContext,
+                    PlutusCore.UPLC.Utils.isSuccessful (appliedValidator.prop ctx) →
+                    securityProperty ctx
+
+                def hasNoSuccessfulInput : Prop :=
+                  ∀ ctx : ScriptContext,
+                    ¬PlutusCore.UPLC.Utils.isSuccessful (appliedValidator.prop ctx)
+
+                end JulcGenerated.%s
+                """.formatted(leanId, artifactId, fuel, leanId);
+    }
+
+    private static String controlledMintProof(String leanId) {
+        return """
+                /- Generated SMT obligation; successful result is SMT-VALID. -/
+                import %sObligation
+
+                namespace JulcGenerated.%s
+
+                theorem successfulImpliesControlledMintV1 :
+                    controlledMintObligation := by
+                  blaster
+
+                end JulcGenerated.%s
+                """.formatted(leanId, leanId, leanId);
+    }
+
+    private static String controlledMintCounterexample(String leanId) {
+        return """
+                /- Generated counterexample query for controlled-mint-v1. -/
+                import %sObligation
+
+                namespace JulcGenerated.%s
+
+                #blaster (gen-cex: 1) (solve-result: 1) [controlledMintObligation]
+
+                end JulcGenerated.%s
+                """.formatted(leanId, leanId, leanId);
+    }
+
     private static String nonVacuityCounterexample(String leanId) {
         return """
                 /- Generated non-vacuity control: no-success must be solver-refuted. -/
@@ -1913,12 +2381,8 @@ public final class VerificationProjectGenerator {
                 CardanoLedgerApi %s
                 PINS
 
-                mkdir -p .lake/build/lib/lean
-                lake env lean -o .lake/build/lib/lean/GeneratedSchemas.olean GeneratedSchemas.lean
-                lake env lean -o .lake/build/lib/lean/PropertyTemplates.olean PropertyTemplates.lean
-                lake env lean -o .lake/build/lib/lean/CheckedExecution.olean CheckedExecution.lean
-                lake env lean -o .lake/build/lib/lean/SecurityProperty.olean SecurityProperty.lean
-                lake env lean -o .lake/build/lib/lean/%sObligation.olean %sObligation.lean
+                # The authenticated non-vacuity step immediately before this step
+                # recompiles all support files and this obligation from current sources.
 
                 set +e
                 lake env lean %sProof.lean
@@ -1937,7 +2401,19 @@ public final class VerificationProjectGenerator {
                 exit 2
                 """.formatted(artifactId, artifactId, compiledCodeSha256,
                 BLASTER_REV, PLUTUS_CORE_REV, LEDGER_API_REV,
-                leanId, leanId, leanId, leanId);
+                leanId, leanId);
+    }
+
+    private static String verifyStatefulPropertyScript(
+            String leanId, String artifactId, String compiledCodeSha256) {
+        return verifyPropertyScript(leanId, artifactId, compiledCodeSha256)
+                .replace("required signer", "stateful spending");
+    }
+
+    private static String verifyControlledMintScript(
+            String leanId, String artifactId, String compiledCodeSha256) {
+        return verifyPropertyScript(leanId, artifactId, compiledCodeSha256)
+                .replace("required signer", "controlled mint");
     }
 
     private static String verifyNonVacuityScript(
@@ -2049,6 +2525,77 @@ public final class VerificationProjectGenerator {
                 `SMT-VALID`, retains a raw Blaster model as `REFUTED`, or fails closed.
                 """.formatted(validatorTitle, property.template(), property.sourcePath(),
                 validatorTitle);
+    }
+
+    private static String statefulReadme(
+            String validatorTitle, StatefulSpendingProperty property) {
+        return """
+                # Generated JuLC stateful-spending-v1 verification
+
+                This generator-owned workspace checks `%s` against `%s` using:
+
+                - authority `%s`;
+                - current state `%s`;
+                - next state `%s`; and
+                - output selection `%s`.
+
+                Regenerate and run it with:
+
+                ```bash
+                julc verify --validator %s
+                ```
+
+                Successful exact UPLC execution must imply strict current datum,
+                redeemer, and inline successor-datum decoding; complete-list signer
+                authorization; exactly one full-address continuing output; structural
+                preservation of its own-input value and authority; successor state
+                commitment; and a strict state increase.
+
+                `SMT-VALID` covers only executions completing within the CEK `fuel`
+                recorded in the manifest and certificate. Fuel-exhausted paths are
+                outside the claim. Ledger validity and global multi-input one-to-one
+                linkage are not modeled. Structural Value equality is intentionally
+                stronger than extensional asset equality in this profile.
+
+                The runner checks non-vacuity first. A vacuous result skips the main
+                theorem; refutations retain the raw Blaster model.
+                """.formatted(validatorTitle, property.template(),
+                property.authority().path(), property.currentState().path(),
+                property.nextState().path(), property.outputSelection(), validatorTitle);
+    }
+
+    private static String controlledMintReadme(
+            String validatorTitle, ControlledMintProperty property) {
+        return """
+                # Generated JuLC controlled-mint-v1 verification
+
+                This generator-owned workspace checks `%s` against `%s` with:
+
+                - fixed authority `%s`;
+                - token name `%s`;
+                - signed quantity `%s`; and
+                - action `%s`.
+
+                Regenerate and run it with:
+
+                ```bash
+                julc verify --validator %s
+                ```
+
+                Successful exact UPLC execution must imply strict redeemer decoding,
+                complete-list authority membership, and exactly one raw current-policy
+                entry containing exactly the configured token and quantity. Entries for
+                other policies are permitted. Duplicate current-policy entries and extra
+                tokens under it violate the profile.
+
+                `SMT-VALID` covers only executions completing within the CEK `fuel`
+                recorded in the manifest and certificate. Fuel-exhausted paths are
+                outside the claim. Ledger validity and map normalization are not assumed.
+
+                The runner checks non-vacuity first. A vacuous result skips the main
+                theorem; refutations retain the raw Blaster model.
+                """.formatted(validatorTitle, property.template(), property.authorityHex(),
+                property.tokenNameHex(), property.quantity(), property.action(), validatorTitle);
     }
 
     private static String readme(

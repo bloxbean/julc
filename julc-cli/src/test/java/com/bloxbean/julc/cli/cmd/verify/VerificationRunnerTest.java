@@ -458,12 +458,25 @@ class VerificationRunnerTest {
     void nativeImageMetadataIncludesDockerfileResource() throws Exception {
         var loader = VerificationRunnerTest.class.getClassLoader();
         assertTrue(loader.getResource(DockerVerificationBackend.DOCKERFILE_RESOURCE) != null);
+        String dockerfile;
+        try (var stream = loader.getResourceAsStream(
+                DockerVerificationBackend.DOCKERFILE_RESOURCE)) {
+            dockerfile = new String(stream.readAllBytes(),
+                    java.nio.charset.StandardCharsets.UTF_8);
+        }
+        assertTrue(dockerfile.contains("--retry-all-errors"));
+        assertTrue(dockerfile.contains("lean_sha"));
+        assertTrue(dockerfile.contains("z3_sha"));
+        assertTrue(dockerfile.contains("sha256sum --check"));
+        assertTrue(dockerfile.indexOf("/opt/lean/bin/lean --version")
+                < dockerfile.indexOf("z3_archive="));
         String metadata = Files.readString(Path.of(
                 "src/main/resources/META-INF/native-image/reachability-metadata.json"));
         assertTrue(metadata.contains("META-INF/julc/verification/**"));
         assertTrue(metadata.contains("VerificationRunPlan"));
         assertTrue(metadata.contains("VerificationRunPlan$ObservedOutcome"));
         assertTrue(metadata.contains("RequiresSignerProperty"));
+        assertTrue(metadata.contains("ControlledMintProperty"));
     }
 
     @Test
