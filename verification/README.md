@@ -4,6 +4,11 @@ This guide describes the verification functionality that is implemented in
 this repository today. It deliberately separates working evidence from planned
 automation.
 
+For a new project, start with
+[`GETTING_STARTED.md`](GETTING_STARTED.md). It walks through the annotation
+workflow from installation to a certificate using either the local toolchain
+or Docker.
+
 ## What is available today
 
 There are seven ways to explore the current integration. `julc verify run`

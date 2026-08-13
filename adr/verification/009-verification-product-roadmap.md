@@ -8,7 +8,9 @@
   [ADR-007 — Java-Annotation Security Properties](007-java-annotation-security-properties-and-one-command-verification.md),
   [ADR-008 — Productive Recursive ADTs](008-milestone-c3-productive-recursive-adts.md),
   [ADR-012 — Stateful Spending Profile](012-milestone-c6-stateful-spending-profile.md),
-  [ADR-013 — Controlled Minting Profile](013-milestone-c7-controlled-minting-profile.md)
+  [ADR-013 — Controlled Minting Profile](013-milestone-c7-controlled-minting-profile.md),
+  [ADR-014 — Post-C.7 Hardening Roadmap](014-post-c7-verification-hardening-roadmap.md),
+  [ADR-015 — Strict On-Chain Data Boundaries](015-strict-on-chain-data-boundaries.md)
 
 ## Context
 
@@ -388,6 +390,12 @@ vulnerable variants produce reviewed, reproducible results and a versioned
 minting-profile certificate.
 
 ## Parallel track: complete PV11 builtin compatibility
+
+The prioritized sequence after C.7 is maintained by
+[ADR-014](014-post-c7-verification-hardening-roadmap.md). In particular,
+release hardening and the compatibility-safe strict-boundary work in
+[ADR-015](015-strict-on-chain-data-boundaries.md) precede further profile
+breadth.
 
 The pinned Blaster stack currently does not support JuLC-emittable builtin tags
 89–91 and 94–100. Until support is implemented, artifacts containing them must
