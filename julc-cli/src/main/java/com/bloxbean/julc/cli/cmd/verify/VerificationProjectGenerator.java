@@ -174,9 +174,7 @@ public final class VerificationProjectGenerator {
         if (recursiveDepth <= 0) {
             throw new IllegalArgumentException("Recursive verification depth must be positive");
         }
-        if (!purpose.equals("spending") && !purpose.equals("minting")) {
-            throw new IllegalArgumentException("Purpose must be spending or minting");
-        }
+        VerificationPurpose verificationPurpose = VerificationPurpose.fromUserName(purpose);
         if (!Files.isRegularFile(blueprintFile)) {
             throw new IllegalArgumentException("Blueprint not found: " + blueprintFile);
         }
@@ -188,10 +186,21 @@ public final class VerificationProjectGenerator {
                     "Only Plutus V3 blueprints are supported, found '" + plutusVersion + "'");
         }
 
-        var artifact = ArtifactCommand.inspect(blueprintFile, validatorTitle);
+        final ArtifactCommand.ResolvedArtifact resolvedArtifact;
+        try {
+            resolvedArtifact = ArtifactCommand.inspectForPurpose(
+                    blueprintFile, validatorTitle, verificationPurpose.cip57Name());
+        } catch (ArtifactCommand.ArtifactSelectionException selection) {
+            if (selection.matchCount() != 0) throw selection;
+            throw new UnsupportedVerificationException(
+                    "No " + Character.toUpperCase(purpose.charAt(0)) + purpose.substring(1)
+                            + " interface exists for validator '"
+                            + validatorTitle + "'");
+        }
+        var artifact = resolvedArtifact.artifact();
         ensureSupportedBuiltins(artifact.builtins());
 
-        JsonNode validator = exactValidator(blueprint, validatorTitle);
+        JsonNode validator = exactValidator(blueprint, resolvedArtifact.blueprintEntryTitle());
         boolean hasDatum = validator.has("datum") && validator.path("datum").has("schema");
         if (purpose.equals("spending") && !hasDatum) {
             throw new UnsupportedVerificationException(
@@ -355,7 +364,7 @@ public final class VerificationProjectGenerator {
         String generatedLeanSha256 = property == null
                 ? null : VerificationFiles.leanTreeHash(files);
         files.put("verification-manifest.json",
-                manifest(blueprint, artifact, purpose, fuel, recursiveDepth,
+                manifest(blueprint, validatorTitle, artifact, purpose, fuel, recursiveDepth,
                         schemas.leanTypes(), VerificationFiles.sha256(
                                 runnerPlan.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
                         property, propertySha256, generatedLeanSha256));
@@ -1500,6 +1509,7 @@ public final class VerificationProjectGenerator {
 
     private static String manifest(
             JsonNode blueprint,
+            String baseValidatorTitle,
             ArtifactCommand.ArtifactMetadata artifact,
             String purpose,
             int fuel,
@@ -1517,7 +1527,8 @@ public final class VerificationProjectGenerator {
         root.put("boundarySemantics", DataBoundarySemantics.fromCompilerIdentity(
                 compiler.path("name").asText(), compiler.path("version").asText(null)));
         root.put("project", blueprint.path("preamble").path("title").asText());
-        root.put("validatorTitle", artifact.title());
+        root.put("validatorTitle", baseValidatorTitle);
+        root.put("blueprintEntryTitle", artifact.title());
         root.put("artifactId", artifact.artifactId());
         root.put("compiledCodeSha256", artifact.compiledCodeSha256());
         root.put("cardanoScriptHash", artifact.cardanoScriptHash());

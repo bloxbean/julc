@@ -205,8 +205,11 @@ nested combinations of those types. Productive self and mutual recursion is
 supported. A successful build validates the document offline against the
 repository-pinned CIP-57 meta-schema.
 
-For a minting policy, use `--purpose minting`. The validator title must exactly
-match its title in `build/plutus/plutus.json`.
+For a minting policy, use `--purpose minting`. For a normal validator, the
+base Java title also remains the exact blueprint title. For an explicit
+multi-validator, pass the base Java class name: the generator resolves
+`MyValidator.spend` or `MyValidator.mint` exactly and records both identities
+in its manifest. It never selects by array order.
 
 The command validates the Plutus V3 artifact and supported-builtin inventory,
 then creates:

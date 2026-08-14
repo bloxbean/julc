@@ -33,7 +33,7 @@ public final class ControlledMintResolver {
         if (matches.size() != 1) {
             throw error("Expected exactly one @ControlledMint annotation", annotation, fileName);
         }
-        if (!"minting".equals(schema.purpose()) || schema.datum() != null) {
+        if (schema.purpose() != ContractSchema.Purpose.MINT || schema.datum() != null) {
             throw error("@ControlledMint requires a two-argument minting validator",
                     annotation, fileName);
         }

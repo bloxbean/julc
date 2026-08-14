@@ -3,6 +3,7 @@ package com.bloxbean.julc.cli.cmd.verify;
 import com.bloxbean.cardano.julc.clientlib.JulcScriptAdapter;
 import com.bloxbean.cardano.julc.compiler.CompilerException;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
+import com.bloxbean.cardano.julc.compiler.schema.ContractSchema;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
 import com.bloxbean.cardano.julc.verification.RequiresSignerProperty;
 import com.bloxbean.cardano.julc.verification.RequiresSignerResolver;
@@ -27,6 +28,7 @@ final class AnnotatedVerificationWorkflow {
     Execution run(
             Path projectDirectory,
             String validatorTitle,
+            VerificationPurpose requestedPurpose,
             VerificationBackendKind backend,
             Path requestedOutput,
             int fuel,
@@ -54,21 +56,25 @@ final class AnnotatedVerificationWorkflow {
         if (compiled.compileResult().hasErrors()) {
             throw new CompilerException(compiled.compileResult().diagnostics());
         }
+        ContractSchema selectedSchema = selectSchema(
+                compiled.contractSchema(), requestedPurpose, validatorTitle);
         String sourceFile = sourceFileName(project, validatorTitle);
         VerificationProperty property = ControlledMintResolver.resolve(
-                        source, sourceFile, validatorTitle, compiled.contractSchema())
+                        source, sourceFile, validatorTitle, selectedSchema)
                 .<VerificationProperty>map(value -> value)
                 .orElseGet(() -> StatefulSpendingResolver.resolve(
-                        source, sourceFile, validatorTitle, compiled.contractSchema())
+                        source, sourceFile, validatorTitle, selectedSchema)
                 .<VerificationProperty>map(value -> value)
                 .orElseGet(() -> RequiresSignerResolver.resolve(
                                 source, sourceFile, validatorTitle,
-                                compiled.contractSchema())
+                                selectedSchema)
                         .orElseThrow(() -> new IllegalArgumentException("Validator '"
                                 + validatorTitle + "' has no supported verification profile"))));
 
         Path blueprint = ProjectLayout.plutusDir(project).resolve("plutus.json");
-        var artifact = ArtifactCommand.inspect(blueprint, validatorTitle);
+        var propertyPurpose = VerificationPurpose.fromUserName(property.scriptPurpose());
+        var artifact = ArtifactCommand.inspectForPurpose(
+                blueprint, validatorTitle, propertyPurpose.cip57Name()).artifact();
         String observedCompiledCode = JulcScriptAdapter
                 .fromProgram(compiled.compileResult().program()).getCborHex();
         if (!artifact.compiledCode().equalsIgnoreCase(observedCompiledCode)) {
@@ -97,6 +103,26 @@ final class AnnotatedVerificationWorkflow {
         }
         var run = new VerificationRunner().run(output, backend);
         return new Execution(output, property, run);
+    }
+
+    private static ContractSchema selectSchema(
+            ContractSchema schema,
+            VerificationPurpose requestedPurpose,
+            String validatorTitle) {
+        if (schema.interfaces().size() == 1) {
+            if (requestedPurpose != null
+                    && schema.purpose() != requestedPurpose.compilerPurpose()) {
+                throw new IllegalArgumentException("Validator '" + validatorTitle
+                        + "' has purpose " + schema.purpose()
+                        + ", not " + requestedPurpose.userName());
+            }
+            return schema;
+        }
+        if (requestedPurpose == null) {
+            throw new IllegalArgumentException("Validator '" + validatorTitle
+                    + "' exposes multiple purpose interfaces; pass --purpose");
+        }
+        return schema.select(requestedPurpose.compilerPurpose());
     }
 
     private static String sourceFileName(Path project, String validatorTitle) {

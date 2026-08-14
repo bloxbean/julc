@@ -130,6 +130,18 @@ The scaffolded `AlwaysSucceeds` validator may remain in the project; the
 `--validator` option selects one exact title. You can remove the starter later
 if it is not needed.
 
+For an explicit `@MultiValidator`, `--validator` is the base Java class name
+and `--purpose` selects its exact interface. For example:
+
+```bash
+julc verify . --validator Protocol --purpose spending --backend docker
+```
+
+Its CIP-57 entry is named `Protocol.spend`; a minting interface is
+`Protocol.mint`. Both entries bind to the same compiled program and script
+hash. See the
+[purpose-indexed blueprint guide](../docs/src/content/docs/guides/purpose-indexed-blueprints.md).
+
 ## 5. Build and test normally
 
 ```bash
@@ -321,6 +333,11 @@ julc verify run verification/my-validator --backend docker
 An untouched custom workspace intentionally reports
 `COULD-NOT-EVALUATE/property-not-specialized`; workspace compilation alone is
 not verification.
+
+For a multi-validator, repeat `verify init` with a distinct output directory
+for each supported purpose. The manifest records both the base
+`validatorTitle` and selected `blueprintEntryTitle`; generated workspaces from
+the same script have identical `compiledCodeSha256` and `cardanoScriptHash`.
 
 ## Troubleshooting
 

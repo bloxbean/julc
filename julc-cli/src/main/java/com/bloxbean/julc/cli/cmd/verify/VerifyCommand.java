@@ -26,6 +26,10 @@ public class VerifyCommand implements Callable<Integer> {
             description = "Exact annotated Java validator title")
     private String validatorTitle;
 
+    @Option(names = "--purpose",
+            description = "Required for a multi-validator: ${COMPLETION-CANDIDATES}")
+    private VerificationPurpose purpose;
+
     @Option(names = "--backend", defaultValue = "AUTO",
             description = "Execution backend: ${COMPLETION-CANDIDATES} (default: ${DEFAULT-VALUE})")
     private VerificationBackendKind backend;
@@ -54,7 +58,7 @@ public class VerifyCommand implements Callable<Integer> {
         }
         try {
             var execution = new AnnotatedVerificationWorkflow().run(
-                    projectDir, validatorTitle, backend, outputDirectory,
+                    projectDir, validatorTitle, purpose, backend, outputDirectory,
                     fuel, recursiveDepth, force);
             var result = execution.run().result();
             System.out.println(result.outcome() + ": " + result.reason());

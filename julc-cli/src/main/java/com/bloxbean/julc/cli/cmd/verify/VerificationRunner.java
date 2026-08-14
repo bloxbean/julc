@@ -234,8 +234,9 @@ public final class VerificationRunner {
     private static Map<String, Object> artifactFallback(JsonNode manifest) {
         var result = new LinkedHashMap<String, Object>();
         result.put("kind", "unvalidated");
-        for (String field : List.of("artifactId", "validatorTitle", "compiledCodeSha256",
-                "cardanoScriptHash", "scriptPurpose", "boundarySemantics")) {
+        for (String field : List.of("artifactId", "validatorTitle", "blueprintEntryTitle",
+                "compiledCodeSha256", "cardanoScriptHash", "scriptPurpose",
+                "boundarySemantics")) {
             if (manifest.hasNonNull(field)) result.put(field, manifest.path(field).asText());
         }
         return result;
@@ -569,6 +570,8 @@ public final class VerificationRunner {
         artifact.put("kind", "validator");
         artifact.put("artifactId", artifactId);
         artifact.put("validatorTitle", requiredText(manifest, "validatorTitle"));
+        artifact.put("blueprintEntryTitle", manifest.path("blueprintEntryTitle")
+                .asText(requiredText(manifest, "validatorTitle")));
         artifact.put("compiledCodeSha256", expectedHash);
         artifact.put("cardanoScriptHash", cardanoHash);
         artifact.put("scriptPurpose", purpose);

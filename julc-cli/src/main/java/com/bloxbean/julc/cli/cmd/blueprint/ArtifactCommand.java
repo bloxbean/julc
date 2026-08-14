@@ -117,6 +117,59 @@ public class ArtifactCommand implements Callable<Integer> {
                 program.versionString(), builtins);
     }
 
+    /** Resolve a base validator title and CIP-57 purpose to exactly one entry. */
+    public static ResolvedArtifact inspectForPurpose(
+            Path blueprintFile,
+            String baseValidatorTitle,
+            String cip57Purpose) throws Exception {
+        if (!Files.isRegularFile(blueprintFile)) {
+            throw new IllegalArgumentException("Blueprint not found: " + blueprintFile);
+        }
+        if (baseValidatorTitle == null || baseValidatorTitle.isBlank()) {
+            throw new IllegalArgumentException("Base validator title must not be blank");
+        }
+        if (!List.of("spend", "mint", "withdraw", "publish").contains(cip57Purpose)) {
+            throw new IllegalArgumentException(
+                    "Supported CIP-57 purposes are spend, mint, withdraw, or publish");
+        }
+
+        JsonNode root = JSON.readTree(blueprintFile.toFile());
+        JsonNode validators = root.path("validators");
+        if (!validators.isArray()) {
+            throw new IllegalArgumentException("Blueprint validators must be an array");
+        }
+        String suffixedTitle = baseValidatorTitle + "." + cip57Purpose;
+        var matches = new ArrayList<JsonNode>();
+        var legacyTitleMatches = new ArrayList<JsonNode>();
+        validators.forEach(node -> {
+            String title = node.path("title").asText(null);
+            boolean titleMatches = baseValidatorTitle.equals(title) || suffixedTitle.equals(title);
+            JsonNode purpose = node.path("redeemer").path("purpose");
+            if (titleMatches && purpose.isMissingNode()) {
+                legacyTitleMatches.add(node);
+            } else if (titleMatches && cip57Purpose.equals(purpose.asText(null))) {
+                matches.add(node);
+            }
+        });
+        if (!legacyTitleMatches.isEmpty()) {
+            throw new ArtifactSelectionException(
+                    "Validator '" + baseValidatorTitle + "' exists, but its redeemer has no "
+                            + "CIP-57 purpose. Rebuild plutus.json with the current JuLC "
+                            + "compiler before selecting a verification interface",
+                    legacyTitleMatches.size());
+        }
+        if (matches.size() != 1) {
+            throw new ArtifactSelectionException("Expected exactly one validator for base title '"
+                    + baseValidatorTitle + "' and purpose '" + cip57Purpose
+                    + "', found " + matches.size(), matches.size());
+        }
+
+        String entryTitle = requiredText(matches.getFirst(), "title");
+        return new ResolvedArtifact(
+                baseValidatorTitle, entryTitle, cip57Purpose,
+                inspect(blueprintFile, entryTitle));
+    }
+
     private static String requiredText(JsonNode node, String field) {
         String value = node.path(field).asText(null);
         if (value == null || value.isBlank()) {
@@ -178,4 +231,23 @@ public class ArtifactCommand implements Callable<Integer> {
             String cardanoScriptHash,
             String uplcVersion,
             List<BuiltinUse> builtins) { }
+
+    public record ResolvedArtifact(
+            String baseValidatorTitle,
+            String blueprintEntryTitle,
+            String cip57Purpose,
+            ArtifactMetadata artifact) { }
+
+    public static final class ArtifactSelectionException extends IllegalArgumentException {
+        private final int matchCount;
+
+        ArtifactSelectionException(String message, int matchCount) {
+            super(message);
+            this.matchCount = matchCount;
+        }
+
+        public int matchCount() {
+            return matchCount;
+        }
+    }
 }

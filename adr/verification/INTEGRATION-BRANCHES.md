@@ -62,17 +62,24 @@ partial checker or a public opt-in.
 
 ### Purpose-indexed multi-validator blueprints
 
+- **Branch:** `feat/purpose-indexed-multivalidator-blueprints`
 - **ADR:**
   [ADR-017](017-purpose-indexed-multivalidator-blueprints.md)
-- **Current state:** design only; no implementation branch has been created.
-- **Planned base:** the reviewed target containing ADR-005 and ADR-015.
+- **Base:** `feat/strict-data-boundaries` at `b986752`.
+- **Current state:** P.1–P.4 are implemented and reviewed; the branch is ready
+  for commit and its separate pull request.
 - **Purpose:** remove the blueprint opt-out for explicit supported-purpose
   `@MultiValidator` contracts while keeping schema capture UPLC-neutral.
 
+The implementation publishes `SPEND`, `MINT`, `WITHDRAW`, and `CERTIFY` as
+the standard CIP-57 purposes `spend`, `mint`, `withdraw`, and `publish`.
+`VOTE` and `PROPOSE` remain fail-closed because the pinned CIP-57 vocabulary,
+Aiken, and Scalus provide no standard blueprint purpose values for them.
+
 ADR-017 is numbered after ADR-016 even though ADR-016's file lives on
 `feat/typed_verified_dsl` and is not present on this older branch. Implementation
-starts only after the current uncommitted ADR-015 review unit is resolved; it
-must not be mixed into the strict-boundary manual-review diff.
+was intentionally developed as a separate child branch after ADR-015 was
+reviewed and committed, so its pull request remains independently reviewable.
 
 Because this branch is based before ADR-016 E.1–E.3, S.1 verification agreement
 uses the C.5/C.6 fixtures present on the shared foundation. It must not copy E.3

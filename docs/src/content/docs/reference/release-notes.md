@@ -45,6 +45,31 @@ verification certificates record `boundarySemantics: strict-data-v1`. See the
 [strict data boundary guide](../guides/strict-data-boundaries/) for the exact
 coverage, cost guidance, raw-data escape, and migration checklist.
 
+## Upcoming preview: purpose-indexed multi-validator blueprints
+
+An explicit `@MultiValidator` with supported `SPEND`, `MINT`, `WITHDRAW`, or
+`CERTIFY` entrypoints now publish one standard CIP-57 validator entry per
+purpose. The titles are purpose-qualified—for example `Protocol.spend` and
+`Protocol.mint`—while every entry retains byte-identical compiled code and the
+same Cardano script hash because they describe one deployed script.
+
+Artifact consumers must migrate from the unsuffixed multi-validator title to
+the exact purpose-qualified entry. `julc verify` and `julc verify init` instead
+take the base Java title plus `--purpose`. Normal single-purpose titles and
+script bytes are unchanged. Every newly generated blueprint now records an
+explicit purpose on its datum, redeemer, and parameter arguments, so its JSON
+changes even for an ordinary single-purpose validator.
+
+`CERTIFY` is emitted as CIP-57 `publish`, following Aiken's mapping of the
+ledger certificate purpose; the JuLC source-level name remains `CERTIFY`.
+Manual dispatch remains fail-closed. Single-purpose and multi-purpose `VOTE`
+or `PROPOSE` validators now also fail strict blueprint generation: older
+previews emitted incomplete purpose-free metadata for these single-purpose
+validators, but the pinned CIP-57 vocabulary cannot name them truthfully. Use
+the blueprint opt-out to compile without metadata when needed. See the
+[purpose-indexed blueprint guide](../guides/purpose-indexed-blueprints/) for
+examples and limitations.
+
 ## Upcoming release: PV11 builtin contract correction
 
 JuLC's current compiler targets the Plutus V3/PV11 feature set. This contract

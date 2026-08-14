@@ -41,7 +41,7 @@ public final class StatefulSpendingResolver {
                         source, fileName, validatorTitle, schema)
                 .orElseThrow(() -> error("Stateful profile also requires exactly one "
                         + "@RequiresSigner", location, fileName));
-        if (!"spending".equals(schema.purpose()) || schema.datum() == null) {
+        if (schema.purpose() != ContractSchema.Purpose.SPEND || schema.datum() == null) {
             throw error("Stateful profile requires a three-argument spending validator",
                     location, fileName);
         }

@@ -40,6 +40,7 @@ export default defineConfig({
             { label: 'Testing Guide', slug: 'guides/testing-guide' },
             { label: 'Source Maps', slug: 'guides/source-maps' },
             { label: 'Strict Data Boundaries', slug: 'guides/strict-data-boundaries' },
+            { label: 'Multi-validator Blueprints', slug: 'guides/purpose-indexed-blueprints' },
           ],
         },
         {

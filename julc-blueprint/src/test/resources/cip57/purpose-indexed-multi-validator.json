@@ -1,0 +1,80 @@
+{
+  "$schema": "https://cips.cardano.org/cips/cip57/schemas/plutus-blueprint.json",
+  "preamble": {
+    "title": "purpose-indexed-compatibility-gate",
+    "version": "1.0.0",
+    "plutusVersion": "v3",
+    "compiler": {
+      "name": "julc",
+      "version": "compatibility-fixture"
+    }
+  },
+  "validators": [
+    {
+      "title": "ProtocolValidator.spend",
+      "datum": {
+        "title": "datum",
+        "purpose": "spend",
+        "schema": {
+          "$ref": "#/definitions/ProtocolValidator.State"
+        }
+      },
+      "redeemer": {
+        "title": "redeemer",
+        "purpose": "spend",
+        "schema": {
+          "$ref": "#/definitions/ProtocolValidator.Spend"
+        }
+      },
+      "compiledCode": "00",
+      "hash": "00000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "title": "ProtocolValidator.mint",
+      "redeemer": {
+        "title": "redeemer",
+        "purpose": "mint",
+        "schema": {
+          "$ref": "#/definitions/ProtocolValidator.Mint"
+        }
+      },
+      "compiledCode": "00",
+      "hash": "00000000000000000000000000000000000000000000000000000000"
+    }
+  ],
+  "definitions": {
+    "ProtocolValidator.State": {
+      "title": "State",
+      "dataType": "constructor",
+      "index": 0,
+      "fields": [
+        {
+          "title": "counter",
+          "dataType": "integer"
+        }
+      ]
+    },
+    "ProtocolValidator.Spend": {
+      "title": "Spend",
+      "dataType": "constructor",
+      "index": 0,
+      "fields": [
+        {
+          "title": "next",
+          "dataType": "integer"
+        }
+      ]
+    },
+    "ProtocolValidator.Mint": {
+      "title": "Mint",
+      "dataType": "constructor",
+      "index": 0,
+      "fields": [
+        {
+          "title": "tokenName",
+          "dataType": "bytes"
+        }
+      ]
+    }
+  }
+}

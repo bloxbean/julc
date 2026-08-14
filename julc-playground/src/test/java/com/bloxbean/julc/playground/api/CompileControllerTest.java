@@ -93,6 +93,38 @@ class CompileControllerTest {
     }
 
     @Test
+    void blueprintEnabledPublishesExplicitMultiPurposeInterfaces() {
+        JavalinTest.test(app(), (server, client) -> {
+            var body = mapper.writeValueAsString(new CompileRequest("""
+                    import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                    import com.bloxbean.cardano.julc.ledger.ScriptContext;
+                    import java.math.BigInteger;
+                    @MultiValidator class MultiGate {
+                        record Datum(BigInteger value) {}
+                        record Spend(BigInteger value) {}
+                        record Mint(byte[] tokenName) {}
+                        @Entrypoint(purpose = Purpose.SPEND)
+                        static boolean spend(Datum datum, Spend redeemer, ScriptContext ctx) {
+                            return true;
+                        }
+                        @Entrypoint(purpose = Purpose.MINT)
+                        static boolean mint(Mint redeemer, ScriptContext ctx) { return true; }
+                    }
+                    """));
+
+            var res = client.post("/api/compile", body);
+            assertEquals(200, res.code());
+            var response = mapper.readValue(res.body().string(), CompileResponse.class);
+            var validators = mapper.readTree(response.blueprintJson()).path("validators");
+            assertEquals(2, validators.size());
+            assertEquals("Playground.mint", validators.get(0).path("title").asText());
+            assertEquals("mint", validators.get(0).path("redeemer").path("purpose").asText());
+            assertEquals("Playground.spend", validators.get(1).path("title").asText());
+            assertEquals("spend", validators.get(1).path("datum").path("purpose").asText());
+        });
+    }
+
+    @Test
     void invalidJavaSource_returnsNoUplc() {
         JavalinTest.test(app(), (server, client) -> {
             var body = mapper.writeValueAsString(new CompileRequest("not valid java"));
