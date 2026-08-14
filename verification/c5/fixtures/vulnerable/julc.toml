@@ -1,0 +1,4 @@
+[project]
+name = "julc-verification-c5-vulnerable"
+version = "0.1.0"
+compiler = "local"

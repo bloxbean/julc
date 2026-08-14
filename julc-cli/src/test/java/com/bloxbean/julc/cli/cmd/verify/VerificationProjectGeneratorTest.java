@@ -4,6 +4,9 @@ import com.bloxbean.cardano.julc.blueprint.BlueprintConfig;
 import com.bloxbean.cardano.julc.blueprint.BlueprintGenerator;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
+import com.bloxbean.cardano.julc.verification.RequiresSignerProperty;
+import com.bloxbean.cardano.julc.verification.StatefulSpendingProperty;
+import com.bloxbean.cardano.julc.verification.ControlledMintProperty;
 import com.bloxbean.julc.cli.JulcCommand;
 import com.bloxbean.julc.cli.cmd.blueprint.ArtifactCommand;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -37,6 +40,8 @@ class VerificationProjectGeneratorTest {
 
         assertEquals("state-gate", result.artifactId());
         assertTrue(Files.isExecutable(output.resolve("scripts/verify.sh")));
+        assertTrue(Files.readString(output.resolve(".gitignore"))
+                .contains("/verification-result.json"));
         assertTrue(Files.readString(output.resolve("CheckedExecution.lean"))
                 .contains("defaultFunSemanticsVariantE"));
         assertTrue(Files.readString(output.resolve("CheckedExecution.lean"))
@@ -62,6 +67,137 @@ class VerificationProjectGeneratorTest {
         VerificationProjectGenerator.generate(
                 blueprint, "StateGate", "spending", 12345, output, true);
         assertEquals(firstManifest, Files.readString(output.resolve("verification-manifest.json")));
+    }
+
+    @Test
+    void generatesTypedRequiresSignerWorkspaceAndObservedResultProtocol() throws Exception {
+        Path output = tempDir.resolve("requires-signer");
+        var property = new RequiresSignerProperty(
+                1, RequiresSignerProperty.TEMPLATE,
+                "StateGate.requires-signer.owner", "StateGate", "spending",
+                "datum.owner",
+                List.of(
+                        new RequiresSignerProperty.PathSegment(
+                                "root", "datum", "record:StateDatum"),
+                        new RequiresSignerProperty.PathSegment(
+                                "field", "owner", "bytes")),
+                "StateDatum", "bytes",
+                new RequiresSignerProperty.SourceReference(
+                        "StateGate.java", 4, 1, "@RequiresSigner"),
+                List.of(),
+                List.of("strict datum decoding", "complete signatory membership"),
+                false);
+
+        VerificationProjectGenerator.generateRequiresSigner(
+                writeBlueprint(), property, 1000, 4, output, false);
+
+        assertTrue(Files.isExecutable(output.resolve("scripts/verify.sh")));
+        assertTrue(Files.isExecutable(output.resolve("scripts/verify-non-vacuity.sh")));
+        String lean = Files.readString(output.resolve("SecurityProperty.lean"));
+        assertTrue(lean.contains("Option JulcGenerated.Schemas.StateDatum"));
+        assertTrue(lean.contains("txSignedBy datum.owner"));
+        assertFalse(lean.contains("firstSignerAuthorized"));
+        assertTrue(Files.readString(output.resolve("StateGateProof.lean"))
+                .contains("by\n  blaster"));
+        assertTrue(Files.readString(output.resolve("StateGateCounterexample.lean"))
+                .contains("gen-cex: 1"));
+
+        var plan = JSON.readTree(output.resolve("verification-runner.json").toFile());
+        assertEquals(2, plan.path("schemaVersion").asInt());
+        assertEquals("SMT-VALID",
+                plan.path("verify").get(1).path("outcomes").get(0).path("result").asText());
+        assertEquals("REFUTED",
+                plan.path("verify").get(1).path("outcomes").get(1).path("result").asText());
+        var manifest = JSON.readTree(output.resolve("verification-manifest.json").toFile());
+        assertEquals(VerificationFiles.sha256(output.resolve("verification-property.json")),
+                manifest.path("propertyIr").path("sha256").asText());
+        assertEquals(VerificationFiles.leanTreeHash(output),
+                manifest.path("generatedLeanSha256").asText());
+        assertFalse(manifest.path("ledgerValidityModeled").asBoolean(true));
+
+        Files.writeString(output.resolve("SecurityProperty.lean"), "stale generated property\n");
+        VerificationProjectGenerator.generateRequiresSigner(
+                writeBlueprint(), property, 1000, 4, output, true);
+        assertFalse(Files.readString(output.resolve("SecurityProperty.lean"))
+                .contains("stale generated property"));
+    }
+
+    @Test
+    void generatesCompleteStatefulSpendingProfile() throws Exception {
+        Path output = tempDir.resolve("stateful-spending");
+        var property = new StatefulSpendingProperty(
+                1, StatefulSpendingProperty.TEMPLATE,
+                "StateGate.stateful-spending-v1", "StateGate", "spending",
+                "datum.owner|datum.state|redeemer.nextState",
+                new StatefulSpendingProperty.Selection("datum", "owner", "bytes"),
+                new StatefulSpendingProperty.Selection("datum", "state", "integer"),
+                new StatefulSpendingProperty.Selection(
+                        "redeemer", "nextState", "integer"),
+                "StateDatum", "Transition", "GREATER_THAN",
+                "SINGLE_CONTINUING_OUTPUT",
+                List.of(new StatefulSpendingProperty.SourceReference(
+                        "Monotonic", "StateGate.java", 4, 1, "@Monotonic")),
+                List.of(), List.of("complete stateful profile"), false);
+
+        VerificationProjectGenerator.generateStatefulSpending(
+                writeBlueprint(), property, 2000, 4, output, false);
+
+        String lean = Files.readString(output.resolve("SecurityProperty.lean"));
+        assertTrue(lean.contains("findOwnInput ctx"));
+        assertTrue(lean.contains("Recursor.findAll out in outputs"));
+        assertTrue(lean.contains("| [successor] =>"));
+        assertTrue(lean.contains("successor.txOutValue ="));
+        assertTrue(lean.contains("nextDatum.owner = datum.owner"));
+        assertTrue(lean.contains("nextDatum.state = redeemer.nextState"));
+        assertTrue(lean.contains("datum.state < redeemer.nextState"));
+        assertTrue(lean.contains("txSignedBy datum.owner"));
+        var plan = JSON.readTree(output.resolve("verification-runner.json").toFile());
+        assertEquals("stateful-spending-v1-established",
+                plan.path("verify").get(1).path("outcomes").get(0)
+                        .path("reason").asText());
+        var manifest = JSON.readTree(output.resolve("verification-manifest.json").toFile());
+        assertEquals(StatefulSpendingProperty.TEMPLATE,
+                manifest.path("propertyIr").path("template").asText());
+        assertEquals(VerificationFiles.leanTreeHash(output),
+                manifest.path("generatedLeanSha256").asText());
+    }
+
+    @Test
+    void generatesExactControlledMintProfile() throws Exception {
+        Path output = tempDir.resolve("controlled-mint");
+        var property = new ControlledMintProperty(
+                1, ControlledMintProperty.TEMPLATE,
+                "TokenPolicy.controlled-mint-v1", "TokenPolicy", "minting",
+                "authority:4a554c435f5645524946595f415554484f524954595f303030303031"
+                        + "|tokenName:4a554c43|quantity:1",
+                "4a554c435f5645524946595f415554484f524954595f303030303031",
+                "4a554c43", "1", "MINT", "Redeemer",
+                new ControlledMintProperty.SourceReference(
+                        "TokenPolicy.java", 3, 1, "@ControlledMint"),
+                List.of(), List.of("exact own-policy asset"), false);
+
+        VerificationProjectGenerator.generateControlledMint(
+                writeMintBlueprint(), property, 2000, 4, output, false);
+
+        String lean = Files.readString(output.resolve("SecurityProperty.lean"));
+        assertTrue(lean.contains("IsData.fromData ctx.scriptContextRedeemer"));
+        assertTrue(lean.contains("ownPolicyEntries ownPolicy"));
+        assertTrue(lean.contains("txSignedBy configuredAuthority"));
+        assertTrue(lean.contains("actualPolicy = ownPolicy"));
+        assertTrue(lean.contains("actualToken = configuredTokenName"));
+        assertTrue(lean.contains("actualQuantity = configuredQuantity"));
+        assertTrue(lean.contains("configuredQuantity > 0"));
+        assertTrue(Files.readString(output.resolve("TokenPolicyObligation.lean"))
+                .contains("mintingInputs"));
+        var plan = JSON.readTree(output.resolve("verification-runner.json").toFile());
+        assertEquals("controlled-mint-v1-established",
+                plan.path("verify").get(1).path("outcomes").get(0)
+                        .path("reason").asText());
+        var manifest = JSON.readTree(output.resolve("verification-manifest.json").toFile());
+        assertEquals(ControlledMintProperty.TEMPLATE,
+                manifest.path("propertyIr").path("template").asText());
+        assertEquals(VerificationFiles.leanTreeHash(output),
+                manifest.path("generatedLeanSha256").asText());
     }
 
     @Test
@@ -278,6 +414,12 @@ class VerificationProjectGeneratorTest {
         VerificationProjectGenerator.generate(
                 blueprint, "StateGate", "spending", 100, output, true);
         assertEquals("-- specialized property\n", Files.readString(securityProperty));
+
+        Path gitignore = output.resolve(".gitignore");
+        Files.writeString(gitignore, "/local-review-notes/\n");
+        VerificationProjectGenerator.generate(
+                blueprint, "StateGate", "spending", 100, output, true);
+        assertEquals("/local-review-notes/\n", Files.readString(gitignore));
     }
 
     @Test
@@ -286,8 +428,14 @@ class VerificationProjectGeneratorTest {
         assertTrue(commandLine.getSubcommands().containsKey("verify"));
         assertTrue(commandLine.getSubcommands().get("verify")
                 .getSubcommands().containsKey("init"));
+        assertTrue(commandLine.getSubcommands().get("verify")
+                .getSubcommands().containsKey("run"));
+        assertTrue(commandLine.getSubcommands().get("verify")
+                .getCommandSpec().findOption("--validator") != null);
         assertTrue(commandLine.getSubcommands().get("verify").getSubcommands().get("init")
                 .getCommandSpec().findOption("--recursive-depth") != null);
+        assertTrue(commandLine.getSubcommands().get("verify").getSubcommands().get("run")
+                .getCommandSpec().findOption("--backend") != null);
     }
 
     @Test
@@ -665,6 +813,29 @@ class VerificationProjectGeneratorTest {
                 List.of(new BlueprintGenerator.CompiledValidator(
                         "StateGate", result.compileResult(), result.contractSchema())));
         Path blueprint = tempDir.resolve("plutus-" + System.nanoTime() + ".json");
+        Files.writeString(blueprint, generated.toJson());
+        return blueprint;
+    }
+
+    private Path writeMintBlueprint() throws Exception {
+        String source = """
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                import com.bloxbean.cardano.julc.ledger.ScriptContext;
+                @MintingValidator
+                class TokenPolicy {
+                    record Redeemer() {}
+                    @Entrypoint
+                    static boolean validate(Redeemer redeemer, ScriptContext ctx) {
+                        return true;
+                    }
+                }
+                """;
+        var result = new JulcCompiler(StdlibRegistry.defaultRegistry()).compileContract(source);
+        var generated = BlueprintGenerator.generate(
+                new BlueprintConfig("controlled-mint-generator-test", "1"),
+                List.of(new BlueprintGenerator.CompiledValidator(
+                        "TokenPolicy", result.compileResult(), result.contractSchema())));
+        Path blueprint = tempDir.resolve("mint-" + System.nanoTime() + ".json");
         Files.writeString(blueprint, generated.toJson());
         return blueprint;
     }

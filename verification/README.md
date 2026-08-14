@@ -4,9 +4,16 @@ This guide describes the verification functionality that is implemented in
 this repository today. It deliberately separates working evidence from planned
 automation.
 
+For a new project, start with
+[`GETTING_STARTED.md`](GETTING_STARTED.md). It walks through the annotation
+workflow from installation to a certificate using either the local toolchain
+or Docker.
+
 ## What is available today
 
-There are four ways to explore the current integration:
+There are seven ways to explore the current integration. `julc verify run`
+provides the managed execution path for both a generated workspace and the
+committed evidence suite:
 
 1. `verification/blaster` is the committed Milestone A/B evidence suite. It
    verifies the repository's state-thread and controlled-mint fixtures against
@@ -24,6 +31,17 @@ There are four ways to explore the current integration:
    builds recursive Java contracts, generates recursive CIP-57 and Lean codecs,
    and kernel-checks concrete round trips plus an unbounded codec-composition
    theorem proved by induction.
+5. `julc verify --validator <Name>` is the Milestone C.5 Java-only vertical
+   slice for `@RequiresSigner("datum.owner")`. It builds the exact artifact,
+   resolves the annotation through compiler-owned types, generates the Lean
+   theorem and non-vacuity control, runs Blaster, and writes a certificate.
+   `verification/c5` contains authorized, vulnerable, and vacuous controls.
+6. `verification/c6` is the C.6 stateful-spending profile. It composes signer
+   authorization, strict state increase, one continuing output, successor
+   datum commitment, authority retention, and structural value preservation.
+7. `verification/c7` is the C.7 controlled-mint profile. It proves fixed
+   authority, current-policy linkage, exact token/quantity/action, and no extra
+   raw assets under the current policy for both mint and burn fixtures.
 
 The integration does not prove that every JuLC program is safe. It checks
 explicit properties for one exact compiled artifact. Solver-valid Blaster
@@ -32,15 +50,21 @@ on Blaster are `KERNEL-PROVED`.
 
 ## Prerequisites
 
-For the generated-workspace flow, install:
+The native local path and optional Docker path use the same authenticated
+runner plan and result classification. The Docker backend installs the pinned
+Lean/Z3 toolchain in its image and runs proof steps with container networking
+disabled.
+
+For a native local run, install:
 
 - JuLC built from this branch;
 - Lean 4.24.0 and Lake, normally through `elan`;
-- Z3 4.15.2;
+- Z3 4.15.2, or allow JuLC to provision its checksum-pinned release into the
+  workspace-local tool cache;
 - Git, ripgrep (`rg`), and `xxd`; and
 - network access for the initial Lake dependency acquisition.
 
-You do not install the three Blaster projects manually. The generated
+You do not install the three Blaster projects manually with either backend. The generated
 `lakefile.lean` pins them and Lake fetches them. The generated verification
 script checks tool versions, dependency revisions, and the artifact hash before
 compiling any claim.
@@ -54,6 +78,114 @@ java -jar julc-cli/build/libs/julc.jar --help
 
 The examples below use `julc`; substitute
 `java -jar /path/to/julc.jar` when running the development JAR directly.
+
+## Verify a required signer without writing Lean
+
+Add the optional verification module to the validator project's Java
+dependencies and annotate one spending validator:
+
+```groovy
+dependencies {
+    implementation "com.bloxbean.cardano:julc-verification:${julcVersion}"
+}
+```
+
+```java
+import com.bloxbean.cardano.julc.verification.annotation.RequiresSigner;
+
+@RequiresSigner("datum.owner")
+@SpendingValidator
+class AuthorizedStateValidator {
+    record Datum(byte[] owner) {}
+    // ...
+}
+```
+
+Then run from the project directory:
+
+```bash
+julc verify --validator AuthorizedStateValidator --backend local
+```
+
+The normal command performs the build, property resolution, deterministic
+workspace generation, non-vacuity check, proof/counterexample query, and
+certificate generation. Developers do not edit Lean or invoke Lake. The
+result is written under `verification/<artifact-id>/verification-result.json`.
+The manifest binds the exact artifact, typed property IR, runner scripts, and
+generated Lean source hash; post-generation edits fail closed.
+
+C.5 supports exactly one direct datum field that resolves to `byte[]` or a
+compiler key-hash type. Nested paths, optionals, and multiple authorities fail
+closed for this template. Stateful spending and fixed controlled minting use
+their separately versioned C.6 and C.7 profiles below.
+
+The guarantee is strict: if the exact artifact succeeds, the context must have
+an attached datum that strictly matches the CIP-57 constructor and arity, and
+its owner must occur anywhere in `txInfo.signatories`. JuLC's current on-chain
+record projection is more permissive about constructor tags and trailing
+fields. Consequently, merely calling `ContextsLib.signedBy` can be refuted on a
+malformed datum. The positive C.5 fixture explicitly validates its raw attached
+datum shape; see
+[`AuthorizedStateValidator.java`](c5/fixtures/authorized/src/AuthorizedStateValidator.java).
+The tool does not assume malformed inputs away, and C.5 does not change the
+core compiler or emitted UPLC merely because the annotation is present.
+
+Reproduce all C.5 controls with:
+
+```bash
+verification/c5/scripts/verify.sh
+```
+
+An `SMT-VALID` result establishes only `julc.requires-signer/v1` for the exact
+artifact under the recorded bounds and trust model. Ledger validity is not
+modeled, and the certificate does not claim that the entire contract is safe.
+In particular, it covers only executions that complete within the certificate's
+pinned CEK `fuel` bound. Paths that exhaust that bound are outside the claim.
+
+## Verify a complete state transition without writing Lean
+
+Use the three-annotation profile shown in
+[`verification/c6/README.md`](c6/README.md), then run:
+
+```bash
+julc verify --validator StateMachine --backend local --fuel 3000
+```
+
+The datum must directly contain byte-string authority and integer current-state
+selections; the redeemer must directly contain the integer next-state
+selection. The v1 profile fixes `GREATER_THAN` and
+`SINGLE_CONTINUING_OUTPUT`. It proves strict decoding, complete-list signing,
+one same-full-address successor, structural input/output value equality,
+authority retention, successor/redeemer commitment, and strict increase.
+
+Run all positive, refuted, and vacuous C.6 controls with:
+
+```bash
+verification/c6/scripts/verify.sh
+```
+
+## Verify a controlled mint or burn without writing Lean
+
+Declare fixed property literals rather than choosing authority from an
+untrusted redeemer:
+
+```java
+@ControlledMint(
+    authority="4a554c435f5645524946595f415554484f524954595f303030303031",
+    tokenName="4a554c43", quantity=1, action=MintAction.MINT)
+@MintingValidator
+class ControlledTokenPolicy { /* ... */ }
+```
+
+Then run `julc verify --validator ControlledTokenPolicy --fuel 5000`. The v1
+profile requires exactly one raw entry for the `MintingScript` policy and one
+configured token beneath it; entries for other policies remain permitted.
+Use `MintAction.BURN` with the same positive magnitude to generate a negative
+expected quantity. See [`verification/c7/README.md`](c7/README.md) and run:
+
+```bash
+verification/c7/scripts/verify.sh
+```
 
 ## Generate a workspace for a validator
 
@@ -89,21 +221,38 @@ verification/<artifact-id>/
 ├── *Verification.lean         artifact-specific harness
 ├── lakefile.lean              pinned Blaster dependencies
 ├── lean-toolchain             pinned Lean version
-└── scripts/verify.sh          fail-closed verification driver
+├── verification-runner.json   versioned managed execution plan
+└── scripts/verify.sh          fail-closed expert/audit driver
 ```
 
-Acquire the pinned dependencies and compile the generated workspace:
+Run the managed workflow from the project root. `auto` uses the exact local
+toolchain when available and otherwise uses Docker:
+
+```bash
+julc verify run verification/<artifact-id>
+```
+
+Choose a backend explicitly when needed:
+
+```bash
+julc verify run verification/<artifact-id> --backend local
+julc verify run verification/<artifact-id> --backend docker
+```
+
+The command writes `verification-result.json` plus acquisition and proof logs
+under `verification-results/`. The initial generated workspace truthfully exits
+2 with:
+
+```text
+COULD-NOT-EVALUATE: workspace compiles; specialize securityProperty and add a theorem plus negative control
+```
+
+For auditing or debugging, the transparent low-level sequence remains:
 
 ```bash
 cd verification/<artifact-id>
 lake update
 scripts/verify.sh
-```
-
-The initial result is expected to be:
-
-```text
-COULD-NOT-EVALUATE: workspace compiles; specialize securityProperty and add a theorem plus negative control
 ```
 
 That message is a safety property of the workflow, not a failed proof. The
@@ -122,9 +271,10 @@ Regeneration with `--force` preserves `SecurityProperty.lean`, but review the
 generated diff and artifact identity whenever the Java source or compiler
 changes.
 
-At present this step requires Lean and Cardano ledger-model knowledge. A future
-`julc verify run` or containerized backend is intended to provision and execute
-the pinned toolchain, but it is not implemented yet.
+Untemplated properties still require Lean and Cardano ledger-model knowledge.
+`julc verify run` manages their execution and classification; it does not
+invent a threat model. The C.5–C.7 annotation profiles are the reviewed,
+versioned exceptions with generated theorems.
 
 ## Supported boundary today
 
@@ -280,6 +430,16 @@ contains reviewed properties and negative controls:
 verification/blaster/scripts/acquire-dependencies.sh
 verification/blaster/scripts/verify-offline.sh
 ```
+
+Or run the same reviewed suite through the managed local runner:
+
+```bash
+julc verify run verification/blaster --backend local
+```
+
+This legacy repository suite rebuilds Java fixtures outside a standalone
+verification workspace, so its Docker backend is intentionally disabled. Newly
+generated workspaces support both local and Docker execution.
 
 See [`verification/blaster/README.md`](blaster/README.md) for its additional
 JDK and `jq` prerequisites, the individual commands, verified properties, and

@@ -2,4 +2,7 @@
 /.tools/
 /generated/
 /results/
+/verification-results/
+/verification-result.json
+/.julc/
 /fixtures/*/build/

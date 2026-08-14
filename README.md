@@ -71,6 +71,7 @@ Plutus VM that made this project possible.
 | `julc-cardano-client-lib` | cardano-client-lib integration |
 | `julc-gradle-plugin` | Gradle build plugin |
 | `julc-annotation-processor` | Compile-time annotation processor |
+| `julc-verification` | Typed Java security-property annotations and processors |
 
 ## Known Limitations
 

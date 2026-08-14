@@ -40,6 +40,12 @@ julc build --no-blueprint
 julc verify init . --validator MyValidator --purpose spending \
   --recursive-depth 4
 
+# Acquire pins, run the proof protocol, and write verification-result.json
+julc verify run verification/my-validator
+
+# Avoid installing host Lean/Z3 (optional Docker backend)
+julc verify run verification/my-validator --backend docker
+
 # Show version
 julc --version
 ```
@@ -53,6 +59,14 @@ Generated Lean supports records and variants containing integers, bytes,
 booleans, optional values, lists, maps, and nested combinations, including
 productive self and mutual recursion. Maps remain ordered association lists
 and preserve duplicate keys, matching JuLC's on-chain representation.
+
+`julc verify run` validates the generated artifact, plan, scripts, admissions,
+semantics profile, and dependency pins before classifying the result. Its
+default `auto` backend uses exact local Lean 4.24.0/Z3 4.15.2 tools when
+available and otherwise uses the JuLC-owned Docker image. Docker acquisition
+requires network access; the proof container runs with `--network none`.
+Generated workspaces initially return exit 2 and `COULD-NOT-EVALUATE` until the
+security property is specialized.
 
 `--recursive-depth` bounds generated recursive-domain experiments and is
 separate from `--fuel`, which controls CEK execution. Exhausting either bound
