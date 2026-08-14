@@ -48,3 +48,5 @@ bin/
 .jqwik-database
 /.playwright-mcp/
 /doc-site-bak/
+/verification/e3/generated/
+/verification/p4/generated/
