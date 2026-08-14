@@ -121,14 +121,12 @@ their separately versioned C.6 and C.7 profiles below.
 
 The guarantee is strict: if the exact artifact succeeds, the context must have
 an attached datum that strictly matches the CIP-57 constructor and arity, and
-its owner must occur anywhere in `txInfo.signatories`. JuLC's current on-chain
-record projection is more permissive about constructor tags and trailing
-fields. Consequently, merely calling `ContextsLib.signedBy` can be refuted on a
-malformed datum. The positive C.5 fixture explicitly validates its raw attached
-datum shape; see
-[`AuthorizedStateValidator.java`](c5/fixtures/authorized/src/AuthorizedStateValidator.java).
-The tool does not assume malformed inputs away, and C.5 does not change the
-core compiler or emitted UPLC merely because the annotation is present.
+its owner must occur anywhere in `txInfo.signatories`. ADR-015 makes strict
+typed boundaries the compiler default: exact constructor tags and arities are
+checked before user validator logic executes. The C.5 fixture therefore no
+longer needs handwritten raw-datum shape checks. The verification annotation
+itself remains UPLC-neutral; the compiler-wide strict-boundary semantics apply
+equally to annotated and unannotated validators.
 
 Reproduce all C.5 controls with:
 

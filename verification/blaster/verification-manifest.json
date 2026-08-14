@@ -4,7 +4,7 @@
   "runnerPlanSha256": "97399aad25652a0ea6a0d2b6892b6e18f9e4451862659dd03cb1b5e1d1962b43",
   "artifactLock": {
     "path": "artifacts/artifact-lock.json",
-    "sha256": "3e1a7ed1b4a23f834a187b54d2bdccc88976e98cd3e8b5345d943e3722d3c5ea"
+    "sha256": "ef00cc58720a134c0944ff277575958b96d14f5d9b3bbc8483466c10612685cb"
   },
   "verificationProfile": {
     "plutusLanguage": "PlutusV3",
