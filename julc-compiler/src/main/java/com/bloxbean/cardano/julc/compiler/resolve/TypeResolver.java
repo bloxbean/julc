@@ -33,6 +33,8 @@ public class TypeResolver {
     private final Map<String, PirType.SumType> variantToSumType = new LinkedHashMap<>();
     // Map of @NewType FQCNs -> their underlying PIR type
     private final Map<String, PirType> newTypes = new LinkedHashMap<>();
+    // Forward identities visible only while one recursive declaration SCC is registered.
+    private final Map<String, PirType.NamedTypeRef> forwardTypes = new LinkedHashMap<>();
 
     // Simple name -> set of FQCNs (for ambiguity detection + fallback)
     private final Map<String, Set<String>> simpleNameIndex = new LinkedHashMap<>();
@@ -73,14 +75,41 @@ public class TypeResolver {
         }
         var recordType = new PirType.RecordType(name, fields);
         recordTypes.put(fqcn, recordType);
+        forwardTypes.remove(fqcn);
         simpleNameIndex.computeIfAbsent(name, k -> new LinkedHashSet<>()).add(fqcn);
+    }
+
+    /** Make a recursive declaration name resolvable before its fields are completed. */
+    public void predeclareNamedType(
+            String fqcn, String name, PirType.NamedKind kind) {
+        if (recordTypes.containsKey(fqcn) || sumTypes.containsKey(fqcn)
+                || newTypes.containsKey(fqcn) || forwardTypes.containsKey(fqcn)) {
+            throw new CompilerException("Duplicate named type: '" + fqcn + "'");
+        }
+        forwardTypes.put(fqcn, new PirType.NamedTypeRef(fqcn, name, kind));
+        simpleNameIndex.computeIfAbsent(name, k -> new LinkedHashSet<>()).add(fqcn);
+    }
+
+    /** Remove unfinished forward identities after a failed SCC registration. */
+    public void discardForwardTypes(Collection<String> fqcns) {
+        for (String fqcn : fqcns) {
+            var removed = forwardTypes.remove(fqcn);
+            if (removed == null) continue;
+            var indexed = simpleNameIndex.get(removed.name());
+            if (indexed != null) {
+                indexed.remove(fqcn);
+                if (indexed.isEmpty()) simpleNameIndex.remove(removed.name());
+            }
+        }
     }
 
     /** Check if a type name is already registered (as record, sealed interface, or newtype). */
     public boolean isRegistered(String fqcnOrSimpleName) {
         // Direct FQCN check
         if (recordTypes.containsKey(fqcnOrSimpleName) || sumTypes.containsKey(fqcnOrSimpleName)
-                || newTypes.containsKey(fqcnOrSimpleName) || variantToSumType.containsKey(fqcnOrSimpleName)) {
+                || newTypes.containsKey(fqcnOrSimpleName)
+                || variantToSumType.containsKey(fqcnOrSimpleName)
+                || forwardTypes.containsKey(fqcnOrSimpleName)) {
             return true;
         }
         // Simple name check via index
@@ -137,6 +166,7 @@ public class TypeResolver {
         }
         var sumType = new PirType.SumType(interfaceName, constructors);
         sumTypes.put(fqcn, sumType);
+        forwardTypes.remove(fqcn);
         simpleNameIndex.computeIfAbsent(interfaceName, k -> new LinkedHashSet<>()).add(fqcn);
         // Register each variant -> sum type mapping using resolved FQCNs
         for (int i = 0; i < constructors.size(); i++) {
@@ -177,6 +207,7 @@ public class TypeResolver {
         }
         var sumType = new PirType.SumType(interfaceName, constructors);
         sumTypes.put(fqcn, sumType);
+        forwardTypes.remove(fqcn);
         simpleNameIndex.computeIfAbsent(interfaceName, k -> new LinkedHashSet<>()).add(fqcn);
         // Register each variant -> sum type mapping
         for (int i = 0; i < variantFqcns.size(); i++) {
@@ -364,6 +395,8 @@ public class TypeResolver {
                 if (recordTypes.containsKey(fqcn)) yield recordTypes.get(fqcn);
                 // Check registered sum types (sealed interfaces, including ledger sum types)
                 if (sumTypes.containsKey(fqcn)) yield sumTypes.get(fqcn);
+                // Recursive declarations resolve nominally until their SCC is complete.
+                if (forwardTypes.containsKey(fqcn)) yield forwardTypes.get(fqcn);
                 // Check if FQCN is a variant of a registered sealed interface
                 if (variantToSumType.containsKey(fqcn)) {
                     var st = variantToSumType.get(fqcn);
@@ -395,7 +428,8 @@ public class TypeResolver {
             var candidate = scopeFqcn + "." + ct.getNameAsString();
             // Check if candidate exists in any registry
             if (recordTypes.containsKey(candidate) || sumTypes.containsKey(candidate)
-                    || variantToSumType.containsKey(candidate) || newTypes.containsKey(candidate)) {
+                    || variantToSumType.containsKey(candidate) || newTypes.containsKey(candidate)
+                    || forwardTypes.containsKey(candidate)) {
                 return candidate;
             }
             // Check simpleNameIndex for the constructed name
@@ -464,7 +498,30 @@ public class TypeResolver {
         if (newTypes.containsKey(fqcn)) return Optional.of(newTypes.get(fqcn));
         if (recordTypes.containsKey(fqcn)) return Optional.of(recordTypes.get(fqcn));
         if (sumTypes.containsKey(fqcn)) return Optional.of(sumTypes.get(fqcn));
+        if (forwardTypes.containsKey(fqcn)) return Optional.of(forwardTypes.get(fqcn));
         return Optional.empty();
+    }
+
+    /** Resolve a nominal recursive reference to its completed compiler definition. */
+    public PirType resolveNamed(PirType type) {
+        if (!(type instanceof PirType.NamedTypeRef ref)) return type;
+        PirType resolved = switch (ref.kind()) {
+            case RECORD -> recordTypes.get(ref.stableId());
+            case SUM -> sumTypes.get(ref.stableId());
+        };
+        if (resolved == null) {
+            throw new CompilerException(
+                    "Recursive type definition is incomplete: '" + ref.stableId() + "'");
+        }
+        return resolved;
+    }
+
+    /** Snapshot of completed named definitions, keyed by stable compiler identity. */
+    public Map<String, PirType> namedDefinitions() {
+        var result = new LinkedHashMap<String, PirType>();
+        result.putAll(recordTypes);
+        result.putAll(sumTypes);
+        return Collections.unmodifiableMap(result);
     }
 
     /** Return all registered FQCNs (for building knownFqcns sets). */
@@ -474,6 +531,7 @@ public class TypeResolver {
         all.addAll(sumTypes.keySet());
         all.addAll(variantToSumType.keySet());
         all.addAll(newTypes.keySet());
+        all.addAll(forwardTypes.keySet());
         return all;
     }
 

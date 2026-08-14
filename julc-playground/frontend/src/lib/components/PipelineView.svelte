@@ -3,6 +3,7 @@
   import { api } from '../api/client';
 
   let activeTab: 'pir' | 'uplc' | 'compiled' | 'blueprint' = 'pir';
+  let generateBlueprint = true;
 
   let compileError: string | null = null;
 
@@ -10,7 +11,7 @@
     isCompiling.set(true);
     compileError = null;
     try {
-      const res = await api.compile($source, $librarySource || undefined);
+      const res = await api.compile($source, $librarySource || undefined, generateBlueprint);
       pirText.set(res.pirText);
       uplcText.set(res.uplcText);
       blueprintJson.set(res.blueprintJson);
@@ -47,6 +48,10 @@
       </button>
     </div>
     <div class="actions">
+      <label class="blueprint-option" title="Generate and strictly validate CIP-57 metadata">
+        <input type="checkbox" bind:checked={generateBlueprint} disabled={$isCompiling} />
+        Blueprint
+      </label>
       {#if $compileResult}
         <span class="script-info">
           {$compileResult.scriptSizeFormatted}
@@ -88,7 +93,9 @@
         <pre class="code-output">Click "Compile" to generate compiled code</pre>
       {/if}
     {:else if activeTab === 'blueprint'}
-      <pre class="code-output">{$blueprintJson ?? 'Click "Compile" to generate Blueprint'}</pre>
+      <pre class="code-output">{$blueprintJson ?? (generateBlueprint
+        ? 'Click "Compile" to generate Blueprint'
+        : 'Blueprint generation is disabled')}</pre>
     {:else}
       <pre class="code-output">{$uplcText ?? 'Click "Compile" to generate UPLC'}</pre>
     {/if}
@@ -140,6 +147,20 @@
     align-items: center;
     gap: 8px;
     flex-shrink: 0;
+  }
+
+  .blueprint-option {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--text-secondary);
+    font-size: 11px;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .blueprint-option input {
+    margin: 0;
   }
 
   .script-info {

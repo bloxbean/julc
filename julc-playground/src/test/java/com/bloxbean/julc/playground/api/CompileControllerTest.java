@@ -58,6 +58,41 @@ class CompileControllerTest {
     }
 
     @Test
+    void nativeImageReceivesCip57MetadataFromBlueprintLibrary() {
+        var loader = CompileController.class.getClassLoader();
+        assertNotNull(loader.getResource(
+                "META-INF/native-image/com.bloxbean.cardano/julc-blueprint/"
+                        + "reachability-metadata.json"));
+        assertNotNull(loader.getResource("cip57/plutus-blueprint.json"));
+    }
+
+    @Test
+    void blueprintCanBeDisabledWithoutDisablingCompilation() {
+        JavalinTest.test(app(), (server, client) -> {
+            var body = mapper.writeValueAsString(new CompileRequest("""
+                    import com.bloxbean.cardano.julc.core.PlutusData;
+
+                    @MultiValidator
+                    class MultiGate {
+                        @Entrypoint
+                        static boolean validate(PlutusData redeemer, PlutusData ctx) {
+                            return true;
+                        }
+                    }
+                    """, null, null, false));
+
+            var res = client.post("/api/compile", body);
+
+            assertEquals(200, res.code());
+            var json = mapper.readValue(res.body().string(), CompileResponse.class);
+            assertNotNull(json.uplcText());
+            assertNull(json.blueprintJson());
+            assertNotNull(json.compiledCode());
+            assertEquals(56, json.scriptHash().length());
+        });
+    }
+
+    @Test
     void invalidJavaSource_returnsNoUplc() {
         JavalinTest.test(app(), (server, client) -> {
             var body = mapper.writeValueAsString(new CompileRequest("not valid java"));

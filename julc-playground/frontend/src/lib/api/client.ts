@@ -106,8 +106,12 @@ export interface ScenarioItem {
 export const api = {
   check: (source: string, signal?: AbortSignal) =>
     post<CheckResponse>('/api/check', { source }, signal),
-  compile: (source: string, librarySource?: string) =>
-    post<CompileResponse>('/api/compile', { source, librarySource: librarySource || undefined }),
+  compile: (source: string, librarySource?: string, blueprint = true) =>
+    post<CompileResponse>('/api/compile', {
+      source,
+      librarySource: librarySource || undefined,
+      blueprint,
+    }),
   evaluate: (body: {
     source: string;
     librarySource?: string;

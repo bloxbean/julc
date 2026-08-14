@@ -1,0 +1,22 @@
+plugins {
+    id 'java-library'
+}
+
+description = 'Typed Java security properties and annotation processing for JuLC verification'
+
+dependencies {
+    api project(':julc-compiler')
+    implementation 'com.github.javaparser:javaparser-core:3.26.3'
+    testImplementation project(':julc-stdlib')
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            pom {
+                name = 'JuLC Verification'
+                description = 'Typed security-property annotations and processors for JuLC formal verification'
+            }
+        }
+    }
+}

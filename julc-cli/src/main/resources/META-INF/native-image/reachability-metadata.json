@@ -1,6 +1,20 @@
 {
   "reflection": [
     {"type": "com.bloxbean.cardano.julc.vm.java.JavaVmProvider"},
+    {"type": "com.bloxbean.julc.cli.cmd.verify.VerificationRunPlan", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
+    {"type": "com.bloxbean.julc.cli.cmd.verify.VerificationRunPlan$Step", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
+    {"type": "com.bloxbean.julc.cli.cmd.verify.VerificationRunPlan$ObservedOutcome", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
+    {"type": "com.bloxbean.cardano.julc.verification.RequiresSignerProperty", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
+    {"type": "com.bloxbean.cardano.julc.verification.RequiresSignerProperty$PathSegment", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
+    {"type": "com.bloxbean.cardano.julc.verification.RequiresSignerProperty$SourceReference", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
+    {"type": "com.bloxbean.cardano.julc.verification.StatefulSpendingProperty", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
+    {"type": "com.bloxbean.cardano.julc.verification.StatefulSpendingProperty$Selection", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
+    {"type": "com.bloxbean.cardano.julc.verification.StatefulSpendingProperty$SourceReference", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
+    {"type": "com.bloxbean.cardano.julc.verification.ControlledMintProperty", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
+    {"type": "com.bloxbean.cardano.julc.verification.ControlledMintProperty$SourceReference", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
+    {"type": "com.bloxbean.julc.cli.cmd.verify.VerificationRunResult", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
+    {"type": "com.bloxbean.julc.cli.cmd.verify.VerificationRunResult$Phase", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
+    {"type": "com.bloxbean.julc.cli.cmd.verify.VerificationRunResult$Property", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
     {"type": "io.modelcontextprotocol.spec.McpSchema$Annotations", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
     {"type": "io.modelcontextprotocol.spec.McpSchema$AudioContent", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
     {"type": "io.modelcontextprotocol.spec.McpSchema$BlobResourceContents", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
@@ -296,6 +310,7 @@
     {"glob": "META-INF/services/*"},
     {"glob": "diagnostics.json"},
     {"glob": "julc-version.properties"},
+    {"glob": "META-INF/julc/verification/**"},
     {"glob": "META-INF/julc/wrappers/**"}
   ]
 }

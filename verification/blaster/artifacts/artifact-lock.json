@@ -1,0 +1,382 @@
+{
+  "schemaVersion": 2,
+  "artifacts": [
+    {
+      "artifactId": "verification-controlled-mint",
+      "title": "VerificationControlledMint",
+      "compiledCodeSha256": "e773468610bf715869a0506a872223ab1ca4719af3ce7978bc33b3e74fd6b12c",
+      "cardanoScriptHash": "72a608e033fd79100cde24163a7ce234c32a33fc422c46648ea63b01",
+      "uplcVersion": "1.1.0",
+      "builtins": [
+        {
+          "name": "EqualsInteger",
+          "flatTag": 7
+        },
+        {
+          "name": "EqualsByteString",
+          "flatTag": 15
+        },
+        {
+          "name": "IfThenElse",
+          "flatTag": 26
+        },
+        {
+          "name": "FstPair",
+          "flatTag": 29
+        },
+        {
+          "name": "SndPair",
+          "flatTag": 30
+        },
+        {
+          "name": "HeadList",
+          "flatTag": 33
+        },
+        {
+          "name": "TailList",
+          "flatTag": 34
+        },
+        {
+          "name": "NullList",
+          "flatTag": 35
+        },
+        {
+          "name": "UnConstrData",
+          "flatTag": 42
+        },
+        {
+          "name": "UnMapData",
+          "flatTag": 43
+        },
+        {
+          "name": "UnListData",
+          "flatTag": 44
+        },
+        {
+          "name": "UnIData",
+          "flatTag": 45
+        },
+        {
+          "name": "UnBData",
+          "flatTag": 46
+        }
+      ],
+      "fixture": "controlled-mint",
+      "scriptPurpose": "minting"
+    },
+    {
+      "artifactId": "verification-controlled-mint-broken",
+      "title": "VerificationControlledMintBroken",
+      "compiledCodeSha256": "6e643ea754da9c41db7fcd6422aee28b431f488bbc7f0a6b583680854ba82ef0",
+      "cardanoScriptHash": "354cb0462a693dd73b689b49c9437de51adfcf1ec35ffb5aae75e102",
+      "uplcVersion": "1.1.0",
+      "builtins": [
+        {
+          "name": "EqualsInteger",
+          "flatTag": 7
+        },
+        {
+          "name": "EqualsByteString",
+          "flatTag": 15
+        },
+        {
+          "name": "IfThenElse",
+          "flatTag": 26
+        },
+        {
+          "name": "FstPair",
+          "flatTag": 29
+        },
+        {
+          "name": "SndPair",
+          "flatTag": 30
+        },
+        {
+          "name": "HeadList",
+          "flatTag": 33
+        },
+        {
+          "name": "TailList",
+          "flatTag": 34
+        },
+        {
+          "name": "NullList",
+          "flatTag": 35
+        },
+        {
+          "name": "UnConstrData",
+          "flatTag": 42
+        },
+        {
+          "name": "UnMapData",
+          "flatTag": 43
+        },
+        {
+          "name": "UnIData",
+          "flatTag": 45
+        },
+        {
+          "name": "UnBData",
+          "flatTag": 46
+        }
+      ],
+      "fixture": "controlled-mint-broken",
+      "scriptPurpose": "minting"
+    },
+    {
+      "artifactId": "verification-datum-gate",
+      "title": "VerificationDatumGate",
+      "compiledCodeSha256": "2647961bae9e59e2354c4f26c290f9186a1ae23d64fe77dd29ec5ff2e2063661",
+      "cardanoScriptHash": "b0472b63196e0e96ebacece32847281d8f12eaaf60d0bbc0ccfed693",
+      "uplcVersion": "1.1.0",
+      "builtins": [
+        {
+          "name": "EqualsInteger",
+          "flatTag": 7
+        },
+        {
+          "name": "IfThenElse",
+          "flatTag": 26
+        },
+        {
+          "name": "SndPair",
+          "flatTag": 30
+        },
+        {
+          "name": "HeadList",
+          "flatTag": 33
+        },
+        {
+          "name": "TailList",
+          "flatTag": 34
+        },
+        {
+          "name": "UnConstrData",
+          "flatTag": 42
+        },
+        {
+          "name": "UnIData",
+          "flatTag": 45
+        }
+      ],
+      "fixture": "smoke",
+      "scriptPurpose": "spending"
+    },
+    {
+      "artifactId": "verification-state-thread",
+      "title": "VerificationStateThread",
+      "compiledCodeSha256": "d87079a29f74bde16bba0868c99424af23a24f72b7fc604b8b7ebfdaef4967db",
+      "cardanoScriptHash": "5f8ca35eed5f3e3b25a00536da41a858164222df6ce636cadaaaef1d",
+      "uplcVersion": "1.1.0",
+      "builtins": [
+        {
+          "name": "EqualsInteger",
+          "flatTag": 7
+        },
+        {
+          "name": "LessThanInteger",
+          "flatTag": 8
+        },
+        {
+          "name": "EqualsByteString",
+          "flatTag": 15
+        },
+        {
+          "name": "IfThenElse",
+          "flatTag": 26
+        },
+        {
+          "name": "SndPair",
+          "flatTag": 30
+        },
+        {
+          "name": "MkCons",
+          "flatTag": 32
+        },
+        {
+          "name": "HeadList",
+          "flatTag": 33
+        },
+        {
+          "name": "TailList",
+          "flatTag": 34
+        },
+        {
+          "name": "NullList",
+          "flatTag": 35
+        },
+        {
+          "name": "ConstrData",
+          "flatTag": 37
+        },
+        {
+          "name": "IData",
+          "flatTag": 40
+        },
+        {
+          "name": "UnConstrData",
+          "flatTag": 42
+        },
+        {
+          "name": "UnListData",
+          "flatTag": 44
+        },
+        {
+          "name": "UnIData",
+          "flatTag": 45
+        },
+        {
+          "name": "UnBData",
+          "flatTag": 46
+        },
+        {
+          "name": "EqualsData",
+          "flatTag": 47
+        },
+        {
+          "name": "MkNilData",
+          "flatTag": 49
+        }
+      ],
+      "fixture": "state-thread",
+      "scriptPurpose": "spending"
+    },
+    {
+      "artifactId": "verification-state-thread-broken",
+      "title": "VerificationStateThreadBroken",
+      "compiledCodeSha256": "9ccc8b638b33394dae919549200bdef483abdcc56178e7bc0f22617d9c8ef148",
+      "cardanoScriptHash": "2fd937fddbbcdf6c4e97bfcb29d065184e980c3f199ba23be122f509",
+      "uplcVersion": "1.1.0",
+      "builtins": [
+        {
+          "name": "EqualsInteger",
+          "flatTag": 7
+        },
+        {
+          "name": "LessThanInteger",
+          "flatTag": 8
+        },
+        {
+          "name": "IfThenElse",
+          "flatTag": 26
+        },
+        {
+          "name": "SndPair",
+          "flatTag": 30
+        },
+        {
+          "name": "HeadList",
+          "flatTag": 33
+        },
+        {
+          "name": "TailList",
+          "flatTag": 34
+        },
+        {
+          "name": "UnConstrData",
+          "flatTag": 42
+        },
+        {
+          "name": "UnIData",
+          "flatTag": 45
+        }
+      ],
+      "fixture": "state-thread-broken",
+      "scriptPurpose": "spending"
+    },
+    {
+      "artifactId": "verification-multi-sig",
+      "title": "VerificationMultiSig",
+      "compiledCodeSha256": "ddbe7cde14b8bbfb65620b41b1c9bcb51565edd7bf8ffd4d4b316ba701d2b970",
+      "cardanoScriptHash": "1d6cc40ae0682b62790d031e9940ad78068156cecae08919c4f276e5",
+      "uplcVersion": "1.1.0",
+      "builtins": [
+        {
+          "name": "EqualsByteString",
+          "flatTag": 15
+        },
+        {
+          "name": "IfThenElse",
+          "flatTag": 26
+        },
+        {
+          "name": "SndPair",
+          "flatTag": 30
+        },
+        {
+          "name": "HeadList",
+          "flatTag": 33
+        },
+        {
+          "name": "TailList",
+          "flatTag": 34
+        },
+        {
+          "name": "NullList",
+          "flatTag": 35
+        },
+        {
+          "name": "UnConstrData",
+          "flatTag": 42
+        },
+        {
+          "name": "UnListData",
+          "flatTag": 44
+        },
+        {
+          "name": "UnBData",
+          "flatTag": 46
+        }
+      ],
+      "fixture": "typed-multisig",
+      "scriptPurpose": "spending"
+    },
+    {
+      "artifactId": "verification-multi-sig",
+      "title": "VerificationMultiSig",
+      "compiledCodeSha256": "8e4df164a3234c40368b59786bb4a11bd2e7d993e43619455edf66abac2b2dd1",
+      "cardanoScriptHash": "6c41e1b7042a7ea0568501221c5a3ffa7284079bdaa237d09b50b2bc",
+      "uplcVersion": "1.1.0",
+      "builtins": [
+        {
+          "name": "EqualsByteString",
+          "flatTag": 15
+        },
+        {
+          "name": "IfThenElse",
+          "flatTag": 26
+        },
+        {
+          "name": "SndPair",
+          "flatTag": 30
+        },
+        {
+          "name": "HeadList",
+          "flatTag": 33
+        },
+        {
+          "name": "TailList",
+          "flatTag": 34
+        },
+        {
+          "name": "NullList",
+          "flatTag": 35
+        },
+        {
+          "name": "UnConstrData",
+          "flatTag": 42
+        },
+        {
+          "name": "UnListData",
+          "flatTag": 44
+        },
+        {
+          "name": "UnBData",
+          "flatTag": 46
+        }
+      ],
+      "fixture": "typed-multisig-broken",
+      "scriptPurpose": "spending"
+    }
+  ]
+}

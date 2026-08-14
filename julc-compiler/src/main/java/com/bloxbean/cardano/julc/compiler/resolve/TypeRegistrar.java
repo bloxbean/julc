@@ -15,12 +15,12 @@ import java.util.*;
 
 /**
  * Collects records and sealed interfaces from multiple compilation units,
- * topologically sorts them by field-type dependencies, and registers in order.
+ * groups them by strongly connected field-type dependencies, and registers
+ * those groups in dependency order.
  * <p>
- * This ensures that when a record {@code A} has a field of type {@code B},
- * {@code B} is registered before {@code A}. Sealed interfaces that are
- * referenced as field types (e.g., {@code List<ProofStep>}) are also
- * registered before the records that use them.
+ * Acyclic dependencies are registered before their consumers. Recursive
+ * groups first receive nominal identities so self and mutual references can
+ * be resolved without constructing an infinite {@link PirType} tree.
  * <p>
  * Types are keyed by FQCN (fully qualified class name). For packageless inline
  * code, the FQCN equals the simple name.
@@ -125,7 +125,6 @@ public class TypeRegistrar {
             for (var param : entry.getValue().getParameters()) {
                 extractTypeDependencies(param.getType().asString(), allTypeNames, simpleToFqcn, importResolver, typeDeps);
             }
-            typeDeps.remove(fqcn);
             deps.put(fqcn, typeDeps);
         }
 
@@ -158,44 +157,98 @@ public class TypeRegistrar {
             deps.put(fqcn, typeDeps);
         }
 
-        // 3. Topological sort the combined graph
-        var sorted = topologicalSort(deps);
-
-        // 4. Register in dependency order (skip already-registered types)
-        for (var fqcn : sorted) {
-            if (typeResolver.isRegistered(fqcn)) continue;
-
-            // Set import context for field type resolution
-            var cu = typeToCu.get(fqcn);
-            if (cu != null) {
-                typeResolver.setCurrentImportResolver(new ImportResolver(cu, knownFqcns));
+        // 3. Register dependency SCCs. Acyclic singleton groups retain the old path;
+        // recursive groups first publish nominal identities for their internal references.
+        for (var group : dependencyGroups(deps)) {
+            boolean recursive = group.size() > 1
+                    || deps.getOrDefault(group.getFirst(), Set.of()).contains(group.getFirst());
+            if (!recursive) {
+                registerType(group.getFirst(), allRecords, allSealed, implicitVariants,
+                        typeToCu, knownFqcns, typeResolver);
+                continue;
             }
 
-            if (allRecords.containsKey(fqcn)) {
-                var rd = allRecords.get(fqcn);
-                if (hasNewTypeAnnotation(rd)) {
-                    validateNewType(rd);
-                    PirType underlying = resolveUnderlyingType(rd);
-                    var simpleName = rd.getNameAsString();
-                    typeResolver.registerNewType(simpleName, fqcn, underlying);
-                } else {
-                    typeResolver.registerRecord(rd, fqcn);
-                }
-            } else if (allSealed.containsKey(fqcn)) {
-                var cd = allSealed.get(fqcn);
-                if (!cd.getPermittedTypes().isEmpty()) {
-                    // Explicit permits — use standard registration
-                    typeResolver.registerSealedInterface(cd, fqcn);
-                } else {
-                    // Implicit permits — register with inner variants
-                    var variants = implicitVariants.get(fqcn);
-                    if (variants != null) {
-                        typeResolver.registerSealedInterfaceFromVariants(cd, fqcn, variants);
+            var pending = group.stream()
+                    .filter(fqcn -> !typeResolver.isRegistered(fqcn))
+                    .toList();
+            try {
+                for (String fqcn : pending) {
+                    if (allRecords.containsKey(fqcn)) {
+                        var rd = allRecords.get(fqcn);
+                        if (hasNewTypeAnnotation(rd)) {
+                            throw errorAt(rd, "@NewType cannot be recursive: '" + fqcn + "'");
+                        }
+                        typeResolver.predeclareNamedType(
+                                fqcn, rd.getNameAsString(), PirType.NamedKind.RECORD);
+                    } else {
+                        var decl = allSealed.get(fqcn);
+                        typeResolver.predeclareNamedType(
+                                fqcn, decl.getNameAsString(), PirType.NamedKind.SUM);
                     }
                 }
+
+                // Variant records must be complete before their sealed sums collect fields.
+                for (String fqcn : pending) {
+                    if (allRecords.containsKey(fqcn)) {
+                        registerType(fqcn, allRecords, allSealed, implicitVariants,
+                                typeToCu, knownFqcns, typeResolver);
+                    }
+                }
+                for (String fqcn : pending) {
+                    if (allSealed.containsKey(fqcn)) {
+                        registerType(fqcn, allRecords, allSealed, implicitVariants,
+                                typeToCu, knownFqcns, typeResolver);
+                    }
+                }
+                validateProductive(group, allRecords, allSealed, typeToCu, typeResolver);
+            } catch (RuntimeException e) {
+                typeResolver.discardForwardTypes(pending);
+                throw e;
             }
         }
         typeResolver.setCurrentImportResolver(null); // clean up
+    }
+
+    private void registerType(
+            String fqcn,
+            Map<String, RecordDeclaration> allRecords,
+            Map<String, ClassOrInterfaceDeclaration> allSealed,
+            Map<String, List<String>> implicitVariants,
+            Map<String, CompilationUnit> typeToCu,
+            Set<String> knownFqcns,
+            TypeResolver typeResolver) {
+        if (typeResolver.isRegistered(fqcn)
+                && typeResolver.resolveNameToType(fqcn).isPresent()
+                && !(typeResolver.resolveNameToType(fqcn).get()
+                        instanceof PirType.NamedTypeRef)) {
+            return;
+        }
+
+        var cu = typeToCu.get(fqcn);
+        if (cu != null) {
+            typeResolver.setCurrentImportResolver(new ImportResolver(cu, knownFqcns));
+        }
+
+        if (allRecords.containsKey(fqcn)) {
+            var rd = allRecords.get(fqcn);
+            if (hasNewTypeAnnotation(rd)) {
+                validateNewType(rd);
+                PirType underlying = resolveUnderlyingType(rd);
+                typeResolver.registerNewType(rd.getNameAsString(), fqcn, underlying);
+            } else {
+                typeResolver.registerRecord(rd, fqcn);
+            }
+        } else if (allSealed.containsKey(fqcn)) {
+            var cd = allSealed.get(fqcn);
+            if (!cd.getPermittedTypes().isEmpty()) {
+                typeResolver.registerSealedInterface(cd, fqcn);
+            } else {
+                var variants = implicitVariants.get(fqcn);
+                if (variants != null) {
+                    typeResolver.registerSealedInterfaceFromVariants(cd, fqcn, variants);
+                }
+            }
+        }
     }
 
     private static String simpleName(String fqcn) {
@@ -340,43 +393,158 @@ public class TypeRegistrar {
         return result;
     }
 
-    private List<String> topologicalSort(Map<String, Set<String>> deps) {
-        // Compute in-degree
-        var inDegree = new LinkedHashMap<String, Integer>();
-        for (var name : deps.keySet()) inDegree.put(name, 0);
-        for (var entry : deps.entrySet()) {
-            for (var dep : entry.getValue()) {
-                // entry depends on dep -> entry has incoming edge
-                inDegree.merge(entry.getKey(), 1, Integer::sum);
+    private List<List<String>> dependencyGroups(Map<String, Set<String>> deps) {
+        var index = new int[] {0};
+        var indexes = new HashMap<String, Integer>();
+        var lowLinks = new HashMap<String, Integer>();
+        var stack = new ArrayDeque<String>();
+        var onStack = new HashSet<String>();
+        var components = new ArrayList<List<String>>();
+
+        for (String node : deps.keySet()) {
+            if (!indexes.containsKey(node)) {
+                strongConnect(node, deps, index, indexes, lowLinks,
+                        stack, onStack, components);
             }
         }
 
-        // Kahn's algorithm
-        var queue = new ArrayDeque<String>();
-        for (var entry : inDegree.entrySet()) {
-            if (entry.getValue() == 0) queue.add(entry.getKey());
+        var declarationOrder = new HashMap<String, Integer>();
+        int position = 0;
+        for (String node : deps.keySet()) declarationOrder.put(node, position++);
+        components.forEach(component -> component.sort(
+                Comparator.comparingInt(declarationOrder::get)));
+
+        var componentOf = new HashMap<String, Integer>();
+        for (int i = 0; i < components.size(); i++) {
+            for (String node : components.get(i)) componentOf.put(node, i);
         }
 
-        var result = new ArrayList<String>();
-        while (!queue.isEmpty()) {
-            var node = queue.poll();
-            result.add(node);
-            // For each type that depends on node, decrement in-degree
-            for (var entry : deps.entrySet()) {
-                if (entry.getValue().contains(node)) {
-                    var newDegree = inDegree.merge(entry.getKey(), -1, Integer::sum);
-                    if (newDegree == 0) queue.add(entry.getKey());
+        var componentDeps = new ArrayList<Set<Integer>>();
+        var inDegree = new int[components.size()];
+        for (int i = 0; i < components.size(); i++) componentDeps.add(new LinkedHashSet<>());
+        for (var entry : deps.entrySet()) {
+            int owner = componentOf.get(entry.getKey());
+            for (String dependency : entry.getValue()) {
+                int target = componentOf.get(dependency);
+                if (owner != target && componentDeps.get(owner).add(target)) {
+                    inDegree[owner]++;
                 }
             }
         }
 
-        if (result.size() != deps.size()) {
-            var remaining = new LinkedHashSet<>(deps.keySet());
-            remaining.removeAll(result);
-            throw new CompilerException("Circular type dependency detected among: " + remaining);
+        Comparator<Integer> byDeclarationOrder = Comparator.comparingInt(component ->
+                declarationOrder.get(components.get(component).getFirst()));
+        var ready = new PriorityQueue<>(byDeclarationOrder);
+        for (int i = 0; i < inDegree.length; i++) {
+            if (inDegree[i] == 0) ready.add(i);
         }
 
+        var result = new ArrayList<List<String>>();
+        while (!ready.isEmpty()) {
+            int completed = ready.remove();
+            result.add(components.get(completed));
+            for (int owner = 0; owner < componentDeps.size(); owner++) {
+                if (componentDeps.get(owner).contains(completed)
+                        && --inDegree[owner] == 0) {
+                    ready.add(owner);
+                }
+            }
+        }
+        if (result.size() != components.size()) {
+            throw new IllegalStateException("SCC condensation graph must be acyclic");
+        }
         return result;
+    }
+
+    private void strongConnect(
+            String node,
+            Map<String, Set<String>> deps,
+            int[] nextIndex,
+            Map<String, Integer> indexes,
+            Map<String, Integer> lowLinks,
+            ArrayDeque<String> stack,
+            Set<String> onStack,
+            List<List<String>> components) {
+        int nodeIndex = nextIndex[0]++;
+        indexes.put(node, nodeIndex);
+        lowLinks.put(node, nodeIndex);
+        stack.push(node);
+        onStack.add(node);
+
+        for (String dependency : deps.getOrDefault(node, Set.of())) {
+            if (!indexes.containsKey(dependency)) {
+                strongConnect(dependency, deps, nextIndex, indexes, lowLinks,
+                        stack, onStack, components);
+                lowLinks.put(node, Math.min(lowLinks.get(node), lowLinks.get(dependency)));
+            } else if (onStack.contains(dependency)) {
+                lowLinks.put(node, Math.min(lowLinks.get(node), indexes.get(dependency)));
+            }
+        }
+
+        if (lowLinks.get(node).equals(indexes.get(node))) {
+            var component = new ArrayList<String>();
+            String member;
+            do {
+                member = stack.pop();
+                onStack.remove(member);
+                component.add(member);
+            } while (!member.equals(node));
+            components.add(component);
+        }
+    }
+
+    private void validateProductive(
+            List<String> group,
+            Map<String, RecordDeclaration> allRecords,
+            Map<String, ClassOrInterfaceDeclaration> allSealed,
+            Map<String, CompilationUnit> typeToCu,
+            TypeResolver typeResolver) {
+        var definitions = typeResolver.namedDefinitions();
+        var productive = new LinkedHashSet<String>();
+        boolean changed;
+        do {
+            changed = false;
+            for (String fqcn : group) {
+                if (!productive.contains(fqcn)
+                        && isProductive(definitions.get(fqcn), productive)) {
+                    productive.add(fqcn);
+                    changed = true;
+                }
+            }
+        } while (changed);
+
+        if (productive.containsAll(group)) return;
+        var unproductive = group.stream()
+                .filter(name -> !productive.contains(name))
+                .toList();
+        String first = unproductive.getFirst();
+        Node declaration = allRecords.containsKey(first)
+                ? allRecords.get(first) : allSealed.get(first);
+        throw errorAt(declaration,
+                "Recursive type dependency has no finite base constructor: " + unproductive);
+    }
+
+    private boolean isProductive(PirType type, Set<String> productive) {
+        if (type == null) return false;
+        return switch (type) {
+            case PirType.NamedTypeRef ref -> productive.contains(ref.stableId());
+            case PirType.RecordType record -> record.fields().stream()
+                    .allMatch(field -> isProductiveField(field.type(), productive));
+            case PirType.SumType sum -> sum.constructors().stream()
+                    .anyMatch(constructor -> constructor.fields().stream()
+                            .allMatch(field -> isProductiveField(field.type(), productive)));
+            default -> true;
+        };
+    }
+
+    private boolean isProductiveField(PirType type, Set<String> productive) {
+        // Empty/None container values are finite regardless of their element type.
+        if (type instanceof PirType.ListType
+                || type instanceof PirType.MapType
+                || type instanceof PirType.OptionalType) {
+            return true;
+        }
+        return isProductive(type, productive);
     }
 
     /** Create a CompilerException with source position from a JavaParser node. */

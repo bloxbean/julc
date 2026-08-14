@@ -52,7 +52,8 @@ class JulcIntegrationTest {
         var validatorSource = scanResult.validators().get("AlwaysSucceeds");
         var resolvedLibs = ProjectSourceResolver.resolve(validatorSource, pool);
         var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions());
-        var result = compiler.compile(validatorSource, resolvedLibs);
+        var contractResult = compiler.compileContract(validatorSource, resolvedLibs);
+        var result = contractResult.compileResult();
 
         assertFalse(result.hasErrors());
         assertNotNull(result.program());
@@ -65,7 +66,8 @@ class JulcIntegrationTest {
 
         // 3. Blueprint
         var compiled = new ArrayList<BlueprintGenerator.CompiledValidator>();
-        compiled.add(new BlueprintGenerator.CompiledValidator("AlwaysSucceeds", validatorSource, result));
+        compiled.add(new BlueprintGenerator.CompiledValidator(
+                "AlwaysSucceeds", result, contractResult.contractSchema()));
         var blueprint = BlueprintGenerator.generate(new BlueprintConfig(config.name(), config.version()), compiled);
         assertEquals(1, blueprint.validators().size());
         assertEquals(hash, blueprint.validators().getFirst().hash());

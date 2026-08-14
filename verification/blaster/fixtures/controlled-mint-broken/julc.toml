@@ -1,0 +1,4 @@
+[project]
+name = "julc-blaster-controlled-mint-broken"
+version = "0.1.0"
+compiler = "local"

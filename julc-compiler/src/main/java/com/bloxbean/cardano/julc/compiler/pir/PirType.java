@@ -33,6 +33,11 @@ public sealed interface PirType {
         public SumType { constructors = List.copyOf(constructors); }
     }
 
+    /** A nominal back-reference used inside a recursive named type definition. */
+    record NamedTypeRef(String stableId, String name, NamedKind kind) implements PirType {}
+
+    enum NamedKind { RECORD, SUM }
+
     // Nested helper types
     record Field(String name, PirType type) {}
     record Constructor(String name, int tag, List<Field> fields) {

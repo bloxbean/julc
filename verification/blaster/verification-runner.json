@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "kind": "evidence-suite",
+  "manifest": "verification-manifest.json",
+  "resultManifest": "generated/run-manifest.json",
+  "timeoutSeconds": 3600,
+  "acquire": [
+    {
+      "id": "acquire-pinned-evidence-dependencies",
+      "command": ["scripts/acquire-dependencies.sh"],
+      "executableSha256": "6fb6c7ca81c6d287a0b4433ee6931d533c912a957288a1db432134f2a170bbcc",
+      "maxAttempts": 3,
+      "expectedExitCodes": [0]
+    }
+  ],
+  "verify": [
+    {
+      "id": "verify-reviewed-evidence-suite",
+      "command": ["scripts/verify-offline.sh"],
+      "executableSha256": "9876ec4f92914e6abe550569a0e4ed1bde1d3b92396ac5e98edd4320f23042ce",
+      "expectedExitCodes": [0],
+      "requiredOutput": "ESTABLISHED: Milestone B positive properties and negative controls",
+      "propertyId": "milestone-b.reviewed-suite",
+      "result": "SMT-VALID",
+      "reason": "reviewed-positive-properties-and-negative-controls"
+    }
+  ]
+}

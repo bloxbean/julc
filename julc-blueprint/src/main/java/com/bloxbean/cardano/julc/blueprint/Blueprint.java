@@ -22,6 +22,9 @@ public record Blueprint(Preamble preamble, List<ValidatorEntry> validators,
     public String toJson() {
         var sb = new StringBuilder();
         sb.append("{\n");
+        sb.append("  \"$schema\": ")
+                .append(jsonStr("https://cips.cardano.org/cips/cip57/schemas/plutus-blueprint.json"))
+                .append(",\n");
         sb.append("  \"preamble\": {\n");
         sb.append("    \"title\": ").append(jsonStr(preamble.title())).append(",\n");
         sb.append("    \"version\": ").append(jsonStr(preamble.version())).append(",\n");
@@ -122,33 +125,25 @@ public record Blueprint(Preamble preamble, List<ValidatorEntry> validators,
             sb.append(pad).append("  \"description\": ").append(jsonStr(schema.description()));
         }
 
-        if (schema.dataType() != null && !"constructor".equals(schema.ref())) {
+        if (schema.dataType() != null) {
             if (needComma) sb.append(",\n"); else needComma = true;
             sb.append(pad).append("  \"dataType\": ").append(jsonStr(schema.dataType()));
         }
 
-        if ("constructor".equals(schema.ref())) {
+        if (schema.index() != null) {
             if (needComma) sb.append(",\n"); else needComma = true;
-            sb.append(pad).append("  \"dataType\": \"constructor\"");
-            sb.append(",\n");
             sb.append(pad).append("  \"index\": ").append(schema.index());
-            sb.append(",\n");
+        }
+
+        if (schema.fields() != null) {
+            if (needComma) sb.append(",\n"); else needComma = true;
             sb.append(pad).append("  \"fields\": [");
-            if (schema.fields() != null && !schema.fields().isEmpty()) {
+            if (!schema.fields().isEmpty()) {
                 sb.append('\n');
                 for (int i = 0; i < schema.fields().size(); i++) {
                     var f = schema.fields().get(i);
-                    sb.append(pad).append("    {\n");
-                    sb.append(pad).append("      \"title\": ").append(jsonStr(f.title()));
-                    if (f.ref() != null) {
-                        sb.append(",\n");
-                        sb.append(pad).append("      \"$ref\": ").append(jsonStr(f.ref()));
-                    } else if (f.dataType() != null) {
-                        sb.append(",\n");
-                        sb.append(pad).append("      \"dataType\": ").append(jsonStr(f.dataType()));
-                    }
-                    sb.append('\n');
-                    sb.append(pad).append("    }");
+                    sb.append(pad).append("    ");
+                    writeSchema(sb, f, indent + 2);
                     if (i < schema.fields().size() - 1) sb.append(',');
                     sb.append('\n');
                 }
@@ -156,7 +151,6 @@ public record Blueprint(Preamble preamble, List<ValidatorEntry> validators,
             } else {
                 sb.append("]");
             }
-            needComma = true;
         }
 
         if (schema.anyOf() != null) {
@@ -171,7 +165,25 @@ public record Blueprint(Preamble preamble, List<ValidatorEntry> validators,
             sb.append(pad).append("  ]");
         }
 
-        if (schema.ref() != null && !"constructor".equals(schema.ref())) {
+        if (schema.items() != null) {
+            if (needComma) sb.append(",\n"); else needComma = true;
+            sb.append(pad).append("  \"items\": ");
+            writeSchema(sb, schema.items(), indent + 1);
+        }
+
+        if (schema.keys() != null) {
+            if (needComma) sb.append(",\n"); else needComma = true;
+            sb.append(pad).append("  \"keys\": ");
+            writeSchema(sb, schema.keys(), indent + 1);
+        }
+
+        if (schema.values() != null) {
+            if (needComma) sb.append(",\n"); else needComma = true;
+            sb.append(pad).append("  \"values\": ");
+            writeSchema(sb, schema.values(), indent + 1);
+        }
+
+        if (schema.ref() != null) {
             if (needComma) sb.append(",\n"); else needComma = true;
             sb.append(pad).append("  \"$ref\": ").append(jsonStr(schema.ref()));
         }

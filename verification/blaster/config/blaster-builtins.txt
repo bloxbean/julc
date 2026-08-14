@@ -1,0 +1,4 @@
+# FLAT tags supported by the pinned PlutusCoreBlaster importer.
+# One inclusive range or individual tag per line.
+0-88
+92-93

@@ -1,0 +1,4 @@
+[project]
+name = "julc-blaster-smoke"
+version = "0.1.0"
+compiler = "workspace"

@@ -3,6 +3,7 @@ package com.bloxbean.julc.cli;
 import com.bloxbean.julc.cli.cmd.*;
 import com.bloxbean.julc.cli.cmd.blueprint.BlueprintCommand;
 import com.bloxbean.julc.cli.cmd.uplc.UplcCommand;
+import com.bloxbean.julc.cli.cmd.verify.VerifyCommand;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 
@@ -20,6 +21,7 @@ import picocli.CommandLine.Command;
                 ReplCommand.class,
                 BlueprintCommand.class,
                 UplcCommand.class,
+                VerifyCommand.class,
                 McpCommand.class,
                 VersionCommand.class,
                 CommandLine.HelpCommand.class
