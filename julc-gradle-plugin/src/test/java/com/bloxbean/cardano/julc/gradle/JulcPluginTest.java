@@ -141,6 +141,39 @@ class JulcPluginTest {
     }
 
     @Test
+    void blueprintEnabledPublishesExplicitMultiPurposeInterfaces() throws IOException {
+        Files.writeString(buildFile, """
+                plugins {
+                    id 'com.bloxbean.cardano.julc'
+                }
+                """);
+        Files.writeString(plutusSrcDir.resolve("MultiGate.java"), """
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                import com.bloxbean.cardano.julc.ledger.ScriptContext;
+                import java.math.BigInteger;
+                @MultiValidator class MultiGate {
+                    record Datum(BigInteger value) {}
+                    record Spend(BigInteger value) {}
+                    record Mint(byte[] tokenName) {}
+                    @Entrypoint(purpose = Purpose.SPEND)
+                    static boolean spend(Datum datum, Spend redeemer, ScriptContext ctx) {
+                        return true;
+                    }
+                    @Entrypoint(purpose = Purpose.MINT)
+                    static boolean mint(Mint redeemer, ScriptContext ctx) { return true; }
+                }
+                """);
+
+        BuildResult result = createRunner("compileJulc").build();
+        assertEquals(TaskOutcome.SUCCESS, result.task(":compileJulc").getOutcome());
+        String json = Files.readString(testProjectDir.resolve("build/plutus/plutus.json"));
+        assertTrue(json.contains("\"title\": \"MultiGate.mint\""));
+        assertTrue(json.contains("\"title\": \"MultiGate.spend\""));
+        assertTrue(json.contains("\"purpose\": \"mint\""));
+        assertTrue(json.contains("\"purpose\": \"spend\""));
+    }
+
+    @Test
     void schemaFailurePreservesLastGoodGradleOutputs() throws IOException {
         Files.writeString(buildFile, """
                 plugins {

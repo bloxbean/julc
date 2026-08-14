@@ -51,6 +51,12 @@ class PlutusDataAdapterConvertTest {
     }
     record CancelAuction() implements Redeemer {}
 
+    record MultiDatum(BigInteger state) {}
+    sealed interface SpendRedeemer permits Advance {}
+    record Advance(BigInteger next) implements SpendRedeemer {}
+    sealed interface MintRedeemer permits MintToken {}
+    record MintToken(byte[] tokenName) implements MintRedeemer {}
+
     @NewType
     record PolicyId(byte[] hash) {
         @Override
@@ -140,6 +146,23 @@ class PlutusDataAdapterConvertTest {
 
             var restored = PlutusDataAdapter.convert(cclData, PubKeyHash.class);
             assertEquals(original, restored);
+        }
+
+        @Test
+        void constructsDistinctPurposeLocalValuesForOneMultiValidatorScript() {
+            var datum = new MultiDatum(BigInteger.valueOf(7));
+            var spend = new Advance(BigInteger.valueOf(8));
+            var mint = new MintToken(new byte[]{0x01, 0x02});
+
+            var cclDatum = PlutusDataAdapter.convert(datum);
+            var cclSpend = PlutusDataAdapter.convert(spend);
+            var cclMint = PlutusDataAdapter.convert(mint);
+
+            assertEquals(datum, PlutusDataAdapter.convert(cclDatum, MultiDatum.class));
+            assertEquals(spend, PlutusDataAdapter.convert(cclSpend, SpendRedeemer.class));
+            var restoredMint = assertInstanceOf(MintToken.class,
+                    PlutusDataAdapter.convert(cclMint, MintRedeemer.class));
+            assertArrayEquals(mint.tokenName(), restoredMint.tokenName());
         }
     }
 

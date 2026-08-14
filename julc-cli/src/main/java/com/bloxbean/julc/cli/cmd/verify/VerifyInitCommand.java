@@ -6,7 +6,6 @@ import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
 
 import java.nio.file.Path;
-import java.util.Locale;
 import java.util.concurrent.Callable;
 
 @Command(name = "init",
@@ -17,12 +16,12 @@ public class VerifyInitCommand implements Callable<Integer> {
     private Path projectDir;
 
     @Option(names = "--validator", required = true,
-            description = "Exact validator title from plutus.json")
+            description = "Base Java validator title")
     private String validatorTitle;
 
     @Option(names = "--purpose", required = true,
             description = "Script purpose: ${COMPLETION-CANDIDATES}")
-    private Purpose purpose;
+    private VerificationPurpose purpose;
 
     @Option(names = "--out-dir",
             description = "Generated workspace (default: <project>/verification/<artifact-id>)")
@@ -48,11 +47,12 @@ public class VerifyInitCommand implements Callable<Integer> {
             Path output = outputDir;
             if (output == null) {
                 var metadata = com.bloxbean.julc.cli.cmd.blueprint.ArtifactCommand
-                        .inspect(blueprint, validatorTitle);
+                        .inspectForPurpose(blueprint, validatorTitle, purpose.cip57Name())
+                        .artifact();
                 output = project.resolve("verification").resolve(metadata.artifactId());
             }
             var result = VerificationProjectGenerator.generate(
-                    blueprint, validatorTitle, purpose.name().toLowerCase(Locale.ROOT), fuel,
+                    blueprint, validatorTitle, purpose.userName(), fuel,
                     recursiveDepth, output, force);
             System.out.println("Generated verification workspace for " + validatorTitle
                     + " at " + result.outputDirectory());
@@ -65,10 +65,5 @@ public class VerifyInitCommand implements Callable<Integer> {
             System.err.println("Verification workspace generation failed: " + e.getMessage());
             return 1;
         }
-    }
-
-    enum Purpose {
-        SPENDING,
-        MINTING
     }
 }

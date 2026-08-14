@@ -1,0 +1,4 @@
+[project]
+name = "julc-purpose-indexed-p4"
+version = "0.1.0"
+compiler = "local"

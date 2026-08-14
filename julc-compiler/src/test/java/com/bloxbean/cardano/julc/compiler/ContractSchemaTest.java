@@ -1,6 +1,7 @@
 package com.bloxbean.cardano.julc.compiler;
 
 import com.bloxbean.cardano.julc.compiler.pir.PirType;
+import com.bloxbean.cardano.julc.compiler.schema.ContractSchema;
 import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.core.flat.UplcFlatEncoder;
 import com.bloxbean.cardano.julc.vm.JulcVm;
@@ -52,7 +53,7 @@ class ContractSchemaTest {
                 UplcFlatEncoder.encodeProgram(captured.compileResult().program()));
 
         var schema = captured.contractSchema();
-        assertEquals("spending", schema.purpose());
+        assertEquals(ContractSchema.Purpose.SPEND, schema.purpose());
         assertInstanceOf(PirType.RecordType.class, schema.datum().type());
         assertInstanceOf(PirType.SumType.class, schema.redeemer().type());
         var datum = (PirType.RecordType) schema.datum().type();
@@ -87,6 +88,126 @@ class ContractSchemaTest {
         assertTrue(error.getMessage().contains("--no-blueprint"));
         assertFalse(error.diagnostics().isEmpty());
         assertTrue(error.diagnostics().getFirst().line() > 0);
+    }
+
+    @Test
+    void purposeIndexedMultiSchemaIsTypedOrderedAndByteIdentical() {
+        String source = """
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                import com.bloxbean.cardano.julc.ledger.ScriptContext;
+                import java.math.BigInteger;
+                import java.util.Optional;
+
+                @MultiValidator
+                public class ProtocolValidator {
+                    record State(BigInteger counter) {}
+                    record Spend(BigInteger next) {}
+                    record Mint(byte[] tokenName) {}
+
+                    // Deliberately declared before the lower ledger tag.
+                    @Entrypoint(purpose = Purpose.SPEND)
+                    public static boolean spend(Optional<State> datum, Spend redeemer,
+                                                ScriptContext ctx) {
+                        return true;
+                    }
+
+                    @Entrypoint(purpose = Purpose.MINT)
+                    public static boolean mint(Mint redeemer, ScriptContext ctx) {
+                        return true;
+                    }
+                }
+                """;
+
+        var compiler = new JulcCompiler();
+        var ordinary = compiler.compile(source);
+        var captured = compiler.compileContract(source);
+
+        assertArrayEquals(
+                UplcFlatEncoder.encodeProgram(ordinary.program()),
+                UplcFlatEncoder.encodeProgram(captured.compileResult().program()),
+                "schema capture must remain observational");
+
+        var interfaces = captured.contractSchema().interfaces();
+        assertEquals(2, interfaces.size());
+
+        var mint = interfaces.get(0);
+        assertEquals(ContractSchema.Purpose.MINT, mint.purpose());
+        assertEquals("mint", mint.entrypointName());
+        assertNull(mint.datum());
+        assertEquals("Mint", assertInstanceOf(
+                PirType.RecordType.class, mint.redeemer().type()).name());
+        assertTrue(mint.sourceLocation().line() > 0);
+
+        var spend = interfaces.get(1);
+        assertEquals(ContractSchema.Purpose.SPEND, spend.purpose());
+        assertEquals("spend", spend.entrypointName());
+        assertEquals("State", assertInstanceOf(
+                PirType.RecordType.class, spend.datum().type()).name(),
+                "only the ledger-level Optional wrapper is omitted from CIP data");
+        assertEquals("Spend", assertInstanceOf(
+                PirType.RecordType.class, spend.redeemer().type()).name());
+        assertTrue(spend.sourceLocation().line() > 0);
+
+        assertThrows(IllegalStateException.class, captured.contractSchema()::purpose,
+                "single-interface consumers must select a multi-validator purpose");
+        assertSame(spend, captured.contractSchema()
+                .interfaceFor(ContractSchema.Purpose.SPEND).orElseThrow());
+    }
+
+    @Test
+    void purposeIndexedProgramEvaluatesEveryBranchAndRejectsCrossPurposeInputs() {
+        String source = """
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                import com.bloxbean.cardano.julc.ledger.ScriptContext;
+                import java.math.BigInteger;
+
+                @MultiValidator class RoutedProtocol {
+                    record Datum(BigInteger state) {}
+                    record Spend(BigInteger next) {}
+                    record Mint(byte[] tokenName) {}
+
+                    @Entrypoint(purpose = Purpose.SPEND)
+                    static boolean spend(Datum datum, Spend redeemer, ScriptContext ctx) {
+                        return datum.state() == 7 && redeemer.next() == 8;
+                    }
+
+                    @Entrypoint(purpose = Purpose.MINT)
+                    static boolean mint(Mint redeemer, ScriptContext ctx) {
+                        return redeemer.tokenName().length == 1;
+                    }
+                }
+                """;
+
+        var program = new JulcCompiler().compileContract(source).compileResult().program();
+        var vm = JulcVm.create();
+        var datum = PlutusData.constr(0, PlutusData.integer(7));
+        var spendRedeemer = PlutusData.constr(0, PlutusData.integer(8));
+        var mintRedeemer = PlutusData.constr(0, PlutusData.bytes(new byte[]{1}));
+
+        assertTrue(vm.evaluateWithArgs(program, List.of(
+                multiContext(spendRedeemer, PlutusData.constr(1,
+                        PlutusData.integer(0), PlutusData.constr(0, datum))))).isSuccess());
+        assertTrue(vm.evaluateWithArgs(program, List.of(
+                multiContext(mintRedeemer, PlutusData.constr(0, PlutusData.bytes(new byte[28])))))
+                .isSuccess());
+
+        assertFalse(vm.evaluateWithArgs(program, List.of(
+                multiContext(spendRedeemer, PlutusData.constr(0, PlutusData.bytes(new byte[28])))))
+                .isSuccess(), "a spend redeemer cannot reach the mint handler");
+        assertFalse(vm.evaluateWithArgs(program, List.of(
+                multiContext(mintRedeemer, PlutusData.constr(1,
+                        PlutusData.integer(0), PlutusData.constr(0, datum))))).isSuccess(),
+                "a mint redeemer cannot reach the spend handler");
+        var malformedDatumContext = multiContext(spendRedeemer, PlutusData.constr(1,
+                PlutusData.integer(0),
+                PlutusData.constr(0, PlutusData.constr(0))));
+        assertFalse(vm.evaluateWithArgs(program, List.of(malformedDatumContext)).isSuccess(),
+                "strict spending datum shape is checked before dispatch succeeds");
+    }
+
+    private static PlutusData multiContext(PlutusData redeemer, PlutusData scriptInfo) {
+        return PlutusData.constr(
+                0, PlutusData.integer(0), redeemer, scriptInfo);
     }
 
     @Test

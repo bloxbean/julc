@@ -310,6 +310,34 @@ class JulcAnnotationProcessorTest {
     }
 
     @Test
+    void blueprintEnabledPublishesExplicitMultiPurposeInterfaces() throws Exception {
+        var source = """
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                import com.bloxbean.cardano.julc.ledger.ScriptContext;
+                import java.math.BigInteger;
+                @MultiValidator class MultiBlueprint {
+                    record Datum(BigInteger value) {}
+                    record Spend(BigInteger value) {}
+                    record Mint(byte[] tokenName) {}
+                    @Entrypoint(purpose = Purpose.SPEND)
+                    static boolean spend(Datum datum, Spend redeemer, ScriptContext ctx) {
+                        return true;
+                    }
+                    @Entrypoint(purpose = Purpose.MINT)
+                    static boolean mint(Mint redeemer, ScriptContext ctx) { return true; }
+                }
+                """;
+
+        var result = compileWithProcessor(source, "MultiBlueprint");
+        assertTrue(result.success(), "Compilation should succeed: " + result.diagnostics());
+        String json = Files.readString(tempDir.resolve("META-INF/plutus/plutus.json"));
+        assertTrue(json.contains("\"title\": \"MultiBlueprint.mint\""));
+        assertTrue(json.contains("\"title\": \"MultiBlueprint.spend\""));
+        assertTrue(json.contains("\"purpose\": \"mint\""));
+        assertTrue(json.contains("\"purpose\": \"spend\""));
+    }
+
+    @Test
     void failedProcessingNeverPublishesAPartialAggregateBlueprint() throws Exception {
         var sources = new LinkedHashMap<String, String>();
         sources.put("GoodValidator", """

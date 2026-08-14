@@ -104,6 +104,102 @@ class BuildCommandTest {
     }
 
     @Test
+    void strictBuildPublishesExplicitMultiPurposeInterfaces(@TempDir Path tempDir)
+            throws Exception {
+        Path project = tempDir.resolve("multi-build");
+        ProjectScaffolder.scaffold(project, "multi-build");
+        Files.writeString(ProjectLayout.srcDir(project).resolve("AlwaysSucceeds.java"), """
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                import com.bloxbean.cardano.julc.ledger.ScriptContext;
+                import java.math.BigInteger;
+                @MultiValidator class AlwaysSucceeds {
+                    record Datum(BigInteger state) {}
+                    record Spend(BigInteger next) {}
+                    record Mint(byte[] tokenName) {}
+                    @Entrypoint(purpose = Purpose.SPEND)
+                    static boolean spend(Datum datum, Spend redeemer, ScriptContext ctx) {
+                        return true;
+                    }
+                    @Entrypoint(purpose = Purpose.MINT)
+                    static boolean mint(Mint redeemer, ScriptContext ctx) { return true; }
+                }
+                """);
+
+        assertEquals(0, new CommandLine(new BuildCommand()).execute(project.toString()));
+        var validators = JSON.readTree(
+                ProjectLayout.plutusDir(project).resolve("plutus.json").toFile())
+                .path("validators");
+        assertEquals(2, validators.size());
+        assertEquals("AlwaysSucceeds.mint", validators.get(0).path("title").asText());
+        assertEquals("mint", validators.get(0).path("redeemer").path("purpose").asText());
+        assertEquals("AlwaysSucceeds.spend", validators.get(1).path("title").asText());
+        assertEquals("spend", validators.get(1).path("datum").path("purpose").asText());
+        assertEquals(validators.get(0).path("compiledCode").asText(),
+                validators.get(1).path("compiledCode").asText());
+        assertEquals(validators.get(0).path("hash").asText(),
+                validators.get(1).path("hash").asText());
+    }
+
+    @Test
+    void singleCertifyingPurposePublishesAsCip57Publish(@TempDir Path tempDir)
+            throws Exception {
+        Path project = tempDir.resolve("certifying-build");
+        ProjectScaffolder.scaffold(project, "certifying-build");
+        Files.writeString(ProjectLayout.srcDir(project).resolve("AlwaysSucceeds.java"), """
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                import com.bloxbean.cardano.julc.ledger.ScriptContext;
+                import java.math.BigInteger;
+
+                @CertifyingValidator class AlwaysSucceeds {
+                    record Redeemer(BigInteger value) {}
+                    @Entrypoint
+                    static boolean validate(Redeemer redeemer, ScriptContext ctx) {
+                        return true;
+                    }
+                }
+                """);
+
+        assertEquals(0, new CommandLine(new BuildCommand()).execute(project.toString()));
+        Path plutusDir = ProjectLayout.plutusDir(project);
+        var validator = JSON.readTree(plutusDir.resolve("plutus.json").toFile())
+                .path("validators").get(0);
+        assertEquals("AlwaysSucceeds", validator.path("title").asText());
+        assertEquals("publish", validator.path("redeemer").path("purpose").asText());
+    }
+
+    @Test
+    void unsupportedSingleGovernancePurposeFailsButOptOutStillCompiles(
+            @TempDir Path tempDir) throws Exception {
+        Path project = tempDir.resolve("voting-build");
+        ProjectScaffolder.scaffold(project, "voting-build");
+        Files.writeString(ProjectLayout.srcDir(project).resolve("AlwaysSucceeds.java"), """
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                import com.bloxbean.cardano.julc.ledger.ScriptContext;
+                import java.math.BigInteger;
+
+                @VotingValidator class AlwaysSucceeds {
+                    record Redeemer(BigInteger value) {}
+                    @Entrypoint
+                    static boolean validate(Redeemer redeemer, ScriptContext ctx) {
+                        return true;
+                    }
+                }
+                """);
+
+        assertEquals(1, new CommandLine(new BuildCommand()).execute(project.toString()));
+        Path plutusDir = ProjectLayout.plutusDir(project);
+        assertFalse(Files.exists(plutusDir.resolve("plutus.json")));
+
+        assertEquals(0, new CommandLine(new BuildCommand()).execute(
+                project.toString(), "--no-blueprint"));
+        assertTrue(Files.isRegularFile(plutusDir.resolve("AlwaysSucceeds.uplc")));
+        assertTrue(Files.isRegularFile(
+                plutusDir.resolve("AlwaysSucceeds.compiledCode.hex")));
+        assertTrue(Files.isRegularFile(plutusDir.resolve("AlwaysSucceeds.script-hash")));
+        assertFalse(Files.exists(plutusDir.resolve("plutus.json")));
+    }
+
+    @Test
     void strictSchemaFailureReturnsOneAndPublishesNoBlueprint(@TempDir Path tempDir)
             throws Exception {
         Path project = tempDir.resolve("strict-failure");

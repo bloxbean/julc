@@ -1,6 +1,6 @@
 # ADR-017: Purpose-Indexed CIP-57 Blueprints for `@MultiValidator`
 
-- **Status:** Proposed
+- **Status:** Implemented (pending manual review and commit)
 - **Date:** 2026-08-13
 - **Parent:**
   [ADR-005 — Compiler-Owned Blueprint Schemas](005-milestone-c1-compiler-owned-blueprint-schema.md)
@@ -69,9 +69,19 @@ Using independent purpose and schema alternatives would lose their correlation:
 consumers could not know that `Spend` belongs only to `spend` and `Mint` only to
 `mint`. JuLC must not publish that ambiguous cross-product.
 
-The pinned CIP vocabulary also has no truthful names for the Plutus V3
-`CERTIFY`, `VOTE`, or `PROPOSE` purposes. In particular, JuLC will not relabel
-`CERTIFY` as CIP-57 `publish`; those concepts are not established as equivalent.
+The pinned CIP vocabulary has no names for the Plutus V3 `VOTE` or `PROPOSE`
+purposes. Its `publish` purpose does correspond to certificate validation:
+Aiken names its certificate handler `publish` and maps ledger
+`RedeemerTag::Cert` to `Publish`, while lowering that handler to Plutus V3
+`ScriptInfo.Certifying`. JuLC therefore uses the same established
+`CERTIFY`-to-`publish` mapping. Aiken's generated blueprints currently omit the
+optional purpose field, so they do not provide a standard mapping for `VOTE`
+or `PROPOSE` that JuLC can adopt without losing purpose/schema correlation.
+Scalus independently keeps the same boundary: its Plutus V3 ledger model has
+`Certifying`, `Voting`, and `Proposing`, while its separate CIP-57 blueprint
+`Purpose` enum contains only `Spend`, `Mint`, `Withdraw`, and `Publish`.
+Scalus's generic blueprint builders currently leave derived argument purposes
+unset; they do not define additional CIP-57 values for voting or proposing.
 
 ## Decision
 
@@ -139,12 +149,12 @@ The first implementation supports the exact mappings:
 | `SPEND` | `spend` | yes |
 | `MINT` | `mint` | yes |
 | `WITHDRAW` | `withdraw` | yes |
-| `CERTIFY` | none in pinned vocabulary | fail closed |
+| `CERTIFY` | `publish` | yes |
 | `VOTE` | none in pinned vocabulary | fail closed |
 | `PROPOSE` | none in pinned vocabulary | fail closed |
 
-`publish` is not emitted until JuLC has a source construct with demonstrably
-matching semantics.
+The `publish` spelling is an artifact-format mapping only. JuLC's Java and
+compiler-owned purpose remains `CERTIFY`.
 
 If a later CIP-57 revision makes a single-entry discriminated argument form
 both valid and interoperable, changing the publication shape requires a
@@ -223,8 +233,8 @@ major consumer, stop and revise this ADR; do not fall back to ambiguous JSON.
   datum-only-for-spending invariant.
 - Fail at the relevant `@Entrypoint` source location for an unsupported purpose
   or schema.
-- Add positive `SPEND`/`MINT`/`WITHDRAW` and negative
-  `CERTIFY`/`VOTE`/`PROPOSE` tests.
+- Add positive `SPEND`/`MINT`/`WITHDRAW`/`CERTIFY` and negative
+  `VOTE`/`PROPOSE` tests.
 
 ### P.3 — Build and verification integrations
 
@@ -314,9 +324,12 @@ major consumer, stop and revise this ADR; do not fall back to ambiguous JSON.
 - A single script appears as several blueprint validator entries. Consumers may
   display those entries separately even though their hashes match.
 - Manual-dispatch multi-validators remain unsupported for blueprint generation.
-- Plutus V3 certifying, voting, and proposing interfaces remain unavailable in
-  strict blueprints until CIP-57 provides truthful vocabulary or a separately
-  reviewed interoperability strategy is adopted.
+- Plutus V3 voting and proposing interfaces are unavailable in strict
+  blueprints until CIP-57 provides truthful vocabulary or a separately reviewed
+  interoperability strategy is adopted. This is a preview behavior change for
+  single-purpose validators: older JuLC versions emitted incomplete
+  purpose-free metadata for those forms. Compilation remains available through
+  the explicit blueprint opt-out.
 - Purpose-qualified entry titles become a public artifact convention and must
   be migration-tested before release.
 
@@ -364,3 +377,41 @@ ADR-017 is complete only when:
 - the normal `julc-examples` build no longer needs the temporary blueprint
   opt-out for supported multi-purpose contracts; and
 - no core compiler or single-validator UPLC regression is introduced.
+
+## Implementation notes and lessons
+
+- The repeated-entry fixture passes the repository-pinned official CIP-57
+  meta-schema. A separate compatibility test feeds real `BlueprintGenerator`
+  output—including colon-namespaced definition references—into
+  cardano-client-lib's concrete `PlutusBlueprintLoader` from
+  `cardano-client-plutus:0.8.0-pre2`. JuLC's runtime dependency remains
+  unchanged; this newer consumer is test-only.
+- The compiler schema retains a `purposeIndexed` marker. Counting interfaces is
+  insufficient because a `@MultiValidator` with one explicit entrypoint must
+  still publish `Name.spend` rather than masquerading as a normal validator.
+- Purpose-local named types use stable compiler identities only when simple
+  names collide. Existing single-validator definition keys therefore remain
+  compatible.
+- cardano-client-lib 0.7.2 supplies JuLC's deployed-script and Plutus-data
+  bridge but predates its blueprint model. Compatibility evidence consequently
+  uses the first published CCL line with a real loader, while separate adapter
+  tests exercise off-chain datum/redeemer construction.
+- The external `julc-examples` checkout contains no `blueprint = false`
+  workaround to remove. Its mixed-purpose validators use `CERTIFY`, which is
+  now published as standard CIP-57 `publish`. Supported mixed-purpose
+  publication is also covered through the normal Gradle plugin and
+  annotation-processor paths.
+- Aiken v1.1.21 was checked both at source level and by building its Plutus V3
+  script-context acceptance project. It emits `.publish`, `.vote`, and
+  `.propose` handler titles but no argument `purpose` fields. JuLC adopts its
+  explicit ledger `Cert` to `Publish` mapping; it does not copy the
+  purpose-omission fallback for voting or proposing.
+- Scalus commit `68449438e409f7e666315369e462d24273c1e7e6` was checked at
+  source level. Its on-chain Plutus V3 model includes certifying, voting, and
+  proposing, but its CIP-57 `Purpose` codec deliberately exposes only the four
+  standard values. This independently corroborates failing closed for
+  `VOTE`/`PROPOSE`; Scalus does not supply an extension vocabulary JuLC could
+  adopt.
+- Purpose resolution diagnoses a matching pre-ADR-017 entry with no redeemer
+  purpose as a stale blueprint and asks the user to rebuild, rather than
+  incorrectly claiming that the requested interface does not exist.

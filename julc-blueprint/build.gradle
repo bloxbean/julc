@@ -14,6 +14,9 @@ dependencies {
         exclude group: 'com.ethlo.time', module: 'itu'
     }
     testImplementation project(':julc-vm')
+    // Compatibility gate for the first cardano-client-lib release line with
+    // a concrete CIP-57 model/loader. This does not change JuLC's runtime API.
+    testImplementation 'com.bloxbean.cardano:cardano-client-plutus:0.8.0-pre2'
     testRuntimeOnly project(':julc-vm-java')
     testRuntimeOnly 'org.slf4j:slf4j-nop:2.0.17'
 }

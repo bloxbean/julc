@@ -1433,32 +1433,81 @@ public class JulcCompiler {
             TypeResolver typeResolver,
             ClassOrInterfaceDeclaration validatorClass) {
         if (purpose == ScriptPurpose.MULTI) {
-            var detail = entrypointInfos.isEmpty()
-                    ? "manual multi-purpose entrypoint"
-                    : "purpose-indexed entrypoints";
-            throw schemaError(validatorClass,
-                    "Blueprint schema generation does not yet support " + detail
-                            + " for @MultiValidator. Use julc build --no-blueprint until "
-                            + "purpose-indexed CIP-57 arguments are implemented.");
+            if (entrypointInfos.stream().anyMatch(info -> info.purposeName().equals("DEFAULT"))) {
+                throw schemaError(validatorClass,
+                        "Blueprint schema generation does not support manual multi-purpose "
+                                + "dispatch for @MultiValidator. Use explicit purpose-indexed "
+                                + "@Entrypoint methods or julc build --no-blueprint.");
+            }
+
+            var interfaces = entrypointInfos.stream()
+                    .sorted(Comparator.comparingInt(EntrypointInfo::tag))
+                    .map(info -> schemaInterface(
+                            schemaPurpose(info.purposeName()), info.method(), typeResolver))
+                    .toList();
+            return new ContractSchema(
+                    interfaces,
+                    schemaParameters(paramFields),
+                    typeResolver.namedDefinitions(),
+                    true);
         }
 
+        var validatorInterface = schemaInterface(
+                schemaPurpose(purpose), entrypointMethod, typeResolver);
+        return new ContractSchema(
+                List.of(validatorInterface),
+                schemaParameters(paramFields),
+                typeResolver.namedDefinitions(),
+                false);
+    }
+
+    private ContractSchema.ValidatorInterface schemaInterface(
+            ContractSchema.Purpose purpose,
+            MethodDeclaration entrypointMethod,
+            TypeResolver typeResolver) {
         var methodParams = entrypointMethod.getParameters();
         ContractSchema.Argument datum = null;
         ContractSchema.Argument redeemer;
-        if (purpose == ScriptPurpose.SPENDING && methodParams.size() == 3) {
+        if (purpose == ContractSchema.Purpose.SPEND && methodParams.size() == 3) {
             datum = schemaArgument(methodParams.get(0), typeResolver, true);
             redeemer = schemaArgument(methodParams.get(1), typeResolver);
         } else {
             redeemer = schemaArgument(methodParams.get(0), typeResolver);
         }
+        return new ContractSchema.ValidatorInterface(
+                entrypointMethod.getNameAsString(),
+                purpose,
+                datum,
+                redeemer,
+                sourceLocation(entrypointMethod));
+    }
 
-        var parameters = paramFields.stream()
+    private List<ContractSchema.Argument> schemaParameters(List<ParamField> paramFields) {
+        return paramFields.stream()
                 .map(field -> new ContractSchema.Argument(
                         field.name(), field.pirType(), field.sourceLocation()))
                 .toList();
-        return new ContractSchema(
-                purpose.name().toLowerCase(Locale.ROOT), datum, redeemer, parameters,
-                typeResolver.namedDefinitions());
+    }
+
+    private ContractSchema.Purpose schemaPurpose(ScriptPurpose purpose) {
+        return switch (purpose) {
+            case MINTING -> ContractSchema.Purpose.MINT;
+            case SPENDING -> ContractSchema.Purpose.SPEND;
+            case WITHDRAW -> ContractSchema.Purpose.WITHDRAW;
+            case CERTIFYING -> ContractSchema.Purpose.CERTIFY;
+            case VOTING -> ContractSchema.Purpose.VOTE;
+            case PROPOSING -> ContractSchema.Purpose.PROPOSE;
+            case MULTI -> throw new IllegalArgumentException(
+                    "Multi-purpose schemas require an entrypoint purpose");
+        };
+    }
+
+    private ContractSchema.Purpose schemaPurpose(String purposeName) {
+        try {
+            return ContractSchema.Purpose.valueOf(purposeName);
+        } catch (IllegalArgumentException ex) {
+            throw new IllegalArgumentException("Unknown schema purpose: " + purposeName, ex);
+        }
     }
 
     private void ensureStrictBoundarySupported(

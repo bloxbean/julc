@@ -52,7 +52,7 @@ public final class RequiresSignerResolver {
             throw error("@RequiresSigner path must be exactly datum.<field>; found '"
                     + path + "'", annotation, fileName);
         }
-        if (!"spending".equals(schema.purpose())) {
+        if (schema.purpose() != ContractSchema.Purpose.SPEND) {
             throw error("@RequiresSigner is supported only for spending validators", annotation,
                     fileName);
         }

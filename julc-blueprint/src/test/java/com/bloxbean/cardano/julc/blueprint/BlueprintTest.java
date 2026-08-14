@@ -94,13 +94,16 @@ class BlueprintTest {
                 new Blueprint.Preamble("test", "0.1.0", "v3",
                         new Blueprint.Compiler("julc", "0.1.0")),
                 List.of(new Blueprint.ValidatorEntry("MyValidator", "abcdef", "123456", 42,
-                        datum, redeemer, null)),
+                        new Blueprint.Argument("datum", "spend", datum.untitled()),
+                        new Blueprint.Argument("redeemer", "spend", redeemer.untitled()),
+                        null)),
                 defs
         );
 
         String json = blueprint.toJson();
         assertTrue(json.contains("\"datum\""));
         assertTrue(json.contains("\"redeemer\""));
+        assertTrue(json.contains("\"purpose\": \"spend\""));
         assertTrue(json.contains("\"$ref\": \"#/definitions/EscrowDatum\""));
         assertTrue(json.contains("\"$ref\": \"#/definitions/EscrowAction\""));
         assertTrue(json.contains("\"definitions\""));
@@ -216,6 +219,263 @@ class BlueprintTest {
         assertTrue(json.contains("\"title\": \"False\""));
         assertTrue(json.contains("\"title\": \"True\""));
         assertFalse(json.contains("\"dataType\": \"boolean\""));
+    }
+
+    @Test
+    void emitsCorrelatedPurposeEntriesForExplicitMultiValidator() {
+        String source = """
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                import com.bloxbean.cardano.julc.ledger.ScriptContext;
+                import java.math.BigInteger;
+                import java.util.Optional;
+
+                @MultiValidator
+                public class ProtocolValidator {
+                    @Param BigInteger networkId;
+                    record State(BigInteger counter) {}
+                    record Spend(BigInteger next) {}
+                    record Mint(byte[] tokenName) {}
+                    record Withdraw(BigInteger amount) {}
+                    record Certify(byte[] credential) {}
+
+                    @Entrypoint(purpose = Purpose.CERTIFY)
+                    static boolean certify(Certify redeemer, ScriptContext ctx) { return true; }
+
+                    @Entrypoint(purpose = Purpose.WITHDRAW)
+                    static boolean withdraw(Withdraw redeemer, ScriptContext ctx) { return true; }
+
+                    @Entrypoint(purpose = Purpose.SPEND)
+                    static boolean spend(Optional<State> datum, Spend redeemer,
+                                         ScriptContext ctx) { return true; }
+
+                    @Entrypoint(purpose = Purpose.MINT)
+                    static boolean mint(Mint redeemer, ScriptContext ctx) { return true; }
+                }
+                """;
+
+        var compiled = new JulcCompiler().compileContract(source);
+        var blueprint = BlueprintGenerator.generate(
+                new BlueprintConfig("protocol", "1.0.0"),
+                List.of(new BlueprintGenerator.CompiledValidator(
+                        "ProtocolValidator", compiled.compileResult(),
+                        compiled.contractSchema())));
+
+        assertEquals(List.of(
+                        "ProtocolValidator.mint",
+                        "ProtocolValidator.spend",
+                        "ProtocolValidator.withdraw",
+                        "ProtocolValidator.publish"),
+                blueprint.validators().stream()
+                        .map(Blueprint.ValidatorEntry::title).toList());
+        assertEquals(1, blueprint.validators().stream()
+                .filter(entry -> entry.datum() != null).count());
+
+        var mint = blueprint.validators().get(0);
+        var spend = blueprint.validators().get(1);
+        var withdraw = blueprint.validators().get(2);
+        var publish = blueprint.validators().get(3);
+        assertEquals("mint", mint.redeemer().purpose());
+        assertEquals("#/definitions/ProtocolValidator:Mint",
+                mint.redeemer().schema().ref());
+        assertEquals("spend", spend.datum().purpose());
+        assertEquals("#/definitions/ProtocolValidator:State",
+                spend.datum().schema().ref());
+        assertEquals("#/definitions/ProtocolValidator:Spend",
+                spend.redeemer().schema().ref());
+        assertEquals("withdraw", withdraw.redeemer().purpose());
+        assertEquals("#/definitions/ProtocolValidator:Withdraw",
+                withdraw.redeemer().schema().ref());
+        assertEquals("publish", publish.redeemer().purpose());
+        assertEquals("#/definitions/ProtocolValidator:Certify",
+                publish.redeemer().schema().ref());
+
+        for (var entry : blueprint.validators()) {
+            assertEquals(1, entry.parameters().size());
+            assertEquals(entry.redeemer().purpose(), entry.parameters().getFirst().purpose());
+            assertEquals(mint.compiledCode(), entry.compiledCode());
+            assertEquals(mint.hash(), entry.hash());
+        }
+        assertDoesNotThrow(() -> BlueprintValidator.validate(blueprint.toJson()));
+    }
+
+    @Test
+    void unsupportedMultiPurposesFailAtTheirEntrypointWithoutPartialOutput() {
+        for (String purpose : List.of("VOTE", "PROPOSE")) {
+            String source = """
+                    import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                    import com.bloxbean.cardano.julc.ledger.ScriptContext;
+
+                    @MultiValidator
+                    class UnsupportedGate {
+                        record Redeemer(byte[] value) {}
+                        @Entrypoint(purpose = Purpose.MINT)
+                        static boolean mint(Redeemer redeemer, ScriptContext ctx) { return true; }
+                        @Entrypoint(purpose = Purpose.%s)
+                        static boolean unsupported(Redeemer redeemer, ScriptContext ctx) {
+                            return true;
+                        }
+                    }
+                    """.formatted(purpose);
+
+            var compiled = new JulcCompiler().compileContract(source);
+            var error = assertThrows(SchemaGenerator.SchemaGenerationException.class,
+                    () -> BlueprintGenerator.generate(
+                            new BlueprintConfig("unsupported", "1"),
+                            List.of(new BlueprintGenerator.CompiledValidator(
+                                    "UnsupportedGate", compiled.compileResult(),
+                                    compiled.contractSchema()))));
+            assertTrue(error.getMessage().contains("unsupported"), error.getMessage());
+            assertTrue(error.getMessage().contains(purpose), error.getMessage());
+            assertTrue(error.getMessage().contains("UnsupportedGate.java"), error.getMessage());
+            assertTrue(error.getMessage().contains("--no-blueprint"), error.getMessage());
+        }
+    }
+
+    @Test
+    void unsupportedSinglePurposesFailWithBlueprintOptOutGuidance() {
+        var annotations = java.util.Map.of(
+                "VOTE", "VotingValidator",
+                "PROPOSE", "ProposingValidator");
+        for (var unsupported : annotations.entrySet()) {
+            String className = unsupported.getKey() + "Gate";
+            String source = """
+                    import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                    import com.bloxbean.cardano.julc.ledger.ScriptContext;
+
+                    @%s
+                    class %s {
+                        record Redeemer(byte[] value) {}
+                        @Entrypoint
+                        static boolean validate(Redeemer redeemer, ScriptContext ctx) {
+                            return true;
+                        }
+                    }
+                    """.formatted(unsupported.getValue(), className);
+
+            var compiled = new JulcCompiler().compileContract(source);
+            var error = assertThrows(SchemaGenerator.SchemaGenerationException.class,
+                    () -> BlueprintGenerator.generate(
+                            new BlueprintConfig("unsupported-single", "1"),
+                            List.of(new BlueprintGenerator.CompiledValidator(
+                                    className, compiled.compileResult(),
+                                    compiled.contractSchema()))));
+
+            assertTrue(error.getMessage().contains(unsupported.getKey()), error.getMessage());
+            assertTrue(error.getMessage().contains("--no-blueprint"), error.getMessage());
+            assertTrue(error.getMessage().contains(className + ".java"), error.getMessage());
+        }
+    }
+
+    @Test
+    void purposeLocalTypesWithSameSimpleNameRemainDistinct() {
+        String validator = """
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                import com.bloxbean.cardano.julc.ledger.ScriptContext;
+                @MultiValidator class LocalNameGate {
+                    @Entrypoint(purpose = Purpose.MINT)
+                    static boolean mint(a.Command redeemer, ScriptContext ctx) { return true; }
+                    @Entrypoint(purpose = Purpose.WITHDRAW)
+                    static boolean withdraw(b.Command redeemer, ScriptContext ctx) { return true; }
+                }
+                """;
+        String mintCommand = """
+                package a;
+                import com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary;
+                import java.math.BigInteger;
+                @OnchainLibrary public record Command(BigInteger quantity) {}
+                """;
+        String withdrawCommand = """
+                package b;
+                import com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary;
+                @OnchainLibrary public record Command(byte[] credential) {}
+                """;
+
+        var compiled = new JulcCompiler().compileContract(
+                validator, List.of(mintCommand, withdrawCommand));
+        var blueprint = BlueprintGenerator.generate(
+                new BlueprintConfig("local-names", "1"),
+                List.of(new BlueprintGenerator.CompiledValidator(
+                        "LocalNameGate", compiled.compileResult(), compiled.contractSchema())));
+
+        assertEquals("#/definitions/LocalNameGate:a.Command",
+                blueprint.validators().get(0).redeemer().schema().ref());
+        assertEquals("#/definitions/LocalNameGate:b.Command",
+                blueprint.validators().get(1).redeemer().schema().ref());
+        assertNotEquals(
+                blueprint.definitions().get("LocalNameGate:a.Command"),
+                blueprint.definitions().get("LocalNameGate:b.Command"));
+    }
+
+    @Test
+    void generatedValidatorTitleCollisionsFailClosed() {
+        String source = """
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                import com.bloxbean.cardano.julc.ledger.ScriptContext;
+                @MintingValidator class CollisionTitleGate {
+                    @Entrypoint static boolean mint(long redeemer, ScriptContext ctx) {
+                        return true;
+                    }
+                }
+                """;
+        var compiled = new JulcCompiler().compileContract(source);
+        var duplicate = new BlueprintGenerator.CompiledValidator(
+                "CollisionTitleGate", compiled.compileResult(), compiled.contractSchema());
+        var error = assertThrows(SchemaGenerator.SchemaGenerationException.class,
+                () -> BlueprintGenerator.generate(
+                        new BlueprintConfig("collision", "1"), List.of(duplicate, duplicate)));
+        assertTrue(error.getMessage().contains("Duplicate generated validator title"));
+    }
+
+    @Test
+    void singleExplicitMultiEntrypointStillUsesPurposeSuffix() {
+        String source = """
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                import com.bloxbean.cardano.julc.ledger.ScriptContext;
+                @MultiValidator class SpendOnlyMulti {
+                    record Datum(long value) {}
+                    record Redeemer(long value) {}
+                    @Entrypoint(purpose = Purpose.SPEND)
+                    static boolean spend(Datum datum, Redeemer redeemer, ScriptContext ctx) {
+                        return true;
+                    }
+                }
+                """;
+        var compiled = new JulcCompiler().compileContract(source);
+        var blueprint = BlueprintGenerator.generate(
+                new BlueprintConfig("single-explicit", "1"),
+                List.of(new BlueprintGenerator.CompiledValidator(
+                        "SpendOnlyMulti", compiled.compileResult(), compiled.contractSchema())));
+
+        assertTrue(compiled.contractSchema().purposeIndexed());
+        assertEquals("SpendOnlyMulti.spend", blueprint.validators().getFirst().title());
+        assertTrue(blueprint.definitions().containsKey("SpendOnlyMulti:Datum"));
+    }
+
+    @Test
+    void strictBodyValidationRejectsPurposeAndTitleInconsistencies() {
+        String fixture;
+        try (var input = Objects.requireNonNull(getClass().getResourceAsStream(
+                "/cip57/purpose-indexed-multi-validator.json"))) {
+            fixture = new String(input.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        } catch (java.io.IOException e) {
+            throw new java.io.UncheckedIOException(e);
+        }
+
+        var badDatumPurpose = fixture.replaceFirst(
+                "\"purpose\": \"spend\"", "\"purpose\": \"mint\"");
+        assertThrows(IllegalArgumentException.class,
+                () -> BlueprintValidator.validate(badDatumPurpose));
+
+        var unsupportedPurpose = fixture.replaceFirst(
+                "\"purpose\": \"mint\"", "\"purpose\": \"vote\"");
+        assertThrows(IllegalArgumentException.class,
+                () -> BlueprintValidator.validate(unsupportedPurpose));
+
+        var duplicateTitle = fixture.replace(
+                "ProtocolValidator.mint", "ProtocolValidator.spend");
+        var duplicateError = assertThrows(IllegalArgumentException.class,
+                () -> BlueprintValidator.validate(duplicateTitle));
+        assertTrue(duplicateError.getMessage().contains("duplicates validator title"));
     }
 
     @Test
@@ -353,7 +613,7 @@ class BlueprintTest {
                 new PirType.Field("text", new PirType.StringType()),
                 new PirType.Field("bytes", new PirType.ByteStringType())));
         var schema = new ContractSchema(
-                "spending",
+                ContractSchema.Purpose.SPEND,
                 new ContractSchema.Argument("datum", datumType, null),
                 new ContractSchema.Argument("redeemer", new PirType.DataType(), null),
                 List.of(
@@ -408,9 +668,9 @@ class BlueprintTest {
         assertTrue(blueprint.definitions().containsKey("V1:Datum"));
         assertTrue(blueprint.definitions().containsKey("V2:Datum"));
         assertEquals("#/definitions/V1:Datum",
-                blueprint.validators().get(0).datum().ref());
+                blueprint.validators().get(0).datum().schema().ref());
         assertEquals("#/definitions/V2:Datum",
-                blueprint.validators().get(1).datum().ref());
+                blueprint.validators().get(1).datum().schema().ref());
     }
 
     @Test
