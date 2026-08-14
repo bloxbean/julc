@@ -18,7 +18,7 @@ set_option warn.sorry false
 def bothDatumKeysSigned (ctx : ScriptContext) : Prop :=
   match ctx.scriptContextScriptInfo with
   | .SpendingScript _
-      (some (Data.Constr _ (Data.B firstKey :: Data.B secondKey :: _))) =>
+      (some (Data.Constr 0 [Data.B firstKey, Data.B secondKey])) =>
       txSignedBy firstKey ctx.scriptContextTxInfo ∧
         txSignedBy secondKey ctx.scriptContextTxInfo
   | _ => False
@@ -26,7 +26,7 @@ def bothDatumKeysSigned (ctx : ScriptContext) : Prop :=
 def hasTwoKeyDatum (ctx : ScriptContext) : Prop :=
   match ctx.scriptContextScriptInfo with
   | .SpendingScript _
-      (some (Data.Constr _ (Data.B _ :: Data.B _ :: _))) => True
+      (some (Data.Constr 0 [Data.B _, Data.B _])) => True
   | _ => False
 
 /-- The broken source ignores key2, so this claim must be refuted. -/
