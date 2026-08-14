@@ -60,6 +60,9 @@ first implementation cannot describe those truthfully, schema-aware
 compilation rejects them with a source diagnostic while ordinary compilation
 remains available. It must not select an arbitrary first entrypoint.
 
+The follow-up design for this limitation is
+[ADR-017 — Purpose-Indexed CIP-57 Blueprints for `@MultiValidator`](017-purpose-indexed-multivalidator-blueprints.md).
+
 ### 2. Use one portable artifact boundary
 
 The implemented pipeline is:

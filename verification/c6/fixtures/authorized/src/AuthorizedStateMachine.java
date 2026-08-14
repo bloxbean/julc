@@ -20,14 +20,6 @@ class AuthorizedStateMachine {
 
     @Entrypoint
     static boolean validate(Datum datum, Redeemer redeemer, ScriptContext ctx) {
-        var attached = ContextsLib.getSpendingDatum(ctx);
-        if (attached.isEmpty() || !isExactDatum(attached.get(), datum)) {
-            return false;
-        }
-        if (!isExactRedeemer(ctx.redeemer(), redeemer)) {
-            return false;
-        }
-
         if (ctx.txInfo().inputs().isEmpty() || ctx.txInfo().outputs().isEmpty()
                 || !ctx.txInfo().outputs().tail().isEmpty()) {
             return false;
@@ -48,26 +40,6 @@ class AuthorizedStateMachine {
                     };
             default -> false;
         };
-    }
-
-    static boolean isExactDatum(PlutusData raw, Datum datum) {
-        var fields = Builtins.constrFields(raw);
-        return Builtins.constrTag(raw) == 0
-                && !Builtins.nullList(fields)
-                && !Builtins.nullList(Builtins.tailList(fields))
-                && Builtins.nullList(Builtins.tailList(Builtins.tailList(fields)))
-                && Builtins.equalsByteString(
-                        Builtins.unBData(Builtins.headList(fields)), datum.owner())
-                && Builtins.unIData(Builtins.headList(Builtins.tailList(fields)))
-                        .equals(datum.state());
-    }
-
-    static boolean isExactRedeemer(PlutusData raw, Redeemer redeemer) {
-        var fields = Builtins.constrFields(raw);
-        return Builtins.constrTag(raw) == 0
-                && !Builtins.nullList(fields)
-                && Builtins.nullList(Builtins.tailList(fields))
-                && Builtins.unIData(Builtins.headList(fields)).equals(redeemer.nextState());
     }
 
     static boolean isExactSuccessor(PlutusData raw, Datum datum, Redeemer redeemer) {

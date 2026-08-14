@@ -41,12 +41,10 @@ class EvaluateControllerTest {
         JavalinTest.test(app(), (server, client) -> {
             var req = new EvaluateRequest(
                     """
-                    import java.math.BigInteger;
-
                     @SpendingValidator
                     class AlwaysTrue {
                         @Entrypoint
-                        static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             return true;
                         }
                     }
@@ -68,12 +66,10 @@ class EvaluateControllerTest {
         JavalinTest.test(app(), (server, client) -> {
             var req = new EvaluateRequest(
                     """
-                    import java.math.BigInteger;
-
                     @SpendingValidator
                     class AlwaysFalse {
                         @Entrypoint
-                        static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                        static boolean validate(PlutusData redeemer, ScriptContext ctx) {
                             return false;
                         }
                     }

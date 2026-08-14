@@ -98,13 +98,20 @@ domain. This suite does not establish compiler-wide correctness or all Cardano
 ledger validity rules. The Milestone A recursive multisig claim remains a
 non-gating `COULD-NOT-EVALUATE` legacy result.
 
+ADR-015 changed JuLC typed datum and redeemer boundaries to enforce exact
+constructor tags and arities before validator logic. The locked artifacts and
+counterexample bindings in this suite are refreshed for `strict-data-v1`. The
+old Milestone A permissive-decoder refutation is now a gating theorem that the
+smoke artifact succeeds exactly for its declared one-field schema shape.
+
 Blaster's current solver-valid results trust Z3 and its SMT translation. They
 must be reported as `SMT-VALID`, not `KERNEL-PROVED`.
 
 ## Important implementation findings
 
-- JuLC record decoding currently permits unexpected constructor tags and
-  trailing fields.
+- Milestone A found that JuLC record decoding permitted unexpected constructor
+  tags and trailing fields. ADR-015 resolved that discrepancy with default
+  strict typed boundaries; the smoke theorem keeps the resolution under test.
 - Several typed ledger accessor/coercion expressions did not enforce the full
   source-level equality suggested by their Java types. Milestone B uses raw
   `PlutusData` at those representation boundaries.

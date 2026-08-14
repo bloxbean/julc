@@ -2,6 +2,7 @@ package com.bloxbean.julc.cli.cmd.verify;
 
 import com.bloxbean.julc.cli.JulcVersionProvider;
 import com.bloxbean.julc.cli.cmd.blueprint.ArtifactCommand;
+import com.bloxbean.cardano.julc.compiler.DataBoundarySemantics;
 import com.bloxbean.cardano.julc.verification.RequiresSignerProperty;
 import com.bloxbean.cardano.julc.verification.StatefulSpendingProperty;
 import com.bloxbean.cardano.julc.verification.VerificationProperty;
@@ -1512,6 +1513,9 @@ public final class VerificationProjectGenerator {
         root.put("schemaVersion", 1);
         root.put("generatedBy", "julc verify init");
         root.put("julcVersion", JulcVersionProvider.VERSION);
+        JsonNode compiler = blueprint.path("preamble").path("compiler");
+        root.put("boundarySemantics", DataBoundarySemantics.fromCompilerIdentity(
+                compiler.path("name").asText(), compiler.path("version").asText(null)));
         root.put("project", blueprint.path("preamble").path("title").asText());
         root.put("validatorTitle", artifact.title());
         root.put("artifactId", artifact.artifactId());

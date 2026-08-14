@@ -256,16 +256,24 @@ gate.
 ## Implementation finding: permissive record decoding
 
 The first smoke proof refuted the initially intended strict schema property.
-The exact JuLC artifact accepted datum and redeemer constructors with arbitrary
-constructor tags and trailing fields as long as the first field decoded to the
-expected integer. This matches the current generated record decoder, which
-projects fields after `unConstrData` without first establishing the expected
-constructor tag and exact arity.
+The exact JuLC artifact at Milestone A accepted datum and redeemer constructors
+with arbitrary constructor tags and trailing fields as long as the first field
+decoded to the expected integer. That matched the generated record decoder at
+the time, which projected fields after `unConstrData` without first
+establishing the expected constructor tag and exact arity.
 
 Milestone A preserves this as a solver-refuted negative control and separately
 proves the artifact's actual first-field behavior. The compiler/schema
 discrepancy requires separate security triage; it must not be hidden by stating
 the weaker property as if it were the source-level encoding contract.
+
+### Resolution in ADR-015
+
+ADR-015 made strict typed datum and redeemer boundaries the compiler default.
+The refreshed smoke artifact now rejects wrong tags and arities before user
+logic runs, and the former negative control is a gating theorem that successful
+execution implies the exact schema shape. This section remains as the
+historical finding that motivated that language-semantics correction.
 
 ## Consequences
 

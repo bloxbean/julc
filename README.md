@@ -42,6 +42,7 @@ Plutus VM that made this project possible.
 - **Java-to-UPLC compiler** — write validators in a familiar Java subset, compile to Plutus V3
 - **Typed ledger access** — `ScriptContext`, `TxInfo`, `TxOut`, `Value` with typed field access and chaining
 - **Records and sealed interfaces** — data modeling with pattern matching, switch expressions, and exhaustiveness checking
+- **Strict typed boundaries** — canonical datum/redeemer tags, arities, fields, containers, and productive recursion are checked before validator code
 - **Instance methods** — `list.contains()`, `value.lovelaceOf()`, `map.get()`, `optional.isPresent()` and more
 - **Lambda expressions and HOFs** — `ListsLib.map()`, `filter()`, `foldl()`, `any()`, `all()`, `find()`, `zip()`
 - **Nested loops** — for-each and while loops with nesting, multi-accumulator, and break support

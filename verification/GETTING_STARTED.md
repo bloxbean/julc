@@ -96,9 +96,7 @@ currently operates on the JuLC project layout rooted at `julc.toml` and `src/`.
 Create `src/AuthorizedStateValidator.java`:
 
 ```java
-import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.ledger.ScriptContext;
-import com.bloxbean.cardano.julc.stdlib.Builtins;
 import com.bloxbean.cardano.julc.stdlib.annotation.Entrypoint;
 import com.bloxbean.cardano.julc.stdlib.annotation.SpendingValidator;
 import com.bloxbean.cardano.julc.stdlib.lib.ContextsLib;
@@ -112,27 +110,16 @@ class AuthorizedStateValidator {
 
     @Entrypoint
     static boolean validate(Datum datum, Redeemer redeemer, ScriptContext ctx) {
-        var attached = ContextsLib.getSpendingDatum(ctx);
-        if (attached.isEmpty()) {
-            return false;
-        }
-
-        // Current JuLC record projection accepts expected leading fields without
-        // enforcing every CIP-57 tag/arity rule. Until ADR-015 is implemented,
-        // validate the raw boundary shape when proving the strict profile.
-        PlutusData rawDatum = attached.get();
-        var fields = Builtins.constrFields(rawDatum);
-        boolean exactDatumShape = Builtins.constrTag(rawDatum) == 0
-                && !Builtins.nullList(fields)
-                && Builtins.nullList(Builtins.tailList(fields));
-
-        return exactDatumShape
-                && Builtins.equalsByteString(
-                    Builtins.unBData(Builtins.headList(fields)), datum.owner())
-                && ContextsLib.signedBy(ctx.txInfo(), datum.owner());
+        return ContextsLib.signedBy(ctx.txInfo(), datum.owner());
     }
 }
 ```
+
+JuLC validates typed datum/redeemer roots before this method runs. Record tags
+and arities, variants, primitive shapes, optionals, lists, maps, and productive
+recursive values must match the declared Java type exactly. No strictness
+annotation or compiler option is required. An explicitly raw `PlutusData`
+boundary remains raw and must be validated manually by the contract.
 
 The annotation states the property. It does not change compiler lowering or
 make a vulnerable validator pass. JuLC resolves `datum.owner` through the
@@ -343,9 +330,10 @@ not verification.
   not only the client.
 - **Output directory is not empty:** use `--force` to regenerate or
   `julc verify run` to rerun the existing workspace.
-- **`REFUTED` on malformed datum/redeemer:** inspect the retained model. Until
-  ADR-015 is implemented, the validator may need explicit exact tag/arity
-  checks at its on-chain boundary.
+- **`REFUTED` on malformed datum/redeemer:** confirm the certificate artifact
+  records `boundarySemantics: strict-data-v1`. Regenerate workspaces produced
+  by an older compiler; a deliberately raw `PlutusData` root still requires a
+  manual shape check.
 - **Unsupported builtin or schema:** generation may stop with exit 1, while an
   already generated workspace can classify an unsupported runner condition as
   `COULD-NOT-EVALUATE`. Neither is proof; do not remove the check or reinterpret

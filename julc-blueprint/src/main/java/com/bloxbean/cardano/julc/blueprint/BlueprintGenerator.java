@@ -2,6 +2,7 @@ package com.bloxbean.cardano.julc.blueprint;
 
 import com.bloxbean.cardano.julc.clientlib.JulcScriptAdapter;
 import com.bloxbean.cardano.julc.compiler.CompileResult;
+import com.bloxbean.cardano.julc.compiler.DataBoundarySemantics;
 import com.bloxbean.cardano.julc.compiler.schema.ContractSchema;
 import com.bloxbean.cardano.julc.core.PlutusTarget;
 import com.bloxbean.cardano.julc.core.Program;
@@ -37,7 +38,8 @@ public final class BlueprintGenerator {
                 config.projectName(),
                 config.projectVersion(),
                 PlutusTarget.CURRENT.languageVersion(),
-                new Blueprint.Compiler("julc", JulcVersion.VERSION)
+                new Blueprint.Compiler("julc",
+                        DataBoundarySemantics.compilerIdentityVersion(JulcVersion.VERSION))
         );
 
         var allDefinitions = new LinkedHashMap<String, SchemaGenerator.Schema>();

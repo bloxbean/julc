@@ -456,10 +456,10 @@ class BlueprintTest {
                 }
                 """;
 
-        var compiled = new com.bloxbean.cardano.julc.compiler.JulcCompiler()
-                .compileContract(source);
-        var error = assertThrows(SchemaGenerator.SchemaGenerationException.class,
-                () -> SchemaGenerator.from(compiled.contractSchema()));
+        var error = assertThrows(
+                com.bloxbean.cardano.julc.compiler.CompilerException.class,
+                () -> new com.bloxbean.cardano.julc.compiler.JulcCompiler()
+                        .compileContract(source));
         assertTrue(error.getMessage().contains("ArrayType"));
         assertTrue(error.getMessage().contains("ArrayGate.java"));
         assertFalse(error.getMessage().contains("Any Plutus data"));

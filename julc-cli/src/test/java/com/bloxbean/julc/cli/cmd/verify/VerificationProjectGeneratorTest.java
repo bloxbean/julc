@@ -3,6 +3,7 @@ package com.bloxbean.julc.cli.cmd.verify;
 import com.bloxbean.cardano.julc.blueprint.BlueprintConfig;
 import com.bloxbean.cardano.julc.blueprint.BlueprintGenerator;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
+import com.bloxbean.cardano.julc.compiler.DataBoundarySemantics;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
 import com.bloxbean.cardano.julc.verification.RequiresSignerProperty;
 import com.bloxbean.cardano.julc.verification.StatefulSpendingProperty;
@@ -60,6 +61,8 @@ class VerificationProjectGeneratorTest {
         assertEquals(11, manifest.path("protocolVersion").asInt());
         assertEquals(12345, manifest.path("fuel").asInt());
         assertEquals(4, manifest.path("recursiveDepth").asInt());
+        assertEquals(DataBoundarySemantics.STRICT_V1,
+                manifest.path("boundarySemantics").asText());
         assertEquals("COULD-NOT-EVALUATE",
                 manifest.path("properties").get(0).path("result").asText());
 
