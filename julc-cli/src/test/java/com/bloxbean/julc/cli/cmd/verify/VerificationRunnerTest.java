@@ -5,13 +5,17 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -140,8 +144,11 @@ class VerificationRunnerTest {
         VerificationFiles.JSON.writeValue(planFile.toFile(), plan);
         bindPlan(workspace);
         var process = new FakeProcess(false, true, 4);
+        var bytes = new ByteArrayOutputStream();
+        var progress = VerificationProgress.testing(
+                new PrintStream(bytes, true, StandardCharsets.UTF_8), () -> 0L);
 
-        var result = runner(process).run(workspace, VerificationBackendKind.LOCAL);
+        var result = runner(process).run(workspace, VerificationBackendKind.LOCAL, progress);
 
         assertEquals("COULD-NOT-EVALUATE", result.result().outcome());
         assertEquals("property-vacuous", result.result().reason());
@@ -153,6 +160,41 @@ class VerificationRunnerTest {
         assertTrue(result.result().phases().stream().anyMatch(phaseResult ->
                 phaseResult.id().equals("prove-property")
                         && phaseResult.status().equals("SKIPPED")));
+        assertTrue(bytes.toString(StandardCharsets.UTF_8).contains(
+                "Proving property ... SKIPPED - property is vacuous"));
+    }
+
+    @Test
+    void nonVacuityUndeterminedIsNotReportedAsNonVacuous() throws Exception {
+        Path workspace = workspace("non-vacuity-undetermined", VerificationOutcome.SMT_VALID, false);
+        Path planFile = workspace.resolve(VerificationRunner.PLAN_FILE);
+        var plan = (com.fasterxml.jackson.databind.node.ObjectNode)
+                VerificationFiles.JSON.readTree(planFile.toFile());
+        plan.put("schemaVersion", 2);
+        var step = (com.fasterxml.jackson.databind.node.ObjectNode) plan.path("verify").get(0);
+        step.put("id", "check-non-vacuity");
+        step.put("propertyId", "example.non-vacuity");
+        step.remove(List.of("expectedExitCodes", "requiredOutput", "result", "reason"));
+        step.putArray("outcomes").addObject()
+                .put("exitCode", 2)
+                .put("requiredOutput", "RESULT-MARKER")
+                .put("result", "COULD-NOT-EVALUATE")
+                .put("reason", "non-vacuity-undetermined");
+        VerificationFiles.JSON.writeValue(planFile.toFile(), plan);
+        bindPlan(workspace);
+        var bytes = new ByteArrayOutputStream();
+        var progress = VerificationProgress.testing(
+                new PrintStream(bytes, true, StandardCharsets.UTF_8), () -> 0L);
+
+        var result = runner(new FakeProcess(false, true, 2))
+                .run(workspace, VerificationBackendKind.LOCAL, progress);
+
+        assertEquals("COULD-NOT-EVALUATE", result.result().outcome());
+        assertEquals("non-vacuity-undetermined", result.result().properties().getFirst().reason());
+        String output = bytes.toString(StandardCharsets.UTF_8);
+        assertTrue(output.contains("Checking property non-vacuity ... DONE [0 ms]"
+                + " - COULD-NOT-EVALUATE - non vacuity undetermined"));
+        assertFalse(output.contains(" - non-vacuous"));
     }
 
     @Test
@@ -212,6 +254,47 @@ class VerificationRunnerTest {
         assertEquals("COULD-NOT-EVALUATE", result.result().outcome());
         assertEquals("backend-unavailable", result.result().reason());
         assertEquals("FAILED", result.result().phases().getFirst().status());
+    }
+
+    @Test
+    void backendPreparationFailureClosesProgressLineAndPointsToLog() throws Exception {
+        Path workspace = workspace("backend-progress-failure", VerificationOutcome.SMT_VALID, false);
+        var bytes = new ByteArrayOutputStream();
+        var progress = VerificationProgress.testing(
+                new PrintStream(bytes, true, StandardCharsets.UTF_8), () -> 0L);
+        var runner = new VerificationRunner(new FakeProcess(false, true),
+                ignored -> new FailingBackend());
+
+        runner.run(workspace, VerificationBackendKind.LOCAL, progress);
+
+        assertTrue(bytes.toString(StandardCharsets.UTF_8).contains(
+                "Checking local Lean and Z3 toolchain (may download Z3) ... FAILED [0 ms]"
+                        + " - see verification-results/backend.log"));
+    }
+
+    @Test
+    void reportsLongRunningStagesWithoutStreamingAuthenticatedLogs() throws Exception {
+        Path workspace = workspace("progress", VerificationOutcome.SMT_VALID, false);
+        var bytes = new ByteArrayOutputStream();
+        var clock = new AtomicLong();
+        var progress = VerificationProgress.testing(
+                new PrintStream(bytes, true, StandardCharsets.UTF_8),
+                () -> clock.getAndAdd(1_000_000_000L));
+
+        var result = runner(new FakeProcess(false, true))
+                .run(workspace, VerificationBackendKind.LOCAL, progress);
+
+        assertEquals("SMT-VALID", result.result().outcome());
+        String output = bytes.toString(StandardCharsets.UTF_8);
+        assertTrue(output.contains("Validating workspace and runner plan ... OK"));
+        assertTrue(output.contains("Checking artifact, property, and generated-source hashes ... OK"));
+        assertTrue(output.contains("Selecting verification backend ... OK"));
+        assertTrue(output.contains(
+                "Checking local Lean and Z3 toolchain (may download Z3) ... OK"));
+        assertTrue(output.contains("Running acquisition step 'acquire' ... OK"));
+        assertTrue(output.contains("Checking pinned dependency revisions ... OK"));
+        assertTrue(output.contains("Running proof step 'verify' ... DONE"));
+        assertFalse(output.contains("RESULT-MARKER"));
     }
 
     @Test

@@ -48,41 +48,65 @@ public final class VerificationRunner {
 
     public RunExecution run(Path workspaceDirectory, VerificationBackendKind requestedBackend)
             throws IOException, InterruptedException {
-        Path workspace = requireWorkspace(workspaceDirectory);
-        // A result is evidence for one run. Never leave an older success in place
-        // while validating a new or tampered plan.
-        Files.deleteIfExists(workspace.resolve(RESULT_FILE));
-        Path logs = workspace.resolve("verification-results");
-        VerificationFiles.deleteTree(logs);
-        Path planFile = VerificationFiles.containedRegularFile(workspace, PLAN_FILE, false);
-        VerificationRunPlan plan = STRICT_JSON.readValue(planFile.toFile(), VerificationRunPlan.class);
-        validatePlan(plan, workspace);
-        if (plan.resultManifest() != null) {
-            Files.deleteIfExists(VerificationFiles.containedPath(
-                    workspace, plan.resultManifest()));
+        return run(workspaceDirectory, requestedBackend, VerificationProgress.silent());
+    }
+
+    RunExecution run(
+            Path workspaceDirectory,
+            VerificationBackendKind requestedBackend,
+            VerificationProgress progress) throws IOException, InterruptedException {
+        Path workspace;
+        Path logs;
+        Path planFile;
+        VerificationRunPlan plan;
+        Path manifestFile;
+        JsonNode manifest;
+        try (var task = progress.start("Validating workspace and runner plan")) {
+            workspace = requireWorkspace(workspaceDirectory);
+            // A result is evidence for one run. Never leave an older success in place
+            // while validating a new or tampered plan.
+            Files.deleteIfExists(workspace.resolve(RESULT_FILE));
+            logs = workspace.resolve("verification-results");
+            VerificationFiles.deleteTree(logs);
+            planFile = VerificationFiles.containedRegularFile(workspace, PLAN_FILE, false);
+            plan = STRICT_JSON.readValue(planFile.toFile(), VerificationRunPlan.class);
+            validatePlan(plan, workspace);
+            if (plan.resultManifest() != null) {
+                Files.deleteIfExists(VerificationFiles.containedPath(
+                        workspace, plan.resultManifest()));
+            }
+            manifestFile = VerificationFiles.containedRegularFile(
+                    workspace, plan.manifest(), false);
+            manifest = VerificationFiles.JSON.readTree(manifestFile.toFile());
+            Files.createDirectories(logs);
+            task.succeed();
         }
-        Path manifestFile = VerificationFiles.containedRegularFile(
-                workspace, plan.manifest(), false);
-        JsonNode manifest = VerificationFiles.JSON.readTree(manifestFile.toFile());
-        Files.createDirectories(logs);
         var phases = new ArrayList<VerificationRunResult.Phase>();
         var properties = new ArrayList<VerificationRunResult.Property>();
         var diagnostic = new StringBuilder();
         Map<String, Object> artifact;
-        try {
-            artifact = preflight(workspace, plan, manifest);
-        } catch (IOException e) {
-            String reason = preflightReason(e.getMessage());
-            return writeEarlyFailure(workspace, requestedBackend, artifactFallback(manifest),
-                    planFile, manifestFile, logs, "preflight", reason, e.getMessage());
+        try (var task = progress.start("Checking artifact, property, and generated-source hashes")) {
+            try {
+                artifact = preflight(workspace, plan, manifest);
+                task.succeed();
+            } catch (IOException e) {
+                String reason = preflightReason(e.getMessage());
+                task.fail(reason);
+                return writeEarlyFailure(workspace, requestedBackend, artifactFallback(manifest),
+                        planFile, manifestFile, logs, "preflight", reason, e.getMessage());
+            }
         }
         VerificationExecutionBackend backend;
-        try {
-            backend = selectBackend(requestedBackend, plan, workspace);
-        } catch (IOException e) {
-            return writeEarlyFailure(workspace, requestedBackend, artifact,
-                    planFile, manifestFile, logs, "backend-selection",
-                    "backend-unavailable", e.getMessage());
+        try (var task = progress.start("Selecting verification backend")) {
+            try {
+                backend = selectBackend(requestedBackend, plan, workspace);
+                task.succeed(backend.name());
+            } catch (IOException e) {
+                task.fail("backend-unavailable");
+                return writeEarlyFailure(workspace, requestedBackend, artifact,
+                        planFile, manifestFile, logs, "backend-selection",
+                        "backend-unavailable", e.getMessage());
+            }
         }
         VerificationExecutionBackend.BackendContext backendContext = null;
         Map<String, String> verifiedDependencies = Map.of();
@@ -92,26 +116,38 @@ public final class VerificationRunner {
 
         try {
             Path setupLog = logs.resolve("backend.log");
-            try {
-                backendContext = backend.prepare(workspace, process, timeout, setupLog);
-                phases.add(phase("backend", "acquire", "PASSED", 0, workspace, setupLog));
-            } catch (IOException e) {
-                reason = "backend-unavailable";
-                diagnostic.append(e.getMessage() == null ? "Backend setup failed" : e.getMessage());
-                phases.add(phase("backend", "acquire", "FAILED", null, workspace, setupLog));
+            String backendSetup = "docker".equals(backend.name())
+                    ? "Preparing Docker backend (first run may take several minutes)"
+                    : "Checking local Lean and Z3 toolchain (may download Z3)";
+            try (var task = progress.start(backendSetup)) {
+                try {
+                    backendContext = backend.prepare(workspace, process, timeout, setupLog);
+                    phases.add(phase("backend", "acquire", "PASSED", 0, workspace, setupLog));
+                    task.succeed(backendContext.identity());
+                } catch (IOException e) {
+                    reason = "backend-unavailable";
+                    diagnostic.append(e.getMessage() == null ? "Backend setup failed" : e.getMessage());
+                    phases.add(phase("backend", "acquire", "FAILED", null, workspace, setupLog));
+                    task.fail("see verification-results/backend.log");
+                }
             }
 
             if (backendContext != null) {
                 StepFailure failure = executeSteps(
                         plan.acquire(), "acquire", false, backend, backendContext,
-                        workspace, logs, timeout, phases, properties);
+                        workspace, logs, timeout, phases, properties, progress);
                 if (failure != null) {
                     reason = failure.reason();
                     diagnostic.append(failure.diagnostic());
                 } else {
-                    StepFailure revisions = validateDependencyRevisions(
-                            manifest, plan.kind(), backend, backendContext,
-                            workspace, logs, timeout, phases);
+                    StepFailure revisions;
+                    try (var task = progress.start("Checking pinned dependency revisions")) {
+                        revisions = validateDependencyRevisions(
+                                manifest, plan.kind(), backend, backendContext,
+                                workspace, logs, timeout, phases);
+                        if (revisions == null) task.succeed();
+                        else task.fail(revisions.reason());
+                    }
                     if (revisions != null) {
                         reason = revisions.reason();
                         diagnostic.append(revisions.diagnostic());
@@ -119,7 +155,7 @@ public final class VerificationRunner {
                         verifiedDependencies = dependencyPins(manifest, plan.kind());
                         failure = executeSteps(
                                 plan.verify(), "verify", true, backend, backendContext,
-                                workspace, logs, timeout, phases, properties);
+                                workspace, logs, timeout, phases, properties, progress);
                         if (failure != null) {
                             reason = failure.reason();
                             diagnostic.append(failure.diagnostic());
@@ -252,58 +288,101 @@ public final class VerificationRunner {
             Path logs,
             Duration timeout,
             List<VerificationRunResult.Phase> phases,
-            List<VerificationRunResult.Property> properties)
+            List<VerificationRunResult.Property> properties,
+            VerificationProgress progress)
             throws IOException, InterruptedException {
         for (int stepIndex = 0; stepIndex < steps.size(); stepIndex++) {
             var step = steps.get(stepIndex);
-            int displayIndex = stepIndex + 1;
-            Path log = logs.resolve("%s-%02d-%s.log".formatted(
-                    phase, displayIndex, step.id()));
-            List<String> command = backend.command(step.command(), workspace, offline);
-            int maxAttempts = step.maxAttempts() == null ? 1 : step.maxAttempts();
-            VerificationProcess.ProcessResult result = null;
-            var attemptLogs = new ArrayList<Path>();
-            for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-                Path attemptLog = maxAttempts == 1 ? log : logs.resolve(
-                        "%s-%02d-%s-attempt-%d.log".formatted(
-                                phase, displayIndex, step.id(), attempt));
-                attemptLogs.add(attemptLog);
-                result = process.execute(command, workspace,
-                        backend.environment(backendContext, offline), timeout, attemptLog);
-                boolean complete = !result.timedOut() && observedOutcome(step, result) != null;
-                if (complete || result.timedOut()) break;
-            }
-            if (maxAttempts > 1) combineAttemptLogs(log, attemptLogs);
-            VerificationRunPlan.ObservedOutcome observed = observedOutcome(step, result);
-            boolean exitMatches = expectedExitCodes(step).contains(result.exitCode());
-            boolean markerMatches = observed != null;
-            String status = result.timedOut() ? "TIMED-OUT"
-                    : exitMatches && markerMatches ? "PASSED" : "FAILED";
-            phases.add(phase(step.id(), phase, status, result.exitCode(), workspace, log));
-            if (result.timedOut()) {
-                return new StepFailure("acquire".equals(phase)
-                        ? "acquisition-timeout" : "verification-timeout",
-                        "Step '" + step.id() + "' exceeded " + timeout.toSeconds() + " seconds");
-            }
-            if (!exitMatches) {
-                return new StepFailure("unexpected-exit-code",
-                        "Step '" + step.id() + "' exited " + result.exitCode());
-            }
-            if (!markerMatches) {
-                return new StepFailure("missing-result-marker",
-                        "Step '" + step.id() + "' did not emit its required result marker");
-            }
-            if ("verify".equals(phase) && step.propertyId() != null) {
-                var outcome = VerificationOutcome.parse(observed.result());
-                properties.add(new VerificationRunResult.Property(
-                        step.propertyId(), outcome.externalName(), observed.reason()));
-                if ("property-vacuous".equals(observed.reason())) {
-                    appendVacuitySkippedSteps(steps, stepIndex + 1, phase, phases, properties);
-                    break;
+            try (var task = progress.start(stepDescription(step.id(), phase))) {
+                int displayIndex = stepIndex + 1;
+                Path log = logs.resolve("%s-%02d-%s.log".formatted(
+                        phase, displayIndex, step.id()));
+                List<String> command = backend.command(step.command(), workspace, offline);
+                int maxAttempts = step.maxAttempts() == null ? 1 : step.maxAttempts();
+                VerificationProcess.ProcessResult result = null;
+                var attemptLogs = new ArrayList<Path>();
+                for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+                    Path attemptLog = maxAttempts == 1 ? log : logs.resolve(
+                            "%s-%02d-%s-attempt-%d.log".formatted(
+                                    phase, displayIndex, step.id(), attempt));
+                    attemptLogs.add(attemptLog);
+                    result = process.execute(command, workspace,
+                            backend.environment(backendContext, offline), timeout, attemptLog);
+                    boolean complete = !result.timedOut() && observedOutcome(step, result) != null;
+                    if (complete || result.timedOut()) break;
+                }
+                if (maxAttempts > 1) combineAttemptLogs(log, attemptLogs);
+                VerificationRunPlan.ObservedOutcome observed = observedOutcome(step, result);
+                boolean exitMatches = expectedExitCodes(step).contains(result.exitCode());
+                boolean markerMatches = observed != null;
+                String status = result.timedOut() ? "TIMED-OUT"
+                        : exitMatches && markerMatches ? "PASSED" : "FAILED";
+                phases.add(phase(step.id(), phase, status, result.exitCode(), workspace, log));
+                if (result.timedOut()) {
+                    task.fail("timed out; see " + workspace.relativize(log));
+                    return new StepFailure("acquire".equals(phase)
+                            ? "acquisition-timeout" : "verification-timeout",
+                            "Step '" + step.id() + "' exceeded " + timeout.toSeconds() + " seconds");
+                }
+                if (!exitMatches) {
+                    task.fail("exit " + result.exitCode() + "; see " + workspace.relativize(log));
+                    return new StepFailure("unexpected-exit-code",
+                            "Step '" + step.id() + "' exited " + result.exitCode());
+                }
+                if (!markerMatches) {
+                    task.fail("missing result marker; see " + workspace.relativize(log));
+                    return new StepFailure("missing-result-marker",
+                            "Step '" + step.id() + "' did not emit its required result marker");
+                }
+                if ("verify".equals(phase)) {
+                    task.complete(verificationDetail(step, observed));
+                } else {
+                    task.succeed();
+                }
+                if ("verify".equals(phase) && step.propertyId() != null) {
+                    var outcome = VerificationOutcome.parse(observed.result());
+                    properties.add(new VerificationRunResult.Property(
+                            step.propertyId(), outcome.externalName(), observed.reason()));
+                    if ("property-vacuous".equals(observed.reason())) {
+                        appendVacuitySkippedSteps(
+                                steps, stepIndex + 1, phase, phases, properties, progress);
+                        break;
+                    }
                 }
             }
         }
         return null;
+    }
+
+    private static String stepDescription(String id, String phase) {
+        if ("verify".equals(phase) && id.startsWith("prove-")) {
+            return "Proving " + id.substring("prove-".length()).replace('-', ' ');
+        }
+        return switch (id) {
+            case "lake-update" -> "Acquiring pinned Lean dependencies";
+            case "build-pinned-dependencies" -> "Building pinned Lean dependencies";
+            case "check-non-vacuity" -> "Checking property non-vacuity";
+            case "compile-unspecialized-property" -> "Checking generated property workspace";
+            default -> "verify".equals(phase)
+                    ? "Running proof step '" + id + "'"
+                    : "Running acquisition step '" + id + "'";
+        };
+    }
+
+    private static String verificationDetail(
+            VerificationRunPlan.Step step,
+            VerificationRunPlan.ObservedOutcome observed) {
+        if ("check-non-vacuity".equals(step.id())) {
+            if ("expected-negative-control".equals(observed.reason())) {
+                return "non-vacuous";
+            }
+            if ("property-vacuous".equals(observed.reason())) {
+                return "COULD-NOT-EVALUATE - property is vacuous";
+            }
+        }
+        String reason = observed.reason() == null
+                ? "classified" : observed.reason().replace('-', ' ');
+        return observed.result() + " - " + reason;
     }
 
     private static void appendVacuitySkippedSteps(
@@ -311,7 +390,8 @@ public final class VerificationRunner {
             int firstSkipped,
             String phase,
             List<VerificationRunResult.Phase> phases,
-            List<VerificationRunResult.Property> properties) {
+            List<VerificationRunResult.Property> properties,
+            VerificationProgress progress) {
         for (int index = firstSkipped; index < steps.size(); index++) {
             var skipped = steps.get(index);
             phases.add(new VerificationRunResult.Phase(
@@ -322,6 +402,7 @@ public final class VerificationRunner {
                         VerificationOutcome.COULD_NOT_EVALUATE.externalName(),
                         "not-evaluated-vacuous"));
             }
+            progress.skipped(stepDescription(skipped.id(), phase), "property is vacuous");
         }
     }
 

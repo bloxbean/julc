@@ -168,11 +168,31 @@ image and acquires exact Lean package commits. A successful run prints output
 similar to:
 
 ```text
+Preparing formal verification for AuthorizedStateValidator ...
+  Resolving property and exact script artifact ... OK [64 ms] - julc.requires-signer/v1
+  Generating hash-bound verification workspace ... OK [40 ms] - .../verification/authorized-state-validator
+Running verification ...
+  Validating workspace and runner plan ... OK [17 ms]
+  Checking artifact, property, and generated-source hashes ... OK [55 ms]
+  Selecting verification backend ... OK [0 ms] - docker
+  Preparing Docker backend (first run may take several minutes) ... OK [294 ms] - sha256:...
+  Acquiring pinned Lean dependencies ... OK [2.8 s]
+  Building pinned Lean dependencies ... OK [2m 1s]
+  Checking pinned dependency revisions ... OK [600 ms]
+  Checking property non-vacuity ... DONE [12.6 s] - non-vacuous
+  Proving required signer ... DONE [1.8 s] - SMT-VALID - required signer established
+
 SMT-VALID: all-properties-established
 Property: julc.requires-signer/v1 (datum.owner)
 Workspace: .../verification/authorized-state-validator
 Certificate: .../verification-result.json
 ```
+
+Local and Docker runs show the same line-oriented stages and elapsed times, so
+a long dependency build or proof does not look stalled. Tool output remains in
+the hash-accounted files under `verification-results/`; on failure the progress
+line points to the relevant log instead of mixing unauthenticated subprocess
+output into the console result.
 
 The certificate records `backend: docker`, the immutable built image ID, exact
 artifact and script hashes, dependency commits, fuel, generated-source hashes,
