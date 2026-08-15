@@ -13,7 +13,7 @@ public final class DslPropertyValidator {
 
     public static void validate(
             DslPropertySet propertySet, ContractSchema schema, int maxNodes) {
-        if (!"spending".equals(schema.purpose())) {
+        if (schema.purpose() != ContractSchema.Purpose.SPEND) {
             throw new IllegalArgumentException("DSL v1 supports only spending contracts");
         }
         int[] nodes = {0};

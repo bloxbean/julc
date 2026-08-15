@@ -9,7 +9,7 @@ public final class ContractMetamodelGenerator {
 
     public static String generate(
             ContractSchema schema, String packageName, String className) {
-        if (!"spending".equals(schema.purpose()) || schema.datum() == null) {
+        if (schema.purpose() != ContractSchema.Purpose.SPEND || schema.datum() == null) {
             throw new IllegalArgumentException("DSL metamodel v1 requires a spending datum");
         }
         if (!packageName.matches("[a-z][A-Za-z0-9_.]*")
