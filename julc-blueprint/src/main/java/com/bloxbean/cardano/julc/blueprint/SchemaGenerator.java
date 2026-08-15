@@ -72,6 +72,10 @@ public final class SchemaGenerator {
             return new Schema(newTitle, ref, dataType, description, index,
                     fields, anyOf, items, keys, values);
         }
+
+        Schema untitled() {
+            return titled(null);
+        }
     }
 
     /** CIP-57 roots and definitions for one compiled validator. */
@@ -93,11 +97,37 @@ public final class SchemaGenerator {
     /** Convert a contract schema using a validator-specific definition namespace. */
     public static ValidatorSchema from(ContractSchema contractSchema, String namespace) {
         Objects.requireNonNull(contractSchema, "contractSchema");
-        var converter = new Converter(namespace, contractSchema.namedDefinitions());
-        Schema datum = contractSchema.datum() == null
+        return from(contractSchema, contractSchema.singleInterface(), namespace);
+    }
+
+    /** Convert one selected interface while retaining the contract's shared metadata. */
+    public static ValidatorSchema from(
+            ContractSchema contractSchema,
+            ContractSchema.ValidatorInterface validatorInterface,
+            String namespace) {
+        return from(contractSchema, validatorInterface, namespace, false);
+    }
+
+    /**
+     * Convert one interface, optionally using stable compiler identities when
+     * two named types in the same script share a Java simple name.
+     */
+    public static ValidatorSchema from(
+            ContractSchema contractSchema,
+            ContractSchema.ValidatorInterface validatorInterface,
+            String namespace,
+            boolean distinguishSameSimpleNames) {
+        Objects.requireNonNull(contractSchema, "contractSchema");
+        Objects.requireNonNull(validatorInterface, "validatorInterface");
+        if (!contractSchema.interfaces().contains(validatorInterface)) {
+            throw new IllegalArgumentException("Selected interface does not belong to contract schema");
+        }
+        var converter = new Converter(
+                namespace, contractSchema.namedDefinitions(), distinguishSameSimpleNames);
+        Schema datum = validatorInterface.datum() == null
                 ? null
-                : converter.root(contractSchema.datum());
-        Schema redeemer = converter.root(contractSchema.redeemer());
+                : converter.root(validatorInterface.datum());
+        Schema redeemer = converter.root(validatorInterface.redeemer());
         var parameters = contractSchema.parameters().stream()
                 .map(converter::root)
                 .toList();
@@ -107,13 +137,18 @@ public final class SchemaGenerator {
     private static final class Converter {
         private final String namespace;
         private final Map<String, PirType> namedDefinitions;
+        private final boolean distinguishSameSimpleNames;
         private final Map<String, Schema> definitions = new LinkedHashMap<>();
         private final Map<String, PirType> definitionTypes = new LinkedHashMap<>();
         private final List<String> inProgress = new ArrayList<>();
 
-        private Converter(String namespace, Map<String, PirType> namedDefinitions) {
+        private Converter(
+                String namespace,
+                Map<String, PirType> namedDefinitions,
+                boolean distinguishSameSimpleNames) {
             this.namespace = namespace == null || namespace.isBlank() ? null : namespace;
             this.namedDefinitions = namedDefinitions;
+            this.distinguishSameSimpleNames = distinguishSameSimpleNames;
         }
 
         private Schema root(ContractSchema.Argument argument) {
@@ -216,9 +251,9 @@ public final class SchemaGenerator {
                         + "_" + definitionKey(map.valueType());
                 case PirType.OptionalType optional -> "@julc:Optional_"
                         + definitionKey(optional.elemType());
-                case PirType.RecordType record -> namedKey(record.name());
-                case PirType.SumType sum -> namedKey(sum.name());
-                case PirType.NamedTypeRef ref -> namedKey(ref.name());
+                case PirType.RecordType record -> namedKey(record, record.name());
+                case PirType.SumType sum -> namedKey(sum, sum.name());
+                case PirType.NamedTypeRef ref -> namedKey(ref, ref.name());
                 case PirType.UnitType _ -> "@julc:Unit";
                 case PirType.PairType _, PirType.ArrayType _, PirType.FunType _ ->
                         throw new SchemaGenerationException(
@@ -226,8 +261,37 @@ public final class SchemaGenerator {
             };
         }
 
-        private String namedKey(String name) {
-            return namespace == null ? name : namespace + ":" + name;
+        private String namedKey(PirType type, String simpleName) {
+            String identity = simpleName;
+            if (distinguishSameSimpleNames && hasDuplicateSimpleName(simpleName)) {
+                identity = stableIdentity(type, simpleName);
+            }
+            return namespace == null ? identity : namespace + ":" + identity;
+        }
+
+        private boolean hasDuplicateSimpleName(String simpleName) {
+            return namedDefinitions.values().stream()
+                    .filter(type -> namedTypeName(type).equals(simpleName))
+                    .limit(2)
+                    .count() > 1;
+        }
+
+        private String stableIdentity(PirType type, String fallback) {
+            if (type instanceof PirType.NamedTypeRef ref) return ref.stableId();
+            return namedDefinitions.entrySet().stream()
+                    .filter(entry -> entry.getValue() == type)
+                    .map(Map.Entry::getKey)
+                    .findFirst()
+                    .orElse(fallback);
+        }
+
+        private String namedTypeName(PirType type) {
+            return switch (type) {
+                case PirType.RecordType record -> record.name();
+                case PirType.SumType sum -> sum.name();
+                case PirType.NamedTypeRef ref -> ref.name();
+                default -> "";
+            };
         }
 
         private PirType canonicalType(PirType type) {

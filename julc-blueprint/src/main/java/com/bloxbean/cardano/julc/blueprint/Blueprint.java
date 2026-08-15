@@ -2,6 +2,7 @@ package com.bloxbean.cardano.julc.blueprint;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * CIP-57 blueprint model.
@@ -12,9 +13,30 @@ public record Blueprint(Preamble preamble, List<ValidatorEntry> validators,
     public record Preamble(String title, String version, String plutusVersion, Compiler compiler) {}
     public record Compiler(String name, String version) {}
 
-    public record ValidatorEntry(String title, String compiledCode, String hash, int sizeBytes,
-                                 SchemaGenerator.Schema datum, SchemaGenerator.Schema redeemer,
-                                 List<SchemaGenerator.Schema> parameters) {}
+    /** A purpose-qualified CIP-57 datum, redeemer, or compile-time parameter. */
+    public record Argument(
+            String title,
+            String purpose,
+            SchemaGenerator.Schema schema) {
+        public Argument {
+            title = Objects.requireNonNull(title, "title");
+            purpose = Objects.requireNonNull(purpose, "purpose");
+            schema = Objects.requireNonNull(schema, "schema");
+        }
+    }
+
+    public record ValidatorEntry(
+            String title,
+            String compiledCode,
+            String hash,
+            int sizeBytes,
+            Argument datum,
+            Argument redeemer,
+            List<Argument> parameters) {
+        public ValidatorEntry {
+            parameters = parameters == null ? null : List.copyOf(parameters);
+        }
+    }
 
     /**
      * Serialize to JSON.
@@ -43,23 +65,15 @@ public record Blueprint(Preamble preamble, List<ValidatorEntry> validators,
             // datum
             if (v.datum() != null) {
                 sb.append(",\n");
-                sb.append("      \"datum\": {\n");
-                sb.append("        \"title\": ").append(jsonStr(v.datum().title())).append(",\n");
-                sb.append("        \"schema\": {\n");
-                sb.append("          \"$ref\": ").append(jsonStr(v.datum().ref())).append("\n");
-                sb.append("        }\n");
-                sb.append("      }");
+                sb.append("      \"datum\": ");
+                writeArgument(sb, v.datum(), 3);
             }
 
             // redeemer
             if (v.redeemer() != null) {
                 sb.append(",\n");
-                sb.append("      \"redeemer\": {\n");
-                sb.append("        \"title\": ").append(jsonStr(v.redeemer().title())).append(",\n");
-                sb.append("        \"schema\": {\n");
-                sb.append("          \"$ref\": ").append(jsonStr(v.redeemer().ref())).append("\n");
-                sb.append("        }\n");
-                sb.append("      }");
+                sb.append("      \"redeemer\": ");
+                writeArgument(sb, v.redeemer(), 3);
             }
 
             // parameters
@@ -68,12 +82,8 @@ public record Blueprint(Preamble preamble, List<ValidatorEntry> validators,
                 sb.append("      \"parameters\": [\n");
                 for (int j = 0; j < v.parameters().size(); j++) {
                     var p = v.parameters().get(j);
-                    sb.append("        {\n");
-                    sb.append("          \"title\": ").append(jsonStr(p.title())).append(",\n");
-                    sb.append("          \"schema\": {\n");
-                    sb.append("            \"$ref\": ").append(jsonStr(p.ref())).append("\n");
-                    sb.append("          }\n");
-                    sb.append("        }");
+                    sb.append("        ");
+                    writeArgument(sb, p, 4);
                     if (j < v.parameters().size() - 1) sb.append(',');
                     sb.append('\n');
                 }
@@ -107,6 +117,16 @@ public record Blueprint(Preamble preamble, List<ValidatorEntry> validators,
 
         sb.append("\n}\n");
         return sb.toString();
+    }
+
+    private static void writeArgument(StringBuilder sb, Argument argument, int indent) {
+        String pad = "  ".repeat(indent);
+        sb.append("{\n");
+        sb.append(pad).append("  \"title\": ").append(jsonStr(argument.title())).append(",\n");
+        sb.append(pad).append("  \"purpose\": ").append(jsonStr(argument.purpose())).append(",\n");
+        sb.append(pad).append("  \"schema\": ");
+        writeSchema(sb, argument.schema(), indent + 1);
+        sb.append('\n').append(pad).append("}");
     }
 
     private static void writeSchema(StringBuilder sb, SchemaGenerator.Schema schema, int indent) {

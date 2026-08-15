@@ -17,19 +17,7 @@ set_option warn.sorry false
 
 #prep_uplc appliedSmokeValidator smokeValidator spendingInputs 10000
 
-/-- JuLC currently decodes a one-field record from the first constructor field. -/
-def firstFieldIsExpectedSecret : Data → Prop
-  | Data.Constr _ (Data.I 424242 :: _) => True
-  | _ => False
-
-/-- The behavior of the exact compiled VerificationDatumGate artifact. -/
-def expectedSecretMatch (ctx : ScriptContext) : Prop :=
-  match ctx.scriptContextScriptInfo, ctx.scriptContextRedeemer with
-  | .SpendingScript _ (some datum), redeemer =>
-      firstFieldIsExpectedSecret datum ∧ firstFieldIsExpectedSecret redeemer
-  | _, _ => False
-
-/-- The stricter one-field constructor shape advertised by the schema. -/
+/-- The exact one-field constructor shape enforced by JuLC strict boundaries. -/
 def strictSchemaSecretMatch (ctx : ScriptContext) : Prop :=
   match ctx.scriptContextScriptInfo, ctx.scriptContextRedeemer with
   | .SpendingScript _ (some (Data.Constr 0 [Data.I 424242])),
@@ -45,30 +33,28 @@ theorem zeroFuelIsReportedAsExhaustion (ctx : ScriptContext) :
     PlutusCore.UPLC.CekMachine.initialState]
 
 /--
-The exact JuLC smoke artifact succeeds exactly when the first decoded datum and
-redeemer fields contain the expected secret. The theorem quantifies over all
-V3 script contexts, so it does not depend on the current V3 ledger-validity
-predicate being within Blaster's translation subset.
+The exact JuLC smoke artifact succeeds exactly when datum and redeemer use the
+declared constructor tag and arity and contain the expected secret. The theorem
+quantifies over all V3 script contexts, so it does not depend on the current V3
+ledger-validity predicate being within Blaster's translation subset.
 
 This result is SMT-valid with the current Blaster trusted base; it is not a
 Lean-kernel reconstruction of the Z3 proof.
 -/
-theorem successfulIffExpectedSecretMatch :
+theorem successfulIffStrictSchemaSecretMatch :
     ∀ ctx : ScriptContext,
       (PlutusCore.UPLC.Utils.isSuccessful (appliedSmokeValidator.prop ctx) ↔
-        expectedSecretMatch ctx) := by
+        strictSchemaSecretMatch ctx) := by
   blaster
 
 /--
-Negative control and implementation finding: successful record decoding does
-not currently imply the exact constructor tag and arity advertised by the
-blueprint schema. Blaster must refute this claim.
+Regression theorem for ADR-015: successful execution implies the exact
+constructor tag and arity advertised by the blueprint schema.
 -/
-def successImpliesStrictSchema : Prop :=
+theorem successImpliesStrictSchema :
   ∀ ctx : ScriptContext,
     PlutusCore.UPLC.Utils.isSuccessful (appliedSmokeValidator.prop ctx) →
-    strictSchemaSecretMatch ctx
-
-#blaster (gen-cex: 1) (solve-result: 1) [successImpliesStrictSchema]
+    strictSchemaSecretMatch ctx := by
+  blaster
 
 end JulcVerification.Smoke

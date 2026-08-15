@@ -18,14 +18,13 @@ set_option warn.sorry false
 #prep_uplc appliedMultiSigValidator multiSigValidator spendingInputs 4000
 
 /--
-The authorization predicate corresponding to the two record fields JuLC
-currently decodes. Constructor tags and trailing fields are deliberately not
-claimed here; the smoke proof records that separate schema discrepancy.
+The authorization predicate corresponding to the exact two-field record shape
+enforced by JuLC strict boundaries.
 -/
 def bothDatumKeysSigned (ctx : ScriptContext) : Prop :=
   match ctx.scriptContextScriptInfo with
   | .SpendingScript _
-      (some (Data.Constr _ (Data.B firstKey :: Data.B secondKey :: _))) =>
+      (some (Data.Constr 0 [Data.B firstKey, Data.B secondKey])) =>
       txSignedBy firstKey ctx.scriptContextTxInfo ∧
         txSignedBy secondKey ctx.scriptContextTxInfo
   | _ => False

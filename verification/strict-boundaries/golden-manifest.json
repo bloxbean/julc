@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "boundarySemantics": "strict-data-v1",
+  "classification": "all pre-existing julc-compiler UPLC goldens",
+  "changed": [
+    {
+      "name": "simple-validator",
+      "reason": "BigInteger redeemer is now strictly decoded before entrypoint execution",
+      "legacy": {"flatBytes": 41, "sha256": "b5e056df84c3f22ec133112329e7ed91fb657713544ec3e3fa9f700a8ab822c4"},
+      "strict": {"flatBytes": 56, "sha256": "435be9f1c508d32a1df6b4a1963372661f395e4e533c18ccc60f1afa116f4736"}
+    },
+    {
+      "name": "foreach-single-acc",
+      "reason": "byte-array redeemer is now strictly decoded before entrypoint execution",
+      "legacy": {"flatBytes": 129, "sha256": "76a694f8eeb30af0934175e4202238cbd6d8a1e0339a2e59efdef6cffa992876"},
+      "strict": {"flatBytes": 144, "sha256": "188205a5019808aecae431f3651d6226bfb5c0a66c78df559b38004461900884"}
+    },
+    {
+      "name": "nested-while",
+      "reason": "BigInteger redeemer is now strictly decoded before entrypoint execution",
+      "legacy": {"flatBytes": 310, "sha256": "7faa11bb5c42e095c8503bc3f665eae2ea3aa788b7903404c1b6bfa601bfb83a"},
+      "strict": {"flatBytes": 325, "sha256": "6d40467cd8eceba8edd9dce71662e24009b4d1d2cf59dd636f53def92d22521d"}
+    }
+  ],
+  "unchanged": [
+    {"name": "while-break", "flatBytes": 195, "sha256": "60a6a45c942a369679140982f0d5f0cbc2640a9055bd0aefeb7f20a8df91577f", "reason": "opaque PlutusData roots"},
+    {"name": "hof-map", "flatBytes": 161, "sha256": "efe2aa518e0affc2f4a1d3c27944e36d7ef5c061f38b02134f84ba11012ee3e4", "reason": "opaque PlutusData redeemer"},
+    {"name": "hof-filter", "flatBytes": 219, "sha256": "f275dfa5e9d21026446c53039656a9f24ea6e0aab5e1d3a0c9a761896e1de619", "reason": "opaque PlutusData redeemer"},
+    {"name": "multi-acc-while", "flatBytes": 228, "sha256": "f5220019a5c4eabfc0591e8cbe61a30aa6f2d58dca87cd58150b7bb0f2e2dade", "reason": "opaque PlutusData roots"},
+    {"name": "nested-while-no-acc", "flatBytes": 217, "sha256": "4a142c119a690211a4b661987aeb49e289bb38668203fbe8b33125be24d5f6cb", "reason": "opaque PlutusData roots"}
+  ]
+}

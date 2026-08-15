@@ -96,9 +96,7 @@ currently operates on the JuLC project layout rooted at `julc.toml` and `src/`.
 Create `src/AuthorizedStateValidator.java`:
 
 ```java
-import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.ledger.ScriptContext;
-import com.bloxbean.cardano.julc.stdlib.Builtins;
 import com.bloxbean.cardano.julc.stdlib.annotation.Entrypoint;
 import com.bloxbean.cardano.julc.stdlib.annotation.SpendingValidator;
 import com.bloxbean.cardano.julc.stdlib.lib.ContextsLib;
@@ -112,27 +110,16 @@ class AuthorizedStateValidator {
 
     @Entrypoint
     static boolean validate(Datum datum, Redeemer redeemer, ScriptContext ctx) {
-        var attached = ContextsLib.getSpendingDatum(ctx);
-        if (attached.isEmpty()) {
-            return false;
-        }
-
-        // Current JuLC record projection accepts expected leading fields without
-        // enforcing every CIP-57 tag/arity rule. Until ADR-015 is implemented,
-        // validate the raw boundary shape when proving the strict profile.
-        PlutusData rawDatum = attached.get();
-        var fields = Builtins.constrFields(rawDatum);
-        boolean exactDatumShape = Builtins.constrTag(rawDatum) == 0
-                && !Builtins.nullList(fields)
-                && Builtins.nullList(Builtins.tailList(fields));
-
-        return exactDatumShape
-                && Builtins.equalsByteString(
-                    Builtins.unBData(Builtins.headList(fields)), datum.owner())
-                && ContextsLib.signedBy(ctx.txInfo(), datum.owner());
+        return ContextsLib.signedBy(ctx.txInfo(), datum.owner());
     }
 }
 ```
+
+JuLC validates typed datum/redeemer roots before this method runs. Record tags
+and arities, variants, primitive shapes, optionals, lists, maps, and productive
+recursive values must match the declared Java type exactly. No strictness
+annotation or compiler option is required. An explicitly raw `PlutusData`
+boundary remains raw and must be validated manually by the contract.
 
 The annotation states the property. It does not change compiler lowering or
 make a vulnerable validator pass. JuLC resolves `datum.owner` through the
@@ -142,6 +129,18 @@ field.
 The scaffolded `AlwaysSucceeds` validator may remain in the project; the
 `--validator` option selects one exact title. You can remove the starter later
 if it is not needed.
+
+For an explicit `@MultiValidator`, `--validator` is the base Java class name
+and `--purpose` selects its exact interface. For example:
+
+```bash
+julc verify . --validator Protocol --purpose spending --backend docker
+```
+
+Its CIP-57 entry is named `Protocol.spend`; a minting interface is
+`Protocol.mint`. Both entries bind to the same compiled program and script
+hash. See the
+[purpose-indexed blueprint guide](../docs/src/content/docs/guides/purpose-indexed-blueprints.md).
 
 ## 5. Build and test normally
 
@@ -169,11 +168,31 @@ image and acquires exact Lean package commits. A successful run prints output
 similar to:
 
 ```text
+Preparing formal verification for AuthorizedStateValidator ...
+  Resolving property and exact script artifact ... OK [64 ms] - julc.requires-signer/v1
+  Generating hash-bound verification workspace ... OK [40 ms] - .../verification/authorized-state-validator
+Running verification ...
+  Validating workspace and runner plan ... OK [17 ms]
+  Checking artifact, property, and generated-source hashes ... OK [55 ms]
+  Selecting verification backend ... OK [0 ms] - docker
+  Preparing Docker backend (first run may take several minutes) ... OK [294 ms] - sha256:...
+  Acquiring pinned Lean dependencies ... OK [2.8 s]
+  Building pinned Lean dependencies ... OK [2m 1s]
+  Checking pinned dependency revisions ... OK [600 ms]
+  Checking property non-vacuity ... DONE [12.6 s] - non-vacuous
+  Proving required signer ... DONE [1.8 s] - SMT-VALID - required signer established
+
 SMT-VALID: all-properties-established
 Property: julc.requires-signer/v1 (datum.owner)
 Workspace: .../verification/authorized-state-validator
 Certificate: .../verification-result.json
 ```
+
+Local and Docker runs show the same line-oriented stages and elapsed times, so
+a long dependency build or proof does not look stalled. Tool output remains in
+the hash-accounted files under `verification-results/`; on failure the progress
+line points to the relevant log instead of mixing unauthenticated subprocess
+output into the console result.
 
 The certificate records `backend: docker`, the immutable built image ID, exact
 artifact and script hashes, dependency commits, fuel, generated-source hashes,
@@ -368,6 +387,11 @@ An untouched custom workspace intentionally reports
 `COULD-NOT-EVALUATE/property-not-specialized`; workspace compilation alone is
 not verification.
 
+For a multi-validator, repeat `verify init` with a distinct output directory
+for each supported purpose. The manifest records both the base
+`validatorTitle` and selected `blueprintEntryTitle`; generated workspaces from
+the same script have identical `compiledCodeSha256` and `cardanoScriptHash`.
+
 ## Troubleshooting
 
 - **Expected local Lean 4.24.0:** run from the generated workspace with elan on
@@ -376,9 +400,10 @@ not verification.
   not only the client.
 - **Output directory is not empty:** use `--force` to regenerate or
   `julc verify run` to rerun the existing workspace.
-- **`REFUTED` on malformed datum/redeemer:** inspect the retained model. Until
-  ADR-015 is implemented, the validator may need explicit exact tag/arity
-  checks at its on-chain boundary.
+- **`REFUTED` on malformed datum/redeemer:** confirm the certificate artifact
+  records `boundarySemantics: strict-data-v1`. Regenerate workspaces produced
+  by an older compiler; a deliberately raw `PlutusData` root still requires a
+  manual shape check.
 - **Unsupported builtin or schema:** generation may stop with exit 1, while an
   already generated workspace can classify an unsupported runner condition as
   `COULD-NOT-EVALUATE`. Neither is proof; do not remove the check or reinterpret

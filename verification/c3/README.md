@@ -25,6 +25,9 @@ verification/c3/scripts/verify.sh
 
 The generated manifest records both CEK `fuel` and `recursiveDepth`. They are
 different limits. A bounded Blaster experiment is not an unbounded theorem.
+The unspecialized scaffold compilation is pinned to CEK preprocessing fuel
+`1000`; increasing that bound does not strengthen the codec induction theorem
+and can make recursive guarded artifacts expensive to preprocess.
 `CodecTests.lean` contains the separate induction example; it does not by
 itself prove a contract-specific security property of the imported UPLC.
 

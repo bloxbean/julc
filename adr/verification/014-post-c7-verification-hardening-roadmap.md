@@ -54,7 +54,7 @@ H.1 is complete when a user can start with a fresh JuLC project, obtain a
 classified result through either supported backend, and understand the claim
 without reading generated Lean.
 
-### H.2: Provide opt-in strict on-chain data boundaries
+### H.2: Make typed on-chain data boundaries strict by default
 
 The generated Lean properties use exact constructor tags and arities. Current
 JuLC record projection reads the expected leading fields but does not, by
@@ -62,19 +62,23 @@ itself, reject every wrong record tag or trailing field. Natural validators can
 therefore be correctly refuted on malformed `Data` even when their business
 logic looks reasonable.
 
-[ADR-015](015-strict-on-chain-data-boundaries.md) specifies the proposed
-compatibility boundary. The important roadmap constraints are:
+[ADR-015](015-strict-on-chain-data-boundaries.md) specifies the accepted
+preview-language correction. The important roadmap constraints are:
 
-- existing contracts retain byte-identical UPLC by default;
-- strict decoding is an explicit compiler-owned feature, not a hidden effect
-  of verification annotations;
+- the public compiler default changes only after all supported typed boundary
+  shapes have strict checkers;
+- affected script hashes and budgets may intentionally change on recompilation,
+  with reviewed golden differences and prominent preview migration notes;
+- strict decoding is compiler-owned semantics, not a hidden effect of
+  verification annotations or a public opt-in mode;
 - unsupported strict schemas fail at compilation rather than falling back to
   permissive projection; and
 - formal verification continues checking exact UPLC instead of trusting the
-  strict-mode declaration.
+  compiler-semantics metadata.
 
 H.2 is complete only after positive and malformed-input VM tests, golden-byte
-compatibility tests, budget measurements, and C.5–C.7 verification evidence.
+change classification, budget measurements, full supported-boundary coverage,
+and C.5–C.7 verification evidence.
 
 ### H.3: Verify JuLC standard-library helper conformance
 
@@ -183,8 +187,10 @@ none may weaken fail-closed behavior to make a demonstration pass.
 
 - **Immediately add many annotations.** Breadth before release and semantic
   hardening would make supported claims harder to understand and maintain.
-- **Make all record decoding strict without an opt-in.** That silently changes
-  existing UPLC, size, cost, and possibly validation outcomes.
+- **Activate strict decoding before complete coverage and migration evidence.**
+  That would either reject supported preview contracts unnecessarily or
+  silently change UPLC, size, cost, and validation outcomes without an
+  auditable release boundary.
 - **Treat helper names as specifications.** A Java method and a similarly named
   Lean predicate are not equivalent until their behavior is checked.
 - **Wait for full compiler verification before shipping profiles.** Exact-UPLC

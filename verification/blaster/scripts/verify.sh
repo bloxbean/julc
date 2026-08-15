@@ -123,9 +123,9 @@ jq \
       },
       {
         id: "smoke.strict-schema-shape",
-        result: "REFUTED",
-        gating: false,
-        reason: "Milestone A permissive record-decoder finding"
+        result: "ESTABLISHED",
+        gating: true,
+        reason: "ADR-015 strict-data-v1 establishes the exact constructor tag and arity"
       }
     ]
   }' "${manifest}" > "${manifest_tmp}"

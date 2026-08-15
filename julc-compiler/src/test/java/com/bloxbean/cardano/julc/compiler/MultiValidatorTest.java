@@ -275,6 +275,57 @@ class MultiValidatorTest {
     }
 
     @Test
+    void autoDispatchStrictlyChecksEachSelectedHandlerBoundary() {
+        var source = """
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                import java.math.BigInteger;
+
+                @MultiValidator
+                class StrictDispatch {
+                    record Datum(byte[] owner) {}
+                    record MintRedeemer(BigInteger amount) {}
+                    record SpendRedeemer(BigInteger next) {}
+
+                    @Entrypoint(purpose = Purpose.MINT)
+                    static boolean handleMint(MintRedeemer redeemer, ScriptContext ctx) {
+                        return true;
+                    }
+
+                    @Entrypoint(purpose = Purpose.SPEND)
+                    static boolean handleSpend(
+                            Datum datum, SpendRedeemer redeemer, ScriptContext ctx) {
+                        return true;
+                    }
+                }
+                """;
+        var program = new JulcCompiler().compile(source).program();
+
+        var canonicalMint = buildScriptContext(buildTxInfo(new PlutusData[0]),
+                PlutusData.constr(0, PlutusData.integer(1)),
+                mintingScriptInfo(new byte[28]));
+        assertTrue(vm.evaluateWithArgs(program, List.of(canonicalMint)).isSuccess());
+        var malformedMint = buildScriptContext(buildTxInfo(new PlutusData[0]),
+                PlutusData.constr(4, PlutusData.integer(1)),
+                mintingScriptInfo(new byte[28]));
+        assertFalse(vm.evaluateWithArgs(program, List.of(malformedMint)).isSuccess());
+
+        var datum = PlutusData.constr(0, PlutusData.bytes(new byte[]{1}));
+        var canonicalSpend = buildScriptContext(buildTxInfo(new PlutusData[0]),
+                PlutusData.constr(0, PlutusData.integer(2)),
+                spendingScriptInfo(PlutusData.constr(0, datum)));
+        assertTrue(vm.evaluateWithArgs(program, List.of(canonicalSpend)).isSuccess());
+        var malformedSpendDatum = buildScriptContext(buildTxInfo(new PlutusData[0]),
+                PlutusData.constr(0, PlutusData.integer(2)),
+                spendingScriptInfo(PlutusData.constr(0,
+                        PlutusData.constr(7, PlutusData.bytes(new byte[]{1})))));
+        assertFalse(vm.evaluateWithArgs(program, List.of(malformedSpendDatum)).isSuccess());
+        var malformedSpendRedeemer = buildScriptContext(buildTxInfo(new PlutusData[0]),
+                PlutusData.constr(0, PlutusData.integer(2), PlutusData.integer(3)),
+                spendingScriptInfo(PlutusData.constr(0, datum)));
+        assertFalse(vm.evaluateWithArgs(program, List.of(malformedSpendRedeemer)).isSuccess());
+    }
+
+    @Test
     void autoDispatchRejectsUnhandledPurpose() {
         var source = """
                 import com.bloxbean.cardano.julc.stdlib.annotation.MultiValidator;

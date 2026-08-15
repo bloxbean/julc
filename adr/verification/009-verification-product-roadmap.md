@@ -394,7 +394,7 @@ minting-profile certificate.
 
 The prioritized sequence after C.7 is maintained by
 [ADR-014](014-post-c7-verification-hardening-roadmap.md). In particular,
-release hardening and the compatibility-safe strict-boundary work in
+release hardening and the reviewed preview-breaking strict-boundary work in
 [ADR-015](015-strict-on-chain-data-boundaries.md) precede further profile
 breadth.
 

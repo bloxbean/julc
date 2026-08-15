@@ -3,6 +3,7 @@ package com.bloxbean.julc.cli.cmd.verify;
 import com.bloxbean.cardano.julc.blueprint.BlueprintConfig;
 import com.bloxbean.cardano.julc.blueprint.BlueprintGenerator;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
+import com.bloxbean.cardano.julc.compiler.DataBoundarySemantics;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
 import com.bloxbean.cardano.julc.verification.RequiresSignerProperty;
 import com.bloxbean.cardano.julc.verification.StatefulSpendingProperty;
@@ -63,6 +64,8 @@ class VerificationProjectGeneratorTest {
         assertEquals(11, manifest.path("protocolVersion").asInt());
         assertEquals(12345, manifest.path("fuel").asInt());
         assertEquals(4, manifest.path("recursiveDepth").asInt());
+        assertEquals(DataBoundarySemantics.STRICT_V1,
+                manifest.path("boundarySemantics").asText());
         assertEquals("COULD-NOT-EVALUATE",
                 manifest.path("properties").get(0).path("result").asText());
 
@@ -530,6 +533,22 @@ class VerificationProjectGeneratorTest {
     }
 
     @Test
+    void asksVerifyInitUsersToRebuildLegacyPurposeFreeBlueprint() throws Exception {
+        Path blueprint = writeBlueprint();
+        String legacyJson = Files.readString(blueprint)
+                .replace("        \"purpose\": \"spend\",\n", "");
+        Files.writeString(blueprint, legacyJson);
+
+        var error = assertThrows(ArtifactCommand.ArtifactSelectionException.class,
+                () -> VerificationProjectGenerator.generate(
+                        blueprint, "StateGate", "spending", 100,
+                        tempDir.resolve("legacy-purpose-free"), false));
+
+        assertTrue(error.getMessage().contains("Rebuild plutus.json"), error.getMessage());
+        assertFalse(Files.exists(tempDir.resolve("legacy-purpose-free")));
+    }
+
+    @Test
     void rejectsBuiltinOutsidePinnedBlasterCoverage() {
         var error = assertThrows(UnsupportedVerificationException.class,
                 () -> VerificationProjectGenerator.ensureSupportedBuiltins(List.of(
@@ -842,6 +861,35 @@ class VerificationProjectGeneratorTest {
         assertTrue(error.getMessage().contains("Plutus V3"));
     }
 
+    @Test
+    void generatesPurposeSpecificWorkspacesBoundToOneSharedArtifact() throws Exception {
+        Path blueprint = writeMultiBlueprint();
+        Path spendOutput = tempDir.resolve("protocol-spend");
+        Path mintOutput = tempDir.resolve("protocol-mint");
+
+        VerificationProjectGenerator.generate(
+                blueprint, "Protocol", "spending", 1000, spendOutput, false);
+        VerificationProjectGenerator.generate(
+                blueprint, "Protocol", "minting", 1000, mintOutput, false);
+
+        var spend = JSON.readTree(
+                spendOutput.resolve("verification-manifest.json").toFile());
+        var mint = JSON.readTree(
+                mintOutput.resolve("verification-manifest.json").toFile());
+        assertEquals("Protocol", spend.path("validatorTitle").asText());
+        assertEquals("Protocol", mint.path("validatorTitle").asText());
+        assertEquals("Protocol.spend", spend.path("blueprintEntryTitle").asText());
+        assertEquals("Protocol.mint", mint.path("blueprintEntryTitle").asText());
+        assertEquals(spend.path("compiledCodeSha256").asText(),
+                mint.path("compiledCodeSha256").asText());
+        assertEquals(spend.path("cardanoScriptHash").asText(),
+                mint.path("cardanoScriptHash").asText());
+        assertTrue(Files.readString(spendOutput.resolve("GeneratedSchemas.lean"))
+                .contains("structure ProtocolDatum"));
+        assertTrue(Files.readString(mintOutput.resolve("GeneratedSchemas.lean"))
+                .contains("structure ProtocolMint"));
+    }
+
     private Path writeBlueprint() throws Exception {
         String source = """
                 import com.bloxbean.cardano.julc.stdlib.annotation.*;
@@ -887,6 +935,33 @@ class VerificationProjectGeneratorTest {
                 List.of(new BlueprintGenerator.CompiledValidator(
                         "TokenPolicy", result.compileResult(), result.contractSchema())));
         Path blueprint = tempDir.resolve("mint-" + System.nanoTime() + ".json");
+        Files.writeString(blueprint, generated.toJson());
+        return blueprint;
+    }
+
+    private Path writeMultiBlueprint() throws Exception {
+        String source = """
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                import com.bloxbean.cardano.julc.ledger.ScriptContext;
+                import java.math.BigInteger;
+                @MultiValidator class Protocol {
+                    record Datum(BigInteger state) {}
+                    record Spend(BigInteger next) {}
+                    record Mint(byte[] tokenName) {}
+                    @Entrypoint(purpose = Purpose.SPEND)
+                    static boolean spend(Datum datum, Spend redeemer, ScriptContext ctx) {
+                        return true;
+                    }
+                    @Entrypoint(purpose = Purpose.MINT)
+                    static boolean mint(Mint redeemer, ScriptContext ctx) { return true; }
+                }
+                """;
+        var result = new JulcCompiler(StdlibRegistry.defaultRegistry()).compileContract(source);
+        var generated = BlueprintGenerator.generate(
+                new BlueprintConfig("verification-multi-test", "1"),
+                List.of(new BlueprintGenerator.CompiledValidator(
+                        "Protocol", result.compileResult(), result.contractSchema())));
+        Path blueprint = tempDir.resolve("multi-" + System.nanoTime() + ".json");
         Files.writeString(blueprint, generated.toJson());
         return blueprint;
     }

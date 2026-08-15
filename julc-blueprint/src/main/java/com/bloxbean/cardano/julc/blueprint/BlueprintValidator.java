@@ -29,6 +29,8 @@ public final class BlueprintValidator {
     private static final Set<String> SCHEMA_PROPERTIES = Set.of(
             "title", "description", "$ref", "dataType", "index", "fields",
             "anyOf", "items", "keys", "values");
+    private static final Set<String> SUPPORTED_PURPOSES = Set.of(
+            "spend", "mint", "withdraw", "publish");
 
     private BlueprintValidator() {}
 
@@ -65,29 +67,66 @@ public final class BlueprintValidator {
                     validateSchema(entry.getValue(), "definitions." + entry.getKey(), definitionNames));
         }
         JsonNode validators = root.path("validators");
+        Set<String> validatorTitles = new HashSet<>();
         if (validators.isArray()) {
             for (int i = 0; i < validators.size(); i++) {
                 JsonNode validator = validators.get(i);
-                validateArgument(validator.path("datum"), "validators[" + i + "].datum", definitionNames);
-                validateArgument(validator.path("redeemer"), "validators[" + i + "].redeemer", definitionNames);
+                String validatorPath = "validators[" + i + "]";
+                String title = validator.path("title").asText();
+                if (title.isBlank()) {
+                    throw schemaError(validatorPath + ".title", "must be a non-empty string");
+                }
+                if (!validatorTitles.add(title)) {
+                    throw schemaError(validatorPath + ".title",
+                            "duplicates validator title '" + title + "'");
+                }
+
+                String redeemerPurpose = validateArgument(
+                        validator.path("redeemer"), validatorPath + ".redeemer", definitionNames);
+                if (validator.has("datum")) {
+                    String datumPurpose = validateArgument(
+                            validator.path("datum"), validatorPath + ".datum", definitionNames);
+                    if (!"spend".equals(datumPurpose)) {
+                        throw schemaError(validatorPath + ".datum",
+                                "is only valid for purpose 'spend'");
+                    }
+                    if (!datumPurpose.equals(redeemerPurpose)) {
+                        throw schemaError(validatorPath,
+                                "datum and redeemer purposes must match");
+                    }
+                }
                 JsonNode parameters = validator.path("parameters");
                 if (parameters.isArray()) {
                     for (int j = 0; j < parameters.size(); j++) {
-                        validateArgument(parameters.get(j),
+                        String parameterPurpose = validateArgument(parameters.get(j),
                                 "validators[" + i + "].parameters[" + j + "]", definitionNames);
+                        if (!redeemerPurpose.equals(parameterPurpose)) {
+                            throw schemaError(
+                                    validatorPath + ".parameters[" + j + "]",
+                                    "purpose must match the validator redeemer purpose");
+                        }
                     }
                 }
             }
         }
     }
 
-    private static void validateArgument(
+    private static String validateArgument(
             JsonNode argument, String path, Set<String> definitionNames) {
-        if (argument.isMissingNode()) return;
         if (!argument.isObject() || !argument.has("schema")) {
             throw schemaError(path, "must contain a schema object");
         }
+        if (!argument.path("title").isTextual()
+                || argument.path("title").asText().isBlank()) {
+            throw schemaError(path + ".title", "must be a non-empty string");
+        }
+        JsonNode purposeNode = argument.path("purpose");
+        if (!purposeNode.isTextual() || !SUPPORTED_PURPOSES.contains(purposeNode.asText())) {
+            throw schemaError(path + ".purpose",
+                    "must be one of " + SUPPORTED_PURPOSES);
+        }
         validateSchema(argument.path("schema"), path + ".schema", definitionNames);
+        return purposeNode.asText();
     }
 
     private static void validateSchema(

@@ -45,6 +45,8 @@ const SECTIONS = [
       'guides/for-loop-patterns.md',
       'guides/testing-guide.md',
       'guides/source-maps.md',
+      'guides/strict-data-boundaries.md',
+      'guides/purpose-indexed-blueprints.md',
     ],
   },
   {

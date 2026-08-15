@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "observedAt": "2026-08-13",
+  "environment": "macOS arm64, local Lean 4.24.0, Z3 4.15.2, pinned Blaster revisions from generated manifests",
+  "boundarySemantics": "strict-data-v1",
+  "vm": {
+    "largeList250": {
+      "legacy": {"flatBytes": 27, "cpu": 903542, "memory": 3329},
+      "strict": {"flatBytes": 202, "cpu": 502300256, "memory": 2042445}
+    },
+    "nestedListMapOptional": {
+      "shape": "20 maps x 2 duplicate entries x optional list of 10 integers",
+      "strict": {"flatBytes": 531, "cpu": 2007646595, "memory": 8105346},
+      "ceiling": {"cpu": 10000000000, "memory": 14000000}
+    }
+  },
+  "recursiveCodecAgreement": {
+    "scaffoldFuel": 1000,
+    "outcome": "ESTABLISHED",
+    "evidence": "verification/c3/scripts/verify.sh",
+    "observation": "The previous unspecialized scaffold default of 20000 was stopped after more than 420 seconds of compute-bound preprocessing; lowering only this scaffold bound does not weaken the separate kernel-checked codec induction theorem."
+  },
+  "verification": [
+    {
+      "profile": "julc.requires-signer/v1",
+      "fuel": 1000,
+      "legacyHandwrittenBoundary": {"compiledCodeBytes": 507, "sha256": "f0cf8838b504da663df2f217d3d0c4e282799a6ff90ce8be9d3258cbefe7508c", "safetyTheoremSeconds": 1.61},
+      "strictCompilerBoundary": {"compiledCodeBytes": 384, "sha256": "1abb8e2ff50892e915cc8ae005e432d76ae071d68863deb427f007ef3582edb7", "safetyTheoremSecondsApprox": 2, "nonVacuitySecondsApprox": 21, "outcome": "SMT-VALID"}
+    },
+    {
+      "profile": "julc.stateful-spending/v1",
+      "fuel": 3000,
+      "legacyHandwrittenBoundary": {"compiledCodeBytes": 1319, "sha256": "113e9247719955f0b2fc8095a70ea9ff1aba65afa49fef0254a1d09f5c0ad30f", "safetyTheoremSeconds": 7.86},
+      "strictCompilerBoundary": {"compiledCodeBytes": 1190, "sha256": "c73ffcc27f4dae57e4a6199ffdbfdf720a8f45fd83eb8b62182236a7d009f6fc", "safetyTheoremSecondsApprox": 10, "nonVacuitySecondsApprox": 330, "outcome": "SMT-VALID"}
+    },
+    {
+      "profile": "julc.controlled-mint/v1",
+      "fuel": 5000,
+      "legacyHandwrittenBoundary": {"compiledCodeBytes": 503, "sha256": "ea1ba7d11a5a14b2cd2fb1aa617aa6a89570aac811ccc53ceebc35c6a80ecacf", "safetyTheoremSeconds": 1.65},
+      "strictCompilerBoundary": {"compiledCodeBytes": 483, "sha256": "b398ebe47d9f726e7262c3ad0adcaa501e6a081afeefae148d2c56bc2688a73c", "safetyTheoremSecondsApprox": 2, "nonVacuitySecondsApprox": 13, "outcome": "SMT-VALID"}
+    }
+  ],
+  "notes": [
+    "Before final activation, legacy artifacts were reconstructed through a temporary package-private comparison constructor and matched the previously recorded SHA-256 values. That executable comparison path has been deleted; these values are immutable historical observations.",
+    "Safety-theorem timing substituted only the exact artifact in an otherwise identical generated workspace; all strict results were also rerun through the authenticated managed runner.",
+    "Approximate wall-time samples are derived from the managed runner's per-step log timestamps and are not deterministic performance guarantees."
+  ]
+}

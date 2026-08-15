@@ -1,4 +1,3 @@
-import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.ledger.*;
 import com.bloxbean.cardano.julc.stdlib.Builtins;
 import com.bloxbean.cardano.julc.stdlib.annotation.*;
@@ -18,9 +17,7 @@ class ControlledBurnPolicy {
 
     @Entrypoint
     static boolean validate(Redeemer redeemer, ScriptContext ctx) {
-        if (Builtins.constrTag(ctx.redeemer()) != 0
-                || !Builtins.nullList(Builtins.constrFields(ctx.redeemer()))
-                || ctx.txInfo().signatories().isEmpty()
+        if (ctx.txInfo().signatories().isEmpty()
                 || !Builtins.equalsByteString(
                     ctx.txInfo().signatories().head().hash(), AUTHORITY)) return false;
         return switch (ctx.scriptInfo()) {

@@ -1,4 +1,3 @@
-import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.ledger.*;
 import com.bloxbean.cardano.julc.stdlib.Builtins;
 import com.bloxbean.cardano.julc.stdlib.annotation.*;
@@ -18,7 +17,7 @@ class ControlledMintPolicy {
 
     @Entrypoint
     static boolean validate(Redeemer redeemer, ScriptContext ctx) {
-        if (!exactRedeemer(ctx.redeemer()) || ctx.txInfo().signatories().isEmpty()
+        if (ctx.txInfo().signatories().isEmpty()
                 || !Builtins.equalsByteString(
                     ctx.txInfo().signatories().head().hash(), AUTHORITY)) return false;
         return switch (ctx.scriptInfo()) {
@@ -26,11 +25,6 @@ class ControlledMintPolicy {
                     exactMint(ctx, minting.policyId(), BigInteger.ONE);
             default -> false;
         };
-    }
-
-    static boolean exactRedeemer(PlutusData raw) {
-        return Builtins.constrTag(raw) == 0
-                && Builtins.nullList(Builtins.constrFields(raw));
     }
 
     static boolean exactMint(ScriptContext ctx, PolicyId ownPolicy, BigInteger quantity) {

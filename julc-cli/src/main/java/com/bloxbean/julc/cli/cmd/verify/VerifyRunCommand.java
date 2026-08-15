@@ -22,8 +22,11 @@ public class VerifyRunCommand implements Callable<Integer> {
     @Override
     public Integer call() {
         try {
-            var execution = new VerificationRunner().run(workspace, backend);
+            var progress = VerificationProgress.console(System.out);
+            progress.heading("Running verification ...");
+            var execution = new VerificationRunner().run(workspace, backend, progress);
             var result = execution.result();
+            System.out.println();
             System.out.println(result.outcome() + ": " + result.reason());
             System.out.println("Backend: " + result.backend() + " (" + result.backendIdentity() + ")");
             System.out.println("Result: " + workspace.toAbsolutePath().normalize()
