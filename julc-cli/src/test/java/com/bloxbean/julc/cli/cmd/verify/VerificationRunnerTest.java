@@ -5,13 +5,17 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -212,6 +216,46 @@ class VerificationRunnerTest {
         assertEquals("COULD-NOT-EVALUATE", result.result().outcome());
         assertEquals("backend-unavailable", result.result().reason());
         assertEquals("FAILED", result.result().phases().getFirst().status());
+    }
+
+    @Test
+    void backendPreparationFailureClosesProgressLineAndPointsToLog() throws Exception {
+        Path workspace = workspace("backend-progress-failure", VerificationOutcome.SMT_VALID, false);
+        var bytes = new ByteArrayOutputStream();
+        var progress = VerificationProgress.testing(
+                new PrintStream(bytes, true, StandardCharsets.UTF_8), () -> 0L);
+        var runner = new VerificationRunner(new FakeProcess(false, true),
+                ignored -> new FailingBackend());
+
+        runner.run(workspace, VerificationBackendKind.LOCAL, progress);
+
+        assertTrue(bytes.toString(StandardCharsets.UTF_8).contains(
+                "Checking local Lean and Z3 toolchain ... FAILED [0 ms]"
+                        + " - see verification-results/backend.log"));
+    }
+
+    @Test
+    void reportsLongRunningStagesWithoutStreamingAuthenticatedLogs() throws Exception {
+        Path workspace = workspace("progress", VerificationOutcome.SMT_VALID, false);
+        var bytes = new ByteArrayOutputStream();
+        var clock = new AtomicLong();
+        var progress = VerificationProgress.testing(
+                new PrintStream(bytes, true, StandardCharsets.UTF_8),
+                () -> clock.getAndAdd(1_000_000_000L));
+
+        var result = runner(new FakeProcess(false, true))
+                .run(workspace, VerificationBackendKind.LOCAL, progress);
+
+        assertEquals("SMT-VALID", result.result().outcome());
+        String output = bytes.toString(StandardCharsets.UTF_8);
+        assertTrue(output.contains("Validating workspace and runner plan ... OK"));
+        assertTrue(output.contains("Checking artifact, property, and generated-source hashes ... OK"));
+        assertTrue(output.contains("Selecting verification backend ... OK"));
+        assertTrue(output.contains("Checking local Lean and Z3 toolchain ... OK"));
+        assertTrue(output.contains("Running acquisition step 'acquire' ... OK"));
+        assertTrue(output.contains("Checking pinned dependency revisions ... OK"));
+        assertTrue(output.contains("Running proof step 'verify' ... DONE"));
+        assertFalse(output.contains("RESULT-MARKER"));
     }
 
     @Test

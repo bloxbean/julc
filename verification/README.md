@@ -111,6 +111,10 @@ The normal command performs the build, property resolution, deterministic
 workspace generation, non-vacuity check, proof/counterexample query, and
 certificate generation. Developers do not edit Lean or invoke Lake. The
 result is written under `verification/<artifact-id>/verification-result.json`.
+Both local and Docker backends print the current stage and elapsed time while
+backend preparation, dependency acquisition, pinned builds, and proof steps
+run. Detailed subprocess output remains in `verification-results/` so the
+certificate and diagnostic logs retain their existing trust boundary.
 The manifest binds the exact artifact, typed property IR, runner scripts, and
 generated Lean source hash; post-generation edits fail closed.
 
