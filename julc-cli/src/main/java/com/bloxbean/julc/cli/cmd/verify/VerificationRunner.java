@@ -118,7 +118,7 @@ public final class VerificationRunner {
             Path setupLog = logs.resolve("backend.log");
             String backendSetup = "docker".equals(backend.name())
                     ? "Preparing Docker backend (first run may take several minutes)"
-                    : "Checking local Lean and Z3 toolchain";
+                    : "Checking local Lean and Z3 toolchain (may download Z3)";
             try (var task = progress.start(backendSetup)) {
                 try {
                     backendContext = backend.prepare(workspace, process, timeout, setupLog);
@@ -344,7 +344,8 @@ public final class VerificationRunner {
                     properties.add(new VerificationRunResult.Property(
                             step.propertyId(), outcome.externalName(), observed.reason()));
                     if ("property-vacuous".equals(observed.reason())) {
-                        appendVacuitySkippedSteps(steps, stepIndex + 1, phase, phases, properties);
+                        appendVacuitySkippedSteps(
+                                steps, stepIndex + 1, phase, phases, properties, progress);
                         break;
                     }
                 }
@@ -372,9 +373,12 @@ public final class VerificationRunner {
             VerificationRunPlan.Step step,
             VerificationRunPlan.ObservedOutcome observed) {
         if ("check-non-vacuity".equals(step.id())) {
-            return "property-vacuous".equals(observed.reason())
-                    ? "COULD-NOT-EVALUATE - property is vacuous"
-                    : "non-vacuous";
+            if ("expected-negative-control".equals(observed.reason())) {
+                return "non-vacuous";
+            }
+            if ("property-vacuous".equals(observed.reason())) {
+                return "COULD-NOT-EVALUATE - property is vacuous";
+            }
         }
         String reason = observed.reason() == null
                 ? "classified" : observed.reason().replace('-', ' ');
@@ -386,7 +390,8 @@ public final class VerificationRunner {
             int firstSkipped,
             String phase,
             List<VerificationRunResult.Phase> phases,
-            List<VerificationRunResult.Property> properties) {
+            List<VerificationRunResult.Property> properties,
+            VerificationProgress progress) {
         for (int index = firstSkipped; index < steps.size(); index++) {
             var skipped = steps.get(index);
             phases.add(new VerificationRunResult.Phase(
@@ -397,6 +402,7 @@ public final class VerificationRunner {
                         VerificationOutcome.COULD_NOT_EVALUATE.externalName(),
                         "not-evaluated-vacuous"));
             }
+            progress.skipped(stepDescription(skipped.id(), phase), "property is vacuous");
         }
     }
 

@@ -33,20 +33,6 @@ final class AnnotatedVerificationWorkflow {
             Path requestedOutput,
             int fuel,
             int recursiveDepth,
-            boolean force) throws Exception {
-        return run(projectDirectory, validatorTitle, requestedPurpose, backend,
-                requestedOutput, fuel, recursiveDepth, force,
-                VerificationProgress.silent());
-    }
-
-    Execution run(
-            Path projectDirectory,
-            String validatorTitle,
-            VerificationPurpose requestedPurpose,
-            VerificationBackendKind backend,
-            Path requestedOutput,
-            int fuel,
-            int recursiveDepth,
             boolean force,
             VerificationProgress progress) throws Exception {
         Path project = projectDirectory.toAbsolutePath().normalize();

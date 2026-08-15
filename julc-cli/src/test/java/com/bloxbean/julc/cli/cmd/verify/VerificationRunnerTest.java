@@ -144,8 +144,11 @@ class VerificationRunnerTest {
         VerificationFiles.JSON.writeValue(planFile.toFile(), plan);
         bindPlan(workspace);
         var process = new FakeProcess(false, true, 4);
+        var bytes = new ByteArrayOutputStream();
+        var progress = VerificationProgress.testing(
+                new PrintStream(bytes, true, StandardCharsets.UTF_8), () -> 0L);
 
-        var result = runner(process).run(workspace, VerificationBackendKind.LOCAL);
+        var result = runner(process).run(workspace, VerificationBackendKind.LOCAL, progress);
 
         assertEquals("COULD-NOT-EVALUATE", result.result().outcome());
         assertEquals("property-vacuous", result.result().reason());
@@ -157,6 +160,41 @@ class VerificationRunnerTest {
         assertTrue(result.result().phases().stream().anyMatch(phaseResult ->
                 phaseResult.id().equals("prove-property")
                         && phaseResult.status().equals("SKIPPED")));
+        assertTrue(bytes.toString(StandardCharsets.UTF_8).contains(
+                "Proving property ... SKIPPED - property is vacuous"));
+    }
+
+    @Test
+    void nonVacuityUndeterminedIsNotReportedAsNonVacuous() throws Exception {
+        Path workspace = workspace("non-vacuity-undetermined", VerificationOutcome.SMT_VALID, false);
+        Path planFile = workspace.resolve(VerificationRunner.PLAN_FILE);
+        var plan = (com.fasterxml.jackson.databind.node.ObjectNode)
+                VerificationFiles.JSON.readTree(planFile.toFile());
+        plan.put("schemaVersion", 2);
+        var step = (com.fasterxml.jackson.databind.node.ObjectNode) plan.path("verify").get(0);
+        step.put("id", "check-non-vacuity");
+        step.put("propertyId", "example.non-vacuity");
+        step.remove(List.of("expectedExitCodes", "requiredOutput", "result", "reason"));
+        step.putArray("outcomes").addObject()
+                .put("exitCode", 2)
+                .put("requiredOutput", "RESULT-MARKER")
+                .put("result", "COULD-NOT-EVALUATE")
+                .put("reason", "non-vacuity-undetermined");
+        VerificationFiles.JSON.writeValue(planFile.toFile(), plan);
+        bindPlan(workspace);
+        var bytes = new ByteArrayOutputStream();
+        var progress = VerificationProgress.testing(
+                new PrintStream(bytes, true, StandardCharsets.UTF_8), () -> 0L);
+
+        var result = runner(new FakeProcess(false, true, 2))
+                .run(workspace, VerificationBackendKind.LOCAL, progress);
+
+        assertEquals("COULD-NOT-EVALUATE", result.result().outcome());
+        assertEquals("non-vacuity-undetermined", result.result().properties().getFirst().reason());
+        String output = bytes.toString(StandardCharsets.UTF_8);
+        assertTrue(output.contains("Checking property non-vacuity ... DONE [0 ms]"
+                + " - COULD-NOT-EVALUATE - non vacuity undetermined"));
+        assertFalse(output.contains(" - non-vacuous"));
     }
 
     @Test
@@ -230,7 +268,7 @@ class VerificationRunnerTest {
         runner.run(workspace, VerificationBackendKind.LOCAL, progress);
 
         assertTrue(bytes.toString(StandardCharsets.UTF_8).contains(
-                "Checking local Lean and Z3 toolchain ... FAILED [0 ms]"
+                "Checking local Lean and Z3 toolchain (may download Z3) ... FAILED [0 ms]"
                         + " - see verification-results/backend.log"));
     }
 
@@ -251,7 +289,8 @@ class VerificationRunnerTest {
         assertTrue(output.contains("Validating workspace and runner plan ... OK"));
         assertTrue(output.contains("Checking artifact, property, and generated-source hashes ... OK"));
         assertTrue(output.contains("Selecting verification backend ... OK"));
-        assertTrue(output.contains("Checking local Lean and Z3 toolchain ... OK"));
+        assertTrue(output.contains(
+                "Checking local Lean and Z3 toolchain (may download Z3) ... OK"));
         assertTrue(output.contains("Running acquisition step 'acquire' ... OK"));
         assertTrue(output.contains("Checking pinned dependency revisions ... OK"));
         assertTrue(output.contains("Running proof step 'verify' ... DONE"));

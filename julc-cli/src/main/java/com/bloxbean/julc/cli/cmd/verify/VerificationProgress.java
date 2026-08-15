@@ -35,6 +35,13 @@ final class VerificationProgress {
         if (out != null) out.println(message);
     }
 
+    void skipped(String message, String detail) {
+        if (out == null) return;
+        String suffix = detail == null || detail.isBlank()
+                ? "" : " - " + oneLine(detail);
+        out.println("  " + oneLine(message) + " ... SKIPPED" + suffix);
+    }
+
     Task start(String message) {
         if (out != null) {
             out.print("  " + oneLine(message) + " ... ");

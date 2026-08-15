@@ -44,4 +44,17 @@ class VerificationProgressTest {
         assertEquals("  Preparing Docker backend please wait ... FAILED [1m 5s]\n",
                 bytes.toString(StandardCharsets.UTF_8));
     }
+
+    @Test
+    void rendersSkippedStepAsACompleteLine() {
+        var bytes = new ByteArrayOutputStream();
+        var progress = VerificationProgress.testing(
+                new PrintStream(bytes, true, StandardCharsets.UTF_8), () -> 0L);
+
+        progress.skipped("Proving required signer", "property is vacuous\nnot attempted");
+
+        assertEquals("  Proving required signer ... SKIPPED"
+                        + " - property is vacuous not attempted\n",
+                bytes.toString(StandardCharsets.UTF_8));
+    }
 }
