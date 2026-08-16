@@ -1,6 +1,6 @@
 # ADR-016: Typed Verification DSL and Foundational Profile Catalog
 
-- **Status:** Proposed for exploration
+- **Status:** E.1–E.3 implemented experimentally; E.4–E.6 proposed
 - **Date:** 2026-08-13
 - **Related:**
   [ADR-001 — IOG Blaster Verification Strategy](001-iog-blaster-verification-strategy.md),
@@ -498,14 +498,21 @@ separation is not claimed as an OS security sandbox.
 
 ### E.3: Payment vertical slice
 
-**Implementation status:** complete as an experimental vertical slice on the
-E.3 feature branch. `julc verify dsl-init` generates a contract-specific Java
-metamodel and `julc verify dsl` executes a trusted-source property builder in
-the bounded worker, revalidates its canonical IR, binds it to exact UPLC, and
-runs the established certificate workflow. The reviewed v1 property requires
-a strict datum, a public-key seller output, and at least the datum price in
-lovelace. A weaker or differently shaped AST is rejected before Lean
-generation.
+**Implementation status:** complete as an experimental vertical slice and
+refreshed against the `strict-data-v1` compiler boundary on 2026-08-16.
+`julc verify dsl-init` generates a contract-specific Java metamodel and
+`julc verify dsl` executes a trusted-source property builder in the bounded
+worker, revalidates its canonical IR, binds it to exact UPLC, and runs the
+established certificate workflow. The reviewed v1 property requires a strict
+datum, a public-key seller output, and at least the datum price in lovelace. A
+weaker or differently shaped AST is rejected before Lean generation.
+
+The positive, unpaid, and multi-satisfaction fixtures now use normal typed
+datum parameters without raw `Data` tag/arity boilerplate. The compiler guard
+rejects malformed datum encodings before user code runs, while the generated
+Lean property independently performs its strict decode. The evidence driver
+rejects reintroduction of handwritten boundary checks and requires both the
+manifest and certificate to record `boundarySemantics: strict-data-v1`.
 
 The pinned V3 validity predicate contains model clauses that this Blaster
 revision cannot translate when placed directly in the SMT theorem. E.3 does

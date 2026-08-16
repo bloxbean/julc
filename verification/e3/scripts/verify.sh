@@ -9,6 +9,12 @@ cd "${REPO_DIR}"
 ./gradlew :julc-verification:test :julc-cli:test :julc-cli:shadowJar
 JULC=(java -jar "${REPO_DIR}/julc-cli/build/libs/julc.jar")
 
+if grep -R -E 'PlutusData|constr(Tag|Fields)|ContextsLib\.getSpendingDatum' \
+    "${E3_DIR}/fixtures"/*/src; then
+  echo "E.3 fixtures must rely on compiler-owned strict typed boundaries" >&2
+  exit 1
+fi
+
 run_fixture() {
   local fixture="$1" validator="$2" fuel="$3" expected_exit="$4" expected="$5"
   local project="${E3_DIR}/fixtures/${fixture}"
@@ -40,6 +46,10 @@ run_fixture() {
     exit 1
   }
   grep -q "\"outcome\" : \"${expected}\"" "${workspace}/verification-result.json"
+  grep -q '"boundarySemantics" : "strict-data-v1"' \
+    "${workspace}/verification-result.json"
+  grep -q '"boundarySemantics" : "strict-data-v1"' \
+    "${workspace}/verification-manifest.json"
 }
 
 run_fixture authorized AuthorizedSale 1500 0 SMT-VALID

@@ -35,7 +35,7 @@ project, generate the metamodel and compile a trusted Java property:
 
 ```bash
 julc verify dsl-init . --validator Sale \
-  --package evidence --model SaleModel \
+  --package evidence --class SaleModel \
   --out build/verification-dsl/src/evidence/SaleModel.java
 
 javac -cp julc.jar -d build/verification-dsl/classes \

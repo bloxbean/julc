@@ -1,6 +1,8 @@
 package com.bloxbean.julc.cli.cmd.verify;
 
+import com.bloxbean.cardano.julc.verification.SellerPaymentProperty;
 import com.bloxbean.cardano.julc.verification.dsl.SellerPaymentDsl;
+import com.bloxbean.cardano.julc.verification.dsl.ir.DslPropertySet;
 import com.bloxbean.cardano.julc.verification.dsl.worker.DslWorkerRunner;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
@@ -47,21 +49,36 @@ public final class VerifyDslCommand implements Callable<Integer> {
                 throw new IllegalArgumentException("Worker timeout must be positive");
             }
             var loaded = DslContractLoader.load(projectDir, validator);
+            var progress = VerificationProgress.console(System.out);
+            progress.heading("Preparing typed DSL verification for " + validator + " ...");
             Path worker = loaded.project().resolve("build/verification-dsl-worker")
                     .resolve(validator);
             String workerClasspath = specificationClasspath + File.pathSeparator
                     + System.getProperty("java.class.path");
-            var candidate = new DslWorkerRunner().run(
-                    workerClasspath, specificationClass, loaded.schema(), worker,
-                    Duration.ofSeconds(workerTimeoutSeconds));
-            var property = SellerPaymentDsl.resolve(candidate, loaded.schema(), validator,
-                    sellerField, priceField, sourcePath);
+            DslPropertySet candidate;
+            try (var task = progress.start("Executing trusted Java property builder")) {
+                candidate = new DslWorkerRunner().run(
+                        workerClasspath, specificationClass, loaded.schema(), worker,
+                        Duration.ofSeconds(workerTimeoutSeconds));
+                task.succeed();
+            }
+            SellerPaymentProperty property;
+            try (var task = progress.start("Validating reviewed typed property")) {
+                property = SellerPaymentDsl.resolve(candidate, loaded.schema(), validator,
+                        sellerField, priceField, sourcePath);
+                task.succeed(property.template());
+            }
             Path output = outputDirectory == null
                     ? loaded.project().resolve("verification").resolve(loaded.artifactId())
                     : outputDirectory.toAbsolutePath().normalize();
-            VerificationProjectGenerator.generateSellerPayment(
-                    loaded.blueprint(), property, fuel, recursiveDepth, output, force);
-            var execution = new VerificationRunner().run(output, backend);
+            try (var task = progress.start("Generating hash-bound verification workspace")) {
+                VerificationProjectGenerator.generateSellerPayment(
+                        loaded.blueprint(), property, fuel, recursiveDepth, output, force);
+                task.succeed(output.toString());
+            }
+            progress.heading("Running verification ...");
+            var execution = new VerificationRunner().run(output, backend, progress);
+            System.out.println();
             System.out.println(execution.result().outcome() + ": "
                     + execution.result().reason());
             System.out.println("Property: " + property.template());

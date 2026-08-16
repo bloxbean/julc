@@ -314,7 +314,7 @@ spending project whose datum has a `byte[] seller` and `BigInteger price`:
 
 ```bash
 julc verify dsl-init . --validator Sale \
-  --package evidence --model SaleModel \
+  --package evidence --class SaleModel \
   --out build/verification-dsl/src/evidence/SaleModel.java
 
 javac -cp julc.jar -d build/verification-dsl/classes \

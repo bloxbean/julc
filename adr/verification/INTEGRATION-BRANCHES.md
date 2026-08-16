@@ -6,28 +6,29 @@ decisions in the linked ADRs.
 
 ## Shared foundation
 
-- **Branch:** `feat/verification-product-roadmap`
-- **Recorded base:** `a14d214`
-- **Purpose:** common implementation through C.7 plus the post-C.7 roadmap.
-- **Rule:** integration work that depends on compiler-owned schemas, strict
-  Lean codecs, or the managed verification runner starts from this branch
-  until that foundation has landed on `main`.
-
-`origin/main` does not contain all of this foundation as of 2026-08-13.
-Creating the following integration branches directly from `main` would either
-omit required compiler type/schema support or duplicate prerequisite commits.
+- **Branch:** `main`
+- **Recorded point:** `321669b` (PR #85), superseded normally by later `main`
+  commits.
+- **Included foundation:** C.1–C.7, managed local/Docker execution, strict
+  `strict-data-v1` compiler boundaries, purpose-indexed CIP-57 blueprints, and
+  line-oriented verification progress.
+- **Rule:** new verification milestone branches start from current `main`
+  after their prerequisite integration PR has landed.
 
 ## Active integration branches
 
 ### Typed verification DSL
 
 - **Branch:** `feat/typed_verified_dsl`
-- **ADR:** ADR-016, maintained on `feat/typed_verified_dsl`
-- **Base:** `feat/verification-product-roadmap`
+- **ADR:** [ADR-016](016-typed-verification-dsl-and-profile-catalog.md)
+- **Base:** updated from `main` by merge commit `6a58b34`
+- **Pull request:** #86
 - **Current scope:** E.1 capability inventory, E.2 typed AST prototype, and
-  E.3 seller-payment vertical slice are integrated.
-- **Next scope:** E.4 purpose expansion waits for the applicable strict-boundary
-  stages below.
+  E.3 seller-payment vertical slice are integrated. E.3 has been refreshed
+  against `strict-data-v1`; its fixtures contain no handwritten raw-shape
+  checks and its four expected classifications reproduce.
+- **Next scope:** merge PR #86, then begin E.4a minting on a separate milestone
+  branch and pull request.
 
 Milestone work is developed on a dedicated feature branch and merged with a
 non-fast-forward merge into this integration branch. Existing examples are:
@@ -36,14 +37,15 @@ non-fast-forward merge into this integration branch. Existing examples are:
 - `feat/typed-verification-dsl-e2-typed-ast`
 - `feat/typed-verification-dsl-e3-payment`
 
+## Landed prerequisite branches
+
 ### Strict on-chain data boundaries
 
 - **Branch:** `feat/strict-data-boundaries`
 - **ADR:** [ADR-015](015-strict-on-chain-data-boundaries.md)
-- **Base:** `feat/verification-product-roadmap`
-- **Purpose:** implement strict typed datum/redeemer decoding as the corrected
-  preview compiler default without making it depend on the experimental typed
-  DSL.
+- **Landed:** PR #83
+- **Outcome:** strict typed datum/redeemer decoding is the compiler default and
+  remains independent of the experimental DSL.
 
 The original branch plan reserved these milestone branches:
 
@@ -52,22 +54,18 @@ The original branch plan reserved these milestone branches:
 - `feat/strict-data-boundaries-s3-productive-recursion`
 - `feat/strict-data-boundaries-s4-default-activation`
 
-For the current implementation round, S.1–S.4 were completed as one
-uncommitted working-tree review unit on `feat/strict-data-boundaries`, as
-requested. No milestone branch was merged and no automatic commit was made.
-After manual review, the temporary package-private comparison path was deleted;
-S.4 makes strict semantics unconditional on every compiler construction path.
-ADR-016 E.4 begins from that strict compiler semantics rather than relying on a
-partial checker or a public opt-in.
+S.1–S.4 were reviewed and landed together. The temporary comparison path was
+deleted; strict semantics are unconditional on every compiler construction
+path. ADR-016 E.3 and later milestones therefore rely on the public compiler
+semantics rather than a partial checker or public opt-in.
 
 ### Purpose-indexed multi-validator blueprints
 
 - **Branch:** `feat/purpose-indexed-multivalidator-blueprints`
 - **ADR:**
   [ADR-017](017-purpose-indexed-multivalidator-blueprints.md)
-- **Base:** `feat/strict-data-boundaries` at `b986752`.
-- **Current state:** P.1–P.4 are implemented and reviewed; the branch is ready
-  for commit and its separate pull request.
+- **Landed:** PR #84
+- **Current state:** P.1–P.4 are implemented and merged.
 - **Purpose:** remove the blueprint opt-out for explicit supported-purpose
   `@MultiValidator` contracts while keeping schema capture UPLC-neutral.
 
@@ -76,53 +74,27 @@ the standard CIP-57 purposes `spend`, `mint`, `withdraw`, and `publish`.
 `VOTE` and `PROPOSE` remain fail-closed because the pinned CIP-57 vocabulary,
 Aiken, and Scalus provide no standard blueprint purpose values for them.
 
-ADR-017 is numbered after ADR-016 even though ADR-016's file lives on
-`feat/typed_verified_dsl` and is not present on this older branch. Implementation
-was intentionally developed as a separate child branch after ADR-015 was
-reviewed and committed, so its pull request remains independently reviewable.
-
-Because this branch is based before ADR-016 E.1–E.3, S.1 verification agreement
-uses the C.5/C.6 fixtures present on the shared foundation. It must not copy E.3
-files from the typed-DSL branch and create parallel histories. After S.4 merges
-into `feat/typed_verified_dsl`, update and rerun E.3 there without handwritten
-raw-shape checks before starting E.4.
+ADR-017 deliberately remained independent of ADR-016. Its compiler schema
+model is now consumed by the typed DSL through `ContractSchema.Purpose`; the
+post-merge DSL compatibility fix is part of PR #86.
 
 ## Dependency and merge order
 
 ```text
-feat/verification-product-roadmap
-    |-- feat/strict-data-boundaries
-    |     |-- S.1 feature branch
-    |     |-- S.2 feature branch
-    |     |-- S.3 feature branch
-    |     `-- S.4 feature branch
-    |
-    `-- feat/typed_verified_dsl
-          |-- E.1 feature branch
-          |-- E.2 feature branch
-          `-- E.3 feature branch
-
-S.1 + S.2 + S.3 coverage, then S.4 activation
-    -> strict-boundary integration
-    -> typed-DSL integration
-    -> ADR-016 E.4a minting
+main (C.1-C.7 + strict boundaries + purpose-indexed blueprints)
+  -> feat/typed_verified_dsl (E.1-E.3, PR #86)
+      -> merge to main
+          -> ADR-016 E.4a minting milestone branch
 ```
 
 Preferred landing sequence:
 
-1. Land or otherwise establish `feat/verification-product-roadmap` on the
-   target branch.
-2. Complete and review the required ADR-015 stages independently.
-3. Land strict-boundary work first, then update `feat/typed_verified_dsl` from
-   the target branch; while work remains stacked, merge
-   `feat/strict-data-boundaries` into `feat/typed_verified_dsl` explicitly.
-4. Refresh E.3 fixtures and evidence against strict compiler output on the
-   updated typed-DSL integration branch.
-5. Start E.4 milestone branches from that reviewed integration state.
-
-Do not merge `feat/typed_verified_dsl` into `feat/strict-data-boundaries`.
-That would make the compiler feature depend on the experimental DSL and would
-obscure its compatibility and regression boundary.
+1. Review and merge PR #86 after its strict E.3 evidence and CI pass.
+2. Update current `main` before creating the E.4a branch.
+3. Give E.4a a detailed semantic sub-ADR, positive/vulnerable/malformed/vacuous
+   controls, and its own manual review point.
+4. Keep later compiler and blueprint work independent of the experimental DSL
+   unless a separate accepted ADR changes that module boundary.
 
 ## Maintenance rules
 
