@@ -10,7 +10,8 @@
   [ADR-012 — Stateful Spending Profile](012-milestone-c6-stateful-spending-profile.md),
   [ADR-013 — Controlled Minting Profile](013-milestone-c7-controlled-minting-profile.md),
   [ADR-014 — Post-C.7 Hardening Roadmap](014-post-c7-verification-hardening-roadmap.md),
-  [ADR-015 — Strict On-Chain Data Boundaries](015-strict-on-chain-data-boundaries.md)
+  [ADR-015 — Strict On-Chain Data Boundaries](015-strict-on-chain-data-boundaries.md),
+  [ADR-016 — Typed Verification DSL and Profile Catalog](016-typed-verification-dsl-and-profile-catalog.md)
 
 ## Context
 

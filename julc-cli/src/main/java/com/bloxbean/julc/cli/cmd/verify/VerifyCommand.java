@@ -13,6 +13,8 @@ import java.util.concurrent.Callable;
         description = "Generate and run formal-verification workspaces",
         subcommands = {
                 VerifyInitCommand.class,
+                VerifyDslInitCommand.class,
+                VerifyDslCommand.class,
                 VerifyRunCommand.class,
                 CommandLine.HelpCommand.class
         }

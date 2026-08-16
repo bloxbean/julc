@@ -305,7 +305,40 @@ The fixed authority and token are property literals, not values selected by an
 untrusted redeemer. See [`c7/README.md`](c7/README.md) for mint, burn, refuted,
 and vacuous examples.
 
-## 10. Fuel, recursion, and reruns
+## 10. Experimental typed seller-payment DSL
+
+ADR-016 E.3 adds an opt-in typed Java DSL vertical slice. It is experimental,
+executes trusted project Java in a bounded worker, and currently accepts only
+the reviewed seller-paid-at-least shape. Start from an already buildable JuLC
+spending project whose datum has a `byte[] seller` and `BigInteger price`:
+
+```bash
+julc verify dsl-init . --validator Sale \
+  --package evidence --class SaleModel \
+  --out build/verification-dsl/src/evidence/SaleModel.java
+
+javac -cp julc.jar -d build/verification-dsl/classes \
+  build/verification-dsl/src/evidence/SaleModel.java \
+  SellerPaymentSpec.java
+
+julc verify dsl . --validator Sale \
+  --spec-class evidence.SellerPaymentSpec \
+  --spec-classpath build/verification-dsl/classes \
+  --seller-field seller --price-field price \
+  --source SellerPaymentSpec.java --backend local --force
+```
+
+The property builder constructs typed symbolic expressions; it does not run the
+contract. JuLC independently validates its bounded canonical AST, imports the
+exact compiled UPLC, checks non-vacuity, and binds the generated Lean and
+property IR into the certificate. Use `--backend docker` instead of `local` for
+the proof workspace if desired; the Java property worker is still local and
+trusted-source-only in E.3.
+
+See [`dsl/README.md`](dsl/README.md) and [`e3/README.md`](e3/README.md) for the
+property source and evidence controls.
+
+## 11. Fuel, recursion, and reruns
 
 `--fuel` bounds exact UPLC preprocessing/execution in the generated obligation.
 An `SMT-VALID` certificate covers only successful paths completing within that
@@ -325,7 +358,7 @@ julc verify . --validator AuthorizedStateValidator \
   --out-dir verification/ci-authorized --force
 ```
 
-## 11. What the certificate does and does not claim
+## 12. What the certificate does and does not claim
 
 For an annotation profile, a successful certificate means:
 
