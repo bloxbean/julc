@@ -78,6 +78,62 @@ class ComposedDslAdmissionTest {
     }
 
     @Test
+    void schemaThreeAdmitsRewardingCredentialAmountAndSignerComposition() {
+        var model = new RewardingContractModel();
+        var matchingWithdrawal = model.context().txInfo().withdrawals().exists(entry ->
+                entry.credential().eq(model.rewardingCredential())
+                        .and(entry.amount().ge(integer(1_000_000))));
+        var guarantee = matchingWithdrawal.and(
+                model.context().txInfo().signatories().contains(keyHash(AUTHORITY_A)));
+        var candidate = DslPropertySet.composed(DslPurpose.REWARDING,
+                property("Rewards.authorized", DslDomain.VALID_REWARDING_V3_PINNED,
+                        guarantee));
+
+        DslPropertySet normalized = DslPropertyValidator.validateAndNormalize(
+                candidate, rewardingSchema(), 10_000);
+        var promoted = ComposedDslPromotion.promote(
+                normalized, rewardingSchema(), "Rewards", "RewardProperties.java");
+
+        assertEquals(DslPurpose.REWARDING, normalized.purpose());
+        assertEquals("rewarding", promoted.scriptPurpose());
+        assertEquals("BLASTER_VALID_REWARDING_SUPERSET",
+                promoted.claims().getFirst().counterexampleDomain());
+        assertTrue(promoted.claims().getFirst().capabilities()
+                .contains("field.txInfo.withdrawals"));
+        assertTrue(promoted.claims().getFirst().capabilities()
+                .contains("ledger.validRewardingContext"));
+        assertTrue(PropertyLeanRenderer.renderExpression(
+                normalized.properties().getFirst().expression())
+                .contains("txInfoWdrl"));
+    }
+
+    @Test
+    void rewardingNodesFailClosedForOtherPurposes() {
+        var rewarding = new RewardingContractModel();
+        var wrongPurpose = DslPropertySet.composed(DslPurpose.SPENDING,
+                property("wrong-rewarding-root", DslDomain.NONE,
+                        rewarding.context().txInfo().withdrawals().exists(entry ->
+                                entry.credential().eq(rewarding.rewardingCredential()))));
+
+        var error = assertThrows(IllegalArgumentException.class,
+                () -> DslPropertyValidator.validate(wrongPurpose, spendingSchema(), 100));
+        assertTrue(error.getMessage().contains("withdrawals")
+                || error.getMessage().contains("rewardingCredential"));
+    }
+
+    @Test
+    void rewardingMetamodelExposesOnlyReviewedPurposeRoots() {
+        String source = ContractMetamodelGenerator.generate(
+                rewardingSchema(), "evidence", "RewardsModel");
+
+        assertTrue(source.contains("RewardingContractModel"));
+        assertTrue(source.contains("CredentialExpr rewardingCredential()"));
+        assertTrue(source.contains("BoolExpr redeemerStrictlyDecodes()"));
+        assertFalse(source.contains("datum()"));
+        assertFalse(source.contains("ownPolicy()"));
+    }
+
+    @Test
     void andOrAssociationOrderingAndDuplicatesCanonicalizeIdentically() {
         var model = new SpendingContractModel();
         BoolExpr first = model.context().txInfo().signatories().contains(keyHash(AUTHORITY_A));
@@ -358,6 +414,19 @@ class ComposedDslAdmissionTest {
                 import com.bloxbean.cardano.julc.stdlib.annotation.*;
                 import com.bloxbean.cardano.julc.ledger.ScriptContext;
                 @MintingValidator class TokenPolicy {
+                    record Redeemer() {}
+                    @Entrypoint static boolean validate(Redeemer r, ScriptContext c) {
+                        return true;
+                    }
+                }
+                """).contractSchema();
+    }
+
+    private static ContractSchema rewardingSchema() {
+        return compiler().compileContract("""
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                import com.bloxbean.cardano.julc.ledger.ScriptContext;
+                @WithdrawValidator class Rewards {
                     record Redeemer() {}
                     @Entrypoint static boolean validate(Redeemer r, ScriptContext c) {
                         return true;

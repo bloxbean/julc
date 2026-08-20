@@ -11,7 +11,7 @@ or Docker.
 
 ## What is available today
 
-There are nine ways to explore the current integration. `julc verify run`
+There are ten ways to explore the current integration. `julc verify run`
 provides the managed execution path for both a generated workspace and the
 committed evidence suite:
 
@@ -51,6 +51,11 @@ committed evidence suite:
    supports multiple independently certified properties, and retains a fixed
    exact-execution/reviewed-domain theorem envelope. Its evidence includes
    novel spending and minting formulas plus mixed-result and vacuous controls.
+10. `verification/e4c` extends that same compositional path to rewarding
+    validators. It exposes the current rewarding credential and the raw,
+    duplicate-preserving withdrawal association list, and includes exact VM,
+    local, Docker, native, refuted, and vacuity evidence for an authority plus
+    minimum-withdrawal property.
 
 The integration does not prove that every JuLC program is safe. It checks
 explicit properties for one exact compiled artifact. Solver-valid Blaster

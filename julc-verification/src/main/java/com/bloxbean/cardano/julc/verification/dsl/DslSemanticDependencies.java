@@ -14,8 +14,11 @@ public final class DslSemanticDependencies {
 
     public static Plan collect(DslProperty property, DslPurpose purpose) {
         var state = new State();
-        state.capabilities.add(purpose == DslPurpose.SPENDING
-                ? "purpose.spending" : "purpose.minting");
+        state.capabilities.add(switch (purpose) {
+            case SPENDING -> "purpose.spending";
+            case MINTING -> "purpose.minting";
+            case REWARDING -> "purpose.rewarding";
+        });
         state.capabilities.add("field.scriptContext.scriptInfo");
         switch (property.domain()) {
             case NONE -> { }
@@ -26,6 +29,10 @@ public final class DslSemanticDependencies {
             case VALID_MINTING_V3_PINNED -> {
                 state.mintingDomain = true;
                 state.capabilities.add("ledger.validMintingContext");
+            }
+            case VALID_REWARDING_V3_PINNED -> {
+                state.rewardingDomain = true;
+                state.capabilities.add("ledger.validRewardingContext");
             }
         }
         visit(property.expression(), state);
@@ -41,7 +48,8 @@ public final class DslSemanticDependencies {
         return new Plan(capabilities,
                 state.rules.stream().sorted().toList(), state.datum,
                 state.redeemerDecode, state.ownPolicy, state.rawMint,
-                state.spendingDomain, state.mintingDomain);
+                state.spendingDomain, state.mintingDomain,
+                state.rewardingCredential, state.rewardingDomain);
     }
 
     private static void visit(PropertyNode node, State state) {
@@ -62,6 +70,10 @@ public final class DslSemanticDependencies {
                 case "ownPolicy" -> {
                     state.ownPolicy = true;
                     state.capabilities.add("helper.ownCurrencySymbol");
+                }
+                case "rewardingCredential" -> {
+                    state.rewardingCredential = true;
+                    state.capabilities.add("helper.credentialInWithdrawals");
                 }
                 default -> {
                     if (!state.binders.contains(root.name())) {
@@ -138,10 +150,13 @@ public final class DslSemanticDependencies {
             case "TX_INFO.outputs" -> "field.txInfo.outputs";
             case "TX_INFO.inputs" -> "field.txInfo.inputs";
             case "TX_INFO.mint" -> "field.txInfo.mint";
+            case "TX_INFO.withdrawals" -> "field.txInfo.withdrawals";
             case "TX_OUT.address" -> "dsl.field.txOut.address";
             case "TX_OUT.value" -> "dsl.field.txOut.value";
             case "ADDRESS.credential" -> "dsl.field.address.credential";
             case "VALUE.lovelace" -> "dsl.helper.lovelaceOf";
+            case "WITHDRAWAL_ENTRY.credential", "WITHDRAWAL_ENTRY.amount" ->
+                    "field.txInfo.withdrawals";
             default -> throw new IllegalArgumentException(
                     "No capability mapping for field " + field.name());
         };
@@ -157,7 +172,7 @@ public final class DslSemanticDependencies {
             case ExactOwnPolicyAssetNode ignored -> "exact-own-policy-asset";
             case CompareNode comparison -> "compare:" + comparison.operator();
             case CredentialKeyHashNode ignored -> "credential-key-hash";
-            case ExistsNode ignored -> "exists-output";
+            case ExistsNode exists -> "exists:" + exists.collection().resultType();
             case LiteralNode ignored -> "integer-literal";
             case BytesLiteralNode literal -> "bytes-literal:" + literal.kind();
             case TxOutRefLiteralNode ignored -> "tx-out-ref-literal";
@@ -172,7 +187,9 @@ public final class DslSemanticDependencies {
             boolean needsOwnPolicy,
             boolean needsRawMint,
             boolean needsSpendingDomain,
-            boolean needsMintingDomain) { }
+            boolean needsMintingDomain,
+            boolean needsRewardingCredential,
+            boolean needsRewardingDomain) { }
 
     private static final class State {
         private final Set<String> capabilities = new LinkedHashSet<>();
@@ -184,5 +201,7 @@ public final class DslSemanticDependencies {
         private boolean rawMint;
         private boolean spendingDomain;
         private boolean mintingDomain;
+        private boolean rewardingCredential;
+        private boolean rewardingDomain;
     }
 }

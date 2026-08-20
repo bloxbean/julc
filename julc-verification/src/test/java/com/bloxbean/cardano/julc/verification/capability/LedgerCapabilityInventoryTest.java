@@ -30,6 +30,12 @@ class LedgerCapabilityInventoryTest {
                 inventory.require("helper.utxoConsumed").status());
         assertEquals(CapabilityStatus.TYPED,
                 inventory.require("ledger.validMintingContext").status());
+        assertEquals(CapabilityStatus.TYPED,
+                inventory.require("purpose.rewarding").status());
+        assertEquals(CapabilityStatus.TYPED,
+                inventory.require("field.txInfo.withdrawals").status());
+        assertEquals(CapabilityStatus.TYPED,
+                inventory.require("ledger.validRewardingContext").status());
         assertEquals(CapabilityStatus.UNSUPPORTED_SOLVER,
                 inventory.require("solver.proofReconstruction").status());
     }

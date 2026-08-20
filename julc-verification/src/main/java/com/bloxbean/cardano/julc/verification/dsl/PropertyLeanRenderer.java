@@ -40,7 +40,9 @@ public final class PropertyLeanRenderer {
                 case "exactUplcSucceeds" -> "exactUplcSucceeds ctx";
                 case "validSpendingContext" -> "validSpendingContext ctx";
                 case "validMintingContext" -> "blasterValidMintingContext ctx";
+                case "validRewardingContext" -> "blasterValidRewardingContext ctx";
                 case "ownPolicy" -> "ownPolicyOf ctx";
+                case "rewardingCredential" -> "rewardingCredentialOf ctx";
                 case "redeemerStrictlyDecodes" -> "redeemerStrictlyDecodes ctx";
                 case "datum" -> "strictDatum ctx";
                 default -> root.name();
@@ -57,10 +59,13 @@ public final class PropertyLeanRenderer {
                 case "TX_INFO.outputs" -> target + ".txInfoOutputs";
                 case "TX_INFO.inputs" -> target + ".txInfoInputs";
                 case "TX_INFO.mint" -> target + ".txInfoMint";
+                case "TX_INFO.withdrawals" -> target + ".txInfoWdrl";
                 case "TX_OUT.address" -> target + ".txOutAddress";
                 case "TX_OUT.value" -> target + ".txOutValue";
                 case "ADDRESS.credential" -> target + ".addressCredential";
                 case "VALUE.lovelace" -> "lovelaceOf " + target;
+                case "WITHDRAWAL_ENTRY.credential" -> target + ".1";
+                case "WITHDRAWAL_ENTRY.amount" -> target + ".2";
                 default -> throw new IllegalArgumentException("No Lean field mapping for " + field);
             };
         }
@@ -109,9 +114,15 @@ public final class PropertyLeanRenderer {
                     + " | .ScriptCredential _ => false");
         }
         if (node instanceof ExistsNode exists) {
+            String binderType = switch (exists.collection().resultType()) {
+                case LIST_TX_OUT -> "CardanoLedgerApi.V2.TxOut";
+                case WITHDRAWALS -> "CardanoLedgerApi.V2.Credential × Int";
+                default -> throw new IllegalArgumentException(
+                        "No Lean binder type for " + exists.collection().resultType());
+            };
             return "List.any " + parenthesize(renderNode(exists.collection(), rootBindings))
                     + " (fun (" + exists.variable()
-                    + " : CardanoLedgerApi.V2.TxOut) => "
+                    + " : " + binderType + ") => "
                     + renderNode(exists.predicate(), rootBindings) + ")";
         }
         if (node instanceof LiteralNode literal) return literal.value();
