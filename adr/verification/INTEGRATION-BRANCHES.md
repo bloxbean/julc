@@ -23,18 +23,18 @@ decisions in the linked ADRs.
 - **Integration branch:** `feat/typed-verification-dsl-e4`
 - **Parent ADR:** [ADR-016](016-typed-verification-dsl-and-profile-catalog.md)
 - **Base:** `bcfc3c7`, the PR #86 merge on `main`
-- **Current milestone branch:**
+- **Latest milestone branch:**
   `feat/typed-verification-dsl-e4a-minting`
-- **Current milestone ADR:**
+- **Latest milestone ADR:**
   [ADR-018](018-milestone-e4a-typed-minting-dsl.md)
-- **Current scope:** E.4a purpose-aware minting metamodel, shared
+- **Integrated scope:** E.4a purpose-aware minting metamodel, shared
   controlled-mint semantics, explicit minting ledger domain, and a one-shot
   minting vertical slice.
-- **Current state:** ADR-018 E.4a.1–E.4a.4 are implemented; manual review,
-  local/Docker evidence, and GraalVM native verification are complete. The
-  milestone branch is ready for its scoped commit and non-fast-forward merge.
-- **Next scope:** complete manual review, then merge E.4a into this integration
-  branch and use a separate branch/ADR for the next purpose slice.
+- **Current state:** ADR-018 E.4a.1–E.4a.4 were committed as `da92873` and
+  merged non-fast-forward into this integration branch as `bf9ecaf`. Manual
+  review, local/Docker evidence, and GraalVM native verification are complete.
+- **Next scope:** use a separate milestone branch and ADR for the next reviewed
+  E.4 purpose slice.
 
 Milestone work is developed on a dedicated feature branch and merged with a
 non-fast-forward merge into this integration branch. Existing examples are:
