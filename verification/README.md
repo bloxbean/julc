@@ -11,7 +11,7 @@ or Docker.
 
 ## What is available today
 
-There are eight ways to explore the current integration. `julc verify run`
+There are nine ways to explore the current integration. `julc verify run`
 provides the managed execution path for both a generated workspace and the
 committed evidence suite:
 
@@ -46,6 +46,11 @@ committed evidence suite:
    normal or purpose-indexed minting interfaces, converges `@ControlledMint`
    with canonical schema-2 DSL semantics, and proves a domain-aware one-shot
    authority/anchor/exact-asset property with positive and adversarial controls.
+9. `verification/e4b` is the compositional schema-3 DSL path. It promotes any
+   admitted combination of the currently supported spending or minting nodes,
+   supports multiple independently certified properties, and retains a fixed
+   exact-execution/reviewed-domain theorem envelope. Its evidence includes
+   novel spending and minting formulas plus mixed-result and vacuous controls.
 
 The integration does not prove that every JuLC program is safe. It checks
 explicit properties for one exact compiled artifact. Solver-valid Blaster

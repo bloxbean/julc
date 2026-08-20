@@ -1,5 +1,7 @@
 package com.bloxbean.julc.cli.cmd.verify;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+
 import java.util.List;
 import java.util.Map;
 
@@ -29,6 +31,20 @@ public record VerificationRunResult(
             String logSha256) {
     }
 
-    public record Property(String id, String outcome, String reason) {
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record Property(
+            String id,
+            String outcome,
+            String reason,
+            String domain,
+            String guaranteeSha256,
+            String envelopeSha256,
+            List<String> capabilities,
+            String counterexampleDomain,
+            Boolean ledgerValidCounterexampleEstablished,
+            Boolean concreteVmCounterexampleReproduced) {
+        public Property(String id, String outcome, String reason) {
+            this(id, outcome, reason, null, null, null, null, null, null, null);
+        }
     }
 }

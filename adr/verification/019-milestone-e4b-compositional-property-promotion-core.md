@@ -1,6 +1,6 @@
 # ADR-019: Milestone E.4b Compositional Property Promotion Core
 
-- **Status:** Proposed
+- **Status:** Implemented experimentally; awaiting manual review
 - **Date:** 2026-08-20
 - **Feature branch:** `feat/typed-verification-dsl-e4b-composition`
 - **Parent:**
@@ -243,12 +243,13 @@ property-set purpose and an explicit theorem envelope.
 Conceptually:
 
 ```text
+DslSpecificationInvocation
+  sourceReference: recorded provenance shared by returned claims
 DslPropertySetV3
   schemaVersion: 3
   purpose: spending | minting
   properties:
     - id
-      source reference
       domain: none | valid-spending-v3-pinned | valid-minting-v3-pinned
       guarantee: PropertyNode<BOOL>
 ```
@@ -315,8 +316,7 @@ or host-language effects.
 
 Property IDs remain stable user identities and are not derived from the
 formula. Two properties with different IDs may have equal guarantees and are
-reported as explicit duplicates or canonical aliases according to a single
-documented policy; one must not silently disappear.
+reported as two explicit independent claims; neither silently disappears.
 
 ### 4. Add one generic certificate-facing property model
 
@@ -479,8 +479,8 @@ revised.
 
 ### E.4b.1 — Schema-3 envelope, canonicalization, and admission
 
-- Add explicit purpose, reviewed domain, guarantee, property source, and
-  multiple-property representation.
+- Add explicit purpose, reviewed domain, guarantee, invocation-level source
+  provenance, and multiple-property representation.
 - Freeze schema-1 and schema-2 canonical compatibility fixtures.
 - Implement authoritative purpose/domain validation for every existing node.
 - Move exact execution and domain roots into the parent-owned theorem envelope.
@@ -696,18 +696,76 @@ Rejected. Concise, versioned profiles remain valuable for common security
 goals. They become convenience frontends over shared semantics rather than
 the only formulas JuLC can promote.
 
-## Open questions
+## Resolved implementation decisions
 
-These questions may refine API spelling without changing the decision:
+1. **Domain placement:** schema 3 uses
+   `property(id, domain, guarantee)`. A set has one purpose, while each claim
+   selects either no reviewed domain or the compatible pinned purpose domain.
+2. **Equal formulas:** distinct property IDs remain distinct claims even when
+   their normalized guarantees and hashes are equal. Exact duplicate operands
+   inside one `AND` or `OR` are removed by canonicalization; claims never are.
+3. **Aggregate JSON:** the existing schema-2 runner/result protocol is reused.
+   `properties` remains the authoritative ordered list, with two entries per
+   claim: non-vacuity followed by proof. The top-level outcome is derived and
+   cannot replace or hide those entries.
+4. **Legacy schemas:** schema 1 and schema 2 remain accepted unchanged for the
+   E.3/E.4a compatibility commands. New generic specifications use schema 3.
+   Removal or a long-term support promise requires a later public-API decision.
+5. **Source provenance:** `--source` identifies the trusted Java specification
+   invocation shared by all claims returned by that worker. It is recorded
+   provenance, not a semantic input whose file contents are trusted. Canonical
+   schema-3 IR is the hash-bound semantic input.
+6. **Canonical identities:** property IDs are sorted deterministically and
+   encoded into collision-checked Lean/file identifiers. Case-insensitive
+   filesystem collisions fail before generation.
+7. **Counterexample claims:** every generic claim records its symbolic domain
+   plus `ledgerValidCounterexampleEstablished=false` and
+   `concreteVmCounterexampleReproduced=false`. A solver model is not promoted
+   to either stronger witness without a future independent gate.
 
-1. Whether schema-3 Java builders expose `domain(...)` on each property or on
-   a purpose-specific property factory.
-2. Whether equal formulas under different property IDs are reported as
-   explicit duplicates or canonical aliases; they must never disappear.
-3. The stable JSON shape for aggregate result metadata. Per-property results
-   remain authoritative regardless of the chosen summary shape.
-4. Whether schema-1/schema-2 adapters are kept indefinitely or only through a
-   documented experimental migration window.
+## Implementation outcome
+
+E.4b.1 through E.4b.4 are implemented on
+`feat/typed-verification-dsl-e4b-composition`. No compiler, core, ledger API,
+stdlib, PIR, optimizer, wrapper, or blueprint-generation source changed.
+
+The implementation adds:
+
+- closed schema-3 purpose/domain envelopes with strict parent validation;
+- bounded pure `AND`/`OR` normalization and stable multi-property ordering;
+- one generic certificate-facing property and exhaustive semantic dependency
+  planner over the admitted sealed node inventory;
+- generic spending and minting Lean generation from canonical nodes, including
+  the previously reviewed pinned ledger-domain bridges;
+- independent non-vacuity/proof scripts, progress, logs, results, vacuity
+  guards, aggregation, and conservative counterexample metadata per claim;
+- manifest preflight that re-derives claim hashes/capabilities from canonical
+  IR and rejects omitted, reordered, duplicated, or cross-bound runner steps;
+- native-image reachability metadata for the generic envelope; and
+- reproducible spending, minting, mixed-result, and vacuous evidence under
+  `verification/e4b`.
+
+Two novel compositions that previously failed whole-formula recognition are
+`SMT-VALID` against exact 632-byte spending and minting artifacts at CEK fuel
+5000. The spending evidence contains two independently established properties.
+A mixed run establishes its payment property and refutes its signer property,
+producing aggregate `REFUTED` without hiding either result. An always-failing
+fixture reports `COULD-NOT-EVALUATE/property-vacuous` and does not execute its
+proof.
+
+The positive spending run also succeeds through the Docker backend using
+image
+`sha256:e4fd68fd9a03e1d91bd7af14dc2cdb149a7f3e98600e5934447aef005b7df4da`
+and through a real GraalVM 25.0.2 native CLI. The native CLI invokes the DSL
+worker in an installed JVM with the JuLC JAR on `--spec-classpath`, then uses
+the same authenticated local verification backend. Local, Docker, and native
+runs bind the same canonical IR, exact UPLC, generated Lean, pins, and bounds.
+Wall-clock timings remain diagnostics rather than claim inputs.
+
+Existing schema-1/schema-2 code paths, annotation template IDs, and property
+records remain compatibility paths. Their focused and complete affected-module
+tests are retained; schema-1 and schema-2 canonical byte fixtures are frozen.
+The generic path does not call the E.3 or E.4a whole-tree resolvers.
 
 ## Acceptance criteria
 

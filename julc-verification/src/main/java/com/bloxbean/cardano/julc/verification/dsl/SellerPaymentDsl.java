@@ -4,6 +4,8 @@ import com.bloxbean.cardano.julc.compiler.pir.PirType;
 import com.bloxbean.cardano.julc.compiler.schema.ContractSchema;
 import com.bloxbean.cardano.julc.verification.SellerPaymentProperty;
 import com.bloxbean.cardano.julc.verification.dsl.ir.DslPropertySet;
+import com.bloxbean.cardano.julc.verification.dsl.ir.DslDomain;
+import com.bloxbean.cardano.julc.verification.dsl.ir.DslPurpose;
 
 import java.util.List;
 
@@ -24,6 +26,19 @@ public final class SellerPaymentDsl {
         var domainAndExecution = contract.validSpendingContext()
                 .and(contract.exactUplcSucceeds());
         return DslPropertySet.of(property(propertyId, domainAndExecution.implies(paid)));
+    }
+
+    /** Schema-3 convenience builder; promotion treats this like any manually composed AST. */
+    public static DslPropertySet composedPropertySet(
+            String propertyId, String sellerField, String priceField) {
+        var contract = new SpendingContractModel();
+        var seller = contract.datum().bytesField(sellerField);
+        var price = contract.datum().integerField(priceField);
+        var paid = contract.context().txInfo().outputs().exists(output ->
+                output.address().credential().matchesKeyHash(seller)
+                        .and(output.value().lovelace().ge(price)));
+        return DslPropertySet.composed(DslPurpose.SPENDING,
+                property(propertyId, DslDomain.VALID_SPENDING_V3_PINNED, paid));
     }
 
     public static SellerPaymentProperty resolve(

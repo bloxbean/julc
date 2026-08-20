@@ -1,6 +1,6 @@
 # Experimental typed verification DSL
 
-Milestone E.2 provides an experimental Java frontend in `julc-verification`.
+Milestones E.2-E.4b provide an experimental Java frontend in `julc-verification`.
 It is not yet a stable public API.
 
 The prototype contains:
@@ -8,7 +8,7 @@ The prototype contains:
 - sealed, typed symbolic expressions rather than raw Lean strings;
 - deterministic contract-specific datum accessors generated from
   compiler-owned `ContractSchema`;
-- canonical schema-1 property IR;
+- canonical schema-1/schema-2 compatibility IR and compositional schema-3 IR;
 - a separate JVM worker with memory, timeout and output-size bounds;
 - authoritative post-worker type/path validation; and
 - deterministic Lean expression rendering.
@@ -53,10 +53,12 @@ The JuLC JAR entry is required with the native CLI because the trusted DSL
 worker is a child JVM; it is harmless with the JVM CLI. Use the platform
 classpath separator (`;` on Windows).
 
-The accepted E.3 AST shape is intentionally fixed and reviewed. General DSL
-expressions can be represented by the prototype but are not automatically
-promoted to verification claims. See `verification/e3/README.md` for the
-positive, refuted, vacuous, and multi-satisfaction evidence controls.
+The E.3 schema-1 path remains a fixed compatibility profile. Schema 3 removes
+that whole-formula restriction: supported nodes may be composed into one or
+more independently named guarantees without adding a JuLC resolver. Exact
+UPLC success and optional reviewed ledger domains remain a parent-owned
+theorem envelope rather than user-composable assumptions. See
+[`verification/e4b/README.md`](../e4b/README.md).
 
 Milestone E.4a adds canonical schema-2 minting IR while retaining schema-1
 spending compatibility. It introduces a purpose-aware minting metamodel,
@@ -71,3 +73,11 @@ the redeemer, contain the configured authority and consumed anchor, and have
 the exact configured current-policy asset. See
 [`verification/e4a/README.md`](../e4a/README.md) for commands, controls, raw
 association-list semantics, and local/Docker execution.
+
+Milestone E.4b makes schema 3 the generic path for new spending and minting
+specifications. Use `DslPropertySet.composed(purpose, ...)` and
+`property(id, domain, guarantee)`. `AND`/`OR` association, ordering, and exact
+duplicates normalize deterministically; quantifier and implication scopes are
+preserved. Every claim receives its own non-vacuity/proof steps and certificate
+metadata. The DSL remains closed: unsupported nodes, cross-purpose roots,
+arbitrary assumptions, and raw Lean fail before workspace publication.

@@ -1,6 +1,6 @@
 # ADR-016: Typed Verification DSL and Foundational Profile Catalog
 
-- **Status:** E.1–E.3 and E.4a implemented experimentally; E.4b accepted for implementation; remaining E.4–E.6 proposed
+- **Status:** E.1–E.4b implemented experimentally; E.4b awaiting manual review; E.4c–E.6 proposed
 - **Date:** 2026-08-13
 - **Related:**
   [ADR-001 — IOG Blaster Verification Strategy](001-iog-blaster-verification-strategy.md),
@@ -574,13 +574,17 @@ semantics, raw current-policy asset structure, consumed-anchor one-shot minting,
 and a kernel bridge from pinned V3 minting validity to the solver domain. The
 remaining purposes and broader value operations are still proposed work.
 
-**E.4b compositional core:**
+**E.4b compositional core (implemented experimentally):**
 [ADR-019](019-milestone-e4b-compositional-property-promotion-core.md) makes
 the validated typed AST authoritative through promotion, generic Lean
 generation, runner planning, and per-property certification. It replaces the
 E.3/E.4a whole-formula recognizers with a closed but freely compositional
 guarantee language, while keeping exact execution and reviewed domains in a
 fixed theorem envelope. E.4b is a prerequisite for adding another purpose.
+Schema-3 evidence now demonstrates novel spending and minting compositions,
+independent multi-property results, conservative counterexample-domain
+metadata, and local, Docker, and native-CLI execution. It introduces no
+on-chain compiler dependency or UPLC change.
 
 **E.4c and later purpose slices:**
 Rewarding is the next proposed purpose after E.4b, followed incrementally by

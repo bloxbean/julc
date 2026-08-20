@@ -37,7 +37,9 @@ decisions in the linked ADRs.
 - **Current state:** ADR-018 E.4a.1–E.4a.4 were committed as `da92873` and
   merged non-fast-forward into this integration branch as `bf9ecaf`. Manual
   review, local/Docker evidence, and GraalVM native verification are complete.
-  ADR-019 is proposed for implementation on the current milestone branch.
+  ADR-019 E.4b.1–E.4b.4 are implemented on the current milestone branch and
+  await manual review before a scoped commit. Novel spending/minting,
+  mixed-result, vacuous, local, Docker, and native-CLI controls pass.
 - **Next scope:** complete E.4b before adding rewarding as E.4c; later purpose
   slices extend the generic semantic inventory rather than adding fixed-formula
   resolvers.

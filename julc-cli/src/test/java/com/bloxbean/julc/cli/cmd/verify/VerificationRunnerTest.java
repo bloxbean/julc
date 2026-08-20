@@ -7,6 +7,11 @@ import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
 import com.bloxbean.cardano.julc.verification.OneShotMintProperty;
 import com.bloxbean.cardano.julc.verification.dsl.MintingDsl;
 import com.bloxbean.cardano.julc.verification.dsl.PropertyIrCodec;
+import com.bloxbean.cardano.julc.verification.dsl.ComposedDslPromotion;
+import com.bloxbean.cardano.julc.verification.dsl.SpendingContractModel;
+import com.bloxbean.cardano.julc.verification.dsl.ir.DslDomain;
+import com.bloxbean.cardano.julc.verification.dsl.ir.DslPropertySet;
+import com.bloxbean.cardano.julc.verification.dsl.ir.DslPurpose;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -30,6 +35,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static com.bloxbean.cardano.julc.verification.dsl.VerificationDsl.*;
 
 class VerificationRunnerTest {
 
@@ -169,6 +175,204 @@ class VerificationRunnerTest {
                         && phaseResult.status().equals("SKIPPED")));
         assertTrue(bytes.toString(StandardCharsets.UTF_8).contains(
                 "Proving property ... SKIPPED - property is vacuous"));
+    }
+
+    @Test
+    void guardedVacuitySkipsOnlyItsOwnProofAndContinuesOtherProperties() throws Exception {
+        Path workspace = workspace("guarded-vacuity", VerificationOutcome.SMT_VALID, false);
+        Path planFile = workspace.resolve(VerificationRunner.PLAN_FILE);
+        var plan = (com.fasterxml.jackson.databind.node.ObjectNode)
+                VerificationFiles.JSON.readTree(planFile.toFile());
+        plan.put("schemaVersion", 2);
+        var original = (com.fasterxml.jackson.databind.node.ObjectNode)
+                plan.path("verify").get(0);
+        original.remove(List.of("expectedExitCodes", "requiredOutput", "result", "reason"));
+        var verify = plan.putArray("verify");
+        var firstNonVacuity = original.deepCopy();
+        firstNonVacuity.put("id", "check-non-vacuity-first");
+        firstNonVacuity.put("propertyId", "first.non-vacuity");
+        firstNonVacuity.putArray("outcomes").addObject()
+                .put("exitCode", 4).put("requiredOutput", "VACUOUS")
+                .put("result", "COULD-NOT-EVALUATE").put("reason", "property-vacuous");
+        verify.add(firstNonVacuity);
+        var firstProof = original.deepCopy();
+        firstProof.put("id", "prove-first");
+        firstProof.put("propertyId", "first");
+        firstProof.put("nonVacuityGuardPropertyId", "first.non-vacuity");
+        firstProof.putArray("outcomes").addObject()
+                .put("exitCode", 0).put("requiredOutput", "VALID")
+                .put("result", "SMT-VALID").put("reason", "established");
+        verify.add(firstProof);
+        var secondNonVacuity = original.deepCopy();
+        secondNonVacuity.put("id", "check-non-vacuity-second");
+        secondNonVacuity.put("propertyId", "second.non-vacuity");
+        var secondOutcomes = secondNonVacuity.putArray("outcomes");
+        secondOutcomes.addObject()
+                .put("exitCode", 0).put("requiredOutput", "NON-VACUOUS")
+                .put("result", "REFUTED").put("reason", "expected-negative-control");
+        secondOutcomes.addObject()
+                .put("exitCode", 4).put("requiredOutput", "VACUOUS")
+                .put("result", "COULD-NOT-EVALUATE").put("reason", "property-vacuous");
+        verify.add(secondNonVacuity);
+        var secondProof = original.deepCopy();
+        secondProof.put("id", "prove-second");
+        secondProof.put("propertyId", "second");
+        secondProof.put("nonVacuityGuardPropertyId", "second.non-vacuity");
+        secondProof.putArray("outcomes").addObject()
+                .put("exitCode", 0).put("requiredOutput", "VALID")
+                .put("result", "SMT-VALID").put("reason", "established");
+        verify.add(secondProof);
+        VerificationFiles.JSON.writeValue(planFile.toFile(), plan);
+        bindPlan(workspace);
+        var process = new FakeProcess(List.of(4, 0, 0),
+                List.of("VACUOUS\n", "NON-VACUOUS\n", "VALID\n"));
+
+        var result = runner(process).run(workspace, VerificationBackendKind.LOCAL);
+
+        assertEquals("COULD-NOT-EVALUATE", result.result().outcome());
+        assertEquals(4, result.result().properties().size());
+        assertTrue(result.result().properties().stream().anyMatch(property ->
+                property.id().equals("first")
+                        && property.reason().equals("not-evaluated-vacuous")));
+        assertTrue(result.result().properties().stream().anyMatch(property ->
+                property.id().equals("second")
+                        && property.outcome().equals("SMT-VALID")));
+        assertEquals(3, process.verifyCalls);
+    }
+
+    @Test
+    void composedWorkspacePassesBoundManifestAndIndependentProtocolPreflight()
+            throws Exception {
+        Path workspace = composedWorkspace("composed-preflight");
+        var process = new FakeProcess(List.of(0, 0), List.of(
+                "NON-VACUOUS: successful input witness exists\n",
+                "SMT-VALID: DSL property StateGate.signer established\n"));
+
+        var result = runner(process).run(workspace, VerificationBackendKind.LOCAL);
+
+        assertEquals("SMT-VALID", result.result().outcome());
+        assertEquals("all-properties-established", result.result().reason());
+        assertTrue(result.result().properties().stream().anyMatch(property ->
+                property.id().equals("StateGate.signer")
+                        && property.outcome().equals("SMT-VALID")
+                        && property.domain().equals("NONE")
+                        && property.guaranteeSha256().matches("[0-9a-f]{64}")
+                        && property.envelopeSha256().matches("[0-9a-f]{64}")
+                        && property.capabilities().contains("purpose.spending")
+                        && property.counterexampleDomain().equals(
+                                "BLASTER_SPENDING_SYMBOLIC_CONTEXT")
+                        && !property.ledgerValidCounterexampleEstablished()
+                        && !property.concreteVmCounterexampleReproduced()));
+    }
+
+    @Test
+    void composedClaimMetadataCannotBeRehashedIntoAFalseCertificate() throws Exception {
+        Path workspace = composedWorkspace("composed-claim-tamper");
+        Path propertyFile = workspace.resolve("verification-property.json");
+        var property = (com.fasterxml.jackson.databind.node.ObjectNode)
+                VerificationFiles.JSON.readTree(propertyFile.toFile());
+        ((com.fasterxml.jackson.databind.node.ObjectNode) property.path("claims").get(0))
+                .put("guaranteeSha256", "0".repeat(64));
+        VerificationFiles.JSON.writeValue(propertyFile.toFile(), property);
+        Path manifestFile = workspace.resolve("verification-manifest.json");
+        var manifest = (com.fasterxml.jackson.databind.node.ObjectNode)
+                VerificationFiles.JSON.readTree(manifestFile.toFile());
+        ((com.fasterxml.jackson.databind.node.ObjectNode) manifest.path("claims").get(0))
+                .put("guaranteeSha256", "0".repeat(64));
+        ((com.fasterxml.jackson.databind.node.ObjectNode) manifest.path("propertyIr"))
+                .put("sha256", VerificationFiles.sha256(propertyFile));
+        VerificationFiles.JSON.writeValue(manifestFile.toFile(), manifest);
+        var process = new FakeProcess(false, true);
+
+        var result = runner(process).run(workspace, VerificationBackendKind.LOCAL);
+
+        assertEquals("COULD-NOT-EVALUATE", result.result().outcome());
+        assertEquals("preflight-failed", result.result().reason());
+        assertTrue(result.diagnostic().contains("inconsistent"));
+        assertTrue(process.commands.isEmpty());
+    }
+
+    @Test
+    void composedPlanCannotOmitAClaimProofEvenWhenManifestHashIsUpdated() throws Exception {
+        Path workspace = composedWorkspace("composed-plan-omission");
+        Path planFile = workspace.resolve(VerificationRunner.PLAN_FILE);
+        var plan = (com.fasterxml.jackson.databind.node.ObjectNode)
+                VerificationFiles.JSON.readTree(planFile.toFile());
+        ((com.fasterxml.jackson.databind.node.ArrayNode) plan.path("verify")).remove(1);
+        VerificationFiles.JSON.writeValue(planFile.toFile(), plan);
+        bindPlan(workspace);
+        var process = new FakeProcess(false, true);
+
+        var result = runner(process).run(workspace, VerificationBackendKind.LOCAL);
+
+        assertEquals("COULD-NOT-EVALUATE", result.result().outcome());
+        assertEquals("preflight-failed", result.result().reason());
+        assertTrue(result.diagnostic().contains("every claim exactly once"));
+        assertTrue(process.commands.isEmpty());
+    }
+
+    @Test
+    void composedPlanCannotRelabelARefutationAfterRunnerHashIsUpdated() throws Exception {
+        Path workspace = composedWorkspace("composed-outcome-tamper");
+        Path planFile = workspace.resolve(VerificationRunner.PLAN_FILE);
+        var plan = (com.fasterxml.jackson.databind.node.ObjectNode)
+                VerificationFiles.JSON.readTree(planFile.toFile());
+        ((com.fasterxml.jackson.databind.node.ObjectNode)
+                plan.path("verify").get(1).path("outcomes").get(1))
+                .put("result", "SMT-VALID").put("reason", "dsl-property-established");
+        VerificationFiles.JSON.writeValue(planFile.toFile(), plan);
+        bindPlan(workspace);
+        var process = new FakeProcess(false, true);
+
+        var result = runner(process).run(workspace, VerificationBackendKind.LOCAL);
+
+        assertEquals("COULD-NOT-EVALUATE", result.result().outcome());
+        assertEquals("preflight-failed", result.result().reason());
+        assertTrue(result.diagnostic().contains("canonical claim"));
+        assertTrue(process.commands.isEmpty());
+    }
+
+    @Test
+    void composedCounterexampleQualificationCannotBeDeletedAndRehashed() throws Exception {
+        Path workspace = composedWorkspace("composed-qualification-tamper");
+        Path propertyFile = workspace.resolve("verification-property.json");
+        var property = (com.fasterxml.jackson.databind.node.ObjectNode)
+                VerificationFiles.JSON.readTree(propertyFile.toFile());
+        ((com.fasterxml.jackson.databind.node.ObjectNode) property.path("claims").get(0))
+                .remove("ledgerValidCounterexampleEstablished");
+        VerificationFiles.JSON.writeValue(propertyFile.toFile(), property);
+        Path manifestFile = workspace.resolve("verification-manifest.json");
+        var manifest = (com.fasterxml.jackson.databind.node.ObjectNode)
+                VerificationFiles.JSON.readTree(manifestFile.toFile());
+        ((com.fasterxml.jackson.databind.node.ObjectNode) manifest.path("claims").get(0))
+                .remove("ledgerValidCounterexampleEstablished");
+        ((com.fasterxml.jackson.databind.node.ObjectNode) manifest.path("propertyIr"))
+                .put("sha256", VerificationFiles.sha256(propertyFile));
+        VerificationFiles.JSON.writeValue(manifestFile.toFile(), manifest);
+        var process = new FakeProcess(false, true);
+
+        var result = runner(process).run(workspace, VerificationBackendKind.LOCAL);
+
+        assertEquals("COULD-NOT-EVALUATE", result.result().outcome());
+        assertEquals("preflight-failed", result.result().reason());
+        assertTrue(result.diagnostic().contains("qualification"));
+        assertTrue(process.commands.isEmpty());
+    }
+
+    @Test
+    void composedUndeterminedNonVacuitySkipsOnlyTheGuardedProof() throws Exception {
+        Path workspace = composedWorkspace("composed-undetermined-non-vacuity");
+        var process = new FakeProcess(List.of(2),
+                List.of("COULD-NOT-EVALUATE: non-vacuity was undetermined\n"));
+
+        var result = runner(process).run(workspace, VerificationBackendKind.LOCAL);
+
+        assertEquals("COULD-NOT-EVALUATE", result.result().outcome());
+        assertEquals(1, process.verifyCalls);
+        assertTrue(result.result().properties().stream().anyMatch(property ->
+                property.id().equals("StateGate.signer")
+                        && property.reason().equals(
+                                "not-evaluated-non-vacuity-undetermined")));
     }
 
     @Test
@@ -609,6 +813,9 @@ class VerificationRunnerTest {
         assertTrue(metadata.contains("ControlledMintProperty"));
         assertTrue(metadata.contains("SellerPaymentProperty"));
         assertTrue(metadata.contains("OneShotMintProperty"));
+        assertTrue(metadata.contains("ComposedDslProperty"));
+        assertTrue(metadata.contains("DslPurpose"));
+        assertTrue(metadata.contains("DslDomain"));
         assertTrue(metadata.contains("ExactOwnPolicyAssetNode"));
         assertTrue(metadata.contains("LedgerCapabilityInventory"));
         assertTrue(metadata.contains("CapabilityStatus"));
@@ -773,6 +980,38 @@ class VerificationRunnerTest {
         return output;
     }
 
+    private Path composedWorkspace(String name) throws Exception {
+        String source = """
+                import com.bloxbean.cardano.julc.ledger.ScriptContext;
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                @SpendingValidator class StateGate {
+                    record Datum(byte[] owner) {}
+                    record Redeemer() {}
+                    @Entrypoint static boolean validate(
+                            Datum datum, Redeemer redeemer, ScriptContext ctx) { return true; }
+                }
+                """;
+        var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(source);
+        var blueprint = BlueprintGenerator.generate(
+                new BlueprintConfig("composed-preflight-test", "1"),
+                List.of(new BlueprintGenerator.CompiledValidator(
+                        "StateGate", compiled.compileResult(), compiled.contractSchema())));
+        Path blueprintFile = tempDir.resolve(name + "-plutus.json");
+        Files.writeString(blueprintFile, blueprint.toJson());
+        var model = new SpendingContractModel();
+        String authority = "4a554c435f5645524946595f415554484f524954595f303030303031";
+        var dsl = DslPropertySet.composed(DslPurpose.SPENDING,
+                property("StateGate.signer", DslDomain.NONE,
+                        model.context().txInfo().signatories().contains(keyHash(authority))));
+        var property = ComposedDslPromotion.promote(
+                dsl, compiled.contractSchema(), "StateGate", "StateGateProperties.java");
+        Path output = tempDir.resolve(name);
+        VerificationProjectGenerator.generateComposedDsl(
+                blueprintFile, property, 3000, 4, output, false);
+        return output;
+    }
+
     private static final class PassthroughBackend implements VerificationExecutionBackend {
         @Override
         public BackendContext prepare(Path workspace, VerificationProcess process,
@@ -824,7 +1063,10 @@ class VerificationRunnerTest {
         private final boolean includeMarker;
         private final Integer forcedVerifyExit;
         private final int acquisitionFailures;
+        private final List<Integer> sequencedVerifyExits;
+        private final List<String> sequencedVerifyOutputs;
         private int acquireAttempts;
+        private int verifyCalls;
         private final List<List<String>> commands = new ArrayList<>();
 
         private FakeProcess(boolean timeoutVerify, boolean includeMarker) {
@@ -841,6 +1083,17 @@ class VerificationRunnerTest {
             this.includeMarker = includeMarker;
             this.forcedVerifyExit = forcedVerifyExit;
             this.acquisitionFailures = acquisitionFailures;
+            this.sequencedVerifyExits = List.of();
+            this.sequencedVerifyOutputs = List.of();
+        }
+
+        private FakeProcess(List<Integer> exits, List<String> outputs) {
+            this.timeoutVerify = false;
+            this.includeMarker = true;
+            this.forcedVerifyExit = null;
+            this.acquisitionFailures = 0;
+            this.sequencedVerifyExits = List.copyOf(exits);
+            this.sequencedVerifyOutputs = List.copyOf(outputs);
         }
 
         @Override
@@ -861,7 +1114,7 @@ class VerificationRunnerTest {
                         ? BLASTER + "\n"
                         : packageName.endsWith("PlutusCore") ? PLUTUS + "\n" : LEDGER + "\n";
                 if (packageName.endsWith("CardanoLedgerApi")) output = LEDGER + "\n";
-            } else if (command.getFirst().contains("verify.sh")) {
+            } else if (command.getFirst().contains("verify")) {
                 JsonNode plan = VerificationFiles.JSON.readTree(
                         workingDirectory.resolve(VerificationRunner.PLAN_FILE).toFile());
                 if (plan.hasNonNull("resultManifest")) {
@@ -873,10 +1126,18 @@ class VerificationRunnerTest {
                               "evidence":"SMT-VALID","result":"ESTABLISHED"}]}
                             """);
                 }
-                exit = forcedVerifyExit != null ? forcedVerifyExit
-                        : plan.path("verify").get(0).path("expectedExitCodes").get(0).asInt();
+                if (!sequencedVerifyExits.isEmpty()) {
+                    exit = sequencedVerifyExits.get(verifyCalls);
+                    output = sequencedVerifyOutputs.get(verifyCalls);
+                    verifyCalls++;
+                } else {
+                    exit = forcedVerifyExit != null ? forcedVerifyExit
+                            : plan.path("verify").get(0)
+                                    .path("expectedExitCodes").get(0).asInt();
+                    output = includeMarker ? "RESULT-MARKER\n" : "no protocol output\n";
+                    verifyCalls++;
+                }
                 timedOut = timeoutVerify;
-                output = includeMarker ? "RESULT-MARKER\n" : "no protocol output\n";
             } else {
                 output = "ok\n";
             }

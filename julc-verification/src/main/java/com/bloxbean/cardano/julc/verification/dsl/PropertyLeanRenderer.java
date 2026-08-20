@@ -2,6 +2,8 @@ package com.bloxbean.cardano.julc.verification.dsl;
 
 import com.bloxbean.cardano.julc.verification.dsl.ir.*;
 
+import java.util.Map;
+
 /** Deterministic, auditable Lean expression renderer for admitted DSL v1 nodes. */
 public final class PropertyLeanRenderer {
     private PropertyLeanRenderer() { }
@@ -16,11 +18,23 @@ public final class PropertyLeanRenderer {
     }
 
     public static String renderExpression(PropertyNode expression) {
-        return renderNode(expression);
+        return renderNode(expression, Map.of());
+    }
+
+    /** Render with reviewed symbolic-root bindings supplied by the generic envelope. */
+    public static String renderExpression(
+            PropertyNode expression, Map<String, String> rootBindings) {
+        return renderNode(expression, Map.copyOf(rootBindings));
     }
 
     private static String renderNode(PropertyNode node) {
+        return renderNode(node, Map.of());
+    }
+
+    private static String renderNode(PropertyNode node, Map<String, String> rootBindings) {
         if (node instanceof RootNode root) {
+            String bound = rootBindings.get(root.name());
+            if (bound != null) return bound;
             return switch (root.name()) {
                 case "context" -> "ctx";
                 case "exactUplcSucceeds" -> "exactUplcSucceeds ctx";
@@ -33,7 +47,7 @@ public final class PropertyLeanRenderer {
             };
         }
         if (node instanceof FieldNode field) {
-            String target = renderNode(field.target());
+            String target = renderNode(field.target(), rootBindings);
             if (field.target().resultType() == DslType.DATA) {
                 return target + "." + field.name();
             }
@@ -54,27 +68,27 @@ public final class PropertyLeanRenderer {
             String op = switch (binary.operator()) {
                 case AND -> "&&";
                 case OR -> "||";
-                case IMPLIES -> "(!" + parenthesize(renderNode(binary.left())) + ") ||";
+                case IMPLIES -> "(!" + parenthesize(renderNode(binary.left(), rootBindings)) + ") ||";
             };
             if (binary.operator() == BoolOperator.IMPLIES) {
-                return parenthesize(op + " " + parenthesize(renderNode(binary.right())));
+                return parenthesize(op + " " + parenthesize(renderNode(binary.right(), rootBindings)));
             }
-            return parenthesize(renderNode(binary.left()) + " " + op + " "
-                    + renderNode(binary.right()));
+            return parenthesize(renderNode(binary.left(), rootBindings) + " " + op + " "
+                    + renderNode(binary.right(), rootBindings));
         }
         if (node instanceof ContainsNode contains) {
-            return "List.elem " + parenthesize(renderNode(contains.value())) + " "
-                    + parenthesize(renderNode(contains.collection()));
+            return "List.elem " + parenthesize(renderNode(contains.value(), rootBindings)) + " "
+                    + parenthesize(renderNode(contains.collection(), rootBindings));
         }
         if (node instanceof ConsumesNode consumes) {
-            return "utxoConsumed " + parenthesize(renderNode(consumes.outputReference())) + " "
-                    + parenthesize(renderNode(consumes.inputs()));
+            return "utxoConsumed " + parenthesize(renderNode(consumes.outputReference(), rootBindings)) + " "
+                    + parenthesize(renderNode(consumes.inputs(), rootBindings));
         }
         if (node instanceof ExactOwnPolicyAssetNode exact) {
-            return "exactOwnPolicyAsset " + parenthesize(renderNode(exact.policy())) + " "
-                    + parenthesize(renderNode(exact.tokenName())) + " "
-                    + parenthesize(renderNode(exact.quantity())) + " "
-                    + parenthesize(renderNode(exact.mint()));
+            return "exactOwnPolicyAsset " + parenthesize(renderNode(exact.policy(), rootBindings)) + " "
+                    + parenthesize(renderNode(exact.tokenName(), rootBindings)) + " "
+                    + parenthesize(renderNode(exact.quantity(), rootBindings)) + " "
+                    + parenthesize(renderNode(exact.mint(), rootBindings));
         }
         if (node instanceof CompareNode comparison) {
             String op = switch (comparison.operator()) {
@@ -85,16 +99,20 @@ public final class PropertyLeanRenderer {
                 case GT -> ">";
                 case GE -> ">=";
             };
-            return parenthesize(renderNode(comparison.left()) + " " + op + " "
-                    + renderNode(comparison.right()));
+            return parenthesize(renderNode(comparison.left(), rootBindings) + " " + op + " "
+                    + renderNode(comparison.right(), rootBindings));
         }
         if (node instanceof CredentialKeyHashNode match) {
-            return parenthesize(renderNode(match.credential())
-                    + " == Credential.PubKeyCredential " + renderNode(match.keyHash()));
+            return parenthesize("match " + renderNode(match.credential(), rootBindings)
+                    + " with | .PubKeyCredential actualKeyHash => actualKeyHash == "
+                    + renderNode(match.keyHash(), rootBindings)
+                    + " | .ScriptCredential _ => false");
         }
         if (node instanceof ExistsNode exists) {
-            return "List.any (fun " + exists.variable() + " => "
-                    + renderNode(exists.predicate()) + ") " + renderNode(exists.collection());
+            return "List.any " + parenthesize(renderNode(exists.collection(), rootBindings))
+                    + " (fun (" + exists.variable()
+                    + " : CardanoLedgerApi.V2.TxOut) => "
+                    + renderNode(exists.predicate(), rootBindings) + ")";
         }
         if (node instanceof LiteralNode literal) return literal.value();
         if (node instanceof BytesLiteralNode literal) return leanByteString(literal.hex());

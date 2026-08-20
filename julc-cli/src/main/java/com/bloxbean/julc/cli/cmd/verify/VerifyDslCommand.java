@@ -3,8 +3,10 @@ package com.bloxbean.julc.cli.cmd.verify;
 import com.bloxbean.cardano.julc.verification.SellerPaymentProperty;
 import com.bloxbean.cardano.julc.verification.ControlledMintProperty;
 import com.bloxbean.cardano.julc.verification.OneShotMintProperty;
+import com.bloxbean.cardano.julc.verification.ComposedDslProperty;
 import com.bloxbean.cardano.julc.verification.VerificationProperty;
 import com.bloxbean.cardano.julc.verification.dsl.MintingDsl;
+import com.bloxbean.cardano.julc.verification.dsl.ComposedDslPromotion;
 import com.bloxbean.cardano.julc.verification.dsl.SellerPaymentDsl;
 import com.bloxbean.cardano.julc.verification.dsl.ir.DslPropertySet;
 import com.bloxbean.cardano.julc.verification.dsl.worker.DslWorkerRunner;
@@ -72,7 +74,11 @@ public final class VerifyDslCommand implements Callable<Integer> {
             }
             VerificationProperty property;
             try (var task = progress.start("Validating reviewed typed property")) {
-                if (loaded.purpose() == VerificationPurpose.SPENDING) {
+                if (candidate.schemaVersion()
+                        == DslPropertySet.COMPOSITION_SCHEMA_VERSION) {
+                    property = ComposedDslPromotion.promote(
+                            candidate, loaded.schema(), validator, sourcePath);
+                } else if (loaded.purpose() == VerificationPurpose.SPENDING) {
                     if (sellerField == null || priceField == null) {
                         throw new IllegalArgumentException(
                                 "Spending DSL requires --seller-field and --price-field");
@@ -95,9 +101,13 @@ public final class VerifyDslCommand implements Callable<Integer> {
                 } else if (property instanceof ControlledMintProperty controlled) {
                     VerificationProjectGenerator.generateControlledMint(
                             loaded.blueprint(), controlled, fuel, recursiveDepth, output, force);
-                } else {
+                } else if (property instanceof OneShotMintProperty oneShot) {
                     VerificationProjectGenerator.generateOneShotMint(
-                            loaded.blueprint(), (OneShotMintProperty) property,
+                            loaded.blueprint(), oneShot,
+                            fuel, recursiveDepth, output, force);
+                } else {
+                    VerificationProjectGenerator.generateComposedDsl(
+                            loaded.blueprint(), (ComposedDslProperty) property,
                             fuel, recursiveDepth, output, force);
                 }
                 task.succeed(output.toString());

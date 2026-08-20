@@ -22,7 +22,8 @@ public record VerificationRunPlan(
             String propertyId,
             String result,
             String reason,
-            List<ObservedOutcome> outcomes) {
+            List<ObservedOutcome> outcomes,
+            String nonVacuityGuardPropertyId) {
     }
 
     /** An authenticated process observation mapped to one verification result. */
