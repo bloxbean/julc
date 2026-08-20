@@ -11,13 +11,10 @@
   <img src="https://img.shields.io/badge/Plutus-V3-blue.svg" alt="Plutus V3"/>
 </p>
 
-> ## **Warning**
-> **Experimental / Research Project**
+> ## **Preview Status**
+> **JuLC** is currently in preview and under active development. Core functionality is available and usable for experimentation and testnet development, but some language features and edge cases are still being implemented and hardened.
 >
-> Most of the code in this project is generated using AI, with human-assisted design, testing, and verification.
-> This is an experimental project created mainly for research and exploration purposes.
->
-> **Please do not use this in production.** Expect rough edges, incomplete features, and potential bugs.
+> APIs and compiler behavior may change between releases. **Production use is not yet recommended**.
 
 # JuLC
 
