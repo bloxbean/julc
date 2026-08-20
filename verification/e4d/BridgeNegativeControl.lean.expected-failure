@@ -1,0 +1,25 @@
+/-
+Expected not to elaborate. Adding an unproved condition to the certifying
+solver domain must break the kernel bridge instead of promoting the SMT result.
+-/
+import LedgerDomainEquivalence
+
+namespace JulcGenerated.BridgeNegativeControl
+
+open CardanoLedgerApi.V3
+open JulcGenerated.UserProperty
+
+example
+    (txInfo : TxInfo)
+    (redeemer : PlutusCore.Data.Data)
+    (index : Int)
+    (certificate : TxCert)
+    (valid : CardanoLedgerApi.V3.Contexts.validCertifyingContext
+      ⟨txInfo, redeemer, .CertifyingScript index certificate⟩ = true) :
+    blasterValidCertifyingContext
+      ⟨txInfo, redeemer, .CertifyingScript index certificate⟩ && false = true := by
+  have included := validCertifyingContext_implies_blasterDomain
+    txInfo redeemer index certificate valid
+  simp [included]
+
+end JulcGenerated.BridgeNegativeControl

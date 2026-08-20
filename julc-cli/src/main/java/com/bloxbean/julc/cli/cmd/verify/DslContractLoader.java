@@ -87,6 +87,7 @@ final class DslContractLoader {
             case SPEND -> VerificationPurpose.SPENDING;
             case MINT -> VerificationPurpose.MINTING;
             case WITHDRAW -> VerificationPurpose.REWARDING;
+            case CERTIFY -> VerificationPurpose.CERTIFYING;
             default -> throw new IllegalArgumentException(
                     "Typed DSL does not support " + purpose + " interfaces");
         };

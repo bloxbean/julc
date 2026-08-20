@@ -134,6 +134,71 @@ class ComposedDslAdmissionTest {
     }
 
     @Test
+    void schemaThreeAdmitsCertifyingKindIndexAndSignerComposition() {
+        var model = new CertifyingContractModel();
+        var known = model.context().txInfo().certificates().containsAt(
+                model.certificateIndex(), model.certificate());
+        var guarantee = model.redeemerStrictlyDecodes()
+                .and(model.certificate().isKind(TxCertKind.UPDATE_DREP))
+                .and(known)
+                .and(model.context().txInfo().signatories()
+                        .contains(keyHash(AUTHORITY_A)));
+        var candidate = DslPropertySet.composed(DslPurpose.CERTIFYING,
+                property("Certificates.authorized-update",
+                        DslDomain.VALID_CERTIFYING_V3_PINNED, guarantee));
+
+        DslPropertySet normalized = DslPropertyValidator.validateAndNormalize(
+                candidate, certifyingSchema(), 10_000);
+        var promoted = ComposedDslPromotion.promote(
+                normalized, certifyingSchema(), "Certificates", "CertSpec.java");
+
+        assertEquals(DslPurpose.CERTIFYING, normalized.purpose());
+        assertEquals("certifying", promoted.scriptPurpose());
+        assertEquals("BLASTER_VALID_CERTIFYING_SUPERSET",
+                promoted.claims().getFirst().counterexampleDomain());
+        assertTrue(promoted.claims().getFirst().capabilities()
+                .contains("helper.isKnownCertificate"));
+        assertTrue(promoted.claims().getFirst().capabilities()
+                .contains("ledger.validCertifyingContext"));
+        String lean = PropertyLeanRenderer.renderExpression(
+                normalized.properties().getFirst().expression());
+        assertTrue(lean.contains("TxCertUpdateDRep"));
+        assertTrue(lean.contains("isKnownCertificate"));
+    }
+
+    @Test
+    void certifyingNodesAndUnknownKindsFailClosed() {
+        var certifying = new CertifyingContractModel();
+        var wrongPurpose = DslPropertySet.composed(DslPurpose.SPENDING,
+                property("wrong-certifying-root", DslDomain.NONE,
+                        certifying.certificate().isKind(TxCertKind.UPDATE_DREP)));
+        assertThrows(IllegalArgumentException.class,
+                () -> DslPropertyValidator.validate(
+                        wrongPurpose, spendingSchema(), 100));
+
+        var valid = DslPropertySet.composed(DslPurpose.CERTIFYING,
+                property("Certificates.kind", DslDomain.NONE,
+                        certifying.certificate().isKind(TxCertKind.UPDATE_DREP)));
+        String forged = PropertyIrCodec.canonicalJson(valid)
+                .replace("UPDATE_DREP", "FUTURE_CERTIFICATE");
+        assertThrows(java.io.IOException.class,
+                () -> PropertyIrCodec.readCanonical(forged, 1_000_000));
+    }
+
+    @Test
+    void certifyingMetamodelExposesOnlyReviewedPurposeRoots() {
+        String source = ContractMetamodelGenerator.generate(
+                certifyingSchema(), "evidence", "CertificateModel");
+
+        assertTrue(source.contains("CertifyingContractModel"));
+        assertTrue(source.contains("TxCertExpr certificate()"));
+        assertTrue(source.contains("IntegerExpr certificateIndex()"));
+        assertTrue(source.contains("BoolExpr redeemerStrictlyDecodes()"));
+        assertFalse(source.contains("datum()"));
+        assertFalse(source.contains("ownPolicy()"));
+    }
+
+    @Test
     void andOrAssociationOrderingAndDuplicatesCanonicalizeIdentically() {
         var model = new SpendingContractModel();
         BoolExpr first = model.context().txInfo().signatories().contains(keyHash(AUTHORITY_A));
@@ -427,6 +492,19 @@ class ComposedDslAdmissionTest {
                 import com.bloxbean.cardano.julc.stdlib.annotation.*;
                 import com.bloxbean.cardano.julc.ledger.ScriptContext;
                 @WithdrawValidator class Rewards {
+                    record Redeemer() {}
+                    @Entrypoint static boolean validate(Redeemer r, ScriptContext c) {
+                        return true;
+                    }
+                }
+                """).contractSchema();
+    }
+
+    private static ContractSchema certifyingSchema() {
+        return compiler().compileContract("""
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                import com.bloxbean.cardano.julc.ledger.ScriptContext;
+                @CertifyingValidator class Certificates {
                     record Redeemer() {}
                     @Entrypoint static boolean validate(Redeemer r, ScriptContext c) {
                         return true;

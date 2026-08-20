@@ -41,8 +41,11 @@ public final class PropertyLeanRenderer {
                 case "validSpendingContext" -> "validSpendingContext ctx";
                 case "validMintingContext" -> "blasterValidMintingContext ctx";
                 case "validRewardingContext" -> "blasterValidRewardingContext ctx";
+                case "validCertifyingContext" -> "blasterValidCertifyingContext ctx";
                 case "ownPolicy" -> "ownPolicyOf ctx";
                 case "rewardingCredential" -> "rewardingCredentialOf ctx";
+                case "certificate" -> "certificateOf ctx";
+                case "certificateIndex" -> "certificateIndexOf ctx";
                 case "redeemerStrictlyDecodes" -> "redeemerStrictlyDecodes ctx";
                 case "datum" -> "strictDatum ctx";
                 default -> root.name();
@@ -60,6 +63,7 @@ public final class PropertyLeanRenderer {
                 case "TX_INFO.inputs" -> target + ".txInfoInputs";
                 case "TX_INFO.mint" -> target + ".txInfoMint";
                 case "TX_INFO.withdrawals" -> target + ".txInfoWdrl";
+                case "TX_INFO.certificates" -> target + ".txInfoTxCerts";
                 case "TX_OUT.address" -> target + ".txOutAddress";
                 case "TX_OUT.value" -> target + ".txOutValue";
                 case "ADDRESS.credential" -> target + ".addressCredential";
@@ -94,6 +98,29 @@ public final class PropertyLeanRenderer {
                     + parenthesize(renderNode(exact.tokenName(), rootBindings)) + " "
                     + parenthesize(renderNode(exact.quantity(), rootBindings)) + " "
                     + parenthesize(renderNode(exact.mint(), rootBindings));
+        }
+        if (node instanceof TxCertKindNode kind) {
+            String constructor = switch (kind.kind()) {
+                case REG_STAKING -> "TxCertRegStaking";
+                case UNREG_STAKING -> "TxCertUnRegStaking";
+                case DELEG_STAKING -> "TxCertDelegStaking";
+                case REG_DELEG -> "TxCertRegDeleg";
+                case REG_DREP -> "TxCertRegDRep";
+                case UPDATE_DREP -> "TxCertUpdateDRep";
+                case UNREG_DREP -> "TxCertUnRegDRep";
+                case POOL_REGISTER -> "TxCertPoolRegister";
+                case POOL_RETIRE -> "TxCertPoolRetire";
+                case AUTH_HOT_COMMITTEE -> "TxCertAuthHotCommittee";
+                case RESIGN_COLD_COMMITTEE -> "TxCertResignColdCommittee";
+            };
+            return "match " + parenthesize(renderNode(kind.certificate(), rootBindings))
+                    + " with | ." + constructor + " .. => true | _ => false";
+        }
+        if (node instanceof KnownCertificateNode known) {
+            return "CardanoLedgerApi.V3.Contexts.isKnownCertificate "
+                    + parenthesize(renderNode(known.certificate(), rootBindings)) + " "
+                    + parenthesize(renderNode(known.index(), rootBindings)) + " "
+                    + parenthesize(renderNode(known.certificates(), rootBindings));
         }
         if (node instanceof CompareNode comparison) {
             String op = switch (comparison.operator()) {

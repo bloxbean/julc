@@ -371,7 +371,7 @@ policy cannot disappear behind first-match lookup. See
 [`e4a/README.md`](e4a/README.md) for a complete specification and local/Docker
 commands.
 
-## 12. Experimental compositional and rewarding DSL
+## 12. Experimental compositional, rewarding, and certifying DSL
 
 ADR-019 schema 3 accepts freely composed guarantees built only from the
 reviewed typed nodes. Each property keeps the exact-execution and optional
@@ -418,6 +418,49 @@ enough for `exists`; choose a stronger reviewed formula if a policy needs a
 different duplicate rule. See [`e4b/README.md`](e4b/README.md) for generic
 multi-property composition and [`e4c/README.md`](e4c/README.md) for the full
 rewarding controls and Docker command.
+
+A certifying specification uses the same compositional schema-3 pipeline. The
+selected `publish` interface supplies the current certificate and its ledger
+index; user property code cannot replace either root:
+
+```java
+var contract = new CertifyingModel();
+var currentCertificate = contract.context().txInfo().certificates().containsAt(
+        contract.certificateIndex(), contract.certificate());
+var authorized = contract.context().txInfo().signatories()
+        .contains(keyHash(AUTHORITY));
+
+return DslPropertySet.composed(DslPurpose.CERTIFYING,
+        property("certificate.authorized-update",
+                DslDomain.VALID_CERTIFYING_V3_PINNED,
+                contract.redeemerStrictlyDecodes()
+                        .and(contract.certificate().isKind(TxCertKind.UPDATE_DREP))
+                        .and(currentCertificate)
+                        .and(authorized)));
+```
+
+Generate the purpose-specific metamodel and verify it with:
+
+```bash
+julc verify dsl-init . --validator Certificates --purpose certifying \
+  --package evidence --class CertifyingModel \
+  --out build/verification-dsl/src/evidence/CertifyingModel.java
+
+javac -cp julc.jar -d build/verification-dsl/classes \
+  build/verification-dsl/src/evidence/CertifyingModel.java CertifyingSpec.java
+
+julc verify dsl . --validator Certificates --purpose certifying \
+  --spec-class evidence.CertifyingSpec \
+  --spec-classpath "build/verification-dsl/classes:/path/to/julc.jar" \
+  --source CertifyingSpec.java --backend local --fuel 5000 --force
+```
+
+`TxCertKind` is a closed enum covering the 11 pinned Conway certificate
+constructors. `containsAt` is ordered indexed membership: negative and
+out-of-range indices are false, and duplicates are retained. Under
+`VALID_CERTIFYING_V3_PINNED` this membership is already a ledger-domain fact;
+the certificate-kind and authority clauses are the additional policy. See
+[`e4d/README.md`](e4d/README.md) for the complete local/Docker evidence matrix.
 
 ## 13. Fuel, recursion, and reruns
 

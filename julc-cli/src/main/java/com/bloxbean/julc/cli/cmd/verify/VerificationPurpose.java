@@ -8,7 +8,8 @@ import java.util.Locale;
 enum VerificationPurpose {
     SPENDING("spending", "spend", ContractSchema.Purpose.SPEND),
     MINTING("minting", "mint", ContractSchema.Purpose.MINT),
-    REWARDING("rewarding", "withdraw", ContractSchema.Purpose.WITHDRAW);
+    REWARDING("rewarding", "withdraw", ContractSchema.Purpose.WITHDRAW),
+    CERTIFYING("certifying", "publish", ContractSchema.Purpose.CERTIFY);
 
     private final String userName;
     private final String cip57Name;
@@ -41,6 +42,6 @@ enum VerificationPurpose {
             if (candidate.userName.equals(normalized)) return candidate;
         }
         throw new IllegalArgumentException(
-                "Purpose must be spending, minting, or rewarding");
+                "Purpose must be spending, minting, rewarding, or certifying");
     }
 }

@@ -85,6 +85,11 @@ public final class DslPropertyValidator {
             throw new IllegalArgumentException("DSL schema 1 does not admit minting node "
                     + node.getClass().getSimpleName());
         }
+        if (!composition && (node instanceof TxCertKindNode
+                || node instanceof KnownCertificateNode)) {
+            throw new IllegalArgumentException(
+                    "Certificate nodes require compositional DSL schema 3");
+        }
         if (node instanceof RootNode root) {
             if (composition && isEnvelopeRoot(root.name())) {
                 throw new IllegalArgumentException("Schema-3 guarantee cannot contain theorem "
@@ -101,14 +106,20 @@ public final class DslPropertyValidator {
                         == ContractSchema.Purpose.MINT ? DslType.BOOL : null;
                 case "validRewardingContext" -> schema.purpose()
                         == ContractSchema.Purpose.WITHDRAW ? DslType.BOOL : null;
+                case "validCertifyingContext" -> schema.purpose()
+                        == ContractSchema.Purpose.CERTIFY ? DslType.BOOL : null;
                 case "redeemerStrictlyDecodes" -> switch (schema.purpose()) {
-                    case MINT, WITHDRAW -> DslType.BOOL;
+                    case MINT, WITHDRAW, CERTIFY -> DslType.BOOL;
                     default -> null;
                 };
                 case "ownPolicy" -> schema.purpose() == ContractSchema.Purpose.MINT
                         ? DslType.POLICY_ID : null;
                 case "rewardingCredential" -> schema.purpose()
                         == ContractSchema.Purpose.WITHDRAW ? DslType.CREDENTIAL : null;
+                case "certificate" -> schema.purpose()
+                        == ContractSchema.Purpose.CERTIFY ? DslType.TX_CERT : null;
+                case "certificateIndex" -> schema.purpose()
+                        == ContractSchema.Purpose.CERTIFY ? DslType.INTEGER : null;
                 default -> variables.get(root.name());
             };
             if (expected == null || expected != root.resultType()) {
@@ -169,6 +180,32 @@ public final class DslPropertyValidator {
                             schemaVersion));
             require(DslType.INTEGER,
                     validateNode(exact.quantity(), schema, variables, count, maxNodes,
+                            schemaVersion));
+            return DslType.BOOL;
+        }
+        if (node instanceof TxCertKindNode kind) {
+            if (schema.purpose() != ContractSchema.Purpose.CERTIFY) {
+                throw new IllegalArgumentException(
+                        "Certificate-kind recognition requires a CERTIFY contract interface");
+            }
+            require(DslType.TX_CERT,
+                    validateNode(kind.certificate(), schema, variables, count, maxNodes,
+                            schemaVersion));
+            return DslType.BOOL;
+        }
+        if (node instanceof KnownCertificateNode known) {
+            if (schema.purpose() != ContractSchema.Purpose.CERTIFY) {
+                throw new IllegalArgumentException(
+                        "Known-certificate lookup requires a CERTIFY contract interface");
+            }
+            require(DslType.TX_CERT,
+                    validateNode(known.certificate(), schema, variables, count, maxNodes,
+                            schemaVersion));
+            require(DslType.INTEGER,
+                    validateNode(known.index(), schema, variables, count, maxNodes,
+                            schemaVersion));
+            require(DslType.LIST_TX_CERT,
+                    validateNode(known.certificates(), schema, variables, count, maxNodes,
                             schemaVersion));
             return DslType.BOOL;
         }
@@ -318,6 +355,11 @@ public final class DslPropertyValidator {
             throw new IllegalArgumentException(
                     "Field TX_INFO.withdrawals requires a WITHDRAW contract interface");
         }
+        if (selected.equals("TX_INFO.certificates")
+                && schema.purpose() != ContractSchema.Purpose.CERTIFY) {
+            throw new IllegalArgumentException(
+                    "Field TX_INFO.certificates requires a CERTIFY contract interface");
+        }
         return switch (selected) {
             case "SCRIPT_CONTEXT.txInfo" -> DslType.TX_INFO;
             case "TX_INFO.signatories" -> DslType.LIST_BYTE_STRING;
@@ -325,6 +367,7 @@ public final class DslPropertyValidator {
             case "TX_INFO.inputs" -> DslType.LIST_TX_IN_INFO;
             case "TX_INFO.mint" -> DslType.MINT_VALUE;
             case "TX_INFO.withdrawals" -> DslType.WITHDRAWALS;
+            case "TX_INFO.certificates" -> DslType.LIST_TX_CERT;
             case "TX_OUT.address" -> DslType.ADDRESS;
             case "TX_OUT.value" -> DslType.VALUE;
             case "ADDRESS.credential" -> DslType.CREDENTIAL;
@@ -370,7 +413,9 @@ public final class DslPropertyValidator {
         return node instanceof BytesLiteralNode
                 || node instanceof TxOutRefLiteralNode
                 || node instanceof ConsumesNode
-                || node instanceof ExactOwnPolicyAssetNode;
+                || node instanceof ExactOwnPolicyAssetNode
+                || node instanceof TxCertKindNode
+                || node instanceof KnownCertificateNode;
     }
 
     private static ContractSchema.Purpose contractPurpose(DslPurpose purpose) {
@@ -378,6 +423,7 @@ public final class DslPropertyValidator {
             case SPENDING -> ContractSchema.Purpose.SPEND;
             case MINTING -> ContractSchema.Purpose.MINT;
             case REWARDING -> ContractSchema.Purpose.WITHDRAW;
+            case CERTIFYING -> ContractSchema.Purpose.CERTIFY;
         };
     }
 
@@ -387,6 +433,7 @@ public final class DslPropertyValidator {
             case VALID_SPENDING_V3_PINNED -> purpose == DslPurpose.SPENDING;
             case VALID_MINTING_V3_PINNED -> purpose == DslPurpose.MINTING;
             case VALID_REWARDING_V3_PINNED -> purpose == DslPurpose.REWARDING;
+            case VALID_CERTIFYING_V3_PINNED -> purpose == DslPurpose.CERTIFYING;
         };
         if (!valid) {
             throw new IllegalArgumentException(
@@ -398,7 +445,8 @@ public final class DslPropertyValidator {
         return name.equals("exactUplcSucceeds")
                 || name.equals("validSpendingContext")
                 || name.equals("validMintingContext")
-                || name.equals("validRewardingContext");
+                || name.equals("validRewardingContext")
+                || name.equals("validCertifyingContext");
     }
 
     private static String normalizedIdentifier(String id) {

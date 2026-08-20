@@ -14,9 +14,11 @@ import com.bloxbean.cardano.julc.verification.dsl.ComposedDslPromotion;
 import com.bloxbean.cardano.julc.verification.dsl.SpendingContractModel;
 import com.bloxbean.cardano.julc.verification.dsl.MintingContractModel;
 import com.bloxbean.cardano.julc.verification.dsl.RewardingContractModel;
+import com.bloxbean.cardano.julc.verification.dsl.CertifyingContractModel;
 import com.bloxbean.cardano.julc.verification.dsl.ir.DslDomain;
 import com.bloxbean.cardano.julc.verification.dsl.ir.DslPropertySet;
 import com.bloxbean.cardano.julc.verification.dsl.ir.DslPurpose;
+import com.bloxbean.cardano.julc.verification.dsl.ir.TxCertKind;
 import com.bloxbean.cardano.julc.verification.dsl.PropertyIrCodec;
 import com.bloxbean.cardano.julc.verification.dsl.SellerPaymentDsl;
 import com.bloxbean.cardano.julc.verification.dsl.MintingDsl;
@@ -497,6 +499,68 @@ class VerificationProjectGeneratorTest {
                 output.resolve("verification-manifest.json").toFile());
         assertEquals("rewarding", manifest.path("scriptPurpose").asText());
         assertEquals("Rewards", manifest.path("blueprintEntryTitle").asText());
+    }
+
+    @Test
+    void generatesCertifyingCompositionKindsIndexAndReviewedDomainBridge()
+            throws Exception {
+        String source = """
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                import com.bloxbean.cardano.julc.ledger.ScriptContext;
+                @CertifyingValidator class Certificates {
+                    record Redeemer() {}
+                    @Entrypoint static boolean validate(Redeemer redeemer,
+                            ScriptContext ctx) { return true; }
+                }
+                """;
+        var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(source);
+        var model = new CertifyingContractModel();
+        String authority = "4a554c435f5645524946595f415554484f524954595f303030303031";
+        var guarantee = model.redeemerStrictlyDecodes()
+                .and(model.certificate().isKind(TxCertKind.UPDATE_DREP))
+                .and(model.context().txInfo().certificates().containsAt(
+                        model.certificateIndex(), model.certificate()))
+                .and(model.context().txInfo().signatories().contains(keyHash(authority)));
+        var candidate = DslPropertySet.composed(DslPurpose.CERTIFYING,
+                property("Certificates.authorized-update",
+                        DslDomain.VALID_CERTIFYING_V3_PINNED, guarantee));
+        var promoted = ComposedDslPromotion.promote(candidate,
+                compiled.contractSchema(), "Certificates", "CertSpec.java");
+        Path output = tempDir.resolve("composed-certifying");
+
+        VerificationProjectGenerator.generateComposedDsl(
+                writeCertifyingBlueprint(), promoted, 5000, 4, output, false);
+
+        String security = Files.readString(output.resolve("SecurityProperty.lean"));
+        assertTrue(security.contains("certificateOf"));
+        assertTrue(security.contains("certificateIndexOf"));
+        assertTrue(security.contains("TxCertUpdateDRep"));
+        assertTrue(security.contains("isKnownCertificate"));
+        assertTrue(security.contains("blasterValidCertifyingContext"));
+        String obligation = Files.readString(output.resolve(
+                "Certificates_Certificates_authorized_updateObligation.lean"));
+        assertTrue(obligation.contains("certifyingInputs"));
+        assertTrue(obligation.contains("blasterValidCertifyingContext"));
+        assertTrue(Files.readString(output.resolve("LedgerDomainEquivalence.lean"))
+                .contains("validCertifyingContext_implies_blasterDomain"));
+        assertTrue(Files.readString(output.resolve(
+                "scripts/verify-certificates_authorized_update.sh"))
+                .contains("Certificates_Certificates_authorized_updateLedgerCorollary.lean"));
+        String semantics = Files.readString(output.resolve(
+                "CertifyingSemanticsTests.lean"));
+        for (String constructor : List.of("TxCertRegStaking", "TxCertUnRegStaking",
+                "TxCertDelegStaking", "TxCertRegDeleg", "TxCertRegDRep",
+                "TxCertUpdateDRep", "TxCertUnRegDRep", "TxCertPoolRegister",
+                "TxCertPoolRetire", "TxCertAuthHotCommittee",
+                "TxCertResignColdCommittee")) {
+            assertTrue(semantics.contains(constructor), constructor);
+        }
+        assertTrue(semantics.contains("Data.Constr 11 []"));
+        var manifest = JSON.readTree(
+                output.resolve("verification-manifest.json").toFile());
+        assertEquals("certifying", manifest.path("scriptPurpose").asText());
+        assertEquals("Certificates", manifest.path("blueprintEntryTitle").asText());
     }
 
     @Test
@@ -1206,6 +1270,29 @@ class VerificationProjectGeneratorTest {
                 List.of(new BlueprintGenerator.CompiledValidator(
                         "Rewards", result.compileResult(), result.contractSchema())));
         Path blueprint = tempDir.resolve("rewarding-" + System.nanoTime() + ".json");
+        Files.writeString(blueprint, generated.toJson());
+        return blueprint;
+    }
+
+    private Path writeCertifyingBlueprint() throws Exception {
+        String source = """
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                import com.bloxbean.cardano.julc.ledger.ScriptContext;
+                @CertifyingValidator class Certificates {
+                    record Redeemer() {}
+                    @Entrypoint
+                    static boolean validate(Redeemer redeemer, ScriptContext ctx) {
+                        return true;
+                    }
+                }
+                """;
+        var result = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(source);
+        var generated = BlueprintGenerator.generate(
+                new BlueprintConfig("certifying-generator-test", "1"),
+                List.of(new BlueprintGenerator.CompiledValidator(
+                        "Certificates", result.compileResult(), result.contractSchema())));
+        Path blueprint = tempDir.resolve("certifying-" + System.nanoTime() + ".json");
         Files.writeString(blueprint, generated.toJson());
         return blueprint;
     }

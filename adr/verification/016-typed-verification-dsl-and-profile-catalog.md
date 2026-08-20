@@ -1,6 +1,6 @@
 # ADR-016: Typed Verification DSL and Foundational Profile Catalog
 
-- **Status:** E.1–E.4c implemented experimentally; E.4d–E.6 proposed
+- **Status:** E.1–E.4d implemented experimentally; E.5–E.6 proposed
 - **Date:** 2026-08-13
 - **Related:**
   [ADR-001 — IOG Blaster Verification Strategy](001-iog-blaster-verification-strategy.md),
@@ -595,11 +595,22 @@ decoding, an authority signer, and a minimum matching withdrawal. Local,
 Docker, native, refuted, and vacuous evidence uses the generic schema-3 path;
 no fixed-formula resolver or compiler dependency was added.
 
-**E.4d and later purpose slices:**
-Certifying follows rewarding, then voting and proposing only where the pinned
-model, CIP-57 selection, and solver support permit. These slices extend the
-generic capability and semantic inventories; they do not add new fixed-formula
-promotion paths.
+**E.4d certifying slice (implemented experimentally):**
+[ADR-021](021-milestone-e4d-typed-certifying-dsl.md) adds exact CIP-57
+`publish` selection, authoritative certificate/index roots, the ordered raw
+certificate list, all 11 pinned certificate-kind recognizers, and the pinned
+indexed-membership relation. Its reviewed certifying solver domain has a
+kernel-checked inclusion bridge and per-claim corollary. Exact VM, local,
+Docker, native, refuted, malformed, index, strengthened-domain, and vacuity
+controls pass through the generic schema-3 path without a compiler dependency.
+
+**Later purpose slices:**
+Voting and proposing proceed only where exact artifact selection, the pinned
+model, and solver support permit. CIP-57 currently has no truthful standard
+purpose vocabulary for those interfaces, so they remain fail-closed rather
+than being assigned invented purpose names. Later slices extend the generic
+capability and semantic inventories; they do not add fixed-formula promotion
+paths.
 
 ### E.5: State-machine experiment
 

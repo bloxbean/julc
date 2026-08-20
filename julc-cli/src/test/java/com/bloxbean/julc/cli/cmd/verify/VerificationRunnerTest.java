@@ -817,6 +817,9 @@ class VerificationRunnerTest {
         assertTrue(metadata.contains("DslPurpose"));
         assertTrue(metadata.contains("DslDomain"));
         assertTrue(metadata.contains("ExactOwnPolicyAssetNode"));
+        assertTrue(metadata.contains("TxCertKindNode"));
+        assertTrue(metadata.contains("KnownCertificateNode"));
+        assertTrue(metadata.contains("TxCertKind"));
         assertTrue(metadata.contains("LedgerCapabilityInventory"));
         assertTrue(metadata.contains("CapabilityStatus"));
     }
