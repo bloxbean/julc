@@ -323,7 +323,7 @@ javac -cp julc.jar -d build/verification-dsl/classes \
 
 julc verify dsl . --validator Sale \
   --spec-class evidence.SellerPaymentSpec \
-  --spec-classpath build/verification-dsl/classes \
+  --spec-classpath "build/verification-dsl/classes:/path/to/julc.jar" \
   --seller-field seller --price-field price \
   --source SellerPaymentSpec.java --backend local --force
 ```
@@ -338,7 +338,40 @@ trusted-source-only in E.3.
 See [`dsl/README.md`](dsl/README.md) and [`e3/README.md`](e3/README.md) for the
 property source and evidence controls.
 
-## 11. Fuel, recursion, and reruns
+## 11. Experimental typed one-shot minting DSL
+
+ADR-018 E.4a extends the trusted Java property workflow to minting. Generate a
+purpose-aware model, compile it with a specification using
+`MintingDsl.oneShotPropertySet`, and select the minting interface explicitly:
+
+```bash
+julc verify dsl-init . --validator TokenPolicy --purpose minting \
+  --package evidence --class TokenPolicyModel \
+  --out build/verification-dsl/src/evidence/TokenPolicyModel.java
+
+javac -cp julc.jar -d build/verification-dsl/classes \
+  build/verification-dsl/src/evidence/TokenPolicyModel.java \
+  OneShotMintSpec.java
+
+julc verify dsl . --validator TokenPolicy --purpose minting \
+  --spec-class evidence.OneShotMintSpec \
+  --spec-classpath "build/verification-dsl/classes:/path/to/julc.jar" \
+  --source OneShotMintSpec.java --backend docker --fuel 5000 --force
+```
+
+The JuLC JAR entry is required when using the GraalVM native CLI because the
+trusted property builder still executes in a bounded child JVM. It is harmless
+with the JVM CLI. Use `;` instead of `:` as the classpath separator on Windows.
+
+The generated certificate binds the schema-2 DSL hash, capability inventory,
+selected blueprint entry, exact shared UPLC/hash, generated Lean, domain
+bridge, dependency pins, and execution bounds. Mint association-list order and
+duplicates are preserved; duplicate or malformed entries for the current
+policy cannot disappear behind first-match lookup. See
+[`e4a/README.md`](e4a/README.md) for a complete specification and local/Docker
+commands.
+
+## 12. Fuel, recursion, and reruns
 
 `--fuel` bounds exact UPLC preprocessing/execution in the generated obligation.
 An `SMT-VALID` certificate covers only successful paths completing within that
@@ -358,7 +391,7 @@ julc verify . --validator AuthorizedStateValidator \
   --out-dir verification/ci-authorized --force
 ```
 
-## 12. What the certificate does and does not claim
+## 13. What the certificate does and does not claim
 
 For an annotation profile, a successful certificate means:
 

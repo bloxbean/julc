@@ -13,9 +13,14 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
         @JsonSubTypes.Type(value = CompareNode.class, name = "compare"),
         @JsonSubTypes.Type(value = CredentialKeyHashNode.class, name = "credential-key-hash"),
         @JsonSubTypes.Type(value = ExistsNode.class, name = "exists"),
-        @JsonSubTypes.Type(value = LiteralNode.class, name = "literal")
+        @JsonSubTypes.Type(value = LiteralNode.class, name = "literal"),
+        @JsonSubTypes.Type(value = BytesLiteralNode.class, name = "bytes-literal"),
+        @JsonSubTypes.Type(value = TxOutRefLiteralNode.class, name = "tx-out-ref-literal"),
+        @JsonSubTypes.Type(value = ConsumesNode.class, name = "consumes"),
+        @JsonSubTypes.Type(value = ExactOwnPolicyAssetNode.class, name = "exact-own-policy-asset")
 })
 public sealed interface PropertyNode permits RootNode, FieldNode, BoolBinaryNode,
-        ContainsNode, CompareNode, CredentialKeyHashNode, ExistsNode, LiteralNode {
+        ContainsNode, CompareNode, CredentialKeyHashNode, ExistsNode, LiteralNode,
+        BytesLiteralNode, TxOutRefLiteralNode, ConsumesNode, ExactOwnPolicyAssetNode {
     DslType resultType();
 }

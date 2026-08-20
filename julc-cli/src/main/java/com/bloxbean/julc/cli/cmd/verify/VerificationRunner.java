@@ -1,6 +1,7 @@
 package com.bloxbean.julc.cli.cmd.verify;
 
 import com.bloxbean.cardano.julc.compiler.DataBoundarySemantics;
+import com.bloxbean.cardano.julc.verification.capability.LedgerCapabilityInventories;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -692,6 +693,8 @@ public final class VerificationRunner {
             JsonNode property = VerificationFiles.JSON.readTree(propertyFile.toFile());
             String template = requiredText(property, "template");
             boolean sellerPayment = "julc.dsl.seller-paid-at-least/v1".equals(template);
+            boolean oneShotMint = "julc.dsl.one-shot-authorized-mint/v1".equals(template);
+            boolean ledgerValidityModeled = sellerPayment || oneShotMint;
             if (property.path("schemaVersion").asInt(-1) != 1
                     || property.path("schemaVersion").asInt(-1)
                         != propertyIr.path("schemaVersion").asInt(-2)
@@ -700,7 +703,8 @@ public final class VerificationRunner {
                     || !Set.of("julc.requires-signer/v1",
                             "julc.stateful-spending/v1",
                             "julc.controlled-mint/v1",
-                            "julc.dsl.seller-paid-at-least/v1").contains(template)
+                            "julc.dsl.seller-paid-at-least/v1",
+                            "julc.dsl.one-shot-authorized-mint/v1").contains(template)
                     || !requiredText(property, "propertyId")
                         .equals(requiredText(propertyIr, "propertyId"))
                     || !requiredText(property, "validatorTitle")
@@ -708,10 +712,10 @@ public final class VerificationRunner {
                     || !requiredText(property, "scriptPurpose").equals(purpose)
                     || !requiredText(property, "sourcePath")
                         .equals(requiredText(propertyIr, "sourcePath"))
-                    || property.path("ledgerValidityModeled").asBoolean(!sellerPayment)
-                        != sellerPayment
-                    || manifest.path("ledgerValidityModeled").asBoolean(!sellerPayment)
-                        != sellerPayment
+                    || property.path("ledgerValidityModeled")
+                        .asBoolean(!ledgerValidityModeled) != ledgerValidityModeled
+                    || manifest.path("ledgerValidityModeled")
+                        .asBoolean(!ledgerValidityModeled) != ledgerValidityModeled
                     || !property.path("domainAssumptions").isArray()) {
                 throw new IOException("Verification property IR does not match its manifest");
             }
@@ -722,6 +726,20 @@ public final class VerificationRunner {
                         || !"validSpendingContext/v3-pinned".equals(
                             property.path("domainAssumptions").path(0).asText()))) {
                 throw new IOException("Verification seller-payment domain is unsupported");
+            }
+            if (oneShotMint
+                    && (!property.path("domainAssumptions").equals(
+                            manifest.path("domainAssumptions"))
+                        || property.path("domainAssumptions").size() != 1
+                        || !"validMintingContext/v3-pinned".equals(
+                            property.path("domainAssumptions").path(0).asText()))) {
+                throw new IOException("Verification one-shot mint domain is unsupported");
+            }
+            if (oneShotMint) validateCapabilityInventory(manifest);
+            if (sellerPayment || oneShotMint
+                    || "julc.controlled-mint/v1".equals(template)) {
+                validateCanonicalDslIr(manifest, property, oneShotMint
+                        || "julc.controlled-mint/v1".equals(template) ? 2 : 1);
             }
             if ("julc.stateful-spending/v1".equals(template)
                     && (!"GREATER_THAN".equals(requiredText(property, "relation"))
@@ -748,11 +766,29 @@ public final class VerificationRunner {
                     throw new IOException("Verification controlled-mint profile is unsupported");
                 }
             }
+            if (oneShotMint) {
+                if (!requiredText(property, "authorityHex").matches("[0-9a-f]{56}")
+                        || !requiredText(property, "anchorTransactionIdHex")
+                            .matches("[0-9a-f]{64}")
+                        || !requiredText(property, "anchorOutputIndex")
+                            .matches("0|[1-9][0-9]{0,18}")
+                        || !property.path("tokenNameHex").asText("!")
+                            .matches("(?:[0-9a-f]{2}){0,32}")
+                        || !"1".equals(requiredText(property, "quantity"))) {
+                    throw new IOException("Verification one-shot mint profile is unsupported");
+                }
+            }
             artifact.put("propertyIrSha256", propertyHash);
             artifact.put("propertyTemplate", requiredText(propertyIr, "template"));
             artifact.put("propertyId", requiredText(propertyIr, "propertyId"));
             artifact.put("propertyPath", requiredText(propertyIr, "sourcePath"));
-            artifact.put("ledgerValidityModeled", sellerPayment);
+            if (manifest.has("dslIr")) {
+                artifact.put("dslIrSchemaVersion",
+                        manifest.path("dslIr").path("schemaVersion").asInt());
+                artifact.put("dslIrSha256",
+                        manifest.path("dslIr").path("sha256").asText());
+            }
+            artifact.put("ledgerValidityModeled", ledgerValidityModeled);
             artifact.put("fuelBounded", true);
             artifact.put("fuelScope", "Only executions completing within the pinned CEK fuel "
                     + "bound are covered; fuel-exhausted executions are outside the claim.");
@@ -773,6 +809,22 @@ public final class VerificationRunner {
                 artifact.put("domainAssumptions", List.of(
                         "validSpendingContext/v3-pinned"));
                 artifact.put("globalMultiInputLinkageModeled", false);
+            } else if (oneShotMint) {
+                artifact.put("domainAssumptions", List.of(
+                        "validMintingContext/v3-pinned"));
+                artifact.put("nonVacuityDomain", "BLASTER_VALID_MINTING_SUPERSET");
+                artifact.put("ledgerValidNonVacuityWitnessEstablished", false);
+                artifact.put("concreteVmSuccessfulWitnessReproduced", false);
+                artifact.put("counterexampleDomain", "BLASTER_VALID_MINTING_SUPERSET");
+                artifact.put("ledgerValidCounterexampleEstablished", false);
+                artifact.put("concreteVmCounterexampleReproduced", false);
+                artifact.put("anchorTransactionIdHex",
+                        requiredText(property, "anchorTransactionIdHex"));
+                artifact.put("anchorOutputIndex",
+                        requiredText(property, "anchorOutputIndex"));
+                artifact.put("ownPolicyAssetShape",
+                        "EXACT_SINGLETON_RAW_ASSOCIATION_LIST");
+                artifact.put("otherPoliciesPermitted", true);
             }
         }
         return Map.copyOf(artifact);
@@ -822,6 +874,43 @@ public final class VerificationRunner {
                 throw new IOException("Dependency " + entry.getKey()
                         + " is not pinned to a full commit");
             }
+        }
+    }
+
+    private static void validateCapabilityInventory(JsonNode manifest) throws IOException {
+        JsonNode recorded = manifest.path("capabilityInventory");
+        var inventory = LedgerCapabilityInventories.pinnedV3();
+        String expectedHash = VerificationFiles.sha256(
+                LedgerCapabilityInventories.pinnedV3Bytes());
+        if (recorded.path("schemaVersion").asInt(-1) != inventory.schemaVersion()
+                || !inventory.ledgerApi().equals(recorded.path("ledgerApi").asText())
+                || !inventory.ledgerVersion().equals(recorded.path("ledgerVersion").asText())
+                || !inventory.revision().equals(recorded.path("revision").asText())
+                || !expectedHash.equals(recorded.path("sha256").asText())) {
+            throw new IOException(
+                    "Verification capability inventory is missing, stale, or tampered");
+        }
+    }
+
+    private static void validateCanonicalDslIr(
+            JsonNode manifest, JsonNode property, int expectedSchema) throws IOException {
+        JsonNode recorded = manifest.path("dslIr");
+        String canonicalDsl = property.path("canonicalDslJson").asText(null);
+        if (canonicalDsl == null
+                || recorded.path("schemaVersion").asInt(-1) != expectedSchema
+                || !VerificationFiles.sha256(canonicalDsl.getBytes(
+                        java.nio.charset.StandardCharsets.UTF_8))
+                    .equals(recorded.path("sha256").asText())) {
+            throw new IOException("Verification canonical DSL IR is missing or tampered");
+        }
+        JsonNode dsl;
+        try {
+            dsl = VerificationFiles.JSON.readTree(canonicalDsl);
+        } catch (IOException invalid) {
+            throw new IOException("Verification canonical DSL IR is invalid", invalid);
+        }
+        if (dsl.path("schemaVersion").asInt(-1) != expectedSchema) {
+            throw new IOException("Verification canonical DSL schema is unsupported");
         }
     }
 

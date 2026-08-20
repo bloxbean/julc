@@ -5,7 +5,7 @@ import java.util.List;
 /** Common certificate-facing contract for versioned typed verification properties. */
 public sealed interface VerificationProperty
         permits RequiresSignerProperty, StatefulSpendingProperty, ControlledMintProperty,
-        SellerPaymentProperty {
+        SellerPaymentProperty, OneShotMintProperty {
     int schemaVersion();
     String template();
     String propertyId();

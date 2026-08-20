@@ -11,7 +11,7 @@ or Docker.
 
 ## What is available today
 
-There are seven ways to explore the current integration. `julc verify run`
+There are eight ways to explore the current integration. `julc verify run`
 provides the managed execution path for both a generated workspace and the
 committed evidence suite:
 
@@ -42,6 +42,10 @@ committed evidence suite:
 7. `verification/c7` is the C.7 controlled-mint profile. It proves fixed
    authority, current-policy linkage, exact token/quantity/action, and no extra
    raw assets under the current policy for both mint and burn fixtures.
+8. `verification/e4a` is the experimental typed minting DSL slice. It selects
+   normal or purpose-indexed minting interfaces, converges `@ControlledMint`
+   with canonical schema-2 DSL semantics, and proves a domain-aware one-shot
+   authority/anchor/exact-asset property with positive and adversarial controls.
 
 The integration does not prove that every JuLC program is safe. It checks
 explicit properties for one exact compiled artifact. Solver-valid Blaster

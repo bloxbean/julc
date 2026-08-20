@@ -9,21 +9,33 @@ import java.util.Map;
 
 /** Authoritative post-worker validation against compiler-owned contract types. */
 public final class DslPropertyValidator {
+    public static final int MAX_AST_NODES = 10_000;
+
     private DslPropertyValidator() { }
 
     public static void validate(
             DslPropertySet propertySet, ContractSchema schema, int maxNodes) {
-        if (schema.purpose() != ContractSchema.Purpose.SPEND) {
-            throw new IllegalArgumentException("DSL v1 supports only spending contracts");
+        boolean mintingV2 = propertySet.schemaVersion()
+                == DslPropertySet.MINTING_SCHEMA_VERSION;
+        ContractSchema.Purpose expectedPurpose = mintingV2
+                ? ContractSchema.Purpose.MINT : ContractSchema.Purpose.SPEND;
+        if (schema.purpose() != expectedPurpose) {
+            throw new IllegalArgumentException("DSL schema " + propertySet.schemaVersion()
+                    + " requires a " + expectedPurpose + " contract interface");
+        }
+        if (mintingV2 && propertySet.properties().size() != 1) {
+            throw new IllegalArgumentException(
+                    "Minting DSL schema 2 requires exactly one property");
         }
         int[] nodes = {0};
         for (DslProperty property : propertySet.properties()) {
             DslType type = validateNode(property.expression(), schema, new HashMap<>(), nodes,
-                    maxNodes);
+                    maxNodes, mintingV2);
             if (type != DslType.BOOL) {
                 throw new IllegalArgumentException("Property " + property.id()
                         + " must have BOOL type, found " + type);
             }
+            if (mintingV2) validateMintingPremise(property.expression());
         }
     }
 
@@ -32,16 +44,27 @@ public final class DslPropertyValidator {
             ContractSchema schema,
             Map<String, DslType> variables,
             int[] count,
-            int maxNodes) {
+            int maxNodes,
+            boolean mintingSchema) {
         if (++count[0] > maxNodes) {
             throw new IllegalArgumentException("Property AST exceeds " + maxNodes + " nodes");
         }
+        if (!mintingSchema && isMintingSchemaNode(node)) {
+            throw new IllegalArgumentException("DSL schema 1 does not admit minting node "
+                    + node.getClass().getSimpleName());
+        }
         if (node instanceof RootNode root) {
             DslType expected = switch (root.name()) {
-                case "datum" -> DslType.DATA;
+                case "datum" -> schema.purpose() == ContractSchema.Purpose.SPEND
+                        ? DslType.DATA : null;
                 case "context" -> DslType.SCRIPT_CONTEXT;
                 case "exactUplcSucceeds" -> DslType.BOOL;
-                case "validSpendingContext" -> DslType.BOOL;
+                case "validSpendingContext" -> schema.purpose()
+                        == ContractSchema.Purpose.SPEND ? DslType.BOOL : null;
+                case "validMintingContext", "redeemerStrictlyDecodes" -> schema.purpose()
+                        == ContractSchema.Purpose.MINT ? DslType.BOOL : null;
+                case "ownPolicy" -> schema.purpose() == ContractSchema.Purpose.MINT
+                        ? DslType.POLICY_ID : null;
                 default -> variables.get(root.name());
             };
             if (expected == null || expected != root.resultType()) {
@@ -51,8 +74,9 @@ public final class DslPropertyValidator {
             return expected;
         }
         if (node instanceof FieldNode field) {
-            DslType target = validateNode(field.target(), schema, variables, count, maxNodes);
-            DslType expected = fieldType(target, field.name(), schema);
+            DslType target = validateNode(
+                    field.target(), schema, variables, count, maxNodes, mintingSchema);
+            DslType expected = fieldType(target, field.name(), schema, mintingSchema);
             if (expected != field.resultType()) {
                 throw new IllegalArgumentException("Field " + field.name() + " on " + target
                         + " has type " + expected + ", not " + field.resultType());
@@ -60,22 +84,51 @@ public final class DslPropertyValidator {
             return expected;
         }
         if (node instanceof BoolBinaryNode binary) {
-            require(DslType.BOOL, validateNode(binary.left(), schema, variables, count, maxNodes));
-            require(DslType.BOOL, validateNode(binary.right(), schema, variables, count, maxNodes));
+            require(DslType.BOOL, validateNode(
+                    binary.left(), schema, variables, count, maxNodes, mintingSchema));
+            require(DslType.BOOL, validateNode(
+                    binary.right(), schema, variables, count, maxNodes, mintingSchema));
             return DslType.BOOL;
         }
         if (node instanceof ContainsNode contains) {
             DslType collection = validateNode(
-                    contains.collection(), schema, variables, count, maxNodes);
-            DslType value = validateNode(contains.value(), schema, variables, count, maxNodes);
+                    contains.collection(), schema, variables, count, maxNodes, mintingSchema);
+            DslType value = validateNode(
+                    contains.value(), schema, variables, count, maxNodes, mintingSchema);
             if (collection != DslType.LIST_BYTE_STRING || value != DslType.BYTE_STRING) {
                 throw new IllegalArgumentException("contains requires byte-string list and value");
             }
             return DslType.BOOL;
         }
+        if (node instanceof ConsumesNode consumes) {
+            require(DslType.LIST_TX_IN_INFO,
+                    validateNode(consumes.inputs(), schema, variables, count, maxNodes,
+                            mintingSchema));
+            require(DslType.TX_OUT_REF,
+                    validateNode(consumes.outputReference(), schema, variables, count, maxNodes,
+                            mintingSchema));
+            return DslType.BOOL;
+        }
+        if (node instanceof ExactOwnPolicyAssetNode exact) {
+            require(DslType.MINT_VALUE,
+                    validateNode(exact.mint(), schema, variables, count, maxNodes,
+                            mintingSchema));
+            require(DslType.POLICY_ID,
+                    validateNode(exact.policy(), schema, variables, count, maxNodes,
+                            mintingSchema));
+            require(DslType.BYTE_STRING,
+                    validateNode(exact.tokenName(), schema, variables, count, maxNodes,
+                            mintingSchema));
+            require(DslType.INTEGER,
+                    validateNode(exact.quantity(), schema, variables, count, maxNodes,
+                            mintingSchema));
+            return DslType.BOOL;
+        }
         if (node instanceof CompareNode comparison) {
-            DslType left = validateNode(comparison.left(), schema, variables, count, maxNodes);
-            DslType right = validateNode(comparison.right(), schema, variables, count, maxNodes);
+            DslType left = validateNode(
+                    comparison.left(), schema, variables, count, maxNodes, mintingSchema);
+            DslType right = validateNode(
+                    comparison.right(), schema, variables, count, maxNodes, mintingSchema);
             if (left != right || !switch (left) {
                 case INTEGER, BYTE_STRING, CREDENTIAL -> true;
                 default -> false;
@@ -91,21 +144,33 @@ public final class DslPropertyValidator {
         }
         if (node instanceof CredentialKeyHashNode match) {
             require(DslType.CREDENTIAL,
-                    validateNode(match.credential(), schema, variables, count, maxNodes));
+                    validateNode(match.credential(), schema, variables, count, maxNodes,
+                            mintingSchema));
             require(DslType.BYTE_STRING,
-                    validateNode(match.keyHash(), schema, variables, count, maxNodes));
+                    validateNode(match.keyHash(), schema, variables, count, maxNodes,
+                            mintingSchema));
             return DslType.BOOL;
         }
         if (node instanceof ExistsNode exists) {
             require(DslType.LIST_TX_OUT,
-                    validateNode(exists.collection(), schema, variables, count, maxNodes));
+                    validateNode(exists.collection(), schema, variables, count, maxNodes,
+                            mintingSchema));
             if (!exists.variable().matches("[A-Za-z][A-Za-z0-9_]{0,31}")) {
                 throw new IllegalArgumentException("Invalid quantified variable name");
+            }
+            if (isReservedSymbol(exists.variable()) || variables.containsKey(exists.variable())) {
+                throw new IllegalArgumentException(
+                        "Quantified variable shadows a reserved or active symbol");
+            }
+            if (variables.size() >= 32) {
+                throw new IllegalArgumentException(
+                        "Property binder depth exceeds 32 active variables");
             }
             var nested = new HashMap<>(variables);
             nested.put(exists.variable(), DslType.TX_OUT);
             require(DslType.BOOL,
-                    validateNode(exists.predicate(), schema, nested, count, maxNodes));
+                    validateNode(exists.predicate(), schema, nested, count, maxNodes,
+                            mintingSchema));
             return DslType.BOOL;
         }
         if (node instanceof LiteralNode literal) {
@@ -113,16 +178,63 @@ public final class DslPropertyValidator {
                 throw new IllegalArgumentException(
                         "DSL v1 supports only integer literals");
             }
-            if (!literal.value().matches("-?(0|[1-9][0-9]*)")) {
+            if (literal.value().length() > 4096
+                    || !literal.value().matches("-?(0|[1-9][0-9]*)")) {
                 throw new IllegalArgumentException("Invalid canonical integer literal");
             }
             return literal.resultType();
+        }
+        if (node instanceof BytesLiteralNode literal) {
+            if (literal.hex().length() > 8192 || !literal.hex().matches("(?:[0-9a-f]{2})*")) {
+                throw new IllegalArgumentException(
+                        "Byte-string literal must be bounded canonical lowercase hexadecimal");
+            }
+            DslType expected = literal.kind() == BytesLiteralKind.POLICY_ID
+                    ? DslType.POLICY_ID : DslType.BYTE_STRING;
+            require(expected, literal.resultType());
+            switch (literal.kind()) {
+                case KEY_HASH -> {
+                    if (literal.hex().length() != 56) {
+                        throw new IllegalArgumentException("Key hash must encode exactly 28 bytes");
+                    }
+                }
+                case TOKEN_NAME -> {
+                    if (literal.hex().length() > 64) {
+                        throw new IllegalArgumentException("Token name must encode at most 32 bytes");
+                    }
+                }
+                case POLICY_ID -> {
+                    if (literal.hex().length() != 56) {
+                        throw new IllegalArgumentException("Policy ID must encode exactly 28 bytes");
+                    }
+                }
+                case BYTES -> { }
+            }
+            return literal.resultType();
+        }
+        if (node instanceof TxOutRefLiteralNode reference) {
+            require(DslType.TX_OUT_REF, reference.resultType());
+            if (!reference.transactionIdHex().matches("[0-9a-f]{64}")) {
+                throw new IllegalArgumentException(
+                        "Transaction ID must be 32-byte canonical lowercase hexadecimal");
+            }
+            if (!reference.outputIndex().matches("0|[1-9][0-9]{0,18}")) {
+                throw new IllegalArgumentException(
+                        "Output index must be a bounded canonical nonnegative integer");
+            }
+            try {
+                Long.parseLong(reference.outputIndex());
+            } catch (NumberFormatException tooLarge) {
+                throw new IllegalArgumentException(
+                        "Output index must not exceed signed 64-bit range", tooLarge);
+            }
+            return DslType.TX_OUT_REF;
         }
         throw new IllegalArgumentException("Unsupported property node " + node.getClass());
     }
 
     private static DslType fieldType(
-            DslType target, String field, ContractSchema schema) {
+            DslType target, String field, ContractSchema schema, boolean mintingSchema) {
         if (target == DslType.DATA) {
             PirType datumType = resolve(schema.datum().type(), schema);
             if (!(datumType instanceof PirType.RecordType record)) {
@@ -136,10 +248,18 @@ public final class DslPropertyValidator {
                             "Unknown datum field '" + field + "'"));
             return dslType(resolve(selected, schema));
         }
-        return switch (target + "." + field) {
+        String selected = target + "." + field;
+        if (!mintingSchema && (selected.equals("TX_INFO.inputs")
+                || selected.equals("TX_INFO.mint"))) {
+            throw new IllegalArgumentException(
+                    "DSL schema 1 does not admit field " + selected);
+        }
+        return switch (selected) {
             case "SCRIPT_CONTEXT.txInfo" -> DslType.TX_INFO;
             case "TX_INFO.signatories" -> DslType.LIST_BYTE_STRING;
             case "TX_INFO.outputs" -> DslType.LIST_TX_OUT;
+            case "TX_INFO.inputs" -> DslType.LIST_TX_IN_INFO;
+            case "TX_INFO.mint" -> DslType.MINT_VALUE;
             case "TX_OUT.address" -> DslType.ADDRESS;
             case "TX_OUT.value" -> DslType.VALUE;
             case "ADDRESS.credential" -> DslType.CREDENTIAL;
@@ -177,5 +297,88 @@ public final class DslPropertyValidator {
         if (expected != observed) {
             throw new IllegalArgumentException("Expected " + expected + ", found " + observed);
         }
+    }
+
+    private static boolean isMintingSchemaNode(PropertyNode node) {
+        return node instanceof BytesLiteralNode
+                || node instanceof TxOutRefLiteralNode
+                || node instanceof ConsumesNode
+                || node instanceof ExactOwnPolicyAssetNode;
+    }
+
+    private static void validateMintingPremise(PropertyNode expression) {
+        if (!(expression instanceof BoolBinaryNode implication)
+                || implication.operator() != BoolOperator.IMPLIES) {
+            throw new IllegalArgumentException(
+                    "Minting DSL property must be a normalized implication");
+        }
+        boolean ledgerDomain;
+        if (isRoot(implication.left(), "exactUplcSucceeds")) {
+            ledgerDomain = false;
+        } else if (implication.left() instanceof BoolBinaryNode conjunction
+                && conjunction.operator() == BoolOperator.AND
+                && isRoot(conjunction.left(), "validMintingContext")
+                && isRoot(conjunction.right(), "exactUplcSucceeds")) {
+            ledgerDomain = true;
+        } else {
+            throw new IllegalArgumentException(
+                    "Minting DSL premise must be exactUplcSucceeds or "
+                            + "validMintingContext && exactUplcSucceeds");
+        }
+        var use = new HashMap<String, Integer>();
+        countSpecialRoots(expression, use);
+        if (use.getOrDefault("exactUplcSucceeds", 0) != 1
+                || use.getOrDefault("validMintingContext", 0) != (ledgerDomain ? 1 : 0)) {
+            throw new IllegalArgumentException(
+                    "Minting execution and domain roots may occur only once in the premise");
+        }
+    }
+
+    private static boolean isRoot(PropertyNode node, String name) {
+        return node instanceof RootNode root && name.equals(root.name())
+                && root.resultType() == DslType.BOOL;
+    }
+
+    private static void countSpecialRoots(PropertyNode node, Map<String, Integer> use) {
+        if (node instanceof RootNode root) {
+            if (root.name().equals("exactUplcSucceeds")
+                    || root.name().equals("validMintingContext")) {
+                use.merge(root.name(), 1, Integer::sum);
+            }
+        } else if (node instanceof FieldNode field) {
+            countSpecialRoots(field.target(), use);
+        } else if (node instanceof BoolBinaryNode binary) {
+            countSpecialRoots(binary.left(), use);
+            countSpecialRoots(binary.right(), use);
+        } else if (node instanceof ContainsNode contains) {
+            countSpecialRoots(contains.collection(), use);
+            countSpecialRoots(contains.value(), use);
+        } else if (node instanceof CompareNode comparison) {
+            countSpecialRoots(comparison.left(), use);
+            countSpecialRoots(comparison.right(), use);
+        } else if (node instanceof CredentialKeyHashNode credential) {
+            countSpecialRoots(credential.credential(), use);
+            countSpecialRoots(credential.keyHash(), use);
+        } else if (node instanceof ExistsNode exists) {
+            countSpecialRoots(exists.collection(), use);
+            countSpecialRoots(exists.predicate(), use);
+        } else if (node instanceof ConsumesNode consumes) {
+            countSpecialRoots(consumes.inputs(), use);
+            countSpecialRoots(consumes.outputReference(), use);
+        } else if (node instanceof ExactOwnPolicyAssetNode exact) {
+            countSpecialRoots(exact.mint(), use);
+            countSpecialRoots(exact.policy(), use);
+            countSpecialRoots(exact.tokenName(), use);
+            countSpecialRoots(exact.quantity(), use);
+        }
+    }
+
+    private static boolean isReservedSymbol(String name) {
+        return switch (name) {
+            case "datum", "context", "exactUplcSucceeds", "validSpendingContext",
+                    "validMintingContext", "redeemerStrictlyDecodes", "ownPolicy",
+                    "ctx", "securityProperty" -> true;
+            default -> false;
+        };
     }
 }

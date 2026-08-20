@@ -5,9 +5,10 @@ import java.util.List;
 
 public record DslPropertySet(int schemaVersion, List<DslProperty> properties) {
     public static final int SCHEMA_VERSION = 1;
+    public static final int MINTING_SCHEMA_VERSION = 2;
 
     public DslPropertySet {
-        if (schemaVersion != SCHEMA_VERSION) {
+        if (schemaVersion != SCHEMA_VERSION && schemaVersion != MINTING_SCHEMA_VERSION) {
             throw new IllegalArgumentException("Unsupported DSL property schema " + schemaVersion);
         }
         properties = List.copyOf(properties == null ? List.of() : properties);
@@ -24,5 +25,9 @@ public record DslPropertySet(int schemaVersion, List<DslProperty> properties) {
 
     public static DslPropertySet of(DslProperty... properties) {
         return new DslPropertySet(SCHEMA_VERSION, List.of(properties));
+    }
+
+    public static DslPropertySet minting(DslProperty property) {
+        return new DslPropertySet(MINTING_SCHEMA_VERSION, List.of(property));
     }
 }

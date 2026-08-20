@@ -8,6 +8,14 @@ import com.bloxbean.cardano.julc.verification.StatefulSpendingProperty;
 import com.bloxbean.cardano.julc.verification.VerificationProperty;
 import com.bloxbean.cardano.julc.verification.ControlledMintProperty;
 import com.bloxbean.cardano.julc.verification.SellerPaymentProperty;
+import com.bloxbean.cardano.julc.verification.OneShotMintProperty;
+import com.bloxbean.cardano.julc.verification.dsl.ControlledMintDslLowering;
+import com.bloxbean.cardano.julc.verification.dsl.MintingDsl;
+import com.bloxbean.cardano.julc.verification.dsl.PropertyIrCodec;
+import com.bloxbean.cardano.julc.verification.dsl.PropertyLeanRenderer;
+import com.bloxbean.cardano.julc.verification.dsl.ir.BoolBinaryNode;
+import com.bloxbean.cardano.julc.verification.dsl.ir.DslPropertySet;
+import com.bloxbean.cardano.julc.verification.capability.LedgerCapabilityInventories;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
@@ -156,6 +164,46 @@ public final class VerificationProjectGenerator {
                 || ("BURN".equals(property.action()) && quantity.signum() >= 0)) {
             throw new IllegalArgumentException("Controlled-mint action contradicts quantity");
         }
+        String expectedDsl = PropertyIrCodec.canonicalJson(
+                ControlledMintDslLowering.lower(property));
+        if (!expectedDsl.equals(property.canonicalDslJson())) {
+            throw new IllegalArgumentException(
+                    "Controlled-mint canonical DSL does not match its typed fields");
+        }
+        return generateInternal(blueprintFile, property.validatorTitle(), "minting", fuel,
+                recursiveDepth, outputDirectory, force, property);
+    }
+
+    /** Generates the E.4a domain-aware one-shot authorized mint workspace. */
+    public static GenerationResult generateOneShotMint(
+            Path blueprintFile,
+            OneShotMintProperty property,
+            int fuel,
+            int recursiveDepth,
+            Path outputDirectory,
+            boolean force) throws Exception {
+        if (property == null
+                || !OneShotMintProperty.TEMPLATE.equals(property.template())
+                || property.schemaVersion() != OneShotMintProperty.SCHEMA_VERSION
+                || !"minting".equals(property.scriptPurpose())
+                || !property.ledgerValidityModeled()
+                || !property.domainAssumptions().equals(
+                        List.of("validMintingContext/v3-pinned"))
+                || !property.authorityHex().matches("[0-9a-f]{56}")
+                || !property.anchorTransactionIdHex().matches("[0-9a-f]{64}")
+                || !property.anchorOutputIndex().matches("0|[1-9][0-9]{0,18}")
+                || !property.tokenNameHex().matches("(?:[0-9a-f]{2}){0,32}")
+                || !"1".equals(property.quantity())) {
+            throw new IllegalArgumentException("Unsupported one-shot mint property IR");
+        }
+        String expectedDsl = PropertyIrCodec.canonicalJson(MintingDsl.oneShotPropertySet(
+                property.propertyId(), property.authorityHex(),
+                property.anchorTransactionIdHex(),
+                Long.parseLong(property.anchorOutputIndex()), property.tokenNameHex()));
+        if (!expectedDsl.equals(property.canonicalDslJson())) {
+            throw new IllegalArgumentException(
+                    "One-shot mint canonical DSL does not match its typed fields");
+        }
         return generateInternal(blueprintFile, property.validatorTitle(), "minting", fuel,
                 recursiveDepth, outputDirectory, force, property);
     }
@@ -256,7 +304,10 @@ public final class VerificationProjectGenerator {
                 /verification-result.json
                 """);
         files.put("lean-toolchain", "leanprover/lean4:" + LEAN_VERSION + "\n");
-        files.put("lakefile.lean", lakefile(property instanceof SellerPaymentProperty));
+        files.put("lakefile.lean", lakefile(
+                property != null && property.ledgerValidityModeled(),
+                property instanceof ControlledMintProperty
+                        || property instanceof OneShotMintProperty));
         files.put("GeneratedSchemas.lean", schemas.source());
         files.put("PropertyTemplates.lean", propertyTemplates(recursiveDepth));
         files.put("CheckedExecution.lean", checkedExecution());
@@ -316,13 +367,36 @@ public final class VerificationProjectGenerator {
             String redeemerRoot = referenceName(
                     validator.path("redeemer").path("schema").path("$ref").asText());
             String redeemerLeanType = requiredLeanType(schemas, redeemerRoot);
-            files.put("SecurityProperty.lean", controlledMintProperty(
-                    redeemerLeanType, controlled.authorityHex(),
-                    controlled.tokenNameHex(), controlled.quantity(), controlled.action()));
+            DslPropertySet propertyDsl = ControlledMintDslLowering.lower(controlled);
+            files.put("SecurityProperty.lean", mintingDslProperty(
+                    redeemerLeanType, propertyDsl, false));
+            files.put("MintingSemanticsTests.lean", mintingSemanticsTests());
             files.put(leanId + "Obligation.lean",
                     controlledMintObligation(leanId, artifactId, fuel));
             files.put(leanId + "Proof.lean", controlledMintProof(leanId));
             files.put(leanId + "Counterexample.lean", controlledMintCounterexample(leanId));
+            files.put(leanId + "NonVacuityCounterexample.lean",
+                    nonVacuityCounterexample(leanId));
+            files.put(leanId + "VacuityProof.lean", vacuityProof(leanId));
+            files.put("verification-property.json", JSON.writeValueAsString(property) + "\n");
+        } else if (property instanceof OneShotMintProperty oneShot) {
+            String redeemerRoot = referenceName(
+                    validator.path("redeemer").path("schema").path("$ref").asText());
+            String redeemerLeanType = requiredLeanType(schemas, redeemerRoot);
+            DslPropertySet propertyDsl = MintingDsl.oneShotPropertySet(
+                    oneShot.propertyId(), oneShot.authorityHex(),
+                    oneShot.anchorTransactionIdHex(),
+                    Long.parseLong(oneShot.anchorOutputIndex()), oneShot.tokenNameHex());
+            files.put("SecurityProperty.lean", mintingDslProperty(
+                    redeemerLeanType, propertyDsl, true));
+            files.put("MintingSemanticsTests.lean", mintingSemanticsTests());
+            files.put("LedgerDomainEquivalence.lean", mintingDomainEquivalence());
+            files.put(leanId + "Obligation.lean",
+                    oneShotMintObligation(leanId, artifactId, fuel));
+            files.put(leanId + "Proof.lean", oneShotMintProof(leanId));
+            files.put(leanId + "LedgerCorollary.lean",
+                    oneShotMintLedgerCorollary(leanId));
+            files.put(leanId + "Counterexample.lean", oneShotMintCounterexample(leanId));
             files.put(leanId + "NonVacuityCounterexample.lean",
                     nonVacuityCounterexample(leanId));
             files.put(leanId + "VacuityProof.lean", vacuityProof(leanId));
@@ -368,6 +442,9 @@ public final class VerificationProjectGenerator {
                 : property instanceof SellerPaymentProperty
                     ? verifySellerPaymentScript(
                             leanId, artifactId, artifact.compiledCodeSha256())
+                : property instanceof OneShotMintProperty
+                    ? verifyOneShotMintScript(
+                            leanId, artifactId, artifact.compiledCodeSha256())
                 : verifyPropertyScript(leanId, artifactId, artifact.compiledCodeSha256());
         files.put("scripts/verify.sh", verifyScript);
         String nonVacuityScript = null;
@@ -397,6 +474,12 @@ public final class VerificationProjectGenerator {
                                     java.nio.charset.StandardCharsets.UTF_8)),
                             VerificationFiles.sha256(verifyScript.getBytes(
                                     java.nio.charset.StandardCharsets.UTF_8)))
+                : property instanceof OneShotMintProperty
+                    ? oneShotMintRunnerPlan(property,
+                            VerificationFiles.sha256(nonVacuityScript.getBytes(
+                                    java.nio.charset.StandardCharsets.UTF_8)),
+                            VerificationFiles.sha256(verifyScript.getBytes(
+                                    java.nio.charset.StandardCharsets.UTF_8)))
                 : requiresSignerRunnerPlan((RequiresSignerProperty) property,
                         VerificationFiles.sha256(nonVacuityScript.getBytes(
                                 java.nio.charset.StandardCharsets.UTF_8)),
@@ -411,6 +494,8 @@ public final class VerificationProjectGenerator {
                     ? controlledMintReadme(validatorTitle, controlled)
                 : property instanceof SellerPaymentProperty payment
                     ? sellerPaymentReadme(validatorTitle, payment)
+                : property instanceof OneShotMintProperty oneShot
+                    ? oneShotMintReadme(validatorTitle, oneShot)
                 : requiresSignerReadme(
                             validatorTitle, (RequiresSignerProperty) property));
         String propertySha256 = property == null ? null : VerificationFiles.sha256(
@@ -1602,6 +1687,14 @@ public final class VerificationProjectGenerator {
                 "Lean-blaster", BLASTER_REV,
                 "PlutusCoreBlaster", PLUTUS_CORE_REV,
                 "CardanoLedgerApiBlaster", LEDGER_API_REV));
+        var capabilityInventory = LedgerCapabilityInventories.pinnedV3();
+        root.put("capabilityInventory", Map.of(
+                "schemaVersion", capabilityInventory.schemaVersion(),
+                "ledgerApi", capabilityInventory.ledgerApi(),
+                "ledgerVersion", capabilityInventory.ledgerVersion(),
+                "revision", capabilityInventory.revision(),
+                "sha256", VerificationFiles.sha256(
+                        LedgerCapabilityInventories.pinnedV3Bytes())));
         root.put("builtins", artifact.builtins());
         root.put("schemas", leanTypes.entrySet().stream()
                 .map(entry -> Map.of("cip57", entry.getKey(), "lean", entry.getValue()))
@@ -1619,6 +1712,14 @@ public final class VerificationProjectGenerator {
                     "template", property.template(),
                     "propertyId", property.propertyId(),
                     "sourcePath", property.sourcePath()));
+            String canonicalDsl = canonicalDslJson(property);
+            if (canonicalDsl != null) {
+                JsonNode parsedDsl = JSON.readTree(canonicalDsl);
+                root.put("dslIr", Map.of(
+                        "schemaVersion", parsedDsl.path("schemaVersion").asInt(-1),
+                        "sha256", VerificationFiles.sha256(
+                                canonicalDsl.getBytes(java.nio.charset.StandardCharsets.UTF_8))));
+            }
             root.put("ledgerValidityModeled", property.ledgerValidityModeled());
             root.put("generatedLeanSha256", generatedLeanSha256);
             root.put("domainAssumptions", property.domainAssumptions());
@@ -1633,12 +1734,22 @@ public final class VerificationProjectGenerator {
         return JSON.writeValueAsString(root) + "\n";
     }
 
-    private static String lakefile(boolean sellerPayment) {
-        String roots = sellerPayment
+    private static String canonicalDslJson(VerificationProperty property) {
+        return switch (property) {
+            case ControlledMintProperty controlled -> controlled.canonicalDslJson();
+            case SellerPaymentProperty seller -> seller.canonicalDslJson();
+            case OneShotMintProperty oneShot -> oneShot.canonicalDslJson();
+            default -> null;
+        };
+    }
+
+    private static String lakefile(boolean ledgerDomain, boolean mintingDsl) {
+        String roots = ledgerDomain
                 ? "`GeneratedSchemas, `PropertyTemplates, `CheckedExecution, "
                     + "`SecurityProperty, `LedgerDomainEquivalence"
                 : "`GeneratedSchemas, `PropertyTemplates, `CheckedExecution, "
                     + "`SecurityProperty";
+        if (mintingDsl) roots += ", `MintingSemanticsTests";
         return """
                 /- Generated by `julc verify init`; dependency pins are security inputs. -/
                 import Lake
@@ -1754,6 +1865,21 @@ public final class VerificationProjectGenerator {
                 "seller-payment-v1-established",
                 "seller-payment-v1-counterexample",
                 "seller-payment-v1-undetermined");
+    }
+
+    private static String oneShotMintRunnerPlan(
+            VerificationProperty property,
+            String nonVacuityScriptSha256,
+            String verifyScriptSha256) throws IOException {
+        return specializedRunnerPlan(
+                property,
+                nonVacuityScriptSha256,
+                verifyScriptSha256,
+                "prove-one-shot-authorized-mint-v1",
+                "one-shot authorized mint",
+                "one-shot-authorized-mint-v1-established",
+                "one-shot-authorized-mint-v1-counterexample",
+                "one-shot-authorized-mint-v1-undetermined");
     }
 
     private static String specializedRunnerPlan(
@@ -2250,6 +2376,305 @@ public final class VerificationProjectGenerator {
                 redeemerType, direction);
     }
 
+    private static String mintingDslProperty(
+            String redeemerType, DslPropertySet propertyDsl, boolean ledgerDomain) {
+        var implication = (BoolBinaryNode) propertyDsl.properties().getFirst().expression();
+        String guarantee = PropertyLeanRenderer.renderExpression(implication.right());
+        String domain = ledgerDomain ? """
+
+                %s
+
+                def blasterValidMintingContext (ctx : ScriptContext) : Bool :=
+                  match ctx.scriptContextScriptInfo with
+                  | .MintingScript _ =>
+                      CardanoLedgerApi.V3.Contexts.validScriptInfo ctx &&
+                        blasterValidTxInfo ctx
+                  | _ => false
+                """.formatted(blasterValidTxInfoDefinition()) : "";
+        return """
+                /- Generated from closed typed minting DSL IR; do not edit. -/
+                import CardanoLedgerApi.V3
+                import GeneratedSchemas
+
+                namespace JulcGenerated.UserProperty
+
+                open CardanoLedgerApi.IsData.Class
+                open CardanoLedgerApi.Recursors
+                open CardanoLedgerApi.V3
+                open PlutusCore.Data (Data)
+                open PlutusCore.ByteString (ByteString)
+                open JulcGenerated.Schemas
+
+                def ownPolicyOf (ctx : ScriptContext) : ByteString :=
+                  match ctx.scriptContextScriptInfo with
+                  | .MintingScript ownPolicy => ownPolicy
+                  | _ => ""
+
+                def redeemerStrictlyDecodes (ctx : ScriptContext) : Bool :=
+                  match (IsData.fromData ctx.scriptContextRedeemer :
+                      Option JulcGenerated.Schemas.%s) with
+                  | some _ => true
+                  | none => false
+
+                def ownPolicyEntries (policy : ByteString)
+                    (mint : CardanoLedgerApi.V3.MintValue) :
+                    CardanoLedgerApi.V3.MintValue :=
+                  Recursor.findAll entry in mint => entry.1 == Data.B policy
+
+                /-- Raw structural predicate: duplicates and malformed matching entries remain. -/
+                def exactOwnPolicyAsset (policy token : ByteString) (quantity : Int)
+                    (mint : CardanoLedgerApi.V3.MintValue) : Bool :=
+                  match ownPolicyEntries policy mint with
+                  | [(Data.B actualPolicy,
+                      Data.Map [(Data.B actualToken, Data.I actualQuantity)])] =>
+                        actualPolicy == policy && actualToken == token &&
+                          actualQuantity == quantity
+                  | _ => false
+                %s
+
+                def dslGuarantee (ctx : ScriptContext) : Bool :=
+                  %s
+
+                def securityProperty (ctx : ScriptContext) : Prop :=
+                  dslGuarantee ctx = true
+
+                end JulcGenerated.UserProperty
+                """.formatted(redeemerType, domain, guarantee);
+    }
+
+    private static String mintingDomainEquivalence() {
+        return """
+                /- Kernel-check the solver-compatible domain against pinned V3. -/
+                import SecurityProperty
+
+                namespace JulcGenerated.UserProperty
+
+                open CardanoLedgerApi.V3
+                open PlutusCore.Integer (Integer)
+
+                /-- Every pinned V3 ledger-valid minting context is in the solver domain. -/
+                theorem validMintingContext_implies_blasterDomain
+                    (txInfo : TxInfo)
+                    (redeemer : PlutusCore.Data.Data)
+                    (policy : CardanoLedgerApi.V2.CurrencySymbol)
+                    (valid : CardanoLedgerApi.V3.Contexts.validMintingContext
+                      ⟨txInfo, redeemer, .MintingScript policy⟩ = true) :
+                    blasterValidMintingContext
+                      ⟨txInfo, redeemer, .MintingScript policy⟩ = true := by
+                  let ctx : ScriptContext :=
+                    ⟨txInfo, redeemer, .MintingScript policy⟩
+                  change CardanoLedgerApi.V3.Contexts.validMintingContext ctx = true
+                    at valid
+                  change blasterValidMintingContext ctx = true
+                  unfold CardanoLedgerApi.V3.Contexts.validMintingContext at valid
+                  unfold CardanoLedgerApi.V3.Contexts.validScriptContext at valid
+                  have contextParts := Bool.and_eq_true_iff.mp valid
+                  have scriptInfo := contextParts.1
+                  have txValid := contextParts.2
+                  unfold CardanoLedgerApi.V3.Contexts.validTxInfo at txValid
+                  have p1 := Bool.and_eq_true_iff.mp txValid
+                  have p2 := Bool.and_eq_true_iff.mp p1.1
+                  have p3 := Bool.and_eq_true_iff.mp p2.1
+                  have p4 := Bool.and_eq_true_iff.mp p3.1
+                  unfold blasterValidMintingContext
+                  unfold blasterValidTxInfo
+                  apply Bool.and_eq_true_iff.mpr
+                  constructor
+                  · exact scriptInfo
+                  · exact p4.1
+
+                end JulcGenerated.UserProperty
+                """;
+    }
+
+    private static String mintingSemanticsTests() {
+        return """
+                /- Definitional controls for the raw exact-own-policy mint predicate. -/
+                import SecurityProperty
+
+                namespace JulcGenerated.MintingSemanticsTests
+
+                open CardanoLedgerApi.V3
+                open PlutusCore.Data (Data)
+                open PlutusCore.ByteString (ByteString)
+                open JulcGenerated.UserProperty
+
+                def policy : ByteString := "policy"
+                def token : ByteString := "token"
+                def other : ByteString := "other"
+
+                /-
+                These finite executable controls use native_decide because the pinned
+                ByteString equality implementation does not reduce under decide. This
+                adds Lean's native evaluator/compiler to the controls' trust base; the
+                generated ledger bridge and property corollary remain kernel-checked.
+                -/
+
+                /-- One correct current-policy/token entry. -/
+                example : exactOwnPolicyAsset policy token 1
+                    [(Data.B policy, Data.Map [(Data.B token, Data.I 1)])] = true := by native_decide
+
+                /-- Unrelated policies before the current policy are permitted. -/
+                example : exactOwnPolicyAsset policy token 1
+                    [(Data.B other, Data.Map []),
+                     (Data.B policy, Data.Map [(Data.B token, Data.I 1)])] = true := by native_decide
+
+                /-- Unrelated policies after the current policy are permitted. -/
+                example : exactOwnPolicyAsset policy token 1
+                    [(Data.B policy, Data.Map [(Data.B token, Data.I 1)]),
+                     (Data.B other, Data.Map [])] = true := by native_decide
+
+                example : exactOwnPolicyAsset policy token 1 [] = false := by native_decide
+
+                /-- Duplicate current-policy entries remain visible and reject. -/
+                example : exactOwnPolicyAsset policy token 1
+                    [(Data.B policy, Data.Map [(Data.B token, Data.I 1)]),
+                     (Data.B policy, Data.Map [(Data.B token, Data.I 1)])] = false := by native_decide
+
+                /-- First-match valueOf can still report the desired quantity for that duplicate. -/
+                example : CardanoLedgerApi.V3.valueOf policy token
+                    [(Data.B policy, Data.Map [(Data.B token, Data.I 1)]),
+                     (Data.B policy, Data.Map [(Data.B token, Data.I 2)])] = 1 := by native_decide
+
+                example : exactOwnPolicyAsset policy token 1
+                    [(Data.B policy, Data.Map [(Data.B token, Data.I 1)]),
+                     (Data.B policy, Data.Map [(Data.B token, Data.I 2)])] = false := by native_decide
+
+                /-- Duplicate token entries remain visible and reject. -/
+                example : exactOwnPolicyAsset policy token 1
+                    [(Data.B policy, Data.Map [(Data.B token, Data.I 1),
+                                              (Data.B token, Data.I 1)])] = false := by native_decide
+
+                /-- Wrong quantity rejects. -/
+                example : exactOwnPolicyAsset policy token 1
+                    [(Data.B policy, Data.Map [(Data.B token, Data.I 2)])] = false := by native_decide
+
+                /-- Wrong token rejects. -/
+                example : exactOwnPolicyAsset policy token 1
+                    [(Data.B policy, Data.Map [(Data.B other, Data.I 1)])] = false := by native_decide
+
+                /-- Zero and negative quantities retain their signed integer semantics. -/
+                example : exactOwnPolicyAsset policy token 0
+                    [(Data.B policy, Data.Map [(Data.B token, Data.I 0)])] = true := by native_decide
+
+                example : exactOwnPolicyAsset policy token (-1)
+                    [(Data.B policy, Data.Map [(Data.B token, Data.I (-1))])] = true := by native_decide
+
+                /-- Malformed matching policy value is retained and rejects. -/
+                example : exactOwnPolicyAsset policy token 1
+                    [(Data.B policy, Data.I 1)] = false := by native_decide
+
+                /-- Malformed unrelated keys do not masquerade as the current policy. -/
+                example : exactOwnPolicyAsset policy token 1
+                    [(Data.I 0, Data.Map []),
+                     (Data.B policy, Data.Map [(Data.B token, Data.I 1)])] = true := by native_decide
+
+                /-- Malformed token key rejects the exact inner shape. -/
+                example : exactOwnPolicyAsset policy token 1
+                    [(Data.B policy, Data.Map [(Data.I 0, Data.I 1)])] = false := by native_decide
+
+                /-- Malformed token quantity rejects the exact inner shape. -/
+                example : exactOwnPolicyAsset policy token 1
+                    [(Data.B policy, Data.Map [(Data.B token, Data.B "bad")])] = false := by native_decide
+
+                end JulcGenerated.MintingSemanticsTests
+                """;
+    }
+
+    private static String oneShotMintObligation(
+            String leanId, String artifactId, int fuel) {
+        return """
+                /- Generated exact-artifact one-shot authorized mint obligation. -/
+                import PlutusCore.UPLC
+                import CardanoLedgerApi.V3
+                import Blaster
+                import GeneratedSchemas
+                import CheckedExecution
+                import SecurityProperty
+
+                namespace JulcGenerated.%s
+
+                open CardanoLedgerApi.V3
+                open PlutusCore.UPLC.Utils
+                open JulcGenerated.UserProperty
+
+                #import_uplc validator PlutusV3 double_cbor_hex
+                  "artifacts/%s.compiledCode.hex"
+                #prep_uplc appliedValidator validator mintingInputs %d
+
+                def oneShotMintObligation : Prop :=
+                  ∀ ctx : ScriptContext,
+                    blasterValidMintingContext ctx →
+                    PlutusCore.UPLC.Utils.isSuccessful (appliedValidator.prop ctx) →
+                    securityProperty ctx
+
+                def hasNoSuccessfulInput : Prop :=
+                  ∀ ctx : ScriptContext,
+                    blasterValidMintingContext ctx →
+                    ¬PlutusCore.UPLC.Utils.isSuccessful (appliedValidator.prop ctx)
+
+                end JulcGenerated.%s
+                """.formatted(leanId, artifactId, fuel, leanId);
+    }
+
+    private static String oneShotMintProof(String leanId) {
+        return """
+                import %sObligation
+
+                namespace JulcGenerated.%s
+
+                theorem successfulImpliesOneShotAuthorizedMint :
+                    oneShotMintObligation := by
+                  blaster
+
+                end JulcGenerated.%s
+                """.formatted(leanId, leanId, leanId);
+    }
+
+    private static String oneShotMintCounterexample(String leanId) {
+        return """
+                import %sObligation
+
+                namespace JulcGenerated.%s
+
+                #blaster (gen-cex: 1) (solve-result: 1) [oneShotMintObligation]
+
+                end JulcGenerated.%s
+                """.formatted(leanId, leanId, leanId);
+    }
+
+    private static String oneShotMintLedgerCorollary(String leanId) {
+        return """
+                /- Kernel bridge from the stronger solver domain to pinned V3 validity. -/
+                import %sProof
+                import LedgerDomainEquivalence
+
+                namespace JulcGenerated.%s
+
+                open CardanoLedgerApi.V3
+                open JulcGenerated.UserProperty
+
+                theorem ledgerValidSuccessfulImpliesOneShotAuthorizedMint :
+                    ∀ (txInfo : TxInfo) (redeemer : PlutusCore.Data.Data)
+                      (policy : CardanoLedgerApi.V2.CurrencySymbol),
+                      let ctx : ScriptContext :=
+                        ⟨txInfo, redeemer, .MintingScript policy⟩
+                      CardanoLedgerApi.V3.Contexts.validMintingContext ctx = true →
+                      PlutusCore.UPLC.Utils.isSuccessful (appliedValidator.prop ctx) →
+                      securityProperty ctx := by
+                  intro txInfo redeemer policy
+                  dsimp only
+                  intro valid successful
+                  let ctx : ScriptContext :=
+                    ⟨txInfo, redeemer, .MintingScript policy⟩
+                  exact successfulImpliesOneShotAuthorizedMint ctx
+                    (validMintingContext_implies_blasterDomain
+                      txInfo redeemer policy valid) successful
+
+                end JulcGenerated.%s
+                """.formatted(leanId, leanId, leanId);
+    }
+
     private static String sellerPaymentProperty(
             String datumType, String sellerField, String priceField) {
         return """
@@ -2266,31 +2691,7 @@ public final class VerificationProjectGenerator {
                 open PlutusCore.ByteString (ByteString)
                 open PlutusCore.Integer (Integer)
 
-                /--
-                Solver-compatible necessary ledger conditions. Balance, voter-map, and
-                optional treasury checks are omitted because pinned Blaster cannot
-                translate them in this theorem premise. This predicate therefore admits
-                a superset of ledger-valid contexts; proving over it is stronger. The
-                separate kernel bridge proves inclusion of the pinned V3 domain.
-                -/
-                def blasterValidTxInfo (ctx : ScriptContext) : Bool :=
-                  CardanoLedgerApi.V3.Contexts.validInputs ctx &&
-                  CardanoLedgerApi.V3.Contexts.validReferenceInputs ctx &&
-                  CardanoLedgerApi.V3.Contexts.validOutputs
-                      ctx.scriptContextTxInfo.txInfoOutputs &&
-                  ctx.scriptContextTxInfo.txInfoFee > 0 &&
-                  CardanoLedgerApi.V3.Contexts.validMintValue
-                      ctx.scriptContextTxInfo.txInfoMint &&
-                  CardanoLedgerApi.V3.Contexts.validWithdrawals
-                      ctx.scriptContextTxInfo.txInfoWdrl &&
-                  CardanoLedgerApi.V2.validTxRange
-                      ctx.scriptContextTxInfo.txInfoValidRange &&
-                  CardanoLedgerApi.V2.validSigners
-                      ctx.scriptContextTxInfo.txInfoSignatories &&
-                  CardanoLedgerApi.V3.Contexts.validRedeemerMap
-                      ctx.scriptContextTxInfo.txInfoRedeemers &&
-                  CardanoLedgerApi.V2.validDatumMap
-                      ctx.scriptContextTxInfo.txInfoData
+                %s
 
                 def blasterValidSpendingContext (ctx : ScriptContext) : Bool :=
                   match ctx.scriptContextScriptInfo with
@@ -2320,7 +2721,39 @@ public final class VerificationProjectGenerator {
                   | _ => False
 
                 end JulcGenerated.UserProperty
-                """.formatted(datumType, sellerField, priceField);
+                """.formatted(blasterValidTxInfoDefinition(), datumType,
+                sellerField, priceField);
+    }
+
+    /** One pinned solver-compatible transaction-domain definition shared by E.3/E.4a. */
+    private static String blasterValidTxInfoDefinition() {
+        return """
+                /--
+                Solver-compatible necessary ledger conditions. Balance, voter-map, and
+                optional treasury checks are omitted because pinned Blaster cannot
+                translate them in this theorem premise. This predicate therefore admits
+                a superset of ledger-valid contexts; proving over it is stronger. The
+                separate kernel bridge proves inclusion of the pinned V3 domain.
+                -/
+                def blasterValidTxInfo (ctx : ScriptContext) : Bool :=
+                  CardanoLedgerApi.V3.Contexts.validInputs ctx &&
+                  CardanoLedgerApi.V3.Contexts.validReferenceInputs ctx &&
+                  CardanoLedgerApi.V3.Contexts.validOutputs
+                      ctx.scriptContextTxInfo.txInfoOutputs &&
+                  ctx.scriptContextTxInfo.txInfoFee > 0 &&
+                  CardanoLedgerApi.V3.Contexts.validMintValue
+                      ctx.scriptContextTxInfo.txInfoMint &&
+                  CardanoLedgerApi.V3.Contexts.validWithdrawals
+                      ctx.scriptContextTxInfo.txInfoWdrl &&
+                  CardanoLedgerApi.V2.validTxRange
+                      ctx.scriptContextTxInfo.txInfoValidRange &&
+                  CardanoLedgerApi.V2.validSigners
+                      ctx.scriptContextTxInfo.txInfoSignatories &&
+                  CardanoLedgerApi.V3.Contexts.validRedeemerMap
+                      ctx.scriptContextTxInfo.txInfoRedeemers &&
+                  CardanoLedgerApi.V2.validDatumMap
+                      ctx.scriptContextTxInfo.txInfoData
+                """;
     }
 
     private static String sellerPaymentDomainEquivalence() {
@@ -2740,7 +3173,13 @@ public final class VerificationProjectGenerator {
                           echo "SMT-VALID: seller payment property established"
                           exit 0
                         fi
-                        """.formatted(leanId));
+                """.formatted(leanId));
+    }
+
+    private static String verifyOneShotMintScript(
+            String leanId, String artifactId, String compiledCodeSha256) {
+        return verifySellerPaymentScript(leanId, artifactId, compiledCodeSha256)
+                .replace("seller payment", "one-shot authorized mint");
     }
 
     private static String verifyNonVacuityScript(
@@ -2952,6 +3391,32 @@ public final class VerificationProjectGenerator {
                 retains a raw counterexample for refuted validators.
                 """.formatted(validatorTitle, property.template(),
                 property.sellerField(), property.priceField());
+    }
+
+    private static String oneShotMintReadme(
+            String validatorTitle, OneShotMintProperty property) {
+        return """
+                # Generated JuLC one-shot authorized mint DSL verification
+
+                This generator-owned workspace checks `%s` against `%s`. Every covered
+                successful execution must strictly decode the redeemer, contain authority
+                `%s` in the complete signatory list, consume anchor `%s#%s`, and contain
+                exactly token `%s` with quantity `1` under the invoked policy's raw mint
+                entry. Other policies are permitted; duplicate or malformed matching
+                policy/token entries violate the property.
+
+                The SMT obligation uses a reviewed solver-compatible superset of pinned V3
+                `validMintingContext`. A separate Lean-kernel theorem checks that every
+                ledger-valid minting context belongs to that domain. A refutation is a
+                solver-domain counterexample unless an additional ledger-valid witness is
+                recorded; it is not automatically a ledger exploit.
+
+                `SMT-VALID` is relative to the exact artifact, pinned ledger model,
+                Blaster/Z3 translation, and recorded CEK fuel. It proves this named
+                conjunction, not that the complete policy or protocol is safe.
+                """.formatted(validatorTitle, property.template(), property.authorityHex(),
+                property.anchorTransactionIdHex(), property.anchorOutputIndex(),
+                property.tokenNameHex());
     }
 
     private static String readme(

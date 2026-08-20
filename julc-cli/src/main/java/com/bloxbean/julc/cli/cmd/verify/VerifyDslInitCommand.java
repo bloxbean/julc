@@ -16,6 +16,9 @@ public final class VerifyDslInitCommand implements Callable<Integer> {
     private Path projectDir;
     @Option(names = "--validator", required = true)
     private String validator;
+    @Option(names = "--purpose",
+            description = "Required for a multi-validator: ${COMPLETION-CANDIDATES}")
+    private VerificationPurpose purpose;
     @Option(names = "--package", required = true)
     private String packageName;
     @Option(names = "--class", required = true)
@@ -32,7 +35,7 @@ public final class VerifyDslInitCommand implements Callable<Integer> {
                 throw new IllegalArgumentException(
                         "Refusing to overwrite generated metamodel: " + target);
             }
-            var loaded = DslContractLoader.load(projectDir, validator);
+            var loaded = DslContractLoader.load(projectDir, validator, purpose);
             String source = ContractMetamodelGenerator.generate(
                     loaded.schema(), packageName, className);
             if (target.getParent() != null) Files.createDirectories(target.getParent());

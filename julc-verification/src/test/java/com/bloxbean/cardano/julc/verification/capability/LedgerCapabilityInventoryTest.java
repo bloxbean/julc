@@ -26,6 +26,10 @@ class LedgerCapabilityInventoryTest {
                 inventory.require("purpose.voting").status());
         assertEquals(CapabilityStatus.RAW_DATA_ONLY,
                 inventory.require("field.txInfo.validRange").status());
+        assertEquals(CapabilityStatus.TYPED,
+                inventory.require("helper.utxoConsumed").status());
+        assertEquals(CapabilityStatus.TYPED,
+                inventory.require("ledger.validMintingContext").status());
         assertEquals(CapabilityStatus.UNSUPPORTED_SOLVER,
                 inventory.require("solver.proofReconstruction").status());
     }
