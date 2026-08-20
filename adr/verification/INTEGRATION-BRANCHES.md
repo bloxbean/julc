@@ -23,18 +23,24 @@ decisions in the linked ADRs.
 - **Integration branch:** `feat/typed-verification-dsl-e4`
 - **Parent ADR:** [ADR-016](016-typed-verification-dsl-and-profile-catalog.md)
 - **Base:** `bcfc3c7`, the PR #86 merge on `main`
-- **Latest milestone branch:**
+- **Completed milestone branch:**
   `feat/typed-verification-dsl-e4a-minting`
-- **Latest milestone ADR:**
+- **Completed milestone ADR:**
   [ADR-018](018-milestone-e4a-typed-minting-dsl.md)
-- **Integrated scope:** E.4a purpose-aware minting metamodel, shared
-  controlled-mint semantics, explicit minting ledger domain, and a one-shot
-  minting vertical slice.
+- **Current milestone branch:**
+  `feat/typed-verification-dsl-e4b-composition`
+- **Current milestone ADR:**
+  [ADR-019](019-milestone-e4b-compositional-property-promotion-core.md)
+- **Current scope:** E.4b schema-3 theorem envelopes, generic promotion of
+  supported typed AST compositions, generic Lean/dependency generation, and
+  independent multi-property certificates.
 - **Current state:** ADR-018 E.4a.1–E.4a.4 were committed as `da92873` and
   merged non-fast-forward into this integration branch as `bf9ecaf`. Manual
   review, local/Docker evidence, and GraalVM native verification are complete.
-- **Next scope:** use a separate milestone branch and ADR for the next reviewed
-  E.4 purpose slice.
+  ADR-019 is proposed for implementation on the current milestone branch.
+- **Next scope:** complete E.4b before adding rewarding as E.4c; later purpose
+  slices extend the generic semantic inventory rather than adding fixed-formula
+  resolvers.
 
 Milestone work is developed on a dedicated feature branch and merged with a
 non-fast-forward merge into this integration branch. Existing examples are:
@@ -43,6 +49,7 @@ non-fast-forward merge into this integration branch. Existing examples are:
 - `feat/typed-verification-dsl-e2-typed-ast`
 - `feat/typed-verification-dsl-e3-payment`
 - `feat/typed-verification-dsl-e4a-minting`
+- `feat/typed-verification-dsl-e4b-composition`
 
 ## Landed prerequisite branches
 
@@ -101,17 +108,21 @@ post-merge DSL compatibility fix is part of PR #86.
 main (C.1-C.7 + strict boundaries + purpose-indexed blueprints + E.1-E.3)
   -> feat/typed-verification-dsl-e4 (E.4 integration)
       -> feat/typed-verification-dsl-e4a-minting (ADR-018)
+          -> merged to E.4 integration after manual review
+      -> feat/typed-verification-dsl-e4b-composition (ADR-019)
           -> merge to E.4 integration after manual review
 ```
 
 Preferred landing sequence:
 
-1. Complete affected Java, exact-UPLC, kernel-bridge, local, and Docker
-   evidence for ADR-018.
-2. Manually review E.4a without auto-committing the milestone branch.
-3. Merge the reviewed E.4a branch into `feat/typed-verification-dsl-e4` and use
-   a separate PR for the next E.4 purpose slice.
-4. Keep compiler and blueprint work independent of the experimental DSL
+1. Implement ADR-019 E.4b on its dedicated milestone branch.
+2. Reproduce E.3/E.4a and annotation equivalence while adding novel
+   composition and multi-property evidence.
+3. Manually review E.4b before its scoped commit and non-fast-forward merge
+   into `feat/typed-verification-dsl-e4`.
+4. Implement rewarding as E.4c only after the generic promotion core is
+   available.
+5. Keep compiler and blueprint work independent of the experimental DSL
    unless a separate accepted ADR changes that module boundary.
 
 ## Maintenance rules

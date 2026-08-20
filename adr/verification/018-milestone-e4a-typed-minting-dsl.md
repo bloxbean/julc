@@ -1,6 +1,6 @@
 # ADR-018: Milestone E.4a Typed Minting Verification DSL
 
-- **Status:** Implemented experimentally; pending manual review
+- **Status:** Implemented experimentally; manually reviewed and integrated
 - **Date:** 2026-08-20
 - **Feature branch:** `feat/typed-verification-dsl-e4a-minting`
 - **Parent:**

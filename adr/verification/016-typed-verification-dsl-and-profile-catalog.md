@@ -1,6 +1,6 @@
 # ADR-016: Typed Verification DSL and Foundational Profile Catalog
 
-- **Status:** E.1–E.3 and E.4a implemented experimentally; remaining E.4–E.6 proposed
+- **Status:** E.1–E.3 and E.4a implemented experimentally; E.4b accepted for implementation; remaining E.4–E.6 proposed
 - **Date:** 2026-08-13
 - **Related:**
   [ADR-001 — IOG Blaster Verification Strategy](001-iog-blaster-verification-strategy.md),
@@ -10,7 +10,9 @@
   [ADR-012 — Stateful Spending Profile](012-milestone-c6-stateful-spending-profile.md),
   [ADR-013 — Controlled Minting Profile](013-milestone-c7-controlled-minting-profile.md),
   [ADR-014 — Post-C.7 Roadmap](014-post-c7-verification-hardening-roadmap.md),
-  [ADR-015 — Strict On-Chain Data Boundaries](015-strict-on-chain-data-boundaries.md)
+  [ADR-015 — Strict On-Chain Data Boundaries](015-strict-on-chain-data-boundaries.md),
+  [ADR-018 — Typed Minting Verification DSL](018-milestone-e4a-typed-minting-dsl.md),
+  [ADR-019 — Compositional Property Promotion Core](019-milestone-e4b-compositional-property-promotion-core.md)
 
 ## Context
 
@@ -97,6 +99,15 @@ They share Lean definitions, exact-artifact execution, non-vacuity checks,
 negative controls, result classification, tamper binding, and certificate
 generation.
 
+The DSL is compositional rather than a collection of verbose fixed profiles.
+Once an operation is admitted into the closed typed IR, a developer may
+combine it with other purpose-compatible admitted operations without JuLC
+requiring a resolver for that complete formula shape. Reviewed annotations
+and profile helpers may construct common formulas, but their ASTs receive no
+privileged proof-generation path. Exact UPLC execution and allow-listed ledger
+domains remain a separate mechanically controlled theorem envelope rather
+than freely movable assumptions.
+
 The DSL belongs in `julc-verification` or a new optional module depending on
 it. Core compiler, PIR generation, optimization, and ordinary UPLC lowering
 must not depend on it. Adding, removing, or changing a verification
@@ -143,6 +154,8 @@ are:
   has a ledger-compatible symbolic type;
 - `outputs()` is a typed symbolic ledger collection;
 - `exists`, `eq`, `ge`, `and`, and `implies` construct IR nodes;
+- a new supported combination of those nodes does not require a new
+  template-specific Java resolver;
 - `execution.succeeds()` refers to the exact imported UPLC under recorded CEK
   fuel, not to a reimplementation of the validator;
 - an `Expr<Bool>` cannot be used as a Java `boolean`, preventing accidental
@@ -426,6 +439,13 @@ defines compatible roots, output selection, assumptions, conjunctions, and
 result claims. JuLC therefore applies these rules:
 
 - an annotation lowers to the same IR used by the DSL;
+- every well-typed, purpose-compatible composition of supported DSL nodes is
+  promoted generically rather than matched against a complete template AST;
+- reviewed helper methods are ordinary AST builders and do not authorize
+  otherwise unsupported formulas;
+- exact artifact execution and reviewed ledger-domain predicates are placed
+  by a fixed theorem envelope and cannot be moved into, duplicated in, or
+  hidden inside a user guarantee;
 - duplicate equivalent properties are canonicalized or reported clearly;
 - contradictory domains or guarantees fail before Lean generation;
 - partial mandatory profiles fail rather than prove a weaker subset;
@@ -554,6 +574,20 @@ semantics, raw current-policy asset structure, consumed-anchor one-shot minting,
 and a kernel bridge from pinned V3 minting validity to the solver domain. The
 remaining purposes and broader value operations are still proposed work.
 
+**E.4b compositional core:**
+[ADR-019](019-milestone-e4b-compositional-property-promotion-core.md) makes
+the validated typed AST authoritative through promotion, generic Lean
+generation, runner planning, and per-property certification. It replaces the
+E.3/E.4a whole-formula recognizers with a closed but freely compositional
+guarantee language, while keeping exact execution and reviewed domains in a
+fixed theorem envelope. E.4b is a prerequisite for adding another purpose.
+
+**E.4c and later purpose slices:**
+Rewarding is the next proposed purpose after E.4b, followed incrementally by
+certifying, voting, and proposing where the pinned model and solver support
+permit. These slices extend the generic capability and semantic inventories;
+they do not add new fixed-formula promotion paths.
+
 ### E.5: State-machine experiment
 
 Map a deliberately small DSL state-machine vocabulary to Blaster's BMC and
@@ -603,6 +637,8 @@ entries and explicitly state whether equality is structural or extensional.
 - Common users retain concise, reviewed annotations.
 - Advanced Java users can compose contract-specific properties without
   learning Lean for supported operations.
+- Adding a novel combination of already supported operations does not require
+  a JuLC release or a template-specific generator.
 - One typed IR and semantic library prevent annotation-specific theorem drift.
 - Generated contract models replace fragile string paths with IDE-checkable
   field access.
@@ -642,11 +678,13 @@ entries and explicitly state whether equality is structural or extensional.
 
 ## Exit condition
 
-This exploration is successful when JuLC can generate a typed contract model,
-lower both an existing annotation and a nontrivial payment DSL property into a
-canonical reviewed IR, verify the payment property against exact UPLC with
-positive and vulnerable controls, report explicit ledger-domain assumptions,
-and publish a complete capability inventory for the pinned V3 ledger model.
+The initial E.1–E.3 exploration condition has been met. The next architectural
+exit condition is E.4b: JuLC must promote a novel, well-typed composition of
+already supported nodes without a formula-specific resolver, generate and run
+the proof from the canonical IR, report multiple properties independently,
+preserve explicit ledger domains, and retain exact-artifact and tamper
+bindings. ADR-019 governs that work.
 
-Only then should a follow-up ADR freeze the public DSL API and claim a defined
+Only after compositional promotion and additional purpose slices have produced
+reviewable evidence should E.6 freeze the public DSL API or claim a defined
 level of CardanoLedgerApi surface coverage.
