@@ -8,10 +8,14 @@ public enum DslType {
     DATA,
     SCRIPT_CONTEXT,
     TX_INFO,
+    POLICY_ID,
+    MINT_VALUE,
+    TX_OUT_REF,
     TX_OUT,
     VALUE,
     ADDRESS,
     CREDENTIAL,
     LIST_TX_OUT,
+    LIST_TX_IN_INFO,
     LIST_BYTE_STRING
 }

@@ -1,5 +1,12 @@
 package com.bloxbean.julc.cli.cmd.verify;
 
+import com.bloxbean.cardano.julc.blueprint.BlueprintConfig;
+import com.bloxbean.cardano.julc.blueprint.BlueprintGenerator;
+import com.bloxbean.cardano.julc.compiler.JulcCompiler;
+import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
+import com.bloxbean.cardano.julc.verification.OneShotMintProperty;
+import com.bloxbean.cardano.julc.verification.dsl.MintingDsl;
+import com.bloxbean.cardano.julc.verification.dsl.PropertyIrCodec;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -349,6 +356,25 @@ class VerificationRunnerTest {
     }
 
     @Test
+    void capabilityInventoryTamperingFailsBeforeExecution() throws Exception {
+        Path workspace = oneShotWorkspace("capability-tamper");
+        Path manifestFile = workspace.resolve("verification-manifest.json");
+        var manifest = (com.fasterxml.jackson.databind.node.ObjectNode)
+                VerificationFiles.JSON.readTree(manifestFile.toFile());
+        ((com.fasterxml.jackson.databind.node.ObjectNode)
+                manifest.path("capabilityInventory")).put("revision", "unreviewed");
+        VerificationFiles.JSON.writeValue(manifestFile.toFile(), manifest);
+        var process = new FakeProcess(false, true);
+
+        var result = runner(process).run(workspace, VerificationBackendKind.LOCAL);
+
+        assertEquals("COULD-NOT-EVALUATE", result.result().outcome());
+        assertEquals("preflight-failed", result.result().reason());
+        assertTrue(result.diagnostic().contains("capability inventory"));
+        assertTrue(process.commands.isEmpty());
+    }
+
+    @Test
     void generatedLeanTamperingFailsBeforeExecution() throws Exception {
         Path workspace = workspace("generated-lean-tamper", VerificationOutcome.SMT_VALID, false);
         Path manifestFile = workspace.resolve("verification-manifest.json");
@@ -578,8 +604,14 @@ class VerificationRunnerTest {
         assertTrue(metadata.contains("META-INF/julc/verification/**"));
         assertTrue(metadata.contains("VerificationRunPlan"));
         assertTrue(metadata.contains("VerificationRunPlan$ObservedOutcome"));
+        assertTrue(metadata.contains("ArtifactCommand$BuiltinUse"));
         assertTrue(metadata.contains("RequiresSignerProperty"));
         assertTrue(metadata.contains("ControlledMintProperty"));
+        assertTrue(metadata.contains("SellerPaymentProperty"));
+        assertTrue(metadata.contains("OneShotMintProperty"));
+        assertTrue(metadata.contains("ExactOwnPolicyAssetNode"));
+        assertTrue(metadata.contains("LedgerCapabilityInventory"));
+        assertTrue(metadata.contains("CapabilityStatus"));
     }
 
     @Test
@@ -704,6 +736,41 @@ class VerificationRunnerTest {
                 """.formatted(VerificationFiles.sha256(planFile),
                 VerificationFiles.sha256(lock), BLASTER, PLUTUS, LEDGER));
         return workspace;
+    }
+
+    private Path oneShotWorkspace(String name) throws Exception {
+        String source = """
+                import com.bloxbean.cardano.julc.ledger.ScriptContext;
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                @MintingValidator class TokenPolicy {
+                    record Redeemer() {}
+                    @Entrypoint static boolean validate(Redeemer redeemer, ScriptContext ctx) {
+                        return true;
+                    }
+                }
+                """;
+        var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(source);
+        var blueprint = BlueprintGenerator.generate(
+                new BlueprintConfig("capability-tamper-test", "1"),
+                List.of(new BlueprintGenerator.CompiledValidator(
+                        "TokenPolicy", compiled.compileResult(), compiled.contractSchema())));
+        Path blueprintFile = tempDir.resolve(name + "-plutus.json");
+        Files.writeString(blueprintFile, blueprint.toJson());
+        String authority = "4a554c435f5645524946595f415554484f524954595f303030303031";
+        String transactionId =
+                "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
+        var dsl = MintingDsl.oneShotPropertySet(
+                "TokenPolicy.one-shot", authority, transactionId, 0, "4a554c43");
+        var property = new OneShotMintProperty(
+                1, OneShotMintProperty.TEMPLATE, "TokenPolicy.one-shot", "TokenPolicy",
+                "minting", "OneShotSpec.java", authority, transactionId, "0",
+                "4a554c43", "1", "Redeemer", PropertyIrCodec.canonicalJson(dsl),
+                List.of("validMintingContext/v3-pinned"), List.of("test"), true);
+        Path output = tempDir.resolve(name);
+        VerificationProjectGenerator.generateOneShotMint(
+                blueprintFile, property, 5000, 4, output, false);
+        return output;
     }
 
     private static final class PassthroughBackend implements VerificationExecutionBackend {

@@ -9,12 +9,18 @@ public final class ContractMetamodelGenerator {
 
     public static String generate(
             ContractSchema schema, String packageName, String className) {
-        if (schema.purpose() != ContractSchema.Purpose.SPEND || schema.datum() == null) {
-            throw new IllegalArgumentException("DSL metamodel v1 requires a spending datum");
-        }
         if (!packageName.matches("[a-z][A-Za-z0-9_.]*")
                 || !className.matches("[A-Z][A-Za-z0-9_]*")) {
             throw new IllegalArgumentException("Invalid generated metamodel name");
+        }
+        if (schema.purpose() == ContractSchema.Purpose.MINT) {
+            if (schema.datum() != null) {
+                throw new IllegalArgumentException("Minting DSL interface must not have a datum");
+            }
+            return mintingModel(packageName, className);
+        }
+        if (schema.purpose() != ContractSchema.Purpose.SPEND || schema.datum() == null) {
+            throw new IllegalArgumentException("DSL metamodel requires spending or minting");
         }
         PirType type = resolve(schema.datum().type(), schema);
         if (!(type instanceof PirType.RecordType record)) {
@@ -63,6 +69,27 @@ public final class ContractMetamodelGenerator {
                 %s    }
                 }
                 """.formatted(packageName, className, accessors);
+    }
+
+    private static String mintingModel(String packageName, String className) {
+        return """
+                package %s;
+
+                import com.bloxbean.cardano.julc.verification.dsl.*;
+
+                /** Generated from compiler-owned minting ContractSchema; do not edit. */
+                public final class %s {
+                    private final MintingContractModel value = new MintingContractModel();
+
+                    public ContextExpr context() { return value.context(); }
+                    public PolicyIdExpr ownPolicy() { return value.ownPolicy(); }
+                    public BoolExpr redeemerStrictlyDecodes() {
+                        return value.redeemerStrictlyDecodes();
+                    }
+                    public BoolExpr exactUplcSucceeds() { return value.exactUplcSucceeds(); }
+                    public BoolExpr validMintingContext() { return value.validMintingContext(); }
+                }
+                """.formatted(packageName, className);
     }
 
     private static PirType resolve(PirType type, ContractSchema schema) {

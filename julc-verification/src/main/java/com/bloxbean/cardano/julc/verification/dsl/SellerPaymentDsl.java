@@ -33,7 +33,7 @@ public final class SellerPaymentDsl {
             String sellerField,
             String priceField,
             String sourcePath) {
-        DslPropertyValidator.validate(candidate, schema, 10_000);
+        DslPropertyValidator.validate(candidate, schema, DslPropertyValidator.MAX_AST_NODES);
         String propertyId = candidate.properties().getFirst().id();
         String observed = PropertyIrCodec.canonicalJson(candidate);
         String expected = PropertyIrCodec.canonicalJson(

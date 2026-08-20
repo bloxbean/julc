@@ -1,6 +1,6 @@
 # ADR-016: Typed Verification DSL and Foundational Profile Catalog
 
-- **Status:** E.1–E.3 implemented experimentally; E.4–E.6 proposed
+- **Status:** E.1–E.3 and E.4a implemented experimentally; remaining E.4–E.6 proposed
 - **Date:** 2026-08-13
 - **Related:**
   [ADR-001 — IOG Blaster Verification Strategy](001-iog-blaster-verification-strategy.md),
@@ -546,6 +546,13 @@ at a time. Each purpose requires:
 - explicit valid-context behavior;
 - certificate fixtures; and
 - compatibility tests against the pinned model.
+
+**E.4a implementation:**
+[ADR-018](018-milestone-e4a-typed-minting-dsl.md) adds the reviewed minting
+slice: exact purpose selection, schema-2 minting IR, shared controlled-mint
+semantics, raw current-policy asset structure, consumed-anchor one-shot minting,
+and a kernel bridge from pinned V3 minting validity to the solver domain. The
+remaining purposes and broader value operations are still proposed work.
 
 ### E.5: State-machine experiment
 

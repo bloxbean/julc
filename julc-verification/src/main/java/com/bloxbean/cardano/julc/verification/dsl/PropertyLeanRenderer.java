@@ -15,12 +15,19 @@ public final class PropertyLeanRenderer {
         return result.toString();
     }
 
+    public static String renderExpression(PropertyNode expression) {
+        return renderNode(expression);
+    }
+
     private static String renderNode(PropertyNode node) {
         if (node instanceof RootNode root) {
             return switch (root.name()) {
                 case "context" -> "ctx";
                 case "exactUplcSucceeds" -> "exactUplcSucceeds ctx";
                 case "validSpendingContext" -> "validSpendingContext ctx";
+                case "validMintingContext" -> "blasterValidMintingContext ctx";
+                case "ownPolicy" -> "ownPolicyOf ctx";
+                case "redeemerStrictlyDecodes" -> "redeemerStrictlyDecodes ctx";
                 case "datum" -> "strictDatum ctx";
                 default -> root.name();
             };
@@ -34,6 +41,8 @@ public final class PropertyLeanRenderer {
                 case "SCRIPT_CONTEXT.txInfo" -> target + ".scriptContextTxInfo";
                 case "TX_INFO.signatories" -> target + ".txInfoSignatories";
                 case "TX_INFO.outputs" -> target + ".txInfoOutputs";
+                case "TX_INFO.inputs" -> target + ".txInfoInputs";
+                case "TX_INFO.mint" -> target + ".txInfoMint";
                 case "TX_OUT.address" -> target + ".txOutAddress";
                 case "TX_OUT.value" -> target + ".txOutValue";
                 case "ADDRESS.credential" -> target + ".addressCredential";
@@ -54,8 +63,18 @@ public final class PropertyLeanRenderer {
                     + renderNode(binary.right()));
         }
         if (node instanceof ContainsNode contains) {
-            return "List.elem " + renderNode(contains.value()) + " "
-                    + renderNode(contains.collection());
+            return "List.elem " + parenthesize(renderNode(contains.value())) + " "
+                    + parenthesize(renderNode(contains.collection()));
+        }
+        if (node instanceof ConsumesNode consumes) {
+            return "utxoConsumed " + parenthesize(renderNode(consumes.outputReference())) + " "
+                    + parenthesize(renderNode(consumes.inputs()));
+        }
+        if (node instanceof ExactOwnPolicyAssetNode exact) {
+            return "exactOwnPolicyAsset " + parenthesize(renderNode(exact.policy())) + " "
+                    + parenthesize(renderNode(exact.tokenName())) + " "
+                    + parenthesize(renderNode(exact.quantity())) + " "
+                    + parenthesize(renderNode(exact.mint()));
         }
         if (node instanceof CompareNode comparison) {
             String op = switch (comparison.operator()) {
@@ -78,6 +97,12 @@ public final class PropertyLeanRenderer {
                     + renderNode(exists.predicate()) + ") " + renderNode(exists.collection());
         }
         if (node instanceof LiteralNode literal) return literal.value();
+        if (node instanceof BytesLiteralNode literal) return leanByteString(literal.hex());
+        if (node instanceof TxOutRefLiteralNode reference) {
+            return "(CardanoLedgerApi.V3.Tx.TxOutRef.mk "
+                    + leanByteString(reference.transactionIdHex()) + " "
+                    + reference.outputIndex() + ")";
+        }
         throw new IllegalArgumentException("Unsupported node " + node);
     }
 
@@ -85,5 +110,13 @@ public final class PropertyLeanRenderer {
 
     private static String leanName(String id) {
         return id.replaceAll("[^A-Za-z0-9_]", "_");
+    }
+
+    private static String leanByteString(String hex) {
+        var result = new StringBuilder("\"");
+        for (int index = 0; index < hex.length(); index += 2) {
+            result.append("\\x").append(hex, index, index + 2);
+        }
+        return "(" + result.append('"') + " : ByteString)";
     }
 }

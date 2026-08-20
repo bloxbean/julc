@@ -1,0 +1,24 @@
+/-
+Expected not to elaborate. Adding an unproved condition to the solver domain
+must break the kernel bridge instead of silently promoting the SMT theorem.
+-/
+import LedgerDomainEquivalence
+
+namespace JulcGenerated.BridgeNegativeControl
+
+open CardanoLedgerApi.V3
+open JulcGenerated.UserProperty
+
+example
+    (txInfo : TxInfo)
+    (redeemer : PlutusCore.Data.Data)
+    (policy : CardanoLedgerApi.V2.CurrencySymbol)
+    (valid : CardanoLedgerApi.V3.Contexts.validMintingContext
+      ⟨txInfo, redeemer, .MintingScript policy⟩ = true) :
+    blasterValidMintingContext
+      ⟨txInfo, redeemer, .MintingScript policy⟩ && false = true := by
+  have included := validMintingContext_implies_blasterDomain
+    txInfo redeemer policy valid
+  simp [included]
+
+end JulcGenerated.BridgeNegativeControl

@@ -9,8 +9,10 @@ import com.bloxbean.cardano.julc.verification.RequiresSignerProperty;
 import com.bloxbean.cardano.julc.verification.StatefulSpendingProperty;
 import com.bloxbean.cardano.julc.verification.ControlledMintProperty;
 import com.bloxbean.cardano.julc.verification.SellerPaymentProperty;
+import com.bloxbean.cardano.julc.verification.OneShotMintProperty;
 import com.bloxbean.cardano.julc.verification.dsl.PropertyIrCodec;
 import com.bloxbean.cardano.julc.verification.dsl.SellerPaymentDsl;
+import com.bloxbean.cardano.julc.verification.dsl.MintingDsl;
 import com.bloxbean.julc.cli.JulcCommand;
 import com.bloxbean.julc.cli.cmd.blueprint.ArtifactCommand;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -171,13 +173,16 @@ class VerificationProjectGeneratorTest {
     @Test
     void generatesExactControlledMintProfile() throws Exception {
         Path output = tempDir.resolve("controlled-mint");
+        String propertyId = "TokenPolicy.controlled-mint-v1";
+        String authority = "4a554c435f5645524946595f415554484f524954595f303030303031";
+        String tokenName = "4a554c43";
         var property = new ControlledMintProperty(
                 1, ControlledMintProperty.TEMPLATE,
-                "TokenPolicy.controlled-mint-v1", "TokenPolicy", "minting",
-                "authority:4a554c435f5645524946595f415554484f524954595f303030303031"
-                        + "|tokenName:4a554c43|quantity:1",
-                "4a554c435f5645524946595f415554484f524954595f303030303031",
-                "4a554c43", "1", "MINT", "Redeemer",
+                propertyId, "TokenPolicy", "minting",
+                "authority:" + authority + "|tokenName:" + tokenName + "|quantity:1",
+                authority, tokenName, "1", "MINT", "Redeemer",
+                PropertyIrCodec.canonicalJson(MintingDsl.controlledMintPropertySet(
+                        propertyId, authority, tokenName, "1")),
                 new ControlledMintProperty.SourceReference(
                         "TokenPolicy.java", 3, 1, "@ControlledMint"),
                 List.of(), List.of("exact own-policy asset"), false);
@@ -187,12 +192,12 @@ class VerificationProjectGeneratorTest {
 
         String lean = Files.readString(output.resolve("SecurityProperty.lean"));
         assertTrue(lean.contains("IsData.fromData ctx.scriptContextRedeemer"));
-        assertTrue(lean.contains("ownPolicyEntries ownPolicy"));
-        assertTrue(lean.contains("txSignedBy configuredAuthority"));
-        assertTrue(lean.contains("actualPolicy = ownPolicy"));
-        assertTrue(lean.contains("actualToken = configuredTokenName"));
-        assertTrue(lean.contains("actualQuantity = configuredQuantity"));
-        assertTrue(lean.contains("configuredQuantity > 0"));
+        assertTrue(lean.contains("exactOwnPolicyAsset"));
+        assertTrue(lean.contains("List.elem"));
+        assertTrue(lean.contains("actualPolicy == policy"));
+        assertTrue(lean.contains("actualToken == token"));
+        assertTrue(lean.contains("actualQuantity == quantity"));
+        assertTrue(lean.contains("1 > 0"));
         assertTrue(Files.readString(output.resolve("TokenPolicyObligation.lean"))
                 .contains("mintingInputs"));
         var plan = JSON.readTree(output.resolve("verification-runner.json").toFile());
@@ -204,6 +209,59 @@ class VerificationProjectGeneratorTest {
                 manifest.path("propertyIr").path("template").asText());
         assertEquals(VerificationFiles.leanTreeHash(output),
                 manifest.path("generatedLeanSha256").asText());
+    }
+
+    @Test
+    void generatesDomainAwareOneShotMintAndKernelBridge() throws Exception {
+        String propertyId = "TokenPolicy.one-shot-authorized-mint";
+        String authority = "4a554c435f5645524946595f415554484f524954595f303030303031";
+        String txId = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
+        String token = "4a554c43";
+        var dsl = MintingDsl.oneShotPropertySet(
+                propertyId, authority, txId, 0, token);
+        var property = new OneShotMintProperty(
+                1, OneShotMintProperty.TEMPLATE, propertyId, "TokenPolicy", "minting",
+                "OneShotSpec.java", authority, txId, "0", token, "1", "Redeemer",
+                PropertyIrCodec.canonicalJson(dsl),
+                List.of("validMintingContext/v3-pinned"),
+                List.of("one-shot authorized mint"), true);
+        Path output = tempDir.resolve("one-shot-mint");
+
+        VerificationProjectGenerator.generateOneShotMint(
+                writeMintBlueprint(), property, 5000, 4, output, false);
+
+        String security = Files.readString(output.resolve("SecurityProperty.lean"));
+        assertTrue(security.contains("blasterValidMintingContext"));
+        assertTrue(security.contains("utxoConsumed"));
+        assertTrue(security.contains("exactOwnPolicyAsset"));
+        assertTrue(security.contains("redeemerStrictlyDecodes"));
+        String bridge = Files.readString(output.resolve("LedgerDomainEquivalence.lean"));
+        assertTrue(bridge.contains("validMintingContext_implies_blasterDomain"));
+        assertFalse(bridge.contains("sorry"));
+        assertFalse(bridge.contains("admit"));
+        assertTrue(Files.readString(output.resolve("TokenPolicyObligation.lean"))
+                .contains("mintingInputs"));
+        assertTrue(Files.readString(output.resolve("TokenPolicyLedgerCorollary.lean"))
+                .contains("ledgerValidSuccessfulImpliesOneShotAuthorizedMint"));
+        String semantics = Files.readString(output.resolve("MintingSemanticsTests.lean"));
+        assertTrue(semantics.contains("Duplicate current-policy entries"));
+        assertTrue(semantics.contains("Malformed matching policy value"));
+        assertTrue(semantics.contains("CardanoLedgerApi.V3.valueOf"));
+        assertTrue(semantics.contains("native_decide"));
+
+        var manifest = JSON.readTree(output.resolve("verification-manifest.json").toFile());
+        assertTrue(manifest.path("ledgerValidityModeled").asBoolean());
+        assertEquals("validMintingContext/v3-pinned",
+                manifest.path("domainAssumptions").get(0).asText());
+        assertEquals(OneShotMintProperty.TEMPLATE,
+                manifest.path("propertyIr").path("template").asText());
+        assertEquals(2, manifest.path("dslIr").path("schemaVersion").asInt());
+        assertEquals(64, manifest.path("dslIr").path("sha256").asText().length());
+        assertEquals(64, manifest.path("capabilityInventory").path("sha256")
+                .asText().length());
+        var plan = JSON.readTree(output.resolve("verification-runner.json").toFile());
+        assertEquals("prove-one-shot-authorized-mint-v1",
+                plan.path("verify").get(1).path("id").asText());
     }
 
     @Test
