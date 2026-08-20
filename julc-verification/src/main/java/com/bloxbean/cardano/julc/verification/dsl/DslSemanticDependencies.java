@@ -18,6 +18,7 @@ public final class DslSemanticDependencies {
             case SPENDING -> "purpose.spending";
             case MINTING -> "purpose.minting";
             case REWARDING -> "purpose.rewarding";
+            case CERTIFYING -> "purpose.certifying";
         });
         state.capabilities.add("field.scriptContext.scriptInfo");
         switch (property.domain()) {
@@ -34,6 +35,10 @@ public final class DslSemanticDependencies {
                 state.rewardingDomain = true;
                 state.capabilities.add("ledger.validRewardingContext");
             }
+            case VALID_CERTIFYING_V3_PINNED -> {
+                state.certifyingDomain = true;
+                state.capabilities.add("ledger.validCertifyingContext");
+            }
         }
         visit(property.expression(), state);
         var capabilities = state.capabilities.stream().sorted().toList();
@@ -49,7 +54,8 @@ public final class DslSemanticDependencies {
                 state.rules.stream().sorted().toList(), state.datum,
                 state.redeemerDecode, state.ownPolicy, state.rawMint,
                 state.spendingDomain, state.mintingDomain,
-                state.rewardingCredential, state.rewardingDomain);
+                state.rewardingCredential, state.rewardingDomain,
+                state.certificate, state.certificateIndex, state.certifyingDomain);
     }
 
     private static void visit(PropertyNode node, State state) {
@@ -75,6 +81,8 @@ public final class DslSemanticDependencies {
                     state.rewardingCredential = true;
                     state.capabilities.add("helper.credentialInWithdrawals");
                 }
+                case "certificate" -> state.certificate = true;
+                case "certificateIndex" -> state.certificateIndex = true;
                 default -> {
                     if (!state.binders.contains(root.name())) {
                         throw new IllegalArgumentException(
@@ -117,6 +125,21 @@ public final class DslSemanticDependencies {
             visit(exact.quantity(), state);
             return;
         }
+        if (node instanceof TxCertKindNode kind) {
+            state.certificate = true;
+            state.capabilities.add("dsl.txCert.kind." + kind.kind());
+            visit(kind.certificate(), state);
+            return;
+        }
+        if (node instanceof KnownCertificateNode known) {
+            state.certificate = true;
+            state.certificateIndex = true;
+            state.capabilities.add("helper.isKnownCertificate");
+            visit(known.certificate(), state);
+            visit(known.index(), state);
+            visit(known.certificates(), state);
+            return;
+        }
         if (node instanceof CompareNode comparison) {
             visit(comparison.left(), state);
             visit(comparison.right(), state);
@@ -151,6 +174,7 @@ public final class DslSemanticDependencies {
             case "TX_INFO.inputs" -> "field.txInfo.inputs";
             case "TX_INFO.mint" -> "field.txInfo.mint";
             case "TX_INFO.withdrawals" -> "field.txInfo.withdrawals";
+            case "TX_INFO.certificates" -> "field.txInfo.certificates";
             case "TX_OUT.address" -> "dsl.field.txOut.address";
             case "TX_OUT.value" -> "dsl.field.txOut.value";
             case "ADDRESS.credential" -> "dsl.field.address.credential";
@@ -176,6 +200,8 @@ public final class DslSemanticDependencies {
             case LiteralNode ignored -> "integer-literal";
             case BytesLiteralNode literal -> "bytes-literal:" + literal.kind();
             case TxOutRefLiteralNode ignored -> "tx-out-ref-literal";
+            case TxCertKindNode kind -> "tx-cert-kind:" + kind.kind();
+            case KnownCertificateNode ignored -> "known-certificate";
         };
     }
 
@@ -189,7 +215,10 @@ public final class DslSemanticDependencies {
             boolean needsSpendingDomain,
             boolean needsMintingDomain,
             boolean needsRewardingCredential,
-            boolean needsRewardingDomain) { }
+            boolean needsRewardingDomain,
+            boolean needsCertificate,
+            boolean needsCertificateIndex,
+            boolean needsCertifyingDomain) { }
 
     private static final class State {
         private final Set<String> capabilities = new LinkedHashSet<>();
@@ -203,5 +232,8 @@ public final class DslSemanticDependencies {
         private boolean mintingDomain;
         private boolean rewardingCredential;
         private boolean rewardingDomain;
+        private boolean certificate;
+        private boolean certificateIndex;
+        private boolean certifyingDomain;
     }
 }

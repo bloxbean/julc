@@ -51,6 +51,13 @@ public final class DslPropertyCanonicalizer {
                     normalize(exact.policy()), normalize(exact.tokenName()),
                     normalize(exact.quantity()));
         }
+        if (node instanceof TxCertKindNode kind) {
+            return new TxCertKindNode(normalize(kind.certificate()), kind.kind());
+        }
+        if (node instanceof KnownCertificateNode known) {
+            return new KnownCertificateNode(normalize(known.certificate()),
+                    normalize(known.index()), normalize(known.certificates()));
+        }
         if (node instanceof CompareNode comparison) {
             return new CompareNode(comparison.operator(), normalize(comparison.left()),
                     normalize(comparison.right()));

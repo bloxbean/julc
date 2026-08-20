@@ -26,9 +26,16 @@ public final class ContractMetamodelGenerator {
             }
             return rewardingModel(packageName, className);
         }
+        if (schema.purpose() == ContractSchema.Purpose.CERTIFY) {
+            if (schema.datum() != null) {
+                throw new IllegalArgumentException(
+                        "Certifying DSL interface must not have a datum");
+            }
+            return certifyingModel(packageName, className);
+        }
         if (schema.purpose() != ContractSchema.Purpose.SPEND || schema.datum() == null) {
             throw new IllegalArgumentException(
-                    "DSL metamodel requires spending, minting, or rewarding");
+                    "DSL metamodel requires spending, minting, rewarding, or certifying");
         }
         PirType type = resolve(schema.datum().type(), schema);
         if (!(type instanceof PirType.RecordType record)) {
@@ -113,6 +120,29 @@ public final class ContractMetamodelGenerator {
                     public ContextExpr context() { return value.context(); }
                     public CredentialExpr rewardingCredential() {
                         return value.rewardingCredential();
+                    }
+                    public BoolExpr redeemerStrictlyDecodes() {
+                        return value.redeemerStrictlyDecodes();
+                    }
+                }
+                """.formatted(packageName, className);
+    }
+
+    private static String certifyingModel(String packageName, String className) {
+        return """
+                package %s;
+
+                import com.bloxbean.cardano.julc.verification.dsl.*;
+
+                /** Generated from compiler-owned certifying ContractSchema; do not edit. */
+                public final class %s {
+                    private final CertifyingContractModel value =
+                            new CertifyingContractModel();
+
+                    public ContextExpr context() { return value.context(); }
+                    public TxCertExpr certificate() { return value.certificate(); }
+                    public IntegerExpr certificateIndex() {
+                        return value.certificateIndex();
                     }
                     public BoolExpr redeemerStrictlyDecodes() {
                         return value.redeemerStrictlyDecodes();

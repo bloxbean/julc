@@ -37,6 +37,7 @@ class DslContractLoaderTest {
                     record Spend(BigInteger next) {}
                     record Mint(byte[] token) {}
                     record Reward() {}
+                    record Cert() {}
 
                     @Entrypoint(purpose = Purpose.SPEND)
                     static boolean spend(Datum datum, Spend redeemer, ScriptContext ctx) {
@@ -50,6 +51,11 @@ class DslContractLoaderTest {
 
                     @Entrypoint(purpose = Purpose.WITHDRAW)
                     static boolean reward(Reward redeemer, ScriptContext ctx) {
+                        return true;
+                    }
+
+                    @Entrypoint(purpose = Purpose.CERTIFY)
+                    static boolean certify(Cert redeemer, ScriptContext ctx) {
                         return true;
                     }
                 }
@@ -66,6 +72,8 @@ class DslContractLoaderTest {
                 project, "Protocol", VerificationPurpose.MINTING);
         var rewarding = DslContractLoader.load(
                 project, "Protocol", VerificationPurpose.REWARDING);
+        var certifying = DslContractLoader.load(
+                project, "Protocol", VerificationPurpose.CERTIFYING);
 
         assertEquals(ContractSchema.Purpose.SPEND, spending.schema().purpose());
         assertEquals(ContractSchema.Purpose.MINT, minting.schema().purpose());
@@ -73,6 +81,8 @@ class DslContractLoaderTest {
         assertEquals("Protocol.mint", minting.blueprintEntryTitle());
         assertEquals(ContractSchema.Purpose.WITHDRAW, rewarding.schema().purpose());
         assertEquals("Protocol.withdraw", rewarding.blueprintEntryTitle());
+        assertEquals(ContractSchema.Purpose.CERTIFY, certifying.schema().purpose());
+        assertEquals("Protocol.publish", certifying.blueprintEntryTitle());
         var blueprint = VerificationFiles.JSON.readTree(minting.blueprint().toFile());
         var entries = new java.util.HashMap<String, com.fasterxml.jackson.databind.JsonNode>();
         blueprint.path("validators").forEach(entry -> entries.put(
@@ -80,10 +90,13 @@ class DslContractLoaderTest {
         String spendCode = entries.get("spend").path("compiledCode").asText();
         String mintCode = entries.get("mint").path("compiledCode").asText();
         String rewardCode = entries.get("withdraw").path("compiledCode").asText();
+        String certCode = entries.get("publish").path("compiledCode").asText();
         assertEquals(spendCode, mintCode,
                 "purpose-indexed interfaces must share exact compiled code");
         assertEquals(spendCode, rewardCode,
                 "rewarding interface must share exact compiled code");
+        assertEquals(spendCode, certCode,
+                "certifying interface must share exact compiled code");
         assertEquals(entries.get("spend").path("hash").asText(),
                 entries.get("mint").path("hash").asText(),
                 "purpose-indexed interfaces must share the Cardano script hash");
@@ -146,6 +159,36 @@ class DslContractLoaderTest {
         assertEquals("Rewards", inferred.blueprintEntryTitle());
         var blueprint = VerificationFiles.JSON.readTree(inferred.blueprint().toFile());
         assertEquals("withdraw", blueprint.path("validators").get(0)
+                .path("redeemer").path("purpose").asText());
+    }
+
+    @Test
+    void singleCertifyingInterfaceUsesPublishBlueprintIdentity() throws Exception {
+        Path project = tempDir.resolve("single-certificates");
+        Files.createDirectories(project.resolve("src"));
+        Files.writeString(project.resolve("julc.toml"), """
+                [project]
+                name = "single-certificates"
+                version = "0.1.0"
+                compiler = "local"
+                """);
+        Files.writeString(project.resolve("src/Certificates.java"), """
+                import com.bloxbean.cardano.julc.ledger.ScriptContext;
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                @CertifyingValidator class Certificates {
+                    record Redeemer() {}
+                    @Entrypoint static boolean validate(Redeemer redeemer,
+                            ScriptContext ctx) { return true; }
+                }
+                """);
+
+        var inferred = DslContractLoader.load(project, "Certificates");
+
+        assertEquals(VerificationPurpose.CERTIFYING, inferred.purpose());
+        assertEquals(ContractSchema.Purpose.CERTIFY, inferred.schema().purpose());
+        assertEquals("Certificates", inferred.blueprintEntryTitle());
+        var blueprint = VerificationFiles.JSON.readTree(inferred.blueprint().toFile());
+        assertEquals("publish", blueprint.path("validators").get(0)
                 .path("redeemer").path("purpose").asText());
     }
 }

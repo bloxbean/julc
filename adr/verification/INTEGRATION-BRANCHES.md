@@ -28,22 +28,24 @@ decisions in the linked ADRs.
 - **Completed milestone ADR:**
   [ADR-018](018-milestone-e4a-typed-minting-dsl.md)
 - **Current milestone branch:**
-  `feat/typed-verification-dsl-e4c-rewarding`
+  `feat/typed-verification-dsl-e4d-certifying`
 - **Current milestone ADR:**
-  [ADR-020](020-milestone-e4c-typed-rewarding-dsl.md)
-- **Current scope:** E.4c rewarding purpose selection, typed raw-withdrawal
-  traversal, rewarding ledger-domain bridge, and exact local/Docker/native
-  evidence.
+  [ADR-021](021-milestone-e4d-typed-certifying-dsl.md)
+- **Current scope:** E.4d certifying purpose selection, typed certificate kind
+  and indexed-list relations, certifying ledger-domain bridge, and exact
+  local/Docker/native evidence.
 - **Current state:** ADR-018 E.4a.1–E.4a.4 were committed as `da92873` and
   merged non-fast-forward into this integration branch as `bf9ecaf`. Manual
   review, local/Docker evidence, and GraalVM native verification are complete.
   ADR-019 E.4b.1–E.4b.4 were committed as `0481459` after review and merged as
-  `c97a1be`. ADR-020 E.4c is implemented on its dedicated milestone branch;
+  `c97a1be`. ADR-020 E.4c was committed as `dbc6984` and merged as `7382815`;
   local, Docker, native-CLI, exact-VM, refuted, duplicate, and vacuity controls
-  pass.
-- **Next scope:** merge E.4c into this integration branch, then implement
-  certifying as E.4d on a new milestone branch. Later purpose slices extend the
-  generic semantic inventory rather than adding fixed-formula resolvers.
+  pass. ADR-021 E.4d is implemented on its dedicated milestone branch; exact
+  VM, local, Docker, native-CLI, constructor/index, strengthened-domain,
+  refuted, and vacuity controls pass.
+- **Next scope:** merge E.4d into this integration branch after its scoped
+  commit. Any later purpose slice extends the generic semantic inventory rather
+  than adding a fixed-formula resolver.
 
 Milestone work is developed on a dedicated feature branch and merged with a
 non-fast-forward merge into this integration branch. Existing examples are:
@@ -54,6 +56,7 @@ non-fast-forward merge into this integration branch. Existing examples are:
 - `feat/typed-verification-dsl-e4a-minting`
 - `feat/typed-verification-dsl-e4b-composition`
 - `feat/typed-verification-dsl-e4c-rewarding`
+- `feat/typed-verification-dsl-e4d-certifying`
 
 ## Landed prerequisite branches
 
@@ -116,18 +119,18 @@ main (C.1-C.7 + strict boundaries + purpose-indexed blueprints + E.1-E.3)
       -> feat/typed-verification-dsl-e4b-composition (ADR-019)
           -> merge to E.4 integration after manual review
       -> feat/typed-verification-dsl-e4c-rewarding (ADR-020)
+          -> merged to E.4 integration after completed evidence and review
+      -> feat/typed-verification-dsl-e4d-certifying (ADR-021)
           -> merge to E.4 integration after completed evidence and review
 ```
 
 Preferred landing sequence:
 
-1. Keep completed E.4a–E.4c commits scoped and merged non-fast-forward into
+1. Keep completed E.4a–E.4d commits scoped and merged non-fast-forward into
    `feat/typed-verification-dsl-e4`.
-2. Implement certifying as ADR-021 E.4d on its own branch from the updated
-   integration branch.
-3. Extend only the generic schema-3 promotion path; do not add another
+2. Extend only the generic schema-3 promotion path; do not add another
    fixed-formula resolver.
-4. Keep compiler and blueprint work independent of the experimental DSL
+3. Keep compiler and blueprint work independent of the experimental DSL
    unless a separate accepted ADR changes that module boundary.
 
 ## Maintenance rules

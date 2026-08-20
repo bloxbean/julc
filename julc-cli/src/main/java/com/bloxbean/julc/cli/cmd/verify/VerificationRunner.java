@@ -701,7 +701,8 @@ public final class VerificationRunner {
             throw new IOException("Verification manifest has invalid fuel or recursive depth");
         }
         String purpose = requiredText(manifest, "scriptPurpose");
-        if (!Set.of("spending", "minting", "rewarding").contains(purpose)) {
+        if (!Set.of("spending", "minting", "rewarding", "certifying")
+                .contains(purpose)) {
             throw new IOException("Unsupported verification script purpose " + purpose);
         }
         var artifact = new LinkedHashMap<String, Object>();

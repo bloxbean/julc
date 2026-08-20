@@ -104,6 +104,7 @@ public final class ComposedDslPromotion {
             case VALID_SPENDING_V3_PINNED -> "validSpendingContext/v3-pinned";
             case VALID_MINTING_V3_PINNED -> "validMintingContext/v3-pinned";
             case VALID_REWARDING_V3_PINNED -> "validRewardingContext/v3-pinned";
+            case VALID_CERTIFYING_V3_PINNED -> "validCertifyingContext/v3-pinned";
         };
     }
 
@@ -114,10 +115,12 @@ public final class ComposedDslPromotion {
             case VALID_SPENDING_V3_PINNED -> "BLASTER_VALID_SPENDING_SUPERSET";
             case VALID_MINTING_V3_PINNED -> "BLASTER_VALID_MINTING_SUPERSET";
             case VALID_REWARDING_V3_PINNED -> "BLASTER_VALID_REWARDING_SUPERSET";
+            case VALID_CERTIFYING_V3_PINNED -> "BLASTER_VALID_CERTIFYING_SUPERSET";
             case NONE -> switch (purpose) {
                 case SPENDING -> "BLASTER_SPENDING_SYMBOLIC_CONTEXT";
                 case MINTING -> "BLASTER_MINTING_SYMBOLIC_CONTEXT";
                 case REWARDING -> "BLASTER_REWARDING_SYMBOLIC_CONTEXT";
+                case CERTIFYING -> "BLASTER_CERTIFYING_SYMBOLIC_CONTEXT";
             };
         };
     }

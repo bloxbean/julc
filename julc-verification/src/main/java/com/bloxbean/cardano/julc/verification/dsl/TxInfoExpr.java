@@ -23,4 +23,7 @@ public record TxInfoExpr(PropertyNode node) implements Expr {
     public WithdrawalsExpr withdrawals() {
         return new WithdrawalsExpr(new FieldNode(node, "withdrawals", DslType.WITHDRAWALS));
     }
+    public TxCertListExpr certificates() {
+        return new TxCertListExpr(new FieldNode(node, "certificates", DslType.LIST_TX_CERT));
+    }
 }
