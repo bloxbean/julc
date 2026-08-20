@@ -70,8 +70,12 @@ public final class DslPropertyCanonicalizer {
             BoolOperator operator, PropertyNode expression) {
         var operands = new ArrayList<PropertyNode>();
         collect(operator, expression, operands);
-        List<PropertyNode> normalized = operands.stream()
+        List<PropertyNode> normalizedOperands = operands.stream()
                 .map(DslPropertyCanonicalizer::normalize)
+                .toList();
+        var flattened = new ArrayList<PropertyNode>();
+        normalizedOperands.forEach(operand -> collect(operator, operand, flattened));
+        List<PropertyNode> normalized = flattened.stream()
                 .sorted(DslPropertyCanonicalizer::compareCanonical)
                 .distinct()
                 .toList();

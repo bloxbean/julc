@@ -111,6 +111,11 @@ envelope hash, capability list, domain, and result entries. A vacuous or
 undetermined non-vacuity result skips only that property's proof. Overall
 success requires every requested property to be established.
 
+For a property with a reviewed ledger domain, SMT success is not published
+until the same script also elaborates that property's generated
+`LedgerCorollary.lean`. The evidence driver checks that every affected script
+contains this invocation, preventing a generated-but-unused bridge.
+
 `SMT-VALID` applies only to exact executions within the recorded CEK fuel and,
 when selected, the pinned reviewed ledger domain. A `REFUTED` result is a
 counterexample in the recorded Blaster symbolic domain. It is not called

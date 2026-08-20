@@ -440,6 +440,14 @@ The Java worker remains required for native-CLI DSL use because project Java
 must execute in a JVM. This milestone does not claim that process isolation is
 an OS sandbox.
 
+Runner preflight re-parses the hash-bound canonical IR and re-derives claim
+identities, capabilities, domains, formula hashes, and theorem envelopes. It
+does not repeat compiler-schema field/type validation because `ContractSchema`
+is intentionally not published into the standalone workspace. That validation
+is authoritative during CLI promotion; subsequent modification is detected by
+the candidate, canonical-IR, property, manifest, runner-plan, and generated-tree
+hash bindings.
+
 ## Affected modules
 
 ### `julc-verification`
@@ -748,6 +756,10 @@ The implementation adds:
 Two novel compositions that previously failed whole-formula recognition are
 `SMT-VALID` against exact 632-byte spending and minting artifacts at CEK fuel
 5000. The spending evidence contains two independently established properties.
+A review fix made every selected-domain proof script invoke its generated
+per-claim `LedgerCorollary.lean` after SMT success; generator tests and the
+local/Docker evidence driver assert those invocations, and the corrected
+corollaries elaborate successfully through local, Docker, and native runs.
 A mixed run establishes its payment property and refutes its signer property,
 producing aggregate `REFUTED` without hiding either result. An always-failing
 fixture reports `COULD-NOT-EVALUATE/property-vacuous` and does not execute its

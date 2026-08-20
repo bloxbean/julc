@@ -85,5 +85,13 @@ grep -q '"reason" : "not-evaluated-vacuous"' \
   "${E4B_DIR}/generated/vacuous/verification-result.json"
 grep -q '"ledgerValidCounterexampleEstablished" : false' \
   "${E4B_DIR}/generated/mixed/verification-result.json"
+grep -q 'ComposedSale_sale_paidLedgerCorollary.lean' \
+  "${E4B_DIR}/generated/spending/scripts/verify-sale_paid.sh"
+grep -q 'ComposedSale_sale_paid_or_fallback_signedLedgerCorollary.lean' \
+  "${E4B_DIR}/generated/spending/scripts/verify-sale_paid_or_fallback_signed.sh"
+grep -q 'ComposedPolicy_policy_composed_one_shotLedgerCorollary.lean' \
+  "${E4B_DIR}/generated/minting/scripts/verify-policy_composed_one_shot.sh"
+grep -q 'ComposedSale_mixed_paidLedgerCorollary.lean' \
+  "${E4B_DIR}/generated/mixed/scripts/verify-mixed_paid.sh"
 
 echo "Milestone E.4b compositional DSL controls passed with ${BACKEND}."

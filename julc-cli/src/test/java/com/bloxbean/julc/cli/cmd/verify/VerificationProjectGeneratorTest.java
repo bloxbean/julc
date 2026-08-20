@@ -357,6 +357,9 @@ class VerificationProjectGeneratorTest {
                 .contains("blasterValidSpendingContext ctx = true"));
         assertTrue(Files.isExecutable(output.resolve(
                 "scripts/verify-stategate_state_nonnegative.sh")));
+        assertTrue(Files.readString(output.resolve(
+                "scripts/verify-stategate_state_nonnegative.sh"))
+                .contains("StateGate_StateGate_state_nonnegativeLedgerCorollary.lean"));
 
         var plan = JSON.readTree(output.resolve("verification-runner.json").toFile());
         assertEquals(4, plan.path("verify").size());
@@ -433,6 +436,9 @@ class VerificationProjectGeneratorTest {
         assertTrue(Files.readString(output.resolve(
                 "TokenPolicy_TokenPolicy_composed_mintLedgerCorollary.lean"))
                 .contains("composedLedgerCorollary"));
+        assertTrue(Files.readString(output.resolve(
+                "scripts/verify-tokenpolicy_composed_mint.sh"))
+                .contains("TokenPolicy_TokenPolicy_composed_mintLedgerCorollary.lean"));
     }
 
     @Test

@@ -47,6 +47,12 @@ public final class DslPropertyValidator {
         int[] nodes = {0};
         var normalizedIds = new HashSet<String>();
         for (DslProperty property : propertySet.properties()) {
+            if (compositionV3 && property.id().toLowerCase(java.util.Locale.ROOT)
+                    .endsWith(".non-vacuity")) {
+                throw new IllegalArgumentException(
+                        "Property ID uses reserved runner suffix .non-vacuity: "
+                                + property.id());
+            }
             if (compositionV3 && !normalizedIds.add(normalizedIdentifier(property.id()))) {
                 throw new IllegalArgumentException(
                         "Property IDs collide after generated-name normalization: "
