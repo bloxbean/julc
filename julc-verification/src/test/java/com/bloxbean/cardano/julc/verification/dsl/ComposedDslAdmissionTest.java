@@ -103,6 +103,32 @@ class ComposedDslAdmissionTest {
     }
 
     @Test
+    void canonicalizationIsIdempotentWhenDeduplicationExposesSameOperator() {
+        var model = new SpendingContractModel();
+        BoolExpr first = model.context().txInfo().signatories().contains(keyHash(AUTHORITY_A));
+        BoolExpr second = model.context().txInfo().signatories().contains(keyHash(AUTHORITY_B));
+        BoolExpr third = model.datum().integerField("minimum").ge(integer(0));
+        BoolExpr duplicatedConjunction = first.and(second).or(first.and(second));
+        var nested = DslPropertySet.composed(DslPurpose.SPENDING,
+                property("Gate.idempotent", DslDomain.NONE,
+                        duplicatedConjunction.and(third)));
+        var flat = DslPropertySet.composed(DslPurpose.SPENDING,
+                property("Gate.idempotent", DslDomain.NONE,
+                        first.and(second).and(third)));
+
+        DslPropertySet normalized = DslPropertyValidator.validateAndNormalize(
+                nested, spendingSchema(), 10_000);
+        DslPropertySet normalizedAgain = DslPropertyCanonicalizer.normalize(normalized);
+        DslPropertySet normalizedFlat = DslPropertyValidator.validateAndNormalize(
+                flat, spendingSchema(), 10_000);
+
+        assertEquals(PropertyIrCodec.canonicalJson(normalized),
+                PropertyIrCodec.canonicalJson(normalizedAgain));
+        assertEquals(PropertyIrCodec.canonicalJson(normalizedFlat),
+                PropertyIrCodec.canonicalJson(normalized));
+    }
+
+    @Test
     void multiplePropertiesAreSortedButRemainIndependent() {
         var model = new SpendingContractModel();
         var candidate = DslPropertySet.composed(DslPurpose.SPENDING,
@@ -234,6 +260,18 @@ class ComposedDslAdmissionTest {
                 () -> DslPropertyValidator.validate(
                         caseInsensitiveFilesystemCollision, spending, 100))
                 .getMessage().contains("collide"));
+    }
+
+    @Test
+    void rejectsPropertyIdsUsingReservedNonVacuitySuffix() {
+        var model = new SpendingContractModel();
+        var candidate = DslPropertySet.composed(DslPurpose.SPENDING,
+                property("sale.PAID.NON-VACUITY", DslDomain.NONE,
+                        model.datum().integerField("minimum").ge(integer(0))));
+
+        assertTrue(assertThrows(IllegalArgumentException.class,
+                () -> DslPropertyValidator.validate(candidate, spendingSchema(), 100))
+                .getMessage().contains("reserved runner suffix"));
     }
 
     @Test

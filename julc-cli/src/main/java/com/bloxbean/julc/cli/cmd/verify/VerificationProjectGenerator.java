@@ -3670,7 +3670,7 @@ public final class VerificationProjectGenerator {
                             + "Proof.olean " + module + "Proof.lean");
             result = result.replace("""
                     if [[ ${proof_status} -eq 0 ]]; then
-                      echo "SMT-VALID: %s property established"
+                      echo "SMT-VALID: %s established"
                       exit 0
                     fi
                     """.formatted(label), """
@@ -3679,7 +3679,7 @@ public final class VerificationProjectGenerator {
                         echo "COULD-NOT-EVALUATE: ledger-domain kernel bridge failed" >&2
                         exit 2
                       fi
-                      echo "SMT-VALID: %s property established"
+                      echo "SMT-VALID: %s established"
                       exit 0
                     fi
                     """.formatted(module, label));
