@@ -6,6 +6,6 @@ import com.bloxbean.cardano.julc.verification.dsl.ir.PropertyNode;
 public sealed interface Expr permits BoolExpr, ByteStringExpr, IntegerExpr, DatumExpr,
         ContextExpr, TxInfoExpr, ByteStringListExpr, TxOutExpr, TxOutListExpr,
         ValueExpr, AddressExpr, CredentialExpr, PolicyIdExpr, MintValueExpr,
-        TxOutRefExpr, TxInInfoListExpr {
+        TxOutRefExpr, TxInInfoListExpr, WithdrawalsExpr, WithdrawalEntryExpr {
     PropertyNode node();
 }

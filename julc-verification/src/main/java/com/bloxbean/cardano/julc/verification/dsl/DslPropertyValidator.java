@@ -97,10 +97,18 @@ public final class DslPropertyValidator {
                 case "exactUplcSucceeds" -> DslType.BOOL;
                 case "validSpendingContext" -> schema.purpose()
                         == ContractSchema.Purpose.SPEND ? DslType.BOOL : null;
-                case "validMintingContext", "redeemerStrictlyDecodes" -> schema.purpose()
+                case "validMintingContext" -> schema.purpose()
                         == ContractSchema.Purpose.MINT ? DslType.BOOL : null;
+                case "validRewardingContext" -> schema.purpose()
+                        == ContractSchema.Purpose.WITHDRAW ? DslType.BOOL : null;
+                case "redeemerStrictlyDecodes" -> switch (schema.purpose()) {
+                    case MINT, WITHDRAW -> DslType.BOOL;
+                    default -> null;
+                };
                 case "ownPolicy" -> schema.purpose() == ContractSchema.Purpose.MINT
                         ? DslType.POLICY_ID : null;
+                case "rewardingCredential" -> schema.purpose()
+                        == ContractSchema.Purpose.WITHDRAW ? DslType.CREDENTIAL : null;
                 default -> variables.get(root.name());
             };
             if (expected == null || expected != root.resultType()) {
@@ -192,9 +200,14 @@ public final class DslPropertyValidator {
             return DslType.BOOL;
         }
         if (node instanceof ExistsNode exists) {
-            require(DslType.LIST_TX_OUT,
-                    validateNode(exists.collection(), schema, variables, count, maxNodes,
-                            schemaVersion));
+            DslType collection = validateNode(
+                    exists.collection(), schema, variables, count, maxNodes, schemaVersion);
+            DslType element = switch (collection) {
+                case LIST_TX_OUT -> DslType.TX_OUT;
+                case WITHDRAWALS -> DslType.WITHDRAWAL_ENTRY;
+                default -> throw new IllegalArgumentException(
+                        "exists requires a supported typed collection, found " + collection);
+            };
             if (!exists.variable().matches("[A-Za-z][A-Za-z0-9_]{0,31}")) {
                 throw new IllegalArgumentException("Invalid quantified variable name");
             }
@@ -207,7 +220,7 @@ public final class DslPropertyValidator {
                         "Property binder depth exceeds 32 active variables");
             }
             var nested = new HashMap<>(variables);
-            nested.put(exists.variable(), DslType.TX_OUT);
+            nested.put(exists.variable(), element);
             require(DslType.BOOL,
                     validateNode(exists.predicate(), schema, nested, count, maxNodes,
                             schemaVersion));
@@ -300,16 +313,24 @@ public final class DslPropertyValidator {
             throw new IllegalArgumentException(
                     "Field TX_INFO.mint requires a MINT contract interface");
         }
+        if (selected.equals("TX_INFO.withdrawals")
+                && schema.purpose() != ContractSchema.Purpose.WITHDRAW) {
+            throw new IllegalArgumentException(
+                    "Field TX_INFO.withdrawals requires a WITHDRAW contract interface");
+        }
         return switch (selected) {
             case "SCRIPT_CONTEXT.txInfo" -> DslType.TX_INFO;
             case "TX_INFO.signatories" -> DslType.LIST_BYTE_STRING;
             case "TX_INFO.outputs" -> DslType.LIST_TX_OUT;
             case "TX_INFO.inputs" -> DslType.LIST_TX_IN_INFO;
             case "TX_INFO.mint" -> DslType.MINT_VALUE;
+            case "TX_INFO.withdrawals" -> DslType.WITHDRAWALS;
             case "TX_OUT.address" -> DslType.ADDRESS;
             case "TX_OUT.value" -> DslType.VALUE;
             case "ADDRESS.credential" -> DslType.CREDENTIAL;
             case "VALUE.lovelace" -> DslType.INTEGER;
+            case "WITHDRAWAL_ENTRY.credential" -> DslType.CREDENTIAL;
+            case "WITHDRAWAL_ENTRY.amount" -> DslType.INTEGER;
             default -> throw new IllegalArgumentException(
                     "Unsupported field " + field + " on " + target);
         };
@@ -356,6 +377,7 @@ public final class DslPropertyValidator {
         return switch (purpose) {
             case SPENDING -> ContractSchema.Purpose.SPEND;
             case MINTING -> ContractSchema.Purpose.MINT;
+            case REWARDING -> ContractSchema.Purpose.WITHDRAW;
         };
     }
 
@@ -364,6 +386,7 @@ public final class DslPropertyValidator {
             case NONE -> true;
             case VALID_SPENDING_V3_PINNED -> purpose == DslPurpose.SPENDING;
             case VALID_MINTING_V3_PINNED -> purpose == DslPurpose.MINTING;
+            case VALID_REWARDING_V3_PINNED -> purpose == DslPurpose.REWARDING;
         };
         if (!valid) {
             throw new IllegalArgumentException(
@@ -374,7 +397,8 @@ public final class DslPropertyValidator {
     private static boolean isEnvelopeRoot(String name) {
         return name.equals("exactUplcSucceeds")
                 || name.equals("validSpendingContext")
-                || name.equals("validMintingContext");
+                || name.equals("validMintingContext")
+                || name.equals("validRewardingContext");
     }
 
     private static String normalizedIdentifier(String id) {

@@ -20,4 +20,7 @@ public record TxInfoExpr(PropertyNode node) implements Expr {
     public MintValueExpr mint() {
         return new MintValueExpr(new FieldNode(node, "mint", DslType.MINT_VALUE));
     }
+    public WithdrawalsExpr withdrawals() {
+        return new WithdrawalsExpr(new FieldNode(node, "withdrawals", DslType.WITHDRAWALS));
+    }
 }

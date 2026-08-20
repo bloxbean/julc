@@ -1,0 +1,4 @@
+[project]
+name = "e4c-rewarding"
+version = "0.1.0"
+compiler = "local"

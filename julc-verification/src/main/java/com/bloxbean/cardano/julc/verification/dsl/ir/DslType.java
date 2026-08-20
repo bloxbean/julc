@@ -15,6 +15,8 @@ public enum DslType {
     VALUE,
     ADDRESS,
     CREDENTIAL,
+    WITHDRAWALS,
+    WITHDRAWAL_ENTRY,
     LIST_TX_OUT,
     LIST_TX_IN_INFO,
     LIST_BYTE_STRING

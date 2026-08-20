@@ -4,5 +4,6 @@ package com.bloxbean.cardano.julc.verification.dsl.ir;
 public enum DslDomain {
     NONE,
     VALID_SPENDING_V3_PINNED,
-    VALID_MINTING_V3_PINNED
+    VALID_MINTING_V3_PINNED,
+    VALID_REWARDING_V3_PINNED
 }

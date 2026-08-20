@@ -13,6 +13,7 @@ import com.bloxbean.cardano.julc.verification.OneShotMintProperty;
 import com.bloxbean.cardano.julc.verification.dsl.ComposedDslPromotion;
 import com.bloxbean.cardano.julc.verification.dsl.SpendingContractModel;
 import com.bloxbean.cardano.julc.verification.dsl.MintingContractModel;
+import com.bloxbean.cardano.julc.verification.dsl.RewardingContractModel;
 import com.bloxbean.cardano.julc.verification.dsl.ir.DslDomain;
 import com.bloxbean.cardano.julc.verification.dsl.ir.DslPropertySet;
 import com.bloxbean.cardano.julc.verification.dsl.ir.DslPurpose;
@@ -439,6 +440,63 @@ class VerificationProjectGeneratorTest {
         assertTrue(Files.readString(output.resolve(
                 "scripts/verify-tokenpolicy_composed_mint.sh"))
                 .contains("TokenPolicy_TokenPolicy_composed_mintLedgerCorollary.lean"));
+    }
+
+    @Test
+    void generatesRewardingCompositionAndExecutesReviewedDomainBridge() throws Exception {
+        String source = """
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                import com.bloxbean.cardano.julc.ledger.ScriptContext;
+                @WithdrawValidator class Rewards {
+                    record Redeemer() {}
+                    @Entrypoint static boolean validate(Redeemer redeemer,
+                            ScriptContext ctx) { return true; }
+                }
+                """;
+        var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(source);
+        var model = new RewardingContractModel();
+        String authority = "4a554c435f5645524946595f415554484f524954595f303030303031";
+        var guarantee = model.context().txInfo().withdrawals().exists(entry ->
+                        entry.credential().eq(model.rewardingCredential())
+                                .and(entry.amount().ge(integer(1_000_000))))
+                .and(model.context().txInfo().signatories().contains(keyHash(authority)));
+        var candidate = DslPropertySet.composed(DslPurpose.REWARDING,
+                property("Rewards.authorized", DslDomain.VALID_REWARDING_V3_PINNED,
+                        guarantee));
+        var promoted = ComposedDslPromotion.promote(candidate,
+                compiled.contractSchema(), "Rewards", "RewardProperties.java");
+        Path output = tempDir.resolve("composed-rewarding");
+
+        VerificationProjectGenerator.generateComposedDsl(
+                writeRewardingBlueprint(), promoted, 5000, 4, output, false);
+
+        String security = Files.readString(output.resolve("SecurityProperty.lean"));
+        assertTrue(security.contains("rewardingCredentialOf"));
+        assertTrue(security.contains("txInfoWdrl"));
+        assertTrue(security.contains("blasterValidRewardingContext"));
+        String obligation = Files.readString(output.resolve(
+                "Rewards_Rewards_authorizedObligation.lean"));
+        assertTrue(obligation.contains("rewardingInputs"));
+        assertTrue(obligation.contains("blasterValidRewardingContext"));
+        assertTrue(Files.readString(output.resolve("LedgerDomainEquivalence.lean"))
+                .contains("validRewardingContext_implies_blasterDomain"));
+        assertTrue(Files.readString(output.resolve(
+                "Rewards_Rewards_authorizedLedgerCorollary.lean"))
+                .contains("validRewardingContext"));
+        assertTrue(Files.readString(output.resolve(
+                "scripts/verify-rewards_authorized.sh"))
+                .contains("Rewards_Rewards_authorizedLedgerCorollary.lean"));
+        String rewardingSemantics = Files.readString(
+                output.resolve("RewardingSemanticsTests.lean"));
+        assertTrue(rewardingSemantics.contains("matchingMinimum"));
+        assertTrue(rewardingSemantics.contains(
+                "Data.Map [(Data.I 0, Data.I 1)]"));
+        assertTrue(rewardingSemantics.contains("Data.B \"bad\""));
+        var manifest = JSON.readTree(
+                output.resolve("verification-manifest.json").toFile());
+        assertEquals("rewarding", manifest.path("scriptPurpose").asText());
+        assertEquals("Rewards", manifest.path("blueprintEntryTitle").asText());
     }
 
     @Test
@@ -1126,6 +1184,28 @@ class VerificationProjectGeneratorTest {
                 List.of(new BlueprintGenerator.CompiledValidator(
                         "TokenPolicy", result.compileResult(), result.contractSchema())));
         Path blueprint = tempDir.resolve("mint-" + System.nanoTime() + ".json");
+        Files.writeString(blueprint, generated.toJson());
+        return blueprint;
+    }
+
+    private Path writeRewardingBlueprint() throws Exception {
+        String source = """
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                import com.bloxbean.cardano.julc.ledger.ScriptContext;
+                @WithdrawValidator class Rewards {
+                    record Redeemer() {}
+                    @Entrypoint
+                    static boolean validate(Redeemer redeemer, ScriptContext ctx) {
+                        return true;
+                    }
+                }
+                """;
+        var result = new JulcCompiler(StdlibRegistry.defaultRegistry()).compileContract(source);
+        var generated = BlueprintGenerator.generate(
+                new BlueprintConfig("rewarding-generator-test", "1"),
+                List.of(new BlueprintGenerator.CompiledValidator(
+                        "Rewards", result.compileResult(), result.contractSchema())));
+        Path blueprint = tempDir.resolve("rewarding-" + System.nanoTime() + ".json");
         Files.writeString(blueprint, generated.toJson());
         return blueprint;
     }

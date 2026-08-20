@@ -1,6 +1,6 @@
 # ADR-016: Typed Verification DSL and Foundational Profile Catalog
 
-- **Status:** E.1–E.4b implemented experimentally; E.4b awaiting manual review; E.4c–E.6 proposed
+- **Status:** E.1–E.4c implemented experimentally; E.4d–E.6 proposed
 - **Date:** 2026-08-13
 - **Related:**
   [ADR-001 — IOG Blaster Verification Strategy](001-iog-blaster-verification-strategy.md),
@@ -586,11 +586,20 @@ independent multi-property results, conservative counterexample-domain
 metadata, and local, Docker, and native-CLI execution. It introduces no
 on-chain compiler dependency or UPLC change.
 
-**E.4c and later purpose slices:**
-Rewarding is the next proposed purpose after E.4b, followed incrementally by
-certifying, voting, and proposing where the pinned model and solver support
-permit. These slices extend the generic capability and semantic inventories;
-they do not add new fixed-formula promotion paths.
+**E.4c rewarding slice (implemented experimentally):**
+[ADR-020](020-milestone-e4c-typed-rewarding-dsl.md) adds exact `withdraw`
+selection, the current rewarding credential, duplicate-preserving raw
+withdrawal traversal, and a kernel bridge from pinned rewarding validity to
+the reviewed solver domain. The vertical slice composes strict redeemer
+decoding, an authority signer, and a minimum matching withdrawal. Local,
+Docker, native, refuted, and vacuous evidence uses the generic schema-3 path;
+no fixed-formula resolver or compiler dependency was added.
+
+**E.4d and later purpose slices:**
+Certifying follows rewarding, then voting and proposing only where the pinned
+model, CIP-57 selection, and solver support permit. These slices extend the
+generic capability and semantic inventories; they do not add new fixed-formula
+promotion paths.
 
 ### E.5: State-machine experiment
 

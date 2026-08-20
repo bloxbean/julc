@@ -371,7 +371,55 @@ policy cannot disappear behind first-match lookup. See
 [`e4a/README.md`](e4a/README.md) for a complete specification and local/Docker
 commands.
 
-## 12. Fuel, recursion, and reruns
+## 12. Experimental compositional and rewarding DSL
+
+ADR-019 schema 3 accepts freely composed guarantees built only from the
+reviewed typed nodes. Each property keeps the exact-execution and optional
+ledger-domain premise in a generator-owned theorem envelope; user code cannot
+insert either premise or raw Lean. A rewarding specification can therefore
+combine existing signer predicates with the new duplicate-preserving raw
+withdrawal traversal:
+
+```java
+var contract = new RewardingModel();
+var ownMinimum = contract.context().txInfo().withdrawals().exists(entry ->
+        entry.credential().eq(contract.rewardingCredential())
+                .and(entry.amount().ge(integer(1_000_000))));
+var authorized = contract.context().txInfo().signatories()
+        .contains(keyHash(AUTHORITY));
+
+return DslPropertySet.composed(DslPurpose.REWARDING,
+        property("reward.authorized-minimum",
+                DslDomain.VALID_REWARDING_V3_PINNED,
+                contract.redeemerStrictlyDecodes()
+                        .and(authorized)
+                        .and(ownMinimum)));
+```
+
+Generate and verify it with an explicit purpose:
+
+```bash
+julc verify dsl-init . --validator Rewards --purpose rewarding \
+  --package evidence --class RewardingModel \
+  --out build/verification-dsl/src/evidence/RewardingModel.java
+
+javac -cp julc.jar -d build/verification-dsl/classes \
+  build/verification-dsl/src/evidence/RewardingModel.java RewardingSpec.java
+
+julc verify dsl . --validator Rewards --purpose rewarding \
+  --spec-class evidence.RewardingSpec \
+  --spec-classpath "build/verification-dsl/classes:/path/to/julc.jar" \
+  --source RewardingSpec.java --backend local --fuel 5000 --force
+```
+
+The withdrawal meaning is structural association-list existence. Duplicate
+credentials are neither collapsed nor summed. A satisfying duplicate is
+enough for `exists`; choose a stronger reviewed formula if a policy needs a
+different duplicate rule. See [`e4b/README.md`](e4b/README.md) for generic
+multi-property composition and [`e4c/README.md`](e4c/README.md) for the full
+rewarding controls and Docker command.
+
+## 13. Fuel, recursion, and reruns
 
 `--fuel` bounds exact UPLC preprocessing/execution in the generated obligation.
 An `SMT-VALID` certificate covers only successful paths completing within that
@@ -391,7 +439,7 @@ julc verify . --validator AuthorizedStateValidator \
   --out-dir verification/ci-authorized --force
 ```
 
-## 13. What the certificate does and does not claim
+## 14. What the certificate does and does not claim
 
 For an annotation profile, a successful certificate means:
 
