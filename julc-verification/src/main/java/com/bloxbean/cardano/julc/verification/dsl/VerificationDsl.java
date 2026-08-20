@@ -1,6 +1,7 @@
 package com.bloxbean.cardano.julc.verification.dsl;
 
 import com.bloxbean.cardano.julc.verification.dsl.ir.DslProperty;
+import com.bloxbean.cardano.julc.verification.dsl.ir.DslDomain;
 import com.bloxbean.cardano.julc.verification.dsl.ir.BytesLiteralKind;
 import com.bloxbean.cardano.julc.verification.dsl.ir.BytesLiteralNode;
 import com.bloxbean.cardano.julc.verification.dsl.ir.DslType;
@@ -11,6 +12,9 @@ public final class VerificationDsl {
     private VerificationDsl() { }
     public static DslProperty property(String id, BoolExpr expression) {
         return new DslProperty(id, expression.node());
+    }
+    public static DslProperty property(String id, DslDomain domain, BoolExpr guarantee) {
+        return new DslProperty(id, domain, guarantee.node());
     }
     public static IntegerExpr integer(long value) {
         return integer(Long.toString(value));

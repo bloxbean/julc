@@ -1,6 +1,8 @@
 package com.bloxbean.julc.cli.cmd.verify;
 
 import com.bloxbean.cardano.julc.compiler.DataBoundarySemantics;
+import com.bloxbean.cardano.julc.verification.ComposedDslProperty;
+import com.bloxbean.cardano.julc.verification.dsl.ComposedDslPromotion;
 import com.bloxbean.cardano.julc.verification.capability.LedgerCapabilityInventories;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -189,6 +191,7 @@ public final class VerificationRunner {
 
         combineLogs(logs, "acquire", phases);
         combineLogs(logs, "verify", phases);
+        attachClaimMetadata(manifest, properties);
         Map<String, String> inputs = inputHashes(
                 workspace, plan, planFile, manifestFile, logs);
         String backendIdentity = backendContext == null ? "unavailable" : backendContext.identity();
@@ -296,8 +299,26 @@ public final class VerificationRunner {
             List<VerificationRunResult.Property> properties,
             VerificationProgress progress)
             throws IOException, InterruptedException {
+        var blockedNonVacuityGuards = new LinkedHashMap<String, String>();
         for (int stepIndex = 0; stepIndex < steps.size(); stepIndex++) {
             var step = steps.get(stepIndex);
+            if (step.nonVacuityGuardPropertyId() != null
+                    && blockedNonVacuityGuards.containsKey(
+                            step.nonVacuityGuardPropertyId())) {
+                String guardReason = blockedNonVacuityGuards.get(
+                        step.nonVacuityGuardPropertyId());
+                boolean vacuous = "property-vacuous".equals(guardReason);
+                phases.add(new VerificationRunResult.Phase(
+                        step.id(), phase, "SKIPPED", null, null, null));
+                properties.add(new VerificationRunResult.Property(
+                        step.propertyId(),
+                        VerificationOutcome.COULD_NOT_EVALUATE.externalName(),
+                        vacuous ? "not-evaluated-vacuous"
+                                : "not-evaluated-non-vacuity-undetermined"));
+                progress.skipped(stepDescription(step.id(), phase), vacuous
+                        ? "property is vacuous" : "non-vacuity was not established");
+                continue;
+            }
             try (var task = progress.start(stepDescription(step.id(), phase))) {
                 int displayIndex = stepIndex + 1;
                 Path log = logs.resolve("%s-%02d-%s.log".formatted(
@@ -348,10 +369,17 @@ public final class VerificationRunner {
                     var outcome = VerificationOutcome.parse(observed.result());
                     properties.add(new VerificationRunResult.Property(
                             step.propertyId(), outcome.externalName(), observed.reason()));
-                    if ("property-vacuous".equals(observed.reason())) {
-                        appendVacuitySkippedSteps(
-                                steps, stepIndex + 1, phase, phases, properties, progress);
-                        break;
+                    if (!"expected-negative-control".equals(observed.reason())) {
+                        boolean guardedProofExists = steps.subList(stepIndex + 1, steps.size())
+                                .stream().anyMatch(candidate -> step.propertyId().equals(
+                                        candidate.nonVacuityGuardPropertyId()));
+                        if (guardedProofExists) {
+                            blockedNonVacuityGuards.put(step.propertyId(), observed.reason());
+                        } else if ("property-vacuous".equals(observed.reason())) {
+                            appendVacuitySkippedSteps(
+                                    steps, stepIndex + 1, phase, phases, properties, progress);
+                            break;
+                        }
                     }
                 }
             }
@@ -360,8 +388,13 @@ public final class VerificationRunner {
     }
 
     private static String stepDescription(String id, String phase) {
+        if ("verify".equals(phase) && id.startsWith("check-non-vacuity-")) {
+            return "Checking " + id.substring("check-non-vacuity-".length())
+                    .replace('_', ' ') + " non-vacuity";
+        }
         if ("verify".equals(phase) && id.startsWith("prove-")) {
-            return "Proving " + id.substring("prove-".length()).replace('-', ' ');
+            return "Proving " + id.substring("prove-".length())
+                    .replace('-', ' ').replace('_', ' ');
         }
         return switch (id) {
             case "lake-update" -> "Acquiring pinned Lean dependencies";
@@ -554,6 +587,25 @@ public final class VerificationRunner {
                 VerificationOutcome.parse(step.result());
             }
         }
+        for (int index = 0; index < plan.verify().size(); index++) {
+            var step = plan.verify().get(index);
+            if (step.nonVacuityGuardPropertyId() == null) continue;
+            if (plan.schemaVersion() < 2
+                    || !ID.matcher(step.nonVacuityGuardPropertyId()).matches()) {
+                throw new IOException("Verification step '" + step.id()
+                        + "' has an invalid vacuity guard");
+            }
+            boolean guardedByPriorStep = plan.verify().subList(0, index).stream()
+                    .anyMatch(candidate -> step.nonVacuityGuardPropertyId()
+                            .equals(candidate.propertyId())
+                            && candidate.outcomes() != null
+                            && candidate.outcomes().stream().anyMatch(outcome ->
+                                    "property-vacuous".equals(outcome.reason())));
+            if (!guardedByPriorStep) {
+                throw new IOException("Verification step '" + step.id()
+                        + "' refers to no prior vacuity observation");
+            }
+        }
     }
 
     private static List<Integer> expectedExitCodes(VerificationRunPlan.Step step) {
@@ -694,7 +746,10 @@ public final class VerificationRunner {
             String template = requiredText(property, "template");
             boolean sellerPayment = "julc.dsl.seller-paid-at-least/v1".equals(template);
             boolean oneShotMint = "julc.dsl.one-shot-authorized-mint/v1".equals(template);
-            boolean ledgerValidityModeled = sellerPayment || oneShotMint;
+            boolean composedDsl = ComposedDslProperty.TEMPLATE.equals(template);
+            boolean ledgerValidityModeled = composedDsl
+                    ? property.path("ledgerValidityModeled").asBoolean(false)
+                    : sellerPayment || oneShotMint;
             if (property.path("schemaVersion").asInt(-1) != 1
                     || property.path("schemaVersion").asInt(-1)
                         != propertyIr.path("schemaVersion").asInt(-2)
@@ -704,7 +759,8 @@ public final class VerificationRunner {
                             "julc.stateful-spending/v1",
                             "julc.controlled-mint/v1",
                             "julc.dsl.seller-paid-at-least/v1",
-                            "julc.dsl.one-shot-authorized-mint/v1").contains(template)
+                            "julc.dsl.one-shot-authorized-mint/v1",
+                            ComposedDslProperty.TEMPLATE).contains(template)
                     || !requiredText(property, "propertyId")
                         .equals(requiredText(propertyIr, "propertyId"))
                     || !requiredText(property, "validatorTitle")
@@ -736,10 +792,40 @@ public final class VerificationRunner {
                 throw new IOException("Verification one-shot mint domain is unsupported");
             }
             if (oneShotMint) validateCapabilityInventory(manifest);
+            if (composedDsl) {
+                if (!property.path("domainAssumptions").equals(
+                        manifest.path("domainAssumptions"))
+                        || !property.path("claims").isArray()
+                        || property.path("claims").isEmpty()
+                        || !property.path("claims").equals(manifest.path("claims"))) {
+                    throw new IOException(
+                            "Verification composed DSL claims or domains are tampered");
+                }
+                for (JsonNode claim : property.path("claims")) {
+                    if (!claim.path("ledgerValidCounterexampleEstablished").isBoolean()
+                            || !claim.path("concreteVmCounterexampleReproduced").isBoolean()
+                            || claim.path("ledgerValidCounterexampleEstablished").asBoolean()
+                            || claim.path("concreteVmCounterexampleReproduced").asBoolean()) {
+                        throw new IOException(
+                                "Verification composed DSL counterexample qualification is invalid");
+                    }
+                }
+                try {
+                    var composedProperty = VerificationFiles.JSON.treeToValue(
+                            property, ComposedDslProperty.class);
+                    ComposedDslPromotion.verifyIntegrity(composedProperty);
+                    validateComposedPlanAndManifest(plan, manifest, composedProperty);
+                } catch (IllegalArgumentException invalid) {
+                    throw new IOException(
+                            "Verification composed DSL property IR is inconsistent", invalid);
+                }
+                validateCapabilityInventory(manifest);
+            }
             if (sellerPayment || oneShotMint
-                    || "julc.controlled-mint/v1".equals(template)) {
-                validateCanonicalDslIr(manifest, property, oneShotMint
-                        || "julc.controlled-mint/v1".equals(template) ? 2 : 1);
+                    || "julc.controlled-mint/v1".equals(template) || composedDsl) {
+                int expectedDslSchema = composedDsl ? 3 : oneShotMint
+                        || "julc.controlled-mint/v1".equals(template) ? 2 : 1;
+                validateCanonicalDslIr(manifest, property, expectedDslSchema);
             }
             if ("julc.stateful-spending/v1".equals(template)
                     && (!"GREATER_THAN".equals(requiredText(property, "relation"))
@@ -914,6 +1000,74 @@ public final class VerificationRunner {
         }
     }
 
+    private static void validateComposedPlanAndManifest(
+            VerificationRunPlan plan,
+            JsonNode manifest,
+            ComposedDslProperty property) throws IOException {
+        var expected = new ArrayList<String>();
+        for (var claim : property.claims()) {
+            expected.add(claim.id() + ".non-vacuity");
+            expected.add(claim.id());
+        }
+        List<String> manifestIds = java.util.stream.StreamSupport.stream(
+                        manifest.path("properties").spliterator(), false)
+                .map(node -> node.path("id").asText()).toList();
+        List<String> planIds = plan.verify().stream()
+                .map(VerificationRunPlan.Step::propertyId).toList();
+        if (!expected.equals(manifestIds) || !expected.equals(planIds)) {
+            throw new IOException(
+                    "Composed runner plan does not cover every claim exactly once");
+        }
+        for (int index = 0; index < property.claims().size(); index++) {
+            var claim = property.claims().get(index);
+            String nonVacuityId = claim.id() + ".non-vacuity";
+            String safe = ComposedDslPromotion.generatedName(claim.id())
+                    .toLowerCase(Locale.ROOT);
+            var nonVacuity = plan.verify().get(index * 2);
+            var proof = plan.verify().get(index * 2 + 1);
+            if (nonVacuity.nonVacuityGuardPropertyId() != null
+                    || !nonVacuityId.equals(proof.nonVacuityGuardPropertyId())
+                    || !("check-non-vacuity-" + safe).equals(nonVacuity.id())
+                    || !("prove-dsl-" + safe).equals(proof.id())
+                    || !List.of("scripts/verify-" + safe + "-non-vacuity.sh")
+                            .equals(nonVacuity.command())
+                    || !List.of("scripts/verify-" + safe + ".sh")
+                            .equals(proof.command())
+                    || !composedNonVacuityOutcomes().equals(nonVacuity.outcomes())
+                    || !composedProofOutcomes(claim.id()).equals(proof.outcomes())) {
+                throw new IOException(
+                        "Composed proof protocol is not bound to its canonical claim");
+            }
+        }
+    }
+
+    private static List<VerificationRunPlan.ObservedOutcome> composedNonVacuityOutcomes() {
+        return List.of(
+                new VerificationRunPlan.ObservedOutcome(0,
+                        "NON-VACUOUS: successful input witness exists",
+                        "REFUTED", "expected-negative-control"),
+                new VerificationRunPlan.ObservedOutcome(4,
+                        "VACUOUS: validator has no successful input",
+                        "COULD-NOT-EVALUATE", "property-vacuous"),
+                new VerificationRunPlan.ObservedOutcome(2,
+                        "COULD-NOT-EVALUATE: non-vacuity",
+                        "COULD-NOT-EVALUATE", "non-vacuity-undetermined"));
+    }
+
+    private static List<VerificationRunPlan.ObservedOutcome> composedProofOutcomes(
+            String claimId) {
+        return List.of(
+                new VerificationRunPlan.ObservedOutcome(0,
+                        "SMT-VALID: DSL property " + claimId + " established",
+                        "SMT-VALID", "dsl-property-established"),
+                new VerificationRunPlan.ObservedOutcome(3,
+                        "REFUTED: DSL property " + claimId + " counterexample found",
+                        "REFUTED", "dsl-property-counterexample"),
+                new VerificationRunPlan.ObservedOutcome(2,
+                        "COULD-NOT-EVALUATE: DSL property " + claimId,
+                        "COULD-NOT-EVALUATE", "dsl-property-undetermined"));
+    }
+
     private VerificationExecutionBackend selectBackend(
             VerificationBackendKind requested,
             VerificationRunPlan plan,
@@ -1007,6 +1161,43 @@ public final class VerificationRunner {
                     outcome.externalName(),
                     "REFUTED".equals(result) ? "expected-negative-control" : "established"));
         }
+    }
+
+    private static void attachClaimMetadata(
+            JsonNode manifest, List<VerificationRunResult.Property> properties) {
+        if (!manifest.path("claims").isArray()) return;
+        var claims = new LinkedHashMap<String, JsonNode>();
+        for (JsonNode claim : manifest.path("claims")) {
+            claims.put(claim.path("id").asText(), claim);
+        }
+        for (int index = 0; index < properties.size(); index++) {
+            var result = properties.get(index);
+            String claimId = result.id().endsWith(".non-vacuity")
+                    ? result.id().substring(0,
+                            result.id().length() - ".non-vacuity".length())
+                    : result.id();
+            JsonNode claim = claims.get(claimId);
+            if (claim == null) continue;
+            properties.set(index, new VerificationRunResult.Property(
+                    result.id(), result.outcome(), result.reason(),
+                    requiredTextUnchecked(claim, "domain"),
+                    requiredTextUnchecked(claim, "guaranteeSha256"),
+                    requiredTextUnchecked(claim, "envelopeSha256"),
+                    java.util.stream.StreamSupport.stream(
+                            claim.path("capabilities").spliterator(), false)
+                            .map(JsonNode::asText).toList(),
+                    requiredTextUnchecked(claim, "counterexampleDomain"),
+                    claim.path("ledgerValidCounterexampleEstablished").asBoolean(),
+                    claim.path("concreteVmCounterexampleReproduced").asBoolean()));
+        }
+    }
+
+    private static String requiredTextUnchecked(JsonNode node, String field) {
+        String value = node.path(field).asText();
+        if (value.isBlank()) {
+            throw new IllegalStateException("Composed claim is missing " + field);
+        }
+        return value;
     }
 
     static VerificationOutcome aggregate(List<VerificationRunResult.Property> properties) {

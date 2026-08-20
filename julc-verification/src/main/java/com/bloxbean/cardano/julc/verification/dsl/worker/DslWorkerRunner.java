@@ -15,7 +15,7 @@ import java.util.regex.Pattern;
 
 /** Runs a trusted-source property builder out of process with strict output bounds. */
 public final class DslWorkerRunner {
-    public static final long MAX_OUTPUT_BYTES = 1_048_576;
+    public static final long MAX_OUTPUT_BYTES = PropertyIrCodec.MAX_CANONICAL_BYTES;
     public static final int MAX_AST_NODES = DslPropertyValidator.MAX_AST_NODES;
 
     public DslPropertySet run(
@@ -54,10 +54,11 @@ public final class DslWorkerRunner {
                     + "; see " + workingDirectory.resolve("worker.log"));
         }
         DslPropertySet propertySet = PropertyIrCodec.read(output, MAX_OUTPUT_BYTES);
-        DslPropertyValidator.validate(propertySet, schema, MAX_AST_NODES);
+        DslPropertySet canonicalPropertySet = DslPropertyValidator.validateAndNormalize(
+                propertySet, schema, MAX_AST_NODES);
         Path canonical = workingDirectory.resolve("verification-property-dsl.json");
-        PropertyIrCodec.write(canonical, propertySet);
-        return propertySet;
+        PropertyIrCodec.write(canonical, canonicalPropertySet);
+        return canonicalPropertySet;
     }
 
     static Path resolveJavaExecutable(

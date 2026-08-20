@@ -1,15 +1,30 @@
 package com.bloxbean.cardano.julc.verification.dsl.ir;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 
-public record DslPropertySet(int schemaVersion, List<DslProperty> properties) {
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public record DslPropertySet(
+        int schemaVersion, DslPurpose purpose, List<DslProperty> properties) {
     public static final int SCHEMA_VERSION = 1;
     public static final int MINTING_SCHEMA_VERSION = 2;
+    public static final int COMPOSITION_SCHEMA_VERSION = 3;
 
     public DslPropertySet {
-        if (schemaVersion != SCHEMA_VERSION && schemaVersion != MINTING_SCHEMA_VERSION) {
+        if (schemaVersion != SCHEMA_VERSION
+                && schemaVersion != MINTING_SCHEMA_VERSION
+                && schemaVersion != COMPOSITION_SCHEMA_VERSION) {
             throw new IllegalArgumentException("Unsupported DSL property schema " + schemaVersion);
+        }
+        if (schemaVersion == COMPOSITION_SCHEMA_VERSION) {
+            purpose = Objects.requireNonNull(purpose,
+                    "DSL property schema 3 requires an explicit purpose");
+        } else if (purpose != null) {
+            throw new IllegalArgumentException(
+                    "DSL property schemas 1 and 2 do not carry an explicit purpose");
         }
         properties = List.copyOf(properties == null ? List.of() : properties);
         if (properties.isEmpty()) {
@@ -17,17 +32,37 @@ public record DslPropertySet(int schemaVersion, List<DslProperty> properties) {
         }
         var ids = new HashSet<String>();
         for (DslProperty property : properties) {
+            Objects.requireNonNull(property, "property");
             if (!ids.add(property.id())) {
                 throw new IllegalArgumentException("Duplicate property ID: " + property.id());
+            }
+            if (schemaVersion == COMPOSITION_SCHEMA_VERSION && property.domain() == null) {
+                throw new IllegalArgumentException(
+                        "DSL property schema 3 requires an explicit domain for "
+                                + property.id());
+            }
+            if (schemaVersion != COMPOSITION_SCHEMA_VERSION && property.domain() != null) {
+                throw new IllegalArgumentException(
+                        "DSL property schemas 1 and 2 encode their domain in the expression");
             }
         }
     }
 
+    /** Frozen schema-1/schema-2 constructor retained for source and JSON compatibility. */
+    public DslPropertySet(int schemaVersion, List<DslProperty> properties) {
+        this(schemaVersion, null, properties);
+    }
+
     public static DslPropertySet of(DslProperty... properties) {
-        return new DslPropertySet(SCHEMA_VERSION, List.of(properties));
+        return new DslPropertySet(SCHEMA_VERSION, null, List.of(properties));
     }
 
     public static DslPropertySet minting(DslProperty property) {
-        return new DslPropertySet(MINTING_SCHEMA_VERSION, List.of(property));
+        return new DslPropertySet(MINTING_SCHEMA_VERSION, null, List.of(property));
+    }
+
+    public static DslPropertySet composed(DslPurpose purpose, DslProperty... properties) {
+        return new DslPropertySet(COMPOSITION_SCHEMA_VERSION, purpose,
+                List.of(properties));
     }
 }

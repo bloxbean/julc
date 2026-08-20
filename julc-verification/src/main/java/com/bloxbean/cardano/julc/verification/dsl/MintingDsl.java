@@ -32,6 +32,22 @@ public final class MintingDsl {
                 propertyId, contract.exactUplcSucceeds().implies(guarantee)));
     }
 
+    /** Schema-3 controlled-mint convenience builder with no privileged promotion path. */
+    public static DslPropertySet composedControlledMintPropertySet(
+            String propertyId, String authorityHex, String tokenNameHex, String quantity) {
+        var contract = new MintingContractModel();
+        var signedQuantity = integer(quantity);
+        var direction = new BigInteger(quantity).signum() > 0
+                ? signedQuantity.gt(integer(0)) : signedQuantity.lt(integer(0));
+        var guarantee = contract.redeemerStrictlyDecodes()
+                .and(contract.context().txInfo().signatories().contains(keyHash(authorityHex)))
+                .and(contract.context().txInfo().mint().exactOwnPolicyAsset(
+                        contract.ownPolicy(), tokenName(tokenNameHex), signedQuantity))
+                .and(direction);
+        return DslPropertySet.composed(DslPurpose.MINTING,
+                property(propertyId, DslDomain.NONE, guarantee));
+    }
+
     public static DslPropertySet oneShotPropertySet(
             String propertyId,
             String authorityHex,
@@ -48,6 +64,24 @@ public final class MintingDsl {
         return DslPropertySet.minting(property(propertyId,
                 contract.validMintingContext().and(contract.exactUplcSucceeds())
                         .implies(guarantee)));
+    }
+
+    /** Schema-3 one-shot convenience builder with a reviewed minting domain selector. */
+    public static DslPropertySet composedOneShotPropertySet(
+            String propertyId,
+            String authorityHex,
+            String anchorTransactionIdHex,
+            long anchorOutputIndex,
+            String tokenNameHex) {
+        var contract = new MintingContractModel();
+        var guarantee = contract.redeemerStrictlyDecodes()
+                .and(contract.context().txInfo().signatories().contains(keyHash(authorityHex)))
+                .and(contract.context().txInfo().inputs().consumes(
+                        txOutRef(anchorTransactionIdHex, anchorOutputIndex)))
+                .and(contract.context().txInfo().mint().exactOwnPolicyAsset(
+                        contract.ownPolicy(), tokenName(tokenNameHex), integer(1)));
+        return DslPropertySet.composed(DslPurpose.MINTING,
+                property(propertyId, DslDomain.VALID_MINTING_V3_PINNED, guarantee));
     }
 
     public static VerificationProperty resolve(

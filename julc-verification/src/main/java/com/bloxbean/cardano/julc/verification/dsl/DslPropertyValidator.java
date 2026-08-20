@@ -5,6 +5,7 @@ import com.bloxbean.cardano.julc.compiler.schema.ContractSchema;
 import com.bloxbean.cardano.julc.verification.dsl.ir.*;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 
 /** Authoritative post-worker validation against compiler-owned contract types. */
@@ -15,10 +16,26 @@ public final class DslPropertyValidator {
 
     public static void validate(
             DslPropertySet propertySet, ContractSchema schema, int maxNodes) {
+        validateAndNormalize(propertySet, schema, maxNodes);
+    }
+
+    public static DslPropertySet validateAndNormalize(
+            DslPropertySet propertySet, ContractSchema schema, int maxNodes) {
+        validateInternal(propertySet, schema, maxNodes);
+        DslPropertySet normalized = DslPropertyCanonicalizer.normalize(propertySet);
+        if (normalized != propertySet) validateInternal(normalized, schema, maxNodes);
+        return normalized;
+    }
+
+    private static void validateInternal(
+            DslPropertySet propertySet, ContractSchema schema, int maxNodes) {
         boolean mintingV2 = propertySet.schemaVersion()
                 == DslPropertySet.MINTING_SCHEMA_VERSION;
-        ContractSchema.Purpose expectedPurpose = mintingV2
-                ? ContractSchema.Purpose.MINT : ContractSchema.Purpose.SPEND;
+        boolean compositionV3 = propertySet.schemaVersion()
+                == DslPropertySet.COMPOSITION_SCHEMA_VERSION;
+        ContractSchema.Purpose expectedPurpose = compositionV3
+                ? contractPurpose(propertySet.purpose())
+                : mintingV2 ? ContractSchema.Purpose.MINT : ContractSchema.Purpose.SPEND;
         if (schema.purpose() != expectedPurpose) {
             throw new IllegalArgumentException("DSL schema " + propertySet.schemaVersion()
                     + " requires a " + expectedPurpose + " contract interface");
@@ -28,9 +45,16 @@ public final class DslPropertyValidator {
                     "Minting DSL schema 2 requires exactly one property");
         }
         int[] nodes = {0};
+        var normalizedIds = new HashSet<String>();
         for (DslProperty property : propertySet.properties()) {
+            if (compositionV3 && !normalizedIds.add(normalizedIdentifier(property.id()))) {
+                throw new IllegalArgumentException(
+                        "Property IDs collide after generated-name normalization: "
+                                + property.id());
+            }
+            if (compositionV3) validateDomain(property.domain(), propertySet.purpose());
             DslType type = validateNode(property.expression(), schema, new HashMap<>(), nodes,
-                    maxNodes, mintingV2);
+                    maxNodes, propertySet.schemaVersion());
             if (type != DslType.BOOL) {
                 throw new IllegalArgumentException("Property " + property.id()
                         + " must have BOOL type, found " + type);
@@ -45,15 +69,21 @@ public final class DslPropertyValidator {
             Map<String, DslType> variables,
             int[] count,
             int maxNodes,
-            boolean mintingSchema) {
+            int schemaVersion) {
         if (++count[0] > maxNodes) {
             throw new IllegalArgumentException("Property AST exceeds " + maxNodes + " nodes");
         }
-        if (!mintingSchema && isMintingSchemaNode(node)) {
+        boolean legacySpending = schemaVersion == DslPropertySet.SCHEMA_VERSION;
+        boolean composition = schemaVersion == DslPropertySet.COMPOSITION_SCHEMA_VERSION;
+        if (legacySpending && isMintingSchemaNode(node)) {
             throw new IllegalArgumentException("DSL schema 1 does not admit minting node "
                     + node.getClass().getSimpleName());
         }
         if (node instanceof RootNode root) {
+            if (composition && isEnvelopeRoot(root.name())) {
+                throw new IllegalArgumentException("Schema-3 guarantee cannot contain theorem "
+                        + "envelope root " + root.name());
+            }
             DslType expected = switch (root.name()) {
                 case "datum" -> schema.purpose() == ContractSchema.Purpose.SPEND
                         ? DslType.DATA : null;
@@ -75,8 +105,8 @@ public final class DslPropertyValidator {
         }
         if (node instanceof FieldNode field) {
             DslType target = validateNode(
-                    field.target(), schema, variables, count, maxNodes, mintingSchema);
-            DslType expected = fieldType(target, field.name(), schema, mintingSchema);
+                    field.target(), schema, variables, count, maxNodes, schemaVersion);
+            DslType expected = fieldType(target, field.name(), schema, schemaVersion);
             if (expected != field.resultType()) {
                 throw new IllegalArgumentException("Field " + field.name() + " on " + target
                         + " has type " + expected + ", not " + field.resultType());
@@ -85,16 +115,16 @@ public final class DslPropertyValidator {
         }
         if (node instanceof BoolBinaryNode binary) {
             require(DslType.BOOL, validateNode(
-                    binary.left(), schema, variables, count, maxNodes, mintingSchema));
+                    binary.left(), schema, variables, count, maxNodes, schemaVersion));
             require(DslType.BOOL, validateNode(
-                    binary.right(), schema, variables, count, maxNodes, mintingSchema));
+                    binary.right(), schema, variables, count, maxNodes, schemaVersion));
             return DslType.BOOL;
         }
         if (node instanceof ContainsNode contains) {
             DslType collection = validateNode(
-                    contains.collection(), schema, variables, count, maxNodes, mintingSchema);
+                    contains.collection(), schema, variables, count, maxNodes, schemaVersion);
             DslType value = validateNode(
-                    contains.value(), schema, variables, count, maxNodes, mintingSchema);
+                    contains.value(), schema, variables, count, maxNodes, schemaVersion);
             if (collection != DslType.LIST_BYTE_STRING || value != DslType.BYTE_STRING) {
                 throw new IllegalArgumentException("contains requires byte-string list and value");
             }
@@ -103,32 +133,36 @@ public final class DslPropertyValidator {
         if (node instanceof ConsumesNode consumes) {
             require(DslType.LIST_TX_IN_INFO,
                     validateNode(consumes.inputs(), schema, variables, count, maxNodes,
-                            mintingSchema));
+                            schemaVersion));
             require(DslType.TX_OUT_REF,
                     validateNode(consumes.outputReference(), schema, variables, count, maxNodes,
-                            mintingSchema));
+                            schemaVersion));
             return DslType.BOOL;
         }
         if (node instanceof ExactOwnPolicyAssetNode exact) {
+            if (schema.purpose() != ContractSchema.Purpose.MINT) {
+                throw new IllegalArgumentException(
+                        "exactOwnPolicyAsset requires a MINT contract interface");
+            }
             require(DslType.MINT_VALUE,
                     validateNode(exact.mint(), schema, variables, count, maxNodes,
-                            mintingSchema));
+                            schemaVersion));
             require(DslType.POLICY_ID,
                     validateNode(exact.policy(), schema, variables, count, maxNodes,
-                            mintingSchema));
+                            schemaVersion));
             require(DslType.BYTE_STRING,
                     validateNode(exact.tokenName(), schema, variables, count, maxNodes,
-                            mintingSchema));
+                            schemaVersion));
             require(DslType.INTEGER,
                     validateNode(exact.quantity(), schema, variables, count, maxNodes,
-                            mintingSchema));
+                            schemaVersion));
             return DslType.BOOL;
         }
         if (node instanceof CompareNode comparison) {
             DslType left = validateNode(
-                    comparison.left(), schema, variables, count, maxNodes, mintingSchema);
+                    comparison.left(), schema, variables, count, maxNodes, schemaVersion);
             DslType right = validateNode(
-                    comparison.right(), schema, variables, count, maxNodes, mintingSchema);
+                    comparison.right(), schema, variables, count, maxNodes, schemaVersion);
             if (left != right || !switch (left) {
                 case INTEGER, BYTE_STRING, CREDENTIAL -> true;
                 default -> false;
@@ -145,16 +179,16 @@ public final class DslPropertyValidator {
         if (node instanceof CredentialKeyHashNode match) {
             require(DslType.CREDENTIAL,
                     validateNode(match.credential(), schema, variables, count, maxNodes,
-                            mintingSchema));
+                            schemaVersion));
             require(DslType.BYTE_STRING,
                     validateNode(match.keyHash(), schema, variables, count, maxNodes,
-                            mintingSchema));
+                            schemaVersion));
             return DslType.BOOL;
         }
         if (node instanceof ExistsNode exists) {
             require(DslType.LIST_TX_OUT,
                     validateNode(exists.collection(), schema, variables, count, maxNodes,
-                            mintingSchema));
+                            schemaVersion));
             if (!exists.variable().matches("[A-Za-z][A-Za-z0-9_]{0,31}")) {
                 throw new IllegalArgumentException("Invalid quantified variable name");
             }
@@ -170,7 +204,7 @@ public final class DslPropertyValidator {
             nested.put(exists.variable(), DslType.TX_OUT);
             require(DslType.BOOL,
                     validateNode(exists.predicate(), schema, nested, count, maxNodes,
-                            mintingSchema));
+                            schemaVersion));
             return DslType.BOOL;
         }
         if (node instanceof LiteralNode literal) {
@@ -234,7 +268,7 @@ public final class DslPropertyValidator {
     }
 
     private static DslType fieldType(
-            DslType target, String field, ContractSchema schema, boolean mintingSchema) {
+            DslType target, String field, ContractSchema schema, int schemaVersion) {
         if (target == DslType.DATA) {
             PirType datumType = resolve(schema.datum().type(), schema);
             if (!(datumType instanceof PirType.RecordType record)) {
@@ -249,10 +283,16 @@ public final class DslPropertyValidator {
             return dslType(resolve(selected, schema));
         }
         String selected = target + "." + field;
-        if (!mintingSchema && (selected.equals("TX_INFO.inputs")
+        if (schemaVersion == DslPropertySet.SCHEMA_VERSION
+                && (selected.equals("TX_INFO.inputs")
                 || selected.equals("TX_INFO.mint"))) {
             throw new IllegalArgumentException(
                     "DSL schema 1 does not admit field " + selected);
+        }
+        if (selected.equals("TX_INFO.mint")
+                && schema.purpose() != ContractSchema.Purpose.MINT) {
+            throw new IllegalArgumentException(
+                    "Field TX_INFO.mint requires a MINT contract interface");
         }
         return switch (selected) {
             case "SCRIPT_CONTEXT.txInfo" -> DslType.TX_INFO;
@@ -304,6 +344,36 @@ public final class DslPropertyValidator {
                 || node instanceof TxOutRefLiteralNode
                 || node instanceof ConsumesNode
                 || node instanceof ExactOwnPolicyAssetNode;
+    }
+
+    private static ContractSchema.Purpose contractPurpose(DslPurpose purpose) {
+        return switch (purpose) {
+            case SPENDING -> ContractSchema.Purpose.SPEND;
+            case MINTING -> ContractSchema.Purpose.MINT;
+        };
+    }
+
+    private static void validateDomain(DslDomain domain, DslPurpose purpose) {
+        boolean valid = switch (domain) {
+            case NONE -> true;
+            case VALID_SPENDING_V3_PINNED -> purpose == DslPurpose.SPENDING;
+            case VALID_MINTING_V3_PINNED -> purpose == DslPurpose.MINTING;
+        };
+        if (!valid) {
+            throw new IllegalArgumentException(
+                    "Domain " + domain + " is incompatible with purpose " + purpose);
+        }
+    }
+
+    private static boolean isEnvelopeRoot(String name) {
+        return name.equals("exactUplcSucceeds")
+                || name.equals("validSpendingContext")
+                || name.equals("validMintingContext");
+    }
+
+    private static String normalizedIdentifier(String id) {
+        return id.replaceAll("[^A-Za-z0-9_]", "_")
+                .toLowerCase(java.util.Locale.ROOT);
     }
 
     private static void validateMintingPremise(PropertyNode expression) {

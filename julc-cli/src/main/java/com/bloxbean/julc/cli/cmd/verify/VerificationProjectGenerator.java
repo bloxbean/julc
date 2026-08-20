@@ -9,12 +9,17 @@ import com.bloxbean.cardano.julc.verification.VerificationProperty;
 import com.bloxbean.cardano.julc.verification.ControlledMintProperty;
 import com.bloxbean.cardano.julc.verification.SellerPaymentProperty;
 import com.bloxbean.cardano.julc.verification.OneShotMintProperty;
+import com.bloxbean.cardano.julc.verification.ComposedDslProperty;
+import com.bloxbean.cardano.julc.verification.dsl.ComposedDslPromotion;
+import com.bloxbean.cardano.julc.verification.dsl.DslSemanticDependencies;
 import com.bloxbean.cardano.julc.verification.dsl.ControlledMintDslLowering;
 import com.bloxbean.cardano.julc.verification.dsl.MintingDsl;
 import com.bloxbean.cardano.julc.verification.dsl.PropertyIrCodec;
 import com.bloxbean.cardano.julc.verification.dsl.PropertyLeanRenderer;
 import com.bloxbean.cardano.julc.verification.dsl.ir.BoolBinaryNode;
 import com.bloxbean.cardano.julc.verification.dsl.ir.DslPropertySet;
+import com.bloxbean.cardano.julc.verification.dsl.ir.DslDomain;
+import com.bloxbean.cardano.julc.verification.dsl.ir.DslProperty;
 import com.bloxbean.cardano.julc.verification.capability.LedgerCapabilityInventories;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -229,6 +234,20 @@ public final class VerificationProjectGenerator {
                 recursiveDepth, outputDirectory, force, property);
     }
 
+    /** Generates a schema-3 compositional DSL workspace without whole-formula recognition. */
+    public static GenerationResult generateComposedDsl(
+            Path blueprintFile,
+            ComposedDslProperty property,
+            int fuel,
+            int recursiveDepth,
+            Path outputDirectory,
+            boolean force) throws Exception {
+        if (property == null) throw new IllegalArgumentException("Composed DSL property is required");
+        ComposedDslPromotion.verifyIntegrity(property);
+        return generateInternal(blueprintFile, property.validatorTitle(),
+                property.scriptPurpose(), fuel, recursiveDepth, outputDirectory, force, property);
+    }
+
     private static GenerationResult generateInternal(
             Path blueprintFile,
             String validatorTitle,
@@ -283,6 +302,15 @@ public final class VerificationProjectGenerator {
         SchemaGeneration schemas = generateSchemas(blueprint.path("definitions"), validator);
         String leanId = leanTypeName(validatorTitle);
         String artifactId = artifact.artifactId();
+        DslPropertySet composedDsl = property instanceof ComposedDslProperty composed
+                ? ComposedDslPromotion.verifyIntegrity(composed) : null;
+        Map<String, DslSemanticDependencies.Plan> composedPlans = new LinkedHashMap<>();
+        if (composedDsl != null) {
+            for (DslProperty claim : composedDsl.properties()) {
+                composedPlans.put(claim.id(),
+                        DslSemanticDependencies.collect(claim, composedDsl.purpose()));
+            }
+        }
 
         Path output = outputDirectory.toAbsolutePath().normalize();
         if (Files.exists(output) && !force) {
@@ -307,7 +335,9 @@ public final class VerificationProjectGenerator {
         files.put("lakefile.lean", lakefile(
                 property != null && property.ledgerValidityModeled(),
                 property instanceof ControlledMintProperty
-                        || property instanceof OneShotMintProperty));
+                        || property instanceof OneShotMintProperty
+                        || composedPlans.values().stream()
+                                .anyMatch(DslSemanticDependencies.Plan::needsRawMint)));
         files.put("GeneratedSchemas.lean", schemas.source());
         files.put("PropertyTemplates.lean", propertyTemplates(recursiveDepth));
         files.put("CheckedExecution.lean", checkedExecution());
@@ -423,6 +453,51 @@ public final class VerificationProjectGenerator {
                     nonVacuityCounterexample(leanId));
             files.put(leanId + "VacuityProof.lean", vacuityProof(leanId));
             files.put("verification-property.json", JSON.writeValueAsString(property) + "\n");
+        } else if (property instanceof ComposedDslProperty composed) {
+            String datumLeanType = null;
+            if (composedPlans.values().stream()
+                    .anyMatch(DslSemanticDependencies.Plan::needsDatumDecode)) {
+                String datumRoot = referenceName(
+                        validator.path("datum").path("schema").path("$ref").asText());
+                datumLeanType = requiredLeanType(schemas, datumRoot);
+            }
+            String redeemerLeanType = null;
+            if (composedPlans.values().stream()
+                    .anyMatch(DslSemanticDependencies.Plan::needsRedeemerDecode)) {
+                String redeemerRoot = referenceName(
+                        validator.path("redeemer").path("schema").path("$ref").asText());
+                redeemerLeanType = requiredLeanType(schemas, redeemerRoot);
+            }
+            files.put("SecurityProperty.lean", composedDslProperty(
+                    composedDsl, composedPlans, datumLeanType, redeemerLeanType));
+            if (composedPlans.values().stream()
+                    .anyMatch(DslSemanticDependencies.Plan::needsRawMint)) {
+                files.put("MintingSemanticsTests.lean", mintingSemanticsTests());
+            }
+            if (composedPlans.values().stream()
+                    .anyMatch(DslSemanticDependencies.Plan::needsSpendingDomain)) {
+                files.put("LedgerDomainEquivalence.lean", sellerPaymentDomainEquivalence());
+            } else if (composedPlans.values().stream()
+                    .anyMatch(DslSemanticDependencies.Plan::needsMintingDomain)) {
+                files.put("LedgerDomainEquivalence.lean", mintingDomainEquivalence());
+            }
+            for (DslProperty claim : composedDsl.properties()) {
+                String module = composedModuleId(leanId, claim.id());
+                boolean ledgerDomain = claim.domain() != DslDomain.NONE;
+                files.put(module + "Obligation.lean", composedObligation(
+                        module, artifactId, purpose, claim, fuel));
+                files.put(module + "Proof.lean", composedProof(module, claim));
+                files.put(module + "Counterexample.lean",
+                        composedCounterexample(module, claim));
+                files.put(module + "NonVacuityCounterexample.lean",
+                        nonVacuityCounterexample(module));
+                files.put(module + "VacuityProof.lean", vacuityProof(module));
+                if (ledgerDomain) {
+                    files.put(module + "LedgerCorollary.lean",
+                            composedLedgerCorollary(module, claim));
+                }
+            }
+            files.put("verification-property.json", JSON.writeValueAsString(composed) + "\n");
         } else {
             throw new IllegalArgumentException("Unsupported verification property "
                     + property.template());
@@ -431,7 +506,29 @@ public final class VerificationProjectGenerator {
                 artifact.compiledCode() + "\n");
         files.put("config/blaster-builtins.txt",
                 "# " + GENERATED_MARKER + "\n0-88\n92-93\n");
-        String verifyScript = property == null
+        String runnerPlan;
+        if (property instanceof ComposedDslProperty composed) {
+            var scriptHashes = new LinkedHashMap<String, ComposedScriptHashes>();
+            for (DslProperty claim : composedDsl.properties()) {
+                String module = composedModuleId(leanId, claim.id());
+                String scriptName = "verify-" + ComposedDslPromotion.generatedName(
+                        claim.id()).toLowerCase(Locale.ROOT);
+                String verifyScript = composedVerifyScript(module, artifactId,
+                        artifact.compiledCodeSha256(), claim);
+                String nonVacuityScript = verifyNonVacuityScript(
+                        module, artifactId, artifact.compiledCodeSha256());
+                files.put("scripts/" + scriptName + ".sh", verifyScript);
+                files.put("scripts/" + scriptName + "-non-vacuity.sh", nonVacuityScript);
+                scriptHashes.put(claim.id(), new ComposedScriptHashes(
+                        scriptName,
+                        VerificationFiles.sha256(nonVacuityScript.getBytes(
+                                java.nio.charset.StandardCharsets.UTF_8)),
+                        VerificationFiles.sha256(verifyScript.getBytes(
+                                java.nio.charset.StandardCharsets.UTF_8))));
+            }
+            runnerPlan = composedRunnerPlan(composed, composedDsl, scriptHashes);
+        } else {
+            String verifyScript = property == null
                 ? verifyScript(leanId, artifactId, artifact.compiledCodeSha256())
                 : property instanceof StatefulSpendingProperty
                     ? verifyStatefulPropertyScript(
@@ -446,14 +543,14 @@ public final class VerificationProjectGenerator {
                     ? verifyOneShotMintScript(
                             leanId, artifactId, artifact.compiledCodeSha256())
                 : verifyPropertyScript(leanId, artifactId, artifact.compiledCodeSha256());
-        files.put("scripts/verify.sh", verifyScript);
-        String nonVacuityScript = null;
-        if (property != null) {
-            nonVacuityScript = verifyNonVacuityScript(
-                    leanId, artifactId, artifact.compiledCodeSha256());
-            files.put("scripts/verify-non-vacuity.sh", nonVacuityScript);
-        }
-        String runnerPlan = property == null
+            files.put("scripts/verify.sh", verifyScript);
+            String nonVacuityScript = null;
+            if (property != null) {
+                nonVacuityScript = verifyNonVacuityScript(
+                        leanId, artifactId, artifact.compiledCodeSha256());
+                files.put("scripts/verify-non-vacuity.sh", nonVacuityScript);
+            }
+            runnerPlan = property == null
                 ? runnerPlan(artifactId, VerificationFiles.sha256(
                         verifyScript.getBytes(java.nio.charset.StandardCharsets.UTF_8)))
                 : property instanceof StatefulSpendingProperty
@@ -485,6 +582,7 @@ public final class VerificationProjectGenerator {
                                 java.nio.charset.StandardCharsets.UTF_8)),
                         VerificationFiles.sha256(verifyScript.getBytes(
                                 java.nio.charset.StandardCharsets.UTF_8)));
+        }
         files.put("verification-runner.json", runnerPlan);
         files.put("README.md", property == null
                 ? readme(leanId, validatorTitle, purpose, recursiveDepth)
@@ -496,6 +594,8 @@ public final class VerificationProjectGenerator {
                     ? sellerPaymentReadme(validatorTitle, payment)
                 : property instanceof OneShotMintProperty oneShot
                     ? oneShotMintReadme(validatorTitle, oneShot)
+                : property instanceof ComposedDslProperty composed
+                    ? composedReadme(validatorTitle, composed)
                 : requiresSignerReadme(
                             validatorTitle, (RequiresSignerProperty) property));
         String propertySha256 = property == null ? null : VerificationFiles.sha256(
@@ -509,9 +609,44 @@ public final class VerificationProjectGenerator {
                                 runnerPlan.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
                         property, propertySha256, generatedLeanSha256));
 
+        if (force && property instanceof ComposedDslProperty) {
+            deleteStaleComposedFiles(output, leanId, files.keySet());
+        }
         writeAtomically(output, files,
                 property == null ? USER_OWNED_FILES : Set.of(".gitignore"));
         return new GenerationResult(output, artifactId, leanId, files.keySet().stream().toList());
+    }
+
+    private static void deleteStaleComposedFiles(
+            Path output, String leanId, Set<String> currentFiles) throws IOException {
+        Path oldProperty = output.resolve("verification-property.json");
+        if (Files.isRegularFile(oldProperty)) {
+            JsonNode previous = JSON.readTree(oldProperty.toFile());
+            if (ComposedDslProperty.TEMPLATE.equals(previous.path("template").asText())) {
+                for (JsonNode claim : previous.path("claims")) {
+                    String id = claim.path("id").asText();
+                    if (!id.matches("[A-Za-z][A-Za-z0-9._-]{0,127}")) continue;
+                    String module = composedModuleId(leanId, id);
+                    for (String suffix : List.of("Obligation.lean", "Proof.lean",
+                            "Counterexample.lean", "NonVacuityCounterexample.lean",
+                            "VacuityProof.lean", "LedgerCorollary.lean")) {
+                        deleteIfStale(output, module + suffix, currentFiles);
+                    }
+                    String script = "scripts/verify-"
+                            + ComposedDslPromotion.generatedName(id)
+                                    .toLowerCase(Locale.ROOT);
+                    deleteIfStale(output, script + ".sh", currentFiles);
+                    deleteIfStale(output, script + "-non-vacuity.sh", currentFiles);
+                }
+            }
+        }
+        deleteIfStale(output, "LedgerDomainEquivalence.lean", currentFiles);
+        deleteIfStale(output, "MintingSemanticsTests.lean", currentFiles);
+    }
+
+    private static void deleteIfStale(
+            Path output, String relative, Set<String> currentFiles) throws IOException {
+        if (!currentFiles.contains(relative)) Files.deleteIfExists(output.resolve(relative));
     }
 
     private static void ensureRequiresSignerSchema(
@@ -1723,13 +1858,25 @@ public final class VerificationProjectGenerator {
             root.put("ledgerValidityModeled", property.ledgerValidityModeled());
             root.put("generatedLeanSha256", generatedLeanSha256);
             root.put("domainAssumptions", property.domainAssumptions());
-            root.put("properties", List.of(
-                    Map.of("id", property.propertyId() + ".non-vacuity",
-                            "result", "COULD-NOT-EVALUATE",
-                            "reason", "not-run"),
-                    Map.of("id", property.propertyId(),
-                            "result", "COULD-NOT-EVALUATE",
-                            "reason", "not-run")));
+            if (property instanceof ComposedDslProperty composed) {
+                root.put("claims", composed.claims());
+                var properties = new ArrayList<Map<String, String>>();
+                for (var claim : composed.claims()) {
+                    properties.add(Map.of("id", claim.id() + ".non-vacuity",
+                            "result", "COULD-NOT-EVALUATE", "reason", "not-run"));
+                    properties.add(Map.of("id", claim.id(),
+                            "result", "COULD-NOT-EVALUATE", "reason", "not-run"));
+                }
+                root.put("properties", properties);
+            } else {
+                root.put("properties", List.of(
+                        Map.of("id", property.propertyId() + ".non-vacuity",
+                                "result", "COULD-NOT-EVALUATE",
+                                "reason", "not-run"),
+                        Map.of("id", property.propertyId(),
+                                "result", "COULD-NOT-EVALUATE",
+                                "reason", "not-run")));
+            }
         }
         return JSON.writeValueAsString(root) + "\n";
     }
@@ -1739,6 +1886,7 @@ public final class VerificationProjectGenerator {
             case ControlledMintProperty controlled -> controlled.canonicalDslJson();
             case SellerPaymentProperty seller -> seller.canonicalDslJson();
             case OneShotMintProperty oneShot -> oneShot.canonicalDslJson();
+            case ComposedDslProperty composed -> composed.canonicalDslJson();
             default -> null;
         };
     }
@@ -1939,6 +2087,64 @@ public final class VerificationProjectGenerator {
                         "executableSha256", verifyScriptSha256,
                         "propertyId", property.propertyId(),
                         "outcomes", propertyOutcomes)));
+        return JSON.writeValueAsString(root) + "\n";
+    }
+
+    private static String composedRunnerPlan(
+            ComposedDslProperty property,
+            DslPropertySet propertySet,
+            Map<String, ComposedScriptHashes> scripts) throws IOException {
+        Map<String, Object> root = new LinkedHashMap<>();
+        root.put("schemaVersion", 2);
+        root.put("kind", "generated-workspace");
+        root.put("manifest", "verification-manifest.json");
+        root.put("timeoutSeconds", 1800);
+        root.put("acquire", List.of(
+                Map.of("id", "lake-update", "command", List.of("lake", "update"),
+                        "maxAttempts", 3, "expectedExitCodes", List.of(0)),
+                Map.of("id", "build-pinned-dependencies",
+                        "command", List.of("lake", "build",
+                                "@PlutusCore/PlutusCore",
+                                "@CardanoLedgerApi/CardanoLedgerApi",
+                                "@Blaster/Blaster", "GeneratedVerificationSupport"),
+                        "expectedExitCodes", List.of(0))));
+        List<Map<String, Object>> nonVacuityOutcomes = List.of(
+                observed(0, "NON-VACUOUS: successful input witness exists",
+                        "REFUTED", "expected-negative-control"),
+                observed(4, "VACUOUS: validator has no successful input",
+                        "COULD-NOT-EVALUATE", "property-vacuous"),
+                observed(2, "COULD-NOT-EVALUATE: non-vacuity",
+                        "COULD-NOT-EVALUATE", "non-vacuity-undetermined"));
+        var verify = new ArrayList<Map<String, Object>>();
+        for (DslProperty claim : propertySet.properties()) {
+            ComposedScriptHashes hashes = scripts.get(claim.id());
+            String safe = ComposedDslPromotion.generatedName(claim.id())
+                    .toLowerCase(Locale.ROOT);
+            String nonVacuityId = claim.id() + ".non-vacuity";
+            verify.add(Map.of(
+                    "id", "check-non-vacuity-" + safe,
+                    "command", List.of("scripts/" + hashes.scriptName()
+                            + "-non-vacuity.sh"),
+                    "executableSha256", hashes.nonVacuitySha256(),
+                    "propertyId", nonVacuityId,
+                    "outcomes", nonVacuityOutcomes));
+            var proof = new LinkedHashMap<String, Object>();
+            proof.put("id", "prove-dsl-" + safe);
+            proof.put("command", List.of("scripts/" + hashes.scriptName() + ".sh"));
+            proof.put("executableSha256", hashes.verifySha256());
+            proof.put("propertyId", claim.id());
+            proof.put("nonVacuityGuardPropertyId", nonVacuityId);
+            proof.put("outcomes", List.of(
+                    observed(0, "SMT-VALID: DSL property " + claim.id() + " established",
+                            "SMT-VALID", "dsl-property-established"),
+                    observed(3, "REFUTED: DSL property " + claim.id()
+                                    + " counterexample found",
+                            "REFUTED", "dsl-property-counterexample"),
+                    observed(2, "COULD-NOT-EVALUATE: DSL property " + claim.id(),
+                            "COULD-NOT-EVALUATE", "dsl-property-undetermined")));
+            verify.add(proof);
+        }
+        root.put("verify", verify);
         return JSON.writeValueAsString(root) + "\n";
     }
 
@@ -2440,6 +2646,273 @@ public final class VerificationProjectGenerator {
 
                 end JulcGenerated.UserProperty
                 """.formatted(redeemerType, domain, guarantee);
+    }
+
+    private static String composedDslProperty(
+            DslPropertySet propertySet,
+            Map<String, DslSemanticDependencies.Plan> plans,
+            String datumType,
+            String redeemerType) {
+        boolean spending = propertySet.purpose()
+                == com.bloxbean.cardano.julc.verification.dsl.ir.DslPurpose.SPENDING;
+        boolean needsOwnPolicy = plans.values().stream()
+                .anyMatch(DslSemanticDependencies.Plan::needsOwnPolicy);
+        boolean needsRedeemer = plans.values().stream()
+                .anyMatch(DslSemanticDependencies.Plan::needsRedeemerDecode);
+        boolean needsRawMint = plans.values().stream()
+                .anyMatch(DslSemanticDependencies.Plan::needsRawMint);
+        boolean needsDomain = plans.values().stream().anyMatch(plan ->
+                plan.needsSpendingDomain() || plan.needsMintingDomain());
+        var out = new StringBuilder("""
+                /- Generated from admitted canonical schema-3 DSL IR; do not edit. -/
+                import CardanoLedgerApi.V3
+                import GeneratedSchemas
+
+                namespace JulcGenerated.UserProperty
+
+                open CardanoLedgerApi.IsData.Class
+                open CardanoLedgerApi.Recursors
+                open CardanoLedgerApi.V3
+                open PlutusCore.Data (Data)
+                open PlutusCore.ByteString (ByteString)
+                open JulcGenerated.Schemas
+
+                """);
+        out.append("def selectedPurpose (ctx : ScriptContext) : Bool :=\n")
+                .append("  match ctx.scriptContextScriptInfo with\n")
+                .append(spending ? "  | .SpendingScript .. => true\n"
+                        : "  | .MintingScript _ => true\n")
+                .append("  | _ => false\n\n");
+        if (needsOwnPolicy) {
+            out.append("""
+                    def ownPolicyOf (ctx : ScriptContext) : ByteString :=
+                      match ctx.scriptContextScriptInfo with
+                      | .MintingScript ownPolicy => ownPolicy
+                      | _ => ""
+
+                    """);
+        }
+        if (needsRedeemer) {
+            if (redeemerType == null) throw new IllegalArgumentException(
+                    "Composed DSL redeemer dependency has no generated Lean type");
+            out.append("""
+                    def redeemerStrictlyDecodes (ctx : ScriptContext) : Bool :=
+                      match (IsData.fromData ctx.scriptContextRedeemer :
+                          Option JulcGenerated.Schemas.%s) with
+                      | some _ => true
+                      | none => false
+
+                    """.formatted(redeemerType));
+        }
+        if (needsRawMint) {
+            out.append("""
+                    def ownPolicyEntries (policy : ByteString)
+                        (mint : CardanoLedgerApi.V3.MintValue) :
+                        CardanoLedgerApi.V3.MintValue :=
+                      Recursor.findAll entry in mint => entry.1 == Data.B policy
+
+                    /-- Raw structural predicate: duplicates and malformed matches reject. -/
+                    def exactOwnPolicyAsset (policy token : ByteString) (quantity : Int)
+                        (mint : CardanoLedgerApi.V3.MintValue) : Bool :=
+                      match ownPolicyEntries policy mint with
+                      | [(Data.B actualPolicy,
+                          Data.Map [(Data.B actualToken, Data.I actualQuantity)])] =>
+                            actualPolicy == policy && actualToken == token &&
+                              actualQuantity == quantity
+                      | _ => false
+
+                    """);
+        }
+        if (needsDomain) {
+            out.append(blasterValidTxInfoDefinition()).append('\n');
+            out.append(spending ? """
+                    def blasterValidSpendingContext (ctx : ScriptContext) : Bool :=
+                      match ctx.scriptContextScriptInfo with
+                      | .SpendingScript .. =>
+                          CardanoLedgerApi.V3.Contexts.validScriptInfo ctx &&
+                            blasterValidTxInfo ctx
+                      | _ => false
+
+                    """ : """
+                    def blasterValidMintingContext (ctx : ScriptContext) : Bool :=
+                      match ctx.scriptContextScriptInfo with
+                      | .MintingScript _ =>
+                          CardanoLedgerApi.V3.Contexts.validScriptInfo ctx &&
+                            blasterValidTxInfo ctx
+                      | _ => false
+
+                    """);
+        }
+        for (DslProperty property : propertySet.properties()) {
+            var plan = plans.get(property.id());
+            String name = ComposedDslPromotion.generatedName(property.id());
+            String expression = PropertyLeanRenderer.renderExpression(
+                    property.expression(), plan.needsDatumDecode()
+                            ? Map.of("datum", "datum") : Map.of());
+            out.append("def dslGuarantee_").append(name)
+                    .append(" (ctx : ScriptContext) : Bool :=\n");
+            if (plan.needsDatumDecode()) {
+                if (datumType == null) throw new IllegalArgumentException(
+                        "Composed DSL datum dependency has no generated Lean type");
+                out.append("  match ctx.scriptContextScriptInfo with\n")
+                        .append("  | .SpendingScript _ (some datumData) =>\n")
+                        .append("      match (IsData.fromData datumData : Option ")
+                        .append("JulcGenerated.Schemas.").append(datumType)
+                        .append(") with\n")
+                        .append("      | some datum => ").append(expression).append("\n")
+                        .append("      | none => false\n")
+                        .append("  | _ => false\n\n");
+            } else {
+                out.append("  ").append(expression).append("\n\n");
+            }
+            out.append("def dslProperty_").append(name)
+                    .append(" (ctx : ScriptContext) : Prop :=\n")
+                    .append("  dslGuarantee_").append(name).append(" ctx = true\n\n");
+        }
+        return out.append("end JulcGenerated.UserProperty\n").toString();
+    }
+
+    private static String composedModuleId(String leanId, String propertyId) {
+        return leanId + "_" + ComposedDslPromotion.generatedName(propertyId);
+    }
+
+    private static String composedObligation(
+            String module,
+            String artifactId,
+            String purpose,
+            DslProperty property,
+            int fuel) {
+        String prep = "spending".equals(purpose) ? "spendingInputs" : "mintingInputs";
+        String name = ComposedDslPromotion.generatedName(property.id());
+        String domainPremise = switch (property.domain()) {
+            case NONE -> "";
+            case VALID_SPENDING_V3_PINNED ->
+                    "    blasterValidSpendingContext ctx = true →\n";
+            case VALID_MINTING_V3_PINNED ->
+                    "    blasterValidMintingContext ctx = true →\n";
+        };
+        return """
+                /- Generated exact-artifact compositional DSL obligation. -/
+                import PlutusCore.UPLC
+                import CardanoLedgerApi.V3
+                import Blaster
+                import GeneratedSchemas
+                import CheckedExecution
+                import SecurityProperty
+
+                namespace JulcGenerated.%s
+
+                open CardanoLedgerApi.V3
+                open PlutusCore.UPLC.Utils
+                open JulcGenerated.UserProperty
+
+                #import_uplc validator PlutusV3 double_cbor_hex
+                  "artifacts/%s.compiledCode.hex"
+                #prep_uplc appliedValidator validator %s %d
+
+                def composedObligation : Prop :=
+                  ∀ ctx : ScriptContext,
+                    selectedPurpose ctx = true →
+                %s    PlutusCore.UPLC.Utils.isSuccessful (appliedValidator.prop ctx) →
+                    dslProperty_%s ctx
+
+                def hasNoSuccessfulInput : Prop :=
+                  ∀ ctx : ScriptContext,
+                    selectedPurpose ctx = true →
+                %s    ¬PlutusCore.UPLC.Utils.isSuccessful (appliedValidator.prop ctx)
+
+                end JulcGenerated.%s
+                """.formatted(module, artifactId, prep, fuel, domainPremise, name,
+                domainPremise, module);
+    }
+
+    private static String composedProof(String module, DslProperty property) {
+        return """
+                /- Generated SMT obligation for schema-3 DSL property %s. -/
+                import %sObligation
+
+                namespace JulcGenerated.%s
+
+                theorem composedPropertyEstablished : composedObligation := by
+                  blaster
+
+                end JulcGenerated.%s
+                """.formatted(property.id(), module, module, module);
+    }
+
+    private static String composedCounterexample(String module, DslProperty property) {
+        return """
+                /- Generated counterexample query for schema-3 DSL property %s. -/
+                import %sObligation
+
+                namespace JulcGenerated.%s
+
+                #blaster (gen-cex: 1) (solve-result: 1) [composedObligation]
+
+                end JulcGenerated.%s
+                """.formatted(property.id(), module, module, module);
+    }
+
+    private static String composedLedgerCorollary(
+            String module, DslProperty property) {
+        if (property.domain() == DslDomain.VALID_SPENDING_V3_PINNED) {
+            return """
+                    /- Kernel bridge from pinned V3 spending validity to the proved domain. -/
+                    import %sProof
+                    import LedgerDomainEquivalence
+
+                    namespace JulcGenerated.%s
+                    open CardanoLedgerApi.V3
+                    open JulcGenerated.UserProperty
+
+                    theorem composedLedgerCorollary
+                        (txInfo : TxInfo) (redeemer : PlutusCore.Data.Data)
+                        (ref : TxOutRef) (datum : Option CardanoLedgerApi.V2.Datum)
+                        (valid : CardanoLedgerApi.V3.Contexts.validSpendingContext
+                          ⟨txInfo, redeemer, .SpendingScript ref datum⟩ = true)
+                        (successful : PlutusCore.UPLC.Utils.isSuccessful
+                          (appliedValidator.prop
+                            ⟨txInfo, redeemer, .SpendingScript ref datum⟩)) :
+                        dslProperty_%s
+                          ⟨txInfo, redeemer, .SpendingScript ref datum⟩ := by
+                      exact composedPropertyEstablished _ rfl
+                        (validSpendingContext_implies_blasterDomain
+                          txInfo redeemer ref datum valid) successful
+
+                    end JulcGenerated.%s
+                    """.formatted(module, module,
+                    ComposedDslPromotion.generatedName(property.id()), module);
+        }
+        if (property.domain() == DslDomain.VALID_MINTING_V3_PINNED) {
+            return """
+                    /- Kernel bridge from pinned V3 minting validity to the proved domain. -/
+                    import %sProof
+                    import LedgerDomainEquivalence
+
+                    namespace JulcGenerated.%s
+                    open CardanoLedgerApi.V3
+                    open JulcGenerated.UserProperty
+
+                    theorem composedLedgerCorollary
+                        (txInfo : TxInfo) (redeemer : PlutusCore.Data.Data)
+                        (policy : CardanoLedgerApi.V2.CurrencySymbol)
+                        (valid : CardanoLedgerApi.V3.Contexts.validMintingContext
+                          ⟨txInfo, redeemer, .MintingScript policy⟩ = true)
+                        (successful : PlutusCore.UPLC.Utils.isSuccessful
+                          (appliedValidator.prop
+                            ⟨txInfo, redeemer, .MintingScript policy⟩)) :
+                        dslProperty_%s
+                          ⟨txInfo, redeemer, .MintingScript policy⟩ := by
+                      exact composedPropertyEstablished _ rfl
+                        (validMintingContext_implies_blasterDomain
+                          txInfo redeemer policy valid) successful
+
+                    end JulcGenerated.%s
+                    """.formatted(module, module,
+                    ComposedDslPromotion.generatedName(property.id()), module);
+        }
+        throw new IllegalArgumentException(
+                "Ledger corollary requested without a reviewed domain");
     }
 
     private static String mintingDomainEquivalence() {
@@ -3182,6 +3655,38 @@ public final class VerificationProjectGenerator {
                 .replace("seller payment", "one-shot authorized mint");
     }
 
+    private static String composedVerifyScript(
+            String module,
+            String artifactId,
+            String compiledCodeSha256,
+            DslProperty property) {
+        String label = "DSL property " + property.id();
+        String result = verifyPropertyScript(module, artifactId, compiledCodeSha256)
+                .replace("required signer property", label)
+                .replace("required signer", label);
+        if (property.domain() != DslDomain.NONE) {
+            result = result.replace("lake env lean " + module + "Proof.lean",
+                    "lake env lean -o .lake/build/lib/lean/" + module
+                            + "Proof.olean " + module + "Proof.lean");
+            result = result.replace("""
+                    if [[ ${proof_status} -eq 0 ]]; then
+                      echo "SMT-VALID: %s property established"
+                      exit 0
+                    fi
+                    """.formatted(label), """
+                    if [[ ${proof_status} -eq 0 ]]; then
+                      if ! lake env lean %sLedgerCorollary.lean; then
+                        echo "COULD-NOT-EVALUATE: ledger-domain kernel bridge failed" >&2
+                        exit 2
+                      fi
+                      echo "SMT-VALID: %s property established"
+                      exit 0
+                    fi
+                    """.formatted(module, label));
+        }
+        return result;
+    }
+
     private static String verifyNonVacuityScript(
             String leanId, String artifactId, String compiledCodeSha256) {
         return """
@@ -3419,6 +3924,33 @@ public final class VerificationProjectGenerator {
                 property.tokenNameHex());
     }
 
+    private static String composedReadme(
+            String validatorTitle, ComposedDslProperty property) {
+        return """
+                # Generated JuLC compositional DSL verification
+
+                This generator-owned workspace checks `%s` against `%d` independently
+                named schema-3 properties from `%s`. The worker-produced AST was strictly
+                decoded, authoritatively type-checked, normalized, and hash-bound before
+                this workspace was published.
+
+                Each property has its own reviewed domain selector, exact-artifact
+                execution premise, guarantee hash, semantic capability set, non-vacuity
+                query, proof/counterexample query, logs, and certificate result. A vacuous
+                property skips only its own proof. Overall success requires every requested
+                property to be established.
+
+                `SMT-VALID` covers executions within the recorded CEK fuel bound and the
+                recorded solver domain. Where a pinned ledger-valid domain is selected, a
+                separate generated Lean theorem kernel-checks its inclusion in the solver
+                domain. Refutations remain solver-domain counterexamples unless a separate
+                concrete ledger-valid witness is recorded.
+
+                The result proves only the explicitly named normalized formulas. It does
+                not claim that the complete validator or protocol is safe.
+                """.formatted(validatorTitle, property.claims().size(), property.sourcePath());
+    }
+
     private static String readme(
             String leanId, String validatorTitle, String purpose, int recursiveDepth) {
         return """
@@ -3589,6 +4121,8 @@ public final class VerificationProjectGenerator {
     private record Field(String name, String type, JsonNode schema) { }
     private record Constructor(String name, int index, List<Field> fields) { }
     private record RecursiveContainer(String function, JsonNode schema) { }
+    private record ComposedScriptHashes(
+            String scriptName, String nonVacuitySha256, String verifySha256) { }
 
     public record SchemaGeneration(String source, Map<String, String> leanTypes) { }
     public record GenerationResult(

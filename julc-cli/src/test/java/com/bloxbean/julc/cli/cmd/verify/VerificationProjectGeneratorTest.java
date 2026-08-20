@@ -10,6 +10,12 @@ import com.bloxbean.cardano.julc.verification.StatefulSpendingProperty;
 import com.bloxbean.cardano.julc.verification.ControlledMintProperty;
 import com.bloxbean.cardano.julc.verification.SellerPaymentProperty;
 import com.bloxbean.cardano.julc.verification.OneShotMintProperty;
+import com.bloxbean.cardano.julc.verification.dsl.ComposedDslPromotion;
+import com.bloxbean.cardano.julc.verification.dsl.SpendingContractModel;
+import com.bloxbean.cardano.julc.verification.dsl.MintingContractModel;
+import com.bloxbean.cardano.julc.verification.dsl.ir.DslDomain;
+import com.bloxbean.cardano.julc.verification.dsl.ir.DslPropertySet;
+import com.bloxbean.cardano.julc.verification.dsl.ir.DslPurpose;
 import com.bloxbean.cardano.julc.verification.dsl.PropertyIrCodec;
 import com.bloxbean.cardano.julc.verification.dsl.SellerPaymentDsl;
 import com.bloxbean.cardano.julc.verification.dsl.MintingDsl;
@@ -28,6 +34,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static com.bloxbean.cardano.julc.verification.dsl.VerificationDsl.*;
 
 class VerificationProjectGeneratorTest {
 
@@ -306,6 +313,126 @@ class VerificationProjectGeneratorTest {
                 manifest.path("domainAssumptions").get(0).asText());
         assertEquals(VerificationFiles.leanTreeHash(output),
                 manifest.path("generatedLeanSha256").asText());
+    }
+
+    @Test
+    void generatesIndependentGenericClaimsWithoutTemplateShapeMatching() throws Exception {
+        String source = """
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                import com.bloxbean.cardano.julc.ledger.ScriptContext;
+                import java.math.BigInteger;
+                @SpendingValidator class StateGate {
+                    record StateDatum(byte[] owner, BigInteger state) {}
+                    record Transition(BigInteger nextState) {}
+                    @Entrypoint static boolean validate(StateDatum datum,
+                            Transition redeemer, ScriptContext ctx) { return true; }
+                }
+                """;
+        var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(source);
+        var model = new SpendingContractModel();
+        String authority = "4a554c435f5645524946595f415554484f524954595f303030303031";
+        var candidate = DslPropertySet.composed(DslPurpose.SPENDING,
+                property("StateGate.state-nonnegative",
+                        DslDomain.VALID_SPENDING_V3_PINNED,
+                        model.datum().integerField("state").ge(integer(0))),
+                property("StateGate.authorized-or-owned", DslDomain.NONE,
+                        model.context().txInfo().signatories().contains(keyHash(authority))
+                                .or(model.context().txInfo().signatories().contains(
+                                        model.datum().bytesField("owner")))));
+        var promoted = ComposedDslPromotion.promote(candidate,
+                compiled.contractSchema(), "StateGate", "StateGateProperties.java");
+        Path output = tempDir.resolve("composed-spending");
+
+        VerificationProjectGenerator.generateComposedDsl(
+                writeBlueprint(), promoted, 3000, 4, output, false);
+
+        String security = Files.readString(output.resolve("SecurityProperty.lean"));
+        assertTrue(security.contains("dslGuarantee_StateGate_state_nonnegative"));
+        assertTrue(security.contains("dslGuarantee_StateGate_authorized_or_owned"));
+        assertTrue(security.contains("Option JulcGenerated.Schemas.StateDatum"));
+        assertTrue(security.contains("List.elem"));
+        assertTrue(Files.readString(output.resolve(
+                "StateGate_StateGate_state_nonnegativeObligation.lean"))
+                .contains("blasterValidSpendingContext ctx = true"));
+        assertTrue(Files.isExecutable(output.resolve(
+                "scripts/verify-stategate_state_nonnegative.sh")));
+
+        var plan = JSON.readTree(output.resolve("verification-runner.json").toFile());
+        assertEquals(4, plan.path("verify").size());
+        assertEquals("StateGate.authorized-or-owned.non-vacuity",
+                plan.path("verify").get(1).path("nonVacuityGuardPropertyId").asText());
+        var manifest = JSON.readTree(output.resolve("verification-manifest.json").toFile());
+        assertEquals(2, manifest.path("claims").size());
+        assertEquals(4, manifest.path("properties").size());
+        assertEquals(3, manifest.path("dslIr").path("schemaVersion").asInt());
+        assertEquals(ComposedDslPromotion.generatedName(
+                        manifest.path("claims").get(0).path("id").asText()),
+                manifest.path("claims").get(0).path("generatedName").asText());
+
+        Files.writeString(output.resolve("review-notes.txt"), "preserve me\n");
+        var reduced = DslPropertySet.composed(DslPurpose.SPENDING,
+                property("StateGate.state-nonnegative",
+                        DslDomain.NONE,
+                        model.datum().integerField("state").ge(integer(0))));
+        VerificationProjectGenerator.generateComposedDsl(writeBlueprint(),
+                ComposedDslPromotion.promote(reduced, compiled.contractSchema(),
+                        "StateGate", "StateGateProperties.java"),
+                3000, 4, output, true);
+        assertFalse(Files.exists(output.resolve(
+                "StateGate_StateGate_authorized_or_ownedProof.lean")));
+        assertFalse(Files.exists(output.resolve(
+                "scripts/verify-stategate_authorized_or_owned.sh")));
+        assertFalse(Files.exists(output.resolve("LedgerDomainEquivalence.lean")));
+        assertTrue(Files.exists(output.resolve("review-notes.txt")));
+        assertEquals(VerificationFiles.leanTreeHash(output),
+                JSON.readTree(output.resolve("verification-manifest.json").toFile())
+                        .path("generatedLeanSha256").asText());
+    }
+
+    @Test
+    void generatesNovelGenericMintCompositionAndReviewedDomainBridge() throws Exception {
+        String source = """
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                import com.bloxbean.cardano.julc.ledger.ScriptContext;
+                @MintingValidator class TokenPolicy {
+                    record Redeemer() {}
+                    @Entrypoint static boolean validate(Redeemer redeemer,
+                            ScriptContext ctx) { return true; }
+                }
+                """;
+        var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(source);
+        var model = new MintingContractModel();
+        String authority = "4a554c435f5645524946595f415554484f524954595f303030303031";
+        String txId = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
+        var quantity = integer(2);
+        var guarantee = model.redeemerStrictlyDecodes()
+                .and(model.context().txInfo().signatories().contains(keyHash(authority)))
+                .and(model.context().txInfo().inputs().consumes(txOutRef(txId, 1)))
+                .and(model.context().txInfo().mint().exactOwnPolicyAsset(
+                        model.ownPolicy(), tokenName("4a554c43"), quantity))
+                .and(quantity.gt(integer(0)).or(quantity.eq(integer(0))));
+        var candidate = DslPropertySet.composed(DslPurpose.MINTING,
+                property("TokenPolicy.composed-mint",
+                        DslDomain.VALID_MINTING_V3_PINNED, guarantee));
+        var promoted = ComposedDslPromotion.promote(candidate,
+                compiled.contractSchema(), "TokenPolicy", "TokenPolicyProperties.java");
+        Path output = tempDir.resolve("composed-mint");
+
+        VerificationProjectGenerator.generateComposedDsl(
+                writeMintBlueprint(), promoted, 5000, 4, output, false);
+
+        String security = Files.readString(output.resolve("SecurityProperty.lean"));
+        assertTrue(security.contains("redeemerStrictlyDecodes"));
+        assertTrue(security.contains("exactOwnPolicyAsset"));
+        assertTrue(security.contains("utxoConsumed"));
+        assertTrue(security.contains("(2 == 0) || (2 > 0)"));
+        assertTrue(Files.readString(output.resolve("LedgerDomainEquivalence.lean"))
+                .contains("validMintingContext_implies_blasterDomain"));
+        assertTrue(Files.readString(output.resolve(
+                "TokenPolicy_TokenPolicy_composed_mintLedgerCorollary.lean"))
+                .contains("composedLedgerCorollary"));
     }
 
     @Test
