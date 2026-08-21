@@ -8,6 +8,13 @@ public sealed interface Expr permits BoolExpr, ByteStringExpr, IntegerExpr, Datu
         ValueExpr, AddressExpr, CredentialExpr, PolicyIdExpr, MintValueExpr,
         TxOutRefExpr, TxInInfoListExpr, WithdrawalsExpr, WithdrawalEntryExpr,
         TxCertExpr, TxCertListExpr, TypedValueExpr, TypedOptionExpr,
-        TypedListExpr, TypedAssocMapExpr, StringExpr {
+        TypedListExpr, TypedAssocMapExpr, StringExpr, LedgerContextExpr,
+        LedgerTxInfoExpr, LedgerTxInInfoExpr, LedgerTxInInfoListExpr,
+        LedgerTxInInfoOptionExpr, LedgerTxOutRefExpr, LedgerTxIdExpr,
+        LedgerTxOutExpr, LedgerTxOutListExpr, LedgerTxOutOptionExpr,
+        LedgerAddressExpr, LedgerCredentialExpr, LedgerOutputDatumExpr,
+        LedgerScriptPurposeExpr, LedgerStakingCredentialExpr, LedgerValueExpr,
+        LedgerByteAliasExpr,
+        LedgerStakingCredentialOptionExpr {
     PropertyNode node();
 }

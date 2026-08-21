@@ -1,6 +1,6 @@
 # ADR-023: Milestone E.4g — Typed Non-Value Transaction Context
 
-- **Status:** Proposed
+- **Status:** Implemented experimentally; awaiting manual review
 - **Date:** 2026-08-21
 - **Parent:**
   [ADR-016 — Typed Verification DSL and Foundational Profile Catalog](016-typed-verification-dsl-and-profile-catalog.md)
@@ -525,8 +525,10 @@ parent validation, and semantic controls exist. A Java getter alone is not
   purpose entries.
 - Decide raw-`Data` structural equality strictly by the evidence gate above.
 - Add own-input-address-based continuing-output selection.
-- Demonstrate helper/manual canonical-IR and Lean equivalence for every
-  convenience helper.
+- For helpers expressible through the admitted generic core, demonstrate
+  helper/manual canonical-IR and Lean equivalence. Give pinned ledger helpers
+  that deliberately have no generic formula one canonical node and
+  kernel-reduced semantic controls instead.
 - Test absent, duplicate, reordered, malformed, and multiple-match cases.
 
 ### E.4g.4 — Exact execution, solver evidence, and documentation
@@ -686,25 +688,95 @@ parent validation, and semantic controls exist. A Java getter alone is not
   and retained E.4f evidence have now been reviewed; schema 5 provides a clean
   compatibility and admission boundary.
 
-## Open implementation questions
+## Resolved implementation decisions
 
-1. Whether the generic `VerificationTypeRef` should gain a `LedgerTypeRef`
-   subtype or use a sibling closed type graph behind the same parent validator.
-   The choice must avoid duplicating container/binder logic.
-2. Whether raw `Data` structural equality is reliably translatable by the
-   pinned Blaster revision. The evidence gate in Decision 8 decides admission.
-3. Whether `findPubKeyInputs`/`findScriptInputs` should be canonical nodes or
-   convenience formulas normalized to generic list filters. They must have
-   identical semantics and canonical output either way.
-4. Whether a general `filter` node is justified by at least two concrete
-   ledger uses and acceptable solver behavior, or whether direct
-   quantifier/count helpers remain simpler.
-5. Whether full `ScriptPurpose` keys translate acceptably or current-supported
-   purpose construction must remain the narrower first release.
+1. `LedgerTypeRef` is a closed subtype of the existing
+   `VerificationTypeRef` graph. Containers, binders, canonicalization, and
+   validation are therefore shared rather than duplicated.
+2. Raw `Data` payload equality remains unexposed. Witness and redeemer payloads
+   support opaque transport, presence, and collection traversal only. Distinct
+   reviewed byte aliases such as transaction IDs, datum hashes, script hashes,
+   public-key hashes, and currency symbols are explicit identity bridges and
+   cannot be invented for arbitrary `Data`.
+3. Pinned selection operations are canonical `LedgerHelperNode` variants.
+   This keeps `resolveInput`, `findOwnInput`, payment/script input filters,
+   current purpose, continuing outputs, and Lovelace projection bound to one
+   reviewed meaning and one capability rule.
+4. Schema 5 does not add a general filter node. Existing closed list
+   quantifiers/counts plus the reviewed input/continuing-output helpers cover
+   this milestone without admitting arbitrary collection callbacks.
+5. All six pinned `ScriptPurpose` constructors are representable as map keys
+   and have kind recognizers. Voting/proposing payloads remain opaque and no
+   voting/proposing artifact or ledger-domain adapter is added.
+6. The E.4g.3 helper-equivalence rule is intentionally bifurcated. A
+   convenience with an admitted generic formula must produce equivalent
+   canonical IR and Lean. A pinned helper whose semantics cannot be assembled
+   from the public generic core receives one closed canonical node plus direct
+   kernel-reduced controls. Requiring a synthetic "manual" second
+   implementation for the latter would duplicate semantics rather than test
+   equivalence. This is an explicit implementation decision, not a relaxation
+   of the parent-validation or semantic-evidence gates.
 
-None of these questions permits approximate semantics. An operation that
-cannot meet the invariant and evidence gates remains explicitly
-`UNSUPPORTED_IR` or `UNSUPPORTED_SOLVER`.
+## Implementation outcome
+
+All four E.4g phases are implemented as opt-in inner DSL schema 5 and
+certificate-facing `julc.dsl-ledger/v1` property schema 3. No production source
+changed in `julc-core`, `julc-compiler`, `julc-ledger-api`, `julc-stdlib`, or
+`julc-blueprint`.
+
+The delivered surface includes:
+
+- a parent-validated closed ledger type authority, field/constructor graph,
+  helpers, byte aliases, and purpose/domain gates;
+- ordered ordinary/reference inputs, resolved outputs, output references,
+  transaction ID and integer fee;
+- complete addresses, payment/staking credentials, output datum kinds,
+  optional reference scripts, own-input resolution, and continuing outputs by
+  full address equality;
+- duplicate-preserving datum/redeemer association maps with first/all/count,
+  list, and structural collection operations while raw payloads remain opaque;
+- deterministic canonical schema-5 IR, generated Java wrappers, Lean
+  rendering, native-image metadata, and capability-inventory bindings;
+- kernel-reduced ledger-context controls for first-match resolution, filters,
+  complete-address distinction, strict output-datum constructors, missing own
+  input, continuing-output selection, complete `ScriptInfo.toScriptPurpose`
+  conversion, duplicate-preserving `ScriptPurpose` lookup, and preservation of
+  opaque voting-purpose keys; and
+- an exact-VM fixture that accepts canonical V3 context data, rejects malformed
+  observed list/constructor/option/map shapes, and retains duplicate witness
+  entries.
+
+The reproducible evidence uses fuel 5000 and recursive depth 8. The authorized
+fixture establishes five independent properties for the complete current
+spending purpose, reference-output shape, non-negative fee, datum-witness
+presence, and redeemer-witness presence. The
+vulnerable fixture is `REFUTED`; the always-failing fixture is
+`COULD-NOT-EVALUATE/property-vacuous`. Local, Docker, and GraalVM-native CLI
+positive runs bind identical semantic inputs:
+
+- compiled-code SHA-256
+  `dba4f675fbea805a059fe169193d86d2549659fe6672bf9e8f1617d42aece0fe`;
+- Cardano script hash
+  `71e5d1370ececbc071dfc5664068db8380b6d2a02d85120bca825078`;
+- canonical DSL IR SHA-256
+  `ed8edb0477b42fb2f76e47d1dae59fb913285c09ba675c056d486558fbb08bba`;
+- property IR SHA-256
+  `5a0bca10d0d74bba854268e8aa969246e43b71a7035bf7c719926c604e25b7c5`;
+  and
+- generated Lean SHA-256
+  `142bc962f243bb49b481178bd6199b559fdfe1141f57469bf4a86ec2ad143508`.
+
+The native certificate records the authenticated local proof backend, not a
+native-launcher digest; identical hashes establish semantic-input identity,
+not independent launcher provenance. The schema-4 E.4f workspaces were
+regenerated because the pinned capability inventory intentionally changed;
+their previously reviewed DSL, property, and Lean hashes remained unchanged,
+and the retained authorized workspace re-verifies with the current runner.
+
+Validation includes fresh affected-module suites, the reproducible E.4g local
+and Docker drivers, the GraalVM 25.0.2 native build and positive run, schema-4
+re-verification, exact-VM controls, and the repository-wide build recorded by
+the final milestone review.
 
 ## Acceptance and permitted claim
 

@@ -11,7 +11,7 @@ or Docker.
 
 ## What is available today
 
-There are twelve ways to explore the current integration. `julc verify run`
+There are thirteen ways to explore the current integration. `julc verify run`
 provides the managed execution path for both a generated workspace and the
 committed evidence suite:
 
@@ -69,6 +69,13 @@ committed evidence suite:
     quantifiers/count/indexing, and ordered duplicate-preserving association-map
     traversal, first/all lookup, and structural equality. The E.4f controls
     include exact VM, local, Docker, native, refuted, and vacuous evidence.
+13. `verification/e4g` adds experimental schema 5 for non-value transaction
+    context. It exposes ordered ordinary/reference inputs, resolved outputs,
+    output references, fee/transaction ID, complete address and staking
+    credentials, output datum/reference-script variants, own-input and
+    full-address continuing-output selection, plus ordered duplicate-preserving
+    datum/redeemer maps. Local, Docker, native, exact-VM, refuted, and vacuous
+    controls bind these meanings to the pinned ledger model.
 
 The integration does not prove that every JuLC program is safe. It checks
 explicit properties for one exact compiled artifact. Solver-valid Blaster

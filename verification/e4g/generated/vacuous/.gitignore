@@ -1,0 +1,5 @@
+# Initial JuLC verification workspace ignores; preserved by --force.
+/.lake/
+/.julc/
+/verification-results/
+/verification-result.json

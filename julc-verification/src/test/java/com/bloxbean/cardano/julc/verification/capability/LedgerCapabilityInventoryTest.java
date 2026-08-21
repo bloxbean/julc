@@ -44,6 +44,20 @@ class LedgerCapabilityInventoryTest {
                 inventory.require("helper.isKnownCertificate").status());
         assertEquals(CapabilityStatus.TYPED,
                 inventory.require("ledger.validCertifyingContext").status());
+        assertEquals(CapabilityStatus.TYPED,
+                inventory.require("field.txInfo.referenceInputs").status());
+        assertEquals(CapabilityStatus.TYPED,
+                inventory.require("field.txOut.datum").status());
+        assertEquals(CapabilityStatus.TYPED,
+                inventory.require("constructor.credential.pubKey").status());
+        assertEquals(CapabilityStatus.TYPED,
+                inventory.require("helper.scriptInfoToScriptPurpose").status());
+        assertEquals(CapabilityStatus.TYPED,
+                inventory.require("helper.findRedeemer").status());
+        assertEquals(CapabilityStatus.TYPED,
+                inventory.require("helper.findDatum").status());
+        assertEquals(CapabilityStatus.UNSUPPORTED_IR,
+                inventory.require("helper.findDatumHash").status());
         assertEquals(CapabilityStatus.UNSUPPORTED_SOLVER,
                 inventory.require("solver.proofReconstruction").status());
     }

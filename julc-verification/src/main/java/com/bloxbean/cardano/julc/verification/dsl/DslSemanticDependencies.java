@@ -104,6 +104,14 @@ public final class DslSemanticDependencies {
             return;
         }
         if (node instanceof TypedVariableNode) return;
+        if (node instanceof LedgerRootNode root) {
+            if (!"ledgerContext".equals(root.name())) {
+                throw new IllegalArgumentException(
+                        "No dependency mapping for ledger root " + root.name());
+            }
+            state.capabilities.add("dsl.ledger.context");
+            return;
+        }
         if (node instanceof FieldNode field) {
             state.capabilities.add(capability(field));
             visit(field.target(), state);
@@ -116,6 +124,18 @@ public final class DslSemanticDependencies {
         }
         if (node instanceof VariantFieldNode field) {
             state.capabilities.add("dsl.schema.variant-field");
+            visit(field.target(), state);
+            return;
+        }
+        if (node instanceof LedgerFieldNode field) {
+            state.capabilities.add(LedgerTypeAuthority.fieldCapability(
+                    field.ownerType(), field.name()));
+            visit(field.target(), state);
+            return;
+        }
+        if (node instanceof LedgerVariantFieldNode field) {
+            state.capabilities.add(LedgerTypeAuthority.constructorCapability(
+                    field.sumType(), field.constructor()));
             visit(field.target(), state);
             return;
         }
@@ -207,6 +227,43 @@ public final class DslSemanticDependencies {
             }
             visit(variant.predicate(), state);
             state.binders.remove(variant.variable());
+            return;
+        }
+        if (node instanceof LedgerVariantIsNode variant) {
+            state.capabilities.add(LedgerTypeAuthority.constructorCapability(
+                    variant.sumType(), variant.constructor()));
+            visit(variant.value(), state);
+            return;
+        }
+        if (node instanceof LedgerVariantWhenNode variant) {
+            state.capabilities.add(LedgerTypeAuthority.constructorCapability(
+                    variant.sumType(), variant.constructor()));
+            visit(variant.value(), state);
+            if (!state.binders.add(variant.variable())) {
+                throw new IllegalArgumentException(
+                        "Duplicate dependency-plan binder " + variant.variable());
+            }
+            visit(variant.predicate(), state);
+            state.binders.remove(variant.variable());
+            return;
+        }
+        if (node instanceof LedgerHelperNode helper) {
+            state.capabilities.add(switch (helper.helper()) {
+                case CURRENT_OUTPUT_REF -> "purpose.spending";
+                case CURRENT_SCRIPT_PURPOSE -> "helper.scriptInfoToScriptPurpose";
+                case FIND_OWN_INPUT -> "helper.findOwnInput";
+                case RESOLVE_INPUT -> "helper.resolveInput";
+                case FILTER_PAYMENT_KEY_INPUTS -> "helper.findPubKeyInputs";
+                case FILTER_SCRIPT_INPUTS -> "helper.findScriptInputs";
+                case CONTINUING_OUTPUTS -> "helper.continuingOutputs";
+                case LOVELACE_OF -> "dsl.helper.lovelaceOf";
+            });
+            helper.arguments().forEach(argument -> visit(argument, state));
+            return;
+        }
+        if (node instanceof LedgerByteAliasNode alias) {
+            state.capabilities.add("dsl.ledger.byte-alias:" + alias.aliasType().ledgerType());
+            visit(alias.bytes(), state);
             return;
         }
         if (node instanceof BoolLiteralNode) return;
@@ -372,6 +429,19 @@ public final class DslSemanticDependencies {
             case MapCountKeyNode ignored -> "map-count-key";
             case MapLookupFirstNode ignored -> "map-lookup-first";
             case MapLookupAllNode ignored -> "map-lookup-all";
+            case LedgerRootNode root -> "ledger-root:" + root.name();
+            case LedgerFieldNode field -> "ledger-field:"
+                    + field.ownerType().ledgerType() + "." + field.name();
+            case LedgerVariantFieldNode field -> "ledger-variant-field:"
+                    + field.sumType().ledgerType() + "." + field.constructor()
+                    + "." + field.name();
+            case LedgerVariantIsNode variant -> "ledger-variant-is:"
+                    + variant.sumType().ledgerType() + "." + variant.constructor();
+            case LedgerVariantWhenNode variant -> "ledger-variant-when:"
+                    + variant.sumType().ledgerType() + "." + variant.constructor();
+            case LedgerHelperNode helper -> "ledger-helper:" + helper.helper();
+            case LedgerByteAliasNode alias -> "ledger-byte-alias:"
+                    + alias.aliasType().ledgerType();
         };
     }
 

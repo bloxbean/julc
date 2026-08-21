@@ -1,0 +1,199 @@
+{
+  "artifactFormat" : "double_cbor_hex",
+  "artifactId" : "authorized-ledger-context-gate",
+  "blueprintEntryTitle" : "AuthorizedLedgerContextGate",
+  "boundarySemantics" : "strict-data-v1",
+  "builtinSemanticsVariant" : "E",
+  "builtins" : [ {
+    "name" : "EqualsInteger",
+    "flatTag" : 7
+  }, {
+    "name" : "LessThanInteger",
+    "flatTag" : 8
+  }, {
+    "name" : "LessThanEqualsInteger",
+    "flatTag" : 9
+  }, {
+    "name" : "IfThenElse",
+    "flatTag" : 26
+  }, {
+    "name" : "FstPair",
+    "flatTag" : 29
+  }, {
+    "name" : "SndPair",
+    "flatTag" : 30
+  }, {
+    "name" : "HeadList",
+    "flatTag" : 33
+  }, {
+    "name" : "TailList",
+    "flatTag" : 34
+  }, {
+    "name" : "NullList",
+    "flatTag" : 35
+  }, {
+    "name" : "UnConstrData",
+    "flatTag" : 42
+  }, {
+    "name" : "UnMapData",
+    "flatTag" : 43
+  }, {
+    "name" : "UnListData",
+    "flatTag" : 44
+  }, {
+    "name" : "UnIData",
+    "flatTag" : 45
+  }, {
+    "name" : "UnBData",
+    "flatTag" : 46
+  } ],
+  "capabilityInventory" : {
+    "ledgerApi" : "CardanoLedgerApiBlaster",
+    "ledgerVersion" : "V3",
+    "revision" : "5dab3c43f042b8735b6d067223baaa8d32ed28a1",
+    "schemaVersion" : 1,
+    "sha256" : "4230b38874c05a1538f9b79285f7a0314de43806d543b1136d690a1db4e88bcb"
+  },
+  "cardanoScriptHash" : "71e5d1370ececbc071dfc5664068db8380b6d2a02d85120bca825078",
+  "claims" : [ {
+    "id" : "ledger-context.current-purpose",
+    "generatedName" : "ledger_context_current_purpose",
+    "domain" : "VALID_SPENDING_V3_PINNED",
+    "guaranteeSha256" : "2a27734f9f3cc3a43b4818b8789ee9538fa79eed2c2ccfb274ffc8b493f0cc71",
+    "envelopeSha256" : "7f051dd71ec8904d8398832ecde4ab870ac6c59e9604330b25cb0810c7b8a52e",
+    "capabilities" : [ "constructor.scriptPurpose.spending", "dsl.ledger.context", "field.scriptContext.scriptInfo", "helper.scriptInfoToScriptPurpose", "ledger.validSpendingContext", "purpose.spending" ],
+    "guaranteeRules" : [ "ledger-helper:CURRENT_SCRIPT_PURPOSE", "ledger-root:ledgerContext", "ledger-variant-is:SCRIPT_PURPOSE.Spending" ],
+    "counterexampleDomain" : "BLASTER_VALID_SPENDING_SUPERSET",
+    "ledgerValidCounterexampleEstablished" : false,
+    "concreteVmCounterexampleReproduced" : false
+  }, {
+    "id" : "ledger-context.datum-witness",
+    "generatedName" : "ledger_context_datum_witness",
+    "domain" : "VALID_SPENDING_V3_PINNED",
+    "guaranteeSha256" : "e37708f79c0a046149dc87d77561fc32c4bd9c85cfa29bc25568aa091fd0d9c4",
+    "envelopeSha256" : "dc1c27b233e1a9605348d547c47e801a569d9633e8e1163c5d12bf0c591d30c1",
+    "capabilities" : [ "dsl.ledger.context", "field.scriptContext.scriptInfo", "field.scriptContext.txInfo", "field.txInfo.data", "ledger.validSpendingContext", "purpose.spending" ],
+    "guaranteeRules" : [ "bool-literal:true", "ledger-field:SCRIPT_CONTEXT.txInfo", "ledger-field:TX_INFO.datums", "ledger-root:ledgerContext", "map-quantifier:EXISTS" ],
+    "counterexampleDomain" : "BLASTER_VALID_SPENDING_SUPERSET",
+    "ledgerValidCounterexampleEstablished" : false,
+    "concreteVmCounterexampleReproduced" : false
+  }, {
+    "id" : "ledger-context.fee",
+    "generatedName" : "ledger_context_fee",
+    "domain" : "VALID_SPENDING_V3_PINNED",
+    "guaranteeSha256" : "7bdbcb3a1dafd64a33131cb24f6b834b476d4962eb2fc7be8b5e899a10b0b6cb",
+    "envelopeSha256" : "96a929585e0c212f547d0c7edd82a8646d3707cf8534f65b7318f7e07885caf8",
+    "capabilities" : [ "dsl.ledger.context", "field.scriptContext.scriptInfo", "field.scriptContext.txInfo", "field.txInfo.fee", "ledger.validSpendingContext", "purpose.spending" ],
+    "guaranteeRules" : [ "compare:GE", "integer-literal", "ledger-field:SCRIPT_CONTEXT.txInfo", "ledger-field:TX_INFO.fee", "ledger-root:ledgerContext" ],
+    "counterexampleDomain" : "BLASTER_VALID_SPENDING_SUPERSET",
+    "ledgerValidCounterexampleEstablished" : false,
+    "concreteVmCounterexampleReproduced" : false
+  }, {
+    "id" : "ledger-context.redeemer-witness",
+    "generatedName" : "ledger_context_redeemer_witness",
+    "domain" : "VALID_SPENDING_V3_PINNED",
+    "guaranteeSha256" : "3a9d52d602f93696f69f3e3699c11cdde871ece192fd34a815136173150c894a",
+    "envelopeSha256" : "856c9c1a56cd98e9a25ba16a8d14e88a247af83445581737977d662cb0156e54",
+    "capabilities" : [ "dsl.ledger.context", "field.scriptContext.scriptInfo", "field.scriptContext.txInfo", "field.txInfo.redeemers", "ledger.validSpendingContext", "purpose.spending" ],
+    "guaranteeRules" : [ "bool-literal:true", "ledger-field:SCRIPT_CONTEXT.txInfo", "ledger-field:TX_INFO.redeemers", "ledger-root:ledgerContext", "map-quantifier:EXISTS" ],
+    "counterexampleDomain" : "BLASTER_VALID_SPENDING_SUPERSET",
+    "ledgerValidCounterexampleEstablished" : false,
+    "concreteVmCounterexampleReproduced" : false
+  }, {
+    "id" : "ledger-context.reference-shape",
+    "generatedName" : "ledger_context_reference_shape",
+    "domain" : "VALID_SPENDING_V3_PINNED",
+    "guaranteeSha256" : "86e72d5b98316d75bc2d5c994dd715413a685c945f4f624acd781b2e44ff807a",
+    "envelopeSha256" : "e48f1f69c03ee5daf43edcd48c68e917d6bf635b9e41c82d98b18465ef71cd4a",
+    "capabilities" : [ "constructor.credential.script", "constructor.outputDatum.inline", "dsl.ledger.context", "dsl.option.exists", "field.address.credential", "field.scriptContext.scriptInfo", "field.scriptContext.txInfo", "field.txInInfo.resolved", "field.txInfo.referenceInputs", "field.txOut.address", "field.txOut.datum", "field.txOut.referenceScript", "ledger.validSpendingContext", "purpose.spending" ],
+    "guaranteeRules" : [ "bool:AND", "integer-literal", "ledger-field:ADDRESS.paymentCredential", "ledger-field:SCRIPT_CONTEXT.txInfo", "ledger-field:TX_INFO.referenceInputs", "ledger-field:TX_IN_INFO.resolved", "ledger-field:TX_OUT.address", "ledger-field:TX_OUT.datum", "ledger-field:TX_OUT.referenceScript", "ledger-root:ledgerContext", "ledger-variant-is:CREDENTIAL.ScriptCredential", "ledger-variant-is:OUTPUT_DATUM.OutputDatum", "list-at", "option-exists", "option-state:EMPTY", "typed-variable" ],
+    "counterexampleDomain" : "BLASTER_VALID_SPENDING_SUPERSET",
+    "ledgerValidCounterexampleEstablished" : false,
+    "concreteVmCounterexampleReproduced" : false
+  } ],
+  "compiledCodeSha256" : "dba4f675fbea805a059fe169193d86d2549659fe6672bf9e8f1617d42aece0fe",
+  "dependencies" : {
+    "CardanoLedgerApiBlaster" : "5dab3c43f042b8735b6d067223baaa8d32ed28a1",
+    "Lean-blaster" : "083bae7971414d894b56b5bbf4108c63e17bc42a",
+    "PlutusCoreBlaster" : "7cf5a78c54b9694ef093bf49edb5d3799b2a49c9"
+  },
+  "domainAssumptions" : [ "validSpendingContext/v3-pinned" ],
+  "dslIr" : {
+    "schemaVersion" : 5,
+    "sha256" : "ed8edb0477b42fb2f76e47d1dae59fb913285c09ba675c056d486558fbb08bba"
+  },
+  "fuel" : 5000,
+  "generatedBy" : "julc verify init",
+  "generatedLeanSha256" : "142bc962f243bb49b481178bd6199b559fdfe1141f57469bf4a86ec2ad143508",
+  "julcVersion" : "0.1.0-pre16",
+  "leanVersion" : "4.24.0",
+  "ledgerValidityModeled" : true,
+  "plutusLanguage" : "PlutusV3",
+  "project" : "e4g-ledger-context",
+  "properties" : [ {
+    "id" : "ledger-context.current-purpose.non-vacuity",
+    "reason" : "not-run",
+    "result" : "COULD-NOT-EVALUATE"
+  }, {
+    "id" : "ledger-context.current-purpose",
+    "reason" : "not-run",
+    "result" : "COULD-NOT-EVALUATE"
+  }, {
+    "id" : "ledger-context.datum-witness.non-vacuity",
+    "reason" : "not-run",
+    "result" : "COULD-NOT-EVALUATE"
+  }, {
+    "id" : "ledger-context.datum-witness",
+    "reason" : "not-run",
+    "result" : "COULD-NOT-EVALUATE"
+  }, {
+    "id" : "ledger-context.fee.non-vacuity",
+    "reason" : "not-run",
+    "result" : "COULD-NOT-EVALUATE"
+  }, {
+    "id" : "ledger-context.fee",
+    "reason" : "not-run",
+    "result" : "COULD-NOT-EVALUATE"
+  }, {
+    "id" : "ledger-context.redeemer-witness.non-vacuity",
+    "reason" : "not-run",
+    "result" : "COULD-NOT-EVALUATE"
+  }, {
+    "id" : "ledger-context.redeemer-witness",
+    "reason" : "not-run",
+    "result" : "COULD-NOT-EVALUATE"
+  }, {
+    "id" : "ledger-context.reference-shape.non-vacuity",
+    "reason" : "not-run",
+    "result" : "COULD-NOT-EVALUATE"
+  }, {
+    "id" : "ledger-context.reference-shape",
+    "reason" : "not-run",
+    "result" : "COULD-NOT-EVALUATE"
+  } ],
+  "propertyIr" : {
+    "contractSchemaSha256" : "1eb0bbeb84a1a2715a2ce896165648022c851c1ac358a81d653fa06d6de055b6",
+    "path" : "verification-property.json",
+    "projectedContractTypesSha256" : "1eb0bbeb84a1a2715a2ce896165648022c851c1ac358a81d653fa06d6de055b6",
+    "propertyId" : "AuthorizedLedgerContextGate.dsl-property-set",
+    "schemaVersion" : 3,
+    "sha256" : "5a0bca10d0d74bba854268e8aa969246e43b71a7035bf7c719926c604e25b7c5",
+    "sourcePath" : "/Users/satya/work/bloxbean/julc/verification/e4g/AuthorizedLedgerContextSpec.java",
+    "template" : "julc.dsl-ledger/v1"
+  },
+  "protocolVersion" : 11,
+  "recursiveDepth" : 8,
+  "runnerPlanSha256" : "a69977fb88f7305a6468ba91f920810a7a4df6558eec9253d7c359f9af19fe80",
+  "schemaVersion" : 1,
+  "schemas" : [ {
+    "cip57" : "AuthorizedLedgerContextGate:Datum",
+    "lean" : "AuthorizedLedgerContextGateDatum"
+  }, {
+    "cip57" : "AuthorizedLedgerContextGate:Redeemer",
+    "lean" : "AuthorizedLedgerContextGateRedeemer"
+  } ],
+  "scriptPurpose" : "spending",
+  "uplcVersion" : "1.1.0",
+  "validatorTitle" : "AuthorizedLedgerContextGate",
+  "z3Version" : "4.15.2"
+}

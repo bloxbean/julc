@@ -1,0 +1,105 @@
+{
+  "artifactFormat" : "double_cbor_hex",
+  "artifactId" : "vacuous-ledger-context-gate",
+  "blueprintEntryTitle" : "VacuousLedgerContextGate",
+  "boundarySemantics" : "strict-data-v1",
+  "builtinSemanticsVariant" : "E",
+  "builtins" : [ {
+    "name" : "EqualsInteger",
+    "flatTag" : 7
+  }, {
+    "name" : "IfThenElse",
+    "flatTag" : 26
+  }, {
+    "name" : "FstPair",
+    "flatTag" : 29
+  }, {
+    "name" : "SndPair",
+    "flatTag" : 30
+  }, {
+    "name" : "HeadList",
+    "flatTag" : 33
+  }, {
+    "name" : "TailList",
+    "flatTag" : 34
+  }, {
+    "name" : "NullList",
+    "flatTag" : 35
+  }, {
+    "name" : "UnConstrData",
+    "flatTag" : 42
+  } ],
+  "capabilityInventory" : {
+    "ledgerApi" : "CardanoLedgerApiBlaster",
+    "ledgerVersion" : "V3",
+    "revision" : "5dab3c43f042b8735b6d067223baaa8d32ed28a1",
+    "schemaVersion" : 1,
+    "sha256" : "4230b38874c05a1538f9b79285f7a0314de43806d543b1136d690a1db4e88bcb"
+  },
+  "cardanoScriptHash" : "06910a055767e559582af7c9f756a10cb5e17f76abbbcebbab8648f3",
+  "claims" : [ {
+    "id" : "ledger-context.vacuous",
+    "generatedName" : "ledger_context_vacuous",
+    "domain" : "VALID_SPENDING_V3_PINNED",
+    "guaranteeSha256" : "06123460045c4a04ddd8ade92881ac6664a5b48a46edbb37f54652400700fe4f",
+    "envelopeSha256" : "a040748f2bb56f19d2929d71d06cba591364d77204e7e08e2398d404a66026aa",
+    "capabilities" : [ "dsl.ledger.context", "field.scriptContext.scriptInfo", "field.scriptContext.txInfo", "field.txInfo.referenceInputs", "ledger.validSpendingContext", "purpose.spending" ],
+    "guaranteeRules" : [ "ledger-field:SCRIPT_CONTEXT.txInfo", "ledger-field:TX_INFO.referenceInputs", "ledger-root:ledgerContext", "list-state:NON_EMPTY" ],
+    "counterexampleDomain" : "BLASTER_VALID_SPENDING_SUPERSET",
+    "ledgerValidCounterexampleEstablished" : false,
+    "concreteVmCounterexampleReproduced" : false
+  } ],
+  "compiledCodeSha256" : "b2689280b38b542533450e847d36301446a54338f24d15830e29315591000395",
+  "dependencies" : {
+    "CardanoLedgerApiBlaster" : "5dab3c43f042b8735b6d067223baaa8d32ed28a1",
+    "Lean-blaster" : "083bae7971414d894b56b5bbf4108c63e17bc42a",
+    "PlutusCoreBlaster" : "7cf5a78c54b9694ef093bf49edb5d3799b2a49c9"
+  },
+  "domainAssumptions" : [ "validSpendingContext/v3-pinned" ],
+  "dslIr" : {
+    "schemaVersion" : 5,
+    "sha256" : "537021ef0238313e841ebbab7a510dd7adb7c27429c2fe10f3a93d4882f108f7"
+  },
+  "fuel" : 5000,
+  "generatedBy" : "julc verify init",
+  "generatedLeanSha256" : "bf394f72e93d397e7bcc1c7e36dc81e42d7e4be217dd5c2e18306e05e4b0cd9b",
+  "julcVersion" : "0.1.0-pre16",
+  "leanVersion" : "4.24.0",
+  "ledgerValidityModeled" : true,
+  "plutusLanguage" : "PlutusV3",
+  "project" : "e4g-ledger-context",
+  "properties" : [ {
+    "id" : "ledger-context.vacuous.non-vacuity",
+    "reason" : "not-run",
+    "result" : "COULD-NOT-EVALUATE"
+  }, {
+    "id" : "ledger-context.vacuous",
+    "reason" : "not-run",
+    "result" : "COULD-NOT-EVALUATE"
+  } ],
+  "propertyIr" : {
+    "contractSchemaSha256" : "046f622f56809b0d00beb3eabcf8be4a2350818a00677a7b4829d58ff27b979c",
+    "path" : "verification-property.json",
+    "projectedContractTypesSha256" : "046f622f56809b0d00beb3eabcf8be4a2350818a00677a7b4829d58ff27b979c",
+    "propertyId" : "VacuousLedgerContextGate.dsl-property-set",
+    "schemaVersion" : 3,
+    "sha256" : "16534991fe180e549655eb6073a3ee6b4449983a7c5ea8a7af2eb35d353f09ca",
+    "sourcePath" : "/Users/satya/work/bloxbean/julc/verification/e4g/VacuousLedgerContextSpec.java",
+    "template" : "julc.dsl-ledger/v1"
+  },
+  "protocolVersion" : 11,
+  "recursiveDepth" : 8,
+  "runnerPlanSha256" : "53b04f55a0d77de54c3e1cb4f08cee8cb9110524c07b9c55a91423012e7eb42e",
+  "schemaVersion" : 1,
+  "schemas" : [ {
+    "cip57" : "VacuousLedgerContextGate:Datum",
+    "lean" : "VacuousLedgerContextGateDatum"
+  }, {
+    "cip57" : "VacuousLedgerContextGate:Redeemer",
+    "lean" : "VacuousLedgerContextGateRedeemer"
+  } ],
+  "scriptPurpose" : "spending",
+  "uplcVersion" : "1.1.0",
+  "validatorTitle" : "VacuousLedgerContextGate",
+  "z3Version" : "4.15.2"
+}

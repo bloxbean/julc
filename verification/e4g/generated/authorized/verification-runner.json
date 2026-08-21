@@ -1,0 +1,232 @@
+{
+  "acquire" : [ {
+    "command" : [ "lake", "update" ],
+    "expectedExitCodes" : [ 0 ],
+    "id" : "lake-update",
+    "maxAttempts" : 3
+  }, {
+    "command" : [ "lake", "build", "@PlutusCore/PlutusCore", "@CardanoLedgerApi/CardanoLedgerApi", "@Blaster/Blaster", "GeneratedVerificationSupport" ],
+    "expectedExitCodes" : [ 0 ],
+    "id" : "build-pinned-dependencies"
+  } ],
+  "kind" : "generated-workspace",
+  "manifest" : "verification-manifest.json",
+  "schemaVersion" : 2,
+  "timeoutSeconds" : 1800,
+  "verify" : [ {
+    "command" : [ "scripts/verify-ledger_context_current_purpose-non-vacuity.sh" ],
+    "executableSha256" : "1fcefdc9f0acbac34a39c707c284cd0b3d577b6100e2f85bbe390c205df07e7a",
+    "id" : "check-non-vacuity-ledger_context_current_purpose",
+    "outcomes" : [ {
+      "exitCode" : 0,
+      "reason" : "expected-negative-control",
+      "requiredOutput" : "NON-VACUOUS: successful input witness exists",
+      "result" : "REFUTED"
+    }, {
+      "exitCode" : 4,
+      "reason" : "property-vacuous",
+      "requiredOutput" : "VACUOUS: validator has no successful input",
+      "result" : "COULD-NOT-EVALUATE"
+    }, {
+      "exitCode" : 2,
+      "reason" : "non-vacuity-undetermined",
+      "requiredOutput" : "COULD-NOT-EVALUATE: non-vacuity",
+      "result" : "COULD-NOT-EVALUATE"
+    } ],
+    "propertyId" : "ledger-context.current-purpose.non-vacuity"
+  }, {
+    "command" : [ "scripts/verify-ledger_context_current_purpose.sh" ],
+    "executableSha256" : "b93e1908d1c2ae59774b7b3a651b7d0b91e0e0df89eeda6ed27adf391df2604d",
+    "id" : "prove-dsl-ledger_context_current_purpose",
+    "nonVacuityGuardPropertyId" : "ledger-context.current-purpose.non-vacuity",
+    "outcomes" : [ {
+      "exitCode" : 0,
+      "reason" : "dsl-property-established",
+      "requiredOutput" : "SMT-VALID: DSL property ledger-context.current-purpose established",
+      "result" : "SMT-VALID"
+    }, {
+      "exitCode" : 3,
+      "reason" : "dsl-property-counterexample",
+      "requiredOutput" : "REFUTED: DSL property ledger-context.current-purpose counterexample found",
+      "result" : "REFUTED"
+    }, {
+      "exitCode" : 2,
+      "reason" : "dsl-property-undetermined",
+      "requiredOutput" : "COULD-NOT-EVALUATE: DSL property ledger-context.current-purpose",
+      "result" : "COULD-NOT-EVALUATE"
+    } ],
+    "propertyId" : "ledger-context.current-purpose"
+  }, {
+    "command" : [ "scripts/verify-ledger_context_datum_witness-non-vacuity.sh" ],
+    "executableSha256" : "095ebd1fbcac09ddd9a26a14309c5c3787a635491a9806ec13da74d24183bb96",
+    "id" : "check-non-vacuity-ledger_context_datum_witness",
+    "outcomes" : [ {
+      "exitCode" : 0,
+      "reason" : "expected-negative-control",
+      "requiredOutput" : "NON-VACUOUS: successful input witness exists",
+      "result" : "REFUTED"
+    }, {
+      "exitCode" : 4,
+      "reason" : "property-vacuous",
+      "requiredOutput" : "VACUOUS: validator has no successful input",
+      "result" : "COULD-NOT-EVALUATE"
+    }, {
+      "exitCode" : 2,
+      "reason" : "non-vacuity-undetermined",
+      "requiredOutput" : "COULD-NOT-EVALUATE: non-vacuity",
+      "result" : "COULD-NOT-EVALUATE"
+    } ],
+    "propertyId" : "ledger-context.datum-witness.non-vacuity"
+  }, {
+    "command" : [ "scripts/verify-ledger_context_datum_witness.sh" ],
+    "executableSha256" : "47f0b42340e3d67ab5cb43f0e7e413a835cd3641a05439edba8af441878b270f",
+    "id" : "prove-dsl-ledger_context_datum_witness",
+    "nonVacuityGuardPropertyId" : "ledger-context.datum-witness.non-vacuity",
+    "outcomes" : [ {
+      "exitCode" : 0,
+      "reason" : "dsl-property-established",
+      "requiredOutput" : "SMT-VALID: DSL property ledger-context.datum-witness established",
+      "result" : "SMT-VALID"
+    }, {
+      "exitCode" : 3,
+      "reason" : "dsl-property-counterexample",
+      "requiredOutput" : "REFUTED: DSL property ledger-context.datum-witness counterexample found",
+      "result" : "REFUTED"
+    }, {
+      "exitCode" : 2,
+      "reason" : "dsl-property-undetermined",
+      "requiredOutput" : "COULD-NOT-EVALUATE: DSL property ledger-context.datum-witness",
+      "result" : "COULD-NOT-EVALUATE"
+    } ],
+    "propertyId" : "ledger-context.datum-witness"
+  }, {
+    "command" : [ "scripts/verify-ledger_context_fee-non-vacuity.sh" ],
+    "executableSha256" : "83949c1426cadef6095d624585858ec50710ac0865b57a1a802df6f96bb1e631",
+    "id" : "check-non-vacuity-ledger_context_fee",
+    "outcomes" : [ {
+      "exitCode" : 0,
+      "reason" : "expected-negative-control",
+      "requiredOutput" : "NON-VACUOUS: successful input witness exists",
+      "result" : "REFUTED"
+    }, {
+      "exitCode" : 4,
+      "reason" : "property-vacuous",
+      "requiredOutput" : "VACUOUS: validator has no successful input",
+      "result" : "COULD-NOT-EVALUATE"
+    }, {
+      "exitCode" : 2,
+      "reason" : "non-vacuity-undetermined",
+      "requiredOutput" : "COULD-NOT-EVALUATE: non-vacuity",
+      "result" : "COULD-NOT-EVALUATE"
+    } ],
+    "propertyId" : "ledger-context.fee.non-vacuity"
+  }, {
+    "command" : [ "scripts/verify-ledger_context_fee.sh" ],
+    "executableSha256" : "32fdc7fccad5e882591cb180a16253390f486c75a40ec9ca63ccb73e5ce2c514",
+    "id" : "prove-dsl-ledger_context_fee",
+    "nonVacuityGuardPropertyId" : "ledger-context.fee.non-vacuity",
+    "outcomes" : [ {
+      "exitCode" : 0,
+      "reason" : "dsl-property-established",
+      "requiredOutput" : "SMT-VALID: DSL property ledger-context.fee established",
+      "result" : "SMT-VALID"
+    }, {
+      "exitCode" : 3,
+      "reason" : "dsl-property-counterexample",
+      "requiredOutput" : "REFUTED: DSL property ledger-context.fee counterexample found",
+      "result" : "REFUTED"
+    }, {
+      "exitCode" : 2,
+      "reason" : "dsl-property-undetermined",
+      "requiredOutput" : "COULD-NOT-EVALUATE: DSL property ledger-context.fee",
+      "result" : "COULD-NOT-EVALUATE"
+    } ],
+    "propertyId" : "ledger-context.fee"
+  }, {
+    "command" : [ "scripts/verify-ledger_context_redeemer_witness-non-vacuity.sh" ],
+    "executableSha256" : "cfa2e74499c534209dfc9ec9e5166746ee86e2dd0e5041441bb2db4f0e418b82",
+    "id" : "check-non-vacuity-ledger_context_redeemer_witness",
+    "outcomes" : [ {
+      "exitCode" : 0,
+      "reason" : "expected-negative-control",
+      "requiredOutput" : "NON-VACUOUS: successful input witness exists",
+      "result" : "REFUTED"
+    }, {
+      "exitCode" : 4,
+      "reason" : "property-vacuous",
+      "requiredOutput" : "VACUOUS: validator has no successful input",
+      "result" : "COULD-NOT-EVALUATE"
+    }, {
+      "exitCode" : 2,
+      "reason" : "non-vacuity-undetermined",
+      "requiredOutput" : "COULD-NOT-EVALUATE: non-vacuity",
+      "result" : "COULD-NOT-EVALUATE"
+    } ],
+    "propertyId" : "ledger-context.redeemer-witness.non-vacuity"
+  }, {
+    "command" : [ "scripts/verify-ledger_context_redeemer_witness.sh" ],
+    "executableSha256" : "a5e513f82aa7dbb487606cd6e62e5b830053024a71849f317a9293a3a87b49e3",
+    "id" : "prove-dsl-ledger_context_redeemer_witness",
+    "nonVacuityGuardPropertyId" : "ledger-context.redeemer-witness.non-vacuity",
+    "outcomes" : [ {
+      "exitCode" : 0,
+      "reason" : "dsl-property-established",
+      "requiredOutput" : "SMT-VALID: DSL property ledger-context.redeemer-witness established",
+      "result" : "SMT-VALID"
+    }, {
+      "exitCode" : 3,
+      "reason" : "dsl-property-counterexample",
+      "requiredOutput" : "REFUTED: DSL property ledger-context.redeemer-witness counterexample found",
+      "result" : "REFUTED"
+    }, {
+      "exitCode" : 2,
+      "reason" : "dsl-property-undetermined",
+      "requiredOutput" : "COULD-NOT-EVALUATE: DSL property ledger-context.redeemer-witness",
+      "result" : "COULD-NOT-EVALUATE"
+    } ],
+    "propertyId" : "ledger-context.redeemer-witness"
+  }, {
+    "command" : [ "scripts/verify-ledger_context_reference_shape-non-vacuity.sh" ],
+    "executableSha256" : "72fca694e6983f06a9fc1ac6a23cfd7df7ae3f287692f3a48f208c15f564f2df",
+    "id" : "check-non-vacuity-ledger_context_reference_shape",
+    "outcomes" : [ {
+      "exitCode" : 0,
+      "reason" : "expected-negative-control",
+      "requiredOutput" : "NON-VACUOUS: successful input witness exists",
+      "result" : "REFUTED"
+    }, {
+      "exitCode" : 4,
+      "reason" : "property-vacuous",
+      "requiredOutput" : "VACUOUS: validator has no successful input",
+      "result" : "COULD-NOT-EVALUATE"
+    }, {
+      "exitCode" : 2,
+      "reason" : "non-vacuity-undetermined",
+      "requiredOutput" : "COULD-NOT-EVALUATE: non-vacuity",
+      "result" : "COULD-NOT-EVALUATE"
+    } ],
+    "propertyId" : "ledger-context.reference-shape.non-vacuity"
+  }, {
+    "command" : [ "scripts/verify-ledger_context_reference_shape.sh" ],
+    "executableSha256" : "349c2772fb5e258ab7a5fc70979c76e18287e020961349d7031fec57c6cf22d1",
+    "id" : "prove-dsl-ledger_context_reference_shape",
+    "nonVacuityGuardPropertyId" : "ledger-context.reference-shape.non-vacuity",
+    "outcomes" : [ {
+      "exitCode" : 0,
+      "reason" : "dsl-property-established",
+      "requiredOutput" : "SMT-VALID: DSL property ledger-context.reference-shape established",
+      "result" : "SMT-VALID"
+    }, {
+      "exitCode" : 3,
+      "reason" : "dsl-property-counterexample",
+      "requiredOutput" : "REFUTED: DSL property ledger-context.reference-shape counterexample found",
+      "result" : "REFUTED"
+    }, {
+      "exitCode" : 2,
+      "reason" : "dsl-property-undetermined",
+      "requiredOutput" : "COULD-NOT-EVALUATE: DSL property ledger-context.reference-shape",
+      "result" : "COULD-NOT-EVALUATE"
+    } ],
+    "propertyId" : "ledger-context.reference-shape"
+  } ]
+}

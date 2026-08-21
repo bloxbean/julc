@@ -1,0 +1,26 @@
+{
+  "schemaVersion" : 3,
+  "template" : "julc.dsl-ledger/v1",
+  "propertyId" : "VacuousLedgerContextGate.dsl-property-set",
+  "validatorTitle" : "VacuousLedgerContextGate",
+  "scriptPurpose" : "spending",
+  "sourcePath" : "/Users/satya/work/bloxbean/julc/verification/e4g/VacuousLedgerContextSpec.java",
+  "canonicalDslJson" : "{\"contractSchemaSha256\":\"046f622f56809b0d00beb3eabcf8be4a2350818a00677a7b4829d58ff27b979c\",\"properties\":[{\"domain\":\"VALID_SPENDING_V3_PINNED\",\"expression\":{\"op\":\"list-state\",\"elementType\":{\"type\":\"ledger\",\"ledgerType\":\"TX_IN_INFO\"},\"list\":{\"op\":\"ledger-field\",\"name\":\"referenceInputs\",\"ownerType\":{\"type\":\"ledger\",\"ledgerType\":\"TX_INFO\"},\"target\":{\"op\":\"ledger-field\",\"name\":\"txInfo\",\"ownerType\":{\"type\":\"ledger\",\"ledgerType\":\"SCRIPT_CONTEXT\"},\"target\":{\"op\":\"ledger-root\",\"name\":\"ledgerContext\",\"valueType\":{\"type\":\"ledger\",\"ledgerType\":\"SCRIPT_CONTEXT\"}},\"valueType\":{\"type\":\"ledger\",\"ledgerType\":\"TX_INFO\"}},\"valueType\":{\"type\":\"list\",\"elementType\":{\"type\":\"ledger\",\"ledgerType\":\"TX_IN_INFO\"}}},\"state\":\"NON_EMPTY\"},\"id\":\"ledger-context.vacuous\"}],\"purpose\":\"SPENDING\",\"schemaVersion\":5}",
+  "claims" : [ {
+    "id" : "ledger-context.vacuous",
+    "generatedName" : "ledger_context_vacuous",
+    "domain" : "VALID_SPENDING_V3_PINNED",
+    "guaranteeSha256" : "06123460045c4a04ddd8ade92881ac6664a5b48a46edbb37f54652400700fe4f",
+    "envelopeSha256" : "a040748f2bb56f19d2929d71d06cba591364d77204e7e08e2398d404a66026aa",
+    "capabilities" : [ "dsl.ledger.context", "field.scriptContext.scriptInfo", "field.scriptContext.txInfo", "field.txInfo.referenceInputs", "ledger.validSpendingContext", "purpose.spending" ],
+    "guaranteeRules" : [ "ledger-field:SCRIPT_CONTEXT.txInfo", "ledger-field:TX_INFO.referenceInputs", "ledger-root:ledgerContext", "list-state:NON_EMPTY" ],
+    "counterexampleDomain" : "BLASTER_VALID_SPENDING_SUPERSET",
+    "ledgerValidCounterexampleEstablished" : false,
+    "concreteVmCounterexampleReproduced" : false
+  } ],
+  "domainAssumptions" : [ "validSpendingContext/v3-pinned" ],
+  "guaranteeRules" : [ "ledger-field:SCRIPT_CONTEXT.txInfo", "ledger-field:TX_INFO.referenceInputs", "ledger-root:ledgerContext", "list-state:NON_EMPTY" ],
+  "ledgerValidityModeled" : true,
+  "projectedContractTypesJson" : "{\"datumType\":{\"type\":\"nominal\",\"nominalKind\":\"RECORD\",\"stableId\":\"VacuousLedgerContextGate.Datum\"},\"definitions\":[{\"constructors\":[],\"fields\":[],\"nominalKind\":\"RECORD\",\"sourceName\":\"Datum\",\"stableId\":\"VacuousLedgerContextGate.Datum\"},{\"constructors\":[],\"fields\":[],\"nominalKind\":\"RECORD\",\"sourceName\":\"Redeemer\",\"stableId\":\"VacuousLedgerContextGate.Redeemer\"}],\"parameters\":[],\"purpose\":\"SPEND\",\"redeemerType\":{\"type\":\"nominal\",\"nominalKind\":\"RECORD\",\"stableId\":\"VacuousLedgerContextGate.Redeemer\"},\"schemaVersion\":1}",
+  "contractSchemaSha256" : "046f622f56809b0d00beb3eabcf8be4a2350818a00677a7b4829d58ff27b979c"
+}

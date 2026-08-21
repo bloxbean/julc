@@ -1,6 +1,6 @@
 # ADR-016: Typed Verification DSL and Foundational Profile Catalog
 
-- **Status:** E.1–E.4f implemented experimentally; E.4g–E.6 proposed
+- **Status:** E.1–E.4g implemented experimentally; E.4h–E.6 proposed
 - **Date:** 2026-08-13
 - **Related:**
   [ADR-001 — IOG Blaster Verification Strategy](001-iog-blaster-verification-strategy.md),
@@ -633,7 +633,7 @@ nominal newtype identity remains deferred until `ContractSchema` exposes it.
 ### E.4g: Complete non-value transaction context
 
 [ADR-023](023-milestone-e4g-typed-non-value-transaction-context.md) specifies
-this phase as opt-in property schema 5. It exposes generic input and
+and implements this phase as opt-in property schema 5. It exposes generic input and
 reference-input traversal, `TxInInfo` fields, current spending reference, fee,
 transaction ID, output datum/reference script, complete address/staking
 credentials, ordered duplicate-preserving datum witnesses and redeemer maps,

@@ -835,6 +835,12 @@ class VerificationRunnerTest {
             assertTrue(metadata.contains(schemaFourType),
                     () -> "Missing schema-4 native metadata for " + schemaFourType);
         }
+        for (String schemaFiveType : List.of(
+                "LedgerRootNode", "LedgerFieldNode", "LedgerVariantWhenNode",
+                "LedgerVariantFieldNode", "LedgerHelperNode", "LedgerTypeRef")) {
+            assertTrue(metadata.contains(schemaFiveType),
+                    () -> "Missing schema-5 native metadata for " + schemaFiveType);
+        }
     }
 
     @Test

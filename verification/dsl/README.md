@@ -1,6 +1,6 @@
 # Experimental typed verification DSL
 
-Milestones E.2-E.4f provide an experimental Java frontend in `julc-verification`.
+Milestones E.2-E.4g provide an experimental Java frontend in `julc-verification`.
 It is not yet a stable public API.
 
 The prototype contains:
@@ -92,3 +92,13 @@ parent process re-derives every structural type and binds the canonical
 projected graph into the property IR. See
 [`verification/e4e/README.md`](../e4e/README.md) and
 [`verification/e4f/README.md`](../e4f/README.md).
+
+Milestone E.4g adds opt-in schema 5. It combines the schema-4 contract graph
+with a closed view of the pinned non-value ledger context: ordered ordinary
+and reference inputs, resolved outputs, output references, fee/transaction ID,
+complete address/staking credentials, output datum/reference-script variants,
+own-input and continuing-output selection, and ordered datum/redeemer maps.
+Pinned helper semantics are canonical IR nodes, not Java callbacks. Raw
+datum/redeemer payloads remain opaque, and unsupported governance/value/time
+operations still fail closed. See
+[`verification/e4g/README.md`](../e4g/README.md).

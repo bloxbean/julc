@@ -24,6 +24,7 @@ import com.bloxbean.cardano.julc.verification.dsl.type.ProjectedContractTypes;
 import com.bloxbean.cardano.julc.verification.dsl.type.VerificationTypeRef;
 import com.bloxbean.cardano.julc.verification.dsl.type.BuiltinTypeRef;
 import com.bloxbean.cardano.julc.verification.dsl.type.NominalTypeRef;
+import com.bloxbean.cardano.julc.verification.dsl.type.LedgerTypeRef;
 import com.bloxbean.cardano.julc.verification.dsl.type.OptionalTypeRef;
 import com.bloxbean.cardano.julc.verification.dsl.type.ListTypeRef;
 import com.bloxbean.cardano.julc.verification.dsl.type.AssocMapTypeRef;
@@ -257,9 +258,9 @@ public final class VerificationProjectGenerator {
             Path outputDirectory,
             boolean force) throws Exception {
         if (property == null) throw new IllegalArgumentException("Composed DSL property is required");
-        if (property.schemaVersion() == ComposedDslProperty.TYPED_SCHEMA_VERSION) {
+        if (property.schemaVersion() >= ComposedDslProperty.TYPED_SCHEMA_VERSION) {
             throw new IllegalArgumentException(
-                    "Schema-4 workspace generation requires the fresh compiler-owned ContractSchema");
+                    "Schema-4/5 workspace generation requires the fresh compiler-owned ContractSchema");
         }
         ComposedDslPromotion.verifyIntegrity(property);
         return generateInternal(blueprintFile, property.validatorTitle(),
@@ -355,7 +356,7 @@ public final class VerificationProjectGenerator {
                 ? ComposedDslPromotion.verifyIntegrity(composed) : null;
         ProjectedContractTypes composedTypes = null;
         if (property instanceof ComposedDslProperty composed
-                && composed.schemaVersion() == ComposedDslProperty.TYPED_SCHEMA_VERSION) {
+                && composed.schemaVersion() >= ComposedDslProperty.TYPED_SCHEMA_VERSION) {
             composedTypes = ContractTypeProjection.readCanonical(
                     composed.projectedContractTypesJson(),
                     com.bloxbean.cardano.julc.verification.dsl.PropertyIrCodec
@@ -406,7 +407,10 @@ public final class VerificationProjectGenerator {
                                         "field.txInfo.certificates")),
                 property instanceof ComposedDslProperty composed
                         && composed.schemaVersion()
-                        == ComposedDslProperty.TYPED_SCHEMA_VERSION));
+                        >= ComposedDslProperty.TYPED_SCHEMA_VERSION,
+                property instanceof ComposedDslProperty composed
+                        && composed.schemaVersion()
+                        >= ComposedDslProperty.LEDGER_SCHEMA_VERSION));
         files.put("GeneratedSchemas.lean", schemas.source());
         files.put("PropertyTemplates.lean", propertyTemplates(recursiveDepth));
         files.put("CheckedExecution.lean", checkedExecution());
@@ -541,9 +545,14 @@ public final class VerificationProjectGenerator {
                     composedDsl, composedPlans, datumLeanType, redeemerLeanType,
                     composedTypes));
             if (composed.schemaVersion()
-                    == ComposedDslProperty.TYPED_SCHEMA_VERSION) {
+                    >= ComposedDslProperty.TYPED_SCHEMA_VERSION) {
                 files.put("GenericCollectionsSemanticsTests.lean",
                         genericCollectionsSemanticsTests());
+            }
+            if (composed.schemaVersion()
+                    >= ComposedDslProperty.LEDGER_SCHEMA_VERSION) {
+                files.put("LedgerContextSemanticsTests.lean",
+                        ledgerContextSemanticsTests());
             }
             if (composedPlans.values().stream()
                     .anyMatch(DslSemanticDependencies.Plan::needsRawMint)) {
@@ -714,7 +723,8 @@ public final class VerificationProjectGenerator {
         if (Files.isRegularFile(oldProperty)) {
             JsonNode previous = JSON.readTree(oldProperty.toFile());
             if (Set.of(ComposedDslProperty.TEMPLATE,
-                    ComposedDslProperty.TYPED_TEMPLATE)
+                    ComposedDslProperty.TYPED_TEMPLATE,
+                    ComposedDslProperty.LEDGER_TEMPLATE)
                     .contains(previous.path("template").asText())) {
                 for (JsonNode claim : previous.path("claims")) {
                     String id = claim.path("id").asText();
@@ -736,6 +746,7 @@ public final class VerificationProjectGenerator {
         deleteIfStale(output, "LedgerDomainEquivalence.lean", currentFiles);
         deleteIfStale(output, "MintingSemanticsTests.lean", currentFiles);
         deleteIfStale(output, "GenericCollectionsSemanticsTests.lean", currentFiles);
+        deleteIfStale(output, "LedgerContextSemanticsTests.lean", currentFiles);
     }
 
     private static void deleteIfStale(
@@ -979,6 +990,8 @@ public final class VerificationProjectGenerator {
         }
         switch (type) {
             case BuiltinTypeRef builtin -> matchProjectedBuiltin(builtin, schema, path);
+            case LedgerTypeRef ignored -> throw projectedSchemaMismatch(
+                    path, "ledger types cannot appear in compiler contract projection");
             case OptionalTypeRef optional -> {
                 JsonNode value = optionalValueSchema(schema);
                 if (value == null) throw projectedSchemaMismatch(path, "expected Optional");
@@ -2152,7 +2165,7 @@ public final class VerificationProjectGenerator {
             propertyIr.put("sourcePath", property.sourcePath());
             if (property instanceof ComposedDslProperty composed
                     && composed.schemaVersion()
-                    == ComposedDslProperty.TYPED_SCHEMA_VERSION) {
+                    >= ComposedDslProperty.TYPED_SCHEMA_VERSION) {
                 propertyIr.put("contractSchemaSha256", composed.contractSchemaSha256());
                 propertyIr.put("projectedContractTypesSha256", VerificationFiles.sha256(
                         composed.projectedContractTypesJson().getBytes(
@@ -2205,7 +2218,8 @@ public final class VerificationProjectGenerator {
 
     private static String lakefile(
             boolean ledgerDomain, boolean mintingDsl, boolean rewardingDsl,
-            boolean certifyingDsl, boolean typedCollections) {
+            boolean certifyingDsl, boolean typedCollections,
+            boolean typedLedgerContext) {
         String roots = ledgerDomain
                 ? "`GeneratedSchemas, `PropertyTemplates, `CheckedExecution, "
                     + "`SecurityProperty, `LedgerDomainEquivalence"
@@ -2215,6 +2229,7 @@ public final class VerificationProjectGenerator {
         if (rewardingDsl) roots += ", `RewardingSemanticsTests";
         if (certifyingDsl) roots += ", `CertifyingSemanticsTests";
         if (typedCollections) roots += ", `GenericCollectionsSemanticsTests";
+        if (typedLedgerContext) roots += ", `LedgerContextSemanticsTests";
         return """
                 /- Generated by `julc verify init`; dependency pins are security inputs. -/
                 import Lake
@@ -2287,6 +2302,106 @@ public final class VerificationProjectGenerator {
                   simp [julcStructuralEq, CardanoLedgerApi.IsData.Class.instIsDataData]
 
                 end JulcGenerated.GenericCollectionsSemanticsTests
+                """;
+    }
+
+    private static String ledgerContextSemanticsTests() {
+        return """
+                /- Kernel-reduced controls for schema-5 ledger-context meanings. -/
+                import SecurityProperty
+
+                namespace JulcGenerated.LedgerContextSemanticsTests
+
+                open CardanoLedgerApi.IsData.Class
+                open CardanoLedgerApi.V3
+                open JulcGenerated.UserProperty
+                open PlutusCore.Data (Data)
+
+                def ref0 : TxOutRef := ⟨"tx", 0⟩
+                def ref1 : TxOutRef := ⟨"tx", 1⟩
+                def scriptAddress : CardanoLedgerApi.V2.Address :=
+                  ⟨.ScriptCredential "script", none⟩
+                def stakedScriptAddress : CardanoLedgerApi.V2.Address :=
+                  ⟨.ScriptCredential "script", some (.StakingPtr 1 2 3)⟩
+                def pubKeyAddress : CardanoLedgerApi.V2.Address :=
+                  ⟨.PubKeyCredential "key", none⟩
+                def outputAt (address : CardanoLedgerApi.V2.Address) (datum : Data) :
+                    CardanoLedgerApi.V2.TxOut :=
+                  ⟨address, [], .OutputDatum datum, none⟩
+                def firstInput : TxInInfo := ⟨ref0, outputAt scriptAddress (Data.I 1)⟩
+                def duplicateInput : TxInInfo :=
+                  ⟨ref0, outputAt stakedScriptAddress (Data.I 2)⟩
+                def publicInput : TxInInfo := ⟨ref1, outputAt pubKeyAddress (Data.I 3)⟩
+                def spendingPurpose : ScriptPurpose := .Spending ref0
+                def votingPurpose : ScriptPurpose :=
+                  .Voting (.StakePoolVoter "pool")
+                def redeemerEntries : RedeemerMap :=
+                  [(votingPurpose, Data.I 90),
+                   (spendingPurpose, Data.I 10),
+                   (spendingPurpose, Data.I 20)]
+                def datumEntries : CardanoLedgerApi.V2.DatumMap :=
+                  [("datum", Data.I 10), ("datum", Data.I 20)]
+
+                example : resolveInput ref0 [firstInput, duplicateInput] =
+                    some firstInput := by native_decide
+                example : resolveInput ref1 [firstInput] = none := by native_decide
+                example : findScriptInputs "script" [publicInput, firstInput] =
+                    [firstInput] := by native_decide
+                example : findPubKeyInputs "key" [firstInput, publicInput] =
+                    [publicInput] := by native_decide
+                example : scriptAddress != stakedScriptAddress := by native_decide
+
+                example : ((.SpendingScript ref0 (some (Data.I 7)) : ScriptInfo).toScriptPurpose) =
+                    spendingPurpose := by rfl
+                example : julcMapLookupFirst redeemerEntries spendingPurpose =
+                    some (Data.I 10) := by native_decide
+                example : julcMapLookupAll redeemerEntries spendingPurpose =
+                    [Data.I 10, Data.I 20] := by native_decide
+                example : julcMapCountKey redeemerEntries spendingPurpose = 2 := by
+                  native_decide
+                example : julcMapContainsKey redeemerEntries votingPurpose = true := by
+                  native_decide
+                example : julcMapLookupFirst redeemerEntries votingPurpose =
+                    some (Data.I 90) := by native_decide
+                example : findRedeemer spendingPurpose redeemerEntries =
+                    julcMapLookupFirst redeemerEntries spendingPurpose := by native_decide
+                example : CardanoLedgerApi.V2.findDatum "datum" datumEntries =
+                    julcMapLookupFirst datumEntries "datum" := by native_decide
+
+                example : (IsData.fromData (Data.Constr 0 []) :
+                    Option CardanoLedgerApi.V2.OutputDatum) =
+                    some .NoOutputDatum := by rfl
+                example : (IsData.fromData (Data.Constr 1 [Data.B "hash"]) :
+                    Option CardanoLedgerApi.V2.OutputDatum) =
+                    some (.OutputDatumHash "hash") := by rfl
+                example : (IsData.fromData (Data.Constr 2 [Data.I 7]) :
+                    Option CardanoLedgerApi.V2.OutputDatum) =
+                    some (.OutputDatum (Data.I 7)) := by rfl
+                example : (IsData.fromData (Data.Constr 2 []) :
+                    Option CardanoLedgerApi.V2.OutputDatum) = none := by rfl
+                example : (IsData.fromData (Data.Constr 1 [Data.I 7]) :
+                    Option CardanoLedgerApi.V2.OutputDatum) = none := by rfl
+
+                def txInfo (inputs : List TxInInfo)
+                    (outputs : List CardanoLedgerApi.V2.TxOut) : TxInfo :=
+                  ⟨inputs, [], outputs, 1, [], [], [], Data.Constr 0 [], [], [], [],
+                    "tx", [], [], Data.Constr 1 [], Data.Constr 1 []⟩
+                def spendingContext (inputs : List TxInInfo)
+                    (outputs : List CardanoLedgerApi.V2.TxOut) : ScriptContext :=
+                  ⟨txInfo inputs outputs, Data.Constr 0 [], .SpendingScript ref0 none⟩
+
+                example : findOwnInput (spendingContext
+                    [firstInput, duplicateInput] []) = some firstInput := by native_decide
+                example : findOwnInput (spendingContext [publicInput] []) = none := by
+                  native_decide
+                example : (julcContinuingOutputs (spendingContext [firstInput]
+                    [outputAt stakedScriptAddress (Data.I 2),
+                     outputAt scriptAddress (Data.I 3)])).items =
+                    [outputAt scriptAddress (Data.I 3)] := by native_decide
+                example : (julcContinuingOutputs (spendingContext [publicInput]
+                    [outputAt scriptAddress (Data.I 3)])).items = [] := by native_decide
+
+                end JulcGenerated.LedgerContextSemanticsTests
                 """;
     }
 
@@ -3085,9 +3200,11 @@ public final class VerificationProjectGenerator {
 
                     """.formatted(redeemerType));
         }
-        boolean typedV4 = propertySet.schemaVersion()
-                == DslPropertySet.TYPED_SCHEMA_VERSION;
-        if (typedV4) {
+        boolean structurallyTyped = propertySet.schemaVersion()
+                >= DslPropertySet.TYPED_SCHEMA_VERSION;
+        boolean structurallyLedgerTyped = propertySet.schemaVersion()
+                >= DslPropertySet.LEDGER_SCHEMA_VERSION;
+        if (structurallyTyped) {
             out.append("""
                     /- Schema-4 collection semantics preserve order and duplicates. -/
                     def julcStructuralEq [IsData α] (left right : α) : Bool :=
@@ -3125,7 +3242,23 @@ public final class VerificationProjectGenerator {
 
                     """);
         }
-        if (typedV4 && needsDatum) {
+        if (structurallyLedgerTyped) {
+            out.append("""
+                    /-- Outputs at the complete address of the first resolved own input.
+                        Missing own input yields an empty ordered result. -/
+                    def julcContinuingOutputs (ctx : ScriptContext) :
+                        JulcList CardanoLedgerApi.V2.TxOut :=
+                      match findOwnInput ctx with
+                      | some own =>
+                          ⟨List.filter (fun output : CardanoLedgerApi.V2.TxOut =>
+                            output.txOutAddress ==
+                              own.txInInfoResolved.txOutAddress)
+                            ctx.scriptContextTxInfo.txInfoOutputs⟩
+                      | none => ⟨[]⟩
+
+                    """);
+        }
+        if (structurallyTyped && needsDatum) {
             if (datumType == null) throw new IllegalArgumentException(
                     "Schema-4 datum dependency has no generated Lean type");
             out.append("def typedDatum (ctx : ScriptContext) : Option ")
@@ -3134,7 +3267,7 @@ public final class VerificationProjectGenerator {
                     .append("  | .SpendingScript _ (some datumData) => IsData.fromData datumData\n")
                     .append("  | _ => none\n\n");
         }
-        if (typedV4 && needsRedeemer) {
+        if (structurallyTyped && needsRedeemer) {
             if (redeemerType == null) throw new IllegalArgumentException(
                     "Schema-4 redeemer dependency has no generated Lean type");
             out.append("def typedRedeemer (ctx : ScriptContext) : Option ")
@@ -3236,7 +3369,7 @@ public final class VerificationProjectGenerator {
         for (DslProperty property : propertySet.properties()) {
             var plan = plans.get(property.id());
             String name = ComposedDslPromotion.generatedName(property.id());
-            String expression = typedV4
+            String expression = structurallyTyped
                     ? TypedPropertyLeanRenderer.renderExpression(
                             property.expression(), typedProjection)
                     : PropertyLeanRenderer.renderExpression(
@@ -3244,7 +3377,7 @@ public final class VerificationProjectGenerator {
                                     ? Map.of("datum", "datum") : Map.of());
             out.append("def dslGuarantee_").append(name)
                     .append(" (ctx : ScriptContext) : Bool :=\n");
-            if (plan.needsDatumDecode() && !typedV4) {
+            if (plan.needsDatumDecode() && !structurallyTyped) {
                 if (datumType == null) throw new IllegalArgumentException(
                         "Composed DSL datum dependency has no generated Lean type");
                 out.append("  match ctx.scriptContextScriptInfo with\n")
