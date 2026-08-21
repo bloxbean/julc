@@ -43,7 +43,14 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
         @JsonSubTypes.Type(value = MapContainsKeyNode.class, name = "map-contains-key"),
         @JsonSubTypes.Type(value = MapCountKeyNode.class, name = "map-count-key"),
         @JsonSubTypes.Type(value = MapLookupFirstNode.class, name = "map-lookup-first"),
-        @JsonSubTypes.Type(value = MapLookupAllNode.class, name = "map-lookup-all")
+        @JsonSubTypes.Type(value = MapLookupAllNode.class, name = "map-lookup-all"),
+        @JsonSubTypes.Type(value = LedgerRootNode.class, name = "ledger-root"),
+        @JsonSubTypes.Type(value = LedgerFieldNode.class, name = "ledger-field"),
+        @JsonSubTypes.Type(value = LedgerVariantIsNode.class, name = "ledger-variant-is"),
+        @JsonSubTypes.Type(value = LedgerVariantWhenNode.class, name = "ledger-variant-when"),
+        @JsonSubTypes.Type(value = LedgerVariantFieldNode.class, name = "ledger-variant-field"),
+        @JsonSubTypes.Type(value = LedgerHelperNode.class, name = "ledger-helper"),
+        @JsonSubTypes.Type(value = LedgerByteAliasNode.class, name = "ledger-byte-alias")
 })
 public sealed interface PropertyNode permits RootNode, FieldNode, BoolBinaryNode,
         ContainsNode, CompareNode, CredentialKeyHashNode, ExistsNode, LiteralNode,
@@ -54,6 +61,8 @@ public sealed interface PropertyNode permits RootNode, FieldNode, BoolBinaryNode
         TypedEqualityNode, OptionStateNode, ListStateNode, ListQuantifierNode,
         ListContainsNode, ListCountNode, ListAtNode, StructuralEqualsNode,
         MapQuantifierNode, MapCountEntryNode, MapContainsKeyNode, MapCountKeyNode,
-        MapLookupFirstNode, MapLookupAllNode {
+        MapLookupFirstNode, MapLookupAllNode, LedgerRootNode, LedgerFieldNode,
+        LedgerVariantIsNode, LedgerVariantWhenNode, LedgerVariantFieldNode,
+        LedgerHelperNode, LedgerByteAliasNode {
     DslType resultType();
 }

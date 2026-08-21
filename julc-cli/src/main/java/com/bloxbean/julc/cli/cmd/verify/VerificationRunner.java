@@ -748,11 +748,14 @@ public final class VerificationRunner {
             boolean sellerPayment = "julc.dsl.seller-paid-at-least/v1".equals(template);
             boolean oneShotMint = "julc.dsl.one-shot-authorized-mint/v1".equals(template);
             boolean composedDsl = ComposedDslProperty.TEMPLATE.equals(template)
-                    || ComposedDslProperty.TYPED_TEMPLATE.equals(template);
+                    || ComposedDslProperty.TYPED_TEMPLATE.equals(template)
+                    || ComposedDslProperty.LEDGER_TEMPLATE.equals(template);
             boolean ledgerValidityModeled = composedDsl
                     ? property.path("ledgerValidityModeled").asBoolean(false)
                     : sellerPayment || oneShotMint;
-            int expectedPropertySchema = ComposedDslProperty.TYPED_TEMPLATE.equals(template)
+            int expectedPropertySchema = ComposedDslProperty.LEDGER_TEMPLATE.equals(template)
+                    ? ComposedDslProperty.LEDGER_SCHEMA_VERSION
+                    : ComposedDslProperty.TYPED_TEMPLATE.equals(template)
                     ? ComposedDslProperty.TYPED_SCHEMA_VERSION : 1;
             if (property.path("schemaVersion").asInt(-1) != expectedPropertySchema
                     || property.path("schemaVersion").asInt(-1)
@@ -765,7 +768,8 @@ public final class VerificationRunner {
                             "julc.dsl.seller-paid-at-least/v1",
                             "julc.dsl.one-shot-authorized-mint/v1",
                             ComposedDslProperty.TEMPLATE,
-                            ComposedDslProperty.TYPED_TEMPLATE).contains(template)
+                            ComposedDslProperty.TYPED_TEMPLATE,
+                            ComposedDslProperty.LEDGER_TEMPLATE).contains(template)
                     || !requiredText(property, "propertyId")
                         .equals(requiredText(propertyIr, "propertyId"))
                     || !requiredText(property, "validatorTitle")
@@ -828,7 +832,8 @@ public final class VerificationRunner {
             }
             if (sellerPayment || oneShotMint
                     || "julc.controlled-mint/v1".equals(template) || composedDsl) {
-                int expectedDslSchema = ComposedDslProperty.TYPED_TEMPLATE.equals(template)
+                int expectedDslSchema = ComposedDslProperty.LEDGER_TEMPLATE.equals(template)
+                        ? 5 : ComposedDslProperty.TYPED_TEMPLATE.equals(template)
                         ? 4 : composedDsl ? 3 : oneShotMint
                         || "julc.controlled-mint/v1".equals(template) ? 2 : 1;
                 validateCanonicalDslIr(manifest, property, expectedDslSchema);

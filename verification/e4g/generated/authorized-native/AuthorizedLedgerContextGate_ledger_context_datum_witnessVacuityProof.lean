@@ -1,0 +1,9 @@
+/- Generated fallback that identifies an always-failing validator. -/
+import AuthorizedLedgerContextGate_ledger_context_datum_witnessObligation
+
+namespace JulcGenerated.AuthorizedLedgerContextGate_ledger_context_datum_witness
+
+theorem validatorHasNoSuccessfulInput : hasNoSuccessfulInput := by
+  blaster
+
+end JulcGenerated.AuthorizedLedgerContextGate_ledger_context_datum_witness

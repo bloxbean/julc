@@ -25,13 +25,16 @@ public final class LedgerCapabilityCompatibilityGate {
         if (!Files.isDirectory(root)) {
             throw new IllegalArgumentException("Not a CardanoLedgerApi V3 source directory: " + root);
         }
+        Path apiRoot = root.getParent();
         List<String> mismatches = new ArrayList<>();
         for (LedgerCapability capability : inventory.capabilities()) {
             if (capability.source().isEmpty()) {
                 continue;
             }
-            Path source = root.resolve(capability.source()).normalize();
-            if (!source.startsWith(root) || !Files.isRegularFile(source)) {
+            boolean versionQualified = capability.source().matches("V[123]/.+");
+            Path source = (versionQualified ? apiRoot : root)
+                    .resolve(capability.source()).normalize();
+            if (!source.startsWith(apiRoot) || !Files.isRegularFile(source)) {
                 mismatches.add(capability.id() + " missing source " + capability.source());
                 continue;
             }

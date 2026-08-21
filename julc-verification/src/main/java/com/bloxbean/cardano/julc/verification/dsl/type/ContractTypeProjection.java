@@ -117,6 +117,8 @@ public final class ContractTypeProjection {
         if (depth > 256) throw new IllegalArgumentException("Projected type nesting exceeds 256");
         switch (type) {
             case BuiltinTypeRef ignored -> { }
+            case LedgerTypeRef ignored -> throw new IllegalArgumentException(
+                    "Compiler contract projection cannot contain ledger types");
             case NominalTypeRef nominal -> {
                 if (nominal.nominalKind() == NominalTypeRef.NominalKind.NEWTYPE) {
                     throw new IllegalArgumentException(

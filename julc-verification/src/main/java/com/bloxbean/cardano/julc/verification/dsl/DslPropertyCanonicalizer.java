@@ -15,7 +15,8 @@ public final class DslPropertyCanonicalizer {
 
     public static DslPropertySet normalize(DslPropertySet propertySet) {
         if (propertySet.schemaVersion() != DslPropertySet.COMPOSITION_SCHEMA_VERSION
-                && propertySet.schemaVersion() != DslPropertySet.TYPED_SCHEMA_VERSION) {
+                && propertySet.schemaVersion() != DslPropertySet.TYPED_SCHEMA_VERSION
+                && propertySet.schemaVersion() != DslPropertySet.LEDGER_SCHEMA_VERSION) {
             return propertySet;
         }
         List<DslProperty> properties = propertySet.properties().stream()
@@ -34,7 +35,8 @@ public final class DslPropertyCanonicalizer {
                 || node instanceof TxOutRefLiteralNode
                 || node instanceof BoolLiteralNode
                 || node instanceof TypedRootNode
-                || node instanceof TypedVariableNode) {
+                || node instanceof TypedVariableNode
+                || node instanceof LedgerRootNode) {
             return node;
         }
         if (node instanceof FieldNode field) {
@@ -98,6 +100,30 @@ public final class DslPropertyCanonicalizer {
             return new VariantWhenNode(normalize(variant.value()), variant.sumType(),
                     variant.constructor(), variant.variable(),
                     normalize(variant.predicate()));
+        }
+        if (node instanceof LedgerFieldNode field) {
+            return new LedgerFieldNode(normalize(field.target()), field.ownerType(),
+                    field.name(), field.valueType());
+        }
+        if (node instanceof LedgerVariantFieldNode field) {
+            return new LedgerVariantFieldNode(normalize(field.target()), field.sumType(),
+                    field.constructor(), field.name(), field.valueType());
+        }
+        if (node instanceof LedgerVariantIsNode variant) {
+            return new LedgerVariantIsNode(normalize(variant.value()), variant.sumType(),
+                    variant.constructor());
+        }
+        if (node instanceof LedgerVariantWhenNode variant) {
+            return new LedgerVariantWhenNode(normalize(variant.value()), variant.sumType(),
+                    variant.constructor(), variant.variable(),
+                    normalize(variant.predicate()));
+        }
+        if (node instanceof LedgerHelperNode helper) {
+            return new LedgerHelperNode(helper.helper(), helper.arguments().stream()
+                    .map(DslPropertyCanonicalizer::normalize).toList(), helper.valueType());
+        }
+        if (node instanceof LedgerByteAliasNode alias) {
+            return new LedgerByteAliasNode(normalize(alias.bytes()), alias.aliasType());
         }
         if (node instanceof BoolNotNode not) {
             return new BoolNotNode(normalize(not.value()));
@@ -202,6 +228,15 @@ public final class DslPropertyCanonicalizer {
             return new VariantWhenNode(alphaNormalize(variant.value(), binders, next, prefix),
                     variant.sumType(), variant.constructor(), variable, predicate);
         }
+        if (node instanceof LedgerVariantWhenNode variant) {
+            String variable = bind(variant.variable(), binders, next, prefix);
+            PropertyNode predicate = alphaNormalize(
+                    variant.predicate(), binders, next, prefix);
+            binders.remove(variant.variable());
+            return new LedgerVariantWhenNode(alphaNormalize(
+                    variant.value(), binders, next, prefix), variant.sumType(),
+                    variant.constructor(), variable, predicate);
+        }
         if (node instanceof ListQuantifierNode list) {
             String variable = bind(list.variable(), binders, next, prefix);
             PropertyNode predicate = alphaNormalize(list.predicate(), binders, next, prefix);
@@ -249,7 +284,8 @@ public final class DslPropertyCanonicalizer {
         if (node instanceof RootNode || node instanceof LiteralNode
                 || node instanceof BytesLiteralNode || node instanceof TxOutRefLiteralNode
                 || node instanceof BoolLiteralNode || node instanceof TypedRootNode
-                || node instanceof TypedVariableNode) return node;
+                || node instanceof TypedVariableNode
+                || node instanceof LedgerRootNode) return node;
         if (node instanceof FieldNode value) return new FieldNode(
                 map.apply(value.target()), value.name(), value.resultType());
         if (node instanceof BoolBinaryNode value) return new BoolBinaryNode(
@@ -277,6 +313,18 @@ public final class DslPropertyCanonicalizer {
                 value.name(), value.valueType());
         if (node instanceof VariantIsNode value) return new VariantIsNode(
                 map.apply(value.value()), value.sumType(), value.constructor());
+        if (node instanceof LedgerFieldNode value) return new LedgerFieldNode(
+                map.apply(value.target()), value.ownerType(), value.name(), value.valueType());
+        if (node instanceof LedgerVariantFieldNode value) return new LedgerVariantFieldNode(
+                map.apply(value.target()), value.sumType(), value.constructor(),
+                value.name(), value.valueType());
+        if (node instanceof LedgerVariantIsNode value) return new LedgerVariantIsNode(
+                map.apply(value.value()), value.sumType(), value.constructor());
+        if (node instanceof LedgerHelperNode value) return new LedgerHelperNode(
+                value.helper(), value.arguments().stream().map(map).toList(),
+                value.valueType());
+        if (node instanceof LedgerByteAliasNode value) return new LedgerByteAliasNode(
+                map.apply(value.bytes()), value.aliasType());
         if (node instanceof BoolNotNode value) return new BoolNotNode(map.apply(value.value()));
         if (node instanceof IntegerArithmeticNode value) return new IntegerArithmeticNode(
                 value.operator(), map.apply(value.left()),

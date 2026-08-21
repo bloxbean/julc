@@ -7,7 +7,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-/** Lean renderer for parent-validated schema-4 structural nodes. */
+/** Lean renderer for parent-validated schema-4/5 structural nodes. */
 public final class TypedPropertyLeanRenderer {
     private TypedPropertyLeanRenderer() { }
 
@@ -33,6 +33,13 @@ public final class TypedPropertyLeanRenderer {
             };
         }
         if (node instanceof TypedVariableNode variable) return variable.variable();
+        if (node instanceof LedgerRootNode root) {
+            if (!"ledgerContext".equals(root.name())) {
+                throw new IllegalArgumentException(
+                        "No Lean mapping for ledger root " + root.name());
+            }
+            return "ctx";
+        }
         if (node instanceof TypedFieldNode field) {
             return render(field.target(), definitions, variantFields)
                     + "." + leanFieldName(field.name());
@@ -83,6 +90,114 @@ public final class TypedPropertyLeanRenderer {
                     + " with | ." + leanTypeName(variant.constructor()) + pattern
                     + " => " + render(variant.predicate(), definitions, nested)
                     + " | _ => false");
+        }
+        if (node instanceof LedgerFieldNode field) {
+            String target = parenthesize(render(
+                    field.target(), definitions, variantFields));
+            return switch (field.ownerType().ledgerType()) {
+                case SCRIPT_CONTEXT -> target + ".scriptContextTxInfo";
+                case TX_INFO -> switch (field.name()) {
+                    case "inputs" -> "(⟨" + target
+                            + ".txInfoInputs⟩ : JulcList TxInInfo)";
+                    case "referenceInputs" -> "(⟨" + target
+                            + ".txInfoReferenceInputs⟩ : JulcList TxInInfo)";
+                    case "outputs" -> "(⟨" + target
+                            + ".txInfoOutputs⟩ : JulcList CardanoLedgerApi.V2.TxOut)";
+                    case "fee" -> target + ".txInfoFee";
+                    case "datums" -> "(⟨" + target
+                            + ".txInfoData⟩ : JulcMap CardanoLedgerApi.V2.DatumHash Data)";
+                    case "redeemers" -> "(⟨" + target
+                            + ".txInfoRedeemers⟩ : JulcMap ScriptPurpose Data)";
+                    case "id" -> target + ".txInfoId";
+                    default -> unknownLedgerField(field);
+                };
+                case TX_IN_INFO -> switch (field.name()) {
+                    case "outRef" -> target + ".txInInfoOutRef";
+                    case "resolved" -> target + ".txInInfoResolved";
+                    default -> unknownLedgerField(field);
+                };
+                case TX_OUT_REF -> switch (field.name()) {
+                    case "id" -> target + ".txOutRefId";
+                    case "index" -> target + ".txOutRefIdx";
+                    default -> unknownLedgerField(field);
+                };
+                case TX_OUT -> switch (field.name()) {
+                    case "address" -> target + ".txOutAddress";
+                    case "value" -> target + ".txOutValue";
+                    case "datum" -> target + ".txOutDatum";
+                    case "referenceScript" -> target + ".txOutReferenceScript";
+                    default -> unknownLedgerField(field);
+                };
+                case ADDRESS -> switch (field.name()) {
+                    case "paymentCredential" -> target + ".addressCredential";
+                    case "stakingCredential" -> target + ".addressStakingCredential";
+                    default -> unknownLedgerField(field);
+                };
+                default -> unknownLedgerField(field);
+            };
+        }
+        if (node instanceof LedgerVariantFieldNode field) {
+            String value = variantFields.get(fieldKey(
+                    field.target(), field.constructor(), field.name()));
+            if (value == null) {
+                throw new IllegalArgumentException(
+                        "Ledger variant field has no guarded Lean binding");
+            }
+            return value;
+        }
+        if (node instanceof LedgerVariantIsNode variant) {
+            return parenthesize("match " + parenthesize(render(
+                    variant.value(), definitions, variantFields))
+                    + " with | ." + variant.constructor()
+                    + " .. => true | _ => false");
+        }
+        if (node instanceof LedgerVariantWhenNode variant) {
+            var constructor = LedgerTypeAuthority.constructor(
+                    variant.sumType(), variant.constructor());
+            var nested = new HashMap<>(variantFields);
+            var pattern = new StringBuilder();
+            int index = 0;
+            for (var field : constructor.fields().entrySet()) {
+                String binding = variant.variable() + "_" + index++;
+                pattern.append(' ').append(binding);
+                nested.put(fieldKey(new TypedVariableNode(
+                                variant.variable(), variant.sumType()),
+                        variant.constructor(), field.getKey()), binding);
+            }
+            return parenthesize("match " + parenthesize(render(
+                    variant.value(), definitions, variantFields))
+                    + " with | ." + variant.constructor() + pattern
+                    + " => " + render(variant.predicate(), definitions, nested)
+                    + " | _ => false");
+        }
+        if (node instanceof LedgerHelperNode helper) {
+            var arguments = helper.arguments().stream()
+                    .map(argument -> parenthesize(render(
+                            argument, definitions, variantFields)))
+                    .toList();
+            return switch (helper.helper()) {
+                case CURRENT_OUTPUT_REF -> parenthesize("match " + arguments.getFirst()
+                        + ".scriptContextScriptInfo with | .SpendingScript ref _ => ref"
+                        // Promotion admits this helper only for spending, and every
+                        // generated obligation carries selectedPurpose as a premise.
+                        // This branch only makes the Lean expression total.
+                        + " | _ => ⟨\"\", 0⟩");
+                case CURRENT_SCRIPT_PURPOSE -> arguments.getFirst()
+                        + ".scriptContextScriptInfo.toScriptPurpose";
+                case FIND_OWN_INPUT -> "findOwnInput " + arguments.getFirst();
+                case RESOLVE_INPUT -> "resolveInput " + arguments.get(1) + " "
+                        + arguments.getFirst() + ".items";
+                case FILTER_PAYMENT_KEY_INPUTS -> "⟨findPubKeyInputs "
+                        + arguments.get(1) + " " + arguments.getFirst() + ".items⟩";
+                case FILTER_SCRIPT_INPUTS -> "⟨findScriptInputs "
+                        + arguments.get(1) + " " + arguments.getFirst() + ".items⟩";
+                case CONTINUING_OUTPUTS -> "julcContinuingOutputs "
+                        + arguments.getFirst();
+                case LOVELACE_OF -> "lovelaceOf " + arguments.getFirst();
+            };
+        }
+        if (node instanceof LedgerByteAliasNode alias) {
+            return render(alias.bytes(), definitions, variantFields);
         }
         if (node instanceof BoolLiteralNode literal) {
             return Boolean.toString(literal.value());
@@ -265,6 +380,11 @@ public final class TypedPropertyLeanRenderer {
 
     private static String parenthesize(String value) {
         return "(" + value + ")";
+    }
+
+    private static String unknownLedgerField(LedgerFieldNode field) {
+        throw new IllegalArgumentException("No Lean mapping for ledger field "
+                + field.ownerType().ledgerType() + "." + field.name());
     }
 
     private static String leanFieldName(String raw) {

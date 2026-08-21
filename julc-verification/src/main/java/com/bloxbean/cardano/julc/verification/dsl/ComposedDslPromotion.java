@@ -23,14 +23,15 @@ public final class ComposedDslPromotion {
             String validatorTitle,
             String sourcePath) {
         if (candidate.schemaVersion() != DslPropertySet.COMPOSITION_SCHEMA_VERSION
-                && candidate.schemaVersion() != DslPropertySet.TYPED_SCHEMA_VERSION) {
+                && candidate.schemaVersion() != DslPropertySet.TYPED_SCHEMA_VERSION
+                && candidate.schemaVersion() != DslPropertySet.LEDGER_SCHEMA_VERSION) {
             throw new IllegalArgumentException(
-                    "Generic promotion requires DSL property schema 3 or 4");
+                    "Generic promotion requires DSL property schema 3, 4, or 5");
         }
         DslPropertySet normalized = DslPropertyValidator.validateAndNormalize(
                 candidate, schema, DslPropertyValidator.MAX_AST_NODES);
         ProjectedContractTypes projected = candidate.schemaVersion()
-                == DslPropertySet.TYPED_SCHEMA_VERSION
+                >= DslPropertySet.TYPED_SCHEMA_VERSION
                 ? ContractTypeProjection.project(schema) : null;
         return promoteNormalized(normalized, validatorTitle, sourcePath, projected);
     }
@@ -60,10 +61,13 @@ public final class ComposedDslPromotion {
                     counterexampleDomain(property.domain(), normalized.purpose()),
                     false, false);
         }).toList();
+        boolean ledger = normalized.schemaVersion() == DslPropertySet.LEDGER_SCHEMA_VERSION;
         return new ComposedDslProperty(
                 projected == null ? ComposedDslProperty.SCHEMA_VERSION
+                        : ledger ? ComposedDslProperty.LEDGER_SCHEMA_VERSION
                         : ComposedDslProperty.TYPED_SCHEMA_VERSION,
                 projected == null ? ComposedDslProperty.TEMPLATE
+                        : ledger ? ComposedDslProperty.LEDGER_TEMPLATE
                         : ComposedDslProperty.TYPED_TEMPLATE,
                 validatorTitle + ".dsl-property-set",
                 validatorTitle,
@@ -88,7 +92,9 @@ public final class ComposedDslPromotion {
                 && ComposedDslProperty.TEMPLATE.equals(promoted.template());
         boolean typed = promoted.schemaVersion() == ComposedDslProperty.TYPED_SCHEMA_VERSION
                 && ComposedDslProperty.TYPED_TEMPLATE.equals(promoted.template());
-        if (!legacy && !typed) {
+        boolean ledger = promoted.schemaVersion() == ComposedDslProperty.LEDGER_SCHEMA_VERSION
+                && ComposedDslProperty.LEDGER_TEMPLATE.equals(promoted.template());
+        if (!legacy && !typed && !ledger) {
             throw new IllegalArgumentException("Unsupported composed DSL property IR");
         }
         final DslPropertySet normalized;
@@ -98,7 +104,8 @@ public final class ComposedDslPromotion {
         } catch (IOException invalid) {
             throw new IllegalArgumentException("Invalid canonical composed DSL IR", invalid);
         }
-        int expectedSchema = typed ? DslPropertySet.TYPED_SCHEMA_VERSION
+        int expectedSchema = ledger ? DslPropertySet.LEDGER_SCHEMA_VERSION
+                : typed ? DslPropertySet.TYPED_SCHEMA_VERSION
                 : DslPropertySet.COMPOSITION_SCHEMA_VERSION;
         if (normalized.schemaVersion() != expectedSchema
                 || !promoted.scriptPurpose().equals(
@@ -106,7 +113,7 @@ public final class ComposedDslPromotion {
             throw new IllegalArgumentException("Composed DSL purpose or schema mismatch");
         }
         ProjectedContractTypes projected = null;
-        if (typed) {
+        if (typed || ledger) {
             try {
                 projected = ContractTypeProjection.readCanonical(
                         promoted.projectedContractTypesJson(),

@@ -1,0 +1,105 @@
+{
+  "artifactFormat" : "double_cbor_hex",
+  "artifactId" : "vulnerable-ledger-context-gate",
+  "blueprintEntryTitle" : "VulnerableLedgerContextGate",
+  "boundarySemantics" : "strict-data-v1",
+  "builtinSemanticsVariant" : "E",
+  "builtins" : [ {
+    "name" : "EqualsInteger",
+    "flatTag" : 7
+  }, {
+    "name" : "IfThenElse",
+    "flatTag" : 26
+  }, {
+    "name" : "FstPair",
+    "flatTag" : 29
+  }, {
+    "name" : "SndPair",
+    "flatTag" : 30
+  }, {
+    "name" : "HeadList",
+    "flatTag" : 33
+  }, {
+    "name" : "TailList",
+    "flatTag" : 34
+  }, {
+    "name" : "NullList",
+    "flatTag" : 35
+  }, {
+    "name" : "UnConstrData",
+    "flatTag" : 42
+  } ],
+  "capabilityInventory" : {
+    "ledgerApi" : "CardanoLedgerApiBlaster",
+    "ledgerVersion" : "V3",
+    "revision" : "5dab3c43f042b8735b6d067223baaa8d32ed28a1",
+    "schemaVersion" : 1,
+    "sha256" : "4230b38874c05a1538f9b79285f7a0314de43806d543b1136d690a1db4e88bcb"
+  },
+  "cardanoScriptHash" : "1823e25d1f81e19d8bb118616d76e0f1c51fdaf92cbc2d4551bf1e18",
+  "claims" : [ {
+    "id" : "ledger-context.vulnerable",
+    "generatedName" : "ledger_context_vulnerable",
+    "domain" : "VALID_SPENDING_V3_PINNED",
+    "guaranteeSha256" : "ccf3eba2f08d5b1e365794df63d7a42eec67400b7132e8b12e1cd87246da24bb",
+    "envelopeSha256" : "b8850bd5403c625157eb6688543c650096c9fa29bcf7d87ad75a403f141b0e3c",
+    "capabilities" : [ "constructor.outputDatum.inline", "dsl.ledger.context", "field.scriptContext.scriptInfo", "field.scriptContext.txInfo", "field.txInInfo.resolved", "field.txInfo.referenceInputs", "field.txOut.datum", "helper.findOwnInput", "ledger.validSpendingContext", "purpose.spending" ],
+    "guaranteeRules" : [ "bool:AND", "ledger-field:SCRIPT_CONTEXT.txInfo", "ledger-field:TX_INFO.referenceInputs", "ledger-field:TX_IN_INFO.resolved", "ledger-field:TX_OUT.datum", "ledger-helper:FIND_OWN_INPUT", "ledger-root:ledgerContext", "ledger-variant-is:OUTPUT_DATUM.OutputDatum", "list-quantifier:EXISTS", "option-state:PRESENT", "typed-variable" ],
+    "counterexampleDomain" : "BLASTER_VALID_SPENDING_SUPERSET",
+    "ledgerValidCounterexampleEstablished" : false,
+    "concreteVmCounterexampleReproduced" : false
+  } ],
+  "compiledCodeSha256" : "45f40ed3a4f61fe795adc652271e6bfd4bb730d2db2baca1fc6a96f76ed3acc2",
+  "dependencies" : {
+    "CardanoLedgerApiBlaster" : "5dab3c43f042b8735b6d067223baaa8d32ed28a1",
+    "Lean-blaster" : "083bae7971414d894b56b5bbf4108c63e17bc42a",
+    "PlutusCoreBlaster" : "7cf5a78c54b9694ef093bf49edb5d3799b2a49c9"
+  },
+  "domainAssumptions" : [ "validSpendingContext/v3-pinned" ],
+  "dslIr" : {
+    "schemaVersion" : 5,
+    "sha256" : "99bfa9f9d46e69b182ce2d8b6f9253dffd2b451ecc2d2c02f15f02148b84b52e"
+  },
+  "fuel" : 5000,
+  "generatedBy" : "julc verify init",
+  "generatedLeanSha256" : "11e1c2819f93de4fe9930977277caa35b4ab0e3d882602cd86f60f03e562950b",
+  "julcVersion" : "0.1.0-pre16",
+  "leanVersion" : "4.24.0",
+  "ledgerValidityModeled" : true,
+  "plutusLanguage" : "PlutusV3",
+  "project" : "e4g-ledger-context",
+  "properties" : [ {
+    "id" : "ledger-context.vulnerable.non-vacuity",
+    "reason" : "not-run",
+    "result" : "COULD-NOT-EVALUATE"
+  }, {
+    "id" : "ledger-context.vulnerable",
+    "reason" : "not-run",
+    "result" : "COULD-NOT-EVALUATE"
+  } ],
+  "propertyIr" : {
+    "contractSchemaSha256" : "6e35380801aa3d4b32c019a39c6e1b66d03dd71741ab701a2dddb22318d16c74",
+    "path" : "verification-property.json",
+    "projectedContractTypesSha256" : "6e35380801aa3d4b32c019a39c6e1b66d03dd71741ab701a2dddb22318d16c74",
+    "propertyId" : "VulnerableLedgerContextGate.dsl-property-set",
+    "schemaVersion" : 3,
+    "sha256" : "cbce80de07cb49d6fff620d032920a7d83013d3ab95c292a7dd493a05f267aa0",
+    "sourcePath" : "/Users/satya/work/bloxbean/julc/verification/e4g/VulnerableLedgerContextSpec.java",
+    "template" : "julc.dsl-ledger/v1"
+  },
+  "protocolVersion" : 11,
+  "recursiveDepth" : 8,
+  "runnerPlanSha256" : "4dc684703c8d9e4f696bde83b00f142b537b813886e12c587677831b49b098f4",
+  "schemaVersion" : 1,
+  "schemas" : [ {
+    "cip57" : "VulnerableLedgerContextGate:Datum",
+    "lean" : "VulnerableLedgerContextGateDatum"
+  }, {
+    "cip57" : "VulnerableLedgerContextGate:Redeemer",
+    "lean" : "VulnerableLedgerContextGateRedeemer"
+  } ],
+  "scriptPurpose" : "spending",
+  "uplcVersion" : "1.1.0",
+  "validatorTitle" : "VulnerableLedgerContextGate",
+  "z3Version" : "4.15.2"
+}

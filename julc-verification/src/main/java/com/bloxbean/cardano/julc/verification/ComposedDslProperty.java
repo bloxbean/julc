@@ -23,8 +23,10 @@ public record ComposedDslProperty(
         String contractSchemaSha256) implements VerificationProperty {
     public static final int SCHEMA_VERSION = 1;
     public static final int TYPED_SCHEMA_VERSION = 2;
+    public static final int LEDGER_SCHEMA_VERSION = 3;
     public static final String TEMPLATE = "julc.dsl-composed/v1";
     public static final String TYPED_TEMPLATE = "julc.dsl-typed/v1";
+    public static final String LEDGER_TEMPLATE = "julc.dsl-ledger/v1";
 
     public ComposedDslProperty {
         template = Objects.requireNonNull(template, "template");
@@ -41,7 +43,8 @@ public record ComposedDslProperty(
         domainAssumptions = List.copyOf(domainAssumptions);
         guaranteeRules = List.copyOf(guaranteeRules);
         if (claims.isEmpty()) throw new IllegalArgumentException("At least one claim is required");
-        if (schemaVersion == TYPED_SCHEMA_VERSION) {
+        if (schemaVersion == TYPED_SCHEMA_VERSION
+                || schemaVersion == LEDGER_SCHEMA_VERSION) {
             projectedContractTypesJson = Objects.requireNonNull(
                     projectedContractTypesJson, "projectedContractTypesJson");
             if (contractSchemaSha256 == null
@@ -52,7 +55,7 @@ public record ComposedDslProperty(
         } else if (schemaVersion == SCHEMA_VERSION) {
             if (projectedContractTypesJson != null || contractSchemaSha256 != null) {
                 throw new IllegalArgumentException(
-                        "Schema-3 composed property cannot carry schema-4 type metadata");
+                        "Legacy composed property cannot carry structural type metadata");
             }
         } else {
             throw new IllegalArgumentException(

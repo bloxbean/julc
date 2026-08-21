@@ -36,7 +36,9 @@ public final class DslPropertyValidator {
                 == DslPropertySet.COMPOSITION_SCHEMA_VERSION;
         boolean typedV4 = propertySet.schemaVersion()
                 == DslPropertySet.TYPED_SCHEMA_VERSION;
-        boolean composition = compositionV3 || typedV4;
+        boolean ledgerV5 = propertySet.schemaVersion()
+                == DslPropertySet.LEDGER_SCHEMA_VERSION;
+        boolean composition = compositionV3 || typedV4 || ledgerV5;
         ContractSchema.Purpose expectedPurpose = composition
                 ? contractPurpose(propertySet.purpose())
                 : mintingV2 ? ContractSchema.Purpose.MINT : ContractSchema.Purpose.SPEND;
@@ -48,15 +50,16 @@ public final class DslPropertyValidator {
             throw new IllegalArgumentException(
                     "Minting DSL schema 2 requires exactly one property");
         }
-        ProjectedContractTypes projection = typedV4
+        ProjectedContractTypes projection = typedV4 || ledgerV5
                 ? ContractTypeProjection.project(schema) : null;
         TypeAuthority typeAuthority = projection == null
-                ? null : new TypeAuthority(projection);
-        if (typedV4) {
+                ? null : new TypeAuthority(projection, ledgerV5, propertySet.purpose());
+        if (typedV4 || ledgerV5) {
             String expectedHash = ContractTypeProjection.sha256(projection);
             if (!expectedHash.equals(propertySet.contractSchemaSha256())) {
                 throw new IllegalArgumentException(
-                        "DSL schema 4 contract schema hash does not match compiler-owned types");
+                        "DSL schema " + propertySet.schemaVersion()
+                                + " contract schema hash does not match compiler-owned types");
             }
         }
         int[] nodes = {0};
@@ -103,7 +106,8 @@ public final class DslPropertyValidator {
         }
         boolean legacySpending = schemaVersion == DslPropertySet.SCHEMA_VERSION;
         boolean composition = schemaVersion == DslPropertySet.COMPOSITION_SCHEMA_VERSION
-                || schemaVersion == DslPropertySet.TYPED_SCHEMA_VERSION;
+                || schemaVersion == DslPropertySet.TYPED_SCHEMA_VERSION
+                || schemaVersion == DslPropertySet.LEDGER_SCHEMA_VERSION;
         if (legacySpending && isMintingSchemaNode(node)) {
             throw new IllegalArgumentException("DSL schema 1 does not admit minting node "
                     + node.getClass().getSimpleName());
@@ -329,8 +333,10 @@ public final class DslPropertyValidator {
             int[] count,
             int maxNodes,
             int schemaVersion) {
-        if (schemaVersion != DslPropertySet.TYPED_SCHEMA_VERSION) {
-            throw new IllegalArgumentException("Structural typed nodes require DSL schema 4");
+        if (schemaVersion != DslPropertySet.TYPED_SCHEMA_VERSION
+                && schemaVersion != DslPropertySet.LEDGER_SCHEMA_VERSION) {
+            throw new IllegalArgumentException(
+                    "Structural typed nodes require DSL schema 4 or 5");
         }
         if (++count[0] > maxNodes) {
             throw new IllegalArgumentException("Property AST exceeds " + maxNodes + " nodes");
@@ -418,6 +424,33 @@ public final class DslPropertyValidator {
                     new TypedBinding(variant.sumType(), variant.constructor()));
             require(DslType.BOOL, validateTypedExpressionOrLegacy(
                     variant.predicate(), schema, authority, nested, count, maxNodes, schemaVersion));
+            return DslType.BOOL;
+        }
+        if (node instanceof LedgerVariantIsNode variant) {
+            VerificationTypeRef actual = validateTypedValue(
+                    variant.value(), authority, variables, count, maxNodes);
+            if (!actual.equals(variant.sumType())) {
+                throw new IllegalArgumentException(
+                        "Ledger variant target does not match its pinned sum type");
+            }
+            authority.requireLedgerConstructor(variant.sumType(), variant.constructor());
+            return DslType.BOOL;
+        }
+        if (node instanceof LedgerVariantWhenNode variant) {
+            VerificationTypeRef actual = validateTypedValue(
+                    variant.value(), authority, variables, count, maxNodes);
+            if (!actual.equals(variant.sumType())) {
+                throw new IllegalArgumentException(
+                        "Ledger variant target does not match its pinned sum type");
+            }
+            authority.requireLedgerConstructor(variant.sumType(), variant.constructor());
+            validateBinder(variant.variable(), variables);
+            var nested = new HashMap<>(variables);
+            nested.put(variant.variable(),
+                    new TypedBinding(variant.sumType(), variant.constructor()));
+            require(DslType.BOOL, validateTypedExpressionOrLegacy(
+                    variant.predicate(), schema, authority, nested, count, maxNodes,
+                    schemaVersion));
             return DslType.BOOL;
         }
         if (node instanceof ListStateNode list) {
@@ -547,7 +580,8 @@ public final class DslPropertyValidator {
             return validateNode(node, schema, new HashMap<>(), count, maxNodes, schemaVersion);
         }
         throw new IllegalArgumentException(
-                "Unsupported schema-4 typed expression node " + node.getClass().getSimpleName());
+                "Unsupported structural typed expression node "
+                        + node.getClass().getSimpleName());
     }
 
     private static DslType validateTypedExpressionOrLegacy(
@@ -704,10 +738,16 @@ public final class DslPropertyValidator {
             case BuiltinTypeRef builtin -> {
                 if (builtin.builtin() == BuiltinTypeRef.BuiltinKind.DATA) {
                     throw new IllegalArgumentException(
-                            "Raw Data equality is not admitted in DSL schema 4");
+                            "Raw Data equality is not admitted in structural DSL schemas");
                 }
             }
             case NominalTypeRef ignored -> { }
+            case LedgerTypeRef ledger -> {
+                if (!LedgerTypeAuthority.equalityAdmitted(ledger)) {
+                    throw new IllegalArgumentException(
+                            "Opaque ledger type equality is not admitted in DSL schema 5");
+                }
+            }
             case OptionalTypeRef optional -> requireAdmittedEquality(optional.elementType());
             case ListTypeRef list -> requireAdmittedEquality(list.elementType());
             case AssocMapTypeRef map -> {
@@ -754,15 +794,24 @@ public final class DslPropertyValidator {
             };
             if (expected == null || !expected.equals(root.valueType())) {
                 throw new IllegalArgumentException(
-                        "Unknown or mistyped schema-4 root " + root.name());
+                        "Unknown or mistyped structural DSL root " + root.name());
             }
             return expected;
+        }
+        if (node instanceof LedgerRootNode root) {
+            authority.requireLedger();
+            if (!"ledgerContext".equals(root.name())
+                    || !LedgerTypeAuthority.SCRIPT_CONTEXT.equals(root.valueType())) {
+                throw new IllegalArgumentException(
+                        "Unknown or mistyped schema-5 ledger root " + root.name());
+            }
+            return root.valueType();
         }
         if (node instanceof TypedVariableNode variable) {
             TypedBinding binding = variables.get(variable.variable());
             if (binding == null || !binding.type().equals(variable.valueType())) {
                 throw new IllegalArgumentException(
-                        "Unknown or mistyped schema-4 binder " + variable.variable());
+                        "Unknown or mistyped structural DSL binder " + variable.variable());
             }
             return binding.type();
         }
@@ -780,6 +829,17 @@ public final class DslPropertyValidator {
                         "Typed field result does not match compiler-owned schema");
             }
             return expected;
+        }
+        if (node instanceof LedgerFieldNode field) {
+            authority.requireLedger();
+            VerificationTypeRef target = validateTypedValue(
+                    field.target(), authority, variables, count, maxNodes);
+            if (!target.equals(field.ownerType())) {
+                throw new IllegalArgumentException(
+                        "Ledger field owner does not match target type");
+            }
+            return LedgerTypeAuthority.field(
+                    field.ownerType(), field.name(), field.valueType());
         }
         if (node instanceof VariantFieldNode field) {
             VerificationTypeRef target = validateTypedValue(
@@ -801,6 +861,121 @@ public final class DslPropertyValidator {
                         "Variant field result does not match compiler-owned schema");
             }
             return expected;
+        }
+        if (node instanceof LedgerVariantFieldNode field) {
+            authority.requireLedger();
+            VerificationTypeRef target = validateTypedValue(
+                    field.target(), authority, variables, count, maxNodes);
+            if (!target.equals(field.sumType())
+                    || !(field.target() instanceof TypedVariableNode variable)) {
+                throw new IllegalArgumentException(
+                        "Ledger variant payload requires its guarded constructor binder");
+            }
+            TypedBinding binding = variables.get(variable.variable());
+            if (binding == null || !field.constructor().equals(binding.constructor())) {
+                throw new IllegalArgumentException(
+                        "Ledger variant payload is outside its constructor guard");
+            }
+            return LedgerTypeAuthority.variantField(field.sumType(), field.constructor(),
+                    field.name(), field.valueType());
+        }
+        if (node instanceof LedgerHelperNode helper) {
+            authority.requireLedger();
+            VerificationTypeRef expected = switch (helper.helper()) {
+                case CURRENT_OUTPUT_REF -> {
+                    authority.requireSpendingHelper("current output reference");
+                    requireHelperArguments(helper, 1);
+                    requireHelperType(helper.arguments().getFirst(),
+                            LedgerTypeAuthority.SCRIPT_CONTEXT, authority,
+                            variables, count, maxNodes);
+                    LedgerTypeAuthority.requireTypedCapability("purpose.spending");
+                    yield LedgerTypeAuthority.TX_OUT_REF;
+                }
+                case CURRENT_SCRIPT_PURPOSE -> {
+                    requireHelperArguments(helper, 1);
+                    requireHelperType(helper.arguments().getFirst(),
+                            LedgerTypeAuthority.SCRIPT_CONTEXT, authority,
+                            variables, count, maxNodes);
+                    LedgerTypeAuthority.requireTypedCapability(
+                            "helper.scriptInfoToScriptPurpose");
+                    yield LedgerTypeAuthority.SCRIPT_PURPOSE;
+                }
+                case FIND_OWN_INPUT -> {
+                    authority.requireSpendingHelper("own input");
+                    requireHelperArguments(helper, 1);
+                    requireHelperType(helper.arguments().getFirst(),
+                            LedgerTypeAuthority.SCRIPT_CONTEXT, authority,
+                            variables, count, maxNodes);
+                    LedgerTypeAuthority.requireTypedCapability("helper.findOwnInput");
+                    yield new OptionalTypeRef(LedgerTypeAuthority.TX_IN_INFO);
+                }
+                case RESOLVE_INPUT -> {
+                    requireHelperArguments(helper, 2);
+                    requireHelperType(helper.arguments().get(0),
+                            new ListTypeRef(LedgerTypeAuthority.TX_IN_INFO), authority,
+                            variables, count, maxNodes);
+                    requireHelperType(helper.arguments().get(1),
+                            LedgerTypeAuthority.TX_OUT_REF, authority,
+                            variables, count, maxNodes);
+                    LedgerTypeAuthority.requireTypedCapability("helper.resolveInput");
+                    yield new OptionalTypeRef(LedgerTypeAuthority.TX_IN_INFO);
+                }
+                case FILTER_PAYMENT_KEY_INPUTS -> {
+                    requireHelperArguments(helper, 2);
+                    requireHelperType(helper.arguments().get(0),
+                            new ListTypeRef(LedgerTypeAuthority.TX_IN_INFO), authority,
+                            variables, count, maxNodes);
+                    requireHelperType(helper.arguments().get(1),
+                            LedgerTypeAuthority.PUB_KEY_HASH, authority,
+                            variables, count, maxNodes);
+                    LedgerTypeAuthority.requireTypedCapability("helper.findPubKeyInputs");
+                    yield new ListTypeRef(LedgerTypeAuthority.TX_IN_INFO);
+                }
+                case FILTER_SCRIPT_INPUTS -> {
+                    requireHelperArguments(helper, 2);
+                    requireHelperType(helper.arguments().get(0),
+                            new ListTypeRef(LedgerTypeAuthority.TX_IN_INFO), authority,
+                            variables, count, maxNodes);
+                    requireHelperType(helper.arguments().get(1),
+                            LedgerTypeAuthority.SCRIPT_HASH, authority,
+                            variables, count, maxNodes);
+                    LedgerTypeAuthority.requireTypedCapability("helper.findScriptInputs");
+                    yield new ListTypeRef(LedgerTypeAuthority.TX_IN_INFO);
+                }
+                case CONTINUING_OUTPUTS -> {
+                    authority.requireSpendingHelper("continuing outputs");
+                    requireHelperArguments(helper, 1);
+                    requireHelperType(helper.arguments().getFirst(),
+                            LedgerTypeAuthority.SCRIPT_CONTEXT, authority,
+                            variables, count, maxNodes);
+                    LedgerTypeAuthority.requireTypedCapability("helper.continuingOutputs");
+                    yield new ListTypeRef(LedgerTypeAuthority.TX_OUT);
+                }
+                case LOVELACE_OF -> {
+                    requireHelperArguments(helper, 1);
+                    requireHelperType(helper.arguments().getFirst(),
+                            LedgerTypeAuthority.VALUE, authority,
+                            variables, count, maxNodes);
+                    yield LedgerTypeAuthority.INTEGER;
+                }
+            };
+            if (!expected.equals(helper.valueType())) {
+                throw new IllegalArgumentException(
+                        "Ledger helper result does not match its pinned signature");
+            }
+            return expected;
+        }
+        if (node instanceof LedgerByteAliasNode alias) {
+            authority.requireLedger();
+            LedgerTypeAuthority.requireByteAlias(alias.aliasType());
+            VerificationTypeRef source = validateStructuralValue(alias.bytes(), null,
+                    authority, variables, count, maxNodes,
+                    DslPropertySet.LEDGER_SCHEMA_VERSION);
+            if (!source.equals(builtin(BuiltinTypeRef.BuiltinKind.BYTE_STRING))) {
+                throw new IllegalArgumentException(
+                        "Ledger byte alias source must be a structural byte string");
+            }
+            return alias.aliasType();
         }
         if (node instanceof ListAtNode list) {
             requireList(list.list(), list.elementType(), authority, variables,
@@ -835,7 +1010,7 @@ public final class DslPropertyValidator {
             return new ListTypeRef(map.valueType());
         }
         throw new IllegalArgumentException(
-                "Expected schema-4 typed value, found " + node.getClass().getSimpleName());
+                "Expected structural typed value, found " + node.getClass().getSimpleName());
     }
 
     private static VerificationTypeRef validateTypedValueOrIntegerLiteral(
@@ -861,6 +1036,28 @@ public final class DslPropertyValidator {
             return builtin(BuiltinTypeRef.BuiltinKind.BYTE_STRING);
         }
         return validateTypedValue(node, authority, variables, count, maxNodes);
+    }
+
+    private static void requireHelperArguments(LedgerHelperNode helper, int expected) {
+        if (helper.arguments().size() != expected) {
+            throw new IllegalArgumentException("Ledger helper " + helper.helper()
+                    + " requires exactly " + expected + " arguments");
+        }
+    }
+
+    private static void requireHelperType(
+            PropertyNode argument,
+            VerificationTypeRef expected,
+            TypeAuthority authority,
+            Map<String, TypedBinding> variables,
+            int[] count,
+            int maxNodes) {
+        VerificationTypeRef actual = validateTypedValue(
+                argument, authority, variables, count, maxNodes);
+        if (!expected.equals(actual)) {
+            throw new IllegalArgumentException(
+                    "Ledger helper argument does not match its pinned signature");
+        }
     }
 
     private static DslType validateBytesLiteral(BytesLiteralNode literal) {
@@ -957,6 +1154,11 @@ public final class DslPropertyValidator {
     private static boolean isTypedNode(PropertyNode node) {
         return node instanceof TypedRootNode || node instanceof TypedVariableNode
                 || node instanceof TypedFieldNode || node instanceof VariantFieldNode
+                || node instanceof LedgerRootNode || node instanceof LedgerFieldNode
+                || node instanceof LedgerVariantFieldNode
+                || node instanceof LedgerHelperNode
+                || node instanceof LedgerByteAliasNode
+                || node instanceof LedgerVariantIsNode || node instanceof LedgerVariantWhenNode
                 || node instanceof OptionExistsNode || node instanceof VariantIsNode
                 || node instanceof VariantWhenNode || node instanceof BoolLiteralNode
                 || node instanceof BoolNotNode || node instanceof IntegerArithmeticNode
@@ -972,6 +1174,10 @@ public final class DslPropertyValidator {
     private static boolean isTypedValueNode(PropertyNode node) {
         return node instanceof TypedRootNode || node instanceof TypedVariableNode
                 || node instanceof TypedFieldNode || node instanceof VariantFieldNode
+                || node instanceof LedgerRootNode || node instanceof LedgerFieldNode
+                || node instanceof LedgerVariantFieldNode
+                || node instanceof LedgerHelperNode
+                || node instanceof LedgerByteAliasNode
                 || node instanceof ListAtNode || node instanceof MapLookupFirstNode
                 || node instanceof MapLookupAllNode;
     }
@@ -980,7 +1186,7 @@ public final class DslPropertyValidator {
             String variable, Map<String, TypedBinding> variables) {
         if (!variable.matches("v[0-9]{1,2}") || variables.containsKey(variable)) {
             throw new IllegalArgumentException(
-                    "Invalid or shadowing schema-4 canonical binder " + variable);
+                    "Invalid or shadowing structural DSL canonical binder " + variable);
         }
         if (variables.size() >= 32) {
             throw new IllegalArgumentException(
@@ -993,9 +1199,14 @@ public final class DslPropertyValidator {
     private static final class TypeAuthority {
         private final ProjectedContractTypes projection;
         private final Map<String, ProjectedContractTypes.NominalDefinition> definitions;
+        private final boolean ledgerAllowed;
+        private final DslPurpose purpose;
 
-        private TypeAuthority(ProjectedContractTypes projection) {
+        private TypeAuthority(ProjectedContractTypes projection, boolean ledgerAllowed,
+                DslPurpose purpose) {
             this.projection = projection;
+            this.ledgerAllowed = ledgerAllowed;
+            this.purpose = purpose;
             this.definitions = projection.definitions().stream().collect(
                     java.util.stream.Collectors.toUnmodifiableMap(
                             ProjectedContractTypes.NominalDefinition::stableId,
@@ -1043,12 +1254,35 @@ public final class DslPropertyValidator {
                 case BuiltinTypeRef ignored -> { }
                 case NominalTypeRef nominal -> definition(
                         nominal, nominal.nominalKind());
+                case LedgerTypeRef ledger -> {
+                    requireLedger();
+                    LedgerTypeAuthority.requireKnown(ledger);
+                }
                 case OptionalTypeRef optional -> requireKnown(optional.elementType());
                 case ListTypeRef list -> requireKnown(list.elementType());
                 case AssocMapTypeRef map -> {
                     requireKnown(map.keyType());
                     requireKnown(map.valueType());
                 }
+            }
+        }
+
+        private void requireLedger() {
+            if (!ledgerAllowed) {
+                throw new IllegalArgumentException(
+                        "Ledger transaction-context nodes require DSL schema 5");
+            }
+        }
+
+        private void requireLedgerConstructor(LedgerTypeRef sum, String constructor) {
+            requireLedger();
+            LedgerTypeAuthority.constructor(sum, constructor);
+        }
+
+        private void requireSpendingHelper(String description) {
+            if (purpose != DslPurpose.SPENDING) {
+                throw new IllegalArgumentException(
+                        "Schema-5 " + description + " is available only for spending");
             }
         }
 

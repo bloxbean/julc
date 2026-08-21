@@ -519,7 +519,66 @@ nominal newtype separation. See [`e4e/README.md`](e4e/README.md) for type
 controls and [`e4f/README.md`](e4f/README.md) for reproducible local/Docker
 evidence.
 
-## 14. Fuel, recursion, and reruns
+## 14. Experimental typed non-value transaction context
+
+ADR-023 schema 5 adds the closed ledger-context surface while retaining the
+schema-4 contract model. Generate it explicitly:
+
+```bash
+julc verify dsl-init . --validator LedgerGate --purpose spending \
+  --schema-version 5 --package evidence --class LedgerGateModel \
+  --out build/verification-dsl/src/evidence/LedgerGateModel.java
+```
+
+A property can compose the generated contract datum/redeemer API with ordered
+reference inputs, strict guarded ledger variants, and duplicate-preserving
+witness maps:
+
+```java
+var contract = new LedgerGateModel();
+var tx = contract.context().txInfo();
+
+var referenceShape = tx.referenceInputs().at(integer(0)).exists(input ->
+        input.resolved().datum().isInline()
+                .and(input.resolved().address()
+                        .paymentCredential().isScript())
+                .and(input.resolved().referenceScript().isEmpty()));
+
+var datumWitnessPresent = tx.datums().existsEntry((hash, raw) -> bool(true));
+
+return contract.properties(
+        property("ledger.reference-shape",
+                DslDomain.VALID_SPENDING_V3_PINNED, referenceShape),
+        property("ledger.datum-witness",
+                DslDomain.VALID_SPENDING_V3_PINNED, datumWitnessPresent));
+```
+
+Compile the generated model and trusted specification, then run the same
+bounded worker/proof pipeline:
+
+```bash
+javac -cp julc.jar -d build/verification-dsl/classes \
+  build/verification-dsl/src/evidence/LedgerGateModel.java \
+  LedgerGateSpec.java
+
+julc verify dsl . --validator LedgerGate --purpose spending \
+  --spec-class evidence.LedgerGateSpec \
+  --spec-classpath "build/verification-dsl/classes:/path/to/julc.jar" \
+  --source LedgerGateSpec.java --backend local --fuel 5000 --force
+```
+
+Use `--backend docker` to isolate Lean/Blaster. The GraalVM native CLI uses the
+same command but still needs an installed child JVM and the JuLC JAR on
+`--spec-classpath` to execute trusted Java property code.
+
+Input/list and witness/redeemer map order and duplicates remain observable.
+`lookupFirst` is not `lookupAll`; continuing outputs use the complete address
+of the first resolved own input. Inline datum and redeemer payloads remain
+opaque raw `Data`: schema 5 permits presence and transport, not unchecked
+casting or raw-data equality. See [`e4g/README.md`](e4g/README.md) for the
+reproducible local/Docker/native evidence and current limitations.
+
+## 15. Fuel, recursion, and reruns
 
 `--fuel` bounds exact UPLC preprocessing/execution in the generated obligation.
 An `SMT-VALID` certificate covers only successful paths completing within that
@@ -539,7 +598,7 @@ julc verify . --validator AuthorizedStateValidator \
   --out-dir verification/ci-authorized --force
 ```
 
-## 15. What the certificate does and does not claim
+## 16. What the certificate does and does not claim
 
 For an annotation profile, a successful certificate means:
 

@@ -2,6 +2,7 @@ package com.bloxbean.cardano.julc.verification.dsl;
 
 import com.bloxbean.cardano.julc.compiler.pir.PirType;
 import com.bloxbean.cardano.julc.compiler.schema.ContractSchema;
+import com.bloxbean.cardano.julc.verification.dsl.ir.DslPropertySet;
 import com.bloxbean.cardano.julc.verification.dsl.type.*;
 
 import java.nio.charset.StandardCharsets;
@@ -103,7 +104,22 @@ public final class ContractMetamodelGenerator {
         ProjectedContractTypes projection = ContractTypeProjection.project(schema);
         return new TypedModelGenerator(
                 projection, packageName, className,
-                ContractTypeProjection.sha256(projection)).generate();
+                ContractTypeProjection.sha256(projection),
+                DslPropertySet.TYPED_SCHEMA_VERSION).generate();
+    }
+
+    /** Generate the opt-in schema-5 model with pinned ledger-context vocabulary. */
+    public static String generateTypedV5(
+            ContractSchema schema, String packageName, String className) {
+        if (!packageName.matches("[a-z][A-Za-z0-9_.]*")
+                || !className.matches("[A-Z][A-Za-z0-9_]*")) {
+            throw new IllegalArgumentException("Invalid generated metamodel name");
+        }
+        ProjectedContractTypes projection = ContractTypeProjection.project(schema);
+        return new TypedModelGenerator(
+                projection, packageName, className,
+                ContractTypeProjection.sha256(projection),
+                DslPropertySet.LEDGER_SCHEMA_VERSION).generate();
     }
 
     private static String mintingModel(String packageName, String className) {
@@ -188,17 +204,20 @@ public final class ContractMetamodelGenerator {
         private final String packageName;
         private final String className;
         private final String schemaHash;
+        private final int dslSchemaVersion;
         private final Map<String, String> names = new LinkedHashMap<>();
 
         private TypedModelGenerator(
                 ProjectedContractTypes projection,
                 String packageName,
                 String className,
-                String schemaHash) {
+                String schemaHash,
+                int dslSchemaVersion) {
             this.projection = projection;
             this.packageName = packageName;
             this.className = className;
             this.schemaHash = schemaHash;
+            this.dslSchemaVersion = dslSchemaVersion;
             validateGeneratedNames(projection);
             for (var definition : projection.definitions()) {
                 names.put(definition.stableId(), "Type_" + javaName(definition.sourceName())
@@ -221,10 +240,39 @@ public final class ContractMetamodelGenerator {
                     .append(baseModel()).append("();\n");
             appendRoots(body);
             body.append("\n    public DslPropertySet properties(DslProperty... properties) {\n")
-                    .append("        return DslPropertySet.typedV4(DslPurpose.")
+                    .append("        return DslPropertySet.")
+                    .append(dslSchemaVersion == DslPropertySet.LEDGER_SCHEMA_VERSION
+                            ? "typedV5" : "typedV4")
+                    .append("(DslPurpose.")
                     .append(dslPurpose()).append(", CONTRACT_SCHEMA_SHA256, properties);\n")
                     .append("    }\n")
-                    .append("    public ContextExpr context() { return base.context(); }\n");
+                    .append(dslSchemaVersion == DslPropertySet.LEDGER_SCHEMA_VERSION
+                            ? "    public LedgerContextExpr context() { return LedgerExpressions.context(); }\n"
+                            : "    public ContextExpr context() { return base.context(); }\n");
+            if (dslSchemaVersion == DslPropertySet.LEDGER_SCHEMA_VERSION
+                    && projection.purpose() == com.bloxbean.cardano.julc.compiler.schema
+                            .ContractSchema.Purpose.SPEND) {
+                body.append("    public LedgerTxOutRefExpr currentOutputRef() {\n")
+                        .append("        return new LedgerTxOutRefExpr(new LedgerHelperNode(\n")
+                        .append("            LedgerHelperNode.LedgerHelperKind.CURRENT_OUTPUT_REF,\n")
+                        .append("            java.util.List.of(context().node()),\n")
+                        .append("            new LedgerTypeRef(LedgerTypeRef.LedgerKind.TX_OUT_REF)));\n")
+                        .append("    }\n")
+                        .append("    public LedgerTxInInfoOptionExpr ownInput() {\n")
+                        .append("        return new LedgerTxInInfoOptionExpr(new LedgerHelperNode(\n")
+                        .append("            LedgerHelperNode.LedgerHelperKind.FIND_OWN_INPUT,\n")
+                        .append("            java.util.List.of(context().node()),\n")
+                        .append("            new OptionalTypeRef(new LedgerTypeRef(\n")
+                        .append("                LedgerTypeRef.LedgerKind.TX_IN_INFO))));\n")
+                        .append("    }\n")
+                        .append("    public LedgerTxOutListExpr continuingOutputs() {\n")
+                        .append("        return new LedgerTxOutListExpr(new LedgerHelperNode(\n")
+                        .append("            LedgerHelperNode.LedgerHelperKind.CONTINUING_OUTPUTS,\n")
+                        .append("            java.util.List.of(context().node()),\n")
+                        .append("            new ListTypeRef(new LedgerTypeRef(\n")
+                        .append("                LedgerTypeRef.LedgerKind.TX_OUT))));\n")
+                        .append("    }\n");
+            }
             appendPurposeRoots(body);
             for (var definition : projection.definitions()) appendDefinition(body, definition);
             appendOptionalWrappers(body);
@@ -262,7 +310,7 @@ public final class ContractMetamodelGenerator {
                         "    public TxCertExpr certificate() { return base.certificate(); }\n"
                                 + "    public IntegerExpr certificateIndex() { return base.certificateIndex(); }\n");
                 default -> throw new IllegalArgumentException(
-                        "Schema-4 DSL does not support " + projection.purpose());
+                        "Structural DSL does not support " + projection.purpose());
             }
         }
 
@@ -501,6 +549,8 @@ public final class ContractMetamodelGenerator {
             return switch (type) {
                 case BuiltinTypeRef ignored -> "new TypedValueExpr(" + expression
                         + ".node(), " + typeExpression(type) + ")";
+                case LedgerTypeRef ignored -> throw new IllegalArgumentException(
+                        "Contract model cannot wrap a ledger type");
                 case NominalTypeRef ignored -> expression + ".value";
                 case OptionalTypeRef ignored -> "new TypedValueExpr(" + expression
                         + ".value.node(), " + typeExpression(type) + ")";
@@ -543,6 +593,8 @@ public final class ContractMetamodelGenerator {
                     case UNIT, DATA -> "TypedValueExpr";
                 };
                 case NominalTypeRef nominal -> names.get(nominal.stableId());
+                case LedgerTypeRef ignored -> throw new IllegalArgumentException(
+                        "Contract model cannot expose a ledger type");
                 case OptionalTypeRef optional -> "Optional_" + typeSuffix(optional.elementType());
                 case ListTypeRef list -> "List_" + typeSuffix(list.elementType());
                 case AssocMapTypeRef map -> "Map_" + typeSuffix(map);
@@ -560,6 +612,8 @@ public final class ContractMetamodelGenerator {
                 };
                 case NominalTypeRef nominal -> "new " + names.get(nominal.stableId())
                         + "(" + raw + ")";
+                case LedgerTypeRef ignored -> throw new IllegalArgumentException(
+                        "Contract model cannot wrap a ledger type");
                 case OptionalTypeRef optional -> "new Optional_"
                         + typeSuffix(optional.elementType()) + "(new TypedOptionExpr("
                         + raw + ".node(), " + typeExpression(optional.elementType()) + "))";
@@ -580,6 +634,8 @@ public final class ContractMetamodelGenerator {
                 case NominalTypeRef nominal -> "new NominalTypeRef(\""
                         + javaString(nominal.stableId()) + "\", NominalTypeRef.NominalKind."
                         + nominal.nominalKind() + ")";
+                case LedgerTypeRef ledger -> "new LedgerTypeRef(LedgerTypeRef.LedgerKind."
+                        + ledger.ledgerType() + ")";
                 case OptionalTypeRef optional -> "new OptionalTypeRef("
                         + typeExpression(optional.elementType()) + ")";
                 case ListTypeRef list -> "new ListTypeRef("
@@ -597,7 +653,7 @@ public final class ContractMetamodelGenerator {
                 case WITHDRAW -> "RewardingContractModel";
                 case CERTIFY -> "CertifyingContractModel";
                 default -> throw new IllegalArgumentException(
-                        "Unsupported schema-4 purpose " + projection.purpose());
+                        "Unsupported structural DSL purpose " + projection.purpose());
             };
         }
 
@@ -608,7 +664,7 @@ public final class ContractMetamodelGenerator {
                 case WITHDRAW -> "REWARDING";
                 case CERTIFY -> "CERTIFYING";
                 default -> throw new IllegalArgumentException(
-                        "Unsupported schema-4 purpose " + projection.purpose());
+                        "Unsupported structural DSL purpose " + projection.purpose());
             };
         }
 
@@ -643,7 +699,7 @@ public final class ContractMetamodelGenerator {
                 String name = members ? javaMember(sourceName) : javaName(sourceName);
                 if (!generated.add(name)) {
                     throw new IllegalArgumentException(
-                            "Compiler-owned names collide in generated schema-4 model at "
+                            "Compiler-owned names collide in generated structural DSL model at "
                                     + owner + ": " + sourceNames);
                 }
             }

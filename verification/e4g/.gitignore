@@ -1,0 +1,4 @@
+/generated/*/.lake/
+/generated/*/verification-results/
+/generated/*/verification-result.json.tmp
+/fixtures/contracts/build/

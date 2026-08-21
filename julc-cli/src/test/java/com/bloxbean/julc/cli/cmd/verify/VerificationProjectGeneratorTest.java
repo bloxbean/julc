@@ -27,6 +27,7 @@ import com.bloxbean.cardano.julc.verification.dsl.IntegerExpr;
 import com.bloxbean.cardano.julc.verification.dsl.TypedExpressions;
 import com.bloxbean.cardano.julc.verification.dsl.TypedListExpr;
 import com.bloxbean.cardano.julc.verification.dsl.TypedAssocMapExpr;
+import com.bloxbean.cardano.julc.verification.dsl.LedgerExpressions;
 import com.bloxbean.cardano.julc.verification.dsl.type.*;
 import com.bloxbean.julc.cli.JulcCommand;
 import com.bloxbean.julc.cli.cmd.blueprint.ArtifactCommand;
@@ -521,6 +522,71 @@ class VerificationProjectGeneratorTest {
                 .filter(field -> field.name().equals(name))
                 .map(ProjectedContractTypes.Field::type)
                 .findFirst().orElseThrow();
+    }
+
+    @Test
+    void generatesSchemaFiveLedgerContextWorkspace() throws Exception {
+        String source = """
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                import com.bloxbean.cardano.julc.ledger.ScriptContext;
+                import java.math.BigInteger;
+                @SpendingValidator class LedgerGate {
+                    record Datum(BigInteger state) {}
+                    record Redeemer(BigInteger next) {}
+                    @Entrypoint static boolean validate(
+                            Datum datum, Redeemer redeemer, ScriptContext ctx) { return true; }
+                }
+                """;
+        var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(source);
+        var projection = ContractTypeProjection.project(compiled.contractSchema());
+        var context = LedgerExpressions.context();
+        var tx = context.txInfo();
+        var guarantee = tx.referenceInputs().exists(input ->
+                        input.resolved().datum().isInline())
+                .and(tx.redeemers().lookupFirst(
+                        context.scriptPurpose().typed()).isPresent())
+                .and(tx.fee().ge(integer(0)));
+        var candidate = DslPropertySet.typedV5(DslPurpose.SPENDING,
+                ContractTypeProjection.sha256(projection),
+                property("LedgerGate.context", DslDomain.VALID_SPENDING_V3_PINNED,
+                        guarantee));
+        var promoted = ComposedDslPromotion.promote(candidate,
+                compiled.contractSchema(), "LedgerGate", "LedgerProperties.java");
+        var generated = BlueprintGenerator.generate(
+                new BlueprintConfig("schema-five-generator-test", "1"),
+                List.of(new BlueprintGenerator.CompiledValidator(
+                        "LedgerGate", compiled.compileResult(), compiled.contractSchema())));
+        Path blueprint = tempDir.resolve("schema-five.json");
+        Files.writeString(blueprint, generated.toJson());
+        Path output = tempDir.resolve("schema-five");
+
+        VerificationProjectGenerator.generateComposedDsl(
+                blueprint, promoted, compiled.contractSchema(), 5000, 8, output, false);
+
+        String security = Files.readString(output.resolve("SecurityProperty.lean"));
+        assertTrue(security.contains("txInfoReferenceInputs"), security);
+        assertTrue(security.contains("toScriptPurpose"), security);
+        assertTrue(security.contains("txInfoFee"), security);
+        assertTrue(security.contains("def julcContinuingOutputs"), security);
+        String semantics = Files.readString(
+                output.resolve("LedgerContextSemanticsTests.lean"));
+        assertTrue(semantics.contains("resolveInput ref0 [firstInput, duplicateInput]"),
+                semantics);
+        assertTrue(semantics.contains("julcContinuingOutputs"), semantics);
+        assertTrue(semantics.contains(".toScriptPurpose)"), semantics);
+        assertTrue(semantics.contains("julcMapLookupFirst redeemerEntries spendingPurpose"),
+                semantics);
+        assertTrue(semantics.contains("julcMapContainsKey redeemerEntries votingPurpose"),
+                semantics);
+        assertTrue(semantics.contains("findRedeemer spendingPurpose redeemerEntries"),
+                semantics);
+        assertTrue(semantics.contains("CardanoLedgerApi.V2.findDatum"), semantics);
+        assertTrue(Files.readString(output.resolve("lakefile.lean"))
+                .contains("`LedgerContextSemanticsTests"));
+        var manifest = JSON.readTree(output.resolve("verification-manifest.json").toFile());
+        assertEquals(5, manifest.path("dslIr").path("schemaVersion").asInt());
+        assertEquals(3, manifest.path("propertyIr").path("schemaVersion").asInt());
     }
 
     @Test
