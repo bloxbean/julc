@@ -1,0 +1,301 @@
+package com.bloxbean.cardano.julc.verification.dsl;
+
+import com.bloxbean.cardano.julc.verification.dsl.ir.*;
+import com.bloxbean.cardano.julc.verification.dsl.type.ProjectedContractTypes;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+/** Lean renderer for parent-validated schema-4 structural nodes. */
+public final class TypedPropertyLeanRenderer {
+    private TypedPropertyLeanRenderer() { }
+
+    public static String renderExpression(
+            PropertyNode expression, ProjectedContractTypes projection) {
+        var definitions = projection.definitions().stream().collect(
+                Collectors.toUnmodifiableMap(
+                        ProjectedContractTypes.NominalDefinition::stableId,
+                        definition -> definition));
+        return render(expression, definitions, Map.of());
+    }
+
+    private static String render(
+            PropertyNode node,
+            Map<String, ProjectedContractTypes.NominalDefinition> definitions,
+            Map<String, String> variantFields) {
+        if (node instanceof TypedRootNode root) {
+            return switch (root.name()) {
+                case "typedDatum" -> "typedDatum ctx";
+                case "typedRedeemer" -> "typedRedeemer ctx";
+                default -> throw new IllegalArgumentException(
+                        "No Lean mapping for typed root " + root.name());
+            };
+        }
+        if (node instanceof TypedVariableNode variable) return variable.variable();
+        if (node instanceof TypedFieldNode field) {
+            return render(field.target(), definitions, variantFields)
+                    + "." + leanFieldName(field.name());
+        }
+        if (node instanceof VariantFieldNode field) {
+            String value = variantFields.get(fieldKey(
+                    field.target(), field.constructor(), field.name()));
+            if (value == null) {
+                throw new IllegalArgumentException(
+                        "Variant field has no guarded Lean binding");
+            }
+            return value;
+        }
+        if (node instanceof OptionExistsNode exists) {
+            return parenthesize("match " + parenthesize(render(
+                    exists.optional(), definitions, variantFields))
+                    + " with | some " + exists.variable() + " => "
+                    + render(exists.predicate(), definitions, variantFields)
+                    + " | none => false");
+        }
+        if (node instanceof VariantIsNode variant) {
+            return parenthesize("match " + parenthesize(render(
+                    variant.value(), definitions, variantFields))
+                    + " with | ." + leanTypeName(variant.constructor())
+                    + " .. => true | _ => false");
+        }
+        if (node instanceof VariantWhenNode variant) {
+            var definition = definitions.get(variant.sumType().stableId());
+            if (definition == null) {
+                throw new IllegalArgumentException(
+                        "Unknown projected sum " + variant.sumType().stableId());
+            }
+            var constructor = definition.constructors().stream()
+                    .filter(candidate -> candidate.name().equals(variant.constructor()))
+                    .findFirst().orElseThrow();
+            var nested = new HashMap<>(variantFields);
+            var pattern = new StringBuilder();
+            for (int index = 0; index < constructor.fields().size(); index++) {
+                var field = constructor.fields().get(index);
+                String binding = variant.variable() + "_" + index;
+                pattern.append(' ').append(binding);
+                nested.put(fieldKey(new TypedVariableNode(
+                                variant.variable(), variant.sumType()),
+                        variant.constructor(), field.name()), binding);
+            }
+            return parenthesize("match " + parenthesize(render(
+                    variant.value(), definitions, variantFields))
+                    + " with | ." + leanTypeName(variant.constructor()) + pattern
+                    + " => " + render(variant.predicate(), definitions, nested)
+                    + " | _ => false");
+        }
+        if (node instanceof BoolLiteralNode literal) {
+            return Boolean.toString(literal.value());
+        }
+        if (node instanceof BoolNotNode not) {
+            return "!" + parenthesize(render(not.value(), definitions, variantFields));
+        }
+        if (node instanceof IntegerArithmeticNode arithmetic) {
+            String left = parenthesize(render(
+                    arithmetic.left(), definitions, variantFields));
+            return switch (arithmetic.operator()) {
+                case NEGATE -> "-" + left;
+                case ADD -> parenthesize(left + " + " + parenthesize(render(
+                        arithmetic.right(), definitions, variantFields)));
+                case SUBTRACT -> parenthesize(left + " - " + parenthesize(render(
+                        arithmetic.right(), definitions, variantFields)));
+                case SCALE -> parenthesize(arithmetic.constant() + " * " + left);
+            };
+        }
+        if (node instanceof TypedEqualityNode equality) {
+            return equality(equality.left(), equality.right(), equality.negated(),
+                    definitions, variantFields);
+        }
+        if (node instanceof OptionStateNode option) {
+            String present = option.state() == OptionState.PRESENT ? "true" : "false";
+            String empty = option.state() == OptionState.EMPTY ? "true" : "false";
+            return parenthesize("match " + parenthesize(render(
+                    option.optional(), definitions, variantFields))
+                    + " with | some _ => " + present + " | none => " + empty);
+        }
+        if (node instanceof ListStateNode list) {
+            String items = listItems(list.list(), definitions, variantFields);
+            return list.state() == ListState.EMPTY
+                    ? "List.isEmpty " + parenthesize(items)
+                    : "!" + parenthesize("List.isEmpty " + parenthesize(items));
+        }
+        if (node instanceof ListContainsNode list) {
+            String items = listItems(list.list(), definitions, variantFields);
+            String value = render(list.value(), definitions, variantFields);
+            return "julcListContains " + parenthesize(items) + " " + parenthesize(value);
+        }
+        if (node instanceof ListQuantifierNode list) {
+            String items = listItems(list.list(), definitions, variantFields);
+            String predicate = "(fun " + list.variable() + " => "
+                    + render(list.predicate(), definitions, variantFields) + ")";
+            return switch (list.quantifier()) {
+                case EXISTS -> "List.any " + parenthesize(items) + " " + predicate;
+                case ALL -> "List.all " + parenthesize(items) + " " + predicate;
+                case NONE -> "!" + parenthesize(
+                        "List.any " + parenthesize(items) + " " + predicate);
+            };
+        }
+        if (node instanceof ListCountNode list) {
+            String items = listItems(list.list(), definitions, variantFields);
+            return "julcListCount (fun " + list.variable() + " => "
+                    + render(list.predicate(), definitions, variantFields) + ") "
+                    + parenthesize(items);
+        }
+        if (node instanceof ListAtNode list) {
+            return "julcListAt " + parenthesize(listItems(
+                    list.list(), definitions, variantFields)) + " "
+                    + parenthesize(render(list.index(), definitions, variantFields));
+        }
+        if (node instanceof StructuralEqualsNode equality) {
+            return equality(equality.left(), equality.right(), equality.negated(),
+                    definitions, variantFields);
+        }
+        if (node instanceof MapQuantifierNode map) {
+            String entries = mapEntries(map.map(), definitions, variantFields);
+            String predicate = mapPredicate(map.keyVariable(), map.valueVariable(),
+                    map.predicate(), definitions, variantFields);
+            return switch (map.quantifier()) {
+                case EXISTS -> "List.any " + parenthesize(entries) + " " + predicate;
+                case ALL -> "List.all " + parenthesize(entries) + " " + predicate;
+                case NONE -> "!" + parenthesize(
+                        "List.any " + parenthesize(entries) + " " + predicate);
+            };
+        }
+        if (node instanceof MapCountEntryNode map) {
+            return "julcListCount " + mapPredicate(map.keyVariable(), map.valueVariable(),
+                    map.predicate(), definitions, variantFields) + " "
+                    + parenthesize(mapEntries(map.map(), definitions, variantFields));
+        }
+        if (node instanceof MapContainsKeyNode map) {
+            return "julcMapContainsKey " + parenthesize(mapEntries(
+                    map.map(), definitions, variantFields)) + " "
+                    + parenthesize(render(map.key(), definitions, variantFields));
+        }
+        if (node instanceof MapCountKeyNode map) {
+            return "julcMapCountKey " + parenthesize(mapEntries(
+                    map.map(), definitions, variantFields)) + " "
+                    + parenthesize(render(map.key(), definitions, variantFields));
+        }
+        if (node instanceof MapLookupFirstNode map) {
+            return "julcMapLookupFirst " + parenthesize(mapEntries(
+                    map.map(), definitions, variantFields)) + " "
+                    + parenthesize(render(map.key(), definitions, variantFields));
+        }
+        if (node instanceof MapLookupAllNode map) {
+            return "⟨julcMapLookupAll " + parenthesize(mapEntries(
+                    map.map(), definitions, variantFields)) + " "
+                    + parenthesize(render(map.key(), definitions, variantFields)) + "⟩";
+        }
+        if (node instanceof BoolBinaryNode binary) {
+            String left = render(binary.left(), definitions, variantFields);
+            String right = render(binary.right(), definitions, variantFields);
+            return switch (binary.operator()) {
+                case AND -> parenthesize(left + " && " + right);
+                case OR -> parenthesize(left + " || " + right);
+                case IMPLIES -> parenthesize("(!" + parenthesize(left) + ") || "
+                        + parenthesize(right));
+            };
+        }
+        if (node instanceof CompareNode comparison) {
+            String operator = switch (comparison.operator()) {
+                case EQ -> "==";
+                case NE -> "!=";
+                case LT -> "<";
+                case LE -> "<=";
+                case GT -> ">";
+                case GE -> ">=";
+            };
+            return parenthesize(render(comparison.left(), definitions, variantFields)
+                    + " " + operator + " "
+                    + render(comparison.right(), definitions, variantFields));
+        }
+        if (node instanceof ContainsNode contains) {
+            return "List.elem " + parenthesize(render(
+                    contains.value(), definitions, variantFields)) + " "
+                    + parenthesize(render(
+                    contains.collection(), definitions, variantFields));
+        }
+        return PropertyLeanRenderer.renderExpression(node);
+    }
+
+    private static String equality(
+            PropertyNode left,
+            PropertyNode right,
+            boolean negated,
+            Map<String, ProjectedContractTypes.NominalDefinition> definitions,
+            Map<String, String> variantFields) {
+        String comparison = "julcStructuralEq "
+                + parenthesize(render(left, definitions, variantFields)) + " "
+                + parenthesize(render(right, definitions, variantFields));
+        return negated ? "!" + parenthesize(comparison) : comparison;
+    }
+
+    private static String listItems(
+            PropertyNode list,
+            Map<String, ProjectedContractTypes.NominalDefinition> definitions,
+            Map<String, String> variantFields) {
+        return parenthesize(render(list, definitions, variantFields)) + ".items";
+    }
+
+    private static String mapEntries(
+            PropertyNode map,
+            Map<String, ProjectedContractTypes.NominalDefinition> definitions,
+            Map<String, String> variantFields) {
+        return parenthesize(render(map, definitions, variantFields)) + ".entries";
+    }
+
+    private static String mapPredicate(
+            String key,
+            String value,
+            PropertyNode predicate,
+            Map<String, ProjectedContractTypes.NominalDefinition> definitions,
+            Map<String, String> variantFields) {
+        return "(fun entry => let " + key + " := entry.1; let " + value
+                + " := entry.2; " + render(predicate, definitions, variantFields) + ")";
+    }
+
+    private static String fieldKey(
+            PropertyNode target, String constructor, String field) {
+        if (!(target instanceof TypedVariableNode variable)) {
+            throw new IllegalArgumentException(
+                    "Variant field target is not its constructor binder");
+        }
+        return variable.variable() + "#" + constructor + "#" + field;
+    }
+
+    private static String parenthesize(String value) {
+        return "(" + value + ")";
+    }
+
+    private static String leanFieldName(String raw) {
+        String typeName = leanTypeName(raw);
+        String result = Character.toLowerCase(typeName.charAt(0)) + typeName.substring(1);
+        if (LEAN_RESERVED.contains(result.toLowerCase(java.util.Locale.ROOT))) {
+            result += "Field";
+        }
+        return result;
+    }
+
+    private static String leanTypeName(String raw) {
+        var result = new StringBuilder();
+        boolean capitalize = true;
+        for (int index = 0; index < raw.length(); index++) {
+            char ch = raw.charAt(index);
+            if (!Character.isLetterOrDigit(ch)) {
+                capitalize = true;
+                continue;
+            }
+            result.append(capitalize ? Character.toUpperCase(ch) : ch);
+            capitalize = false;
+        }
+        if (result.isEmpty()) result.append("Generated");
+        if (Character.isDigit(result.charAt(0))) result.insert(0, 'T');
+        return result.toString();
+    }
+
+    private static final java.util.Set<String> LEAN_RESERVED = java.util.Set.of(
+            "abbrev", "axiom", "class", "def", "deriving", "else", "end",
+            "example", "export", "if", "import", "in", "inductive", "instance",
+            "let", "match", "namespace", "open", "opaque", "partial", "private",
+            "protected", "structure", "theorem", "where", "with");
+}

@@ -47,6 +47,14 @@ countermodels, and certificates live below `verification/e4b/fixtures/*/build`
 and `verification/e4b/generated`; both locations are gitignored and reproduced
 by the script.
 
+Regenerate these workspaces after upgrading JuLC. In particular, E.4c changed
+the authenticated derived existential rule name from `exists-output` to
+`exists:LIST_TX_OUT`. Canonical schema-3 DSL values kept the same meaning, but
+a workspace generated before that change intentionally fails current
+integrity preflight. The failure does not invalidate its historical,
+hash-bound result; it prevents a stale workspace from being presented as a
+current run.
+
 ## Use schema 3 in a project
 
 Generate a contract model from the compiler-owned schema:

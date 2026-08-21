@@ -1,6 +1,6 @@
 # ADR-016: Typed Verification DSL and Foundational Profile Catalog
 
-- **Status:** E.1–E.4d implemented experimentally; E.5–E.6 proposed
+- **Status:** E.1–E.4f implemented experimentally; E.4g–E.6 proposed
 - **Date:** 2026-08-13
 - **Related:**
   [ADR-001 — IOG Blaster Verification Strategy](001-iog-blaster-verification-strategy.md),
@@ -12,7 +12,11 @@
   [ADR-014 — Post-C.7 Roadmap](014-post-c7-verification-hardening-roadmap.md),
   [ADR-015 — Strict On-Chain Data Boundaries](015-strict-on-chain-data-boundaries.md),
   [ADR-018 — Typed Minting Verification DSL](018-milestone-e4a-typed-minting-dsl.md),
-  [ADR-019 — Compositional Property Promotion Core](019-milestone-e4b-compositional-property-promotion-core.md)
+  [ADR-019 — Compositional Property Promotion Core](019-milestone-e4b-compositional-property-promotion-core.md),
+  [ADR-020 — Typed Rewarding Verification DSL](020-milestone-e4c-typed-rewarding-dsl.md),
+  [ADR-021 — Typed Certifying Verification DSL](021-milestone-e4d-typed-certifying-dsl.md),
+  [ADR-022 — Generic Contract Types and Collections](022-milestones-e4e-e4f-generic-contract-types-and-collections.md), and
+  [ADR-023 — Typed Non-Value Transaction Context](023-milestone-e4g-typed-non-value-transaction-context.md)
 
 ## Context
 
@@ -611,6 +615,67 @@ purpose vocabulary for those interfaces, so they remain fail-closed rather
 than being assigned invented purpose names. Later slices extend the generic
 capability and semantic inventories; they do not add fixed-formula promotion
 paths.
+
+### E.4e–E.4f: Generic contract types and collection core
+
+[ADR-022](022-milestones-e4e-e4f-generic-contract-types-and-collections.md)
+implements this foundational phase. E.4e projects the compiler-owned
+`PirType` graph into a schema-4 structural symbolic type reference and
+generates typed wrappers for datum/redeemer records, variants,
+optionals, lists, maps, nested combinations, and productive recursive values.
+E.4f adds safe optional elimination, generic duplicate-preserving collections,
+canonical quantifiers/binders, complete foundational Boolean/equality
+operations, and reviewed linear integer arithmetic. Existing schema-1–3
+canonical bytes and the schema-3 `.composed(...)` API remain frozen.
+Compiler-erased source newtypes appear as their underlying representation;
+nominal newtype identity remains deferred until `ContractSchema` exposes it.
+
+### E.4g: Complete non-value transaction context
+
+[ADR-023](023-milestone-e4g-typed-non-value-transaction-context.md) specifies
+this phase as opt-in property schema 5. It exposes generic input and
+reference-input traversal, `TxInInfo` fields, current spending reference, fee,
+transaction ID, output datum/reference script, complete address/staking
+credentials, ordered duplicate-preserving datum witnesses and redeemer maps,
+continuing-output selection, and reviewed first/all/count input-selection
+helpers. It reuses the E.4e–E.4f type and collection core, freezes schema-1–4
+canonical evidence, and does not introduce value aggregation, governance
+payloads, certificate payloads, or raw validity/treasury adapters.
+
+### E.4h: Authorization algebra
+
+Add any/all/exact/allow-list signer predicates, no-unexpected-signer checks,
+M-of-N thresholds, and fixed/datum/parameter authority sources where the exact
+artifact binds the source. Common formulas may later graduate to annotations,
+but use the same generic canonical IR and proof path.
+
+### E.4i: Certificate payload surface
+
+Extend E.4d constructor recognition with guarded payload access for deposits,
+refunds, credentials, delegation targets, DReps, pools, epochs, and committee
+credentials. No unchecked constructor projection is admitted.
+
+### E.4j: Value and multi-asset algebra
+
+Add raw policy/token entry traversal, explicit quantity projections, structural
+and normalized/extensional relations, value arithmetic/order, spent/produced
+value, balancing, asset preservation/leakage, payments, and generalized
+mint/burn constraints. Every operation states its duplicate policy; raw,
+first-match, summed, and normalized meanings are never conflated.
+
+### E.4k: Governance transaction data
+
+Add typed voters, votes, governance action IDs, proposals, protocol versions,
+governance-action constructors, and known-voter/proposal relations for
+supported script contexts. Voting/proposing validator selection remains
+fail-closed until a truthful exact-artifact convention exists; the pinned
+CIP-57 vocabulary currently has no standard purpose names for those entries.
+
+### E.4l: Reviewed raw-data adapters
+
+Add typed validity-interval and treasury/governance adapters only after the
+pinned raw-`Data` representations have reviewed semantics and malformed-data
+controls. Until then those capabilities remain visibly `RAW_DATA_ONLY`.
 
 ### E.5: State-machine experiment
 

@@ -11,7 +11,7 @@ or Docker.
 
 ## What is available today
 
-There are eleven ways to explore the current integration. `julc verify run`
+There are twelve ways to explore the current integration. `julc verify run`
 provides the managed execution path for both a generated workspace and the
 committed evidence suite:
 
@@ -61,6 +61,14 @@ committed evidence suite:
     all 11 pinned certificate kinds, and ordered indexed membership, with exact
     VM, local, Docker, native, refuted, malformed, and vacuity evidence for an
     authorized `UpdateDRep` property.
+12. `verification/e4e` and `verification/e4f` add experimental schema 4. JuLC
+    projects compiler-owned nested datum/redeemer records, sealed variants,
+    optionals, lists, maps, and productive recursive references into a
+    hash-bound symbolic type graph. Generated Java wrappers expose guarded
+    variant/optional elimination, closed linear integer operations, list
+    quantifiers/count/indexing, and ordered duplicate-preserving association-map
+    traversal, first/all lookup, and structural equality. The E.4f controls
+    include exact VM, local, Docker, native, refuted, and vacuous evidence.
 
 The integration does not prove that every JuLC program is safe. It checks
 explicit properties for one exact compiled artifact. Solver-valid Blaster

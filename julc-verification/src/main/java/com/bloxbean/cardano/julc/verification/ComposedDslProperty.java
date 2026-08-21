@@ -1,9 +1,12 @@
 package com.bloxbean.cardano.julc.verification;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+
 import java.util.List;
 import java.util.Objects;
 
 /** Certificate-facing representation of an admitted, normalized schema-3 DSL property set. */
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public record ComposedDslProperty(
         int schemaVersion,
         String template,
@@ -15,9 +18,13 @@ public record ComposedDslProperty(
         List<Claim> claims,
         List<String> domainAssumptions,
         List<String> guaranteeRules,
-        boolean ledgerValidityModeled) implements VerificationProperty {
+        boolean ledgerValidityModeled,
+        String projectedContractTypesJson,
+        String contractSchemaSha256) implements VerificationProperty {
     public static final int SCHEMA_VERSION = 1;
+    public static final int TYPED_SCHEMA_VERSION = 2;
     public static final String TEMPLATE = "julc.dsl-composed/v1";
+    public static final String TYPED_TEMPLATE = "julc.dsl-typed/v1";
 
     public ComposedDslProperty {
         template = Objects.requireNonNull(template, "template");
@@ -34,6 +41,41 @@ public record ComposedDslProperty(
         domainAssumptions = List.copyOf(domainAssumptions);
         guaranteeRules = List.copyOf(guaranteeRules);
         if (claims.isEmpty()) throw new IllegalArgumentException("At least one claim is required");
+        if (schemaVersion == TYPED_SCHEMA_VERSION) {
+            projectedContractTypesJson = Objects.requireNonNull(
+                    projectedContractTypesJson, "projectedContractTypesJson");
+            if (contractSchemaSha256 == null
+                    || !contractSchemaSha256.matches("[0-9a-f]{64}")) {
+                throw new IllegalArgumentException(
+                        "Typed DSL property requires a contract schema SHA-256");
+            }
+        } else if (schemaVersion == SCHEMA_VERSION) {
+            if (projectedContractTypesJson != null || contractSchemaSha256 != null) {
+                throw new IllegalArgumentException(
+                        "Schema-3 composed property cannot carry schema-4 type metadata");
+            }
+        } else {
+            throw new IllegalArgumentException(
+                    "Unsupported composed DSL property schema " + schemaVersion);
+        }
+    }
+
+    /** Compatibility constructor for the frozen schema-3 property representation. */
+    public ComposedDslProperty(
+            int schemaVersion,
+            String template,
+            String propertyId,
+            String validatorTitle,
+            String scriptPurpose,
+            String sourcePath,
+            String canonicalDslJson,
+            List<Claim> claims,
+            List<String> domainAssumptions,
+            List<String> guaranteeRules,
+            boolean ledgerValidityModeled) {
+        this(schemaVersion, template, propertyId, validatorTitle, scriptPurpose,
+                sourcePath, canonicalDslJson, claims, domainAssumptions,
+                guaranteeRules, ledgerValidityModeled, null, null);
     }
 
     /** One independently executed and certified theorem claim. */

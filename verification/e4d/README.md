@@ -38,6 +38,12 @@ trusted property builder in an installed child JVM. The accepted local,
 Docker, and native runs bind identical exact UPLC, canonical DSL IR, property
 IR, generated Lean, and execution bounds.
 
+`authorized-native` is an evidence-directory convention. The current
+certificate records the authenticated `local` proof backend, but not the CLI
+launcher flavor or a native-executable digest. Matching hashes establish that
+the runs used identical semantic inputs; they do not independently attest how
+the CLI process was launched.
+
 The Java specification is trusted project code executed in a bounded worker
 JVM. A result covers only the named property, exact artifact, pinned model and
 tools, and recorded execution bounds. It is not a claim that the whole

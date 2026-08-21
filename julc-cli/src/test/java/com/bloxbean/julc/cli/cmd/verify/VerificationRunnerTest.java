@@ -805,6 +805,9 @@ class VerificationRunnerTest {
                 < dockerfile.indexOf("z3_archive="));
         String metadata = Files.readString(Path.of(
                 "src/main/resources/META-INF/native-image/reachability-metadata.json"));
+        JsonNode nativeMetadata = VerificationFiles.JSON.readTree(metadata);
+        assertTrue(nativeMetadata.isObject() && nativeMetadata.path("reflection").isArray(),
+                "Native reachability metadata must remain valid JSON");
         assertTrue(metadata.contains("META-INF/julc/verification/**"));
         assertTrue(metadata.contains("VerificationRunPlan"));
         assertTrue(metadata.contains("VerificationRunPlan$ObservedOutcome"));
@@ -822,6 +825,16 @@ class VerificationRunnerTest {
         assertTrue(metadata.contains("TxCertKind"));
         assertTrue(metadata.contains("LedgerCapabilityInventory"));
         assertTrue(metadata.contains("CapabilityStatus"));
+        for (String schemaFourType : List.of(
+                "TypedRootNode", "TypedFieldNode", "VariantWhenNode",
+                "OptionExistsNode", "ListQuantifierNode", "ListAtNode",
+                "MapQuantifierNode", "MapLookupFirstNode", "MapLookupAllNode",
+                "StructuralEqualsNode", "VerificationTypeRef",
+                "NominalTypeRef", "OptionalTypeRef", "ListTypeRef",
+                "AssocMapTypeRef", "ProjectedContractTypes")) {
+            assertTrue(metadata.contains(schemaFourType),
+                    () -> "Missing schema-4 native metadata for " + schemaFourType);
+        }
     }
 
     @Test

@@ -92,8 +92,30 @@ public final class DslSemanticDependencies {
             }
             return;
         }
+        if (node instanceof TypedRootNode root) {
+            switch (root.name()) {
+                case "typedDatum" -> state.datum = true;
+                case "typedRedeemer" -> state.redeemerDecode = true;
+                default -> throw new IllegalArgumentException(
+                        "No dependency mapping for typed root " + root.name());
+            }
+            state.capabilities.add("encoding.isDataV3");
+            state.capabilities.add("dsl.schema.typed-root");
+            return;
+        }
+        if (node instanceof TypedVariableNode) return;
         if (node instanceof FieldNode field) {
             state.capabilities.add(capability(field));
+            visit(field.target(), state);
+            return;
+        }
+        if (node instanceof TypedFieldNode field) {
+            state.capabilities.add("dsl.schema.typed-field");
+            visit(field.target(), state);
+            return;
+        }
+        if (node instanceof VariantFieldNode field) {
+            state.capabilities.add("dsl.schema.variant-field");
             visit(field.target(), state);
             return;
         }
@@ -160,9 +182,127 @@ public final class DslSemanticDependencies {
             state.binders.remove(exists.variable());
             return;
         }
+        if (node instanceof OptionExistsNode exists) {
+            state.capabilities.add("dsl.option.exists");
+            visit(exists.optional(), state);
+            if (!state.binders.add(exists.variable())) {
+                throw new IllegalArgumentException(
+                        "Duplicate dependency-plan binder " + exists.variable());
+            }
+            visit(exists.predicate(), state);
+            state.binders.remove(exists.variable());
+            return;
+        }
+        if (node instanceof VariantIsNode variant) {
+            state.capabilities.add("dsl.variant.is-constructor");
+            visit(variant.value(), state);
+            return;
+        }
+        if (node instanceof VariantWhenNode variant) {
+            state.capabilities.add("dsl.variant.when-constructor");
+            visit(variant.value(), state);
+            if (!state.binders.add(variant.variable())) {
+                throw new IllegalArgumentException(
+                        "Duplicate dependency-plan binder " + variant.variable());
+            }
+            visit(variant.predicate(), state);
+            state.binders.remove(variant.variable());
+            return;
+        }
+        if (node instanceof BoolLiteralNode) return;
+        if (node instanceof BoolNotNode not) {
+            visit(not.value(), state);
+            return;
+        }
+        if (node instanceof IntegerArithmeticNode arithmetic) {
+            visit(arithmetic.left(), state);
+            if (arithmetic.right() != null) visit(arithmetic.right(), state);
+            return;
+        }
+        if (node instanceof TypedEqualityNode equality) {
+            visit(equality.left(), state);
+            visit(equality.right(), state);
+            return;
+        }
+        if (node instanceof OptionStateNode option) {
+            visit(option.optional(), state);
+            return;
+        }
+        if (node instanceof ListStateNode list) {
+            visit(list.list(), state);
+            return;
+        }
+        if (node instanceof ListQuantifierNode list) {
+            visit(list.list(), state);
+            withBinder(state, list.variable(), () -> visit(list.predicate(), state));
+            return;
+        }
+        if (node instanceof ListContainsNode list) {
+            visit(list.list(), state);
+            visit(list.value(), state);
+            return;
+        }
+        if (node instanceof ListCountNode list) {
+            visit(list.list(), state);
+            withBinder(state, list.variable(), () -> visit(list.predicate(), state));
+            return;
+        }
+        if (node instanceof ListAtNode list) {
+            visit(list.list(), state);
+            visit(list.index(), state);
+            return;
+        }
+        if (node instanceof StructuralEqualsNode equality) {
+            visit(equality.left(), state);
+            visit(equality.right(), state);
+            return;
+        }
+        if (node instanceof MapQuantifierNode map) {
+            visit(map.map(), state);
+            withBinder(state, map.keyVariable(), () -> withBinder(
+                    state, map.valueVariable(), () -> visit(map.predicate(), state)));
+            return;
+        }
+        if (node instanceof MapCountEntryNode map) {
+            visit(map.map(), state);
+            withBinder(state, map.keyVariable(), () -> withBinder(
+                    state, map.valueVariable(), () -> visit(map.predicate(), state)));
+            return;
+        }
+        if (node instanceof MapContainsKeyNode map) {
+            visit(map.map(), state);
+            visit(map.key(), state);
+            return;
+        }
+        if (node instanceof MapCountKeyNode map) {
+            visit(map.map(), state);
+            visit(map.key(), state);
+            return;
+        }
+        if (node instanceof MapLookupFirstNode map) {
+            visit(map.map(), state);
+            visit(map.key(), state);
+            return;
+        }
+        if (node instanceof MapLookupAllNode map) {
+            visit(map.map(), state);
+            visit(map.key(), state);
+            return;
+        }
         if (node instanceof LiteralNode || node instanceof BytesLiteralNode
                 || node instanceof TxOutRefLiteralNode) return;
         throw new IllegalArgumentException("No dependency mapping for node " + node.getClass());
+    }
+
+    private static void withBinder(State state, String binder, Runnable body) {
+        if (!state.binders.add(binder)) {
+            throw new IllegalArgumentException("Duplicate dependency-plan binder " + binder);
+        }
+        try {
+            body.run();
+        } finally {
+            state.binders.remove(binder);
+        }
     }
 
     private static String capability(FieldNode field) {
@@ -202,6 +342,36 @@ public final class DslSemanticDependencies {
             case TxOutRefLiteralNode ignored -> "tx-out-ref-literal";
             case TxCertKindNode kind -> "tx-cert-kind:" + kind.kind();
             case KnownCertificateNode ignored -> "known-certificate";
+            case TypedRootNode root -> "typed-root:" + root.name();
+            case TypedVariableNode ignored -> "typed-variable";
+            case TypedFieldNode field -> "typed-field:" + field.ownerType().stableId()
+                    + "." + field.name();
+            case VariantFieldNode field -> "variant-field:"
+                    + field.sumType().stableId() + "." + field.constructor()
+                    + "." + field.name();
+            case OptionExistsNode ignored -> "option-exists";
+            case VariantIsNode variant -> "variant-is:" + variant.constructor();
+            case VariantWhenNode variant -> "variant-when:" + variant.constructor();
+            case BoolLiteralNode literal -> "bool-literal:" + literal.value();
+            case BoolNotNode ignored -> "bool:not";
+            case IntegerArithmeticNode arithmetic ->
+                    "integer-arithmetic:" + arithmetic.operator();
+            case TypedEqualityNode equality ->
+                    "typed-equality:" + (equality.negated() ? "ne" : "eq");
+            case OptionStateNode option -> "option-state:" + option.state();
+            case ListStateNode list -> "list-state:" + list.state();
+            case ListQuantifierNode list -> "list-quantifier:" + list.quantifier();
+            case ListContainsNode ignored -> "list-contains";
+            case ListCountNode ignored -> "list-count";
+            case ListAtNode ignored -> "list-at";
+            case StructuralEqualsNode equality ->
+                    "structural-equality:" + (equality.negated() ? "ne" : "eq");
+            case MapQuantifierNode map -> "map-quantifier:" + map.quantifier();
+            case MapCountEntryNode ignored -> "map-count-entry";
+            case MapContainsKeyNode ignored -> "map-contains-key";
+            case MapCountKeyNode ignored -> "map-count-key";
+            case MapLookupFirstNode ignored -> "map-lookup-first";
+            case MapLookupAllNode ignored -> "map-lookup-all";
         };
     }
 

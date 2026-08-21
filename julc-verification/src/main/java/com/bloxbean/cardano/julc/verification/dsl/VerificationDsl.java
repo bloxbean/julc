@@ -19,6 +19,9 @@ public final class VerificationDsl {
     public static IntegerExpr integer(long value) {
         return integer(Long.toString(value));
     }
+    public static BoolExpr bool(boolean value) {
+        return new BoolExpr(new com.bloxbean.cardano.julc.verification.dsl.ir.BoolLiteralNode(value));
+    }
     public static IntegerExpr integer(String canonicalValue) {
         return new IntegerExpr(new LiteralNode(DslType.INTEGER, canonicalValue));
     }

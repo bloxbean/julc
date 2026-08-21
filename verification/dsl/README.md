@@ -1,6 +1,6 @@
 # Experimental typed verification DSL
 
-Milestones E.2-E.4b provide an experimental Java frontend in `julc-verification`.
+Milestones E.2-E.4f provide an experimental Java frontend in `julc-verification`.
 It is not yet a stable public API.
 
 The prototype contains:
@@ -81,3 +81,14 @@ duplicates normalize deterministically; quantifier and implication scopes are
 preserved. Every claim receives its own non-vacuity/proof steps and certificate
 metadata. The DSL remains closed: unsupported nodes, cross-purpose roots,
 arbitrary assumptions, and raw Lean fail before workspace publication.
+
+Milestones E.4e–E.4f add opt-in schema 4. Run `dsl-init` with
+`--schema-version 4` to generate wrappers for the selected compiler-owned datum
+and redeemer graph. The admitted surface includes nested records, guarded
+sealed variants, optionals, lists, ordered duplicate-preserving maps, Boolean
+negation/equality, closed linear integer arithmetic, collection quantifiers,
+counting, safe indexing, first/all map lookup, and structural equality. The
+parent process re-derives every structural type and binds the canonical
+projected graph into the property IR. See
+[`verification/e4e/README.md`](../e4e/README.md) and
+[`verification/e4f/README.md`](../e4f/README.md).

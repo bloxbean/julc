@@ -1,0 +1,4 @@
+[project]
+name = "julc-verification-e4f"
+version = "0.1.0"
+compiler = "local"

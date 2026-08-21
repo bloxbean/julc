@@ -22,9 +22,16 @@ import com.bloxbean.cardano.julc.verification.dsl.ir.TxCertKind;
 import com.bloxbean.cardano.julc.verification.dsl.PropertyIrCodec;
 import com.bloxbean.cardano.julc.verification.dsl.SellerPaymentDsl;
 import com.bloxbean.cardano.julc.verification.dsl.MintingDsl;
+import com.bloxbean.cardano.julc.verification.dsl.ByteStringExpr;
+import com.bloxbean.cardano.julc.verification.dsl.IntegerExpr;
+import com.bloxbean.cardano.julc.verification.dsl.TypedExpressions;
+import com.bloxbean.cardano.julc.verification.dsl.TypedListExpr;
+import com.bloxbean.cardano.julc.verification.dsl.TypedAssocMapExpr;
+import com.bloxbean.cardano.julc.verification.dsl.type.*;
 import com.bloxbean.julc.cli.JulcCommand;
 import com.bloxbean.julc.cli.cmd.blueprint.ArtifactCommand;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import picocli.CommandLine;
@@ -394,6 +401,126 @@ class VerificationProjectGeneratorTest {
         assertEquals(VerificationFiles.leanTreeHash(output),
                 JSON.readTree(output.resolve("verification-manifest.json").toFile())
                         .path("generatedLeanSha256").asText());
+    }
+
+    @Test
+    void generatesSchemaFourNestedCollectionSemanticsFromCompilerTypes() throws Exception {
+        String source = """
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                import com.bloxbean.cardano.julc.ledger.ScriptContext;
+                import java.math.BigInteger;
+                import java.util.List;
+                import java.util.Map;
+                import java.util.Optional;
+                @SpendingValidator class CollectionGate {
+                    record Child(byte[] owner) {}
+                    sealed interface Action permits Update, Close {}
+                    record Update(BigInteger amount) implements Action {}
+                    record Close() implements Action {}
+                    record Datum(Child child, Optional<byte[]> backup,
+                                 List<BigInteger> values,
+                                 Map<byte[], BigInteger> balances) {}
+                    @Entrypoint static boolean validate(
+                            Datum datum, Action redeemer, ScriptContext ctx) { return true; }
+                }
+                """;
+        var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(source);
+        var projection = ContractTypeProjection.project(compiled.contractSchema());
+        var datumType = (NominalTypeRef) projection.datumType();
+        var datumDefinition = projection.definitions().stream()
+                .filter(definition -> definition.stableId().equals(datumType.stableId()))
+                .findFirst().orElseThrow();
+        var childType = (NominalTypeRef) projectedField(datumDefinition, "child");
+        var valuesType = (ListTypeRef) projectedField(datumDefinition, "values");
+        var balancesType = (AssocMapTypeRef) projectedField(datumDefinition, "balances");
+        var childDefinition = projection.definitions().stream()
+                .filter(definition -> definition.stableId().equals(childType.stableId()))
+                .findFirst().orElseThrow();
+        var ownerType = projectedField(childDefinition, "owner");
+        var datum = TypedExpressions.optionalRoot("typedDatum", datumType);
+        var context = new SpendingContractModel().context();
+        var guarantee = datum.exists(value -> {
+            var child = TypedExpressions.field(value, datumType, "child", childType);
+            var owner = TypedExpressions.field(child, childType, "owner", ownerType);
+            var values = TypedExpressions.field(value, datumType, "values", valuesType);
+            var balances = TypedExpressions.field(
+                    value, datumType, "balances", balancesType);
+            var list = new TypedListExpr(values.node(), valuesType.elementType());
+            var map = new TypedAssocMapExpr(balances.node(),
+                    balancesType.keyType(), balancesType.valueType());
+            return list.exactlyOne(item -> new IntegerExpr(item.node()).gt(integer(0)))
+                    .and(list.at(integer(-1)).isEmpty())
+                    .and(map.existsEntry((key, amount) ->
+                            context.txInfo().signatories()
+                                    .contains(new ByteStringExpr(key.node()))
+                                    .and(new IntegerExpr(amount.node()).gt(integer(0)))))
+                    .and(map.lookupFirst(owner).exists(amount ->
+                            new IntegerExpr(amount.node()).gt(integer(0))))
+                    .and(map.lookupAll(owner).count(amount ->
+                            new IntegerExpr(amount.node()).gt(integer(0))).ge(integer(1)));
+        });
+        var candidate = DslPropertySet.typedV4(DslPurpose.SPENDING,
+                ContractTypeProjection.sha256(projection),
+                property("CollectionGate.nested-collections",
+                        DslDomain.VALID_SPENDING_V3_PINNED, guarantee));
+        var promoted = ComposedDslPromotion.promote(candidate,
+                compiled.contractSchema(), "CollectionGate", "CollectionProperties.java");
+        var generated = BlueprintGenerator.generate(
+                new BlueprintConfig("schema-four-generator-test", "1"),
+                List.of(new BlueprintGenerator.CompiledValidator(
+                        "CollectionGate", compiled.compileResult(),
+                        compiled.contractSchema())));
+        Path blueprint = tempDir.resolve("schema-four.json");
+        Files.writeString(blueprint, generated.toJson());
+        Path output = tempDir.resolve("schema-four");
+
+        VerificationProjectGenerator.generateComposedDsl(
+                blueprint, promoted, compiled.contractSchema(), 5000, 8, output, false);
+
+        String security = Files.readString(output.resolve("SecurityProperty.lean"));
+        assertTrue(security.contains("def julcListAt"));
+        assertTrue(security.contains("def julcMapLookupFirst"));
+        assertTrue(security.contains("def julcMapLookupAll"));
+        assertTrue(security.contains("julcListCount"));
+        assertTrue(security.contains("typedDatum ctx"));
+        var manifest = JSON.readTree(output.resolve("verification-manifest.json").toFile());
+        assertEquals(4, manifest.path("dslIr").path("schemaVersion").asInt());
+        assertEquals(2, manifest.path("propertyIr").path("schemaVersion").asInt());
+        assertEquals(ContractTypeProjection.sha256(projection),
+                manifest.path("propertyIr").path("contractSchemaSha256").asText());
+
+        var missingAuthority = assertThrows(IllegalArgumentException.class,
+                () -> VerificationProjectGenerator.generateComposedDsl(
+                        blueprint, promoted, 5000, 8,
+                        tempDir.resolve("schema-four-without-authority"), false));
+        assertTrue(missingAuthority.getMessage().contains("ContractSchema"));
+
+        ObjectNode tamperedBlueprint = (ObjectNode) JSON.readTree(generated.toJson());
+        var definitions = tamperedBlueprint.path("definitions");
+        var datumSchema = java.util.stream.StreamSupport.stream(
+                        java.util.Spliterators.spliteratorUnknownSize(
+                                definitions.elements(), 0), false)
+                .filter(definition -> "Datum".equals(definition.path("title").asText()))
+                .findFirst().orElseThrow();
+        ((ObjectNode) datumSchema.path("anyOf").get(0).path("fields").get(0))
+                .put("title", "tamperedChild");
+        Path tampered = tempDir.resolve("schema-four-tampered.json");
+        Files.writeString(tampered, JSON.writeValueAsString(tamperedBlueprint));
+        var mismatch = assertThrows(UnsupportedVerificationException.class,
+                () -> VerificationProjectGenerator.generateComposedDsl(
+                        tampered, promoted, compiled.contractSchema(), 5000, 8,
+                        tempDir.resolve("schema-four-tampered"), false));
+        assertTrue(mismatch.getMessage().contains(
+                "projected type graph does not match blueprint"));
+    }
+
+    private static VerificationTypeRef projectedField(
+            ProjectedContractTypes.NominalDefinition definition, String name) {
+        return definition.fields().stream()
+                .filter(field -> field.name().equals(name))
+                .map(ProjectedContractTypes.Field::type)
+                .findFirst().orElseThrow();
     }
 
     @Test

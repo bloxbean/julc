@@ -44,6 +44,12 @@ the trusted specification in an installed child JVM. The accepted E.4c run
 binds the same exact UPLC, canonical DSL IR, property IR, generated Lean, and
 execution bounds as the local and `authorized-docker` workspaces.
 
+`authorized-native` is an evidence-directory convention. The current
+certificate records the authenticated `local` proof backend, but not the CLI
+launcher flavor or a native-executable digest. Matching hashes establish that
+the runs used identical semantic inputs; they do not independently attest how
+the CLI process was launched.
+
 The Java specification is trusted project code executed in a bounded worker
 JVM. The proof result covers only the named property, exact artifact, pinned
 model and tools, and recorded CEK/solver bounds. It is not a claim that the
