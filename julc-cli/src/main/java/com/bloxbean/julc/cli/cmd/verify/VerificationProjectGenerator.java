@@ -3,6 +3,7 @@ package com.bloxbean.julc.cli.cmd.verify;
 import com.bloxbean.julc.cli.JulcVersionProvider;
 import com.bloxbean.julc.cli.cmd.blueprint.ArtifactCommand;
 import com.bloxbean.cardano.julc.compiler.DataBoundarySemantics;
+import com.bloxbean.cardano.julc.compiler.schema.ContractSchema;
 import com.bloxbean.cardano.julc.verification.RequiresSignerProperty;
 import com.bloxbean.cardano.julc.verification.StatefulSpendingProperty;
 import com.bloxbean.cardano.julc.verification.VerificationProperty;
@@ -12,10 +13,20 @@ import com.bloxbean.cardano.julc.verification.OneShotMintProperty;
 import com.bloxbean.cardano.julc.verification.ComposedDslProperty;
 import com.bloxbean.cardano.julc.verification.dsl.ComposedDslPromotion;
 import com.bloxbean.cardano.julc.verification.dsl.DslSemanticDependencies;
+import com.bloxbean.cardano.julc.verification.dsl.DslPropertyValidator;
 import com.bloxbean.cardano.julc.verification.dsl.ControlledMintDslLowering;
 import com.bloxbean.cardano.julc.verification.dsl.MintingDsl;
 import com.bloxbean.cardano.julc.verification.dsl.PropertyIrCodec;
 import com.bloxbean.cardano.julc.verification.dsl.PropertyLeanRenderer;
+import com.bloxbean.cardano.julc.verification.dsl.TypedPropertyLeanRenderer;
+import com.bloxbean.cardano.julc.verification.dsl.type.ContractTypeProjection;
+import com.bloxbean.cardano.julc.verification.dsl.type.ProjectedContractTypes;
+import com.bloxbean.cardano.julc.verification.dsl.type.VerificationTypeRef;
+import com.bloxbean.cardano.julc.verification.dsl.type.BuiltinTypeRef;
+import com.bloxbean.cardano.julc.verification.dsl.type.NominalTypeRef;
+import com.bloxbean.cardano.julc.verification.dsl.type.OptionalTypeRef;
+import com.bloxbean.cardano.julc.verification.dsl.type.ListTypeRef;
+import com.bloxbean.cardano.julc.verification.dsl.type.AssocMapTypeRef;
 import com.bloxbean.cardano.julc.verification.dsl.ir.BoolBinaryNode;
 import com.bloxbean.cardano.julc.verification.dsl.ir.DslPropertySet;
 import com.bloxbean.cardano.julc.verification.dsl.ir.DslDomain;
@@ -55,12 +66,15 @@ public final class VerificationProjectGenerator {
             .enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
     private static final Set<Integer> SUPPORTED_BUILTINS = supportedBuiltins();
     private static final Set<String> LEAN_RESERVED = Set.of(
-            "abbrev", "axiom", "class", "def", "deriving", "else", "end",
-            "example", "export", "extends", "for", "from", "fun", "if",
-            "import", "in", "inductive", "instance", "let", "match",
-            "namespace", "open", "opaque", "private", "protected",
-            "structure", "syntax", "theorem", "then", "universe", "where",
-            "with");
+            "abbrev", "as", "attribute", "axiom", "by", "class", "command",
+            "decreasing_by", "def", "deriving", "do", "elab", "else", "end",
+            "example", "export", "extends", "for", "from", "fun", "have", "if",
+            "import", "in", "include", "inductive", "infix", "infixl", "infixr",
+            "instance", "let", "local", "macro", "match", "mutual", "namespace",
+            "omit", "opaque", "open", "postfix", "prefix", "private", "protected",
+            "return", "scoped", "section", "set_option", "show", "structure",
+            "syntax", "termination_by", "theorem", "then", "universe", "variable",
+            "variables", "where", "with");
     private static final Set<String> RESERVED_TYPE_NAMES = Set.of(
             "Bool", "ByteString", "Data", "Integer", "IsData", "JulcList", "JulcMap",
             "Option", "ScriptContext");
@@ -243,7 +257,34 @@ public final class VerificationProjectGenerator {
             Path outputDirectory,
             boolean force) throws Exception {
         if (property == null) throw new IllegalArgumentException("Composed DSL property is required");
+        if (property.schemaVersion() == ComposedDslProperty.TYPED_SCHEMA_VERSION) {
+            throw new IllegalArgumentException(
+                    "Schema-4 workspace generation requires the fresh compiler-owned ContractSchema");
+        }
         ComposedDslPromotion.verifyIntegrity(property);
+        return generateInternal(blueprintFile, property.validatorTitle(),
+                property.scriptPurpose(), fuel, recursiveDepth, outputDirectory, force, property);
+    }
+
+    /**
+     * Generates a typed composed workspace after revalidating against the same fresh
+     * compiler-owned schema used by the observational artifact compile.
+     */
+    public static GenerationResult generateComposedDsl(
+            Path blueprintFile,
+            ComposedDslProperty property,
+            ContractSchema contractSchema,
+            int fuel,
+            int recursiveDepth,
+            Path outputDirectory,
+            boolean force) throws Exception {
+        if (property == null) throw new IllegalArgumentException("Composed DSL property is required");
+        if (contractSchema == null) {
+            throw new IllegalArgumentException("Compiler-owned ContractSchema is required");
+        }
+        DslPropertySet normalized = ComposedDslPromotion.verifyIntegrity(property);
+        DslPropertyValidator.validate(
+                normalized, contractSchema, DslPropertyValidator.MAX_AST_NODES);
         return generateInternal(blueprintFile, property.validatorTitle(),
                 property.scriptPurpose(), fuel, recursiveDepth, outputDirectory, force, property);
     }
@@ -312,6 +353,16 @@ public final class VerificationProjectGenerator {
         String artifactId = artifact.artifactId();
         DslPropertySet composedDsl = property instanceof ComposedDslProperty composed
                 ? ComposedDslPromotion.verifyIntegrity(composed) : null;
+        ProjectedContractTypes composedTypes = null;
+        if (property instanceof ComposedDslProperty composed
+                && composed.schemaVersion() == ComposedDslProperty.TYPED_SCHEMA_VERSION) {
+            composedTypes = ContractTypeProjection.readCanonical(
+                    composed.projectedContractTypesJson(),
+                    com.bloxbean.cardano.julc.verification.dsl.PropertyIrCodec
+                            .MAX_CANONICAL_BYTES);
+            validateProjectedTypesAgainstBlueprint(
+                    composedTypes, blueprint.path("definitions"), validator);
+        }
         Map<String, DslSemanticDependencies.Plan> composedPlans = new LinkedHashMap<>();
         if (composedDsl != null) {
             for (DslProperty claim : composedDsl.properties()) {
@@ -352,7 +403,10 @@ public final class VerificationProjectGenerator {
                 composedPlans.values().stream().anyMatch(plan ->
                         plan.needsCertificate() || plan.needsCertificateIndex()
                                 || plan.capabilities().contains(
-                                        "field.txInfo.certificates"))));
+                                        "field.txInfo.certificates")),
+                property instanceof ComposedDslProperty composed
+                        && composed.schemaVersion()
+                        == ComposedDslProperty.TYPED_SCHEMA_VERSION));
         files.put("GeneratedSchemas.lean", schemas.source());
         files.put("PropertyTemplates.lean", propertyTemplates(recursiveDepth));
         files.put("CheckedExecution.lean", checkedExecution());
@@ -484,7 +538,13 @@ public final class VerificationProjectGenerator {
                 redeemerLeanType = requiredLeanType(schemas, redeemerRoot);
             }
             files.put("SecurityProperty.lean", composedDslProperty(
-                    composedDsl, composedPlans, datumLeanType, redeemerLeanType));
+                    composedDsl, composedPlans, datumLeanType, redeemerLeanType,
+                    composedTypes));
+            if (composed.schemaVersion()
+                    == ComposedDslProperty.TYPED_SCHEMA_VERSION) {
+                files.put("GenericCollectionsSemanticsTests.lean",
+                        genericCollectionsSemanticsTests());
+            }
             if (composedPlans.values().stream()
                     .anyMatch(DslSemanticDependencies.Plan::needsRawMint)) {
                 files.put("MintingSemanticsTests.lean", mintingSemanticsTests());
@@ -653,7 +713,9 @@ public final class VerificationProjectGenerator {
         Path oldProperty = output.resolve("verification-property.json");
         if (Files.isRegularFile(oldProperty)) {
             JsonNode previous = JSON.readTree(oldProperty.toFile());
-            if (ComposedDslProperty.TEMPLATE.equals(previous.path("template").asText())) {
+            if (Set.of(ComposedDslProperty.TEMPLATE,
+                    ComposedDslProperty.TYPED_TEMPLATE)
+                    .contains(previous.path("template").asText())) {
                 for (JsonNode claim : previous.path("claims")) {
                     String id = claim.path("id").asText();
                     if (!id.matches("[A-Za-z][A-Za-z0-9._-]{0,127}")) continue;
@@ -673,6 +735,7 @@ public final class VerificationProjectGenerator {
         }
         deleteIfStale(output, "LedgerDomainEquivalence.lean", currentFiles);
         deleteIfStale(output, "MintingSemanticsTests.lean", currentFiles);
+        deleteIfStale(output, "GenericCollectionsSemanticsTests.lean", currentFiles);
     }
 
     private static void deleteIfStale(
@@ -848,6 +911,215 @@ public final class VerificationProjectGenerator {
                     schemaType(all.get(original), all, names, original, true));
         }
         return new SchemaGeneration(source.toString(), leanTypes);
+    }
+
+    /**
+     * Prevents the carried schema-4 type graph and blueprint-derived Lean codecs from
+     * assigning different names, tags, arities, or field positions to the same value.
+     */
+    static void validateProjectedTypesAgainstBlueprint(
+            ProjectedContractTypes projection, JsonNode definitions, JsonNode validator)
+            throws UnsupportedVerificationException {
+        if (!definitions.isObject()) {
+            throw new UnsupportedVerificationException("Blueprint definitions must be an object");
+        }
+        Map<String, JsonNode> all = new LinkedHashMap<>();
+        definitions.fields().forEachRemaining(entry -> all.put(entry.getKey(), entry.getValue()));
+        var stableToBlueprint = new HashMap<String, String>();
+        var blueprintToStable = new HashMap<String, String>();
+
+        JsonNode datum = validator.path("datum").path("schema");
+        if (projection.datumType() == null) {
+            if (!datum.isMissingNode()) {
+                throw new UnsupportedVerificationException(
+                        "Projected contract has no datum but blueprint publishes one");
+            }
+        } else {
+            matchProjectedSchema(projection.datumType(), datum, projection, all,
+                    stableToBlueprint, blueprintToStable, "datum");
+        }
+        matchProjectedSchema(projection.redeemerType(),
+                validator.path("redeemer").path("schema"), projection, all,
+                stableToBlueprint, blueprintToStable, "redeemer");
+
+        JsonNode parameters = validator.path("parameters");
+        int blueprintParameterCount = parameters.isArray() ? parameters.size() : 0;
+        if (blueprintParameterCount != projection.parameters().size()) {
+            throw new UnsupportedVerificationException(
+                    "Projected parameter count does not match blueprint");
+        }
+        for (int index = 0; index < blueprintParameterCount; index++) {
+            var parameter = projection.parameters().get(index);
+            JsonNode published = parameters.get(index);
+            if (published.has("title")
+                    && !parameter.name().equals(published.path("title").asText())) {
+                throw new UnsupportedVerificationException(
+                        "Projected parameter name does not match blueprint at index " + index);
+            }
+            matchProjectedSchema(parameter.type(), published.path("schema"), projection, all,
+                    stableToBlueprint, blueprintToStable, "parameter " + parameter.name());
+        }
+
+        if (stableToBlueprint.size() != projection.definitions().size()) {
+            throw new UnsupportedVerificationException(
+                    "Projected nominal graph is not fully reachable from blueprint roots");
+        }
+    }
+
+    private static void matchProjectedSchema(
+            VerificationTypeRef type,
+            JsonNode schema,
+            ProjectedContractTypes projection,
+            Map<String, JsonNode> definitions,
+            Map<String, String> stableToBlueprint,
+            Map<String, String> blueprintToStable,
+            String path) throws UnsupportedVerificationException {
+        if (schema == null || schema.isMissingNode()) {
+            throw projectedSchemaMismatch(path, "schema is missing");
+        }
+        switch (type) {
+            case BuiltinTypeRef builtin -> matchProjectedBuiltin(builtin, schema, path);
+            case OptionalTypeRef optional -> {
+                JsonNode value = optionalValueSchema(schema);
+                if (value == null) throw projectedSchemaMismatch(path, "expected Optional");
+                matchProjectedSchema(optional.elementType(), value, projection, definitions,
+                        stableToBlueprint, blueprintToStable, path + ".Some");
+            }
+            case ListTypeRef list -> {
+                if (!"list".equals(schema.path("dataType").asText())
+                        || schema.path("items").isMissingNode()) {
+                    throw projectedSchemaMismatch(path, "expected list");
+                }
+                matchProjectedSchema(list.elementType(), schema.path("items"), projection,
+                        definitions, stableToBlueprint, blueprintToStable, path + "[]");
+            }
+            case AssocMapTypeRef map -> {
+                if (!"map".equals(schema.path("dataType").asText())
+                        || schema.path("keys").isMissingNode()
+                        || schema.path("values").isMissingNode()) {
+                    throw projectedSchemaMismatch(path, "expected association map");
+                }
+                matchProjectedSchema(map.keyType(), schema.path("keys"), projection,
+                        definitions, stableToBlueprint, blueprintToStable, path + ".key");
+                matchProjectedSchema(map.valueType(), schema.path("values"), projection,
+                        definitions, stableToBlueprint, blueprintToStable, path + ".value");
+            }
+            case NominalTypeRef nominal -> matchProjectedNominal(nominal, schema, projection,
+                    definitions, stableToBlueprint, blueprintToStable, path);
+        }
+    }
+
+    private static void matchProjectedBuiltin(
+            BuiltinTypeRef type, JsonNode schema, String path)
+            throws UnsupportedVerificationException {
+        boolean matches = switch (type.builtin()) {
+            case INTEGER -> "integer".equals(schema.path("dataType").asText());
+            case BYTE_STRING, STRING -> "bytes".equals(schema.path("dataType").asText());
+            case BOOLEAN -> isBooleanSchema(schema);
+            case UNIT -> isConstructor(schema, "Unit", 0, 0);
+            case DATA -> "Any Plutus data.".equals(schema.path("description").asText())
+                    && schema.path("dataType").isMissingNode();
+        };
+        if (!matches) {
+            throw projectedSchemaMismatch(path,
+                    "expected compiler type " + type.builtin());
+        }
+    }
+
+    private static void matchProjectedNominal(
+            NominalTypeRef nominal,
+            JsonNode schema,
+            ProjectedContractTypes projection,
+            Map<String, JsonNode> definitions,
+            Map<String, String> stableToBlueprint,
+            Map<String, String> blueprintToStable,
+            String path) throws UnsupportedVerificationException {
+        String reference = schema.path("$ref").asText(null);
+        if (reference == null) {
+            throw projectedSchemaMismatch(path, "expected named schema reference");
+        }
+        String blueprintName = referenceName(reference);
+        JsonNode definition = definitions.get(blueprintName);
+        if (definition == null) {
+            throw projectedSchemaMismatch(path, "dangling blueprint reference " + blueprintName);
+        }
+        String previousBlueprint = stableToBlueprint.putIfAbsent(
+                nominal.stableId(), blueprintName);
+        if (previousBlueprint != null && !previousBlueprint.equals(blueprintName)) {
+            throw projectedSchemaMismatch(path,
+                    "one nominal ID maps to multiple blueprint definitions");
+        }
+        String previousStable = blueprintToStable.putIfAbsent(
+                blueprintName, nominal.stableId());
+        if (previousStable != null && !previousStable.equals(nominal.stableId())) {
+            throw projectedSchemaMismatch(path,
+                    "multiple nominal IDs map to one blueprint definition");
+        }
+        var projected = projection.definitions().stream()
+                .filter(candidate -> candidate.stableId().equals(nominal.stableId()))
+                .findFirst().orElseThrow(() -> projectedSchemaMismatch(path,
+                        "missing projected definition " + nominal.stableId()));
+        if (projected.nominalKind() != nominal.nominalKind()
+                || !projected.sourceName().equals(definition.path("title").asText())) {
+            throw projectedSchemaMismatch(path, "nominal name or kind differs from blueprint");
+        }
+
+        JsonNode alternatives = definition.path("anyOf");
+        if (!alternatives.isArray()) {
+            throw projectedSchemaMismatch(path, "named definition has no constructor list");
+        }
+        if (nominal.nominalKind() == NominalTypeRef.NominalKind.RECORD) {
+            if (alternatives.size() != 1) {
+                throw projectedSchemaMismatch(path, "record must have one constructor");
+            }
+            matchProjectedConstructor(projected.sourceName(), 0, projected.fields(),
+                    alternatives.get(0), projection, definitions, stableToBlueprint,
+                    blueprintToStable, path);
+        } else {
+            if (alternatives.size() != projected.constructors().size()) {
+                throw projectedSchemaMismatch(path, "sum constructor count differs");
+            }
+            for (int index = 0; index < projected.constructors().size(); index++) {
+                var constructor = projected.constructors().get(index);
+                matchProjectedConstructor(constructor.name(), constructor.tag(),
+                        constructor.fields(), alternatives.get(index), projection, definitions,
+                        stableToBlueprint, blueprintToStable,
+                        path + "." + constructor.name());
+            }
+        }
+    }
+
+    private static void matchProjectedConstructor(
+            String name,
+            int tag,
+            List<ProjectedContractTypes.Field> fields,
+            JsonNode constructor,
+            ProjectedContractTypes projection,
+            Map<String, JsonNode> definitions,
+            Map<String, String> stableToBlueprint,
+            Map<String, String> blueprintToStable,
+            String path) throws UnsupportedVerificationException {
+        JsonNode publishedFields = constructor.path("fields");
+        if (!isConstructor(constructor, name, tag, fields.size())) {
+            throw projectedSchemaMismatch(path, "constructor tag, name, or arity differs");
+        }
+        for (int index = 0; index < fields.size(); index++) {
+            var field = fields.get(index);
+            JsonNode published = publishedFields.get(index);
+            if (!field.name().equals(published.path("title").asText())) {
+                throw projectedSchemaMismatch(path,
+                        "field name/order differs at index " + index);
+            }
+            matchProjectedSchema(field.type(), published, projection, definitions,
+                    stableToBlueprint, blueprintToStable, path + "." + field.name());
+        }
+    }
+
+    private static UnsupportedVerificationException projectedSchemaMismatch(
+            String path, String detail) {
+        return new UnsupportedVerificationException(
+                "Compiler-owned projected type graph does not match blueprint at "
+                        + path + ": " + detail);
     }
 
     private static String containerSupport() {
@@ -1871,13 +2143,22 @@ public final class VerificationProjectGenerator {
                     "result", "COULD-NOT-EVALUATE",
                     "reason", "property-not-specialized")));
         } else {
-            root.put("propertyIr", Map.of(
-                    "path", "verification-property.json",
-                    "sha256", propertySha256,
-                    "schemaVersion", property.schemaVersion(),
-                    "template", property.template(),
-                    "propertyId", property.propertyId(),
-                    "sourcePath", property.sourcePath()));
+            var propertyIr = new LinkedHashMap<String, Object>();
+            propertyIr.put("path", "verification-property.json");
+            propertyIr.put("sha256", propertySha256);
+            propertyIr.put("schemaVersion", property.schemaVersion());
+            propertyIr.put("template", property.template());
+            propertyIr.put("propertyId", property.propertyId());
+            propertyIr.put("sourcePath", property.sourcePath());
+            if (property instanceof ComposedDslProperty composed
+                    && composed.schemaVersion()
+                    == ComposedDslProperty.TYPED_SCHEMA_VERSION) {
+                propertyIr.put("contractSchemaSha256", composed.contractSchemaSha256());
+                propertyIr.put("projectedContractTypesSha256", VerificationFiles.sha256(
+                        composed.projectedContractTypesJson().getBytes(
+                                java.nio.charset.StandardCharsets.UTF_8)));
+            }
+            root.put("propertyIr", propertyIr);
             String canonicalDsl = canonicalDslJson(property);
             if (canonicalDsl != null) {
                 JsonNode parsedDsl = JSON.readTree(canonicalDsl);
@@ -1924,7 +2205,7 @@ public final class VerificationProjectGenerator {
 
     private static String lakefile(
             boolean ledgerDomain, boolean mintingDsl, boolean rewardingDsl,
-            boolean certifyingDsl) {
+            boolean certifyingDsl, boolean typedCollections) {
         String roots = ledgerDomain
                 ? "`GeneratedSchemas, `PropertyTemplates, `CheckedExecution, "
                     + "`SecurityProperty, `LedgerDomainEquivalence"
@@ -1933,6 +2214,7 @@ public final class VerificationProjectGenerator {
         if (mintingDsl) roots += ", `MintingSemanticsTests";
         if (rewardingDsl) roots += ", `RewardingSemanticsTests";
         if (certifyingDsl) roots += ", `CertifyingSemanticsTests";
+        if (typedCollections) roots += ", `GenericCollectionsSemanticsTests";
         return """
                 /- Generated by `julc verify init`; dependency pins are security inputs. -/
                 import Lake
@@ -1955,6 +2237,57 @@ public final class VerificationProjectGenerator {
                 lean_lib «GeneratedVerificationSupport» where
                   roots := #[%s]
                 """.formatted(BLASTER_REV, PLUTUS_CORE_REV, LEDGER_API_REV, roots);
+    }
+
+    private static String genericCollectionsSemanticsTests() {
+        return """
+                /- Kernel-reduced controls for schema-4 collection meanings. -/
+                import SecurityProperty
+
+                namespace JulcGenerated.GenericCollectionsSemanticsTests
+
+                open JulcGenerated.Schemas
+                open JulcGenerated.UserProperty
+                open PlutusCore.Data (Data)
+
+                example : (!false) = true := by rfl
+                example : (true && false) = false := by rfl
+                example : (true || false) = true := by rfl
+                example : ((-3 + 5 : Int) = 2) := by rfl
+
+                example : julcListAt ([10, 20] : List Int) (-1) = none := by rfl
+                example : julcListAt ([10, 20] : List Int) 2 = none := by rfl
+                example : julcListAt ([10, 20] : List Int) 1 = some 20 := by rfl
+                example : julcListCount (fun value : Int => value == 1)
+                    [1, 2, 1] = 2 := by simp [julcListCount]
+                example : julcListContains ([1, 2] : List Int) 2 = true := by
+                  simp [julcListContains, julcStructuralEq,
+                    CardanoLedgerApi.IsData.Class.instIsDataInteger]
+
+                example : julcMapCountKey ([(1, 10), (1, 20), (2, 30)] :
+                    List (Int × Int)) 1 = 2 := by
+                  simp [julcMapCountKey, julcListCount, julcStructuralEq,
+                    CardanoLedgerApi.IsData.Class.instIsDataInteger]
+                example : julcMapLookupFirst ([(1, 10), (1, 20)] :
+                    List (Int × Int)) 1 = some 10 := by
+                  simp [julcMapLookupFirst, julcStructuralEq,
+                    CardanoLedgerApi.IsData.Class.instIsDataInteger]
+                example : julcMapLookupAll ([(1, 10), (1, 20), (2, 30)] :
+                    List (Int × Int)) 1 = [10, 20] := by
+                  simp [julcMapLookupAll, julcStructuralEq,
+                    CardanoLedgerApi.IsData.Class.instIsDataInteger]
+
+                example : julcStructuralEq
+                    (Data.Map [(Data.I 1, Data.I 10), (Data.I 1, Data.I 20)])
+                    (Data.Map [(Data.I 1, Data.I 10), (Data.I 1, Data.I 20)]) = true := by
+                  simp [julcStructuralEq, CardanoLedgerApi.IsData.Class.instIsDataData]
+                example : julcStructuralEq
+                    (Data.Map [(Data.I 1, Data.I 10), (Data.I 1, Data.I 20)])
+                    (Data.Map [(Data.I 1, Data.I 20), (Data.I 1, Data.I 10)]) = false := by
+                  simp [julcStructuralEq, CardanoLedgerApi.IsData.Class.instIsDataData]
+
+                end JulcGenerated.GenericCollectionsSemanticsTests
+                """;
     }
 
     private static String runnerPlan(String artifactId, String verifyScriptSha256) throws IOException {
@@ -2687,10 +3020,13 @@ public final class VerificationProjectGenerator {
             DslPropertySet propertySet,
             Map<String, DslSemanticDependencies.Plan> plans,
             String datumType,
-            String redeemerType) {
+            String redeemerType,
+            ProjectedContractTypes typedProjection) {
         var dslPurpose = propertySet.purpose();
         boolean needsOwnPolicy = plans.values().stream()
                 .anyMatch(DslSemanticDependencies.Plan::needsOwnPolicy);
+        boolean needsDatum = plans.values().stream()
+                .anyMatch(DslSemanticDependencies.Plan::needsDatumDecode);
         boolean needsRedeemer = plans.values().stream()
                 .anyMatch(DslSemanticDependencies.Plan::needsRedeemerDecode);
         boolean needsRawMint = plans.values().stream()
@@ -2705,7 +3041,7 @@ public final class VerificationProjectGenerator {
         boolean needsCertificateIndex = plans.values().stream()
                 .anyMatch(DslSemanticDependencies.Plan::needsCertificateIndex);
         var out = new StringBuilder("""
-                /- Generated from admitted canonical schema-3 DSL IR; do not edit. -/
+                /- Generated from admitted canonical typed DSL IR; do not edit. -/
                 import CardanoLedgerApi.V3
                 import GeneratedSchemas
 
@@ -2749,6 +3085,62 @@ public final class VerificationProjectGenerator {
 
                     """.formatted(redeemerType));
         }
+        boolean typedV4 = propertySet.schemaVersion()
+                == DslPropertySet.TYPED_SCHEMA_VERSION;
+        if (typedV4) {
+            out.append("""
+                    /- Schema-4 collection semantics preserve order and duplicates. -/
+                    def julcStructuralEq [IsData α] (left right : α) : Bool :=
+                      IsData.toData left == IsData.toData right
+
+                    def julcListContains [IsData α] (items : List α) (value : α) : Bool :=
+                      items.any (fun candidate => julcStructuralEq candidate value)
+
+                    def julcListCount (predicate : α → Bool) : List α → Int
+                      | [] => 0
+                      | value :: rest =>
+                          (if predicate value then 1 else 0) + julcListCount predicate rest
+
+                    def julcListAt (items : List α) (index : Int) : Option α :=
+                      if index < 0 then none else items.get? index.toNat
+
+                    def julcMapContainsKey [IsData κ]
+                        (entries : List (κ × υ)) (key : κ) : Bool :=
+                      entries.any (fun entry => julcStructuralEq entry.1 key)
+
+                    def julcMapCountKey [IsData κ]
+                        (entries : List (κ × υ)) (key : κ) : Int :=
+                      julcListCount (fun entry => julcStructuralEq entry.1 key) entries
+
+                    def julcMapLookupFirst [IsData κ]
+                        (entries : List (κ × υ)) (key : κ) : Option υ :=
+                      match entries.find? (fun entry => julcStructuralEq entry.1 key) with
+                      | some entry => some entry.2
+                      | none => none
+
+                    def julcMapLookupAll [IsData κ]
+                        (entries : List (κ × υ)) (key : κ) : List υ :=
+                      entries.filterMap (fun entry =>
+                        if julcStructuralEq entry.1 key then some entry.2 else none)
+
+                    """);
+        }
+        if (typedV4 && needsDatum) {
+            if (datumType == null) throw new IllegalArgumentException(
+                    "Schema-4 datum dependency has no generated Lean type");
+            out.append("def typedDatum (ctx : ScriptContext) : Option ")
+                    .append("JulcGenerated.Schemas.").append(datumType).append(" :=\n")
+                    .append("  match ctx.scriptContextScriptInfo with\n")
+                    .append("  | .SpendingScript _ (some datumData) => IsData.fromData datumData\n")
+                    .append("  | _ => none\n\n");
+        }
+        if (typedV4 && needsRedeemer) {
+            if (redeemerType == null) throw new IllegalArgumentException(
+                    "Schema-4 redeemer dependency has no generated Lean type");
+            out.append("def typedRedeemer (ctx : ScriptContext) : Option ")
+                    .append("JulcGenerated.Schemas.").append(redeemerType).append(" :=\n")
+                    .append("  IsData.fromData ctx.scriptContextRedeemer\n\n");
+        }
         if (needsRewardingCredential) {
             out.append("""
                     def rewardingCredentialOf (ctx : ScriptContext) :
@@ -2760,6 +3152,9 @@ public final class VerificationProjectGenerator {
                     """);
         }
         if (needsCertificate) {
+            // The fallback only makes this generated Lean helper total. The
+            // selected-purpose premise makes it unreachable in an admitted
+            // certifying obligation, so its constructor has no policy meaning.
             out.append("""
                     def certificateOf (ctx : ScriptContext) :
                         CardanoLedgerApi.V3.TxCert :=
@@ -2841,12 +3236,15 @@ public final class VerificationProjectGenerator {
         for (DslProperty property : propertySet.properties()) {
             var plan = plans.get(property.id());
             String name = ComposedDslPromotion.generatedName(property.id());
-            String expression = PropertyLeanRenderer.renderExpression(
-                    property.expression(), plan.needsDatumDecode()
-                            ? Map.of("datum", "datum") : Map.of());
+            String expression = typedV4
+                    ? TypedPropertyLeanRenderer.renderExpression(
+                            property.expression(), typedProjection)
+                    : PropertyLeanRenderer.renderExpression(
+                            property.expression(), plan.needsDatumDecode()
+                                    ? Map.of("datum", "datum") : Map.of());
             out.append("def dslGuarantee_").append(name)
                     .append(" (ctx : ScriptContext) : Bool :=\n");
-            if (plan.needsDatumDecode()) {
+            if (plan.needsDatumDecode() && !typedV4) {
                 if (datumType == null) throw new IllegalArgumentException(
                         "Composed DSL datum dependency has no generated Lean type");
                 out.append("  match ctx.scriptContextScriptInfo with\n")

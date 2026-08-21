@@ -23,6 +23,9 @@ public final class VerifyDslInitCommand implements Callable<Integer> {
     private String packageName;
     @Option(names = "--class", required = true)
     private String className;
+    @Option(names = "--schema-version", defaultValue = "3",
+            description = "Experimental DSL schema to generate: 3 or 4")
+    private int schemaVersion;
     @Option(names = "--out", required = true,
             description = "Generated .java file (refuses to overwrite)")
     private Path output;
@@ -36,8 +39,14 @@ public final class VerifyDslInitCommand implements Callable<Integer> {
                         "Refusing to overwrite generated metamodel: " + target);
             }
             var loaded = DslContractLoader.load(projectDir, validator, purpose);
-            String source = ContractMetamodelGenerator.generate(
-                    loaded.schema(), packageName, className);
+            String source = switch (schemaVersion) {
+                case 3 -> ContractMetamodelGenerator.generate(
+                        loaded.schema(), packageName, className);
+                case 4 -> ContractMetamodelGenerator.generateTypedV4(
+                        loaded.schema(), packageName, className);
+                default -> throw new IllegalArgumentException(
+                        "DSL metamodel schema version must be 3 or 4");
+            };
             if (target.getParent() != null) Files.createDirectories(target.getParent());
             Files.writeString(target, source);
             System.out.println("Generated experimental DSL metamodel: " + target);

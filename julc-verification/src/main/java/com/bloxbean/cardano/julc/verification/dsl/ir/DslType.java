@@ -21,5 +21,7 @@ public enum DslType {
     LIST_TX_CERT,
     LIST_TX_OUT,
     LIST_TX_IN_INFO,
-    LIST_BYTE_STRING
+    LIST_BYTE_STRING,
+    /** Structural schema-4 type is carried by the node's VerificationTypeRef. */
+    TYPED_VALUE
 }

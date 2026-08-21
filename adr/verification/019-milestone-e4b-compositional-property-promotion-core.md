@@ -730,6 +730,25 @@ the only formulas JuLC can promote.
    plus `ledgerValidCounterexampleEstablished=false` and
    `concreteVmCounterexampleReproduced=false`. A solver model is not promoted
    to either stronger witness without a future independent gate.
+8. **Derived semantic identifiers:** capability names and `guaranteeRules`
+   are authenticated derived-property inputs, even though they are not part of
+   the canonical user-authored DSL JSON. Once evidence has been published,
+   changing one requires either a compatible spelling for existing nodes or
+   an explicit workspace-regeneration note (and a schema/protocol revision
+   when backward re-verification is promised). Preflight must continue to
+   reject stale or mixed identifiers rather than accepting aliases silently.
+
+### Post-E.4c workspace compatibility note
+
+E.4c generalized the derived existential rule identifier from
+`exists-output` to `exists:LIST_TX_OUT` so the same closed dependency planner
+can distinguish output and withdrawal collections. The canonical schema-3 DSL
+value and its meaning did not change, but the authenticated derived property
+IR did. Consequently, an E.4b workspace generated before E.4c fails current
+preflight and must be regenerated with `verification/e4b/scripts/verify.sh`
+before it can be run again. This is an intentional fail-closed migration;
+previously produced result certificates remain records of their original,
+hash-bound runs.
 
 ## Implementation outcome
 

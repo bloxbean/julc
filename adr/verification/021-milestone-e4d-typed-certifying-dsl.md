@@ -83,8 +83,10 @@ certifying roots, and the generic renderer cannot form `certifyingInputs`.
    certifying ledger corollary kernel-compiles.
 7. Counterexamples remain qualified as belonging to the reviewed Blaster
    certifying superset unless a separate ledger-valid witness gate succeeds.
-8. Schema-1/schema-2 behavior and existing schema-3 canonical values remain
-   unchanged; new nodes are admitted only for schema 3.
+8. Schema-1/schema-2 behavior and existing schema-3 canonical DSL values and
+   meanings remain unchanged; new nodes are admitted only for schema 3.
+   Derived property metadata is separately version-sensitive as documented in
+   ADR-019 and the compatibility section below.
 9. Verification property source and DSL declarations have zero effect on
    validator UPLC.
 
@@ -186,6 +188,13 @@ values, and schema-1/schema-2 bytes do not change. Schema 3 gains two closed
 node variants, two types, one purpose/domain pair, and a closed certificate
 kind enum. Old readers fail closed on the new subtype or enum value. Existing
 validator UPLC and script hashes must remain unchanged.
+
+Canonical DSL compatibility is distinct from generated-workspace
+compatibility. E.4c changed the authenticated derived existential rule from
+`exists-output` to `exists:LIST_TX_OUT`; current preflight therefore rejects
+an older E.4b workspace until it is regenerated. This fail-closed migration is
+documented in ADR-019 and ADR-020 and does not reinterpret historical result
+certificates.
 
 ## Implementation milestones
 
@@ -307,6 +316,13 @@ script hash, canonical DSL IR, property IR, and generated Lean tree. Exact VM
 tests independently exercise strict redeemer decoding, authority rejection,
 and certificate-kind rejection. No compiler, core, ledger API, stdlib,
 blueprint, PIR, optimizer, or validator-wrapper source changed.
+
+The `authorized-native` directory name records how the evidence driver was
+invoked; the current certificate records the authenticated `local` proof
+backend but does not attest the CLI launcher flavor or native executable
+digest. Equality of the bound hashes establishes semantic-input identity
+across the runs, not independent proof that a particular launcher binary was
+used.
 
 ## Acceptance and result claim
 

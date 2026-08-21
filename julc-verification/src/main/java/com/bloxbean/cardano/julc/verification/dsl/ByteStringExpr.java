@@ -11,4 +11,7 @@ public record ByteStringExpr(PropertyNode node) implements Expr {
     public BoolExpr eq(ByteStringExpr other) {
         return new BoolExpr(new CompareNode(CompareOperator.EQ, node, other.node));
     }
+    public BoolExpr ne(ByteStringExpr other) {
+        return new BoolExpr(new CompareNode(CompareOperator.NE, node, other.node));
+    }
 }

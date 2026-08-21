@@ -172,6 +172,14 @@ minting values remain valid; schema 3 gains an experimental, closed rewarding
 purpose and node surface. Existing validator scripts and hashes must not
 change.
 
+“Remain valid” here refers to canonical DSL values and their semantics. E.4c
+generalizes the authenticated derived existential rule name from
+`exists-output` to `exists:LIST_TX_OUT` (and adds `exists:WITHDRAWALS`). A
+pre-E.4c generated schema-3 workspace therefore fails current integrity
+preflight and must be regenerated. Historical result certificates remain
+valid records of the hash-bound tool version that produced them; the migration
+does not reinterpret or accept stale derived property IR.
+
 ## Risks and mitigations
 
 - **Duplicate maps are misread as unique.** Preserve list structure and state
@@ -226,3 +234,9 @@ Cardano script hash, canonical DSL IR, generated Lean, dependency pins, and
 execution bounds. Refutations remain explicitly qualified to the reviewed
 Blaster rewarding superset; no ledger-valid or concrete-VM counterexample is
 claimed.
+
+The `authorized-native` directory name records the evidence invocation. The
+certificate itself authenticates the `local` proof backend and semantic
+inputs; it does not currently attest the CLI launcher flavor or native
+executable digest. Cross-run hash equality therefore establishes semantic-
+input identity, not independent native-binary provenance.

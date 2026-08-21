@@ -462,7 +462,64 @@ out-of-range indices are false, and duplicates are retained. Under
 the certificate-kind and authority clauses are the additional policy. See
 [`e4d/README.md`](e4d/README.md) for the complete local/Docker evidence matrix.
 
-## 13. Fuel, recursion, and reruns
+## 13. Experimental generic contract types and collections
+
+ADR-022 schema 4 generates the datum and redeemer API from the selected
+compiler-owned contract schema. Opt in explicitly with `--schema-version 4`:
+
+```bash
+julc verify dsl-init . --validator CollectionGate --purpose spending \
+  --schema-version 4 --package evidence --class CollectionGateModel \
+  --out build/verification-dsl/src/evidence/CollectionGateModel.java
+```
+
+For a contract with nested records, optionals, lists, maps, and a sealed
+redeemer, a generated-model-only property can look like:
+
+```java
+var contract = new CollectionGateModel();
+var guarantee = contract.datum().exists(datum ->
+        contract.context().txInfo().signatories()
+                .contains(datum.config().owner())
+                .and(datum.config().minimum().isPresent()
+                        .or(datum.config().minimum().isEmpty()))
+                .and(datum.config().values().exactlyOne(v -> v.gt(integer(0))))
+                .and(contract.redeemer().exists(action ->
+                        action.whenUse(use -> datum.config().balances()
+                                .lookupFirst(use.key()).isPresent()))));
+
+return contract.properties(property("collections.authorized",
+        DslDomain.NONE, guarantee));
+```
+
+Compile and run it through the same bounded trusted worker used by earlier DSL
+milestones:
+
+```bash
+javac -cp julc.jar -d build/verification-dsl/classes \
+  build/verification-dsl/src/evidence/CollectionGateModel.java \
+  CollectionGateSpec.java
+
+julc verify dsl . --validator CollectionGate --purpose spending \
+  --spec-class evidence.CollectionGateSpec \
+  --spec-classpath "build/verification-dsl/classes:/path/to/julc.jar" \
+  --source CollectionGateSpec.java --backend local --fuel 2000 --force
+```
+
+Lists and maps retain order and duplicates. `lookupFirst` returns the first raw
+matching map entry, `lookupAll` returns every match in order, and
+`structurallyEquals` compares the encoded ordered structure rather than a
+unique-key/extensional mathematical map. Negative or out-of-range list indices
+return an empty option. Wrong tags, arities, fields, element types, binder
+types, or forged nominal IDs fail in parent-process admission.
+
+The compiler currently erases source `@NewType` identity from its contract
+schema, so schema 4 sees the underlying representation and does not claim
+nominal newtype separation. See [`e4e/README.md`](e4e/README.md) for type
+controls and [`e4f/README.md`](e4f/README.md) for reproducible local/Docker
+evidence.
+
+## 14. Fuel, recursion, and reruns
 
 `--fuel` bounds exact UPLC preprocessing/execution in the generated obligation.
 An `SMT-VALID` certificate covers only successful paths completing within that
@@ -482,7 +539,7 @@ julc verify . --validator AuthorizedStateValidator \
   --out-dir verification/ci-authorized --force
 ```
 
-## 14. What the certificate does and does not claim
+## 15. What the certificate does and does not claim
 
 For an annotation profile, a successful certificate means:
 
