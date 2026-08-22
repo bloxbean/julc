@@ -1,0 +1,82 @@
+{
+  "acquire" : [ {
+    "command" : [ "lake", "update" ],
+    "expectedExitCodes" : [ 0 ],
+    "id" : "lake-update",
+    "maxAttempts" : 3
+  }, {
+    "command" : [ "lake", "build", "@PlutusCore/PlutusCore", "@CardanoLedgerApi/CardanoLedgerApi", "@Blaster/Blaster", "GeneratedVerificationSupport" ],
+    "expectedExitCodes" : [ 0 ],
+    "id" : "build-pinned-dependencies"
+  } ],
+  "kind" : "generated-workspace",
+  "manifest" : "verification-manifest.json",
+  "schemaVersion" : 2,
+  "timeoutSeconds" : 300,
+  "verify" : [ {
+    "command" : [ "scripts/verify-reachability.sh" ],
+    "executableSha256" : "c2cfc53bb466c052fe6a51e3a9a9122d32dd8cbb5420356618e345204bf3f9c5",
+    "id" : "state-machine-target-depth-reachability",
+    "outcomes" : [ {
+      "exitCode" : 0,
+      "reason" : "expected-negative-control",
+      "requiredOutput" : "JULC-STATE-MACHINE-V1 REACHABLE depth=1",
+      "result" : "SMT-VALID"
+    }, {
+      "exitCode" : 2,
+      "reason" : "target-depth-unreachable",
+      "requiredOutput" : "JULC-STATE-MACHINE-V1 UNREACHABLE depth=1",
+      "result" : "COULD-NOT-EVALUATE"
+    } ],
+    "propertyId" : "ExactCounter.state-machine.reachability"
+  }, {
+    "command" : [ "scripts/verify-bmc.sh" ],
+    "executableSha256" : "1e15b2ed786d42e1da63b28b2b0ac1ffade161065a0c22b86a28e1133891adf5",
+    "id" : "state-machine-bmc",
+    "nonVacuityGuardPropertyId" : "ExactCounter.state-machine.reachability",
+    "outcomes" : [ {
+      "exitCode" : 0,
+      "reason" : "no-counterexample-through-bound",
+      "requiredOutput" : "JULC-STATE-MACHINE-V1 BOUNDED-NO-COUNTEREXAMPLE depth=1",
+      "result" : "BOUNDED-NO-COUNTEREXAMPLE"
+    }, {
+      "exitCode" : 3,
+      "reason" : "bounded-counterexample-found",
+      "requiredOutput" : "JULC-STATE-MACHINE-V1 BOUNDED-COUNTEREXAMPLE max-depth=1",
+      "result" : "BOUNDED-COUNTEREXAMPLE"
+    }, {
+      "exitCode" : 2,
+      "reason" : "bmc-undetermined",
+      "requiredOutput" : "JULC-STATE-MACHINE-V1 COULD-NOT-EVALUATE strategy=BMC",
+      "result" : "COULD-NOT-EVALUATE"
+    } ],
+    "propertyId" : "ExactCounter.state-machine.bmc"
+  }, {
+    "command" : [ "scripts/verify-kind.sh" ],
+    "executableSha256" : "b982ba18b48d147d0b7e0cd12dc2bb21c5d1127f97bae6d7d040fb291126e2b5",
+    "id" : "state-machine-k-induction",
+    "nonVacuityGuardPropertyId" : "ExactCounter.state-machine.reachability",
+    "outcomes" : [ {
+      "exitCode" : 0,
+      "reason" : "k-induction-established",
+      "requiredOutput" : "JULC-STATE-MACHINE-V1 SMT-K-INDUCTIVE max-depth=1",
+      "result" : "SMT-K-INDUCTIVE"
+    }, {
+      "exitCode" : 3,
+      "reason" : "base-counterexample-found",
+      "requiredOutput" : "JULC-STATE-MACHINE-V1 BASE-COUNTEREXAMPLE max-depth=1",
+      "result" : "BASE-COUNTEREXAMPLE"
+    }, {
+      "exitCode" : 4,
+      "reason" : "induction-step-counterexample-found",
+      "requiredOutput" : "JULC-STATE-MACHINE-V1 INDUCTION-STEP-COUNTEREXAMPLE max-depth=1",
+      "result" : "INDUCTION-STEP-COUNTEREXAMPLE"
+    }, {
+      "exitCode" : 2,
+      "reason" : "k-induction-undetermined",
+      "requiredOutput" : "JULC-STATE-MACHINE-V1 COULD-NOT-EVALUATE strategy=K_INDUCTION",
+      "result" : "COULD-NOT-EVALUATE"
+    } ],
+    "propertyId" : "ExactCounter.state-machine.kind"
+  } ]
+}
