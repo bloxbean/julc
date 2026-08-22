@@ -1,0 +1,114 @@
+{
+  "artifactFormat" : "double_cbor_hex",
+  "artifactId" : "exact-counter",
+  "blueprintEntryTitle" : "ExactCounter",
+  "bmcDepth" : 1,
+  "boundarySemantics" : "strict-data-v1",
+  "builtinSemanticsVariant" : "E",
+  "builtins" : [ {
+    "name" : "EqualsInteger",
+    "flatTag" : 7
+  }, {
+    "name" : "IfThenElse",
+    "flatTag" : 26
+  }, {
+    "name" : "FstPair",
+    "flatTag" : 29
+  }, {
+    "name" : "SndPair",
+    "flatTag" : 30
+  }, {
+    "name" : "HeadList",
+    "flatTag" : 33
+  }, {
+    "name" : "TailList",
+    "flatTag" : 34
+  }, {
+    "name" : "NullList",
+    "flatTag" : 35
+  }, {
+    "name" : "UnConstrData",
+    "flatTag" : 42
+  }, {
+    "name" : "UnIData",
+    "flatTag" : 45
+  } ],
+  "capabilityInventory" : {
+    "ledgerApi" : "CardanoLedgerApiBlaster",
+    "ledgerVersion" : "V3",
+    "revision" : "5dab3c43f042b8735b6d067223baaa8d32ed28a1",
+    "schemaVersion" : 1,
+    "sha256" : "01969c67f842596fe1ed08c82eacd817f835a7f83dd1668dc056f4cfd08d6b70"
+  },
+  "cardanoScriptHash" : "a403371245b9afcef5743cd07f6bd294ce0c805d122d2663be18b56a",
+  "compiledCodeSha256" : "4304220724d7de16290d403a39cb7fe151a196934545fca498cc02bcba9c647b",
+  "continuingOutputSelection" : "UNIQUE_FULL_ADDRESS_CONTINUING_OUTPUT",
+  "dependencies" : {
+    "CardanoLedgerApiBlaster" : "5dab3c43f042b8735b6d067223baaa8d32ed28a1",
+    "Lean-blaster" : "083bae7971414d894b56b5bbf4108c63e17bc42a",
+    "PlutusCoreBlaster" : "7cf5a78c54b9694ef093bf49edb5d3799b2a49c9"
+  },
+  "domainAssumptions" : [ ],
+  "fuel" : 3000,
+  "fuelPerStep" : 3000,
+  "generatedBy" : "julc verify init",
+  "generatedLeanSha256" : "7c4f989c054b2479b26931cfa4bc0f04dd803913650f36d3d9515198f2e4e437",
+  "inductionDepth" : 1,
+  "initialStateScope" : "USER_PREDICATE",
+  "julcVersion" : "0.1.0-pre16",
+  "leanKernelProofEstablished" : false,
+  "leanVersion" : "4.24.0",
+  "ledgerRealizableTraceEstablished" : false,
+  "ledgerValidityModeled" : false,
+  "plutusLanguage" : "PlutusV3",
+  "project" : "state-machine-counter",
+  "properties" : [ {
+    "id" : "ExactCounter.state-machine.reachability",
+    "reason" : "not-run",
+    "result" : "COULD-NOT-EVALUATE"
+  }, {
+    "id" : "ExactCounter.state-machine.bmc",
+    "reason" : "not-run",
+    "result" : "COULD-NOT-EVALUATE"
+  }, {
+    "id" : "ExactCounter.state-machine.kind",
+    "reason" : "not-run",
+    "result" : "COULD-NOT-EVALUATE"
+  } ],
+  "propertyIr" : {
+    "contractSchemaSha256" : "af3ef1ec9ed411b0c4184ee462341aeb41d8973abf6a79d7b1f008b000f662df",
+    "path" : "verification-property.json",
+    "projectedContractTypesSha256" : "af3ef1ec9ed411b0c4184ee462341aeb41d8973abf6a79d7b1f008b000f662df",
+    "propertyId" : "ExactCounter.state-machine",
+    "schemaVersion" : 1,
+    "sha256" : "f96aafb7e687e9694eb545b38de260865f18bcd257b9afa5973050559e2589d6",
+    "sourcePath" : "/Users/satya/work/bloxbean/julc/verification/e5/ExactCounterMachineSpec.java",
+    "template" : "julc.state-machine-experimental/v1"
+  },
+  "protocolVersion" : 11,
+  "recursiveDepth" : 4,
+  "reviewedRawDataAdapterAudit" : {
+    "schemaVersion" : 1,
+    "sha256" : "e86733f73e990e66a5bb5b445d56670517d1f7883657e951326767d0faf723a1"
+  },
+  "runnerPlanSha256" : "c322a3f998de68c25cf0f00520e7da500dfe158778945921c2cc3b3332c2be5b",
+  "schemaVersion" : 1,
+  "schemas" : [ {
+    "cip57" : "Action",
+    "lean" : "Action"
+  }, {
+    "cip57" : "State",
+    "lean" : "State"
+  } ],
+  "scriptPurpose" : "spending",
+  "stateMachineIr" : {
+    "schemaVersion" : 1,
+    "sha256" : "0c65f4e2641e6e424e310025427be5bdb4040e838671ab6d39724f45fbf47ba3"
+  },
+  "successorDatumMode" : "INLINE_DATUM_STRICT_DECODE",
+  "traceLinkageMode" : "DATUM_CONTINUITY_ONLY",
+  "uplcVersion" : "1.1.0",
+  "validatorTitle" : "ExactCounter",
+  "verificationMode" : "STATE_MACHINE_EXPERIMENTAL",
+  "z3Version" : "4.15.2"
+}

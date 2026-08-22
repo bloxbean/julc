@@ -1,6 +1,6 @@
 # ADR-016: Typed Verification DSL and Foundational Profile Catalog
 
-- **Status:** E.1–E.4l implemented experimentally; E.5–E.6 remain
+- **Status:** E.1–E.4l implemented experimentally; E.5 rejected at calibration; E.6 remains
 - **Date:** 2026-08-13
 - **Related:**
   [ADR-001 — IOG Blaster Verification Strategy](001-iog-blaster-verification-strategy.md),
@@ -720,14 +720,15 @@ discrepancy instead of weakening the adapter.
 ### E.5: State-machine experiment
 
 [ADR-028](028-milestone-e5-exact-artifact-state-machine-experiment.md)
-specifies a deliberately small spending-state experiment over Blaster BMC and
-k-induction. JuLC owns the transition relation: every step requires exact
-hash-bound UPLC success, strict current/redeemer/successor decoding, and one
-reviewed continuing output. User Java supplies predicates, never a handwritten
-`nextState` model. Bounded no-counterexample, bounded counterexample,
-solver-backed k-induction, and Lean-kernel evidence remain separate result
-classes, with explicit target-depth reachability and datum-only trace-linkage
-limitations.
+specified a deliberately small spending-state experiment over Blaster BMC and
+k-induction. It was rejected at the mandatory calibration gate: even an
+396-byte validator whose Java body returns true, with no ledger-domain premise,
+could not establish depth-1 target reachability within five minutes under the
+combined direct exact-artifact transition encoding. The product-facing
+prototype was removed, so schemas 1 through 10 and existing CLI/result meanings
+remain unchanged.
+Any future temporal-verification attempt needs a materially different,
+separately reviewed execution-linkage strategy.
 
 ### E.6: Public API decision
 
