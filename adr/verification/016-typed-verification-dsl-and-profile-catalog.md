@@ -1,6 +1,6 @@
 # ADR-016: Typed Verification DSL and Foundational Profile Catalog
 
-- **Status:** E.1–E.4j implemented experimentally; E.4k–E.6 proposed
+- **Status:** E.1–E.4k implemented experimentally; E.4l–E.6 remain
 - **Date:** 2026-08-13
 - **Related:**
   [ADR-001 — IOG Blaster Verification Strategy](001-iog-blaster-verification-strategy.md),
@@ -17,8 +17,10 @@
   [ADR-021 — Typed Certifying Verification DSL](021-milestone-e4d-typed-certifying-dsl.md),
   [ADR-022 — Generic Contract Types and Collections](022-milestones-e4e-e4f-generic-contract-types-and-collections.md),
   [ADR-023 — Typed Non-Value Transaction Context](023-milestone-e4g-typed-non-value-transaction-context.md),
-  [ADR-024 — Compositional Authorization Algebra](024-milestone-e4h-authorization-algebra.md), and
-  [ADR-025 — Certificate Payloads and Value Algebra](025-milestones-e4i-e4j-certificate-payloads-and-value-algebra.md)
+  [ADR-024 — Compositional Authorization Algebra](024-milestone-e4h-authorization-algebra.md),
+  [ADR-025 — Certificate Payloads and Value Algebra](025-milestones-e4i-e4j-certificate-payloads-and-value-algebra.md),
+  [ADR-026 — Typed Governance Transaction Data](026-milestone-e4k-typed-governance-transaction-data.md), and
+  [ADR-027 — Reviewed Raw-Data Adapters](027-milestone-e4l-reviewed-raw-data-adapters.md)
 
 ## Context
 
@@ -695,11 +697,22 @@ supported script contexts. Voting/proposing validator selection remains
 fail-closed until a truthful exact-artifact convention exists; the pinned
 CIP-57 vocabulary currently has no standard purpose names for those entries.
 
+Implemented experimentally as property schema 9. Positive JVM, Docker, and
+native runs bind identical semantic hashes; retained refuted and vacuous
+controls cover the other result classes. Strict proposal-action decoding is
+kernel-supported, while the first solver calibration exposed that
+non-proposing valid-context domains do not globally validate proposal actions.
+See [ADR-026](026-milestone-e4k-typed-governance-transaction-data.md).
+
 ### E.4l: Reviewed raw-data adapters
 
-Add typed validity-interval and treasury/governance adapters only after the
-pinned raw-`Data` representations have reviewed semantics and malformed-data
-controls. Until then those capabilities remain visibly `RAW_DATA_ONLY`.
+[ADR-027](027-milestone-e4l-reviewed-raw-data-adapters.md) specifies this
+phase as proposed opt-in property schema 10. It separates pinned-decoder from
+canonical validity-range semantics, models treasury optionals as the three
+distinct states present/absent/malformed, and permits only narrow
+duplicate-preserving views of changed-parameter IDs and structurally pinned
+quorum data. Each adapter has an independent evidence gate; unresolved raw
+payloads remain visibly `RAW_DATA_ONLY` rather than being promoted as a group.
 
 ### E.5: State-machine experiment
 

@@ -842,9 +842,11 @@ public final class VerificationRunner {
                         && recordedDslSchema
                             != DslPropertySet.CERTIFICATE_PAYLOAD_SCHEMA_VERSION
                         && recordedDslSchema
-                            != DslPropertySet.VALUE_ALGEBRA_SCHEMA_VERSION) {
+                            != DslPropertySet.VALUE_ALGEBRA_SCHEMA_VERSION
+                        && recordedDslSchema
+                            != DslPropertySet.GOVERNANCE_SCHEMA_VERSION) {
                     throw new IOException(
-                            "Ledger DSL canonical schema must be 5, 6, 7, or 8");
+                            "Ledger DSL canonical schema must be 5 through 9");
                 }
                 int expectedDslSchema = ComposedDslProperty.LEDGER_TEMPLATE.equals(template)
                         ? recordedDslSchema
@@ -1193,7 +1195,7 @@ public final class VerificationRunner {
         }
     }
 
-    private static void attachClaimMetadata(
+    static void attachClaimMetadata(
             JsonNode manifest, List<VerificationRunResult.Property> properties) {
         if (!manifest.path("claims").isArray()) return;
         var claims = new LinkedHashMap<String, JsonNode>();
@@ -1215,6 +1217,11 @@ public final class VerificationRunner {
             boolean domainImplied = guaranteeRules.contains("domain-implied:is-balanced");
             boolean valueClaim = !valueSemantics.isEmpty() || !paymentScopes.isEmpty()
                     || domainImplied;
+            boolean governanceSchema = manifest.path("dslIr").path("schemaVersion").asInt()
+                    >= DslPropertySet.GOVERNANCE_SCHEMA_VERSION;
+            var governanceScopes = new java.util.TreeSet<String>();
+            if (capabilities.contains("field.txInfo.votes")) governanceScopes.add("VOTES");
+            if (capabilities.contains("field.txInfo.proposals")) governanceScopes.add("PROPOSALS");
             properties.set(index, new VerificationRunResult.Property(
                     result.id(), result.outcome(), result.reason(),
                     requiredTextUnchecked(claim, "domain"),
@@ -1226,6 +1233,12 @@ public final class VerificationRunner {
                     valueClaim ? paymentScopes : null,
                     valueClaim && domainImplied,
                     valueClaim ? Boolean.FALSE : null,
+                    governanceSchema ? List.copyOf(governanceScopes) : null,
+                    governanceSchema && capabilities.contains(
+                            "dsl.governance.decode-action-strict"),
+                    governanceSchema && capabilities.contains("helper.isKnownProposal"),
+                    governanceSchema ? Boolean.FALSE : null,
+                    governanceSchema ? Boolean.FALSE : null,
                     requiredTextUnchecked(claim, "counterexampleDomain"),
                     claim.path("ledgerValidCounterexampleEstablished").asBoolean(),
                     claim.path("concreteVmCounterexampleReproduced").asBoolean()));

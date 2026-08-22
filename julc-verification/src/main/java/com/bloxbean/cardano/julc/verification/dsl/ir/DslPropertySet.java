@@ -20,6 +20,7 @@ public record DslPropertySet(
     public static final int AUTHORIZATION_SCHEMA_VERSION = 6;
     public static final int CERTIFICATE_PAYLOAD_SCHEMA_VERSION = 7;
     public static final int VALUE_ALGEBRA_SCHEMA_VERSION = 8;
+    public static final int GOVERNANCE_SCHEMA_VERSION = 9;
 
     public DslPropertySet {
         if (schemaVersion != SCHEMA_VERSION
@@ -29,7 +30,8 @@ public record DslPropertySet(
                 && schemaVersion != LEDGER_SCHEMA_VERSION
                 && schemaVersion != AUTHORIZATION_SCHEMA_VERSION
                 && schemaVersion != CERTIFICATE_PAYLOAD_SCHEMA_VERSION
-                && schemaVersion != VALUE_ALGEBRA_SCHEMA_VERSION) {
+                && schemaVersion != VALUE_ALGEBRA_SCHEMA_VERSION
+                && schemaVersion != GOVERNANCE_SCHEMA_VERSION) {
             throw new IllegalArgumentException("Unsupported DSL property schema " + schemaVersion);
         }
         if (schemaVersion == COMPOSITION_SCHEMA_VERSION
@@ -37,9 +39,10 @@ public record DslPropertySet(
                 || schemaVersion == LEDGER_SCHEMA_VERSION
                 || schemaVersion == AUTHORIZATION_SCHEMA_VERSION
                 || schemaVersion == CERTIFICATE_PAYLOAD_SCHEMA_VERSION
-                || schemaVersion == VALUE_ALGEBRA_SCHEMA_VERSION) {
+                || schemaVersion == VALUE_ALGEBRA_SCHEMA_VERSION
+                || schemaVersion == GOVERNANCE_SCHEMA_VERSION) {
             purpose = Objects.requireNonNull(purpose,
-                    "DSL property schemas 3 through 8 require an explicit purpose");
+                    "DSL property schemas 3 through 9 require an explicit purpose");
         } else if (purpose != null) {
             throw new IllegalArgumentException(
                     "DSL property schemas 1 and 2 do not carry an explicit purpose");
@@ -48,11 +51,12 @@ public record DslPropertySet(
                 || schemaVersion == LEDGER_SCHEMA_VERSION
                 || schemaVersion == AUTHORIZATION_SCHEMA_VERSION
                 || schemaVersion == CERTIFICATE_PAYLOAD_SCHEMA_VERSION
-                || schemaVersion == VALUE_ALGEBRA_SCHEMA_VERSION) {
+                || schemaVersion == VALUE_ALGEBRA_SCHEMA_VERSION
+                || schemaVersion == GOVERNANCE_SCHEMA_VERSION) {
             if (contractSchemaSha256 == null
                     || !contractSchemaSha256.matches("[0-9a-f]{64}")) {
                 throw new IllegalArgumentException(
-                    "DSL property schemas 4 through 8 require a canonical contract schema SHA-256");
+                    "DSL property schemas 4 through 9 require a canonical contract schema SHA-256");
             }
         } else if (contractSchemaSha256 != null) {
             throw new IllegalArgumentException(
@@ -73,7 +77,8 @@ public record DslPropertySet(
                     || schemaVersion == LEDGER_SCHEMA_VERSION
                     || schemaVersion == AUTHORIZATION_SCHEMA_VERSION
                     || schemaVersion == CERTIFICATE_PAYLOAD_SCHEMA_VERSION
-                    || schemaVersion == VALUE_ALGEBRA_SCHEMA_VERSION)
+                    || schemaVersion == VALUE_ALGEBRA_SCHEMA_VERSION
+                    || schemaVersion == GOVERNANCE_SCHEMA_VERSION)
                     && property.domain() == null) {
                 throw new IllegalArgumentException(
                         "Compositional DSL property requires an explicit domain for "
@@ -85,6 +90,7 @@ public record DslPropertySet(
                     && schemaVersion != AUTHORIZATION_SCHEMA_VERSION
                     && schemaVersion != CERTIFICATE_PAYLOAD_SCHEMA_VERSION
                     && schemaVersion != VALUE_ALGEBRA_SCHEMA_VERSION
+                    && schemaVersion != GOVERNANCE_SCHEMA_VERSION
                     && property.domain() != null) {
                 throw new IllegalArgumentException(
                         "DSL property schemas 1 and 2 encode their domain in the expression");
@@ -143,6 +149,12 @@ public record DslPropertySet(
     public static DslPropertySet typedV8(
             DslPurpose purpose, String contractSchemaSha256, DslProperty... properties) {
         return new DslPropertySet(VALUE_ALGEBRA_SCHEMA_VERSION, purpose,
+                contractSchemaSha256, List.of(properties));
+    }
+
+    public static DslPropertySet typedV9(
+            DslPurpose purpose, String contractSchemaSha256, DslProperty... properties) {
+        return new DslPropertySet(GOVERNANCE_SCHEMA_VERSION, purpose,
                 contractSchemaSha256, List.of(properties));
     }
 }

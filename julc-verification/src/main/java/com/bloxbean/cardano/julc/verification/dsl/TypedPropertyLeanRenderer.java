@@ -115,6 +115,9 @@ public final class TypedPropertyLeanRenderer {
                             + ".txInfoData⟩ : JulcMap CardanoLedgerApi.V2.DatumHash Data)";
                     case "redeemers" -> "(⟨" + target
                             + ".txInfoRedeemers⟩ : JulcMap ScriptPurpose Data)";
+                    case "votes" -> "julcVoterMap " + target + ".txInfoVotes";
+                    case "proposals" -> "(⟨" + target
+                            + ".txInfoProposalProcedures⟩ : JulcList ProposalProcedure)";
                     case "id" -> target + ".txInfoId";
                     default -> unknownLedgerField(field);
                 };
@@ -138,6 +141,21 @@ public final class TypedPropertyLeanRenderer {
                 case ADDRESS -> switch (field.name()) {
                     case "paymentCredential" -> target + ".addressCredential";
                     case "stakingCredential" -> target + ".addressStakingCredential";
+                    default -> unknownLedgerField(field);
+                };
+                case GOVERNANCE_ACTION_ID -> switch (field.name()) {
+                    case "txId" -> target + ".gaidTxId";
+                    case "index" -> target + ".gaidGovActionIx";
+                    default -> unknownLedgerField(field);
+                };
+                case PROTOCOL_VERSION -> switch (field.name()) {
+                    case "major" -> target + ".pvMajor";
+                    case "minor" -> target + ".pvMinor";
+                    default -> unknownLedgerField(field);
+                };
+                case PROPOSAL_PROCEDURE -> switch (field.name()) {
+                    case "deposit" -> target + ".ppDeposit";
+                    case "returnAddress" -> target + ".ppReturnAddr";
                     default -> unknownLedgerField(field);
                 };
                 default -> unknownLedgerField(field);
@@ -275,6 +293,13 @@ public final class TypedPropertyLeanRenderer {
                                 + arguments.get(1) + ") "
                                 + arguments.getFirst() + ".items⟩";
                 case IS_BALANCED -> "isBalanced " + arguments.getFirst();
+                case DECODE_GOVERNANCE_ACTION ->
+                        "(IsData.fromData " + arguments.getFirst()
+                                + ".ppGovernanceAction : Option GovernanceAction)";
+                case IS_KNOWN_VOTER -> "julcIsKnownVoter " + arguments.get(0)
+                        + " " + arguments.get(1);
+                case IS_KNOWN_PROPOSAL -> "isKnownProposal " + arguments.get(0)
+                        + " " + arguments.get(1) + " " + arguments.get(2) + ".items";
             };
         }
         if (node instanceof LedgerByteAliasNode alias) {

@@ -57,6 +57,22 @@ class LedgerCapabilityInventoryTest {
         assertEquals(CapabilityStatus.TYPED,
                 inventory.require("helper.findDatum").status());
         for (String capability : java.util.List.of(
+                "field.txInfo.votes", "field.txInfo.proposals",
+                "constructor.voter.committee", "constructor.voter.drep",
+                "constructor.voter.stakePool", "constructor.vote.no",
+                "constructor.vote.yes", "constructor.vote.abstain",
+                "constructor.governance.parameterChange",
+                "constructor.governance.hardFork",
+                "constructor.governance.treasuryWithdrawals",
+                "constructor.governance.noConfidence",
+                "constructor.governance.updateCommittee",
+                "constructor.governance.newConstitution",
+                "constructor.governance.info",
+                "helper.isKnownVoter", "helper.isKnownProposal")) {
+            assertEquals(CapabilityStatus.TYPED,
+                    inventory.require(capability).status(), capability);
+        }
+        for (String capability : java.util.List.of(
                 "constructor.txCert.regStaking",
                 "constructor.txCert.unRegStaking",
                 "constructor.txCert.delegStaking",

@@ -928,6 +928,60 @@ class VerificationProjectGeneratorTest {
     }
 
     @Test
+    void generatesSchemaNineGovernanceAndKernelControls() throws Exception {
+        String source = """
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                import com.bloxbean.cardano.julc.ledger.ScriptContext;
+                import java.math.BigInteger;
+                @SpendingValidator class StateGate {
+                    record StateDatum(byte[] owner, BigInteger state) {}
+                    record Transition(BigInteger nextState) {}
+                    @Entrypoint static boolean validate(StateDatum d, Transition r,
+                            ScriptContext ctx) { return true; }
+                }
+                """;
+        var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(source);
+        String hash = ContractTypeProjection.sha256(
+                ContractTypeProjection.project(compiled.contractSchema()));
+        var tx = LedgerExpressions.context().txInfo();
+        var guarantee = tx.proposals().exists(proposal -> proposal.actionStrict()
+                .exists(action -> action.whenHardFork((previous, version) ->
+                        version.major().eq(integer(11)))))
+                .or(tx.votes().existsEntry((voter, actions) ->
+                        voter.whenStakePool(pool -> actions.existsEntry((id, vote) ->
+                                id.index().eq(integer(2)).and(vote.isYes())))));
+        var candidate = DslPropertySet.typedV9(DslPurpose.SPENDING, hash,
+                property("GovernanceGate.policy", DslDomain.VALID_SPENDING_V3_PINNED,
+                        guarantee));
+        var promoted = ComposedDslPromotion.promote(candidate,
+                compiled.contractSchema(), "StateGate", "GovernanceSpec.java");
+        String retained = System.getenv("JULC_E4K_WORKSPACE");
+        Path output = retained == null ? tempDir.resolve("schema-nine-governance")
+                : Path.of(retained);
+
+        VerificationProjectGenerator.generateComposedDsl(writeBlueprint(), promoted,
+                compiled.contractSchema(), 5000, 4, output, retained != null);
+
+        String security = Files.readString(output.resolve("SecurityProperty.lean"));
+        assertTrue(security.contains("txInfoProposalProcedures"), security);
+        assertTrue(security.contains("IsData.fromData"), security);
+        assertTrue(security.contains("txInfoVotes"), security);
+        String semantics = Files.readString(output.resolve("GovernanceSemanticsTests.lean"));
+        assertTrue(semantics.contains("trailActionData action6"));
+        assertTrue(semantics.contains("decodeVoter (IsData.toData committeeVoter)"));
+        assertTrue(semantics.contains("decodeAction (IsData.toData action0)"));
+        assertTrue(semantics.contains("julcMapLookupAll innerVotes actionId"));
+        assertTrue(semantics.contains("decodeProposal (Data.Constr 0"));
+        assertTrue(semantics.contains("isKnownVoter"));
+        assertTrue(semantics.contains("isKnownProposal"));
+        assertTrue(Files.readString(output.resolve("lakefile.lean"))
+                .contains("`GovernanceSemanticsTests"));
+        var manifest = JSON.readTree(output.resolve("verification-manifest.json").toFile());
+        assertEquals(9, manifest.path("dslIr").path("schemaVersion").asInt());
+    }
+
+    @Test
     void generatesStrictVariantEncoding() throws Exception {
         var document = JSON.readTree("""
                 {

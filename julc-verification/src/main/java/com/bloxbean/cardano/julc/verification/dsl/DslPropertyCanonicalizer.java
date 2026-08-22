@@ -22,7 +22,9 @@ public final class DslPropertyCanonicalizer {
                 && propertySet.schemaVersion()
                         != DslPropertySet.CERTIFICATE_PAYLOAD_SCHEMA_VERSION
                 && propertySet.schemaVersion()
-                        != DslPropertySet.VALUE_ALGEBRA_SCHEMA_VERSION) {
+                        != DslPropertySet.VALUE_ALGEBRA_SCHEMA_VERSION
+                && propertySet.schemaVersion()
+                        != DslPropertySet.GOVERNANCE_SCHEMA_VERSION) {
             return propertySet;
         }
         List<DslProperty> properties = propertySet.properties().stream()

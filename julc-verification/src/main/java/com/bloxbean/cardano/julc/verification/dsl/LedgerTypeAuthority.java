@@ -8,6 +8,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /** Closed schema-5 view of the pinned CardanoLedgerApiBlaster V3 type surface. */
 final class LedgerTypeAuthority {
@@ -39,6 +40,16 @@ final class LedgerTypeAuthority {
     static final LedgerTypeRef TX_CERT = ledger(LedgerTypeRef.LedgerKind.TX_CERT);
     static final LedgerTypeRef DELEGATEE = ledger(LedgerTypeRef.LedgerKind.DELEGATEE);
     static final LedgerTypeRef DREP = ledger(LedgerTypeRef.LedgerKind.DREP);
+    static final LedgerTypeRef VOTER = ledger(LedgerTypeRef.LedgerKind.VOTER);
+    static final LedgerTypeRef VOTE = ledger(LedgerTypeRef.LedgerKind.VOTE);
+    static final LedgerTypeRef GOVERNANCE_ACTION_ID = ledger(
+            LedgerTypeRef.LedgerKind.GOVERNANCE_ACTION_ID);
+    static final LedgerTypeRef PROTOCOL_VERSION = ledger(
+            LedgerTypeRef.LedgerKind.PROTOCOL_VERSION);
+    static final LedgerTypeRef PROPOSAL_PROCEDURE = ledger(
+            LedgerTypeRef.LedgerKind.PROPOSAL_PROCEDURE);
+    static final LedgerTypeRef GOVERNANCE_ACTION = ledger(
+            LedgerTypeRef.LedgerKind.GOVERNANCE_ACTION);
     static final LedgerTypeRef OPAQUE_VOTER = ledger(LedgerTypeRef.LedgerKind.OPAQUE_VOTER);
     static final LedgerTypeRef OPAQUE_PROPOSAL = ledger(
             LedgerTypeRef.LedgerKind.OPAQUE_PROPOSAL);
@@ -100,7 +111,13 @@ final class LedgerTypeAuthority {
             String constructor,
             String field,
             VerificationTypeRef claimed) {
-        VerificationTypeRef expected = constructor(sum, constructor).fields().get(field);
+        Constructor admitted = constructor(sum, constructor);
+        if (admitted.hiddenFields().contains(field)) {
+            throw new IllegalArgumentException(
+                    "Pinned raw governance payload is not exposed by the typed DSL: "
+                            + sum.ledgerType() + "." + constructor + "." + field);
+        }
+        VerificationTypeRef expected = admitted.fields().get(field);
         if (expected == null || !expected.equals(claimed)) {
             throw new IllegalArgumentException(
                     "Ledger constructor payload does not match pinned model for "
@@ -129,7 +146,9 @@ final class LedgerTypeAuthority {
 
     static boolean equalityAdmitted(LedgerTypeRef type) {
         return type.ledgerType() != LedgerTypeRef.LedgerKind.OPAQUE_VOTER
-                && type.ledgerType() != LedgerTypeRef.LedgerKind.OPAQUE_PROPOSAL;
+                && type.ledgerType() != LedgerTypeRef.LedgerKind.OPAQUE_PROPOSAL
+                && type.ledgerType() != LedgerTypeRef.LedgerKind.PROPOSAL_PROCEDURE
+                && type.ledgerType() != LedgerTypeRef.LedgerKind.GOVERNANCE_ACTION;
     }
 
     static void requireByteAlias(LedgerTypeRef alias) {
@@ -160,6 +179,11 @@ final class LedgerTypeAuthority {
                 "field.txInfo.data");
         add(fields, TX_INFO, "redeemers", new AssocMapTypeRef(SCRIPT_PURPOSE, DATA),
                 "field.txInfo.redeemers");
+        add(fields, TX_INFO, "votes", new AssocMapTypeRef(VOTER,
+                        new AssocMapTypeRef(GOVERNANCE_ACTION_ID, VOTE)),
+                "field.txInfo.votes");
+        add(fields, TX_INFO, "proposals", new ListTypeRef(PROPOSAL_PROCEDURE),
+                "field.txInfo.proposals");
         add(fields, TX_INFO, "id", TX_ID, "field.txInfo.id");
         add(fields, TX_IN_INFO, "outRef", TX_OUT_REF, "field.txInInfo.outRef");
         add(fields, TX_IN_INFO, "resolved", TX_OUT, "field.txInInfo.resolved");
@@ -174,6 +198,18 @@ final class LedgerTypeAuthority {
                 "field.address.credential");
         add(fields, ADDRESS, "stakingCredential", new OptionalTypeRef(STAKING_CREDENTIAL),
                 "field.address.stakingCredential");
+        add(fields, GOVERNANCE_ACTION_ID, "txId", TX_ID,
+                "field.governanceActionId.txId");
+        add(fields, GOVERNANCE_ACTION_ID, "index", INTEGER,
+                "field.governanceActionId.index");
+        add(fields, PROTOCOL_VERSION, "major", INTEGER,
+                "field.protocolVersion.major");
+        add(fields, PROTOCOL_VERSION, "minor", INTEGER,
+                "field.protocolVersion.minor");
+        add(fields, PROPOSAL_PROCEDURE, "deposit", INTEGER,
+                "field.proposalProcedure.deposit");
+        add(fields, PROPOSAL_PROCEDURE, "returnAddress", CREDENTIAL,
+                "field.proposalProcedure.returnAddress");
         return Collections.unmodifiableMap(new LinkedHashMap<>(fields));
     }
 
@@ -264,6 +300,44 @@ final class LedgerTypeAuthority {
         add(constructors, TX_CERT, "TxCertResignColdCommittee",
                 "constructor.txCert.resignColdCommittee",
                 Map.of("coldCredential", CREDENTIAL));
+        add(constructors, VOTER, "CommitteeVoter", "constructor.voter.committee",
+                Map.of("credential", CREDENTIAL));
+        add(constructors, VOTER, "DRepVoter", "constructor.voter.drep",
+                Map.of("credential", CREDENTIAL));
+        add(constructors, VOTER, "StakePoolVoter", "constructor.voter.stakePool",
+                Map.of("pool", PUB_KEY_HASH));
+        add(constructors, VOTE, "VoteNo", "constructor.vote.no", Map.of());
+        add(constructors, VOTE, "VoteYes", "constructor.vote.yes", Map.of());
+        add(constructors, VOTE, "Abstain", "constructor.vote.abstain", Map.of());
+        addHidden(constructors, GOVERNANCE_ACTION, "ParameterChange",
+                "constructor.governance.parameterChange",
+                payload("previous", new OptionalTypeRef(GOVERNANCE_ACTION_ID),
+                        "changedParameters", DATA,
+                        "constitutionScript", new OptionalTypeRef(SCRIPT_HASH)),
+                Set.of("changedParameters"));
+        add(constructors, GOVERNANCE_ACTION, "HardForkInitiation",
+                "constructor.governance.hardFork",
+                payload("previous", new OptionalTypeRef(GOVERNANCE_ACTION_ID),
+                        "version", PROTOCOL_VERSION));
+        add(constructors, GOVERNANCE_ACTION, "TreasuryWithdrawals",
+                "constructor.governance.treasuryWithdrawals",
+                payload("withdrawals", new AssocMapTypeRef(CREDENTIAL, INTEGER),
+                        "constitutionScript", new OptionalTypeRef(SCRIPT_HASH)));
+        add(constructors, GOVERNANCE_ACTION, "NoConfidence",
+                "constructor.governance.noConfidence",
+                Map.of("previous", new OptionalTypeRef(GOVERNANCE_ACTION_ID)));
+        addHidden(constructors, GOVERNANCE_ACTION, "UpdateCommittee",
+                "constructor.governance.updateCommittee",
+                payload("previous", new OptionalTypeRef(GOVERNANCE_ACTION_ID),
+                        "oldMembers", new ListTypeRef(CREDENTIAL),
+                        "newMembers", new AssocMapTypeRef(CREDENTIAL, INTEGER),
+                        "quorum", DATA), Set.of("quorum"));
+        add(constructors, GOVERNANCE_ACTION, "NewConstitution",
+                "constructor.governance.newConstitution",
+                payload("previous", new OptionalTypeRef(GOVERNANCE_ACTION_ID),
+                        "constitutionScript", new OptionalTypeRef(SCRIPT_HASH)));
+        add(constructors, GOVERNANCE_ACTION, "InfoAction",
+                "constructor.governance.info", Map.of());
         return Collections.unmodifiableMap(new LinkedHashMap<>(constructors));
     }
 
@@ -273,6 +347,19 @@ final class LedgerTypeAuthority {
         var fields = new LinkedHashMap<String, VerificationTypeRef>();
         fields.put(firstName, firstType);
         fields.put(secondName, secondType);
+        return fields;
+    }
+
+    private static Map<String, VerificationTypeRef> payload(
+            String firstName, VerificationTypeRef firstType,
+            String secondName, VerificationTypeRef secondType,
+            String thirdName, VerificationTypeRef thirdType,
+            String fourthName, VerificationTypeRef fourthType) {
+        var fields = new LinkedHashMap<String, VerificationTypeRef>();
+        fields.put(firstName, firstType);
+        fields.put(secondName, secondType);
+        fields.put(thirdName, thirdType);
+        fields.put(fourthName, fourthType);
         return fields;
     }
 
@@ -304,7 +391,19 @@ final class LedgerTypeAuthority {
             Map<String, VerificationTypeRef> fields) {
         constructors.put(new ConstructorKey(sum.ledgerType(), name),
                 new Constructor(Collections.unmodifiableMap(new LinkedHashMap<>(fields)),
-                        capability));
+                        capability, Set.of()));
+    }
+
+    private static void addHidden(
+            Map<ConstructorKey, Constructor> constructors,
+            LedgerTypeRef sum,
+            String name,
+            String capability,
+            Map<String, VerificationTypeRef> fields,
+            Set<String> hiddenFields) {
+        constructors.put(new ConstructorKey(sum.ledgerType(), name),
+                new Constructor(Collections.unmodifiableMap(new LinkedHashMap<>(fields)),
+                        capability, Set.copyOf(hiddenFields)));
     }
 
     private static void requireTyped(String id) {
@@ -324,7 +423,8 @@ final class LedgerTypeAuthority {
         return new BuiltinTypeRef(kind);
     }
 
-    record Constructor(Map<String, VerificationTypeRef> fields, String capability) { }
+    record Constructor(Map<String, VerificationTypeRef> fields, String capability,
+                       Set<String> hiddenFields) { }
     private record Field(VerificationTypeRef type, String capability) { }
     private record FieldKey(LedgerTypeRef.LedgerKind owner, String field) { }
     private record ConstructorKey(LedgerTypeRef.LedgerKind sum, String constructor) { }

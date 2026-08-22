@@ -19,6 +19,11 @@ public sealed interface Expr permits BoolExpr, ByteStringExpr, IntegerExpr, Datu
         LedgerDelegateeExpr, LedgerDRepExpr, LedgerTxCertListExpr,
         LedgerTxCertOptionExpr, LedgerRoleCredentialExpr, LedgerMintValueExpr,
         ValuePolicyEntriesExpr, ValuePolicyEntryExpr, ValueTokenEntriesExpr,
-        ValueTokenEntryExpr, ValueDeltaExpr, ValueDeltaOptionExpr {
+        ValueTokenEntryExpr, ValueDeltaExpr, ValueDeltaOptionExpr,
+        VoterExpr, VoteExpr, GovernanceActionIdExpr, ProtocolVersionExpr,
+        ProposalProcedureExpr, ProposalProcedureListExpr,
+        GovernanceProposalOptionExpr, GovernanceActionExpr,
+        GovernanceActionOptionExpr, GovernanceVoteMapExpr,
+        GovernanceVoteOptionExpr, GovernanceVoteMapOptionExpr, VoterMapExpr {
     PropertyNode node();
 }

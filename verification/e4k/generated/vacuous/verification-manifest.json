@@ -1,0 +1,105 @@
+{
+  "artifactFormat" : "double_cbor_hex",
+  "artifactId" : "vacuous-governance",
+  "blueprintEntryTitle" : "VacuousGovernance",
+  "boundarySemantics" : "strict-data-v1",
+  "builtinSemanticsVariant" : "E",
+  "builtins" : [ {
+    "name" : "EqualsInteger",
+    "flatTag" : 7
+  }, {
+    "name" : "IfThenElse",
+    "flatTag" : 26
+  }, {
+    "name" : "FstPair",
+    "flatTag" : 29
+  }, {
+    "name" : "SndPair",
+    "flatTag" : 30
+  }, {
+    "name" : "HeadList",
+    "flatTag" : 33
+  }, {
+    "name" : "TailList",
+    "flatTag" : 34
+  }, {
+    "name" : "NullList",
+    "flatTag" : 35
+  }, {
+    "name" : "UnConstrData",
+    "flatTag" : 42
+  } ],
+  "capabilityInventory" : {
+    "ledgerApi" : "CardanoLedgerApiBlaster",
+    "ledgerVersion" : "V3",
+    "revision" : "5dab3c43f042b8735b6d067223baaa8d32ed28a1",
+    "schemaVersion" : 1,
+    "sha256" : "aef541d492decb2fd5d1868b22490fa275d829acfbee83f995e81db2dc6b39c1"
+  },
+  "cardanoScriptHash" : "06910a055767e559582af7c9f756a10cb5e17f76abbbcebbab8648f3",
+  "claims" : [ {
+    "id" : "governance.non-vacuity-control",
+    "generatedName" : "governance_non_vacuity_control",
+    "domain" : "VALID_SPENDING_V3_PINNED",
+    "guaranteeSha256" : "7031ec8aecf38cbcb7673e74e3aaec74f5a04b378b568bdf02707fcfde5dc8c9",
+    "envelopeSha256" : "405a11d50d8575336d9245c86118673493fbff2bcebd60258cebc1c880b87137",
+    "capabilities" : [ "dsl.ledger.context", "dsl.option.exists", "field.proposalProcedure.deposit", "field.scriptContext.scriptInfo", "field.scriptContext.txInfo", "field.txInfo.proposals", "ledger.validSpendingContext", "purpose.spending" ],
+    "guaranteeRules" : [ "compare:GE", "integer-literal", "ledger-field:PROPOSAL_PROCEDURE.deposit", "ledger-field:SCRIPT_CONTEXT.txInfo", "ledger-field:TX_INFO.proposals", "ledger-root:ledgerContext", "list-at", "option-exists", "typed-variable" ],
+    "counterexampleDomain" : "BLASTER_VALID_SPENDING_SUPERSET",
+    "ledgerValidCounterexampleEstablished" : false,
+    "concreteVmCounterexampleReproduced" : false
+  } ],
+  "compiledCodeSha256" : "b2689280b38b542533450e847d36301446a54338f24d15830e29315591000395",
+  "dependencies" : {
+    "CardanoLedgerApiBlaster" : "5dab3c43f042b8735b6d067223baaa8d32ed28a1",
+    "Lean-blaster" : "083bae7971414d894b56b5bbf4108c63e17bc42a",
+    "PlutusCoreBlaster" : "7cf5a78c54b9694ef093bf49edb5d3799b2a49c9"
+  },
+  "domainAssumptions" : [ "validSpendingContext/v3-pinned" ],
+  "dslIr" : {
+    "schemaVersion" : 9,
+    "sha256" : "53cb2e76d6506b520d8b262d6942c1a1cbe7ac3bdc22c7a04cc5df9c9c23b7be"
+  },
+  "fuel" : 5000,
+  "generatedBy" : "julc verify init",
+  "generatedLeanSha256" : "750baba0a8ada9281da29510abff6bdca13247985ba9de3177a5dc079e3d0826",
+  "julcVersion" : "0.1.0-pre16",
+  "leanVersion" : "4.24.0",
+  "ledgerValidityModeled" : true,
+  "plutusLanguage" : "PlutusV3",
+  "project" : "governance-data-evidence",
+  "properties" : [ {
+    "id" : "governance.non-vacuity-control.non-vacuity",
+    "reason" : "not-run",
+    "result" : "COULD-NOT-EVALUATE"
+  }, {
+    "id" : "governance.non-vacuity-control",
+    "reason" : "not-run",
+    "result" : "COULD-NOT-EVALUATE"
+  } ],
+  "propertyIr" : {
+    "contractSchemaSha256" : "f3cdd4753651a1e8cc678851710bb33086d14f61344f2d53119d6eb68ff440a4",
+    "path" : "verification-property.json",
+    "projectedContractTypesSha256" : "f3cdd4753651a1e8cc678851710bb33086d14f61344f2d53119d6eb68ff440a4",
+    "propertyId" : "VacuousGovernance.dsl-property-set",
+    "schemaVersion" : 3,
+    "sha256" : "e3f7a1411262d0d00d7031ce248f51e43c77810a8c1458e9d6a5219d714cdbdd",
+    "sourcePath" : "/Users/satya/work/bloxbean/julc/verification/e4k/VacuousGovernanceSpec.java",
+    "template" : "julc.dsl-ledger/v1"
+  },
+  "protocolVersion" : 11,
+  "recursiveDepth" : 4,
+  "runnerPlanSha256" : "db1f4efe6d13c0cc7401459c28c7d1758ad14b7762a7af1cacc0ff5c4b4347b2",
+  "schemaVersion" : 1,
+  "schemas" : [ {
+    "cip57" : "VacuousGovernance:Datum",
+    "lean" : "VacuousGovernanceDatum"
+  }, {
+    "cip57" : "VacuousGovernance:Redeemer",
+    "lean" : "VacuousGovernanceRedeemer"
+  } ],
+  "scriptPurpose" : "spending",
+  "uplcVersion" : "1.1.0",
+  "validatorTitle" : "VacuousGovernance",
+  "z3Version" : "4.15.2"
+}

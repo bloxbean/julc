@@ -16,7 +16,10 @@ public record LedgerHelperNode(
         valueType = Objects.requireNonNull(valueType, "valueType");
     }
     @Override public DslType resultType() {
-        return helper == LedgerHelperKind.IS_BALANCED ? DslType.BOOL : DslType.TYPED_VALUE;
+        return switch (helper) {
+            case IS_BALANCED, IS_KNOWN_VOTER, IS_KNOWN_PROPOSAL -> DslType.BOOL;
+            default -> DslType.TYPED_VALUE;
+        };
     }
 
     public enum LedgerHelperKind {
@@ -34,6 +37,9 @@ public record LedgerHelperNode(
         AGGREGATE_OUTPUT_VALUES,
         FILTER_ADDRESS_OUTPUTS,
         FILTER_PAYMENT_CREDENTIAL_OUTPUTS,
-        IS_BALANCED
+        IS_BALANCED,
+        DECODE_GOVERNANCE_ACTION,
+        IS_KNOWN_VOTER,
+        IS_KNOWN_PROPOSAL
     }
 }
