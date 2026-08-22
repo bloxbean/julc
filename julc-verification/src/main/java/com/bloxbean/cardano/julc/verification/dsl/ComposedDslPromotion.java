@@ -24,9 +24,11 @@ public final class ComposedDslPromotion {
             String sourcePath) {
         if (candidate.schemaVersion() != DslPropertySet.COMPOSITION_SCHEMA_VERSION
                 && candidate.schemaVersion() != DslPropertySet.TYPED_SCHEMA_VERSION
-                && candidate.schemaVersion() != DslPropertySet.LEDGER_SCHEMA_VERSION) {
+                && candidate.schemaVersion() != DslPropertySet.LEDGER_SCHEMA_VERSION
+                && candidate.schemaVersion()
+                        != DslPropertySet.AUTHORIZATION_SCHEMA_VERSION) {
             throw new IllegalArgumentException(
-                    "Generic promotion requires DSL property schema 3, 4, or 5");
+                    "Generic promotion requires DSL property schema 3, 4, 5, or 6");
         }
         DslPropertySet normalized = DslPropertyValidator.validateAndNormalize(
                 candidate, schema, DslPropertyValidator.MAX_AST_NODES);
@@ -61,7 +63,7 @@ public final class ComposedDslPromotion {
                     counterexampleDomain(property.domain(), normalized.purpose()),
                     false, false);
         }).toList();
-        boolean ledger = normalized.schemaVersion() == DslPropertySet.LEDGER_SCHEMA_VERSION;
+        boolean ledger = normalized.schemaVersion() >= DslPropertySet.LEDGER_SCHEMA_VERSION;
         return new ComposedDslProperty(
                 projected == null ? ComposedDslProperty.SCHEMA_VERSION
                         : ledger ? ComposedDslProperty.LEDGER_SCHEMA_VERSION
@@ -104,9 +106,15 @@ public final class ComposedDslPromotion {
         } catch (IOException invalid) {
             throw new IllegalArgumentException("Invalid canonical composed DSL IR", invalid);
         }
-        int expectedSchema = ledger ? DslPropertySet.LEDGER_SCHEMA_VERSION
+        int expectedSchema = ledger
+                ? normalized.schemaVersion()
                 : typed ? DslPropertySet.TYPED_SCHEMA_VERSION
                 : DslPropertySet.COMPOSITION_SCHEMA_VERSION;
+        if (ledger && expectedSchema != DslPropertySet.LEDGER_SCHEMA_VERSION
+                && expectedSchema != DslPropertySet.AUTHORIZATION_SCHEMA_VERSION) {
+            throw new IllegalArgumentException(
+                    "Ledger DSL property requires inner schema 5 or 6");
+        }
         if (normalized.schemaVersion() != expectedSchema
                 || !promoted.scriptPurpose().equals(
                         normalized.purpose().name().toLowerCase())) {

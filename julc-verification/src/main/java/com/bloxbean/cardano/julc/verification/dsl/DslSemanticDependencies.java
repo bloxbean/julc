@@ -266,6 +266,33 @@ public final class DslSemanticDependencies {
             visit(alias.bytes(), state);
             return;
         }
+        if (node instanceof AuthorityKeyHashNode authority) {
+            state.capabilities.add("dsl.authorization.source:"
+                    + authority.sourceKind());
+            visit(authority.bytes(), state);
+            return;
+        }
+        if (node instanceof AuthorityListNode authorities) {
+            state.capabilities.add("dsl.authorization.static-authorities");
+            authorities.authorities().forEach(authority -> visit(authority, state));
+            return;
+        }
+        if (node instanceof AuthorityListFromBytesNode authorities) {
+            state.capabilities.add("dsl.authorization.dynamic-contract-list");
+            visit(authorities.bytesList(), state);
+            return;
+        }
+        if (node instanceof AuthorizationNode authorization) {
+            state.capabilities.add("field.txInfo.signatories");
+            state.capabilities.add("dsl.authorization.distinct-identities");
+            visit(authorization.authorities(), state);
+            return;
+        }
+        if (node instanceof NoSignersNode) {
+            state.capabilities.add("field.txInfo.signatories");
+            state.capabilities.add("dsl.authorization.no-signers");
+            return;
+        }
         if (node instanceof BoolLiteralNode) return;
         if (node instanceof BoolNotNode not) {
             visit(not.value(), state);
@@ -442,6 +469,16 @@ public final class DslSemanticDependencies {
             case LedgerHelperNode helper -> "ledger-helper:" + helper.helper();
             case LedgerByteAliasNode alias -> "ledger-byte-alias:"
                     + alias.aliasType().ledgerType();
+            case AuthorityKeyHashNode authority -> "authority-source:"
+                    + authority.sourceKind();
+            case AuthorityListNode ignored -> "authority-list:bounded-static";
+            case AuthorityListFromBytesNode ignored ->
+                    "authority-list:dynamic-contract-bytes";
+            case AuthorizationNode authorization -> "authorization:"
+                    + authorization.relation()
+                    + (authorization.threshold() == null
+                            ? "" : ":" + authorization.threshold());
+            case NoSignersNode ignored -> "authorization:NO_SIGNERS";
         };
     }
 

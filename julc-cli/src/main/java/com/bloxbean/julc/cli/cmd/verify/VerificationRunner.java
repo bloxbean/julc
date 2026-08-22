@@ -3,6 +3,7 @@ package com.bloxbean.julc.cli.cmd.verify;
 import com.bloxbean.cardano.julc.compiler.DataBoundarySemantics;
 import com.bloxbean.cardano.julc.verification.ComposedDslProperty;
 import com.bloxbean.cardano.julc.verification.dsl.ComposedDslPromotion;
+import com.bloxbean.cardano.julc.verification.dsl.ir.DslPropertySet;
 import com.bloxbean.cardano.julc.verification.capability.LedgerCapabilityInventories;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -832,8 +833,18 @@ public final class VerificationRunner {
             }
             if (sellerPayment || oneShotMint
                     || "julc.controlled-mint/v1".equals(template) || composedDsl) {
+                int recordedDslSchema = manifest.path("dslIr")
+                        .path("schemaVersion").asInt(-1);
+                if (ComposedDslProperty.LEDGER_TEMPLATE.equals(template)
+                        && recordedDslSchema != DslPropertySet.LEDGER_SCHEMA_VERSION
+                        && recordedDslSchema
+                            != DslPropertySet.AUTHORIZATION_SCHEMA_VERSION) {
+                    throw new IOException(
+                            "Ledger DSL canonical schema must be 5 or 6");
+                }
                 int expectedDslSchema = ComposedDslProperty.LEDGER_TEMPLATE.equals(template)
-                        ? 5 : ComposedDslProperty.TYPED_TEMPLATE.equals(template)
+                        ? recordedDslSchema
+                        : ComposedDslProperty.TYPED_TEMPLATE.equals(template)
                         ? 4 : composedDsl ? 3 : oneShotMint
                         || "julc.controlled-mint/v1".equals(template) ? 2 : 1;
                 validateCanonicalDslIr(manifest, property, expectedDslSchema);

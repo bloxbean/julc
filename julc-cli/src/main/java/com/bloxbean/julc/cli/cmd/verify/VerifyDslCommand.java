@@ -79,7 +79,9 @@ public final class VerifyDslCommand implements Callable<Integer> {
                         || candidate.schemaVersion()
                         == DslPropertySet.TYPED_SCHEMA_VERSION
                         || candidate.schemaVersion()
-                        == DslPropertySet.LEDGER_SCHEMA_VERSION) {
+                        == DslPropertySet.LEDGER_SCHEMA_VERSION
+                        || candidate.schemaVersion()
+                        == DslPropertySet.AUTHORIZATION_SCHEMA_VERSION) {
                     property = ComposedDslPromotion.promote(
                             candidate, loaded.schema(), validator, sourcePath);
                 } else if (loaded.purpose() == VerificationPurpose.SPENDING) {

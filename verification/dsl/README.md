@@ -1,6 +1,6 @@
 # Experimental typed verification DSL
 
-Milestones E.2-E.4g provide an experimental Java frontend in `julc-verification`.
+Milestones E.2-E.4h provide an experimental Java frontend in `julc-verification`.
 It is not yet a stable public API.
 
 The prototype contains:
@@ -102,3 +102,19 @@ Pinned helper semantics are canonical IR nodes, not Java callbacks. Raw
 datum/redeemer payloads remain opaque, and unsupported governance/value/time
 operations still fail closed. See
 [`verification/e4g/README.md`](../e4g/README.md).
+
+Milestone E.4h adds opt-in schema 6 authorization algebra over the complete
+pinned V3 signatory list. Zero-free fixed 28-byte keys and explicit
+compiler-owned datum/redeemer byte-string sources can be combined with `anySigned`,
+`allSigned`, `noneSigned`, `atLeastSigned`, `exactlySigned`,
+`noUnexpectedSigners`, `exactSignerSet`, and `noSigners`. Thresholds count
+distinct approved identities: duplicate authorities or signatories never count
+twice, and order is irrelevant only inside these authorization relations.
+These Boolean expressions remain freely composable with the schema-5 ledger
+and schema-4 contract vocabulary. Applied `@Param` authority roots remain
+fail-closed until JuLC can reconstruct ordered parameter application and match
+the exact verified UPLC bytes and script hash. See
+[`verification/e4h/README.md`](../e4h/README.md).
+The retained SMT-positive evidence covers a threshold relation; the stronger
+threshold-plus-allow-list calibration was solver-undetermined at the pinned
+revision and is documented there rather than promoted as proof.

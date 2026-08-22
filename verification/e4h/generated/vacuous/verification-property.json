@@ -1,0 +1,26 @@
+{
+  "schemaVersion" : 3,
+  "template" : "julc.dsl-ledger/v1",
+  "propertyId" : "VacuousThresholdGate.dsl-property-set",
+  "validatorTitle" : "VacuousThresholdGate",
+  "scriptPurpose" : "spending",
+  "sourcePath" : "verification/e4h/VacuousThresholdSpec.java",
+  "canonicalDslJson" : "{\"contractSchemaSha256\":\"37194dbec4979e9746ed684b0fa82a3dfaa214843e63171b1817363074275492\",\"properties\":[{\"domain\":\"VALID_SPENDING_V3_PINNED\",\"expression\":{\"op\":\"authorization\",\"authorities\":{\"op\":\"authority-list\",\"authorities\":[{\"op\":\"authority-key-hash\",\"bytes\":{\"op\":\"bytes-literal\",\"hex\":\"41414141414141414141414141414141414141414141414141414141\",\"kind\":\"KEY_HASH\",\"resultType\":\"BYTE_STRING\"},\"sourceKind\":\"FIXED\"},{\"op\":\"authority-key-hash\",\"bytes\":{\"op\":\"bytes-literal\",\"hex\":\"42424242424242424242424242424242424242424242424242424242\",\"kind\":\"KEY_HASH\",\"resultType\":\"BYTE_STRING\"},\"sourceKind\":\"FIXED\"},{\"op\":\"authority-key-hash\",\"bytes\":{\"op\":\"bytes-literal\",\"hex\":\"43434343434343434343434343434343434343434343434343434343\",\"kind\":\"KEY_HASH\",\"resultType\":\"BYTE_STRING\"},\"sourceKind\":\"FIXED\"}]},\"relation\":\"AT_LEAST_SIGNED\",\"threshold\":\"2\"},\"id\":\"authorization.vacuous\"}],\"purpose\":\"SPENDING\",\"schemaVersion\":6}",
+  "claims" : [ {
+    "id" : "authorization.vacuous",
+    "generatedName" : "authorization_vacuous",
+    "domain" : "VALID_SPENDING_V3_PINNED",
+    "guaranteeSha256" : "8eb21afc74d7eb2d8bba6b226dd54fcb23d7b6582db5fba9ea4e7de836e6a6f3",
+    "envelopeSha256" : "85dedca2de60157fb330cd5691ba05b8e93b9183a8b39383733b53e72e7744c9",
+    "capabilities" : [ "dsl.authorization.distinct-identities", "dsl.authorization.source:FIXED", "dsl.authorization.static-authorities", "field.scriptContext.scriptInfo", "field.txInfo.signatories", "ledger.validSpendingContext", "purpose.spending" ],
+    "guaranteeRules" : [ "authority-list:bounded-static", "authority-source:FIXED", "authorization:AT_LEAST_SIGNED:2", "bytes-literal:KEY_HASH" ],
+    "counterexampleDomain" : "BLASTER_VALID_SPENDING_SUPERSET",
+    "ledgerValidCounterexampleEstablished" : false,
+    "concreteVmCounterexampleReproduced" : false
+  } ],
+  "domainAssumptions" : [ "validSpendingContext/v3-pinned" ],
+  "guaranteeRules" : [ "authority-list:bounded-static", "authority-source:FIXED", "authorization:AT_LEAST_SIGNED:2", "bytes-literal:KEY_HASH" ],
+  "ledgerValidityModeled" : true,
+  "projectedContractTypesJson" : "{\"datumType\":{\"type\":\"nominal\",\"nominalKind\":\"RECORD\",\"stableId\":\"VacuousThresholdGate.Datum\"},\"definitions\":[{\"constructors\":[],\"fields\":[],\"nominalKind\":\"RECORD\",\"sourceName\":\"Datum\",\"stableId\":\"VacuousThresholdGate.Datum\"},{\"constructors\":[],\"fields\":[],\"nominalKind\":\"RECORD\",\"sourceName\":\"Redeemer\",\"stableId\":\"VacuousThresholdGate.Redeemer\"}],\"parameters\":[],\"purpose\":\"SPEND\",\"redeemerType\":{\"type\":\"nominal\",\"nominalKind\":\"RECORD\",\"stableId\":\"VacuousThresholdGate.Redeemer\"},\"schemaVersion\":1}",
+  "contractSchemaSha256" : "37194dbec4979e9746ed684b0fa82a3dfaa214843e63171b1817363074275492"
+}

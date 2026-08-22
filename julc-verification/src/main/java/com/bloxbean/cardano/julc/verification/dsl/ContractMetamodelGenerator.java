@@ -122,6 +122,20 @@ public final class ContractMetamodelGenerator {
                 DslPropertySet.LEDGER_SCHEMA_VERSION).generate();
     }
 
+    /** Generate the opt-in schema-6 model with compositional authorization. */
+    public static String generateTypedV6(
+            ContractSchema schema, String packageName, String className) {
+        if (!packageName.matches("[a-z][A-Za-z0-9_.]*")
+                || !className.matches("[A-Z][A-Za-z0-9_]*")) {
+            throw new IllegalArgumentException("Invalid generated metamodel name");
+        }
+        ProjectedContractTypes projection = ContractTypeProjection.project(schema);
+        return new TypedModelGenerator(
+                projection, packageName, className,
+                ContractTypeProjection.sha256(projection),
+                DslPropertySet.AUTHORIZATION_SCHEMA_VERSION).generate();
+    }
+
     private static String mintingModel(String packageName, String className) {
         return """
                 package %s;
@@ -241,15 +255,22 @@ public final class ContractMetamodelGenerator {
             appendRoots(body);
             body.append("\n    public DslPropertySet properties(DslProperty... properties) {\n")
                     .append("        return DslPropertySet.")
-                    .append(dslSchemaVersion == DslPropertySet.LEDGER_SCHEMA_VERSION
-                            ? "typedV5" : "typedV4")
+                    .append(switch (dslSchemaVersion) {
+                        case DslPropertySet.AUTHORIZATION_SCHEMA_VERSION -> "typedV6";
+                        case DslPropertySet.LEDGER_SCHEMA_VERSION -> "typedV5";
+                        default -> "typedV4";
+                    })
                     .append("(DslPurpose.")
                     .append(dslPurpose()).append(", CONTRACT_SCHEMA_SHA256, properties);\n")
                     .append("    }\n")
-                    .append(dslSchemaVersion == DslPropertySet.LEDGER_SCHEMA_VERSION
+                    .append(dslSchemaVersion >= DslPropertySet.LEDGER_SCHEMA_VERSION
                             ? "    public LedgerContextExpr context() { return LedgerExpressions.context(); }\n"
                             : "    public ContextExpr context() { return base.context(); }\n");
-            if (dslSchemaVersion == DslPropertySet.LEDGER_SCHEMA_VERSION
+            if (dslSchemaVersion == DslPropertySet.AUTHORIZATION_SCHEMA_VERSION) {
+                body.append("    private final AuthorizationDsl authorization = new AuthorizationDsl();\n")
+                        .append("    public AuthorizationDsl authorization() { return authorization; }\n");
+            }
+            if (dslSchemaVersion >= DslPropertySet.LEDGER_SCHEMA_VERSION
                     && projection.purpose() == com.bloxbean.cardano.julc.compiler.schema
                             .ContractSchema.Purpose.SPEND) {
                 body.append("    public LedgerTxOutRefExpr currentOutputRef() {\n")
@@ -498,6 +519,11 @@ public final class ContractMetamodelGenerator {
                     .append(typeSuffix(element)).append("(value.at(index)); }\n")
                     .append("        public BoolExpr structurallyEquals(List_").append(suffix)
                     .append(" other) { return value.structurallyEquals(other.value); }\n")
+                    .append(dslSchemaVersion == DslPropertySet.AUTHORIZATION_SCHEMA_VERSION
+                            && element.equals(new BuiltinTypeRef(
+                                    BuiltinTypeRef.BuiltinKind.BYTE_STRING))
+                            ? "        public AuthoritySetExpr asAuthorities() { return new AuthorizationDsl().fromContractBytes(value); }\n"
+                            : "")
                     .append("    }\n");
         }
 

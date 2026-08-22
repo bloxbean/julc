@@ -578,7 +578,64 @@ opaque raw `Data`: schema 5 permits presence and transport, not unchecked
 casting or raw-data equality. See [`e4g/README.md`](e4g/README.md) for the
 reproducible local/Docker/native evidence and current limitations.
 
-## 15. Fuel, recursion, and reruns
+## 15. Experimental compositional authorization
+
+ADR-024 schema 6 extends the typed contract and ledger surface with distinct
+authorization relations. Generate schema 6 explicitly:
+
+```bash
+julc verify dsl-init . --validator Treasury --purpose spending \
+  --schema-version 6 --package evidence --class TreasuryModel \
+  --out build/verification-dsl/src/evidence/TreasuryModel.java
+```
+
+For a fixed three-member committee, “exactly two approved keys and no other
+signer” is written as two visibly separate constraints:
+
+```java
+var contract = new TreasuryModel();
+var auth = contract.authorization();
+var committee = auth.authorities(
+        auth.fixed("41".repeat(28)),
+        auth.fixed("11".repeat(28)),
+        auth.fixed("22".repeat(28)));
+
+return contract.properties(property("treasury.two-of-three-approved-only",
+        DslDomain.VALID_SPENDING_V3_PINNED,
+        committee.exactlySigned(2)
+                .and(committee.noUnexpectedSigners())));
+```
+
+`exactlySigned(2)` counts distinct committee members that signed; it does not
+exclude an outsider. `noUnexpectedSigners()` adds that independent allow-list
+constraint. Reordering and duplicates do not affect authorization, while raw
+list operations elsewhere retain order and duplicates. A compiler-owned
+`byte[]` field can become an authority only through
+`auth.fromContractBytes(field)`, and a generated `List<byte[]>` wrapper offers
+`asAuthorities()`. Dynamic lists may be empty, so prefer a positive threshold
+when empty `allSigned()` would be unintended.
+
+At the current pinned Blaster/Z3 revision, the retained positive SMT evidence
+discharges `exactlySigned(2)` quickly, while the combined threshold plus
+`noUnexpectedSigners()` query did not finish within a ten-minute calibration
+window. The allow-list relation is still admitted and kernel-tested, but such
+an undetermined run is `COULD-NOT-EVALUATE`, not successful verification.
+
+Applied `@Param` values are not accepted as authority roots yet. A parameter
+declaration in a blueprint does not identify the value used to produce a
+deployed script. This remains fail-closed until preflight can reconstruct
+parameter application and match both exact UPLC bytes and the script hash.
+
+Fixed key hashes containing byte `00` are also rejected in this experimental
+slice. The pinned Blaster UPLC-constant and Lean property-literal paths do not
+yet agree for that byte. This is a solver limitation, not a Cardano key-hash
+rule; JuLC fails closed instead of silently changing the authority identity.
+
+Compile and invoke `julc verify dsl` as in schema 4/5. Reproducible positive,
+refuted, vacuous, exact-VM, and kernel controls are in
+[`e4h/README.md`](e4h/README.md).
+
+## 16. Fuel, recursion, and reruns
 
 `--fuel` bounds exact UPLC preprocessing/execution in the generated obligation.
 An `SMT-VALID` certificate covers only successful paths completing within that
@@ -598,7 +655,7 @@ julc verify . --validator AuthorizedStateValidator \
   --out-dir verification/ci-authorized --force
 ```
 
-## 16. What the certificate does and does not claim
+## 17. What the certificate does and does not claim
 
 For an annotation profile, a successful certificate means:
 

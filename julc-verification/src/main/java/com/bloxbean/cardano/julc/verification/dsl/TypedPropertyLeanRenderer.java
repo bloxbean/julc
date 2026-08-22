@@ -199,6 +199,38 @@ public final class TypedPropertyLeanRenderer {
         if (node instanceof LedgerByteAliasNode alias) {
             return render(alias.bytes(), definitions, variantFields);
         }
+        if (node instanceof AuthorityKeyHashNode authority) {
+            return render(authority.bytes(), definitions, variantFields);
+        }
+        if (node instanceof AuthorityListNode authorities) {
+            return authorities.authorities().stream()
+                    .map(authority -> render(authority, definitions, variantFields))
+                    .collect(Collectors.joining(", ", "[", "]"));
+        }
+        if (node instanceof AuthorityListFromBytesNode authorities) {
+            return listItems(authorities.bytesList(), definitions, variantFields);
+        }
+        if (node instanceof AuthorizationNode authorization) {
+            String authorities = parenthesize(render(
+                    authorization.authorities(), definitions, variantFields));
+            String signers = "ctx.scriptContextTxInfo.txInfoSignatories";
+            return switch (authorization.relation()) {
+                case ANY_SIGNED -> "julcAnySigned " + authorities + " " + signers;
+                case ALL_SIGNED -> "julcAllSigned " + authorities + " " + signers;
+                case NONE_SIGNED -> "julcNoneSigned " + authorities + " " + signers;
+                case AT_LEAST_SIGNED -> "julcAtLeastSigned "
+                        + authorization.threshold() + " " + authorities + " " + signers;
+                case EXACTLY_SIGNED -> "julcExactlySigned "
+                        + authorization.threshold() + " " + authorities + " " + signers;
+                case NO_UNEXPECTED_SIGNERS -> "julcNoUnexpectedSigners "
+                        + authorities + " " + signers;
+                case EXACT_SIGNER_SET -> "julcExactSignerSet "
+                        + authorities + " " + signers;
+            };
+        }
+        if (node instanceof NoSignersNode) {
+            return "List.isEmpty ctx.scriptContextTxInfo.txInfoSignatories";
+        }
         if (node instanceof BoolLiteralNode literal) {
             return Boolean.toString(literal.value());
         }

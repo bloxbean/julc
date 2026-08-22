@@ -38,7 +38,9 @@ public final class DslPropertyValidator {
                 == DslPropertySet.TYPED_SCHEMA_VERSION;
         boolean ledgerV5 = propertySet.schemaVersion()
                 == DslPropertySet.LEDGER_SCHEMA_VERSION;
-        boolean composition = compositionV3 || typedV4 || ledgerV5;
+        boolean authorizationV6 = propertySet.schemaVersion()
+                == DslPropertySet.AUTHORIZATION_SCHEMA_VERSION;
+        boolean composition = compositionV3 || typedV4 || ledgerV5 || authorizationV6;
         ContractSchema.Purpose expectedPurpose = composition
                 ? contractPurpose(propertySet.purpose())
                 : mintingV2 ? ContractSchema.Purpose.MINT : ContractSchema.Purpose.SPEND;
@@ -50,11 +52,12 @@ public final class DslPropertyValidator {
             throw new IllegalArgumentException(
                     "Minting DSL schema 2 requires exactly one property");
         }
-        ProjectedContractTypes projection = typedV4 || ledgerV5
+        ProjectedContractTypes projection = typedV4 || ledgerV5 || authorizationV6
                 ? ContractTypeProjection.project(schema) : null;
         TypeAuthority typeAuthority = projection == null
-                ? null : new TypeAuthority(projection, ledgerV5, propertySet.purpose());
-        if (typedV4 || ledgerV5) {
+                ? null : new TypeAuthority(projection, ledgerV5 || authorizationV6,
+                        authorizationV6, propertySet.purpose());
+        if (typedV4 || ledgerV5 || authorizationV6) {
             String expectedHash = ContractTypeProjection.sha256(projection);
             if (!expectedHash.equals(propertySet.contractSchemaSha256())) {
                 throw new IllegalArgumentException(
@@ -107,7 +110,8 @@ public final class DslPropertyValidator {
         boolean legacySpending = schemaVersion == DslPropertySet.SCHEMA_VERSION;
         boolean composition = schemaVersion == DslPropertySet.COMPOSITION_SCHEMA_VERSION
                 || schemaVersion == DslPropertySet.TYPED_SCHEMA_VERSION
-                || schemaVersion == DslPropertySet.LEDGER_SCHEMA_VERSION;
+                || schemaVersion == DslPropertySet.LEDGER_SCHEMA_VERSION
+                || schemaVersion == DslPropertySet.AUTHORIZATION_SCHEMA_VERSION;
         if (legacySpending && isMintingSchemaNode(node)) {
             throw new IllegalArgumentException("DSL schema 1 does not admit minting node "
                     + node.getClass().getSimpleName());
@@ -334,9 +338,10 @@ public final class DslPropertyValidator {
             int maxNodes,
             int schemaVersion) {
         if (schemaVersion != DslPropertySet.TYPED_SCHEMA_VERSION
-                && schemaVersion != DslPropertySet.LEDGER_SCHEMA_VERSION) {
+                && schemaVersion != DslPropertySet.LEDGER_SCHEMA_VERSION
+                && schemaVersion != DslPropertySet.AUTHORIZATION_SCHEMA_VERSION) {
             throw new IllegalArgumentException(
-                    "Structural typed nodes require DSL schema 4 or 5");
+                    "Structural typed nodes require DSL schema 4, 5, or 6");
         }
         if (++count[0] > maxNodes) {
             throw new IllegalArgumentException("Property AST exceeds " + maxNodes + " nodes");
@@ -352,6 +357,23 @@ public final class DslPropertyValidator {
         if (node instanceof BoolNotNode not) {
             require(DslType.BOOL, validateTypedExpressionOrLegacy(
                     not.value(), schema, authority, variables, count, maxNodes, schemaVersion));
+            return DslType.BOOL;
+        }
+        if (node instanceof AuthorizationNode authorization) {
+            requireAuthorizationSchema(schemaVersion);
+            VerificationTypeRef actual = validateTypedValue(
+                    authorization.authorities(), authority, variables, count, maxNodes);
+            VerificationTypeRef expected = new ListTypeRef(
+                    LedgerTypeAuthority.PUB_KEY_HASH);
+            if (!expected.equals(actual)) {
+                throw new IllegalArgumentException(
+                        "Authorization relation requires a public-key-hash authority list");
+            }
+            validateAuthorizationThreshold(authorization);
+            return DslType.BOOL;
+        }
+        if (node instanceof NoSignersNode) {
+            requireAuthorizationSchema(schemaVersion);
             return DslType.BOOL;
         }
         if (node instanceof IntegerArithmeticNode arithmetic) {
@@ -977,6 +999,76 @@ public final class DslPropertyValidator {
             }
             return alias.aliasType();
         }
+        if (node instanceof AuthorityKeyHashNode keyHash) {
+            authority.requireAuthorization();
+            authority.requireLedger();
+            if (keyHash.sourceKind() == AuthoritySourceKind.FIXED) {
+                if (!(keyHash.bytes() instanceof BytesLiteralNode literal)
+                        || literal.kind() != BytesLiteralKind.KEY_HASH) {
+                    throw new IllegalArgumentException(
+                            "Fixed authority requires a canonical key-hash literal");
+                }
+                countNode(count, maxNodes);
+                validateBytesLiteral(literal);
+                AuthorizationDsl.validateFixedKeyHashHex(literal.hex());
+            } else {
+                if (keyHash.bytes() instanceof BytesLiteralNode) {
+                    throw new IllegalArgumentException(
+                            "Contract authority source cannot impersonate a fixed literal");
+                }
+                VerificationTypeRef source = validateStructuralValue(
+                        keyHash.bytes(), null, authority, variables, count, maxNodes,
+                        DslPropertySet.AUTHORIZATION_SCHEMA_VERSION);
+                if (!source.equals(builtin(BuiltinTypeRef.BuiltinKind.BYTE_STRING))) {
+                    throw new IllegalArgumentException(
+                            "Contract authority source must be a structural byte string");
+                }
+            }
+            return LedgerTypeAuthority.PUB_KEY_HASH;
+        }
+        if (node instanceof AuthorityListNode list) {
+            authority.requireAuthorization();
+            if (list.authorities().isEmpty()) {
+                throw new IllegalArgumentException(
+                        "A static authority set must not be empty");
+            }
+            if (list.authorities().size() > AuthorizationDsl.MAX_STATIC_AUTHORITIES) {
+                throw new IllegalArgumentException("A static authority set supports at most "
+                        + AuthorizationDsl.MAX_STATIC_AUTHORITIES + " members");
+            }
+            var fixed = new HashSet<String>();
+            for (PropertyNode member : list.authorities()) {
+                if (!(member instanceof AuthorityKeyHashNode key)) {
+                    throw new IllegalArgumentException(
+                            "Static authority set contains an unapproved source node");
+                }
+                VerificationTypeRef memberType = validateTypedValue(
+                        key, authority, variables, count, maxNodes);
+                if (!LedgerTypeAuthority.PUB_KEY_HASH.equals(memberType)) {
+                    throw new IllegalArgumentException(
+                            "Static authority member is not a public-key hash");
+                }
+                if (key.sourceKind() == AuthoritySourceKind.FIXED
+                        && key.bytes() instanceof BytesLiteralNode literal
+                        && !fixed.add(literal.hex())) {
+                    throw new IllegalArgumentException(
+                            "Duplicate fixed authority key hash: " + literal.hex());
+                }
+            }
+            return new ListTypeRef(LedgerTypeAuthority.PUB_KEY_HASH);
+        }
+        if (node instanceof AuthorityListFromBytesNode list) {
+            authority.requireAuthorization();
+            VerificationTypeRef source = validateTypedValue(
+                    list.bytesList(), authority, variables, count, maxNodes);
+            VerificationTypeRef expected = new ListTypeRef(
+                    builtin(BuiltinTypeRef.BuiltinKind.BYTE_STRING));
+            if (!expected.equals(source)) {
+                throw new IllegalArgumentException(
+                        "Dynamic authority source must be a contract byte-string list");
+            }
+            return new ListTypeRef(LedgerTypeAuthority.PUB_KEY_HASH);
+        }
         if (node instanceof ListAtNode list) {
             requireList(list.list(), list.elementType(), authority, variables,
                     count, maxNodes);
@@ -1145,7 +1237,10 @@ public final class DslPropertyValidator {
                 || node instanceof ListAtNode || node instanceof StructuralEqualsNode
                 || node instanceof MapQuantifierNode || node instanceof MapCountEntryNode
                 || node instanceof MapContainsKeyNode || node instanceof MapCountKeyNode
-                || node instanceof MapLookupFirstNode || node instanceof MapLookupAllNode) {
+                || node instanceof MapLookupFirstNode || node instanceof MapLookupAllNode
+                || node instanceof AuthorityKeyHashNode || node instanceof AuthorityListNode
+                || node instanceof AuthorityListFromBytesNode
+                || node instanceof AuthorizationNode || node instanceof NoSignersNode) {
             return true;
         }
         return false;
@@ -1168,7 +1263,10 @@ public final class DslPropertyValidator {
                 || node instanceof ListAtNode || node instanceof StructuralEqualsNode
                 || node instanceof MapQuantifierNode || node instanceof MapCountEntryNode
                 || node instanceof MapContainsKeyNode || node instanceof MapCountKeyNode
-                || node instanceof MapLookupFirstNode || node instanceof MapLookupAllNode;
+                || node instanceof MapLookupFirstNode || node instanceof MapLookupAllNode
+                || node instanceof AuthorityKeyHashNode || node instanceof AuthorityListNode
+                || node instanceof AuthorityListFromBytesNode
+                || node instanceof AuthorizationNode || node instanceof NoSignersNode;
     }
 
     private static boolean isTypedValueNode(PropertyNode node) {
@@ -1178,8 +1276,45 @@ public final class DslPropertyValidator {
                 || node instanceof LedgerVariantFieldNode
                 || node instanceof LedgerHelperNode
                 || node instanceof LedgerByteAliasNode
+                || node instanceof AuthorityKeyHashNode
+                || node instanceof AuthorityListNode
+                || node instanceof AuthorityListFromBytesNode
                 || node instanceof ListAtNode || node instanceof MapLookupFirstNode
                 || node instanceof MapLookupAllNode;
+    }
+
+    private static void requireAuthorizationSchema(int schemaVersion) {
+        if (schemaVersion != DslPropertySet.AUTHORIZATION_SCHEMA_VERSION) {
+            throw new IllegalArgumentException(
+                    "Authorization nodes require DSL schema 6");
+        }
+    }
+
+    private static void validateAuthorizationThreshold(AuthorizationNode node) {
+        boolean thresholdRelation = node.relation() == AuthorizationRelation.AT_LEAST_SIGNED
+                || node.relation() == AuthorizationRelation.EXACTLY_SIGNED;
+        if (!thresholdRelation) {
+            if (node.threshold() != null) {
+                throw new IllegalArgumentException(
+                        "Non-threshold authorization relation cannot carry a threshold");
+            }
+            return;
+        }
+        if (node.threshold() == null || !node.threshold().matches("0|[1-9][0-9]*")) {
+            throw new IllegalArgumentException(
+                    "Authorization threshold must be a canonical nonnegative integer");
+        }
+        final int threshold;
+        try {
+            threshold = Integer.parseInt(node.threshold());
+        } catch (NumberFormatException invalid) {
+            throw new IllegalArgumentException(
+                    "Authorization threshold exceeds the supported integer range", invalid);
+        }
+        if (threshold > AuthorizationDsl.MAX_STATIC_AUTHORITIES) {
+            throw new IllegalArgumentException("Authorization threshold supports at most "
+                    + AuthorizationDsl.MAX_STATIC_AUTHORITIES);
+        }
     }
 
     private static void validateBinder(
@@ -1200,12 +1335,14 @@ public final class DslPropertyValidator {
         private final ProjectedContractTypes projection;
         private final Map<String, ProjectedContractTypes.NominalDefinition> definitions;
         private final boolean ledgerAllowed;
+        private final boolean authorizationAllowed;
         private final DslPurpose purpose;
 
         private TypeAuthority(ProjectedContractTypes projection, boolean ledgerAllowed,
-                DslPurpose purpose) {
+                boolean authorizationAllowed, DslPurpose purpose) {
             this.projection = projection;
             this.ledgerAllowed = ledgerAllowed;
+            this.authorizationAllowed = authorizationAllowed;
             this.purpose = purpose;
             this.definitions = projection.definitions().stream().collect(
                     java.util.stream.Collectors.toUnmodifiableMap(
@@ -1271,6 +1408,13 @@ public final class DslPropertyValidator {
             if (!ledgerAllowed) {
                 throw new IllegalArgumentException(
                         "Ledger transaction-context nodes require DSL schema 5");
+            }
+        }
+
+        private void requireAuthorization() {
+            if (!authorizationAllowed) {
+                throw new IllegalArgumentException(
+                        "Authorization nodes require DSL schema 6");
             }
         }
 

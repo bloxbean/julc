@@ -28,6 +28,7 @@ import com.bloxbean.cardano.julc.verification.dsl.TypedExpressions;
 import com.bloxbean.cardano.julc.verification.dsl.TypedListExpr;
 import com.bloxbean.cardano.julc.verification.dsl.TypedAssocMapExpr;
 import com.bloxbean.cardano.julc.verification.dsl.LedgerExpressions;
+import com.bloxbean.cardano.julc.verification.dsl.AuthorizationDsl;
 import com.bloxbean.cardano.julc.verification.dsl.type.*;
 import com.bloxbean.julc.cli.JulcCommand;
 import com.bloxbean.julc.cli.cmd.blueprint.ArtifactCommand;
@@ -586,6 +587,65 @@ class VerificationProjectGeneratorTest {
                 .contains("`LedgerContextSemanticsTests"));
         var manifest = JSON.readTree(output.resolve("verification-manifest.json").toFile());
         assertEquals(5, manifest.path("dslIr").path("schemaVersion").asInt());
+        assertEquals(3, manifest.path("propertyIr").path("schemaVersion").asInt());
+    }
+
+    @Test
+    void generatesSchemaSixAuthorizationHelpersAndKernelControls() throws Exception {
+        String source = """
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                import com.bloxbean.cardano.julc.ledger.ScriptContext;
+                @SpendingValidator class AuthorizationGate {
+                    record Datum(byte[] owner, byte[] recovery) {}
+                    record Redeemer() {}
+                    @Entrypoint static boolean validate(
+                            Datum datum, Redeemer redeemer, ScriptContext ctx) { return true; }
+                }
+                """;
+        var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(source);
+        var projection = ContractTypeProjection.project(compiled.contractSchema());
+        var auth = new AuthorizationDsl();
+        String key = "41".repeat(28);
+        var guarantee = auth.authorities(auth.fixed(key)).anySigned()
+                .and(auth.authorities(auth.fixed(key)).noUnexpectedSigners());
+        var candidate = DslPropertySet.typedV6(DslPurpose.SPENDING,
+                ContractTypeProjection.sha256(projection),
+                property("AuthorizationGate.exact", DslDomain.NONE, guarantee));
+        var promoted = ComposedDslPromotion.promote(candidate,
+                compiled.contractSchema(), "AuthorizationGate", "Authorization.java");
+        var generated = BlueprintGenerator.generate(
+                new BlueprintConfig("schema-six-generator-test", "1"),
+                List.of(new BlueprintGenerator.CompiledValidator(
+                        "AuthorizationGate", compiled.compileResult(),
+                        compiled.contractSchema())));
+        Path blueprint = tempDir.resolve("schema-six.json");
+        Files.writeString(blueprint, generated.toJson());
+        Path output = tempDir.resolve("schema-six");
+
+        VerificationProjectGenerator.generateComposedDsl(
+                blueprint, promoted, compiled.contractSchema(), 5000, 8,
+                output, false);
+
+        String security = Files.readString(output.resolve("SecurityProperty.lean"));
+        assertTrue(security.contains("def julcDistinctKeyHashes"), security);
+        assertTrue(security.contains("def julcSignedAuthorityCount"), security);
+        assertTrue(security.contains("julcAnySigned"), security);
+        assertTrue(security.contains("julcNoUnexpectedSigners"), security);
+        assertTrue(security.contains("signers.all\n"
+                + "    (fun signer => julcAuthorizationContains signer authorities)"),
+                security);
+        String semantics = Files.readString(
+                output.resolve("AuthorizationSemanticsTests.lean"));
+        assertTrue(semantics.contains("julcExactlySigned 2"), semantics);
+        assertTrue(semantics.contains("[keyA, keyA, keyB]"), semantics);
+        assertTrue(semantics.contains("[keyA, keyB, outsider]"), semantics);
+        assertTrue(semantics.contains("List.elem keyA"), semantics);
+        assertTrue(Files.readString(output.resolve("lakefile.lean"))
+                .contains("`AuthorizationSemanticsTests"));
+        var manifest = JSON.readTree(
+                output.resolve("verification-manifest.json").toFile());
+        assertEquals(6, manifest.path("dslIr").path("schemaVersion").asInt());
         assertEquals(3, manifest.path("propertyIr").path("schemaVersion").asInt());
     }
 

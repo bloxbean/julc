@@ -1,0 +1,114 @@
+{
+  "artifactFormat" : "double_cbor_hex",
+  "artifactId" : "vulnerable-threshold-gate",
+  "blueprintEntryTitle" : "VulnerableThresholdGate",
+  "boundarySemantics" : "strict-data-v1",
+  "builtinSemanticsVariant" : "E",
+  "builtins" : [ {
+    "name" : "EqualsInteger",
+    "flatTag" : 7
+  }, {
+    "name" : "EqualsByteString",
+    "flatTag" : 15
+  }, {
+    "name" : "IfThenElse",
+    "flatTag" : 26
+  }, {
+    "name" : "FstPair",
+    "flatTag" : 29
+  }, {
+    "name" : "SndPair",
+    "flatTag" : 30
+  }, {
+    "name" : "HeadList",
+    "flatTag" : 33
+  }, {
+    "name" : "TailList",
+    "flatTag" : 34
+  }, {
+    "name" : "NullList",
+    "flatTag" : 35
+  }, {
+    "name" : "UnConstrData",
+    "flatTag" : 42
+  }, {
+    "name" : "UnListData",
+    "flatTag" : 44
+  }, {
+    "name" : "UnBData",
+    "flatTag" : 46
+  } ],
+  "capabilityInventory" : {
+    "ledgerApi" : "CardanoLedgerApiBlaster",
+    "ledgerVersion" : "V3",
+    "revision" : "5dab3c43f042b8735b6d067223baaa8d32ed28a1",
+    "schemaVersion" : 1,
+    "sha256" : "4230b38874c05a1538f9b79285f7a0314de43806d543b1136d690a1db4e88bcb"
+  },
+  "cardanoScriptHash" : "a0ed6ee1269396d73661d3317b69eceff8159ead703be4f13da62e94",
+  "claims" : [ {
+    "id" : "authorization.vulnerable-threshold",
+    "generatedName" : "authorization_vulnerable_threshold",
+    "domain" : "VALID_SPENDING_V3_PINNED",
+    "guaranteeSha256" : "ec487aae9167567cfe6c4655a297b58f5429d109bfcbfc23b0fbeb52d63c1f6f",
+    "envelopeSha256" : "72bb626835ce19436d26877992cc2e1eee0dc48c502b8270737750be1a320eb7",
+    "capabilities" : [ "dsl.authorization.distinct-identities", "dsl.authorization.source:FIXED", "dsl.authorization.static-authorities", "field.scriptContext.scriptInfo", "field.txInfo.signatories", "ledger.validSpendingContext", "purpose.spending" ],
+    "guaranteeRules" : [ "authority-list:bounded-static", "authority-source:FIXED", "authorization:EXACTLY_SIGNED:2", "bytes-literal:KEY_HASH" ],
+    "counterexampleDomain" : "BLASTER_VALID_SPENDING_SUPERSET",
+    "ledgerValidCounterexampleEstablished" : false,
+    "concreteVmCounterexampleReproduced" : false
+  } ],
+  "compiledCodeSha256" : "521a8c75059c64ed5a1e26df42f0383d0ae03202f3aafd07fe1ff2e3009a6728",
+  "dependencies" : {
+    "CardanoLedgerApiBlaster" : "5dab3c43f042b8735b6d067223baaa8d32ed28a1",
+    "Lean-blaster" : "083bae7971414d894b56b5bbf4108c63e17bc42a",
+    "PlutusCoreBlaster" : "7cf5a78c54b9694ef093bf49edb5d3799b2a49c9"
+  },
+  "domainAssumptions" : [ "validSpendingContext/v3-pinned" ],
+  "dslIr" : {
+    "schemaVersion" : 6,
+    "sha256" : "48b2549c1252f0ba1573c1e43d9c7ac9de341849222485a4dd8e5c00e63408e3"
+  },
+  "fuel" : 1700,
+  "generatedBy" : "julc verify init",
+  "generatedLeanSha256" : "463a86466a10a96c8441c30ff1016d55542b08730f8042d6f619935c9afd57ff",
+  "julcVersion" : "0.1.0-pre16",
+  "leanVersion" : "4.24.0",
+  "ledgerValidityModeled" : true,
+  "plutusLanguage" : "PlutusV3",
+  "project" : "e4h-authorization-algebra",
+  "properties" : [ {
+    "id" : "authorization.vulnerable-threshold.non-vacuity",
+    "reason" : "not-run",
+    "result" : "COULD-NOT-EVALUATE"
+  }, {
+    "id" : "authorization.vulnerable-threshold",
+    "reason" : "not-run",
+    "result" : "COULD-NOT-EVALUATE"
+  } ],
+  "propertyIr" : {
+    "contractSchemaSha256" : "6651047391c7e5747e6e2914a33e824b91561904197ea0936817fd06c6768e55",
+    "path" : "verification-property.json",
+    "projectedContractTypesSha256" : "6651047391c7e5747e6e2914a33e824b91561904197ea0936817fd06c6768e55",
+    "propertyId" : "VulnerableThresholdGate.dsl-property-set",
+    "schemaVersion" : 3,
+    "sha256" : "11691e71a44a7e54f862cf6ef58b4490f337fec796cdbc33808703f7e8137e1a",
+    "sourcePath" : "verification/e4h/VulnerableThresholdSpec.java",
+    "template" : "julc.dsl-ledger/v1"
+  },
+  "protocolVersion" : 11,
+  "recursiveDepth" : 4,
+  "runnerPlanSha256" : "929d7a5c5a089921be44df942bad27bafe98b67f2f66b4dafeaf4b830033b058",
+  "schemaVersion" : 1,
+  "schemas" : [ {
+    "cip57" : "VulnerableThresholdGate:Datum",
+    "lean" : "VulnerableThresholdGateDatum"
+  }, {
+    "cip57" : "VulnerableThresholdGate:Redeemer",
+    "lean" : "VulnerableThresholdGateRedeemer"
+  } ],
+  "scriptPurpose" : "spending",
+  "uplcVersion" : "1.1.0",
+  "validatorTitle" : "VulnerableThresholdGate",
+  "z3Version" : "4.15.2"
+}
