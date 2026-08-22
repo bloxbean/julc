@@ -1,0 +1,26 @@
+{
+  "schemaVersion" : 3,
+  "template" : "julc.dsl-ledger/v1",
+  "propertyId" : "VacuousGovernance.dsl-property-set",
+  "validatorTitle" : "VacuousGovernance",
+  "scriptPurpose" : "spending",
+  "sourcePath" : "/Users/satya/work/bloxbean/julc/verification/e4k/VacuousGovernanceSpec.java",
+  "canonicalDslJson" : "{\"contractSchemaSha256\":\"f3cdd4753651a1e8cc678851710bb33086d14f61344f2d53119d6eb68ff440a4\",\"properties\":[{\"domain\":\"VALID_SPENDING_V3_PINNED\",\"expression\":{\"op\":\"option-exists\",\"elementType\":{\"type\":\"ledger\",\"ledgerType\":\"PROPOSAL_PROCEDURE\"},\"optional\":{\"op\":\"list-at\",\"elementType\":{\"type\":\"ledger\",\"ledgerType\":\"PROPOSAL_PROCEDURE\"},\"index\":{\"op\":\"literal\",\"resultType\":\"INTEGER\",\"value\":\"0\"},\"list\":{\"op\":\"ledger-field\",\"name\":\"proposals\",\"ownerType\":{\"type\":\"ledger\",\"ledgerType\":\"TX_INFO\"},\"target\":{\"op\":\"ledger-field\",\"name\":\"txInfo\",\"ownerType\":{\"type\":\"ledger\",\"ledgerType\":\"SCRIPT_CONTEXT\"},\"target\":{\"op\":\"ledger-root\",\"name\":\"ledgerContext\",\"valueType\":{\"type\":\"ledger\",\"ledgerType\":\"SCRIPT_CONTEXT\"}},\"valueType\":{\"type\":\"ledger\",\"ledgerType\":\"TX_INFO\"}},\"valueType\":{\"type\":\"list\",\"elementType\":{\"type\":\"ledger\",\"ledgerType\":\"PROPOSAL_PROCEDURE\"}}}},\"predicate\":{\"op\":\"compare\",\"left\":{\"op\":\"ledger-field\",\"name\":\"deposit\",\"ownerType\":{\"type\":\"ledger\",\"ledgerType\":\"PROPOSAL_PROCEDURE\"},\"target\":{\"op\":\"typed-variable\",\"valueType\":{\"type\":\"ledger\",\"ledgerType\":\"PROPOSAL_PROCEDURE\"},\"variable\":\"v0\"},\"valueType\":{\"type\":\"builtin\",\"builtin\":\"INTEGER\"}},\"operator\":\"GE\",\"right\":{\"op\":\"literal\",\"resultType\":\"INTEGER\",\"value\":\"10\"}},\"variable\":\"v0\"},\"id\":\"governance.non-vacuity-control\"}],\"purpose\":\"SPENDING\",\"schemaVersion\":9}",
+  "claims" : [ {
+    "id" : "governance.non-vacuity-control",
+    "generatedName" : "governance_non_vacuity_control",
+    "domain" : "VALID_SPENDING_V3_PINNED",
+    "guaranteeSha256" : "7031ec8aecf38cbcb7673e74e3aaec74f5a04b378b568bdf02707fcfde5dc8c9",
+    "envelopeSha256" : "405a11d50d8575336d9245c86118673493fbff2bcebd60258cebc1c880b87137",
+    "capabilities" : [ "dsl.ledger.context", "dsl.option.exists", "field.proposalProcedure.deposit", "field.scriptContext.scriptInfo", "field.scriptContext.txInfo", "field.txInfo.proposals", "ledger.validSpendingContext", "purpose.spending" ],
+    "guaranteeRules" : [ "compare:GE", "integer-literal", "ledger-field:PROPOSAL_PROCEDURE.deposit", "ledger-field:SCRIPT_CONTEXT.txInfo", "ledger-field:TX_INFO.proposals", "ledger-root:ledgerContext", "list-at", "option-exists", "typed-variable" ],
+    "counterexampleDomain" : "BLASTER_VALID_SPENDING_SUPERSET",
+    "ledgerValidCounterexampleEstablished" : false,
+    "concreteVmCounterexampleReproduced" : false
+  } ],
+  "domainAssumptions" : [ "validSpendingContext/v3-pinned" ],
+  "guaranteeRules" : [ "compare:GE", "integer-literal", "ledger-field:PROPOSAL_PROCEDURE.deposit", "ledger-field:SCRIPT_CONTEXT.txInfo", "ledger-field:TX_INFO.proposals", "ledger-root:ledgerContext", "list-at", "option-exists", "typed-variable" ],
+  "ledgerValidityModeled" : true,
+  "projectedContractTypesJson" : "{\"datumType\":{\"type\":\"nominal\",\"nominalKind\":\"RECORD\",\"stableId\":\"VacuousGovernance.Datum\"},\"definitions\":[{\"constructors\":[],\"fields\":[],\"nominalKind\":\"RECORD\",\"sourceName\":\"Datum\",\"stableId\":\"VacuousGovernance.Datum\"},{\"constructors\":[],\"fields\":[],\"nominalKind\":\"RECORD\",\"sourceName\":\"Redeemer\",\"stableId\":\"VacuousGovernance.Redeemer\"}],\"parameters\":[],\"purpose\":\"SPEND\",\"redeemerType\":{\"type\":\"nominal\",\"nominalKind\":\"RECORD\",\"stableId\":\"VacuousGovernance.Redeemer\"},\"schemaVersion\":1}",
+  "contractSchemaSha256" : "f3cdd4753651a1e8cc678851710bb33086d14f61344f2d53119d6eb68ff440a4"
+}

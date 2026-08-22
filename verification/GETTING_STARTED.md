@@ -741,7 +741,26 @@ Compile the generated model and trusted specification, then invoke
 [`e4j/README.md`](e4j/README.md) for the reproducible positive, refuted,
 vacuous, kernel, VM, Docker, and native controls and the current solver bounds.
 
-## 18. Fuel, recursion, and reruns
+## 18. Typed governance transaction data (schema 9)
+
+Schema 9 lets an existing spending, minting, rewarding, or certifying property
+inspect `TxInfo` voters, votes, proposals, action identifiers, protocol
+versions, and reviewed governance-action payloads. Generate the model with:
+
+```bash
+julc verify dsl-init . --validator MyValidator --purpose spending \
+  --schema-version 9 --package verification --class GovernanceModel \
+  --out verification/GovernanceModel.java
+```
+
+Use `context().txInfo().votes()` for duplicate-preserving nested maps and
+`context().txInfo().proposals()` for ordered proposals. Access a raw proposal
+action only through `actionStrict()`. `ChangedParameters` and `Quorum` remain
+inaccessible, and voting/proposing validator selection is still unsupported.
+See [`e4k/README.md`](e4k/README.md) for executable evidence and the proposal-
+validity domain limitation.
+
+## 19. Fuel, recursion, and reruns
 
 `--fuel` bounds exact UPLC preprocessing/execution in the generated obligation.
 An `SMT-VALID` certificate covers only successful paths completing within that
@@ -761,7 +780,7 @@ julc verify . --validator AuthorizedStateValidator \
   --out-dir verification/ci-authorized --force
 ```
 
-## 19. What the certificate does and does not claim
+## 20. What the certificate does and does not claim
 
 For an annotation profile, a successful certificate means:
 

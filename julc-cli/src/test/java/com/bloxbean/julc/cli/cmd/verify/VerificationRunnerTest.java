@@ -110,6 +110,44 @@ class VerificationRunnerTest {
     }
 
     @Test
+    void governanceCertificateMetadataIsReDerivedFromCanonicalCapabilities()
+            throws Exception {
+        var manifest = (com.fasterxml.jackson.databind.node.ObjectNode)
+                VerificationFiles.JSON.readTree("""
+                        {
+                          "dslIr": {"schemaVersion": 9},
+                          "claims": [{
+                            "id": "governance.action",
+                            "domain": "VALID_SPENDING_V3_PINNED",
+                            "guaranteeSha256": "guarantee",
+                            "envelopeSha256": "envelope",
+                            "capabilities": [
+                              "field.txInfo.proposals",
+                              "dsl.governance.decode-action-strict",
+                              "helper.isKnownProposal"
+                            ],
+                            "guaranteeRules": [],
+                            "counterexampleDomain": "BLASTER_VALID_SPENDING_SUPERSET",
+                            "ledgerValidCounterexampleEstablished": false,
+                            "concreteVmCounterexampleReproduced": false
+                          }]
+                        }
+                        """);
+        var properties = new ArrayList<VerificationRunResult.Property>();
+        properties.add(new VerificationRunResult.Property(
+                "governance.action", "REFUTED", "dsl-property-counterexample"));
+
+        VerificationRunner.attachClaimMetadata(manifest, properties);
+
+        var property = properties.getFirst();
+        assertEquals(List.of("PROPOSALS"), property.governanceDataScopes());
+        assertEquals(Boolean.TRUE, property.strictGovernanceActionDecoding());
+        assertEquals(Boolean.TRUE, property.fullProposalEquality());
+        assertEquals(Boolean.FALSE, property.currentVotingPurposeModeled());
+        assertEquals(Boolean.FALSE, property.currentProposingPurposeModeled());
+    }
+
+    @Test
     void unexpectedExitAndMissingMarkerFailClosed() throws Exception {
         Path exitWorkspace = workspace("bad-exit", VerificationOutcome.SMT_VALID, false);
         var exitResult = runner(new FakeProcess(false, true, 7))

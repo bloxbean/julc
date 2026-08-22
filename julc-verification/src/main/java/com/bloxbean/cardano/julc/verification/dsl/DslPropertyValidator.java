@@ -44,8 +44,10 @@ public final class DslPropertyValidator {
                 == DslPropertySet.CERTIFICATE_PAYLOAD_SCHEMA_VERSION;
         boolean valueAlgebraV8 = propertySet.schemaVersion()
                 == DslPropertySet.VALUE_ALGEBRA_SCHEMA_VERSION;
+        boolean governanceV9 = propertySet.schemaVersion()
+                == DslPropertySet.GOVERNANCE_SCHEMA_VERSION;
         boolean composition = compositionV3 || typedV4 || ledgerV5 || authorizationV6
-                || certificatePayloadV7 || valueAlgebraV8;
+                || certificatePayloadV7 || valueAlgebraV8 || governanceV9;
         ContractSchema.Purpose expectedPurpose = composition
                 ? contractPurpose(propertySet.purpose())
                 : mintingV2 ? ContractSchema.Purpose.MINT : ContractSchema.Purpose.SPEND;
@@ -58,16 +60,16 @@ public final class DslPropertyValidator {
                     "Minting DSL schema 2 requires exactly one property");
         }
         ProjectedContractTypes projection = typedV4 || ledgerV5 || authorizationV6
-                || certificatePayloadV7 || valueAlgebraV8
+                || certificatePayloadV7 || valueAlgebraV8 || governanceV9
                 ? ContractTypeProjection.project(schema) : null;
         TypeAuthority typeAuthority = projection == null
                 ? null : new TypeAuthority(projection,
-                        ledgerV5 || authorizationV6 || certificatePayloadV7 || valueAlgebraV8,
-                        authorizationV6 || certificatePayloadV7 || valueAlgebraV8,
-                        certificatePayloadV7 || valueAlgebraV8,
-                        valueAlgebraV8, propertySet.purpose());
+                        ledgerV5 || authorizationV6 || certificatePayloadV7 || valueAlgebraV8 || governanceV9,
+                        authorizationV6 || certificatePayloadV7 || valueAlgebraV8 || governanceV9,
+                        certificatePayloadV7 || valueAlgebraV8 || governanceV9,
+                        valueAlgebraV8 || governanceV9, governanceV9, propertySet.purpose());
         if (typedV4 || ledgerV5 || authorizationV6 || certificatePayloadV7
-                || valueAlgebraV8) {
+                || valueAlgebraV8 || governanceV9) {
             String expectedHash = ContractTypeProjection.sha256(projection);
             if (!expectedHash.equals(propertySet.contractSchemaSha256())) {
                 throw new IllegalArgumentException(
@@ -137,7 +139,8 @@ public final class DslPropertyValidator {
                 || schemaVersion == DslPropertySet.LEDGER_SCHEMA_VERSION
                 || schemaVersion == DslPropertySet.AUTHORIZATION_SCHEMA_VERSION
                 || schemaVersion == DslPropertySet.CERTIFICATE_PAYLOAD_SCHEMA_VERSION
-                || schemaVersion == DslPropertySet.VALUE_ALGEBRA_SCHEMA_VERSION;
+                || schemaVersion == DslPropertySet.VALUE_ALGEBRA_SCHEMA_VERSION
+                || schemaVersion == DslPropertySet.GOVERNANCE_SCHEMA_VERSION;
         if (legacySpending && isMintingSchemaNode(node)) {
             throw new IllegalArgumentException("DSL schema 1 does not admit minting node "
                     + node.getClass().getSimpleName());
@@ -367,7 +370,8 @@ public final class DslPropertyValidator {
                 && schemaVersion != DslPropertySet.LEDGER_SCHEMA_VERSION
                 && schemaVersion != DslPropertySet.AUTHORIZATION_SCHEMA_VERSION
                 && schemaVersion != DslPropertySet.CERTIFICATE_PAYLOAD_SCHEMA_VERSION
-                && schemaVersion != DslPropertySet.VALUE_ALGEBRA_SCHEMA_VERSION) {
+                && schemaVersion != DslPropertySet.VALUE_ALGEBRA_SCHEMA_VERSION
+                && schemaVersion != DslPropertySet.GOVERNANCE_SCHEMA_VERSION) {
             throw new IllegalArgumentException(
                     "Structural typed nodes require DSL schema 4, 5, 6, or 7");
         }
@@ -405,8 +409,14 @@ public final class DslPropertyValidator {
             return DslType.BOOL;
         }
         if (node instanceof LedgerHelperNode helper
-                && helper.helper() == LedgerHelperNode.LedgerHelperKind.IS_BALANCED) {
-            authority.requireValueAlgebra();
+                && (helper.helper() == LedgerHelperNode.LedgerHelperKind.IS_BALANCED
+                || helper.helper() == LedgerHelperNode.LedgerHelperKind.IS_KNOWN_VOTER
+                || helper.helper() == LedgerHelperNode.LedgerHelperKind.IS_KNOWN_PROPOSAL)) {
+            if (helper.helper() == LedgerHelperNode.LedgerHelperKind.IS_BALANCED) {
+                authority.requireValueAlgebra();
+            } else {
+                authority.requireGovernance();
+            }
             VerificationTypeRef actual = validateTypedValue(
                     helper, authority, variables, count, maxNodes);
             if (!actual.equals(LedgerTypeAuthority.BOOL)) {
@@ -961,6 +971,13 @@ public final class DslPropertyValidator {
         }
         if (node instanceof LedgerFieldNode field) {
             authority.requireLedger();
+            if (field.ownerType().equals(LedgerTypeAuthority.GOVERNANCE_ACTION_ID)
+                    || field.ownerType().equals(LedgerTypeAuthority.PROTOCOL_VERSION)
+                    || field.ownerType().equals(LedgerTypeAuthority.PROPOSAL_PROCEDURE)
+                    || (field.ownerType().equals(LedgerTypeAuthority.TX_INFO)
+                    && (field.name().equals("votes") || field.name().equals("proposals")))) {
+                authority.requireGovernance();
+            }
             VerificationTypeRef target = validateTypedValue(
                     field.target(), authority, variables, count, maxNodes);
             if (!target.equals(field.ownerType())) {
@@ -1130,6 +1147,40 @@ public final class DslPropertyValidator {
                     requireHelperType(helper.arguments().getFirst(),
                             LedgerTypeAuthority.SCRIPT_CONTEXT, authority,
                             variables, count, maxNodes);
+                    yield LedgerTypeAuthority.BOOL;
+                }
+                case DECODE_GOVERNANCE_ACTION -> {
+                    authority.requireGovernance();
+                    requireHelperArguments(helper, 1);
+                    requireHelperType(helper.arguments().getFirst(),
+                            LedgerTypeAuthority.PROPOSAL_PROCEDURE, authority,
+                            variables, count, maxNodes);
+                    yield new OptionalTypeRef(LedgerTypeAuthority.GOVERNANCE_ACTION);
+                }
+                case IS_KNOWN_VOTER -> {
+                    authority.requireGovernance();
+                    requireHelperArguments(helper, 2);
+                    requireHelperType(helper.arguments().get(0), LedgerTypeAuthority.VOTER,
+                            authority, variables, count, maxNodes);
+                    requireHelperType(helper.arguments().get(1), new AssocMapTypeRef(
+                            LedgerTypeAuthority.VOTER, new AssocMapTypeRef(
+                            LedgerTypeAuthority.GOVERNANCE_ACTION_ID,
+                            LedgerTypeAuthority.VOTE)), authority, variables, count, maxNodes);
+                    LedgerTypeAuthority.requireTypedCapability("helper.isKnownVoter");
+                    yield LedgerTypeAuthority.BOOL;
+                }
+                case IS_KNOWN_PROPOSAL -> {
+                    authority.requireGovernance();
+                    requireHelperArguments(helper, 3);
+                    requireHelperType(helper.arguments().get(0),
+                            LedgerTypeAuthority.PROPOSAL_PROCEDURE, authority,
+                            variables, count, maxNodes);
+                    requireHelperType(helper.arguments().get(1), LedgerTypeAuthority.INTEGER,
+                            authority, variables, count, maxNodes);
+                    requireHelperType(helper.arguments().get(2),
+                            new ListTypeRef(LedgerTypeAuthority.PROPOSAL_PROCEDURE), authority,
+                            variables, count, maxNodes);
+                    LedgerTypeAuthority.requireTypedCapability("helper.isKnownProposal");
                     yield LedgerTypeAuthority.BOOL;
                 }
             };
@@ -1589,16 +1640,19 @@ public final class DslPropertyValidator {
         private final boolean authorizationAllowed;
         private final boolean certificatePayloadAllowed;
         private final boolean valueAlgebraAllowed;
+        private final boolean governanceAllowed;
         private final DslPurpose purpose;
 
         private TypeAuthority(ProjectedContractTypes projection, boolean ledgerAllowed,
                 boolean authorizationAllowed, boolean certificatePayloadAllowed,
-                boolean valueAlgebraAllowed, DslPurpose purpose) {
+                boolean valueAlgebraAllowed, boolean governanceAllowed,
+                DslPurpose purpose) {
             this.projection = projection;
             this.ledgerAllowed = ledgerAllowed;
             this.authorizationAllowed = authorizationAllowed;
             this.certificatePayloadAllowed = certificatePayloadAllowed;
             this.valueAlgebraAllowed = valueAlgebraAllowed;
+            this.governanceAllowed = governanceAllowed;
             this.purpose = purpose;
             this.definitions = projection.definitions().stream().collect(
                     java.util.stream.Collectors.toUnmodifiableMap(
@@ -1681,6 +1735,13 @@ public final class DslPropertyValidator {
             }
         }
 
+        private void requireGovernance() {
+            if (!governanceAllowed) {
+                throw new IllegalArgumentException(
+                        "Governance transaction-data nodes require DSL schema 9");
+            }
+        }
+
         private void requireLedgerConstructor(LedgerTypeRef sum, String constructor) {
             requireLedger();
             if ((sum.equals(LedgerTypeAuthority.TX_CERT)
@@ -1689,6 +1750,13 @@ public final class DslPropertyValidator {
                     && !certificatePayloadAllowed) {
                 throw new IllegalArgumentException(
                         "Certificate payload constructors require DSL schema 7");
+            }
+            if ((sum.equals(LedgerTypeAuthority.VOTER)
+                    || sum.equals(LedgerTypeAuthority.VOTE)
+                    || sum.equals(LedgerTypeAuthority.GOVERNANCE_ACTION))
+                    && !governanceAllowed) {
+                throw new IllegalArgumentException(
+                        "Governance constructors require DSL schema 9");
             }
             LedgerTypeAuthority.constructor(sum, constructor);
         }

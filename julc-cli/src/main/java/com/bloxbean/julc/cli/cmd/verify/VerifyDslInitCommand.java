@@ -24,7 +24,7 @@ public final class VerifyDslInitCommand implements Callable<Integer> {
     @Option(names = "--class", required = true)
     private String className;
     @Option(names = "--schema-version", defaultValue = "3",
-            description = "Experimental DSL schema to generate: 3, 4, 5, 6, 7, or 8")
+            description = "Experimental DSL schema to generate: 3 through 9")
     private int schemaVersion;
     @Option(names = "--out", required = true,
             description = "Generated .java file (refuses to overwrite)")
@@ -52,8 +52,10 @@ public final class VerifyDslInitCommand implements Callable<Integer> {
                         loaded.schema(), packageName, className);
                 case 8 -> ContractMetamodelGenerator.generateTypedV8(
                         loaded.schema(), packageName, className);
+                case 9 -> ContractMetamodelGenerator.generateTypedV9(
+                        loaded.schema(), packageName, className);
                 default -> throw new IllegalArgumentException(
-                        "DSL metamodel schema version must be 3, 4, 5, 6, 7, or 8");
+                        "DSL metamodel schema version must be 3 through 9");
             };
             if (target.getParent() != null) Files.createDirectories(target.getParent());
             Files.writeString(target, source);

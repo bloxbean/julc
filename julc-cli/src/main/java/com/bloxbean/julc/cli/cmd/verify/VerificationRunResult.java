@@ -45,12 +45,17 @@ public record VerificationRunResult(
             List<String> paymentAggregationScopes,
             Boolean domainImplied,
             Boolean globalMultiInputLinkageModeled,
+            List<String> governanceDataScopes,
+            Boolean strictGovernanceActionDecoding,
+            Boolean fullProposalEquality,
+            Boolean currentVotingPurposeModeled,
+            Boolean currentProposingPurposeModeled,
             String counterexampleDomain,
             Boolean ledgerValidCounterexampleEstablished,
             Boolean concreteVmCounterexampleReproduced) {
         public Property(String id, String outcome, String reason) {
             this(id, outcome, reason, null, null, null, null, null, null, null,
-                    null, null, null, null, null);
+                    null, null, null, null, null, null, null, null, null, null);
         }
 
         /** Compatibility constructor for result producers predating value metadata. */
@@ -67,7 +72,8 @@ public record VerificationRunResult(
                 Boolean concreteVmCounterexampleReproduced) {
             this(id, outcome, reason, domain, guaranteeSha256, envelopeSha256,
                     capabilities, null, null, null, null, null,
-                    counterexampleDomain, ledgerValidCounterexampleEstablished,
+                    null, null, null, null, null, counterexampleDomain,
+                    ledgerValidCounterexampleEstablished,
                     concreteVmCounterexampleReproduced);
         }
     }

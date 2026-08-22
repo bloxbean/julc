@@ -50,6 +50,17 @@ public record LedgerTxInfoExpr(PropertyNode node) implements Expr {
                         LedgerTypeAuthority.SCRIPT_PURPOSE, LedgerTypeAuthority.DATA)),
                 LedgerTypeAuthority.SCRIPT_PURPOSE, LedgerTypeAuthority.DATA);
     }
+    public VoterMapExpr votes() {
+        var inner = new AssocMapTypeRef(LedgerTypeAuthority.GOVERNANCE_ACTION_ID,
+                LedgerTypeAuthority.VOTE);
+        return new VoterMapExpr(new LedgerFieldNode(node, LedgerTypeAuthority.TX_INFO,
+                "votes", new AssocMapTypeRef(LedgerTypeAuthority.VOTER, inner)));
+    }
+    public ProposalProcedureListExpr proposals() {
+        return new ProposalProcedureListExpr(new LedgerFieldNode(node,
+                LedgerTypeAuthority.TX_INFO, "proposals",
+                new ListTypeRef(LedgerTypeAuthority.PROPOSAL_PROCEDURE)));
+    }
 
     private LedgerTxInInfoListExpr inputsField(String name) {
         return new LedgerTxInInfoListExpr(new LedgerFieldNode(node,

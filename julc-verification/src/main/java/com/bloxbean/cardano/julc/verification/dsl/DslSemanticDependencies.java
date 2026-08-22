@@ -269,6 +269,9 @@ public final class DslSemanticDependencies {
                 case FILTER_PAYMENT_CREDENTIAL_OUTPUTS ->
                         "dsl.value.filter-payment-credential";
                 case IS_BALANCED -> "ledger.isBalanced";
+                case DECODE_GOVERNANCE_ACTION -> "dsl.governance.decode-action-strict";
+                case IS_KNOWN_VOTER -> "helper.isKnownVoter";
+                case IS_KNOWN_PROPOSAL -> "helper.isKnownProposal";
             });
             if (helper.helper() == LedgerHelperNode.LedgerHelperKind.VALUE_SPENT
                     || helper.helper() == LedgerHelperNode.LedgerHelperKind.VALUE_PRODUCED

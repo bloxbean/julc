@@ -33,6 +33,12 @@ public record LedgerTypeRef(LedgerKind ledgerType) implements VerificationTypeRe
         TX_CERT,
         DELEGATEE,
         DREP,
+        VOTER,
+        VOTE,
+        GOVERNANCE_ACTION_ID,
+        PROTOCOL_VERSION,
+        PROPOSAL_PROCEDURE,
+        GOVERNANCE_ACTION,
         OPAQUE_VOTER,
         OPAQUE_PROPOSAL
     }
