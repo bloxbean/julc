@@ -1,0 +1,60 @@
+{
+  "acquire" : [ {
+    "command" : [ "lake", "update" ],
+    "expectedExitCodes" : [ 0 ],
+    "id" : "lake-update",
+    "maxAttempts" : 3
+  }, {
+    "command" : [ "lake", "build", "@PlutusCore/PlutusCore", "@CardanoLedgerApi/CardanoLedgerApi", "@Blaster/Blaster", "GeneratedVerificationSupport" ],
+    "expectedExitCodes" : [ 0 ],
+    "id" : "build-pinned-dependencies"
+  } ],
+  "kind" : "generated-workspace",
+  "manifest" : "verification-manifest.json",
+  "schemaVersion" : 2,
+  "timeoutSeconds" : 1800,
+  "verify" : [ {
+    "command" : [ "scripts/verify-certificate_vacuous_payload-non-vacuity.sh" ],
+    "executableSha256" : "298e25b8f694cafbf6155a915b8292baa369d01419f04970d7bb0db6ebee302f",
+    "id" : "check-non-vacuity-certificate_vacuous_payload",
+    "outcomes" : [ {
+      "exitCode" : 0,
+      "reason" : "expected-negative-control",
+      "requiredOutput" : "NON-VACUOUS: successful input witness exists",
+      "result" : "REFUTED"
+    }, {
+      "exitCode" : 4,
+      "reason" : "property-vacuous",
+      "requiredOutput" : "VACUOUS: validator has no successful input",
+      "result" : "COULD-NOT-EVALUATE"
+    }, {
+      "exitCode" : 2,
+      "reason" : "non-vacuity-undetermined",
+      "requiredOutput" : "COULD-NOT-EVALUATE: non-vacuity",
+      "result" : "COULD-NOT-EVALUATE"
+    } ],
+    "propertyId" : "certificate.vacuous-payload.non-vacuity"
+  }, {
+    "command" : [ "scripts/verify-certificate_vacuous_payload.sh" ],
+    "executableSha256" : "e33adc435863cbde6f5164706d52b76512e990631404966b6d69712484fd6480",
+    "id" : "prove-dsl-certificate_vacuous_payload",
+    "nonVacuityGuardPropertyId" : "certificate.vacuous-payload.non-vacuity",
+    "outcomes" : [ {
+      "exitCode" : 0,
+      "reason" : "dsl-property-established",
+      "requiredOutput" : "SMT-VALID: DSL property certificate.vacuous-payload established",
+      "result" : "SMT-VALID"
+    }, {
+      "exitCode" : 3,
+      "reason" : "dsl-property-counterexample",
+      "requiredOutput" : "REFUTED: DSL property certificate.vacuous-payload counterexample found",
+      "result" : "REFUTED"
+    }, {
+      "exitCode" : 2,
+      "reason" : "dsl-property-undetermined",
+      "requiredOutput" : "COULD-NOT-EVALUATE: DSL property certificate.vacuous-payload",
+      "result" : "COULD-NOT-EVALUATE"
+    } ],
+    "propertyId" : "certificate.vacuous-payload"
+  } ]
+}

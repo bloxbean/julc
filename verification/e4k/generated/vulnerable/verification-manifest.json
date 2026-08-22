@@ -1,0 +1,105 @@
+{
+  "artifactFormat" : "double_cbor_hex",
+  "artifactId" : "vulnerable-governance",
+  "blueprintEntryTitle" : "VulnerableGovernance",
+  "boundarySemantics" : "strict-data-v1",
+  "builtinSemanticsVariant" : "E",
+  "builtins" : [ {
+    "name" : "EqualsInteger",
+    "flatTag" : 7
+  }, {
+    "name" : "IfThenElse",
+    "flatTag" : 26
+  }, {
+    "name" : "FstPair",
+    "flatTag" : 29
+  }, {
+    "name" : "SndPair",
+    "flatTag" : 30
+  }, {
+    "name" : "HeadList",
+    "flatTag" : 33
+  }, {
+    "name" : "TailList",
+    "flatTag" : 34
+  }, {
+    "name" : "NullList",
+    "flatTag" : 35
+  }, {
+    "name" : "UnConstrData",
+    "flatTag" : 42
+  } ],
+  "capabilityInventory" : {
+    "ledgerApi" : "CardanoLedgerApiBlaster",
+    "ledgerVersion" : "V3",
+    "revision" : "5dab3c43f042b8735b6d067223baaa8d32ed28a1",
+    "schemaVersion" : 1,
+    "sha256" : "aef541d492decb2fd5d1868b22490fa275d829acfbee83f995e81db2dc6b39c1"
+  },
+  "cardanoScriptHash" : "1823e25d1f81e19d8bb118616d76e0f1c51fdaf92cbc2d4551bf1e18",
+  "claims" : [ {
+    "id" : "governance.hard-fork-v11",
+    "generatedName" : "governance_hard_fork_v11",
+    "domain" : "VALID_SPENDING_V3_PINNED",
+    "guaranteeSha256" : "e62886297f3809574131aac7976dd6e5d4f09bb0e80c1d9c0073f308f2a7ca17",
+    "envelopeSha256" : "a1c1d2cbc122291c755b6d956f9b6f4a785ff699e4b7c461fd7bdf22a9620df0",
+    "capabilities" : [ "constructor.governance.hardFork", "dsl.governance.decode-action-strict", "dsl.ledger.context", "dsl.option.exists", "field.proposalProcedure.deposit", "field.protocolVersion.major", "field.scriptContext.scriptInfo", "field.scriptContext.txInfo", "field.txInfo.proposals", "ledger.validSpendingContext", "purpose.spending" ],
+    "guaranteeRules" : [ "bool:AND", "compare:EQ", "compare:GE", "integer-literal", "ledger-field:PROPOSAL_PROCEDURE.deposit", "ledger-field:PROTOCOL_VERSION.major", "ledger-field:SCRIPT_CONTEXT.txInfo", "ledger-field:TX_INFO.proposals", "ledger-helper:DECODE_GOVERNANCE_ACTION", "ledger-root:ledgerContext", "ledger-variant-field:GOVERNANCE_ACTION.HardForkInitiation.version", "ledger-variant-when:GOVERNANCE_ACTION.HardForkInitiation", "list-at", "option-exists", "typed-variable" ],
+    "counterexampleDomain" : "BLASTER_VALID_SPENDING_SUPERSET",
+    "ledgerValidCounterexampleEstablished" : false,
+    "concreteVmCounterexampleReproduced" : false
+  } ],
+  "compiledCodeSha256" : "45f40ed3a4f61fe795adc652271e6bfd4bb730d2db2baca1fc6a96f76ed3acc2",
+  "dependencies" : {
+    "CardanoLedgerApiBlaster" : "5dab3c43f042b8735b6d067223baaa8d32ed28a1",
+    "Lean-blaster" : "083bae7971414d894b56b5bbf4108c63e17bc42a",
+    "PlutusCoreBlaster" : "7cf5a78c54b9694ef093bf49edb5d3799b2a49c9"
+  },
+  "domainAssumptions" : [ "validSpendingContext/v3-pinned" ],
+  "dslIr" : {
+    "schemaVersion" : 9,
+    "sha256" : "196724b3d57b5e8099e04e8dc4768b3d005f0b27d0225bb5ab8754f92d3e41f5"
+  },
+  "fuel" : 5000,
+  "generatedBy" : "julc verify init",
+  "generatedLeanSha256" : "37ad9f559117099166333a945ffcbcc88af9af4495e05f5f8790d99e932d8a05",
+  "julcVersion" : "0.1.0-pre16",
+  "leanVersion" : "4.24.0",
+  "ledgerValidityModeled" : true,
+  "plutusLanguage" : "PlutusV3",
+  "project" : "governance-data-evidence",
+  "properties" : [ {
+    "id" : "governance.hard-fork-v11.non-vacuity",
+    "reason" : "not-run",
+    "result" : "COULD-NOT-EVALUATE"
+  }, {
+    "id" : "governance.hard-fork-v11",
+    "reason" : "not-run",
+    "result" : "COULD-NOT-EVALUATE"
+  } ],
+  "propertyIr" : {
+    "contractSchemaSha256" : "79793ac2c5bd24c991ebffb8e942a2d1ca9461ddb5090029e348d236b72ad16e",
+    "path" : "verification-property.json",
+    "projectedContractTypesSha256" : "79793ac2c5bd24c991ebffb8e942a2d1ca9461ddb5090029e348d236b72ad16e",
+    "propertyId" : "VulnerableGovernance.dsl-property-set",
+    "schemaVersion" : 3,
+    "sha256" : "db43ca8f0871d10c4b8264e96826e6b3020b25a55de6e6a4aa41f9ed5339aae4",
+    "sourcePath" : "/Users/satya/work/bloxbean/julc/verification/e4k/VulnerableGovernanceSpec.java",
+    "template" : "julc.dsl-ledger/v1"
+  },
+  "protocolVersion" : 11,
+  "recursiveDepth" : 4,
+  "runnerPlanSha256" : "bbc07183e1df49ee73ec7de3b7574a4060c7f139c842d296b86a4ea778cf7d97",
+  "schemaVersion" : 1,
+  "schemas" : [ {
+    "cip57" : "VulnerableGovernance:Datum",
+    "lean" : "VulnerableGovernanceDatum"
+  }, {
+    "cip57" : "VulnerableGovernance:Redeemer",
+    "lean" : "VulnerableGovernanceRedeemer"
+  } ],
+  "scriptPurpose" : "spending",
+  "uplcVersion" : "1.1.0",
+  "validatorTitle" : "VulnerableGovernance",
+  "z3Version" : "4.15.2"
+}

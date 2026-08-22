@@ -1,0 +1,60 @@
+{
+  "acquire" : [ {
+    "command" : [ "lake", "update" ],
+    "expectedExitCodes" : [ 0 ],
+    "id" : "lake-update",
+    "maxAttempts" : 3
+  }, {
+    "command" : [ "lake", "build", "@PlutusCore/PlutusCore", "@CardanoLedgerApi/CardanoLedgerApi", "@Blaster/Blaster", "GeneratedVerificationSupport" ],
+    "expectedExitCodes" : [ 0 ],
+    "id" : "build-pinned-dependencies"
+  } ],
+  "kind" : "generated-workspace",
+  "manifest" : "verification-manifest.json",
+  "schemaVersion" : 2,
+  "timeoutSeconds" : 1800,
+  "verify" : [ {
+    "command" : [ "scripts/verify-reviewed_time_and_authority-non-vacuity.sh" ],
+    "executableSha256" : "0f8cd57f467bb7c7fa186cd371a9e5433eb451b38c02918193f873780110add0",
+    "id" : "check-non-vacuity-reviewed_time_and_authority",
+    "outcomes" : [ {
+      "exitCode" : 0,
+      "reason" : "expected-negative-control",
+      "requiredOutput" : "NON-VACUOUS: successful input witness exists",
+      "result" : "REFUTED"
+    }, {
+      "exitCode" : 4,
+      "reason" : "property-vacuous",
+      "requiredOutput" : "VACUOUS: validator has no successful input",
+      "result" : "COULD-NOT-EVALUATE"
+    }, {
+      "exitCode" : 2,
+      "reason" : "non-vacuity-undetermined",
+      "requiredOutput" : "COULD-NOT-EVALUATE: non-vacuity",
+      "result" : "COULD-NOT-EVALUATE"
+    } ],
+    "propertyId" : "reviewed.time-and-authority.non-vacuity"
+  }, {
+    "command" : [ "scripts/verify-reviewed_time_and_authority.sh" ],
+    "executableSha256" : "4ed58680171529304d0fee21a2cc423584d94e0ec01c9357ca6afc8267b2f8b3",
+    "id" : "prove-dsl-reviewed_time_and_authority",
+    "nonVacuityGuardPropertyId" : "reviewed.time-and-authority.non-vacuity",
+    "outcomes" : [ {
+      "exitCode" : 0,
+      "reason" : "dsl-property-established",
+      "requiredOutput" : "SMT-VALID: DSL property reviewed.time-and-authority established",
+      "result" : "SMT-VALID"
+    }, {
+      "exitCode" : 3,
+      "reason" : "dsl-property-counterexample",
+      "requiredOutput" : "REFUTED: DSL property reviewed.time-and-authority counterexample found",
+      "result" : "REFUTED"
+    }, {
+      "exitCode" : 2,
+      "reason" : "dsl-property-undetermined",
+      "requiredOutput" : "COULD-NOT-EVALUATE: DSL property reviewed.time-and-authority",
+      "result" : "COULD-NOT-EVALUATE"
+    } ],
+    "propertyId" : "reviewed.time-and-authority"
+  } ]
+}

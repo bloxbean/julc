@@ -1,27 +1,24 @@
-Always verify the implementation with the plan for correctness and completessness. Ensure all test cases are covered, including edge cases and error handling scenarios. Use both unit tests for individual components and integration tests for the overall system. Regularly review and update the test suite as the implementation evolves to maintain high code quality and reliability.
+# CLAUDE.md — JuLC
 
-For integration test, use yaci devkit. Yaci Devkit needs to be started externally manually by user.
+@AGENTS.md
 
-Yaci devkit can be controlled (reset, topup) using admin API endpoint running on port 10000. For example, to reset the devnet:
+## Claude Code
 
-```bash
-curl -X POST http://localhost:10000/local-cluster/api/admin/devnet/reset
-```
+For substantial changes:
 
-Full openapi doc for Yaci Devkit API END points is available at http://localhost:10000/v3/api-docs
+- Use Plan Mode before editing when reviewing a new ADR or architectural change.
+- Verify ADR assumptions against the repository before implementation.
+- Treat an accepted ADR as the design contract.
+- If repository reality materially contradicts the ADR, report the conflict rather than silently redesigning.
+- Implement large changes in bounded milestones.
+- Run targeted tests during each milestone and broaden validation based on impact.
+- Review the final diff against the ADR before declaring completion.
 
-## Testing Best Practices
-- Don't forget to test edge cases, such as invalid inputs, boundary conditions, and error scenarios. This will help ensure that the implementation is robust and can handle unexpected situations gracefully.
-- Use a combination of unit tests for individual functions and integration tests that simulate real-world usage scenarios. This will help catch issues that may arise from the interaction between different components of the system.
-- Regularly review and update the test cases as the implementation evolves to ensure that they remain relevant
-- Reuse test data and setup code where possible to avoid duplication and make the tests easier to maintain. Consider using test fixtures or helper functions to set up common scenarios.
+When reporting completion include:
 
-## Coding best practices
-- Follow consistent coding conventions and style guidelines to improve readability and maintainability of the codebase.
-- Use meaningful variable and function names that clearly convey their purpose and intent.
-- Reuse code where possible to avoid duplication and improve maintainability. Consider using helper functions or classes to encapsulate common logic.
-- Regularly review and refactor the code to improve its structure and readability. This will help ensure that the codebase remains clean and maintainable as it evolves over time.
-
-## Paths
-
-- `julc-examples` - Test projects with validator and off-chain code examples, plus unit tests. ../julc-examples
+1. milestone completed
+2. modules/files changed
+3. tests and commands run
+4. semantic behavior verified
+5. unresolved issues or ADR deviations
+6. recommended independent-review focus

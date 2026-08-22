@@ -1,0 +1,9 @@
+/- Generated fallback that identifies an always-failing validator. -/
+import AuthorizedReviewedAdapters_reviewed_treasury_calibrationObligation
+
+namespace JulcGenerated.AuthorizedReviewedAdapters_reviewed_treasury_calibration
+
+theorem validatorHasNoSuccessfulInput : hasNoSuccessfulInput := by
+  blaster
+
+end JulcGenerated.AuthorizedReviewedAdapters_reviewed_treasury_calibration

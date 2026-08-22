@@ -1,0 +1,26 @@
+{
+  "schemaVersion" : 3,
+  "template" : "julc.dsl-ledger/v1",
+  "propertyId" : "VulnerableLedgerContextGate.dsl-property-set",
+  "validatorTitle" : "VulnerableLedgerContextGate",
+  "scriptPurpose" : "spending",
+  "sourcePath" : "/Users/satya/work/bloxbean/julc/verification/e4g/VulnerableLedgerContextSpec.java",
+  "canonicalDslJson" : "{\"contractSchemaSha256\":\"6e35380801aa3d4b32c019a39c6e1b66d03dd71741ab701a2dddb22318d16c74\",\"properties\":[{\"domain\":\"VALID_SPENDING_V3_PINNED\",\"expression\":{\"op\":\"bool-binary\",\"left\":{\"op\":\"list-quantifier\",\"elementType\":{\"type\":\"ledger\",\"ledgerType\":\"TX_IN_INFO\"},\"list\":{\"op\":\"ledger-field\",\"name\":\"referenceInputs\",\"ownerType\":{\"type\":\"ledger\",\"ledgerType\":\"TX_INFO\"},\"target\":{\"op\":\"ledger-field\",\"name\":\"txInfo\",\"ownerType\":{\"type\":\"ledger\",\"ledgerType\":\"SCRIPT_CONTEXT\"},\"target\":{\"op\":\"ledger-root\",\"name\":\"ledgerContext\",\"valueType\":{\"type\":\"ledger\",\"ledgerType\":\"SCRIPT_CONTEXT\"}},\"valueType\":{\"type\":\"ledger\",\"ledgerType\":\"TX_INFO\"}},\"valueType\":{\"type\":\"list\",\"elementType\":{\"type\":\"ledger\",\"ledgerType\":\"TX_IN_INFO\"}}},\"predicate\":{\"op\":\"ledger-variant-is\",\"constructor\":\"OutputDatum\",\"sumType\":{\"type\":\"ledger\",\"ledgerType\":\"OUTPUT_DATUM\"},\"value\":{\"op\":\"ledger-field\",\"name\":\"datum\",\"ownerType\":{\"type\":\"ledger\",\"ledgerType\":\"TX_OUT\"},\"target\":{\"op\":\"ledger-field\",\"name\":\"resolved\",\"ownerType\":{\"type\":\"ledger\",\"ledgerType\":\"TX_IN_INFO\"},\"target\":{\"op\":\"typed-variable\",\"valueType\":{\"type\":\"ledger\",\"ledgerType\":\"TX_IN_INFO\"},\"variable\":\"v0\"},\"valueType\":{\"type\":\"ledger\",\"ledgerType\":\"TX_OUT\"}},\"valueType\":{\"type\":\"ledger\",\"ledgerType\":\"OUTPUT_DATUM\"}}},\"quantifier\":\"EXISTS\",\"variable\":\"v0\"},\"operator\":\"AND\",\"right\":{\"op\":\"option-state\",\"elementType\":{\"type\":\"ledger\",\"ledgerType\":\"TX_IN_INFO\"},\"optional\":{\"op\":\"ledger-helper\",\"arguments\":[{\"op\":\"ledger-root\",\"name\":\"ledgerContext\",\"valueType\":{\"type\":\"ledger\",\"ledgerType\":\"SCRIPT_CONTEXT\"}}],\"helper\":\"FIND_OWN_INPUT\",\"valueType\":{\"type\":\"optional\",\"elementType\":{\"type\":\"ledger\",\"ledgerType\":\"TX_IN_INFO\"}}},\"state\":\"PRESENT\"}},\"id\":\"ledger-context.vulnerable\"}],\"purpose\":\"SPENDING\",\"schemaVersion\":5}",
+  "claims" : [ {
+    "id" : "ledger-context.vulnerable",
+    "generatedName" : "ledger_context_vulnerable",
+    "domain" : "VALID_SPENDING_V3_PINNED",
+    "guaranteeSha256" : "ccf3eba2f08d5b1e365794df63d7a42eec67400b7132e8b12e1cd87246da24bb",
+    "envelopeSha256" : "b8850bd5403c625157eb6688543c650096c9fa29bcf7d87ad75a403f141b0e3c",
+    "capabilities" : [ "constructor.outputDatum.inline", "dsl.ledger.context", "field.scriptContext.scriptInfo", "field.scriptContext.txInfo", "field.txInInfo.resolved", "field.txInfo.referenceInputs", "field.txOut.datum", "helper.findOwnInput", "ledger.validSpendingContext", "purpose.spending" ],
+    "guaranteeRules" : [ "bool:AND", "ledger-field:SCRIPT_CONTEXT.txInfo", "ledger-field:TX_INFO.referenceInputs", "ledger-field:TX_IN_INFO.resolved", "ledger-field:TX_OUT.datum", "ledger-helper:FIND_OWN_INPUT", "ledger-root:ledgerContext", "ledger-variant-is:OUTPUT_DATUM.OutputDatum", "list-quantifier:EXISTS", "option-state:PRESENT", "typed-variable" ],
+    "counterexampleDomain" : "BLASTER_VALID_SPENDING_SUPERSET",
+    "ledgerValidCounterexampleEstablished" : false,
+    "concreteVmCounterexampleReproduced" : false
+  } ],
+  "domainAssumptions" : [ "validSpendingContext/v3-pinned" ],
+  "guaranteeRules" : [ "bool:AND", "ledger-field:SCRIPT_CONTEXT.txInfo", "ledger-field:TX_INFO.referenceInputs", "ledger-field:TX_IN_INFO.resolved", "ledger-field:TX_OUT.datum", "ledger-helper:FIND_OWN_INPUT", "ledger-root:ledgerContext", "ledger-variant-is:OUTPUT_DATUM.OutputDatum", "list-quantifier:EXISTS", "option-state:PRESENT", "typed-variable" ],
+  "ledgerValidityModeled" : true,
+  "projectedContractTypesJson" : "{\"datumType\":{\"type\":\"nominal\",\"nominalKind\":\"RECORD\",\"stableId\":\"VulnerableLedgerContextGate.Datum\"},\"definitions\":[{\"constructors\":[],\"fields\":[],\"nominalKind\":\"RECORD\",\"sourceName\":\"Datum\",\"stableId\":\"VulnerableLedgerContextGate.Datum\"},{\"constructors\":[],\"fields\":[],\"nominalKind\":\"RECORD\",\"sourceName\":\"Redeemer\",\"stableId\":\"VulnerableLedgerContextGate.Redeemer\"}],\"parameters\":[],\"purpose\":\"SPEND\",\"redeemerType\":{\"type\":\"nominal\",\"nominalKind\":\"RECORD\",\"stableId\":\"VulnerableLedgerContextGate.Redeemer\"},\"schemaVersion\":1}",
+  "contractSchemaSha256" : "6e35380801aa3d4b32c019a39c6e1b66d03dd71741ab701a2dddb22318d16c74"
+}

@@ -3,11 +3,37 @@ package com.bloxbean.julc.cli.cmd.verify;
 import com.bloxbean.julc.cli.JulcVersionProvider;
 import com.bloxbean.julc.cli.cmd.blueprint.ArtifactCommand;
 import com.bloxbean.cardano.julc.compiler.DataBoundarySemantics;
+import com.bloxbean.cardano.julc.compiler.schema.ContractSchema;
 import com.bloxbean.cardano.julc.verification.RequiresSignerProperty;
 import com.bloxbean.cardano.julc.verification.StatefulSpendingProperty;
 import com.bloxbean.cardano.julc.verification.VerificationProperty;
 import com.bloxbean.cardano.julc.verification.ControlledMintProperty;
 import com.bloxbean.cardano.julc.verification.SellerPaymentProperty;
+import com.bloxbean.cardano.julc.verification.OneShotMintProperty;
+import com.bloxbean.cardano.julc.verification.ComposedDslProperty;
+import com.bloxbean.cardano.julc.verification.dsl.ComposedDslPromotion;
+import com.bloxbean.cardano.julc.verification.dsl.DslSemanticDependencies;
+import com.bloxbean.cardano.julc.verification.dsl.DslPropertyValidator;
+import com.bloxbean.cardano.julc.verification.dsl.ControlledMintDslLowering;
+import com.bloxbean.cardano.julc.verification.dsl.MintingDsl;
+import com.bloxbean.cardano.julc.verification.dsl.PropertyIrCodec;
+import com.bloxbean.cardano.julc.verification.dsl.PropertyLeanRenderer;
+import com.bloxbean.cardano.julc.verification.dsl.TypedPropertyLeanRenderer;
+import com.bloxbean.cardano.julc.verification.dsl.type.ContractTypeProjection;
+import com.bloxbean.cardano.julc.verification.dsl.type.ProjectedContractTypes;
+import com.bloxbean.cardano.julc.verification.dsl.type.VerificationTypeRef;
+import com.bloxbean.cardano.julc.verification.dsl.type.BuiltinTypeRef;
+import com.bloxbean.cardano.julc.verification.dsl.type.NominalTypeRef;
+import com.bloxbean.cardano.julc.verification.dsl.type.LedgerTypeRef;
+import com.bloxbean.cardano.julc.verification.dsl.type.OptionalTypeRef;
+import com.bloxbean.cardano.julc.verification.dsl.type.ListTypeRef;
+import com.bloxbean.cardano.julc.verification.dsl.type.AssocMapTypeRef;
+import com.bloxbean.cardano.julc.verification.dsl.ir.BoolBinaryNode;
+import com.bloxbean.cardano.julc.verification.dsl.ir.DslPropertySet;
+import com.bloxbean.cardano.julc.verification.dsl.ir.DslDomain;
+import com.bloxbean.cardano.julc.verification.dsl.ir.DslProperty;
+import com.bloxbean.cardano.julc.verification.capability.LedgerCapabilityInventories;
+import com.bloxbean.cardano.julc.verification.capability.ReviewedRawDataAdapterAudits;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
@@ -42,12 +68,15 @@ public final class VerificationProjectGenerator {
             .enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
     private static final Set<Integer> SUPPORTED_BUILTINS = supportedBuiltins();
     private static final Set<String> LEAN_RESERVED = Set.of(
-            "abbrev", "axiom", "class", "def", "deriving", "else", "end",
-            "example", "export", "extends", "for", "from", "fun", "if",
-            "import", "in", "inductive", "instance", "let", "match",
-            "namespace", "open", "opaque", "private", "protected",
-            "structure", "syntax", "theorem", "then", "universe", "where",
-            "with");
+            "abbrev", "as", "attribute", "axiom", "by", "class", "command",
+            "decreasing_by", "def", "deriving", "do", "elab", "else", "end",
+            "example", "export", "extends", "for", "from", "fun", "have", "if",
+            "import", "in", "include", "inductive", "infix", "infixl", "infixr",
+            "instance", "let", "local", "macro", "match", "mutual", "namespace",
+            "omit", "opaque", "open", "postfix", "prefix", "private", "protected",
+            "return", "scoped", "section", "set_option", "show", "structure",
+            "syntax", "termination_by", "theorem", "then", "universe", "variable",
+            "variables", "where", "with");
     private static final Set<String> RESERVED_TYPE_NAMES = Set.of(
             "Bool", "ByteString", "Data", "Integer", "IsData", "JulcList", "JulcMap",
             "Option", "ScriptContext");
@@ -156,6 +185,46 @@ public final class VerificationProjectGenerator {
                 || ("BURN".equals(property.action()) && quantity.signum() >= 0)) {
             throw new IllegalArgumentException("Controlled-mint action contradicts quantity");
         }
+        String expectedDsl = PropertyIrCodec.canonicalJson(
+                ControlledMintDslLowering.lower(property));
+        if (!expectedDsl.equals(property.canonicalDslJson())) {
+            throw new IllegalArgumentException(
+                    "Controlled-mint canonical DSL does not match its typed fields");
+        }
+        return generateInternal(blueprintFile, property.validatorTitle(), "minting", fuel,
+                recursiveDepth, outputDirectory, force, property);
+    }
+
+    /** Generates the E.4a domain-aware one-shot authorized mint workspace. */
+    public static GenerationResult generateOneShotMint(
+            Path blueprintFile,
+            OneShotMintProperty property,
+            int fuel,
+            int recursiveDepth,
+            Path outputDirectory,
+            boolean force) throws Exception {
+        if (property == null
+                || !OneShotMintProperty.TEMPLATE.equals(property.template())
+                || property.schemaVersion() != OneShotMintProperty.SCHEMA_VERSION
+                || !"minting".equals(property.scriptPurpose())
+                || !property.ledgerValidityModeled()
+                || !property.domainAssumptions().equals(
+                        List.of("validMintingContext/v3-pinned"))
+                || !property.authorityHex().matches("[0-9a-f]{56}")
+                || !property.anchorTransactionIdHex().matches("[0-9a-f]{64}")
+                || !property.anchorOutputIndex().matches("0|[1-9][0-9]{0,18}")
+                || !property.tokenNameHex().matches("(?:[0-9a-f]{2}){0,32}")
+                || !"1".equals(property.quantity())) {
+            throw new IllegalArgumentException("Unsupported one-shot mint property IR");
+        }
+        String expectedDsl = PropertyIrCodec.canonicalJson(MintingDsl.oneShotPropertySet(
+                property.propertyId(), property.authorityHex(),
+                property.anchorTransactionIdHex(),
+                Long.parseLong(property.anchorOutputIndex()), property.tokenNameHex()));
+        if (!expectedDsl.equals(property.canonicalDslJson())) {
+            throw new IllegalArgumentException(
+                    "One-shot mint canonical DSL does not match its typed fields");
+        }
         return generateInternal(blueprintFile, property.validatorTitle(), "minting", fuel,
                 recursiveDepth, outputDirectory, force, property);
     }
@@ -179,6 +248,47 @@ public final class VerificationProjectGenerator {
         }
         return generateInternal(blueprintFile, property.validatorTitle(), "spending", fuel,
                 recursiveDepth, outputDirectory, force, property);
+    }
+
+    /** Generates a schema-3 compositional DSL workspace without whole-formula recognition. */
+    public static GenerationResult generateComposedDsl(
+            Path blueprintFile,
+            ComposedDslProperty property,
+            int fuel,
+            int recursiveDepth,
+            Path outputDirectory,
+            boolean force) throws Exception {
+        if (property == null) throw new IllegalArgumentException("Composed DSL property is required");
+        if (property.schemaVersion() >= ComposedDslProperty.TYPED_SCHEMA_VERSION) {
+            throw new IllegalArgumentException(
+                    "Schema-4/5 workspace generation requires the fresh compiler-owned ContractSchema");
+        }
+        ComposedDslPromotion.verifyIntegrity(property);
+        return generateInternal(blueprintFile, property.validatorTitle(),
+                property.scriptPurpose(), fuel, recursiveDepth, outputDirectory, force, property);
+    }
+
+    /**
+     * Generates a typed composed workspace after revalidating against the same fresh
+     * compiler-owned schema used by the observational artifact compile.
+     */
+    public static GenerationResult generateComposedDsl(
+            Path blueprintFile,
+            ComposedDslProperty property,
+            ContractSchema contractSchema,
+            int fuel,
+            int recursiveDepth,
+            Path outputDirectory,
+            boolean force) throws Exception {
+        if (property == null) throw new IllegalArgumentException("Composed DSL property is required");
+        if (contractSchema == null) {
+            throw new IllegalArgumentException("Compiler-owned ContractSchema is required");
+        }
+        DslPropertySet normalized = ComposedDslPromotion.verifyIntegrity(property);
+        DslPropertyValidator.validate(
+                normalized, contractSchema, DslPropertyValidator.MAX_AST_NODES);
+        return generateInternal(blueprintFile, property.validatorTitle(),
+                property.scriptPurpose(), fuel, recursiveDepth, outputDirectory, force, property);
     }
 
     private static GenerationResult generateInternal(
@@ -232,9 +342,36 @@ public final class VerificationProjectGenerator {
             throw new UnsupportedVerificationException(
                     "Minting verification cannot use a validator entry with a datum schema");
         }
+        if (purpose.equals("rewarding") && hasDatum) {
+            throw new UnsupportedVerificationException(
+                    "Rewarding verification cannot use a validator entry with a datum schema");
+        }
+        if (purpose.equals("certifying") && hasDatum) {
+            throw new UnsupportedVerificationException(
+                    "Certifying verification cannot use a validator entry with a datum schema");
+        }
         SchemaGeneration schemas = generateSchemas(blueprint.path("definitions"), validator);
         String leanId = leanTypeName(validatorTitle);
         String artifactId = artifact.artifactId();
+        DslPropertySet composedDsl = property instanceof ComposedDslProperty composed
+                ? ComposedDslPromotion.verifyIntegrity(composed) : null;
+        ProjectedContractTypes composedTypes = null;
+        if (property instanceof ComposedDslProperty composed
+                && composed.schemaVersion() >= ComposedDslProperty.TYPED_SCHEMA_VERSION) {
+            composedTypes = ContractTypeProjection.readCanonical(
+                    composed.projectedContractTypesJson(),
+                    com.bloxbean.cardano.julc.verification.dsl.PropertyIrCodec
+                            .MAX_CANONICAL_BYTES);
+            validateProjectedTypesAgainstBlueprint(
+                    composedTypes, blueprint.path("definitions"), validator);
+        }
+        Map<String, DslSemanticDependencies.Plan> composedPlans = new LinkedHashMap<>();
+        if (composedDsl != null) {
+            for (DslProperty claim : composedDsl.properties()) {
+                composedPlans.put(claim.id(),
+                        DslSemanticDependencies.collect(claim, composedDsl.purpose()));
+            }
+        }
 
         Path output = outputDirectory.toAbsolutePath().normalize();
         if (Files.exists(output) && !force) {
@@ -256,7 +393,33 @@ public final class VerificationProjectGenerator {
                 /verification-result.json
                 """);
         files.put("lean-toolchain", "leanprover/lean4:" + LEAN_VERSION + "\n");
-        files.put("lakefile.lean", lakefile(property instanceof SellerPaymentProperty));
+        files.put("lakefile.lean", lakefile(
+                property != null && property.ledgerValidityModeled(),
+                property instanceof ControlledMintProperty
+                        || property instanceof OneShotMintProperty
+                        || composedPlans.values().stream()
+                                .anyMatch(DslSemanticDependencies.Plan::needsRawMint),
+                composedPlans.values().stream().anyMatch(plan ->
+                        plan.needsRewardingCredential()
+                                || plan.capabilities().contains("field.txInfo.withdrawals")),
+                composedPlans.values().stream().anyMatch(plan ->
+                        plan.needsCertificate() || plan.needsCertificateIndex()
+                                || plan.capabilities().contains(
+                                        "field.txInfo.certificates")),
+                property instanceof ComposedDslProperty composed
+                        && composed.schemaVersion()
+                        >= ComposedDslProperty.TYPED_SCHEMA_VERSION,
+                property instanceof ComposedDslProperty composed
+                        && composed.schemaVersion()
+                        >= ComposedDslProperty.LEDGER_SCHEMA_VERSION,
+                composedDsl != null && composedDsl.schemaVersion()
+                        >= DslPropertySet.AUTHORIZATION_SCHEMA_VERSION,
+                composedDsl != null && composedDsl.schemaVersion()
+                        >= DslPropertySet.VALUE_ALGEBRA_SCHEMA_VERSION,
+                composedDsl != null && composedDsl.schemaVersion()
+                        >= DslPropertySet.GOVERNANCE_SCHEMA_VERSION,
+                composedDsl != null && composedDsl.schemaVersion()
+                        >= DslPropertySet.REVIEWED_DATA_ADAPTER_SCHEMA_VERSION));
         files.put("GeneratedSchemas.lean", schemas.source());
         files.put("PropertyTemplates.lean", propertyTemplates(recursiveDepth));
         files.put("CheckedExecution.lean", checkedExecution());
@@ -316,13 +479,36 @@ public final class VerificationProjectGenerator {
             String redeemerRoot = referenceName(
                     validator.path("redeemer").path("schema").path("$ref").asText());
             String redeemerLeanType = requiredLeanType(schemas, redeemerRoot);
-            files.put("SecurityProperty.lean", controlledMintProperty(
-                    redeemerLeanType, controlled.authorityHex(),
-                    controlled.tokenNameHex(), controlled.quantity(), controlled.action()));
+            DslPropertySet propertyDsl = ControlledMintDslLowering.lower(controlled);
+            files.put("SecurityProperty.lean", mintingDslProperty(
+                    redeemerLeanType, propertyDsl, false));
+            files.put("MintingSemanticsTests.lean", mintingSemanticsTests());
             files.put(leanId + "Obligation.lean",
                     controlledMintObligation(leanId, artifactId, fuel));
             files.put(leanId + "Proof.lean", controlledMintProof(leanId));
             files.put(leanId + "Counterexample.lean", controlledMintCounterexample(leanId));
+            files.put(leanId + "NonVacuityCounterexample.lean",
+                    nonVacuityCounterexample(leanId));
+            files.put(leanId + "VacuityProof.lean", vacuityProof(leanId));
+            files.put("verification-property.json", JSON.writeValueAsString(property) + "\n");
+        } else if (property instanceof OneShotMintProperty oneShot) {
+            String redeemerRoot = referenceName(
+                    validator.path("redeemer").path("schema").path("$ref").asText());
+            String redeemerLeanType = requiredLeanType(schemas, redeemerRoot);
+            DslPropertySet propertyDsl = MintingDsl.oneShotPropertySet(
+                    oneShot.propertyId(), oneShot.authorityHex(),
+                    oneShot.anchorTransactionIdHex(),
+                    Long.parseLong(oneShot.anchorOutputIndex()), oneShot.tokenNameHex());
+            files.put("SecurityProperty.lean", mintingDslProperty(
+                    redeemerLeanType, propertyDsl, true));
+            files.put("MintingSemanticsTests.lean", mintingSemanticsTests());
+            files.put("LedgerDomainEquivalence.lean", mintingDomainEquivalence());
+            files.put(leanId + "Obligation.lean",
+                    oneShotMintObligation(leanId, artifactId, fuel));
+            files.put(leanId + "Proof.lean", oneShotMintProof(leanId));
+            files.put(leanId + "LedgerCorollary.lean",
+                    oneShotMintLedgerCorollary(leanId));
+            files.put(leanId + "Counterexample.lean", oneShotMintCounterexample(leanId));
             files.put(leanId + "NonVacuityCounterexample.lean",
                     nonVacuityCounterexample(leanId));
             files.put(leanId + "VacuityProof.lean", vacuityProof(leanId));
@@ -349,6 +535,98 @@ public final class VerificationProjectGenerator {
                     nonVacuityCounterexample(leanId));
             files.put(leanId + "VacuityProof.lean", vacuityProof(leanId));
             files.put("verification-property.json", JSON.writeValueAsString(property) + "\n");
+        } else if (property instanceof ComposedDslProperty composed) {
+            String datumLeanType = null;
+            if (composedPlans.values().stream()
+                    .anyMatch(DslSemanticDependencies.Plan::needsDatumDecode)) {
+                String datumRoot = referenceName(
+                        validator.path("datum").path("schema").path("$ref").asText());
+                datumLeanType = requiredLeanType(schemas, datumRoot);
+            }
+            String redeemerLeanType = null;
+            if (composedPlans.values().stream()
+                    .anyMatch(DslSemanticDependencies.Plan::needsRedeemerDecode)) {
+                String redeemerRoot = referenceName(
+                        validator.path("redeemer").path("schema").path("$ref").asText());
+                redeemerLeanType = requiredLeanType(schemas, redeemerRoot);
+            }
+            files.put("SecurityProperty.lean", composedDslProperty(
+                    composedDsl, composedPlans, datumLeanType, redeemerLeanType,
+                    composedTypes));
+            if (composed.schemaVersion()
+                    >= ComposedDslProperty.TYPED_SCHEMA_VERSION) {
+                files.put("GenericCollectionsSemanticsTests.lean",
+                        genericCollectionsSemanticsTests());
+            }
+            if (composed.schemaVersion()
+                    >= ComposedDslProperty.LEDGER_SCHEMA_VERSION) {
+                files.put("LedgerContextSemanticsTests.lean",
+                        ledgerContextSemanticsTests());
+            }
+            if (composedDsl.schemaVersion()
+                    >= DslPropertySet.AUTHORIZATION_SCHEMA_VERSION) {
+                files.put("AuthorizationSemanticsTests.lean",
+                        authorizationSemanticsTests());
+            }
+            if (composedDsl.schemaVersion()
+                    >= DslPropertySet.VALUE_ALGEBRA_SCHEMA_VERSION) {
+                files.put("ValueAlgebraSemanticsTests.lean",
+                        valueAlgebraSemanticsTests());
+            }
+            if (composedDsl.schemaVersion()
+                    >= DslPropertySet.GOVERNANCE_SCHEMA_VERSION) {
+                files.put("GovernanceSemanticsTests.lean",
+                        governanceSemanticsTests());
+            }
+            if (composedDsl.schemaVersion()
+                    >= DslPropertySet.REVIEWED_DATA_ADAPTER_SCHEMA_VERSION) {
+                files.put("ReviewedDataAdapterSemanticsTests.lean",
+                        reviewedDataAdapterSemanticsTests());
+            }
+            if (composedPlans.values().stream()
+                    .anyMatch(DslSemanticDependencies.Plan::needsRawMint)) {
+                files.put("MintingSemanticsTests.lean", mintingSemanticsTests());
+            }
+            if (composedPlans.values().stream().anyMatch(plan ->
+                    plan.needsRewardingCredential()
+                            || plan.capabilities().contains("field.txInfo.withdrawals"))) {
+                files.put("RewardingSemanticsTests.lean", rewardingSemanticsTests());
+            }
+            if (composedPlans.values().stream().anyMatch(plan ->
+                    plan.needsCertificate() || plan.needsCertificateIndex()
+                            || plan.capabilities().contains("field.txInfo.certificates"))) {
+                files.put("CertifyingSemanticsTests.lean", certifyingSemanticsTests());
+            }
+            if (composedPlans.values().stream()
+                    .anyMatch(DslSemanticDependencies.Plan::needsSpendingDomain)) {
+                files.put("LedgerDomainEquivalence.lean", sellerPaymentDomainEquivalence());
+            } else if (composedPlans.values().stream()
+                    .anyMatch(DslSemanticDependencies.Plan::needsMintingDomain)) {
+                files.put("LedgerDomainEquivalence.lean", mintingDomainEquivalence());
+            } else if (composedPlans.values().stream()
+                    .anyMatch(DslSemanticDependencies.Plan::needsRewardingDomain)) {
+                files.put("LedgerDomainEquivalence.lean", rewardingDomainEquivalence());
+            } else if (composedPlans.values().stream()
+                    .anyMatch(DslSemanticDependencies.Plan::needsCertifyingDomain)) {
+                files.put("LedgerDomainEquivalence.lean", certifyingDomainEquivalence());
+            }
+            for (DslProperty claim : composedDsl.properties()) {
+                String module = composedModuleId(leanId, claim.id());
+                boolean ledgerDomain = claim.domain() != DslDomain.NONE;
+                files.put(module + "Obligation.lean", composedObligation(
+                        module, artifactId, purpose, claim, fuel));
+                files.put(module + "Proof.lean", composedProof(module, claim));
+                files.put(module + "Counterexample.lean",
+                        composedCounterexample(module, claim));
+                files.put(module + "NonVacuityCounterexample.lean",
+                        nonVacuityCounterexample(module));
+                files.put(module + "VacuityProof.lean", vacuityProof(module));
+                if (ledgerDomain) {
+                    files.put(module + "LedgerCorollary.lean",
+                            composedLedgerCorollary(module, claim));
+                }
+            }
+            files.put("verification-property.json", JSON.writeValueAsString(composed) + "\n");
         } else {
             throw new IllegalArgumentException("Unsupported verification property "
                     + property.template());
@@ -357,7 +635,29 @@ public final class VerificationProjectGenerator {
                 artifact.compiledCode() + "\n");
         files.put("config/blaster-builtins.txt",
                 "# " + GENERATED_MARKER + "\n0-88\n92-93\n");
-        String verifyScript = property == null
+        String runnerPlan;
+        if (property instanceof ComposedDslProperty composed) {
+            var scriptHashes = new LinkedHashMap<String, ComposedScriptHashes>();
+            for (DslProperty claim : composedDsl.properties()) {
+                String module = composedModuleId(leanId, claim.id());
+                String scriptName = "verify-" + ComposedDslPromotion.generatedName(
+                        claim.id()).toLowerCase(Locale.ROOT);
+                String verifyScript = composedVerifyScript(module, artifactId,
+                        artifact.compiledCodeSha256(), claim);
+                String nonVacuityScript = verifyNonVacuityScript(
+                        module, artifactId, artifact.compiledCodeSha256());
+                files.put("scripts/" + scriptName + ".sh", verifyScript);
+                files.put("scripts/" + scriptName + "-non-vacuity.sh", nonVacuityScript);
+                scriptHashes.put(claim.id(), new ComposedScriptHashes(
+                        scriptName,
+                        VerificationFiles.sha256(nonVacuityScript.getBytes(
+                                java.nio.charset.StandardCharsets.UTF_8)),
+                        VerificationFiles.sha256(verifyScript.getBytes(
+                                java.nio.charset.StandardCharsets.UTF_8))));
+            }
+            runnerPlan = composedRunnerPlan(composed, composedDsl, scriptHashes);
+        } else {
+            String verifyScript = property == null
                 ? verifyScript(leanId, artifactId, artifact.compiledCodeSha256())
                 : property instanceof StatefulSpendingProperty
                     ? verifyStatefulPropertyScript(
@@ -368,15 +668,18 @@ public final class VerificationProjectGenerator {
                 : property instanceof SellerPaymentProperty
                     ? verifySellerPaymentScript(
                             leanId, artifactId, artifact.compiledCodeSha256())
+                : property instanceof OneShotMintProperty
+                    ? verifyOneShotMintScript(
+                            leanId, artifactId, artifact.compiledCodeSha256())
                 : verifyPropertyScript(leanId, artifactId, artifact.compiledCodeSha256());
-        files.put("scripts/verify.sh", verifyScript);
-        String nonVacuityScript = null;
-        if (property != null) {
-            nonVacuityScript = verifyNonVacuityScript(
-                    leanId, artifactId, artifact.compiledCodeSha256());
-            files.put("scripts/verify-non-vacuity.sh", nonVacuityScript);
-        }
-        String runnerPlan = property == null
+            files.put("scripts/verify.sh", verifyScript);
+            String nonVacuityScript = null;
+            if (property != null) {
+                nonVacuityScript = verifyNonVacuityScript(
+                        leanId, artifactId, artifact.compiledCodeSha256());
+                files.put("scripts/verify-non-vacuity.sh", nonVacuityScript);
+            }
+            runnerPlan = property == null
                 ? runnerPlan(artifactId, VerificationFiles.sha256(
                         verifyScript.getBytes(java.nio.charset.StandardCharsets.UTF_8)))
                 : property instanceof StatefulSpendingProperty
@@ -397,11 +700,18 @@ public final class VerificationProjectGenerator {
                                     java.nio.charset.StandardCharsets.UTF_8)),
                             VerificationFiles.sha256(verifyScript.getBytes(
                                     java.nio.charset.StandardCharsets.UTF_8)))
+                : property instanceof OneShotMintProperty
+                    ? oneShotMintRunnerPlan(property,
+                            VerificationFiles.sha256(nonVacuityScript.getBytes(
+                                    java.nio.charset.StandardCharsets.UTF_8)),
+                            VerificationFiles.sha256(verifyScript.getBytes(
+                                    java.nio.charset.StandardCharsets.UTF_8)))
                 : requiresSignerRunnerPlan((RequiresSignerProperty) property,
                         VerificationFiles.sha256(nonVacuityScript.getBytes(
                                 java.nio.charset.StandardCharsets.UTF_8)),
                         VerificationFiles.sha256(verifyScript.getBytes(
                                 java.nio.charset.StandardCharsets.UTF_8)));
+        }
         files.put("verification-runner.json", runnerPlan);
         files.put("README.md", property == null
                 ? readme(leanId, validatorTitle, purpose, recursiveDepth)
@@ -411,6 +721,10 @@ public final class VerificationProjectGenerator {
                     ? controlledMintReadme(validatorTitle, controlled)
                 : property instanceof SellerPaymentProperty payment
                     ? sellerPaymentReadme(validatorTitle, payment)
+                : property instanceof OneShotMintProperty oneShot
+                    ? oneShotMintReadme(validatorTitle, oneShot)
+                : property instanceof ComposedDslProperty composed
+                    ? composedReadme(validatorTitle, composed)
                 : requiresSignerReadme(
                             validatorTitle, (RequiresSignerProperty) property));
         String propertySha256 = property == null ? null : VerificationFiles.sha256(
@@ -424,9 +738,53 @@ public final class VerificationProjectGenerator {
                                 runnerPlan.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
                         property, propertySha256, generatedLeanSha256));
 
+        if (force && property instanceof ComposedDslProperty) {
+            deleteStaleComposedFiles(output, leanId, files.keySet());
+        }
         writeAtomically(output, files,
                 property == null ? USER_OWNED_FILES : Set.of(".gitignore"));
         return new GenerationResult(output, artifactId, leanId, files.keySet().stream().toList());
+    }
+
+    private static void deleteStaleComposedFiles(
+            Path output, String leanId, Set<String> currentFiles) throws IOException {
+        Path oldProperty = output.resolve("verification-property.json");
+        if (Files.isRegularFile(oldProperty)) {
+            JsonNode previous = JSON.readTree(oldProperty.toFile());
+            if (Set.of(ComposedDslProperty.TEMPLATE,
+                    ComposedDslProperty.TYPED_TEMPLATE,
+                    ComposedDslProperty.LEDGER_TEMPLATE)
+                    .contains(previous.path("template").asText())) {
+                for (JsonNode claim : previous.path("claims")) {
+                    String id = claim.path("id").asText();
+                    if (!id.matches("[A-Za-z][A-Za-z0-9._-]{0,127}")) continue;
+                    String module = composedModuleId(leanId, id);
+                    for (String suffix : List.of("Obligation.lean", "Proof.lean",
+                            "Counterexample.lean", "NonVacuityCounterexample.lean",
+                            "VacuityProof.lean", "LedgerCorollary.lean")) {
+                        deleteIfStale(output, module + suffix, currentFiles);
+                    }
+                    String script = "scripts/verify-"
+                            + ComposedDslPromotion.generatedName(id)
+                                    .toLowerCase(Locale.ROOT);
+                    deleteIfStale(output, script + ".sh", currentFiles);
+                    deleteIfStale(output, script + "-non-vacuity.sh", currentFiles);
+                }
+            }
+        }
+        deleteIfStale(output, "LedgerDomainEquivalence.lean", currentFiles);
+        deleteIfStale(output, "MintingSemanticsTests.lean", currentFiles);
+        deleteIfStale(output, "GenericCollectionsSemanticsTests.lean", currentFiles);
+        deleteIfStale(output, "LedgerContextSemanticsTests.lean", currentFiles);
+        deleteIfStale(output, "AuthorizationSemanticsTests.lean", currentFiles);
+        deleteIfStale(output, "ValueAlgebraSemanticsTests.lean", currentFiles);
+        deleteIfStale(output, "GovernanceSemanticsTests.lean", currentFiles);
+        deleteIfStale(output, "ReviewedDataAdapterSemanticsTests.lean", currentFiles);
+    }
+
+    private static void deleteIfStale(
+            Path output, String relative, Set<String> currentFiles) throws IOException {
+        if (!currentFiles.contains(relative)) Files.deleteIfExists(output.resolve(relative));
     }
 
     private static void ensureRequiresSignerSchema(
@@ -597,6 +955,217 @@ public final class VerificationProjectGenerator {
                     schemaType(all.get(original), all, names, original, true));
         }
         return new SchemaGeneration(source.toString(), leanTypes);
+    }
+
+    /**
+     * Prevents the carried schema-4 type graph and blueprint-derived Lean codecs from
+     * assigning different names, tags, arities, or field positions to the same value.
+     */
+    static void validateProjectedTypesAgainstBlueprint(
+            ProjectedContractTypes projection, JsonNode definitions, JsonNode validator)
+            throws UnsupportedVerificationException {
+        if (!definitions.isObject()) {
+            throw new UnsupportedVerificationException("Blueprint definitions must be an object");
+        }
+        Map<String, JsonNode> all = new LinkedHashMap<>();
+        definitions.fields().forEachRemaining(entry -> all.put(entry.getKey(), entry.getValue()));
+        var stableToBlueprint = new HashMap<String, String>();
+        var blueprintToStable = new HashMap<String, String>();
+
+        JsonNode datum = validator.path("datum").path("schema");
+        if (projection.datumType() == null) {
+            if (!datum.isMissingNode()) {
+                throw new UnsupportedVerificationException(
+                        "Projected contract has no datum but blueprint publishes one");
+            }
+        } else {
+            matchProjectedSchema(projection.datumType(), datum, projection, all,
+                    stableToBlueprint, blueprintToStable, "datum");
+        }
+        matchProjectedSchema(projection.redeemerType(),
+                validator.path("redeemer").path("schema"), projection, all,
+                stableToBlueprint, blueprintToStable, "redeemer");
+
+        JsonNode parameters = validator.path("parameters");
+        int blueprintParameterCount = parameters.isArray() ? parameters.size() : 0;
+        if (blueprintParameterCount != projection.parameters().size()) {
+            throw new UnsupportedVerificationException(
+                    "Projected parameter count does not match blueprint");
+        }
+        for (int index = 0; index < blueprintParameterCount; index++) {
+            var parameter = projection.parameters().get(index);
+            JsonNode published = parameters.get(index);
+            if (published.has("title")
+                    && !parameter.name().equals(published.path("title").asText())) {
+                throw new UnsupportedVerificationException(
+                        "Projected parameter name does not match blueprint at index " + index);
+            }
+            matchProjectedSchema(parameter.type(), published.path("schema"), projection, all,
+                    stableToBlueprint, blueprintToStable, "parameter " + parameter.name());
+        }
+
+        if (stableToBlueprint.size() != projection.definitions().size()) {
+            throw new UnsupportedVerificationException(
+                    "Projected nominal graph is not fully reachable from blueprint roots");
+        }
+    }
+
+    private static void matchProjectedSchema(
+            VerificationTypeRef type,
+            JsonNode schema,
+            ProjectedContractTypes projection,
+            Map<String, JsonNode> definitions,
+            Map<String, String> stableToBlueprint,
+            Map<String, String> blueprintToStable,
+            String path) throws UnsupportedVerificationException {
+        if (schema == null || schema.isMissingNode()) {
+            throw projectedSchemaMismatch(path, "schema is missing");
+        }
+        switch (type) {
+            case BuiltinTypeRef builtin -> matchProjectedBuiltin(builtin, schema, path);
+            case LedgerTypeRef ignored -> throw projectedSchemaMismatch(
+                    path, "ledger types cannot appear in compiler contract projection");
+            case OptionalTypeRef optional -> {
+                JsonNode value = optionalValueSchema(schema);
+                if (value == null) throw projectedSchemaMismatch(path, "expected Optional");
+                matchProjectedSchema(optional.elementType(), value, projection, definitions,
+                        stableToBlueprint, blueprintToStable, path + ".Some");
+            }
+            case ListTypeRef list -> {
+                if (!"list".equals(schema.path("dataType").asText())
+                        || schema.path("items").isMissingNode()) {
+                    throw projectedSchemaMismatch(path, "expected list");
+                }
+                matchProjectedSchema(list.elementType(), schema.path("items"), projection,
+                        definitions, stableToBlueprint, blueprintToStable, path + "[]");
+            }
+            case AssocMapTypeRef map -> {
+                if (!"map".equals(schema.path("dataType").asText())
+                        || schema.path("keys").isMissingNode()
+                        || schema.path("values").isMissingNode()) {
+                    throw projectedSchemaMismatch(path, "expected association map");
+                }
+                matchProjectedSchema(map.keyType(), schema.path("keys"), projection,
+                        definitions, stableToBlueprint, blueprintToStable, path + ".key");
+                matchProjectedSchema(map.valueType(), schema.path("values"), projection,
+                        definitions, stableToBlueprint, blueprintToStable, path + ".value");
+            }
+            case NominalTypeRef nominal -> matchProjectedNominal(nominal, schema, projection,
+                    definitions, stableToBlueprint, blueprintToStable, path);
+        }
+    }
+
+    private static void matchProjectedBuiltin(
+            BuiltinTypeRef type, JsonNode schema, String path)
+            throws UnsupportedVerificationException {
+        boolean matches = switch (type.builtin()) {
+            case INTEGER -> "integer".equals(schema.path("dataType").asText());
+            case BYTE_STRING, STRING -> "bytes".equals(schema.path("dataType").asText());
+            case BOOLEAN -> isBooleanSchema(schema);
+            case UNIT -> isConstructor(schema, "Unit", 0, 0);
+            case DATA -> "Any Plutus data.".equals(schema.path("description").asText())
+                    && schema.path("dataType").isMissingNode();
+        };
+        if (!matches) {
+            throw projectedSchemaMismatch(path,
+                    "expected compiler type " + type.builtin());
+        }
+    }
+
+    private static void matchProjectedNominal(
+            NominalTypeRef nominal,
+            JsonNode schema,
+            ProjectedContractTypes projection,
+            Map<String, JsonNode> definitions,
+            Map<String, String> stableToBlueprint,
+            Map<String, String> blueprintToStable,
+            String path) throws UnsupportedVerificationException {
+        String reference = schema.path("$ref").asText(null);
+        if (reference == null) {
+            throw projectedSchemaMismatch(path, "expected named schema reference");
+        }
+        String blueprintName = referenceName(reference);
+        JsonNode definition = definitions.get(blueprintName);
+        if (definition == null) {
+            throw projectedSchemaMismatch(path, "dangling blueprint reference " + blueprintName);
+        }
+        String previousBlueprint = stableToBlueprint.putIfAbsent(
+                nominal.stableId(), blueprintName);
+        if (previousBlueprint != null && !previousBlueprint.equals(blueprintName)) {
+            throw projectedSchemaMismatch(path,
+                    "one nominal ID maps to multiple blueprint definitions");
+        }
+        String previousStable = blueprintToStable.putIfAbsent(
+                blueprintName, nominal.stableId());
+        if (previousStable != null && !previousStable.equals(nominal.stableId())) {
+            throw projectedSchemaMismatch(path,
+                    "multiple nominal IDs map to one blueprint definition");
+        }
+        var projected = projection.definitions().stream()
+                .filter(candidate -> candidate.stableId().equals(nominal.stableId()))
+                .findFirst().orElseThrow(() -> projectedSchemaMismatch(path,
+                        "missing projected definition " + nominal.stableId()));
+        if (projected.nominalKind() != nominal.nominalKind()
+                || !projected.sourceName().equals(definition.path("title").asText())) {
+            throw projectedSchemaMismatch(path, "nominal name or kind differs from blueprint");
+        }
+
+        JsonNode alternatives = definition.path("anyOf");
+        if (!alternatives.isArray()) {
+            throw projectedSchemaMismatch(path, "named definition has no constructor list");
+        }
+        if (nominal.nominalKind() == NominalTypeRef.NominalKind.RECORD) {
+            if (alternatives.size() != 1) {
+                throw projectedSchemaMismatch(path, "record must have one constructor");
+            }
+            matchProjectedConstructor(projected.sourceName(), 0, projected.fields(),
+                    alternatives.get(0), projection, definitions, stableToBlueprint,
+                    blueprintToStable, path);
+        } else {
+            if (alternatives.size() != projected.constructors().size()) {
+                throw projectedSchemaMismatch(path, "sum constructor count differs");
+            }
+            for (int index = 0; index < projected.constructors().size(); index++) {
+                var constructor = projected.constructors().get(index);
+                matchProjectedConstructor(constructor.name(), constructor.tag(),
+                        constructor.fields(), alternatives.get(index), projection, definitions,
+                        stableToBlueprint, blueprintToStable,
+                        path + "." + constructor.name());
+            }
+        }
+    }
+
+    private static void matchProjectedConstructor(
+            String name,
+            int tag,
+            List<ProjectedContractTypes.Field> fields,
+            JsonNode constructor,
+            ProjectedContractTypes projection,
+            Map<String, JsonNode> definitions,
+            Map<String, String> stableToBlueprint,
+            Map<String, String> blueprintToStable,
+            String path) throws UnsupportedVerificationException {
+        JsonNode publishedFields = constructor.path("fields");
+        if (!isConstructor(constructor, name, tag, fields.size())) {
+            throw projectedSchemaMismatch(path, "constructor tag, name, or arity differs");
+        }
+        for (int index = 0; index < fields.size(); index++) {
+            var field = fields.get(index);
+            JsonNode published = publishedFields.get(index);
+            if (!field.name().equals(published.path("title").asText())) {
+                throw projectedSchemaMismatch(path,
+                        "field name/order differs at index " + index);
+            }
+            matchProjectedSchema(field.type(), published, projection, definitions,
+                    stableToBlueprint, blueprintToStable, path + "." + field.name());
+        }
+    }
+
+    private static UnsupportedVerificationException projectedSchemaMismatch(
+            String path, String detail) {
+        return new UnsupportedVerificationException(
+                "Compiler-owned projected type graph does not match blueprint at "
+                        + path + ": " + detail);
     }
 
     private static String containerSupport() {
@@ -1602,6 +2171,14 @@ public final class VerificationProjectGenerator {
                 "Lean-blaster", BLASTER_REV,
                 "PlutusCoreBlaster", PLUTUS_CORE_REV,
                 "CardanoLedgerApiBlaster", LEDGER_API_REV));
+        var capabilityInventory = LedgerCapabilityInventories.pinnedV3();
+        root.put("capabilityInventory", Map.of(
+                "schemaVersion", capabilityInventory.schemaVersion(),
+                "ledgerApi", capabilityInventory.ledgerApi(),
+                "ledgerVersion", capabilityInventory.ledgerVersion(),
+                "revision", capabilityInventory.revision(),
+                "sha256", VerificationFiles.sha256(
+                        LedgerCapabilityInventories.pinnedV3Bytes())));
         root.put("builtins", artifact.builtins());
         root.put("schemas", leanTypes.entrySet().stream()
                 .map(entry -> Map.of("cip57", entry.getKey(), "lean", entry.getValue()))
@@ -1612,33 +2189,92 @@ public final class VerificationProjectGenerator {
                     "result", "COULD-NOT-EVALUATE",
                     "reason", "property-not-specialized")));
         } else {
-            root.put("propertyIr", Map.of(
-                    "path", "verification-property.json",
-                    "sha256", propertySha256,
-                    "schemaVersion", property.schemaVersion(),
-                    "template", property.template(),
-                    "propertyId", property.propertyId(),
-                    "sourcePath", property.sourcePath()));
+            var propertyIr = new LinkedHashMap<String, Object>();
+            propertyIr.put("path", "verification-property.json");
+            propertyIr.put("sha256", propertySha256);
+            propertyIr.put("schemaVersion", property.schemaVersion());
+            propertyIr.put("template", property.template());
+            propertyIr.put("propertyId", property.propertyId());
+            propertyIr.put("sourcePath", property.sourcePath());
+            if (property instanceof ComposedDslProperty composed
+                    && composed.schemaVersion()
+                    >= ComposedDslProperty.TYPED_SCHEMA_VERSION) {
+                propertyIr.put("contractSchemaSha256", composed.contractSchemaSha256());
+                propertyIr.put("projectedContractTypesSha256", VerificationFiles.sha256(
+                        composed.projectedContractTypesJson().getBytes(
+                                java.nio.charset.StandardCharsets.UTF_8)));
+            }
+            root.put("propertyIr", propertyIr);
+            String canonicalDsl = canonicalDslJson(property);
+            if (canonicalDsl != null) {
+                JsonNode parsedDsl = JSON.readTree(canonicalDsl);
+                root.put("dslIr", Map.of(
+                        "schemaVersion", parsedDsl.path("schemaVersion").asInt(-1),
+                        "sha256", VerificationFiles.sha256(
+                                canonicalDsl.getBytes(java.nio.charset.StandardCharsets.UTF_8))));
+                if (parsedDsl.path("schemaVersion").asInt(-1)
+                        == DslPropertySet.REVIEWED_DATA_ADAPTER_SCHEMA_VERSION) {
+                    root.put("reviewedRawDataAdapterAudit", Map.of(
+                            "schemaVersion", 1,
+                            "sha256", VerificationFiles.sha256(
+                                    ReviewedRawDataAdapterAudits.v1Bytes())));
+                }
+            }
             root.put("ledgerValidityModeled", property.ledgerValidityModeled());
             root.put("generatedLeanSha256", generatedLeanSha256);
             root.put("domainAssumptions", property.domainAssumptions());
-            root.put("properties", List.of(
-                    Map.of("id", property.propertyId() + ".non-vacuity",
-                            "result", "COULD-NOT-EVALUATE",
-                            "reason", "not-run"),
-                    Map.of("id", property.propertyId(),
-                            "result", "COULD-NOT-EVALUATE",
-                            "reason", "not-run")));
+            if (property instanceof ComposedDslProperty composed) {
+                root.put("claims", composed.claims());
+                var properties = new ArrayList<Map<String, String>>();
+                for (var claim : composed.claims()) {
+                    properties.add(Map.of("id", claim.id() + ".non-vacuity",
+                            "result", "COULD-NOT-EVALUATE", "reason", "not-run"));
+                    properties.add(Map.of("id", claim.id(),
+                            "result", "COULD-NOT-EVALUATE", "reason", "not-run"));
+                }
+                root.put("properties", properties);
+            } else {
+                root.put("properties", List.of(
+                        Map.of("id", property.propertyId() + ".non-vacuity",
+                                "result", "COULD-NOT-EVALUATE",
+                                "reason", "not-run"),
+                        Map.of("id", property.propertyId(),
+                                "result", "COULD-NOT-EVALUATE",
+                                "reason", "not-run")));
+            }
         }
         return JSON.writeValueAsString(root) + "\n";
     }
 
-    private static String lakefile(boolean sellerPayment) {
-        String roots = sellerPayment
+    private static String canonicalDslJson(VerificationProperty property) {
+        return switch (property) {
+            case ControlledMintProperty controlled -> controlled.canonicalDslJson();
+            case SellerPaymentProperty seller -> seller.canonicalDslJson();
+            case OneShotMintProperty oneShot -> oneShot.canonicalDslJson();
+            case ComposedDslProperty composed -> composed.canonicalDslJson();
+            default -> null;
+        };
+    }
+
+    private static String lakefile(
+            boolean ledgerDomain, boolean mintingDsl, boolean rewardingDsl,
+            boolean certifyingDsl, boolean typedCollections,
+            boolean typedLedgerContext, boolean authorizationAlgebra,
+            boolean valueAlgebra, boolean governance, boolean reviewedAdapters) {
+        String roots = ledgerDomain
                 ? "`GeneratedSchemas, `PropertyTemplates, `CheckedExecution, "
                     + "`SecurityProperty, `LedgerDomainEquivalence"
                 : "`GeneratedSchemas, `PropertyTemplates, `CheckedExecution, "
                     + "`SecurityProperty";
+        if (mintingDsl) roots += ", `MintingSemanticsTests";
+        if (rewardingDsl) roots += ", `RewardingSemanticsTests";
+        if (certifyingDsl) roots += ", `CertifyingSemanticsTests";
+        if (typedCollections) roots += ", `GenericCollectionsSemanticsTests";
+        if (typedLedgerContext) roots += ", `LedgerContextSemanticsTests";
+        if (authorizationAlgebra) roots += ", `AuthorizationSemanticsTests";
+        if (valueAlgebra) roots += ", `ValueAlgebraSemanticsTests";
+        if (governance) roots += ", `GovernanceSemanticsTests";
+        if (reviewedAdapters) roots += ", `ReviewedDataAdapterSemanticsTests";
         return """
                 /- Generated by `julc verify init`; dependency pins are security inputs. -/
                 import Lake
@@ -1661,6 +2297,734 @@ public final class VerificationProjectGenerator {
                 lean_lib «GeneratedVerificationSupport» where
                   roots := #[%s]
                 """.formatted(BLASTER_REV, PLUTUS_CORE_REV, LEDGER_API_REV, roots);
+    }
+
+    private static String genericCollectionsSemanticsTests() {
+        return """
+                /- Kernel-reduced controls for schema-4 collection meanings. -/
+                import SecurityProperty
+
+                namespace JulcGenerated.GenericCollectionsSemanticsTests
+
+                open JulcGenerated.Schemas
+                open JulcGenerated.UserProperty
+                open PlutusCore.Data (Data)
+
+                example : (!false) = true := by rfl
+                example : (true && false) = false := by rfl
+                example : (true || false) = true := by rfl
+                example : ((-3 + 5 : Int) = 2) := by rfl
+
+                example : julcListAt ([10, 20] : List Int) (-1) = none := by rfl
+                example : julcListAt ([10, 20] : List Int) 2 = none := by rfl
+                example : julcListAt ([10, 20] : List Int) 1 = some 20 := by rfl
+                example : julcListCount (fun value : Int => value == 1)
+                    [1, 2, 1] = 2 := by simp [julcListCount]
+                example : julcListContains ([1, 2] : List Int) 2 = true := by
+                  simp [julcListContains, julcStructuralEq,
+                    CardanoLedgerApi.IsData.Class.instIsDataInteger]
+
+                example : julcMapCountKey ([(1, 10), (1, 20), (2, 30)] :
+                    List (Int × Int)) 1 = 2 := by
+                  simp [julcMapCountKey, julcListCount, julcStructuralEq,
+                    CardanoLedgerApi.IsData.Class.instIsDataInteger]
+                example : julcMapLookupFirst ([(1, 10), (1, 20)] :
+                    List (Int × Int)) 1 = some 10 := by
+                  simp [julcMapLookupFirst, julcStructuralEq,
+                    CardanoLedgerApi.IsData.Class.instIsDataInteger]
+                example : julcMapLookupAll ([(1, 10), (1, 20), (2, 30)] :
+                    List (Int × Int)) 1 = [10, 20] := by
+                  simp [julcMapLookupAll, julcStructuralEq,
+                    CardanoLedgerApi.IsData.Class.instIsDataInteger]
+
+                example : julcStructuralEq
+                    (Data.Map [(Data.I 1, Data.I 10), (Data.I 1, Data.I 20)])
+                    (Data.Map [(Data.I 1, Data.I 10), (Data.I 1, Data.I 20)]) = true := by
+                  simp [julcStructuralEq, CardanoLedgerApi.IsData.Class.instIsDataData]
+                example : julcStructuralEq
+                    (Data.Map [(Data.I 1, Data.I 10), (Data.I 1, Data.I 20)])
+                    (Data.Map [(Data.I 1, Data.I 20), (Data.I 1, Data.I 10)]) = false := by
+                  simp [julcStructuralEq, CardanoLedgerApi.IsData.Class.instIsDataData]
+
+                end JulcGenerated.GenericCollectionsSemanticsTests
+                """;
+    }
+
+    private static String ledgerContextSemanticsTests() {
+        return """
+                /- Kernel-reduced controls for schema-5 ledger-context meanings. -/
+                import SecurityProperty
+
+                namespace JulcGenerated.LedgerContextSemanticsTests
+
+                open CardanoLedgerApi.IsData.Class
+                open CardanoLedgerApi.V3
+                open JulcGenerated.UserProperty
+                open PlutusCore.Data (Data)
+
+                def ref0 : TxOutRef := ⟨"tx", 0⟩
+                def ref1 : TxOutRef := ⟨"tx", 1⟩
+                def scriptAddress : CardanoLedgerApi.V2.Address :=
+                  ⟨.ScriptCredential "script", none⟩
+                def stakedScriptAddress : CardanoLedgerApi.V2.Address :=
+                  ⟨.ScriptCredential "script", some (.StakingPtr 1 2 3)⟩
+                def pubKeyAddress : CardanoLedgerApi.V2.Address :=
+                  ⟨.PubKeyCredential "key", none⟩
+                def outputAt (address : CardanoLedgerApi.V2.Address) (datum : Data) :
+                    CardanoLedgerApi.V2.TxOut :=
+                  ⟨address, [], .OutputDatum datum, none⟩
+                def firstInput : TxInInfo := ⟨ref0, outputAt scriptAddress (Data.I 1)⟩
+                def duplicateInput : TxInInfo :=
+                  ⟨ref0, outputAt stakedScriptAddress (Data.I 2)⟩
+                def publicInput : TxInInfo := ⟨ref1, outputAt pubKeyAddress (Data.I 3)⟩
+                def spendingPurpose : ScriptPurpose := .Spending ref0
+                def votingPurpose : ScriptPurpose :=
+                  .Voting (.StakePoolVoter "pool")
+                def redeemerEntries : RedeemerMap :=
+                  [(votingPurpose, Data.I 90),
+                   (spendingPurpose, Data.I 10),
+                   (spendingPurpose, Data.I 20)]
+                def datumEntries : CardanoLedgerApi.V2.DatumMap :=
+                  [("datum", Data.I 10), ("datum", Data.I 20)]
+
+                example : resolveInput ref0 [firstInput, duplicateInput] =
+                    some firstInput := by native_decide
+                example : resolveInput ref1 [firstInput] = none := by native_decide
+                example : findScriptInputs "script" [publicInput, firstInput] =
+                    [firstInput] := by native_decide
+                example : findPubKeyInputs "key" [firstInput, publicInput] =
+                    [publicInput] := by native_decide
+                example : scriptAddress != stakedScriptAddress := by native_decide
+
+                example : ((.SpendingScript ref0 (some (Data.I 7)) : ScriptInfo).toScriptPurpose) =
+                    spendingPurpose := by rfl
+                example : julcMapLookupFirst redeemerEntries spendingPurpose =
+                    some (Data.I 10) := by native_decide
+                example : julcMapLookupAll redeemerEntries spendingPurpose =
+                    [Data.I 10, Data.I 20] := by native_decide
+                example : julcMapCountKey redeemerEntries spendingPurpose = 2 := by
+                  native_decide
+                example : julcMapContainsKey redeemerEntries votingPurpose = true := by
+                  native_decide
+                example : julcMapLookupFirst redeemerEntries votingPurpose =
+                    some (Data.I 90) := by native_decide
+                example : findRedeemer spendingPurpose redeemerEntries =
+                    julcMapLookupFirst redeemerEntries spendingPurpose := by native_decide
+                example : CardanoLedgerApi.V2.findDatum "datum" datumEntries =
+                    julcMapLookupFirst datumEntries "datum" := by native_decide
+
+                example : (IsData.fromData (Data.Constr 0 []) :
+                    Option CardanoLedgerApi.V2.OutputDatum) =
+                    some .NoOutputDatum := by rfl
+                example : (IsData.fromData (Data.Constr 1 [Data.B "hash"]) :
+                    Option CardanoLedgerApi.V2.OutputDatum) =
+                    some (.OutputDatumHash "hash") := by rfl
+                example : (IsData.fromData (Data.Constr 2 [Data.I 7]) :
+                    Option CardanoLedgerApi.V2.OutputDatum) =
+                    some (.OutputDatum (Data.I 7)) := by rfl
+                example : (IsData.fromData (Data.Constr 2 []) :
+                    Option CardanoLedgerApi.V2.OutputDatum) = none := by rfl
+                example : (IsData.fromData (Data.Constr 1 [Data.I 7]) :
+                    Option CardanoLedgerApi.V2.OutputDatum) = none := by rfl
+
+                def txInfo (inputs : List TxInInfo)
+                    (outputs : List CardanoLedgerApi.V2.TxOut) : TxInfo :=
+                  ⟨inputs, [], outputs, 1, [], [], [], Data.Constr 0 [], [], [], [],
+                    "tx", [], [], Data.Constr 1 [], Data.Constr 1 []⟩
+                def spendingContext (inputs : List TxInInfo)
+                    (outputs : List CardanoLedgerApi.V2.TxOut) : ScriptContext :=
+                  ⟨txInfo inputs outputs, Data.Constr 0 [], .SpendingScript ref0 none⟩
+
+                example : findOwnInput (spendingContext
+                    [firstInput, duplicateInput] []) = some firstInput := by native_decide
+                example : findOwnInput (spendingContext [publicInput] []) = none := by
+                  native_decide
+                example : (julcContinuingOutputs (spendingContext [firstInput]
+                    [outputAt stakedScriptAddress (Data.I 2),
+                     outputAt scriptAddress (Data.I 3)])).items =
+                    [outputAt scriptAddress (Data.I 3)] := by native_decide
+                example : (julcContinuingOutputs (spendingContext [publicInput]
+                    [outputAt scriptAddress (Data.I 3)])).items = [] := by native_decide
+
+                end JulcGenerated.LedgerContextSemanticsTests
+                """;
+    }
+
+    private static String reviewedDataAdapterSemanticsTests() {
+        return """
+                /- Kernel-reduced controls for ADR-027 reviewed raw-data meanings. -/
+                import SecurityProperty
+
+                namespace JulcGenerated.ReviewedDataAdapterSemanticsTests
+
+                open CardanoLedgerApi.IsData.Class
+                open CardanoLedgerApi.V3
+                open JulcGenerated.UserProperty
+                open PlutusCore.Data (Data)
+
+                namespace Time
+                open CardanoLedgerApi.V1.Time
+
+                def finiteClosed : POSIXTimeRange :=
+                  ⟨.FiniteLowerBound 10 true, .FiniteUpperBound 20 true⟩
+                def finiteOpen : POSIXTimeRange :=
+                  ⟨.FiniteLowerBound 10 false, .FiniteUpperBound 20 false⟩
+                def canonicalInfinite : Data := IsData.toData everything
+                def noncanonicalInfinite : Data := Data.Constr 0 [
+                  Data.Constr 0 [Data.Constr 0 [], IsData.toData false],
+                  Data.Constr 0 [Data.Constr 2 [], IsData.toData false]]
+
+                example : julcValidityDecoderValid (IsData.toData finiteClosed) = true := by rfl
+                example : julcValidityCanonical (IsData.toData finiteClosed) = true := by
+                  native_decide
+                example : julcValidityContains 10 (IsData.toData finiteClosed) = true := by rfl
+                example : julcValidityContains 10 (IsData.toData finiteOpen) = false := by rfl
+                example : julcValidityContains 20 (IsData.toData finiteOpen) = false := by rfl
+                example : julcValidityContains 15 (IsData.toData finiteOpen) = true := by rfl
+                example : julcValidityIncludes canonicalInfinite
+                    (IsData.toData finiteClosed) = true := by rfl
+                example : julcValidityEntirelyBefore 21
+                    (IsData.toData finiteClosed) = true := by rfl
+                example : julcValidityEntirelyAfter 9
+                    (IsData.toData finiteClosed) = true := by rfl
+                example : julcValidityDecoderValid noncanonicalInfinite = true := by rfl
+                example : julcValidityCanonical noncanonicalInfinite = false := by
+                  native_decide
+                example : julcValidityDecoderValid (Data.Constr 1 []) = false := by rfl
+                example : julcValidityDecoderValid (Data.Constr 0 []) = false := by rfl
+                example : julcValidityDecoderValid
+                    (Data.Constr 0 [Data.I 1, Data.I 2]) = false := by rfl
+                end Time
+
+                namespace Treasury
+                def negative : Data := Data.Constr 0 [Data.I (-1)]
+                def zero : Data := Data.Constr 0 [Data.I 0]
+                def positive : Data := Data.Constr 0 [Data.I 1]
+                def absent : Data := Data.Constr 1 []
+                def malformed : Data := Data.B "bad"
+
+                example : julcDecodeTreasury negative = .present (-1) := by rfl
+                example : julcDecodeTreasury zero = .present 0 := by rfl
+                example : julcDecodeTreasury positive = .present 1 := by rfl
+                example : julcDecodeTreasury absent = .absent := by rfl
+                example : julcDecodeTreasury malformed = .malformed := by rfl
+                example : julcDecodeTreasury (Data.Constr 0 []) = .malformed := by rfl
+                example : julcDecodeTreasury (Data.Constr 0 [Data.I 1, Data.I 2]) =
+                    .malformed := by rfl
+                example : julcDecodeTreasury (Data.Constr 1 [Data.I 1]) =
+                    .malformed := by rfl
+                example : julcDecodeTreasury (Data.Constr 0 [Data.B "bad"]) =
+                    .malformed := by rfl
+                example : julcTreasuryMalformed malformed = true := by rfl
+                example : julcTreasuryAbsent malformed = false := by rfl
+                example : julcTreasuryWellFormed malformed = false := by rfl
+                example : CardanoLedgerApi.V3.Contexts.validTreasuryAmount malformed = true :=
+                  by rfl
+                example : CardanoLedgerApi.V3.Contexts.validTreasuryDonation malformed = true :=
+                  by rfl
+                end Treasury
+
+                namespace Parameters
+                def empty : Data := Data.Map []
+                def ascending : Data := Data.Map
+                  [(Data.I 1, Data.B "a"), (Data.I 2, Data.I 9)]
+                def descending : Data := Data.Map
+                  [(Data.I 2, Data.B "a"), (Data.I 1, Data.I 9)]
+                def duplicate : Data := Data.Map
+                  [(Data.I 1, Data.B "a"), (Data.I 1, Data.I 9)]
+                def badKey : Data := Data.Map [(Data.B "key", Data.I 1)]
+
+                example : julcChangedParametersWellFormed empty = true := by rfl
+                example : julcChangedParametersNonEmpty empty = false := by rfl
+                example : julcChangedParameterIds ascending = some [1, 2] := by rfl
+                example : julcChangedParametersStrictlyAscendingUnique ascending = true := by rfl
+                example : julcChangedParametersStrictlyAscendingUnique descending = false := by rfl
+                example : julcChangedParametersStrictlyAscendingUnique duplicate = false := by rfl
+                example : julcChangedParametersCountId duplicate 1 = 2 := by rfl
+                example : julcChangedParametersContainsId ascending 2 = true := by rfl
+                example : julcChangedParametersWellFormed badKey = false := by rfl
+                example : julcChangedParametersWellFormed (Data.List []) = false := by rfl
+                end Parameters
+
+                namespace Quorum
+                def half : Data := Data.Constr 0 [Data.I 1, Data.I 2]
+                def unreducedHalf : Data := Data.Constr 0 [Data.I 2, Data.I 4]
+                def negativeDenominator : Data := Data.Constr 0 [Data.I (-1), Data.I (-2)]
+                def zeroDenominator : Data := Data.Constr 0 [Data.I 1, Data.I 0]
+
+                example : julcDecodeQuorum half = some (1, 2) := by native_decide
+                example : julcDecodeQuorum unreducedHalf = some (1, 2) := by native_decide
+                example : julcDecodeQuorum negativeDenominator = some (1, 2) := by native_decide
+                example : julcQuorumDecoderValid zeroDenominator = false := by rfl
+                example : julcQuorumCanonical half = true := by native_decide
+                example : julcQuorumCanonical unreducedHalf = false := by native_decide
+                example : julcQuorumCanonical negativeDenominator = false := by native_decide
+                example : julcQuorumUnitInterval half = true := by native_decide
+                example : julcQuorumUnitInterval
+                    (Data.Constr 0 [Data.I 3, Data.I 2]) = false := by native_decide
+                example : julcQuorumDecoderValid (Data.Constr 1 [Data.I 1, Data.I 2]) =
+                    false := by rfl
+                example : julcQuorumDecoderValid (Data.Constr 0 [Data.I 1]) = false := by rfl
+                example : julcQuorumDecoderValid
+                    (Data.Constr 0 [Data.B "x", Data.I 2]) = false := by rfl
+                end Quorum
+
+                end JulcGenerated.ReviewedDataAdapterSemanticsTests
+                """;
+    }
+
+    private static String authorizationSemanticsTests() {
+        return """
+                /- Kernel-reduced controls for schema-6 distinct authorization meanings. -/
+                import SecurityProperty
+
+                namespace JulcGenerated.AuthorizationSemanticsTests
+
+                open CardanoLedgerApi.V3
+                open JulcGenerated.UserProperty
+
+                def keyA : CardanoLedgerApi.V2.PubKeyHash := "aaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                def keyB : CardanoLedgerApi.V2.PubKeyHash := "bbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                def keyC : CardanoLedgerApi.V2.PubKeyHash := "cccccccccccccccccccccccccccc"
+                def outsider : CardanoLedgerApi.V2.PubKeyHash :=
+                  "xxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+                example : julcAnySigned [keyA, keyB] [keyB] = true := by decide
+                example : julcAnySigned [keyA, keyB] [] = false := by decide
+                example : julcAllSigned [keyA, keyB] [keyB, keyA] = true := by decide
+                example : julcAllSigned [keyA, keyB] [keyA] = false := by decide
+                example : julcAllSigned [] [outsider] = true := by decide
+                example : julcNoneSigned [keyA, keyB] [keyC] = true := by decide
+                example : julcNoneSigned [keyA, keyB] [keyB] = false := by decide
+
+                example : julcAtLeastSigned 0 [keyA] [] = true := by decide
+                example : julcAtLeastSigned 2 [keyA, keyB, keyC] [keyA] = false := by
+                  decide
+                example : julcAtLeastSigned 2 [keyA, keyB, keyC] [keyB, keyA] = true := by
+                  decide
+                example : julcExactlySigned 2 [keyA, keyB, keyC]
+                    [keyB, keyA] = true := by decide
+                example : julcExactlySigned 2 [keyA, keyB, keyC]
+                    [keyA, keyB, keyC] = false := by decide
+
+                example : julcExactlySigned 2 [keyA, keyA, keyB]
+                    [keyA, keyA, keyB] = true := by decide
+                example : julcExactlySigned 2 [keyA, keyB]
+                    [keyA, keyA] = false := by decide
+                example : julcAtLeastSigned 2 [keyA, keyB]
+                    [keyB, keyA] = julcAtLeastSigned 2 [keyB, keyA]
+                      [keyA, keyB] := by decide
+
+                example : julcNoUnexpectedSigners [keyA, keyB]
+                    [keyB, keyA, keyA] = true := by decide
+                example : julcNoUnexpectedSigners [keyA, keyB]
+                    [keyA, outsider] = false := by decide
+                example : julcExactSignerSet [keyA, keyB]
+                    [keyB, keyA, keyA] = true := by decide
+                example : julcExactlySigned 2 [keyA, keyB]
+                    [keyA, keyB, outsider] = true := by decide
+                example : (julcExactlySigned 2 [keyA, keyB]
+                    [keyA, keyB, outsider] &&
+                    julcNoUnexpectedSigners [keyA, keyB]
+                      [keyA, keyB, outsider]) = false := by decide
+
+                example : julcAnySigned [keyA] [keyB, keyA] =
+                    List.elem keyA [keyB, keyA] := by decide
+
+                end JulcGenerated.AuthorizationSemanticsTests
+                """;
+    }
+
+    private static String valueAlgebraSemanticsTests() {
+        return """
+                /- Kernel-reduced controls for schema-8 raw and extensional Value meanings. -/
+                import SecurityProperty
+
+                namespace JulcGenerated.ValueAlgebraSemanticsTests
+
+                open CardanoLedgerApi.V3
+                open JulcGenerated.UserProperty
+                open PlutusCore.Data (Data)
+
+                def policyA : CardanoLedgerApi.V2.CurrencySymbol := "policy-a"
+                def policyB : CardanoLedgerApi.V2.CurrencySymbol := "policy-b"
+                def tokenA : CardanoLedgerApi.V2.TokenName := "token-a"
+                def tokenB : CardanoLedgerApi.V2.TokenName := "token-b"
+
+                def duplicateValue : CardanoLedgerApi.V2.Value :=
+                  [(Data.B policyA, Data.Map [(Data.B tokenA, Data.I 2),
+                                             (Data.B tokenA, Data.I 3)]),
+                   (Data.B policyA, Data.Map [(Data.B tokenA, Data.I (-1))])]
+                def summedValue : CardanoLedgerApi.V2.Value :=
+                  [(Data.B policyA, Data.Map [(Data.B tokenA, Data.I 4)])]
+                def reorderedLeft : CardanoLedgerApi.V2.Value :=
+                  [(Data.B policyA, Data.Map [(Data.B tokenA, Data.I 1)]),
+                   (Data.B policyB, Data.Map [(Data.B tokenB, Data.I 2)])]
+                def reorderedRight : CardanoLedgerApi.V2.Value :=
+                  [(Data.B policyB, Data.Map [(Data.B tokenB, Data.I 2)]),
+                   (Data.B policyA, Data.Map [(Data.B tokenA, Data.I 1)])]
+                def zeroSum : CardanoLedgerApi.V2.Value :=
+                  [(Data.B policyA, Data.Map [(Data.B tokenA, Data.I 2),
+                                             (Data.B tokenA, Data.I (-2))])]
+                def malformedPolicy : CardanoLedgerApi.V2.Value :=
+                  [(Data.I 1, Data.Map [])]
+                def malformedTokenMap : CardanoLedgerApi.V2.Value :=
+                  [(Data.B policyA, Data.I 1)]
+                def malformedTokenName : CardanoLedgerApi.V2.Value :=
+                  [(Data.B policyA, Data.Map [(Data.I 1, Data.I 2)])]
+                def malformedQuantity : CardanoLedgerApi.V2.Value :=
+                  [(Data.B policyA, Data.Map [(Data.B tokenA, Data.B "bad")])]
+                def explicitZero : CardanoLedgerApi.V2.Value :=
+                  [(Data.B policyA, Data.Map [(Data.B tokenA, Data.I 0)])]
+
+                example : CardanoLedgerApi.V2.valueOf policyA tokenA duplicateValue = 2 := by
+                  native_decide
+                example : CardanoLedgerApi.V2.valueOf policyA tokenA malformedPolicy = 0 := by
+                  native_decide
+                example : CardanoLedgerApi.V2.valueOf policyA tokenA malformedTokenMap = 0 := by
+                  native_decide
+                example : CardanoLedgerApi.V2.valueOf policyA tokenA malformedTokenName = 0 := by
+                  native_decide
+                example : CardanoLedgerApi.V2.valueOf policyA tokenA malformedQuantity = 0 := by
+                  native_decide
+                example : julcValueQuantitySumStrict policyA tokenA duplicateValue = some 4 := by
+                  native_decide
+                example : julcValueQuantitySumStrict policyB tokenB duplicateValue = none := by
+                  native_decide
+                example : julcValueQuantitySumStrict policyA tokenA explicitZero = some 0 := by
+                  native_decide
+                example : julcValueQuantitySumStrict policyA tokenA malformedPolicy = none := by
+                  native_decide
+                example : julcValueQuantitySumStrict policyA tokenA malformedTokenMap = none := by
+                  native_decide
+                example : julcValueQuantitySumStrict policyA tokenA malformedTokenName = none := by
+                  native_decide
+                example : julcValueQuantitySumStrict policyA tokenA malformedQuantity = none := by
+                  native_decide
+
+                example : reorderedLeft != reorderedRight := by native_decide
+                example : julcValueExtensionalEq reorderedLeft reorderedRight = true := by
+                  native_decide
+                example : julcValueExtensionalEq duplicateValue summedValue = true := by
+                  native_decide
+                example : julcValueExtensionalEq zeroSum [] = true := by native_decide
+                example : julcValueExtensionalEq malformedPolicy [] = false := by native_decide
+                example : julcValuePointwiseLe [] summedValue = true := by native_decide
+                example : julcValuePointwiseLt [] summedValue = true := by native_decide
+
+                example : julcValueAddStrict
+                    (CardanoLedgerApi.V2.singleton policyA tokenA 2)
+                    (CardanoLedgerApi.V2.singleton policyA tokenA 3) =
+                    some [(Data.B policyA, Data.Map [(Data.B tokenA, Data.I 2)]),
+                          (Data.B policyA, Data.Map [(Data.B tokenA, Data.I 3)])] := by
+                  native_decide
+                example : julcValueSingletonStrict policyA tokenA 2 =
+                    some (CardanoLedgerApi.V2.singleton policyA tokenA 2) := by
+                  native_decide
+                example : julcValueNegateStrict summedValue =
+                    some [(Data.B policyA, Data.Map [(Data.B tokenA, Data.I (-4))])] := by
+                  native_decide
+                example : julcValueScaleStrict 0 summedValue =
+                    some [(Data.B policyA, Data.Map [(Data.B tokenA, Data.I 0)])] := by
+                  native_decide
+                example : julcValueAddStrict malformedPolicy [] = none := by native_decide
+                example : CardanoLedgerApi.V2.merge
+                    (CardanoLedgerApi.V2.singleton policyA tokenA 2)
+                    (CardanoLedgerApi.V2.singleton policyA tokenA (-2)) = [] := by
+                  native_decide
+                example : CardanoLedgerApi.V2.merge
+                    (CardanoLedgerApi.V2.singleton policyB tokenB 2)
+                    (CardanoLedgerApi.V2.singleton policyA tokenA 1) =
+                    [(Data.B policyA, Data.Map [(Data.B tokenA, Data.I 1)]),
+                     (Data.B policyB, Data.Map [(Data.B tokenB, Data.I 2)])] := by
+                  native_decide
+                example : CardanoLedgerApi.V2.add policyA tokenA (-4) summedValue =
+                    [(Data.B policyA, Data.Map [])] := by
+                  native_decide
+
+                def misplacedAda : CardanoLedgerApi.V2.Value :=
+                  [(Data.B policyA, Data.Map [(Data.B tokenA, Data.I 1)]),
+                   (Data.B "", Data.Map [(Data.B "", Data.I 9)])]
+                example : CardanoLedgerApi.V2.lovelaceOf misplacedAda = 0 := by rfl
+                example : CardanoLedgerApi.V2.lovelaceOf
+                    ((Data.B "", Data.Map [(Data.B "", Data.I 9)]) :: misplacedAda) = 9 := by
+                  rfl
+
+                def fullAddress : CardanoLedgerApi.V2.Address :=
+                  ⟨.ScriptCredential "script", none⟩
+                def stakedSamePaymentCredential : CardanoLedgerApi.V2.Address :=
+                  ⟨.ScriptCredential "script", some (.StakingPtr 1 2 3)⟩
+                def otherAddress : CardanoLedgerApi.V2.Address :=
+                  ⟨.PubKeyCredential "other", none⟩
+                def valueOutput (address : CardanoLedgerApi.V2.Address) (quantity : Int) :
+                    CardanoLedgerApi.V2.TxOut :=
+                  ⟨address, CardanoLedgerApi.V2.singleton policyA tokenA quantity,
+                    .NoOutputDatum, none⟩
+                def fullOutput := valueOutput fullAddress 1
+                def stakedOutput := valueOutput stakedSamePaymentCredential 2
+                def otherOutput := valueOutput otherAddress 4
+                def valueInput (index quantity : Int) : TxInInfo :=
+                  ⟨⟨"tx", index⟩, valueOutput fullAddress quantity⟩
+
+                example : (List.filter (fun output =>
+                    output.txOutAddress == fullAddress)
+                    [fullOutput, stakedOutput, otherOutput]).length = 1 := by
+                  native_decide
+                example : (List.filter (fun output =>
+                    output.txOutAddress.addressCredential ==
+                      fullAddress.addressCredential)
+                    [fullOutput, stakedOutput, otherOutput]).length = 2 := by
+                  native_decide
+                example : CardanoLedgerApi.V2.valueOf policyA tokenA
+                    (julcAggregateOutputValues [fullOutput, stakedOutput, otherOutput]) = 7 := by
+                  native_decide
+                example : CardanoLedgerApi.V2.valueOf policyA tokenA
+                    (julcAggregateInputValues [valueInput 0 1, valueInput 0 2]) = 3 := by
+                  native_decide
+                example : CardanoLedgerApi.V1.Contexts.validTxOutValue
+                    (CardanoLedgerApi.V2.lovelaceValue 1) = true := by native_decide
+                example : CardanoLedgerApi.V1.Contexts.validTxOutValue
+                    (CardanoLedgerApi.V2.singleton policyA tokenA 1) = false := by
+                  native_decide
+                example : CardanoLedgerApi.V3.Contexts.validMintValue
+                    (CardanoLedgerApi.V2.singleton policyA tokenA 1) = true := by
+                  native_decide
+                example : CardanoLedgerApi.V3.Contexts.validMintValue
+                    (CardanoLedgerApi.V2.lovelaceValue 1) = false := by native_decide
+
+                def valueTxInfo (inputs : List TxInInfo)
+                    (outputs : List CardanoLedgerApi.V2.TxOut)
+                    (mint : MintValue) (fee : Int) : TxInfo :=
+                  ⟨inputs, [], outputs, fee, mint, [], [], Data.Constr 0 [], [], [], [],
+                    "tx", [], [], Data.Constr 1 [], Data.Constr 1 []⟩
+                def valueContext (inputs : List TxInInfo)
+                    (outputs : List CardanoLedgerApi.V2.TxOut)
+                    (mint : MintValue) (fee : Int) : ScriptContext :=
+                  ⟨valueTxInfo inputs outputs mint fee, Data.Constr 0 [],
+                    .SpendingScript ⟨"tx", 0⟩ none⟩
+                example : CardanoLedgerApi.V3.Contexts.isBalanced (valueContext
+                    [valueInput 0 1] [valueOutput fullAddress 1] [] 0) = true := by
+                  native_decide
+                example : CardanoLedgerApi.V3.Contexts.isBalanced (valueContext
+                    [valueInput 0 1] [valueOutput fullAddress 2] [] 0) = false := by
+                  native_decide
+
+                end JulcGenerated.ValueAlgebraSemanticsTests
+                """;
+    }
+
+    private static String governanceSemanticsTests() {
+        return """
+                /- Kernel-reduced controls for schema-9 governance transaction data. -/
+                import SecurityProperty
+
+                namespace JulcGenerated.GovernanceSemanticsTests
+
+                open CardanoLedgerApi.V3
+                open CardanoLedgerApi.IsData.Class
+                open JulcGenerated.UserProperty
+                open PlutusCore.Data (Data)
+
+                def committeeCredential : CardanoLedgerApi.V2.Credential :=
+                  .PubKeyCredential "committee"
+                def drepCredential : CardanoLedgerApi.V2.Credential :=
+                  .ScriptCredential "drep"
+                def committeeVoter : Voter := .CommitteeVoter committeeCredential
+                def drepVoter : Voter := .DRepVoter drepCredential
+                def poolVoter : Voter := .StakePoolVoter "pool"
+                def actionId : GovernanceActionId := ⟨"tx", 2⟩
+                def otherActionId : GovernanceActionId := ⟨"other", 3⟩
+                def innerVotes : GovernanceVoteMap :=
+                  [(actionId, .VoteNo), (actionId, .VoteYes),
+                   (otherActionId, .Abstain)]
+                def votes : VoterMap :=
+                  [(poolVoter, innerVotes),
+                   (poolVoter, [(actionId, .Abstain)])]
+
+                example : IsData.toData (α := Vote) .VoteNo = Data.Constr 0 [] := by rfl
+                example : IsData.toData (α := Vote) .VoteYes = Data.Constr 1 [] := by rfl
+                example : IsData.toData (α := Vote) .Abstain = Data.Constr 2 [] := by rfl
+                example : (IsData.fromData (α := Vote) (Data.Constr 1 [Data.I 0])) = none := by rfl
+                example : (IsData.fromData (α := Vote) (Data.Constr 3 [])) = none := by rfl
+                example : IsData.toData committeeVoter =
+                    Data.Constr 0 [Data.Constr 0 [Data.B "committee"]] := by rfl
+                example : IsData.toData drepVoter =
+                    Data.Constr 1 [Data.Constr 1 [Data.B "drep"]] := by rfl
+                example : IsData.toData poolVoter = Data.Constr 2 [Data.B "pool"] := by rfl
+                def decodeVoter (data : Data) : Option Voter := IsData.fromData data
+                def shortenVoterData (voter : Voter) : Data :=
+                  match IsData.toData voter with
+                  | Data.Constr tag fields => Data.Constr tag fields.dropLast
+                  | data => data
+                def trailVoterData (voter : Voter) : Data :=
+                  match IsData.toData voter with
+                  | Data.Constr tag fields => Data.Constr tag (fields ++ [Data.I 0])
+                  | data => data
+                def corruptVoterPayload (voter : Voter) : Data :=
+                  match IsData.toData voter with
+                  | Data.Constr tag (_ :: rest) => Data.Constr tag (Data.I 0 :: rest)
+                  | data => data
+                example : [decodeVoter (IsData.toData committeeVoter),
+                    decodeVoter (IsData.toData drepVoter),
+                    decodeVoter (IsData.toData poolVoter)] =
+                    [some committeeVoter, some drepVoter, some poolVoter] := by native_decide
+                example : [decodeVoter (shortenVoterData committeeVoter),
+                    decodeVoter (shortenVoterData drepVoter),
+                    decodeVoter (shortenVoterData poolVoter)] =
+                    [none, none, none] := by native_decide
+                example : [decodeVoter (trailVoterData committeeVoter),
+                    decodeVoter (trailVoterData drepVoter),
+                    decodeVoter (trailVoterData poolVoter)] =
+                    [none, none, none] := by native_decide
+                example : [decodeVoter (corruptVoterPayload committeeVoter),
+                    decodeVoter (corruptVoterPayload drepVoter),
+                    decodeVoter (corruptVoterPayload poolVoter)] =
+                    [none, none, none] := by native_decide
+                example : decodeVoter (Data.Constr 3 [Data.B "unknown"]) = none := by rfl
+                example : IsData.toData actionId = Data.Constr 0 [Data.B "tx", Data.I 2] := by rfl
+                def protocolVersion : ProtocolVersion := ⟨11, 1⟩
+                example : IsData.toData protocolVersion =
+                    Data.Constr 0 [Data.I 11, Data.I 1] := by rfl
+                example : CardanoLedgerApi.V3.Contexts.isKnownVoter poolVoter votes = true := by
+                  native_decide
+                example : CardanoLedgerApi.V3.Contexts.isKnownVoter drepVoter votes = false := by
+                  native_decide
+                example : votes.length = 2 := by native_decide
+                example : votes =
+                    [(poolVoter, innerVotes),
+                     (poolVoter, [(actionId, .Abstain)])] := by rfl
+                example : julcMapLookupFirst votes poolVoter = some innerVotes := by
+                  native_decide
+                example : julcMapLookupAll votes poolVoter =
+                    [innerVotes, [(actionId, .Abstain)]] := by native_decide
+                example : julcMapCountKey votes poolVoter = 2 := by native_decide
+                example : julcMapLookupFirst innerVotes actionId = some .VoteNo := by
+                  native_decide
+                example : julcMapLookupAll innerVotes actionId =
+                    [.VoteNo, .VoteYes] := by native_decide
+                example : julcMapCountKey innerVotes actionId = 2 := by native_decide
+                example : (IsData.fromData (α := GovernanceVoteMap)
+                    (Data.Map [(Data.I 0, Data.Constr 0 [])])) = none := by rfl
+                example : (IsData.fromData (α := VoterMap)
+                    (Data.Map [(IsData.toData poolVoter, Data.List [])])) = none := by rfl
+
+                def optionalPrior : Option GovernanceActionId := some actionId
+                def constitutionScript : Option CardanoLedgerApi.V2.ScriptHash :=
+                  some "constitution"
+                def withdrawalCredential : CardanoLedgerApi.V2.Credential :=
+                  .PubKeyCredential "withdrawal"
+                def committeeCold : CardanoLedgerApi.V2.Credential :=
+                  .ScriptCredential "cold"
+                def committeeNew : CardanoLedgerApi.V2.Credential :=
+                  .PubKeyCredential "new"
+                def action0 : GovernanceAction := .ParameterChange optionalPrior
+                  (Data.Map [(Data.I 1, Data.I 10)]) constitutionScript
+                def action1 : GovernanceAction :=
+                  .HardForkInitiation optionalPrior ⟨11, 0⟩
+                def action2 : GovernanceAction := .TreasuryWithdrawals
+                  [(withdrawalCredential, 5)] constitutionScript
+                def action3 : GovernanceAction := .NoConfidence optionalPrior
+                def action4 : GovernanceAction := .UpdateCommittee optionalPrior
+                  [committeeCold] [(committeeNew, 100)]
+                  (Data.Constr 0 [Data.I 1, Data.I 2])
+                def action5 : GovernanceAction :=
+                  .NewConstitution optionalPrior constitutionScript
+                def action6 : GovernanceAction := .InfoAction
+
+                def actionTagAndArity (action : GovernanceAction) : Option (Int × Nat) :=
+                  match IsData.toData action with
+                  | Data.Constr tag fields => some (tag, fields.length)
+                  | _ => none
+                example : [actionTagAndArity action0, actionTagAndArity action1,
+                    actionTagAndArity action2, actionTagAndArity action3,
+                    actionTagAndArity action4, actionTagAndArity action5,
+                    actionTagAndArity action6] =
+                    [some (0, 3), some (1, 2), some (2, 2), some (3, 1),
+                     some (4, 4), some (5, 2), some (6, 0)] := by native_decide
+
+                def decodeAction (data : Data) : Option GovernanceAction :=
+                  IsData.fromData data
+                def shortenActionData (action : GovernanceAction) : Data :=
+                  match IsData.toData action with
+                  | Data.Constr tag fields => Data.Constr tag fields.dropLast
+                  | data => data
+                def trailActionData (action : GovernanceAction) : Data :=
+                  match IsData.toData action with
+                  | Data.Constr tag fields => Data.Constr tag (fields ++ [Data.I 0])
+                  | data => data
+                def corruptFirstActionPayload (action : GovernanceAction) : Data :=
+                  match IsData.toData action with
+                  | Data.Constr tag (_ :: rest) => Data.Constr tag (Data.I 0 :: rest)
+                  | data => data
+
+                example : [decodeAction (IsData.toData action0),
+                    decodeAction (IsData.toData action1),
+                    decodeAction (IsData.toData action2),
+                    decodeAction (IsData.toData action3),
+                    decodeAction (IsData.toData action4),
+                    decodeAction (IsData.toData action5),
+                    decodeAction (IsData.toData action6)] =
+                    [some action0, some action1, some action2, some action3,
+                     some action4, some action5, some action6] := by native_decide
+                /- InfoAction has arity zero, so there is no shorter encoding. -/
+                example : [decodeAction (shortenActionData action0),
+                    decodeAction (shortenActionData action1),
+                    decodeAction (shortenActionData action2),
+                    decodeAction (shortenActionData action3),
+                    decodeAction (shortenActionData action4),
+                    decodeAction (shortenActionData action5)] =
+                    [none, none, none, none, none, none] := by native_decide
+                example : [decodeAction (trailActionData action0),
+                    decodeAction (trailActionData action1),
+                    decodeAction (trailActionData action2),
+                    decodeAction (trailActionData action3),
+                    decodeAction (trailActionData action4),
+                    decodeAction (trailActionData action5),
+                    decodeAction (trailActionData action6)] =
+                    [none, none, none, none, none, none, none] := by native_decide
+                example : [decodeAction (corruptFirstActionPayload action0),
+                    decodeAction (corruptFirstActionPayload action1),
+                    decodeAction (corruptFirstActionPayload action2),
+                    decodeAction (corruptFirstActionPayload action3),
+                    decodeAction (corruptFirstActionPayload action4),
+                    decodeAction (corruptFirstActionPayload action5)] =
+                    [none, none, none, none, none, none] := by native_decide
+                example : decodeAction (Data.Constr 7 []) = none := by rfl
+                example : (match action1 with
+                    | .HardForkInitiation (some prior) version =>
+                        prior == actionId && version == (⟨11, 0⟩ : ProtocolVersion)
+                    | _ => false) = true := by native_decide
+
+                def proposal : ProposalProcedure :=
+                  ⟨10, .PubKeyCredential "return", IsData.toData action1⟩
+                def decodeProposal (data : Data) : Option ProposalProcedure :=
+                  IsData.fromData data
+                example : decodeProposal (IsData.toData proposal) = some proposal := by
+                  native_decide
+                example : decodeProposal (Data.Constr 1
+                    [Data.I 10, Data.Constr 0 [Data.B "return"],
+                     IsData.toData action1]) = none := by rfl
+                example : decodeProposal (Data.Constr 0
+                    [Data.I 10, Data.Constr 0 [Data.B "return"]]) = none := by rfl
+                example : decodeProposal (Data.Constr 0
+                    [Data.I 10, Data.Constr 0 [Data.B "return"],
+                     IsData.toData action1, Data.I 0]) = none := by rfl
+                example : decodeProposal (Data.Constr 0
+                    [Data.B "deposit", Data.Constr 0 [Data.B "return"],
+                     IsData.toData action1]) = none := by rfl
+                example : decodeProposal (Data.Constr 0
+                    [Data.I 10, Data.I 0, IsData.toData action1]) = none := by rfl
+                example : (IsData.fromData proposal.ppGovernanceAction :
+                    Option GovernanceAction) = some action1 := by native_decide
+                example : CardanoLedgerApi.V3.Contexts.isKnownProposal
+                    proposal (-1) [proposal] = false := by native_decide
+                example : CardanoLedgerApi.V3.Contexts.isKnownProposal
+                    proposal 0 [proposal, proposal] = true := by native_decide
+                example : CardanoLedgerApi.V3.Contexts.isKnownProposal
+                    proposal 2 [proposal, proposal] = false := by native_decide
+
+                end JulcGenerated.GovernanceSemanticsTests
+                """;
     }
 
     private static String runnerPlan(String artifactId, String verifyScriptSha256) throws IOException {
@@ -1756,6 +3120,21 @@ public final class VerificationProjectGenerator {
                 "seller-payment-v1-undetermined");
     }
 
+    private static String oneShotMintRunnerPlan(
+            VerificationProperty property,
+            String nonVacuityScriptSha256,
+            String verifyScriptSha256) throws IOException {
+        return specializedRunnerPlan(
+                property,
+                nonVacuityScriptSha256,
+                verifyScriptSha256,
+                "prove-one-shot-authorized-mint-v1",
+                "one-shot authorized mint",
+                "one-shot-authorized-mint-v1-established",
+                "one-shot-authorized-mint-v1-counterexample",
+                "one-shot-authorized-mint-v1-undetermined");
+    }
+
     private static String specializedRunnerPlan(
             VerificationProperty property,
             String nonVacuityScriptSha256,
@@ -1813,6 +3192,64 @@ public final class VerificationProjectGenerator {
                         "executableSha256", verifyScriptSha256,
                         "propertyId", property.propertyId(),
                         "outcomes", propertyOutcomes)));
+        return JSON.writeValueAsString(root) + "\n";
+    }
+
+    private static String composedRunnerPlan(
+            ComposedDslProperty property,
+            DslPropertySet propertySet,
+            Map<String, ComposedScriptHashes> scripts) throws IOException {
+        Map<String, Object> root = new LinkedHashMap<>();
+        root.put("schemaVersion", 2);
+        root.put("kind", "generated-workspace");
+        root.put("manifest", "verification-manifest.json");
+        root.put("timeoutSeconds", 1800);
+        root.put("acquire", List.of(
+                Map.of("id", "lake-update", "command", List.of("lake", "update"),
+                        "maxAttempts", 3, "expectedExitCodes", List.of(0)),
+                Map.of("id", "build-pinned-dependencies",
+                        "command", List.of("lake", "build",
+                                "@PlutusCore/PlutusCore",
+                                "@CardanoLedgerApi/CardanoLedgerApi",
+                                "@Blaster/Blaster", "GeneratedVerificationSupport"),
+                        "expectedExitCodes", List.of(0))));
+        List<Map<String, Object>> nonVacuityOutcomes = List.of(
+                observed(0, "NON-VACUOUS: successful input witness exists",
+                        "REFUTED", "expected-negative-control"),
+                observed(4, "VACUOUS: validator has no successful input",
+                        "COULD-NOT-EVALUATE", "property-vacuous"),
+                observed(2, "COULD-NOT-EVALUATE: non-vacuity",
+                        "COULD-NOT-EVALUATE", "non-vacuity-undetermined"));
+        var verify = new ArrayList<Map<String, Object>>();
+        for (DslProperty claim : propertySet.properties()) {
+            ComposedScriptHashes hashes = scripts.get(claim.id());
+            String safe = ComposedDslPromotion.generatedName(claim.id())
+                    .toLowerCase(Locale.ROOT);
+            String nonVacuityId = claim.id() + ".non-vacuity";
+            verify.add(Map.of(
+                    "id", "check-non-vacuity-" + safe,
+                    "command", List.of("scripts/" + hashes.scriptName()
+                            + "-non-vacuity.sh"),
+                    "executableSha256", hashes.nonVacuitySha256(),
+                    "propertyId", nonVacuityId,
+                    "outcomes", nonVacuityOutcomes));
+            var proof = new LinkedHashMap<String, Object>();
+            proof.put("id", "prove-dsl-" + safe);
+            proof.put("command", List.of("scripts/" + hashes.scriptName() + ".sh"));
+            proof.put("executableSha256", hashes.verifySha256());
+            proof.put("propertyId", claim.id());
+            proof.put("nonVacuityGuardPropertyId", nonVacuityId);
+            proof.put("outcomes", List.of(
+                    observed(0, "SMT-VALID: DSL property " + claim.id() + " established",
+                            "SMT-VALID", "dsl-property-established"),
+                    observed(3, "REFUTED: DSL property " + claim.id()
+                                    + " counterexample found",
+                            "REFUTED", "dsl-property-counterexample"),
+                    observed(2, "COULD-NOT-EVALUATE: DSL property " + claim.id(),
+                            "COULD-NOT-EVALUATE", "dsl-property-undetermined")));
+            verify.add(proof);
+        }
+        root.put("verify", verify);
         return JSON.writeValueAsString(root) + "\n";
     }
 
@@ -2250,6 +3687,1518 @@ public final class VerificationProjectGenerator {
                 redeemerType, direction);
     }
 
+    private static String mintingDslProperty(
+            String redeemerType, DslPropertySet propertyDsl, boolean ledgerDomain) {
+        var implication = (BoolBinaryNode) propertyDsl.properties().getFirst().expression();
+        String guarantee = PropertyLeanRenderer.renderExpression(implication.right());
+        String domain = ledgerDomain ? """
+
+                %s
+
+                def blasterValidMintingContext (ctx : ScriptContext) : Bool :=
+                  match ctx.scriptContextScriptInfo with
+                  | .MintingScript _ =>
+                      CardanoLedgerApi.V3.Contexts.validScriptInfo ctx &&
+                        blasterValidTxInfo ctx
+                  | _ => false
+                """.formatted(blasterValidTxInfoDefinition()) : "";
+        return """
+                /- Generated from closed typed minting DSL IR; do not edit. -/
+                import CardanoLedgerApi.V3
+                import GeneratedSchemas
+
+                namespace JulcGenerated.UserProperty
+
+                open CardanoLedgerApi.IsData.Class
+                open CardanoLedgerApi.Recursors
+                open CardanoLedgerApi.V3
+                open PlutusCore.Data (Data)
+                open PlutusCore.ByteString (ByteString)
+                open JulcGenerated.Schemas
+
+                def ownPolicyOf (ctx : ScriptContext) : ByteString :=
+                  match ctx.scriptContextScriptInfo with
+                  | .MintingScript ownPolicy => ownPolicy
+                  | _ => ""
+
+                def redeemerStrictlyDecodes (ctx : ScriptContext) : Bool :=
+                  match (IsData.fromData ctx.scriptContextRedeemer :
+                      Option JulcGenerated.Schemas.%s) with
+                  | some _ => true
+                  | none => false
+
+                def ownPolicyEntries (policy : ByteString)
+                    (mint : CardanoLedgerApi.V3.MintValue) :
+                    CardanoLedgerApi.V3.MintValue :=
+                  Recursor.findAll entry in mint => entry.1 == Data.B policy
+
+                /-- Raw structural predicate: duplicates and malformed matching entries remain. -/
+                def exactOwnPolicyAsset (policy token : ByteString) (quantity : Int)
+                    (mint : CardanoLedgerApi.V3.MintValue) : Bool :=
+                  match ownPolicyEntries policy mint with
+                  | [(Data.B actualPolicy,
+                      Data.Map [(Data.B actualToken, Data.I actualQuantity)])] =>
+                        actualPolicy == policy && actualToken == token &&
+                          actualQuantity == quantity
+                  | _ => false
+                %s
+
+                def dslGuarantee (ctx : ScriptContext) : Bool :=
+                  %s
+
+                def securityProperty (ctx : ScriptContext) : Prop :=
+                  dslGuarantee ctx = true
+
+                end JulcGenerated.UserProperty
+                """.formatted(redeemerType, domain, guarantee);
+    }
+
+    private static String reviewedDataAdapterDefinitions() {
+        return """
+                /- ADR-027 reviewed raw-data adapters. Raw Data never escapes these APIs. -/
+                def julcDecodeValidity (raw : Data) :
+                    Option CardanoLedgerApi.V1.Time.POSIXTimeRange :=
+                  IsData.fromData raw
+
+                def julcValidityDecoderValid (raw : Data) : Bool :=
+                  (julcDecodeValidity raw).isSome
+
+                def julcValidityCanonical (raw : Data) : Bool :=
+                  match julcDecodeValidity raw with
+                  | some range => IsData.toData range == raw
+                  | none => false
+
+                def julcValidityIsEmpty (raw : Data) : Bool :=
+                  match julcDecodeValidity raw with
+                  | some range => CardanoLedgerApi.V1.Time.isEmpty range
+                  | none => false
+
+                def julcValidityContains (time : Int) (raw : Data) : Bool :=
+                  match julcDecodeValidity raw with
+                  | some range => CardanoLedgerApi.V1.Time.contains time range
+                  | none => false
+
+                def julcValidityIncludes (outerRaw innerRaw : Data) : Bool :=
+                  match julcDecodeValidity outerRaw, julcDecodeValidity innerRaw with
+                  | some outer, some inner => CardanoLedgerApi.V1.Time.includes outer inner
+                  | _, _ => false
+
+                def julcValidityEntirelyBefore (time : Int) (raw : Data) : Bool :=
+                  match julcDecodeValidity raw with
+                  | some range => CardanoLedgerApi.V1.Time.isEntirelyBefore time range
+                  | none => false
+
+                def julcValidityEntirelyAfter (time : Int) (raw : Data) : Bool :=
+                  match julcDecodeValidity raw with
+                  | some range => CardanoLedgerApi.V1.Time.isEntirelyAfter time range
+                  | none => false
+
+                inductive JulcTreasuryState where
+                  | malformed : JulcTreasuryState
+                  | absent : JulcTreasuryState
+                  | present : Int → JulcTreasuryState
+                deriving Repr, DecidableEq
+
+                def julcDecodeTreasury : Data → JulcTreasuryState
+                  | Data.Constr 0 [Data.I amount] => .present amount
+                  | Data.Constr 1 [] => .absent
+                  | _ => .malformed
+
+                def julcTreasuryWellFormed (raw : Data) : Bool :=
+                  match julcDecodeTreasury raw with
+                  | .present _ | .absent => true
+                  | .malformed => false
+
+                def julcTreasuryAbsent (raw : Data) : Bool :=
+                  match julcDecodeTreasury raw with
+                  | .absent => true
+                  | _ => false
+
+                def julcTreasuryMalformed (raw : Data) : Bool :=
+                  match julcDecodeTreasury raw with
+                  | .malformed => true
+                  | _ => false
+
+                def julcChangedParameterIds (raw : Data) : Option (List Int) :=
+                  let rec decode : List (Data × Data) → Option (List Int)
+                    | [] => some []
+                    | (Data.I key, _) :: rest =>
+                        match decode rest with
+                        | some keys => some (key :: keys)
+                        | none => none
+                    | _ => none
+                  match raw with
+                  | Data.Map entries => decode entries
+                  | _ => none
+
+                def julcStrictlyAscending : List Int → Bool
+                  | [] | [_] => true
+                  | first :: second :: rest =>
+                      first < second && julcStrictlyAscending (second :: rest)
+
+                def julcChangedParametersWellFormed (raw : Data) : Bool :=
+                  (julcChangedParameterIds raw).isSome
+
+                def julcChangedParametersNonEmpty (raw : Data) : Bool :=
+                  match julcChangedParameterIds raw with
+                  | some (_ :: _) => true
+                  | _ => false
+
+                def julcChangedParametersStrictlyAscendingUnique (raw : Data) : Bool :=
+                  match julcChangedParameterIds raw with
+                  | some keys => !keys.isEmpty && julcStrictlyAscending keys
+                  | none => false
+
+                def julcChangedParametersContainsId (raw : Data) (id : Int) : Bool :=
+                  match julcChangedParameterIds raw with
+                  | some keys => keys.contains id
+                  | none => false
+
+                def julcChangedParametersCountId (raw : Data) (id : Int) : Int :=
+                  match julcChangedParameterIds raw with
+                  | some keys => keys.foldl (fun count key =>
+                      if key == id then count + 1 else count) 0
+                  | none => 0
+
+                def julcNormalizeQuorum (numerator denominator : Int) : Int × Int :=
+                  let divisor : Int := Int.ofNat (Int.gcd numerator denominator)
+                  let sign : Int := if denominator < 0 then -1 else 1
+                  (numerator * sign / divisor, denominator * sign / divisor)
+
+                def julcDecodeQuorum : Data → Option (Int × Int)
+                  | Data.Constr 0 [Data.I numerator, Data.I denominator] =>
+                      if denominator == 0 then none
+                      else some (julcNormalizeQuorum numerator denominator)
+                  | _ => none
+
+                def julcQuorumDecoderValid (raw : Data) : Bool :=
+                  (julcDecodeQuorum raw).isSome
+
+                def julcQuorumCanonical (raw : Data) : Bool :=
+                  match julcDecodeQuorum raw with
+                  | some (numerator, denominator) =>
+                      Data.Constr 0 [Data.I numerator, Data.I denominator] == raw
+                  | none => false
+
+                def julcQuorumUnitInterval (raw : Data) : Bool :=
+                  match julcDecodeQuorum raw with
+                  | some (numerator, denominator) =>
+                      0 <= numerator && numerator <= denominator
+                  | none => false
+
+                """;
+    }
+
+    private static String composedDslProperty(
+            DslPropertySet propertySet,
+            Map<String, DslSemanticDependencies.Plan> plans,
+            String datumType,
+            String redeemerType,
+            ProjectedContractTypes typedProjection) {
+        var dslPurpose = propertySet.purpose();
+        boolean needsOwnPolicy = plans.values().stream()
+                .anyMatch(DslSemanticDependencies.Plan::needsOwnPolicy);
+        boolean needsDatum = plans.values().stream()
+                .anyMatch(DslSemanticDependencies.Plan::needsDatumDecode);
+        boolean needsRedeemer = plans.values().stream()
+                .anyMatch(DslSemanticDependencies.Plan::needsRedeemerDecode);
+        boolean needsRawMint = plans.values().stream()
+                .anyMatch(DslSemanticDependencies.Plan::needsRawMint);
+        boolean needsDomain = plans.values().stream().anyMatch(plan ->
+                plan.needsSpendingDomain() || plan.needsMintingDomain()
+                        || plan.needsRewardingDomain() || plan.needsCertifyingDomain());
+        boolean needsRewardingCredential = plans.values().stream()
+                .anyMatch(DslSemanticDependencies.Plan::needsRewardingCredential);
+        boolean needsCertificate = plans.values().stream()
+                .anyMatch(DslSemanticDependencies.Plan::needsCertificate);
+        boolean needsCertificateIndex = plans.values().stream()
+                .anyMatch(DslSemanticDependencies.Plan::needsCertificateIndex);
+        var out = new StringBuilder("""
+                /- Generated from admitted canonical typed DSL IR; do not edit. -/
+                import CardanoLedgerApi.V3
+                import GeneratedSchemas
+
+                namespace JulcGenerated.UserProperty
+
+                open CardanoLedgerApi.IsData.Class
+                open CardanoLedgerApi.Recursors
+                open CardanoLedgerApi.V3
+                open PlutusCore.Data (Data)
+                open PlutusCore.ByteString (ByteString)
+                open JulcGenerated.Schemas
+
+                """);
+        out.append("def selectedPurpose (ctx : ScriptContext) : Bool :=\n")
+                .append("  match ctx.scriptContextScriptInfo with\n")
+                .append(switch (dslPurpose) {
+                    case SPENDING -> "  | .SpendingScript .. => true\n";
+                    case MINTING -> "  | .MintingScript _ => true\n";
+                    case REWARDING -> "  | .RewardingScript _ => true\n";
+                    case CERTIFYING -> "  | .CertifyingScript .. => true\n";
+                })
+                .append("  | _ => false\n\n");
+        if (needsOwnPolicy) {
+            out.append("""
+                    def ownPolicyOf (ctx : ScriptContext) : ByteString :=
+                      match ctx.scriptContextScriptInfo with
+                      | .MintingScript ownPolicy => ownPolicy
+                      | _ => ""
+
+                    """);
+        }
+        if (needsRedeemer) {
+            if (redeemerType == null) throw new IllegalArgumentException(
+                    "Composed DSL redeemer dependency has no generated Lean type");
+            out.append("""
+                    def redeemerStrictlyDecodes (ctx : ScriptContext) : Bool :=
+                      match (IsData.fromData ctx.scriptContextRedeemer :
+                          Option JulcGenerated.Schemas.%s) with
+                      | some _ => true
+                      | none => false
+
+                    """.formatted(redeemerType));
+        }
+        boolean structurallyTyped = propertySet.schemaVersion()
+                >= DslPropertySet.TYPED_SCHEMA_VERSION;
+        boolean structurallyLedgerTyped = propertySet.schemaVersion()
+                >= DslPropertySet.LEDGER_SCHEMA_VERSION;
+        boolean authorizationTyped = propertySet.schemaVersion()
+                >= DslPropertySet.AUTHORIZATION_SCHEMA_VERSION;
+        boolean valueAlgebraTyped = propertySet.schemaVersion()
+                >= DslPropertySet.VALUE_ALGEBRA_SCHEMA_VERSION;
+        boolean governanceTyped = propertySet.schemaVersion()
+                >= DslPropertySet.GOVERNANCE_SCHEMA_VERSION;
+        boolean reviewedAdaptersTyped = propertySet.schemaVersion()
+                >= DslPropertySet.REVIEWED_DATA_ADAPTER_SCHEMA_VERSION;
+        if (structurallyTyped) {
+            out.append("""
+                    /- Schema-4 collection semantics preserve order and duplicates. -/
+                    def julcStructuralEq [IsData α] (left right : α) : Bool :=
+                      IsData.toData left == IsData.toData right
+
+                    def julcListContains [IsData α] (items : List α) (value : α) : Bool :=
+                      items.any (fun candidate => julcStructuralEq candidate value)
+
+                    def julcListCount (predicate : α → Bool) : List α → Int
+                      | [] => 0
+                      | value :: rest =>
+                          (if predicate value then 1 else 0) + julcListCount predicate rest
+
+                    def julcListAt (items : List α) (index : Int) : Option α :=
+                      if index < 0 then none else items.get? index.toNat
+
+                    def julcMapContainsKey [IsData κ]
+                        (entries : List (κ × υ)) (key : κ) : Bool :=
+                      entries.any (fun entry => julcStructuralEq entry.1 key)
+
+                    def julcMapCountKey [IsData κ]
+                        (entries : List (κ × υ)) (key : κ) : Int :=
+                      julcListCount (fun entry => julcStructuralEq entry.1 key) entries
+
+                    def julcMapLookupFirst [IsData κ]
+                        (entries : List (κ × υ)) (key : κ) : Option υ :=
+                      match entries.find? (fun entry => julcStructuralEq entry.1 key) with
+                      | some entry => some entry.2
+                      | none => none
+
+                    def julcMapLookupAll [IsData κ]
+                        (entries : List (κ × υ)) (key : κ) : List υ :=
+                      entries.filterMap (fun entry =>
+                        if julcStructuralEq entry.1 key then some entry.2 else none)
+
+                    """);
+        }
+        if (structurallyLedgerTyped) {
+            out.append("""
+                    /-- Outputs at the complete address of the first resolved own input.
+                        Missing own input yields an empty ordered result. -/
+                    def julcContinuingOutputs (ctx : ScriptContext) :
+                        JulcList CardanoLedgerApi.V2.TxOut :=
+                      match findOwnInput ctx with
+                      | some own =>
+                          ⟨List.filter (fun output : CardanoLedgerApi.V2.TxOut =>
+                            output.txOutAddress ==
+                              own.txInInfoResolved.txOutAddress)
+                            ctx.scriptContextTxInfo.txInfoOutputs⟩
+                      | none => ⟨[]⟩
+
+                    """);
+        }
+        if (governanceTyped) {
+            out.append("""
+                    /- Schema-9 preserves both levels of the list-backed voter map. -/
+                    def julcVoterMap (votes : VoterMap) :
+                        JulcMap Voter (JulcMap GovernanceActionId Vote) :=
+                      ⟨votes.map (fun entry => (entry.1, ⟨entry.2⟩))⟩
+
+                    def julcIsKnownVoter (voter : Voter)
+                        (votes : JulcMap Voter (JulcMap GovernanceActionId Vote)) : Bool :=
+                      votes.entries.any (fun entry => entry.1 == voter)
+
+                    """);
+        }
+        if (authorizationTyped) {
+            out.append("""
+                    /- Schema-6 authorization is set-like only within these relations. -/
+                    def julcAuthorizationContains
+                        (key : CardanoLedgerApi.V2.PubKeyHash)
+                        (keys : List CardanoLedgerApi.V2.PubKeyHash) : Bool :=
+                      keys.any (fun candidate => candidate == key)
+
+                    def julcDistinctKeyHashes :
+                        List CardanoLedgerApi.V2.PubKeyHash →
+                          List CardanoLedgerApi.V2.PubKeyHash
+                      | [] => []
+                      | key :: rest =>
+                          let distinctRest := julcDistinctKeyHashes rest
+                          if julcAuthorizationContains key distinctRest then
+                            distinctRest
+                          else
+                            key :: distinctRest
+
+                    def julcSignedAuthorityCount
+                        (authorities signers : List CardanoLedgerApi.V2.PubKeyHash) : Int :=
+                      julcListCount
+                        (fun authority => julcAuthorizationContains authority signers)
+                        (julcDistinctKeyHashes authorities)
+
+                    def julcAnySigned
+                        (authorities signers : List CardanoLedgerApi.V2.PubKeyHash) : Bool :=
+                      julcSignedAuthorityCount authorities signers >= 1
+
+                    def julcAllSigned
+                        (authorities signers : List CardanoLedgerApi.V2.PubKeyHash) : Bool :=
+                      (julcDistinctKeyHashes authorities).all
+                        (fun authority => julcAuthorizationContains authority signers)
+
+                    def julcNoneSigned
+                        (authorities signers : List CardanoLedgerApi.V2.PubKeyHash) : Bool :=
+                      julcSignedAuthorityCount authorities signers == 0
+
+                    def julcAtLeastSigned (threshold : Int)
+                        (authorities signers : List CardanoLedgerApi.V2.PubKeyHash) : Bool :=
+                      julcSignedAuthorityCount authorities signers >= threshold
+
+                    def julcExactlySigned (threshold : Int)
+                        (authorities signers : List CardanoLedgerApi.V2.PubKeyHash) : Bool :=
+                      julcSignedAuthorityCount authorities signers == threshold
+
+                    def julcNoUnexpectedSigners
+                        (authorities signers : List CardanoLedgerApi.V2.PubKeyHash) : Bool :=
+                      signers.all
+                        (fun signer => julcAuthorizationContains signer authorities)
+
+                    def julcExactSignerSet
+                        (authorities signers : List CardanoLedgerApi.V2.PubKeyHash) : Bool :=
+                      julcAllSigned authorities signers &&
+                        julcNoUnexpectedSigners authorities signers
+
+                    """);
+        }
+        if (valueAlgebraTyped) {
+            out.append("""
+                    /- Schema-8 Value operations keep raw and extensional meanings separate. -/
+                    def julcValueQuantitySumStrictPresence (policy token : ByteString)
+                        (value : CardanoLedgerApi.V2.Value) : Option (Int × Bool) :=
+                      let rec sumTokens (entries : List (Data × Data)) (acc : Int)
+                          (found : Bool) : Option (Int × Bool) :=
+                        match entries with
+                        | [] => some (acc, found)
+                        | (Data.B actualToken, Data.I quantity) :: rest =>
+                            let isMatch := actualToken == token
+                            sumTokens rest (if isMatch then acc + quantity else acc)
+                              (found || isMatch)
+                        | _ => none
+                      let rec visit (entries : CardanoLedgerApi.V2.Value)
+                          (acc : Int) (found : Bool) : Option (Int × Bool) :=
+                        match entries with
+                        | [] => some (acc, found)
+                        | (Data.B actualPolicy, Data.Map tokens) :: rest =>
+                            match sumTokens tokens 0 false with
+                            | none => none
+                            | some (quantity, tokenFound) =>
+                                let isMatch := actualPolicy == policy
+                                visit rest
+                                  (if isMatch then acc + quantity else acc)
+                                  (found || (isMatch && tokenFound))
+                        | _ => none
+                      visit value 0 false
+
+                    def julcValueQuantitySumStrict (policy token : ByteString)
+                        (value : CardanoLedgerApi.V2.Value) : Option Int :=
+                      match julcValueQuantitySumStrictPresence policy token value with
+                      | some (quantity, true) => some quantity
+                      | some (_, false) => none
+                      | none => none
+
+                    def julcValueQuantitySumStrictOrZero (policy token : ByteString)
+                        (value : CardanoLedgerApi.V2.Value) : Option Int :=
+                      match julcValueQuantitySumStrictPresence policy token value with
+                      | some (quantity, _) => some quantity
+                      | none => none
+
+                    def julcValueSupportStrict (value : CardanoLedgerApi.V2.Value) :
+                        Option (List (ByteString × ByteString)) :=
+                      let rec tokenKeys (policy : ByteString) (entries : List (Data × Data))
+                          (acc : List (ByteString × ByteString)) :=
+                        match entries with
+                        | [] => some acc
+                        | (Data.B token, Data.I _) :: rest =>
+                            tokenKeys policy rest ((policy, token) :: acc)
+                        | _ => none
+                      let rec visit (entries : CardanoLedgerApi.V2.Value)
+                          (acc : List (ByteString × ByteString)) :=
+                        match entries with
+                        | [] => some acc
+                        | (Data.B policy, Data.Map tokens) :: rest =>
+                            match tokenKeys policy tokens acc with
+                            | some keys => visit rest keys
+                            | none => none
+                        | _ => none
+                      visit value []
+
+                    def julcValueExtensionalEq (left right : CardanoLedgerApi.V2.Value) : Bool :=
+                      match julcValueSupportStrict left, julcValueSupportStrict right with
+                      | some leftKeys, some rightKeys =>
+                          (leftKeys ++ rightKeys).all (fun key =>
+                            julcValueQuantitySumStrictOrZero key.1 key.2 left ==
+                              julcValueQuantitySumStrictOrZero key.1 key.2 right)
+                      | _, _ => false
+
+                    def julcValuePointwiseLe (left right : CardanoLedgerApi.V2.Value) : Bool :=
+                      match julcValueSupportStrict left, julcValueSupportStrict right with
+                      | some leftKeys, some rightKeys =>
+                          (leftKeys ++ rightKeys).all (fun key =>
+                            match julcValueQuantitySumStrictOrZero key.1 key.2 left,
+                                julcValueQuantitySumStrictOrZero key.1 key.2 right with
+                            | some l, some r => l <= r
+                            | _, _ => false)
+                      | _, _ => false
+
+                    def julcValuePointwiseLt (left right : CardanoLedgerApi.V2.Value) : Bool :=
+                      julcValuePointwiseLe left right && !julcValueExtensionalEq left right
+
+                    def julcValueMapStrict (factor : Int)
+                        (value : CardanoLedgerApi.V2.Value) :
+                        Option CardanoLedgerApi.V2.Value :=
+                      let rec mapTokens : List (Data × Data) → Option (List (Data × Data))
+                        | [] => some []
+                        | (Data.B token, Data.I quantity) :: rest =>
+                            match mapTokens rest with
+                            | some mapped => some ((Data.B token, Data.I (factor * quantity)) :: mapped)
+                            | none => none
+                        | _ => none
+                      let rec visit : CardanoLedgerApi.V2.Value →
+                          Option CardanoLedgerApi.V2.Value
+                        | [] => some []
+                        | (Data.B policy, Data.Map tokens) :: rest =>
+                            match mapTokens tokens, visit rest with
+                            | some mappedTokens, some mappedRest =>
+                                some ((Data.B policy, Data.Map mappedTokens) :: mappedRest)
+                            | _, _ => none
+                        | _ => none
+                      visit value
+
+                    def julcValueSingletonStrict (policy token : ByteString) (quantity : Int) :
+                        Option CardanoLedgerApi.V2.Value :=
+                      some (CardanoLedgerApi.V2.singleton policy token quantity)
+
+                    def julcValueValidateStrict (value : CardanoLedgerApi.V2.Value) :
+                        Option CardanoLedgerApi.V2.Value :=
+                      match julcValueSupportStrict value with
+                      | some _ => some value
+                      | none => none
+
+                    def julcValueAddStrict (left right : CardanoLedgerApi.V2.Value) :
+                        Option CardanoLedgerApi.V2.Value :=
+                      match julcValueSupportStrict left, julcValueSupportStrict right with
+                      | some _, some _ => some (left ++ right)
+                      | _, _ => none
+
+                    def julcValueNegateStrict (value : CardanoLedgerApi.V2.Value) :
+                        Option CardanoLedgerApi.V2.Value := julcValueMapStrict (-1) value
+
+                    def julcValueScaleStrict (factor : Int)
+                        (value : CardanoLedgerApi.V2.Value) :
+                        Option CardanoLedgerApi.V2.Value := julcValueMapStrict factor value
+
+                    def julcAggregateInputValues (inputs : List TxInInfo) :
+                        CardanoLedgerApi.V2.Value :=
+                      inputs.foldl (fun acc input =>
+                        CardanoLedgerApi.V2.merge input.txInInfoResolved.txOutValue acc) []
+
+                    def julcAggregateOutputValues (outputs : List CardanoLedgerApi.V2.TxOut) :
+                        CardanoLedgerApi.V2.Value :=
+                      outputs.foldl (fun acc output =>
+                        CardanoLedgerApi.V2.merge output.txOutValue acc) []
+
+                    """);
+        }
+        if (reviewedAdaptersTyped) {
+            out.append(reviewedDataAdapterDefinitions());
+        }
+        if (structurallyTyped && needsDatum) {
+            if (datumType == null) throw new IllegalArgumentException(
+                    "Schema-4 datum dependency has no generated Lean type");
+            out.append("def typedDatum (ctx : ScriptContext) : Option ")
+                    .append("JulcGenerated.Schemas.").append(datumType).append(" :=\n")
+                    .append("  match ctx.scriptContextScriptInfo with\n")
+                    .append("  | .SpendingScript _ (some datumData) => IsData.fromData datumData\n")
+                    .append("  | _ => none\n\n");
+        }
+        if (structurallyTyped && needsRedeemer) {
+            if (redeemerType == null) throw new IllegalArgumentException(
+                    "Schema-4 redeemer dependency has no generated Lean type");
+            out.append("def typedRedeemer (ctx : ScriptContext) : Option ")
+                    .append("JulcGenerated.Schemas.").append(redeemerType).append(" :=\n")
+                    .append("  IsData.fromData ctx.scriptContextRedeemer\n\n");
+        }
+        if (needsRewardingCredential) {
+            out.append("""
+                    def rewardingCredentialOf (ctx : ScriptContext) :
+                        CardanoLedgerApi.V2.Credential :=
+                      match ctx.scriptContextScriptInfo with
+                      | .RewardingScript credential => credential
+                      | _ => .ScriptCredential ""
+
+                    """);
+        }
+        if (needsCertificate) {
+            // The fallback only makes this generated Lean helper total. The
+            // selected-purpose premise makes it unreachable in an admitted
+            // certifying obligation, so its constructor has no policy meaning.
+            out.append("""
+                    def certificateOf (ctx : ScriptContext) :
+                        CardanoLedgerApi.V3.TxCert :=
+                      match ctx.scriptContextScriptInfo with
+                      | .CertifyingScript _ certificate => certificate
+                      | _ => .TxCertUpdateDRep (.ScriptCredential "")
+
+                    """);
+        }
+        if (needsCertificateIndex) {
+            out.append("""
+                    def certificateIndexOf (ctx : ScriptContext) : Int :=
+                      match ctx.scriptContextScriptInfo with
+                      | .CertifyingScript index _ => index
+                      | _ => -1
+
+                    """);
+        }
+        if (needsRawMint) {
+            out.append("""
+                    def ownPolicyEntries (policy : ByteString)
+                        (mint : CardanoLedgerApi.V3.MintValue) :
+                        CardanoLedgerApi.V3.MintValue :=
+                      Recursor.findAll entry in mint => entry.1 == Data.B policy
+
+                    /-- Raw structural predicate: duplicates and malformed matches reject. -/
+                    def exactOwnPolicyAsset (policy token : ByteString) (quantity : Int)
+                        (mint : CardanoLedgerApi.V3.MintValue) : Bool :=
+                      match ownPolicyEntries policy mint with
+                      | [(Data.B actualPolicy,
+                          Data.Map [(Data.B actualToken, Data.I actualQuantity)])] =>
+                            actualPolicy == policy && actualToken == token &&
+                              actualQuantity == quantity
+                      | _ => false
+
+                    """);
+        }
+        if (needsDomain) {
+            out.append(blasterValidTxInfoDefinition()).append('\n');
+            out.append(switch (dslPurpose) {
+                case SPENDING -> """
+                    def blasterValidSpendingContext (ctx : ScriptContext) : Bool :=
+                      match ctx.scriptContextScriptInfo with
+                      | .SpendingScript .. =>
+                          CardanoLedgerApi.V3.Contexts.validScriptInfo ctx &&
+                            blasterValidTxInfo ctx
+                      | _ => false
+
+                    """;
+                case MINTING -> """
+                    def blasterValidMintingContext (ctx : ScriptContext) : Bool :=
+                      match ctx.scriptContextScriptInfo with
+                      | .MintingScript _ =>
+                          CardanoLedgerApi.V3.Contexts.validScriptInfo ctx &&
+                            blasterValidTxInfo ctx
+                      | _ => false
+
+                    """;
+                case REWARDING -> """
+                    def blasterValidRewardingContext (ctx : ScriptContext) : Bool :=
+                      match ctx.scriptContextScriptInfo with
+                      | .RewardingScript _ =>
+                          CardanoLedgerApi.V3.Contexts.validScriptInfo ctx &&
+                            blasterValidTxInfo ctx
+                      | _ => false
+
+                    """;
+                case CERTIFYING -> """
+                    def blasterValidCertifyingContext (ctx : ScriptContext) : Bool :=
+                      match ctx.scriptContextScriptInfo with
+                      | .CertifyingScript .. =>
+                          CardanoLedgerApi.V3.Contexts.validScriptInfo ctx &&
+                            blasterValidTxInfo ctx
+                      | _ => false
+
+                    """;
+            });
+        }
+        for (DslProperty property : propertySet.properties()) {
+            var plan = plans.get(property.id());
+            String name = ComposedDslPromotion.generatedName(property.id());
+            String expression = structurallyTyped
+                    ? TypedPropertyLeanRenderer.renderExpression(
+                            property.expression(), typedProjection)
+                    : PropertyLeanRenderer.renderExpression(
+                            property.expression(), plan.needsDatumDecode()
+                                    ? Map.of("datum", "datum") : Map.of());
+            out.append("def dslGuarantee_").append(name)
+                    .append(" (ctx : ScriptContext) : Bool :=\n");
+            if (plan.needsDatumDecode() && !structurallyTyped) {
+                if (datumType == null) throw new IllegalArgumentException(
+                        "Composed DSL datum dependency has no generated Lean type");
+                out.append("  match ctx.scriptContextScriptInfo with\n")
+                        .append("  | .SpendingScript _ (some datumData) =>\n")
+                        .append("      match (IsData.fromData datumData : Option ")
+                        .append("JulcGenerated.Schemas.").append(datumType)
+                        .append(") with\n")
+                        .append("      | some datum => ").append(expression).append("\n")
+                        .append("      | none => false\n")
+                        .append("  | _ => false\n\n");
+            } else {
+                out.append("  ").append(expression).append("\n\n");
+            }
+            out.append("def dslProperty_").append(name)
+                    .append(" (ctx : ScriptContext) : Prop :=\n")
+                    .append("  dslGuarantee_").append(name).append(" ctx = true\n\n");
+        }
+        return out.append("end JulcGenerated.UserProperty\n").toString();
+    }
+
+    private static String composedModuleId(String leanId, String propertyId) {
+        return leanId + "_" + ComposedDslPromotion.generatedName(propertyId);
+    }
+
+    private static String composedObligation(
+            String module,
+            String artifactId,
+            String purpose,
+            DslProperty property,
+            int fuel) {
+        String prep = switch (purpose) {
+            case "spending" -> "spendingInputs";
+            case "minting" -> "mintingInputs";
+            case "rewarding" -> "rewardingInputs";
+            case "certifying" -> "certifyingInputs";
+            default -> throw new IllegalArgumentException(
+                    "Unsupported composed DSL purpose " + purpose);
+        };
+        String name = ComposedDslPromotion.generatedName(property.id());
+        String domainPremise = switch (property.domain()) {
+            case NONE -> "";
+            case VALID_SPENDING_V3_PINNED ->
+                    "    blasterValidSpendingContext ctx = true →\n";
+            case VALID_MINTING_V3_PINNED ->
+                    "    blasterValidMintingContext ctx = true →\n";
+            case VALID_REWARDING_V3_PINNED ->
+                    "    blasterValidRewardingContext ctx = true →\n";
+            case VALID_CERTIFYING_V3_PINNED ->
+                    "    blasterValidCertifyingContext ctx = true →\n";
+        };
+        return """
+                /- Generated exact-artifact compositional DSL obligation. -/
+                import PlutusCore.UPLC
+                import CardanoLedgerApi.V3
+                import Blaster
+                import GeneratedSchemas
+                import CheckedExecution
+                import SecurityProperty
+
+                namespace JulcGenerated.%s
+
+                open CardanoLedgerApi.V3
+                open PlutusCore.UPLC.Utils
+                open JulcGenerated.UserProperty
+
+                #import_uplc validator PlutusV3 double_cbor_hex
+                  "artifacts/%s.compiledCode.hex"
+                #prep_uplc appliedValidator validator %s %d
+
+                def composedObligation : Prop :=
+                  ∀ ctx : ScriptContext,
+                    selectedPurpose ctx = true →
+                %s    PlutusCore.UPLC.Utils.isSuccessful (appliedValidator.prop ctx) →
+                    dslProperty_%s ctx
+
+                def hasNoSuccessfulInput : Prop :=
+                  ∀ ctx : ScriptContext,
+                    selectedPurpose ctx = true →
+                %s    ¬PlutusCore.UPLC.Utils.isSuccessful (appliedValidator.prop ctx)
+
+                end JulcGenerated.%s
+                """.formatted(module, artifactId, prep, fuel, domainPremise, name,
+                domainPremise, module);
+    }
+
+    private static String composedProof(String module, DslProperty property) {
+        return """
+                /- Generated SMT obligation for schema-3 DSL property %s. -/
+                import %sObligation
+
+                namespace JulcGenerated.%s
+
+                theorem composedPropertyEstablished : composedObligation := by
+                  blaster
+
+                end JulcGenerated.%s
+                """.formatted(property.id(), module, module, module);
+    }
+
+    private static String composedCounterexample(String module, DslProperty property) {
+        return """
+                /- Generated counterexample query for schema-3 DSL property %s. -/
+                import %sObligation
+
+                namespace JulcGenerated.%s
+
+                #blaster (gen-cex: 1) (solve-result: 1) [composedObligation]
+
+                end JulcGenerated.%s
+                """.formatted(property.id(), module, module, module);
+    }
+
+    private static String composedLedgerCorollary(
+            String module, DslProperty property) {
+        if (property.domain() == DslDomain.VALID_SPENDING_V3_PINNED) {
+            return """
+                    /- Kernel bridge from pinned V3 spending validity to the proved domain. -/
+                    import %sProof
+                    import LedgerDomainEquivalence
+
+                    namespace JulcGenerated.%s
+                    open CardanoLedgerApi.V3
+                    open JulcGenerated.UserProperty
+
+                    theorem composedLedgerCorollary
+                        (txInfo : TxInfo) (redeemer : PlutusCore.Data.Data)
+                        (ref : TxOutRef) (datum : Option CardanoLedgerApi.V2.Datum)
+                        (valid : CardanoLedgerApi.V3.Contexts.validSpendingContext
+                          ⟨txInfo, redeemer, .SpendingScript ref datum⟩ = true)
+                        (successful : PlutusCore.UPLC.Utils.isSuccessful
+                          (appliedValidator.prop
+                            ⟨txInfo, redeemer, .SpendingScript ref datum⟩)) :
+                        dslProperty_%s
+                          ⟨txInfo, redeemer, .SpendingScript ref datum⟩ := by
+                      exact composedPropertyEstablished _ rfl
+                        (validSpendingContext_implies_blasterDomain
+                          txInfo redeemer ref datum valid) successful
+
+                    end JulcGenerated.%s
+                    """.formatted(module, module,
+                    ComposedDslPromotion.generatedName(property.id()), module);
+        }
+        if (property.domain() == DslDomain.VALID_MINTING_V3_PINNED) {
+            return """
+                    /- Kernel bridge from pinned V3 minting validity to the proved domain. -/
+                    import %sProof
+                    import LedgerDomainEquivalence
+
+                    namespace JulcGenerated.%s
+                    open CardanoLedgerApi.V3
+                    open JulcGenerated.UserProperty
+
+                    theorem composedLedgerCorollary
+                        (txInfo : TxInfo) (redeemer : PlutusCore.Data.Data)
+                        (policy : CardanoLedgerApi.V2.CurrencySymbol)
+                        (valid : CardanoLedgerApi.V3.Contexts.validMintingContext
+                          ⟨txInfo, redeemer, .MintingScript policy⟩ = true)
+                        (successful : PlutusCore.UPLC.Utils.isSuccessful
+                          (appliedValidator.prop
+                            ⟨txInfo, redeemer, .MintingScript policy⟩)) :
+                        dslProperty_%s
+                          ⟨txInfo, redeemer, .MintingScript policy⟩ := by
+                      exact composedPropertyEstablished _ rfl
+                        (validMintingContext_implies_blasterDomain
+                          txInfo redeemer policy valid) successful
+
+                    end JulcGenerated.%s
+                    """.formatted(module, module,
+                    ComposedDslPromotion.generatedName(property.id()), module);
+        }
+        if (property.domain() == DslDomain.VALID_REWARDING_V3_PINNED) {
+            return """
+                    /- Kernel bridge from pinned V3 rewarding validity to the proved domain. -/
+                    import %sProof
+                    import LedgerDomainEquivalence
+
+                    namespace JulcGenerated.%s
+                    open CardanoLedgerApi.V3
+                    open JulcGenerated.UserProperty
+
+                    theorem composedLedgerCorollary
+                        (txInfo : TxInfo) (redeemer : PlutusCore.Data.Data)
+                        (credential : CardanoLedgerApi.V2.Credential)
+                        (valid : CardanoLedgerApi.V3.Contexts.validRewardingContext
+                          ⟨txInfo, redeemer, .RewardingScript credential⟩ = true)
+                        (successful : PlutusCore.UPLC.Utils.isSuccessful
+                          (appliedValidator.prop
+                            ⟨txInfo, redeemer, .RewardingScript credential⟩)) :
+                        dslProperty_%s
+                          ⟨txInfo, redeemer, .RewardingScript credential⟩ := by
+                      exact composedPropertyEstablished _ rfl
+                        (validRewardingContext_implies_blasterDomain
+                          txInfo redeemer credential valid) successful
+
+                    end JulcGenerated.%s
+                    """.formatted(module, module,
+                    ComposedDslPromotion.generatedName(property.id()), module);
+        }
+        if (property.domain() == DslDomain.VALID_CERTIFYING_V3_PINNED) {
+            return """
+                    /- Kernel bridge from pinned V3 certifying validity to the proved domain. -/
+                    import %sProof
+                    import LedgerDomainEquivalence
+
+                    namespace JulcGenerated.%s
+                    open CardanoLedgerApi.V3
+                    open JulcGenerated.UserProperty
+
+                    theorem composedLedgerCorollary
+                        (txInfo : TxInfo) (redeemer : PlutusCore.Data.Data)
+                        (index : Int) (certificate : TxCert)
+                        (valid : CardanoLedgerApi.V3.Contexts.validCertifyingContext
+                          ⟨txInfo, redeemer, .CertifyingScript index certificate⟩ = true)
+                        (successful : PlutusCore.UPLC.Utils.isSuccessful
+                          (appliedValidator.prop
+                            ⟨txInfo, redeemer,
+                              .CertifyingScript index certificate⟩)) :
+                        dslProperty_%s
+                          ⟨txInfo, redeemer,
+                            .CertifyingScript index certificate⟩ := by
+                      exact composedPropertyEstablished _ rfl
+                        (validCertifyingContext_implies_blasterDomain
+                          txInfo redeemer index certificate valid) successful
+
+                    end JulcGenerated.%s
+                    """.formatted(module, module,
+                    ComposedDslPromotion.generatedName(property.id()), module);
+        }
+        throw new IllegalArgumentException(
+                "Ledger corollary requested without a reviewed domain");
+    }
+
+    private static String rewardingDomainEquivalence() {
+        return """
+                /- Kernel-check the solver-compatible domain against pinned V3. -/
+                import SecurityProperty
+
+                namespace JulcGenerated.UserProperty
+
+                open CardanoLedgerApi.V3
+
+                /-- Every pinned V3 ledger-valid rewarding context is in the solver domain. -/
+                theorem validRewardingContext_implies_blasterDomain
+                    (txInfo : TxInfo)
+                    (redeemer : PlutusCore.Data.Data)
+                    (credential : CardanoLedgerApi.V2.Credential)
+                    (valid : CardanoLedgerApi.V3.Contexts.validRewardingContext
+                      ⟨txInfo, redeemer, .RewardingScript credential⟩ = true) :
+                    blasterValidRewardingContext
+                      ⟨txInfo, redeemer, .RewardingScript credential⟩ = true := by
+                  let ctx : ScriptContext :=
+                    ⟨txInfo, redeemer, .RewardingScript credential⟩
+                  change CardanoLedgerApi.V3.Contexts.validRewardingContext ctx = true
+                    at valid
+                  change blasterValidRewardingContext ctx = true
+                  unfold CardanoLedgerApi.V3.Contexts.validRewardingContext at valid
+                  unfold CardanoLedgerApi.V3.Contexts.validScriptContext at valid
+                  have contextParts := Bool.and_eq_true_iff.mp valid
+                  have scriptInfo := contextParts.1
+                  have txValid := contextParts.2
+                  unfold CardanoLedgerApi.V3.Contexts.validTxInfo at txValid
+                  have p1 := Bool.and_eq_true_iff.mp txValid
+                  have p2 := Bool.and_eq_true_iff.mp p1.1
+                  have p3 := Bool.and_eq_true_iff.mp p2.1
+                  have p4 := Bool.and_eq_true_iff.mp p3.1
+                  unfold blasterValidRewardingContext
+                  unfold blasterValidTxInfo
+                  apply Bool.and_eq_true_iff.mpr
+                  constructor
+                  · exact scriptInfo
+                  · exact p4.1
+
+                end JulcGenerated.UserProperty
+                """;
+    }
+
+    private static String certifyingDomainEquivalence() {
+        return """
+                /- Kernel-check the solver-compatible domain against pinned V3. -/
+                import SecurityProperty
+
+                namespace JulcGenerated.UserProperty
+
+                open CardanoLedgerApi.V3
+
+                /-- Every pinned V3 ledger-valid certifying context is in the solver domain. -/
+                theorem validCertifyingContext_implies_blasterDomain
+                    (txInfo : TxInfo)
+                    (redeemer : PlutusCore.Data.Data)
+                    (index : Int)
+                    (certificate : TxCert)
+                    (valid : CardanoLedgerApi.V3.Contexts.validCertifyingContext
+                      ⟨txInfo, redeemer,
+                        .CertifyingScript index certificate⟩ = true) :
+                    blasterValidCertifyingContext
+                      ⟨txInfo, redeemer,
+                        .CertifyingScript index certificate⟩ = true := by
+                  let ctx : ScriptContext :=
+                    ⟨txInfo, redeemer, .CertifyingScript index certificate⟩
+                  change CardanoLedgerApi.V3.Contexts.validCertifyingContext ctx = true
+                    at valid
+                  change blasterValidCertifyingContext ctx = true
+                  unfold CardanoLedgerApi.V3.Contexts.validCertifyingContext at valid
+                  unfold CardanoLedgerApi.V3.Contexts.validScriptContext at valid
+                  have contextParts := Bool.and_eq_true_iff.mp valid
+                  have scriptInfo := contextParts.1
+                  have txValid := contextParts.2
+                  unfold CardanoLedgerApi.V3.Contexts.validTxInfo at txValid
+                  have p1 := Bool.and_eq_true_iff.mp txValid
+                  have p2 := Bool.and_eq_true_iff.mp p1.1
+                  have p3 := Bool.and_eq_true_iff.mp p2.1
+                  have p4 := Bool.and_eq_true_iff.mp p3.1
+                  unfold blasterValidCertifyingContext
+                  unfold blasterValidTxInfo
+                  apply Bool.and_eq_true_iff.mpr
+                  constructor
+                  · exact scriptInfo
+                  · exact p4.1
+
+                end JulcGenerated.UserProperty
+                """;
+    }
+
+    private static String mintingDomainEquivalence() {
+        return """
+                /- Kernel-check the solver-compatible domain against pinned V3. -/
+                import SecurityProperty
+
+                namespace JulcGenerated.UserProperty
+
+                open CardanoLedgerApi.V3
+                open PlutusCore.Integer (Integer)
+
+                /-- Every pinned V3 ledger-valid minting context is in the solver domain. -/
+                theorem validMintingContext_implies_blasterDomain
+                    (txInfo : TxInfo)
+                    (redeemer : PlutusCore.Data.Data)
+                    (policy : CardanoLedgerApi.V2.CurrencySymbol)
+                    (valid : CardanoLedgerApi.V3.Contexts.validMintingContext
+                      ⟨txInfo, redeemer, .MintingScript policy⟩ = true) :
+                    blasterValidMintingContext
+                      ⟨txInfo, redeemer, .MintingScript policy⟩ = true := by
+                  let ctx : ScriptContext :=
+                    ⟨txInfo, redeemer, .MintingScript policy⟩
+                  change CardanoLedgerApi.V3.Contexts.validMintingContext ctx = true
+                    at valid
+                  change blasterValidMintingContext ctx = true
+                  unfold CardanoLedgerApi.V3.Contexts.validMintingContext at valid
+                  unfold CardanoLedgerApi.V3.Contexts.validScriptContext at valid
+                  have contextParts := Bool.and_eq_true_iff.mp valid
+                  have scriptInfo := contextParts.1
+                  have txValid := contextParts.2
+                  unfold CardanoLedgerApi.V3.Contexts.validTxInfo at txValid
+                  have p1 := Bool.and_eq_true_iff.mp txValid
+                  have p2 := Bool.and_eq_true_iff.mp p1.1
+                  have p3 := Bool.and_eq_true_iff.mp p2.1
+                  have p4 := Bool.and_eq_true_iff.mp p3.1
+                  unfold blasterValidMintingContext
+                  unfold blasterValidTxInfo
+                  apply Bool.and_eq_true_iff.mpr
+                  constructor
+                  · exact scriptInfo
+                  · exact p4.1
+
+                end JulcGenerated.UserProperty
+                """;
+    }
+
+    private static String rewardingSemanticsTests() {
+        return """
+                /- Definitional controls for raw rewarding withdrawal traversal. -/
+                import SecurityProperty
+
+                namespace JulcGenerated.RewardingSemanticsTests
+
+                open CardanoLedgerApi.IsData.Class
+                open CardanoLedgerApi.V3
+                open CardanoLedgerApi.V2
+                open PlutusCore.Data (Data)
+
+                def own : Credential := .ScriptCredential "own"
+                def other : Credential := .ScriptCredential "other"
+                def duplicateWithdrawals : CardanoLedgerApi.V3.Withdrawals :=
+                  [(own, 1), (own, 10)]
+
+                def matchingMinimum (credential : Credential) (minimum : Int)
+                    (withdrawals : CardanoLedgerApi.V3.Withdrawals) : Bool :=
+                  List.any withdrawals (fun entry =>
+                    entry.1 == credential && entry.2 >= minimum)
+
+                example : matchingMinimum own 10 [] = false := by native_decide
+                example : matchingMinimum own 10 [(own, 10)] = true := by native_decide
+                example : matchingMinimum own 10 [(other, 100), (own, 10)] = true := by
+                  native_decide
+                example : matchingMinimum own 10 [(own, 1), (own, 10)] = true := by
+                  native_decide
+                example : matchingMinimum own 10 [(own, 10), (own, 1)] = true := by
+                  native_decide
+                example : matchingMinimum own 10 [(own, 1), (other, 100)] = false := by
+                  native_decide
+
+                example : (IsData.fromData (α := CardanoLedgerApi.V3.Withdrawals)
+                    (Data.Map [])) = some [] := by rfl
+                example : (IsData.fromData (α := CardanoLedgerApi.V3.Withdrawals)
+                    (Data.List [])) = none := by rfl
+                example : (IsData.fromData (α := CardanoLedgerApi.V3.Withdrawals)
+                    (Data.Map [(Data.I 0, Data.I 1)])) = none := by rfl
+                example : (IsData.fromData (α := CardanoLedgerApi.V3.Withdrawals)
+                    (Data.Map [(IsData.toData own, Data.B "bad")])) = none := by rfl
+                example : (IsData.fromData (α := CardanoLedgerApi.V3.Withdrawals)
+                    (IsData.toData duplicateWithdrawals)) =
+                    some duplicateWithdrawals := by native_decide
+
+                end JulcGenerated.RewardingSemanticsTests
+                """;
+    }
+
+    private static String certifyingSemanticsTests() {
+        return """
+                /- Executable controls for pinned V3 certificate kinds and indexing. -/
+                import SecurityProperty
+
+                namespace JulcGenerated.CertifyingSemanticsTests
+
+                open CardanoLedgerApi.IsData.Class
+                open CardanoLedgerApi.V3
+                open PlutusCore.Data (Data)
+
+                def scriptCredential : CardanoLedgerApi.V2.Credential :=
+                  .ScriptCredential "script"
+                def keyHash : CardanoLedgerApi.V2.PubKeyHash := "key"
+                def otherKeyHash : CardanoLedgerApi.V2.PubKeyHash := "other"
+                def drepCredential : CardanoLedgerApi.V2.Credential :=
+                  .PubKeyCredential "drep"
+                def credentialDRep : CardanoLedgerApi.V3.TxCert.DRep :=
+                  .DRep drepCredential
+                def abstainDRep : CardanoLedgerApi.V3.TxCert.DRep :=
+                  .DRepAlwaysAbstain
+                def noConfidenceDRep : CardanoLedgerApi.V3.TxCert.DRep :=
+                  .DRepAlwaysNoConfidence
+                def stakeDelegatee : CardanoLedgerApi.V3.TxCert.Delegatee :=
+                  .DelegStake keyHash
+                def voteDelegatee : CardanoLedgerApi.V3.TxCert.Delegatee :=
+                  .DelegVote credentialDRep
+                def stakeVoteDelegatee : CardanoLedgerApi.V3.TxCert.Delegatee :=
+                  .DelegStakeVote keyHash abstainDRep
+
+                def cert0 : TxCert := .TxCertRegStaking scriptCredential (some 1)
+                def cert1 : TxCert := .TxCertUnRegStaking scriptCredential none
+                def cert2 : TxCert :=
+                  .TxCertDelegStaking scriptCredential voteDelegatee
+                def cert3 : TxCert :=
+                  .TxCertRegDeleg scriptCredential stakeVoteDelegatee 3
+                def cert4 : TxCert := .TxCertRegDRep scriptCredential 1
+                def cert5 : TxCert := .TxCertUpdateDRep scriptCredential
+                def cert6 : TxCert := .TxCertUnRegDRep scriptCredential 1
+                def cert7 : TxCert := .TxCertPoolRegister keyHash otherKeyHash
+                def cert8 : TxCert := .TxCertPoolRetire keyHash 8
+                def cert9 : TxCert :=
+                  .TxCertAuthHotCommittee scriptCredential drepCredential
+                def cert10 : TxCert := .TxCertResignColdCommittee scriptCredential
+
+                def constructorTag : TxCert → Int
+                  | .TxCertRegStaking .. => 0
+                  | .TxCertUnRegStaking .. => 1
+                  | .TxCertDelegStaking .. => 2
+                  | .TxCertRegDeleg .. => 3
+                  | .TxCertRegDRep .. => 4
+                  | .TxCertUpdateDRep .. => 5
+                  | .TxCertUnRegDRep .. => 6
+                  | .TxCertPoolRegister .. => 7
+                  | .TxCertPoolRetire .. => 8
+                  | .TxCertAuthHotCommittee .. => 9
+                  | .TxCertResignColdCommittee .. => 10
+
+                example : [constructorTag cert0, constructorTag cert1,
+                    constructorTag cert2, constructorTag cert3,
+                    constructorTag cert4, constructorTag cert5,
+                    constructorTag cert6, constructorTag cert7,
+                    constructorTag cert8, constructorTag cert9,
+                    constructorTag cert10] =
+                    [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10] := by native_decide
+
+                def encodedTagAndArity (cert : TxCert) : Option (Int × Nat) :=
+                  match IsData.toData cert with
+                  | Data.Constr tag fields => some (tag, fields.length)
+                  | _ => none
+
+                example : [encodedTagAndArity cert0, encodedTagAndArity cert1,
+                    encodedTagAndArity cert2, encodedTagAndArity cert3,
+                    encodedTagAndArity cert4, encodedTagAndArity cert5,
+                    encodedTagAndArity cert6, encodedTagAndArity cert7,
+                    encodedTagAndArity cert8, encodedTagAndArity cert9,
+                    encodedTagAndArity cert10] =
+                    [some (0, 2), some (1, 2), some (2, 2), some (3, 3),
+                     some (4, 2), some (5, 1), some (6, 2), some (7, 2),
+                     some (8, 2), some (9, 2), some (10, 1)] := by native_decide
+
+                def decodeCert (data : Data) : Option TxCert :=
+                  IsData.fromData data
+
+                def shortenCertificateData (cert : TxCert) : Data :=
+                  match IsData.toData cert with
+                  | Data.Constr tag fields => Data.Constr tag fields.dropLast
+                  | data => data
+
+                def trailCertificateData (cert : TxCert) : Data :=
+                  match IsData.toData cert with
+                  | Data.Constr tag fields => Data.Constr tag (fields ++ [Data.I 0])
+                  | data => data
+
+                def corruptFirstCertificatePayload (cert : TxCert) : Data :=
+                  match IsData.toData cert with
+                  | Data.Constr tag (_ :: rest) => Data.Constr tag (Data.I 0 :: rest)
+                  | data => data
+
+                /- Every pinned constructor round-trips and rejects short, trailing,
+                   or wrong-kind first payloads. The first payload is a Credential or
+                   byte string in all eleven constructors, never an Integer. -/
+                example : [decodeCert (IsData.toData cert0),
+                    decodeCert (IsData.toData cert1), decodeCert (IsData.toData cert2),
+                    decodeCert (IsData.toData cert3), decodeCert (IsData.toData cert4),
+                    decodeCert (IsData.toData cert5), decodeCert (IsData.toData cert6),
+                    decodeCert (IsData.toData cert7), decodeCert (IsData.toData cert8),
+                    decodeCert (IsData.toData cert9), decodeCert (IsData.toData cert10)] =
+                    [some cert0, some cert1, some cert2, some cert3, some cert4,
+                     some cert5, some cert6, some cert7, some cert8, some cert9,
+                     some cert10] := by native_decide
+                example : [decodeCert (shortenCertificateData cert0),
+                    decodeCert (shortenCertificateData cert1),
+                    decodeCert (shortenCertificateData cert2),
+                    decodeCert (shortenCertificateData cert3),
+                    decodeCert (shortenCertificateData cert4),
+                    decodeCert (shortenCertificateData cert5),
+                    decodeCert (shortenCertificateData cert6),
+                    decodeCert (shortenCertificateData cert7),
+                    decodeCert (shortenCertificateData cert8),
+                    decodeCert (shortenCertificateData cert9),
+                    decodeCert (shortenCertificateData cert10)] =
+                    [none, none, none, none, none, none, none, none, none, none,
+                     none] := by native_decide
+                example : [decodeCert (trailCertificateData cert0),
+                    decodeCert (trailCertificateData cert1),
+                    decodeCert (trailCertificateData cert2),
+                    decodeCert (trailCertificateData cert3),
+                    decodeCert (trailCertificateData cert4),
+                    decodeCert (trailCertificateData cert5),
+                    decodeCert (trailCertificateData cert6),
+                    decodeCert (trailCertificateData cert7),
+                    decodeCert (trailCertificateData cert8),
+                    decodeCert (trailCertificateData cert9),
+                    decodeCert (trailCertificateData cert10)] =
+                    [none, none, none, none, none, none, none, none, none, none,
+                     none] := by native_decide
+                example : [decodeCert (corruptFirstCertificatePayload cert0),
+                    decodeCert (corruptFirstCertificatePayload cert1),
+                    decodeCert (corruptFirstCertificatePayload cert2),
+                    decodeCert (corruptFirstCertificatePayload cert3),
+                    decodeCert (corruptFirstCertificatePayload cert4),
+                    decodeCert (corruptFirstCertificatePayload cert5),
+                    decodeCert (corruptFirstCertificatePayload cert6),
+                    decodeCert (corruptFirstCertificatePayload cert7),
+                    decodeCert (corruptFirstCertificatePayload cert8),
+                    decodeCert (corruptFirstCertificatePayload cert9),
+                    decodeCert (corruptFirstCertificatePayload cert10)] =
+                    [none, none, none, none, none, none, none, none, none, none,
+                     none] := by native_decide
+                example : decodeCert (Data.Constr 11 []) = none := by rfl
+
+                def regStakingZero : TxCert :=
+                  .TxCertRegStaking scriptCredential (some 0)
+                def regStakingNone : TxCert :=
+                  .TxCertRegStaking scriptCredential none
+                example : decodeCert (IsData.toData regStakingZero) =
+                    some regStakingZero := by native_decide
+                example : decodeCert (IsData.toData regStakingNone) =
+                    some regStakingNone := by native_decide
+                example : IsData.toData regStakingZero !=
+                    IsData.toData regStakingNone := by native_decide
+                example : decodeCert (Data.Constr 4
+                    [IsData.toData scriptCredential,
+                     Data.Constr 0 [Data.I 1]]) = none := by native_decide
+
+                /- Payload positions are checked independently from constructor kind. -/
+                example : (match cert3 with
+                    | .TxCertRegDeleg credential target deposit =>
+                        credential == scriptCredential &&
+                        target == stakeVoteDelegatee && deposit == 3
+                    | _ => false) = true := by native_decide
+                example : (match cert7 with
+                    | .TxCertPoolRegister pool vrf =>
+                        pool == keyHash && vrf == otherKeyHash
+                    | _ => false) = true := by native_decide
+                example : (match cert9 with
+                    | .TxCertAuthHotCommittee cold hot =>
+                        cold == scriptCredential && hot == drepCredential
+                    | _ => false) = true := by native_decide
+
+                /- Nested Delegatee and DRep tags, payloads, and strict arities. -/
+                example : (IsData.fromData (α := CardanoLedgerApi.V3.TxCert.DRep)
+                    (IsData.toData credentialDRep)) = some credentialDRep := by native_decide
+                example : (IsData.fromData (α := CardanoLedgerApi.V3.TxCert.DRep)
+                    (IsData.toData abstainDRep)) = some abstainDRep := by native_decide
+                example : (IsData.fromData (α := CardanoLedgerApi.V3.TxCert.DRep)
+                    (IsData.toData noConfidenceDRep)) = some noConfidenceDRep := by
+                  native_decide
+                example : (IsData.fromData (α := CardanoLedgerApi.V3.TxCert.Delegatee)
+                    (IsData.toData stakeDelegatee)) = some stakeDelegatee := by
+                  native_decide
+                example : (IsData.fromData (α := CardanoLedgerApi.V3.TxCert.Delegatee)
+                    (IsData.toData voteDelegatee)) = some voteDelegatee := by
+                  native_decide
+                example : (IsData.fromData (α := CardanoLedgerApi.V3.TxCert.Delegatee)
+                    (IsData.toData stakeVoteDelegatee)) = some stakeVoteDelegatee := by
+                  native_decide
+                example : (IsData.fromData
+                    (α := CardanoLedgerApi.V3.TxCert.DRep)
+                    (Data.Constr 1 [Data.I 0])) = none := by rfl
+                example : (IsData.fromData
+                    (α := CardanoLedgerApi.V3.TxCert.Delegatee)
+                    (Data.Constr 2 [Data.B "key"])) = none := by rfl
+
+                example : Contexts.isKnownCertificate cert5 0 [cert5] = true := by
+                  native_decide
+                example : Contexts.isKnownCertificate cert5 (-1) [cert5] = false := by
+                  native_decide
+                example : Contexts.isKnownCertificate cert5 1 [cert5] = false := by
+                  native_decide
+                example : Contexts.isKnownCertificate cert5 0 [cert4, cert5] = false := by
+                  native_decide
+                example : Contexts.isKnownCertificate cert5 1 [cert4, cert5] = true := by
+                  native_decide
+                example : Contexts.isKnownCertificate cert5 0 [cert5, cert5] = true := by
+                  native_decide
+                example : Contexts.isKnownCertificate cert5 1 [cert5, cert5] = true := by
+                  native_decide
+
+                example : (IsData.fromData (α := TxCert)
+                    (IsData.toData cert5)) = some cert5 := by native_decide
+                example : (IsData.fromData (α := TxCert)
+                    (Data.Constr 11 [])) = none := by rfl
+                example : (IsData.fromData (α := TxCert)
+                    (Data.Constr 5 [])) = none := by rfl
+                example : (IsData.fromData (α := TxCert)
+                    (Data.Constr 5 [Data.I 0])) = none := by rfl
+                example : (IsData.fromData (α := TxCert)
+                    (Data.Constr 8 [Data.B "key", Data.I 8, Data.I 9])) = none := by rfl
+                example : (IsData.fromData (α := TxCert)
+                    (Data.Constr 7 [Data.I 0, Data.B "vrf"])) = none := by rfl
+
+                end JulcGenerated.CertifyingSemanticsTests
+                """;
+    }
+
+    private static String mintingSemanticsTests() {
+        return """
+                /- Definitional controls for the raw exact-own-policy mint predicate. -/
+                import SecurityProperty
+
+                namespace JulcGenerated.MintingSemanticsTests
+
+                open CardanoLedgerApi.V3
+                open PlutusCore.Data (Data)
+                open PlutusCore.ByteString (ByteString)
+                open JulcGenerated.UserProperty
+
+                def policy : ByteString := "policy"
+                def token : ByteString := "token"
+                def other : ByteString := "other"
+
+                /-
+                These finite executable controls use native_decide because the pinned
+                ByteString equality implementation does not reduce under decide. This
+                adds Lean's native evaluator/compiler to the controls' trust base; the
+                generated ledger bridge and property corollary remain kernel-checked.
+                -/
+
+                /-- One correct current-policy/token entry. -/
+                example : exactOwnPolicyAsset policy token 1
+                    [(Data.B policy, Data.Map [(Data.B token, Data.I 1)])] = true := by native_decide
+
+                /-- Unrelated policies before the current policy are permitted. -/
+                example : exactOwnPolicyAsset policy token 1
+                    [(Data.B other, Data.Map []),
+                     (Data.B policy, Data.Map [(Data.B token, Data.I 1)])] = true := by native_decide
+
+                /-- Unrelated policies after the current policy are permitted. -/
+                example : exactOwnPolicyAsset policy token 1
+                    [(Data.B policy, Data.Map [(Data.B token, Data.I 1)]),
+                     (Data.B other, Data.Map [])] = true := by native_decide
+
+                example : exactOwnPolicyAsset policy token 1 [] = false := by native_decide
+
+                /-- Duplicate current-policy entries remain visible and reject. -/
+                example : exactOwnPolicyAsset policy token 1
+                    [(Data.B policy, Data.Map [(Data.B token, Data.I 1)]),
+                     (Data.B policy, Data.Map [(Data.B token, Data.I 1)])] = false := by native_decide
+
+                /-- First-match valueOf can still report the desired quantity for that duplicate. -/
+                example : CardanoLedgerApi.V3.valueOf policy token
+                    [(Data.B policy, Data.Map [(Data.B token, Data.I 1)]),
+                     (Data.B policy, Data.Map [(Data.B token, Data.I 2)])] = 1 := by native_decide
+
+                example : exactOwnPolicyAsset policy token 1
+                    [(Data.B policy, Data.Map [(Data.B token, Data.I 1)]),
+                     (Data.B policy, Data.Map [(Data.B token, Data.I 2)])] = false := by native_decide
+
+                /-- Duplicate token entries remain visible and reject. -/
+                example : exactOwnPolicyAsset policy token 1
+                    [(Data.B policy, Data.Map [(Data.B token, Data.I 1),
+                                              (Data.B token, Data.I 1)])] = false := by native_decide
+
+                /-- Wrong quantity rejects. -/
+                example : exactOwnPolicyAsset policy token 1
+                    [(Data.B policy, Data.Map [(Data.B token, Data.I 2)])] = false := by native_decide
+
+                /-- Wrong token rejects. -/
+                example : exactOwnPolicyAsset policy token 1
+                    [(Data.B policy, Data.Map [(Data.B other, Data.I 1)])] = false := by native_decide
+
+                /-- Zero and negative quantities retain their signed integer semantics. -/
+                example : exactOwnPolicyAsset policy token 0
+                    [(Data.B policy, Data.Map [(Data.B token, Data.I 0)])] = true := by native_decide
+
+                example : exactOwnPolicyAsset policy token (-1)
+                    [(Data.B policy, Data.Map [(Data.B token, Data.I (-1))])] = true := by native_decide
+
+                /-- Malformed matching policy value is retained and rejects. -/
+                example : exactOwnPolicyAsset policy token 1
+                    [(Data.B policy, Data.I 1)] = false := by native_decide
+
+                /-- Malformed unrelated keys do not masquerade as the current policy. -/
+                example : exactOwnPolicyAsset policy token 1
+                    [(Data.I 0, Data.Map []),
+                     (Data.B policy, Data.Map [(Data.B token, Data.I 1)])] = true := by native_decide
+
+                /-- Malformed token key rejects the exact inner shape. -/
+                example : exactOwnPolicyAsset policy token 1
+                    [(Data.B policy, Data.Map [(Data.I 0, Data.I 1)])] = false := by native_decide
+
+                /-- Malformed token quantity rejects the exact inner shape. -/
+                example : exactOwnPolicyAsset policy token 1
+                    [(Data.B policy, Data.Map [(Data.B token, Data.B "bad")])] = false := by native_decide
+
+                end JulcGenerated.MintingSemanticsTests
+                """;
+    }
+
+    private static String oneShotMintObligation(
+            String leanId, String artifactId, int fuel) {
+        return """
+                /- Generated exact-artifact one-shot authorized mint obligation. -/
+                import PlutusCore.UPLC
+                import CardanoLedgerApi.V3
+                import Blaster
+                import GeneratedSchemas
+                import CheckedExecution
+                import SecurityProperty
+
+                namespace JulcGenerated.%s
+
+                open CardanoLedgerApi.V3
+                open PlutusCore.UPLC.Utils
+                open JulcGenerated.UserProperty
+
+                #import_uplc validator PlutusV3 double_cbor_hex
+                  "artifacts/%s.compiledCode.hex"
+                #prep_uplc appliedValidator validator mintingInputs %d
+
+                def oneShotMintObligation : Prop :=
+                  ∀ ctx : ScriptContext,
+                    blasterValidMintingContext ctx →
+                    PlutusCore.UPLC.Utils.isSuccessful (appliedValidator.prop ctx) →
+                    securityProperty ctx
+
+                def hasNoSuccessfulInput : Prop :=
+                  ∀ ctx : ScriptContext,
+                    blasterValidMintingContext ctx →
+                    ¬PlutusCore.UPLC.Utils.isSuccessful (appliedValidator.prop ctx)
+
+                end JulcGenerated.%s
+                """.formatted(leanId, artifactId, fuel, leanId);
+    }
+
+    private static String oneShotMintProof(String leanId) {
+        return """
+                import %sObligation
+
+                namespace JulcGenerated.%s
+
+                theorem successfulImpliesOneShotAuthorizedMint :
+                    oneShotMintObligation := by
+                  blaster
+
+                end JulcGenerated.%s
+                """.formatted(leanId, leanId, leanId);
+    }
+
+    private static String oneShotMintCounterexample(String leanId) {
+        return """
+                import %sObligation
+
+                namespace JulcGenerated.%s
+
+                #blaster (gen-cex: 1) (solve-result: 1) [oneShotMintObligation]
+
+                end JulcGenerated.%s
+                """.formatted(leanId, leanId, leanId);
+    }
+
+    private static String oneShotMintLedgerCorollary(String leanId) {
+        return """
+                /- Kernel bridge from the stronger solver domain to pinned V3 validity. -/
+                import %sProof
+                import LedgerDomainEquivalence
+
+                namespace JulcGenerated.%s
+
+                open CardanoLedgerApi.V3
+                open JulcGenerated.UserProperty
+
+                theorem ledgerValidSuccessfulImpliesOneShotAuthorizedMint :
+                    ∀ (txInfo : TxInfo) (redeemer : PlutusCore.Data.Data)
+                      (policy : CardanoLedgerApi.V2.CurrencySymbol),
+                      let ctx : ScriptContext :=
+                        ⟨txInfo, redeemer, .MintingScript policy⟩
+                      CardanoLedgerApi.V3.Contexts.validMintingContext ctx = true →
+                      PlutusCore.UPLC.Utils.isSuccessful (appliedValidator.prop ctx) →
+                      securityProperty ctx := by
+                  intro txInfo redeemer policy
+                  dsimp only
+                  intro valid successful
+                  let ctx : ScriptContext :=
+                    ⟨txInfo, redeemer, .MintingScript policy⟩
+                  exact successfulImpliesOneShotAuthorizedMint ctx
+                    (validMintingContext_implies_blasterDomain
+                      txInfo redeemer policy valid) successful
+
+                end JulcGenerated.%s
+                """.formatted(leanId, leanId, leanId);
+    }
+
     private static String sellerPaymentProperty(
             String datumType, String sellerField, String priceField) {
         return """
@@ -2266,31 +5215,7 @@ public final class VerificationProjectGenerator {
                 open PlutusCore.ByteString (ByteString)
                 open PlutusCore.Integer (Integer)
 
-                /--
-                Solver-compatible necessary ledger conditions. Balance, voter-map, and
-                optional treasury checks are omitted because pinned Blaster cannot
-                translate them in this theorem premise. This predicate therefore admits
-                a superset of ledger-valid contexts; proving over it is stronger. The
-                separate kernel bridge proves inclusion of the pinned V3 domain.
-                -/
-                def blasterValidTxInfo (ctx : ScriptContext) : Bool :=
-                  CardanoLedgerApi.V3.Contexts.validInputs ctx &&
-                  CardanoLedgerApi.V3.Contexts.validReferenceInputs ctx &&
-                  CardanoLedgerApi.V3.Contexts.validOutputs
-                      ctx.scriptContextTxInfo.txInfoOutputs &&
-                  ctx.scriptContextTxInfo.txInfoFee > 0 &&
-                  CardanoLedgerApi.V3.Contexts.validMintValue
-                      ctx.scriptContextTxInfo.txInfoMint &&
-                  CardanoLedgerApi.V3.Contexts.validWithdrawals
-                      ctx.scriptContextTxInfo.txInfoWdrl &&
-                  CardanoLedgerApi.V2.validTxRange
-                      ctx.scriptContextTxInfo.txInfoValidRange &&
-                  CardanoLedgerApi.V2.validSigners
-                      ctx.scriptContextTxInfo.txInfoSignatories &&
-                  CardanoLedgerApi.V3.Contexts.validRedeemerMap
-                      ctx.scriptContextTxInfo.txInfoRedeemers &&
-                  CardanoLedgerApi.V2.validDatumMap
-                      ctx.scriptContextTxInfo.txInfoData
+                %s
 
                 def blasterValidSpendingContext (ctx : ScriptContext) : Bool :=
                   match ctx.scriptContextScriptInfo with
@@ -2320,7 +5245,39 @@ public final class VerificationProjectGenerator {
                   | _ => False
 
                 end JulcGenerated.UserProperty
-                """.formatted(datumType, sellerField, priceField);
+                """.formatted(blasterValidTxInfoDefinition(), datumType,
+                sellerField, priceField);
+    }
+
+    /** One pinned solver-compatible transaction-domain definition shared by E.3/E.4a. */
+    private static String blasterValidTxInfoDefinition() {
+        return """
+                /--
+                Solver-compatible necessary ledger conditions. Balance, voter-map, and
+                optional treasury checks are omitted because pinned Blaster cannot
+                translate them in this theorem premise. This predicate therefore admits
+                a superset of ledger-valid contexts; proving over it is stronger. The
+                separate kernel bridge proves inclusion of the pinned V3 domain.
+                -/
+                def blasterValidTxInfo (ctx : ScriptContext) : Bool :=
+                  CardanoLedgerApi.V3.Contexts.validInputs ctx &&
+                  CardanoLedgerApi.V3.Contexts.validReferenceInputs ctx &&
+                  CardanoLedgerApi.V3.Contexts.validOutputs
+                      ctx.scriptContextTxInfo.txInfoOutputs &&
+                  ctx.scriptContextTxInfo.txInfoFee > 0 &&
+                  CardanoLedgerApi.V3.Contexts.validMintValue
+                      ctx.scriptContextTxInfo.txInfoMint &&
+                  CardanoLedgerApi.V3.Contexts.validWithdrawals
+                      ctx.scriptContextTxInfo.txInfoWdrl &&
+                  CardanoLedgerApi.V2.validTxRange
+                      ctx.scriptContextTxInfo.txInfoValidRange &&
+                  CardanoLedgerApi.V2.validSigners
+                      ctx.scriptContextTxInfo.txInfoSignatories &&
+                  CardanoLedgerApi.V3.Contexts.validRedeemerMap
+                      ctx.scriptContextTxInfo.txInfoRedeemers &&
+                  CardanoLedgerApi.V2.validDatumMap
+                      ctx.scriptContextTxInfo.txInfoData
+                """;
     }
 
     private static String sellerPaymentDomainEquivalence() {
@@ -2740,7 +5697,45 @@ public final class VerificationProjectGenerator {
                           echo "SMT-VALID: seller payment property established"
                           exit 0
                         fi
-                        """.formatted(leanId));
+                """.formatted(leanId));
+    }
+
+    private static String verifyOneShotMintScript(
+            String leanId, String artifactId, String compiledCodeSha256) {
+        return verifySellerPaymentScript(leanId, artifactId, compiledCodeSha256)
+                .replace("seller payment", "one-shot authorized mint");
+    }
+
+    private static String composedVerifyScript(
+            String module,
+            String artifactId,
+            String compiledCodeSha256,
+            DslProperty property) {
+        String label = "DSL property " + property.id();
+        String result = verifyPropertyScript(module, artifactId, compiledCodeSha256)
+                .replace("required signer property", label)
+                .replace("required signer", label);
+        if (property.domain() != DslDomain.NONE) {
+            result = result.replace("lake env lean " + module + "Proof.lean",
+                    "lake env lean -o .lake/build/lib/lean/" + module
+                            + "Proof.olean " + module + "Proof.lean");
+            result = result.replace("""
+                    if [[ ${proof_status} -eq 0 ]]; then
+                      echo "SMT-VALID: %s established"
+                      exit 0
+                    fi
+                    """.formatted(label), """
+                    if [[ ${proof_status} -eq 0 ]]; then
+                      if ! lake env lean %sLedgerCorollary.lean; then
+                        echo "COULD-NOT-EVALUATE: ledger-domain kernel bridge failed" >&2
+                        exit 2
+                      fi
+                      echo "SMT-VALID: %s established"
+                      exit 0
+                    fi
+                    """.formatted(module, label));
+        }
+        return result;
     }
 
     private static String verifyNonVacuityScript(
@@ -2954,6 +5949,72 @@ public final class VerificationProjectGenerator {
                 property.sellerField(), property.priceField());
     }
 
+    private static String oneShotMintReadme(
+            String validatorTitle, OneShotMintProperty property) {
+        return """
+                # Generated JuLC one-shot authorized mint DSL verification
+
+                This generator-owned workspace checks `%s` against `%s`. Every covered
+                successful execution must strictly decode the redeemer, contain authority
+                `%s` in the complete signatory list, consume anchor `%s#%s`, and contain
+                exactly token `%s` with quantity `1` under the invoked policy's raw mint
+                entry. Other policies are permitted; duplicate or malformed matching
+                policy/token entries violate the property.
+
+                The SMT obligation uses a reviewed solver-compatible superset of pinned V3
+                `validMintingContext`. A separate Lean-kernel theorem checks that every
+                ledger-valid minting context belongs to that domain. A refutation is a
+                solver-domain counterexample unless an additional ledger-valid witness is
+                recorded; it is not automatically a ledger exploit.
+
+                `SMT-VALID` is relative to the exact artifact, pinned ledger model,
+                Blaster/Z3 translation, and recorded CEK fuel. It proves this named
+                conjunction, not that the complete policy or protocol is safe.
+                """.formatted(validatorTitle, property.template(), property.authorityHex(),
+                property.anchorTransactionIdHex(), property.anchorOutputIndex(),
+                property.tokenNameHex());
+    }
+
+    private static String composedReadme(
+            String validatorTitle, ComposedDslProperty property) {
+        String valueSemantics = property.canonicalDslJson()
+                .contains("\"schemaVersion\":8") ? """
+
+                Schema-8 value claims keep raw structural, upstream first-match,
+                strict-summed, and finite-support extensional meanings separate. The
+                certificate records the meanings and aggregation scopes used by each
+                claim. Strict-summed absence is `none`, explicit zero is `some 0`, and
+                malformed value structure also fails closed. A balance-only claim is
+                labeled domain-implied. Transaction-local payment claims retain
+                `globalMultiInputLinkageModeled: false`; they do not establish one
+                payment per consumed script input.
+                """ : "";
+        return """
+                # Generated JuLC compositional DSL verification
+
+                This generator-owned workspace checks `%s` against `%d` independently
+                named schema-3 properties from `%s`. The worker-produced AST was strictly
+                decoded, authoritatively type-checked, normalized, and hash-bound before
+                this workspace was published.
+
+                Each property has its own reviewed domain selector, exact-artifact
+                execution premise, guarantee hash, semantic capability set, non-vacuity
+                query, proof/counterexample query, logs, and certificate result. A vacuous
+                property skips only its own proof. Overall success requires every requested
+                property to be established.
+
+                `SMT-VALID` covers executions within the recorded CEK fuel bound and the
+                recorded solver domain. Where a pinned ledger-valid domain is selected, a
+                separate generated Lean theorem kernel-checks its inclusion in the solver
+                domain. Refutations remain solver-domain counterexamples unless a separate
+                concrete ledger-valid witness is recorded.
+
+                The result proves only the explicitly named normalized formulas. It does
+                not claim that the complete validator or protocol is safe.
+                """.formatted(validatorTitle, property.claims().size(), property.sourcePath())
+                + valueSemantics;
+    }
+
     private static String readme(
             String leanId, String validatorTitle, String purpose, int recursiveDepth) {
         return """
@@ -3124,6 +6185,8 @@ public final class VerificationProjectGenerator {
     private record Field(String name, String type, JsonNode schema) { }
     private record Constructor(String name, int index, List<Field> fields) { }
     private record RecursiveContainer(String function, JsonNode schema) { }
+    private record ComposedScriptHashes(
+            String scriptName, String nonVacuitySha256, String verifySha256) { }
 
     public record SchemaGeneration(String source, Map<String, String> leanTypes) { }
     public record GenerationResult(

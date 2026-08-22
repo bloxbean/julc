@@ -1,0 +1,6 @@
+/fixtures/
+/scripts/
+/ExactCounterMachineSpec.java
+/generated/*/.lake/
+/generated/*/.julc/
+/generated/*/verification-results/

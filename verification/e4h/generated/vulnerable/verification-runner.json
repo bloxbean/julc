@@ -1,0 +1,60 @@
+{
+  "acquire" : [ {
+    "command" : [ "lake", "update" ],
+    "expectedExitCodes" : [ 0 ],
+    "id" : "lake-update",
+    "maxAttempts" : 3
+  }, {
+    "command" : [ "lake", "build", "@PlutusCore/PlutusCore", "@CardanoLedgerApi/CardanoLedgerApi", "@Blaster/Blaster", "GeneratedVerificationSupport" ],
+    "expectedExitCodes" : [ 0 ],
+    "id" : "build-pinned-dependencies"
+  } ],
+  "kind" : "generated-workspace",
+  "manifest" : "verification-manifest.json",
+  "schemaVersion" : 2,
+  "timeoutSeconds" : 1800,
+  "verify" : [ {
+    "command" : [ "scripts/verify-authorization_vulnerable_threshold-non-vacuity.sh" ],
+    "executableSha256" : "0acb3d4d8cb7035be38b4862548ab19c88732becd816ece44f74cfb50abeac3d",
+    "id" : "check-non-vacuity-authorization_vulnerable_threshold",
+    "outcomes" : [ {
+      "exitCode" : 0,
+      "reason" : "expected-negative-control",
+      "requiredOutput" : "NON-VACUOUS: successful input witness exists",
+      "result" : "REFUTED"
+    }, {
+      "exitCode" : 4,
+      "reason" : "property-vacuous",
+      "requiredOutput" : "VACUOUS: validator has no successful input",
+      "result" : "COULD-NOT-EVALUATE"
+    }, {
+      "exitCode" : 2,
+      "reason" : "non-vacuity-undetermined",
+      "requiredOutput" : "COULD-NOT-EVALUATE: non-vacuity",
+      "result" : "COULD-NOT-EVALUATE"
+    } ],
+    "propertyId" : "authorization.vulnerable-threshold.non-vacuity"
+  }, {
+    "command" : [ "scripts/verify-authorization_vulnerable_threshold.sh" ],
+    "executableSha256" : "ba2fd3db5b5aff0cb8ca4608061bffed4affa0edccf627459628361c5a1a7317",
+    "id" : "prove-dsl-authorization_vulnerable_threshold",
+    "nonVacuityGuardPropertyId" : "authorization.vulnerable-threshold.non-vacuity",
+    "outcomes" : [ {
+      "exitCode" : 0,
+      "reason" : "dsl-property-established",
+      "requiredOutput" : "SMT-VALID: DSL property authorization.vulnerable-threshold established",
+      "result" : "SMT-VALID"
+    }, {
+      "exitCode" : 3,
+      "reason" : "dsl-property-counterexample",
+      "requiredOutput" : "REFUTED: DSL property authorization.vulnerable-threshold counterexample found",
+      "result" : "REFUTED"
+    }, {
+      "exitCode" : 2,
+      "reason" : "dsl-property-undetermined",
+      "requiredOutput" : "COULD-NOT-EVALUATE: DSL property authorization.vulnerable-threshold",
+      "result" : "COULD-NOT-EVALUATE"
+    } ],
+    "propertyId" : "authorization.vulnerable-threshold"
+  } ]
+}

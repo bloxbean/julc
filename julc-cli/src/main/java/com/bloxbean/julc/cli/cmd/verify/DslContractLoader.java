@@ -20,6 +20,13 @@ final class DslContractLoader {
     private DslContractLoader() { }
 
     static Loaded load(Path projectDirectory, String validatorTitle) throws Exception {
+        return load(projectDirectory, validatorTitle, null);
+    }
+
+    static Loaded load(
+            Path projectDirectory,
+            String validatorTitle,
+            VerificationPurpose requestedPurpose) throws Exception {
         Path project = projectDirectory.toAbsolutePath().normalize();
         if (!Files.isRegularFile(ProjectLayout.tomlFile(project))) {
             throw new IllegalArgumentException("Not a JuLC project: " + project);
@@ -41,7 +48,28 @@ final class DslContractLoader {
             throw new CompilerException(compiled.compileResult().diagnostics());
         }
         Path blueprint = ProjectLayout.plutusDir(project).resolve("plutus.json");
-        var artifact = ArtifactCommand.inspect(blueprint, validatorTitle);
+        ContractSchema fullSchema = compiled.contractSchema();
+        VerificationPurpose selectedPurpose;
+        if (fullSchema.interfaces().size() == 1) {
+            selectedPurpose = purpose(fullSchema.purpose());
+            if (requestedPurpose != null && requestedPurpose != selectedPurpose) {
+                throw new IllegalArgumentException("Validator '" + validatorTitle
+                        + "' has purpose " + selectedPurpose.userName() + ", not "
+                        + requestedPurpose.userName());
+            }
+        } else {
+            if (requestedPurpose == null) {
+                throw new IllegalArgumentException("Validator '" + validatorTitle
+                        + "' has multiple interfaces "
+                        + fullSchema.interfaces().stream().map(value -> value.purpose().name())
+                        .toList() + "; select one with --purpose");
+            }
+            selectedPurpose = requestedPurpose;
+        }
+        ContractSchema selectedSchema = fullSchema.select(selectedPurpose.compilerPurpose());
+        var resolved = ArtifactCommand.inspectForPurpose(
+                blueprint, validatorTitle, selectedPurpose.cip57Name());
+        var artifact = resolved.artifact();
         String compiledCode = JulcScriptAdapter
                 .fromProgram(compiled.compileResult().program()).getCborHex();
         if (!artifact.compiledCode().equalsIgnoreCase(compiledCode)
@@ -51,7 +79,18 @@ final class DslContractLoader {
                     "Observational DSL compile does not match exact blueprint artifact");
         }
         return new Loaded(project, blueprint, artifact.artifactId(), source,
-                compiled.contractSchema());
+                selectedSchema, selectedPurpose, resolved.blueprintEntryTitle());
+    }
+
+    private static VerificationPurpose purpose(ContractSchema.Purpose purpose) {
+        return switch (purpose) {
+            case SPEND -> VerificationPurpose.SPENDING;
+            case MINT -> VerificationPurpose.MINTING;
+            case WITHDRAW -> VerificationPurpose.REWARDING;
+            case CERTIFY -> VerificationPurpose.CERTIFYING;
+            default -> throw new IllegalArgumentException(
+                    "Typed DSL does not support " + purpose + " interfaces");
+        };
     }
 
     record Loaded(
@@ -59,5 +98,7 @@ final class DslContractLoader {
             Path blueprint,
             String artifactId,
             String source,
-            ContractSchema schema) { }
+            ContractSchema schema,
+            VerificationPurpose purpose,
+            String blueprintEntryTitle) { }
 }

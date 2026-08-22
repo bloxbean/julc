@@ -1,0 +1,136 @@
+{
+  "schemaVersion" : 1,
+  "generatedBy" : "julc verify run",
+  "outcome" : "COULD-NOT-EVALUATE",
+  "reason" : "verification-timeout",
+  "backend" : "local",
+  "backendIdentity" : "lean-4.24.0+z3-4.15.2",
+  "toolchain" : {
+    "lake" : "5.0.0-src+797c613",
+    "lean" : "4.24.0",
+    "z3" : "4.15.2"
+  },
+  "dependencyCommits" : {
+    "CardanoLedgerApiBlaster" : "5dab3c43f042b8735b6d067223baaa8d32ed28a1",
+    "Lean-blaster" : "083bae7971414d894b56b5bbf4108c63e17bc42a",
+    "PlutusCoreBlaster" : "7cf5a78c54b9694ef093bf49edb5d3799b2a49c9"
+  },
+  "dependencyDownloadsDisabledDuringVerification" : true,
+  "ledgerValidityModeled" : false,
+  "artifact" : {
+    "artifactId" : "exact-counter",
+    "blueprintEntryTitle" : "ExactCounter",
+    "boundarySemantics" : "strict-data-v1",
+    "builtinSemanticsVariant" : "E",
+    "builtins" : [ {
+      "flatTag" : 7,
+      "name" : "EqualsInteger"
+    }, {
+      "flatTag" : 26,
+      "name" : "IfThenElse"
+    }, {
+      "flatTag" : 29,
+      "name" : "FstPair"
+    }, {
+      "flatTag" : 30,
+      "name" : "SndPair"
+    }, {
+      "flatTag" : 33,
+      "name" : "HeadList"
+    }, {
+      "flatTag" : 34,
+      "name" : "TailList"
+    }, {
+      "flatTag" : 35,
+      "name" : "NullList"
+    }, {
+      "flatTag" : 42,
+      "name" : "UnConstrData"
+    }, {
+      "flatTag" : 45,
+      "name" : "UnIData"
+    } ],
+    "cardanoScriptHash" : "a403371245b9afcef5743cd07f6bd294ce0c805d122d2663be18b56a",
+    "compiledCodeSha256" : "4304220724d7de16290d403a39cb7fe151a196934545fca498cc02bcba9c647b",
+    "fuel" : 3000,
+    "fuelBounded" : true,
+    "fuelPerStep" : 3000,
+    "fuelScope" : "Only executions completing within the pinned CEK fuel bound are covered; fuel-exhausted executions are outside the claim.",
+    "generatedLeanSha256" : "7c4f989c054b2479b26931cfa4bc0f04dd803913650f36d3d9515198f2e4e437",
+    "kind" : "validator",
+    "leanKernelProofEstablished" : false,
+    "ledgerRealizableTraceEstablished" : false,
+    "ledgerValidityModeled" : false,
+    "maxBmcDepth" : 1,
+    "maxInductionDepth" : 1,
+    "propertyId" : "ExactCounter.state-machine",
+    "propertyIrSha256" : "f96aafb7e687e9694eb545b38de260865f18bcd257b9afa5973050559e2589d6",
+    "propertyPath" : "/Users/satya/work/bloxbean/julc/verification/e5/ExactCounterMachineSpec.java",
+    "propertyTemplate" : "julc.state-machine-experimental/v1",
+    "protocolVersion" : 11,
+    "recursiveDepth" : 4,
+    "scriptPurpose" : "spending",
+    "traceLinkageMode" : "DATUM_CONTINUITY_ONLY",
+    "validatorTitle" : "ExactCounter",
+    "verificationMode" : "STATE_MACHINE_EXPERIMENTAL"
+  },
+  "inputs" : {
+    "acquireLogSha256" : "c50a867418219521c34f9c2033c6e11d25d768671f9b3b0af605314fe860bbb4",
+    "projectLeanSha256" : "7c4f989c054b2479b26931cfa4bc0f04dd803913650f36d3d9515198f2e4e437",
+    "propertyIrSha256" : "f96aafb7e687e9694eb545b38de260865f18bcd257b9afa5973050559e2589d6",
+    "runnerPlanSha256" : "c322a3f998de68c25cf0f00520e7da500dfe158778945921c2cc3b3332c2be5b",
+    "verificationManifestSha256" : "733c9461af39d45b385e0966af6d64b01cc473a1ec0aae9cc0d8fa1c1ff825e7",
+    "verifyLogSha256" : "5a36cc16693461d5dbf527b1f83a75d6cc7abc424c96a6ef0cdb5ca97e2f365d"
+  },
+  "phases" : [ {
+    "id" : "backend",
+    "phase" : "acquire",
+    "status" : "PASSED",
+    "exitCode" : 0,
+    "log" : "verification-results/backend.log",
+    "logSha256" : "cf62c10b627a6113e8d42ef11dc1796bd5951789f6466985b3f57729bf1fd4a2"
+  }, {
+    "id" : "lake-update",
+    "phase" : "acquire",
+    "status" : "PASSED",
+    "exitCode" : 0,
+    "log" : "verification-results/acquire-01-lake-update.log",
+    "logSha256" : "a901e93a710a38bc2ed60d7fccdfe2c8417fda4b411df004f3f6c6eed7de64b0"
+  }, {
+    "id" : "build-pinned-dependencies",
+    "phase" : "acquire",
+    "status" : "PASSED",
+    "exitCode" : 0,
+    "log" : "verification-results/acquire-02-build-pinned-dependencies.log",
+    "logSha256" : "4629b01caa8b302ca1e4240d85d066728fb8865e50467164bd5e8dfb951466d7"
+  }, {
+    "id" : "revision-blaster",
+    "phase" : "acquire",
+    "status" : "PASSED",
+    "exitCode" : 0,
+    "log" : "verification-results/revision-blaster.log",
+    "logSha256" : "1d7b135cb99e69fe5f07d661d8634534b1107c2bd16c5c587e790dee8777d92b"
+  }, {
+    "id" : "revision-plutuscore",
+    "phase" : "acquire",
+    "status" : "PASSED",
+    "exitCode" : 0,
+    "log" : "verification-results/revision-plutuscore.log",
+    "logSha256" : "cff7a93830bd7e252f770b08b3e446d72f04f098b9473243a5a5497320622d0b"
+  }, {
+    "id" : "revision-cardanoledgerapi",
+    "phase" : "acquire",
+    "status" : "PASSED",
+    "exitCode" : 0,
+    "log" : "verification-results/revision-cardanoledgerapi.log",
+    "logSha256" : "de899bd5dae963278bc47c5bf53f76441e2fc4ef6226bb89c085020ce082c282"
+  }, {
+    "id" : "state-machine-target-depth-reachability",
+    "phase" : "verify",
+    "status" : "TIMED-OUT",
+    "exitCode" : -1,
+    "log" : "verification-results/verify-01-state-machine-target-depth-reachability.log",
+    "logSha256" : "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  } ],
+  "properties" : [ ]
+}

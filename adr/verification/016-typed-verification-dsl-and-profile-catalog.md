@@ -1,6 +1,6 @@
 # ADR-016: Typed Verification DSL and Foundational Profile Catalog
 
-- **Status:** E.1–E.3 implemented experimentally; E.4–E.6 proposed
+- **Status:** E.1–E.4l implemented experimentally; E.5 rejected at calibration; E.6 remains
 - **Date:** 2026-08-13
 - **Related:**
   [ADR-001 — IOG Blaster Verification Strategy](001-iog-blaster-verification-strategy.md),
@@ -10,7 +10,17 @@
   [ADR-012 — Stateful Spending Profile](012-milestone-c6-stateful-spending-profile.md),
   [ADR-013 — Controlled Minting Profile](013-milestone-c7-controlled-minting-profile.md),
   [ADR-014 — Post-C.7 Roadmap](014-post-c7-verification-hardening-roadmap.md),
-  [ADR-015 — Strict On-Chain Data Boundaries](015-strict-on-chain-data-boundaries.md)
+  [ADR-015 — Strict On-Chain Data Boundaries](015-strict-on-chain-data-boundaries.md),
+  [ADR-018 — Typed Minting Verification DSL](018-milestone-e4a-typed-minting-dsl.md),
+  [ADR-019 — Compositional Property Promotion Core](019-milestone-e4b-compositional-property-promotion-core.md),
+  [ADR-020 — Typed Rewarding Verification DSL](020-milestone-e4c-typed-rewarding-dsl.md),
+  [ADR-021 — Typed Certifying Verification DSL](021-milestone-e4d-typed-certifying-dsl.md),
+  [ADR-022 — Generic Contract Types and Collections](022-milestones-e4e-e4f-generic-contract-types-and-collections.md),
+  [ADR-023 — Typed Non-Value Transaction Context](023-milestone-e4g-typed-non-value-transaction-context.md),
+  [ADR-024 — Compositional Authorization Algebra](024-milestone-e4h-authorization-algebra.md),
+  [ADR-025 — Certificate Payloads and Value Algebra](025-milestones-e4i-e4j-certificate-payloads-and-value-algebra.md),
+  [ADR-026 — Typed Governance Transaction Data](026-milestone-e4k-typed-governance-transaction-data.md), and
+  [ADR-027 — Reviewed Raw-Data Adapters](027-milestone-e4l-reviewed-raw-data-adapters.md)
 
 ## Context
 
@@ -97,6 +107,15 @@ They share Lean definitions, exact-artifact execution, non-vacuity checks,
 negative controls, result classification, tamper binding, and certificate
 generation.
 
+The DSL is compositional rather than a collection of verbose fixed profiles.
+Once an operation is admitted into the closed typed IR, a developer may
+combine it with other purpose-compatible admitted operations without JuLC
+requiring a resolver for that complete formula shape. Reviewed annotations
+and profile helpers may construct common formulas, but their ASTs receive no
+privileged proof-generation path. Exact UPLC execution and allow-listed ledger
+domains remain a separate mechanically controlled theorem envelope rather
+than freely movable assumptions.
+
 The DSL belongs in `julc-verification` or a new optional module depending on
 it. Core compiler, PIR generation, optimization, and ordinary UPLC lowering
 must not depend on it. Adding, removing, or changing a verification
@@ -143,6 +162,8 @@ are:
   has a ledger-compatible symbolic type;
 - `outputs()` is a typed symbolic ledger collection;
 - `exists`, `eq`, `ge`, `and`, and `implies` construct IR nodes;
+- a new supported combination of those nodes does not require a new
+  template-specific Java resolver;
 - `execution.succeeds()` refers to the exact imported UPLC under recorded CEK
   fuel, not to a reimplementation of the validator;
 - an `Expr<Bool>` cannot be used as a Java `boolean`, preventing accidental
@@ -426,6 +447,13 @@ defines compatible roots, output selection, assumptions, conjunctions, and
 result claims. JuLC therefore applies these rules:
 
 - an annotation lowers to the same IR used by the DSL;
+- every well-typed, purpose-compatible composition of supported DSL nodes is
+  promoted generically rather than matched against a complete template AST;
+- reviewed helper methods are ordinary AST builders and do not authorize
+  otherwise unsupported formulas;
+- exact artifact execution and reviewed ledger-domain predicates are placed
+  by a fixed theorem envelope and cannot be moved into, duplicated in, or
+  hidden inside a user guarantee;
 - duplicate equivalent properties are canonicalized or reported clearly;
 - contradictory domains or guarantees fail before Lean generation;
 - partial mandatory profiles fail rather than prove a weaker subset;
@@ -547,13 +575,160 @@ at a time. Each purpose requires:
 - certificate fixtures; and
 - compatibility tests against the pinned model.
 
+**E.4a implementation:**
+[ADR-018](018-milestone-e4a-typed-minting-dsl.md) adds the reviewed minting
+slice: exact purpose selection, schema-2 minting IR, shared controlled-mint
+semantics, raw current-policy asset structure, consumed-anchor one-shot minting,
+and a kernel bridge from pinned V3 minting validity to the solver domain. The
+remaining purposes and broader value operations are still proposed work.
+
+**E.4b compositional core (implemented experimentally):**
+[ADR-019](019-milestone-e4b-compositional-property-promotion-core.md) makes
+the validated typed AST authoritative through promotion, generic Lean
+generation, runner planning, and per-property certification. It replaces the
+E.3/E.4a whole-formula recognizers with a closed but freely compositional
+guarantee language, while keeping exact execution and reviewed domains in a
+fixed theorem envelope. E.4b is a prerequisite for adding another purpose.
+Schema-3 evidence now demonstrates novel spending and minting compositions,
+independent multi-property results, conservative counterexample-domain
+metadata, and local, Docker, and native-CLI execution. It introduces no
+on-chain compiler dependency or UPLC change.
+
+**E.4c rewarding slice (implemented experimentally):**
+[ADR-020](020-milestone-e4c-typed-rewarding-dsl.md) adds exact `withdraw`
+selection, the current rewarding credential, duplicate-preserving raw
+withdrawal traversal, and a kernel bridge from pinned rewarding validity to
+the reviewed solver domain. The vertical slice composes strict redeemer
+decoding, an authority signer, and a minimum matching withdrawal. Local,
+Docker, native, refuted, and vacuous evidence uses the generic schema-3 path;
+no fixed-formula resolver or compiler dependency was added.
+
+**E.4d certifying slice (implemented experimentally):**
+[ADR-021](021-milestone-e4d-typed-certifying-dsl.md) adds exact CIP-57
+`publish` selection, authoritative certificate/index roots, the ordered raw
+certificate list, all 11 pinned certificate-kind recognizers, and the pinned
+indexed-membership relation. Its reviewed certifying solver domain has a
+kernel-checked inclusion bridge and per-claim corollary. Exact VM, local,
+Docker, native, refuted, malformed, index, strengthened-domain, and vacuity
+controls pass through the generic schema-3 path without a compiler dependency.
+
+**Later purpose slices:**
+Voting and proposing proceed only where exact artifact selection, the pinned
+model, and solver support permit. CIP-57 currently has no truthful standard
+purpose vocabulary for those interfaces, so they remain fail-closed rather
+than being assigned invented purpose names. Later slices extend the generic
+capability and semantic inventories; they do not add fixed-formula promotion
+paths.
+
+### E.4e–E.4f: Generic contract types and collection core
+
+[ADR-022](022-milestones-e4e-e4f-generic-contract-types-and-collections.md)
+implements this foundational phase. E.4e projects the compiler-owned
+`PirType` graph into a schema-4 structural symbolic type reference and
+generates typed wrappers for datum/redeemer records, variants,
+optionals, lists, maps, nested combinations, and productive recursive values.
+E.4f adds safe optional elimination, generic duplicate-preserving collections,
+canonical quantifiers/binders, complete foundational Boolean/equality
+operations, and reviewed linear integer arithmetic. Existing schema-1–3
+canonical bytes and the schema-3 `.composed(...)` API remain frozen.
+Compiler-erased source newtypes appear as their underlying representation;
+nominal newtype identity remains deferred until `ContractSchema` exposes it.
+
+### E.4g: Complete non-value transaction context
+
+[ADR-023](023-milestone-e4g-typed-non-value-transaction-context.md) specifies
+and implements this phase as opt-in property schema 5. It exposes generic input and
+reference-input traversal, `TxInInfo` fields, current spending reference, fee,
+transaction ID, output datum/reference script, complete address/staking
+credentials, ordered duplicate-preserving datum witnesses and redeemer maps,
+continuing-output selection, and reviewed first/all/count input-selection
+helpers. It reuses the E.4e–E.4f type and collection core, freezes schema-1–4
+canonical evidence, and does not introduce value aggregation, governance
+payloads, certificate payloads, or raw validity/treasury adapters.
+
+### E.4h: Authorization algebra
+
+[ADR-024](024-milestone-e4h-authorization-algebra.md) specifies an opt-in
+schema-6 authorization algebra. It adds any/all/none/at-least/exactly-N,
+no-unexpected-signers, and exact-authorized-set predicates over **distinct**
+public-key-hash identities. Fixed and compiler-owned typed contract sources
+are admitted through parent validation. Deployment-parameter sources are
+admitted only when JuLC reconstructs parameter application and proves that the
+result is the exact verified artifact. Threshold and allow-list meanings stay
+separate and compose through the generic IR; common formulas may later
+graduate to annotations without receiving a separate proof path.
+
+### E.4i: Certificate payload surface
+
+[ADR-025](025-milestones-e4i-e4j-certificate-payloads-and-value-algebra.md)
+specifies this phase as opt-in property schema 7. It extends E.4d constructor
+recognition with guarded payload access for deposits, refunds, credentials,
+delegation targets, DReps, pools, epochs, and committee credentials. It pins
+all 11 V3 `TxCert` constructors plus nested `Delegatee` and `DRep` sums. No
+unchecked constructor projection is admitted.
+
+Implemented experimentally on the dedicated E.4i branch with inner property
+schema 7, role-preserving credential wrappers, exact VM controls, pinned Lean
+codec controls, and positive/refuted/vacuous exact-artifact evidence.
+
+### E.4j: Value and multi-asset algebra
+
+[ADR-025](025-milestones-e4i-e4j-certificate-payloads-and-value-algebra.md)
+specifies this phase as opt-in property schema 8. It adds raw policy/token
+entry traversal, explicitly distinct upstream-first-match and strict-summed
+quantity projections, structural and normalized/extensional relations, checked
+value arithmetic/order, spent/produced value, balancing, asset
+preservation/leakage, payments, and generalized mint/burn constraints. Every
+operation states its malformed-data, duplicate, aggregation, and payment scope;
+raw, first-match, strict-summed, and extensional meanings are never conflated.
+
+Implemented experimentally on the dedicated E.4j branch with opt-in property
+schema 8, closed value IR and parent validation, kernel semantic controls,
+exact-VM tests, result metadata that records meaning and aggregation scope, and
+positive/refuted/vacuous exact-artifact evidence. Strict-summed and
+whole-value extensional formulas are faithfully generated but retain explicit
+bounded-solver limitations rather than being weakened to obtain a result.
+
+### E.4k: Governance transaction data
+
+Add typed voters, votes, governance action IDs, proposals, protocol versions,
+governance-action constructors, and known-voter/proposal relations for
+supported script contexts. Voting/proposing validator selection remains
+fail-closed until a truthful exact-artifact convention exists; the pinned
+CIP-57 vocabulary currently has no standard purpose names for those entries.
+
+Implemented experimentally as property schema 9. Positive JVM, Docker, and
+native runs bind identical semantic hashes; retained refuted and vacuous
+controls cover the other result classes. Strict proposal-action decoding is
+kernel-supported, while the first solver calibration exposed that
+non-proposing valid-context domains do not globally validate proposal actions.
+See [ADR-026](026-milestone-e4k-typed-governance-transaction-data.md).
+
+### E.4l: Reviewed raw-data adapters
+
+[ADR-027](027-milestone-e4l-reviewed-raw-data-adapters.md) implements this
+phase as opt-in property schema 10. It separates pinned-decoder from
+canonical validity-range semantics, models treasury optionals as the three
+distinct states present/absent/malformed, and permits only narrow
+duplicate-preserving views of changed-parameter IDs and structurally pinned
+quorum data. Each adapter has an independent evidence gate; unresolved raw
+payloads remain visibly `RAW_DATA_ONLY` rather than being promoted as a group.
+The JVM, Docker, and native positive runs bind identical semantic hashes; a
+separate non-vacuous treasury refutation records the pinned helper/strict-codec
+discrepancy instead of weakening the adapter.
+
 ### E.5: State-machine experiment
 
-Map a deliberately small DSL state-machine vocabulary to Blaster's BMC and
-k-induction facilities. Keep bounded and inductive results distinct. Evaluate
-solver behavior, counterexample readability, and whether contract execution
-can be linked to transitions without replacing exact UPLC with a hand-written
-model.
+[ADR-028](028-milestone-e5-exact-artifact-state-machine-experiment.md)
+specified a deliberately small spending-state experiment over Blaster BMC and
+k-induction. It was rejected at the mandatory calibration gate: even an
+396-byte validator whose Java body returns true, with no ledger-domain premise,
+could not establish depth-1 target reachability within five minutes under the
+combined direct exact-artifact transition encoding. The product-facing
+prototype was removed, so schemas 1 through 10 and existing CLI/result meanings
+remain unchanged.
+Any future temporal-verification attempt needs a materially different,
+separately reviewed execution-linkage strategy.
 
 ### E.6: Public API decision
 
@@ -596,6 +771,8 @@ entries and explicitly state whether equality is structural or extensional.
 - Common users retain concise, reviewed annotations.
 - Advanced Java users can compose contract-specific properties without
   learning Lean for supported operations.
+- Adding a novel combination of already supported operations does not require
+  a JuLC release or a template-specific generator.
 - One typed IR and semantic library prevent annotation-specific theorem drift.
 - Generated contract models replace fragile string paths with IDE-checkable
   field access.
@@ -635,11 +812,13 @@ entries and explicitly state whether equality is structural or extensional.
 
 ## Exit condition
 
-This exploration is successful when JuLC can generate a typed contract model,
-lower both an existing annotation and a nontrivial payment DSL property into a
-canonical reviewed IR, verify the payment property against exact UPLC with
-positive and vulnerable controls, report explicit ledger-domain assumptions,
-and publish a complete capability inventory for the pinned V3 ledger model.
+The initial E.1–E.3 exploration condition has been met. The next architectural
+exit condition is E.4b: JuLC must promote a novel, well-typed composition of
+already supported nodes without a formula-specific resolver, generate and run
+the proof from the canonical IR, report multiple properties independently,
+preserve explicit ledger domains, and retain exact-artifact and tamper
+bindings. ADR-019 governs that work.
 
-Only then should a follow-up ADR freeze the public DSL API and claim a defined
+Only after compositional promotion and additional purpose slices have produced
+reviewable evidence should E.6 freeze the public DSL API or claim a defined
 level of CardanoLedgerApi surface coverage.

@@ -26,6 +26,75 @@ class LedgerCapabilityInventoryTest {
                 inventory.require("purpose.voting").status());
         assertEquals(CapabilityStatus.RAW_DATA_ONLY,
                 inventory.require("field.txInfo.validRange").status());
+        assertEquals(CapabilityStatus.TYPED,
+                inventory.require("helper.utxoConsumed").status());
+        assertEquals(CapabilityStatus.TYPED,
+                inventory.require("ledger.validMintingContext").status());
+        assertEquals(CapabilityStatus.TYPED,
+                inventory.require("purpose.rewarding").status());
+        assertEquals(CapabilityStatus.TYPED,
+                inventory.require("field.txInfo.withdrawals").status());
+        assertEquals(CapabilityStatus.TYPED,
+                inventory.require("ledger.validRewardingContext").status());
+        assertEquals(CapabilityStatus.TYPED,
+                inventory.require("purpose.certifying").status());
+        assertEquals(CapabilityStatus.TYPED,
+                inventory.require("field.txInfo.certificates").status());
+        assertEquals(CapabilityStatus.TYPED,
+                inventory.require("helper.isKnownCertificate").status());
+        assertEquals(CapabilityStatus.TYPED,
+                inventory.require("ledger.validCertifyingContext").status());
+        assertEquals(CapabilityStatus.TYPED,
+                inventory.require("field.txInfo.referenceInputs").status());
+        assertEquals(CapabilityStatus.TYPED,
+                inventory.require("field.txOut.datum").status());
+        assertEquals(CapabilityStatus.TYPED,
+                inventory.require("constructor.credential.pubKey").status());
+        assertEquals(CapabilityStatus.TYPED,
+                inventory.require("helper.scriptInfoToScriptPurpose").status());
+        assertEquals(CapabilityStatus.TYPED,
+                inventory.require("helper.findRedeemer").status());
+        assertEquals(CapabilityStatus.TYPED,
+                inventory.require("helper.findDatum").status());
+        for (String capability : java.util.List.of(
+                "field.txInfo.votes", "field.txInfo.proposals",
+                "constructor.voter.committee", "constructor.voter.drep",
+                "constructor.voter.stakePool", "constructor.vote.no",
+                "constructor.vote.yes", "constructor.vote.abstain",
+                "constructor.governance.parameterChange",
+                "constructor.governance.hardFork",
+                "constructor.governance.treasuryWithdrawals",
+                "constructor.governance.noConfidence",
+                "constructor.governance.updateCommittee",
+                "constructor.governance.newConstitution",
+                "constructor.governance.info",
+                "helper.isKnownVoter", "helper.isKnownProposal")) {
+            assertEquals(CapabilityStatus.TYPED,
+                    inventory.require(capability).status(), capability);
+        }
+        for (String capability : java.util.List.of(
+                "constructor.txCert.regStaking",
+                "constructor.txCert.unRegStaking",
+                "constructor.txCert.delegStaking",
+                "constructor.txCert.regDeleg",
+                "constructor.txCert.regDRep",
+                "constructor.txCert.updateDRep",
+                "constructor.txCert.unRegDRep",
+                "constructor.txCert.poolRegister",
+                "constructor.txCert.poolRetire",
+                "constructor.txCert.authHotCommittee",
+                "constructor.txCert.resignColdCommittee",
+                "constructor.delegatee.stake",
+                "constructor.delegatee.vote",
+                "constructor.delegatee.stakeVote",
+                "constructor.drep.credential",
+                "constructor.drep.abstain",
+                "constructor.drep.noConfidence")) {
+            assertEquals(CapabilityStatus.TYPED,
+                    inventory.require(capability).status(), capability);
+        }
+        assertEquals(CapabilityStatus.UNSUPPORTED_IR,
+                inventory.require("helper.findDatumHash").status());
         assertEquals(CapabilityStatus.UNSUPPORTED_SOLVER,
                 inventory.require("solver.proofReconstruction").status());
     }

@@ -1,0 +1,112 @@
+{
+  "artifactFormat" : "double_cbor_hex",
+  "artifactId" : "vacuous-reviewed-adapters",
+  "blueprintEntryTitle" : "VacuousReviewedAdapters",
+  "boundarySemantics" : "strict-data-v1",
+  "builtinSemanticsVariant" : "E",
+  "builtins" : [ {
+    "name" : "EqualsInteger",
+    "flatTag" : 7
+  }, {
+    "name" : "IfThenElse",
+    "flatTag" : 26
+  }, {
+    "name" : "FstPair",
+    "flatTag" : 29
+  }, {
+    "name" : "SndPair",
+    "flatTag" : 30
+  }, {
+    "name" : "HeadList",
+    "flatTag" : 33
+  }, {
+    "name" : "TailList",
+    "flatTag" : 34
+  }, {
+    "name" : "NullList",
+    "flatTag" : 35
+  }, {
+    "name" : "UnConstrData",
+    "flatTag" : 42
+  }, {
+    "name" : "UnIData",
+    "flatTag" : 45
+  } ],
+  "capabilityInventory" : {
+    "ledgerApi" : "CardanoLedgerApiBlaster",
+    "ledgerVersion" : "V3",
+    "revision" : "5dab3c43f042b8735b6d067223baaa8d32ed28a1",
+    "schemaVersion" : 1,
+    "sha256" : "01969c67f842596fe1ed08c82eacd817f835a7f83dd1668dc056f4cfd08d6b70"
+  },
+  "cardanoScriptHash" : "182e4ce48ffcb9b6284abcc576e8cb726cca85a9e7e3f2e47e7581bc",
+  "claims" : [ {
+    "id" : "reviewed.non-vacuity-control",
+    "generatedName" : "reviewed_non_vacuity_control",
+    "domain" : "VALID_SPENDING_V3_PINNED",
+    "guaranteeSha256" : "d52a827c0493997ff6bd856c6694942d44e9f32a65816d87d4a9340de6f7cb6b",
+    "envelopeSha256" : "98e09203d9cdcb98a28868792237fe03c3d2f23e6732050013f3b863589b31b6",
+    "capabilities" : [ "adapter.validity-range.pinned-v1", "dsl.ledger.context", "dsl.option.exists", "dsl.schema.typed-field", "dsl.schema.typed-root", "encoding.isDataV3", "field.scriptContext.scriptInfo", "field.scriptContext.txInfo", "ledger.validSpendingContext", "purpose.spending" ],
+    "guaranteeRules" : [ "ledger-field:SCRIPT_CONTEXT.txInfo", "ledger-root:ledgerContext", "option-exists", "reviewed-adapter:VALIDITY_CONTAINS", "typed-field:VacuousReviewedAdapters.Datum.deadline", "typed-root:typedDatum", "typed-variable" ],
+    "counterexampleDomain" : "BLASTER_VALID_SPENDING_SUPERSET",
+    "ledgerValidCounterexampleEstablished" : false,
+    "concreteVmCounterexampleReproduced" : false
+  } ],
+  "compiledCodeSha256" : "aa14d12ea2bf3fdabd96e180f2ae324b2527134201dea489b62c156f3366b99e",
+  "dependencies" : {
+    "CardanoLedgerApiBlaster" : "5dab3c43f042b8735b6d067223baaa8d32ed28a1",
+    "Lean-blaster" : "083bae7971414d894b56b5bbf4108c63e17bc42a",
+    "PlutusCoreBlaster" : "7cf5a78c54b9694ef093bf49edb5d3799b2a49c9"
+  },
+  "domainAssumptions" : [ "validSpendingContext/v3-pinned" ],
+  "dslIr" : {
+    "schemaVersion" : 10,
+    "sha256" : "46557f052dc6501b1fc5cf6d5cccb343d71d2ede544fd562fc04b18a5fff7410"
+  },
+  "fuel" : 5000,
+  "generatedBy" : "julc verify init",
+  "generatedLeanSha256" : "0100dd73c9edea34b643a26db8d93de050b1b228451eaab25b175da51bf1edf7",
+  "julcVersion" : "0.1.0-pre16",
+  "leanVersion" : "4.24.0",
+  "ledgerValidityModeled" : true,
+  "plutusLanguage" : "PlutusV3",
+  "project" : "reviewed-data-adapter-evidence",
+  "properties" : [ {
+    "id" : "reviewed.non-vacuity-control.non-vacuity",
+    "reason" : "not-run",
+    "result" : "COULD-NOT-EVALUATE"
+  }, {
+    "id" : "reviewed.non-vacuity-control",
+    "reason" : "not-run",
+    "result" : "COULD-NOT-EVALUATE"
+  } ],
+  "propertyIr" : {
+    "contractSchemaSha256" : "79ac5d595b6fbd7c7cb4c7a2b0677443e5c402312b50baa593508cf6353aa75e",
+    "path" : "verification-property.json",
+    "projectedContractTypesSha256" : "79ac5d595b6fbd7c7cb4c7a2b0677443e5c402312b50baa593508cf6353aa75e",
+    "propertyId" : "VacuousReviewedAdapters.dsl-property-set",
+    "schemaVersion" : 3,
+    "sha256" : "f4ea0c6c8beca71d11d71e7c0c61ab488104e90bbdb7ff9fa2ddf54cc29b17f8",
+    "sourcePath" : "/Users/satya/work/bloxbean/julc/verification/e4l/VacuousReviewedAdaptersSpec.java",
+    "template" : "julc.dsl-ledger/v1"
+  },
+  "protocolVersion" : 11,
+  "recursiveDepth" : 4,
+  "reviewedRawDataAdapterAudit" : {
+    "schemaVersion" : 1,
+    "sha256" : "e86733f73e990e66a5bb5b445d56670517d1f7883657e951326767d0faf723a1"
+  },
+  "runnerPlanSha256" : "c78fc2c2598446e473fa9a3454560bd6013d22446aea580846beae9105816a72",
+  "schemaVersion" : 1,
+  "schemas" : [ {
+    "cip57" : "VacuousReviewedAdapters:Datum",
+    "lean" : "VacuousReviewedAdaptersDatum"
+  }, {
+    "cip57" : "VacuousReviewedAdapters:Redeemer",
+    "lean" : "VacuousReviewedAdaptersRedeemer"
+  } ],
+  "scriptPurpose" : "spending",
+  "uplcVersion" : "1.1.0",
+  "validatorTitle" : "VacuousReviewedAdapters",
+  "z3Version" : "4.15.2"
+}

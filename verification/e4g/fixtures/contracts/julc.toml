@@ -1,0 +1,7 @@
+[project]
+name = "e4g-ledger-context"
+version = "0.1.0"
+
+[build]
+source-dir = "src"
+output-dir = "build/plutus"

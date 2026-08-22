@@ -1,0 +1,8 @@
+.gradle
+**/build
+scalus
+lastbranch
+test.cbor
+adr
+static
+SECURITY.md

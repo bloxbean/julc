@@ -1,0 +1,179 @@
+{
+  "schemaVersion" : 1,
+  "generatedBy" : "julc verify run",
+  "outcome" : "COULD-NOT-EVALUATE",
+  "reason" : "property-vacuous",
+  "backend" : "local",
+  "backendIdentity" : "lean-4.24.0+z3-4.15.2",
+  "toolchain" : {
+    "lake" : "5.0.0-src+797c613",
+    "lean" : "4.24.0",
+    "z3" : "4.15.2"
+  },
+  "dependencyCommits" : {
+    "CardanoLedgerApiBlaster" : "5dab3c43f042b8735b6d067223baaa8d32ed28a1",
+    "Lean-blaster" : "083bae7971414d894b56b5bbf4108c63e17bc42a",
+    "PlutusCoreBlaster" : "7cf5a78c54b9694ef093bf49edb5d3799b2a49c9"
+  },
+  "dependencyDownloadsDisabledDuringVerification" : true,
+  "ledgerValidityModeled" : true,
+  "artifact" : {
+    "artifactId" : "vacuous-reviewed-adapters",
+    "blueprintEntryTitle" : "VacuousReviewedAdapters",
+    "boundarySemantics" : "strict-data-v1",
+    "builtinSemanticsVariant" : "E",
+    "builtins" : [ {
+      "flatTag" : 7,
+      "name" : "EqualsInteger"
+    }, {
+      "flatTag" : 26,
+      "name" : "IfThenElse"
+    }, {
+      "flatTag" : 29,
+      "name" : "FstPair"
+    }, {
+      "flatTag" : 30,
+      "name" : "SndPair"
+    }, {
+      "flatTag" : 33,
+      "name" : "HeadList"
+    }, {
+      "flatTag" : 34,
+      "name" : "TailList"
+    }, {
+      "flatTag" : 35,
+      "name" : "NullList"
+    }, {
+      "flatTag" : 42,
+      "name" : "UnConstrData"
+    }, {
+      "flatTag" : 45,
+      "name" : "UnIData"
+    } ],
+    "cardanoScriptHash" : "182e4ce48ffcb9b6284abcc576e8cb726cca85a9e7e3f2e47e7581bc",
+    "compiledCodeSha256" : "aa14d12ea2bf3fdabd96e180f2ae324b2527134201dea489b62c156f3366b99e",
+    "dslIrSchemaVersion" : 10,
+    "dslIrSha256" : "46557f052dc6501b1fc5cf6d5cccb343d71d2ede544fd562fc04b18a5fff7410",
+    "fuel" : 5000,
+    "fuelBounded" : true,
+    "fuelScope" : "Only executions completing within the pinned CEK fuel bound are covered; fuel-exhausted executions are outside the claim.",
+    "generatedLeanSha256" : "0100dd73c9edea34b643a26db8d93de050b1b228451eaab25b175da51bf1edf7",
+    "globalMultiInputLinkageModeled" : false,
+    "kind" : "validator",
+    "ledgerValidityModeled" : true,
+    "propertyId" : "VacuousReviewedAdapters.dsl-property-set",
+    "propertyIrSha256" : "f4ea0c6c8beca71d11d71e7c0c61ab488104e90bbdb7ff9fa2ddf54cc29b17f8",
+    "propertyPath" : "/Users/satya/work/bloxbean/julc/verification/e4l/VacuousReviewedAdaptersSpec.java",
+    "propertyTemplate" : "julc.dsl-ledger/v1",
+    "protocolVersion" : 11,
+    "recursiveDepth" : 4,
+    "reviewedRawDataAdapterAudit" : {
+      "schemaVersion" : 1,
+      "sha256" : "e86733f73e990e66a5bb5b445d56670517d1f7883657e951326767d0faf723a1"
+    },
+    "scriptPurpose" : "spending",
+    "validatorTitle" : "VacuousReviewedAdapters"
+  },
+  "inputs" : {
+    "acquireLogSha256" : "447142c01d33a2b72845d590b15956e174532d846a64153ae21c7b31f423ecce",
+    "projectLeanSha256" : "0100dd73c9edea34b643a26db8d93de050b1b228451eaab25b175da51bf1edf7",
+    "propertyIrSha256" : "f4ea0c6c8beca71d11d71e7c0c61ab488104e90bbdb7ff9fa2ddf54cc29b17f8",
+    "runnerPlanSha256" : "c78fc2c2598446e473fa9a3454560bd6013d22446aea580846beae9105816a72",
+    "verificationManifestSha256" : "696489178caa2b2f4835162d21406aac56d8905839be2568c0950d15db0438b3",
+    "verifyLogSha256" : "68e1b1e2a048ad7e8b1ffde29e72822f2471409a3d3fbbcd4df90b1f6ddfc7cd"
+  },
+  "phases" : [ {
+    "id" : "backend",
+    "phase" : "acquire",
+    "status" : "PASSED",
+    "exitCode" : 0,
+    "log" : "verification-results/backend.log",
+    "logSha256" : "cf62c10b627a6113e8d42ef11dc1796bd5951789f6466985b3f57729bf1fd4a2"
+  }, {
+    "id" : "lake-update",
+    "phase" : "acquire",
+    "status" : "PASSED",
+    "exitCode" : 0,
+    "log" : "verification-results/acquire-01-lake-update.log",
+    "logSha256" : "567b58d6907ebe46d287f77d31ada84dc1ba3aeeb41f7bfcd7125bf924ca7010"
+  }, {
+    "id" : "build-pinned-dependencies",
+    "phase" : "acquire",
+    "status" : "PASSED",
+    "exitCode" : 0,
+    "log" : "verification-results/acquire-02-build-pinned-dependencies.log",
+    "logSha256" : "84b7ecd4c23f194449b31ba3b2e6ecdd38ce1140b49035c6f95634928b8562c4"
+  }, {
+    "id" : "revision-blaster",
+    "phase" : "acquire",
+    "status" : "PASSED",
+    "exitCode" : 0,
+    "log" : "verification-results/revision-blaster.log",
+    "logSha256" : "1d7b135cb99e69fe5f07d661d8634534b1107c2bd16c5c587e790dee8777d92b"
+  }, {
+    "id" : "revision-plutuscore",
+    "phase" : "acquire",
+    "status" : "PASSED",
+    "exitCode" : 0,
+    "log" : "verification-results/revision-plutuscore.log",
+    "logSha256" : "cff7a93830bd7e252f770b08b3e446d72f04f098b9473243a5a5497320622d0b"
+  }, {
+    "id" : "revision-cardanoledgerapi",
+    "phase" : "acquire",
+    "status" : "PASSED",
+    "exitCode" : 0,
+    "log" : "verification-results/revision-cardanoledgerapi.log",
+    "logSha256" : "de899bd5dae963278bc47c5bf53f76441e2fc4ef6226bb89c085020ce082c282"
+  }, {
+    "id" : "check-non-vacuity-reviewed_non_vacuity_control",
+    "phase" : "verify",
+    "status" : "PASSED",
+    "exitCode" : 4,
+    "log" : "verification-results/verify-01-check-non-vacuity-reviewed_non_vacuity_control.log",
+    "logSha256" : "4f64630483e7e65aee42b2fba2d8b1778d4a59900b4fc39eda76cf68b5eb2f1e"
+  }, {
+    "id" : "prove-dsl-reviewed_non_vacuity_control",
+    "phase" : "verify",
+    "status" : "SKIPPED",
+    "exitCode" : null,
+    "log" : null,
+    "logSha256" : null
+  } ],
+  "properties" : [ {
+    "id" : "reviewed.non-vacuity-control.non-vacuity",
+    "outcome" : "COULD-NOT-EVALUATE",
+    "reason" : "property-vacuous",
+    "domain" : "VALID_SPENDING_V3_PINNED",
+    "guaranteeSha256" : "d52a827c0493997ff6bd856c6694942d44e9f32a65816d87d4a9340de6f7cb6b",
+    "envelopeSha256" : "98e09203d9cdcb98a28868792237fe03c3d2f23e6732050013f3b863589b31b6",
+    "capabilities" : [ "adapter.validity-range.pinned-v1", "dsl.ledger.context", "dsl.option.exists", "dsl.schema.typed-field", "dsl.schema.typed-root", "encoding.isDataV3", "field.scriptContext.scriptInfo", "field.scriptContext.txInfo", "ledger.validSpendingContext", "purpose.spending" ],
+    "guaranteeRules" : [ "ledger-field:SCRIPT_CONTEXT.txInfo", "ledger-root:ledgerContext", "option-exists", "reviewed-adapter:VALIDITY_CONTAINS", "typed-field:VacuousReviewedAdapters.Datum.deadline", "typed-root:typedDatum", "typed-variable" ],
+    "domainImplied" : false,
+    "governanceDataScopes" : [ ],
+    "strictGovernanceActionDecoding" : false,
+    "fullProposalEquality" : false,
+    "currentVotingPurposeModeled" : false,
+    "currentProposingPurposeModeled" : false,
+    "counterexampleDomain" : "BLASTER_VALID_SPENDING_SUPERSET",
+    "ledgerValidCounterexampleEstablished" : false,
+    "concreteVmCounterexampleReproduced" : false
+  }, {
+    "id" : "reviewed.non-vacuity-control",
+    "outcome" : "COULD-NOT-EVALUATE",
+    "reason" : "not-evaluated-vacuous",
+    "domain" : "VALID_SPENDING_V3_PINNED",
+    "guaranteeSha256" : "d52a827c0493997ff6bd856c6694942d44e9f32a65816d87d4a9340de6f7cb6b",
+    "envelopeSha256" : "98e09203d9cdcb98a28868792237fe03c3d2f23e6732050013f3b863589b31b6",
+    "capabilities" : [ "adapter.validity-range.pinned-v1", "dsl.ledger.context", "dsl.option.exists", "dsl.schema.typed-field", "dsl.schema.typed-root", "encoding.isDataV3", "field.scriptContext.scriptInfo", "field.scriptContext.txInfo", "ledger.validSpendingContext", "purpose.spending" ],
+    "guaranteeRules" : [ "ledger-field:SCRIPT_CONTEXT.txInfo", "ledger-root:ledgerContext", "option-exists", "reviewed-adapter:VALIDITY_CONTAINS", "typed-field:VacuousReviewedAdapters.Datum.deadline", "typed-root:typedDatum", "typed-variable" ],
+    "domainImplied" : false,
+    "governanceDataScopes" : [ ],
+    "strictGovernanceActionDecoding" : false,
+    "fullProposalEquality" : false,
+    "currentVotingPurposeModeled" : false,
+    "currentProposingPurposeModeled" : false,
+    "counterexampleDomain" : "BLASTER_VALID_SPENDING_SUPERSET",
+    "ledgerValidCounterexampleEstablished" : false,
+    "concreteVmCounterexampleReproduced" : false
+  } ]
+}

@@ -1,0 +1,9 @@
+/- Generated fallback that identifies an always-failing validator. -/
+import AuthorizedThresholdGate_authorization_two_of_three_thresholdObligation
+
+namespace JulcGenerated.AuthorizedThresholdGate_authorization_two_of_three_threshold
+
+theorem validatorHasNoSuccessfulInput : hasNoSuccessfulInput := by
+  blaster
+
+end JulcGenerated.AuthorizedThresholdGate_authorization_two_of_three_threshold

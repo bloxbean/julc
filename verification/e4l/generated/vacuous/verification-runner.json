@@ -1,0 +1,60 @@
+{
+  "acquire" : [ {
+    "command" : [ "lake", "update" ],
+    "expectedExitCodes" : [ 0 ],
+    "id" : "lake-update",
+    "maxAttempts" : 3
+  }, {
+    "command" : [ "lake", "build", "@PlutusCore/PlutusCore", "@CardanoLedgerApi/CardanoLedgerApi", "@Blaster/Blaster", "GeneratedVerificationSupport" ],
+    "expectedExitCodes" : [ 0 ],
+    "id" : "build-pinned-dependencies"
+  } ],
+  "kind" : "generated-workspace",
+  "manifest" : "verification-manifest.json",
+  "schemaVersion" : 2,
+  "timeoutSeconds" : 1800,
+  "verify" : [ {
+    "command" : [ "scripts/verify-reviewed_non_vacuity_control-non-vacuity.sh" ],
+    "executableSha256" : "087447dff251574264efddfa2f515168ce82d32214220105d79fed6b547b80c4",
+    "id" : "check-non-vacuity-reviewed_non_vacuity_control",
+    "outcomes" : [ {
+      "exitCode" : 0,
+      "reason" : "expected-negative-control",
+      "requiredOutput" : "NON-VACUOUS: successful input witness exists",
+      "result" : "REFUTED"
+    }, {
+      "exitCode" : 4,
+      "reason" : "property-vacuous",
+      "requiredOutput" : "VACUOUS: validator has no successful input",
+      "result" : "COULD-NOT-EVALUATE"
+    }, {
+      "exitCode" : 2,
+      "reason" : "non-vacuity-undetermined",
+      "requiredOutput" : "COULD-NOT-EVALUATE: non-vacuity",
+      "result" : "COULD-NOT-EVALUATE"
+    } ],
+    "propertyId" : "reviewed.non-vacuity-control.non-vacuity"
+  }, {
+    "command" : [ "scripts/verify-reviewed_non_vacuity_control.sh" ],
+    "executableSha256" : "c849995ad781968b47e68b6a141e860f6d643943b18fd8bc7b4e76440f3ac004",
+    "id" : "prove-dsl-reviewed_non_vacuity_control",
+    "nonVacuityGuardPropertyId" : "reviewed.non-vacuity-control.non-vacuity",
+    "outcomes" : [ {
+      "exitCode" : 0,
+      "reason" : "dsl-property-established",
+      "requiredOutput" : "SMT-VALID: DSL property reviewed.non-vacuity-control established",
+      "result" : "SMT-VALID"
+    }, {
+      "exitCode" : 3,
+      "reason" : "dsl-property-counterexample",
+      "requiredOutput" : "REFUTED: DSL property reviewed.non-vacuity-control counterexample found",
+      "result" : "REFUTED"
+    }, {
+      "exitCode" : 2,
+      "reason" : "dsl-property-undetermined",
+      "requiredOutput" : "COULD-NOT-EVALUATE: DSL property reviewed.non-vacuity-control",
+      "result" : "COULD-NOT-EVALUATE"
+    } ],
+    "propertyId" : "reviewed.non-vacuity-control"
+  } ]
+}

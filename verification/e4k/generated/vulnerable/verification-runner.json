@@ -1,0 +1,60 @@
+{
+  "acquire" : [ {
+    "command" : [ "lake", "update" ],
+    "expectedExitCodes" : [ 0 ],
+    "id" : "lake-update",
+    "maxAttempts" : 3
+  }, {
+    "command" : [ "lake", "build", "@PlutusCore/PlutusCore", "@CardanoLedgerApi/CardanoLedgerApi", "@Blaster/Blaster", "GeneratedVerificationSupport" ],
+    "expectedExitCodes" : [ 0 ],
+    "id" : "build-pinned-dependencies"
+  } ],
+  "kind" : "generated-workspace",
+  "manifest" : "verification-manifest.json",
+  "schemaVersion" : 2,
+  "timeoutSeconds" : 1800,
+  "verify" : [ {
+    "command" : [ "scripts/verify-governance_hard_fork_v11-non-vacuity.sh" ],
+    "executableSha256" : "d43aea602d91655eedbe6547e840a5c677f6d9f37c2e67aaa34f050716f5d1a2",
+    "id" : "check-non-vacuity-governance_hard_fork_v11",
+    "outcomes" : [ {
+      "exitCode" : 0,
+      "reason" : "expected-negative-control",
+      "requiredOutput" : "NON-VACUOUS: successful input witness exists",
+      "result" : "REFUTED"
+    }, {
+      "exitCode" : 4,
+      "reason" : "property-vacuous",
+      "requiredOutput" : "VACUOUS: validator has no successful input",
+      "result" : "COULD-NOT-EVALUATE"
+    }, {
+      "exitCode" : 2,
+      "reason" : "non-vacuity-undetermined",
+      "requiredOutput" : "COULD-NOT-EVALUATE: non-vacuity",
+      "result" : "COULD-NOT-EVALUATE"
+    } ],
+    "propertyId" : "governance.hard-fork-v11.non-vacuity"
+  }, {
+    "command" : [ "scripts/verify-governance_hard_fork_v11.sh" ],
+    "executableSha256" : "931ea24dbb7653049614820a1c6f4258aa03f7211d5588c72f8f6527f903aec4",
+    "id" : "prove-dsl-governance_hard_fork_v11",
+    "nonVacuityGuardPropertyId" : "governance.hard-fork-v11.non-vacuity",
+    "outcomes" : [ {
+      "exitCode" : 0,
+      "reason" : "dsl-property-established",
+      "requiredOutput" : "SMT-VALID: DSL property governance.hard-fork-v11 established",
+      "result" : "SMT-VALID"
+    }, {
+      "exitCode" : 3,
+      "reason" : "dsl-property-counterexample",
+      "requiredOutput" : "REFUTED: DSL property governance.hard-fork-v11 counterexample found",
+      "result" : "REFUTED"
+    }, {
+      "exitCode" : 2,
+      "reason" : "dsl-property-undetermined",
+      "requiredOutput" : "COULD-NOT-EVALUATE: DSL property governance.hard-fork-v11",
+      "result" : "COULD-NOT-EVALUATE"
+    } ],
+    "propertyId" : "governance.hard-fork-v11"
+  } ]
+}

@@ -1,0 +1,9 @@
+/- Generated fallback that identifies an always-failing validator. -/
+import VulnerableThresholdGate_authorization_vulnerable_thresholdObligation
+
+namespace JulcGenerated.VulnerableThresholdGate_authorization_vulnerable_threshold
+
+theorem validatorHasNoSuccessfulInput : hasNoSuccessfulInput := by
+  blaster
+
+end JulcGenerated.VulnerableThresholdGate_authorization_vulnerable_threshold

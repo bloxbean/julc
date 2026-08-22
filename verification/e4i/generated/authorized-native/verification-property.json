@@ -1,0 +1,26 @@
+{
+  "schemaVersion" : 3,
+  "template" : "julc.dsl-ledger/v1",
+  "propertyId" : "AuthorizedDRepRegistration.dsl-property-set",
+  "validatorTitle" : "AuthorizedDRepRegistration",
+  "scriptPurpose" : "certifying",
+  "sourcePath" : "/Users/satya/work/bloxbean/julc/verification/e4i/AuthorizedCertificatePayloadSpec.java",
+  "canonicalDslJson" : "{\"contractSchemaSha256\":\"50ada3069d97bce5064e5642c1b5cc0a1e088fab6a4eefe42bfbd24bdfe28824\",\"properties\":[{\"domain\":\"VALID_CERTIFYING_V3_PINNED\",\"expression\":{\"op\":\"ledger-variant-when\",\"constructor\":\"TxCertRegDRep\",\"predicate\":{\"op\":\"compare\",\"left\":{\"op\":\"ledger-variant-field\",\"constructor\":\"TxCertRegDRep\",\"name\":\"deposit\",\"sumType\":{\"type\":\"ledger\",\"ledgerType\":\"TX_CERT\"},\"target\":{\"op\":\"typed-variable\",\"valueType\":{\"type\":\"ledger\",\"ledgerType\":\"TX_CERT\"},\"variable\":\"v0\"},\"valueType\":{\"type\":\"builtin\",\"builtin\":\"INTEGER\"}},\"operator\":\"EQ\",\"right\":{\"op\":\"literal\",\"resultType\":\"INTEGER\",\"value\":\"1\"}},\"sumType\":{\"type\":\"ledger\",\"ledgerType\":\"TX_CERT\"},\"value\":{\"op\":\"ledger-root\",\"name\":\"currentCertificate\",\"valueType\":{\"type\":\"ledger\",\"ledgerType\":\"TX_CERT\"}},\"variable\":\"v0\"},\"id\":\"certificate.registration-deposit\"}],\"purpose\":\"CERTIFYING\",\"schemaVersion\":7}",
+  "claims" : [ {
+    "id" : "certificate.registration-deposit",
+    "generatedName" : "certificate_registration_deposit",
+    "domain" : "VALID_CERTIFYING_V3_PINNED",
+    "guaranteeSha256" : "4a3b170ce68060077aa0bedf27e637ba72c4c58f5cd85772f40b824c2086a1d9",
+    "envelopeSha256" : "608ceaecffaaa31b61ad8f17c6093656aecc12eef7e8489bc2154b242877a4a9",
+    "capabilities" : [ "constructor.txCert.regDRep", "field.scriptContext.scriptInfo", "ledger.validCertifyingContext", "purpose.certifying" ],
+    "guaranteeRules" : [ "compare:EQ", "integer-literal", "ledger-root:currentCertificate", "ledger-variant-field:TX_CERT.TxCertRegDRep.deposit", "ledger-variant-when:TX_CERT.TxCertRegDRep", "typed-variable" ],
+    "counterexampleDomain" : "BLASTER_VALID_CERTIFYING_SUPERSET",
+    "ledgerValidCounterexampleEstablished" : false,
+    "concreteVmCounterexampleReproduced" : false
+  } ],
+  "domainAssumptions" : [ "validCertifyingContext/v3-pinned" ],
+  "guaranteeRules" : [ "compare:EQ", "integer-literal", "ledger-root:currentCertificate", "ledger-variant-field:TX_CERT.TxCertRegDRep.deposit", "ledger-variant-when:TX_CERT.TxCertRegDRep", "typed-variable" ],
+  "ledgerValidityModeled" : true,
+  "projectedContractTypesJson" : "{\"datumType\":null,\"definitions\":[{\"constructors\":[],\"fields\":[],\"nominalKind\":\"RECORD\",\"sourceName\":\"Redeemer\",\"stableId\":\"AuthorizedDRepRegistration.Redeemer\"}],\"parameters\":[],\"purpose\":\"CERTIFY\",\"redeemerType\":{\"type\":\"nominal\",\"nominalKind\":\"RECORD\",\"stableId\":\"AuthorizedDRepRegistration.Redeemer\"},\"schemaVersion\":1}",
+  "contractSchemaSha256" : "50ada3069d97bce5064e5642c1b5cc0a1e088fab6a4eefe42bfbd24bdfe28824"
+}

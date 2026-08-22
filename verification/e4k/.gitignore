@@ -1,0 +1,4 @@
+fixtures/governance-data/build/
+generated/*/.lake/
+generated/*/verification-results/
+generated/*/.julc/

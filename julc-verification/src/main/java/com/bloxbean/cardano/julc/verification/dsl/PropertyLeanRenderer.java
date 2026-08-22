@@ -2,6 +2,8 @@ package com.bloxbean.cardano.julc.verification.dsl;
 
 import com.bloxbean.cardano.julc.verification.dsl.ir.*;
 
+import java.util.Map;
+
 /** Deterministic, auditable Lean expression renderer for admitted DSL v1 nodes. */
 public final class PropertyLeanRenderer {
     private PropertyLeanRenderer() { }
@@ -15,18 +17,42 @@ public final class PropertyLeanRenderer {
         return result.toString();
     }
 
+    public static String renderExpression(PropertyNode expression) {
+        return renderNode(expression, Map.of());
+    }
+
+    /** Render with reviewed symbolic-root bindings supplied by the generic envelope. */
+    public static String renderExpression(
+            PropertyNode expression, Map<String, String> rootBindings) {
+        return renderNode(expression, Map.copyOf(rootBindings));
+    }
+
     private static String renderNode(PropertyNode node) {
+        return renderNode(node, Map.of());
+    }
+
+    private static String renderNode(PropertyNode node, Map<String, String> rootBindings) {
         if (node instanceof RootNode root) {
+            String bound = rootBindings.get(root.name());
+            if (bound != null) return bound;
             return switch (root.name()) {
                 case "context" -> "ctx";
                 case "exactUplcSucceeds" -> "exactUplcSucceeds ctx";
                 case "validSpendingContext" -> "validSpendingContext ctx";
+                case "validMintingContext" -> "blasterValidMintingContext ctx";
+                case "validRewardingContext" -> "blasterValidRewardingContext ctx";
+                case "validCertifyingContext" -> "blasterValidCertifyingContext ctx";
+                case "ownPolicy" -> "ownPolicyOf ctx";
+                case "rewardingCredential" -> "rewardingCredentialOf ctx";
+                case "certificate" -> "certificateOf ctx";
+                case "certificateIndex" -> "certificateIndexOf ctx";
+                case "redeemerStrictlyDecodes" -> "redeemerStrictlyDecodes ctx";
                 case "datum" -> "strictDatum ctx";
                 default -> root.name();
             };
         }
         if (node instanceof FieldNode field) {
-            String target = renderNode(field.target());
+            String target = renderNode(field.target(), rootBindings);
             if (field.target().resultType() == DslType.DATA) {
                 return target + "." + field.name();
             }
@@ -34,10 +60,16 @@ public final class PropertyLeanRenderer {
                 case "SCRIPT_CONTEXT.txInfo" -> target + ".scriptContextTxInfo";
                 case "TX_INFO.signatories" -> target + ".txInfoSignatories";
                 case "TX_INFO.outputs" -> target + ".txInfoOutputs";
+                case "TX_INFO.inputs" -> target + ".txInfoInputs";
+                case "TX_INFO.mint" -> target + ".txInfoMint";
+                case "TX_INFO.withdrawals" -> target + ".txInfoWdrl";
+                case "TX_INFO.certificates" -> target + ".txInfoTxCerts";
                 case "TX_OUT.address" -> target + ".txOutAddress";
                 case "TX_OUT.value" -> target + ".txOutValue";
                 case "ADDRESS.credential" -> target + ".addressCredential";
                 case "VALUE.lovelace" -> "lovelaceOf " + target;
+                case "WITHDRAWAL_ENTRY.credential" -> target + ".1";
+                case "WITHDRAWAL_ENTRY.amount" -> target + ".2";
                 default -> throw new IllegalArgumentException("No Lean field mapping for " + field);
             };
         }
@@ -45,17 +77,50 @@ public final class PropertyLeanRenderer {
             String op = switch (binary.operator()) {
                 case AND -> "&&";
                 case OR -> "||";
-                case IMPLIES -> "(!" + parenthesize(renderNode(binary.left())) + ") ||";
+                case IMPLIES -> "(!" + parenthesize(renderNode(binary.left(), rootBindings)) + ") ||";
             };
             if (binary.operator() == BoolOperator.IMPLIES) {
-                return parenthesize(op + " " + parenthesize(renderNode(binary.right())));
+                return parenthesize(op + " " + parenthesize(renderNode(binary.right(), rootBindings)));
             }
-            return parenthesize(renderNode(binary.left()) + " " + op + " "
-                    + renderNode(binary.right()));
+            return parenthesize(renderNode(binary.left(), rootBindings) + " " + op + " "
+                    + renderNode(binary.right(), rootBindings));
         }
         if (node instanceof ContainsNode contains) {
-            return "List.elem " + renderNode(contains.value()) + " "
-                    + renderNode(contains.collection());
+            return "List.elem " + parenthesize(renderNode(contains.value(), rootBindings)) + " "
+                    + parenthesize(renderNode(contains.collection(), rootBindings));
+        }
+        if (node instanceof ConsumesNode consumes) {
+            return "utxoConsumed " + parenthesize(renderNode(consumes.outputReference(), rootBindings)) + " "
+                    + parenthesize(renderNode(consumes.inputs(), rootBindings));
+        }
+        if (node instanceof ExactOwnPolicyAssetNode exact) {
+            return "exactOwnPolicyAsset " + parenthesize(renderNode(exact.policy(), rootBindings)) + " "
+                    + parenthesize(renderNode(exact.tokenName(), rootBindings)) + " "
+                    + parenthesize(renderNode(exact.quantity(), rootBindings)) + " "
+                    + parenthesize(renderNode(exact.mint(), rootBindings));
+        }
+        if (node instanceof TxCertKindNode kind) {
+            String constructor = switch (kind.kind()) {
+                case REG_STAKING -> "TxCertRegStaking";
+                case UNREG_STAKING -> "TxCertUnRegStaking";
+                case DELEG_STAKING -> "TxCertDelegStaking";
+                case REG_DELEG -> "TxCertRegDeleg";
+                case REG_DREP -> "TxCertRegDRep";
+                case UPDATE_DREP -> "TxCertUpdateDRep";
+                case UNREG_DREP -> "TxCertUnRegDRep";
+                case POOL_REGISTER -> "TxCertPoolRegister";
+                case POOL_RETIRE -> "TxCertPoolRetire";
+                case AUTH_HOT_COMMITTEE -> "TxCertAuthHotCommittee";
+                case RESIGN_COLD_COMMITTEE -> "TxCertResignColdCommittee";
+            };
+            return "match " + parenthesize(renderNode(kind.certificate(), rootBindings))
+                    + " with | ." + constructor + " .. => true | _ => false";
+        }
+        if (node instanceof KnownCertificateNode known) {
+            return "CardanoLedgerApi.V3.Contexts.isKnownCertificate "
+                    + parenthesize(renderNode(known.certificate(), rootBindings)) + " "
+                    + parenthesize(renderNode(known.index(), rootBindings)) + " "
+                    + parenthesize(renderNode(known.certificates(), rootBindings));
         }
         if (node instanceof CompareNode comparison) {
             String op = switch (comparison.operator()) {
@@ -66,18 +131,34 @@ public final class PropertyLeanRenderer {
                 case GT -> ">";
                 case GE -> ">=";
             };
-            return parenthesize(renderNode(comparison.left()) + " " + op + " "
-                    + renderNode(comparison.right()));
+            return parenthesize(renderNode(comparison.left(), rootBindings) + " " + op + " "
+                    + renderNode(comparison.right(), rootBindings));
         }
         if (node instanceof CredentialKeyHashNode match) {
-            return parenthesize(renderNode(match.credential())
-                    + " == Credential.PubKeyCredential " + renderNode(match.keyHash()));
+            return parenthesize("match " + renderNode(match.credential(), rootBindings)
+                    + " with | .PubKeyCredential actualKeyHash => actualKeyHash == "
+                    + renderNode(match.keyHash(), rootBindings)
+                    + " | .ScriptCredential _ => false");
         }
         if (node instanceof ExistsNode exists) {
-            return "List.any (fun " + exists.variable() + " => "
-                    + renderNode(exists.predicate()) + ") " + renderNode(exists.collection());
+            String binderType = switch (exists.collection().resultType()) {
+                case LIST_TX_OUT -> "CardanoLedgerApi.V2.TxOut";
+                case WITHDRAWALS -> "CardanoLedgerApi.V2.Credential × Int";
+                default -> throw new IllegalArgumentException(
+                        "No Lean binder type for " + exists.collection().resultType());
+            };
+            return "List.any " + parenthesize(renderNode(exists.collection(), rootBindings))
+                    + " (fun (" + exists.variable()
+                    + " : " + binderType + ") => "
+                    + renderNode(exists.predicate(), rootBindings) + ")";
         }
         if (node instanceof LiteralNode literal) return literal.value();
+        if (node instanceof BytesLiteralNode literal) return leanByteString(literal.hex());
+        if (node instanceof TxOutRefLiteralNode reference) {
+            return "(CardanoLedgerApi.V3.Tx.TxOutRef.mk "
+                    + leanByteString(reference.transactionIdHex()) + " "
+                    + reference.outputIndex() + ")";
+        }
         throw new IllegalArgumentException("Unsupported node " + node);
     }
 
@@ -85,5 +166,13 @@ public final class PropertyLeanRenderer {
 
     private static String leanName(String id) {
         return id.replaceAll("[^A-Za-z0-9_]", "_");
+    }
+
+    private static String leanByteString(String hex) {
+        var result = new StringBuilder("\"");
+        for (int index = 0; index < hex.length(); index += 2) {
+            result.append("\\x").append(hex, index, index + 2);
+        }
+        return "(" + result.append('"') + " : ByteString)";
     }
 }

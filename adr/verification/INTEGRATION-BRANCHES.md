@@ -7,28 +7,45 @@ decisions in the linked ADRs.
 ## Shared foundation
 
 - **Branch:** `main`
-- **Recorded point:** `321669b` (PR #85), superseded normally by later `main`
+- **Recorded point:** `bcfc3c7` (PR #86), superseded normally by later `main`
   commits.
 - **Included foundation:** C.1–C.7, managed local/Docker execution, strict
   `strict-data-v1` compiler boundaries, purpose-indexed CIP-57 blueprints, and
-  line-oriented verification progress.
+  line-oriented verification progress. ADR-016 E.1 capability inventory, E.2
+  typed AST prototype, and E.3 seller-payment vertical slice are also landed.
 - **Rule:** new verification milestone branches start from current `main`
   after their prerequisite integration PR has landed.
 
 ## Active integration branches
 
-### Typed verification DSL
+### Typed verification DSL E.4
 
-- **Branch:** `feat/typed_verified_dsl`
-- **ADR:** [ADR-016](016-typed-verification-dsl-and-profile-catalog.md)
-- **Base:** updated from `main` by merge commit `6a58b34`
-- **Pull request:** #86
-- **Current scope:** E.1 capability inventory, E.2 typed AST prototype, and
-  E.3 seller-payment vertical slice are integrated. E.3 has been refreshed
-  against `strict-data-v1`; its fixtures contain no handwritten raw-shape
-  checks and its four expected classifications reproduce.
-- **Next scope:** merge PR #86, then begin E.4a minting on a separate milestone
-  branch and pull request.
+- **Integration branch:** `feat/typed-verification-dsl-e4`
+- **Parent ADR:** [ADR-016](016-typed-verification-dsl-and-profile-catalog.md)
+- **Base:** `bcfc3c7`, the PR #86 merge on `main`
+- **Completed milestone branch:**
+  `feat/typed-verification-dsl-e4a-minting`
+- **Completed milestone ADR:**
+  [ADR-018](018-milestone-e4a-typed-minting-dsl.md)
+- **Current milestone branch:**
+  `feat/typed-verification-dsl-e4d-certifying`
+- **Current milestone ADR:**
+  [ADR-021](021-milestone-e4d-typed-certifying-dsl.md)
+- **Current scope:** E.4d certifying purpose selection, typed certificate kind
+  and indexed-list relations, certifying ledger-domain bridge, and exact
+  local/Docker/native evidence.
+- **Current state:** ADR-018 E.4a.1–E.4a.4 were committed as `da92873` and
+  merged non-fast-forward into this integration branch as `bf9ecaf`. Manual
+  review, local/Docker evidence, and GraalVM native verification are complete.
+  ADR-019 E.4b.1–E.4b.4 were committed as `0481459` after review and merged as
+  `c97a1be`. ADR-020 E.4c was committed as `dbc6984` and merged as `7382815`;
+  local, Docker, native-CLI, exact-VM, refuted, duplicate, and vacuity controls
+  pass. ADR-021 E.4d is implemented on its dedicated milestone branch; exact
+  VM, local, Docker, native-CLI, constructor/index, strengthened-domain,
+  refuted, and vacuity controls pass.
+- **Next scope:** merge E.4d into this integration branch after its scoped
+  commit. Any later purpose slice extends the generic semantic inventory rather
+  than adding a fixed-formula resolver.
 
 Milestone work is developed on a dedicated feature branch and merged with a
 non-fast-forward merge into this integration branch. Existing examples are:
@@ -36,8 +53,22 @@ non-fast-forward merge into this integration branch. Existing examples are:
 - `feat/typed-verification-dsl-e1-capability-inventory`
 - `feat/typed-verification-dsl-e2-typed-ast`
 - `feat/typed-verification-dsl-e3-payment`
+- `feat/typed-verification-dsl-e4a-minting`
+- `feat/typed-verification-dsl-e4b-composition`
+- `feat/typed-verification-dsl-e4c-rewarding`
+- `feat/typed-verification-dsl-e4d-certifying`
 
 ## Landed prerequisite branches
+
+### Typed verification DSL E.1–E.3
+
+- **Branch:** `feat/typed_verified_dsl`
+- **ADR:** [ADR-016](016-typed-verification-dsl-and-profile-catalog.md)
+- **Landed:** PR #86 (`bcfc3c7`)
+- **Outcome:** E.1 capability inventory, E.2 typed AST prototype, and E.3
+  seller-payment vertical slice are on `main`. E.3 uses `strict-data-v1`, its
+  fixtures contain no handwritten raw-shape checks, and its four expected
+  classifications reproduce.
 
 ### Strict on-chain data boundaries
 
@@ -81,19 +112,25 @@ post-merge DSL compatibility fix is part of PR #86.
 ## Dependency and merge order
 
 ```text
-main (C.1-C.7 + strict boundaries + purpose-indexed blueprints)
-  -> feat/typed_verified_dsl (E.1-E.3, PR #86)
-      -> merge to main
-          -> ADR-016 E.4a minting milestone branch
+main (C.1-C.7 + strict boundaries + purpose-indexed blueprints + E.1-E.3)
+  -> feat/typed-verification-dsl-e4 (E.4 integration)
+      -> feat/typed-verification-dsl-e4a-minting (ADR-018)
+          -> merged to E.4 integration after manual review
+      -> feat/typed-verification-dsl-e4b-composition (ADR-019)
+          -> merge to E.4 integration after manual review
+      -> feat/typed-verification-dsl-e4c-rewarding (ADR-020)
+          -> merged to E.4 integration after completed evidence and review
+      -> feat/typed-verification-dsl-e4d-certifying (ADR-021)
+          -> merge to E.4 integration after completed evidence and review
 ```
 
 Preferred landing sequence:
 
-1. Review and merge PR #86 after its strict E.3 evidence and CI pass.
-2. Update current `main` before creating the E.4a branch.
-3. Give E.4a a detailed semantic sub-ADR, positive/vulnerable/malformed/vacuous
-   controls, and its own manual review point.
-4. Keep later compiler and blueprint work independent of the experimental DSL
+1. Keep completed E.4a–E.4d commits scoped and merged non-fast-forward into
+   `feat/typed-verification-dsl-e4`.
+2. Extend only the generic schema-3 promotion path; do not add another
+   fixed-formula resolver.
+3. Keep compiler and blueprint work independent of the experimental DSL
    unless a separate accepted ADR changes that module boundary.
 
 ## Maintenance rules
