@@ -18,7 +18,9 @@ public final class DslPropertyCanonicalizer {
                 && propertySet.schemaVersion() != DslPropertySet.TYPED_SCHEMA_VERSION
                 && propertySet.schemaVersion() != DslPropertySet.LEDGER_SCHEMA_VERSION
                 && propertySet.schemaVersion()
-                        != DslPropertySet.AUTHORIZATION_SCHEMA_VERSION) {
+                        != DslPropertySet.AUTHORIZATION_SCHEMA_VERSION
+                && propertySet.schemaVersion()
+                        != DslPropertySet.CERTIFICATE_PAYLOAD_SCHEMA_VERSION) {
             return propertySet;
         }
         List<DslProperty> properties = propertySet.properties().stream()

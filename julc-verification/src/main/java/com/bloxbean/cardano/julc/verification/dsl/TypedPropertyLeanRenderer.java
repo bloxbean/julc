@@ -34,11 +34,12 @@ public final class TypedPropertyLeanRenderer {
         }
         if (node instanceof TypedVariableNode variable) return variable.variable();
         if (node instanceof LedgerRootNode root) {
-            if (!"ledgerContext".equals(root.name())) {
-                throw new IllegalArgumentException(
+            return switch (root.name()) {
+                case "ledgerContext" -> "ctx";
+                case "currentCertificate" -> "certificateOf ctx";
+                default -> throw new IllegalArgumentException(
                         "No Lean mapping for ledger root " + root.name());
-            }
-            return "ctx";
+            };
         }
         if (node instanceof TypedFieldNode field) {
             return render(field.target(), definitions, variantFields)
@@ -104,6 +105,8 @@ public final class TypedPropertyLeanRenderer {
                     case "outputs" -> "(⟨" + target
                             + ".txInfoOutputs⟩ : JulcList CardanoLedgerApi.V2.TxOut)";
                     case "fee" -> target + ".txInfoFee";
+                    case "certificates" -> "(⟨" + target
+                            + ".txInfoTxCerts⟩ : JulcList TxCert)";
                     case "datums" -> "(⟨" + target
                             + ".txInfoData⟩ : JulcMap CardanoLedgerApi.V2.DatumHash Data)";
                     case "redeemers" -> "(⟨" + target

@@ -26,6 +26,8 @@ public record LedgerTypeRef(LedgerKind ledgerType) implements VerificationTypeRe
         SCRIPT_PURPOSE,
         CURRENCY_SYMBOL,
         TX_CERT,
+        DELEGATEE,
+        DREP,
         OPAQUE_VOTER,
         OPAQUE_PROPOSAL
     }

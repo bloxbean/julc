@@ -1,0 +1,9 @@
+/- Generated fallback that identifies an always-failing validator. -/
+import VulnerableDRepRegistration_certificate_vulnerable_registrationObligation
+
+namespace JulcGenerated.VulnerableDRepRegistration_certificate_vulnerable_registration
+
+theorem validatorHasNoSuccessfulInput : hasNoSuccessfulInput := by
+  blaster
+
+end JulcGenerated.VulnerableDRepRegistration_certificate_vulnerable_registration

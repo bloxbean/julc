@@ -1,0 +1,9 @@
+/- Generated SMT obligation for schema-3 DSL property certificate.vulnerable-registration. -/
+import VulnerableDRepRegistration_certificate_vulnerable_registrationObligation
+
+namespace JulcGenerated.VulnerableDRepRegistration_certificate_vulnerable_registration
+
+theorem composedPropertyEstablished : composedObligation := by
+  blaster
+
+end JulcGenerated.VulnerableDRepRegistration_certificate_vulnerable_registration

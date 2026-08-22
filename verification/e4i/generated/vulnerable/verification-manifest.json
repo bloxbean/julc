@@ -1,0 +1,105 @@
+{
+  "artifactFormat" : "double_cbor_hex",
+  "artifactId" : "vulnerable-drep-registration",
+  "blueprintEntryTitle" : "VulnerableDRepRegistration",
+  "boundarySemantics" : "strict-data-v1",
+  "builtinSemanticsVariant" : "E",
+  "builtins" : [ {
+    "name" : "EqualsInteger",
+    "flatTag" : 7
+  }, {
+    "name" : "IfThenElse",
+    "flatTag" : 26
+  }, {
+    "name" : "FstPair",
+    "flatTag" : 29
+  }, {
+    "name" : "SndPair",
+    "flatTag" : 30
+  }, {
+    "name" : "HeadList",
+    "flatTag" : 33
+  }, {
+    "name" : "TailList",
+    "flatTag" : 34
+  }, {
+    "name" : "NullList",
+    "flatTag" : 35
+  }, {
+    "name" : "UnConstrData",
+    "flatTag" : 42
+  }, {
+    "name" : "UnIData",
+    "flatTag" : 45
+  } ],
+  "capabilityInventory" : {
+    "ledgerApi" : "CardanoLedgerApiBlaster",
+    "ledgerVersion" : "V3",
+    "revision" : "5dab3c43f042b8735b6d067223baaa8d32ed28a1",
+    "schemaVersion" : 1,
+    "sha256" : "f55d08b47d71768e4ca67bcb417e6c556fdf55cfc6647c8ff45e73efe65675c8"
+  },
+  "cardanoScriptHash" : "772b872132b3807358758bb47450c9c269b4153a51d2f5432d62bff9",
+  "claims" : [ {
+    "id" : "certificate.vulnerable-registration",
+    "generatedName" : "certificate_vulnerable_registration",
+    "domain" : "VALID_CERTIFYING_V3_PINNED",
+    "guaranteeSha256" : "4a3b170ce68060077aa0bedf27e637ba72c4c58f5cd85772f40b824c2086a1d9",
+    "envelopeSha256" : "608ceaecffaaa31b61ad8f17c6093656aecc12eef7e8489bc2154b242877a4a9",
+    "capabilities" : [ "constructor.txCert.regDRep", "field.scriptContext.scriptInfo", "ledger.validCertifyingContext", "purpose.certifying" ],
+    "guaranteeRules" : [ "compare:EQ", "integer-literal", "ledger-root:currentCertificate", "ledger-variant-field:TX_CERT.TxCertRegDRep.deposit", "ledger-variant-when:TX_CERT.TxCertRegDRep", "typed-variable" ],
+    "counterexampleDomain" : "BLASTER_VALID_CERTIFYING_SUPERSET",
+    "ledgerValidCounterexampleEstablished" : false,
+    "concreteVmCounterexampleReproduced" : false
+  } ],
+  "compiledCodeSha256" : "de0892b5a6ea698e97db1b71902c38f9d40baf7b8cb385bd4d0bd328961099f5",
+  "dependencies" : {
+    "CardanoLedgerApiBlaster" : "5dab3c43f042b8735b6d067223baaa8d32ed28a1",
+    "Lean-blaster" : "083bae7971414d894b56b5bbf4108c63e17bc42a",
+    "PlutusCoreBlaster" : "7cf5a78c54b9694ef093bf49edb5d3799b2a49c9"
+  },
+  "domainAssumptions" : [ "validCertifyingContext/v3-pinned" ],
+  "dslIr" : {
+    "schemaVersion" : 7,
+    "sha256" : "0669b3d47169205143080791faf6abec5dcebf49d515579186a84ca3966b1c88"
+  },
+  "fuel" : 5000,
+  "generatedBy" : "julc verify init",
+  "generatedLeanSha256" : "9f296d5f31c0acc373a41c9b578d40982fdbc13162447284e2a1c1a0ea949b29",
+  "julcVersion" : "0.1.0-pre16",
+  "leanVersion" : "4.24.0",
+  "ledgerValidityModeled" : true,
+  "plutusLanguage" : "PlutusV3",
+  "project" : "e4i-certificate-payloads",
+  "properties" : [ {
+    "id" : "certificate.vulnerable-registration.non-vacuity",
+    "reason" : "not-run",
+    "result" : "COULD-NOT-EVALUATE"
+  }, {
+    "id" : "certificate.vulnerable-registration",
+    "reason" : "not-run",
+    "result" : "COULD-NOT-EVALUATE"
+  } ],
+  "propertyIr" : {
+    "contractSchemaSha256" : "3e51a0777ecc2357896225712d53cc970c68d7f1cddf308a358e5a554c39525e",
+    "path" : "verification-property.json",
+    "projectedContractTypesSha256" : "3e51a0777ecc2357896225712d53cc970c68d7f1cddf308a358e5a554c39525e",
+    "propertyId" : "VulnerableDRepRegistration.dsl-property-set",
+    "schemaVersion" : 3,
+    "sha256" : "1fe780dce3fb5dcd87a08e20e6f343d24155da68ee0c8ccccf52b79f489b2e6d",
+    "sourcePath" : "/Users/satya/work/bloxbean/julc/verification/e4i/VulnerableCertificatePayloadSpec.java",
+    "template" : "julc.dsl-ledger/v1"
+  },
+  "protocolVersion" : 11,
+  "recursiveDepth" : 4,
+  "runnerPlanSha256" : "e7b7a18a00d09080330e2cbd9c071d988c1738c8307fbd289d23f2d6733e05dc",
+  "schemaVersion" : 1,
+  "schemas" : [ {
+    "cip57" : "VulnerableDRepRegistration:Redeemer",
+    "lean" : "VulnerableDRepRegistrationRedeemer"
+  } ],
+  "scriptPurpose" : "certifying",
+  "uplcVersion" : "1.1.0",
+  "validatorTitle" : "VulnerableDRepRegistration",
+  "z3Version" : "4.15.2"
+}

@@ -1,0 +1,60 @@
+{
+  "acquire" : [ {
+    "command" : [ "lake", "update" ],
+    "expectedExitCodes" : [ 0 ],
+    "id" : "lake-update",
+    "maxAttempts" : 3
+  }, {
+    "command" : [ "lake", "build", "@PlutusCore/PlutusCore", "@CardanoLedgerApi/CardanoLedgerApi", "@Blaster/Blaster", "GeneratedVerificationSupport" ],
+    "expectedExitCodes" : [ 0 ],
+    "id" : "build-pinned-dependencies"
+  } ],
+  "kind" : "generated-workspace",
+  "manifest" : "verification-manifest.json",
+  "schemaVersion" : 2,
+  "timeoutSeconds" : 1800,
+  "verify" : [ {
+    "command" : [ "scripts/verify-certificate_registration_deposit-non-vacuity.sh" ],
+    "executableSha256" : "352440272581bc674095545ba104ede731c75374095932a0b57f40b938974ca6",
+    "id" : "check-non-vacuity-certificate_registration_deposit",
+    "outcomes" : [ {
+      "exitCode" : 0,
+      "reason" : "expected-negative-control",
+      "requiredOutput" : "NON-VACUOUS: successful input witness exists",
+      "result" : "REFUTED"
+    }, {
+      "exitCode" : 4,
+      "reason" : "property-vacuous",
+      "requiredOutput" : "VACUOUS: validator has no successful input",
+      "result" : "COULD-NOT-EVALUATE"
+    }, {
+      "exitCode" : 2,
+      "reason" : "non-vacuity-undetermined",
+      "requiredOutput" : "COULD-NOT-EVALUATE: non-vacuity",
+      "result" : "COULD-NOT-EVALUATE"
+    } ],
+    "propertyId" : "certificate.registration-deposit.non-vacuity"
+  }, {
+    "command" : [ "scripts/verify-certificate_registration_deposit.sh" ],
+    "executableSha256" : "cb9e45267c1caac46146bfe95371427034482196bcfc0f7da837278e4058dece",
+    "id" : "prove-dsl-certificate_registration_deposit",
+    "nonVacuityGuardPropertyId" : "certificate.registration-deposit.non-vacuity",
+    "outcomes" : [ {
+      "exitCode" : 0,
+      "reason" : "dsl-property-established",
+      "requiredOutput" : "SMT-VALID: DSL property certificate.registration-deposit established",
+      "result" : "SMT-VALID"
+    }, {
+      "exitCode" : 3,
+      "reason" : "dsl-property-counterexample",
+      "requiredOutput" : "REFUTED: DSL property certificate.registration-deposit counterexample found",
+      "result" : "REFUTED"
+    }, {
+      "exitCode" : 2,
+      "reason" : "dsl-property-undetermined",
+      "requiredOutput" : "COULD-NOT-EVALUATE: DSL property certificate.registration-deposit",
+      "result" : "COULD-NOT-EVALUATE"
+    } ],
+    "propertyId" : "certificate.registration-deposit"
+  } ]
+}
