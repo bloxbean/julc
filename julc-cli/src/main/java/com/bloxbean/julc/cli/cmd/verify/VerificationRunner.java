@@ -840,9 +840,11 @@ public final class VerificationRunner {
                         && recordedDslSchema
                             != DslPropertySet.AUTHORIZATION_SCHEMA_VERSION
                         && recordedDslSchema
-                            != DslPropertySet.CERTIFICATE_PAYLOAD_SCHEMA_VERSION) {
+                            != DslPropertySet.CERTIFICATE_PAYLOAD_SCHEMA_VERSION
+                        && recordedDslSchema
+                            != DslPropertySet.VALUE_ALGEBRA_SCHEMA_VERSION) {
                     throw new IOException(
-                            "Ledger DSL canonical schema must be 5, 6, or 7");
+                            "Ledger DSL canonical schema must be 5, 6, 7, or 8");
                 }
                 int expectedDslSchema = ComposedDslProperty.LEDGER_TEMPLATE.equals(template)
                         ? recordedDslSchema
@@ -935,6 +937,10 @@ public final class VerificationRunner {
                 artifact.put("ownPolicyAssetShape",
                         "EXACT_SINGLETON_RAW_ASSOCIATION_LIST");
                 artifact.put("otherPoliciesPermitted", true);
+            } else if (ComposedDslProperty.LEDGER_TEMPLATE.equals(template)
+                    && manifest.path("dslIr").path("schemaVersion").asInt()
+                            >= DslPropertySet.VALUE_ALGEBRA_SCHEMA_VERSION) {
+                artifact.put("globalMultiInputLinkageModeled", false);
             }
         }
         return Map.copyOf(artifact);
@@ -1202,18 +1208,93 @@ public final class VerificationRunner {
                     : result.id();
             JsonNode claim = claims.get(claimId);
             if (claim == null) continue;
+            List<String> capabilities = textList(claim.path("capabilities"));
+            List<String> guaranteeRules = textList(claim.path("guaranteeRules"));
+            List<String> valueSemantics = valueSemantics(guaranteeRules);
+            List<String> paymentScopes = paymentAggregationScopes(capabilities);
+            boolean domainImplied = guaranteeRules.contains("domain-implied:is-balanced");
+            boolean valueClaim = !valueSemantics.isEmpty() || !paymentScopes.isEmpty()
+                    || domainImplied;
             properties.set(index, new VerificationRunResult.Property(
                     result.id(), result.outcome(), result.reason(),
                     requiredTextUnchecked(claim, "domain"),
                     requiredTextUnchecked(claim, "guaranteeSha256"),
                     requiredTextUnchecked(claim, "envelopeSha256"),
-                    java.util.stream.StreamSupport.stream(
-                            claim.path("capabilities").spliterator(), false)
-                            .map(JsonNode::asText).toList(),
+                    capabilities,
+                    guaranteeRules,
+                    valueClaim ? valueSemantics : null,
+                    valueClaim ? paymentScopes : null,
+                    valueClaim && domainImplied,
+                    valueClaim ? Boolean.FALSE : null,
                     requiredTextUnchecked(claim, "counterexampleDomain"),
                     claim.path("ledgerValidCounterexampleEstablished").asBoolean(),
                     claim.path("concreteVmCounterexampleReproduced").asBoolean()));
         }
+    }
+
+    private static List<String> textList(JsonNode array) {
+        return java.util.stream.StreamSupport.stream(array.spliterator(), false)
+                .map(JsonNode::asText).toList();
+    }
+
+    static List<String> valueSemantics(List<String> rules) {
+        var semantics = new java.util.TreeSet<String>();
+        for (String rule : rules) {
+            if (rule.equals("value-raw-policy-entries")
+                    || rule.startsWith("value-entry-when:")
+                    || rule.startsWith("value-arithmetic:")
+                    || rule.equals("domain-implied:is-balanced")
+                    || rule.equals("value-relation:STRUCTURAL_EQ")
+                    || rule.equals("value-relation:structural_eq")) {
+                semantics.add("STRUCTURAL");
+            }
+            if (rule.equals("value-quantity:FIRST_MATCH")
+                    || rule.equals("value-quantity:first_match")) {
+                semantics.add("FIRST_MATCH");
+            }
+            if (rule.equals("value-quantity:STRICT_SUMMED")
+                    || rule.equals("value-quantity:strict_summed")) {
+                semantics.add("STRICT_SUMMED");
+            }
+            if (rule.startsWith("value-relation:")
+                    && !rule.toLowerCase(java.util.Locale.ROOT)
+                            .endsWith("structural_eq")) {
+                semantics.add("EXTENSIONAL");
+            }
+        }
+        return List.copyOf(semantics);
+    }
+
+    static List<String> paymentAggregationScopes(List<String> capabilities) {
+        var scopes = new java.util.TreeSet<String>();
+        if (capabilities.contains("dsl.value.filter-full-address")) {
+            scopes.add("COMPLETE_ADDRESS");
+        }
+        if (capabilities.contains("dsl.value.filter-payment-credential")) {
+            scopes.add("PAYMENT_CREDENTIAL");
+        }
+        if (capabilities.contains("dsl.value.aggregate-inputs")) {
+            scopes.add("SELECTED_INPUTS");
+        }
+        if (capabilities.contains("dsl.value.aggregate-outputs")) {
+            scopes.add("SELECTED_OUTPUTS");
+        }
+        if (capabilities.contains("helper.valueSpent")) {
+            scopes.add("WHOLE_TRANSACTION_INPUTS");
+        }
+        if (capabilities.contains("helper.valueProduced")) {
+            scopes.add("WHOLE_TRANSACTION_OUTPUTS");
+        }
+        if (capabilities.contains("field.txInfo.mint")) {
+            scopes.add("WHOLE_TRANSACTION_MINT");
+        }
+        if (capabilities.contains("ledger.isBalanced")) {
+            scopes.add("WHOLE_TRANSACTION_BALANCE");
+        }
+        if (capabilities.contains("field.txOut.value") && scopes.isEmpty()) {
+            scopes.add("DIRECT_OUTPUT");
+        }
+        return List.copyOf(scopes);
     }
 
     private static String requiredTextUnchecked(JsonNode node, String field) {

@@ -5,6 +5,7 @@ import com.bloxbean.cardano.julc.verification.dsl.type.ListTypeRef;
 
 import java.util.Objects;
 import java.util.function.Function;
+import java.util.List;
 
 /** Ordered V2 output list as embedded in the pinned V3 transaction model. */
 public record LedgerTxOutListExpr(PropertyNode node) implements Expr {
@@ -34,6 +35,19 @@ public record LedgerTxOutListExpr(PropertyNode node) implements Expr {
         return new LedgerTxOutOptionExpr(new ListAtNode(
                 node, LedgerTypeAuthority.TX_OUT, index.node()));
     }
+    public LedgerValueExpr valueProduced() {
+        return new LedgerValueExpr(new LedgerHelperNode(
+                LedgerHelperNode.LedgerHelperKind.AGGREGATE_OUTPUT_VALUES,
+                List.of(node), LedgerTypeAuthority.VALUE));
+    }
+    public LedgerTxOutListExpr toAddress(TypedValueExpr address) {
+        return filter(address, LedgerTypeAuthority.ADDRESS,
+                LedgerHelperNode.LedgerHelperKind.FILTER_ADDRESS_OUTPUTS);
+    }
+    public LedgerTxOutListExpr toPaymentCredential(TypedValueExpr credential) {
+        return filter(credential, LedgerTypeAuthority.CREDENTIAL,
+                LedgerHelperNode.LedgerHelperKind.FILTER_PAYMENT_CREDENTIAL_OUTPUTS);
+    }
     public BoolExpr structurallyEquals(LedgerTxOutListExpr other) {
         return structural(other, false);
     }
@@ -55,5 +69,16 @@ public record LedgerTxOutListExpr(PropertyNode node) implements Expr {
         Objects.requireNonNull(other, "other");
         return new BoolExpr(new StructuralEqualsNode(node, other.node,
                 new ListTypeRef(LedgerTypeAuthority.TX_OUT), negated));
+    }
+    private LedgerTxOutListExpr filter(
+            TypedValueExpr value,
+            com.bloxbean.cardano.julc.verification.dsl.type.VerificationTypeRef expected,
+            LedgerHelperNode.LedgerHelperKind helper) {
+        Objects.requireNonNull(value, "value");
+        if (!expected.equals(value.valueType())) {
+            throw new IllegalArgumentException("Output filter type does not match");
+        }
+        return new LedgerTxOutListExpr(new LedgerHelperNode(helper,
+                List.of(node, value.node()), new ListTypeRef(LedgerTypeAuthority.TX_OUT)));
     }
 }

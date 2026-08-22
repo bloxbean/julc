@@ -25,6 +25,10 @@ public record LedgerTxInfoExpr(PropertyNode node) implements Expr {
         return new IntegerExpr(new LedgerFieldNode(node, LedgerTypeAuthority.TX_INFO,
                 "fee", LedgerTypeAuthority.INTEGER));
     }
+    public LedgerMintValueExpr mint() {
+        return new LedgerMintValueExpr(new LedgerFieldNode(node,
+                LedgerTypeAuthority.TX_INFO, "mint", LedgerTypeAuthority.MINT_VALUE));
+    }
     public LedgerTxIdExpr id() {
         return new LedgerTxIdExpr(new LedgerFieldNode(node, LedgerTypeAuthority.TX_INFO,
                 "id", LedgerTypeAuthority.TX_ID));

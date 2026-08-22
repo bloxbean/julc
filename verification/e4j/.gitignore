@@ -1,0 +1,4 @@
+/fixtures/value-algebra/build/
+/generated/*/.lake/
+/generated/*/.julc/
+/generated/*/verification-results/

@@ -38,6 +38,20 @@ public final class LedgerExpressions {
     public static LedgerByteAliasExpr currencySymbol(ByteStringExpr bytes) {
         return alias(bytes, LedgerTypeAuthority.CURRENCY_SYMBOL);
     }
+    public static LedgerByteAliasExpr tokenName(ByteStringExpr bytes) {
+        return alias(bytes, LedgerTypeAuthority.TOKEN_NAME);
+    }
+    public static ValueDeltaOptionExpr singletonValueDelta(
+            LedgerByteAliasExpr policy, LedgerByteAliasExpr token, IntegerExpr quantity) {
+        java.util.Objects.requireNonNull(quantity, "quantity");
+        ValueAlgebra.requireAliases(policy, token);
+        return ValueAlgebra.arithmetic(
+                com.bloxbean.cardano.julc.verification.dsl.ir.ValueArithmeticNode
+                        .ValueArithmeticKind.SINGLETON,
+                java.util.List.of(policy.node(), token.node(), quantity.node()),
+                java.util.List.of(LedgerTypeAuthority.CURRENCY_SYMBOL,
+                        LedgerTypeAuthority.TOKEN_NAME, LedgerTypeAuthority.INTEGER));
+    }
     private static LedgerByteAliasExpr alias(
             ByteStringExpr bytes,
             com.bloxbean.cardano.julc.verification.dsl.type.LedgerTypeRef type) {

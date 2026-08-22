@@ -15,7 +15,9 @@ public record LedgerHelperNode(
         arguments = List.copyOf(Objects.requireNonNull(arguments, "arguments"));
         valueType = Objects.requireNonNull(valueType, "valueType");
     }
-    @Override public DslType resultType() { return DslType.TYPED_VALUE; }
+    @Override public DslType resultType() {
+        return helper == LedgerHelperKind.IS_BALANCED ? DslType.BOOL : DslType.TYPED_VALUE;
+    }
 
     public enum LedgerHelperKind {
         CURRENT_OUTPUT_REF,
@@ -25,6 +27,13 @@ public record LedgerHelperNode(
         FILTER_PAYMENT_KEY_INPUTS,
         FILTER_SCRIPT_INPUTS,
         CONTINUING_OUTPUTS,
-        LOVELACE_OF
+        LOVELACE_OF,
+        VALUE_SPENT,
+        VALUE_PRODUCED,
+        AGGREGATE_INPUT_VALUES,
+        AGGREGATE_OUTPUT_VALUES,
+        FILTER_ADDRESS_OUTPUTS,
+        FILTER_PAYMENT_CREDENTIAL_OUTPUTS,
+        IS_BALANCED
     }
 }

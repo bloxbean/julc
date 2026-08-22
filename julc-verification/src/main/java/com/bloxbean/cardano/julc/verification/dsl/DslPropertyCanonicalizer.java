@@ -20,7 +20,9 @@ public final class DslPropertyCanonicalizer {
                 && propertySet.schemaVersion()
                         != DslPropertySet.AUTHORIZATION_SCHEMA_VERSION
                 && propertySet.schemaVersion()
-                        != DslPropertySet.CERTIFICATE_PAYLOAD_SCHEMA_VERSION) {
+                        != DslPropertySet.CERTIFICATE_PAYLOAD_SCHEMA_VERSION
+                && propertySet.schemaVersion()
+                        != DslPropertySet.VALUE_ALGEBRA_SCHEMA_VERSION) {
             return propertySet;
         }
         List<DslProperty> properties = propertySet.properties().stream()
@@ -143,6 +145,30 @@ public final class DslPropertyCanonicalizer {
         if (node instanceof AuthorizationNode authorization) {
             return new AuthorizationNode(authorization.relation(),
                     normalize(authorization.authorities()), authorization.threshold());
+        }
+        if (node instanceof ValueEntriesNode entries) {
+            return new ValueEntriesNode(normalize(entries.value()), entries.valueType(),
+                    entries.entryType());
+        }
+        if (node instanceof ValueEntryWhenNode entry) {
+            return new ValueEntryWhenNode(entry.entryKind(), normalize(entry.entry()),
+                    entry.entryType(), entry.keyVariable(), entry.keyType(),
+                    entry.valueVariable(), entry.valueType(), normalize(entry.predicate()));
+        }
+        if (node instanceof ValueQuantityNode quantity) {
+            return new ValueQuantityNode(quantity.quantityKind(), normalize(quantity.value()),
+                    quantity.valueType(), normalize(quantity.policy()),
+                    normalize(quantity.token()));
+        }
+        if (node instanceof ValueRelationNode relation) {
+            return new ValueRelationNode(relation.relation(), normalize(relation.left()),
+                    relation.leftType(), normalize(relation.right()), relation.rightType());
+        }
+        if (node instanceof ValueArithmeticNode arithmetic) {
+            return new ValueArithmeticNode(arithmetic.arithmetic(),
+                    arithmetic.arguments().stream().map(DslPropertyCanonicalizer::normalize)
+                            .toList(),
+                    arithmetic.argumentTypes(), arithmetic.resultTypeRef());
         }
         if (node instanceof BoolNotNode not) {
             return new BoolNotNode(normalize(not.value()));
@@ -288,6 +314,16 @@ public final class DslPropertyCanonicalizer {
             return new MapCountEntryNode(alphaNormalize(map.map(), binders, next, prefix),
                     map.keyType(), map.valueType(), key, value, predicate);
         }
+        if (node instanceof ValueEntryWhenNode entry) {
+            String key = bind(entry.keyVariable(), binders, next, prefix);
+            String value = bind(entry.valueVariable(), binders, next, prefix);
+            PropertyNode predicate = alphaNormalize(entry.predicate(), binders, next, prefix);
+            binders.remove(entry.valueVariable());
+            binders.remove(entry.keyVariable());
+            return new ValueEntryWhenNode(entry.entryKind(),
+                    alphaNormalize(entry.entry(), binders, next, prefix), entry.entryType(),
+                    key, entry.keyType(), value, entry.valueType(), predicate);
+        }
         return mapChildren(node, child -> alphaNormalize(child, binders, next, prefix));
     }
 
@@ -354,6 +390,17 @@ public final class DslPropertyCanonicalizer {
         }
         if (node instanceof AuthorizationNode value) return new AuthorizationNode(
                 value.relation(), map.apply(value.authorities()), value.threshold());
+        if (node instanceof ValueEntriesNode value) return new ValueEntriesNode(
+                map.apply(value.value()), value.valueType(), value.entryType());
+        if (node instanceof ValueQuantityNode value) return new ValueQuantityNode(
+                value.quantityKind(), map.apply(value.value()), value.valueType(),
+                map.apply(value.policy()), map.apply(value.token()));
+        if (node instanceof ValueRelationNode value) return new ValueRelationNode(
+                value.relation(), map.apply(value.left()), value.leftType(),
+                map.apply(value.right()), value.rightType());
+        if (node instanceof ValueArithmeticNode value) return new ValueArithmeticNode(
+                value.arithmetic(), value.arguments().stream().map(map).toList(),
+                value.argumentTypes(), value.resultTypeRef());
         if (node instanceof BoolNotNode value) return new BoolNotNode(map.apply(value.value()));
         if (node instanceof IntegerArithmeticNode value) return new IntegerArithmeticNode(
                 value.operator(), map.apply(value.left()),

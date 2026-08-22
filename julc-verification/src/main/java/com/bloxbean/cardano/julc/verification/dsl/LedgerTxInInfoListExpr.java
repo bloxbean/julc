@@ -43,6 +43,11 @@ public record LedgerTxInInfoListExpr(PropertyNode node) implements Expr {
                 new com.bloxbean.cardano.julc.verification.dsl.type.OptionalTypeRef(
                         LedgerTypeAuthority.TX_IN_INFO)));
     }
+    public LedgerValueExpr valueSpent() {
+        return new LedgerValueExpr(new LedgerHelperNode(
+                LedgerHelperNode.LedgerHelperKind.AGGREGATE_INPUT_VALUES,
+                List.of(node), LedgerTypeAuthority.VALUE));
+    }
     public LedgerTxInInfoListExpr forPaymentKey(TypedValueExpr keyHash) {
         return filter(keyHash, LedgerTypeAuthority.PUB_KEY_HASH,
                 LedgerHelperNode.LedgerHelperKind.FILTER_PAYMENT_KEY_INPUTS);

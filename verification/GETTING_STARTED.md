@@ -676,7 +676,72 @@ constraint; nested credentials and pool-retirement payloads are additionally
 covered by Lean kernel controls and exact-VM tests. See
 [`e4i/README.md`](e4i/README.md).
 
-## 17. Fuel, recursion, and reruns
+## 17. Experimental multi-asset value algebra
+
+ADR-025 schema 8 keeps output `Value`, transaction `MintValue`, and checked
+`ValueDelta` roles distinct. Generate the model explicitly:
+
+```bash
+julc verify dsl-init . --validator Sale --purpose spending \
+  --schema-version 8 --package evidence --class SaleModel \
+  --out build/verification-dsl/src/evidence/SaleModel.java
+```
+
+The API makes four different meanings visible. They are not interchangeable:
+
+```java
+var contract = new SaleModel();
+var policy = LedgerExpressions.currencySymbol(bytes("11".repeat(28)));
+var token = LedgerExpressions.tokenName(bytes("746f6b656e"));
+var firstOutput = contract.context().txInfo().outputs().at(integer(0));
+
+var guarantee = firstOutput.exists(output ->
+        output.value().rawPolicies().exists(entry ->
+                entry.whenWellFormed((actualPolicy, tokens) ->
+                        actualPolicy.eq(policy)))
+        // Exact pinned V2.valueOf: first matching policy/token entry.
+        .and(output.value().quantityFirst(policy, token).ge(integer(10)))
+        // All matching duplicates are summed; absence/malformed data is none.
+        .and(output.value().quantitySumStrict(policy, token)
+                .exists(quantity -> new IntegerExpr(quantity.node())
+                        .ge(integer(10))))
+        // Ignores ordering and zero-sum decomposition after strict validation.
+        .and(output.value().extensionallyEquals(output.value()))
+        // Observes the exact ordered nested association-list representation.
+        .and(output.value().structurallyEquals(output.value())));
+
+return contract.properties(property("sale.multi-asset-payment",
+        DslDomain.VALID_SPENDING_V3_PINNED, guarantee));
+```
+
+Strict-summed absence is `none`; an explicitly encoded zero is `some 0`.
+Malformed policy/token entries also fail closed. Extensional equality and
+pointwise order treat an absent asset as zero only after validating the entire
+raw value. Checked add, negate, and scale operations return `ValueDeltaOption`;
+they never claim the result is a ledger-valid output value.
+
+Payment aggregation scope is explicit:
+
+```java
+var fullAddressPayment = contract.context().txInfo().outputs()
+        .toAddress(expectedAddress).valueProduced();
+var paymentCredentialOnly = contract.context().txInfo().outputs()
+        .toPaymentCredential(expectedCredential).valueProduced();
+```
+
+The second relation is weaker because it ignores the staking credential.
+Selected-list aggregates preserve every input/output occurrence; whole-context
+`valueSpent()`, `valueProduced()`, raw `mint()`, and `isBalanced()` retain the
+pinned CardanoLedgerApi meanings. A balance-only result is marked
+`domain-implied`, and transaction-local payment evidence records
+`globalMultiInputLinkageModeled: false`.
+
+Compile the generated model and trusted specification, then invoke
+`julc verify dsl` exactly as in schemas 4–7. See
+[`e4j/README.md`](e4j/README.md) for the reproducible positive, refuted,
+vacuous, kernel, VM, Docker, and native controls and the current solver bounds.
+
+## 18. Fuel, recursion, and reruns
 
 `--fuel` bounds exact UPLC preprocessing/execution in the generated obligation.
 An `SMT-VALID` certificate covers only successful paths completing within that
@@ -696,7 +761,7 @@ julc verify . --validator AuthorizedStateValidator \
   --out-dir verification/ci-authorized --force
 ```
 
-## 18. What the certificate does and does not claim
+## 19. What the certificate does and does not claim
 
 For an annotation profile, a successful certificate means:
 

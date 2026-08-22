@@ -1,0 +1,105 @@
+{
+  "artifactFormat" : "double_cbor_hex",
+  "artifactId" : "vulnerable-value",
+  "blueprintEntryTitle" : "VulnerableValue",
+  "boundarySemantics" : "strict-data-v1",
+  "builtinSemanticsVariant" : "E",
+  "builtins" : [ {
+    "name" : "EqualsInteger",
+    "flatTag" : 7
+  }, {
+    "name" : "IfThenElse",
+    "flatTag" : 26
+  }, {
+    "name" : "FstPair",
+    "flatTag" : 29
+  }, {
+    "name" : "SndPair",
+    "flatTag" : 30
+  }, {
+    "name" : "HeadList",
+    "flatTag" : 33
+  }, {
+    "name" : "TailList",
+    "flatTag" : 34
+  }, {
+    "name" : "NullList",
+    "flatTag" : 35
+  }, {
+    "name" : "UnConstrData",
+    "flatTag" : 42
+  } ],
+  "capabilityInventory" : {
+    "ledgerApi" : "CardanoLedgerApiBlaster",
+    "ledgerVersion" : "V3",
+    "revision" : "5dab3c43f042b8735b6d067223baaa8d32ed28a1",
+    "schemaVersion" : 1,
+    "sha256" : "7f1d5e03608d104228fa90acf0403ed04f3147cbe84b93800ccd0d0731676788"
+  },
+  "cardanoScriptHash" : "1823e25d1f81e19d8bb118616d76e0f1c51fdaf92cbc2d4551bf1e18",
+  "claims" : [ {
+    "id" : "value.first-match-payment",
+    "generatedName" : "value_first_match_payment",
+    "domain" : "VALID_SPENDING_V3_PINNED",
+    "guaranteeSha256" : "aeeee1c1637fa81a6044954ef7accfcbcbbfe0aebc1bd4f0aefcdf3a4cf4041f",
+    "envelopeSha256" : "c5933de1e99b6eae5d85e9ac20f9b7df1b8e74e79143dbf8619ea88dbf8ca1c3",
+    "capabilities" : [ "dsl.ledger.byte-alias:CURRENCY_SYMBOL", "dsl.ledger.byte-alias:TOKEN_NAME", "dsl.ledger.context", "dsl.option.exists", "field.scriptContext.scriptInfo", "field.scriptContext.txInfo", "field.txInfo.outputs", "field.txOut.value", "helper.valueOf", "ledger.validSpendingContext", "purpose.spending" ],
+    "guaranteeRules" : [ "bytes-literal:BYTES", "compare:GE", "integer-literal", "ledger-byte-alias:CURRENCY_SYMBOL", "ledger-byte-alias:TOKEN_NAME", "ledger-field:SCRIPT_CONTEXT.txInfo", "ledger-field:TX_INFO.outputs", "ledger-field:TX_OUT.value", "ledger-root:ledgerContext", "list-at", "option-exists", "typed-variable", "value-quantity:FIRST_MATCH", "value-quantity:first_match" ],
+    "counterexampleDomain" : "BLASTER_VALID_SPENDING_SUPERSET",
+    "ledgerValidCounterexampleEstablished" : false,
+    "concreteVmCounterexampleReproduced" : false
+  } ],
+  "compiledCodeSha256" : "45f40ed3a4f61fe795adc652271e6bfd4bb730d2db2baca1fc6a96f76ed3acc2",
+  "dependencies" : {
+    "CardanoLedgerApiBlaster" : "5dab3c43f042b8735b6d067223baaa8d32ed28a1",
+    "Lean-blaster" : "083bae7971414d894b56b5bbf4108c63e17bc42a",
+    "PlutusCoreBlaster" : "7cf5a78c54b9694ef093bf49edb5d3799b2a49c9"
+  },
+  "domainAssumptions" : [ "validSpendingContext/v3-pinned" ],
+  "dslIr" : {
+    "schemaVersion" : 8,
+    "sha256" : "404f37e9544ef8737fa30563bb478495d45888ae0ab96faae1fc19851f747f04"
+  },
+  "fuel" : 5000,
+  "generatedBy" : "julc verify init",
+  "generatedLeanSha256" : "02fba530cf419e050c5e09e828d0469795640e8782932be4adcc01991604f797",
+  "julcVersion" : "0.1.0-pre16",
+  "leanVersion" : "4.24.0",
+  "ledgerValidityModeled" : true,
+  "plutusLanguage" : "PlutusV3",
+  "project" : "value-algebra-evidence",
+  "properties" : [ {
+    "id" : "value.first-match-payment.non-vacuity",
+    "reason" : "not-run",
+    "result" : "COULD-NOT-EVALUATE"
+  }, {
+    "id" : "value.first-match-payment",
+    "reason" : "not-run",
+    "result" : "COULD-NOT-EVALUATE"
+  } ],
+  "propertyIr" : {
+    "contractSchemaSha256" : "bf065e70459f5ecfef0b6697d3bbca7ad64b9a281d8b642f50a6cec2eb0e1f38",
+    "path" : "verification-property.json",
+    "projectedContractTypesSha256" : "bf065e70459f5ecfef0b6697d3bbca7ad64b9a281d8b642f50a6cec2eb0e1f38",
+    "propertyId" : "VulnerableValue.dsl-property-set",
+    "schemaVersion" : 3,
+    "sha256" : "2953f03b6d97a4b2c23c78c4969e0fe103254d57126994a9eaa62ebac3b43e7c",
+    "sourcePath" : "/Users/satya/work/bloxbean/julc/verification/e4j/VulnerableValueSpec.java",
+    "template" : "julc.dsl-ledger/v1"
+  },
+  "protocolVersion" : 11,
+  "recursiveDepth" : 4,
+  "runnerPlanSha256" : "40b6c506319a3ddf679c63ebea49deba2e55e75ed9599f46025c0bae8327367d",
+  "schemaVersion" : 1,
+  "schemas" : [ {
+    "cip57" : "VulnerableValue:Datum",
+    "lean" : "VulnerableValueDatum"
+  }, {
+    "cip57" : "VulnerableValue:Redeemer",
+    "lean" : "VulnerableValueRedeemer"
+  } ],
+  "scriptPurpose" : "spending",
+  "uplcVersion" : "1.1.0",
+  "validatorTitle" : "VulnerableValue",
+  "z3Version" : "4.15.2"
+}

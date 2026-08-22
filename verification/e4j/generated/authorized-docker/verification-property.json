@@ -1,0 +1,26 @@
+{
+  "schemaVersion" : 3,
+  "template" : "julc.dsl-ledger/v1",
+  "propertyId" : "AuthorizedValue.dsl-property-set",
+  "validatorTitle" : "AuthorizedValue",
+  "scriptPurpose" : "spending",
+  "sourcePath" : "/Users/satya/work/bloxbean/julc/verification/e4j/AuthorizedValueSpec.java",
+  "canonicalDslJson" : "{\"contractSchemaSha256\":\"e3b7efde95e682785c60012964bbafa0a3a2e7f8718d526e78f7530687fa557a\",\"properties\":[{\"domain\":\"VALID_SPENDING_V3_PINNED\",\"expression\":{\"op\":\"option-exists\",\"elementType\":{\"type\":\"ledger\",\"ledgerType\":\"TX_OUT\"},\"optional\":{\"op\":\"list-at\",\"elementType\":{\"type\":\"ledger\",\"ledgerType\":\"TX_OUT\"},\"index\":{\"op\":\"literal\",\"resultType\":\"INTEGER\",\"value\":\"0\"},\"list\":{\"op\":\"ledger-field\",\"name\":\"outputs\",\"ownerType\":{\"type\":\"ledger\",\"ledgerType\":\"TX_INFO\"},\"target\":{\"op\":\"ledger-field\",\"name\":\"txInfo\",\"ownerType\":{\"type\":\"ledger\",\"ledgerType\":\"SCRIPT_CONTEXT\"},\"target\":{\"op\":\"ledger-root\",\"name\":\"ledgerContext\",\"valueType\":{\"type\":\"ledger\",\"ledgerType\":\"SCRIPT_CONTEXT\"}},\"valueType\":{\"type\":\"ledger\",\"ledgerType\":\"TX_INFO\"}},\"valueType\":{\"type\":\"list\",\"elementType\":{\"type\":\"ledger\",\"ledgerType\":\"TX_OUT\"}}}},\"predicate\":{\"op\":\"compare\",\"left\":{\"op\":\"value-quantity\",\"policy\":{\"op\":\"ledger-byte-alias\",\"aliasType\":{\"type\":\"ledger\",\"ledgerType\":\"CURRENCY_SYMBOL\"},\"bytes\":{\"op\":\"bytes-literal\",\"hex\":\"31313131313131313131313131313131313131313131313131313131\",\"kind\":\"BYTES\",\"resultType\":\"BYTE_STRING\"}},\"quantityKind\":\"FIRST_MATCH\",\"token\":{\"op\":\"ledger-byte-alias\",\"aliasType\":{\"type\":\"ledger\",\"ledgerType\":\"TOKEN_NAME\"},\"bytes\":{\"op\":\"bytes-literal\",\"hex\":\"746f6b656e\",\"kind\":\"BYTES\",\"resultType\":\"BYTE_STRING\"}},\"value\":{\"op\":\"ledger-field\",\"name\":\"value\",\"ownerType\":{\"type\":\"ledger\",\"ledgerType\":\"TX_OUT\"},\"target\":{\"op\":\"typed-variable\",\"valueType\":{\"type\":\"ledger\",\"ledgerType\":\"TX_OUT\"},\"variable\":\"v0\"},\"valueType\":{\"type\":\"ledger\",\"ledgerType\":\"VALUE\"}},\"valueType\":{\"type\":\"ledger\",\"ledgerType\":\"VALUE\"}},\"operator\":\"GE\",\"right\":{\"op\":\"literal\",\"resultType\":\"INTEGER\",\"value\":\"10\"}},\"variable\":\"v0\"},\"id\":\"value.first-match-payment\"}],\"purpose\":\"SPENDING\",\"schemaVersion\":8}",
+  "claims" : [ {
+    "id" : "value.first-match-payment",
+    "generatedName" : "value_first_match_payment",
+    "domain" : "VALID_SPENDING_V3_PINNED",
+    "guaranteeSha256" : "aeeee1c1637fa81a6044954ef7accfcbcbbfe0aebc1bd4f0aefcdf3a4cf4041f",
+    "envelopeSha256" : "c5933de1e99b6eae5d85e9ac20f9b7df1b8e74e79143dbf8619ea88dbf8ca1c3",
+    "capabilities" : [ "dsl.ledger.byte-alias:CURRENCY_SYMBOL", "dsl.ledger.byte-alias:TOKEN_NAME", "dsl.ledger.context", "dsl.option.exists", "field.scriptContext.scriptInfo", "field.scriptContext.txInfo", "field.txInfo.outputs", "field.txOut.value", "helper.valueOf", "ledger.validSpendingContext", "purpose.spending" ],
+    "guaranteeRules" : [ "bytes-literal:BYTES", "compare:GE", "integer-literal", "ledger-byte-alias:CURRENCY_SYMBOL", "ledger-byte-alias:TOKEN_NAME", "ledger-field:SCRIPT_CONTEXT.txInfo", "ledger-field:TX_INFO.outputs", "ledger-field:TX_OUT.value", "ledger-root:ledgerContext", "list-at", "option-exists", "typed-variable", "value-quantity:FIRST_MATCH", "value-quantity:first_match" ],
+    "counterexampleDomain" : "BLASTER_VALID_SPENDING_SUPERSET",
+    "ledgerValidCounterexampleEstablished" : false,
+    "concreteVmCounterexampleReproduced" : false
+  } ],
+  "domainAssumptions" : [ "validSpendingContext/v3-pinned" ],
+  "guaranteeRules" : [ "bytes-literal:BYTES", "compare:GE", "integer-literal", "ledger-byte-alias:CURRENCY_SYMBOL", "ledger-byte-alias:TOKEN_NAME", "ledger-field:SCRIPT_CONTEXT.txInfo", "ledger-field:TX_INFO.outputs", "ledger-field:TX_OUT.value", "ledger-root:ledgerContext", "list-at", "option-exists", "typed-variable", "value-quantity:FIRST_MATCH", "value-quantity:first_match" ],
+  "ledgerValidityModeled" : true,
+  "projectedContractTypesJson" : "{\"datumType\":{\"type\":\"nominal\",\"nominalKind\":\"RECORD\",\"stableId\":\"AuthorizedValue.Datum\"},\"definitions\":[{\"constructors\":[],\"fields\":[],\"nominalKind\":\"RECORD\",\"sourceName\":\"Datum\",\"stableId\":\"AuthorizedValue.Datum\"},{\"constructors\":[],\"fields\":[],\"nominalKind\":\"RECORD\",\"sourceName\":\"Redeemer\",\"stableId\":\"AuthorizedValue.Redeemer\"}],\"parameters\":[],\"purpose\":\"SPEND\",\"redeemerType\":{\"type\":\"nominal\",\"nominalKind\":\"RECORD\",\"stableId\":\"AuthorizedValue.Redeemer\"},\"schemaVersion\":1}",
+  "contractSchemaSha256" : "e3b7efde95e682785c60012964bbafa0a3a2e7f8718d526e78f7530687fa557a"
+}

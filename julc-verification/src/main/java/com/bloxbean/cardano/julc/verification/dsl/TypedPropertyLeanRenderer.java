@@ -32,7 +32,10 @@ public final class TypedPropertyLeanRenderer {
                         "No Lean mapping for typed root " + root.name());
             };
         }
-        if (node instanceof TypedVariableNode variable) return variable.variable();
+        if (node instanceof TypedVariableNode variable) {
+            return variantFields.getOrDefault(variableKey(variable.variable()),
+                    variable.variable());
+        }
         if (node instanceof LedgerRootNode root) {
             return switch (root.name()) {
                 case "ledgerContext" -> "ctx";
@@ -105,6 +108,7 @@ public final class TypedPropertyLeanRenderer {
                     case "outputs" -> "(⟨" + target
                             + ".txInfoOutputs⟩ : JulcList CardanoLedgerApi.V2.TxOut)";
                     case "fee" -> target + ".txInfoFee";
+                    case "mint" -> target + ".txInfoMint";
                     case "certificates" -> "(⟨" + target
                             + ".txInfoTxCerts⟩ : JulcList TxCert)";
                     case "datums" -> "(⟨" + target
@@ -173,6 +177,66 @@ public final class TypedPropertyLeanRenderer {
                     + " => " + render(variant.predicate(), definitions, nested)
                     + " | _ => false");
         }
+        if (node instanceof ValueEntriesNode entries) {
+            return "(⟨" + render(entries.value(), definitions, variantFields)
+                    + "⟩ : JulcList (Data × Data))";
+        }
+        if (node instanceof ValueEntryWhenNode entry) {
+            var nested = new HashMap<>(variantFields);
+            String rawValue = entry.entryKind() == ValueEntryWhenNode.ValueEntryKind.POLICY
+                    ? entry.valueVariable() + "_raw" : entry.valueVariable();
+            if (entry.entryKind() == ValueEntryWhenNode.ValueEntryKind.POLICY) {
+                nested.put(variableKey(entry.valueVariable()),
+                        "(⟨" + rawValue + "⟩ : JulcList (Data × Data))");
+            }
+            String pattern = entry.entryKind() == ValueEntryWhenNode.ValueEntryKind.POLICY
+                    ? "(Data.B " + entry.keyVariable() + ", Data.Map "
+                            + rawValue + ")"
+                    : "(Data.B " + entry.keyVariable() + ", Data.I "
+                            + entry.valueVariable() + ")";
+            return parenthesize("match " + parenthesize(render(
+                    entry.entry(), definitions, variantFields))
+                    + " with | " + pattern + " => "
+                    + render(entry.predicate(), definitions, nested)
+                    + " | _ => false");
+        }
+        if (node instanceof ValueQuantityNode quantity) {
+            String value = parenthesize(render(quantity.value(), definitions, variantFields));
+            String policy = parenthesize(render(quantity.policy(), definitions, variantFields));
+            String token = parenthesize(render(quantity.token(), definitions, variantFields));
+            return switch (quantity.quantityKind()) {
+                case FIRST_MATCH -> "valueOf " + policy + " " + token + " " + value;
+                case STRICT_SUMMED -> "julcValueQuantitySumStrict " + policy + " "
+                        + token + " " + value;
+            };
+        }
+        if (node instanceof ValueRelationNode relation) {
+            String left = parenthesize(render(relation.left(), definitions, variantFields));
+            String right = parenthesize(render(relation.right(), definitions, variantFields));
+            return switch (relation.relation()) {
+                case STRUCTURAL_EQ -> left + " == " + right;
+                case EXTENSIONAL_EQ -> "julcValueExtensionalEq " + left + " " + right;
+                case LE -> "julcValuePointwiseLe " + left + " " + right;
+                case LT -> "julcValuePointwiseLt " + left + " " + right;
+                case GE -> "julcValuePointwiseLe " + right + " " + left;
+                case GT -> "julcValuePointwiseLt " + right + " " + left;
+            };
+        }
+        if (node instanceof ValueArithmeticNode arithmetic) {
+            var arguments = arithmetic.arguments().stream()
+                    .map(argument -> parenthesize(render(
+                            argument, definitions, variantFields))).toList();
+            return switch (arithmetic.arithmetic()) {
+                case VALIDATE -> "julcValueValidateStrict " + arguments.getFirst();
+                case SINGLETON -> "julcValueSingletonStrict " + arguments.get(0) + " "
+                        + arguments.get(1) + " " + arguments.get(2);
+                case ADD -> "julcValueAddStrict " + arguments.get(0) + " "
+                        + arguments.get(1);
+                case NEGATE -> "julcValueNegateStrict " + arguments.getFirst();
+                case SCALE -> "julcValueScaleStrict " + arguments.get(1) + " "
+                        + arguments.get(0);
+            };
+        }
         if (node instanceof LedgerHelperNode helper) {
             var arguments = helper.arguments().stream()
                     .map(argument -> parenthesize(render(
@@ -197,6 +261,20 @@ public final class TypedPropertyLeanRenderer {
                 case CONTINUING_OUTPUTS -> "julcContinuingOutputs "
                         + arguments.getFirst();
                 case LOVELACE_OF -> "lovelaceOf " + arguments.getFirst();
+                case VALUE_SPENT -> "valueSpent " + arguments.getFirst();
+                case VALUE_PRODUCED -> "valueProduced " + arguments.getFirst();
+                case AGGREGATE_INPUT_VALUES -> "julcAggregateInputValues "
+                        + arguments.getFirst() + ".items";
+                case AGGREGATE_OUTPUT_VALUES -> "julcAggregateOutputValues "
+                        + arguments.getFirst() + ".items";
+                case FILTER_ADDRESS_OUTPUTS -> "⟨List.filter (fun output => "
+                        + "output.txOutAddress == " + arguments.get(1) + ") "
+                        + arguments.getFirst() + ".items⟩";
+                case FILTER_PAYMENT_CREDENTIAL_OUTPUTS ->
+                        "⟨List.filter (fun output => output.txOutAddress.addressCredential == "
+                                + arguments.get(1) + ") "
+                                + arguments.getFirst() + ".items⟩";
+                case IS_BALANCED -> "isBalanced " + arguments.getFirst();
             };
         }
         if (node instanceof LedgerByteAliasNode alias) {
@@ -411,6 +489,10 @@ public final class TypedPropertyLeanRenderer {
                     "Variant field target is not its constructor binder");
         }
         return variable.variable() + "#" + constructor + "#" + field;
+    }
+
+    private static String variableKey(String variable) {
+        return "$variable:" + variable;
     }
 
     private static String parenthesize(String value) {

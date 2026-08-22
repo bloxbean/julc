@@ -29,6 +29,7 @@ import com.bloxbean.cardano.julc.verification.dsl.TypedListExpr;
 import com.bloxbean.cardano.julc.verification.dsl.TypedAssocMapExpr;
 import com.bloxbean.cardano.julc.verification.dsl.LedgerExpressions;
 import com.bloxbean.cardano.julc.verification.dsl.AuthorizationDsl;
+import com.bloxbean.cardano.julc.verification.dsl.LedgerValueExpr;
 import com.bloxbean.cardano.julc.verification.dsl.type.*;
 import com.bloxbean.julc.cli.JulcCommand;
 import com.bloxbean.julc.cli.cmd.blueprint.ArtifactCommand;
@@ -869,6 +870,61 @@ class VerificationProjectGeneratorTest {
         assertEquals("certifying", manifest.path("scriptPurpose").asText());
         assertTrue(manifest.path("claims").get(0).path("capabilities").toString()
                 .contains("constructor.txCert.poolRetire"));
+    }
+
+    @Test
+    void generatesSchemaEightValueAlgebraAndKernelControls() throws Exception {
+        String source = """
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                import com.bloxbean.cardano.julc.ledger.ScriptContext;
+                import java.math.BigInteger;
+                @SpendingValidator class StateGate {
+                    record StateDatum(byte[] owner, BigInteger state) {}
+                    record Transition(BigInteger nextState) {}
+                    @Entrypoint static boolean validate(StateDatum datum,
+                            Transition redeemer, ScriptContext ctx) { return true; }
+                }
+                """;
+        var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(source);
+        String schemaHash = ContractTypeProjection.sha256(
+                ContractTypeProjection.project(compiled.contractSchema()));
+        var policy = LedgerExpressions.currencySymbol(bytes("11"));
+        var token = LedgerExpressions.tokenName(bytes("aa"));
+        LedgerValueExpr produced = LedgerExpressions.context().valueProduced();
+        var guarantee = produced.quantitySumStrict(policy, token)
+                .exists(quantity -> new IntegerExpr(quantity.node()).ge(integer(0)))
+                .and(produced.extensionallyEquals(produced))
+                .and(produced.rawPolicies().all(entry -> entry.whenWellFormed(
+                        (actualPolicy, tokens) -> tokens.all(tokenEntry ->
+                                tokenEntry.whenWellFormed((actualToken, quantity) ->
+                                        quantity.eq(quantity))))));
+        var candidate = DslPropertySet.typedV8(DslPurpose.SPENDING, schemaHash,
+                property("StateGate.value", DslDomain.VALID_SPENDING_V3_PINNED,
+                        guarantee));
+        var promoted = ComposedDslPromotion.promote(candidate,
+                compiled.contractSchema(), "StateGate", "ValueSpec.java");
+        String retained = System.getenv("JULC_E4J_WORKSPACE");
+        Path output = retained == null
+                ? tempDir.resolve("schema-eight-value") : Path.of(retained);
+
+        VerificationProjectGenerator.generateComposedDsl(
+                writeBlueprint(), promoted, compiled.contractSchema(),
+                5000, 4, output, retained != null);
+
+        String security = Files.readString(output.resolve("SecurityProperty.lean"));
+        assertTrue(security.contains("julcValueQuantitySumStrict"));
+        assertTrue(security.contains("julcValueExtensionalEq"));
+        String semantics = Files.readString(output.resolve(
+                "ValueAlgebraSemanticsTests.lean"));
+        assertTrue(semantics.contains("duplicateValue"));
+        assertTrue(semantics.contains("malformedQuantity"));
+        assertTrue(semantics.contains("misplacedAda"));
+        assertTrue(Files.readString(output.resolve("lakefile.lean"))
+                .contains("`ValueAlgebraSemanticsTests"));
+        var manifest = JSON.readTree(
+                output.resolve("verification-manifest.json").toFile());
+        assertEquals(8, manifest.path("dslIr").path("schemaVersion").asInt());
     }
 
     @Test
