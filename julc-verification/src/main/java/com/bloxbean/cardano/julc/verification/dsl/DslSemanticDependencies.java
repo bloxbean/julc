@@ -261,8 +261,74 @@ public final class DslSemanticDependencies {
                 case FILTER_SCRIPT_INPUTS -> "helper.findScriptInputs";
                 case CONTINUING_OUTPUTS -> "helper.continuingOutputs";
                 case LOVELACE_OF -> "dsl.helper.lovelaceOf";
+                case VALUE_SPENT -> "helper.valueSpent";
+                case VALUE_PRODUCED -> "helper.valueProduced";
+                case AGGREGATE_INPUT_VALUES -> "dsl.value.aggregate-inputs";
+                case AGGREGATE_OUTPUT_VALUES -> "dsl.value.aggregate-outputs";
+                case FILTER_ADDRESS_OUTPUTS -> "dsl.value.filter-full-address";
+                case FILTER_PAYMENT_CREDENTIAL_OUTPUTS ->
+                        "dsl.value.filter-payment-credential";
+                case IS_BALANCED -> "ledger.isBalanced";
             });
+            if (helper.helper() == LedgerHelperNode.LedgerHelperKind.VALUE_SPENT
+                    || helper.helper() == LedgerHelperNode.LedgerHelperKind.VALUE_PRODUCED
+                    || helper.helper()
+                        == LedgerHelperNode.LedgerHelperKind.AGGREGATE_INPUT_VALUES
+                    || helper.helper()
+                        == LedgerHelperNode.LedgerHelperKind.AGGREGATE_OUTPUT_VALUES) {
+                state.capabilities.add("helper.valueMerge");
+            }
             helper.arguments().forEach(argument -> visit(argument, state));
+            if (helper.helper() == LedgerHelperNode.LedgerHelperKind.IS_BALANCED) {
+                state.rules.add("domain-implied:is-balanced");
+            }
+            return;
+        }
+        if (node instanceof ValueEntriesNode entries) {
+            state.capabilities.add("dsl.value.raw-policy-entries");
+            visit(entries.value(), state);
+            return;
+        }
+        if (node instanceof ValueEntryWhenNode entry) {
+            state.capabilities.add(entry.entryKind()
+                    == ValueEntryWhenNode.ValueEntryKind.POLICY
+                    ? "dsl.value.strict-policy-entry"
+                    : "dsl.value.strict-token-entry");
+            visit(entry.entry(), state);
+            if (!state.binders.add(entry.keyVariable())
+                    || !state.binders.add(entry.valueVariable())) {
+                throw new IllegalArgumentException("Duplicate value-entry binder");
+            }
+            visit(entry.predicate(), state);
+            state.binders.remove(entry.valueVariable());
+            state.binders.remove(entry.keyVariable());
+            return;
+        }
+        if (node instanceof ValueQuantityNode quantity) {
+            state.capabilities.add(quantity.quantityKind()
+                    == ValueQuantityNode.ValueQuantityKind.FIRST_MATCH
+                    ? "helper.valueOf"
+                    : "dsl.value.quantity-sum-strict");
+            state.rules.add("value-quantity:"
+                    + quantity.quantityKind().name().toLowerCase(java.util.Locale.ROOT));
+            visit(quantity.value(), state);
+            visit(quantity.policy(), state);
+            visit(quantity.token(), state);
+            return;
+        }
+        if (node instanceof ValueRelationNode relation) {
+            state.capabilities.add("dsl.value.relation:"
+                    + relation.relation().name().toLowerCase(java.util.Locale.ROOT));
+            state.rules.add("value-relation:"
+                    + relation.relation().name().toLowerCase(java.util.Locale.ROOT));
+            visit(relation.left(), state);
+            visit(relation.right(), state);
+            return;
+        }
+        if (node instanceof ValueArithmeticNode arithmetic) {
+            state.capabilities.add("dsl.value.arithmetic:"
+                    + arithmetic.arithmetic().name().toLowerCase(java.util.Locale.ROOT));
+            arithmetic.arguments().forEach(argument -> visit(argument, state));
             return;
         }
         if (node instanceof LedgerByteAliasNode alias) {
@@ -483,6 +549,12 @@ public final class DslSemanticDependencies {
                     + (authorization.threshold() == null
                             ? "" : ":" + authorization.threshold());
             case NoSignersNode ignored -> "authorization:NO_SIGNERS";
+            case ValueEntriesNode ignored -> "value-raw-policy-entries";
+            case ValueEntryWhenNode entry -> "value-entry-when:" + entry.entryKind();
+            case ValueQuantityNode quantity -> "value-quantity:" + quantity.quantityKind();
+            case ValueRelationNode relation -> "value-relation:" + relation.relation();
+            case ValueArithmeticNode arithmetic ->
+                    "value-arithmetic:" + arithmetic.arithmetic();
         };
     }
 

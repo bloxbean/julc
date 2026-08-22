@@ -1,6 +1,6 @@
 # ADR-025: Milestones E.4i–E.4j — Certificate Payloads and Value Algebra
 
-- **Status:** E.4i implemented experimentally; E.4j proposed; manual review pending
+- **Status:** E.4i and E.4j implemented experimentally; E.4j manual review pending
 - **Date:** 2026-08-22
 - **Parent:**
   [ADR-016 — Typed Verification DSL and Foundational Profile Catalog](016-typed-verification-dsl-and-profile-catalog.md)
@@ -864,6 +864,29 @@ but they do not permit weakening the invariants above:
    publicly, or should it remain an explicitly named low-level compatibility
    operation? It must exist in semantic controls either way.
 
+### Resolved E.4j implementation decisions
+
+1. Whole-value extensional equality and order remain admitted typed formulas
+   with kernel-checked semantics. The retained calibration did not discharge
+   them within the documented bound, so E.4j presents no extensional
+   `SMT-VALID` result. Per-asset first-match is the retained positive solver
+   surface; strict-summed lookup has the same explicit bounded limitation.
+2. Checked arithmetic uses closed primitive value nodes. Java conveniences
+   lower directly to those nodes, and parent validation rechecks operation,
+   arity, argument roles, and result option type. Scaling is literal-only in
+   schema 8 to keep the admitted arithmetic linear.
+3. The positive exact-artifact evidence uses a direct output scope because it
+   yields a useful counterexample and tractable obligation. Complete-address,
+   payment-credential, selected-input/output, and whole-transaction aggregates
+   are separately represented and kernel/admission tested; scope is never
+   changed merely to make a solver query finish.
+4. No formula graduates to an annotation in this milestone. Any future
+   profile must be a separate ADR and must demonstrate canonical equivalence
+   to these shared nodes.
+5. The pinned first-match operation is exposed under the explicit name
+   `quantityFirst`. It is not the default meaning of a generic `quantity`
+   method, and its use is recorded as `FIRST_MATCH` in the result.
+
 ## Acceptance criteria
 
 E.4i is complete only when:
@@ -976,3 +999,102 @@ before the current CLI will re-run them. Most bind inventory hash `4230b388…`;
 the older E.4f Docker/native fuel-sweep variants bind `a17c44ab…`. They were not
 regenerated in E.4i because none could have referenced the newly admitted
 schema-7 constructors.
+
+## E.4j implementation outcome
+
+The schema-8 multi-asset value slice is implemented on
+`feat/typed-verification-dsl-e4j-value-algebra` without changes to compiler
+lowering, the ledger API, blueprint generation, or validator UPLC. It keeps
+four meanings deliberately separate in canonical IR, generated Lean, result
+metadata, and documentation:
+
+- `STRUCTURAL` compares the exact ordered nested association-list shape;
+- `FIRST_MATCH` uses the pinned upstream `valueOf` behavior;
+- `STRICT_SUMMED` validates the complete raw value and returns an option that
+  distinguishes an absent asset from an explicitly present zero sum; and
+- `EXTENSIONAL` compares summed quantities over the finite union of raw
+  supports after strict validation.
+
+Implemented behavior includes:
+
+- duplicate- and order-preserving raw policy/token traversal for output value
+  and mint value, with guarded policy/token entry binders;
+- first-match, strict-summed, structural, extensional equality, and
+  extensional pointwise-order operations;
+- checked singleton, addition, negation, literal scaling, and value-delta
+  operations that reject malformed inputs rather than normalizing them
+  silently;
+- pinned `valueSpent`, `valueProduced`, V3 `isBalanced`, selected
+  input/output aggregation, complete-address filtering, and the deliberately
+  weaker payment-credential filtering;
+- schema-8 metamodel generation, canonicalization, worker admission,
+  promotion, workspace generation, runner preflight, native reachability, and
+  certificate metadata for value meaning, aggregation scope, domain-implied
+  claims, and global multi-input linkage; and
+- kernel controls for duplicate policies/tokens, first-match versus summed
+  quantities, absence versus explicit zero, malformed entries, ordering,
+  zero-sum decompositions, Ada placement, checked arithmetic, aggregate folds,
+  address scopes, value validity, and balance.
+
+Purpose-aware admission tests exercise output/mint value composition for all
+four currently verifiable purposes, including mint-value strict lookup. Exact
+VM evidence exercises the real spending fixture with positive, insufficient,
+duplicate-first-match, and malformed-map inputs. The retained solver evidence
+is deliberately one spending theorem; E.4j does not claim a separate minting
+theorem was established merely because the same algebra is purpose-compatible.
+
+The retained non-tautological exact-artifact theorem states that successful
+execution of `AuthorizedValue` implies a first-match quantity of at least 10
+for the named asset in the first output. The always-succeeding control is
+`REFUTED`; the always-failing control is
+`COULD-NOT-EVALUATE/property-vacuous`. The result records
+`valueSemantics: [FIRST_MATCH]`, `paymentAggregationScopes: [DIRECT_OUTPUT]`,
+`domainImplied: false`, and `globalMultiInputLinkageModeled: false` rather than
+inflating this transaction-local result into a global payment claim.
+
+Local and Docker runs at CEK fuel 5000 and recursive depth 4 bind identical
+semantic inputs:
+
+- compiled-code SHA-256
+  `554f6e4660b045310c6f6b8e80701b7618ac5f306b94c28fa5291283e0e0b522`;
+- Cardano script hash
+  `4f2c2b849b1e676ecd1c39505f02a2f18a78182ad4c8037b4ab82e00`;
+- canonical DSL IR SHA-256
+  `26d424bf28050741f723664d3a7f43c39d9a9e5d278ac648fe708e5f4df87d04`;
+- property IR SHA-256
+  `448c2414e4d85d5b23b149e5a1775521560a771a9be0a8a937ec9c6a13b1cd3c`;
+  and
+- generated Lean SHA-256
+  `f30709b363ffd107a110bc6297d0d5a88d42be0caf75122310f4e134ca519adb`.
+
+Solver calibration preserves the distinction between semantic support and
+automated discharge. The strict-summed calibration established non-vacuity in
+approximately 2m28s, but its proof did not finish within a twelve-minute
+ceiling. The whole-value extensional calibration established non-vacuity in
+approximately 2m42s, but its proof did not finish within a ten-minute ceiling.
+Neither formula is weakened or presented as `SMT-VALID`; both remain supported
+typed properties with a documented bounded-solver limitation. The
+first-match theorem is the retained positive solver evidence.
+
+E.4j changes the bundled capability-inventory SHA-256 from
+`f55d08b47d71768e4ca67bcb417e6c556fdf55cfc6647c8ff45e73efe65675c8`
+to `7f1d5e03608d104228fa90acf0403ed04f3147cbe84b93800ccd0d0731676788`.
+This is an additive admission change for the reviewed value types, fields,
+validity predicates, and helpers. It does not alter any previously admitted
+schema-1-through-7 formula. Older certificates remain hash-bound historical
+records, while their generated workspaces require regeneration before the
+current inventory gate will re-run them.
+
+The GraalVM 25.0.2 native image built successfully and executed the complete
+positive verification workflow. Its compiled-code, script, canonical DSL IR,
+property IR, and generated Lean hashes are byte-identical to the local and
+Docker values above. The native run established non-vacuity in approximately
+2m29s and returned `SMT-VALID` for the property in approximately 6s. The
+native executable still launches a bounded Java worker for the trusted Java
+property builder; the proof runner itself executes from the native CLI.
+
+Final validation used fresh forced runs of all 88 `julc-verification` tests
+and all 428 `julc-cli` tests with zero failures, followed by a successful
+repository-wide `./gradlew build`. The local evidence driver, Docker backend,
+GraalVM 25.0.2 native build, and native positive verification all completed
+successfully.

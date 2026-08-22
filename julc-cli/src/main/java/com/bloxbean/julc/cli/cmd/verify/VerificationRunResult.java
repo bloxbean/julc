@@ -40,11 +40,35 @@ public record VerificationRunResult(
             String guaranteeSha256,
             String envelopeSha256,
             List<String> capabilities,
+            List<String> guaranteeRules,
+            List<String> valueSemantics,
+            List<String> paymentAggregationScopes,
+            Boolean domainImplied,
+            Boolean globalMultiInputLinkageModeled,
             String counterexampleDomain,
             Boolean ledgerValidCounterexampleEstablished,
             Boolean concreteVmCounterexampleReproduced) {
         public Property(String id, String outcome, String reason) {
-            this(id, outcome, reason, null, null, null, null, null, null, null);
+            this(id, outcome, reason, null, null, null, null, null, null, null,
+                    null, null, null, null, null);
+        }
+
+        /** Compatibility constructor for result producers predating value metadata. */
+        public Property(
+                String id,
+                String outcome,
+                String reason,
+                String domain,
+                String guaranteeSha256,
+                String envelopeSha256,
+                List<String> capabilities,
+                String counterexampleDomain,
+                Boolean ledgerValidCounterexampleEstablished,
+                Boolean concreteVmCounterexampleReproduced) {
+            this(id, outcome, reason, domain, guaranteeSha256, envelopeSha256,
+                    capabilities, null, null, null, null, null,
+                    counterexampleDomain, ledgerValidCounterexampleEstablished,
+                    concreteVmCounterexampleReproduced);
         }
     }
 }

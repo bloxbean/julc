@@ -19,4 +19,19 @@ public record LedgerContextExpr(PropertyNode node) implements Expr {
                 LedgerHelperNode.LedgerHelperKind.CURRENT_SCRIPT_PURPOSE,
                 List.of(node), LedgerTypeAuthority.SCRIPT_PURPOSE));
     }
+    public LedgerValueExpr valueSpent() {
+        return new LedgerValueExpr(new LedgerHelperNode(
+                LedgerHelperNode.LedgerHelperKind.VALUE_SPENT,
+                List.of(node), LedgerTypeAuthority.VALUE));
+    }
+    public LedgerValueExpr valueProduced() {
+        return new LedgerValueExpr(new LedgerHelperNode(
+                LedgerHelperNode.LedgerHelperKind.VALUE_PRODUCED,
+                List.of(node), LedgerTypeAuthority.VALUE));
+    }
+    public BoolExpr isBalanced() {
+        return new BoolExpr(new LedgerHelperNode(
+                LedgerHelperNode.LedgerHelperKind.IS_BALANCED,
+                List.of(node), LedgerTypeAuthority.BOOL));
+    }
 }

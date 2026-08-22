@@ -18,6 +18,13 @@ final class LedgerTypeAuthority {
     static final LedgerTypeRef TX_ID = ledger(LedgerTypeRef.LedgerKind.TX_ID);
     static final LedgerTypeRef TX_OUT = ledger(LedgerTypeRef.LedgerKind.TX_OUT);
     static final LedgerTypeRef VALUE = ledger(LedgerTypeRef.LedgerKind.VALUE);
+    static final LedgerTypeRef MINT_VALUE = ledger(LedgerTypeRef.LedgerKind.MINT_VALUE);
+    static final LedgerTypeRef VALUE_DELTA = ledger(LedgerTypeRef.LedgerKind.VALUE_DELTA);
+    static final LedgerTypeRef VALUE_POLICY_ENTRY = ledger(
+            LedgerTypeRef.LedgerKind.VALUE_POLICY_ENTRY);
+    static final LedgerTypeRef VALUE_TOKEN_ENTRY = ledger(
+            LedgerTypeRef.LedgerKind.VALUE_TOKEN_ENTRY);
+    static final LedgerTypeRef TOKEN_NAME = ledger(LedgerTypeRef.LedgerKind.TOKEN_NAME);
     static final LedgerTypeRef ADDRESS = ledger(LedgerTypeRef.LedgerKind.ADDRESS);
     static final LedgerTypeRef CREDENTIAL = ledger(LedgerTypeRef.LedgerKind.CREDENTIAL);
     static final LedgerTypeRef STAKING_CREDENTIAL = ledger(
@@ -37,6 +44,7 @@ final class LedgerTypeAuthority {
             LedgerTypeRef.LedgerKind.OPAQUE_PROPOSAL);
 
     static final BuiltinTypeRef INTEGER = builtin(BuiltinTypeRef.BuiltinKind.INTEGER);
+    static final BuiltinTypeRef BOOL = builtin(BuiltinTypeRef.BuiltinKind.BOOLEAN);
     static final BuiltinTypeRef DATA = builtin(BuiltinTypeRef.BuiltinKind.DATA);
 
     private static final Map<FieldKey, Field> FIELDS = fields();
@@ -125,7 +133,8 @@ final class LedgerTypeAuthority {
     }
 
     static void requireByteAlias(LedgerTypeRef alias) {
-        if (!List.of(TX_ID, DATUM_HASH, SCRIPT_HASH, PUB_KEY_HASH, CURRENCY_SYMBOL)
+        if (!List.of(TX_ID, DATUM_HASH, SCRIPT_HASH, PUB_KEY_HASH, CURRENCY_SYMBOL,
+                        TOKEN_NAME)
                 .contains(alias)) {
             throw new IllegalArgumentException(
                     "Ledger type is not an admitted byte-string alias: " + alias.ledgerType());
@@ -144,6 +153,7 @@ final class LedgerTypeAuthority {
                 "field.txInfo.referenceInputs");
         add(fields, TX_INFO, "outputs", new ListTypeRef(TX_OUT), "field.txInfo.outputs");
         add(fields, TX_INFO, "fee", INTEGER, "field.txInfo.fee");
+        add(fields, TX_INFO, "mint", MINT_VALUE, "field.txInfo.mint");
         add(fields, TX_INFO, "certificates", new ListTypeRef(TX_CERT),
                 "field.txInfo.certificates");
         add(fields, TX_INFO, "datums", new AssocMapTypeRef(DATUM_HASH, DATA),

@@ -93,6 +93,23 @@ class VerificationRunnerTest {
     }
 
     @Test
+    void valueCertificateMetadataRetainsMeaningAndAggregationScope() {
+        assertEquals(List.of("EXTENSIONAL", "FIRST_MATCH", "STRICT_SUMMED", "STRUCTURAL"),
+                VerificationRunner.valueSemantics(List.of(
+                        "value-quantity:first_match",
+                        "value-quantity:strict_summed",
+                        "value-relation:le",
+                        "value-entry-when:POLICY")));
+        assertEquals(List.of("COMPLETE_ADDRESS", "SELECTED_OUTPUTS"),
+                VerificationRunner.paymentAggregationScopes(List.of(
+                        "dsl.value.aggregate-outputs",
+                        "dsl.value.filter-full-address")));
+        assertEquals(List.of("WHOLE_TRANSACTION_BALANCE"),
+                VerificationRunner.paymentAggregationScopes(
+                        List.of("ledger.isBalanced")));
+    }
+
+    @Test
     void unexpectedExitAndMissingMarkerFailClosed() throws Exception {
         Path exitWorkspace = workspace("bad-exit", VerificationOutcome.SMT_VALID, false);
         var exitResult = runner(new FakeProcess(false, true, 7))
@@ -259,6 +276,8 @@ class VerificationRunnerTest {
                         && property.guaranteeSha256().matches("[0-9a-f]{64}")
                         && property.envelopeSha256().matches("[0-9a-f]{64}")
                         && property.capabilities().contains("purpose.spending")
+                        && !property.guaranteeRules().isEmpty()
+                        && property.valueSemantics() == null
                         && property.counterexampleDomain().equals(
                                 "BLASTER_SPENDING_SYMBOLIC_CONTEXT")
                         && !property.ledgerValidCounterexampleEstablished()

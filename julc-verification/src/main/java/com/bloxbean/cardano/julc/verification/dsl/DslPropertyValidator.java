@@ -42,8 +42,10 @@ public final class DslPropertyValidator {
                 == DslPropertySet.AUTHORIZATION_SCHEMA_VERSION;
         boolean certificatePayloadV7 = propertySet.schemaVersion()
                 == DslPropertySet.CERTIFICATE_PAYLOAD_SCHEMA_VERSION;
+        boolean valueAlgebraV8 = propertySet.schemaVersion()
+                == DslPropertySet.VALUE_ALGEBRA_SCHEMA_VERSION;
         boolean composition = compositionV3 || typedV4 || ledgerV5 || authorizationV6
-                || certificatePayloadV7;
+                || certificatePayloadV7 || valueAlgebraV8;
         ContractSchema.Purpose expectedPurpose = composition
                 ? contractPurpose(propertySet.purpose())
                 : mintingV2 ? ContractSchema.Purpose.MINT : ContractSchema.Purpose.SPEND;
@@ -56,14 +58,16 @@ public final class DslPropertyValidator {
                     "Minting DSL schema 2 requires exactly one property");
         }
         ProjectedContractTypes projection = typedV4 || ledgerV5 || authorizationV6
-                || certificatePayloadV7
+                || certificatePayloadV7 || valueAlgebraV8
                 ? ContractTypeProjection.project(schema) : null;
         TypeAuthority typeAuthority = projection == null
                 ? null : new TypeAuthority(projection,
-                        ledgerV5 || authorizationV6 || certificatePayloadV7,
-                        authorizationV6 || certificatePayloadV7,
-                        certificatePayloadV7, propertySet.purpose());
-        if (typedV4 || ledgerV5 || authorizationV6 || certificatePayloadV7) {
+                        ledgerV5 || authorizationV6 || certificatePayloadV7 || valueAlgebraV8,
+                        authorizationV6 || certificatePayloadV7 || valueAlgebraV8,
+                        certificatePayloadV7 || valueAlgebraV8,
+                        valueAlgebraV8, propertySet.purpose());
+        if (typedV4 || ledgerV5 || authorizationV6 || certificatePayloadV7
+                || valueAlgebraV8) {
             String expectedHash = ContractTypeProjection.sha256(projection);
             if (!expectedHash.equals(propertySet.contractSchemaSha256())) {
                 throw new IllegalArgumentException(
@@ -95,6 +99,20 @@ public final class DslPropertyValidator {
                 throw new IllegalArgumentException("Property " + property.id()
                         + " must have BOOL type, found " + type);
             }
+            if (valueAlgebraV8) {
+                var capabilities = DslSemanticDependencies.collect(
+                        property, propertySet.purpose()).capabilities();
+                boolean domainRequired = capabilities.stream().anyMatch(capability ->
+                        capability.equals("helper.valueSpent")
+                                || capability.equals("helper.valueProduced")
+                                || capability.equals("ledger.isBalanced")
+                                || capability.equals("dsl.value.aggregate-inputs")
+                                || capability.equals("dsl.value.aggregate-outputs"));
+                if (domainRequired && property.domain() == DslDomain.NONE) {
+                    throw new IllegalArgumentException(
+                            "Pinned Value aggregation requires a purpose-compatible valid V3 domain");
+                }
+            }
             if (mintingV2) validateMintingPremise(property.expression());
         }
     }
@@ -118,7 +136,8 @@ public final class DslPropertyValidator {
                 || schemaVersion == DslPropertySet.TYPED_SCHEMA_VERSION
                 || schemaVersion == DslPropertySet.LEDGER_SCHEMA_VERSION
                 || schemaVersion == DslPropertySet.AUTHORIZATION_SCHEMA_VERSION
-                || schemaVersion == DslPropertySet.CERTIFICATE_PAYLOAD_SCHEMA_VERSION;
+                || schemaVersion == DslPropertySet.CERTIFICATE_PAYLOAD_SCHEMA_VERSION
+                || schemaVersion == DslPropertySet.VALUE_ALGEBRA_SCHEMA_VERSION;
         if (legacySpending && isMintingSchemaNode(node)) {
             throw new IllegalArgumentException("DSL schema 1 does not admit minting node "
                     + node.getClass().getSimpleName());
@@ -347,7 +366,8 @@ public final class DslPropertyValidator {
         if (schemaVersion != DslPropertySet.TYPED_SCHEMA_VERSION
                 && schemaVersion != DslPropertySet.LEDGER_SCHEMA_VERSION
                 && schemaVersion != DslPropertySet.AUTHORIZATION_SCHEMA_VERSION
-                && schemaVersion != DslPropertySet.CERTIFICATE_PAYLOAD_SCHEMA_VERSION) {
+                && schemaVersion != DslPropertySet.CERTIFICATE_PAYLOAD_SCHEMA_VERSION
+                && schemaVersion != DslPropertySet.VALUE_ALGEBRA_SCHEMA_VERSION) {
             throw new IllegalArgumentException(
                     "Structural typed nodes require DSL schema 4, 5, 6, or 7");
         }
@@ -382,6 +402,62 @@ public final class DslPropertyValidator {
         }
         if (node instanceof NoSignersNode) {
             requireAuthorizationSchema(schemaVersion);
+            return DslType.BOOL;
+        }
+        if (node instanceof LedgerHelperNode helper
+                && helper.helper() == LedgerHelperNode.LedgerHelperKind.IS_BALANCED) {
+            authority.requireValueAlgebra();
+            VerificationTypeRef actual = validateTypedValue(
+                    helper, authority, variables, count, maxNodes);
+            if (!actual.equals(LedgerTypeAuthority.BOOL)) {
+                throw new IllegalArgumentException("isBalanced must return Bool");
+            }
+            return DslType.BOOL;
+        }
+        if (node instanceof ValueEntryWhenNode entry) {
+            authority.requireValueAlgebra();
+            VerificationTypeRef actual = validateTypedValue(
+                    entry.entry(), authority, variables, count, maxNodes);
+            if (!actual.equals(entry.entryType())) {
+                throw new IllegalArgumentException("Value entry guard type mismatch");
+            }
+            VerificationTypeRef expectedEntry = entry.entryKind()
+                    == ValueEntryWhenNode.ValueEntryKind.POLICY
+                    ? LedgerTypeAuthority.VALUE_POLICY_ENTRY
+                    : LedgerTypeAuthority.VALUE_TOKEN_ENTRY;
+            VerificationTypeRef expectedKey = entry.entryKind()
+                    == ValueEntryWhenNode.ValueEntryKind.POLICY
+                    ? LedgerTypeAuthority.CURRENCY_SYMBOL : LedgerTypeAuthority.TOKEN_NAME;
+            VerificationTypeRef expectedValue = entry.entryKind()
+                    == ValueEntryWhenNode.ValueEntryKind.POLICY
+                    ? new ListTypeRef(LedgerTypeAuthority.VALUE_TOKEN_ENTRY)
+                    : LedgerTypeAuthority.INTEGER;
+            if (!entry.entryType().equals(expectedEntry)
+                    || !entry.keyType().equals(expectedKey)
+                    || !entry.valueType().equals(expectedValue)) {
+                throw new IllegalArgumentException("Value entry guard signature is not pinned");
+            }
+            validateBinder(entry.keyVariable(), variables);
+            var nested = new HashMap<>(variables);
+            nested.put(entry.keyVariable(), new TypedBinding(entry.keyType(), null));
+            validateBinder(entry.valueVariable(), nested);
+            nested.put(entry.valueVariable(), new TypedBinding(entry.valueType(), null));
+            require(DslType.BOOL, validateTypedExpressionOrLegacy(entry.predicate(), schema,
+                    authority, nested, count, maxNodes, schemaVersion));
+            return DslType.BOOL;
+        }
+        if (node instanceof ValueRelationNode relation) {
+            authority.requireValueAlgebra();
+            VerificationTypeRef left = validateTypedValue(
+                    relation.left(), authority, variables, count, maxNodes);
+            VerificationTypeRef right = validateTypedValue(
+                    relation.right(), authority, variables, count, maxNodes);
+            requireValueLike(relation.leftType());
+            requireValueLike(relation.rightType());
+            if (!left.equals(relation.leftType()) || !right.equals(relation.rightType())) {
+                throw new IllegalArgumentException("Value relation operand type mismatch");
+            }
+            validateValueRelationRoles(relation);
             return DslType.BOOL;
         }
         if (node instanceof IntegerArithmeticNode arithmetic) {
@@ -612,6 +688,22 @@ public final class DslPropertyValidator {
         throw new IllegalArgumentException(
                 "Unsupported structural typed expression node "
                         + node.getClass().getSimpleName());
+    }
+
+    private static void validateValueRelationRoles(ValueRelationNode relation) {
+        VerificationTypeRef left = relation.leftType();
+        VerificationTypeRef right = relation.rightType();
+        if (left.equals(right)) {
+            return;
+        }
+        boolean deltaBridge = relation.relation()
+                == ValueRelationNode.ValueRelationKind.EXTENSIONAL_EQ
+                && (left.equals(LedgerTypeAuthority.VALUE_DELTA)
+                || right.equals(LedgerTypeAuthority.VALUE_DELTA));
+        if (!deltaBridge) {
+            throw new IllegalArgumentException(
+                    "Cross-role value relations require explicit ValueDelta conversion");
+        }
     }
 
     private static DslType validateTypedExpressionOrLegacy(
@@ -995,12 +1087,99 @@ public final class DslPropertyValidator {
                             variables, count, maxNodes);
                     yield LedgerTypeAuthority.INTEGER;
                 }
+                case VALUE_SPENT, VALUE_PRODUCED -> {
+                    authority.requireValueAlgebra();
+                    requireHelperArguments(helper, 1);
+                    requireHelperType(helper.arguments().getFirst(),
+                            LedgerTypeAuthority.SCRIPT_CONTEXT, authority,
+                            variables, count, maxNodes);
+                    yield LedgerTypeAuthority.VALUE;
+                }
+                case AGGREGATE_INPUT_VALUES -> {
+                    authority.requireValueAlgebra();
+                    requireHelperArguments(helper, 1);
+                    requireHelperType(helper.arguments().getFirst(),
+                            new ListTypeRef(LedgerTypeAuthority.TX_IN_INFO), authority,
+                            variables, count, maxNodes);
+                    yield LedgerTypeAuthority.VALUE;
+                }
+                case AGGREGATE_OUTPUT_VALUES -> {
+                    authority.requireValueAlgebra();
+                    requireHelperArguments(helper, 1);
+                    requireHelperType(helper.arguments().getFirst(),
+                            new ListTypeRef(LedgerTypeAuthority.TX_OUT), authority,
+                            variables, count, maxNodes);
+                    yield LedgerTypeAuthority.VALUE;
+                }
+                case FILTER_ADDRESS_OUTPUTS, FILTER_PAYMENT_CREDENTIAL_OUTPUTS -> {
+                    authority.requireValueAlgebra();
+                    requireHelperArguments(helper, 2);
+                    requireHelperType(helper.arguments().get(0),
+                            new ListTypeRef(LedgerTypeAuthority.TX_OUT), authority,
+                            variables, count, maxNodes);
+                    requireHelperType(helper.arguments().get(1),
+                            helper.helper() == LedgerHelperNode.LedgerHelperKind.FILTER_ADDRESS_OUTPUTS
+                                    ? LedgerTypeAuthority.ADDRESS
+                                    : LedgerTypeAuthority.CREDENTIAL,
+                            authority, variables, count, maxNodes);
+                    yield new ListTypeRef(LedgerTypeAuthority.TX_OUT);
+                }
+                case IS_BALANCED -> {
+                    authority.requireValueAlgebra();
+                    requireHelperArguments(helper, 1);
+                    requireHelperType(helper.arguments().getFirst(),
+                            LedgerTypeAuthority.SCRIPT_CONTEXT, authority,
+                            variables, count, maxNodes);
+                    yield LedgerTypeAuthority.BOOL;
+                }
             };
             if (!expected.equals(helper.valueType())) {
                 throw new IllegalArgumentException(
                         "Ledger helper result does not match its pinned signature");
             }
             return expected;
+        }
+        if (node instanceof ValueEntriesNode entries) {
+            authority.requireValueAlgebra();
+            VerificationTypeRef actual = validateTypedValue(
+                    entries.value(), authority, variables, count, maxNodes);
+            requireValueLike(entries.valueType());
+            if (!actual.equals(entries.valueType())
+                    || !entries.entryType().equals(LedgerTypeAuthority.VALUE_POLICY_ENTRY)) {
+                throw new IllegalArgumentException("Raw Value entry view type mismatch");
+            }
+            return new ListTypeRef(LedgerTypeAuthority.VALUE_POLICY_ENTRY);
+        }
+        if (node instanceof ValueQuantityNode quantity) {
+            authority.requireValueAlgebra();
+            VerificationTypeRef actual = validateTypedValue(
+                    quantity.value(), authority, variables, count, maxNodes);
+            requireValueLike(quantity.valueType());
+            if (!actual.equals(quantity.valueType())) {
+                throw new IllegalArgumentException("Value quantity source type mismatch");
+            }
+            requireHelperType(quantity.policy(), LedgerTypeAuthority.CURRENCY_SYMBOL,
+                    authority, variables, count, maxNodes);
+            requireHelperType(quantity.token(), LedgerTypeAuthority.TOKEN_NAME,
+                    authority, variables, count, maxNodes);
+            return quantity.quantityKind() == ValueQuantityNode.ValueQuantityKind.FIRST_MATCH
+                    ? LedgerTypeAuthority.INTEGER
+                    : new OptionalTypeRef(LedgerTypeAuthority.INTEGER);
+        }
+        if (node instanceof ValueArithmeticNode arithmetic) {
+            authority.requireValueAlgebra();
+            if (arithmetic.arguments().size() != arithmetic.argumentTypes().size()) {
+                throw new IllegalArgumentException("Value arithmetic signature is malformed");
+            }
+            for (int i = 0; i < arithmetic.arguments().size(); i++) {
+                VerificationTypeRef actual = validateTypedValueOrIntegerLiteral(
+                        arithmetic.arguments().get(i), authority, variables, count, maxNodes);
+                if (!actual.equals(arithmetic.argumentTypes().get(i))) {
+                    throw new IllegalArgumentException("Value arithmetic argument type mismatch");
+                }
+            }
+            validateValueArithmeticSignature(arithmetic);
+            return new OptionalTypeRef(LedgerTypeAuthority.VALUE_DELTA);
         }
         if (node instanceof LedgerByteAliasNode alias) {
             authority.requireLedger();
@@ -1159,6 +1338,49 @@ public final class DslPropertyValidator {
         }
     }
 
+    private static void requireValueLike(VerificationTypeRef type) {
+        if (!java.util.List.of(LedgerTypeAuthority.VALUE,
+                LedgerTypeAuthority.MINT_VALUE, LedgerTypeAuthority.VALUE_DELTA)
+                .contains(type)) {
+            throw new IllegalArgumentException("Expected Value, MintValue, or ValueDelta");
+        }
+    }
+
+    private static void validateValueArithmeticSignature(ValueArithmeticNode node) {
+        var expected = switch (node.arithmetic()) {
+            case VALIDATE -> {
+                if (node.argumentTypes().size() != 1) {
+                    throw new IllegalArgumentException(
+                            "Value validation requires one argument");
+                }
+                requireValueLike(node.argumentTypes().getFirst());
+                yield node.argumentTypes();
+            }
+            case SINGLETON -> java.util.List.<VerificationTypeRef>of(
+                    LedgerTypeAuthority.CURRENCY_SYMBOL, LedgerTypeAuthority.TOKEN_NAME,
+                    LedgerTypeAuthority.INTEGER);
+            case ADD -> java.util.List.<VerificationTypeRef>of(
+                    LedgerTypeAuthority.VALUE_DELTA, LedgerTypeAuthority.VALUE_DELTA);
+            case NEGATE -> java.util.List.<VerificationTypeRef>of(
+                    LedgerTypeAuthority.VALUE_DELTA);
+            case SCALE -> {
+                if (node.arguments().size() != 2
+                        || !(node.arguments().get(1) instanceof LiteralNode literal)
+                        || literal.resultType() != DslType.INTEGER) {
+                    throw new IllegalArgumentException(
+                            "ValueDelta scale currently requires a canonical integer literal");
+                }
+                yield java.util.List.<VerificationTypeRef>of(
+                        LedgerTypeAuthority.VALUE_DELTA, LedgerTypeAuthority.INTEGER);
+            }
+        };
+        if (!expected.equals(node.argumentTypes())
+                || !node.resultTypeRef().equals(
+                        new OptionalTypeRef(LedgerTypeAuthority.VALUE_DELTA))) {
+            throw new IllegalArgumentException("Value arithmetic signature is not pinned");
+        }
+    }
+
     private static void requireHelperType(
             PropertyNode argument,
             VerificationTypeRef expected,
@@ -1262,7 +1484,10 @@ public final class DslPropertyValidator {
                 || node instanceof MapLookupFirstNode || node instanceof MapLookupAllNode
                 || node instanceof AuthorityKeyHashNode || node instanceof AuthorityListNode
                 || node instanceof AuthorityListFromBytesNode
-                || node instanceof AuthorizationNode || node instanceof NoSignersNode) {
+                || node instanceof AuthorizationNode || node instanceof NoSignersNode
+                || node instanceof ValueEntriesNode || node instanceof ValueEntryWhenNode
+                || node instanceof ValueQuantityNode || node instanceof ValueRelationNode
+                || node instanceof ValueArithmeticNode) {
             return true;
         }
         return false;
@@ -1288,7 +1513,10 @@ public final class DslPropertyValidator {
                 || node instanceof MapLookupFirstNode || node instanceof MapLookupAllNode
                 || node instanceof AuthorityKeyHashNode || node instanceof AuthorityListNode
                 || node instanceof AuthorityListFromBytesNode
-                || node instanceof AuthorizationNode || node instanceof NoSignersNode;
+                || node instanceof AuthorizationNode || node instanceof NoSignersNode
+                || node instanceof ValueEntriesNode || node instanceof ValueEntryWhenNode
+                || node instanceof ValueQuantityNode || node instanceof ValueRelationNode
+                || node instanceof ValueArithmeticNode;
     }
 
     private static boolean isTypedValueNode(PropertyNode node) {
@@ -1302,7 +1530,8 @@ public final class DslPropertyValidator {
                 || node instanceof AuthorityListNode
                 || node instanceof AuthorityListFromBytesNode
                 || node instanceof ListAtNode || node instanceof MapLookupFirstNode
-                || node instanceof MapLookupAllNode;
+                || node instanceof MapLookupAllNode || node instanceof ValueEntriesNode
+                || node instanceof ValueQuantityNode || node instanceof ValueArithmeticNode;
     }
 
     private static void requireAuthorizationSchema(int schemaVersion) {
@@ -1359,15 +1588,17 @@ public final class DslPropertyValidator {
         private final boolean ledgerAllowed;
         private final boolean authorizationAllowed;
         private final boolean certificatePayloadAllowed;
+        private final boolean valueAlgebraAllowed;
         private final DslPurpose purpose;
 
         private TypeAuthority(ProjectedContractTypes projection, boolean ledgerAllowed,
                 boolean authorizationAllowed, boolean certificatePayloadAllowed,
-                DslPurpose purpose) {
+                boolean valueAlgebraAllowed, DslPurpose purpose) {
             this.projection = projection;
             this.ledgerAllowed = ledgerAllowed;
             this.authorizationAllowed = authorizationAllowed;
             this.certificatePayloadAllowed = certificatePayloadAllowed;
+            this.valueAlgebraAllowed = valueAlgebraAllowed;
             this.purpose = purpose;
             this.definitions = projection.definitions().stream().collect(
                     java.util.stream.Collectors.toUnmodifiableMap(
@@ -1440,6 +1671,13 @@ public final class DslPropertyValidator {
             if (!authorizationAllowed) {
                 throw new IllegalArgumentException(
                         "Authorization nodes require DSL schema 6");
+            }
+        }
+
+        private void requireValueAlgebra() {
+            if (!valueAlgebraAllowed) {
+                throw new IllegalArgumentException(
+                        "Value algebra nodes require DSL schema 8");
             }
         }
 
