@@ -1,6 +1,6 @@
 # ADR-016: Typed Verification DSL and Foundational Profile Catalog
 
-- **Status:** E.1–E.4g implemented experimentally; E.4h–E.6 proposed
+- **Status:** E.1–E.4h implemented experimentally; E.4i–E.6 proposed
 - **Date:** 2026-08-13
 - **Related:**
   [ADR-001 — IOG Blaster Verification Strategy](001-iog-blaster-verification-strategy.md),
@@ -15,8 +15,10 @@
   [ADR-019 — Compositional Property Promotion Core](019-milestone-e4b-compositional-property-promotion-core.md),
   [ADR-020 — Typed Rewarding Verification DSL](020-milestone-e4c-typed-rewarding-dsl.md),
   [ADR-021 — Typed Certifying Verification DSL](021-milestone-e4d-typed-certifying-dsl.md),
-  [ADR-022 — Generic Contract Types and Collections](022-milestones-e4e-e4f-generic-contract-types-and-collections.md), and
-  [ADR-023 — Typed Non-Value Transaction Context](023-milestone-e4g-typed-non-value-transaction-context.md)
+  [ADR-022 — Generic Contract Types and Collections](022-milestones-e4e-e4f-generic-contract-types-and-collections.md),
+  [ADR-023 — Typed Non-Value Transaction Context](023-milestone-e4g-typed-non-value-transaction-context.md),
+  [ADR-024 — Compositional Authorization Algebra](024-milestone-e4h-authorization-algebra.md), and
+  [ADR-025 — Certificate Payloads and Value Algebra](025-milestones-e4i-e4j-certificate-payloads-and-value-algebra.md)
 
 ## Context
 
@@ -644,24 +646,35 @@ payloads, certificate payloads, or raw validity/treasury adapters.
 
 ### E.4h: Authorization algebra
 
-Add any/all/exact/allow-list signer predicates, no-unexpected-signer checks,
-M-of-N thresholds, and fixed/datum/parameter authority sources where the exact
-artifact binds the source. Common formulas may later graduate to annotations,
-but use the same generic canonical IR and proof path.
+[ADR-024](024-milestone-e4h-authorization-algebra.md) specifies an opt-in
+schema-6 authorization algebra. It adds any/all/none/at-least/exactly-N,
+no-unexpected-signers, and exact-authorized-set predicates over **distinct**
+public-key-hash identities. Fixed and compiler-owned typed contract sources
+are admitted through parent validation. Deployment-parameter sources are
+admitted only when JuLC reconstructs parameter application and proves that the
+result is the exact verified artifact. Threshold and allow-list meanings stay
+separate and compose through the generic IR; common formulas may later
+graduate to annotations without receiving a separate proof path.
 
 ### E.4i: Certificate payload surface
 
-Extend E.4d constructor recognition with guarded payload access for deposits,
-refunds, credentials, delegation targets, DReps, pools, epochs, and committee
-credentials. No unchecked constructor projection is admitted.
+[ADR-025](025-milestones-e4i-e4j-certificate-payloads-and-value-algebra.md)
+specifies this phase as opt-in property schema 7. It extends E.4d constructor
+recognition with guarded payload access for deposits, refunds, credentials,
+delegation targets, DReps, pools, epochs, and committee credentials. It pins
+all 11 V3 `TxCert` constructors plus nested `Delegatee` and `DRep` sums. No
+unchecked constructor projection is admitted.
 
 ### E.4j: Value and multi-asset algebra
 
-Add raw policy/token entry traversal, explicit quantity projections, structural
-and normalized/extensional relations, value arithmetic/order, spent/produced
-value, balancing, asset preservation/leakage, payments, and generalized
-mint/burn constraints. Every operation states its duplicate policy; raw,
-first-match, summed, and normalized meanings are never conflated.
+[ADR-025](025-milestones-e4i-e4j-certificate-payloads-and-value-algebra.md)
+specifies this phase as opt-in property schema 8. It adds raw policy/token
+entry traversal, explicitly distinct upstream-first-match and strict-summed
+quantity projections, structural and normalized/extensional relations, checked
+value arithmetic/order, spent/produced value, balancing, asset
+preservation/leakage, payments, and generalized mint/burn constraints. Every
+operation states its malformed-data, duplicate, aggregation, and payment scope;
+raw, first-match, strict-summed, and extensional meanings are never conflated.
 
 ### E.4k: Governance transaction data
 

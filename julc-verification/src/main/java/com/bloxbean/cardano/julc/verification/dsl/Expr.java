@@ -14,7 +14,7 @@ public sealed interface Expr permits BoolExpr, ByteStringExpr, IntegerExpr, Datu
         LedgerTxOutExpr, LedgerTxOutListExpr, LedgerTxOutOptionExpr,
         LedgerAddressExpr, LedgerCredentialExpr, LedgerOutputDatumExpr,
         LedgerScriptPurposeExpr, LedgerStakingCredentialExpr, LedgerValueExpr,
-        LedgerByteAliasExpr,
+        LedgerByteAliasExpr, AuthorityExpr, AuthoritySetExpr,
         LedgerStakingCredentialOptionExpr {
     PropertyNode node();
 }

@@ -76,6 +76,11 @@ committed evidence suite:
     full-address continuing-output selection, plus ordered duplicate-preserving
     datum/redeemer maps. Local, Docker, native, exact-VM, refuted, and vacuous
     controls bind these meanings to the pinned ledger model.
+14. `verification/e4h` adds experimental schema 6 compositional authorization:
+    distinct any/all/none/threshold relations, explicit unexpected-signer and
+    exact-set constraints, fixed and compiler-owned contract-byte sources,
+    plus exact-VM and Lean-kernel duplicate/order controls. Applied parameter
+    authorities remain fail-closed pending exact application binding.
 
 The integration does not prove that every JuLC program is safe. It checks
 explicit properties for one exact compiled artifact. Solver-valid Blaster

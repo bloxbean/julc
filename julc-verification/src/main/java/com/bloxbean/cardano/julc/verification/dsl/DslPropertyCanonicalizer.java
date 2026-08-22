@@ -16,7 +16,9 @@ public final class DslPropertyCanonicalizer {
     public static DslPropertySet normalize(DslPropertySet propertySet) {
         if (propertySet.schemaVersion() != DslPropertySet.COMPOSITION_SCHEMA_VERSION
                 && propertySet.schemaVersion() != DslPropertySet.TYPED_SCHEMA_VERSION
-                && propertySet.schemaVersion() != DslPropertySet.LEDGER_SCHEMA_VERSION) {
+                && propertySet.schemaVersion() != DslPropertySet.LEDGER_SCHEMA_VERSION
+                && propertySet.schemaVersion()
+                        != DslPropertySet.AUTHORIZATION_SCHEMA_VERSION) {
             return propertySet;
         }
         List<DslProperty> properties = propertySet.properties().stream()
@@ -36,7 +38,8 @@ public final class DslPropertyCanonicalizer {
                 || node instanceof BoolLiteralNode
                 || node instanceof TypedRootNode
                 || node instanceof TypedVariableNode
-                || node instanceof LedgerRootNode) {
+                || node instanceof LedgerRootNode
+                || node instanceof NoSignersNode) {
             return node;
         }
         if (node instanceof FieldNode field) {
@@ -124,6 +127,20 @@ public final class DslPropertyCanonicalizer {
         }
         if (node instanceof LedgerByteAliasNode alias) {
             return new LedgerByteAliasNode(normalize(alias.bytes()), alias.aliasType());
+        }
+        if (node instanceof AuthorityKeyHashNode authority) {
+            return new AuthorityKeyHashNode(
+                    authority.sourceKind(), normalize(authority.bytes()));
+        }
+        if (node instanceof AuthorityListNode authorities) {
+            return normalizeAuthorityList(authorities);
+        }
+        if (node instanceof AuthorityListFromBytesNode authorities) {
+            return new AuthorityListFromBytesNode(normalize(authorities.bytesList()));
+        }
+        if (node instanceof AuthorizationNode authorization) {
+            return new AuthorizationNode(authorization.relation(),
+                    normalize(authorization.authorities()), authorization.threshold());
         }
         if (node instanceof BoolNotNode not) {
             return new BoolNotNode(normalize(not.value()));
@@ -285,7 +302,8 @@ public final class DslPropertyCanonicalizer {
                 || node instanceof BytesLiteralNode || node instanceof TxOutRefLiteralNode
                 || node instanceof BoolLiteralNode || node instanceof TypedRootNode
                 || node instanceof TypedVariableNode
-                || node instanceof LedgerRootNode) return node;
+                || node instanceof LedgerRootNode
+                || node instanceof NoSignersNode) return node;
         if (node instanceof FieldNode value) return new FieldNode(
                 map.apply(value.target()), value.name(), value.resultType());
         if (node instanceof BoolBinaryNode value) return new BoolBinaryNode(
@@ -325,6 +343,15 @@ public final class DslPropertyCanonicalizer {
                 value.valueType());
         if (node instanceof LedgerByteAliasNode value) return new LedgerByteAliasNode(
                 map.apply(value.bytes()), value.aliasType());
+        if (node instanceof AuthorityKeyHashNode value) return new AuthorityKeyHashNode(
+                value.sourceKind(), map.apply(value.bytes()));
+        if (node instanceof AuthorityListNode value) return new AuthorityListNode(
+                value.authorities().stream().map(map).toList());
+        if (node instanceof AuthorityListFromBytesNode value) {
+            return new AuthorityListFromBytesNode(map.apply(value.bytesList()));
+        }
+        if (node instanceof AuthorizationNode value) return new AuthorizationNode(
+                value.relation(), map.apply(value.authorities()), value.threshold());
         if (node instanceof BoolNotNode value) return new BoolNotNode(map.apply(value.value()));
         if (node instanceof IntegerArithmeticNode value) return new IntegerArithmeticNode(
                 value.operator(), map.apply(value.left()),
@@ -402,5 +429,22 @@ public final class DslPropertyCanonicalizer {
         PropertyNode locallyNormalized = alphaNormalize(
                 node, new HashMap<>(), new int[]{0}, "localBinder");
         return PropertyIrCodec.canonicalNodeBytes(locallyNormalized);
+    }
+
+    private static AuthorityListNode normalizeAuthorityList(AuthorityListNode list) {
+        List<PropertyNode> sorted = list.authorities().stream()
+                .map(DslPropertyCanonicalizer::normalize)
+                .sorted(DslPropertyCanonicalizer::compareCanonicalModuloBinders)
+                .toList();
+        var unique = new ArrayList<PropertyNode>();
+        byte[] previous = null;
+        for (PropertyNode authority : sorted) {
+            byte[] key = canonicalModuloBinders(authority);
+            if (previous == null || !Arrays.equals(previous, key)) {
+                unique.add(authority);
+                previous = key;
+            }
+        }
+        return new AuthorityListNode(unique);
     }
 }

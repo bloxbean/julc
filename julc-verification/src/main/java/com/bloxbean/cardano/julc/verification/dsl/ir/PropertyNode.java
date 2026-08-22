@@ -50,7 +50,13 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
         @JsonSubTypes.Type(value = LedgerVariantWhenNode.class, name = "ledger-variant-when"),
         @JsonSubTypes.Type(value = LedgerVariantFieldNode.class, name = "ledger-variant-field"),
         @JsonSubTypes.Type(value = LedgerHelperNode.class, name = "ledger-helper"),
-        @JsonSubTypes.Type(value = LedgerByteAliasNode.class, name = "ledger-byte-alias")
+        @JsonSubTypes.Type(value = LedgerByteAliasNode.class, name = "ledger-byte-alias"),
+        @JsonSubTypes.Type(value = AuthorityKeyHashNode.class, name = "authority-key-hash"),
+        @JsonSubTypes.Type(value = AuthorityListNode.class, name = "authority-list"),
+        @JsonSubTypes.Type(value = AuthorityListFromBytesNode.class,
+                name = "authority-list-from-bytes"),
+        @JsonSubTypes.Type(value = AuthorizationNode.class, name = "authorization"),
+        @JsonSubTypes.Type(value = NoSignersNode.class, name = "no-signers")
 })
 public sealed interface PropertyNode permits RootNode, FieldNode, BoolBinaryNode,
         ContainsNode, CompareNode, CredentialKeyHashNode, ExistsNode, LiteralNode,
@@ -63,6 +69,8 @@ public sealed interface PropertyNode permits RootNode, FieldNode, BoolBinaryNode
         MapQuantifierNode, MapCountEntryNode, MapContainsKeyNode, MapCountKeyNode,
         MapLookupFirstNode, MapLookupAllNode, LedgerRootNode, LedgerFieldNode,
         LedgerVariantIsNode, LedgerVariantWhenNode, LedgerVariantFieldNode,
-        LedgerHelperNode, LedgerByteAliasNode {
+        LedgerHelperNode, LedgerByteAliasNode, AuthorityKeyHashNode,
+        AuthorityListNode, AuthorityListFromBytesNode, AuthorizationNode,
+        NoSignersNode {
     DslType resultType();
 }

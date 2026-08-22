@@ -1,0 +1,60 @@
+{
+  "acquire" : [ {
+    "command" : [ "lake", "update" ],
+    "expectedExitCodes" : [ 0 ],
+    "id" : "lake-update",
+    "maxAttempts" : 3
+  }, {
+    "command" : [ "lake", "build", "@PlutusCore/PlutusCore", "@CardanoLedgerApi/CardanoLedgerApi", "@Blaster/Blaster", "GeneratedVerificationSupport" ],
+    "expectedExitCodes" : [ 0 ],
+    "id" : "build-pinned-dependencies"
+  } ],
+  "kind" : "generated-workspace",
+  "manifest" : "verification-manifest.json",
+  "schemaVersion" : 2,
+  "timeoutSeconds" : 1800,
+  "verify" : [ {
+    "command" : [ "scripts/verify-authorization_two_of_three_threshold-non-vacuity.sh" ],
+    "executableSha256" : "629153a6eb8356cdba979972a8e113564c13acfdd4f0a13992717fa60f71d6fd",
+    "id" : "check-non-vacuity-authorization_two_of_three_threshold",
+    "outcomes" : [ {
+      "exitCode" : 0,
+      "reason" : "expected-negative-control",
+      "requiredOutput" : "NON-VACUOUS: successful input witness exists",
+      "result" : "REFUTED"
+    }, {
+      "exitCode" : 4,
+      "reason" : "property-vacuous",
+      "requiredOutput" : "VACUOUS: validator has no successful input",
+      "result" : "COULD-NOT-EVALUATE"
+    }, {
+      "exitCode" : 2,
+      "reason" : "non-vacuity-undetermined",
+      "requiredOutput" : "COULD-NOT-EVALUATE: non-vacuity",
+      "result" : "COULD-NOT-EVALUATE"
+    } ],
+    "propertyId" : "authorization.two-of-three-threshold.non-vacuity"
+  }, {
+    "command" : [ "scripts/verify-authorization_two_of_three_threshold.sh" ],
+    "executableSha256" : "3dffbe807d1bb80e91208f7cdeb1d9caba73804035d4e7ff01605c8dae5c621c",
+    "id" : "prove-dsl-authorization_two_of_three_threshold",
+    "nonVacuityGuardPropertyId" : "authorization.two-of-three-threshold.non-vacuity",
+    "outcomes" : [ {
+      "exitCode" : 0,
+      "reason" : "dsl-property-established",
+      "requiredOutput" : "SMT-VALID: DSL property authorization.two-of-three-threshold established",
+      "result" : "SMT-VALID"
+    }, {
+      "exitCode" : 3,
+      "reason" : "dsl-property-counterexample",
+      "requiredOutput" : "REFUTED: DSL property authorization.two-of-three-threshold counterexample found",
+      "result" : "REFUTED"
+    }, {
+      "exitCode" : 2,
+      "reason" : "dsl-property-undetermined",
+      "requiredOutput" : "COULD-NOT-EVALUATE: DSL property authorization.two-of-three-threshold",
+      "result" : "COULD-NOT-EVALUATE"
+    } ],
+    "propertyId" : "authorization.two-of-three-threshold"
+  } ]
+}
