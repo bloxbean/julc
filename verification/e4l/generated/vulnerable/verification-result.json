@@ -1,0 +1,179 @@
+{
+  "schemaVersion" : 1,
+  "generatedBy" : "julc verify run",
+  "outcome" : "REFUTED",
+  "reason" : "property-refuted",
+  "backend" : "local",
+  "backendIdentity" : "lean-4.24.0+z3-4.15.2",
+  "toolchain" : {
+    "lake" : "5.0.0-src+797c613",
+    "lean" : "4.24.0",
+    "z3" : "4.15.2"
+  },
+  "dependencyCommits" : {
+    "CardanoLedgerApiBlaster" : "5dab3c43f042b8735b6d067223baaa8d32ed28a1",
+    "Lean-blaster" : "083bae7971414d894b56b5bbf4108c63e17bc42a",
+    "PlutusCoreBlaster" : "7cf5a78c54b9694ef093bf49edb5d3799b2a49c9"
+  },
+  "dependencyDownloadsDisabledDuringVerification" : true,
+  "ledgerValidityModeled" : true,
+  "artifact" : {
+    "artifactId" : "vulnerable-reviewed-adapters",
+    "blueprintEntryTitle" : "VulnerableReviewedAdapters",
+    "boundarySemantics" : "strict-data-v1",
+    "builtinSemanticsVariant" : "E",
+    "builtins" : [ {
+      "flatTag" : 7,
+      "name" : "EqualsInteger"
+    }, {
+      "flatTag" : 26,
+      "name" : "IfThenElse"
+    }, {
+      "flatTag" : 29,
+      "name" : "FstPair"
+    }, {
+      "flatTag" : 30,
+      "name" : "SndPair"
+    }, {
+      "flatTag" : 33,
+      "name" : "HeadList"
+    }, {
+      "flatTag" : 34,
+      "name" : "TailList"
+    }, {
+      "flatTag" : 35,
+      "name" : "NullList"
+    }, {
+      "flatTag" : 42,
+      "name" : "UnConstrData"
+    }, {
+      "flatTag" : 45,
+      "name" : "UnIData"
+    } ],
+    "cardanoScriptHash" : "d9e035b86e48669c9830549d7912e96644c936765395cb0e6bf09c7f",
+    "compiledCodeSha256" : "0b49697680d232a5e17c3ef1ff5d31d14baa9d32d8c5c67fba4bfc624d088619",
+    "dslIrSchemaVersion" : 10,
+    "dslIrSha256" : "4dd0cc8e06494e9c66c6dbf044769ca35f824ad2351f251887164b9f0597c74e",
+    "fuel" : 5000,
+    "fuelBounded" : true,
+    "fuelScope" : "Only executions completing within the pinned CEK fuel bound are covered; fuel-exhausted executions are outside the claim.",
+    "generatedLeanSha256" : "0782061773db7393046f63670a7d2a1d6e79ea877556a3cf52cd3546c7fa6217",
+    "globalMultiInputLinkageModeled" : false,
+    "kind" : "validator",
+    "ledgerValidityModeled" : true,
+    "propertyId" : "VulnerableReviewedAdapters.dsl-property-set",
+    "propertyIrSha256" : "2d05e8765dd7ca7e48c1d11bf080c19ba979c54e73617e32131b08710aaaba47",
+    "propertyPath" : "/Users/satya/work/bloxbean/julc/verification/e4l/VulnerableReviewedAdaptersSpec.java",
+    "propertyTemplate" : "julc.dsl-ledger/v1",
+    "protocolVersion" : 11,
+    "recursiveDepth" : 4,
+    "reviewedRawDataAdapterAudit" : {
+      "schemaVersion" : 1,
+      "sha256" : "e86733f73e990e66a5bb5b445d56670517d1f7883657e951326767d0faf723a1"
+    },
+    "scriptPurpose" : "spending",
+    "validatorTitle" : "VulnerableReviewedAdapters"
+  },
+  "inputs" : {
+    "acquireLogSha256" : "3de83d62f21b307dea0a635a422efa0235c839952f6328138dba13528a70f58b",
+    "projectLeanSha256" : "0782061773db7393046f63670a7d2a1d6e79ea877556a3cf52cd3546c7fa6217",
+    "propertyIrSha256" : "2d05e8765dd7ca7e48c1d11bf080c19ba979c54e73617e32131b08710aaaba47",
+    "runnerPlanSha256" : "fad2efe2ca709a38025c920966d7ca72215935c9d6628eba53021256ee5fdea3",
+    "verificationManifestSha256" : "a1d604312bc2bbee6db62ef8ede9351790034df537a3a4cbe0de083bbd444cc8",
+    "verifyLogSha256" : "e0a00f8e15926bb25bd04d6a5b4cb5fe72aa527fe8467fbb5aff1b53358d15ea"
+  },
+  "phases" : [ {
+    "id" : "backend",
+    "phase" : "acquire",
+    "status" : "PASSED",
+    "exitCode" : 0,
+    "log" : "verification-results/backend.log",
+    "logSha256" : "cf62c10b627a6113e8d42ef11dc1796bd5951789f6466985b3f57729bf1fd4a2"
+  }, {
+    "id" : "lake-update",
+    "phase" : "acquire",
+    "status" : "PASSED",
+    "exitCode" : 0,
+    "log" : "verification-results/acquire-01-lake-update.log",
+    "logSha256" : "567b58d6907ebe46d287f77d31ada84dc1ba3aeeb41f7bfcd7125bf924ca7010"
+  }, {
+    "id" : "build-pinned-dependencies",
+    "phase" : "acquire",
+    "status" : "PASSED",
+    "exitCode" : 0,
+    "log" : "verification-results/acquire-02-build-pinned-dependencies.log",
+    "logSha256" : "3650e0b5ca6b59d9e16d213052e6e394f72b1dccd094f0e37fbd0c9b8a8ce9e4"
+  }, {
+    "id" : "revision-blaster",
+    "phase" : "acquire",
+    "status" : "PASSED",
+    "exitCode" : 0,
+    "log" : "verification-results/revision-blaster.log",
+    "logSha256" : "1d7b135cb99e69fe5f07d661d8634534b1107c2bd16c5c587e790dee8777d92b"
+  }, {
+    "id" : "revision-plutuscore",
+    "phase" : "acquire",
+    "status" : "PASSED",
+    "exitCode" : 0,
+    "log" : "verification-results/revision-plutuscore.log",
+    "logSha256" : "cff7a93830bd7e252f770b08b3e446d72f04f098b9473243a5a5497320622d0b"
+  }, {
+    "id" : "revision-cardanoledgerapi",
+    "phase" : "acquire",
+    "status" : "PASSED",
+    "exitCode" : 0,
+    "log" : "verification-results/revision-cardanoledgerapi.log",
+    "logSha256" : "de899bd5dae963278bc47c5bf53f76441e2fc4ef6226bb89c085020ce082c282"
+  }, {
+    "id" : "check-non-vacuity-reviewed_time_vulnerable",
+    "phase" : "verify",
+    "status" : "PASSED",
+    "exitCode" : 0,
+    "log" : "verification-results/verify-01-check-non-vacuity-reviewed_time_vulnerable.log",
+    "logSha256" : "13017cd80078eb5cae2d0d3e98f40e8a9b6a512df64e6bcf06642d2ab29eaf07"
+  }, {
+    "id" : "prove-dsl-reviewed_time_vulnerable",
+    "phase" : "verify",
+    "status" : "PASSED",
+    "exitCode" : 3,
+    "log" : "verification-results/verify-02-prove-dsl-reviewed_time_vulnerable.log",
+    "logSha256" : "12af2fa2d45a4ba5ff5e2a311bd0bf5d36477ff2fcab4f8cbe4468d9cca05893"
+  } ],
+  "properties" : [ {
+    "id" : "reviewed.time-vulnerable.non-vacuity",
+    "outcome" : "REFUTED",
+    "reason" : "expected-negative-control",
+    "domain" : "VALID_SPENDING_V3_PINNED",
+    "guaranteeSha256" : "238532ab32fa9fb4dd5ab7de3cdb2b4cd3909d59f557708ddc3a37325d7cef51",
+    "envelopeSha256" : "f427869725b05f52b3e517f126325648f1e2ce24d0e292f3dd0601c3a5212d95",
+    "capabilities" : [ "adapter.validity-range.pinned-v1", "dsl.ledger.context", "dsl.option.exists", "dsl.schema.typed-field", "dsl.schema.typed-root", "encoding.isDataV3", "field.scriptContext.scriptInfo", "field.scriptContext.txInfo", "ledger.validSpendingContext", "purpose.spending" ],
+    "guaranteeRules" : [ "ledger-field:SCRIPT_CONTEXT.txInfo", "ledger-root:ledgerContext", "option-exists", "reviewed-adapter:VALIDITY_CONTAINS", "typed-field:VulnerableReviewedAdapters.Datum.deadline", "typed-root:typedDatum", "typed-variable" ],
+    "domainImplied" : false,
+    "governanceDataScopes" : [ ],
+    "strictGovernanceActionDecoding" : false,
+    "fullProposalEquality" : false,
+    "currentVotingPurposeModeled" : false,
+    "currentProposingPurposeModeled" : false,
+    "counterexampleDomain" : "BLASTER_VALID_SPENDING_SUPERSET",
+    "ledgerValidCounterexampleEstablished" : false,
+    "concreteVmCounterexampleReproduced" : false
+  }, {
+    "id" : "reviewed.time-vulnerable",
+    "outcome" : "REFUTED",
+    "reason" : "dsl-property-counterexample",
+    "domain" : "VALID_SPENDING_V3_PINNED",
+    "guaranteeSha256" : "238532ab32fa9fb4dd5ab7de3cdb2b4cd3909d59f557708ddc3a37325d7cef51",
+    "envelopeSha256" : "f427869725b05f52b3e517f126325648f1e2ce24d0e292f3dd0601c3a5212d95",
+    "capabilities" : [ "adapter.validity-range.pinned-v1", "dsl.ledger.context", "dsl.option.exists", "dsl.schema.typed-field", "dsl.schema.typed-root", "encoding.isDataV3", "field.scriptContext.scriptInfo", "field.scriptContext.txInfo", "ledger.validSpendingContext", "purpose.spending" ],
+    "guaranteeRules" : [ "ledger-field:SCRIPT_CONTEXT.txInfo", "ledger-root:ledgerContext", "option-exists", "reviewed-adapter:VALIDITY_CONTAINS", "typed-field:VulnerableReviewedAdapters.Datum.deadline", "typed-root:typedDatum", "typed-variable" ],
+    "domainImplied" : false,
+    "governanceDataScopes" : [ ],
+    "strictGovernanceActionDecoding" : false,
+    "fullProposalEquality" : false,
+    "currentVotingPurposeModeled" : false,
+    "currentProposingPurposeModeled" : false,
+    "counterexampleDomain" : "BLASTER_VALID_SPENDING_SUPERSET",
+    "ledgerValidCounterexampleEstablished" : false,
+    "concreteVmCounterexampleReproduced" : false
+  } ]
+}

@@ -97,6 +97,14 @@
     {"type": "com.bloxbean.cardano.julc.verification.dsl.ir.ValueRelationNode$ValueRelationKind", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
     {"type": "com.bloxbean.cardano.julc.verification.dsl.ir.ValueArithmeticNode", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
     {"type": "com.bloxbean.cardano.julc.verification.dsl.ir.ValueArithmeticNode$ValueArithmeticKind", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
+    {"type": "com.bloxbean.cardano.julc.verification.dsl.ir.ReviewedAdapterPredicateNode", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
+    {"type": "com.bloxbean.cardano.julc.verification.dsl.ir.ReviewedAdapterPredicateNode$ReviewedAdapterPredicate", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
+    {"type": "com.bloxbean.cardano.julc.verification.dsl.ir.ReviewedAdapterWhenNode", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
+    {"type": "com.bloxbean.cardano.julc.verification.dsl.ir.ReviewedAdapterWhenNode$ReviewedAdapterEliminator", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
+    {"type": "com.bloxbean.cardano.julc.verification.capability.ReviewedRawDataAdapterAudit", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
+    {"type": "com.bloxbean.cardano.julc.verification.capability.ReviewedRawDataAdapterAudit$Source", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
+    {"type": "com.bloxbean.cardano.julc.verification.capability.ReviewedRawDataAdapterAudit$Adapter", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
+    {"type": "com.bloxbean.cardano.julc.verification.capability.ReviewedRawDataAdapterAudit$AdapterStatus", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
     {"type": "com.bloxbean.cardano.julc.verification.dsl.ir.QuantifierKind", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
     {"type": "com.bloxbean.cardano.julc.verification.dsl.type.VerificationTypeRef", "allDeclaredMethods": true},
     {"type": "com.bloxbean.cardano.julc.verification.dsl.type.BuiltinTypeRef", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
@@ -412,6 +420,7 @@
     {"glob": "diagnostics.json"},
     {"glob": "julc-version.properties"},
     {"glob": "META-INF/julc/verification/**"},
+    {"glob": "com/bloxbean/cardano/julc/verification/reviewed-raw-data-adapters-v1.json"},
     {"glob": "META-INF/julc/wrappers/**"}
   ]
 }

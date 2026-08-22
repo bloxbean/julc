@@ -177,6 +177,19 @@ public final class ContractMetamodelGenerator {
                 DslPropertySet.GOVERNANCE_SCHEMA_VERSION).generate();
     }
 
+    /** Generate the opt-in schema-10 model with reviewed raw-data adapters. */
+    public static String generateTypedV10(
+            ContractSchema schema, String packageName, String className) {
+        if (!packageName.matches("[a-z][A-Za-z0-9_.]*")
+                || !className.matches("[A-Z][A-Za-z0-9_]*")) {
+            throw new IllegalArgumentException("Invalid generated metamodel name");
+        }
+        ProjectedContractTypes projection = ContractTypeProjection.project(schema);
+        return new TypedModelGenerator(projection, packageName, className,
+                ContractTypeProjection.sha256(projection),
+                DslPropertySet.REVIEWED_DATA_ADAPTER_SCHEMA_VERSION).generate();
+    }
+
     private static String mintingModel(String packageName, String className) {
         return """
                 package %s;
@@ -297,6 +310,7 @@ public final class ContractMetamodelGenerator {
             body.append("\n    public DslPropertySet properties(DslProperty... properties) {\n")
                     .append("        return DslPropertySet.")
                     .append(switch (dslSchemaVersion) {
+                        case DslPropertySet.REVIEWED_DATA_ADAPTER_SCHEMA_VERSION -> "typedV10";
                         case DslPropertySet.GOVERNANCE_SCHEMA_VERSION -> "typedV9";
                         case DslPropertySet.VALUE_ALGEBRA_SCHEMA_VERSION -> "typedV8";
                         case DslPropertySet.CERTIFICATE_PAYLOAD_SCHEMA_VERSION -> "typedV7";

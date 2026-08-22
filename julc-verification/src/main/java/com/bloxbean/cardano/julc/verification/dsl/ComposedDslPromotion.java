@@ -32,9 +32,11 @@ public final class ComposedDslPromotion {
                 && candidate.schemaVersion()
                         != DslPropertySet.VALUE_ALGEBRA_SCHEMA_VERSION
                 && candidate.schemaVersion()
-                        != DslPropertySet.GOVERNANCE_SCHEMA_VERSION) {
+                        != DslPropertySet.GOVERNANCE_SCHEMA_VERSION
+                && candidate.schemaVersion()
+                        != DslPropertySet.REVIEWED_DATA_ADAPTER_SCHEMA_VERSION) {
             throw new IllegalArgumentException(
-                    "Generic promotion requires DSL property schema 3 through 9");
+                    "Generic promotion requires DSL property schema 3 through 10");
         }
         DslPropertySet normalized = DslPropertyValidator.validateAndNormalize(
                 candidate, schema, DslPropertyValidator.MAX_AST_NODES);
@@ -120,9 +122,11 @@ public final class ComposedDslPromotion {
                 && expectedSchema != DslPropertySet.AUTHORIZATION_SCHEMA_VERSION
                 && expectedSchema != DslPropertySet.CERTIFICATE_PAYLOAD_SCHEMA_VERSION
                 && expectedSchema != DslPropertySet.VALUE_ALGEBRA_SCHEMA_VERSION
-                && expectedSchema != DslPropertySet.GOVERNANCE_SCHEMA_VERSION) {
+                && expectedSchema != DslPropertySet.GOVERNANCE_SCHEMA_VERSION
+                && expectedSchema
+                        != DslPropertySet.REVIEWED_DATA_ADAPTER_SCHEMA_VERSION) {
             throw new IllegalArgumentException(
-                    "Ledger DSL property requires inner schema 5 through 9");
+                    "Ledger DSL property requires inner schema 5 through 10");
         }
         if (normalized.schemaVersion() != expectedSchema
                 || !promoted.scriptPurpose().equals(

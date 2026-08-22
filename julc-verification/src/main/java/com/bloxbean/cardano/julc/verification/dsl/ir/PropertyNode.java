@@ -61,7 +61,11 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
         @JsonSubTypes.Type(value = ValueEntryWhenNode.class, name = "value-entry-when"),
         @JsonSubTypes.Type(value = ValueQuantityNode.class, name = "value-quantity"),
         @JsonSubTypes.Type(value = ValueRelationNode.class, name = "value-relation"),
-        @JsonSubTypes.Type(value = ValueArithmeticNode.class, name = "value-arithmetic")
+        @JsonSubTypes.Type(value = ValueArithmeticNode.class, name = "value-arithmetic"),
+        @JsonSubTypes.Type(value = ReviewedAdapterPredicateNode.class,
+                name = "reviewed-adapter-predicate"),
+        @JsonSubTypes.Type(value = ReviewedAdapterWhenNode.class,
+                name = "reviewed-adapter-when")
 })
 public sealed interface PropertyNode permits RootNode, FieldNode, BoolBinaryNode,
         ContainsNode, CompareNode, CredentialKeyHashNode, ExistsNode, LiteralNode,
@@ -77,6 +81,7 @@ public sealed interface PropertyNode permits RootNode, FieldNode, BoolBinaryNode
         LedgerHelperNode, LedgerByteAliasNode, AuthorityKeyHashNode,
         AuthorityListNode, AuthorityListFromBytesNode, AuthorizationNode,
         NoSignersNode, ValueEntriesNode, ValueEntryWhenNode, ValueQuantityNode,
-        ValueRelationNode, ValueArithmeticNode {
+        ValueRelationNode, ValueArithmeticNode, ReviewedAdapterPredicateNode,
+        ReviewedAdapterWhenNode {
     DslType resultType();
 }

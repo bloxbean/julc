@@ -1,6 +1,6 @@
 # ADR-016: Typed Verification DSL and Foundational Profile Catalog
 
-- **Status:** E.1–E.4k implemented experimentally; E.4l–E.6 remain
+- **Status:** E.1–E.4l implemented experimentally; E.5–E.6 remain
 - **Date:** 2026-08-13
 - **Related:**
   [ADR-001 — IOG Blaster Verification Strategy](001-iog-blaster-verification-strategy.md),
@@ -706,21 +706,28 @@ See [ADR-026](026-milestone-e4k-typed-governance-transaction-data.md).
 
 ### E.4l: Reviewed raw-data adapters
 
-[ADR-027](027-milestone-e4l-reviewed-raw-data-adapters.md) specifies this
-phase as proposed opt-in property schema 10. It separates pinned-decoder from
+[ADR-027](027-milestone-e4l-reviewed-raw-data-adapters.md) implements this
+phase as opt-in property schema 10. It separates pinned-decoder from
 canonical validity-range semantics, models treasury optionals as the three
 distinct states present/absent/malformed, and permits only narrow
 duplicate-preserving views of changed-parameter IDs and structurally pinned
 quorum data. Each adapter has an independent evidence gate; unresolved raw
 payloads remain visibly `RAW_DATA_ONLY` rather than being promoted as a group.
+The JVM, Docker, and native positive runs bind identical semantic hashes; a
+separate non-vacuous treasury refutation records the pinned helper/strict-codec
+discrepancy instead of weakening the adapter.
 
 ### E.5: State-machine experiment
 
-Map a deliberately small DSL state-machine vocabulary to Blaster's BMC and
-k-induction facilities. Keep bounded and inductive results distinct. Evaluate
-solver behavior, counterexample readability, and whether contract execution
-can be linked to transitions without replacing exact UPLC with a hand-written
-model.
+[ADR-028](028-milestone-e5-exact-artifact-state-machine-experiment.md)
+specifies a deliberately small spending-state experiment over Blaster BMC and
+k-induction. JuLC owns the transition relation: every step requires exact
+hash-bound UPLC success, strict current/redeemer/successor decoding, and one
+reviewed continuing output. User Java supplies predicates, never a handwritten
+`nextState` model. Bounded no-counterexample, bounded counterexample,
+solver-backed k-induction, and Lean-kernel evidence remain separate result
+classes, with explicit target-depth reachability and datum-only trace-linkage
+limitations.
 
 ### E.6: Public API decision
 

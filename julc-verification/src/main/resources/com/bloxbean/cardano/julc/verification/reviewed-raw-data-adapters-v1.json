@@ -1,0 +1,137 @@
+{
+  "schemaVersion": 1,
+  "proofModelRevision": "5dab3c43f042b8735b6d067223baaa8d32ed28a1",
+  "plutusRevision": "f424a79ade53b427fb1e5adc0f8cc9a9689c81f7",
+  "cardanoLedgerRevision": "bbf77221512003c3ed45ce409d47356aefe325df",
+  "julcRevision": "61eaa7fb670e6367b7603b3fabcb2cb56b86dc13",
+  "sources": [
+    {
+      "id": "blaster-v1-time",
+      "repository": "github.com/input-output-hk/CardanoLedgerApiBlaster",
+      "revision": "5dab3c43f042b8735b6d067223baaa8d32ed28a1",
+      "path": "CardanoLedgerApi/V1/Time.lean",
+      "sha256": null,
+      "authority": "Pinned decoder and interval relation semantics"
+    },
+    {
+      "id": "blaster-v3-contexts",
+      "repository": "github.com/input-output-hk/CardanoLedgerApiBlaster",
+      "revision": "5dab3c43f042b8735b6d067223baaa8d32ed28a1",
+      "path": "CardanoLedgerApi/V3/Contexts.lean",
+      "sha256": null,
+      "authority": "Pinned raw fields, validTxRange, and treasury helper behavior"
+    },
+    {
+      "id": "blaster-v3-governance",
+      "repository": "github.com/input-output-hk/CardanoLedgerApiBlaster",
+      "revision": "5dab3c43f042b8735b6d067223baaa8d32ed28a1",
+      "path": "CardanoLedgerApi/V3/Governance.lean",
+      "sha256": null,
+      "authority": "Pinned ChangedParameters and Quorum raw aliases"
+    },
+    {
+      "id": "plutus-v3-contexts",
+      "repository": "github.com/IntersectMBO/plutus",
+      "revision": "f424a79ade53b427fb1e5adc0f8cc9a9689c81f7",
+      "path": "plutus-ledger-api/src/PlutusLedgerApi/V3/Contexts.hs",
+      "sha256": null,
+      "authority": "Typed V3 context and ChangedParameters Data format"
+    },
+    {
+      "id": "plutus-ratio",
+      "repository": "github.com/IntersectMBO/plutus",
+      "revision": "f424a79ade53b427fb1e5adc0f8cc9a9689c81f7",
+      "path": "plutus-tx/src/PlutusTx/Ratio.hs",
+      "sha256": null,
+      "authority": "Rational pair codec, nonzero denominator, and normalization"
+    },
+    {
+      "id": "cardano-conway-cddl",
+      "repository": "github.com/IntersectMBO/cardano-ledger",
+      "revision": "bbf77221512003c3ed45ce409d47356aefe325df",
+      "path": "eras/conway/impl/cddl/data/conway.cddl",
+      "sha256": null,
+      "authority": "Conway transaction and governance CBOR constraints"
+    },
+    {
+      "id": "julc-ledger-v3",
+      "repository": "github.com/bloxbean/julc",
+      "revision": "61eaa7fb670e6367b7603b3fabcb2cb56b86dc13",
+      "path": "julc-ledger-api/src/main/java/com/bloxbean/cardano/julc/ledger",
+      "sha256": null,
+      "authority": "JuLC Interval, Optional<Integer>, Rational, and TxInfo codecs"
+    }
+  ],
+  "adapters": [
+    {
+      "id": "adapter.validity-range.pinned-v1",
+      "rawFieldCapability": "field.txInfo.validRange",
+      "status": "READY_FOR_IMPLEMENTATION",
+      "acceptedShape": "Constr 0 [Bound lower, Bound upper]; Bound = Constr 0 [Extended, Bool]; Extended tags 0 [], 1 [I time], 2 []",
+      "canonicalForm": "Pinned re-encoding; infinite bounds always encode closure true",
+      "constraints": [
+        "decoder-valid and canonical-encoding are distinct",
+        "validTxRange adds non-emptiness but does not establish canonical encoding"
+      ],
+      "discrepancies": [
+        "Pinned decoder accepts false closure on infinite bounds and discards it"
+      ],
+      "sourceIds": ["blaster-v1-time", "blaster-v3-contexts", "julc-ledger-v3"]
+    },
+    {
+      "id": "adapter.current-treasury.strict-optional-integer",
+      "rawFieldCapability": "field.txInfo.currentTreasuryAmount",
+      "status": "READY_FOR_IMPLEMENTATION",
+      "acceptedShape": "Present = Constr 0 [I amount]; Absent = Constr 1 []; every other shape is Malformed",
+      "canonicalForm": "Exact three-state optional-integer encoding",
+      "constraints": ["Malformed, Absent, and Present remain distinguishable"],
+      "discrepancies": [
+        "Pinned validTreasuryAmount decodes raw Integer and treats every decode failure as unspecified"
+      ],
+      "sourceIds": ["blaster-v3-contexts", "plutus-v3-contexts", "cardano-conway-cddl", "julc-ledger-v3"]
+    },
+    {
+      "id": "adapter.treasury-donation.strict-optional-integer",
+      "rawFieldCapability": "field.txInfo.treasuryDonation",
+      "status": "READY_FOR_IMPLEMENTATION",
+      "acceptedShape": "Present = Constr 0 [I amount]; Absent = Constr 1 []; every other shape is Malformed",
+      "canonicalForm": "Exact three-state optional-integer encoding",
+      "constraints": ["Malformed, Absent, and Present remain distinguishable"],
+      "discrepancies": [
+        "Pinned validTreasuryDonation decodes raw Integer and treats every decode failure as unspecified"
+      ],
+      "sourceIds": ["blaster-v3-contexts", "plutus-v3-contexts", "cardano-conway-cddl", "julc-ledger-v3"]
+    },
+    {
+      "id": "adapter.changed-parameters.integer-key-index",
+      "rawFieldCapability": "constructor.governance.parameterChange",
+      "status": "READY_FOR_IMPLEMENTATION",
+      "acceptedShape": "Data.Map entries whose keys are Data.I; values stay opaque Data",
+      "canonicalForm": "Separate nonempty strictly-ascending-unique key predicate; structural decode preserves order and duplicates",
+      "constraints": [
+        "No parameter value enters the generic expression graph",
+        "Parameter IDs are not assigned semantic names by this adapter"
+      ],
+      "discrepancies": [
+        "Pinned proof model stores the complete payload as Data and only documents the map invariant"
+      ],
+      "sourceIds": ["blaster-v3-governance", "plutus-v3-contexts", "cardano-conway-cddl"]
+    },
+    {
+      "id": "adapter.quorum.plutus-rational-v1",
+      "rawFieldCapability": "constructor.governance.updateCommittee",
+      "status": "READY_FOR_IMPLEMENTATION",
+      "acceptedShape": "Constr 0 [I numerator, I denominator] with nonzero denominator; decoded value is sign-normalized and reduced",
+      "canonicalForm": "Positive coprime denominator after Plutus Rational re-encoding",
+      "constraints": [
+        "Structural decode, canonical encoding, and Conway unit-interval validity are distinct",
+        "Unit interval additionally requires 0 <= numerator <= denominator and denominator > 0"
+      ],
+      "discrepancies": [
+        "Pinned proof model stores Quorum as raw Data and supplies no decoder or validity predicate",
+        "JuLC Rational currently decodes the pair structurally without enforcing or normalizing Plutus Rational invariants"
+      ],
+      "sourceIds": ["blaster-v3-governance", "plutus-v3-contexts", "plutus-ratio", "cardano-conway-cddl", "julc-ledger-v3"]
+    }
+  ]
+}

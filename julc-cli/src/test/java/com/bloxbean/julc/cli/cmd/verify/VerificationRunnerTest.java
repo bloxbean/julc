@@ -8,6 +8,8 @@ import com.bloxbean.cardano.julc.verification.OneShotMintProperty;
 import com.bloxbean.cardano.julc.verification.dsl.MintingDsl;
 import com.bloxbean.cardano.julc.verification.dsl.PropertyIrCodec;
 import com.bloxbean.cardano.julc.verification.dsl.ComposedDslPromotion;
+import com.bloxbean.cardano.julc.verification.dsl.LedgerExpressions;
+import com.bloxbean.cardano.julc.verification.dsl.type.ContractTypeProjection;
 import com.bloxbean.cardano.julc.verification.dsl.SpendingContractModel;
 import com.bloxbean.cardano.julc.verification.dsl.ir.DslDomain;
 import com.bloxbean.cardano.julc.verification.dsl.ir.DslPropertySet;
@@ -636,6 +638,26 @@ class VerificationRunnerTest {
     }
 
     @Test
+    void reviewedAdapterAuditTamperingFailsBeforeExecution() throws Exception {
+        Path workspace = reviewedAdapterWorkspace("reviewed-adapter-audit-tamper");
+        Path manifestFile = workspace.resolve("verification-manifest.json");
+        var manifest = (com.fasterxml.jackson.databind.node.ObjectNode)
+                VerificationFiles.JSON.readTree(manifestFile.toFile());
+        ((com.fasterxml.jackson.databind.node.ObjectNode)
+                manifest.path("reviewedRawDataAdapterAudit"))
+                .put("sha256", "0".repeat(64));
+        VerificationFiles.JSON.writeValue(manifestFile.toFile(), manifest);
+        var process = new FakeProcess(false, true);
+
+        var result = runner(process).run(workspace, VerificationBackendKind.LOCAL);
+
+        assertEquals("COULD-NOT-EVALUATE", result.result().outcome());
+        assertEquals("preflight-failed", result.result().reason());
+        assertTrue(result.diagnostic().contains("Reviewed raw-data adapter audit"));
+        assertTrue(process.commands.isEmpty());
+    }
+
+    @Test
     void generatedLeanTamperingFailsBeforeExecution() throws Exception {
         Path workspace = workspace("generated-lean-tamper", VerificationOutcome.SMT_VALID, false);
         Path manifestFile = workspace.resolve("verification-manifest.json");
@@ -1095,6 +1117,40 @@ class VerificationRunnerTest {
         Path output = tempDir.resolve(name);
         VerificationProjectGenerator.generateComposedDsl(
                 blueprintFile, property, 3000, 4, output, false);
+        return output;
+    }
+
+    private Path reviewedAdapterWorkspace(String name) throws Exception {
+        String source = """
+                import com.bloxbean.cardano.julc.ledger.ScriptContext;
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                @SpendingValidator class TimeGate {
+                    record Datum() {}
+                    record Redeemer() {}
+                    @Entrypoint static boolean validate(
+                            Datum datum, Redeemer redeemer, ScriptContext ctx) { return true; }
+                }
+                """;
+        var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(source);
+        var blueprint = BlueprintGenerator.generate(
+                new BlueprintConfig("reviewed-adapter-tamper-test", "1"),
+                List.of(new BlueprintGenerator.CompiledValidator(
+                        "TimeGate", compiled.compileResult(), compiled.contractSchema())));
+        Path blueprintFile = tempDir.resolve(name + "-plutus.json");
+        Files.writeString(blueprintFile, blueprint.toJson());
+        String projectionHash = ContractTypeProjection.sha256(
+                ContractTypeProjection.project(compiled.contractSchema()));
+        var tx = LedgerExpressions.context().txInfo();
+        var dsl = DslPropertySet.typedV10(DslPurpose.SPENDING, projectionHash,
+                property("TimeGate.deadline", DslDomain.VALID_SPENDING_V3_PINNED,
+                        tx.validityRangeReviewed().contains(integer(10))));
+        var promoted = ComposedDslPromotion.promote(
+                dsl, compiled.contractSchema(), "TimeGate", "TimeGateSpec.java");
+        Path output = tempDir.resolve(name);
+        VerificationProjectGenerator.generateComposedDsl(
+                blueprintFile, promoted, compiled.contractSchema(), 5000, 4,
+                output, false);
         return output;
     }
 

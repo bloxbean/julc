@@ -1,6 +1,6 @@
 # ADR-027: Milestone E.4l — Reviewed Raw-Data Adapters
 
-- **Status:** Proposed
+- **Status:** Implemented
 - **Date:** 2026-08-22
 - **Parent:**
   [ADR-016 — Typed Verification DSL and Foundational Profile Catalog](016-typed-verification-dsl-and-profile-catalog.md)
@@ -195,6 +195,51 @@ It must do one of the following:
 An implementation may not silently patch generated Lean to disagree with the
 pinned dependency while still naming that dependency as the theorem model.
 
+The audit may omit a separate source-file SHA-256 when the repository and a
+full immutable commit ID are recorded: the commit already content-addresses
+the reviewed path. A non-null SHA-256 is required only when the source is not
+commit-addressed or when the implementation deliberately adds a redundant
+file-level integrity check. `null` never means that an unpinned moving source
+was reviewed.
+
+## E.4l.1 pinned audit decisions
+
+The executable audit is bundled as
+`reviewed-raw-data-adapters-v1.json`. It pins the following source revisions:
+
+- `CardanoLedgerApiBlaster` V3 at
+  `5dab3c43f042b8735b6d067223baaa8d32ed28a1`;
+- `IntersectMBO/plutus` at
+  `f424a79ade53b427fb1e5adc0f8cc9a9689c81f7`;
+- `IntersectMBO/cardano-ledger` Conway CDDL at
+  `bbf77221512003c3ed45ce409d47356aefe325df`; and
+- the JuLC ledger codec baseline at
+  `61eaa7fb670e6367b7603b3fabcb2cb56b86dc13`.
+
+The audit resolves the initial source questions as follows:
+
+1. The interval adapter mirrors the pinned Lean `V1.Time` decoder. Decoder
+   validity and canonical re-encoding remain distinct because an infinite
+   bound with closure `false` decodes successfully but re-encodes with closure
+   `true`.
+2. Both treasury adapters use JuLC/Plutus optional-integer wire shapes and a
+   three-state result. The pinned Blaster helpers remain recorded as a model
+   discrepancy because they decode raw `Integer` and treat any failure as
+   unspecified.
+3. Changed parameters admit only an integer-key index. The Plutus V3 source
+   explicitly documents heterogeneous integer, ratio, and nested-list values;
+   the values therefore remain opaque even though Conway CDDL enumerates the
+   known parameter IDs.
+4. Quorum is eligible for an adapter, but not as the merely structural pair
+   proposed initially. The pinned Plutus `Rational` decoder accepts a
+   constructor-pair only when the denominator is nonzero and normalizes sign
+   and common factors. Schema 10 must separate raw structural shape, decoded
+   normalized rational, canonical re-encoding, and Conway `unit_interval`
+   validity (`0 <= numerator <= denominator`, positive denominator).
+5. No base raw capability is promoted during E.4l.1. Adapter capabilities are
+   added only with the codec, kernel, admission, VM, and exact-artifact evidence
+   required by their later phase.
+
 ## Pinned validity-interval semantics
 
 The candidate interval adapter mirrors the pinned `V1.Time` decoder. The raw
@@ -319,21 +364,29 @@ silently importing the comment's invariant as a theorem assumption.
 
 ### Quorum pair
 
-The pinned Lean model aliases `Quorum` to raw `Data`; it does not define a
-typed decoder or rational validity predicate. JuLC's ledger API currently
-encodes `Rational` structurally as `Constr 0 [I numerator, I denominator]`.
-E.4l will promote a quorum view only after the primary-source audit confirms
-that shape for the selected ledger/model contract.
+The initial structural-pair proposal in this section is superseded by
+[E.4l.1 audit decision 4](#e4l1-pinned-audit-decisions). The pinned Lean model
+still aliases `Quorum` to raw `Data`, but the reviewed Plutus `Rational` codec
+establishes more than the JuLC record shape alone: decoding requires exact
+constructor tag 0 and arity 2, two integer payloads in numerator/denominator
+order, and a nonzero denominator; the decoded rational is sign-normalized and
+reduced by the greatest common divisor.
 
-If promoted, the first view is structural:
+If promoted, schema 10 therefore exposes four deliberately distinct views:
 
-- exact constructor tag 0 and arity 2;
-- two integer payloads in numerator/denominator order;
-- malformed data produces decode failure;
-- structural equality remains distinct from mathematical rational equality;
-- no automatic reduction, sign normalization, or denominator default; and
-- any positivity or unit-interval rule is an explicit named predicate with
-  its own source and kernel controls.
+- raw structural shape, before rational validity is established;
+- successful Plutus rational decoding with normalized numerator and positive
+  denominator;
+- canonical encoding, where re-encoding the normalized rational reproduces
+  the original raw value; and
+- Conway unit-interval validity, which additionally requires
+  `0 <= numerator <= denominator` with a positive denominator.
+
+Wrong tags, arities, payload kinds, and zero denominators fail decoding.
+Negative denominators and unreduced pairs may decode but are non-canonical.
+Structural equality remains distinct from mathematical rational equality, and
+no positivity or unit-interval rule is inferred merely from successful
+decoding.
 
 If exact rational constraints cannot be grounded, the quorum payload remains
 opaque in E.4l. Partial success for interval and treasury adapters does not
@@ -822,6 +875,67 @@ not weaken the invariants:
    normalization, and unit-range constraints, or only a two-integer shape?
 7. Should a future per-parameter schema milestone build on the ID index, or
    stay outside E.4 until the pinned proof model types those values?
+
+## Implementation outcome
+
+E.4l.1 through E.4l.5 are implemented as schema 10. The executable audit is
+bundled as `reviewed-raw-data-adapters-v1.json` and has SHA-256
+`e86733f73e990e66a5bb5b445d56670517d1f7883657e951326767d0faf723a1`.
+It pins the Blaster, Plutus, Conway CDDL, and JuLC-codec authorities, including
+the treasury-helper mismatch and the normalized Plutus `Rational` semantics.
+An audit source may omit a separate content hash only when its repository,
+path, and full immutable commit already provide the content-addressed pin.
+
+The following JuLC-owned reviewed adapters are now `TYPED`, while their base
+raw fields remain `RAW_DATA_ONLY`:
+
+- pinned validity-range decoding and relations;
+- strict current-treasury optional integer;
+- strict treasury-donation optional integer;
+- ordered, duplicate-preserving changed-parameter integer-key index; and
+- normalized Plutus-rational quorum decoding with separate canonical and
+  Conway unit-interval predicates.
+
+The capability-inventory hash changed additively from the E.4k value
+`aef541d4...` to
+`01969c67f842596fe1ed08c82eacd817f835a7f83dd1668dc056f4cfd08d6b70`.
+All five additions were previously unavailable adapter identities; no existing
+schema-1-through-9 meaning changed. Historical certificates remain valid
+records under their bound inventory, but current-CLI reruns require workspace
+regeneration under the established inventory-drift policy.
+
+The retained evidence under `verification/e4l` records:
+
+- `SMT-VALID` for a non-tautological contract-owned deadline plus authority
+  property over the exact 839-byte-class validator;
+- `REFUTED` for the same time property against an accept-all validator;
+- `COULD-NOT-EVALUATE/property-vacuous` for an always-failing validator; and
+- a separate non-vacuous `REFUTED` treasury calibration against the authorized
+  artifact. This is expected evidence of the pinned model discrepancy: strict
+  `Present(100)`/`Absent` does not follow merely from the model's weaker
+  treasury boundary, even though the Java validator checks those values.
+
+The positive JVM, Docker, and GraalVM-native runs have identical semantic
+hashes:
+
+- compiled code:
+  `721d88e954a93bc7a18ecdd4306bb991f7cf1fdc0b65a0f3cb8d54bf6cfe20e0`;
+- Cardano script hash:
+  `34e081c3b5f989e8ae2d2c9b3ce3be9e96f6ae9d24100f226ad00361`;
+- canonical DSL IR:
+  `55232c07ed9c0d4f0d9dd56fc3dc0f53ee58d0841908c1caedac3351be48baee`;
+- property IR:
+  `e7305e319c7ee66a733a6d10833cabb1fe8a74c01876a0edf4bdd7a5559c2f24`;
+  and
+- generated Lean:
+  `9954677df7e1cb765455ce6ec0ac4a4b1d027cb4bf4198bf4917fceef2ba07a1`.
+
+Kernel controls cover the accepted, malformed, non-canonical, duplicate, and
+boundary cases for every promoted adapter. The exact VM test evaluates the
+committed Java fixture with canonical and malformed ledger encodings. Runner
+preflight rechecks both the capability inventory and reviewed-audit hash before
+starting a process. No compiler, core, ledger, stdlib, blueprint, or emitted
+UPLC behavior changed.
 
 ## Acceptance criteria
 

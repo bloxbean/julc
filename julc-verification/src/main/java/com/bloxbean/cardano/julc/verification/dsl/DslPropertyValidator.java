@@ -46,8 +46,11 @@ public final class DslPropertyValidator {
                 == DslPropertySet.VALUE_ALGEBRA_SCHEMA_VERSION;
         boolean governanceV9 = propertySet.schemaVersion()
                 == DslPropertySet.GOVERNANCE_SCHEMA_VERSION;
+        boolean reviewedAdaptersV10 = propertySet.schemaVersion()
+                == DslPropertySet.REVIEWED_DATA_ADAPTER_SCHEMA_VERSION;
         boolean composition = compositionV3 || typedV4 || ledgerV5 || authorizationV6
-                || certificatePayloadV7 || valueAlgebraV8 || governanceV9;
+                || certificatePayloadV7 || valueAlgebraV8 || governanceV9
+                || reviewedAdaptersV10;
         ContractSchema.Purpose expectedPurpose = composition
                 ? contractPurpose(propertySet.purpose())
                 : mintingV2 ? ContractSchema.Purpose.MINT : ContractSchema.Purpose.SPEND;
@@ -61,15 +64,20 @@ public final class DslPropertyValidator {
         }
         ProjectedContractTypes projection = typedV4 || ledgerV5 || authorizationV6
                 || certificatePayloadV7 || valueAlgebraV8 || governanceV9
+                || reviewedAdaptersV10
                 ? ContractTypeProjection.project(schema) : null;
         TypeAuthority typeAuthority = projection == null
                 ? null : new TypeAuthority(projection,
-                        ledgerV5 || authorizationV6 || certificatePayloadV7 || valueAlgebraV8 || governanceV9,
-                        authorizationV6 || certificatePayloadV7 || valueAlgebraV8 || governanceV9,
-                        certificatePayloadV7 || valueAlgebraV8 || governanceV9,
-                        valueAlgebraV8 || governanceV9, governanceV9, propertySet.purpose());
+                        ledgerV5 || authorizationV6 || certificatePayloadV7 || valueAlgebraV8
+                                || governanceV9 || reviewedAdaptersV10,
+                        authorizationV6 || certificatePayloadV7 || valueAlgebraV8
+                                || governanceV9 || reviewedAdaptersV10,
+                        certificatePayloadV7 || valueAlgebraV8 || governanceV9
+                                || reviewedAdaptersV10,
+                        valueAlgebraV8 || governanceV9 || reviewedAdaptersV10,
+                        governanceV9 || reviewedAdaptersV10, propertySet.purpose());
         if (typedV4 || ledgerV5 || authorizationV6 || certificatePayloadV7
-                || valueAlgebraV8 || governanceV9) {
+                || valueAlgebraV8 || governanceV9 || reviewedAdaptersV10) {
             String expectedHash = ContractTypeProjection.sha256(projection);
             if (!expectedHash.equals(propertySet.contractSchemaSha256())) {
                 throw new IllegalArgumentException(
@@ -140,7 +148,8 @@ public final class DslPropertyValidator {
                 || schemaVersion == DslPropertySet.AUTHORIZATION_SCHEMA_VERSION
                 || schemaVersion == DslPropertySet.CERTIFICATE_PAYLOAD_SCHEMA_VERSION
                 || schemaVersion == DslPropertySet.VALUE_ALGEBRA_SCHEMA_VERSION
-                || schemaVersion == DslPropertySet.GOVERNANCE_SCHEMA_VERSION;
+                || schemaVersion == DslPropertySet.GOVERNANCE_SCHEMA_VERSION
+                || schemaVersion == DslPropertySet.REVIEWED_DATA_ADAPTER_SCHEMA_VERSION;
         if (legacySpending && isMintingSchemaNode(node)) {
             throw new IllegalArgumentException("DSL schema 1 does not admit minting node "
                     + node.getClass().getSimpleName());
@@ -371,9 +380,11 @@ public final class DslPropertyValidator {
                 && schemaVersion != DslPropertySet.AUTHORIZATION_SCHEMA_VERSION
                 && schemaVersion != DslPropertySet.CERTIFICATE_PAYLOAD_SCHEMA_VERSION
                 && schemaVersion != DslPropertySet.VALUE_ALGEBRA_SCHEMA_VERSION
-                && schemaVersion != DslPropertySet.GOVERNANCE_SCHEMA_VERSION) {
+                && schemaVersion != DslPropertySet.GOVERNANCE_SCHEMA_VERSION
+                && schemaVersion
+                        != DslPropertySet.REVIEWED_DATA_ADAPTER_SCHEMA_VERSION) {
             throw new IllegalArgumentException(
-                    "Structural typed nodes require DSL schema 4, 5, 6, or 7");
+                    "Structural typed nodes require DSL schema 4 through 10");
         }
         if (++count[0] > maxNodes) {
             throw new IllegalArgumentException("Property AST exceeds " + maxNodes + " nodes");
@@ -468,6 +479,16 @@ public final class DslPropertyValidator {
                 throw new IllegalArgumentException("Value relation operand type mismatch");
             }
             validateValueRelationRoles(relation);
+            return DslType.BOOL;
+        }
+        if (node instanceof ReviewedAdapterPredicateNode adapter) {
+            validateReviewedAdapterPredicate(adapter, schema, authority, variables,
+                    count, maxNodes, schemaVersion);
+            return DslType.BOOL;
+        }
+        if (node instanceof ReviewedAdapterWhenNode adapter) {
+            validateReviewedAdapterWhen(adapter, schema, authority, variables,
+                    count, maxNodes, schemaVersion);
             return DslType.BOOL;
         }
         if (node instanceof IntegerArithmeticNode arithmetic) {
@@ -713,6 +734,155 @@ public final class DslPropertyValidator {
         if (!deltaBridge) {
             throw new IllegalArgumentException(
                     "Cross-role value relations require explicit ValueDelta conversion");
+        }
+    }
+
+    private static void validateReviewedAdapterPredicate(
+            ReviewedAdapterPredicateNode adapter,
+            ContractSchema schema,
+            TypeAuthority authority,
+            Map<String, TypedBinding> variables,
+            int[] count,
+            int maxNodes,
+            int schemaVersion) {
+        requireReviewedAdapterSchema(schemaVersion);
+        switch (adapter.predicate()) {
+            case VALIDITY_DECODER_VALID, VALIDITY_CANONICAL_ENCODING,
+                    VALIDITY_EMPTY, CURRENT_TREASURY_WELL_FORMED,
+                    CURRENT_TREASURY_ABSENT, CURRENT_TREASURY_MALFORMED,
+                    TREASURY_DONATION_WELL_FORMED, TREASURY_DONATION_ABSENT,
+                    TREASURY_DONATION_MALFORMED -> {
+                requireAdapterArguments(adapter, 1);
+                requireAdapterTxInfo(adapter.arguments().getFirst(), authority,
+                        variables, count, maxNodes);
+            }
+            case VALIDITY_CONTAINS, VALIDITY_ENTIRELY_BEFORE,
+                    VALIDITY_ENTIRELY_AFTER -> {
+                requireAdapterArguments(adapter, 2);
+                requireAdapterTxInfo(adapter.arguments().getFirst(), authority,
+                        variables, count, maxNodes);
+                requireIntegerType(validateStructuralValue(adapter.arguments().get(1), schema,
+                        authority, variables, count, maxNodes, schemaVersion));
+            }
+            case VALIDITY_INCLUDES -> {
+                requireAdapterArguments(adapter, 2);
+                requireAdapterTxInfo(adapter.arguments().get(0), authority,
+                        variables, count, maxNodes);
+                requireAdapterTxInfo(adapter.arguments().get(1), authority,
+                        variables, count, maxNodes);
+            }
+            case CHANGED_PARAMETERS_WELL_FORMED,
+                    CHANGED_PARAMETERS_NON_EMPTY,
+                    CHANGED_PARAMETERS_STRICTLY_ASCENDING_UNIQUE -> {
+                requireAdapterArguments(adapter, 1);
+                requireGuardedAction(adapter.arguments().getFirst(), "ParameterChange",
+                        authority, variables, count, maxNodes);
+            }
+            case CHANGED_PARAMETERS_CONTAINS_ID -> {
+                requireAdapterArguments(adapter, 2);
+                requireGuardedAction(adapter.arguments().getFirst(), "ParameterChange",
+                        authority, variables, count, maxNodes);
+                requireIntegerType(validateStructuralValue(adapter.arguments().get(1), schema,
+                        authority, variables, count, maxNodes, schemaVersion));
+            }
+            case CHANGED_PARAMETERS_COUNT_ID_EQUALS -> {
+                requireAdapterArguments(adapter, 3);
+                requireGuardedAction(adapter.arguments().getFirst(), "ParameterChange",
+                        authority, variables, count, maxNodes);
+                requireIntegerType(validateStructuralValue(adapter.arguments().get(1), schema,
+                        authority, variables, count, maxNodes, schemaVersion));
+                requireIntegerType(validateStructuralValue(adapter.arguments().get(2), schema,
+                        authority, variables, count, maxNodes, schemaVersion));
+            }
+            case QUORUM_DECODER_VALID, QUORUM_CANONICAL_ENCODING,
+                    QUORUM_UNIT_INTERVAL -> {
+                requireAdapterArguments(adapter, 1);
+                requireGuardedAction(adapter.arguments().getFirst(), "UpdateCommittee",
+                        authority, variables, count, maxNodes);
+            }
+        }
+    }
+
+    private static void validateReviewedAdapterWhen(
+            ReviewedAdapterWhenNode adapter,
+            ContractSchema schema,
+            TypeAuthority authority,
+            Map<String, TypedBinding> variables,
+            int[] count,
+            int maxNodes,
+            int schemaVersion) {
+        requireReviewedAdapterSchema(schemaVersion);
+        int expectedVariables = adapter.eliminator()
+                == ReviewedAdapterWhenNode.ReviewedAdapterEliminator.QUORUM_DECODED
+                ? 2 : 1;
+        if (adapter.variables().size() != expectedVariables) {
+            throw new IllegalArgumentException(
+                    "Reviewed adapter eliminator has an invalid binder count");
+        }
+        switch (adapter.eliminator()) {
+            case CURRENT_TREASURY_PRESENT, TREASURY_DONATION_PRESENT ->
+                    requireAdapterTxInfo(adapter.source(), authority,
+                            variables, count, maxNodes);
+            case QUORUM_DECODED -> requireGuardedAction(adapter.source(),
+                    "UpdateCommittee", authority, variables, count, maxNodes);
+        }
+        var nested = new HashMap<>(variables);
+        for (String variable : adapter.variables()) {
+            validateBinder(variable, nested);
+            nested.put(variable, new TypedBinding(LedgerTypeAuthority.INTEGER, null));
+        }
+        require(DslType.BOOL, validateTypedExpressionOrLegacy(
+                adapter.predicate(), schema, authority, nested, count, maxNodes,
+                schemaVersion));
+    }
+
+    private static void requireAdapterArguments(
+            ReviewedAdapterPredicateNode node, int expected) {
+        if (node.arguments().size() != expected) {
+            throw new IllegalArgumentException("Reviewed adapter " + node.predicate()
+                    + " requires exactly " + expected + " argument(s)");
+        }
+    }
+
+    private static void requireAdapterTxInfo(
+            PropertyNode node,
+            TypeAuthority authority,
+            Map<String, TypedBinding> variables,
+            int[] count,
+            int maxNodes) {
+        VerificationTypeRef actual = validateTypedValue(
+                node, authority, variables, count, maxNodes);
+        if (!actual.equals(LedgerTypeAuthority.TX_INFO)) {
+            throw new IllegalArgumentException(
+                    "Reviewed transaction adapter requires the pinned TxInfo root");
+        }
+    }
+
+    private static void requireGuardedAction(
+            PropertyNode node,
+            String constructor,
+            TypeAuthority authority,
+            Map<String, TypedBinding> variables,
+            int[] count,
+            int maxNodes) {
+        VerificationTypeRef actual = validateTypedValue(
+                node, authority, variables, count, maxNodes);
+        if (!actual.equals(LedgerTypeAuthority.GOVERNANCE_ACTION)
+                || !(node instanceof TypedVariableNode variable)) {
+            throw new IllegalArgumentException(
+                    "Reviewed governance adapter requires its action guard binder");
+        }
+        TypedBinding binding = variables.get(variable.variable());
+        if (binding == null || !constructor.equals(binding.constructor())) {
+            throw new IllegalArgumentException("Reviewed governance adapter requires a guarded "
+                    + constructor + " action");
+        }
+    }
+
+    private static void requireReviewedAdapterSchema(int schemaVersion) {
+        if (schemaVersion != DslPropertySet.REVIEWED_DATA_ADAPTER_SCHEMA_VERSION) {
+            throw new IllegalArgumentException(
+                    "Reviewed raw-data adapters require DSL schema 10");
         }
     }
 
@@ -1538,7 +1708,9 @@ public final class DslPropertyValidator {
                 || node instanceof AuthorizationNode || node instanceof NoSignersNode
                 || node instanceof ValueEntriesNode || node instanceof ValueEntryWhenNode
                 || node instanceof ValueQuantityNode || node instanceof ValueRelationNode
-                || node instanceof ValueArithmeticNode) {
+                || node instanceof ValueArithmeticNode
+                || node instanceof ReviewedAdapterPredicateNode
+                || node instanceof ReviewedAdapterWhenNode) {
             return true;
         }
         return false;
@@ -1567,7 +1739,9 @@ public final class DslPropertyValidator {
                 || node instanceof AuthorizationNode || node instanceof NoSignersNode
                 || node instanceof ValueEntriesNode || node instanceof ValueEntryWhenNode
                 || node instanceof ValueQuantityNode || node instanceof ValueRelationNode
-                || node instanceof ValueArithmeticNode;
+                || node instanceof ValueArithmeticNode
+                || node instanceof ReviewedAdapterPredicateNode
+                || node instanceof ReviewedAdapterWhenNode;
     }
 
     private static boolean isTypedValueNode(PropertyNode node) {

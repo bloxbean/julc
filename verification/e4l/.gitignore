@@ -1,0 +1,3 @@
+/generated/*/.lake/
+/generated/*/verification-results/
+/fixtures/*/build/
