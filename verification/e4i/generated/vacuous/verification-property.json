@@ -1,0 +1,26 @@
+{
+  "schemaVersion" : 3,
+  "template" : "julc.dsl-ledger/v1",
+  "propertyId" : "VacuousCertificatePayload.dsl-property-set",
+  "validatorTitle" : "VacuousCertificatePayload",
+  "scriptPurpose" : "certifying",
+  "sourcePath" : "/Users/satya/work/bloxbean/julc/verification/e4i/VacuousCertificatePayloadSpec.java",
+  "canonicalDslJson" : "{\"contractSchemaSha256\":\"758fe7f64cb41bc6b6a74aeb703ce8f7e94e3de98288cd5f6fcd6e0603ca2e88\",\"properties\":[{\"domain\":\"VALID_CERTIFYING_V3_PINNED\",\"expression\":{\"op\":\"ledger-variant-when\",\"constructor\":\"TxCertPoolRetire\",\"predicate\":{\"op\":\"compare\",\"left\":{\"op\":\"ledger-variant-field\",\"constructor\":\"TxCertPoolRetire\",\"name\":\"epoch\",\"sumType\":{\"type\":\"ledger\",\"ledgerType\":\"TX_CERT\"},\"target\":{\"op\":\"typed-variable\",\"valueType\":{\"type\":\"ledger\",\"ledgerType\":\"TX_CERT\"},\"variable\":\"v0\"},\"valueType\":{\"type\":\"builtin\",\"builtin\":\"INTEGER\"}},\"operator\":\"LE\",\"right\":{\"op\":\"literal\",\"resultType\":\"INTEGER\",\"value\":\"100\"}},\"sumType\":{\"type\":\"ledger\",\"ledgerType\":\"TX_CERT\"},\"value\":{\"op\":\"ledger-root\",\"name\":\"currentCertificate\",\"valueType\":{\"type\":\"ledger\",\"ledgerType\":\"TX_CERT\"}},\"variable\":\"v0\"},\"id\":\"certificate.vacuous-payload\"}],\"purpose\":\"CERTIFYING\",\"schemaVersion\":7}",
+  "claims" : [ {
+    "id" : "certificate.vacuous-payload",
+    "generatedName" : "certificate_vacuous_payload",
+    "domain" : "VALID_CERTIFYING_V3_PINNED",
+    "guaranteeSha256" : "019266552c7c14b2196f20dd3f9e834ebcd48170573ae4f0949118fda42c2ebb",
+    "envelopeSha256" : "13dadb3b863da84de81b72e165257fa089a505f814440569bb3357b5da22b68e",
+    "capabilities" : [ "constructor.txCert.poolRetire", "field.scriptContext.scriptInfo", "ledger.validCertifyingContext", "purpose.certifying" ],
+    "guaranteeRules" : [ "compare:LE", "integer-literal", "ledger-root:currentCertificate", "ledger-variant-field:TX_CERT.TxCertPoolRetire.epoch", "ledger-variant-when:TX_CERT.TxCertPoolRetire", "typed-variable" ],
+    "counterexampleDomain" : "BLASTER_VALID_CERTIFYING_SUPERSET",
+    "ledgerValidCounterexampleEstablished" : false,
+    "concreteVmCounterexampleReproduced" : false
+  } ],
+  "domainAssumptions" : [ "validCertifyingContext/v3-pinned" ],
+  "guaranteeRules" : [ "compare:LE", "integer-literal", "ledger-root:currentCertificate", "ledger-variant-field:TX_CERT.TxCertPoolRetire.epoch", "ledger-variant-when:TX_CERT.TxCertPoolRetire", "typed-variable" ],
+  "ledgerValidityModeled" : true,
+  "projectedContractTypesJson" : "{\"datumType\":null,\"definitions\":[{\"constructors\":[],\"fields\":[],\"nominalKind\":\"RECORD\",\"sourceName\":\"Redeemer\",\"stableId\":\"VacuousCertificatePayload.Redeemer\"}],\"parameters\":[],\"purpose\":\"CERTIFY\",\"redeemerType\":{\"type\":\"nominal\",\"nominalKind\":\"RECORD\",\"stableId\":\"VacuousCertificatePayload.Redeemer\"},\"schemaVersion\":1}",
+  "contractSchemaSha256" : "758fe7f64cb41bc6b6a74aeb703ce8f7e94e3de98288cd5f6fcd6e0603ca2e88"
+}

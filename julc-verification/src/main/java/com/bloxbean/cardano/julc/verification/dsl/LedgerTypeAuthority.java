@@ -30,6 +30,8 @@ final class LedgerTypeAuthority {
     static final LedgerTypeRef CURRENCY_SYMBOL = ledger(
             LedgerTypeRef.LedgerKind.CURRENCY_SYMBOL);
     static final LedgerTypeRef TX_CERT = ledger(LedgerTypeRef.LedgerKind.TX_CERT);
+    static final LedgerTypeRef DELEGATEE = ledger(LedgerTypeRef.LedgerKind.DELEGATEE);
+    static final LedgerTypeRef DREP = ledger(LedgerTypeRef.LedgerKind.DREP);
     static final LedgerTypeRef OPAQUE_VOTER = ledger(LedgerTypeRef.LedgerKind.OPAQUE_VOTER);
     static final LedgerTypeRef OPAQUE_PROPOSAL = ledger(
             LedgerTypeRef.LedgerKind.OPAQUE_PROPOSAL);
@@ -142,6 +144,8 @@ final class LedgerTypeAuthority {
                 "field.txInfo.referenceInputs");
         add(fields, TX_INFO, "outputs", new ListTypeRef(TX_OUT), "field.txInfo.outputs");
         add(fields, TX_INFO, "fee", INTEGER, "field.txInfo.fee");
+        add(fields, TX_INFO, "certificates", new ListTypeRef(TX_CERT),
+                "field.txInfo.certificates");
         add(fields, TX_INFO, "datums", new AssocMapTypeRef(DATUM_HASH, DATA),
                 "field.txInfo.data");
         add(fields, TX_INFO, "redeemers", new AssocMapTypeRef(SCRIPT_PURPOSE, DATA),
@@ -201,7 +205,76 @@ final class LedgerTypeAuthority {
         proposing.put("proposal", OPAQUE_PROPOSAL);
         add(constructors, SCRIPT_PURPOSE, "Proposing",
                 "constructor.scriptPurpose.proposing", proposing);
+        add(constructors, DREP, "DRep",
+                "constructor.drep.credential", Map.of("credential", CREDENTIAL));
+        add(constructors, DREP, "DRepAlwaysAbstain",
+                "constructor.drep.abstain", Map.of());
+        add(constructors, DREP, "DRepAlwaysNoConfidence",
+                "constructor.drep.noConfidence", Map.of());
+        add(constructors, DELEGATEE, "DelegStake",
+                "constructor.delegatee.stake", Map.of("pool", PUB_KEY_HASH));
+        add(constructors, DELEGATEE, "DelegVote",
+                "constructor.delegatee.vote", Map.of("drep", DREP));
+        add(constructors, DELEGATEE, "DelegStakeVote",
+                "constructor.delegatee.stakeVote",
+                payload("pool", PUB_KEY_HASH, "drep", DREP));
+        add(constructors, TX_CERT, "TxCertRegStaking",
+                "constructor.txCert.regStaking",
+                payload("credential", CREDENTIAL, "deposit",
+                        new OptionalTypeRef(INTEGER)));
+        add(constructors, TX_CERT, "TxCertUnRegStaking",
+                "constructor.txCert.unRegStaking",
+                payload("credential", CREDENTIAL, "refund",
+                        new OptionalTypeRef(INTEGER)));
+        add(constructors, TX_CERT, "TxCertDelegStaking",
+                "constructor.txCert.delegStaking",
+                payload("credential", CREDENTIAL, "delegatee", DELEGATEE));
+        add(constructors, TX_CERT, "TxCertRegDeleg",
+                "constructor.txCert.regDeleg",
+                payload("credential", CREDENTIAL, "delegatee", DELEGATEE,
+                        "deposit", INTEGER));
+        add(constructors, TX_CERT, "TxCertRegDRep",
+                "constructor.txCert.regDRep",
+                payload("credential", CREDENTIAL, "deposit", INTEGER));
+        add(constructors, TX_CERT, "TxCertUpdateDRep",
+                "constructor.txCert.updateDRep", Map.of("credential", CREDENTIAL));
+        add(constructors, TX_CERT, "TxCertUnRegDRep",
+                "constructor.txCert.unRegDRep",
+                payload("credential", CREDENTIAL, "refund", INTEGER));
+        add(constructors, TX_CERT, "TxCertPoolRegister",
+                "constructor.txCert.poolRegister",
+                payload("pool", PUB_KEY_HASH, "vrf", PUB_KEY_HASH));
+        add(constructors, TX_CERT, "TxCertPoolRetire",
+                "constructor.txCert.poolRetire",
+                payload("pool", PUB_KEY_HASH, "epoch", INTEGER));
+        add(constructors, TX_CERT, "TxCertAuthHotCommittee",
+                "constructor.txCert.authHotCommittee",
+                payload("coldCredential", CREDENTIAL,
+                        "hotCredential", CREDENTIAL));
+        add(constructors, TX_CERT, "TxCertResignColdCommittee",
+                "constructor.txCert.resignColdCommittee",
+                Map.of("coldCredential", CREDENTIAL));
         return Collections.unmodifiableMap(new LinkedHashMap<>(constructors));
+    }
+
+    private static Map<String, VerificationTypeRef> payload(
+            String firstName, VerificationTypeRef firstType,
+            String secondName, VerificationTypeRef secondType) {
+        var fields = new LinkedHashMap<String, VerificationTypeRef>();
+        fields.put(firstName, firstType);
+        fields.put(secondName, secondType);
+        return fields;
+    }
+
+    private static Map<String, VerificationTypeRef> payload(
+            String firstName, VerificationTypeRef firstType,
+            String secondName, VerificationTypeRef secondType,
+            String thirdName, VerificationTypeRef thirdType) {
+        var fields = new LinkedHashMap<String, VerificationTypeRef>();
+        fields.put(firstName, firstType);
+        fields.put(secondName, secondType);
+        fields.put(thirdName, thirdType);
+        return fields;
     }
 
     private static void add(

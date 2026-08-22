@@ -1,6 +1,6 @@
 # ADR-016: Typed Verification DSL and Foundational Profile Catalog
 
-- **Status:** E.1–E.4h implemented experimentally; E.4i–E.6 proposed
+- **Status:** E.1–E.4i implemented experimentally; E.4j–E.6 proposed
 - **Date:** 2026-08-13
 - **Related:**
   [ADR-001 — IOG Blaster Verification Strategy](001-iog-blaster-verification-strategy.md),
@@ -664,6 +664,11 @@ recognition with guarded payload access for deposits, refunds, credentials,
 delegation targets, DReps, pools, epochs, and committee credentials. It pins
 all 11 V3 `TxCert` constructors plus nested `Delegatee` and `DRep` sums. No
 unchecked constructor projection is admitted.
+
+Implemented experimentally on the dedicated E.4i branch with inner property
+schema 7, role-preserving credential wrappers, exact VM controls, pinned Lean
+codec controls, and positive/refuted/vacuous exact-artifact evidence. E.4j
+remains a separate review and merge unit.
 
 ### E.4j: Value and multi-asset algebra
 

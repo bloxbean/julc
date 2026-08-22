@@ -29,6 +29,11 @@ public record LedgerTxInfoExpr(PropertyNode node) implements Expr {
         return new LedgerTxIdExpr(new LedgerFieldNode(node, LedgerTypeAuthority.TX_INFO,
                 "id", LedgerTypeAuthority.TX_ID));
     }
+    public LedgerTxCertListExpr certificates() {
+        return new LedgerTxCertListExpr(new LedgerFieldNode(
+                node, LedgerTypeAuthority.TX_INFO, "certificates",
+                new ListTypeRef(LedgerTypeAuthority.TX_CERT)));
+    }
     public TypedAssocMapExpr datums() {
         return new TypedAssocMapExpr(new LedgerFieldNode(node, LedgerTypeAuthority.TX_INFO,
                 "datums", new AssocMapTypeRef(

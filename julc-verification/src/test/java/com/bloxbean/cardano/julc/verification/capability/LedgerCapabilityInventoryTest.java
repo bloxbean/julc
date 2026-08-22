@@ -56,6 +56,27 @@ class LedgerCapabilityInventoryTest {
                 inventory.require("helper.findRedeemer").status());
         assertEquals(CapabilityStatus.TYPED,
                 inventory.require("helper.findDatum").status());
+        for (String capability : java.util.List.of(
+                "constructor.txCert.regStaking",
+                "constructor.txCert.unRegStaking",
+                "constructor.txCert.delegStaking",
+                "constructor.txCert.regDeleg",
+                "constructor.txCert.regDRep",
+                "constructor.txCert.updateDRep",
+                "constructor.txCert.unRegDRep",
+                "constructor.txCert.poolRegister",
+                "constructor.txCert.poolRetire",
+                "constructor.txCert.authHotCommittee",
+                "constructor.txCert.resignColdCommittee",
+                "constructor.delegatee.stake",
+                "constructor.delegatee.vote",
+                "constructor.delegatee.stakeVote",
+                "constructor.drep.credential",
+                "constructor.drep.abstain",
+                "constructor.drep.noConfidence")) {
+            assertEquals(CapabilityStatus.TYPED,
+                    inventory.require(capability).status(), capability);
+        }
         assertEquals(CapabilityStatus.UNSUPPORTED_IR,
                 inventory.require("helper.findDatumHash").status());
         assertEquals(CapabilityStatus.UNSUPPORTED_SOLVER,

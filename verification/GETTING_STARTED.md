@@ -635,7 +635,48 @@ Compile and invoke `julc verify dsl` as in schema 4/5. Reproducible positive,
 refuted, vacuous, exact-VM, and kernel controls are in
 [`e4h/README.md`](e4h/README.md).
 
-## 16. Fuel, recursion, and reruns
+## 16. Experimental certificate payloads
+
+ADR-025 schema 7 adds guarded payload access for all 11 pinned V3 transaction
+certificate constructors and the nested `Delegatee` and `DRep` sums. Generate
+a certifying model explicitly:
+
+```bash
+julc verify dsl-init . --validator Certificates --purpose certifying \
+  --schema-version 7 --package evidence --class CertificatesModel \
+  --out build/verification-dsl/src/evidence/CertificatesModel.java
+```
+
+Payloads are available only inside the matching constructor eliminator:
+
+```java
+var contract = new CertificatesModel();
+var expectedPool = LedgerExpressions.publicKeyHash(bytes("41".repeat(28)));
+
+return contract.properties(property("certificate.pool-retirement-bound",
+        DslDomain.VALID_CERTIFYING_V3_PINNED,
+        contract.certificate().whenPoolRetire((pool, epoch) ->
+                pool.eq(expectedPool).and(epoch.le(integer(100))))));
+```
+
+Transaction-list traversal uses the same guarded surface:
+
+```java
+contract.context().txInfo().certificates().exists(candidate ->
+        candidate.whenDelegStaking((credential, delegatee) ->
+                delegatee.whenStakeVote((pool, drep) ->
+                        pool.eq(expectedPool).and(drep.isAlwaysAbstain()))));
+```
+
+Wrong tags, arities, payload kinds, forged fields, and projections outside a
+matching guard fail closed. DRep and cold/hot committee credentials use
+role-specific Java wrappers while retaining the pinned credential encoding.
+The retained positive solver fixture proves a DRep-registration deposit
+constraint; nested credentials and pool-retirement payloads are additionally
+covered by Lean kernel controls and exact-VM tests. See
+[`e4i/README.md`](e4i/README.md).
+
+## 17. Fuel, recursion, and reruns
 
 `--fuel` bounds exact UPLC preprocessing/execution in the generated obligation.
 An `SMT-VALID` certificate covers only successful paths completing within that
@@ -655,7 +696,7 @@ julc verify . --validator AuthorizedStateValidator \
   --out-dir verification/ci-authorized --force
 ```
 
-## 17. What the certificate does and does not claim
+## 18. What the certificate does and does not claim
 
 For an annotation profile, a successful certificate means:
 

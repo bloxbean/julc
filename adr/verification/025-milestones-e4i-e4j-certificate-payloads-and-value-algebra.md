@@ -1,6 +1,6 @@
 # ADR-025: Milestones E.4i–E.4j — Certificate Payloads and Value Algebra
 
-- **Status:** Proposed
+- **Status:** E.4i implemented experimentally; E.4j proposed; manual review pending
 - **Date:** 2026-08-22
 - **Parent:**
   [ADR-016 — Typed Verification DSL and Foundational Profile Catalog](016-typed-verification-dsl-and-profile-catalog.md)
@@ -906,3 +906,73 @@ JuLC may not claim from these milestones alone that:
 - a transaction-local payment property prevents global multi-satisfaction;
 - a domain-implied balance property validates the contract's own logic; or
 - the contract is formally verified and safe in all respects.
+
+## E.4i implementation outcome
+
+The schema-7 certificate-payload slice is implemented on
+`feat/typed-verification-dsl-e4i-certificate-payloads` without changes to
+compiler lowering, the ledger API, blueprint generation, or validator UPLC.
+E.4j remains a separate branch and review unit.
+
+Implemented behavior includes:
+
+- closed authority and capability entries for all 11 pinned `TxCert`
+  constructors and every nested `Delegatee`/`DRep` constructor;
+- current-certificate and duplicate-preserving transaction-certificate-list
+  traversal through the shared schema-4+ typed collection core;
+- guarded payload eliminators with parent-revalidated constructor, field,
+  order, type, binder, and capability identities;
+- role-preserving Java wrappers for DRep, cold-committee, and hot-committee
+  credentials while retaining the pinned credential representation;
+- schema-7 metamodel generation, canonicalization, worker admission,
+  promotion, workspace generation, runner preflight, and native execution;
+- kernel-reduced controls for tags 0–10, payload arities/order, strict malformed
+  rejection, all nested delegation/DRep constructors, and known-certificate
+  index behavior; and
+- exact-VM controls for registration deposit, update-DRep nested credential,
+  and pool-retirement pool/epoch behavior, including malformed inputs.
+
+The retained positive exact-artifact theorem is non-tautological: successful
+execution of the exact `AuthorizedDRepRegistration` validator implies that the
+selected registration certificate carries deposit `1`. The vulnerable
+constructor-only validator is `REFUTED`; the always-failing validator is
+`COULD-NOT-EVALUATE/property-vacuous`. Local, Docker, and GraalVM-native runs
+at CEK fuel 5000 and recursive depth 4 bind identical semantic inputs:
+
+- compiled-code SHA-256
+  `c10a6871a2eac7bad5b709207b81535127ccf2079c814177eb8065a76d438bef`;
+- Cardano script hash
+  `dd7450212f98c9320341cdc5e612dcc0e3986c22ddad0be798ff89a1`;
+- canonical DSL IR SHA-256
+  `95a50eea3dc29f1e2970699bd4d6c3603cc2dff9314f6d996ffe64f1e8ca9223`;
+- property IR SHA-256
+  `5b5ae7c96f74fa8115edd2beb03b41dbca9be16135d619c8263fb5e0028ca462`;
+  and
+- generated Lean SHA-256
+  `5aa0e53a893778366023311b7a3538c4b7a02814fcb702b2185d9ddc3ed3d18b`.
+
+Calibration also found an honest solver boundary. Concrete VM executions and
+Lean controls establish nested update-DRep credentials and pool-retirement
+payload behavior, but positive exact-artifact non-vacuity for validators that
+combine those payloads with byte-string equality or the epoch bound was not
+established at fuel 5000 or 8000. Those broader examples are not presented as
+SMT-VALID. This is a retained tractability limitation, not a weakened payload
+semantics or a claim that the validators have no concrete successful input.
+
+Final validation used fresh forced runs of all 83 `julc-verification` tests and
+all 425 `julc-cli` tests with zero failures, followed by the repository-wide
+Gradle build. The local evidence driver, Docker backend, GraalVM 25.0.2 native
+build, and native positive verification all completed successfully.
+
+E.4i changes the bundled capability-inventory SHA-256 from
+`4230b38874c05a1538f9b79285f7a0314de43806d543b1136d690a1db4e88bcb`
+to `f55d08b47d71768e4ca67bcb417e6c556fdf55cfc6647c8ff45e73efe65675c8`.
+The change is additive: the 17 certificate, `Delegatee`, and `DRep`
+constructor entries move from `UNSUPPORTED_IR` to `TYPED`; no previously
+admitted capability, signature, or schema-1-through-6 meaning changes.
+Retained E.4f-through-E.4h results therefore remain valid hash-bound historical
+records of their original runs, but their workspaces require regeneration
+before the current CLI will re-run them. Most bind inventory hash `4230b388…`;
+the older E.4f Docker/native fuel-sweep variants bind `a17c44ab…`. They were not
+regenerated in E.4i because none could have referenced the newly admitted
+schema-7 constructors.

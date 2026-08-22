@@ -1,0 +1,9 @@
+/- Generated fallback that identifies an always-failing validator. -/
+import AuthorizedDRepRegistration_certificate_registration_depositObligation
+
+namespace JulcGenerated.AuthorizedDRepRegistration_certificate_registration_deposit
+
+theorem validatorHasNoSuccessfulInput : hasNoSuccessfulInput := by
+  blaster
+
+end JulcGenerated.AuthorizedDRepRegistration_certificate_registration_deposit

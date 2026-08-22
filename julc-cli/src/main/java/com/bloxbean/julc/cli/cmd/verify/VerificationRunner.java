@@ -838,9 +838,11 @@ public final class VerificationRunner {
                 if (ComposedDslProperty.LEDGER_TEMPLATE.equals(template)
                         && recordedDslSchema != DslPropertySet.LEDGER_SCHEMA_VERSION
                         && recordedDslSchema
-                            != DslPropertySet.AUTHORIZATION_SCHEMA_VERSION) {
+                            != DslPropertySet.AUTHORIZATION_SCHEMA_VERSION
+                        && recordedDslSchema
+                            != DslPropertySet.CERTIFICATE_PAYLOAD_SCHEMA_VERSION) {
                     throw new IOException(
-                            "Ledger DSL canonical schema must be 5 or 6");
+                            "Ledger DSL canonical schema must be 5, 6, or 7");
                 }
                 int expectedDslSchema = ComposedDslProperty.LEDGER_TEMPLATE.equals(template)
                         ? recordedDslSchema

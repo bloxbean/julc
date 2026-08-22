@@ -136,6 +136,20 @@ public final class ContractMetamodelGenerator {
                 DslPropertySet.AUTHORIZATION_SCHEMA_VERSION).generate();
     }
 
+    /** Generate the opt-in schema-7 model with guarded certificate payloads. */
+    public static String generateTypedV7(
+            ContractSchema schema, String packageName, String className) {
+        if (!packageName.matches("[a-z][A-Za-z0-9_.]*")
+                || !className.matches("[A-Z][A-Za-z0-9_]*")) {
+            throw new IllegalArgumentException("Invalid generated metamodel name");
+        }
+        ProjectedContractTypes projection = ContractTypeProjection.project(schema);
+        return new TypedModelGenerator(
+                projection, packageName, className,
+                ContractTypeProjection.sha256(projection),
+                DslPropertySet.CERTIFICATE_PAYLOAD_SCHEMA_VERSION).generate();
+    }
+
     private static String mintingModel(String packageName, String className) {
         return """
                 package %s;
@@ -256,6 +270,7 @@ public final class ContractMetamodelGenerator {
             body.append("\n    public DslPropertySet properties(DslProperty... properties) {\n")
                     .append("        return DslPropertySet.")
                     .append(switch (dslSchemaVersion) {
+                        case DslPropertySet.CERTIFICATE_PAYLOAD_SCHEMA_VERSION -> "typedV7";
                         case DslPropertySet.AUTHORIZATION_SCHEMA_VERSION -> "typedV6";
                         case DslPropertySet.LEDGER_SCHEMA_VERSION -> "typedV5";
                         default -> "typedV4";
@@ -266,7 +281,7 @@ public final class ContractMetamodelGenerator {
                     .append(dslSchemaVersion >= DslPropertySet.LEDGER_SCHEMA_VERSION
                             ? "    public LedgerContextExpr context() { return LedgerExpressions.context(); }\n"
                             : "    public ContextExpr context() { return base.context(); }\n");
-            if (dslSchemaVersion == DslPropertySet.AUTHORIZATION_SCHEMA_VERSION) {
+            if (dslSchemaVersion >= DslPropertySet.AUTHORIZATION_SCHEMA_VERSION) {
                 body.append("    private final AuthorizationDsl authorization = new AuthorizationDsl();\n")
                         .append("    public AuthorizationDsl authorization() { return authorization; }\n");
             }
@@ -327,8 +342,11 @@ public final class ContractMetamodelGenerator {
                         "    public PolicyIdExpr ownPolicy() { return base.ownPolicy(); }\n");
                 case WITHDRAW -> body.append(
                         "    public CredentialExpr rewardingCredential() { return base.rewardingCredential(); }\n");
-                case CERTIFY -> body.append(
-                        "    public TxCertExpr certificate() { return base.certificate(); }\n"
+                case CERTIFY -> body.append(dslSchemaVersion
+                        >= DslPropertySet.CERTIFICATE_PAYLOAD_SCHEMA_VERSION
+                        ? "    public TxCertExpr certificate() { return LedgerExpressions.currentCertificate(); }\n"
+                                + "    public IntegerExpr certificateIndex() { return LedgerExpressions.currentCertificateIndex(); }\n"
+                        : "    public TxCertExpr certificate() { return base.certificate(); }\n"
                                 + "    public IntegerExpr certificateIndex() { return base.certificateIndex(); }\n");
                 default -> throw new IllegalArgumentException(
                         "Structural DSL does not support " + projection.purpose());
@@ -519,7 +537,7 @@ public final class ContractMetamodelGenerator {
                     .append(typeSuffix(element)).append("(value.at(index)); }\n")
                     .append("        public BoolExpr structurallyEquals(List_").append(suffix)
                     .append(" other) { return value.structurallyEquals(other.value); }\n")
-                    .append(dslSchemaVersion == DslPropertySet.AUTHORIZATION_SCHEMA_VERSION
+                    .append(dslSchemaVersion >= DslPropertySet.AUTHORIZATION_SCHEMA_VERSION
                             && element.equals(new BuiltinTypeRef(
                                     BuiltinTypeRef.BuiltinKind.BYTE_STRING))
                             ? "        public AuthoritySetExpr asAuthorities() { return new AuthorizationDsl().fromContractBytes(value); }\n"

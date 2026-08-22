@@ -1,0 +1,102 @@
+{
+  "artifactFormat" : "double_cbor_hex",
+  "artifactId" : "vacuous-certificate-payload",
+  "blueprintEntryTitle" : "VacuousCertificatePayload",
+  "boundarySemantics" : "strict-data-v1",
+  "builtinSemanticsVariant" : "E",
+  "builtins" : [ {
+    "name" : "EqualsInteger",
+    "flatTag" : 7
+  }, {
+    "name" : "IfThenElse",
+    "flatTag" : 26
+  }, {
+    "name" : "FstPair",
+    "flatTag" : 29
+  }, {
+    "name" : "SndPair",
+    "flatTag" : 30
+  }, {
+    "name" : "HeadList",
+    "flatTag" : 33
+  }, {
+    "name" : "TailList",
+    "flatTag" : 34
+  }, {
+    "name" : "NullList",
+    "flatTag" : 35
+  }, {
+    "name" : "UnConstrData",
+    "flatTag" : 42
+  } ],
+  "capabilityInventory" : {
+    "ledgerApi" : "CardanoLedgerApiBlaster",
+    "ledgerVersion" : "V3",
+    "revision" : "5dab3c43f042b8735b6d067223baaa8d32ed28a1",
+    "schemaVersion" : 1,
+    "sha256" : "f55d08b47d71768e4ca67bcb417e6c556fdf55cfc6647c8ff45e73efe65675c8"
+  },
+  "cardanoScriptHash" : "ee466e212f9ac1a6b5db255de2580998afe42eecb7ce2bb123aceb84",
+  "claims" : [ {
+    "id" : "certificate.vacuous-payload",
+    "generatedName" : "certificate_vacuous_payload",
+    "domain" : "VALID_CERTIFYING_V3_PINNED",
+    "guaranteeSha256" : "019266552c7c14b2196f20dd3f9e834ebcd48170573ae4f0949118fda42c2ebb",
+    "envelopeSha256" : "13dadb3b863da84de81b72e165257fa089a505f814440569bb3357b5da22b68e",
+    "capabilities" : [ "constructor.txCert.poolRetire", "field.scriptContext.scriptInfo", "ledger.validCertifyingContext", "purpose.certifying" ],
+    "guaranteeRules" : [ "compare:LE", "integer-literal", "ledger-root:currentCertificate", "ledger-variant-field:TX_CERT.TxCertPoolRetire.epoch", "ledger-variant-when:TX_CERT.TxCertPoolRetire", "typed-variable" ],
+    "counterexampleDomain" : "BLASTER_VALID_CERTIFYING_SUPERSET",
+    "ledgerValidCounterexampleEstablished" : false,
+    "concreteVmCounterexampleReproduced" : false
+  } ],
+  "compiledCodeSha256" : "f9ebb737bd31c880afe96edfb43201bbc54ebd23e3e6c60b2dd5f84798cc5018",
+  "dependencies" : {
+    "CardanoLedgerApiBlaster" : "5dab3c43f042b8735b6d067223baaa8d32ed28a1",
+    "Lean-blaster" : "083bae7971414d894b56b5bbf4108c63e17bc42a",
+    "PlutusCoreBlaster" : "7cf5a78c54b9694ef093bf49edb5d3799b2a49c9"
+  },
+  "domainAssumptions" : [ "validCertifyingContext/v3-pinned" ],
+  "dslIr" : {
+    "schemaVersion" : 7,
+    "sha256" : "b53119fdff41fdbf6bf717d13ea93d05747553ece553b092d877e84de2823cad"
+  },
+  "fuel" : 5000,
+  "generatedBy" : "julc verify init",
+  "generatedLeanSha256" : "8b0954fa4c0891c876e28c908314ed2814b88406df4b19b4866b5ab96e843af2",
+  "julcVersion" : "0.1.0-pre16",
+  "leanVersion" : "4.24.0",
+  "ledgerValidityModeled" : true,
+  "plutusLanguage" : "PlutusV3",
+  "project" : "e4i-certificate-payloads",
+  "properties" : [ {
+    "id" : "certificate.vacuous-payload.non-vacuity",
+    "reason" : "not-run",
+    "result" : "COULD-NOT-EVALUATE"
+  }, {
+    "id" : "certificate.vacuous-payload",
+    "reason" : "not-run",
+    "result" : "COULD-NOT-EVALUATE"
+  } ],
+  "propertyIr" : {
+    "contractSchemaSha256" : "758fe7f64cb41bc6b6a74aeb703ce8f7e94e3de98288cd5f6fcd6e0603ca2e88",
+    "path" : "verification-property.json",
+    "projectedContractTypesSha256" : "758fe7f64cb41bc6b6a74aeb703ce8f7e94e3de98288cd5f6fcd6e0603ca2e88",
+    "propertyId" : "VacuousCertificatePayload.dsl-property-set",
+    "schemaVersion" : 3,
+    "sha256" : "c573cf402be8fb27158c2ba99c8bcf4ad1fd7ef38875479ea45aa33f9f8cd57f",
+    "sourcePath" : "/Users/satya/work/bloxbean/julc/verification/e4i/VacuousCertificatePayloadSpec.java",
+    "template" : "julc.dsl-ledger/v1"
+  },
+  "protocolVersion" : 11,
+  "recursiveDepth" : 4,
+  "runnerPlanSha256" : "b0245c3322bfbf853c15764d6e2f8676246321ab8df1df141a4e0fe311c9aaec",
+  "schemaVersion" : 1,
+  "schemas" : [ {
+    "cip57" : "VacuousCertificatePayload:Redeemer",
+    "lean" : "VacuousCertificatePayloadRedeemer"
+  } ],
+  "scriptPurpose" : "certifying",
+  "uplcVersion" : "1.1.0",
+  "validatorTitle" : "VacuousCertificatePayload",
+  "z3Version" : "4.15.2"
+}

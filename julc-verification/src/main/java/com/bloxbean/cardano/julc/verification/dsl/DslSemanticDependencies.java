@@ -105,11 +105,15 @@ public final class DslSemanticDependencies {
         }
         if (node instanceof TypedVariableNode) return;
         if (node instanceof LedgerRootNode root) {
-            if (!"ledgerContext".equals(root.name())) {
-                throw new IllegalArgumentException(
+            switch (root.name()) {
+                case "ledgerContext" -> state.capabilities.add("dsl.ledger.context");
+                case "currentCertificate" -> {
+                    state.certificate = true;
+                    state.capabilities.add("purpose.certifying");
+                }
+                default -> throw new IllegalArgumentException(
                         "No dependency mapping for ledger root " + root.name());
             }
-            state.capabilities.add("dsl.ledger.context");
             return;
         }
         if (node instanceof FieldNode field) {

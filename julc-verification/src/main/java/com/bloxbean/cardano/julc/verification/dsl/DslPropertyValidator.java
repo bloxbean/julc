@@ -40,7 +40,10 @@ public final class DslPropertyValidator {
                 == DslPropertySet.LEDGER_SCHEMA_VERSION;
         boolean authorizationV6 = propertySet.schemaVersion()
                 == DslPropertySet.AUTHORIZATION_SCHEMA_VERSION;
-        boolean composition = compositionV3 || typedV4 || ledgerV5 || authorizationV6;
+        boolean certificatePayloadV7 = propertySet.schemaVersion()
+                == DslPropertySet.CERTIFICATE_PAYLOAD_SCHEMA_VERSION;
+        boolean composition = compositionV3 || typedV4 || ledgerV5 || authorizationV6
+                || certificatePayloadV7;
         ContractSchema.Purpose expectedPurpose = composition
                 ? contractPurpose(propertySet.purpose())
                 : mintingV2 ? ContractSchema.Purpose.MINT : ContractSchema.Purpose.SPEND;
@@ -53,11 +56,14 @@ public final class DslPropertyValidator {
                     "Minting DSL schema 2 requires exactly one property");
         }
         ProjectedContractTypes projection = typedV4 || ledgerV5 || authorizationV6
+                || certificatePayloadV7
                 ? ContractTypeProjection.project(schema) : null;
         TypeAuthority typeAuthority = projection == null
-                ? null : new TypeAuthority(projection, ledgerV5 || authorizationV6,
-                        authorizationV6, propertySet.purpose());
-        if (typedV4 || ledgerV5 || authorizationV6) {
+                ? null : new TypeAuthority(projection,
+                        ledgerV5 || authorizationV6 || certificatePayloadV7,
+                        authorizationV6 || certificatePayloadV7,
+                        certificatePayloadV7, propertySet.purpose());
+        if (typedV4 || ledgerV5 || authorizationV6 || certificatePayloadV7) {
             String expectedHash = ContractTypeProjection.sha256(projection);
             if (!expectedHash.equals(propertySet.contractSchemaSha256())) {
                 throw new IllegalArgumentException(
@@ -111,7 +117,8 @@ public final class DslPropertyValidator {
         boolean composition = schemaVersion == DslPropertySet.COMPOSITION_SCHEMA_VERSION
                 || schemaVersion == DslPropertySet.TYPED_SCHEMA_VERSION
                 || schemaVersion == DslPropertySet.LEDGER_SCHEMA_VERSION
-                || schemaVersion == DslPropertySet.AUTHORIZATION_SCHEMA_VERSION;
+                || schemaVersion == DslPropertySet.AUTHORIZATION_SCHEMA_VERSION
+                || schemaVersion == DslPropertySet.CERTIFICATE_PAYLOAD_SCHEMA_VERSION;
         if (legacySpending && isMintingSchemaNode(node)) {
             throw new IllegalArgumentException("DSL schema 1 does not admit minting node "
                     + node.getClass().getSimpleName());
@@ -339,9 +346,10 @@ public final class DslPropertyValidator {
             int schemaVersion) {
         if (schemaVersion != DslPropertySet.TYPED_SCHEMA_VERSION
                 && schemaVersion != DslPropertySet.LEDGER_SCHEMA_VERSION
-                && schemaVersion != DslPropertySet.AUTHORIZATION_SCHEMA_VERSION) {
+                && schemaVersion != DslPropertySet.AUTHORIZATION_SCHEMA_VERSION
+                && schemaVersion != DslPropertySet.CERTIFICATE_PAYLOAD_SCHEMA_VERSION) {
             throw new IllegalArgumentException(
-                    "Structural typed nodes require DSL schema 4, 5, or 6");
+                    "Structural typed nodes require DSL schema 4, 5, 6, or 7");
         }
         if (++count[0] > maxNodes) {
             throw new IllegalArgumentException("Property AST exceeds " + maxNodes + " nodes");
@@ -822,12 +830,19 @@ public final class DslPropertyValidator {
         }
         if (node instanceof LedgerRootNode root) {
             authority.requireLedger();
-            if (!"ledgerContext".equals(root.name())
-                    || !LedgerTypeAuthority.SCRIPT_CONTEXT.equals(root.valueType())) {
+            VerificationTypeRef expected = switch (root.name()) {
+                case "ledgerContext" -> LedgerTypeAuthority.SCRIPT_CONTEXT;
+                case "currentCertificate" -> {
+                    authority.requireCertifyingCertificateRoot();
+                    yield LedgerTypeAuthority.TX_CERT;
+                }
+                default -> null;
+            };
+            if (expected == null || !expected.equals(root.valueType())) {
                 throw new IllegalArgumentException(
                         "Unknown or mistyped schema-5 ledger root " + root.name());
             }
-            return root.valueType();
+            return expected;
         }
         if (node instanceof TypedVariableNode variable) {
             TypedBinding binding = variables.get(variable.variable());
@@ -1127,6 +1142,13 @@ public final class DslPropertyValidator {
             }
             return builtin(BuiltinTypeRef.BuiltinKind.BYTE_STRING);
         }
+        if (node instanceof RootNode root
+                && "certificateIndex".equals(root.name())
+                && root.resultType() == DslType.INTEGER) {
+            authority.requireCertifyingCertificateRoot();
+            countNode(count, maxNodes);
+            return LedgerTypeAuthority.INTEGER;
+        }
         return validateTypedValue(node, authority, variables, count, maxNodes);
     }
 
@@ -1284,9 +1306,9 @@ public final class DslPropertyValidator {
     }
 
     private static void requireAuthorizationSchema(int schemaVersion) {
-        if (schemaVersion != DslPropertySet.AUTHORIZATION_SCHEMA_VERSION) {
+        if (schemaVersion < DslPropertySet.AUTHORIZATION_SCHEMA_VERSION) {
             throw new IllegalArgumentException(
-                    "Authorization nodes require DSL schema 6");
+                    "Authorization nodes require DSL schema 6 or newer");
         }
     }
 
@@ -1336,13 +1358,16 @@ public final class DslPropertyValidator {
         private final Map<String, ProjectedContractTypes.NominalDefinition> definitions;
         private final boolean ledgerAllowed;
         private final boolean authorizationAllowed;
+        private final boolean certificatePayloadAllowed;
         private final DslPurpose purpose;
 
         private TypeAuthority(ProjectedContractTypes projection, boolean ledgerAllowed,
-                boolean authorizationAllowed, DslPurpose purpose) {
+                boolean authorizationAllowed, boolean certificatePayloadAllowed,
+                DslPurpose purpose) {
             this.projection = projection;
             this.ledgerAllowed = ledgerAllowed;
             this.authorizationAllowed = authorizationAllowed;
+            this.certificatePayloadAllowed = certificatePayloadAllowed;
             this.purpose = purpose;
             this.definitions = projection.definitions().stream().collect(
                     java.util.stream.Collectors.toUnmodifiableMap(
@@ -1420,6 +1445,13 @@ public final class DslPropertyValidator {
 
         private void requireLedgerConstructor(LedgerTypeRef sum, String constructor) {
             requireLedger();
+            if ((sum.equals(LedgerTypeAuthority.TX_CERT)
+                    || sum.equals(LedgerTypeAuthority.DELEGATEE)
+                    || sum.equals(LedgerTypeAuthority.DREP))
+                    && !certificatePayloadAllowed) {
+                throw new IllegalArgumentException(
+                        "Certificate payload constructors require DSL schema 7");
+            }
             LedgerTypeAuthority.constructor(sum, constructor);
         }
 
@@ -1427,6 +1459,13 @@ public final class DslPropertyValidator {
             if (purpose != DslPurpose.SPENDING) {
                 throw new IllegalArgumentException(
                         "Schema-5 " + description + " is available only for spending");
+            }
+        }
+
+        private void requireCertifyingCertificateRoot() {
+            if (!certificatePayloadAllowed || purpose != DslPurpose.CERTIFYING) {
+                throw new IllegalArgumentException(
+                        "Current certificate payload root requires a certifying schema-7 property");
             }
         }
 

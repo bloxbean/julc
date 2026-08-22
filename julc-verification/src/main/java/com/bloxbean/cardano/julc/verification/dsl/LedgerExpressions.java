@@ -12,6 +12,17 @@ public final class LedgerExpressions {
                 "ledgerContext", LedgerTypeAuthority.SCRIPT_CONTEXT));
     }
 
+    public static TxCertExpr currentCertificate() {
+        return new TxCertExpr(new LedgerRootNode(
+                "currentCertificate", LedgerTypeAuthority.TX_CERT));
+    }
+
+    public static IntegerExpr currentCertificateIndex() {
+        return new IntegerExpr(new com.bloxbean.cardano.julc.verification.dsl.ir.RootNode(
+                "certificateIndex",
+                com.bloxbean.cardano.julc.verification.dsl.ir.DslType.INTEGER));
+    }
+
     public static LedgerByteAliasExpr transactionId(ByteStringExpr bytes) {
         return alias(bytes, LedgerTypeAuthority.TX_ID);
     }

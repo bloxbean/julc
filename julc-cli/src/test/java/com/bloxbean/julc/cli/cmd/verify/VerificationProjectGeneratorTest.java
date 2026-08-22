@@ -783,7 +783,8 @@ class VerificationProjectGeneratorTest {
         Path output = tempDir.resolve("composed-certifying");
 
         VerificationProjectGenerator.generateComposedDsl(
-                writeCertifyingBlueprint(), promoted, 5000, 4, output, false);
+                writeCertifyingBlueprint(), promoted, compiled.contractSchema(),
+                5000, 4, output, false);
 
         String security = Files.readString(output.resolve("SecurityProperty.lean"));
         assertTrue(security.contains("certificateOf"));
@@ -814,6 +815,60 @@ class VerificationProjectGeneratorTest {
                 output.resolve("verification-manifest.json").toFile());
         assertEquals("certifying", manifest.path("scriptPurpose").asText());
         assertEquals("Certificates", manifest.path("blueprintEntryTitle").asText());
+    }
+
+    @Test
+    void generatesSchemaSevenGuardedCertificatePayloadWorkspace() throws Exception {
+        String source = """
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                import com.bloxbean.cardano.julc.ledger.ScriptContext;
+                @CertifyingValidator class Certificates {
+                    record Redeemer() {}
+                    @Entrypoint static boolean validate(Redeemer redeemer,
+                            ScriptContext ctx) { return true; }
+                }
+                """;
+        var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(source);
+        var certificate = LedgerExpressions.currentCertificate();
+        var guarantee = certificate.whenPoolRetire((pool, epoch) ->
+                epoch.ge(integer(10)).and(LedgerExpressions.context().txInfo()
+                        .certificates().containsAt(
+                                LedgerExpressions.currentCertificateIndex(),
+                                certificate)));
+        String schemaHash = ContractTypeProjection.sha256(
+                ContractTypeProjection.project(compiled.contractSchema()));
+        var candidate = DslPropertySet.typedV7(DslPurpose.CERTIFYING, schemaHash,
+                property("Certificates.pool-retirement",
+                        DslDomain.VALID_CERTIFYING_V3_PINNED, guarantee));
+        var promoted = ComposedDslPromotion.promote(candidate,
+                compiled.contractSchema(), "Certificates", "CertSpec.java");
+        Path output = tempDir.resolve("schema-seven-certifying");
+
+        VerificationProjectGenerator.generateComposedDsl(
+                writeCertifyingBlueprint(), promoted, compiled.contractSchema(),
+                5000, 4, output, false);
+
+        String security = Files.readString(output.resolve("SecurityProperty.lean"));
+        assertTrue(security.contains("certificateOf ctx"));
+        assertTrue(security.contains(".TxCertPoolRetire"));
+        assertTrue(security.contains("julcListAt"));
+        String semantics = Files.readString(
+                output.resolve("CertifyingSemanticsTests.lean"));
+        assertTrue(semantics.contains("encodedTagAndArity"));
+        assertTrue(semantics.contains("stakeVoteDelegatee"));
+        assertTrue(semantics.contains("Data.Constr 8 [Data.B \"key\", Data.I 8, Data.I 9]"));
+        assertTrue(Files.readString(output.resolve("lakefile.lean"))
+                .contains("`CertifyingSemanticsTests"));
+        assertTrue(Files.readString(output.resolve(
+                "scripts/verify-certificates_pool_retirement.sh"))
+                .contains("Certificates_Certificates_pool_retirementLedgerCorollary.lean"));
+        var manifest = JSON.readTree(
+                output.resolve("verification-manifest.json").toFile());
+        assertEquals(7, manifest.path("dslIr").path("schemaVersion").asInt());
+        assertEquals("certifying", manifest.path("scriptPurpose").asText());
+        assertTrue(manifest.path("claims").get(0).path("capabilities").toString()
+                .contains("constructor.txCert.poolRetire"));
     }
 
     @Test
