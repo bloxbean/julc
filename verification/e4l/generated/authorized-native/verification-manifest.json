@@ -1,0 +1,121 @@
+{
+  "artifactFormat" : "double_cbor_hex",
+  "artifactId" : "authorized-reviewed-adapters",
+  "blueprintEntryTitle" : "AuthorizedReviewedAdapters",
+  "boundarySemantics" : "strict-data-v1",
+  "builtinSemanticsVariant" : "E",
+  "builtins" : [ {
+    "name" : "EqualsInteger",
+    "flatTag" : 7
+  }, {
+    "name" : "EqualsByteString",
+    "flatTag" : 15
+  }, {
+    "name" : "IfThenElse",
+    "flatTag" : 26
+  }, {
+    "name" : "FstPair",
+    "flatTag" : 29
+  }, {
+    "name" : "SndPair",
+    "flatTag" : 30
+  }, {
+    "name" : "HeadList",
+    "flatTag" : 33
+  }, {
+    "name" : "TailList",
+    "flatTag" : 34
+  }, {
+    "name" : "NullList",
+    "flatTag" : 35
+  }, {
+    "name" : "UnConstrData",
+    "flatTag" : 42
+  }, {
+    "name" : "UnListData",
+    "flatTag" : 44
+  }, {
+    "name" : "UnIData",
+    "flatTag" : 45
+  }, {
+    "name" : "UnBData",
+    "flatTag" : 46
+  } ],
+  "capabilityInventory" : {
+    "ledgerApi" : "CardanoLedgerApiBlaster",
+    "ledgerVersion" : "V3",
+    "revision" : "5dab3c43f042b8735b6d067223baaa8d32ed28a1",
+    "schemaVersion" : 1,
+    "sha256" : "01969c67f842596fe1ed08c82eacd817f835a7f83dd1668dc056f4cfd08d6b70"
+  },
+  "cardanoScriptHash" : "34e081c3b5f989e8ae2d2c9b3ce3be9e96f6ae9d24100f226ad00361",
+  "claims" : [ {
+    "id" : "reviewed.time-and-authority",
+    "generatedName" : "reviewed_time_and_authority",
+    "domain" : "VALID_SPENDING_V3_PINNED",
+    "guaranteeSha256" : "0c9877d5385c4978338d701612909de043a5dc774f40ad5a9b82a1ea08a074b0",
+    "envelopeSha256" : "d2808ab584dfb000b9382bab2c62ff0eae7fa85cb55d13d1e46d4ba1206ed1db",
+    "capabilities" : [ "adapter.validity-range.pinned-v1", "dsl.authorization.distinct-identities", "dsl.authorization.source:FIXED", "dsl.authorization.static-authorities", "dsl.ledger.context", "dsl.option.exists", "dsl.schema.typed-field", "dsl.schema.typed-root", "encoding.isDataV3", "field.scriptContext.scriptInfo", "field.scriptContext.txInfo", "field.txInfo.signatories", "ledger.validSpendingContext", "purpose.spending" ],
+    "guaranteeRules" : [ "authority-list:bounded-static", "authority-source:FIXED", "authorization:ALL_SIGNED", "bool:AND", "bytes-literal:KEY_HASH", "ledger-field:SCRIPT_CONTEXT.txInfo", "ledger-root:ledgerContext", "option-exists", "reviewed-adapter:VALIDITY_CONTAINS", "typed-field:AuthorizedReviewedAdapters.Datum.deadline", "typed-root:typedDatum", "typed-variable" ],
+    "counterexampleDomain" : "BLASTER_VALID_SPENDING_SUPERSET",
+    "ledgerValidCounterexampleEstablished" : false,
+    "concreteVmCounterexampleReproduced" : false
+  } ],
+  "compiledCodeSha256" : "721d88e954a93bc7a18ecdd4306bb991f7cf1fdc0b65a0f3cb8d54bf6cfe20e0",
+  "dependencies" : {
+    "CardanoLedgerApiBlaster" : "5dab3c43f042b8735b6d067223baaa8d32ed28a1",
+    "Lean-blaster" : "083bae7971414d894b56b5bbf4108c63e17bc42a",
+    "PlutusCoreBlaster" : "7cf5a78c54b9694ef093bf49edb5d3799b2a49c9"
+  },
+  "domainAssumptions" : [ "validSpendingContext/v3-pinned" ],
+  "dslIr" : {
+    "schemaVersion" : 10,
+    "sha256" : "55232c07ed9c0d4f0d9dd56fc3dc0f53ee58d0841908c1caedac3351be48baee"
+  },
+  "fuel" : 5000,
+  "generatedBy" : "julc verify init",
+  "generatedLeanSha256" : "9954677df7e1cb765455ce6ec0ac4a4b1d027cb4bf4198bf4917fceef2ba07a1",
+  "julcVersion" : "0.1.0-pre16",
+  "leanVersion" : "4.24.0",
+  "ledgerValidityModeled" : true,
+  "plutusLanguage" : "PlutusV3",
+  "project" : "reviewed-data-adapter-evidence",
+  "properties" : [ {
+    "id" : "reviewed.time-and-authority.non-vacuity",
+    "reason" : "not-run",
+    "result" : "COULD-NOT-EVALUATE"
+  }, {
+    "id" : "reviewed.time-and-authority",
+    "reason" : "not-run",
+    "result" : "COULD-NOT-EVALUATE"
+  } ],
+  "propertyIr" : {
+    "contractSchemaSha256" : "b96bce24d51f48e4c86edebf5b7970fb5783e0c328d2461a2f0efe30cb8b3c21",
+    "path" : "verification-property.json",
+    "projectedContractTypesSha256" : "b96bce24d51f48e4c86edebf5b7970fb5783e0c328d2461a2f0efe30cb8b3c21",
+    "propertyId" : "AuthorizedReviewedAdapters.dsl-property-set",
+    "schemaVersion" : 3,
+    "sha256" : "e7305e319c7ee66a733a6d10833cabb1fe8a74c01876a0edf4bdd7a5559c2f24",
+    "sourcePath" : "/Users/satya/work/bloxbean/julc/verification/e4l/AuthorizedReviewedAdaptersSpec.java",
+    "template" : "julc.dsl-ledger/v1"
+  },
+  "protocolVersion" : 11,
+  "recursiveDepth" : 4,
+  "reviewedRawDataAdapterAudit" : {
+    "schemaVersion" : 1,
+    "sha256" : "e86733f73e990e66a5bb5b445d56670517d1f7883657e951326767d0faf723a1"
+  },
+  "runnerPlanSha256" : "1eec039832305617cc0d63b15cd49b862e87976c50a40fd37267841fdacbc88c",
+  "schemaVersion" : 1,
+  "schemas" : [ {
+    "cip57" : "AuthorizedReviewedAdapters:Datum",
+    "lean" : "AuthorizedReviewedAdaptersDatum"
+  }, {
+    "cip57" : "AuthorizedReviewedAdapters:Redeemer",
+    "lean" : "AuthorizedReviewedAdaptersRedeemer"
+  } ],
+  "scriptPurpose" : "spending",
+  "uplcVersion" : "1.1.0",
+  "validatorTitle" : "AuthorizedReviewedAdapters",
+  "z3Version" : "4.15.2"
+}

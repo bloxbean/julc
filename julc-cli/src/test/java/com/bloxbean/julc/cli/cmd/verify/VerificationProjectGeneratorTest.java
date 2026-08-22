@@ -982,6 +982,58 @@ class VerificationProjectGeneratorTest {
     }
 
     @Test
+    void generatesSchemaTenReviewedAdaptersAndKernelControls() throws Exception {
+        String source = """
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                import com.bloxbean.cardano.julc.ledger.ScriptContext;
+                import java.math.BigInteger;
+                @SpendingValidator class StateGate {
+                    record StateDatum(byte[] owner, BigInteger state) {}
+                    record Transition(BigInteger nextState) {}
+                    @Entrypoint static boolean validate(StateDatum d, Transition r,
+                            ScriptContext ctx) { return true; }
+                }
+                """;
+        var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(source);
+        String hash = ContractTypeProjection.sha256(
+                ContractTypeProjection.project(compiled.contractSchema()));
+        var tx = LedgerExpressions.context().txInfo();
+        var guarantee = tx.validityRangeReviewed().contains(integer(10))
+                .and(tx.validityRangeReviewed().decoderValid())
+                .and(tx.currentTreasuryStrict().isWellFormed())
+                .and(tx.treasuryDonationStrict().whenPresent(
+                        amount -> amount.ge(integer(0))));
+        var candidate = DslPropertySet.typedV10(DslPurpose.SPENDING, hash,
+                property("StateGate.reviewed-adapters",
+                        DslDomain.VALID_SPENDING_V3_PINNED, guarantee));
+        var promoted = ComposedDslPromotion.promote(candidate,
+                compiled.contractSchema(), "StateGate", "ReviewedAdapterSpec.java");
+        String retained = System.getenv("JULC_E4L_WORKSPACE");
+        Path output = retained == null ? tempDir.resolve("schema-ten-adapters")
+                : Path.of(retained);
+
+        VerificationProjectGenerator.generateComposedDsl(writeBlueprint(), promoted,
+                compiled.contractSchema(), 5000, 4, output, retained != null);
+
+        String security = Files.readString(output.resolve("SecurityProperty.lean"));
+        assertTrue(security.contains("julcDecodeValidity"), security);
+        assertTrue(security.contains("julcDecodeTreasury"), security);
+        assertTrue(security.contains("julcChangedParameterIds"), security);
+        assertTrue(security.contains("julcDecodeQuorum"), security);
+        String semantics = Files.readString(
+                output.resolve("ReviewedDataAdapterSemanticsTests.lean"));
+        assertTrue(semantics.contains("noncanonicalInfinite"), semantics);
+        assertTrue(semantics.contains("validTreasuryAmount malformed"), semantics);
+        assertTrue(semantics.contains("julcChangedParametersCountId duplicate"), semantics);
+        assertTrue(semantics.contains("julcQuorumCanonical unreducedHalf"), semantics);
+        assertTrue(Files.readString(output.resolve("lakefile.lean"))
+                .contains("`ReviewedDataAdapterSemanticsTests"));
+        var manifest = JSON.readTree(output.resolve("verification-manifest.json").toFile());
+        assertEquals(10, manifest.path("dslIr").path("schemaVersion").asInt());
+    }
+
+    @Test
     void generatesStrictVariantEncoding() throws Exception {
         var document = JSON.readTree("""
                 {

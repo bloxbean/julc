@@ -334,6 +334,29 @@ public final class DslSemanticDependencies {
             arithmetic.arguments().forEach(argument -> visit(argument, state));
             return;
         }
+        if (node instanceof ReviewedAdapterPredicateNode adapter) {
+            state.capabilities.add(adapterCapability(adapter.predicate()));
+            adapter.arguments().forEach(argument -> visit(argument, state));
+            return;
+        }
+        if (node instanceof ReviewedAdapterWhenNode adapter) {
+            state.capabilities.add(switch (adapter.eliminator()) {
+                case CURRENT_TREASURY_PRESENT ->
+                        "adapter.current-treasury.strict-optional-integer";
+                case TREASURY_DONATION_PRESENT ->
+                        "adapter.treasury-donation.strict-optional-integer";
+                case QUORUM_DECODED -> "adapter.quorum.plutus-rational-v1";
+            });
+            visit(adapter.source(), state);
+            Runnable predicate = () -> visit(adapter.predicate(), state);
+            for (int index = adapter.variables().size() - 1; index >= 0; index--) {
+                String variable = adapter.variables().get(index);
+                Runnable nested = predicate;
+                predicate = () -> withBinder(state, variable, nested);
+            }
+            predicate.run();
+            return;
+        }
         if (node instanceof LedgerByteAliasNode alias) {
             state.capabilities.add("dsl.ledger.byte-alias:" + alias.aliasType().ledgerType());
             visit(alias.bytes(), state);
@@ -558,6 +581,33 @@ public final class DslSemanticDependencies {
             case ValueRelationNode relation -> "value-relation:" + relation.relation();
             case ValueArithmeticNode arithmetic ->
                     "value-arithmetic:" + arithmetic.arithmetic();
+            case ReviewedAdapterPredicateNode adapter ->
+                    "reviewed-adapter:" + adapter.predicate();
+            case ReviewedAdapterWhenNode adapter ->
+                    "reviewed-adapter-when:" + adapter.eliminator();
+        };
+    }
+
+    private static String adapterCapability(
+            ReviewedAdapterPredicateNode.ReviewedAdapterPredicate predicate) {
+        return switch (predicate) {
+            case VALIDITY_DECODER_VALID, VALIDITY_CANONICAL_ENCODING,
+                    VALIDITY_EMPTY, VALIDITY_CONTAINS, VALIDITY_INCLUDES,
+                    VALIDITY_ENTIRELY_BEFORE, VALIDITY_ENTIRELY_AFTER ->
+                    "adapter.validity-range.pinned-v1";
+            case CURRENT_TREASURY_WELL_FORMED, CURRENT_TREASURY_ABSENT,
+                    CURRENT_TREASURY_MALFORMED ->
+                    "adapter.current-treasury.strict-optional-integer";
+            case TREASURY_DONATION_WELL_FORMED, TREASURY_DONATION_ABSENT,
+                    TREASURY_DONATION_MALFORMED ->
+                    "adapter.treasury-donation.strict-optional-integer";
+            case CHANGED_PARAMETERS_WELL_FORMED, CHANGED_PARAMETERS_NON_EMPTY,
+                    CHANGED_PARAMETERS_STRICTLY_ASCENDING_UNIQUE,
+                    CHANGED_PARAMETERS_CONTAINS_ID,
+                    CHANGED_PARAMETERS_COUNT_ID_EQUALS ->
+                    "adapter.changed-parameters.integer-key-index";
+            case QUORUM_DECODER_VALID, QUORUM_CANONICAL_ENCODING,
+                    QUORUM_UNIT_INTERVAL -> "adapter.quorum.plutus-rational-v1";
         };
     }
 

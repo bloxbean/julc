@@ -1,0 +1,189 @@
+{
+  "schemaVersion" : 1,
+  "generatedBy" : "julc verify run",
+  "outcome" : "SMT-VALID",
+  "reason" : "all-properties-established",
+  "backend" : "docker",
+  "backendIdentity" : "sha256:e4fd68fd9a03e1d91bd7af14dc2cdb149a7f3e98600e5934447aef005b7df4da",
+  "toolchain" : {
+    "dockerImageId" : "sha256:e4fd68fd9a03e1d91bd7af14dc2cdb149a7f3e98600e5934447aef005b7df4da",
+    "lake" : "5.0.0-src+797c613",
+    "lean" : "4.24.0",
+    "z3" : "4.15.2"
+  },
+  "dependencyCommits" : {
+    "CardanoLedgerApiBlaster" : "5dab3c43f042b8735b6d067223baaa8d32ed28a1",
+    "Lean-blaster" : "083bae7971414d894b56b5bbf4108c63e17bc42a",
+    "PlutusCoreBlaster" : "7cf5a78c54b9694ef093bf49edb5d3799b2a49c9"
+  },
+  "dependencyDownloadsDisabledDuringVerification" : true,
+  "ledgerValidityModeled" : true,
+  "artifact" : {
+    "artifactId" : "authorized-reviewed-adapters",
+    "blueprintEntryTitle" : "AuthorizedReviewedAdapters",
+    "boundarySemantics" : "strict-data-v1",
+    "builtinSemanticsVariant" : "E",
+    "builtins" : [ {
+      "flatTag" : 7,
+      "name" : "EqualsInteger"
+    }, {
+      "flatTag" : 15,
+      "name" : "EqualsByteString"
+    }, {
+      "flatTag" : 26,
+      "name" : "IfThenElse"
+    }, {
+      "flatTag" : 29,
+      "name" : "FstPair"
+    }, {
+      "flatTag" : 30,
+      "name" : "SndPair"
+    }, {
+      "flatTag" : 33,
+      "name" : "HeadList"
+    }, {
+      "flatTag" : 34,
+      "name" : "TailList"
+    }, {
+      "flatTag" : 35,
+      "name" : "NullList"
+    }, {
+      "flatTag" : 42,
+      "name" : "UnConstrData"
+    }, {
+      "flatTag" : 44,
+      "name" : "UnListData"
+    }, {
+      "flatTag" : 45,
+      "name" : "UnIData"
+    }, {
+      "flatTag" : 46,
+      "name" : "UnBData"
+    } ],
+    "cardanoScriptHash" : "34e081c3b5f989e8ae2d2c9b3ce3be9e96f6ae9d24100f226ad00361",
+    "compiledCodeSha256" : "721d88e954a93bc7a18ecdd4306bb991f7cf1fdc0b65a0f3cb8d54bf6cfe20e0",
+    "dslIrSchemaVersion" : 10,
+    "dslIrSha256" : "55232c07ed9c0d4f0d9dd56fc3dc0f53ee58d0841908c1caedac3351be48baee",
+    "fuel" : 5000,
+    "fuelBounded" : true,
+    "fuelScope" : "Only executions completing within the pinned CEK fuel bound are covered; fuel-exhausted executions are outside the claim.",
+    "generatedLeanSha256" : "9954677df7e1cb765455ce6ec0ac4a4b1d027cb4bf4198bf4917fceef2ba07a1",
+    "globalMultiInputLinkageModeled" : false,
+    "kind" : "validator",
+    "ledgerValidityModeled" : true,
+    "propertyId" : "AuthorizedReviewedAdapters.dsl-property-set",
+    "propertyIrSha256" : "e7305e319c7ee66a733a6d10833cabb1fe8a74c01876a0edf4bdd7a5559c2f24",
+    "propertyPath" : "/Users/satya/work/bloxbean/julc/verification/e4l/AuthorizedReviewedAdaptersSpec.java",
+    "propertyTemplate" : "julc.dsl-ledger/v1",
+    "protocolVersion" : 11,
+    "recursiveDepth" : 4,
+    "reviewedRawDataAdapterAudit" : {
+      "schemaVersion" : 1,
+      "sha256" : "e86733f73e990e66a5bb5b445d56670517d1f7883657e951326767d0faf723a1"
+    },
+    "scriptPurpose" : "spending",
+    "validatorTitle" : "AuthorizedReviewedAdapters"
+  },
+  "inputs" : {
+    "acquireLogSha256" : "fa5a50660dd4d2b28527b3e967d16e1bdffd2a8ab5c9b15944a301e37f698233",
+    "projectLeanSha256" : "9954677df7e1cb765455ce6ec0ac4a4b1d027cb4bf4198bf4917fceef2ba07a1",
+    "propertyIrSha256" : "e7305e319c7ee66a733a6d10833cabb1fe8a74c01876a0edf4bdd7a5559c2f24",
+    "runnerPlanSha256" : "1eec039832305617cc0d63b15cd49b862e87976c50a40fd37267841fdacbc88c",
+    "verificationManifestSha256" : "afaa0d800f145b8d88337537d9cfcafcd47f06dfb31fab2d4487750e56b3bf06",
+    "verifyLogSha256" : "6aa301d55b966e15d74e5b0018d4e945f92bdde6690ea04eeb82e1516e5c845c"
+  },
+  "phases" : [ {
+    "id" : "backend",
+    "phase" : "acquire",
+    "status" : "PASSED",
+    "exitCode" : 0,
+    "log" : "verification-results/backend.log",
+    "logSha256" : "4963f5f6c8b70797a3998dd411867e9e75f59256d770fcab5ec4484dfb445e57"
+  }, {
+    "id" : "lake-update",
+    "phase" : "acquire",
+    "status" : "PASSED",
+    "exitCode" : 0,
+    "log" : "verification-results/acquire-01-lake-update.log",
+    "logSha256" : "567b58d6907ebe46d287f77d31ada84dc1ba3aeeb41f7bfcd7125bf924ca7010"
+  }, {
+    "id" : "build-pinned-dependencies",
+    "phase" : "acquire",
+    "status" : "PASSED",
+    "exitCode" : 0,
+    "log" : "verification-results/acquire-02-build-pinned-dependencies.log",
+    "logSha256" : "a0cb864dd5d95cc0d13d4cec9f7ed1e376168e42aa429d3bdf036ca4c4e54d77"
+  }, {
+    "id" : "revision-blaster",
+    "phase" : "acquire",
+    "status" : "PASSED",
+    "exitCode" : 0,
+    "log" : "verification-results/revision-blaster.log",
+    "logSha256" : "1d7b135cb99e69fe5f07d661d8634534b1107c2bd16c5c587e790dee8777d92b"
+  }, {
+    "id" : "revision-plutuscore",
+    "phase" : "acquire",
+    "status" : "PASSED",
+    "exitCode" : 0,
+    "log" : "verification-results/revision-plutuscore.log",
+    "logSha256" : "cff7a93830bd7e252f770b08b3e446d72f04f098b9473243a5a5497320622d0b"
+  }, {
+    "id" : "revision-cardanoledgerapi",
+    "phase" : "acquire",
+    "status" : "PASSED",
+    "exitCode" : 0,
+    "log" : "verification-results/revision-cardanoledgerapi.log",
+    "logSha256" : "de899bd5dae963278bc47c5bf53f76441e2fc4ef6226bb89c085020ce082c282"
+  }, {
+    "id" : "check-non-vacuity-reviewed_time_and_authority",
+    "phase" : "verify",
+    "status" : "PASSED",
+    "exitCode" : 0,
+    "log" : "verification-results/verify-01-check-non-vacuity-reviewed_time_and_authority.log",
+    "logSha256" : "79474d4e91ef0e7fe2d0f547c1aad633aaaf88c11f66d17d6c61ac52e4c9629d"
+  }, {
+    "id" : "prove-dsl-reviewed_time_and_authority",
+    "phase" : "verify",
+    "status" : "PASSED",
+    "exitCode" : 0,
+    "log" : "verification-results/verify-02-prove-dsl-reviewed_time_and_authority.log",
+    "logSha256" : "7b6cf0917482caf44474c3f36f082139c91df449816dd90652731e4c8f465fcc"
+  } ],
+  "properties" : [ {
+    "id" : "reviewed.time-and-authority.non-vacuity",
+    "outcome" : "REFUTED",
+    "reason" : "expected-negative-control",
+    "domain" : "VALID_SPENDING_V3_PINNED",
+    "guaranteeSha256" : "0c9877d5385c4978338d701612909de043a5dc774f40ad5a9b82a1ea08a074b0",
+    "envelopeSha256" : "d2808ab584dfb000b9382bab2c62ff0eae7fa85cb55d13d1e46d4ba1206ed1db",
+    "capabilities" : [ "adapter.validity-range.pinned-v1", "dsl.authorization.distinct-identities", "dsl.authorization.source:FIXED", "dsl.authorization.static-authorities", "dsl.ledger.context", "dsl.option.exists", "dsl.schema.typed-field", "dsl.schema.typed-root", "encoding.isDataV3", "field.scriptContext.scriptInfo", "field.scriptContext.txInfo", "field.txInfo.signatories", "ledger.validSpendingContext", "purpose.spending" ],
+    "guaranteeRules" : [ "authority-list:bounded-static", "authority-source:FIXED", "authorization:ALL_SIGNED", "bool:AND", "bytes-literal:KEY_HASH", "ledger-field:SCRIPT_CONTEXT.txInfo", "ledger-root:ledgerContext", "option-exists", "reviewed-adapter:VALIDITY_CONTAINS", "typed-field:AuthorizedReviewedAdapters.Datum.deadline", "typed-root:typedDatum", "typed-variable" ],
+    "domainImplied" : false,
+    "governanceDataScopes" : [ ],
+    "strictGovernanceActionDecoding" : false,
+    "fullProposalEquality" : false,
+    "currentVotingPurposeModeled" : false,
+    "currentProposingPurposeModeled" : false,
+    "counterexampleDomain" : "BLASTER_VALID_SPENDING_SUPERSET",
+    "ledgerValidCounterexampleEstablished" : false,
+    "concreteVmCounterexampleReproduced" : false
+  }, {
+    "id" : "reviewed.time-and-authority",
+    "outcome" : "SMT-VALID",
+    "reason" : "dsl-property-established",
+    "domain" : "VALID_SPENDING_V3_PINNED",
+    "guaranteeSha256" : "0c9877d5385c4978338d701612909de043a5dc774f40ad5a9b82a1ea08a074b0",
+    "envelopeSha256" : "d2808ab584dfb000b9382bab2c62ff0eae7fa85cb55d13d1e46d4ba1206ed1db",
+    "capabilities" : [ "adapter.validity-range.pinned-v1", "dsl.authorization.distinct-identities", "dsl.authorization.source:FIXED", "dsl.authorization.static-authorities", "dsl.ledger.context", "dsl.option.exists", "dsl.schema.typed-field", "dsl.schema.typed-root", "encoding.isDataV3", "field.scriptContext.scriptInfo", "field.scriptContext.txInfo", "field.txInfo.signatories", "ledger.validSpendingContext", "purpose.spending" ],
+    "guaranteeRules" : [ "authority-list:bounded-static", "authority-source:FIXED", "authorization:ALL_SIGNED", "bool:AND", "bytes-literal:KEY_HASH", "ledger-field:SCRIPT_CONTEXT.txInfo", "ledger-root:ledgerContext", "option-exists", "reviewed-adapter:VALIDITY_CONTAINS", "typed-field:AuthorizedReviewedAdapters.Datum.deadline", "typed-root:typedDatum", "typed-variable" ],
+    "domainImplied" : false,
+    "governanceDataScopes" : [ ],
+    "strictGovernanceActionDecoding" : false,
+    "fullProposalEquality" : false,
+    "currentVotingPurposeModeled" : false,
+    "currentProposingPurposeModeled" : false,
+    "counterexampleDomain" : "BLASTER_VALID_SPENDING_SUPERSET",
+    "ledgerValidCounterexampleEstablished" : false,
+    "concreteVmCounterexampleReproduced" : false
+  } ]
+}

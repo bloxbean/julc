@@ -302,6 +302,102 @@ public final class TypedPropertyLeanRenderer {
                         + " " + arguments.get(1) + " " + arguments.get(2) + ".items";
             };
         }
+        if (node instanceof ReviewedAdapterPredicateNode adapter) {
+            var arguments = adapter.arguments().stream()
+                    .map(argument -> parenthesize(render(
+                            argument, definitions, variantFields))).toList();
+            String txInfo = arguments.isEmpty() ? null : arguments.getFirst();
+            return switch (adapter.predicate()) {
+                case VALIDITY_DECODER_VALID ->
+                        "julcValidityDecoderValid " + txInfo + ".txInfoValidRange";
+                case VALIDITY_CANONICAL_ENCODING ->
+                        "julcValidityCanonical " + txInfo + ".txInfoValidRange";
+                case VALIDITY_EMPTY ->
+                        "julcValidityIsEmpty " + txInfo + ".txInfoValidRange";
+                case VALIDITY_CONTAINS -> "julcValidityContains "
+                        + arguments.get(1) + " " + txInfo + ".txInfoValidRange";
+                case VALIDITY_INCLUDES -> "julcValidityIncludes "
+                        + txInfo + ".txInfoValidRange " + arguments.get(1)
+                        + ".txInfoValidRange";
+                case VALIDITY_ENTIRELY_BEFORE -> "julcValidityEntirelyBefore "
+                        + arguments.get(1) + " " + txInfo + ".txInfoValidRange";
+                case VALIDITY_ENTIRELY_AFTER -> "julcValidityEntirelyAfter "
+                        + arguments.get(1) + " " + txInfo + ".txInfoValidRange";
+                case CURRENT_TREASURY_WELL_FORMED ->
+                        "julcTreasuryWellFormed "
+                                + txInfo + ".txInfoCurrentTreasuryAmount";
+                case CURRENT_TREASURY_ABSENT -> "julcTreasuryAbsent "
+                        + txInfo + ".txInfoCurrentTreasuryAmount";
+                case CURRENT_TREASURY_MALFORMED -> "julcTreasuryMalformed "
+                        + txInfo + ".txInfoCurrentTreasuryAmount";
+                case TREASURY_DONATION_WELL_FORMED ->
+                        "julcTreasuryWellFormed " + txInfo + ".txInfoTreasuryDonation";
+                case TREASURY_DONATION_ABSENT -> "julcTreasuryAbsent "
+                        + txInfo + ".txInfoTreasuryDonation";
+                case TREASURY_DONATION_MALFORMED -> "julcTreasuryMalformed "
+                        + txInfo + ".txInfoTreasuryDonation";
+                case CHANGED_PARAMETERS_WELL_FORMED ->
+                        "julcChangedParametersWellFormed "
+                                + reviewedVariantRaw(adapter.arguments().getFirst(),
+                                        "ParameterChange", "changedParameters", variantFields);
+                case CHANGED_PARAMETERS_NON_EMPTY ->
+                        "julcChangedParametersNonEmpty "
+                                + reviewedVariantRaw(adapter.arguments().getFirst(),
+                                        "ParameterChange", "changedParameters", variantFields);
+                case CHANGED_PARAMETERS_STRICTLY_ASCENDING_UNIQUE ->
+                        "julcChangedParametersStrictlyAscendingUnique "
+                                + reviewedVariantRaw(adapter.arguments().getFirst(),
+                                        "ParameterChange", "changedParameters", variantFields);
+                case CHANGED_PARAMETERS_CONTAINS_ID ->
+                        "julcChangedParametersContainsId "
+                                + reviewedVariantRaw(adapter.arguments().getFirst(),
+                                        "ParameterChange", "changedParameters", variantFields)
+                                + " " + arguments.get(1);
+                case CHANGED_PARAMETERS_COUNT_ID_EQUALS ->
+                        "julcChangedParametersCountId "
+                                + reviewedVariantRaw(adapter.arguments().getFirst(),
+                                        "ParameterChange", "changedParameters", variantFields)
+                                + " " + arguments.get(1) + " == " + arguments.get(2);
+                case QUORUM_DECODER_VALID -> "julcQuorumDecoderValid "
+                        + reviewedVariantRaw(adapter.arguments().getFirst(),
+                                "UpdateCommittee", "quorum", variantFields);
+                case QUORUM_CANONICAL_ENCODING -> "julcQuorumCanonical "
+                        + reviewedVariantRaw(adapter.arguments().getFirst(),
+                                "UpdateCommittee", "quorum", variantFields);
+                case QUORUM_UNIT_INTERVAL -> "julcQuorumUnitInterval "
+                        + reviewedVariantRaw(adapter.arguments().getFirst(),
+                                "UpdateCommittee", "quorum", variantFields);
+            };
+        }
+        if (node instanceof ReviewedAdapterWhenNode adapter) {
+            var nested = new HashMap<>(variantFields);
+            return switch (adapter.eliminator()) {
+                case CURRENT_TREASURY_PRESENT, TREASURY_DONATION_PRESENT -> {
+                    String raw = parenthesize(render(
+                            adapter.source(), definitions, variantFields))
+                            + (adapter.eliminator()
+                                    == ReviewedAdapterWhenNode.ReviewedAdapterEliminator
+                                            .CURRENT_TREASURY_PRESENT
+                                    ? ".txInfoCurrentTreasuryAmount"
+                                    : ".txInfoTreasuryDonation");
+                    String variable = adapter.variables().getFirst();
+                    yield parenthesize("match julcDecodeTreasury " + raw
+                            + " with | .present " + variable + " => "
+                            + render(adapter.predicate(), definitions, nested)
+                            + " | _ => false");
+                }
+                case QUORUM_DECODED -> {
+                    String raw = reviewedVariantRaw(adapter.source(),
+                            "UpdateCommittee", "quorum", variantFields);
+                    String numerator = adapter.variables().get(0);
+                    String denominator = adapter.variables().get(1);
+                    yield parenthesize("match julcDecodeQuorum " + raw
+                            + " with | some (" + numerator + ", " + denominator
+                            + ") => " + render(adapter.predicate(), definitions, nested)
+                            + " | none => false");
+                }
+            };
+        }
         if (node instanceof LedgerByteAliasNode alias) {
             return render(alias.bytes(), definitions, variantFields);
         }
@@ -518,6 +614,19 @@ public final class TypedPropertyLeanRenderer {
 
     private static String variableKey(String variable) {
         return "$variable:" + variable;
+    }
+
+    private static String reviewedVariantRaw(
+            PropertyNode target,
+            String constructor,
+            String field,
+            Map<String, String> variantFields) {
+        String binding = variantFields.get(fieldKey(target, constructor, field));
+        if (binding == null) {
+            throw new IllegalArgumentException(
+                    "Reviewed raw-data adapter has no guarded Lean payload binding");
+        }
+        return binding;
     }
 
     private static String parenthesize(String value) {

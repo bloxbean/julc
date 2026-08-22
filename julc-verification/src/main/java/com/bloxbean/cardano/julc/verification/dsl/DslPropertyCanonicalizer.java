@@ -24,7 +24,9 @@ public final class DslPropertyCanonicalizer {
                 && propertySet.schemaVersion()
                         != DslPropertySet.VALUE_ALGEBRA_SCHEMA_VERSION
                 && propertySet.schemaVersion()
-                        != DslPropertySet.GOVERNANCE_SCHEMA_VERSION) {
+                        != DslPropertySet.GOVERNANCE_SCHEMA_VERSION
+                && propertySet.schemaVersion()
+                        != DslPropertySet.REVIEWED_DATA_ADAPTER_SCHEMA_VERSION) {
             return propertySet;
         }
         List<DslProperty> properties = propertySet.properties().stream()
@@ -237,6 +239,16 @@ public final class DslPropertyCanonicalizer {
             return new MapLookupAllNode(normalize(map.map()), map.keyType(), map.valueType(),
                     normalize(map.key()));
         }
+        if (node instanceof ReviewedAdapterPredicateNode adapter) {
+            return new ReviewedAdapterPredicateNode(adapter.predicate(),
+                    adapter.arguments().stream()
+                            .map(DslPropertyCanonicalizer::normalize).toList());
+        }
+        if (node instanceof ReviewedAdapterWhenNode adapter) {
+            return new ReviewedAdapterWhenNode(adapter.eliminator(),
+                    normalize(adapter.source()), adapter.variables(),
+                    normalize(adapter.predicate()));
+        }
         throw new IllegalArgumentException("Unsupported property node " + node.getClass());
     }
 
@@ -326,6 +338,18 @@ public final class DslPropertyCanonicalizer {
                     alphaNormalize(entry.entry(), binders, next, prefix), entry.entryType(),
                     key, entry.keyType(), value, entry.valueType(), predicate);
         }
+        if (node instanceof ReviewedAdapterWhenNode adapter) {
+            var canonicalVariables = new ArrayList<String>();
+            for (String variable : adapter.variables()) {
+                canonicalVariables.add(bind(variable, binders, next, prefix));
+            }
+            PropertyNode predicate = alphaNormalize(
+                    adapter.predicate(), binders, next, prefix);
+            for (String variable : adapter.variables()) binders.remove(variable);
+            return new ReviewedAdapterWhenNode(adapter.eliminator(),
+                    alphaNormalize(adapter.source(), binders, next, prefix),
+                    canonicalVariables, predicate);
+        }
         return mapChildren(node, child -> alphaNormalize(child, binders, next, prefix));
     }
 
@@ -403,6 +427,10 @@ public final class DslPropertyCanonicalizer {
         if (node instanceof ValueArithmeticNode value) return new ValueArithmeticNode(
                 value.arithmetic(), value.arguments().stream().map(map).toList(),
                 value.argumentTypes(), value.resultTypeRef());
+        if (node instanceof ReviewedAdapterPredicateNode value) {
+            return new ReviewedAdapterPredicateNode(value.predicate(),
+                    value.arguments().stream().map(map).toList());
+        }
         if (node instanceof BoolNotNode value) return new BoolNotNode(map.apply(value.value()));
         if (node instanceof IntegerArithmeticNode value) return new IntegerArithmeticNode(
                 value.operator(), map.apply(value.left()),

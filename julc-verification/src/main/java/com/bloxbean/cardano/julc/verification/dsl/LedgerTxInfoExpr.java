@@ -61,6 +61,15 @@ public record LedgerTxInfoExpr(PropertyNode node) implements Expr {
                 LedgerTypeAuthority.TX_INFO, "proposals",
                 new ListTypeRef(LedgerTypeAuthority.PROPOSAL_PROCEDURE)));
     }
+    public ValidityRangeExpr validityRangeReviewed() {
+        return new ValidityRangeExpr(node);
+    }
+    public StrictTreasuryExpr currentTreasuryStrict() {
+        return new StrictTreasuryExpr(node, StrictTreasuryExpr.TreasuryField.CURRENT_AMOUNT);
+    }
+    public StrictTreasuryExpr treasuryDonationStrict() {
+        return new StrictTreasuryExpr(node, StrictTreasuryExpr.TreasuryField.DONATION);
+    }
 
     private LedgerTxInInfoListExpr inputsField(String name) {
         return new LedgerTxInInfoListExpr(new LedgerFieldNode(node,

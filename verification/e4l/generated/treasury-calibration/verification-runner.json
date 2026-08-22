@@ -1,0 +1,60 @@
+{
+  "acquire" : [ {
+    "command" : [ "lake", "update" ],
+    "expectedExitCodes" : [ 0 ],
+    "id" : "lake-update",
+    "maxAttempts" : 3
+  }, {
+    "command" : [ "lake", "build", "@PlutusCore/PlutusCore", "@CardanoLedgerApi/CardanoLedgerApi", "@Blaster/Blaster", "GeneratedVerificationSupport" ],
+    "expectedExitCodes" : [ 0 ],
+    "id" : "build-pinned-dependencies"
+  } ],
+  "kind" : "generated-workspace",
+  "manifest" : "verification-manifest.json",
+  "schemaVersion" : 2,
+  "timeoutSeconds" : 1800,
+  "verify" : [ {
+    "command" : [ "scripts/verify-reviewed_treasury_calibration-non-vacuity.sh" ],
+    "executableSha256" : "13484ab79c02d65329d645ea27c8cfd5aeee02066ac998af5008be31ecf5c513",
+    "id" : "check-non-vacuity-reviewed_treasury_calibration",
+    "outcomes" : [ {
+      "exitCode" : 0,
+      "reason" : "expected-negative-control",
+      "requiredOutput" : "NON-VACUOUS: successful input witness exists",
+      "result" : "REFUTED"
+    }, {
+      "exitCode" : 4,
+      "reason" : "property-vacuous",
+      "requiredOutput" : "VACUOUS: validator has no successful input",
+      "result" : "COULD-NOT-EVALUATE"
+    }, {
+      "exitCode" : 2,
+      "reason" : "non-vacuity-undetermined",
+      "requiredOutput" : "COULD-NOT-EVALUATE: non-vacuity",
+      "result" : "COULD-NOT-EVALUATE"
+    } ],
+    "propertyId" : "reviewed.treasury-calibration.non-vacuity"
+  }, {
+    "command" : [ "scripts/verify-reviewed_treasury_calibration.sh" ],
+    "executableSha256" : "3dfba1bb15092c036e4a4c45e6b0fbdff3376f2817b92f9f0f86d3acc1cf044c",
+    "id" : "prove-dsl-reviewed_treasury_calibration",
+    "nonVacuityGuardPropertyId" : "reviewed.treasury-calibration.non-vacuity",
+    "outcomes" : [ {
+      "exitCode" : 0,
+      "reason" : "dsl-property-established",
+      "requiredOutput" : "SMT-VALID: DSL property reviewed.treasury-calibration established",
+      "result" : "SMT-VALID"
+    }, {
+      "exitCode" : 3,
+      "reason" : "dsl-property-counterexample",
+      "requiredOutput" : "REFUTED: DSL property reviewed.treasury-calibration counterexample found",
+      "result" : "REFUTED"
+    }, {
+      "exitCode" : 2,
+      "reason" : "dsl-property-undetermined",
+      "requiredOutput" : "COULD-NOT-EVALUATE: DSL property reviewed.treasury-calibration",
+      "result" : "COULD-NOT-EVALUATE"
+    } ],
+    "propertyId" : "reviewed.treasury-calibration"
+  } ]
+}

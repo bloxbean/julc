@@ -1,0 +1,7 @@
+[project]
+name = "reviewed-data-adapter-evidence"
+version = "1.0.0"
+
+[build]
+source-dir = "src"
+output-dir = "build/plutus"

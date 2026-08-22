@@ -1,0 +1,26 @@
+{
+  "schemaVersion" : 3,
+  "template" : "julc.dsl-ledger/v1",
+  "propertyId" : "AuthorizedReviewedAdapters.dsl-property-set",
+  "validatorTitle" : "AuthorizedReviewedAdapters",
+  "scriptPurpose" : "spending",
+  "sourcePath" : "/Users/satya/work/bloxbean/julc/verification/e4l/AuthorizedReviewedAdaptersSpec.java",
+  "canonicalDslJson" : "{\"contractSchemaSha256\":\"b96bce24d51f48e4c86edebf5b7970fb5783e0c328d2461a2f0efe30cb8b3c21\",\"properties\":[{\"domain\":\"VALID_SPENDING_V3_PINNED\",\"expression\":{\"op\":\"option-exists\",\"elementType\":{\"type\":\"nominal\",\"nominalKind\":\"RECORD\",\"stableId\":\"AuthorizedReviewedAdapters.Datum\"},\"optional\":{\"op\":\"typed-root\",\"name\":\"typedDatum\",\"valueType\":{\"type\":\"optional\",\"elementType\":{\"type\":\"nominal\",\"nominalKind\":\"RECORD\",\"stableId\":\"AuthorizedReviewedAdapters.Datum\"}}},\"predicate\":{\"op\":\"bool-binary\",\"left\":{\"op\":\"authorization\",\"authorities\":{\"op\":\"authority-list\",\"authorities\":[{\"op\":\"authority-key-hash\",\"bytes\":{\"op\":\"bytes-literal\",\"hex\":\"41414141414141414141414141414141414141414141414141414141\",\"kind\":\"KEY_HASH\",\"resultType\":\"BYTE_STRING\"},\"sourceKind\":\"FIXED\"}]},\"relation\":\"ALL_SIGNED\",\"threshold\":null},\"operator\":\"AND\",\"right\":{\"op\":\"reviewed-adapter-predicate\",\"arguments\":[{\"op\":\"ledger-field\",\"name\":\"txInfo\",\"ownerType\":{\"type\":\"ledger\",\"ledgerType\":\"SCRIPT_CONTEXT\"},\"target\":{\"op\":\"ledger-root\",\"name\":\"ledgerContext\",\"valueType\":{\"type\":\"ledger\",\"ledgerType\":\"SCRIPT_CONTEXT\"}},\"valueType\":{\"type\":\"ledger\",\"ledgerType\":\"TX_INFO\"}},{\"op\":\"typed-field\",\"name\":\"deadline\",\"ownerType\":{\"type\":\"nominal\",\"nominalKind\":\"RECORD\",\"stableId\":\"AuthorizedReviewedAdapters.Datum\"},\"target\":{\"op\":\"typed-variable\",\"valueType\":{\"type\":\"nominal\",\"nominalKind\":\"RECORD\",\"stableId\":\"AuthorizedReviewedAdapters.Datum\"},\"variable\":\"v0\"},\"valueType\":{\"type\":\"builtin\",\"builtin\":\"INTEGER\"}}],\"predicate\":\"VALIDITY_CONTAINS\"}},\"variable\":\"v0\"},\"id\":\"reviewed.time-and-authority\"}],\"purpose\":\"SPENDING\",\"schemaVersion\":10}",
+  "claims" : [ {
+    "id" : "reviewed.time-and-authority",
+    "generatedName" : "reviewed_time_and_authority",
+    "domain" : "VALID_SPENDING_V3_PINNED",
+    "guaranteeSha256" : "0c9877d5385c4978338d701612909de043a5dc774f40ad5a9b82a1ea08a074b0",
+    "envelopeSha256" : "d2808ab584dfb000b9382bab2c62ff0eae7fa85cb55d13d1e46d4ba1206ed1db",
+    "capabilities" : [ "adapter.validity-range.pinned-v1", "dsl.authorization.distinct-identities", "dsl.authorization.source:FIXED", "dsl.authorization.static-authorities", "dsl.ledger.context", "dsl.option.exists", "dsl.schema.typed-field", "dsl.schema.typed-root", "encoding.isDataV3", "field.scriptContext.scriptInfo", "field.scriptContext.txInfo", "field.txInfo.signatories", "ledger.validSpendingContext", "purpose.spending" ],
+    "guaranteeRules" : [ "authority-list:bounded-static", "authority-source:FIXED", "authorization:ALL_SIGNED", "bool:AND", "bytes-literal:KEY_HASH", "ledger-field:SCRIPT_CONTEXT.txInfo", "ledger-root:ledgerContext", "option-exists", "reviewed-adapter:VALIDITY_CONTAINS", "typed-field:AuthorizedReviewedAdapters.Datum.deadline", "typed-root:typedDatum", "typed-variable" ],
+    "counterexampleDomain" : "BLASTER_VALID_SPENDING_SUPERSET",
+    "ledgerValidCounterexampleEstablished" : false,
+    "concreteVmCounterexampleReproduced" : false
+  } ],
+  "domainAssumptions" : [ "validSpendingContext/v3-pinned" ],
+  "guaranteeRules" : [ "authority-list:bounded-static", "authority-source:FIXED", "authorization:ALL_SIGNED", "bool:AND", "bytes-literal:KEY_HASH", "ledger-field:SCRIPT_CONTEXT.txInfo", "ledger-root:ledgerContext", "option-exists", "reviewed-adapter:VALIDITY_CONTAINS", "typed-field:AuthorizedReviewedAdapters.Datum.deadline", "typed-root:typedDatum", "typed-variable" ],
+  "ledgerValidityModeled" : true,
+  "projectedContractTypesJson" : "{\"datumType\":{\"type\":\"nominal\",\"nominalKind\":\"RECORD\",\"stableId\":\"AuthorizedReviewedAdapters.Datum\"},\"definitions\":[{\"constructors\":[],\"fields\":[{\"name\":\"deadline\",\"type\":{\"type\":\"builtin\",\"builtin\":\"INTEGER\"}}],\"nominalKind\":\"RECORD\",\"sourceName\":\"Datum\",\"stableId\":\"AuthorizedReviewedAdapters.Datum\"},{\"constructors\":[],\"fields\":[],\"nominalKind\":\"RECORD\",\"sourceName\":\"Redeemer\",\"stableId\":\"AuthorizedReviewedAdapters.Redeemer\"}],\"parameters\":[],\"purpose\":\"SPEND\",\"redeemerType\":{\"type\":\"nominal\",\"nominalKind\":\"RECORD\",\"stableId\":\"AuthorizedReviewedAdapters.Redeemer\"},\"schemaVersion\":1}",
+  "contractSchemaSha256" : "b96bce24d51f48e4c86edebf5b7970fb5783e0c328d2461a2f0efe30cb8b3c21"
+}

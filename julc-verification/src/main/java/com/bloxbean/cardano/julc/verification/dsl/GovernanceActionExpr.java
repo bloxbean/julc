@@ -14,6 +14,15 @@ public record GovernanceActionExpr(PropertyNode node) implements Expr {
                 LedgerTypeAuthority.GOVERNANCE_ACTION_ID), optional(b,"ParameterChange",
                 "constitutionScript", LedgerTypeAuthority.SCRIPT_HASH)).node());
     }
+    public BoolExpr whenParameterChange(ParameterChangeFunction p) {
+        Objects.requireNonNull(p, "predicate");
+        return when("ParameterChange", b -> p.apply(
+                optional(b,"ParameterChange","previous",
+                        LedgerTypeAuthority.GOVERNANCE_ACTION_ID),
+                new ChangedParametersExpr(b),
+                optional(b,"ParameterChange","constitutionScript",
+                        LedgerTypeAuthority.SCRIPT_HASH)).node());
+    }
     public BoolExpr whenHardFork(BiFunction<TypedOptionExpr, ProtocolVersionExpr, BoolExpr> p) {
         return when("HardForkInitiation", b -> p.apply(optional(b,"HardForkInitiation","previous",
                 LedgerTypeAuthority.GOVERNANCE_ACTION_ID), new ProtocolVersionExpr(field(b,
@@ -40,6 +49,20 @@ public record GovernanceActionExpr(PropertyNode node) implements Expr {
                 "newMembers",members), LedgerTypeAuthority.CREDENTIAL,
                 LedgerTypeAuthority.INTEGER)).node());
     }
+    public BoolExpr whenUpdateCommittee(UpdateCommitteeFunction p) {
+        Objects.requireNonNull(p, "predicate");
+        var members = new AssocMapTypeRef(
+                LedgerTypeAuthority.CREDENTIAL, LedgerTypeAuthority.INTEGER);
+        return when("UpdateCommittee", b -> p.apply(
+                optional(b,"UpdateCommittee","previous",
+                        LedgerTypeAuthority.GOVERNANCE_ACTION_ID),
+                new TypedListExpr(field(b,"UpdateCommittee","oldMembers",
+                        new ListTypeRef(LedgerTypeAuthority.CREDENTIAL)),
+                        LedgerTypeAuthority.CREDENTIAL),
+                new TypedAssocMapExpr(field(b,"UpdateCommittee","newMembers",members),
+                        LedgerTypeAuthority.CREDENTIAL, LedgerTypeAuthority.INTEGER),
+                new QuorumExpr(b)).node());
+    }
     public BoolExpr whenNewConstitution(BiFunction<TypedOptionExpr, TypedOptionExpr, BoolExpr> p) {
         return when("NewConstitution", b -> p.apply(optional(b,"NewConstitution","previous",
                 LedgerTypeAuthority.GOVERNANCE_ACTION_ID), optional(b,"NewConstitution",
@@ -59,4 +82,12 @@ public record GovernanceActionExpr(PropertyNode node) implements Expr {
         return new TypedOptionExpr(field(b,c,n,new OptionalTypeRef(t)),t);
     }
     @FunctionalInterface public interface TriFunction<A,B,C,R> { R apply(A a,B b,C c); }
+    @FunctionalInterface public interface ParameterChangeFunction {
+        BoolExpr apply(TypedOptionExpr previous, ChangedParametersExpr changedParameters,
+                       TypedOptionExpr constitutionScript);
+    }
+    @FunctionalInterface public interface UpdateCommitteeFunction {
+        BoolExpr apply(TypedOptionExpr previous, TypedListExpr oldMembers,
+                       TypedAssocMapExpr newMembers, QuorumExpr quorum);
+    }
 }

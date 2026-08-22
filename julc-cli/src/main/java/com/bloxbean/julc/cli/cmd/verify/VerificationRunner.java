@@ -5,6 +5,7 @@ import com.bloxbean.cardano.julc.verification.ComposedDslProperty;
 import com.bloxbean.cardano.julc.verification.dsl.ComposedDslPromotion;
 import com.bloxbean.cardano.julc.verification.dsl.ir.DslPropertySet;
 import com.bloxbean.cardano.julc.verification.capability.LedgerCapabilityInventories;
+import com.bloxbean.cardano.julc.verification.capability.ReviewedRawDataAdapterAudits;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -844,9 +845,11 @@ public final class VerificationRunner {
                         && recordedDslSchema
                             != DslPropertySet.VALUE_ALGEBRA_SCHEMA_VERSION
                         && recordedDslSchema
-                            != DslPropertySet.GOVERNANCE_SCHEMA_VERSION) {
+                            != DslPropertySet.GOVERNANCE_SCHEMA_VERSION
+                        && recordedDslSchema
+                            != DslPropertySet.REVIEWED_DATA_ADAPTER_SCHEMA_VERSION) {
                     throw new IOException(
-                            "Ledger DSL canonical schema must be 5 through 9");
+                            "Ledger DSL canonical schema must be 5 through 10");
                 }
                 int expectedDslSchema = ComposedDslProperty.LEDGER_TEMPLATE.equals(template)
                         ? recordedDslSchema
@@ -854,6 +857,10 @@ public final class VerificationRunner {
                         ? 4 : composedDsl ? 3 : oneShotMint
                         || "julc.controlled-mint/v1".equals(template) ? 2 : 1;
                 validateCanonicalDslIr(manifest, property, expectedDslSchema);
+                if (expectedDslSchema
+                        == DslPropertySet.REVIEWED_DATA_ADAPTER_SCHEMA_VERSION) {
+                    validateReviewedAdapterAudit(manifest);
+                }
             }
             if ("julc.stateful-spending/v1".equals(template)
                     && (!"GREATER_THAN".equals(requiredText(property, "relation"))
@@ -901,6 +908,13 @@ public final class VerificationRunner {
                         manifest.path("dslIr").path("schemaVersion").asInt());
                 artifact.put("dslIrSha256",
                         manifest.path("dslIr").path("sha256").asText());
+                if (manifest.path("dslIr").path("schemaVersion").asInt(-1)
+                        == DslPropertySet.REVIEWED_DATA_ADAPTER_SCHEMA_VERSION) {
+                    artifact.put("reviewedRawDataAdapterAudit", Map.of(
+                            "schemaVersion", 1,
+                            "sha256", manifest.path("reviewedRawDataAdapterAudit")
+                                    .path("sha256").asText()));
+                }
             }
             artifact.put("ledgerValidityModeled", ledgerValidityModeled);
             artifact.put("fuelBounded", true);
@@ -1007,6 +1021,17 @@ public final class VerificationRunner {
                 || !expectedHash.equals(recorded.path("sha256").asText())) {
             throw new IOException(
                     "Verification capability inventory is missing, stale, or tampered");
+        }
+    }
+
+    private static void validateReviewedAdapterAudit(JsonNode manifest) throws IOException {
+        JsonNode recorded = manifest.path("reviewedRawDataAdapterAudit");
+        String expectedHash = VerificationFiles.sha256(
+                ReviewedRawDataAdapterAudits.v1Bytes());
+        if (recorded.path("schemaVersion").asInt(-1) != 1
+                || !expectedHash.equals(recorded.path("sha256").asText())) {
+            throw new IOException(
+                    "Reviewed raw-data adapter audit is missing, stale, or tampered");
         }
     }
 

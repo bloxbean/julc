@@ -842,6 +842,13 @@ metadata is re-derived from canonical capabilities and records governance
 scope, strict action decoding, full-proposal equality use, and the deliberately
 unsupported current voting/proposing purposes.
 
+Boolean governance-use metadata follows an omit-when-false convention:
+`strictGovernanceActionDecoding` and `isKnownProposalUsed` are present only
+when a retained claim actually uses the corresponding operation. Their absence
+means the operation was not used; it does not mean that runner preflight failed
+to derive the field. This convention preserves older result-schema
+compatibility while still binding every positive use.
+
 Local JVM, Docker, and GraalVM-native positive workflows now bind identical
 artifact, DSL IR, property IR, and generated Lean hashes. The local retained
 matrix also records the expected `REFUTED` and

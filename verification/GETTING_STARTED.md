@@ -760,7 +760,35 @@ inaccessible, and voting/proposing validator selection is still unsupported.
 See [`e4k/README.md`](e4k/README.md) for executable evidence and the proposal-
 validity domain limitation.
 
-## 19. Fuel, recursion, and reruns
+## 19. Experimental schema-10 reviewed raw-data adapters
+
+Schema 10 provides closed reviewed operations for the pinned validity range,
+strict treasury optionals, changed-parameter integer keys, and governance
+quorum. Generate the schema-10 model explicitly:
+
+```bash
+julc verify dsl-init . --validator MyValidator --purpose spending \
+  --schema-version 10 --package verification --class MyContractModel \
+  --out verification/MyContractModel.java
+```
+
+The generated model exposes expressions such as:
+
+```java
+var tx = contract.context().txInfo();
+var guarantee = contract.datum().exists(datum ->
+    tx.validityRangeReviewed().contains(datum.deadline()))
+    .and(tx.currentTreasuryStrict().whenPresent(amount -> amount.ge(integer(0))))
+    .and(tx.treasuryDonationStrict().isAbsent());
+```
+
+Use `decoderValid()` and `canonicalEncoding()` as different validity-range
+claims. Treasury expressions distinguish present, absent, and malformed.
+Changed-parameter values and arbitrary raw `Data` remain inaccessible. See
+[`e4l/README.md`](e4l/README.md) for the executable evidence and the pinned
+treasury-model discrepancy.
+
+## 20. Fuel, recursion, and reruns
 
 `--fuel` bounds exact UPLC preprocessing/execution in the generated obligation.
 An `SMT-VALID` certificate covers only successful paths completing within that
@@ -780,7 +808,7 @@ julc verify . --validator AuthorizedStateValidator \
   --out-dir verification/ci-authorized --force
 ```
 
-## 20. What the certificate does and does not claim
+## 21. What the certificate does and does not claim
 
 For an annotation profile, a successful certificate means:
 
