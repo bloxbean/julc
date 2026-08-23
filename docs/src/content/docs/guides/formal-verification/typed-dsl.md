@@ -1,10 +1,10 @@
 ---
 title: "Typed Java DSL"
-description: "Compose schema-10 JuLC verification properties over contract and Cardano ledger data"
+description: "Compose schema-1 JuLC verification properties over contract and Cardano ledger data"
 ---
 
 :::caution[Experimental verification feature]
-The DSL API and schema-10 meanings are stable as API v1, but the verifier,
+The DSL API and schema-1 meanings are stable as API v1, but the verifier,
 compiler, ledger model, and solver integration remain experimental.
 :::
 
@@ -15,7 +15,7 @@ outcomes, fuel, and CI guidance.
 
 ## Supported composition
 
-The stable schema-10 DSL supports freely composed, admitted expressions over:
+The stable schema-1 DSL supports freely composed, admitted expressions over:
 
 - compiler-projected datum and redeemer records, sealed variants, optionals,
   lists, maps, nested values, and productive recursion;
@@ -54,7 +54,7 @@ native-CLI DSL run therefore still needs a matching source-built shadow JAR or
 a complete runtime classpath containing the same-version
 `julc-verification` artifact and its dependencies.
 
-## 1. Generate the schema-10 model
+## 1. Generate the schema-1 model
 
 ```bash
 java -jar "$JULC_JAR" verify dsl-init . \
@@ -65,12 +65,11 @@ java -jar "$JULC_JAR" verify dsl-init . \
   --out build/verification-dsl/src/verification/AuthorizedStateModel.java
 ```
 
-Schema 10 is the API-v1 default and the only schema covered by the API-v1
-canonical-semantics freeze. `--schema-version 3` through `9` remains available
-for compatibility and evidence reproduction. Historical certificates remain
-hash-bound records, but an old workspace can require regeneration when the
-reviewed capability inventory or dependency pins change. Generation refuses to
-overwrite the output file.
+Schema 1 is the API-v1 default and the only schema covered by the API-v1
+canonical-semantics freeze. The unreleased milestone schemas that preceded it
+are not accepted by the public CLI; regenerate an old experimental workspace
+with the current `dsl-init`. Historical certificates remain hash-bound records
+of their original runs. Generation refuses to overwrite the output file.
 
 For an explicit `@MultiValidator`, `--validator` is the base Java class and
 `--purpose` selects one exact interface. Supported purpose values are
@@ -152,14 +151,14 @@ The API-v1 construction surface consists of:
 - typed expression wrappers in
   `com.bloxbean.cardano.julc.verification.dsl`;
 - `DslProperty`, `DslPropertySet`, `DslPurpose`, and `DslDomain`; and
-- reproducible schema-10 generated contract metamodels.
+- reproducible schema-1 generated contract metamodels.
 
 Concrete classes in `verification.dsl.ir` are serialization infrastructure
 unless listed above. Renderers, validators, worker protocol classes, semantic
 dependency planners, arbitrary Lean, and custom node kinds are not public DSL
 construction APIs merely because some classes need Java-public visibility.
 
-Schema-10 canonical meanings and serialization are frozen for API v1. New
+Schema-1 canonical meanings and serialization are frozen for API v1. New
 semantic vocabulary requires a new reviewed property schema.
 
 ## Property domains

@@ -48,10 +48,11 @@ export default defineConfig({
           badge: { text: 'Experimental', variant: 'caution' },
           items: [
             { label: 'Overview', slug: 'guides/formal-verification' },
+            { label: 'Design', slug: 'guides/formal-verification/design' },
             { label: 'Annotation Profiles', slug: 'guides/formal-verification/annotation-profiles' },
             { label: 'Typed Java DSL', slug: 'guides/formal-verification/typed-dsl' },
-            { label: 'API & DSL Reference', link: '/reference/api-reference/#verification-annotations' },
-            { label: 'Troubleshooting', link: '/reference/troubleshooting/#7-formal-verification' },
+            { label: 'API & DSL Reference', slug: 'guides/formal-verification/api-reference' },
+            { label: 'Troubleshooting', slug: 'guides/formal-verification/troubleshooting' },
           ],
         },
         {

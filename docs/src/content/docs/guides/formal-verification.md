@@ -6,7 +6,7 @@ description: "Verify exact JuLC validator artifacts with the stable typed Java D
 :::caution[Experimental verification feature]
 JuLC's formal-verification integration remains experimental and is not a
 production-safety certification. API v1 stabilizes the documented Java DSL and
-schema-10 canonical meanings; it does not remove the compiler, model, solver,
+schema-1 canonical meanings; it does not remove the compiler, model, solver,
 or coverage limitations described below.
 :::
 
@@ -15,8 +15,12 @@ artifact produced by the compiler. The verification frontend is a closed typed
 Java DSL; JuLC turns its canonical property IR into Lean, runs the pinned IOG
 Blaster model, and writes a hash-bound result certificate.
 
+See [Verification pipeline design](./design/) for a visual
+explanation of how Java source, the exact UPLC artifact, the property DSL,
+Lean, Blaster, Z3, and the result certificate fit together.
+
 The typed verification DSL is stable API version 1. Its current canonical
-property schema is version 10. JuLC itself remains preview software: a stable
+property schema is version 1. JuLC itself remains preview software: a stable
 property API does not make every compiler feature production-ready and does not
 mean that a successful property proves a contract generally safe.
 
@@ -74,7 +78,7 @@ combination instead of silently proving a weaker theorem.
 
 ### Typed Java DSL
 
-The stable schema-10 DSL supports freely composed, admitted expressions over:
+The stable schema-1 DSL supports freely composed, admitted expressions over:
 
 - compiler-projected datum and redeemer records, sealed variants, optionals,
   lists, maps, nested values, and productive recursion;
@@ -225,11 +229,13 @@ phase outcomes, counterexample qualification, and generated-source hashes.
 
 ## Related guides
 
+- [Verification pipeline design](./design/) explains the
+  architecture, artifact binding, execution backends, and trust boundary.
 - [Strict data boundaries](/guides/strict-data-boundaries/) explains the
   canonical datum/redeemer semantics assumed by generated contract types.
 - [Purpose-indexed multi-validator blueprints](/guides/purpose-indexed-blueprints/)
   explains exact interface selection for a shared script.
 - [Testing](/guides/testing-guide/) covers VM, property-based, budget, and
   integration tests that complement formal verification.
-- [Troubleshooting](/reference/troubleshooting/#7-formal-verification) covers
+- [Troubleshooting](/guides/formal-verification/troubleshooting/) covers
   common toolchain, workspace, solver, and result issues.
