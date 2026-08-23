@@ -83,6 +83,212 @@ order and duplicates unless a method explicitly states different semantics.
 See [Typed Java DSL](../typed-dsl/) for composition examples and the supported
 Cardano surface.
 
+## Core expression operations
+
+Do not construct wrappers from raw `PropertyNode` values. Obtain them from
+`VerificationDsl`, the generated model, or another documented wrapper method.
+The public operations are:
+
+| Wrapper | Supported operations |
+|---|---|
+| `BoolExpr` | `and`, `or`, `implies`, `not`, `eq`, `ne` |
+| `IntegerExpr` | `eq`, `ne`, `ge`, `gt`, `le`, `lt`, `negate`, `add`, `subtract`, `times` |
+| `ByteStringExpr`, `StringExpr` | `eq`, `ne` |
+| `TypedValueExpr` | type-checked `eq`, `ne` |
+| `TypedOptionExpr` | `exists`, `isPresent`, `isEmpty` |
+| `TypedListExpr` | `isEmpty`, `isNotEmpty`, `contains`, `exists`, `all`, `none`, `whenSingleton`, `count`, `exactlyOne`, `at`, `structurallyEquals`, `structurallyNotEquals` |
+| `TypedAssocMapExpr` | `existsEntry`, `allEntries`, `noneEntries`, `countEntry`, `containsKey`, `countKey`, `lookupFirst`, `lookupAll`, `structurallyEquals`, `structurallyNotEquals` |
+
+`at` returns an option and is empty for a negative or out-of-range index.
+Lists and association maps are ordered and duplicate-preserving. Structural
+equality is therefore not mathematical set or map equality.
+
+## Generated contract metamodel
+
+Every generated model exposes the operations applicable to its selected
+interface and compiler-owned schema:
+
+| Generated surface | Meaning |
+|---|---|
+| `properties(DslProperty...)` | Creates the schema-1 envelope with the selected purpose and contract-schema hash. |
+| `datum()`, `redeemer()` | Strictly decoded optional roots; datum is present only for a spending interface. |
+| `decodeDatum(raw, predicate)` | Strictly decodes raw `Data` with the compiler-projected datum type. |
+| `context()` | Returns the selected script's `LedgerContextExpr`. |
+| `authorization()` | Returns the authorization builder. |
+| `currentOutputRef()`, `ownInput()`, `continuingOutputs()` | Spending-only helpers. |
+| `ownPolicy()` | Minting-only policy root. |
+| `rewardingCredential()` | Rewarding-only credential root. |
+| `certificate()`, `certificateIndex()` | Certifying-only current-certificate roots. |
+
+Generated record wrappers expose field accessors and structural equality.
+Generated sealed variants expose `is<Constructor>()` and guarded
+`when<Constructor>(...)` eliminators. Generated optional, list, and map wrappers
+mirror the core operations with schema-specific Java types; generated
+`List<byte[]>` additionally exposes `asAuthorities()`.
+
+Purpose helper models are also part of API v1 where a reviewed profile needs
+special roots. In particular, `MintingContractModel` exposes `context()`,
+`ownPolicy()`, `redeemerStrictlyDecodes()`, `exactUplcSucceeds()`, and
+`validMintingContext()`. Prefer generated roots for ordinary custom properties;
+the [minting example](../dsl-examples/#minting-authority-anchor-and-exact-own-policy-asset)
+shows the reviewed exact-own-policy operation.
+
+The complete purpose-helper surface is:
+
+| Helper | Roots and operations |
+|---|---|
+| `SpendingContractModel` | `datum`, `context`, `exactUplcSucceeds`, `validSpendingContext` |
+| `MintingContractModel` | `context`, `ownPolicy`, `redeemerStrictlyDecodes`, `exactUplcSucceeds`, `validMintingContext` |
+| `RewardingContractModel` | `context`, `rewardingCredential`, `redeemerStrictlyDecodes` |
+| `CertifyingContractModel` | `context`, `certificate`, `certificateIndex`, `redeemerStrictlyDecodes` |
+| `ContextExpr` | `txInfo` |
+| `TxInfoExpr` | `signatories`, `outputs`, `inputs`, `mint`, `withdrawals`, `certificates` |
+| `ByteStringListExpr` | `contains` |
+| `TxInInfoListExpr` | `consumes` |
+| `MintValueExpr` | `exactOwnPolicyAsset` |
+| `TxOutListExpr` | `exists` |
+| `TxOutExpr` | `address`, `value` |
+| `AddressExpr` | `credential` |
+| `CredentialExpr` | `eq`, `matchesKeyHash` |
+| `ValueExpr` | `lovelace` |
+| `WithdrawalsExpr` | ordered duplicate-preserving `exists` over `credential` and `amount` |
+| `TxCertListExpr` | indexed `containsAt` |
+
+The generated model still owns `properties(...)` and the contract-schema hash;
+purpose helpers supply only closed reviewed expression roots.
+
+## Ledger context and transaction operations
+
+| Wrapper | Supported operations |
+|---|---|
+| `LedgerContextExpr` | `txInfo`, `scriptPurpose`, `valueSpent`, `valueProduced`, `isBalanced` |
+| `LedgerTxInfoExpr` | `inputs`, `referenceInputs`, `outputs`, `fee`, `mint`, `id`, `certificates`, `datums`, `redeemers`, `withdrawals`, `votes`, `proposals`, `signatories`, `validityRangeReviewed`, `currentTreasuryStrict`, `treasuryDonationStrict` |
+| `LedgerTxInInfoExpr` | `outRef`, `resolved` |
+| `LedgerTxInInfoListExpr` | `isEmpty`, `isNotEmpty`, `exists`, `all`, `none`, `count`, `exactlyOne`, `at`, `resolve`, `valueSpent`, `forPaymentKey`, `forScript`, structural equality/inequality |
+| `LedgerTxInInfoOptionExpr` | `exists`, `isPresent`, `isEmpty` |
+| `LedgerTxOutExpr` | `address`, `value`, `datum`, `referenceScript` |
+| `LedgerTxOutListExpr` | `isEmpty`, `isNotEmpty`, `exists`, `all`, `none`, `whenSingleton`, `count`, `exactlyOne`, `at`, `valueProduced`, `toAddress`, `toPaymentCredential`, structural equality/inequality |
+| `LedgerTxOutOptionExpr` | `exists`, `isPresent`, `isEmpty` |
+| `LedgerAddressExpr` | `paymentCredential`, `stakingCredential` |
+| `LedgerTxOutRefExpr` | `id`, `index`, `eq`, `ne` |
+| `LedgerTxIdExpr` | equality/inequality with another transaction ID or matching ledger byte alias |
+| `LedgerScriptPurposeExpr` | `isMinting`, `isSpending`, `isRewarding`, `isCertifying`, `isVoting`, `isProposing`, `eq`, `ne`, `typed` |
+
+`toAddress` compares the complete address. `toPaymentCredential` intentionally
+ignores the staking credential and is a weaker aggregation scope.
+
+### Credentials and output datum
+
+| Wrapper | Supported operations |
+|---|---|
+| `LedgerCredentialExpr` | `typed`, `isPubKey`, `isScript`, `whenPubKey`, `whenScript` |
+| `LedgerStakingCredentialExpr` | `isHash`, `isPointer`, `whenHash`, `whenPointer` |
+| `LedgerStakingCredentialOptionExpr` | `exists`, `isPresent`, `isEmpty` |
+| `LedgerOutputDatumExpr` | `isNone`, `isHash`, `isInline`, `whenHash`, `whenInline`; generated `decodeDatum` is the preferred typed inline decoder |
+| `LedgerByteAliasExpr` | role-preserving `typed`, `eq`, `ne` |
+
+`LedgerExpressions` creates reviewed ledger aliases with `transactionId`,
+`datumHash`, `scriptHash`, `publicKeyHash`, `currencySymbol`, and `tokenName`.
+It also supplies the current certificate/index, rewarding credential, and
+`singletonValueDelta` helpers used by generated or purpose-specific models.
+
+## Authorization operations
+
+| Surface | Supported operations |
+|---|---|
+| `AuthorizationDsl` | `fixed`, `fromContractBytes(ByteStringExpr)`, `fromContractBytes(TypedListExpr)`, `authorities`, `noSigners` |
+| `AuthoritySetExpr` | `anySigned`, `allSigned`, `noneSigned`, `atLeastSigned`, `exactlySigned`, `noUnexpectedSigners`, `exactSignerSet` |
+
+Authorization uses distinct identities. A threshold does not exclude unrelated
+signers; compose `noUnexpectedSigners` when that is required. Static authority
+sets contain 1–16 unique fixed authorities. Parameter-derived roots and fixed
+hashes containing byte `00` currently fail closed.
+
+## Certificate operations
+
+`LedgerTxCertListExpr` supports `isEmpty`, `isNotEmpty`, `exists`, `all`,
+`none`, `count`, `at`, `containsAt`, and structural equality/inequality.
+`LedgerTxCertOptionExpr` supports `exists`, `isPresent`, and `isEmpty`.
+
+`TxCertExpr.isKind` accepts the closed `TxCertKind` enum:
+
+```text
+REG_STAKING, UNREG_STAKING, DELEG_STAKING, REG_DELEG,
+REG_DREP, UPDATE_DREP, UNREG_DREP, POOL_REGISTER, POOL_RETIRE,
+AUTH_HOT_COMMITTEE, RESIGN_COLD_COMMITTEE
+```
+
+Payloads are accessible only through the corresponding guarded eliminator:
+`whenRegStaking`, `whenUnRegStaking`, `whenDelegStaking`, `whenRegDeleg`,
+`whenRegDRep`, `whenUpdateDRep`, `whenUnRegDRep`, `whenPoolRegister`,
+`whenPoolRetire`, `whenAuthHotCommittee`, and `whenResignColdCommittee`.
+
+Nested `LedgerDRepExpr` supports credential, always-abstain, and
+always-no-confidence cases. `LedgerDelegateeExpr` supports stake, vote, and
+stake-plus-vote cases. DRep and committee credential wrappers retain their
+roles while exposing the credential guard operations.
+
+## Multi-asset value operations
+
+Output `LedgerValueExpr`, transaction `LedgerMintValueExpr`, and checked
+`ValueDeltaExpr` remain different Java types even where encodings overlap.
+
+| Operation | Meaning |
+|---|---|
+| `lovelace()` | Ada quantity for an output value. |
+| `rawPolicies()` | Strict guarded traversal of raw policy and token entries. |
+| `quantityFirst(policy, token)` | Pinned first-match lookup. |
+| `quantitySumStrict(policy, token)` | Sums duplicate matches; returns empty for absence or malformed data. |
+| `structurallyEquals` | Exact ordered nested association-list equality. |
+| `extensionallyEquals` | Strict finite-support summed-quantity equality. |
+| `pointwiseLe/Lt/Ge/Gt` | Strict finite-support pointwise ordering. |
+| `checkedDelta()` | Validates and converts a value or mint value to optional `ValueDeltaExpr`. |
+| `ValueDeltaExpr.plus`, `negate`, `scale` | Checked arithmetic returning `ValueDeltaOptionExpr`. |
+
+`ValuePolicyEntriesExpr` exposes `exists`, `all`, and `none` with
+`ValuePolicyEntryExpr.whenWellFormed`. Token entries expose `exists`, `all`,
+and `whenWellFormed`. `ValueDeltaOptionExpr` exposes `exists`, `isPresent`, and
+`isEmpty`.
+
+## Governance transaction-data operations
+
+These operations inspect governance fields from an already supported spending,
+minting, rewarding, or certifying interface. They do not enable voting or
+proposing validator selection.
+
+| Wrapper | Supported operations |
+|---|---|
+| `VoterMapExpr` | `existsEntry`, `isKnown`, `lookupFirst`, `countKey`, `typed` |
+| `VoterExpr` | guarded `whenCommittee`, `whenDRep`, `whenStakePool`, plus `typed` |
+| `GovernanceVoteMapExpr` | `existsEntry`, `lookupFirst`, `lookupAll`, `containsKey`, `countKey`, `typed` |
+| `VoteExpr` | `isNo`, `isYes`, `isAbstain`, `typed` |
+| `ProposalProcedureListExpr` | `exists`, `all`, `none`, `count`, `at`, `isKnown`, `typed` |
+| `ProposalProcedureExpr` | `deposit`, `returnAddress`, strict `actionStrict`, `typed` |
+| `GovernanceActionIdExpr` | `txId`, `index`, `typed`, `eq`, `ne` |
+| `ProtocolVersionExpr` | `major`, `minor`, `typed` |
+
+`GovernanceActionExpr` exposes guarded `whenParameterChange`, `whenHardFork`,
+`whenTreasuryWithdrawals`, `whenNoConfidence`, `whenUpdateCommittee`,
+`whenNewConstitution`, and `isInfo`. No action payload is available outside its
+matching guard.
+
+## Reviewed raw-data adapters
+
+| Adapter | Supported operations |
+|---|---|
+| `ValidityRangeExpr` | `decoderValid`, `canonicalEncoding`, `isEmpty`, `contains`, `includes`, `isEntirelyBefore`, `isEntirelyAfter` |
+| `StrictTreasuryExpr` | `isWellFormed`, `isAbsent`, `isMalformed`, `whenPresent` |
+| `ChangedParametersExpr` | `isWellFormed`, `isNonEmpty`, `isStrictlyAscendingUnique`, `containsId`, `countIdEquals` |
+| `QuorumExpr` | `decoderValid`, `canonicalEncoding`, `isUnitInterval`, `whenDecoded` |
+
+Changed parameters are supplied only by the three-argument
+`whenParameterChange` guard. Quorum is supplied only by the four-argument
+`whenUpdateCommittee` guard. The raw payload and arbitrary decoder selection
+remain inaccessible.
+
+See [DSL Examples](../dsl-examples/) for complete compositions covering every
+operation group above.
+
 ## CLI
 
 | Command | Purpose |

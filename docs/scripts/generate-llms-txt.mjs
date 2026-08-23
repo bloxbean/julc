@@ -56,6 +56,7 @@ const SECTIONS = [
       'guides/formal-verification/design.md',
       'guides/formal-verification/annotation-profiles.md',
       'guides/formal-verification/typed-dsl.md',
+      'guides/formal-verification/dsl-examples.md',
       'guides/formal-verification/api-reference.md',
       'guides/formal-verification/troubleshooting.md',
     ],

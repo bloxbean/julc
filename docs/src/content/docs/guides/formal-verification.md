@@ -162,6 +162,9 @@ Use an explicit backend for CI and release evidence.
 - [Typed Java DSL](/guides/formal-verification/typed-dsl/) covers custom
   composition, generated contract metamodels, stable API boundaries, and
   ledger domains.
+- [Typed DSL examples](/guides/formal-verification/dsl-examples/) show
+  spending, minting, rewarding, certifying, collection, authorization, value,
+  governance, and reviewed-adapter properties.
 
 ## Re-run or regenerate a workspace
 
@@ -231,6 +234,8 @@ phase outcomes, counterexample qualification, and generated-source hashes.
 
 - [Verification pipeline design](./design/) explains the
   architecture, artifact binding, execution backends, and trust boundary.
+- [API and DSL reference](./api-reference/) lists the complete supported
+  construction surface and operation groups.
 - [Strict data boundaries](/guides/strict-data-boundaries/) explains the
   canonical datum/redeemer semantics assumed by generated contract types.
 - [Purpose-indexed multi-validator blueprints](/guides/purpose-indexed-blueprints/)

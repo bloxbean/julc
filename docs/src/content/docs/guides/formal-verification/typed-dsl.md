@@ -177,3 +177,8 @@ The certificate records the selected domain and whether a kernel-checked bridge
 to the pinned ledger model was established. A counterexample in a Blaster
 superset is not automatically a ledger-valid Cardano transaction; inspect the
 certificate's counterexample qualification.
+
+Continue with the [DSL examples](../dsl-examples/) for spending, minting,
+rewarding, certifying, collections, authorization, value, governance, and
+reviewed-adapter specifications. The [API and DSL reference](../api-reference/)
+lists the complete supported operation groups.

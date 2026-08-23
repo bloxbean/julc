@@ -770,7 +770,7 @@ vacuous, kernel, VM, Docker, and native controls and the current solver bounds.
 
 ## 18. Typed governance transaction data
 
-Schema 9 lets an existing spending, minting, rewarding, or certifying property
+Schema 1 lets an existing spending, minting, rewarding, or certifying property
 inspect `TxInfo` voters, votes, proposals, action identifiers, protocol
 versions, and reviewed governance-action payloads. Generate the model with:
 
