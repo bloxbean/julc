@@ -3,6 +3,8 @@ package com.bloxbean.cardano.julc.verification;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
 import com.bloxbean.cardano.julc.core.text.UplcPrinter;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
+import com.bloxbean.cardano.julc.verification.dsl.PropertyIrCodec;
+import com.bloxbean.cardano.julc.verification.dsl.StatefulSpendingDslLowering;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -26,6 +28,12 @@ class StatefulSpendingResolverTest {
         assertEquals("GREATER_THAN", property.relation());
         assertEquals("SINGLE_CONTINUING_OUTPUT", property.outputSelection());
         assertTrue(property.domainAssumptions().isEmpty());
+        assertTrue(property.canonicalDslJson().contains("strict-decode"));
+        assertTrue(property.canonicalDslJson().contains("contains"));
+        assertTrue(property.canonicalDslJson().contains("signatories"));
+        assertEquals(property.canonicalDslJson(), PropertyIrCodec.canonicalJson(
+                StatefulSpendingDslLowering.lower(
+                        property, compiled.contractSchema())));
     }
 
     @Test

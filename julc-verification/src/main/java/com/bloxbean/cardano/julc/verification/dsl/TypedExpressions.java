@@ -6,6 +6,7 @@ import com.bloxbean.cardano.julc.verification.dsl.type.OptionalTypeRef;
 import com.bloxbean.cardano.julc.verification.dsl.type.VerificationTypeRef;
 
 import java.util.function.Function;
+import java.util.Objects;
 
 /** Primitive builders used by generated contract-specific schema-4 wrappers. */
 public final class TypedExpressions {
@@ -51,6 +52,25 @@ public final class TypedExpressions {
                     new TypedVariableNode(variable, sum), sum);
             return new BoolExpr(new VariantWhenNode(value.node(), sum, constructor,
                     variable, predicate.apply(bound).node()));
+        });
+    }
+
+    /**
+     * Strictly decode raw ledger {@code Data} as a compiler-projected contract
+     * type. The predicate is false when decoding fails.
+     */
+    public static BoolExpr strictDecode(
+            TypedValueExpr data,
+            VerificationTypeRef decodedType,
+            Function<TypedValueExpr, BoolExpr> predicate) {
+        Objects.requireNonNull(data, "data");
+        Objects.requireNonNull(decodedType, "decodedType");
+        Objects.requireNonNull(predicate, "predicate");
+        return BinderScope.bind(variable -> {
+            var decoded = new TypedValueExpr(
+                    new TypedVariableNode(variable, decodedType), decodedType);
+            return new BoolExpr(new StrictDecodeNode(data.node(), decodedType, variable,
+                    predicate.apply(decoded).node()));
         });
     }
 }

@@ -112,6 +112,10 @@ public final class DslPropertyCanonicalizer {
                     variant.constructor(), variant.variable(),
                     normalize(variant.predicate()));
         }
+        if (node instanceof StrictDecodeNode decoded) {
+            return new StrictDecodeNode(normalize(decoded.data()), decoded.decodedType(),
+                    decoded.variable(), normalize(decoded.predicate()));
+        }
         if (node instanceof LedgerFieldNode field) {
             return new LedgerFieldNode(normalize(field.target()), field.ownerType(),
                     field.name(), field.valueType());
@@ -197,6 +201,10 @@ public final class DslPropertyCanonicalizer {
         if (node instanceof ListQuantifierNode list) {
             return new ListQuantifierNode(normalize(list.list()), list.elementType(),
                     list.quantifier(), list.variable(), normalize(list.predicate()));
+        }
+        if (node instanceof ListSingletonWhenNode list) {
+            return new ListSingletonWhenNode(normalize(list.list()), list.elementType(),
+                    list.variable(), normalize(list.predicate()));
         }
         if (node instanceof ListContainsNode list) {
             return new ListContainsNode(normalize(list.list()), normalize(list.value()),
@@ -296,12 +304,29 @@ public final class DslPropertyCanonicalizer {
                     variant.value(), binders, next, prefix), variant.sumType(),
                     variant.constructor(), variable, predicate);
         }
+        if (node instanceof StrictDecodeNode decoded) {
+            String variable = bind(decoded.variable(), binders, next, prefix);
+            PropertyNode predicate = alphaNormalize(
+                    decoded.predicate(), binders, next, prefix);
+            binders.remove(decoded.variable());
+            return new StrictDecodeNode(alphaNormalize(
+                    decoded.data(), binders, next, prefix), decoded.decodedType(),
+                    variable, predicate);
+        }
         if (node instanceof ListQuantifierNode list) {
             String variable = bind(list.variable(), binders, next, prefix);
             PropertyNode predicate = alphaNormalize(list.predicate(), binders, next, prefix);
             binders.remove(list.variable());
             return new ListQuantifierNode(alphaNormalize(list.list(), binders, next, prefix),
                     list.elementType(), list.quantifier(), variable, predicate);
+        }
+        if (node instanceof ListSingletonWhenNode list) {
+            String variable = bind(list.variable(), binders, next, prefix);
+            PropertyNode predicate = alphaNormalize(list.predicate(), binders, next, prefix);
+            binders.remove(list.variable());
+            return new ListSingletonWhenNode(
+                    alphaNormalize(list.list(), binders, next, prefix),
+                    list.elementType(), variable, predicate);
         }
         if (node instanceof ListCountNode list) {
             String variable = bind(list.variable(), binders, next, prefix);

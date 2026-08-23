@@ -30,12 +30,13 @@ class TypedDslPrototypeTest {
         var annotation = RequiresSignerResolver.resolve(
                 source, "Authorized.java", "Authorized", compiled.contractSchema())
                 .orElseThrow();
-        DslPropertySet annotationIr = RequiresSignerDslLowering.lower(annotation);
+        DslPropertySet annotationIr = RequiresSignerDslLowering.lower(
+                annotation, compiled.contractSchema());
 
         Path sources = tempDir.resolve("sources/generated");
         Files.createDirectories(sources);
         Path model = sources.resolve("AuthorizedModel.java");
-        Files.writeString(model, ContractMetamodelGenerator.generate(
+        Files.writeString(model, ContractMetamodelGenerator.generateTypedV10(
                 compiled.contractSchema(), "generated", "AuthorizedModel"));
         Path specification = sources.resolve("SignerSpec.java");
         Files.writeString(specification, """
@@ -47,11 +48,14 @@ class TypedDslPrototypeTest {
                     public SignerSpec() {}
                     public DslPropertySet properties() {
                         var contract = new AuthorizedModel();
-                        var required = contract.context().txInfo().signatories()
-                                .contains(contract.datum().owner());
-                        return DslPropertySet.of(property(
+                        var required = contract.datum().exists(datum -> {
+                            var context = new SpendingContractModel();
+                            return context.context().txInfo().signatories()
+                                .contains(datum.owner());
+                        });
+                        return contract.properties(property(
                                 "Authorized.requires-signer.owner",
-                                contract.exactUplcSucceeds().implies(required)));
+                                DslDomain.NONE, required));
                     }
                 }
                 """);
@@ -63,9 +67,12 @@ class TypedDslPrototypeTest {
 
         assertEquals(PropertyIrCodec.canonicalJson(annotationIr),
                 PropertyIrCodec.canonicalJson(dslIr));
-        assertEquals(PropertyLeanRenderer.render(annotationIr),
-                PropertyLeanRenderer.render(dslIr));
-        assertTrue(PropertyLeanRenderer.render(dslIr).contains("txInfoSignatories"));
+        var projection = com.bloxbean.cardano.julc.verification.dsl.type
+                .ContractTypeProjection.project(compiled.contractSchema());
+        assertEquals(TypedPropertyLeanRenderer.renderExpression(
+                        annotationIr.properties().getFirst().expression(), projection),
+                TypedPropertyLeanRenderer.renderExpression(
+                        dslIr.properties().getFirst().expression(), projection));
         assertTrue(Files.isRegularFile(
                 tempDir.resolve("worker/verification-property-dsl.json")));
     }
@@ -84,7 +91,8 @@ class TypedDslPrototypeTest {
         assertTrue(fieldError.getMessage().contains("Unknown datum field"));
 
         var valid = RequiresSignerDslLowering.lower(RequiresSignerResolver.resolve(
-                validatorSource(), "Authorized.java", "Authorized", schema).orElseThrow());
+                validatorSource(), "Authorized.java", "Authorized", schema).orElseThrow(),
+                schema);
         assertThrows(IllegalArgumentException.class,
                 () -> DslPropertyValidator.validate(valid, schema, 2));
     }

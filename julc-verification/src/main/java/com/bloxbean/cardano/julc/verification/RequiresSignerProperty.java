@@ -14,6 +14,9 @@ public record RequiresSignerProperty(
         List<PathSegment> path,
         String datumType,
         String ownerType,
+        String canonicalDslJson,
+        String projectedContractTypesJson,
+        String contractSchemaSha256,
         SourceReference source,
         List<String> domainAssumptions,
         List<String> guaranteeRules,
@@ -34,6 +37,14 @@ public record RequiresSignerProperty(
         path = List.copyOf(path);
         datumType = Objects.requireNonNull(datumType, "datumType");
         ownerType = Objects.requireNonNull(ownerType, "ownerType");
+        canonicalDslJson = Objects.requireNonNull(canonicalDslJson, "canonicalDslJson");
+        projectedContractTypesJson = Objects.requireNonNull(
+                projectedContractTypesJson, "projectedContractTypesJson");
+        contractSchemaSha256 = Objects.requireNonNull(
+                contractSchemaSha256, "contractSchemaSha256");
+        if (!contractSchemaSha256.matches("[0-9a-f]{64}")) {
+            throw new IllegalArgumentException("Invalid contract schema SHA-256");
+        }
         source = Objects.requireNonNull(source, "source");
         domainAssumptions = List.copyOf(domainAssumptions);
         guaranteeRules = List.copyOf(guaranteeRules);

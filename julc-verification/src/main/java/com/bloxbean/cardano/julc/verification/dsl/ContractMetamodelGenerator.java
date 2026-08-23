@@ -368,6 +368,19 @@ public final class ContractMetamodelGenerator {
                         .append(typeExpression(projection.datumType())).append("));\n")
                         .append("    public Optional_").append(typeSuffix(projection.datumType()))
                         .append(" datum() { return datum; }\n");
+                if (dslSchemaVersion
+                        >= DslPropertySet.REVIEWED_DATA_ADAPTER_SCHEMA_VERSION) {
+                    body.append("    public BoolExpr decodeDatum(TypedValueExpr raw, ")
+                            .append("Function<")
+                            .append(wrapperType(projection.datumType()))
+                            .append(", BoolExpr> predicate) {\n")
+                            .append("        return TypedExpressions.strictDecode(raw, ")
+                            .append(typeExpression(projection.datumType()))
+                            .append(", decoded -> predicate.apply(")
+                            .append(wrap(projection.datumType(), "decoded"))
+                            .append("));\n")
+                            .append("    }\n");
+                }
             }
             body.append("    private final Optional_")
                     .append(typeSuffix(projection.redeemerType())).append(" redeemer = new Optional_")

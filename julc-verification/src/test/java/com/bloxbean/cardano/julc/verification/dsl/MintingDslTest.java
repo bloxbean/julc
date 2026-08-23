@@ -126,19 +126,12 @@ class MintingDslTest {
     @Test
     void schemaOneSpendingBytesRemainStable() {
         var schema = compiler().compileContract(spendingSource()).contractSchema();
-        var before = RequiresSignerDslLowering.lower(
-                new com.bloxbean.cardano.julc.verification.RequiresSignerProperty(
-                        1, "julc.requires-signer/v1", "Gate.requires-signer.owner",
-                        "Gate", "spending", "datum.owner",
-                        List.of(
-                                new com.bloxbean.cardano.julc.verification.RequiresSignerProperty.PathSegment(
-                                        "root", "datum", "record:Datum"),
-                                new com.bloxbean.cardano.julc.verification.RequiresSignerProperty.PathSegment(
-                                        "field", "owner", "bytes")),
-                        "Datum", "bytes",
-                        new com.bloxbean.cardano.julc.verification.RequiresSignerProperty.SourceReference(
-                                "Gate.java", 1, 1, "@RequiresSigner"),
-                        List.of(), List.of("signer"), false));
+        var model = new SpendingContractModel();
+        var before = DslPropertySet.of(VerificationDsl.property(
+                "Gate.requires-signer.owner",
+                model.exactUplcSucceeds().implies(
+                        model.context().txInfo().signatories()
+                                .contains(model.datum().bytesField("owner")))));
         byte[] first = PropertyIrCodec.canonicalBytes(before);
         DslPropertyValidator.validate(before, schema, 100);
         assertArrayEquals(first, PropertyIrCodec.canonicalBytes(before));

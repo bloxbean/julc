@@ -2,6 +2,10 @@ package com.bloxbean.cardano.julc.verification;
 
 import com.bloxbean.cardano.julc.compiler.pir.PirType;
 import com.bloxbean.cardano.julc.compiler.schema.ContractSchema;
+import com.bloxbean.cardano.julc.verification.dsl.PropertyIrCodec;
+import com.bloxbean.cardano.julc.verification.dsl.StatefulSpendingDslLowering;
+import com.bloxbean.cardano.julc.verification.dsl.type.ContractTypeProjection;
+import com.bloxbean.cardano.julc.verification.dsl.DslPropertyValidator;
 import com.bloxbean.cardano.julc.core.source.SourceLocation;
 import com.github.javaparser.StaticJavaParser;
 import com.github.javaparser.ast.CompilationUnit;
@@ -72,10 +76,16 @@ public final class StatefulSpendingResolver {
         PirType.RecordType redeemer = recordRoot(
                 schema.redeemer(), schema, location, fileName, "redeemer");
         String sourcePath = String.join("|", signer.sourcePath(), current, next);
+        String propertyId = validatorTitle + ".stateful-spending-v1";
+        var projection = ContractTypeProjection.project(schema);
+        var canonicalDsl = DslPropertyValidator.validateAndNormalize(
+                StatefulSpendingDslLowering.lower(
+                        propertyId, authority, currentSelection, nextSelection, projection),
+                schema, DslPropertyValidator.MAX_AST_NODES);
         return Optional.of(new StatefulSpendingProperty(
                 StatefulSpendingProperty.SCHEMA_VERSION,
                 StatefulSpendingProperty.TEMPLATE,
-                validatorTitle + ".stateful-spending-v1",
+                propertyId,
                 validatorTitle,
                 "spending",
                 sourcePath,
@@ -86,6 +96,9 @@ public final class StatefulSpendingResolver {
                 redeemer.name(),
                 relation,
                 output,
+                PropertyIrCodec.canonicalJson(canonicalDsl),
+                ContractTypeProjection.canonicalJson(projection),
+                ContractTypeProjection.sha256(projection),
                 List.of(
                         new StatefulSpendingProperty.SourceReference(
                                 "RequiresSigner", signer.source().file(),

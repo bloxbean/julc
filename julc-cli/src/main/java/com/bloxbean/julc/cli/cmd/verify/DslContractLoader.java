@@ -15,7 +15,7 @@ import picocli.CommandLine;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-/** Shared observational compile for experimental DSL commands. */
+/** Shared observational compile for stable typed DSL commands. */
 final class DslContractLoader {
     private DslContractLoader() { }
 

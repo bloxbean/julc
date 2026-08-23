@@ -34,6 +34,12 @@ public record TypedListExpr(PropertyNode node, VerificationTypeRef elementType)
     public BoolExpr none(Function<TypedValueExpr, BoolExpr> predicate) {
         return quantify(QuantifierKind.NONE, predicate);
     }
+    public BoolExpr whenSingleton(Function<TypedValueExpr, BoolExpr> predicate) {
+        Objects.requireNonNull(predicate, "predicate");
+        return BinderScope.bind(variable -> new BoolExpr(new ListSingletonWhenNode(
+                node, elementType, variable, predicate.apply(new TypedValueExpr(
+                        new TypedVariableNode(variable, elementType), elementType)).node())));
+    }
     public IntegerExpr count(Function<TypedValueExpr, BoolExpr> predicate) {
         Objects.requireNonNull(predicate, "predicate");
         return BinderScope.bind(variable -> {

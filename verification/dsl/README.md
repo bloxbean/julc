@@ -1,9 +1,11 @@
-# Experimental typed verification DSL
+# Stable typed verification DSL (API v1)
 
-Milestones E.2-E.4h provide an experimental Java frontend in `julc-verification`.
-It is not yet a stable public API.
+Milestones E.2-E.4l established the Java frontend in `julc-verification`.
+ADR-029 declares the reviewed schema-10 construction surface stable as API
+version 1. The milestone sections below retain older schema details for
+compatibility and design history.
 
-The prototype contains:
+The stable implementation contains:
 
 - sealed, typed symbolic expressions rather than raw Lean strings;
 - deterministic contract-specific datum accessors generated from
@@ -29,6 +31,20 @@ The main equivalence test compiles a generated contract model and a Java
 property specification in a temporary directory, executes it in the worker,
 revalidates the returned AST, and proves that it has byte-identical canonical
 IR and identical generated Lean to the existing `@RequiresSigner` lowering.
+
+New projects should omit `--schema-version`; `dsl-init` now emits stable schema
+10. The expression wrappers, `VerificationDsl`, `VerificationSpecification`,
+the property envelope/enums, and generated metamodel methods are supported.
+Concrete node constructors, renderers, promotion internals, and worker protocol
+types are not supported construction APIs merely because Java serialization
+requires public visibility.
+
+The annotation profiles are frontends over this same semantic layer.
+`@RequiresSigner` and the complete stateful
+`@RequiresSigner + @PreservesValue + @Monotonic` profile now carry schema-10
+canonical IR and compiler-projected types; `@ControlledMint` retains its
+canonical minting DSL lowering. Their profile-specific proof/certificate UX
+does not define a second Lean security predicate.
 
 Milestone E.3 adds the first exact-UPLC vertical slice. From a built JuLC
 project, generate the metamodel and compile a trusted Java property:

@@ -27,6 +27,9 @@ import com.bloxbean.cardano.julc.verification.dsl.IntegerExpr;
 import com.bloxbean.cardano.julc.verification.dsl.TypedExpressions;
 import com.bloxbean.cardano.julc.verification.dsl.TypedListExpr;
 import com.bloxbean.cardano.julc.verification.dsl.TypedAssocMapExpr;
+import com.bloxbean.cardano.julc.verification.dsl.RequiresSignerDslLowering;
+import com.bloxbean.cardano.julc.verification.dsl.StatefulSpendingDslLowering;
+import com.bloxbean.cardano.julc.verification.dsl.DslPropertyCanonicalizer;
 import com.bloxbean.cardano.julc.verification.dsl.LedgerExpressions;
 import com.bloxbean.cardano.julc.verification.dsl.AuthorizationDsl;
 import com.bloxbean.cardano.julc.verification.dsl.LedgerValueExpr;
@@ -100,6 +103,10 @@ class VerificationProjectGeneratorTest {
     @Test
     void generatesTypedRequiresSignerWorkspaceAndObservedResultProtocol() throws Exception {
         Path output = tempDir.resolve("requires-signer");
+        var projection = ContractTypeProjection.project(stateGateSchema());
+        var dsl = DslPropertyCanonicalizer.normalize(
+                RequiresSignerDslLowering.lower(
+                        "StateGate.requires-signer.owner", "owner", projection));
         var property = new RequiresSignerProperty(
                 1, RequiresSignerProperty.TEMPLATE,
                 "StateGate.requires-signer.owner", "StateGate", "spending",
@@ -110,6 +117,9 @@ class VerificationProjectGeneratorTest {
                         new RequiresSignerProperty.PathSegment(
                                 "field", "owner", "bytes")),
                 "StateDatum", "bytes",
+                PropertyIrCodec.canonicalJson(dsl),
+                ContractTypeProjection.canonicalJson(projection),
+                ContractTypeProjection.sha256(projection),
                 new RequiresSignerProperty.SourceReference(
                         "StateGate.java", 4, 1, "@RequiresSigner"),
                 List.of(),
@@ -122,8 +132,9 @@ class VerificationProjectGeneratorTest {
         assertTrue(Files.isExecutable(output.resolve("scripts/verify.sh")));
         assertTrue(Files.isExecutable(output.resolve("scripts/verify-non-vacuity.sh")));
         String lean = Files.readString(output.resolve("SecurityProperty.lean"));
-        assertTrue(lean.contains("Option JulcGenerated.Schemas.StateDatum"));
-        assertTrue(lean.contains("txSignedBy datum.owner"));
+        assertTrue(lean.contains("def typedDatum"));
+        assertTrue(lean.contains(".owner"));
+        assertTrue(lean.contains("txInfoSignatories"));
         assertFalse(lean.contains("firstSignerAuthorized"));
         assertTrue(Files.readString(output.resolve("StateGateProof.lean"))
                 .contains("by\n  blaster"));
@@ -148,21 +159,46 @@ class VerificationProjectGeneratorTest {
                 writeBlueprint(), property, 1000, 4, output, true);
         assertFalse(Files.readString(output.resolve("SecurityProperty.lean"))
                 .contains("stale generated property"));
+
+        var tampered = new RequiresSignerProperty(
+                property.schemaVersion(), property.template(), property.propertyId(),
+                property.validatorTitle(), property.scriptPurpose(), property.sourcePath(),
+                property.path(), property.datumType(), property.ownerType(),
+                property.canonicalDslJson().replace("\"owner\"", "\"state\""),
+                property.projectedContractTypesJson(), property.contractSchemaSha256(),
+                property.source(), property.domainAssumptions(), property.guaranteeRules(),
+                property.ledgerValidityModeled());
+        var mismatch = assertThrows(IllegalArgumentException.class,
+                () -> VerificationProjectGenerator.generateRequiresSigner(
+                        writeBlueprint(), tampered, 1000, 4,
+                        tempDir.resolve("tampered-requires-signer"), false));
+        assertTrue(mismatch.getMessage().contains(
+                "canonical DSL does not match its typed fields"));
     }
 
     @Test
     void generatesCompleteStatefulSpendingProfile() throws Exception {
         Path output = tempDir.resolve("stateful-spending");
+        var authority = new StatefulSpendingProperty.Selection("datum", "owner", "bytes");
+        var currentState = new StatefulSpendingProperty.Selection(
+                "datum", "state", "integer");
+        var nextState = new StatefulSpendingProperty.Selection(
+                "redeemer", "nextState", "integer");
+        var projection = ContractTypeProjection.project(stateGateSchema());
+        var dsl = DslPropertyCanonicalizer.normalize(
+                StatefulSpendingDslLowering.lower(
+                        "StateGate.stateful-spending-v1", authority,
+                        currentState, nextState, projection));
         var property = new StatefulSpendingProperty(
                 1, StatefulSpendingProperty.TEMPLATE,
                 "StateGate.stateful-spending-v1", "StateGate", "spending",
                 "datum.owner|datum.state|redeemer.nextState",
-                new StatefulSpendingProperty.Selection("datum", "owner", "bytes"),
-                new StatefulSpendingProperty.Selection("datum", "state", "integer"),
-                new StatefulSpendingProperty.Selection(
-                        "redeemer", "nextState", "integer"),
+                authority, currentState, nextState,
                 "StateDatum", "Transition", "GREATER_THAN",
                 "SINGLE_CONTINUING_OUTPUT",
+                PropertyIrCodec.canonicalJson(dsl),
+                ContractTypeProjection.canonicalJson(projection),
+                ContractTypeProjection.sha256(projection),
                 List.of(new StatefulSpendingProperty.SourceReference(
                         "Monotonic", "StateGate.java", 4, 1, "@Monotonic")),
                 List.of(), List.of("complete stateful profile"), false);
@@ -172,13 +208,13 @@ class VerificationProjectGeneratorTest {
 
         String lean = Files.readString(output.resolve("SecurityProperty.lean"));
         assertTrue(lean.contains("findOwnInput ctx"));
-        assertTrue(lean.contains("Recursor.findAll out in outputs"));
-        assertTrue(lean.contains("| [successor] =>"));
-        assertTrue(lean.contains("successor.txOutValue ="));
-        assertTrue(lean.contains("nextDatum.owner = datum.owner"));
-        assertTrue(lean.contains("nextDatum.state = redeemer.nextState"));
-        assertTrue(lean.contains("datum.state < redeemer.nextState"));
-        assertTrue(lean.contains("txSignedBy datum.owner"));
+        assertTrue(lean.contains("julcContinuingOutputs"));
+        assertTrue(lean.contains("with | [v"));
+        assertTrue(lean.contains("IsData.fromData"));
+        assertTrue(lean.contains(".owner"));
+        assertTrue(lean.contains(".nextState"));
+        assertTrue(lean.contains(".state"));
+        assertTrue(lean.contains("List.elem (v0.owner)"));
         var plan = JSON.readTree(output.resolve("verification-runner.json").toFile());
         assertEquals("stateful-spending-v1-established",
                 plan.path("verify").get(1).path("outcomes").get(0)
@@ -1674,7 +1710,24 @@ class VerificationProjectGeneratorTest {
     }
 
     private Path writeBlueprint() throws Exception {
-        String source = """
+        var result = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(stateGateSource());
+        var generated = BlueprintGenerator.generate(
+                new BlueprintConfig("verification-generator-test", "1"),
+                List.of(new BlueprintGenerator.CompiledValidator(
+                        "StateGate", result.compileResult(), result.contractSchema())));
+        Path blueprint = tempDir.resolve("plutus-" + System.nanoTime() + ".json");
+        Files.writeString(blueprint, generated.toJson());
+        return blueprint;
+    }
+
+    private com.bloxbean.cardano.julc.compiler.schema.ContractSchema stateGateSchema() {
+        return new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(stateGateSource()).contractSchema();
+    }
+
+    private static String stateGateSource() {
+        return """
                 import com.bloxbean.cardano.julc.stdlib.annotation.*;
                 import com.bloxbean.cardano.julc.ledger.ScriptContext;
                 import java.math.BigInteger;
@@ -1689,14 +1742,6 @@ class VerificationProjectGeneratorTest {
                     }
                 }
                 """;
-        var result = new JulcCompiler(StdlibRegistry.defaultRegistry()).compileContract(source);
-        var generated = BlueprintGenerator.generate(
-                new BlueprintConfig("verification-generator-test", "1"),
-                List.of(new BlueprintGenerator.CompiledValidator(
-                        "StateGate", result.compileResult(), result.contractSchema())));
-        Path blueprint = tempDir.resolve("plutus-" + System.nanoTime() + ".json");
-        Files.writeString(blueprint, generated.toJson());
-        return blueprint;
     }
 
     private Path writeMintBlueprint() throws Exception {

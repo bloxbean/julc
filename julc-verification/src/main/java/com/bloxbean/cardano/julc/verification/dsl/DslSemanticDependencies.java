@@ -233,6 +233,14 @@ public final class DslSemanticDependencies {
             state.binders.remove(variant.variable());
             return;
         }
+        if (node instanceof StrictDecodeNode decoded) {
+            state.capabilities.add("dsl.schema.strict-data-decode");
+            state.capabilities.add("encoding.isDataV3");
+            visit(decoded.data(), state);
+            withBinder(state, decoded.variable(),
+                    () -> visit(decoded.predicate(), state));
+            return;
+        }
         if (node instanceof LedgerVariantIsNode variant) {
             state.capabilities.add(LedgerTypeAuthority.constructorCapability(
                     variant.sumType(), variant.constructor()));
@@ -417,6 +425,11 @@ public final class DslSemanticDependencies {
             withBinder(state, list.variable(), () -> visit(list.predicate(), state));
             return;
         }
+        if (node instanceof ListSingletonWhenNode list) {
+            visit(list.list(), state);
+            withBinder(state, list.variable(), () -> visit(list.predicate(), state));
+            return;
+        }
         if (node instanceof ListContainsNode list) {
             visit(list.list(), state);
             visit(list.value(), state);
@@ -532,6 +545,7 @@ public final class DslSemanticDependencies {
             case OptionExistsNode ignored -> "option-exists";
             case VariantIsNode variant -> "variant-is:" + variant.constructor();
             case VariantWhenNode variant -> "variant-when:" + variant.constructor();
+            case StrictDecodeNode decoded -> strictDecodeRule(decoded);
             case BoolLiteralNode literal -> "bool-literal:" + literal.value();
             case BoolNotNode ignored -> "bool:not";
             case IntegerArithmeticNode arithmetic ->
@@ -541,6 +555,7 @@ public final class DslSemanticDependencies {
             case OptionStateNode option -> "option-state:" + option.state();
             case ListStateNode list -> "list-state:" + list.state();
             case ListQuantifierNode list -> "list-quantifier:" + list.quantifier();
+            case ListSingletonWhenNode ignored -> "list-singleton-when";
             case ListContainsNode ignored -> "list-contains";
             case ListCountNode ignored -> "list-count";
             case ListAtNode ignored -> "list-at";
@@ -586,6 +601,16 @@ public final class DslSemanticDependencies {
             case ReviewedAdapterWhenNode adapter ->
                     "reviewed-adapter-when:" + adapter.eliminator();
         };
+    }
+
+    private static String strictDecodeRule(StrictDecodeNode decoded) {
+        if (!(decoded.decodedType()
+                instanceof com.bloxbean.cardano.julc.verification.dsl.type.NominalTypeRef
+                nominal)) {
+            throw new IllegalArgumentException(
+                    "Strict contract decode target is not nominal");
+        }
+        return "strict-decode:" + nominal.stableId();
     }
 
     private static String adapterCapability(
