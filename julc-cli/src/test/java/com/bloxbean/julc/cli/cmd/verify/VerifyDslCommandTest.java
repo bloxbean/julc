@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import java.io.File;
 import java.nio.file.Path;
+import picocli.CommandLine;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -40,5 +41,14 @@ class VerifyDslCommandTest {
                 Path.of(entries[0]));
         assertEquals(Path.of("julc-cli/build/libs/julc.jar").toAbsolutePath().normalize(),
                 Path.of(entries[1]));
+    }
+
+    @Test
+    void stableMetamodelDefaultsToSchemaTen() {
+        var command = new CommandLine(new VerifyDslInitCommand());
+        assertEquals("10", command.getCommandSpec()
+                .findOption("--schema-version").defaultValue());
+        assertTrue(command.getCommandSpec().usageMessage().description()[0]
+                .contains("stable typed Java verification metamodel"));
     }
 }

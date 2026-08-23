@@ -4,6 +4,7 @@ import com.bloxbean.cardano.julc.verification.dsl.ir.*;
 
 import java.util.Objects;
 import java.util.function.Function;
+import com.bloxbean.cardano.julc.verification.dsl.type.VerificationTypeRef;
 
 public record LedgerOutputDatumExpr(PropertyNode node) implements Expr {
     public LedgerOutputDatumExpr { node = Objects.requireNonNull(node, "node"); }
@@ -15,6 +16,12 @@ public record LedgerOutputDatumExpr(PropertyNode node) implements Expr {
     }
     public BoolExpr whenInline(Function<TypedValueExpr, BoolExpr> predicate) {
         return when("OutputDatum", "datum", LedgerTypeAuthority.DATA, predicate);
+    }
+    public BoolExpr whenInlineDecoded(
+            VerificationTypeRef decodedType,
+            Function<TypedValueExpr, BoolExpr> predicate) {
+        return whenInline(data -> TypedExpressions.strictDecode(
+                data, decodedType, predicate));
     }
     private BoolExpr is(String constructor) {
         return new BoolExpr(new LedgerVariantIsNode(

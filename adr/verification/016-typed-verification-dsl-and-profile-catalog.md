@@ -1,6 +1,6 @@
 # ADR-016: Typed Verification DSL and Foundational Profile Catalog
 
-- **Status:** E.1–E.4l implemented experimentally; E.5 rejected at calibration; E.6 remains
+- **Status:** E.1–E.4l implemented; E.5 rejected at calibration; E.6 stable API implemented
 - **Date:** 2026-08-13
 - **Related:**
   [ADR-001 — IOG Blaster Verification Strategy](001-iog-blaster-verification-strategy.md),
@@ -745,6 +745,11 @@ Stabilize the DSL only if the experiments demonstrate:
 Otherwise retain annotations/profiles as the product interface and the
 canonical IR or generated Lean workspace as the expert extension surface.
 
+Decision: the E.4 schema-10 construction surface is stable as verification DSL
+API version 1 under [ADR-029](029-milestone-e6-stable-verification-dsl-public-api.md).
+Annotations are concise frontends over the same canonical DSL guarantee IR;
+profile-specific handwritten Lean predicates are not retained. E.5 is excluded.
+
 ## Testing requirements
 
 Every admitted IR node and ledger adapter requires:
@@ -812,13 +817,7 @@ entries and explicitly state whether equality is structural or extensional.
 
 ## Exit condition
 
-The initial E.1–E.3 exploration condition has been met. The next architectural
-exit condition is E.4b: JuLC must promote a novel, well-typed composition of
-already supported nodes without a formula-specific resolver, generate and run
-the proof from the canonical IR, report multiple properties independently,
-preserve explicit ledger domains, and retain exact-artifact and tamper
-bindings. ADR-019 governs that work.
-
-Only after compositional promotion and additional purpose slices have produced
-reviewable evidence should E.6 freeze the public DSL API or claim a defined
-level of CardanoLedgerApi surface coverage.
+The E.4b compositional exit condition and the later purpose/type/value adapter
+gates have been met. ADR-029 freezes the resulting schema-10 public API without
+claiming complete CardanoLedgerApi coverage. New semantic vocabulary requires a
+new reviewed property schema and must preserve schemas 1 through 10.

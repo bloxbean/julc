@@ -95,6 +95,26 @@ public final class TypedPropertyLeanRenderer {
                     + " => " + render(variant.predicate(), definitions, nested)
                     + " | _ => false");
         }
+        if (node instanceof StrictDecodeNode decoded) {
+            if (!(decoded.decodedType()
+                    instanceof com.bloxbean.cardano.julc.verification.dsl.type.NominalTypeRef
+                    nominal)) {
+                throw new IllegalArgumentException(
+                        "Stable strict contract decoding requires a nominal type");
+            }
+            var definition = definitions.get(nominal.stableId());
+            if (definition == null) {
+                throw new IllegalArgumentException(
+                        "Unknown strict-decoding target " + nominal.stableId());
+            }
+            return parenthesize("match (IsData.fromData "
+                    + parenthesize(render(decoded.data(), definitions, variantFields))
+                    + " : Option JulcGenerated.Schemas."
+                    + leanTypeName(definition.sourceName()) + ") with | some "
+                    + decoded.variable() + " => "
+                    + render(decoded.predicate(), definitions, variantFields)
+                    + " | none => false");
+        }
         if (node instanceof LedgerFieldNode field) {
             String target = parenthesize(render(
                     field.target(), definitions, variantFields));
@@ -483,6 +503,13 @@ public final class TypedPropertyLeanRenderer {
                 case NONE -> "!" + parenthesize(
                         "List.any " + parenthesize(items) + " " + predicate);
             };
+        }
+        if (node instanceof ListSingletonWhenNode list) {
+            String items = listItems(list.list(), definitions, variantFields);
+            return parenthesize("match " + parenthesize(items) + " with | ["
+                    + list.variable() + "] => "
+                    + render(list.predicate(), definitions, variantFields)
+                    + " | _ => false");
         }
         if (node instanceof ListCountNode list) {
             String items = listItems(list.list(), definitions, variantFields);

@@ -42,7 +42,7 @@ committed evidence suite:
 7. `verification/c7` is the C.7 controlled-mint profile. It proves fixed
    authority, current-policy linkage, exact token/quantity/action, and no extra
    raw assets under the current policy for both mint and burn fixtures.
-8. `verification/e4a` is the experimental typed minting DSL slice. It selects
+8. `verification/e4a` is the typed minting DSL slice. It selects
    normal or purpose-indexed minting interfaces, converges `@ControlledMint`
    with canonical schema-2 DSL semantics, and proves a domain-aware one-shot
    authority/anchor/exact-asset property with positive and adversarial controls.
@@ -61,7 +61,7 @@ committed evidence suite:
     all 11 pinned certificate kinds, and ordered indexed membership, with exact
     VM, local, Docker, native, refuted, malformed, and vacuity evidence for an
     authorized `UpdateDRep` property.
-12. `verification/e4e` and `verification/e4f` add experimental schema 4. JuLC
+12. `verification/e4e` and `verification/e4f` record the schema-4 foundation. JuLC
     projects compiler-owned nested datum/redeemer records, sealed variants,
     optionals, lists, maps, and productive recursive references into a
     hash-bound symbolic type graph. Generated Java wrappers expose guarded
@@ -69,14 +69,14 @@ committed evidence suite:
     quantifiers/count/indexing, and ordered duplicate-preserving association-map
     traversal, first/all lookup, and structural equality. The E.4f controls
     include exact VM, local, Docker, native, refuted, and vacuous evidence.
-13. `verification/e4g` adds experimental schema 5 for non-value transaction
+13. `verification/e4g` records schema 5 for non-value transaction
     context. It exposes ordered ordinary/reference inputs, resolved outputs,
     output references, fee/transaction ID, complete address and staking
     credentials, output datum/reference-script variants, own-input and
     full-address continuing-output selection, plus ordered duplicate-preserving
     datum/redeemer maps. Local, Docker, native, exact-VM, refuted, and vacuous
     controls bind these meanings to the pinned ledger model.
-14. `verification/e4h` adds experimental schema 6 compositional authorization:
+14. `verification/e4h` records schema 6 compositional authorization:
     distinct any/all/none/threshold relations, explicit unexpected-signer and
     exact-set constraints, fixed and compiler-owned contract-byte sources,
     plus exact-VM and Lean-kernel duplicate/order controls. Applied parameter

@@ -18,6 +18,9 @@ public record StatefulSpendingProperty(
         String redeemerType,
         String relation,
         String outputSelection,
+        String canonicalDslJson,
+        String projectedContractTypesJson,
+        String contractSchemaSha256,
         List<SourceReference> sources,
         List<String> domainAssumptions,
         List<String> guaranteeRules,
@@ -44,6 +47,14 @@ public record StatefulSpendingProperty(
         redeemerType = Objects.requireNonNull(redeemerType, "redeemerType");
         relation = Objects.requireNonNull(relation, "relation");
         outputSelection = Objects.requireNonNull(outputSelection, "outputSelection");
+        canonicalDslJson = Objects.requireNonNull(canonicalDslJson, "canonicalDslJson");
+        projectedContractTypesJson = Objects.requireNonNull(
+                projectedContractTypesJson, "projectedContractTypesJson");
+        contractSchemaSha256 = Objects.requireNonNull(
+                contractSchemaSha256, "contractSchemaSha256");
+        if (!contractSchemaSha256.matches("[0-9a-f]{64}")) {
+            throw new IllegalArgumentException("Invalid contract schema SHA-256");
+        }
         sources = List.copyOf(sources);
         domainAssumptions = List.copyOf(domainAssumptions);
         guaranteeRules = List.copyOf(guaranteeRules);

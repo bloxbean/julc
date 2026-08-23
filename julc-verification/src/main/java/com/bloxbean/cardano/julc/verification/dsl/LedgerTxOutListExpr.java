@@ -21,6 +21,13 @@ public record LedgerTxOutListExpr(PropertyNode node) implements Expr {
     public BoolExpr none(Function<LedgerTxOutExpr, BoolExpr> predicate) {
         return quantify(QuantifierKind.NONE, predicate);
     }
+    public BoolExpr whenSingleton(Function<LedgerTxOutExpr, BoolExpr> predicate) {
+        Objects.requireNonNull(predicate, "predicate");
+        return BinderScope.bind(variable -> new BoolExpr(new ListSingletonWhenNode(
+                node, LedgerTypeAuthority.TX_OUT, variable,
+                predicate.apply(new LedgerTxOutExpr(new TypedVariableNode(
+                        variable, LedgerTypeAuthority.TX_OUT))).node())));
+    }
     public IntegerExpr count(Function<LedgerTxOutExpr, BoolExpr> predicate) {
         Objects.requireNonNull(predicate, "predicate");
         return BinderScope.bind(variable -> new IntegerExpr(new ListCountNode(node,

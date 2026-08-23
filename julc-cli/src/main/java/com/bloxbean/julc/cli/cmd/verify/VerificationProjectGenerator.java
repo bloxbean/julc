@@ -15,6 +15,9 @@ import com.bloxbean.cardano.julc.verification.dsl.ComposedDslPromotion;
 import com.bloxbean.cardano.julc.verification.dsl.DslSemanticDependencies;
 import com.bloxbean.cardano.julc.verification.dsl.DslPropertyValidator;
 import com.bloxbean.cardano.julc.verification.dsl.ControlledMintDslLowering;
+import com.bloxbean.cardano.julc.verification.dsl.RequiresSignerDslLowering;
+import com.bloxbean.cardano.julc.verification.dsl.StatefulSpendingDslLowering;
+import com.bloxbean.cardano.julc.verification.dsl.DslPropertyCanonicalizer;
 import com.bloxbean.cardano.julc.verification.dsl.MintingDsl;
 import com.bloxbean.cardano.julc.verification.dsl.PropertyIrCodec;
 import com.bloxbean.cardano.julc.verification.dsl.PropertyLeanRenderer;
@@ -372,6 +375,47 @@ public final class VerificationProjectGenerator {
                         DslSemanticDependencies.collect(claim, composedDsl.purpose()));
             }
         }
+        DslPropertySet annotationDsl = null;
+        ProjectedContractTypes annotationTypes = null;
+        if (property instanceof RequiresSignerProperty signer) {
+            annotationDsl = readCanonicalDsl(signer.canonicalDslJson(), "requires-signer");
+            annotationTypes = readProjectedTypes(signer.projectedContractTypesJson(),
+                    signer.contractSchemaSha256(), "requires-signer");
+            DslPropertySet expected = DslPropertyCanonicalizer.normalize(
+                    RequiresSignerDslLowering.lower(signer.propertyId(),
+                            signer.path().getLast().name(), annotationTypes));
+            if (!expected.equals(annotationDsl)) {
+                throw new IllegalArgumentException(
+                        "Requires-signer canonical DSL does not match its typed fields");
+            }
+            validateProjectedTypesAgainstBlueprint(
+                    annotationTypes, blueprint.path("definitions"), validator);
+        } else if (property instanceof StatefulSpendingProperty stateful) {
+            annotationDsl = readCanonicalDsl(stateful.canonicalDslJson(),
+                    "stateful-spending");
+            annotationTypes = readProjectedTypes(stateful.projectedContractTypesJson(),
+                    stateful.contractSchemaSha256(), "stateful-spending");
+            DslPropertySet expected = DslPropertyCanonicalizer.normalize(
+                    StatefulSpendingDslLowering.lower(stateful.propertyId(),
+                            stateful.authority(), stateful.currentState(),
+                            stateful.nextState(), annotationTypes));
+            if (!expected.equals(annotationDsl)) {
+                throw new IllegalArgumentException(
+                        "Stateful-spending canonical DSL does not match its typed fields");
+            }
+            validateProjectedTypesAgainstBlueprint(
+                    annotationTypes, blueprint.path("definitions"), validator);
+        }
+        Map<String, DslSemanticDependencies.Plan> annotationPlans = new LinkedHashMap<>();
+        if (annotationDsl != null) {
+            for (DslProperty claim : annotationDsl.properties()) {
+                annotationPlans.put(claim.id(),
+                        DslSemanticDependencies.collect(claim, annotationDsl.purpose()));
+            }
+        }
+        DslPropertySet supportDsl = annotationDsl == null ? composedDsl : annotationDsl;
+        Map<String, DslSemanticDependencies.Plan> supportPlans = annotationDsl == null
+                ? composedPlans : annotationPlans;
 
         Path output = outputDirectory.toAbsolutePath().normalize();
         if (Files.exists(output) && !force) {
@@ -397,28 +441,26 @@ public final class VerificationProjectGenerator {
                 property != null && property.ledgerValidityModeled(),
                 property instanceof ControlledMintProperty
                         || property instanceof OneShotMintProperty
-                        || composedPlans.values().stream()
+                        || supportPlans.values().stream()
                                 .anyMatch(DslSemanticDependencies.Plan::needsRawMint),
-                composedPlans.values().stream().anyMatch(plan ->
+                supportPlans.values().stream().anyMatch(plan ->
                         plan.needsRewardingCredential()
                                 || plan.capabilities().contains("field.txInfo.withdrawals")),
-                composedPlans.values().stream().anyMatch(plan ->
+                supportPlans.values().stream().anyMatch(plan ->
                         plan.needsCertificate() || plan.needsCertificateIndex()
                                 || plan.capabilities().contains(
                                         "field.txInfo.certificates")),
-                property instanceof ComposedDslProperty composed
-                        && composed.schemaVersion()
-                        >= ComposedDslProperty.TYPED_SCHEMA_VERSION,
-                property instanceof ComposedDslProperty composed
-                        && composed.schemaVersion()
-                        >= ComposedDslProperty.LEDGER_SCHEMA_VERSION,
-                composedDsl != null && composedDsl.schemaVersion()
+                supportDsl != null && supportDsl.schemaVersion()
+                        >= DslPropertySet.TYPED_SCHEMA_VERSION,
+                supportDsl != null && supportDsl.schemaVersion()
+                        >= DslPropertySet.LEDGER_SCHEMA_VERSION,
+                supportDsl != null && supportDsl.schemaVersion()
                         >= DslPropertySet.AUTHORIZATION_SCHEMA_VERSION,
-                composedDsl != null && composedDsl.schemaVersion()
+                supportDsl != null && supportDsl.schemaVersion()
                         >= DslPropertySet.VALUE_ALGEBRA_SCHEMA_VERSION,
-                composedDsl != null && composedDsl.schemaVersion()
+                supportDsl != null && supportDsl.schemaVersion()
                         >= DslPropertySet.GOVERNANCE_SCHEMA_VERSION,
-                composedDsl != null && composedDsl.schemaVersion()
+                supportDsl != null && supportDsl.schemaVersion()
                         >= DslPropertySet.REVIEWED_DATA_ADAPTER_SCHEMA_VERSION));
         files.put("GeneratedSchemas.lean", schemas.source());
         files.put("PropertyTemplates.lean", propertyTemplates(recursiveDepth));
@@ -438,9 +480,9 @@ public final class VerificationProjectGenerator {
                 throw new UnsupportedVerificationException(
                         "Resolved datum schema has no generated Lean type: " + datumRoot);
             }
-            String ownerField = leanFieldName(signer.path().getLast().name());
             files.put("SecurityProperty.lean",
-                    requiresSignerProperty(datumLeanType, ownerField));
+                    annotationDslProperty(annotationDsl, annotationPlans,
+                            datumLeanType, null, annotationTypes));
             files.put(leanId + "Obligation.lean",
                     requiresSignerObligation(leanId, artifactId, fuel));
             files.put(leanId + "Proof.lean", requiresSignerProof(leanId));
@@ -462,11 +504,9 @@ public final class VerificationProjectGenerator {
                     stateful.nextState().field(), "integer", "next state");
             String datumLeanType = requiredLeanType(schemas, datumRoot);
             String redeemerLeanType = requiredLeanType(schemas, redeemerRoot);
-            files.put("SecurityProperty.lean", statefulSpendingProperty(
-                    datumLeanType, redeemerLeanType,
-                    leanFieldName(stateful.authority().field()),
-                    leanFieldName(stateful.currentState().field()),
-                    leanFieldName(stateful.nextState().field())));
+            files.put("SecurityProperty.lean", annotationDslProperty(
+                    annotationDsl, annotationPlans, datumLeanType,
+                    redeemerLeanType, annotationTypes));
             files.put(leanId + "Obligation.lean",
                     statefulSpendingObligation(leanId, artifactId, fuel));
             files.put(leanId + "Proof.lean", statefulSpendingProof(leanId));
@@ -631,6 +671,24 @@ public final class VerificationProjectGenerator {
             throw new IllegalArgumentException("Unsupported verification property "
                     + property.template());
         }
+        // Annotation profiles use the same stable schema-10 DSL as an explicit
+        // composed property. Keep the lake roots and emitted semantic controls in
+        // lockstep; otherwise a generated annotation workspace would name roots
+        // that do not exist.
+        if (annotationDsl != null) {
+            files.put("GenericCollectionsSemanticsTests.lean",
+                    genericCollectionsSemanticsTests());
+            files.put("LedgerContextSemanticsTests.lean",
+                    ledgerContextSemanticsTests());
+            files.put("AuthorizationSemanticsTests.lean",
+                    authorizationSemanticsTests());
+            files.put("ValueAlgebraSemanticsTests.lean",
+                    valueAlgebraSemanticsTests());
+            files.put("GovernanceSemanticsTests.lean",
+                    governanceSemanticsTests());
+            files.put("ReviewedDataAdapterSemanticsTests.lean",
+                    reviewedDataAdapterSemanticsTests());
+        }
         files.put("artifacts/" + artifactId + ".compiledCode.hex",
                 artifact.compiledCode() + "\n");
         files.put("config/blaster-builtins.txt",
@@ -744,6 +802,33 @@ public final class VerificationProjectGenerator {
         writeAtomically(output, files,
                 property == null ? USER_OWNED_FILES : Set.of(".gitignore"));
         return new GenerationResult(output, artifactId, leanId, files.keySet().stream().toList());
+    }
+
+    private static DslPropertySet readCanonicalDsl(String json, String profile) {
+        try {
+            return PropertyIrCodec.readCanonical(
+                    json, PropertyIrCodec.MAX_CANONICAL_BYTES);
+        } catch (IOException invalid) {
+            throw new IllegalArgumentException(
+                    "Invalid " + profile + " canonical DSL IR", invalid);
+        }
+    }
+
+    private static ProjectedContractTypes readProjectedTypes(
+            String json, String expectedHash, String profile) {
+        final ProjectedContractTypes projection;
+        try {
+            projection = ContractTypeProjection.readCanonical(
+                    json, PropertyIrCodec.MAX_CANONICAL_BYTES);
+        } catch (IOException invalid) {
+            throw new IllegalArgumentException(
+                    "Invalid " + profile + " projected contract types", invalid);
+        }
+        if (!ContractTypeProjection.sha256(projection).equals(expectedHash)) {
+            throw new IllegalArgumentException(
+                    profile + " projected contract type hash mismatch");
+        }
+        return projection;
     }
 
     private static void deleteStaleComposedFiles(
@@ -2203,6 +2288,16 @@ public final class VerificationProjectGenerator {
                 propertyIr.put("projectedContractTypesSha256", VerificationFiles.sha256(
                         composed.projectedContractTypesJson().getBytes(
                                 java.nio.charset.StandardCharsets.UTF_8)));
+            } else if (property instanceof RequiresSignerProperty signer) {
+                propertyIr.put("contractSchemaSha256", signer.contractSchemaSha256());
+                propertyIr.put("projectedContractTypesSha256", VerificationFiles.sha256(
+                        signer.projectedContractTypesJson().getBytes(
+                                java.nio.charset.StandardCharsets.UTF_8)));
+            } else if (property instanceof StatefulSpendingProperty stateful) {
+                propertyIr.put("contractSchemaSha256", stateful.contractSchemaSha256());
+                propertyIr.put("projectedContractTypesSha256", VerificationFiles.sha256(
+                        stateful.projectedContractTypesJson().getBytes(
+                                java.nio.charset.StandardCharsets.UTF_8)));
             }
             root.put("propertyIr", propertyIr);
             String canonicalDsl = canonicalDslJson(property);
@@ -2248,6 +2343,8 @@ public final class VerificationProjectGenerator {
 
     private static String canonicalDslJson(VerificationProperty property) {
         return switch (property) {
+            case RequiresSignerProperty signer -> signer.canonicalDslJson();
+            case StatefulSpendingProperty stateful -> stateful.canonicalDslJson();
             case ControlledMintProperty controlled -> controlled.canonicalDslJson();
             case SellerPaymentProperty seller -> seller.canonicalDslJson();
             case OneShotMintProperty oneShot -> oneShot.canonicalDslJson();
@@ -3417,35 +3514,6 @@ public final class VerificationProjectGenerator {
                 """;
     }
 
-    private static String requiresSignerProperty(String datumType, String ownerField) {
-        return """
-                /- Generated from typed `@RequiresSigner` IR; do not edit. -/
-                import CardanoLedgerApi.V3
-                import GeneratedSchemas
-
-                namespace JulcGenerated.UserProperty
-
-                open CardanoLedgerApi.IsData.Class
-                open CardanoLedgerApi.V3
-                open JulcGenerated.Schemas
-
-                /--
-                Strict authorization predicate. Missing/malformed datum and non-spending
-                contexts make the predicate false; they are not domain assumptions.
-                -/
-                def securityProperty (ctx : ScriptContext) : Prop :=
-                  match ctx.scriptContextScriptInfo with
-                  | .SpendingScript _ (some datumData) =>
-                      match (IsData.fromData datumData :
-                          Option JulcGenerated.Schemas.%s) with
-                      | some datum => txSignedBy datum.%s ctx.scriptContextTxInfo = true
-                      | none => False
-                  | _ => False
-
-                end JulcGenerated.UserProperty
-                """.formatted(datumType, ownerField);
-    }
-
     private static String requiresSignerObligation(
             String leanId, String artifactId, int fuel) {
         return """
@@ -3505,68 +3573,6 @@ public final class VerificationProjectGenerator {
 
                 end JulcGenerated.%s
                 """.formatted(leanId, leanId, leanId);
-    }
-
-    private static String statefulSpendingProperty(
-            String datumType,
-            String redeemerType,
-            String authorityField,
-            String currentStateField,
-            String nextStateField) {
-        return """
-                /- Generated from typed `julc.stateful-spending/v1` IR; do not edit. -/
-                import CardanoLedgerApi.V3
-                import GeneratedSchemas
-
-                namespace JulcGenerated.UserProperty
-
-                open CardanoLedgerApi.IsData.Class
-                open CardanoLedgerApi.V3
-                open JulcGenerated.Schemas
-
-                def continuingOutputsAt (address : Address)
-                    (outputs : List TxOut) : List TxOut :=
-                  Recursor.findAll out in outputs => out.txOutAddress == address
-
-                /--
-                Stateful spending v1: strict current/redeemer/successor decoding,
-                authorization, one continuing output, preserved value and authority,
-                successor commitment, and a strict state increase.
-                -/
-                def securityProperty (ctx : ScriptContext) : Prop :=
-                  match ctx.scriptContextScriptInfo with
-                  | .SpendingScript _ (some datumData) =>
-                      match (IsData.fromData datumData :
-                              Option JulcGenerated.Schemas.%s),
-                            (IsData.fromData ctx.scriptContextRedeemer :
-                              Option JulcGenerated.Schemas.%s),
-                            findOwnInput ctx with
-                      | some datum, some redeemer, some ownInput =>
-                          match continuingOutputsAt
-                              ownInput.txInInfoResolved.txOutAddress
-                              ctx.scriptContextTxInfo.txInfoOutputs with
-                          | [successor] =>
-                              match successor.txOutDatum with
-                              | .OutputDatum successorData =>
-                                  match (IsData.fromData successorData :
-                                      Option JulcGenerated.Schemas.%s) with
-                                  | some nextDatum =>
-                                      txSignedBy datum.%s ctx.scriptContextTxInfo = true ∧
-                                      successor.txOutValue =
-                                        ownInput.txInInfoResolved.txOutValue ∧
-                                      nextDatum.%s = datum.%s ∧
-                                      nextDatum.%s = redeemer.%s ∧
-                                      datum.%s < redeemer.%s
-                                  | none => False
-                              | _ => False
-                          | _ => False
-                      | _, _, _ => False
-                  | _ => False
-
-                end JulcGenerated.UserProperty
-                """.formatted(datumType, redeemerType, datumType,
-                authorityField, authorityField, authorityField,
-                currentStateField, nextStateField, currentStateField, nextStateField);
     }
 
     private static String statefulSpendingObligation(
@@ -3629,62 +3635,6 @@ public final class VerificationProjectGenerator {
 
                 end JulcGenerated.%s
                 """.formatted(leanId, leanId, leanId);
-    }
-
-    private static String controlledMintProperty(
-            String redeemerType,
-            String authorityHex,
-            String tokenNameHex,
-            String quantity,
-            String action) {
-        String direction = "MINT".equals(action)
-                ? "configuredQuantity > 0" : "configuredQuantity < 0";
-        return """
-                /- Generated from typed `julc.controlled-mint/v1` IR; do not edit. -/
-                import CardanoLedgerApi.V3
-                import GeneratedSchemas
-
-                namespace JulcGenerated.UserProperty
-
-                open CardanoLedgerApi.IsData.Class
-                open CardanoLedgerApi.V3
-                open PlutusCore.Data (Data)
-                open PlutusCore.ByteString (ByteString)
-                open JulcGenerated.Schemas
-
-                def configuredAuthority : ByteString := %s
-                def configuredTokenName : ByteString := %s
-                def configuredQuantity : Int := %s
-
-                def ownPolicyEntries (policy : ByteString)
-                    (mint : CardanoLedgerApi.V3.MintValue) :
-                    CardanoLedgerApi.V3.MintValue :=
-                  Recursor.findAll entry in mint => entry.1 == Data.B policy
-
-                /-- Fixed authority and exact singleton asset shape under this policy. -/
-                def securityProperty (ctx : ScriptContext) : Prop :=
-                  match ctx.scriptContextScriptInfo with
-                  | .MintingScript ownPolicy =>
-                      match (IsData.fromData ctx.scriptContextRedeemer :
-                              Option JulcGenerated.Schemas.%s),
-                            ownPolicyEntries ownPolicy
-                              ctx.scriptContextTxInfo.txInfoMint with
-                      | some _,
-                          [(Data.B actualPolicy,
-                            Data.Map [(Data.B actualToken, Data.I actualQuantity)])] =>
-                              txSignedBy configuredAuthority
-                                  ctx.scriptContextTxInfo = true ∧
-                              actualPolicy = ownPolicy ∧
-                              actualToken = configuredTokenName ∧
-                              actualQuantity = configuredQuantity ∧
-                              %s
-                      | _, _ => False
-                  | _ => False
-
-                end JulcGenerated.UserProperty
-                """.formatted(
-                leanByteString(authorityHex), leanByteString(tokenNameHex), quantity,
-                redeemerType, direction);
     }
 
     private static String mintingDslProperty(
@@ -4375,6 +4325,26 @@ public final class VerificationProjectGenerator {
                     .append("  dslGuarantee_").append(name).append(" ctx = true\n\n");
         }
         return out.append("end JulcGenerated.UserProperty\n").toString();
+    }
+
+    private static String annotationDslProperty(
+            DslPropertySet propertySet,
+            Map<String, DslSemanticDependencies.Plan> plans,
+            String datumType,
+            String redeemerType,
+            ProjectedContractTypes typedProjection) {
+        if (propertySet == null || propertySet.properties().size() != 1) {
+            throw new IllegalArgumentException(
+                    "Annotation profile must lower to exactly one canonical DSL property");
+        }
+        String generated = composedDslProperty(
+                propertySet, plans, datumType, redeemerType, typedProjection);
+        String name = ComposedDslPromotion.generatedName(
+                propertySet.properties().getFirst().id());
+        String alias = "\ndef securityProperty (ctx : ScriptContext) : Prop :=\n"
+                + "  dslProperty_" + name + " ctx\n\n";
+        return generated.replace("end JulcGenerated.UserProperty\n",
+                alias + "end JulcGenerated.UserProperty\n");
     }
 
     private static String composedModuleId(String leanId, String propertyId) {
@@ -5827,7 +5797,10 @@ public final class VerificationProjectGenerator {
                 julc verify --validator %s
                 ```
 
-                `verification-property.json` is the canonical typed property IR.
+                `verification-property.json` binds the annotation fields, canonical
+                stable DSL IR, and compiler-projected contract types. The generated Lean
+                guarantee is rendered from that DSL IR rather than a profile-specific
+                predicate.
                 `verification-manifest.json` binds it to the exact compiled UPLC,
                 Cardano script hash, ledger API revision, solver, and execution bounds.
                 `verification-result.json` is the machine-readable certificate.
@@ -5872,6 +5845,11 @@ public final class VerificationProjectGenerator {
                 authorization; exactly one full-address continuing output; structural
                 preservation of its own-input value and authority; successor state
                 commitment; and a strict state increase.
+
+                `verification-property.json` binds the annotation selections, canonical
+                stable DSL IR, and compiler-projected contract types. The generated Lean
+                guarantee is rendered from that DSL IR rather than a profile-specific
+                predicate.
 
                 `SMT-VALID` covers only executions completing within the CEK `fuel`
                 recorded in the manifest and certificate. Fuel-exhausted paths are

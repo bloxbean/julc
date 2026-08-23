@@ -305,12 +305,23 @@ The fixed authority and token are property literals, not values selected by an
 untrusted redeemer. See [`c7/README.md`](c7/README.md) for mint, burn, refuted,
 and vacuous examples.
 
-## 10. Experimental typed seller-payment DSL
+All four annotation frontends now lower through the same closed DSL semantics:
+`@RequiresSigner`, `@ControlledMint`, and the complete
+`@RequiresSigner + @PreservesValue + @Monotonic` profile bind canonical DSL IR
+before Lean generation. An annotation is concise syntax for a reviewed DSL
+property, not a separate theorem implementation. Profile-specific proof names
+and result messages remain for usability.
 
-ADR-016 E.3 adds an opt-in typed Java DSL vertical slice. It is experimental,
-executes trusted project Java in a bounded worker, and currently accepts only
-the reviewed seller-paid-at-least shape. Start from an already buildable JuLC
-spending project whose datum has a `byte[] seller` and `BigInteger price`:
+## 10. Stable typed verification DSL (API v1)
+
+ADR-029 stabilizes the reviewed E.4 DSL surface as Java API version 1 and
+canonical property schema 10. New `dsl-init` invocations generate schema 10 by
+default; pass `--schema-version` only to reproduce an older schema. The builder
+still executes trusted project Java in a bounded worker, and proof completion
+is still subject to the recorded solver and execution bounds.
+
+Start from an already buildable JuLC spending project whose datum has a
+`byte[] seller` and `BigInteger price`:
 
 ```bash
 julc verify dsl-init . --validator Sale \
@@ -328,6 +339,27 @@ julc verify dsl . --validator Sale \
   --source SellerPaymentSpec.java --backend local --force
 ```
 
+The generated model's `properties(...)` method, typed datum/redeemer wrappers,
+ledger expressions, collection operations, authorization algebra, value
+algebra, governance data, and reviewed schema-10 adapters are the stable
+construction surface. Concrete `dsl.ir` node constructors, renderers, worker
+protocols, and arbitrary Lean are not public construction APIs.
+
+For an inline output datum, schema 10 can strictly decode it through the
+compiler-owned datum type without a cast:
+
+```java
+var contract = new SaleModel();
+var successor = contract.continuingOutputs().at(integer(0)).exists(output ->
+    output.datum().whenInline(raw -> contract.decodeDatum(raw, next ->
+        next.owner().eq(expectedOwner))));
+```
+
+Malformed data makes this expression false. The decoder target cannot be
+selected through annotation text or a Lean name. For an exact one-element list,
+prefer `outputs.whenSingleton(output -> ...)`; it is a closed typed pattern and
+does not expand into a recursive count plus indexed lookup.
+
 The property builder constructs typed symbolic expressions; it does not run the
 contract. JuLC independently validates its bounded canonical AST, imports the
 exact compiled UPLC, checks non-vacuity, and binds the generated Lean and
@@ -338,7 +370,7 @@ trusted-source-only in E.3.
 See [`dsl/README.md`](dsl/README.md) and [`e3/README.md`](e3/README.md) for the
 property source and evidence controls.
 
-## 11. Experimental typed one-shot minting DSL
+## 11. Typed one-shot minting DSL
 
 ADR-018 E.4a extends the trusted Java property workflow to minting. Generate a
 purpose-aware model, compile it with a specification using
@@ -371,7 +403,7 @@ policy cannot disappear behind first-match lookup. See
 [`e4a/README.md`](e4a/README.md) for a complete specification and local/Docker
 commands.
 
-## 12. Experimental compositional, rewarding, and certifying DSL
+## 12. Compositional, rewarding, and certifying DSL
 
 ADR-019 schema 3 accepts freely composed guarantees built only from the
 reviewed typed nodes. Each property keeps the exact-execution and optional
@@ -462,10 +494,11 @@ out-of-range indices are false, and duplicates are retained. Under
 the certificate-kind and authority clauses are the additional policy. See
 [`e4d/README.md`](e4d/README.md) for the complete local/Docker evidence matrix.
 
-## 13. Experimental generic contract types and collections
+## 13. Generic contract types and collections
 
 ADR-022 schema 4 generates the datum and redeemer API from the selected
-compiler-owned contract schema. Opt in explicitly with `--schema-version 4`:
+compiler-owned contract schema. Schema 4 remains selectable for compatibility;
+new users should omit `--schema-version` and receive stable schema 10:
 
 ```bash
 julc verify dsl-init . --validator CollectionGate --purpose spending \
@@ -519,7 +552,7 @@ nominal newtype separation. See [`e4e/README.md`](e4e/README.md) for type
 controls and [`e4f/README.md`](e4f/README.md) for reproducible local/Docker
 evidence.
 
-## 14. Experimental typed non-value transaction context
+## 14. Typed non-value transaction context
 
 ADR-023 schema 5 adds the closed ledger-context surface while retaining the
 schema-4 contract model. Generate it explicitly:
@@ -574,11 +607,12 @@ same command but still needs an installed child JVM and the JuLC JAR on
 Input/list and witness/redeemer map order and duplicates remain observable.
 `lookupFirst` is not `lookupAll`; continuing outputs use the complete address
 of the first resolved own input. Inline datum and redeemer payloads remain
-opaque raw `Data`: schema 5 permits presence and transport, not unchecked
-casting or raw-data equality. See [`e4g/README.md`](e4g/README.md) for the
+opaque raw `Data` in schema 5. Stable schema 10 additionally permits strict
+decode through the compiler-owned datum type, but still permits neither
+unchecked casting nor raw-data equality. See [`e4g/README.md`](e4g/README.md) for the
 reproducible local/Docker/native evidence and current limitations.
 
-## 15. Experimental compositional authorization
+## 15. Compositional authorization
 
 ADR-024 schema 6 extends the typed contract and ledger surface with distinct
 authorization relations. Generate schema 6 explicitly:
@@ -635,7 +669,7 @@ Compile and invoke `julc verify dsl` as in schema 4/5. Reproducible positive,
 refuted, vacuous, exact-VM, and kernel controls are in
 [`e4h/README.md`](e4h/README.md).
 
-## 16. Experimental certificate payloads
+## 16. Certificate payloads
 
 ADR-025 schema 7 adds guarded payload access for all 11 pinned V3 transaction
 certificate constructors and the nested `Delegatee` and `DRep` sums. Generate
@@ -676,7 +710,7 @@ constraint; nested credentials and pool-retirement payloads are additionally
 covered by Lean kernel controls and exact-VM tests. See
 [`e4i/README.md`](e4i/README.md).
 
-## 17. Experimental multi-asset value algebra
+## 17. Multi-asset value algebra
 
 ADR-025 schema 8 keeps output `Value`, transaction `MintValue`, and checked
 `ValueDelta` roles distinct. Generate the model explicitly:
@@ -760,9 +794,9 @@ inaccessible, and voting/proposing validator selection is still unsupported.
 See [`e4k/README.md`](e4k/README.md) for executable evidence and the proposal-
 validity domain limitation.
 
-## 19. Experimental schema-10 reviewed raw-data adapters
+## 19. Stable schema-10 reviewed raw-data adapters
 
-Schema 10 provides closed reviewed operations for the pinned validity range,
+Schema 10 is the API-v1 default and provides closed reviewed operations for the pinned validity range,
 strict treasury optionals, changed-parameter integer keys, and governance
 quorum. Generate the schema-10 model explicitly:
 

@@ -20,7 +20,7 @@ import java.time.Duration;
 import java.util.concurrent.Callable;
 import java.util.regex.Pattern;
 
-@Command(name = "dsl", description = "Run an experimental typed Java DSL property")
+@Command(name = "dsl", description = "Run a stable typed Java DSL property")
 public final class VerifyDslCommand implements Callable<Integer> {
     @Parameters(index = "0", defaultValue = ".", description = "JuLC project directory")
     private Path projectDir;

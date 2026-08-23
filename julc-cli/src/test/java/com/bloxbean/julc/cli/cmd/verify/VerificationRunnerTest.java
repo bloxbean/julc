@@ -927,6 +927,10 @@ class VerificationRunnerTest {
             assertTrue(metadata.contains(schemaSixType),
                     () -> "Missing schema-6 native metadata for " + schemaSixType);
         }
+        assertTrue(metadata.contains("StrictDecodeNode"),
+                "Missing stable schema-10 strict-decode native metadata");
+        assertTrue(metadata.contains("ListSingletonWhenNode"),
+                "Missing stable schema-10 singleton-list native metadata");
     }
 
     @Test

@@ -535,6 +535,27 @@ public final class DslPropertyValidator {
                     exists.predicate(), schema, authority, nested, count, maxNodes, schemaVersion));
             return DslType.BOOL;
         }
+        if (node instanceof StrictDecodeNode decoded) {
+            requireReviewedAdapterSchema(schemaVersion);
+            VerificationTypeRef source = validateTypedValue(
+                    decoded.data(), authority, variables, count, maxNodes);
+            if (!source.equals(new BuiltinTypeRef(BuiltinTypeRef.BuiltinKind.DATA))) {
+                throw new IllegalArgumentException(
+                        "Strict contract decoding requires a raw Data expression");
+            }
+            if (!(decoded.decodedType() instanceof NominalTypeRef)) {
+                throw new IllegalArgumentException(
+                        "Stable strict contract decoding currently requires a nominal type");
+            }
+            authority.requireKnown(decoded.decodedType());
+            validateBinder(decoded.variable(), variables);
+            var nested = new HashMap<>(variables);
+            nested.put(decoded.variable(), new TypedBinding(decoded.decodedType(), null));
+            require(DslType.BOOL, validateTypedExpressionOrLegacy(
+                    decoded.predicate(), schema, authority, nested, count, maxNodes,
+                    schemaVersion));
+            return DslType.BOOL;
+        }
         if (node instanceof OptionStateNode option) {
             VerificationTypeRef actual = validateTypedValue(
                     option.optional(), authority, variables, count, maxNodes);
@@ -607,6 +628,17 @@ public final class DslPropertyValidator {
             return DslType.BOOL;
         }
         if (node instanceof ListQuantifierNode list) {
+            requireList(list.list(), list.elementType(), authority, variables,
+                    count, maxNodes);
+            validateBinder(list.variable(), variables);
+            var nested = new HashMap<>(variables);
+            nested.put(list.variable(), new TypedBinding(list.elementType(), null));
+            require(DslType.BOOL, validateTypedExpressionOrLegacy(list.predicate(), schema,
+                    authority, nested, count, maxNodes, schemaVersion));
+            return DslType.BOOL;
+        }
+        if (node instanceof ListSingletonWhenNode list) {
+            requireReviewedAdapterSchema(schemaVersion);
             requireList(list.list(), list.elementType(), authority, variables,
                     count, maxNodes);
             validateBinder(list.variable(), variables);
@@ -1698,6 +1730,7 @@ public final class DslPropertyValidator {
         }
         if (node instanceof TypedEqualityNode || node instanceof OptionStateNode
                 || node instanceof ListStateNode || node instanceof ListQuantifierNode
+                || node instanceof ListSingletonWhenNode
                 || node instanceof ListContainsNode || node instanceof ListCountNode
                 || node instanceof ListAtNode || node instanceof StructuralEqualsNode
                 || node instanceof MapQuantifierNode || node instanceof MapCountEntryNode
@@ -1725,10 +1758,12 @@ public final class DslPropertyValidator {
                 || node instanceof LedgerByteAliasNode
                 || node instanceof LedgerVariantIsNode || node instanceof LedgerVariantWhenNode
                 || node instanceof OptionExistsNode || node instanceof VariantIsNode
-                || node instanceof VariantWhenNode || node instanceof BoolLiteralNode
+                || node instanceof VariantWhenNode || node instanceof StrictDecodeNode
+                || node instanceof BoolLiteralNode
                 || node instanceof BoolNotNode || node instanceof IntegerArithmeticNode
                 || node instanceof TypedEqualityNode || node instanceof OptionStateNode
                 || node instanceof ListStateNode || node instanceof ListQuantifierNode
+                || node instanceof ListSingletonWhenNode
                 || node instanceof ListContainsNode || node instanceof ListCountNode
                 || node instanceof ListAtNode || node instanceof StructuralEqualsNode
                 || node instanceof MapQuantifierNode || node instanceof MapCountEntryNode
