@@ -27,20 +27,20 @@ decisions in the linked ADRs.
   `feat/typed-verification-dsl-e4a-minting`
 - **Completed milestone ADR:**
   [ADR-018](018-milestone-e4a-typed-minting-dsl.md)
-- **Current milestone branch:**
+- **Completed final milestone branch:**
   `feat/typed-verification-dsl-e6-public-api`
-- **Current milestone ADR:**
+- **Completed final milestone ADR:**
   [ADR-029](029-milestone-e6-stable-verification-dsl-public-api.md)
-- **Current scope:** freeze the reviewed E.4 schema-10 DSL as API version 1,
-  make schema 10 the CLI default, and lower every annotation profile through
-  canonical DSL IR before Lean generation.
+- **Current scope:** integration review and landing through PR #89.
 - **Current state:** E.4a through E.4l are merged into this integration branch.
   E.5 retained only its exact-artifact calibration result and did not promote a
-  temporal product API; its scoped merge is `823f4e3`. E.6 is the final public
-  API/convergence gate before the integration branch is proposed for `main`.
-- **Next scope:** complete E.6 evidence and review, merge its scoped commit into
-  this integration branch, then open/update the integration PR. Further DSL
-  semantics require a new property-schema ADR rather than changing schema 10.
+  temporal product API; its scoped merge is `823f4e3`. E.6 was manually
+  reviewed, committed as `4ba114f`, and merged into this integration branch as
+  `fbe2619`. Schema 10 is the stable API-v1 default and every annotation profile
+  lowers through canonical DSL IR before Lean generation.
+- **Next scope:** merge PR #89 into `main` after its integration checks and
+  review are complete. Further DSL semantics require a new property-schema ADR
+  rather than changing schema 10.
 
 Milestone work is developed on a dedicated feature branch and merged with a
 non-fast-forward merge into this integration branch. Existing examples are:
@@ -129,7 +129,7 @@ main (C.1-C.7 + strict boundaries + purpose-indexed blueprints + E.1-E.3)
       -> E.5 exact temporal calibration (ADR-028)
           -> retained as a bounded negative calibration, no public product API
       -> E.6 stable public API and annotation convergence (ADR-029)
-          -> merge to E.4 integration after completed evidence and review
+          -> merged to E.4 integration after completed evidence and manual review
 ```
 
 Preferred landing sequence:
@@ -138,7 +138,7 @@ Preferred landing sequence:
    `feat/typed-verification-dsl-e4`.
 2. Keep E.5 outside the stable API until a later exact temporal calibration
    passes a separately accepted ADR gate.
-3. Merge E.6 into the integration branch before targeting `main`.
+3. Land the completed integration branch through PR #89.
 4. Keep compiler and blueprint work independent of the verification DSL unless
    a separate accepted ADR changes that module boundary.
 
