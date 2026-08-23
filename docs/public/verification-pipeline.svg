@@ -9,19 +9,20 @@
       <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#0f172a" flood-opacity="0.12"/>
     </filter>
     <style>
-      .heading { font: 700 25px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #0f172a; }
-      .section { font: 700 16px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #475569; letter-spacing: .08em; }
-      .title { font: 700 18px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #0f172a; }
-      .body { font: 400 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #334155; }
-      .small { font: 500 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #475569; }
+      .heading { font: 700 29px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #f8fafc; }
+      .subtitle { font: 400 18px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #cbd5e1; }
+      .section { font: 700 19px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #cbd5e1; letter-spacing: .08em; }
+      .title { font: 700 21px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #0f172a; }
+      .body { font: 400 18px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #334155; }
+      .small { font: 500 16px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #475569; }
       .arrow { stroke: #64748b; stroke-width: 2.5; fill: none; marker-end: url(#arrow); }
       .dash { stroke: #94a3b8; stroke-width: 2; stroke-dasharray: 7 7; fill: none; marker-end: url(#arrow); }
     </style>
   </defs>
 
-  <rect width="1280" height="850" rx="20" fill="#f8fafc"/>
+  <rect width="1280" height="850" rx="20" fill="#111827"/>
   <text x="640" y="45" text-anchor="middle" class="heading">JuLC formal-verification pipeline</text>
-  <text x="640" y="72" text-anchor="middle" class="body">One exact artifact + one canonical property + recorded model and bounds</text>
+  <text x="640" y="72" text-anchor="middle" class="subtitle">One exact artifact + one canonical property + recorded model and bounds</text>
 
   <text x="48" y="116" class="section">CONTRACT ARTIFACT</text>
   <rect x="48" y="136" width="250" height="116" rx="13" fill="#fff7ed" stroke="#ea580c" stroke-width="2" filter="url(#shadow)"/>
@@ -111,6 +112,6 @@
 
   <rect x="314" y="769" width="652" height="58" rx="13" fill="#0f172a" filter="url(#shadow)"/>
   <text x="640" y="794" text-anchor="middle" style="font:700 17px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; fill:#ffffff">Classified, hash-bound certificate</text>
-  <text x="640" y="816" text-anchor="middle" style="font:400 12px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; fill:#cbd5e1">SMT-VALID · KERNEL-PROVED · REFUTED · COULD-NOT-EVALUATE / UNDETERMINED</text>
+  <text x="640" y="816" text-anchor="middle" style="font:400 16px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; fill:#cbd5e1">SMT-VALID · KERNEL-PROVED · REFUTED · COULD-NOT-EVALUATE / UNDETERMINED</text>
   <path d="M640 728 V759" class="arrow"/>
 </svg>

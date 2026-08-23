@@ -44,6 +44,13 @@ Canonical property documents use:
 Earlier E.2–E.4 schema numbers were unreleased milestone gates. They are not
 selectable, generated, or accepted as current property input.
 
+Do not confuse that public schema number with the `schemaVersion` on an
+internal workspace property record such as `ComposedDslProperty`. The public
+canonical DSL document above is always format `julc.verification.dsl`, schema
+1. Workspace manifests, promoted-property records, runner plans, and
+certificates have separate versioned protocols and may contain a different
+`schemaVersion` field.
+
 | Type or surface | Role |
 |---|---|
 | `VerificationSpecification` | Trusted Java property-builder entry point. |
@@ -94,7 +101,7 @@ The public operations are:
 | `BoolExpr` | `and`, `or`, `implies`, `not`, `eq`, `ne` |
 | `IntegerExpr` | `eq`, `ne`, `ge`, `gt`, `le`, `lt`, `negate`, `add`, `subtract`, `times` |
 | `ByteStringExpr`, `StringExpr` | `eq`, `ne` |
-| `TypedValueExpr` | type-checked `eq`, `ne` |
+| `TypedValueExpr` | type-checked `eq`, `ne`, and `asInteger` when its compiler-owned type is integer |
 | `TypedOptionExpr` | `exists`, `isPresent`, `isEmpty` |
 | `TypedListExpr` | `isEmpty`, `isNotEmpty`, `contains`, `exists`, `all`, `none`, `whenSingleton`, `count`, `exactlyOne`, `at`, `structurallyEquals`, `structurallyNotEquals` |
 | `TypedAssocMapExpr` | `existsEntry`, `allEntries`, `noneEntries`, `countEntry`, `containsKey`, `countKey`, `lookupFirst`, `lookupAll`, `structurallyEquals`, `structurallyNotEquals` |
@@ -142,6 +149,7 @@ The complete purpose-helper surface is:
 | `RewardingContractModel` | `context`, `rewardingCredential`, `redeemerStrictlyDecodes` |
 | `CertifyingContractModel` | `context`, `certificate`, `certificateIndex`, `redeemerStrictlyDecodes` |
 | `ContextExpr` | `txInfo` |
+| `DatumExpr` | reviewed `bytesField(name)` and `integerField(name)` access used by supported profile roots |
 | `TxInfoExpr` | `signatories`, `outputs`, `inputs`, `mint`, `withdrawals`, `certificates` |
 | `ByteStringListExpr` | `contains` |
 | `TxInInfoListExpr` | `consumes` |
@@ -156,6 +164,24 @@ The complete purpose-helper surface is:
 
 The generated model still owns `properties(...)` and the contract-schema hash;
 purpose helpers supply only closed reviewed expression roots.
+
+### Two expression families
+
+The API contains two deliberately different families:
+
+- the generated/current-ledger family starts at a generated model's
+  `LedgerContextExpr` and exposes the broader, compiler-bound
+  `LedgerTxInfoExpr` surface used by custom properties;
+- the purpose-helper family starts at `ContextExpr` and exposes the smaller
+  reviewed `TxInfoExpr` surface used by established profile operations.
+
+For example, withdrawals are a generic typed association map on the first
+path and a specialized `WithdrawalsExpr` on the second. Likewise,
+`VerificationDsl.tokenName(hex)` is a generic byte-string literal, while
+`LedgerExpressions.tokenName(bytes(...))` is a role-preserving ledger token
+name. Prefer the generated family for custom properties and use a purpose
+helper only when its documented operation requires it. Similar names do not
+make wrappers interchangeable; use their public factory or adapter methods.
 
 ## Ledger context and transaction operations
 
@@ -184,10 +210,11 @@ ignores the staking credential and is a weaker aggregation scope.
 | `LedgerCredentialExpr` | `typed`, `isPubKey`, `isScript`, `whenPubKey`, `whenScript` |
 | `LedgerStakingCredentialExpr` | `isHash`, `isPointer`, `whenHash`, `whenPointer` |
 | `LedgerStakingCredentialOptionExpr` | `exists`, `isPresent`, `isEmpty` |
-| `LedgerOutputDatumExpr` | `isNone`, `isHash`, `isInline`, `whenHash`, `whenInline`; generated `decodeDatum` is the preferred typed inline decoder |
+| `LedgerOutputDatumExpr` | `isNone`, `isHash`, `isInline`, `whenHash`, `whenInline`, `whenInlineDecoded`; generated `decodeDatum` is the preferred contract-datum decoder |
 | `LedgerByteAliasExpr` | role-preserving `typed`, `eq`, `ne` |
 
-`LedgerExpressions` creates reviewed ledger aliases with `transactionId`,
+`LedgerExpressions.context()` creates the closed pinned V3 ledger-context
+root. `LedgerExpressions` also creates reviewed ledger aliases with `transactionId`,
 `datumHash`, `scriptHash`, `publicKeyHash`, `currencySymbol`, and `tokenName`.
 It also supplies the current certificate/index, rewarding credential, and
 `singletonValueDelta` helpers used by generated or purpose-specific models.
@@ -210,7 +237,8 @@ hashes containing byte `00` currently fail closed.
 `none`, `count`, `at`, `containsAt`, and structural equality/inequality.
 `LedgerTxCertOptionExpr` supports `exists`, `isPresent`, and `isEmpty`.
 
-`TxCertExpr.isKind` accepts the closed `TxCertKind` enum:
+`TxCertExpr` supports typed `eq` and `ne`. Its `isKind` method accepts the
+closed `TxCertKind` enum:
 
 ```text
 REG_STAKING, UNREG_STAKING, DELEG_STAKING, REG_DELEG,
@@ -294,6 +322,7 @@ operation group above.
 | Command | Purpose |
 |---|---|
 | `julc verify . --validator <name>` | Build and verify a supported annotation profile. |
+| `julc verify init . --validator <name> --purpose <purpose>` | Generate a pinned but unspecialized workspace from an already built project's blueprint. |
 | `julc verify dsl-init . --validator <name> ...` | Generate the API-v1/schema-1 contract metamodel. |
 | `julc verify dsl . --validator <name> ...` | Execute a trusted Java specification, admit its canonical IR, and verify it. |
 | `julc verify run <workspace>` | Re-run an existing current hash-bound workspace without rebuilding the contract. |
@@ -301,6 +330,13 @@ operation group above.
 For a purpose-indexed validator, pass one of `spending`, `minting`,
 `rewarding`, or `certifying` through `--purpose`. Voting and proposing
 verification selection currently fails closed.
+
+The annotation command defaults to `--fuel 1000` and
+`--recursive-depth 4`. The typed DSL command defaults to `--fuel 1500`,
+`--recursive-depth 4`, and `--worker-timeout 30` seconds; raise the worker
+timeout only when trusted specification Java itself needs longer. The
+lower-level `verify init` command uses `--fuel 20000` because it creates the
+older unspecialized proof workspace rather than running a typed property.
 
 The native CLI still launches a bounded child JVM for
 `VerificationSpecification`, because the specification is trusted project

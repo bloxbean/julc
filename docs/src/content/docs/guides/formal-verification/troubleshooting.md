@@ -62,10 +62,15 @@ selects the pinned version. Alternatively use `--backend docker`.
 
 ## Z3 is missing or has the wrong version
 
-JuLC uses the exact pinned Z3 version. When a compatible executable is not
+JuLC uses exactly Z3 4.15.2. When that executable is not
 available, the local backend downloads the official archive into `.julc/tools`,
 validates its checksum, and rechecks its version. Ensure the first acquisition
 run has network access and that the workspace is writable.
+
+If `julc verify dsl` stalls while executing the trusted Java specification,
+`--worker-timeout` controls that child process and defaults to 30 seconds. This
+is separate from solver execution and CEK `--fuel`; increasing it cannot make
+an undecided theorem valid.
 
 ## Docker backend is unavailable
 

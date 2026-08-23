@@ -17,6 +17,12 @@ Unless a complete class is shown, place the snippet inside
 `VerificationSpecification.properties()` after generating the named model with
 `julc verify dsl-init`.
 
+Uppercase names such as `AUTHORITY_KEY_HASH`, `POLICY_ID`, and
+`expectedRecipient` are illustrative constants or expressions that your
+specification must define. Generated collection wrapper class names are
+deterministic but intentionally implementation-oriented; use `var` for values
+returned by generated accessors instead of naming those wrapper classes.
+
 ## Common imports and property envelope
 
 ```java
@@ -151,7 +157,7 @@ var contract = new RewardingModel();
 var ownMinimum = contract.context().txInfo().withdrawals().existsEntry(
     (credential, amount) ->
         credential.eq(contract.rewardingCredential().typed())
-            .and(new IntegerExpr(amount.node()).ge(integer(1_000_000))));
+            .and(amount.asInteger().ge(integer(1_000_000))));
 
 var signed = contract.context().txInfo().signatories()
     .contains(keyHash(AUTHORITY_KEY_HASH));
@@ -206,7 +212,9 @@ var firstReferenceInput = tx.referenceInputs().at(integer(0)).exists(input ->
 var resolvedAnchor = tx.inputs().resolve(contract.currentOutputRef())
     .isPresent();
 
-var datumWitnessExists = tx.datums().existsEntry((hash, rawData) -> bool(true));
+var expectedHash = LedgerExpressions.datumHash(bytes(EXPECTED_DATUM_HASH));
+var datumWitnessExists = tx.datums().existsEntry(
+    (hash, rawData) -> hash.eq(expectedHash.typed()));
 
 var onlyOneContinuingOutput = contract.continuingOutputs()
     .whenSingleton(output -> output.address().paymentCredential().isScript());
@@ -251,9 +259,8 @@ var token = LedgerExpressions.tokenName(bytes(TOKEN_NAME));
 
 var valueChecks = output.value().quantityFirst(policy, token).ge(integer(10))
     .and(output.value().quantitySumStrict(policy, token)
-        .exists(quantity -> new IntegerExpr(quantity.node()).ge(integer(10))))
-    .and(output.value().extensionallyEquals(expectedValue))
-    .and(output.value().structurallyNotEquals(reorderedEncoding));
+        .exists(quantity -> quantity.asInteger().ge(integer(10))))
+    .and(output.value().extensionallyEquals(expectedValue));
 ```
 
 - `quantityFirst` matches the pinned first-match ledger helper.
@@ -344,6 +351,26 @@ var reviewedAction = tx.proposals().exists(proposal ->
 ```
 
 The adapters do not expose arbitrary raw values or user-defined decoders.
+
+## Reading a refuted result
+
+A deliberately vulnerable validator is a useful negative control. If its
+property says that two approved authorities must sign but the script accepts
+only one, the command exits with code 3 and prints `REFUTED`:
+
+```text
+REFUTED: property-refuted
+Certificate: verification/two-of-three/verification-result.json
+```
+
+Open the certificate and the recorded Blaster log before treating the model as
+a real transaction. `REFUTED` means Blaster found a countermodel to the exact
+translated obligation in its recorded domain. It establishes a ledger-valid
+or concretely reproducible Cardano counterexample only when the corresponding
+`ledgerValidCounterexampleEstablished` or
+`concreteVmCounterexampleReproduced` certificate field is true. The expected
+negative-control result should remain `REFUTED`; changing the property merely
+to make it pass defeats the control.
 
 ## Current fail-closed boundaries
 

@@ -2,6 +2,7 @@ package com.bloxbean.cardano.julc.verification.dsl;
 
 import com.bloxbean.cardano.julc.verification.dsl.ir.DslPropertySet;
 import com.bloxbean.cardano.julc.verification.dsl.ir.DslDomain;
+import com.bloxbean.cardano.julc.verification.dsl.type.BuiltinTypeRef;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -11,6 +12,22 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PublicDslSchemaOneTest {
+    @Test
+    void genericIntegerValueNarrowsWithoutExposingRawIr() {
+        var integerType = new BuiltinTypeRef(BuiltinTypeRef.BuiltinKind.INTEGER);
+        var value = new TypedValueExpr(VerificationDsl.integer(7).node(), integerType);
+
+        assertEquals(value.node(), value.asInteger().node());
+    }
+
+    @Test
+    void genericNonIntegerValueCannotNarrowToInteger() {
+        var bytesType = new BuiltinTypeRef(BuiltinTypeRef.BuiltinKind.BYTE_STRING);
+        var value = new TypedValueExpr(VerificationDsl.bytes("01").node(), bytesType);
+
+        assertThrows(IllegalArgumentException.class, value::asInteger);
+    }
+
     @Test
     void canonicalEnvelopeHasExplicitFormatAndSchemaOne() {
         var schema = DslPropertySet.schema1(

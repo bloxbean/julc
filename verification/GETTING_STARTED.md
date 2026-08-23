@@ -415,7 +415,7 @@ withdrawal traversal:
 var contract = new RewardingModel();
 var ownMinimum = contract.context().txInfo().withdrawals().existsEntry(
         (credential, amount) -> credential.eq(contract.rewardingCredential().typed())
-                .and(new IntegerExpr(amount.node()).ge(integer(1_000_000))));
+                .and(amount.asInteger().ge(integer(1_000_000))));
 var authorized = contract.context().txInfo().signatories()
         .contains(keyHash(AUTHORITY));
 
@@ -730,8 +730,7 @@ var guarantee = firstOutput.exists(output ->
         .and(output.value().quantityFirst(policy, token).ge(integer(10)))
         // All matching duplicates are summed; absence/malformed data is none.
         .and(output.value().quantitySumStrict(policy, token)
-                .exists(quantity -> new IntegerExpr(quantity.node())
-                        .ge(integer(10))))
+                .exists(quantity -> quantity.asInteger().ge(integer(10))))
         // Ignores ordering and zero-sum decomposition after strict validation.
         .and(output.value().extensionallyEquals(output.value()))
         // Observes the exact ordered nested association-list representation.
