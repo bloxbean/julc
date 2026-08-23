@@ -47,7 +47,7 @@ export default defineConfig({
           label: 'Formal Verification',
           badge: { text: 'Experimental', variant: 'caution' },
           items: [
-            { label: 'Overview & Getting Started', slug: 'guides/formal-verification', badge: { text: 'Experimental', variant: 'caution' } },
+            { label: 'Overview', slug: 'guides/formal-verification' },
             { label: 'Annotation Profiles', slug: 'guides/formal-verification/annotation-profiles' },
             { label: 'Typed Java DSL', slug: 'guides/formal-verification/typed-dsl' },
             { label: 'API & DSL Reference', link: '/reference/api-reference/#verification-annotations' },
