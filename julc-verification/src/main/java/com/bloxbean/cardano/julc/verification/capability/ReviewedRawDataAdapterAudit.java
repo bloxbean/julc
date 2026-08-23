@@ -4,7 +4,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 
-/** Machine-readable authority and discrepancy audit for schema-10 raw adapters. */
+/** Machine-readable authority and discrepancy audit for schema-1 raw adapters. */
 public record ReviewedRawDataAdapterAudit(
         int schemaVersion,
         String proofModelRevision,

@@ -38,7 +38,7 @@ class ComposedDslAdmissionTest {
                         keyHash(AUTHORITY_A))
                 .or(model.context().txInfo().signatories().contains(
                         keyHash(AUTHORITY_B)));
-        var candidate = DslPropertySet.composed(DslPurpose.SPENDING,
+        var candidate = schema1(DslPurpose.SPENDING,
                 property("Gate.paid-or-authorized",
                         DslDomain.VALID_SPENDING_V3_PINNED,
                         sellerPaid.or(eitherAuthority)));
@@ -46,7 +46,8 @@ class ComposedDslAdmissionTest {
         DslPropertySet normalized = DslPropertyValidator.validateAndNormalize(
                 candidate, spendingSchema(), 10_000);
 
-        assertEquals(3, normalized.schemaVersion());
+        assertEquals(DslPropertySet.SCHEMA_VERSION, normalized.schemaVersion());
+        assertEquals(DslPropertySet.FORMAT, normalized.format());
         assertEquals(DslPurpose.SPENDING, normalized.purpose());
         assertEquals(DslDomain.VALID_SPENDING_V3_PINNED,
                 normalized.properties().getFirst().domain());
@@ -65,7 +66,7 @@ class ComposedDslAdmissionTest {
                         model.ownPolicy(), tokenName("4a554c43"), quantity))
                 .and(quantity.gt(integer(0))
                         .or(quantity.eq(integer(0))));
-        var candidate = DslPropertySet.composed(DslPurpose.MINTING,
+        var candidate = schema1(DslPurpose.MINTING,
                 property("TokenPolicy.composed", DslDomain.VALID_MINTING_V3_PINNED,
                         guarantee));
 
@@ -78,14 +79,15 @@ class ComposedDslAdmissionTest {
     }
 
     @Test
-    void schemaThreeAdmitsRewardingCredentialAmountAndSignerComposition() {
-        var model = new RewardingContractModel();
-        var matchingWithdrawal = model.context().txInfo().withdrawals().exists(entry ->
-                entry.credential().eq(model.rewardingCredential())
-                        .and(entry.amount().ge(integer(1_000_000))));
+    void publicSchemaAdmitsRewardingCredentialAmountAndSignerComposition() {
+        var context = LedgerExpressions.context();
+        var credential = LedgerExpressions.rewardingCredential();
+        var matchingWithdrawal = context.txInfo().withdrawals().existsEntry((entry, amount) ->
+                entry.eq(credential.typed())
+                        .and(new IntegerExpr(amount.node()).ge(integer(1_000_000))));
         var guarantee = matchingWithdrawal.and(
-                model.context().txInfo().signatories().contains(keyHash(AUTHORITY_A)));
-        var candidate = DslPropertySet.composed(DslPurpose.REWARDING,
+                context.txInfo().signatories().contains(keyHash(AUTHORITY_A)));
+        var candidate = schema1(DslPurpose.REWARDING,
                 property("Rewards.authorized", DslDomain.VALID_REWARDING_V3_PINNED,
                         guarantee));
 
@@ -102,23 +104,26 @@ class ComposedDslAdmissionTest {
                 .contains("field.txInfo.withdrawals"));
         assertTrue(promoted.claims().getFirst().capabilities()
                 .contains("ledger.validRewardingContext"));
-        assertTrue(PropertyLeanRenderer.renderExpression(
-                normalized.properties().getFirst().expression())
+        assertTrue(TypedPropertyLeanRenderer.renderExpression(
+                normalized.properties().getFirst().expression(),
+                com.bloxbean.cardano.julc.verification.dsl.type
+                        .ContractTypeProjection.project(rewardingSchema()))
                 .contains("txInfoWdrl"));
     }
 
     @Test
     void rewardingNodesFailClosedForOtherPurposes() {
-        var rewarding = new RewardingContractModel();
-        var wrongPurpose = DslPropertySet.composed(DslPurpose.SPENDING,
+        var context = LedgerExpressions.context();
+        var credential = LedgerExpressions.rewardingCredential();
+        var wrongPurpose = schema1(DslPurpose.SPENDING,
                 property("wrong-rewarding-root", DslDomain.NONE,
-                        rewarding.context().txInfo().withdrawals().exists(entry ->
-                                entry.credential().eq(rewarding.rewardingCredential()))));
+                        context.txInfo().withdrawals().existsEntry((entry, amount) ->
+                                entry.eq(credential.typed()))));
 
         var error = assertThrows(IllegalArgumentException.class,
                 () -> DslPropertyValidator.validate(wrongPurpose, spendingSchema(), 100));
         assertTrue(error.getMessage().contains("withdrawals")
-                || error.getMessage().contains("rewardingCredential"));
+                || error.getMessage().contains("rewarding"));
     }
 
     @Test
@@ -126,9 +131,9 @@ class ComposedDslAdmissionTest {
         String source = ContractMetamodelGenerator.generate(
                 rewardingSchema(), "evidence", "RewardsModel");
 
-        assertTrue(source.contains("RewardingContractModel"));
-        assertTrue(source.contains("CredentialExpr rewardingCredential()"));
-        assertTrue(source.contains("BoolExpr redeemerStrictlyDecodes()"));
+        assertTrue(source.contains("LedgerContextExpr context()"));
+        assertTrue(source.contains("LedgerCredentialExpr rewardingCredential()"));
+        assertTrue(source.contains(" redeemer()"));
         assertFalse(source.contains("datum()"));
         assertFalse(source.contains("ownPolicy()"));
     }
@@ -143,7 +148,7 @@ class ComposedDslAdmissionTest {
                 .and(known)
                 .and(model.context().txInfo().signatories()
                         .contains(keyHash(AUTHORITY_A)));
-        var candidate = DslPropertySet.composed(DslPurpose.CERTIFYING,
+        var candidate = schema1(DslPurpose.CERTIFYING,
                 property("Certificates.authorized-update",
                         DslDomain.VALID_CERTIFYING_V3_PINNED, guarantee));
 
@@ -169,14 +174,14 @@ class ComposedDslAdmissionTest {
     @Test
     void certifyingNodesAndUnknownKindsFailClosed() {
         var certifying = new CertifyingContractModel();
-        var wrongPurpose = DslPropertySet.composed(DslPurpose.SPENDING,
+        var wrongPurpose = schema1(DslPurpose.SPENDING,
                 property("wrong-certifying-root", DslDomain.NONE,
                         certifying.certificate().isKind(TxCertKind.UPDATE_DREP)));
         assertThrows(IllegalArgumentException.class,
                 () -> DslPropertyValidator.validate(
                         wrongPurpose, spendingSchema(), 100));
 
-        var valid = DslPropertySet.composed(DslPurpose.CERTIFYING,
+        var valid = schema1(DslPurpose.CERTIFYING,
                 property("Certificates.kind", DslDomain.NONE,
                         certifying.certificate().isKind(TxCertKind.UPDATE_DREP)));
         String forged = PropertyIrCodec.canonicalJson(valid)
@@ -190,10 +195,10 @@ class ComposedDslAdmissionTest {
         String source = ContractMetamodelGenerator.generate(
                 certifyingSchema(), "evidence", "CertificateModel");
 
-        assertTrue(source.contains("CertifyingContractModel"));
+        assertTrue(source.contains("LedgerContextExpr context()"));
         assertTrue(source.contains("TxCertExpr certificate()"));
         assertTrue(source.contains("IntegerExpr certificateIndex()"));
-        assertTrue(source.contains("BoolExpr redeemerStrictlyDecodes()"));
+        assertTrue(source.contains(" redeemer()"));
         assertFalse(source.contains("datum()"));
         assertFalse(source.contains("ownPolicy()"));
     }
@@ -205,10 +210,10 @@ class ComposedDslAdmissionTest {
         BoolExpr second = model.context().txInfo().signatories().contains(keyHash(AUTHORITY_B));
         BoolExpr third = model.datum().integerField("minimum").ge(integer(0));
 
-        var left = DslPropertySet.composed(DslPurpose.SPENDING,
+        var left = schema1(DslPurpose.SPENDING,
                 property("Gate.canonical", DslDomain.NONE,
                         first.and(second.and(third)).and(first)));
-        var right = DslPropertySet.composed(DslPurpose.SPENDING,
+        var right = schema1(DslPurpose.SPENDING,
                 property("Gate.canonical", DslDomain.NONE,
                         third.and(first).and(second)));
 
@@ -230,10 +235,10 @@ class ComposedDslAdmissionTest {
         BoolExpr second = model.context().txInfo().signatories().contains(keyHash(AUTHORITY_B));
         BoolExpr third = model.datum().integerField("minimum").ge(integer(0));
         BoolExpr duplicatedConjunction = first.and(second).or(first.and(second));
-        var nested = DslPropertySet.composed(DslPurpose.SPENDING,
+        var nested = schema1(DslPurpose.SPENDING,
                 property("Gate.idempotent", DslDomain.NONE,
                         duplicatedConjunction.and(third)));
-        var flat = DslPropertySet.composed(DslPurpose.SPENDING,
+        var flat = schema1(DslPurpose.SPENDING,
                 property("Gate.idempotent", DslDomain.NONE,
                         first.and(second).and(third)));
 
@@ -252,7 +257,7 @@ class ComposedDslAdmissionTest {
     @Test
     void multiplePropertiesAreSortedButRemainIndependent() {
         var model = new SpendingContractModel();
-        var candidate = DslPropertySet.composed(DslPurpose.SPENDING,
+        var candidate = schema1(DslPurpose.SPENDING,
                 property("z-last", DslDomain.NONE,
                         model.context().txInfo().signatories().contains(keyHash(AUTHORITY_A))),
                 property("a-first", DslDomain.VALID_SPENDING_V3_PINNED,
@@ -269,7 +274,7 @@ class ComposedDslAdmissionTest {
     @Test
     void genericPromotionDerivesIndependentClaimsCapabilitiesAndHashes() {
         var model = new SpendingContractModel();
-        var candidate = DslPropertySet.composed(DslPurpose.SPENDING,
+        var candidate = schema1(DslPurpose.SPENDING,
                 property("z-signer", DslDomain.NONE,
                         model.context().txInfo().signatories().contains(keyHash(AUTHORITY_A))),
                 property("a-payment", DslDomain.VALID_SPENDING_V3_PINNED,
@@ -282,7 +287,7 @@ class ComposedDslAdmissionTest {
         var promoted = ComposedDslPromotion.promote(
                 candidate, spendingSchema(), "Gate", "SecurityProperties.java");
 
-        assertEquals("julc.dsl-composed/v1", promoted.template());
+        assertEquals("julc.dsl-ledger/v1", promoted.template());
         assertEquals(List.of("a-payment", "z-signer"), promoted.claims().stream()
                 .map(com.bloxbean.cardano.julc.verification.ComposedDslProperty.Claim::id)
                 .toList());
@@ -300,69 +305,38 @@ class ComposedDslAdmissionTest {
     }
 
     @Test
-    void reviewedHelpersAndManualCompositionHaveIdenticalGenericSemantics() {
-        var spending = new SpendingContractModel();
-        var manualPayment = DslPropertySet.composed(DslPurpose.SPENDING,
-                property("sale.paid", DslDomain.VALID_SPENDING_V3_PINNED,
-                        spending.context().txInfo().outputs().exists(output ->
-                                output.address().credential().matchesKeyHash(
-                                                spending.datum().bytesField("owner"))
-                                        .and(output.value().lovelace().ge(
-                                                spending.datum().integerField("minimum"))))));
-        var helperPayment = SellerPaymentDsl.composedPropertySet(
-                "sale.paid", "owner", "minimum");
-
-        var minting = new MintingContractModel();
-        var manualMint = DslPropertySet.composed(DslPurpose.MINTING,
-                property("policy.one-shot", DslDomain.VALID_MINTING_V3_PINNED,
-                        minting.redeemerStrictlyDecodes()
-                                .and(minting.context().txInfo().signatories()
-                                        .contains(keyHash(AUTHORITY_A)))
-                                .and(minting.context().txInfo().inputs()
-                                        .consumes(txOutRef(TX_ID, 1)))
-                                .and(minting.context().txInfo().mint()
-                                        .exactOwnPolicyAsset(minting.ownPolicy(),
-                                                tokenName("4a554c43"), integer(1)))));
-        var helperMint = MintingDsl.composedOneShotPropertySet(
-                "policy.one-shot", AUTHORITY_A, TX_ID, 1, "4a554c43");
-
-        assertEquivalentPromotion(helperPayment, manualPayment, spendingSchema(), "Sale");
-        assertEquivalentPromotion(helperMint, manualMint, mintingSchema(), "Policy");
-    }
-
-    @Test
     void rejectsEnvelopeRootsWrongDomainsPurposesAndGeneratedNameCollisions() {
         var spending = spendingSchema();
         var spendingModel = new SpendingContractModel();
-        var hiddenExecution = DslPropertySet.composed(DslPurpose.SPENDING,
+        var hiddenExecution = schema1(DslPurpose.SPENDING,
                 property("hidden-execution", DslDomain.NONE,
                         spendingModel.exactUplcSucceeds()));
         assertTrue(assertThrows(IllegalArgumentException.class,
                 () -> DslPropertyValidator.validate(hiddenExecution, spending, 100))
                 .getMessage().contains("envelope root exactUplcSucceeds"));
 
-        var hiddenDomain = DslPropertySet.composed(DslPurpose.SPENDING,
+        var hiddenDomain = schema1(DslPurpose.SPENDING,
                 property("hidden-domain", DslDomain.NONE,
                         spendingModel.validSpendingContext()));
         assertTrue(assertThrows(IllegalArgumentException.class,
                 () -> DslPropertyValidator.validate(hiddenDomain, spending, 100))
                 .getMessage().contains("envelope root validSpendingContext"));
 
-        var wrongDomain = DslPropertySet.composed(DslPurpose.SPENDING,
+        var wrongDomain = schema1(DslPurpose.SPENDING,
                 property("wrong-domain", DslDomain.VALID_MINTING_V3_PINNED,
                         spendingModel.datum().integerField("minimum").ge(integer(0))));
         assertTrue(assertThrows(IllegalArgumentException.class,
                 () -> DslPropertyValidator.validate(wrongDomain, spending, 100))
                 .getMessage().contains("incompatible"));
 
-        var wrongInterface = DslPropertySet.composed(DslPurpose.MINTING,
+        var wrongInterface = schema1(DslPurpose.MINTING,
                 property("wrong-interface", DslDomain.NONE,
                         new MintingContractModel().redeemerStrictlyDecodes()));
         assertTrue(assertThrows(IllegalArgumentException.class,
                 () -> DslPropertyValidator.validate(wrongInterface, spending, 100))
                 .getMessage().contains("requires a MINT"));
 
-        var collisions = DslPropertySet.composed(DslPurpose.SPENDING,
+        var collisions = schema1(DslPurpose.SPENDING,
                 property("same-name", DslDomain.NONE,
                         spendingModel.datum().integerField("minimum").ge(integer(0))),
                 property("same.name", DslDomain.NONE,
@@ -371,7 +345,7 @@ class ComposedDslAdmissionTest {
                 () -> DslPropertyValidator.validate(collisions, spending, 100))
                 .getMessage().contains("collide"));
 
-        var caseInsensitiveFilesystemCollision = DslPropertySet.composed(
+        var caseInsensitiveFilesystemCollision = schema1(
                 DslPurpose.SPENDING,
                 property("Case", DslDomain.NONE,
                         spendingModel.datum().integerField("minimum").ge(integer(0))),
@@ -386,7 +360,7 @@ class ComposedDslAdmissionTest {
     @Test
     void rejectsPropertyIdsUsingReservedNonVacuitySuffix() {
         var model = new SpendingContractModel();
-        var candidate = DslPropertySet.composed(DslPurpose.SPENDING,
+        var candidate = schema1(DslPurpose.SPENDING,
                 property("sale.PAID.NON-VACUITY", DslDomain.NONE,
                         model.datum().integerField("minimum").ge(integer(0))));
 
@@ -401,7 +375,7 @@ class ComposedDslAdmissionTest {
         PropertyNode context = model.context().node();
         PropertyNode txInfo = new FieldNode(context, "txInfo", DslType.TX_INFO);
         PropertyNode forgedMint = new FieldNode(txInfo, "mint", DslType.MINT_VALUE);
-        var property = DslPropertySet.composed(DslPurpose.SPENDING,
+        var property = schema1(DslPurpose.SPENDING,
                 new DslProperty("mint-in-spending", DslDomain.NONE,
                         new ExactOwnPolicyAssetNode(forgedMint,
                                 new BytesLiteralNode(DslType.POLICY_ID,
@@ -416,24 +390,9 @@ class ComposedDslAdmissionTest {
     }
 
     @Test
-    void schemaOneAndTwoCanonicalBytesRemainFrozen() {
-        var root = new RootNode("exactUplcSucceeds", DslType.BOOL);
-        String schemaOne = PropertyIrCodec.canonicalJson(
-                DslPropertySet.of(new DslProperty("legacy", root)));
-        String schemaTwo = PropertyIrCodec.canonicalJson(
-                DslPropertySet.minting(new DslProperty("legacy", root)));
-
-        assertEquals("{\"properties\":[{\"expression\":{\"op\":\"root\","
-                + "\"name\":\"exactUplcSucceeds\",\"resultType\":\"BOOL\"},"
-                + "\"id\":\"legacy\"}],\"schemaVersion\":1}", schemaOne);
-        assertEquals(schemaOne.replace("\"schemaVersion\":1", "\"schemaVersion\":2"),
-                schemaTwo);
-    }
-
-    @Test
     void schemaThreeStrictCodecRejectsUnknownFields() throws Exception {
         var model = new SpendingContractModel();
-        var candidate = DslPropertySet.composed(DslPurpose.SPENDING,
+        var candidate = schema1(DslPurpose.SPENDING,
                 property("strict", DslDomain.NONE,
                         model.datum().integerField("minimum").ge(integer(0))));
         String json = PropertyIrCodec.canonicalJson(candidate);
@@ -459,19 +418,6 @@ class ComposedDslAdmissionTest {
                     }
                 }
                 """).contractSchema();
-    }
-
-    private static void assertEquivalentPromotion(
-            DslPropertySet helper,
-            DslPropertySet manual,
-            ContractSchema schema,
-            String validator) {
-        var helperProperty = ComposedDslPromotion.promote(
-                helper, schema, validator, "Properties.java");
-        var manualProperty = ComposedDslPromotion.promote(
-                manual, schema, validator, "Properties.java");
-        assertEquals(helperProperty.canonicalDslJson(), manualProperty.canonicalDslJson());
-        assertEquals(helperProperty.claims(), manualProperty.claims());
     }
 
     private static ContractSchema mintingSchema() {
@@ -511,6 +457,21 @@ class ComposedDslAdmissionTest {
                     }
                 }
                 """).contractSchema();
+    }
+
+    private static DslPropertySet schema1(
+            DslPurpose purpose, DslProperty... properties) {
+        ContractSchema schema = switch (purpose) {
+            case SPENDING -> spendingSchema();
+            case MINTING -> mintingSchema();
+            case REWARDING -> rewardingSchema();
+            case CERTIFYING -> certifyingSchema();
+        };
+        String hash = com.bloxbean.cardano.julc.verification.dsl.type
+                .ContractTypeProjection.sha256(
+                        com.bloxbean.cardano.julc.verification.dsl.type
+                                .ContractTypeProjection.project(schema));
+        return DslPropertySet.schema1(purpose, hash, properties);
     }
 
     private static JulcCompiler compiler() {

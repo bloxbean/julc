@@ -10,9 +10,6 @@ import com.bloxbean.cardano.julc.verification.dsl.ir.TxOutRefLiteralNode;
 
 public final class VerificationDsl {
     private VerificationDsl() { }
-    public static DslProperty property(String id, BoolExpr expression) {
-        return new DslProperty(id, expression.node());
-    }
     public static DslProperty property(String id, DslDomain domain, BoolExpr guarantee) {
         return new DslProperty(id, domain, guarantee.node());
     }

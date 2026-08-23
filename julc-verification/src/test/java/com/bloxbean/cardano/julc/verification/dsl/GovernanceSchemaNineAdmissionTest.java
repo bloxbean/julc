@@ -21,14 +21,14 @@ class GovernanceSchemaNineAdmissionTest {
                 .ge(VerificationDsl.integer(1)).and(value.actionStrict().exists(action ->
                         action.whenHardFork((previous, version) ->
                                 version.major().eq(VerificationDsl.integer(11))))));
-        var candidate = DslPropertySet.typedV9(DslPurpose.SPENDING, hash,
+        var candidate = DslPropertySet.schema1(DslPurpose.SPENDING, hash,
                 VerificationDsl.property("governance.vote-or-hard-fork",
                         DslDomain.VALID_SPENDING_V3_PINNED, vote.or(proposal)));
 
         var normalized = DslPropertyValidator.validateAndNormalize(candidate, schema, 10_000);
         var promoted = ComposedDslPromotion.promote(normalized, schema,
                 "GovernanceGate", "GovernanceProperties.java");
-        assertEquals(9, ComposedDslPromotion.verifyIntegrity(promoted).schemaVersion());
+        assertEquals(1, ComposedDslPromotion.verifyIntegrity(promoted).schemaVersion());
         assertTrue(promoted.claims().getFirst().capabilities()
                 .contains("field.txInfo.votes"));
         assertTrue(promoted.claims().getFirst().capabilities()
@@ -42,30 +42,16 @@ class GovernanceSchemaNineAdmissionTest {
     }
 
     @Test
-    void governanceFailsClosedUnderSchemaEight() {
-        ContractSchema schema = schema();
-        String hash = ContractTypeProjection.sha256(ContractTypeProjection.project(schema));
-        BoolExpr governance = LedgerExpressions.context().txInfo().proposals()
-                .exists(proposal -> proposal.deposit().ge(VerificationDsl.integer(0)));
-        var old = DslPropertySet.typedV8(DslPurpose.SPENDING, hash,
-                VerificationDsl.property("old.schema",
-                        DslDomain.VALID_SPENDING_V3_PINNED, governance));
-        var error = assertThrows(IllegalArgumentException.class,
-                () -> DslPropertyValidator.validate(old, schema, 10_000));
-        assertTrue(error.getMessage().contains("schema 9"), error.getMessage());
-    }
-
-    @Test
     void governanceTransactionDataComposesAcrossSelectablePurposes() {
         for (DslPurpose purpose : DslPurpose.values()) {
             ContractSchema schema = purposeSchema(purpose);
             String hash = ContractTypeProjection.sha256(ContractTypeProjection.project(schema));
             BoolExpr guarantee = LedgerExpressions.context().txInfo().proposals()
                     .exists(proposal -> proposal.deposit().ge(VerificationDsl.integer(0)));
-            var candidate = DslPropertySet.typedV9(purpose, hash,
+            var candidate = DslPropertySet.schema1(purpose, hash,
                     VerificationDsl.property("governance." + purpose.name().toLowerCase(),
                             domain(purpose), guarantee));
-            assertEquals(9, DslPropertyValidator.validateAndNormalize(
+            assertEquals(1, DslPropertyValidator.validateAndNormalize(
                     candidate, schema, 10_000).schemaVersion());
         }
     }
@@ -83,7 +69,7 @@ class GovernanceSchemaNineAdmissionTest {
         BoolExpr forgedEquality = LedgerExpressions.context().txInfo().proposals()
                 .exists(proposal -> new BoolExpr(new TypedEqualityNode(proposal.node(),
                         proposal.node(), LedgerTypeAuthority.PROPOSAL_PROCEDURE, false)));
-        var forged = DslPropertySet.typedV9(DslPurpose.SPENDING, hash,
+        var forged = DslPropertySet.schema1(DslPurpose.SPENDING, hash,
                 VerificationDsl.property("forged.raw-equality",
                         DslDomain.VALID_SPENDING_V3_PINNED, forgedEquality));
         assertThrows(IllegalArgumentException.class,

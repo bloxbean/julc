@@ -198,79 +198,6 @@ public final class VerificationProjectGenerator {
                 recursiveDepth, outputDirectory, force, property);
     }
 
-    /** Generates the E.4a domain-aware one-shot authorized mint workspace. */
-    public static GenerationResult generateOneShotMint(
-            Path blueprintFile,
-            OneShotMintProperty property,
-            int fuel,
-            int recursiveDepth,
-            Path outputDirectory,
-            boolean force) throws Exception {
-        if (property == null
-                || !OneShotMintProperty.TEMPLATE.equals(property.template())
-                || property.schemaVersion() != OneShotMintProperty.SCHEMA_VERSION
-                || !"minting".equals(property.scriptPurpose())
-                || !property.ledgerValidityModeled()
-                || !property.domainAssumptions().equals(
-                        List.of("validMintingContext/v3-pinned"))
-                || !property.authorityHex().matches("[0-9a-f]{56}")
-                || !property.anchorTransactionIdHex().matches("[0-9a-f]{64}")
-                || !property.anchorOutputIndex().matches("0|[1-9][0-9]{0,18}")
-                || !property.tokenNameHex().matches("(?:[0-9a-f]{2}){0,32}")
-                || !"1".equals(property.quantity())) {
-            throw new IllegalArgumentException("Unsupported one-shot mint property IR");
-        }
-        String expectedDsl = PropertyIrCodec.canonicalJson(MintingDsl.oneShotPropertySet(
-                property.propertyId(), property.authorityHex(),
-                property.anchorTransactionIdHex(),
-                Long.parseLong(property.anchorOutputIndex()), property.tokenNameHex()));
-        if (!expectedDsl.equals(property.canonicalDslJson())) {
-            throw new IllegalArgumentException(
-                    "One-shot mint canonical DSL does not match its typed fields");
-        }
-        return generateInternal(blueprintFile, property.validatorTitle(), "minting", fuel,
-                recursiveDepth, outputDirectory, force, property);
-    }
-
-    /** Generates the E.3 exact-UPLC seller-paid-at-least DSL workspace. */
-    public static GenerationResult generateSellerPayment(
-            Path blueprintFile,
-            SellerPaymentProperty property,
-            int fuel,
-            int recursiveDepth,
-            Path outputDirectory,
-            boolean force) throws Exception {
-        if (property == null
-                || !SellerPaymentProperty.TEMPLATE.equals(property.template())
-                || property.schemaVersion() != SellerPaymentProperty.SCHEMA_VERSION
-                || !"spending".equals(property.scriptPurpose())
-                || !property.ledgerValidityModeled()
-                || !property.domainAssumptions().equals(
-                        List.of("validSpendingContext/v3-pinned"))) {
-            throw new IllegalArgumentException("Unsupported seller-payment DSL property IR");
-        }
-        return generateInternal(blueprintFile, property.validatorTitle(), "spending", fuel,
-                recursiveDepth, outputDirectory, force, property);
-    }
-
-    /** Generates a schema-3 compositional DSL workspace without whole-formula recognition. */
-    public static GenerationResult generateComposedDsl(
-            Path blueprintFile,
-            ComposedDslProperty property,
-            int fuel,
-            int recursiveDepth,
-            Path outputDirectory,
-            boolean force) throws Exception {
-        if (property == null) throw new IllegalArgumentException("Composed DSL property is required");
-        if (property.schemaVersion() >= ComposedDslProperty.TYPED_SCHEMA_VERSION) {
-            throw new IllegalArgumentException(
-                    "Schema-4/5 workspace generation requires the fresh compiler-owned ContractSchema");
-        }
-        ComposedDslPromotion.verifyIntegrity(property);
-        return generateInternal(blueprintFile, property.validatorTitle(),
-                property.scriptPurpose(), fuel, recursiveDepth, outputDirectory, force, property);
-    }
-
     /**
      * Generates a typed composed workspace after revalidating against the same fresh
      * compiler-owned schema used by the observational artifact compile.
@@ -450,18 +377,12 @@ public final class VerificationProjectGenerator {
                         plan.needsCertificate() || plan.needsCertificateIndex()
                                 || plan.capabilities().contains(
                                         "field.txInfo.certificates")),
-                supportDsl != null && supportDsl.schemaVersion()
-                        >= DslPropertySet.TYPED_SCHEMA_VERSION,
-                supportDsl != null && supportDsl.schemaVersion()
-                        >= DslPropertySet.LEDGER_SCHEMA_VERSION,
-                supportDsl != null && supportDsl.schemaVersion()
-                        >= DslPropertySet.AUTHORIZATION_SCHEMA_VERSION,
-                supportDsl != null && supportDsl.schemaVersion()
-                        >= DslPropertySet.VALUE_ALGEBRA_SCHEMA_VERSION,
-                supportDsl != null && supportDsl.schemaVersion()
-                        >= DslPropertySet.GOVERNANCE_SCHEMA_VERSION,
-                supportDsl != null && supportDsl.schemaVersion()
-                        >= DslPropertySet.REVIEWED_DATA_ADAPTER_SCHEMA_VERSION));
+                supportDsl != null,
+                supportDsl != null,
+                supportDsl != null,
+                supportDsl != null,
+                supportDsl != null,
+                supportDsl != null));
         files.put("GeneratedSchemas.lean", schemas.source());
         files.put("PropertyTemplates.lean", propertyTemplates(recursiveDepth));
         files.put("CheckedExecution.lean", checkedExecution());
@@ -531,28 +452,6 @@ public final class VerificationProjectGenerator {
                     nonVacuityCounterexample(leanId));
             files.put(leanId + "VacuityProof.lean", vacuityProof(leanId));
             files.put("verification-property.json", JSON.writeValueAsString(property) + "\n");
-        } else if (property instanceof OneShotMintProperty oneShot) {
-            String redeemerRoot = referenceName(
-                    validator.path("redeemer").path("schema").path("$ref").asText());
-            String redeemerLeanType = requiredLeanType(schemas, redeemerRoot);
-            DslPropertySet propertyDsl = MintingDsl.oneShotPropertySet(
-                    oneShot.propertyId(), oneShot.authorityHex(),
-                    oneShot.anchorTransactionIdHex(),
-                    Long.parseLong(oneShot.anchorOutputIndex()), oneShot.tokenNameHex());
-            files.put("SecurityProperty.lean", mintingDslProperty(
-                    redeemerLeanType, propertyDsl, true));
-            files.put("MintingSemanticsTests.lean", mintingSemanticsTests());
-            files.put("LedgerDomainEquivalence.lean", mintingDomainEquivalence());
-            files.put(leanId + "Obligation.lean",
-                    oneShotMintObligation(leanId, artifactId, fuel));
-            files.put(leanId + "Proof.lean", oneShotMintProof(leanId));
-            files.put(leanId + "LedgerCorollary.lean",
-                    oneShotMintLedgerCorollary(leanId));
-            files.put(leanId + "Counterexample.lean", oneShotMintCounterexample(leanId));
-            files.put(leanId + "NonVacuityCounterexample.lean",
-                    nonVacuityCounterexample(leanId));
-            files.put(leanId + "VacuityProof.lean", vacuityProof(leanId));
-            files.put("verification-property.json", JSON.writeValueAsString(property) + "\n");
         } else if (property instanceof SellerPaymentProperty payment) {
             String datumRoot = referenceName(
                     validator.path("datum").path("schema").path("$ref").asText());
@@ -603,26 +502,14 @@ public final class VerificationProjectGenerator {
                 files.put("LedgerContextSemanticsTests.lean",
                         ledgerContextSemanticsTests());
             }
-            if (composedDsl.schemaVersion()
-                    >= DslPropertySet.AUTHORIZATION_SCHEMA_VERSION) {
-                files.put("AuthorizationSemanticsTests.lean",
-                        authorizationSemanticsTests());
-            }
-            if (composedDsl.schemaVersion()
-                    >= DslPropertySet.VALUE_ALGEBRA_SCHEMA_VERSION) {
-                files.put("ValueAlgebraSemanticsTests.lean",
-                        valueAlgebraSemanticsTests());
-            }
-            if (composedDsl.schemaVersion()
-                    >= DslPropertySet.GOVERNANCE_SCHEMA_VERSION) {
-                files.put("GovernanceSemanticsTests.lean",
-                        governanceSemanticsTests());
-            }
-            if (composedDsl.schemaVersion()
-                    >= DslPropertySet.REVIEWED_DATA_ADAPTER_SCHEMA_VERSION) {
-                files.put("ReviewedDataAdapterSemanticsTests.lean",
-                        reviewedDataAdapterSemanticsTests());
-            }
+            files.put("AuthorizationSemanticsTests.lean",
+                    authorizationSemanticsTests());
+            files.put("ValueAlgebraSemanticsTests.lean",
+                    valueAlgebraSemanticsTests());
+            files.put("GovernanceSemanticsTests.lean",
+                    governanceSemanticsTests());
+            files.put("ReviewedDataAdapterSemanticsTests.lean",
+                    reviewedDataAdapterSemanticsTests());
             if (composedPlans.values().stream()
                     .anyMatch(DslSemanticDependencies.Plan::needsRawMint)) {
                 files.put("MintingSemanticsTests.lean", mintingSemanticsTests());
@@ -671,7 +558,7 @@ public final class VerificationProjectGenerator {
             throw new IllegalArgumentException("Unsupported verification property "
                     + property.template());
         }
-        // Annotation profiles use the same stable schema-10 DSL as an explicit
+        // Annotation profiles use the same public schema-1 DSL as an explicit
         // composed property. Keep the lake roots and emitted semantic controls in
         // lockstep; otherwise a generated annotation workspace would name roots
         // that do not exist.
@@ -1043,7 +930,7 @@ public final class VerificationProjectGenerator {
     }
 
     /**
-     * Prevents the carried schema-4 type graph and blueprint-derived Lean codecs from
+     * Prevents the carried schema-1 type graph and blueprint-derived Lean codecs from
      * assigning different names, tags, arities, or field positions to the same value.
      */
     static void validateProjectedTypesAgainstBlueprint(
@@ -2304,11 +2191,13 @@ public final class VerificationProjectGenerator {
             if (canonicalDsl != null) {
                 JsonNode parsedDsl = JSON.readTree(canonicalDsl);
                 root.put("dslIr", Map.of(
+                        "format", parsedDsl.path("format").asText(""),
                         "schemaVersion", parsedDsl.path("schemaVersion").asInt(-1),
                         "sha256", VerificationFiles.sha256(
                                 canonicalDsl.getBytes(java.nio.charset.StandardCharsets.UTF_8))));
-                if (parsedDsl.path("schemaVersion").asInt(-1)
-                        == DslPropertySet.REVIEWED_DATA_ADAPTER_SCHEMA_VERSION) {
+                if (DslPropertySet.FORMAT.equals(parsedDsl.path("format").asText())
+                        && parsedDsl.path("schemaVersion").asInt(-1)
+                                == DslPropertySet.SCHEMA_VERSION) {
                     root.put("reviewedRawDataAdapterAudit", Map.of(
                             "schemaVersion", 1,
                             "sha256", VerificationFiles.sha256(
@@ -2398,7 +2287,7 @@ public final class VerificationProjectGenerator {
 
     private static String genericCollectionsSemanticsTests() {
         return """
-                /- Kernel-reduced controls for schema-4 collection meanings. -/
+                /- Kernel-reduced controls for schema-1 collection meanings. -/
                 import SecurityProperty
 
                 namespace JulcGenerated.GenericCollectionsSemanticsTests
@@ -2449,7 +2338,7 @@ public final class VerificationProjectGenerator {
 
     private static String ledgerContextSemanticsTests() {
         return """
-                /- Kernel-reduced controls for schema-5 ledger-context meanings. -/
+                /- Kernel-reduced controls for schema-1 ledger-context meanings. -/
                 import SecurityProperty
 
                 namespace JulcGenerated.LedgerContextSemanticsTests
@@ -2672,7 +2561,7 @@ public final class VerificationProjectGenerator {
 
     private static String authorizationSemanticsTests() {
         return """
-                /- Kernel-reduced controls for schema-6 distinct authorization meanings. -/
+                /- Kernel-reduced controls for schema-1 distinct authorization meanings. -/
                 import SecurityProperty
 
                 namespace JulcGenerated.AuthorizationSemanticsTests
@@ -2734,7 +2623,7 @@ public final class VerificationProjectGenerator {
 
     private static String valueAlgebraSemanticsTests() {
         return """
-                /- Kernel-reduced controls for schema-8 raw and extensional Value meanings. -/
+                /- Kernel-reduced controls for schema-1 raw and extensional Value meanings. -/
                 import SecurityProperty
 
                 namespace JulcGenerated.ValueAlgebraSemanticsTests
@@ -2912,7 +2801,7 @@ public final class VerificationProjectGenerator {
 
     private static String governanceSemanticsTests() {
         return """
-                /- Kernel-reduced controls for schema-9 governance transaction data. -/
+                /- Kernel-reduced controls for schema-1 governance transaction data. -/
                 import SecurityProperty
 
                 namespace JulcGenerated.GovernanceSemanticsTests
@@ -3639,8 +3528,8 @@ public final class VerificationProjectGenerator {
 
     private static String mintingDslProperty(
             String redeemerType, DslPropertySet propertyDsl, boolean ledgerDomain) {
-        var implication = (BoolBinaryNode) propertyDsl.properties().getFirst().expression();
-        String guarantee = PropertyLeanRenderer.renderExpression(implication.right());
+        String guarantee = PropertyLeanRenderer.renderExpression(
+                propertyDsl.properties().getFirst().expression());
         String domain = ledgerDomain ? """
 
                 %s
@@ -3908,21 +3797,15 @@ public final class VerificationProjectGenerator {
 
                     """.formatted(redeemerType));
         }
-        boolean structurallyTyped = propertySet.schemaVersion()
-                >= DslPropertySet.TYPED_SCHEMA_VERSION;
-        boolean structurallyLedgerTyped = propertySet.schemaVersion()
-                >= DslPropertySet.LEDGER_SCHEMA_VERSION;
-        boolean authorizationTyped = propertySet.schemaVersion()
-                >= DslPropertySet.AUTHORIZATION_SCHEMA_VERSION;
-        boolean valueAlgebraTyped = propertySet.schemaVersion()
-                >= DslPropertySet.VALUE_ALGEBRA_SCHEMA_VERSION;
-        boolean governanceTyped = propertySet.schemaVersion()
-                >= DslPropertySet.GOVERNANCE_SCHEMA_VERSION;
-        boolean reviewedAdaptersTyped = propertySet.schemaVersion()
-                >= DslPropertySet.REVIEWED_DATA_ADAPTER_SCHEMA_VERSION;
+        boolean structurallyTyped = true;
+        boolean structurallyLedgerTyped = true;
+        boolean authorizationTyped = true;
+        boolean valueAlgebraTyped = true;
+        boolean governanceTyped = true;
+        boolean reviewedAdaptersTyped = true;
         if (structurallyTyped) {
             out.append("""
-                    /- Schema-4 collection semantics preserve order and duplicates. -/
+                    /- schema-1 collection semantics preserve order and duplicates. -/
                     def julcStructuralEq [IsData α] (left right : α) : Bool :=
                       IsData.toData left == IsData.toData right
 
@@ -3976,7 +3859,7 @@ public final class VerificationProjectGenerator {
         }
         if (governanceTyped) {
             out.append("""
-                    /- Schema-9 preserves both levels of the list-backed voter map. -/
+                    /- schema-1 preserves both levels of the list-backed voter map. -/
                     def julcVoterMap (votes : VoterMap) :
                         JulcMap Voter (JulcMap GovernanceActionId Vote) :=
                       ⟨votes.map (fun entry => (entry.1, ⟨entry.2⟩))⟩
@@ -3989,7 +3872,7 @@ public final class VerificationProjectGenerator {
         }
         if (authorizationTyped) {
             out.append("""
-                    /- Schema-6 authorization is set-like only within these relations. -/
+                    /- schema-1 authorization is set-like only within these relations. -/
                     def julcAuthorizationContains
                         (key : CardanoLedgerApi.V2.PubKeyHash)
                         (keys : List CardanoLedgerApi.V2.PubKeyHash) : Bool :=
@@ -4047,7 +3930,7 @@ public final class VerificationProjectGenerator {
         }
         if (valueAlgebraTyped) {
             out.append("""
-                    /- Schema-8 Value operations keep raw and extensional meanings separate. -/
+                    /- schema-1 Value operations keep raw and extensional meanings separate. -/
                     def julcValueQuantitySumStrictPresence (policy token : ByteString)
                         (value : CardanoLedgerApi.V2.Value) : Option (Int × Bool) :=
                       let rec sumTokens (entries : List (Data × Data)) (acc : Int)
@@ -4189,7 +4072,7 @@ public final class VerificationProjectGenerator {
         }
         if (structurallyTyped && needsDatum) {
             if (datumType == null) throw new IllegalArgumentException(
-                    "Schema-4 datum dependency has no generated Lean type");
+                    "schema-1 datum dependency has no generated Lean type");
             out.append("def typedDatum (ctx : ScriptContext) : Option ")
                     .append("JulcGenerated.Schemas.").append(datumType).append(" :=\n")
                     .append("  match ctx.scriptContextScriptInfo with\n")
@@ -4198,7 +4081,7 @@ public final class VerificationProjectGenerator {
         }
         if (structurallyTyped && needsRedeemer) {
             if (redeemerType == null) throw new IllegalArgumentException(
-                    "Schema-4 redeemer dependency has no generated Lean type");
+                    "schema-1 redeemer dependency has no generated Lean type");
             out.append("def typedRedeemer (ctx : ScriptContext) : Option ")
                     .append("JulcGenerated.Schemas.").append(redeemerType).append(" :=\n")
                     .append("  IsData.fromData ctx.scriptContextRedeemer\n\n");
@@ -4414,7 +4297,7 @@ public final class VerificationProjectGenerator {
 
     private static String composedProof(String module, DslProperty property) {
         return """
-                /- Generated SMT obligation for schema-3 DSL property %s. -/
+                /- Generated SMT obligation for schema-1 DSL property %s. -/
                 import %sObligation
 
                 namespace JulcGenerated.%s
@@ -4428,7 +4311,7 @@ public final class VerificationProjectGenerator {
 
     private static String composedCounterexample(String module, DslProperty property) {
         return """
-                /- Generated counterexample query for schema-3 DSL property %s. -/
+                /- Generated counterexample query for schema-1 DSL property %s. -/
                 import %sObligation
 
                 namespace JulcGenerated.%s
@@ -5958,7 +5841,7 @@ public final class VerificationProjectGenerator {
         String valueSemantics = property.canonicalDslJson()
                 .contains("\"schemaVersion\":8") ? """
 
-                Schema-8 value claims keep raw structural, upstream first-match,
+                schema-1 value claims keep raw structural, upstream first-match,
                 strict-summed, and finite-support extensional meanings separate. The
                 certificate records the meanings and aggregation scopes used by each
                 claim. Strict-summed absence is `none`, explicit zero is `some 0`, and
@@ -5971,7 +5854,7 @@ public final class VerificationProjectGenerator {
                 # Generated JuLC compositional DSL verification
 
                 This generator-owned workspace checks `%s` against `%d` independently
-                named schema-3 properties from `%s`. The worker-produced AST was strictly
+                named schema-1 properties from `%s`. The worker-produced AST was strictly
                 decoded, authoritatively type-checked, normalized, and hash-bound before
                 this workspace was published.
 

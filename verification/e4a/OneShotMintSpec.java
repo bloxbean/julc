@@ -1,9 +1,11 @@
 package evidence;
 
 import com.bloxbean.cardano.julc.verification.dsl.VerificationSpecification;
+import com.bloxbean.cardano.julc.verification.dsl.MintingContractModel;
+import com.bloxbean.cardano.julc.verification.dsl.ir.DslDomain;
 import com.bloxbean.cardano.julc.verification.dsl.ir.DslPropertySet;
 
-import static com.bloxbean.cardano.julc.verification.dsl.MintingDsl.oneShotPropertySet;
+import static com.bloxbean.cardano.julc.verification.dsl.VerificationDsl.*;
 
 /** User-owned E.4a typed property; generated TokenPolicyModel is disposable. */
 public final class OneShotMintSpec implements VerificationSpecification {
@@ -14,8 +16,18 @@ public final class OneShotMintSpec implements VerificationSpecification {
 
     @Override
     public DslPropertySet properties() {
-        return oneShotPropertySet(
-                "one-shot-authorized-mint", AUTHORITY, ANCHOR_TX_ID,
-                0, "4a554c43");
+        var contract = new MintingContractModel();
+        var generated = new TokenPolicyModel();
+        var quantity = integer(1);
+        var guarantee = contract.redeemerStrictlyDecodes()
+                .and(contract.context().txInfo().inputs()
+                        .consumes(txOutRef(ANCHOR_TX_ID, 0)))
+                .and(contract.context().txInfo().signatories()
+                        .contains(keyHash(AUTHORITY)))
+                .and(contract.context().txInfo().mint().exactOwnPolicyAsset(
+                        contract.ownPolicy(), bytes("4a554c43"), quantity))
+                .and(quantity.gt(integer(0)));
+        return generated.properties(property("one-shot-authorized-mint",
+                DslDomain.VALID_MINTING_V3_PINNED, guarantee));
     }
 }

@@ -3,7 +3,6 @@ package evidence;
 import com.bloxbean.cardano.julc.verification.dsl.VerificationSpecification;
 import com.bloxbean.cardano.julc.verification.dsl.ir.DslDomain;
 import com.bloxbean.cardano.julc.verification.dsl.ir.DslPropertySet;
-import com.bloxbean.cardano.julc.verification.dsl.ir.DslPurpose;
 
 import static com.bloxbean.cardano.julc.verification.dsl.VerificationDsl.*;
 
@@ -15,7 +14,7 @@ public final class VacuousSpendingSpec implements VerificationSpecification {
     @Override
     public DslPropertySet properties() {
         var contract = new VacuousSpendingModel();
-        return DslPropertySet.composed(DslPurpose.SPENDING,
+        return contract.properties(
                 property("vacuous.signed", DslDomain.NONE,
                         contract.context().txInfo().signatories()
                                 .contains(keyHash(AUTHORITY))));

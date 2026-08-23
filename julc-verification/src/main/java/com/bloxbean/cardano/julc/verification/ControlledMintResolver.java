@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Optional;
 import com.bloxbean.cardano.julc.verification.dsl.MintingDsl;
 import com.bloxbean.cardano.julc.verification.dsl.PropertyIrCodec;
+import com.bloxbean.cardano.julc.verification.dsl.type.ContractTypeProjection;
 
 /** Resolves the C.7 controlled-mint annotation against compiler-owned schema metadata. */
 public final class ControlledMintResolver {
@@ -69,9 +70,12 @@ public final class ControlledMintResolver {
         }
         SourceLocation location = location(annotation, fileName);
         String propertyId = validatorTitle + ".controlled-mint-v1";
+        String contractSchemaSha256 = ContractTypeProjection.sha256(
+                ContractTypeProjection.project(schema));
         String canonicalDsl = PropertyIrCodec.canonicalJson(
                 MintingDsl.controlledMintPropertySet(
-                        propertyId, authority, tokenName, signedQuantity));
+                        propertyId, authority, tokenName, signedQuantity,
+                        contractSchemaSha256));
         return Optional.of(new ControlledMintProperty(
                 ControlledMintProperty.SCHEMA_VERSION,
                 ControlledMintProperty.TEMPLATE,

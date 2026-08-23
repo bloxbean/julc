@@ -1,9 +1,9 @@
 # ADR-029: E.6 stable verification DSL and annotation convergence
 
-- **Status:** Accepted and implemented
+- **Status:** Accepted; implemented on feature branch, awaiting review
 - **Date:** 2026-08-23
 - **Integration branch:** `feat/typed-verification-dsl-e4`
-- **Milestone branch:** `feat/typed-verification-dsl-e6-public-api`
+- **Schema-reset branch:** `feat/verification-dsl-schema-v1`
 - **Governing roadmap:** [ADR-016](016-typed-verification-dsl-and-profile-catalog.md)
 
 ## Context
@@ -33,16 +33,34 @@ and what is *not* promised by a successful verification run.
 
 ## Decision
 
-JuLC declares the reviewed E.4 schema-10 typed verification DSL a stable public
-API at API version 1. E.5 state-machine work is excluded.
+JuLC declares the reviewed E.4 typed verification DSL a stable public API at
+API version 1 with canonical DSL schema version 1. E.5 state-machine work is
+excluded.
+
+The E.1-E.4 implementation used numeric schemas 1 through 10 as internal
+milestone feature gates. None was released. Before merge, JuLC resets the
+complete reviewed language to the only public canonical format:
+
+```json
+{
+  "format": "julc.verification.dsl",
+  "schemaVersion": 1
+}
+```
+
+The explicit format identifier prevents an old experimental milestone document
+whose numeric version happened to be `1` from being interpreted as the public
+schema. Experimental schemas 1 through 10 are removed from the public reader,
+generator, CLI selector, and compatibility contract. Historical certificates
+remain records of the development runs that produced them, but their embedded
+experimental DSL payloads are not supported public replay inputs.
 
 Stable means:
 
 1. Java source compatibility is maintained for the documented builder and
    generated-metamodel surface within API version 1.
-2. Canonical schema-10 IR meanings and serialization are frozen. Additive or
-   changed semantics require a new property schema; schemas 1 through 10 remain
-   readable according to their recorded compatibility policy.
+2. Canonical `julc.verification.dsl` schema-1 meanings and serialization are
+   frozen. Additive or changed semantics require a new public property schema.
 3. `@RequiresSigner`, `@ControlledMint`, and the complete stateful annotation
    profile lower to canonical DSL IR before Lean generation. Profile-specific
    CLI wording, proof names, and certificate classification may remain, but the
@@ -52,8 +70,8 @@ Stable means:
    `DslPropertySet`, purpose/domain enums, and compiler-generated metamodel.
    Raw `dsl.ir` node constructors are serialization infrastructure, not a
    supported user construction API.
-5. `julc verify dsl-init` generates schema 10 by default. Older schema versions
-   remain selectable for reproduction and compatibility testing.
+5. `julc verify dsl-init` generates public schema 1. The unreleased milestone
+   schemas are neither selectable nor accepted by the public reader.
 6. The bounded worker remains a trusted-source boundary: it executes project
    Java. Stable API does not mean sandboxed untrusted code.
 7. Stable semantics does not promise solver termination, ledger-validity
@@ -90,7 +108,7 @@ meaning can drift from its canonical DSL guarantee.
 - `VerificationDsl` literal and property factories
 - typed expression wrappers in `com.bloxbean.cardano.julc.verification.dsl`
 - `DslProperty`, `DslPropertySet`, `DslPurpose`, and `DslDomain`
-- generated schema-10 contract metamodel source
+- generated API-v1/schema-1 contract metamodel source
 - `julc verify dsl-init` and `julc verify dsl`
 - the four annotation profiles as concise frontends over the same IR
 
@@ -130,7 +148,7 @@ the stable DSL form.
 ### `@PreservesValue` + `@Monotonic`
 
 The complete stateful profile remains an all-or-nothing profile. Its guarantee
-is lowered to typed schema-10 IR containing:
+is lowered to typed public schema-1 IR containing:
 
 - strict current datum and redeemer decoding;
 - authority membership in the complete signatory list;
@@ -146,7 +164,7 @@ than a stateful-only escape hatch. It accepts a `Data` expression, a
 compiler-projected target type, and a typed predicate; malformed data makes the
 predicate false. No raw Lean or user-selected decoder name enters the IR.
 
-Schema 10 also adds a closed `whenSingleton` list eliminator. It matches only a
+Public schema 1 also includes a closed `whenSingleton` list eliminator. It matches only a
 one-element list and binds that element to a typed predicate. The stateful
 profile uses it for the continuing-output invariant instead of encoding the
 same meaning as recursive `count == 1` plus `at(0)`. This preserves the direct
@@ -155,10 +173,13 @@ regression without admitting general pattern syntax.
 
 ## Compatibility
 
-This ADR promotes the API status; it does not remove schemas 1 through 9 or
-their readers. `dsl-init` changes its default from schema 3 to schema 10, which
-is intentional: new users receive the complete reviewed E.4 surface. A user
-who needs reproducible older generated source may pass `--schema-version`.
+No external compatibility promise applies to the experimental milestone
+schemas because they were never released. Their numeric progression is removed
+rather than exposed as public history. New users receive the complete reviewed
+E.4 surface as schema 1, and `dsl-init` no longer exposes `--schema-version`.
+
+Historical milestone ADRs and certificates may retain their original schema
+numbers as provenance. They are not accepted as current canonical DSL input.
 
 Annotation source syntax, property IDs, CLI exit codes, and certificate outcome
 classes remain unchanged. Adding canonical DSL/type bindings to annotation
@@ -169,7 +190,7 @@ constructors/read handling where retained evidence requires it.
 
 - `julc-verification`: API marker/version, annotation lowerings, strict decoded
   data node, validation/canonicalization/rendering, API contract tests.
-- `julc-cli`: common annotation rendering path, schema-10 default, stable CLI
+- `julc-cli`: common annotation rendering path, schema-1 generation, stable CLI
   wording, hash/certificate integrity checks, generation tests.
 - `verification`: stable getting-started documentation and retained convergence
   evidence where hashes change.
@@ -185,7 +206,7 @@ are authorized by E.6.
 - inventory public DSL entry points and direct-IR leakage;
 - publish API version and current stable property schema constants;
 - document supported versus internal surfaces;
-- freeze schema-10 canonical fixtures and generated metamodel signatures.
+- freeze schema-1 canonical fixtures and generated metamodel signatures.
 
 ### E.6.2 — Annotation convergence
 
@@ -196,7 +217,7 @@ are authorized by E.6.
 
 ### E.6.3 — Stable CLI and guide
 
-- make schema 10 the `dsl-init` default;
+- make public schema 1 the only `dsl-init` output;
 - remove “experimental” from the stable E.4 command and guide wording;
 - keep prominent trusted-source, solver-bound, and certificate-scope caveats;
 - provide annotation and direct-DSL examples that state their equivalence.
@@ -214,15 +235,15 @@ are authorized by E.6.
 
 Tests must cover:
 
-- stable API/version constants and default schema 10;
-- frozen schema-10 canonical JSON and metamodel output;
+- stable API/version constants and canonical schema 1;
+- frozen schema-1 canonical JSON and metamodel output;
 - annotation-versus-DSL canonical JSON equality;
 - annotation-versus-DSL rendering through the same Lean backend path;
 - strict decoded-data success and malformed/wrong-type rejection;
 - singleton-list empty/one/many semantics, canonicalization, and schema gate;
 - stateful profile positive and adversarial compositions;
 - tampered annotation canonical IR/type projection rejection;
-- schemas 1 through 10 remaining readable;
+- experimental milestone schemas rejected by the public reader;
 - native-image reachability for any newly serialized node;
 - unchanged annotation CLI result meanings; and
 - repository-wide build success.
@@ -264,37 +285,55 @@ require separate ADRs and property-schema versions.
 
 ## Implementation outcome
 
-E.6 is implemented on `feat/typed-verification-dsl-e6-public-api`.
+The pre-release schema reset is implemented on
+`feat/verification-dsl-schema-v1`.
 
-- `VerificationDslApi` declares Java construction API version 1, stable property
-  schema 10, and readable schemas 1 through 10.
-- `julc verify dsl-init` defaults to schema 10 and the user guides distinguish
-  the supported builder/metamodel surface from public serialization internals.
+- `VerificationDslApi` declares Java construction API version 1 and canonical
+  property schema 1. No older canonical DSL schema is readable.
+- Canonical payloads carry `format: "julc.verification.dsl"` so the new schema
+  1 cannot be confused with the former experimental schema 1.
+- `julc verify dsl-init` emits schema 1 and no longer exposes a schema-selection
+  option. The user guides distinguish the supported builder/metamodel surface
+  from serialization internals.
 - `@RequiresSigner` and the complete stateful annotation profile now carry
-  canonical schema-10 DSL plus compiler-projected contract types. Workspace
+  canonical schema-1 DSL plus compiler-projected contract types. Workspace
   generation re-derives both from the typed profile fields and rejects a
   mismatch before writing Lean.
 - `@ControlledMint` retains its canonical closed minting DSL lowering and its
   annotation/direct-DSL identity test. The former profile-specific required-
   signer, stateful-spending, and controlled-mint Lean guarantee methods were
   removed; annotation guarantees are rendered from DSL IR.
-- Strict inline-`Data` decoding and exact singleton-list elimination were added
-  as closed schema-10 operations. Both are type-authorized by the parent,
+- Strict inline-`Data` decoding and exact singleton-list elimination are closed
+  schema-1 operations. Both are type-authorized by the parent,
   canonicalized, rendered without raw Lean input, and included in native-image
   reachability metadata.
 - No compiler, core, ledger API, stdlib, blueprint, or VM source changed. The
   existing annotation-neutrality tests continue to assert byte-identical UPLC.
 
-Verification completed on 2026-08-23:
+Verification completed for the reset:
 
-- fresh `julc-verification` suite: 100 tests, zero failures;
-- fresh `julc-cli` suite: 435 tests, zero failures;
-- repository-wide `./gradlew build`: successful;
-- GraalVM 25.0.2 `:julc-cli:nativeCompile`: successful, followed by a native
-  schema-10 `dsl-init` invocation against the C.6 fixture;
-- complete C.5 exact-artifact controls: authorized `SMT-VALID`, vulnerable
-  `REFUTED`, vacuous `COULD-NOT-EVALUATE/property-vacuous`; and
-- C.6 authorized exact artifact: non-vacuous and `SMT-VALID` at fuel 3,000.
+- `:julc-verification:test --rerun-tasks`: 89 tests, zero failures;
+- `:julc-cli:test --rerun-tasks`: 433 tests, zero failures;
+- repository-wide `./gradlew build`: successful (213 tasks in the recorded run);
+- documentation production build: 28 pages generated successfully;
+- GraalVM 25.0.2 `:julc-cli:nativeCompile`: successful, followed by native
+  `dsl-init` generation reporting API v1/schema 1 with no schema selector;
+- current generated spending, minting, rewarding, and certifying metamodels
+  compile with the migrated E.3/E.4 specifications; and
+- all retained E.4 reproduction scripts parse without the removed
+  `--schema-version` option and assert canonical schema 1 on regeneration.
+
+The capability-inventory hash changes because its remaining historical
+schema-5 wording was replaced with the canonical schema-1 policy. This is a
+documentation-only capability note change. Existing retained certificates
+remain historical hash-bound records; they are intentionally not replayable as
+current canonical DSL inputs and must be regenerated for a current result.
+
+The schema-reset release gate does not claim that every historical SMT run was
+re-solved. JVM/native model generation, authoritative admission, rendering,
+runner integrity, compiler UPLC-neutrality, and repository integration were
+rerun. Historical solver certificates remain provenance under the explicit
+pre-release migration decision above.
 
 One bounded-solver residual is retained explicitly. Re-running the C.6
 missing-signer refutation did not complete within a ten-minute review ceiling,

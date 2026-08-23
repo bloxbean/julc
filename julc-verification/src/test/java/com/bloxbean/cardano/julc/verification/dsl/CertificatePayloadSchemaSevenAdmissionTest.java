@@ -29,7 +29,7 @@ class CertificatePayloadSchemaSevenAdmissionTest {
         Path sources = tempDir.resolve("sources/evidence");
         Files.createDirectories(sources);
         Path model = sources.resolve("CertificateModel.java");
-        Files.writeString(model, ContractMetamodelGenerator.generateTypedV7(
+        Files.writeString(model, ContractMetamodelGenerator.generate(
                 compiled.contractSchema(), "evidence", "CertificateModel"));
         Path specification = sources.resolve("CertificateProperties.java");
         Files.writeString(specification, """
@@ -55,7 +55,7 @@ class CertificatePayloadSchemaSevenAdmissionTest {
                 "evidence.CertificateProperties", compiled.contractSchema(),
                 tempDir.resolve("worker"), Duration.ofSeconds(10));
 
-        assertEquals(DslPropertySet.CERTIFICATE_PAYLOAD_SCHEMA_VERSION,
+        assertEquals(DslPropertySet.SCHEMA_VERSION,
                 candidate.schemaVersion());
         ComposedDslPromotion.promote(candidate, compiled.contractSchema(),
                 "CertificatePayloadGate", "CertificateProperties.java");
@@ -159,18 +159,6 @@ class CertificatePayloadSchemaSevenAdmissionTest {
     void schemaSixAndUnguardedOrMistypedPayloadsFailClosed() {
         var compiled = compileCertifying();
         var certificate = LedgerExpressions.currentCertificate();
-        BoolExpr guarded = certificate.whenPoolRetire((pool, epoch) ->
-                pool.eq(pool).and(epoch.ge(VerificationDsl.integer(0))));
-        String hash = ContractTypeProjection.sha256(
-                ContractTypeProjection.project(compiled.contractSchema()));
-        var schemaSix = DslPropertySet.typedV6(DslPurpose.CERTIFYING, hash,
-                VerificationDsl.property("certificate.schema-six", DslDomain.NONE,
-                        guarded));
-        assertTrue(assertThrows(IllegalArgumentException.class,
-                () -> DslPropertyValidator.validate(
-                        schemaSix, compiled.contractSchema(), 1_000))
-                .getMessage().contains("schema-7"));
-
         var unguarded = new LedgerVariantFieldNode(certificate.node(),
                 LedgerTypeAuthority.TX_CERT, "TxCertPoolRetire", "epoch",
                 LedgerTypeAuthority.INTEGER);
@@ -241,7 +229,7 @@ class CertificatePayloadSchemaSevenAdmissionTest {
             ContractCompileResult compiled, BoolExpr guarantee) {
         String hash = ContractTypeProjection.sha256(
                 ContractTypeProjection.project(compiled.contractSchema()));
-        return DslPropertySet.typedV7(DslPurpose.CERTIFYING, hash,
+        return DslPropertySet.schema1(DslPurpose.CERTIFYING, hash,
                 VerificationDsl.property("certificate.payloads",
                         DslDomain.VALID_CERTIFYING_V3_PINNED, guarantee));
     }

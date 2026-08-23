@@ -8,7 +8,7 @@ import com.bloxbean.cardano.julc.verification.dsl.type.VerificationTypeRef;
 import java.util.function.Function;
 import java.util.Objects;
 
-/** Primitive builders used by generated contract-specific schema-4 wrappers. */
+/** Primitive builders used by generated contract-specific schema-1 wrappers. */
 public final class TypedExpressions {
     private TypedExpressions() { }
 

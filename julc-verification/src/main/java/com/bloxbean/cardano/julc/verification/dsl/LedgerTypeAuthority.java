@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/** Closed schema-5 view of the pinned CardanoLedgerApiBlaster V3 type surface. */
+/** Closed public-schema view of the pinned CardanoLedgerApiBlaster V3 type surface. */
 final class LedgerTypeAuthority {
     static final LedgerTypeRef SCRIPT_CONTEXT = ledger(LedgerTypeRef.LedgerKind.SCRIPT_CONTEXT);
     static final LedgerTypeRef TX_INFO = ledger(LedgerTypeRef.LedgerKind.TX_INFO);
@@ -179,11 +179,15 @@ final class LedgerTypeAuthority {
                 "field.txInfo.data");
         add(fields, TX_INFO, "redeemers", new AssocMapTypeRef(SCRIPT_PURPOSE, DATA),
                 "field.txInfo.redeemers");
+        add(fields, TX_INFO, "withdrawals", new AssocMapTypeRef(CREDENTIAL, INTEGER),
+                "field.txInfo.withdrawals");
         add(fields, TX_INFO, "votes", new AssocMapTypeRef(VOTER,
                         new AssocMapTypeRef(GOVERNANCE_ACTION_ID, VOTE)),
                 "field.txInfo.votes");
         add(fields, TX_INFO, "proposals", new ListTypeRef(PROPOSAL_PROCEDURE),
                 "field.txInfo.proposals");
+        add(fields, TX_INFO, "signatories", new ListTypeRef(PUB_KEY_HASH),
+                "field.txInfo.signatories");
         add(fields, TX_INFO, "id", TX_ID, "field.txInfo.id");
         add(fields, TX_IN_INFO, "outRef", TX_OUT_REF, "field.txInInfo.outRef");
         add(fields, TX_IN_INFO, "resolved", TX_OUT, "field.txInInfo.resolved");

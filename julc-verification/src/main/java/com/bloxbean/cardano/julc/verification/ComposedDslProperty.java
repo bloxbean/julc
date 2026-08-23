@@ -5,7 +5,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.List;
 import java.util.Objects;
 
-/** Certificate-facing representation of an admitted, normalized schema-3 DSL property set. */
+/** Certificate-facing representation of an admitted, normalized DSL property set. */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record ComposedDslProperty(
         int schemaVersion,
@@ -63,7 +63,7 @@ public record ComposedDslProperty(
         }
     }
 
-    /** Compatibility constructor for the frozen schema-3 property representation. */
+    /** Compatibility constructor for retained pre-projection property evidence. */
     public ComposedDslProperty(
             int schemaVersion,
             String template,

@@ -24,7 +24,7 @@ prepare() {
   local source="${BUILD_DIR}/src/evidence/${model}.java"
   rm -f "${source}"
   "${JULC[@]}" verify dsl-init "${PROJECT}" --validator "${validator}" \
-    --purpose spending --schema-version 10 --package evidence --class "${model}" \
+    --purpose spending --package evidence --class "${model}" \
     --out "${source}"
   javac -cp "${JULC_JAR}" -d "${BUILD_DIR}/classes" \
     "${source}" "${E4L_DIR}/${spec}.java"
@@ -66,7 +66,7 @@ if [[ "${BACKEND}" == "local" ]]; then
     vulnerable 3 REFUTED
   run_property VacuousReviewedAdapters VacuousReviewedAdaptersSpec \
     vacuous 2 COULD-NOT-EVALUATE
-  grep -q '"schemaVersion" : 10' \
+  grep -q '"schemaVersion" : 1' \
     "${E4L_DIR}/generated/authorized/verification-manifest.json"
   grep -q 'noncanonicalInfinite' \
     "${E4L_DIR}/generated/authorized/ReviewedDataAdapterSemanticsTests.lean"

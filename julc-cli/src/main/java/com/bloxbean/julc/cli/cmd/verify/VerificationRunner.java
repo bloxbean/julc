@@ -747,18 +747,12 @@ public final class VerificationRunner {
             }
             JsonNode property = VerificationFiles.JSON.readTree(propertyFile.toFile());
             String template = requiredText(property, "template");
-            boolean sellerPayment = "julc.dsl.seller-paid-at-least/v1".equals(template);
-            boolean oneShotMint = "julc.dsl.one-shot-authorized-mint/v1".equals(template);
-            boolean composedDsl = ComposedDslProperty.TEMPLATE.equals(template)
-                    || ComposedDslProperty.TYPED_TEMPLATE.equals(template)
-                    || ComposedDslProperty.LEDGER_TEMPLATE.equals(template);
+            boolean composedDsl = ComposedDslProperty.LEDGER_TEMPLATE.equals(template);
             boolean ledgerValidityModeled = composedDsl
                     ? property.path("ledgerValidityModeled").asBoolean(false)
-                    : sellerPayment || oneShotMint;
+                    : false;
             int expectedPropertySchema = ComposedDslProperty.LEDGER_TEMPLATE.equals(template)
-                    ? ComposedDslProperty.LEDGER_SCHEMA_VERSION
-                    : ComposedDslProperty.TYPED_TEMPLATE.equals(template)
-                    ? ComposedDslProperty.TYPED_SCHEMA_VERSION : 1;
+                    ? ComposedDslProperty.LEDGER_SCHEMA_VERSION : 1;
             if (property.path("schemaVersion").asInt(-1) != expectedPropertySchema
                     || property.path("schemaVersion").asInt(-1)
                         != propertyIr.path("schemaVersion").asInt(-2)
@@ -767,10 +761,6 @@ public final class VerificationRunner {
                     || !Set.of("julc.requires-signer/v1",
                             "julc.stateful-spending/v1",
                             "julc.controlled-mint/v1",
-                            "julc.dsl.seller-paid-at-least/v1",
-                            "julc.dsl.one-shot-authorized-mint/v1",
-                            ComposedDslProperty.TEMPLATE,
-                            ComposedDslProperty.TYPED_TEMPLATE,
                             ComposedDslProperty.LEDGER_TEMPLATE).contains(template)
                     || !requiredText(property, "propertyId")
                         .equals(requiredText(propertyIr, "propertyId"))
@@ -786,23 +776,6 @@ public final class VerificationRunner {
                     || !property.path("domainAssumptions").isArray()) {
                 throw new IOException("Verification property IR does not match its manifest");
             }
-            if (sellerPayment
-                    && (!property.path("domainAssumptions").equals(
-                            manifest.path("domainAssumptions"))
-                        || property.path("domainAssumptions").size() != 1
-                        || !"validSpendingContext/v3-pinned".equals(
-                            property.path("domainAssumptions").path(0).asText()))) {
-                throw new IOException("Verification seller-payment domain is unsupported");
-            }
-            if (oneShotMint
-                    && (!property.path("domainAssumptions").equals(
-                            manifest.path("domainAssumptions"))
-                        || property.path("domainAssumptions").size() != 1
-                        || !"validMintingContext/v3-pinned".equals(
-                            property.path("domainAssumptions").path(0).asText()))) {
-                throw new IOException("Verification one-shot mint domain is unsupported");
-            }
-            if (oneShotMint) validateCapabilityInventory(manifest);
             if (composedDsl) {
                 if (!property.path("domainAssumptions").equals(
                         manifest.path("domainAssumptions"))
@@ -832,35 +805,9 @@ public final class VerificationRunner {
                 }
                 validateCapabilityInventory(manifest);
             }
-            if (sellerPayment || oneShotMint
-                    || "julc.controlled-mint/v1".equals(template) || composedDsl) {
-                int recordedDslSchema = manifest.path("dslIr")
-                        .path("schemaVersion").asInt(-1);
-                if (ComposedDslProperty.LEDGER_TEMPLATE.equals(template)
-                        && recordedDslSchema != DslPropertySet.LEDGER_SCHEMA_VERSION
-                        && recordedDslSchema
-                            != DslPropertySet.AUTHORIZATION_SCHEMA_VERSION
-                        && recordedDslSchema
-                            != DslPropertySet.CERTIFICATE_PAYLOAD_SCHEMA_VERSION
-                        && recordedDslSchema
-                            != DslPropertySet.VALUE_ALGEBRA_SCHEMA_VERSION
-                        && recordedDslSchema
-                            != DslPropertySet.GOVERNANCE_SCHEMA_VERSION
-                        && recordedDslSchema
-                            != DslPropertySet.REVIEWED_DATA_ADAPTER_SCHEMA_VERSION) {
-                    throw new IOException(
-                            "Ledger DSL canonical schema must be 5 through 10");
-                }
-                int expectedDslSchema = ComposedDslProperty.LEDGER_TEMPLATE.equals(template)
-                        ? recordedDslSchema
-                        : ComposedDslProperty.TYPED_TEMPLATE.equals(template)
-                        ? 4 : composedDsl ? 3 : oneShotMint
-                        || "julc.controlled-mint/v1".equals(template) ? 2 : 1;
-                validateCanonicalDslIr(manifest, property, expectedDslSchema);
-                if (expectedDslSchema
-                        == DslPropertySet.REVIEWED_DATA_ADAPTER_SCHEMA_VERSION) {
-                    validateReviewedAdapterAudit(manifest);
-                }
+            if (manifest.has("dslIr")) {
+                validateCanonicalDslIr(manifest, property);
+                validateReviewedAdapterAudit(manifest);
             }
             if ("julc.stateful-spending/v1".equals(template)
                     && (!"GREATER_THAN".equals(requiredText(property, "relation"))
@@ -887,34 +834,21 @@ public final class VerificationRunner {
                     throw new IOException("Verification controlled-mint profile is unsupported");
                 }
             }
-            if (oneShotMint) {
-                if (!requiredText(property, "authorityHex").matches("[0-9a-f]{56}")
-                        || !requiredText(property, "anchorTransactionIdHex")
-                            .matches("[0-9a-f]{64}")
-                        || !requiredText(property, "anchorOutputIndex")
-                            .matches("0|[1-9][0-9]{0,18}")
-                        || !property.path("tokenNameHex").asText("!")
-                            .matches("(?:[0-9a-f]{2}){0,32}")
-                        || !"1".equals(requiredText(property, "quantity"))) {
-                    throw new IOException("Verification one-shot mint profile is unsupported");
-                }
-            }
             artifact.put("propertyIrSha256", propertyHash);
             artifact.put("propertyTemplate", requiredText(propertyIr, "template"));
             artifact.put("propertyId", requiredText(propertyIr, "propertyId"));
             artifact.put("propertyPath", requiredText(propertyIr, "sourcePath"));
             if (manifest.has("dslIr")) {
+                artifact.put("dslIrFormat",
+                        manifest.path("dslIr").path("format").asText());
                 artifact.put("dslIrSchemaVersion",
                         manifest.path("dslIr").path("schemaVersion").asInt());
                 artifact.put("dslIrSha256",
                         manifest.path("dslIr").path("sha256").asText());
-                if (manifest.path("dslIr").path("schemaVersion").asInt(-1)
-                        == DslPropertySet.REVIEWED_DATA_ADAPTER_SCHEMA_VERSION) {
-                    artifact.put("reviewedRawDataAdapterAudit", Map.of(
-                            "schemaVersion", 1,
-                            "sha256", manifest.path("reviewedRawDataAdapterAudit")
-                                    .path("sha256").asText()));
-                }
+                artifact.put("reviewedRawDataAdapterAudit", Map.of(
+                        "schemaVersion", 1,
+                        "sha256", manifest.path("reviewedRawDataAdapterAudit")
+                                .path("sha256").asText()));
             }
             artifact.put("ledgerValidityModeled", ledgerValidityModeled);
             artifact.put("fuelBounded", true);
@@ -933,29 +867,7 @@ public final class VerificationRunner {
                 artifact.put("ownPolicyLinkage", "SCRIPT_INFO_CURRENCY_SYMBOL");
                 artifact.put("ownPolicyAssetShape", "EXACT_SINGLETON_RAW_ASSOCIATION_LIST");
                 artifact.put("otherPoliciesPermitted", true);
-            } else if (sellerPayment) {
-                artifact.put("domainAssumptions", List.of(
-                        "validSpendingContext/v3-pinned"));
-                artifact.put("globalMultiInputLinkageModeled", false);
-            } else if (oneShotMint) {
-                artifact.put("domainAssumptions", List.of(
-                        "validMintingContext/v3-pinned"));
-                artifact.put("nonVacuityDomain", "BLASTER_VALID_MINTING_SUPERSET");
-                artifact.put("ledgerValidNonVacuityWitnessEstablished", false);
-                artifact.put("concreteVmSuccessfulWitnessReproduced", false);
-                artifact.put("counterexampleDomain", "BLASTER_VALID_MINTING_SUPERSET");
-                artifact.put("ledgerValidCounterexampleEstablished", false);
-                artifact.put("concreteVmCounterexampleReproduced", false);
-                artifact.put("anchorTransactionIdHex",
-                        requiredText(property, "anchorTransactionIdHex"));
-                artifact.put("anchorOutputIndex",
-                        requiredText(property, "anchorOutputIndex"));
-                artifact.put("ownPolicyAssetShape",
-                        "EXACT_SINGLETON_RAW_ASSOCIATION_LIST");
-                artifact.put("otherPoliciesPermitted", true);
-            } else if (ComposedDslProperty.LEDGER_TEMPLATE.equals(template)
-                    && manifest.path("dslIr").path("schemaVersion").asInt()
-                            >= DslPropertySet.VALUE_ALGEBRA_SCHEMA_VERSION) {
+            } else if (ComposedDslProperty.LEDGER_TEMPLATE.equals(template)) {
                 artifact.put("globalMultiInputLinkageModeled", false);
             }
         }
@@ -1036,11 +948,13 @@ public final class VerificationRunner {
     }
 
     private static void validateCanonicalDslIr(
-            JsonNode manifest, JsonNode property, int expectedSchema) throws IOException {
+            JsonNode manifest, JsonNode property) throws IOException {
         JsonNode recorded = manifest.path("dslIr");
         String canonicalDsl = property.path("canonicalDslJson").asText(null);
         if (canonicalDsl == null
-                || recorded.path("schemaVersion").asInt(-1) != expectedSchema
+                || !DslPropertySet.FORMAT.equals(recorded.path("format").asText())
+                || recorded.path("schemaVersion").asInt(-1)
+                    != DslPropertySet.SCHEMA_VERSION
                 || !VerificationFiles.sha256(canonicalDsl.getBytes(
                         java.nio.charset.StandardCharsets.UTF_8))
                     .equals(recorded.path("sha256").asText())) {
@@ -1052,7 +966,9 @@ public final class VerificationRunner {
         } catch (IOException invalid) {
             throw new IOException("Verification canonical DSL IR is invalid", invalid);
         }
-        if (dsl.path("schemaVersion").asInt(-1) != expectedSchema) {
+        if (!DslPropertySet.FORMAT.equals(dsl.path("format").asText())
+                || dsl.path("schemaVersion").asInt(-1)
+                    != DslPropertySet.SCHEMA_VERSION) {
             throw new IOException("Verification canonical DSL schema is unsupported");
         }
     }
@@ -1242,8 +1158,10 @@ public final class VerificationRunner {
             boolean domainImplied = guaranteeRules.contains("domain-implied:is-balanced");
             boolean valueClaim = !valueSemantics.isEmpty() || !paymentScopes.isEmpty()
                     || domainImplied;
-            boolean governanceSchema = manifest.path("dslIr").path("schemaVersion").asInt()
-                    >= DslPropertySet.GOVERNANCE_SCHEMA_VERSION;
+            boolean governanceSchema = DslPropertySet.FORMAT.equals(
+                    manifest.path("dslIr").path("format").asText())
+                    && manifest.path("dslIr").path("schemaVersion").asInt(-1)
+                    == DslPropertySet.SCHEMA_VERSION;
             var governanceScopes = new java.util.TreeSet<String>();
             if (capabilities.contains("field.txInfo.votes")) governanceScopes.add("VOTES");
             if (capabilities.contains("field.txInfo.proposals")) governanceScopes.add("PROPOSALS");

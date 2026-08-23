@@ -24,7 +24,7 @@ prepare() {
   local source="${BUILD_DIR}/src/evidence/${model}.java"
   rm -f "${source}"
   "${JULC[@]}" verify dsl-init "${PROJECT}" --validator "${validator}" \
-    --purpose spending --schema-version 8 --package evidence --class "${model}" \
+    --purpose spending --package evidence --class "${model}" \
     --out "${source}"
   javac -cp "${JULC_JAR}" -d "${BUILD_DIR}/classes" \
     "${source}" "${E4J_DIR}/${spec}.java"
@@ -79,7 +79,7 @@ if [[ "${BACKEND}" == "local" ]]; then
       || "${E4J_CALIBRATE:-0}" == "all" ]]; then
     run_calibration ExtensionalValueCalibrationSpec calibration-extensional
   fi
-  grep -q '"schemaVersion" : 8' \
+  grep -q '"schemaVersion" : 1' \
     "${E4J_DIR}/generated/authorized/verification-manifest.json"
   grep -q 'julcValueQuantitySumStrict' \
     "${E4J_DIR}/generated/authorized/ValueAlgebraSemanticsTests.lean"

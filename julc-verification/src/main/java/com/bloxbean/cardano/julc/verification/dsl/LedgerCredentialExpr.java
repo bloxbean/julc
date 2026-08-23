@@ -7,6 +7,9 @@ import java.util.function.Function;
 
 public record LedgerCredentialExpr(PropertyNode node) implements Expr {
     public LedgerCredentialExpr { node = Objects.requireNonNull(node, "node"); }
+    public TypedValueExpr typed() {
+        return new TypedValueExpr(node, LedgerTypeAuthority.CREDENTIAL);
+    }
     public BoolExpr isPubKey() { return is("PubKeyCredential"); }
     public BoolExpr isScript() { return is("ScriptCredential"); }
     public BoolExpr whenPubKey(Function<TypedValueExpr, BoolExpr> predicate) {

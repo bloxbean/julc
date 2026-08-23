@@ -31,7 +31,7 @@ class LedgerSchemaFiveAdmissionTest {
         Path sources = tempDir.resolve("sources/evidence");
         Files.createDirectories(sources);
         Path model = sources.resolve("LedgerGateModel.java");
-        String generated = ContractMetamodelGenerator.generateTypedV5(
+        String generated = ContractMetamodelGenerator.generate(
                 compiled.contractSchema(), "evidence", "LedgerGateModel");
         Files.writeString(model, generated);
         Path specification = sources.resolve("LedgerGateProperties.java");
@@ -75,7 +75,7 @@ class LedgerSchemaFiveAdmissionTest {
                 "evidence.LedgerGateProperties", compiled.contractSchema(),
                 tempDir.resolve("worker"), Duration.ofSeconds(10));
 
-        assertEquals(DslPropertySet.LEDGER_SCHEMA_VERSION, candidate.schemaVersion());
+        assertEquals(DslPropertySet.SCHEMA_VERSION, candidate.schemaVersion());
         var promoted = ComposedDslPromotion.promote(candidate, compiled.contractSchema(),
                 "LedgerGate", "LedgerGateProperties.java");
         assertEquals(ComposedDslProperty.LEDGER_SCHEMA_VERSION, promoted.schemaVersion());
@@ -93,21 +93,6 @@ class LedgerSchemaFiveAdmissionTest {
     }
 
     @Test
-    void schemaFourRejectsLedgerNodes() {
-        var compiled = new JulcCompiler().compileContract(validatorSource());
-        String hash = ContractTypeProjection.sha256(
-                ContractTypeProjection.project(compiled.contractSchema()));
-        var expression = LedgerExpressions.context().txInfo().fee()
-                .ge(VerificationDsl.integer(0));
-        var candidate = DslPropertySet.typedV4(DslPurpose.SPENDING, hash,
-                VerificationDsl.property("forged.ledger", DslDomain.NONE, expression));
-        assertTrue(assertThrows(IllegalArgumentException.class,
-                () -> DslPropertyValidator.validate(
-                        candidate, compiled.contractSchema(), 100))
-                .getMessage().contains("schema 5"));
-    }
-
-    @Test
     void forgedLedgerFieldAndSpendingHelperOnMintingFailClosed() {
         var spending = new JulcCompiler().compileContract(validatorSource()).contractSchema();
         String spendingHash = ContractTypeProjection.sha256(
@@ -115,7 +100,7 @@ class LedgerSchemaFiveAdmissionTest {
         var root = LedgerExpressions.context().node();
         var forged = new LedgerFieldNode(root, LedgerTypeAuthority.SCRIPT_CONTEXT,
                 "txInfo", new LedgerTypeRef(LedgerTypeRef.LedgerKind.TX_OUT));
-        var forgedSet = DslPropertySet.typedV5(DslPurpose.SPENDING, spendingHash,
+        var forgedSet = DslPropertySet.schema1(DslPurpose.SPENDING, spendingHash,
                 VerificationDsl.property("forged.field", DslDomain.NONE,
                         new BoolExpr(new TypedEqualityNode(forged, forged,
                                 new LedgerTypeRef(LedgerTypeRef.LedgerKind.TX_OUT), false))));
@@ -139,7 +124,7 @@ class LedgerSchemaFiveAdmissionTest {
                 LedgerHelperNode.LedgerHelperKind.CURRENT_OUTPUT_REF,
                 List.of(LedgerExpressions.context().node()),
                 LedgerTypeAuthority.TX_OUT_REF);
-        var wrongPurpose = DslPropertySet.typedV5(DslPurpose.MINTING, mintHash,
+        var wrongPurpose = DslPropertySet.schema1(DslPurpose.MINTING, mintHash,
                 VerificationDsl.property("forged.purpose", DslDomain.NONE,
                         new BoolExpr(new TypedEqualityNode(currentReference, currentReference,
                                 LedgerTypeAuthority.TX_OUT_REF, false))));

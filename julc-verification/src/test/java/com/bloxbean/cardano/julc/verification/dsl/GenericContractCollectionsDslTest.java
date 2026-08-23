@@ -47,7 +47,7 @@ class GenericContractCollectionsDslTest {
                 var bounded = values.exists(item -> new IntegerExpr(item.node()).lt(integer(10)));
                 return reversed ? bounded.and(positive) : positive.and(bounded);
             });
-            return DslPropertySet.typedV4(DslPurpose.SPENDING, hash,
+            return DslPropertySet.schema1(DslPurpose.SPENDING, hash,
                 property("commutative", DslDomain.NONE, guarantee));
         };
 
@@ -73,7 +73,7 @@ class GenericContractCollectionsDslTest {
             return new BoolExpr(new ListStateNode(values.node(),
                     new BuiltinTypeRef(BuiltinTypeRef.BuiltinKind.STRING), ListState.EMPTY));
         });
-        var forgedSet = DslPropertySet.typedV4(DslPurpose.SPENDING,
+        var forgedSet = DslPropertySet.schema1(DslPurpose.SPENDING,
                 ContractTypeProjection.sha256(projection),
                 property("forged", DslDomain.NONE, forged));
 
@@ -90,7 +90,7 @@ class GenericContractCollectionsDslTest {
             return new BoolExpr(new TypedEqualityNode(
                     label.node(), owner.node(), string, false));
         });
-        var mismatchSet = DslPropertySet.typedV4(DslPurpose.SPENDING,
+        var mismatchSet = DslPropertySet.schema1(DslPurpose.SPENDING,
                 ContractTypeProjection.sha256(projection),
                 property("mismatch", DslDomain.NONE, mismatch));
         assertThrows(IllegalArgumentException.class, () -> DslPropertyValidator.validate(
@@ -102,7 +102,7 @@ class GenericContractCollectionsDslTest {
                 TypedExpressions.field(value, datum, "balances", balances).node(),
                 balances.keyType(), balances.valueType())
                 .lookupFirst(literalKey).isEmpty());
-        var literalLookupSet = DslPropertySet.typedV4(DslPurpose.SPENDING, hash,
+        var literalLookupSet = DslPropertySet.schema1(DslPurpose.SPENDING, hash,
                 property("literal-lookup", DslDomain.NONE, literalLookup));
         assertDoesNotThrow(() -> DslPropertyValidator.validate(
                 literalLookupSet, compiled.contractSchema(), 100));
@@ -131,7 +131,7 @@ class GenericContractCollectionsDslTest {
                     value, datum, "values", valuesType).node(), valuesType.elementType());
             return values.structurallyEquals(values);
         });
-        var property = DslPropertySet.typedV4(DslPurpose.SPENDING,
+        var property = DslPropertySet.schema1(DslPurpose.SPENDING,
                 ContractTypeProjection.sha256(projection),
                 property("raw-data-list", DslDomain.NONE, equality));
 
@@ -152,7 +152,7 @@ class GenericContractCollectionsDslTest {
             return new IntegerExpr(amount.node()).negate().add(integer(4)).times(3)
                     .ge(integer(-12));
         });
-        var validSet = DslPropertySet.typedV4(DslPurpose.SPENDING,
+        var validSet = DslPropertySet.schema1(DslPurpose.SPENDING,
                 ContractTypeProjection.sha256(projection),
                 property("linear", DslDomain.NONE, valid));
         assertDoesNotThrow(() -> DslPropertyValidator.validate(
@@ -164,7 +164,7 @@ class GenericContractCollectionsDslTest {
                     IntegerArithmeticOperator.SCALE, amount.node(), null, "01"))
                     .eq(integer(1));
         });
-        var invalidSet = DslPropertySet.typedV4(DslPurpose.SPENDING,
+        var invalidSet = DslPropertySet.schema1(DslPurpose.SPENDING,
                 ContractTypeProjection.sha256(projection),
                 property("invalid-linear", DslDomain.NONE, invalid));
         assertTrue(assertThrows(IllegalArgumentException.class,
@@ -178,7 +178,7 @@ class GenericContractCollectionsDslTest {
         var optional = new TypedRootNode("typedDatum", new OptionalTypeRef(datum));
         var body = new OptionExistsNode(optional, variable, datum,
                 new BoolNotNode(new BoolNotNode(new BoolLiteralNode(true))));
-        return DslPropertySet.typedV4(DslPurpose.SPENDING, hash,
+        return DslPropertySet.schema1(DslPurpose.SPENDING, hash,
                 new DslProperty("alpha", DslDomain.NONE, body));
     }
 

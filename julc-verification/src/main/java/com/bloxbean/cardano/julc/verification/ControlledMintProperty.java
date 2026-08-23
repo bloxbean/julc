@@ -25,32 +25,6 @@ public record ControlledMintProperty(
     public static final int SCHEMA_VERSION = 1;
     public static final String TEMPLATE = "julc.controlled-mint/v1";
 
-    /** Source-compatible constructor for callers created before canonical DSL convergence. */
-    public ControlledMintProperty(
-            int schemaVersion,
-            String template,
-            String propertyId,
-            String validatorTitle,
-            String scriptPurpose,
-            String sourcePath,
-            String authorityHex,
-            String tokenNameHex,
-            String quantity,
-            String action,
-            String redeemerType,
-            SourceReference source,
-            List<String> domainAssumptions,
-            List<String> guaranteeRules,
-            boolean ledgerValidityModeled) {
-        this(schemaVersion, template, propertyId, validatorTitle, scriptPurpose,
-                sourcePath, authorityHex, tokenNameHex, quantity, action, redeemerType,
-                com.bloxbean.cardano.julc.verification.dsl.PropertyIrCodec.canonicalJson(
-                        com.bloxbean.cardano.julc.verification.dsl.MintingDsl
-                                .controlledMintPropertySet(
-                                        propertyId, authorityHex, tokenNameHex, quantity)),
-                source, domainAssumptions, guaranteeRules, ledgerValidityModeled);
-    }
-
     public ControlledMintProperty {
         if (schemaVersion != SCHEMA_VERSION) {
             throw new IllegalArgumentException("Unsupported property IR schema " + schemaVersion);

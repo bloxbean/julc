@@ -15,8 +15,6 @@
     {"type": "com.bloxbean.cardano.julc.verification.StatefulSpendingProperty$SourceReference", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
     {"type": "com.bloxbean.cardano.julc.verification.ControlledMintProperty", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
     {"type": "com.bloxbean.cardano.julc.verification.ControlledMintProperty$SourceReference", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
-    {"type": "com.bloxbean.cardano.julc.verification.SellerPaymentProperty", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
-    {"type": "com.bloxbean.cardano.julc.verification.OneShotMintProperty", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
     {"type": "com.bloxbean.cardano.julc.verification.ComposedDslProperty", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
     {"type": "com.bloxbean.cardano.julc.verification.ComposedDslProperty$Claim", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},
     {"type": "com.bloxbean.cardano.julc.verification.capability.LedgerCapabilityInventory", "allDeclaredConstructors": true, "allDeclaredMethods": true, "allDeclaredFields": true},

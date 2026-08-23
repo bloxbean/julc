@@ -1,6 +1,5 @@
 package com.bloxbean.cardano.julc.verification.dsl;
 
-import com.bloxbean.cardano.julc.compiler.pir.PirType;
 import com.bloxbean.cardano.julc.compiler.schema.ContractSchema;
 import com.bloxbean.cardano.julc.verification.dsl.ir.DslPropertySet;
 import com.bloxbean.cardano.julc.verification.dsl.type.*;
@@ -21,250 +20,9 @@ public final class ContractMetamodelGenerator {
                 || !className.matches("[A-Z][A-Za-z0-9_]*")) {
             throw new IllegalArgumentException("Invalid generated metamodel name");
         }
-        if (schema.purpose() == ContractSchema.Purpose.MINT) {
-            if (schema.datum() != null) {
-                throw new IllegalArgumentException("Minting DSL interface must not have a datum");
-            }
-            return mintingModel(packageName, className);
-        }
-        if (schema.purpose() == ContractSchema.Purpose.WITHDRAW) {
-            if (schema.datum() != null) {
-                throw new IllegalArgumentException(
-                        "Rewarding DSL interface must not have a datum");
-            }
-            return rewardingModel(packageName, className);
-        }
-        if (schema.purpose() == ContractSchema.Purpose.CERTIFY) {
-            if (schema.datum() != null) {
-                throw new IllegalArgumentException(
-                        "Certifying DSL interface must not have a datum");
-            }
-            return certifyingModel(packageName, className);
-        }
-        if (schema.purpose() != ContractSchema.Purpose.SPEND || schema.datum() == null) {
-            throw new IllegalArgumentException(
-                    "DSL metamodel requires spending, minting, rewarding, or certifying");
-        }
-        PirType type = resolve(schema.datum().type(), schema);
-        if (!(type instanceof PirType.RecordType record)) {
-            throw new IllegalArgumentException("DSL metamodel v1 requires a record datum");
-        }
-        var accessors = new StringBuilder();
-        for (PirType.Field field : record.fields()) {
-            if (!field.name().matches("[A-Za-z_$][A-Za-z0-9_$]*")) {
-                throw new IllegalArgumentException("Unsupported Java field name " + field.name());
-            }
-            PirType fieldType = resolve(field.type(), schema);
-            String wrapper;
-            String selector;
-            if (fieldType instanceof PirType.ByteStringType) {
-                wrapper = "ByteStringExpr";
-                selector = "bytesField";
-            } else if (fieldType instanceof PirType.IntegerType) {
-                wrapper = "IntegerExpr";
-                selector = "integerField";
-            } else {
-                throw new IllegalArgumentException("DSL metamodel v1 does not support field "
-                        + field.name() + " of type " + fieldType);
-            }
-            accessors.append("        public ").append(wrapper).append(" ")
-                    .append(field.name()).append("() { return value.")
-                    .append(selector).append("(\"").append(field.name()).append("\"); }\n");
-        }
-        return """
-                package %s;
-
-                import com.bloxbean.cardano.julc.verification.dsl.*;
-
-                /** Generated from compiler-owned ContractSchema; do not edit. */
-                public final class %s {
-                    private final SpendingContractModel value = new SpendingContractModel();
-                    private final Datum datum = new Datum(value.datum());
-
-                    public Datum datum() { return datum; }
-                    public ContextExpr context() { return value.context(); }
-                    public BoolExpr exactUplcSucceeds() { return value.exactUplcSucceeds(); }
-                    public BoolExpr validSpendingContext() { return value.validSpendingContext(); }
-
-                    public static final class Datum {
-                        private final DatumExpr value;
-                        private Datum(DatumExpr value) { this.value = value; }
-                %s    }
-                }
-                """.formatted(packageName, className, accessors);
-    }
-
-    /** Generate the opt-in schema-4 model from the retained compiler type graph. */
-    public static String generateTypedV4(
-            ContractSchema schema, String packageName, String className) {
-        if (!packageName.matches("[a-z][A-Za-z0-9_.]*")
-                || !className.matches("[A-Z][A-Za-z0-9_]*")) {
-            throw new IllegalArgumentException("Invalid generated metamodel name");
-        }
-        ProjectedContractTypes projection = ContractTypeProjection.project(schema);
-        return new TypedModelGenerator(
-                projection, packageName, className,
-                ContractTypeProjection.sha256(projection),
-                DslPropertySet.TYPED_SCHEMA_VERSION).generate();
-    }
-
-    /** Generate the opt-in schema-5 model with pinned ledger-context vocabulary. */
-    public static String generateTypedV5(
-            ContractSchema schema, String packageName, String className) {
-        if (!packageName.matches("[a-z][A-Za-z0-9_.]*")
-                || !className.matches("[A-Z][A-Za-z0-9_]*")) {
-            throw new IllegalArgumentException("Invalid generated metamodel name");
-        }
-        ProjectedContractTypes projection = ContractTypeProjection.project(schema);
-        return new TypedModelGenerator(
-                projection, packageName, className,
-                ContractTypeProjection.sha256(projection),
-                DslPropertySet.LEDGER_SCHEMA_VERSION).generate();
-    }
-
-    /** Generate the opt-in schema-6 model with compositional authorization. */
-    public static String generateTypedV6(
-            ContractSchema schema, String packageName, String className) {
-        if (!packageName.matches("[a-z][A-Za-z0-9_.]*")
-                || !className.matches("[A-Z][A-Za-z0-9_]*")) {
-            throw new IllegalArgumentException("Invalid generated metamodel name");
-        }
-        ProjectedContractTypes projection = ContractTypeProjection.project(schema);
-        return new TypedModelGenerator(
-                projection, packageName, className,
-                ContractTypeProjection.sha256(projection),
-                DslPropertySet.AUTHORIZATION_SCHEMA_VERSION).generate();
-    }
-
-    /** Generate the opt-in schema-7 model with guarded certificate payloads. */
-    public static String generateTypedV7(
-            ContractSchema schema, String packageName, String className) {
-        if (!packageName.matches("[a-z][A-Za-z0-9_.]*")
-                || !className.matches("[A-Z][A-Za-z0-9_]*")) {
-            throw new IllegalArgumentException("Invalid generated metamodel name");
-        }
-        ProjectedContractTypes projection = ContractTypeProjection.project(schema);
-        return new TypedModelGenerator(
-                projection, packageName, className,
-                ContractTypeProjection.sha256(projection),
-                DslPropertySet.CERTIFICATE_PAYLOAD_SCHEMA_VERSION).generate();
-    }
-
-    /** Generate the opt-in schema-8 model with explicit multi-asset value semantics. */
-    public static String generateTypedV8(
-            ContractSchema schema, String packageName, String className) {
-        if (!packageName.matches("[a-z][A-Za-z0-9_.]*")
-                || !className.matches("[A-Z][A-Za-z0-9_]*")) {
-            throw new IllegalArgumentException("Invalid generated metamodel name");
-        }
-        ProjectedContractTypes projection = ContractTypeProjection.project(schema);
-        return new TypedModelGenerator(
-                projection, packageName, className,
-                ContractTypeProjection.sha256(projection),
-                DslPropertySet.VALUE_ALGEBRA_SCHEMA_VERSION).generate();
-    }
-
-    /** Generate the opt-in schema-9 model with typed governance transaction data. */
-    public static String generateTypedV9(
-            ContractSchema schema, String packageName, String className) {
-        if (!packageName.matches("[a-z][A-Za-z0-9_.]*")
-                || !className.matches("[A-Z][A-Za-z0-9_]*")) {
-            throw new IllegalArgumentException("Invalid generated metamodel name");
-        }
         ProjectedContractTypes projection = ContractTypeProjection.project(schema);
         return new TypedModelGenerator(projection, packageName, className,
-                ContractTypeProjection.sha256(projection),
-                DslPropertySet.GOVERNANCE_SCHEMA_VERSION).generate();
-    }
-
-    /** Generate the opt-in schema-10 model with reviewed raw-data adapters. */
-    public static String generateTypedV10(
-            ContractSchema schema, String packageName, String className) {
-        if (!packageName.matches("[a-z][A-Za-z0-9_.]*")
-                || !className.matches("[A-Z][A-Za-z0-9_]*")) {
-            throw new IllegalArgumentException("Invalid generated metamodel name");
-        }
-        ProjectedContractTypes projection = ContractTypeProjection.project(schema);
-        return new TypedModelGenerator(projection, packageName, className,
-                ContractTypeProjection.sha256(projection),
-                DslPropertySet.REVIEWED_DATA_ADAPTER_SCHEMA_VERSION).generate();
-    }
-
-    private static String mintingModel(String packageName, String className) {
-        return """
-                package %s;
-
-                import com.bloxbean.cardano.julc.verification.dsl.*;
-
-                /** Generated from compiler-owned minting ContractSchema; do not edit. */
-                public final class %s {
-                    private final MintingContractModel value = new MintingContractModel();
-
-                    public ContextExpr context() { return value.context(); }
-                    public PolicyIdExpr ownPolicy() { return value.ownPolicy(); }
-                    public BoolExpr redeemerStrictlyDecodes() {
-                        return value.redeemerStrictlyDecodes();
-                    }
-                    public BoolExpr exactUplcSucceeds() { return value.exactUplcSucceeds(); }
-                    public BoolExpr validMintingContext() { return value.validMintingContext(); }
-                }
-                """.formatted(packageName, className);
-    }
-
-    private static String rewardingModel(String packageName, String className) {
-        return """
-                package %s;
-
-                import com.bloxbean.cardano.julc.verification.dsl.*;
-
-                /** Generated from compiler-owned rewarding ContractSchema; do not edit. */
-                public final class %s {
-                    private final RewardingContractModel value = new RewardingContractModel();
-
-                    public ContextExpr context() { return value.context(); }
-                    public CredentialExpr rewardingCredential() {
-                        return value.rewardingCredential();
-                    }
-                    public BoolExpr redeemerStrictlyDecodes() {
-                        return value.redeemerStrictlyDecodes();
-                    }
-                }
-                """.formatted(packageName, className);
-    }
-
-    private static String certifyingModel(String packageName, String className) {
-        return """
-                package %s;
-
-                import com.bloxbean.cardano.julc.verification.dsl.*;
-
-                /** Generated from compiler-owned certifying ContractSchema; do not edit. */
-                public final class %s {
-                    private final CertifyingContractModel value =
-                            new CertifyingContractModel();
-
-                    public ContextExpr context() { return value.context(); }
-                    public TxCertExpr certificate() { return value.certificate(); }
-                    public IntegerExpr certificateIndex() {
-                        return value.certificateIndex();
-                    }
-                    public BoolExpr redeemerStrictlyDecodes() {
-                        return value.redeemerStrictlyDecodes();
-                    }
-                }
-                """.formatted(packageName, className);
-    }
-
-    private static PirType resolve(PirType type, ContractSchema schema) {
-        if (type instanceof PirType.NamedTypeRef ref) {
-            PirType result = schema.namedDefinitions().get(ref.stableId());
-            if (result == null) result = schema.namedDefinitions().get(ref.name());
-            if (result == null) {
-                throw new IllegalArgumentException("Unknown named type " + ref.name());
-            }
-            return result;
-        }
-        return type;
+                ContractTypeProjection.sha256(projection)).generate();
     }
 
     private static final class TypedModelGenerator {
@@ -272,20 +30,17 @@ public final class ContractMetamodelGenerator {
         private final String packageName;
         private final String className;
         private final String schemaHash;
-        private final int dslSchemaVersion;
         private final Map<String, String> names = new LinkedHashMap<>();
 
         private TypedModelGenerator(
                 ProjectedContractTypes projection,
                 String packageName,
                 String className,
-                String schemaHash,
-                int dslSchemaVersion) {
+                String schemaHash) {
             this.projection = projection;
             this.packageName = packageName;
             this.className = className;
             this.schemaHash = schemaHash;
-            this.dslSchemaVersion = dslSchemaVersion;
             validateGeneratedNames(projection);
             for (var definition : projection.definitions()) {
                 names.put(definition.stableId(), "Type_" + javaName(definition.sourceName())
@@ -308,29 +63,14 @@ public final class ContractMetamodelGenerator {
                     .append(baseModel()).append("();\n");
             appendRoots(body);
             body.append("\n    public DslPropertySet properties(DslProperty... properties) {\n")
-                    .append("        return DslPropertySet.")
-                    .append(switch (dslSchemaVersion) {
-                        case DslPropertySet.REVIEWED_DATA_ADAPTER_SCHEMA_VERSION -> "typedV10";
-                        case DslPropertySet.GOVERNANCE_SCHEMA_VERSION -> "typedV9";
-                        case DslPropertySet.VALUE_ALGEBRA_SCHEMA_VERSION -> "typedV8";
-                        case DslPropertySet.CERTIFICATE_PAYLOAD_SCHEMA_VERSION -> "typedV7";
-                        case DslPropertySet.AUTHORIZATION_SCHEMA_VERSION -> "typedV6";
-                        case DslPropertySet.LEDGER_SCHEMA_VERSION -> "typedV5";
-                        default -> "typedV4";
-                    })
-                    .append("(DslPurpose.")
+                    .append("        return DslPropertySet.schema1(DslPurpose.")
                     .append(dslPurpose()).append(", CONTRACT_SCHEMA_SHA256, properties);\n")
                     .append("    }\n")
-                    .append(dslSchemaVersion >= DslPropertySet.LEDGER_SCHEMA_VERSION
-                            ? "    public LedgerContextExpr context() { return LedgerExpressions.context(); }\n"
-                            : "    public ContextExpr context() { return base.context(); }\n");
-            if (dslSchemaVersion >= DslPropertySet.AUTHORIZATION_SCHEMA_VERSION) {
-                body.append("    private final AuthorizationDsl authorization = new AuthorizationDsl();\n")
-                        .append("    public AuthorizationDsl authorization() { return authorization; }\n");
-            }
-            if (dslSchemaVersion >= DslPropertySet.LEDGER_SCHEMA_VERSION
-                    && projection.purpose() == com.bloxbean.cardano.julc.compiler.schema
-                            .ContractSchema.Purpose.SPEND) {
+                    .append("    public LedgerContextExpr context() { return LedgerExpressions.context(); }\n")
+                    .append("    private final AuthorizationDsl authorization = new AuthorizationDsl();\n")
+                    .append("    public AuthorizationDsl authorization() { return authorization; }\n");
+            if (projection.purpose() == com.bloxbean.cardano.julc.compiler.schema
+                    .ContractSchema.Purpose.SPEND) {
                 body.append("    public LedgerTxOutRefExpr currentOutputRef() {\n")
                         .append("        return new LedgerTxOutRefExpr(new LedgerHelperNode(\n")
                         .append("            LedgerHelperNode.LedgerHelperKind.CURRENT_OUTPUT_REF,\n")
@@ -368,19 +108,16 @@ public final class ContractMetamodelGenerator {
                         .append(typeExpression(projection.datumType())).append("));\n")
                         .append("    public Optional_").append(typeSuffix(projection.datumType()))
                         .append(" datum() { return datum; }\n");
-                if (dslSchemaVersion
-                        >= DslPropertySet.REVIEWED_DATA_ADAPTER_SCHEMA_VERSION) {
-                    body.append("    public BoolExpr decodeDatum(TypedValueExpr raw, ")
-                            .append("Function<")
-                            .append(wrapperType(projection.datumType()))
-                            .append(", BoolExpr> predicate) {\n")
-                            .append("        return TypedExpressions.strictDecode(raw, ")
-                            .append(typeExpression(projection.datumType()))
-                            .append(", decoded -> predicate.apply(")
-                            .append(wrap(projection.datumType(), "decoded"))
-                            .append("));\n")
-                            .append("    }\n");
-                }
+                body.append("    public BoolExpr decodeDatum(TypedValueExpr raw, ")
+                        .append("Function<")
+                        .append(wrapperType(projection.datumType()))
+                        .append(", BoolExpr> predicate) {\n")
+                        .append("        return TypedExpressions.strictDecode(raw, ")
+                        .append(typeExpression(projection.datumType()))
+                        .append(", decoded -> predicate.apply(")
+                        .append(wrap(projection.datumType(), "decoded"))
+                        .append("));\n")
+                        .append("    }\n");
             }
             body.append("    private final Optional_")
                     .append(typeSuffix(projection.redeemerType())).append(" redeemer = new Optional_")
@@ -397,13 +134,10 @@ public final class ContractMetamodelGenerator {
                 case MINT -> body.append(
                         "    public PolicyIdExpr ownPolicy() { return base.ownPolicy(); }\n");
                 case WITHDRAW -> body.append(
-                        "    public CredentialExpr rewardingCredential() { return base.rewardingCredential(); }\n");
-                case CERTIFY -> body.append(dslSchemaVersion
-                        >= DslPropertySet.CERTIFICATE_PAYLOAD_SCHEMA_VERSION
-                        ? "    public TxCertExpr certificate() { return LedgerExpressions.currentCertificate(); }\n"
-                                + "    public IntegerExpr certificateIndex() { return LedgerExpressions.currentCertificateIndex(); }\n"
-                        : "    public TxCertExpr certificate() { return base.certificate(); }\n"
-                                + "    public IntegerExpr certificateIndex() { return base.certificateIndex(); }\n");
+                        "    public LedgerCredentialExpr rewardingCredential() { return LedgerExpressions.rewardingCredential(); }\n");
+                case CERTIFY -> body.append(
+                        "    public TxCertExpr certificate() { return LedgerExpressions.currentCertificate(); }\n"
+                                + "    public IntegerExpr certificateIndex() { return LedgerExpressions.currentCertificateIndex(); }\n");
                 default -> throw new IllegalArgumentException(
                         "Structural DSL does not support " + projection.purpose());
             }
@@ -593,8 +327,7 @@ public final class ContractMetamodelGenerator {
                     .append(typeSuffix(element)).append("(value.at(index)); }\n")
                     .append("        public BoolExpr structurallyEquals(List_").append(suffix)
                     .append(" other) { return value.structurallyEquals(other.value); }\n")
-                    .append(dslSchemaVersion >= DslPropertySet.AUTHORIZATION_SCHEMA_VERSION
-                            && element.equals(new BuiltinTypeRef(
+                    .append(element.equals(new BuiltinTypeRef(
                                     BuiltinTypeRef.BuiltinKind.BYTE_STRING))
                             ? "        public AuthoritySetExpr asAuthorities() { return new AuthorizationDsl().fromContractBytes(value); }\n"
                             : "")

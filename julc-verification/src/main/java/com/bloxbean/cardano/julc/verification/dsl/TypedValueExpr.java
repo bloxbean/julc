@@ -5,7 +5,7 @@ import com.bloxbean.cardano.julc.verification.dsl.type.VerificationTypeRef;
 
 import java.util.Objects;
 
-/** Low-level carrier used only by generated schema-4 wrappers. */
+/** Low-level carrier used only by generated schema-1 wrappers. */
 public record TypedValueExpr(PropertyNode node, VerificationTypeRef valueType)
         implements Expr {
     public TypedValueExpr {
