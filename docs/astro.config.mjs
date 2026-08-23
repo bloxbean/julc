@@ -38,6 +38,7 @@ export default defineConfig({
             { label: 'Advanced Guide', slug: 'guides/advanced-guide' },
             { label: 'For-Loop Patterns', slug: 'guides/for-loop-patterns' },
             { label: 'Testing Guide', slug: 'guides/testing-guide' },
+            { label: 'Formal Verification', slug: 'guides/formal-verification' },
             { label: 'Source Maps', slug: 'guides/source-maps' },
             { label: 'Strict Data Boundaries', slug: 'guides/strict-data-boundaries' },
             { label: 'Multi-validator Blueprints', slug: 'guides/purpose-indexed-blueprints' },

@@ -3,6 +3,43 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+## Upcoming preview: stable typed formal-verification API v1
+
+JuLC now provides a stable construction API for exact-artifact formal
+verification. API version 1 uses canonical property schema 10 and supports
+typed composition over compiler-projected contract data, four standard Plutus
+purposes (spending, minting, rewarding, and certifying), transaction context,
+authorization, certificates, multi-asset values, governance data, and reviewed
+raw-data adapters.
+
+`julc verify dsl-init` now emits schema 10 by default. Readers for historical
+canonical values from schemas 1 through 9 remain available for compatibility;
+only schema 10 carries the API-v1 canonical-semantics freeze. New semantic
+vocabulary requires a new schema rather than changing schema-10 meanings.
+Historical certificates remain valid hash-bound records of their runs.
+Re-executing a historical workspace can require regeneration after additive
+capability-inventory or dependency-pin changes, even when its canonical
+property schema remains readable.
+
+`@RequiresSigner`, `@ControlledMint`, and the complete
+`@RequiresSigner + @PreservesValue + @Monotonic` stateful profile now lower to
+the same canonical DSL IR used by explicit Java specifications. The former
+annotation-specific duplicate Lean security formulas have been removed. These
+annotations remain UPLC-neutral: they state properties and do not add checks to
+validator execution.
+
+The stable API covers documented Java construction and canonical property
+semantics. It does not promise solver termination, complete CardanoLedgerApi
+coverage, general compiler correctness, or that a verified validator is safe
+under every unspecified property. Voting/proposing validator selection,
+parameter-derived authorities, arbitrary Lean in the DSL, and temporal
+verification are not included. The E.5 bounded temporal experiment did not
+meet its solver-calibration gate and was not promoted.
+
+See the [formal verification guide](/guides/formal-verification/) for annotation
+and DSL workflows, local/Docker backends, exact certificate scope, outcome
+classification, and CI guidance.
+
 ## Upcoming preview: strict typed datum/redeemer boundaries
 
 Typed validator boundaries now reject non-canonical `Data` before user code
