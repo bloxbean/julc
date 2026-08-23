@@ -720,6 +720,10 @@ These source-retained annotations are provided by `julc-verification`. They are
 off-chain property frontends: adding or removing one does not change compiler
 lowering or emitted UPLC.
 
+Formal verification remains experimental. The API-v1 stability promise below
+applies to the documented DSL construction surface and schema-10 canonical
+meanings, not to production readiness or guaranteed solver completion.
+
 | Annotation | Purpose | Admitted form |
 |---|---|---|
 | `@RequiresSigner("datum.<field>")` | spending | selected datum field resolves to a supported byte-string/key-hash authority |

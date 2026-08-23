@@ -1302,11 +1302,15 @@ assertTrue(eval.call("isPositive", 1).asBoolean());
 | Test a full validator with datum + redeemer + ScriptContext | `ValidatorTest` |
 | End-to-end with budget checks and trace messages | `ValidatorTest` + `BudgetAssertions` |
 
-### Formal verification
+### Formal verification (experimental)
 
 Tests demonstrate selected executions; `julc verify` checks an explicit
 security property against the exact compiled UPLC artifact. The stable API-v1
 frontend supports concise annotations and a compositional typed Java DSL:
+
+Formal verification remains an experimental JuLC feature. Stable API v1 refers
+to the documented DSL construction surface and schema-10 meanings, not a
+production-safety certification for the compiler or contract.
 
 ```java
 @RequiresSigner("datum.owner")

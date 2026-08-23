@@ -44,10 +44,17 @@ const SECTIONS = [
       'guides/advanced-guide.md',
       'guides/for-loop-patterns.md',
       'guides/testing-guide.md',
-      'guides/formal-verification.md',
       'guides/source-maps.md',
       'guides/strict-data-boundaries.md',
       'guides/purpose-indexed-blueprints.md',
+    ],
+  },
+  {
+    title: 'Formal Verification (Experimental)',
+    files: [
+      'guides/formal-verification.md',
+      'guides/formal-verification/annotation-profiles.md',
+      'guides/formal-verification/typed-dsl.md',
     ],
   },
   {

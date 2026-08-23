@@ -1,7 +1,14 @@
 ---
-title: "Formal Verification"
+title: "Formal Verification (Experimental)"
 description: "Verify exact JuLC validator artifacts with the stable typed Java DSL, Lean, and IOG Blaster"
 ---
+
+:::caution[Experimental verification feature]
+JuLC's formal-verification integration remains experimental and is not a
+production-safety certification. API v1 stabilizes the documented Java DSL and
+schema-10 canonical meanings; it does not remove the compiler, model, solver,
+or coverage limitations described below.
+:::
 
 JuLC can check a reviewed security property against the exact Plutus V3 UPLC
 artifact produced by the compiler. The verification frontend is a closed typed
@@ -143,96 +150,14 @@ network access on the first run.
 `--backend auto` prefers an exact local toolchain and otherwise tries Docker.
 Use an explicit backend for CI and release evidence.
 
-## Verify an annotation profile
+## Continue with a frontend
 
-The shortest example is a spending validator whose datum owner must sign:
-
-```java
-import com.bloxbean.cardano.julc.ledger.ScriptContext;
-import com.bloxbean.cardano.julc.stdlib.annotation.Entrypoint;
-import com.bloxbean.cardano.julc.stdlib.annotation.SpendingValidator;
-import com.bloxbean.cardano.julc.stdlib.lib.ContextsLib;
-import com.bloxbean.cardano.julc.verification.annotation.RequiresSigner;
-
-@RequiresSigner("datum.owner")
-@SpendingValidator
-class AuthorizedStateValidator {
-    record Datum(byte[] owner) {}
-    record Redeemer() {}
-
-    @Entrypoint
-    static boolean validate(Datum datum, Redeemer redeemer, ScriptContext ctx) {
-        return ContextsLib.signedBy(ctx.txInfo(), datum.owner());
-    }
-}
-```
-
-From the project containing `julc.toml` and `src/`:
-
-```bash
-julc verify . \
-  --validator AuthorizedStateValidator \
-  --backend docker
-```
-
-`julc verify` performs an exact build, resolves the annotation against the
-compiler-owned contract schema, generates a managed workspace, validates its
-hashes, checks property non-vacuity, runs the proof, and writes
-`verification-result.json`.
-
-The annotation states a property; it does not enforce it. If the validator
-returns `true` without checking the signer, the expected result is `REFUTED`
-with a retained Blaster counterexample.
-
-### Stateful spending profile
-
-Use all three annotations together. This declaration excerpt omits the
-entrypoint body because that body must independently implement every clause:
-
-```java
-@RequiresSigner("datum.owner")
-@Monotonic(
-    current = "datum.state",
-    next = "redeemer.nextState",
-    relation = Relation.GREATER_THAN)
-@PreservesValue(output = OutputSelection.SINGLE_CONTINUING_OUTPUT)
-@SpendingValidator
-class StateMachine {
-    record Datum(byte[] owner, BigInteger state) {}
-    record Redeemer(BigInteger nextState) {}
-
-    // @Entrypoint implementation omitted: it must enforce authorization,
-    // continuing-output/value rules, and the declared transition.
-}
-```
-
-The generated theorem strictly decodes the current datum, redeemer, and inline
-successor datum. It also requires the continuing output to share the complete
-address of the resolved own input; matching only the payment credential is not
-equivalent.
-
-### Controlled mint profile
-
-The same rule applies to controlled minting; this is a property declaration
-excerpt, not the validator implementation:
-
-```java
-@ControlledMint(
-    authority = "4a554c435f5645524946595f415554484f524954595f303030303031",
-    tokenName = "4a554c43",
-    quantity = 1,
-    action = MintAction.MINT)
-@MintingValidator
-class TokenPolicy {
-    // The validator must independently check the authority and exact
-    // current-policy token shape described by the annotation.
-}
-```
-
-The annotation's `quantity` is always a strictly positive magnitude. `MINT`
-uses that magnitude and `BURN` lowers it to the corresponding negative on-chain
-quantity. Authority hashes are 28 bytes and token names are at most 32 bytes.
-Invalid or ambiguous literals fail before Lean generation.
+- [Annotation profiles](/guides/formal-verification/annotation-profiles/)
+  provide the shortest path for reviewed signer, state-transition, and
+  controlled-mint properties.
+- [Typed Java DSL](/guides/formal-verification/typed-dsl/) covers custom
+  composition, generated contract metamodels, stable API boundaries, and
+  ledger domains.
 
 ## Re-run or regenerate a workspace
 
@@ -249,153 +174,6 @@ julc verify run verification/authorized-state-validator --backend local
 
 Use `--force` after source, compiler, annotation, property, or generation-input
 changes. Use `verify run` to reproduce the same workspace and plan.
-
-## Write a typed DSL property
-
-The DSL workflow has three stages: generate a contract metamodel, compile a
-trusted Java specification, and run the bounded worker and verifier.
-
-Use one exact JuLC version for the compiler, `julc-verification`, generated
-metamodel, property worker, and executing CLI. The commands below use the JVM
-shadow JAR built from a source checkout so that one artifact supplies both the
-CLI and the worker classpath:
-
-```bash
-JULC_SOURCE=/absolute/path/to/julc
-"$JULC_SOURCE/gradlew" -p "$JULC_SOURCE" :julc-cli:shadowJar
-JULC_JAR="$JULC_SOURCE/julc-cli/build/libs/julc.jar"
-cd /absolute/path/to/your-contract-project
-```
-
-The Homebrew native executable does not currently install this worker JAR. A
-native-CLI DSL run therefore still needs a matching source-built shadow JAR or
-a complete runtime classpath containing the same-version
-`julc-verification` artifact and its dependencies.
-
-### 1. Generate the schema-10 model
-
-```bash
-java -jar "$JULC_JAR" verify dsl-init . \
-  --validator AuthorizedStateValidator \
-  --purpose spending \
-  --package verification \
-  --class AuthorizedStateModel \
-  --out build/verification-dsl/src/verification/AuthorizedStateModel.java
-```
-
-Schema 10 is the API-v1 default and the only schema covered by the API-v1
-canonical-semantics freeze. `--schema-version 3` through `9` remains available
-for compatibility and evidence reproduction. Historical certificates remain
-hash-bound records, but an old workspace can require regeneration when the
-reviewed capability inventory or dependency pins change. Generation refuses to
-overwrite the output file.
-
-For an explicit `@MultiValidator`, `--validator` is the base Java class and
-`--purpose` selects one exact interface. Supported purpose values are
-`spending`, `minting`, `rewarding`, and `certifying`.
-
-### 2. Implement `VerificationSpecification`
-
-```java
-package verification;
-
-import com.bloxbean.cardano.julc.verification.dsl.VerificationSpecification;
-import com.bloxbean.cardano.julc.verification.dsl.ir.DslDomain;
-import com.bloxbean.cardano.julc.verification.dsl.ir.DslPropertySet;
-
-import static com.bloxbean.cardano.julc.verification.dsl.VerificationDsl.property;
-
-public final class AuthorizedStateSpec implements VerificationSpecification {
-    @Override
-    public DslPropertySet properties() {
-        var contract = new AuthorizedStateModel();
-        var authorized = contract.datum().exists(datum ->
-            contract.context().txInfo().signatories().contains(datum.owner()));
-
-        return contract.properties(property(
-            "authorized-state.owner-signed",
-            DslDomain.NONE,
-            authorized));
-    }
-}
-```
-
-The generated model supplies the purpose, contract-schema hash, nominal types,
-and field accessors. Prefer its `contract.properties(...)` factory over
-constructing property envelopes manually.
-
-`VerificationSpecification` executes project Java. Treat specification source
-and every class on `--spec-classpath` as trusted code. The worker is bounded and
-the parent process revalidates its returned closed AST, but it is not a sandbox
-for hostile Java.
-
-### 3. Compile and verify
-
-The JVM CLI shadow JAR contains the stable DSL API and its dependencies:
-
-```bash
-mkdir -p build/verification-dsl/classes
-
-javac -cp "$JULC_JAR" \
-  -d build/verification-dsl/classes \
-  build/verification-dsl/src/verification/AuthorizedStateModel.java \
-  AuthorizedStateSpec.java
-
-java -jar "$JULC_JAR" verify dsl . \
-  --validator AuthorizedStateValidator \
-  --purpose spending \
-  --spec-class verification.AuthorizedStateSpec \
-  --spec-classpath "build/verification-dsl/classes:$JULC_JAR" \
-  --source AuthorizedStateSpec.java \
-  --backend docker \
-  --fuel 1500 \
-  --force
-```
-
-On Windows, use `;` instead of `:` in the classpath. If you substitute a native
-`julc` executable for `java -jar "$JULC_JAR"`, it still starts a child JVM for
-the trusted property specification, so Java and the exact matching JuLC worker
-classpath must remain available on `--spec-classpath`.
-
-For Gradle or Maven, add `com.bloxbean.cardano:julc-verification` at the same
-version as the compiler and pass the compiled specification's complete runtime
-classpath to `--spec-classpath`.
-
-## Stable construction API
-
-The API-v1 construction surface consists of:
-
-- `VerificationSpecification`;
-- `VerificationDsl` literal and property factories;
-- typed expression wrappers in
-  `com.bloxbean.cardano.julc.verification.dsl`;
-- `DslProperty`, `DslPropertySet`, `DslPurpose`, and `DslDomain`; and
-- reproducible schema-10 generated contract metamodels.
-
-Concrete classes in `verification.dsl.ir` are serialization infrastructure
-unless listed above. Renderers, validators, worker protocol classes, semantic
-dependency planners, arbitrary Lean, and custom node kinds are not public DSL
-construction APIs merely because some classes need Java-public visibility.
-
-Schema-10 canonical meanings and serialization are frozen for API v1. New
-semantic vocabulary requires a new reviewed property schema.
-
-## Property domains
-
-`DslDomain.NONE` asks only about the exact UPLC execution relation. Reviewed
-ledger domains add a pinned premise:
-
-| Purpose | Domain |
-|---|---|
-| spending | `VALID_SPENDING_V3_PINNED` |
-| minting | `VALID_MINTING_V3_PINNED` |
-| rewarding | `VALID_REWARDING_V3_PINNED` |
-| certifying | `VALID_CERTIFYING_V3_PINNED` |
-
-The certificate records the selected domain and whether a kernel-checked bridge
-to the pinned ledger model was established. A counterexample in a Blaster
-superset is not automatically a ledger-valid Cardano transaction; inspect the
-certificate's counterexample qualification.
 
 ## Outcomes and exit codes
 

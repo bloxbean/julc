@@ -38,10 +38,20 @@ export default defineConfig({
             { label: 'Advanced Guide', slug: 'guides/advanced-guide' },
             { label: 'For-Loop Patterns', slug: 'guides/for-loop-patterns' },
             { label: 'Testing Guide', slug: 'guides/testing-guide' },
-            { label: 'Formal Verification', slug: 'guides/formal-verification' },
             { label: 'Source Maps', slug: 'guides/source-maps' },
             { label: 'Strict Data Boundaries', slug: 'guides/strict-data-boundaries' },
             { label: 'Multi-validator Blueprints', slug: 'guides/purpose-indexed-blueprints' },
+          ],
+        },
+        {
+          label: 'Formal Verification',
+          badge: { text: 'Experimental', variant: 'caution' },
+          items: [
+            { label: 'Overview & Getting Started', slug: 'guides/formal-verification', badge: { text: 'Experimental', variant: 'caution' } },
+            { label: 'Annotation Profiles', slug: 'guides/formal-verification/annotation-profiles' },
+            { label: 'Typed Java DSL', slug: 'guides/formal-verification/typed-dsl' },
+            { label: 'API & DSL Reference', link: '/reference/api-reference/#verification-annotations' },
+            { label: 'Troubleshooting', link: '/reference/troubleshooting/#7-formal-verification' },
           ],
         },
         {
