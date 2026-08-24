@@ -62,6 +62,9 @@ dependencies {
     implementation "com.bloxbean.cardano:julc-stdlib:${julcVersion}"
     implementation "com.bloxbean.cardano:julc-ledger-api:${julcVersion}"
 
+    // Stable typed verification annotations and DSL (off-chain tooling only)
+    implementation "com.bloxbean.cardano:julc-verification:${julcVersion}"
+
     // Annotation processor -- compiles validators during javac
     annotationProcessor "com.bloxbean.cardano:julc-annotation-processor:${julcVersion}"
 
@@ -111,6 +114,11 @@ test {
     <dependency>
         <groupId>com.bloxbean.cardano</groupId>
         <artifactId>julc-ledger-api</artifactId>
+        <version>${julc.version}</version>
+    </dependency>
+    <dependency>
+        <groupId>com.bloxbean.cardano</groupId>
+        <artifactId>julc-verification</artifactId>
         <version>${julc.version}</version>
     </dependency>
     <dependency>
@@ -1293,6 +1301,40 @@ assertTrue(eval.call("isPositive", 1).asBoolean());
 | Test a single helper method (math, string, logic) | `JulcEval` |
 | Test a full validator with datum + redeemer + ScriptContext | `ValidatorTest` |
 | End-to-end with budget checks and trace messages | `ValidatorTest` + `BudgetAssertions` |
+
+### Formal verification (experimental)
+
+Tests demonstrate selected executions; `julc verify` checks an explicit
+security property against the exact compiled UPLC artifact. The stable API-v1
+frontend supports concise annotations and a compositional typed Java DSL:
+
+Formal verification remains an experimental JuLC feature. Stable API v1 refers
+to the documented DSL construction surface and schema-10 meanings, not a
+production-safety certification for the compiler or contract.
+
+```java
+@RequiresSigner("datum.owner")
+@SpendingValidator
+class AuthorizedStateValidator {
+    record Datum(byte[] owner) {}
+    record Redeemer() {}
+
+    @Entrypoint
+    static boolean validate(Datum datum, Redeemer redeemer, ScriptContext ctx) {
+        return ContextsLib.signedBy(ctx.txInfo(), datum.owner());
+    }
+}
+```
+
+```bash
+julc verify . --validator AuthorizedStateValidator --backend docker
+```
+
+Annotations state properties but do not add validator checks or change UPLC.
+For custom composition, `julc verify dsl-init` generates a schema-10 typed
+contract metamodel and `julc verify dsl` runs a trusted Java property builder.
+See the [formal verification guide](/guides/formal-verification/) for local and
+Docker setup, DSL examples, result meanings, certificates, and scope limits.
 
 ---
 

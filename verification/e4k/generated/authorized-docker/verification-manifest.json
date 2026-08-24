@@ -1,0 +1,117 @@
+{
+  "artifactFormat" : "double_cbor_hex",
+  "artifactId" : "authorized-governance",
+  "blueprintEntryTitle" : "AuthorizedGovernance",
+  "boundarySemantics" : "strict-data-v1",
+  "builtinSemanticsVariant" : "E",
+  "builtins" : [ {
+    "name" : "EqualsInteger",
+    "flatTag" : 7
+  }, {
+    "name" : "LessThanInteger",
+    "flatTag" : 8
+  }, {
+    "name" : "IfThenElse",
+    "flatTag" : 26
+  }, {
+    "name" : "FstPair",
+    "flatTag" : 29
+  }, {
+    "name" : "SndPair",
+    "flatTag" : 30
+  }, {
+    "name" : "HeadList",
+    "flatTag" : 33
+  }, {
+    "name" : "TailList",
+    "flatTag" : 34
+  }, {
+    "name" : "NullList",
+    "flatTag" : 35
+  }, {
+    "name" : "UnConstrData",
+    "flatTag" : 42
+  }, {
+    "name" : "UnListData",
+    "flatTag" : 44
+  }, {
+    "name" : "UnIData",
+    "flatTag" : 45
+  }, {
+    "name" : "UnBData",
+    "flatTag" : 46
+  } ],
+  "capabilityInventory" : {
+    "ledgerApi" : "CardanoLedgerApiBlaster",
+    "ledgerVersion" : "V3",
+    "revision" : "5dab3c43f042b8735b6d067223baaa8d32ed28a1",
+    "schemaVersion" : 1,
+    "sha256" : "aef541d492decb2fd5d1868b22490fa275d829acfbee83f995e81db2dc6b39c1"
+  },
+  "cardanoScriptHash" : "5d417c251cd6cec84510215b7c8aeee4654e0540dbc14e0781c14fe7",
+  "claims" : [ {
+    "id" : "governance.minimum-deposit",
+    "generatedName" : "governance_minimum_deposit",
+    "domain" : "VALID_SPENDING_V3_PINNED",
+    "guaranteeSha256" : "7031ec8aecf38cbcb7673e74e3aaec74f5a04b378b568bdf02707fcfde5dc8c9",
+    "envelopeSha256" : "405a11d50d8575336d9245c86118673493fbff2bcebd60258cebc1c880b87137",
+    "capabilities" : [ "dsl.ledger.context", "dsl.option.exists", "field.proposalProcedure.deposit", "field.scriptContext.scriptInfo", "field.scriptContext.txInfo", "field.txInfo.proposals", "ledger.validSpendingContext", "purpose.spending" ],
+    "guaranteeRules" : [ "compare:GE", "integer-literal", "ledger-field:PROPOSAL_PROCEDURE.deposit", "ledger-field:SCRIPT_CONTEXT.txInfo", "ledger-field:TX_INFO.proposals", "ledger-root:ledgerContext", "list-at", "option-exists", "typed-variable" ],
+    "counterexampleDomain" : "BLASTER_VALID_SPENDING_SUPERSET",
+    "ledgerValidCounterexampleEstablished" : false,
+    "concreteVmCounterexampleReproduced" : false
+  } ],
+  "compiledCodeSha256" : "33b4ec76520f3c430a0ffb67b2eb6dc33704240826fd16177c1282e0282e5da3",
+  "dependencies" : {
+    "CardanoLedgerApiBlaster" : "5dab3c43f042b8735b6d067223baaa8d32ed28a1",
+    "Lean-blaster" : "083bae7971414d894b56b5bbf4108c63e17bc42a",
+    "PlutusCoreBlaster" : "7cf5a78c54b9694ef093bf49edb5d3799b2a49c9"
+  },
+  "domainAssumptions" : [ "validSpendingContext/v3-pinned" ],
+  "dslIr" : {
+    "schemaVersion" : 9,
+    "sha256" : "6840db5313b68617e05cbf4d670f4b1fc52bd93aabfd674d488743a048e18bff"
+  },
+  "fuel" : 5000,
+  "generatedBy" : "julc verify init",
+  "generatedLeanSha256" : "171b076d0c9ea37fbc1969f39a1f04b69d7ffcae3008073f10691138d5fe3e02",
+  "julcVersion" : "0.1.0-pre16",
+  "leanVersion" : "4.24.0",
+  "ledgerValidityModeled" : true,
+  "plutusLanguage" : "PlutusV3",
+  "project" : "governance-data-evidence",
+  "properties" : [ {
+    "id" : "governance.minimum-deposit.non-vacuity",
+    "reason" : "not-run",
+    "result" : "COULD-NOT-EVALUATE"
+  }, {
+    "id" : "governance.minimum-deposit",
+    "reason" : "not-run",
+    "result" : "COULD-NOT-EVALUATE"
+  } ],
+  "propertyIr" : {
+    "contractSchemaSha256" : "17f0849411ddb65342d426d38bd9c4d65ed0728c39a2adc8bb7d258084f95e5c",
+    "path" : "verification-property.json",
+    "projectedContractTypesSha256" : "17f0849411ddb65342d426d38bd9c4d65ed0728c39a2adc8bb7d258084f95e5c",
+    "propertyId" : "AuthorizedGovernance.dsl-property-set",
+    "schemaVersion" : 3,
+    "sha256" : "1ff2dff25967a9550f6c40da8b9088de06208a889d51d06ad64d270697b29ed0",
+    "sourcePath" : "/Users/satya/work/bloxbean/julc/verification/e4k/AuthorizedGovernanceSpec.java",
+    "template" : "julc.dsl-ledger/v1"
+  },
+  "protocolVersion" : 11,
+  "recursiveDepth" : 4,
+  "runnerPlanSha256" : "e0e5bc03b777b4791d791cb276bbd30678f00192938bd42837a6d52ee91df040",
+  "schemaVersion" : 1,
+  "schemas" : [ {
+    "cip57" : "AuthorizedGovernance:Datum",
+    "lean" : "AuthorizedGovernanceDatum"
+  }, {
+    "cip57" : "AuthorizedGovernance:Redeemer",
+    "lean" : "AuthorizedGovernanceRedeemer"
+  } ],
+  "scriptPurpose" : "spending",
+  "uplcVersion" : "1.1.0",
+  "validatorTitle" : "AuthorizedGovernance",
+  "z3Version" : "4.15.2"
+}

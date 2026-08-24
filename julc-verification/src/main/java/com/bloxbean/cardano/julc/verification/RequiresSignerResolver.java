@@ -2,6 +2,10 @@ package com.bloxbean.cardano.julc.verification;
 
 import com.bloxbean.cardano.julc.compiler.pir.PirType;
 import com.bloxbean.cardano.julc.compiler.schema.ContractSchema;
+import com.bloxbean.cardano.julc.verification.dsl.PropertyIrCodec;
+import com.bloxbean.cardano.julc.verification.dsl.RequiresSignerDslLowering;
+import com.bloxbean.cardano.julc.verification.dsl.type.ContractTypeProjection;
+import com.bloxbean.cardano.julc.verification.dsl.DslPropertyValidator;
 import com.bloxbean.cardano.julc.core.source.SourceLocation;
 import com.github.javaparser.StaticJavaParser;
 import com.github.javaparser.ast.body.TypeDeclaration;
@@ -83,6 +87,11 @@ public final class RequiresSignerResolver {
 
         SourceLocation location = location(annotation, fileName);
         String propertyId = validatorTitle + ".requires-signer." + segments[1];
+        var projection = ContractTypeProjection.project(schema);
+        var canonicalDsl = DslPropertyValidator.validateAndNormalize(
+                RequiresSignerDslLowering.lower(
+                        propertyId, segments[1], projection),
+                schema, DslPropertyValidator.MAX_AST_NODES);
         return Optional.of(new RequiresSignerProperty(
                 RequiresSignerProperty.SCHEMA_VERSION,
                 RequiresSignerProperty.TEMPLATE,
@@ -97,6 +106,9 @@ public final class RequiresSignerResolver {
                                 "field", segments[1], "bytes")),
                 record.name(),
                 "bytes",
+                PropertyIrCodec.canonicalJson(canonicalDsl),
+                ContractTypeProjection.canonicalJson(projection),
+                ContractTypeProjection.sha256(projection),
                 new RequiresSignerProperty.SourceReference(
                         fileName, location.line(), location.column(), location.fragment()),
                 List.of(),

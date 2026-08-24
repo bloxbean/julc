@@ -15,6 +15,8 @@ import com.github.javaparser.ast.expr.StringLiteralExpr;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
+import com.bloxbean.cardano.julc.verification.dsl.MintingDsl;
+import com.bloxbean.cardano.julc.verification.dsl.PropertyIrCodec;
 
 /** Resolves the C.7 controlled-mint annotation against compiler-owned schema metadata. */
 public final class ControlledMintResolver {
@@ -66,10 +68,14 @@ public final class ControlledMintResolver {
                     annotation, fileName);
         }
         SourceLocation location = location(annotation, fileName);
+        String propertyId = validatorTitle + ".controlled-mint-v1";
+        String canonicalDsl = PropertyIrCodec.canonicalJson(
+                MintingDsl.controlledMintPropertySet(
+                        propertyId, authority, tokenName, signedQuantity));
         return Optional.of(new ControlledMintProperty(
                 ControlledMintProperty.SCHEMA_VERSION,
                 ControlledMintProperty.TEMPLATE,
-                validatorTitle + ".controlled-mint-v1",
+                propertyId,
                 validatorTitle,
                 "minting",
                 "authority:" + authority + "|tokenName:" + tokenName
@@ -79,6 +85,7 @@ public final class ControlledMintResolver {
                 signedQuantity,
                 action,
                 record.name(),
+                canonicalDsl,
                 new ControlledMintProperty.SourceReference(
                         fileName, location.line(), location.column(), location.fragment()),
                 List.of(),

@@ -50,6 +50,14 @@ const SECTIONS = [
     ],
   },
   {
+    title: 'Formal Verification (Experimental)',
+    files: [
+      'guides/formal-verification.md',
+      'guides/formal-verification/annotation-profiles.md',
+      'guides/formal-verification/typed-dsl.md',
+    ],
+  },
+  {
     title: 'Best Practices',
     files: ['best-practices/conditionals.md'],
   },

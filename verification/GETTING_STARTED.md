@@ -305,12 +305,23 @@ The fixed authority and token are property literals, not values selected by an
 untrusted redeemer. See [`c7/README.md`](c7/README.md) for mint, burn, refuted,
 and vacuous examples.
 
-## 10. Experimental typed seller-payment DSL
+All four annotation frontends now lower through the same closed DSL semantics:
+`@RequiresSigner`, `@ControlledMint`, and the complete
+`@RequiresSigner + @PreservesValue + @Monotonic` profile bind canonical DSL IR
+before Lean generation. An annotation is concise syntax for a reviewed DSL
+property, not a separate theorem implementation. Profile-specific proof names
+and result messages remain for usability.
 
-ADR-016 E.3 adds an opt-in typed Java DSL vertical slice. It is experimental,
-executes trusted project Java in a bounded worker, and currently accepts only
-the reviewed seller-paid-at-least shape. Start from an already buildable JuLC
-spending project whose datum has a `byte[] seller` and `BigInteger price`:
+## 10. Stable typed verification DSL (API v1)
+
+ADR-029 stabilizes the reviewed E.4 DSL surface as Java API version 1 and
+canonical property schema 10. New `dsl-init` invocations generate schema 10 by
+default; pass `--schema-version` only to reproduce an older schema. The builder
+still executes trusted project Java in a bounded worker, and proof completion
+is still subject to the recorded solver and execution bounds.
+
+Start from an already buildable JuLC spending project whose datum has a
+`byte[] seller` and `BigInteger price`:
 
 ```bash
 julc verify dsl-init . --validator Sale \
@@ -323,10 +334,31 @@ javac -cp julc.jar -d build/verification-dsl/classes \
 
 julc verify dsl . --validator Sale \
   --spec-class evidence.SellerPaymentSpec \
-  --spec-classpath build/verification-dsl/classes \
+  --spec-classpath "build/verification-dsl/classes:/path/to/julc.jar" \
   --seller-field seller --price-field price \
   --source SellerPaymentSpec.java --backend local --force
 ```
+
+The generated model's `properties(...)` method, typed datum/redeemer wrappers,
+ledger expressions, collection operations, authorization algebra, value
+algebra, governance data, and reviewed schema-10 adapters are the stable
+construction surface. Concrete `dsl.ir` node constructors, renderers, worker
+protocols, and arbitrary Lean are not public construction APIs.
+
+For an inline output datum, schema 10 can strictly decode it through the
+compiler-owned datum type without a cast:
+
+```java
+var contract = new SaleModel();
+var successor = contract.continuingOutputs().at(integer(0)).exists(output ->
+    output.datum().whenInline(raw -> contract.decodeDatum(raw, next ->
+        next.owner().eq(expectedOwner))));
+```
+
+Malformed data makes this expression false. The decoder target cannot be
+selected through annotation text or a Lean name. For an exact one-element list,
+prefer `outputs.whenSingleton(output -> ...)`; it is a closed typed pattern and
+does not expand into a recursive count plus indexed lookup.
 
 The property builder constructs typed symbolic expressions; it does not run the
 contract. JuLC independently validates its bounded canonical AST, imports the
@@ -338,7 +370,459 @@ trusted-source-only in E.3.
 See [`dsl/README.md`](dsl/README.md) and [`e3/README.md`](e3/README.md) for the
 property source and evidence controls.
 
-## 11. Fuel, recursion, and reruns
+## 11. Typed one-shot minting DSL
+
+ADR-018 E.4a extends the trusted Java property workflow to minting. Generate a
+purpose-aware model, compile it with a specification using
+`MintingDsl.oneShotPropertySet`, and select the minting interface explicitly:
+
+```bash
+julc verify dsl-init . --validator TokenPolicy --purpose minting \
+  --package evidence --class TokenPolicyModel \
+  --out build/verification-dsl/src/evidence/TokenPolicyModel.java
+
+javac -cp julc.jar -d build/verification-dsl/classes \
+  build/verification-dsl/src/evidence/TokenPolicyModel.java \
+  OneShotMintSpec.java
+
+julc verify dsl . --validator TokenPolicy --purpose minting \
+  --spec-class evidence.OneShotMintSpec \
+  --spec-classpath "build/verification-dsl/classes:/path/to/julc.jar" \
+  --source OneShotMintSpec.java --backend docker --fuel 5000 --force
+```
+
+The JuLC JAR entry is required when using the GraalVM native CLI because the
+trusted property builder still executes in a bounded child JVM. It is harmless
+with the JVM CLI. Use `;` instead of `:` as the classpath separator on Windows.
+
+The generated certificate binds the schema-2 DSL hash, capability inventory,
+selected blueprint entry, exact shared UPLC/hash, generated Lean, domain
+bridge, dependency pins, and execution bounds. Mint association-list order and
+duplicates are preserved; duplicate or malformed entries for the current
+policy cannot disappear behind first-match lookup. See
+[`e4a/README.md`](e4a/README.md) for a complete specification and local/Docker
+commands.
+
+## 12. Compositional, rewarding, and certifying DSL
+
+ADR-019 schema 3 accepts freely composed guarantees built only from the
+reviewed typed nodes. Each property keeps the exact-execution and optional
+ledger-domain premise in a generator-owned theorem envelope; user code cannot
+insert either premise or raw Lean. A rewarding specification can therefore
+combine existing signer predicates with the new duplicate-preserving raw
+withdrawal traversal:
+
+```java
+var contract = new RewardingModel();
+var ownMinimum = contract.context().txInfo().withdrawals().exists(entry ->
+        entry.credential().eq(contract.rewardingCredential())
+                .and(entry.amount().ge(integer(1_000_000))));
+var authorized = contract.context().txInfo().signatories()
+        .contains(keyHash(AUTHORITY));
+
+return DslPropertySet.composed(DslPurpose.REWARDING,
+        property("reward.authorized-minimum",
+                DslDomain.VALID_REWARDING_V3_PINNED,
+                contract.redeemerStrictlyDecodes()
+                        .and(authorized)
+                        .and(ownMinimum)));
+```
+
+Generate and verify it with an explicit purpose:
+
+```bash
+julc verify dsl-init . --validator Rewards --purpose rewarding \
+  --package evidence --class RewardingModel \
+  --out build/verification-dsl/src/evidence/RewardingModel.java
+
+javac -cp julc.jar -d build/verification-dsl/classes \
+  build/verification-dsl/src/evidence/RewardingModel.java RewardingSpec.java
+
+julc verify dsl . --validator Rewards --purpose rewarding \
+  --spec-class evidence.RewardingSpec \
+  --spec-classpath "build/verification-dsl/classes:/path/to/julc.jar" \
+  --source RewardingSpec.java --backend local --fuel 5000 --force
+```
+
+The withdrawal meaning is structural association-list existence. Duplicate
+credentials are neither collapsed nor summed. A satisfying duplicate is
+enough for `exists`; choose a stronger reviewed formula if a policy needs a
+different duplicate rule. See [`e4b/README.md`](e4b/README.md) for generic
+multi-property composition and [`e4c/README.md`](e4c/README.md) for the full
+rewarding controls and Docker command.
+
+A certifying specification uses the same compositional schema-3 pipeline. The
+selected `publish` interface supplies the current certificate and its ledger
+index; user property code cannot replace either root:
+
+```java
+var contract = new CertifyingModel();
+var currentCertificate = contract.context().txInfo().certificates().containsAt(
+        contract.certificateIndex(), contract.certificate());
+var authorized = contract.context().txInfo().signatories()
+        .contains(keyHash(AUTHORITY));
+
+return DslPropertySet.composed(DslPurpose.CERTIFYING,
+        property("certificate.authorized-update",
+                DslDomain.VALID_CERTIFYING_V3_PINNED,
+                contract.redeemerStrictlyDecodes()
+                        .and(contract.certificate().isKind(TxCertKind.UPDATE_DREP))
+                        .and(currentCertificate)
+                        .and(authorized)));
+```
+
+Generate the purpose-specific metamodel and verify it with:
+
+```bash
+julc verify dsl-init . --validator Certificates --purpose certifying \
+  --package evidence --class CertifyingModel \
+  --out build/verification-dsl/src/evidence/CertifyingModel.java
+
+javac -cp julc.jar -d build/verification-dsl/classes \
+  build/verification-dsl/src/evidence/CertifyingModel.java CertifyingSpec.java
+
+julc verify dsl . --validator Certificates --purpose certifying \
+  --spec-class evidence.CertifyingSpec \
+  --spec-classpath "build/verification-dsl/classes:/path/to/julc.jar" \
+  --source CertifyingSpec.java --backend local --fuel 5000 --force
+```
+
+`TxCertKind` is a closed enum covering the 11 pinned Conway certificate
+constructors. `containsAt` is ordered indexed membership: negative and
+out-of-range indices are false, and duplicates are retained. Under
+`VALID_CERTIFYING_V3_PINNED` this membership is already a ledger-domain fact;
+the certificate-kind and authority clauses are the additional policy. See
+[`e4d/README.md`](e4d/README.md) for the complete local/Docker evidence matrix.
+
+## 13. Generic contract types and collections
+
+ADR-022 schema 4 generates the datum and redeemer API from the selected
+compiler-owned contract schema. Schema 4 remains selectable for compatibility;
+new users should omit `--schema-version` and receive stable schema 10:
+
+```bash
+julc verify dsl-init . --validator CollectionGate --purpose spending \
+  --schema-version 4 --package evidence --class CollectionGateModel \
+  --out build/verification-dsl/src/evidence/CollectionGateModel.java
+```
+
+For a contract with nested records, optionals, lists, maps, and a sealed
+redeemer, a generated-model-only property can look like:
+
+```java
+var contract = new CollectionGateModel();
+var guarantee = contract.datum().exists(datum ->
+        contract.context().txInfo().signatories()
+                .contains(datum.config().owner())
+                .and(datum.config().minimum().isPresent()
+                        .or(datum.config().minimum().isEmpty()))
+                .and(datum.config().values().exactlyOne(v -> v.gt(integer(0))))
+                .and(contract.redeemer().exists(action ->
+                        action.whenUse(use -> datum.config().balances()
+                                .lookupFirst(use.key()).isPresent()))));
+
+return contract.properties(property("collections.authorized",
+        DslDomain.NONE, guarantee));
+```
+
+Compile and run it through the same bounded trusted worker used by earlier DSL
+milestones:
+
+```bash
+javac -cp julc.jar -d build/verification-dsl/classes \
+  build/verification-dsl/src/evidence/CollectionGateModel.java \
+  CollectionGateSpec.java
+
+julc verify dsl . --validator CollectionGate --purpose spending \
+  --spec-class evidence.CollectionGateSpec \
+  --spec-classpath "build/verification-dsl/classes:/path/to/julc.jar" \
+  --source CollectionGateSpec.java --backend local --fuel 2000 --force
+```
+
+Lists and maps retain order and duplicates. `lookupFirst` returns the first raw
+matching map entry, `lookupAll` returns every match in order, and
+`structurallyEquals` compares the encoded ordered structure rather than a
+unique-key/extensional mathematical map. Negative or out-of-range list indices
+return an empty option. Wrong tags, arities, fields, element types, binder
+types, or forged nominal IDs fail in parent-process admission.
+
+The compiler currently erases source `@NewType` identity from its contract
+schema, so schema 4 sees the underlying representation and does not claim
+nominal newtype separation. See [`e4e/README.md`](e4e/README.md) for type
+controls and [`e4f/README.md`](e4f/README.md) for reproducible local/Docker
+evidence.
+
+## 14. Typed non-value transaction context
+
+ADR-023 schema 5 adds the closed ledger-context surface while retaining the
+schema-4 contract model. Generate it explicitly:
+
+```bash
+julc verify dsl-init . --validator LedgerGate --purpose spending \
+  --schema-version 5 --package evidence --class LedgerGateModel \
+  --out build/verification-dsl/src/evidence/LedgerGateModel.java
+```
+
+A property can compose the generated contract datum/redeemer API with ordered
+reference inputs, strict guarded ledger variants, and duplicate-preserving
+witness maps:
+
+```java
+var contract = new LedgerGateModel();
+var tx = contract.context().txInfo();
+
+var referenceShape = tx.referenceInputs().at(integer(0)).exists(input ->
+        input.resolved().datum().isInline()
+                .and(input.resolved().address()
+                        .paymentCredential().isScript())
+                .and(input.resolved().referenceScript().isEmpty()));
+
+var datumWitnessPresent = tx.datums().existsEntry((hash, raw) -> bool(true));
+
+return contract.properties(
+        property("ledger.reference-shape",
+                DslDomain.VALID_SPENDING_V3_PINNED, referenceShape),
+        property("ledger.datum-witness",
+                DslDomain.VALID_SPENDING_V3_PINNED, datumWitnessPresent));
+```
+
+Compile the generated model and trusted specification, then run the same
+bounded worker/proof pipeline:
+
+```bash
+javac -cp julc.jar -d build/verification-dsl/classes \
+  build/verification-dsl/src/evidence/LedgerGateModel.java \
+  LedgerGateSpec.java
+
+julc verify dsl . --validator LedgerGate --purpose spending \
+  --spec-class evidence.LedgerGateSpec \
+  --spec-classpath "build/verification-dsl/classes:/path/to/julc.jar" \
+  --source LedgerGateSpec.java --backend local --fuel 5000 --force
+```
+
+Use `--backend docker` to isolate Lean/Blaster. The GraalVM native CLI uses the
+same command but still needs an installed child JVM and the JuLC JAR on
+`--spec-classpath` to execute trusted Java property code.
+
+Input/list and witness/redeemer map order and duplicates remain observable.
+`lookupFirst` is not `lookupAll`; continuing outputs use the complete address
+of the first resolved own input. Inline datum and redeemer payloads remain
+opaque raw `Data` in schema 5. Stable schema 10 additionally permits strict
+decode through the compiler-owned datum type, but still permits neither
+unchecked casting nor raw-data equality. See [`e4g/README.md`](e4g/README.md) for the
+reproducible local/Docker/native evidence and current limitations.
+
+## 15. Compositional authorization
+
+ADR-024 schema 6 extends the typed contract and ledger surface with distinct
+authorization relations. Generate schema 6 explicitly:
+
+```bash
+julc verify dsl-init . --validator Treasury --purpose spending \
+  --schema-version 6 --package evidence --class TreasuryModel \
+  --out build/verification-dsl/src/evidence/TreasuryModel.java
+```
+
+For a fixed three-member committee, “exactly two approved keys and no other
+signer” is written as two visibly separate constraints:
+
+```java
+var contract = new TreasuryModel();
+var auth = contract.authorization();
+var committee = auth.authorities(
+        auth.fixed("41".repeat(28)),
+        auth.fixed("11".repeat(28)),
+        auth.fixed("22".repeat(28)));
+
+return contract.properties(property("treasury.two-of-three-approved-only",
+        DslDomain.VALID_SPENDING_V3_PINNED,
+        committee.exactlySigned(2)
+                .and(committee.noUnexpectedSigners())));
+```
+
+`exactlySigned(2)` counts distinct committee members that signed; it does not
+exclude an outsider. `noUnexpectedSigners()` adds that independent allow-list
+constraint. Reordering and duplicates do not affect authorization, while raw
+list operations elsewhere retain order and duplicates. A compiler-owned
+`byte[]` field can become an authority only through
+`auth.fromContractBytes(field)`, and a generated `List<byte[]>` wrapper offers
+`asAuthorities()`. Dynamic lists may be empty, so prefer a positive threshold
+when empty `allSigned()` would be unintended.
+
+At the current pinned Blaster/Z3 revision, the retained positive SMT evidence
+discharges `exactlySigned(2)` quickly, while the combined threshold plus
+`noUnexpectedSigners()` query did not finish within a ten-minute calibration
+window. The allow-list relation is still admitted and kernel-tested, but such
+an undetermined run is `COULD-NOT-EVALUATE`, not successful verification.
+
+Applied `@Param` values are not accepted as authority roots yet. A parameter
+declaration in a blueprint does not identify the value used to produce a
+deployed script. This remains fail-closed until preflight can reconstruct
+parameter application and match both exact UPLC bytes and the script hash.
+
+Fixed key hashes containing byte `00` are also rejected in this experimental
+slice. The pinned Blaster UPLC-constant and Lean property-literal paths do not
+yet agree for that byte. This is a solver limitation, not a Cardano key-hash
+rule; JuLC fails closed instead of silently changing the authority identity.
+
+Compile and invoke `julc verify dsl` as in schema 4/5. Reproducible positive,
+refuted, vacuous, exact-VM, and kernel controls are in
+[`e4h/README.md`](e4h/README.md).
+
+## 16. Certificate payloads
+
+ADR-025 schema 7 adds guarded payload access for all 11 pinned V3 transaction
+certificate constructors and the nested `Delegatee` and `DRep` sums. Generate
+a certifying model explicitly:
+
+```bash
+julc verify dsl-init . --validator Certificates --purpose certifying \
+  --schema-version 7 --package evidence --class CertificatesModel \
+  --out build/verification-dsl/src/evidence/CertificatesModel.java
+```
+
+Payloads are available only inside the matching constructor eliminator:
+
+```java
+var contract = new CertificatesModel();
+var expectedPool = LedgerExpressions.publicKeyHash(bytes("41".repeat(28)));
+
+return contract.properties(property("certificate.pool-retirement-bound",
+        DslDomain.VALID_CERTIFYING_V3_PINNED,
+        contract.certificate().whenPoolRetire((pool, epoch) ->
+                pool.eq(expectedPool).and(epoch.le(integer(100))))));
+```
+
+Transaction-list traversal uses the same guarded surface:
+
+```java
+contract.context().txInfo().certificates().exists(candidate ->
+        candidate.whenDelegStaking((credential, delegatee) ->
+                delegatee.whenStakeVote((pool, drep) ->
+                        pool.eq(expectedPool).and(drep.isAlwaysAbstain()))));
+```
+
+Wrong tags, arities, payload kinds, forged fields, and projections outside a
+matching guard fail closed. DRep and cold/hot committee credentials use
+role-specific Java wrappers while retaining the pinned credential encoding.
+The retained positive solver fixture proves a DRep-registration deposit
+constraint; nested credentials and pool-retirement payloads are additionally
+covered by Lean kernel controls and exact-VM tests. See
+[`e4i/README.md`](e4i/README.md).
+
+## 17. Multi-asset value algebra
+
+ADR-025 schema 8 keeps output `Value`, transaction `MintValue`, and checked
+`ValueDelta` roles distinct. Generate the model explicitly:
+
+```bash
+julc verify dsl-init . --validator Sale --purpose spending \
+  --schema-version 8 --package evidence --class SaleModel \
+  --out build/verification-dsl/src/evidence/SaleModel.java
+```
+
+The API makes four different meanings visible. They are not interchangeable:
+
+```java
+var contract = new SaleModel();
+var policy = LedgerExpressions.currencySymbol(bytes("11".repeat(28)));
+var token = LedgerExpressions.tokenName(bytes("746f6b656e"));
+var firstOutput = contract.context().txInfo().outputs().at(integer(0));
+
+var guarantee = firstOutput.exists(output ->
+        output.value().rawPolicies().exists(entry ->
+                entry.whenWellFormed((actualPolicy, tokens) ->
+                        actualPolicy.eq(policy)))
+        // Exact pinned V2.valueOf: first matching policy/token entry.
+        .and(output.value().quantityFirst(policy, token).ge(integer(10)))
+        // All matching duplicates are summed; absence/malformed data is none.
+        .and(output.value().quantitySumStrict(policy, token)
+                .exists(quantity -> new IntegerExpr(quantity.node())
+                        .ge(integer(10))))
+        // Ignores ordering and zero-sum decomposition after strict validation.
+        .and(output.value().extensionallyEquals(output.value()))
+        // Observes the exact ordered nested association-list representation.
+        .and(output.value().structurallyEquals(output.value())));
+
+return contract.properties(property("sale.multi-asset-payment",
+        DslDomain.VALID_SPENDING_V3_PINNED, guarantee));
+```
+
+Strict-summed absence is `none`; an explicitly encoded zero is `some 0`.
+Malformed policy/token entries also fail closed. Extensional equality and
+pointwise order treat an absent asset as zero only after validating the entire
+raw value. Checked add, negate, and scale operations return `ValueDeltaOption`;
+they never claim the result is a ledger-valid output value.
+
+Payment aggregation scope is explicit:
+
+```java
+var fullAddressPayment = contract.context().txInfo().outputs()
+        .toAddress(expectedAddress).valueProduced();
+var paymentCredentialOnly = contract.context().txInfo().outputs()
+        .toPaymentCredential(expectedCredential).valueProduced();
+```
+
+The second relation is weaker because it ignores the staking credential.
+Selected-list aggregates preserve every input/output occurrence; whole-context
+`valueSpent()`, `valueProduced()`, raw `mint()`, and `isBalanced()` retain the
+pinned CardanoLedgerApi meanings. A balance-only result is marked
+`domain-implied`, and transaction-local payment evidence records
+`globalMultiInputLinkageModeled: false`.
+
+Compile the generated model and trusted specification, then invoke
+`julc verify dsl` exactly as in schemas 4–7. See
+[`e4j/README.md`](e4j/README.md) for the reproducible positive, refuted,
+vacuous, kernel, VM, Docker, and native controls and the current solver bounds.
+
+## 18. Typed governance transaction data (schema 9)
+
+Schema 9 lets an existing spending, minting, rewarding, or certifying property
+inspect `TxInfo` voters, votes, proposals, action identifiers, protocol
+versions, and reviewed governance-action payloads. Generate the model with:
+
+```bash
+julc verify dsl-init . --validator MyValidator --purpose spending \
+  --schema-version 9 --package verification --class GovernanceModel \
+  --out verification/GovernanceModel.java
+```
+
+Use `context().txInfo().votes()` for duplicate-preserving nested maps and
+`context().txInfo().proposals()` for ordered proposals. Access a raw proposal
+action only through `actionStrict()`. `ChangedParameters` and `Quorum` remain
+inaccessible, and voting/proposing validator selection is still unsupported.
+See [`e4k/README.md`](e4k/README.md) for executable evidence and the proposal-
+validity domain limitation.
+
+## 19. Stable schema-10 reviewed raw-data adapters
+
+Schema 10 is the API-v1 default and provides closed reviewed operations for the pinned validity range,
+strict treasury optionals, changed-parameter integer keys, and governance
+quorum. Generate the schema-10 model explicitly:
+
+```bash
+julc verify dsl-init . --validator MyValidator --purpose spending \
+  --schema-version 10 --package verification --class MyContractModel \
+  --out verification/MyContractModel.java
+```
+
+The generated model exposes expressions such as:
+
+```java
+var tx = contract.context().txInfo();
+var guarantee = contract.datum().exists(datum ->
+    tx.validityRangeReviewed().contains(datum.deadline()))
+    .and(tx.currentTreasuryStrict().whenPresent(amount -> amount.ge(integer(0))))
+    .and(tx.treasuryDonationStrict().isAbsent());
+```
+
+Use `decoderValid()` and `canonicalEncoding()` as different validity-range
+claims. Treasury expressions distinguish present, absent, and malformed.
+Changed-parameter values and arbitrary raw `Data` remain inaccessible. See
+[`e4l/README.md`](e4l/README.md) for the executable evidence and the pinned
+treasury-model discrepancy.
+
+## 20. Fuel, recursion, and reruns
 
 `--fuel` bounds exact UPLC preprocessing/execution in the generated obligation.
 An `SMT-VALID` certificate covers only successful paths completing within that
@@ -358,7 +842,7 @@ julc verify . --validator AuthorizedStateValidator \
   --out-dir verification/ci-authorized --force
 ```
 
-## 12. What the certificate does and does not claim
+## 21. What the certificate does and does not claim
 
 For an annotation profile, a successful certificate means:
 

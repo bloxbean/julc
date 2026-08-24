@@ -1,0 +1,60 @@
+{
+  "acquire" : [ {
+    "command" : [ "lake", "update" ],
+    "expectedExitCodes" : [ 0 ],
+    "id" : "lake-update",
+    "maxAttempts" : 3
+  }, {
+    "command" : [ "lake", "build", "@PlutusCore/PlutusCore", "@CardanoLedgerApi/CardanoLedgerApi", "@Blaster/Blaster", "GeneratedVerificationSupport" ],
+    "expectedExitCodes" : [ 0 ],
+    "id" : "build-pinned-dependencies"
+  } ],
+  "kind" : "generated-workspace",
+  "manifest" : "verification-manifest.json",
+  "schemaVersion" : 2,
+  "timeoutSeconds" : 1800,
+  "verify" : [ {
+    "command" : [ "scripts/verify-reviewed_time_vulnerable-non-vacuity.sh" ],
+    "executableSha256" : "6d2af7ea26ea5ac9ad16e913aa5f682456ed0fa07b54294eaf5b448485f339e8",
+    "id" : "check-non-vacuity-reviewed_time_vulnerable",
+    "outcomes" : [ {
+      "exitCode" : 0,
+      "reason" : "expected-negative-control",
+      "requiredOutput" : "NON-VACUOUS: successful input witness exists",
+      "result" : "REFUTED"
+    }, {
+      "exitCode" : 4,
+      "reason" : "property-vacuous",
+      "requiredOutput" : "VACUOUS: validator has no successful input",
+      "result" : "COULD-NOT-EVALUATE"
+    }, {
+      "exitCode" : 2,
+      "reason" : "non-vacuity-undetermined",
+      "requiredOutput" : "COULD-NOT-EVALUATE: non-vacuity",
+      "result" : "COULD-NOT-EVALUATE"
+    } ],
+    "propertyId" : "reviewed.time-vulnerable.non-vacuity"
+  }, {
+    "command" : [ "scripts/verify-reviewed_time_vulnerable.sh" ],
+    "executableSha256" : "6181e9d298c0671b067c7972940b100ddf6582ffd568444678397b0f020bf7bb",
+    "id" : "prove-dsl-reviewed_time_vulnerable",
+    "nonVacuityGuardPropertyId" : "reviewed.time-vulnerable.non-vacuity",
+    "outcomes" : [ {
+      "exitCode" : 0,
+      "reason" : "dsl-property-established",
+      "requiredOutput" : "SMT-VALID: DSL property reviewed.time-vulnerable established",
+      "result" : "SMT-VALID"
+    }, {
+      "exitCode" : 3,
+      "reason" : "dsl-property-counterexample",
+      "requiredOutput" : "REFUTED: DSL property reviewed.time-vulnerable counterexample found",
+      "result" : "REFUTED"
+    }, {
+      "exitCode" : 2,
+      "reason" : "dsl-property-undetermined",
+      "requiredOutput" : "COULD-NOT-EVALUATE: DSL property reviewed.time-vulnerable",
+      "result" : "COULD-NOT-EVALUATE"
+    } ],
+    "propertyId" : "reviewed.time-vulnerable"
+  } ]
+}

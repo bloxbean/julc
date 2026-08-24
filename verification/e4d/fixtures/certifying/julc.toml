@@ -1,0 +1,4 @@
+[project]
+name = "e4d-certifying"
+version = "0.1.0"
+compiler = "local"

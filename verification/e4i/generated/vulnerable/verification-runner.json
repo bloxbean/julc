@@ -1,0 +1,60 @@
+{
+  "acquire" : [ {
+    "command" : [ "lake", "update" ],
+    "expectedExitCodes" : [ 0 ],
+    "id" : "lake-update",
+    "maxAttempts" : 3
+  }, {
+    "command" : [ "lake", "build", "@PlutusCore/PlutusCore", "@CardanoLedgerApi/CardanoLedgerApi", "@Blaster/Blaster", "GeneratedVerificationSupport" ],
+    "expectedExitCodes" : [ 0 ],
+    "id" : "build-pinned-dependencies"
+  } ],
+  "kind" : "generated-workspace",
+  "manifest" : "verification-manifest.json",
+  "schemaVersion" : 2,
+  "timeoutSeconds" : 1800,
+  "verify" : [ {
+    "command" : [ "scripts/verify-certificate_vulnerable_registration-non-vacuity.sh" ],
+    "executableSha256" : "20db2106613237eec07cd4dde753cb6af238689c6174fb899a440d335bed8751",
+    "id" : "check-non-vacuity-certificate_vulnerable_registration",
+    "outcomes" : [ {
+      "exitCode" : 0,
+      "reason" : "expected-negative-control",
+      "requiredOutput" : "NON-VACUOUS: successful input witness exists",
+      "result" : "REFUTED"
+    }, {
+      "exitCode" : 4,
+      "reason" : "property-vacuous",
+      "requiredOutput" : "VACUOUS: validator has no successful input",
+      "result" : "COULD-NOT-EVALUATE"
+    }, {
+      "exitCode" : 2,
+      "reason" : "non-vacuity-undetermined",
+      "requiredOutput" : "COULD-NOT-EVALUATE: non-vacuity",
+      "result" : "COULD-NOT-EVALUATE"
+    } ],
+    "propertyId" : "certificate.vulnerable-registration.non-vacuity"
+  }, {
+    "command" : [ "scripts/verify-certificate_vulnerable_registration.sh" ],
+    "executableSha256" : "3a44dc73c650b13b1cfb79968d1a5e2de72121d0da26eaba421a0c32a699b5b8",
+    "id" : "prove-dsl-certificate_vulnerable_registration",
+    "nonVacuityGuardPropertyId" : "certificate.vulnerable-registration.non-vacuity",
+    "outcomes" : [ {
+      "exitCode" : 0,
+      "reason" : "dsl-property-established",
+      "requiredOutput" : "SMT-VALID: DSL property certificate.vulnerable-registration established",
+      "result" : "SMT-VALID"
+    }, {
+      "exitCode" : 3,
+      "reason" : "dsl-property-counterexample",
+      "requiredOutput" : "REFUTED: DSL property certificate.vulnerable-registration counterexample found",
+      "result" : "REFUTED"
+    }, {
+      "exitCode" : 2,
+      "reason" : "dsl-property-undetermined",
+      "requiredOutput" : "COULD-NOT-EVALUATE: DSL property certificate.vulnerable-registration",
+      "result" : "COULD-NOT-EVALUATE"
+    } ],
+    "propertyId" : "certificate.vulnerable-registration"
+  } ]
+}

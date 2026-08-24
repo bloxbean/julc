@@ -1,6 +1,11 @@
 package com.bloxbean.julc.cli.cmd.verify;
 
 import com.bloxbean.cardano.julc.compiler.DataBoundarySemantics;
+import com.bloxbean.cardano.julc.verification.ComposedDslProperty;
+import com.bloxbean.cardano.julc.verification.dsl.ComposedDslPromotion;
+import com.bloxbean.cardano.julc.verification.dsl.ir.DslPropertySet;
+import com.bloxbean.cardano.julc.verification.capability.LedgerCapabilityInventories;
+import com.bloxbean.cardano.julc.verification.capability.ReviewedRawDataAdapterAudits;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -188,6 +193,7 @@ public final class VerificationRunner {
 
         combineLogs(logs, "acquire", phases);
         combineLogs(logs, "verify", phases);
+        attachClaimMetadata(manifest, properties);
         Map<String, String> inputs = inputHashes(
                 workspace, plan, planFile, manifestFile, logs);
         String backendIdentity = backendContext == null ? "unavailable" : backendContext.identity();
@@ -295,8 +301,26 @@ public final class VerificationRunner {
             List<VerificationRunResult.Property> properties,
             VerificationProgress progress)
             throws IOException, InterruptedException {
+        var blockedNonVacuityGuards = new LinkedHashMap<String, String>();
         for (int stepIndex = 0; stepIndex < steps.size(); stepIndex++) {
             var step = steps.get(stepIndex);
+            if (step.nonVacuityGuardPropertyId() != null
+                    && blockedNonVacuityGuards.containsKey(
+                            step.nonVacuityGuardPropertyId())) {
+                String guardReason = blockedNonVacuityGuards.get(
+                        step.nonVacuityGuardPropertyId());
+                boolean vacuous = "property-vacuous".equals(guardReason);
+                phases.add(new VerificationRunResult.Phase(
+                        step.id(), phase, "SKIPPED", null, null, null));
+                properties.add(new VerificationRunResult.Property(
+                        step.propertyId(),
+                        VerificationOutcome.COULD_NOT_EVALUATE.externalName(),
+                        vacuous ? "not-evaluated-vacuous"
+                                : "not-evaluated-non-vacuity-undetermined"));
+                progress.skipped(stepDescription(step.id(), phase), vacuous
+                        ? "property is vacuous" : "non-vacuity was not established");
+                continue;
+            }
             try (var task = progress.start(stepDescription(step.id(), phase))) {
                 int displayIndex = stepIndex + 1;
                 Path log = logs.resolve("%s-%02d-%s.log".formatted(
@@ -347,10 +371,17 @@ public final class VerificationRunner {
                     var outcome = VerificationOutcome.parse(observed.result());
                     properties.add(new VerificationRunResult.Property(
                             step.propertyId(), outcome.externalName(), observed.reason()));
-                    if ("property-vacuous".equals(observed.reason())) {
-                        appendVacuitySkippedSteps(
-                                steps, stepIndex + 1, phase, phases, properties, progress);
-                        break;
+                    if (!"expected-negative-control".equals(observed.reason())) {
+                        boolean guardedProofExists = steps.subList(stepIndex + 1, steps.size())
+                                .stream().anyMatch(candidate -> step.propertyId().equals(
+                                        candidate.nonVacuityGuardPropertyId()));
+                        if (guardedProofExists) {
+                            blockedNonVacuityGuards.put(step.propertyId(), observed.reason());
+                        } else if ("property-vacuous".equals(observed.reason())) {
+                            appendVacuitySkippedSteps(
+                                    steps, stepIndex + 1, phase, phases, properties, progress);
+                            break;
+                        }
                     }
                 }
             }
@@ -359,8 +390,13 @@ public final class VerificationRunner {
     }
 
     private static String stepDescription(String id, String phase) {
+        if ("verify".equals(phase) && id.startsWith("check-non-vacuity-")) {
+            return "Checking " + id.substring("check-non-vacuity-".length())
+                    .replace('_', ' ') + " non-vacuity";
+        }
         if ("verify".equals(phase) && id.startsWith("prove-")) {
-            return "Proving " + id.substring("prove-".length()).replace('-', ' ');
+            return "Proving " + id.substring("prove-".length())
+                    .replace('-', ' ').replace('_', ' ');
         }
         return switch (id) {
             case "lake-update" -> "Acquiring pinned Lean dependencies";
@@ -553,6 +589,25 @@ public final class VerificationRunner {
                 VerificationOutcome.parse(step.result());
             }
         }
+        for (int index = 0; index < plan.verify().size(); index++) {
+            var step = plan.verify().get(index);
+            if (step.nonVacuityGuardPropertyId() == null) continue;
+            if (plan.schemaVersion() < 2
+                    || !ID.matcher(step.nonVacuityGuardPropertyId()).matches()) {
+                throw new IOException("Verification step '" + step.id()
+                        + "' has an invalid vacuity guard");
+            }
+            boolean guardedByPriorStep = plan.verify().subList(0, index).stream()
+                    .anyMatch(candidate -> step.nonVacuityGuardPropertyId()
+                            .equals(candidate.propertyId())
+                            && candidate.outcomes() != null
+                            && candidate.outcomes().stream().anyMatch(outcome ->
+                                    "property-vacuous".equals(outcome.reason())));
+            if (!guardedByPriorStep) {
+                throw new IOException("Verification step '" + step.id()
+                        + "' refers to no prior vacuity observation");
+            }
+        }
     }
 
     private static List<Integer> expectedExitCodes(VerificationRunPlan.Step step) {
@@ -648,7 +703,8 @@ public final class VerificationRunner {
             throw new IOException("Verification manifest has invalid fuel or recursive depth");
         }
         String purpose = requiredText(manifest, "scriptPurpose");
-        if (!Set.of("spending", "minting").contains(purpose)) {
+        if (!Set.of("spending", "minting", "rewarding", "certifying")
+                .contains(purpose)) {
             throw new IOException("Unsupported verification script purpose " + purpose);
         }
         var artifact = new LinkedHashMap<String, Object>();
@@ -692,7 +748,18 @@ public final class VerificationRunner {
             JsonNode property = VerificationFiles.JSON.readTree(propertyFile.toFile());
             String template = requiredText(property, "template");
             boolean sellerPayment = "julc.dsl.seller-paid-at-least/v1".equals(template);
-            if (property.path("schemaVersion").asInt(-1) != 1
+            boolean oneShotMint = "julc.dsl.one-shot-authorized-mint/v1".equals(template);
+            boolean composedDsl = ComposedDslProperty.TEMPLATE.equals(template)
+                    || ComposedDslProperty.TYPED_TEMPLATE.equals(template)
+                    || ComposedDslProperty.LEDGER_TEMPLATE.equals(template);
+            boolean ledgerValidityModeled = composedDsl
+                    ? property.path("ledgerValidityModeled").asBoolean(false)
+                    : sellerPayment || oneShotMint;
+            int expectedPropertySchema = ComposedDslProperty.LEDGER_TEMPLATE.equals(template)
+                    ? ComposedDslProperty.LEDGER_SCHEMA_VERSION
+                    : ComposedDslProperty.TYPED_TEMPLATE.equals(template)
+                    ? ComposedDslProperty.TYPED_SCHEMA_VERSION : 1;
+            if (property.path("schemaVersion").asInt(-1) != expectedPropertySchema
                     || property.path("schemaVersion").asInt(-1)
                         != propertyIr.path("schemaVersion").asInt(-2)
                     || !requiredText(property, "template")
@@ -700,7 +767,11 @@ public final class VerificationRunner {
                     || !Set.of("julc.requires-signer/v1",
                             "julc.stateful-spending/v1",
                             "julc.controlled-mint/v1",
-                            "julc.dsl.seller-paid-at-least/v1").contains(template)
+                            "julc.dsl.seller-paid-at-least/v1",
+                            "julc.dsl.one-shot-authorized-mint/v1",
+                            ComposedDslProperty.TEMPLATE,
+                            ComposedDslProperty.TYPED_TEMPLATE,
+                            ComposedDslProperty.LEDGER_TEMPLATE).contains(template)
                     || !requiredText(property, "propertyId")
                         .equals(requiredText(propertyIr, "propertyId"))
                     || !requiredText(property, "validatorTitle")
@@ -708,10 +779,10 @@ public final class VerificationRunner {
                     || !requiredText(property, "scriptPurpose").equals(purpose)
                     || !requiredText(property, "sourcePath")
                         .equals(requiredText(propertyIr, "sourcePath"))
-                    || property.path("ledgerValidityModeled").asBoolean(!sellerPayment)
-                        != sellerPayment
-                    || manifest.path("ledgerValidityModeled").asBoolean(!sellerPayment)
-                        != sellerPayment
+                    || property.path("ledgerValidityModeled")
+                        .asBoolean(!ledgerValidityModeled) != ledgerValidityModeled
+                    || manifest.path("ledgerValidityModeled")
+                        .asBoolean(!ledgerValidityModeled) != ledgerValidityModeled
                     || !property.path("domainAssumptions").isArray()) {
                 throw new IOException("Verification property IR does not match its manifest");
             }
@@ -722,6 +793,74 @@ public final class VerificationRunner {
                         || !"validSpendingContext/v3-pinned".equals(
                             property.path("domainAssumptions").path(0).asText()))) {
                 throw new IOException("Verification seller-payment domain is unsupported");
+            }
+            if (oneShotMint
+                    && (!property.path("domainAssumptions").equals(
+                            manifest.path("domainAssumptions"))
+                        || property.path("domainAssumptions").size() != 1
+                        || !"validMintingContext/v3-pinned".equals(
+                            property.path("domainAssumptions").path(0).asText()))) {
+                throw new IOException("Verification one-shot mint domain is unsupported");
+            }
+            if (oneShotMint) validateCapabilityInventory(manifest);
+            if (composedDsl) {
+                if (!property.path("domainAssumptions").equals(
+                        manifest.path("domainAssumptions"))
+                        || !property.path("claims").isArray()
+                        || property.path("claims").isEmpty()
+                        || !property.path("claims").equals(manifest.path("claims"))) {
+                    throw new IOException(
+                            "Verification composed DSL claims or domains are tampered");
+                }
+                for (JsonNode claim : property.path("claims")) {
+                    if (!claim.path("ledgerValidCounterexampleEstablished").isBoolean()
+                            || !claim.path("concreteVmCounterexampleReproduced").isBoolean()
+                            || claim.path("ledgerValidCounterexampleEstablished").asBoolean()
+                            || claim.path("concreteVmCounterexampleReproduced").asBoolean()) {
+                        throw new IOException(
+                                "Verification composed DSL counterexample qualification is invalid");
+                    }
+                }
+                try {
+                    var composedProperty = VerificationFiles.JSON.treeToValue(
+                            property, ComposedDslProperty.class);
+                    ComposedDslPromotion.verifyIntegrity(composedProperty);
+                    validateComposedPlanAndManifest(plan, manifest, composedProperty);
+                } catch (IllegalArgumentException invalid) {
+                    throw new IOException(
+                            "Verification composed DSL property IR is inconsistent", invalid);
+                }
+                validateCapabilityInventory(manifest);
+            }
+            if (sellerPayment || oneShotMint
+                    || "julc.controlled-mint/v1".equals(template) || composedDsl) {
+                int recordedDslSchema = manifest.path("dslIr")
+                        .path("schemaVersion").asInt(-1);
+                if (ComposedDslProperty.LEDGER_TEMPLATE.equals(template)
+                        && recordedDslSchema != DslPropertySet.LEDGER_SCHEMA_VERSION
+                        && recordedDslSchema
+                            != DslPropertySet.AUTHORIZATION_SCHEMA_VERSION
+                        && recordedDslSchema
+                            != DslPropertySet.CERTIFICATE_PAYLOAD_SCHEMA_VERSION
+                        && recordedDslSchema
+                            != DslPropertySet.VALUE_ALGEBRA_SCHEMA_VERSION
+                        && recordedDslSchema
+                            != DslPropertySet.GOVERNANCE_SCHEMA_VERSION
+                        && recordedDslSchema
+                            != DslPropertySet.REVIEWED_DATA_ADAPTER_SCHEMA_VERSION) {
+                    throw new IOException(
+                            "Ledger DSL canonical schema must be 5 through 10");
+                }
+                int expectedDslSchema = ComposedDslProperty.LEDGER_TEMPLATE.equals(template)
+                        ? recordedDslSchema
+                        : ComposedDslProperty.TYPED_TEMPLATE.equals(template)
+                        ? 4 : composedDsl ? 3 : oneShotMint
+                        || "julc.controlled-mint/v1".equals(template) ? 2 : 1;
+                validateCanonicalDslIr(manifest, property, expectedDslSchema);
+                if (expectedDslSchema
+                        == DslPropertySet.REVIEWED_DATA_ADAPTER_SCHEMA_VERSION) {
+                    validateReviewedAdapterAudit(manifest);
+                }
             }
             if ("julc.stateful-spending/v1".equals(template)
                     && (!"GREATER_THAN".equals(requiredText(property, "relation"))
@@ -748,11 +887,36 @@ public final class VerificationRunner {
                     throw new IOException("Verification controlled-mint profile is unsupported");
                 }
             }
+            if (oneShotMint) {
+                if (!requiredText(property, "authorityHex").matches("[0-9a-f]{56}")
+                        || !requiredText(property, "anchorTransactionIdHex")
+                            .matches("[0-9a-f]{64}")
+                        || !requiredText(property, "anchorOutputIndex")
+                            .matches("0|[1-9][0-9]{0,18}")
+                        || !property.path("tokenNameHex").asText("!")
+                            .matches("(?:[0-9a-f]{2}){0,32}")
+                        || !"1".equals(requiredText(property, "quantity"))) {
+                    throw new IOException("Verification one-shot mint profile is unsupported");
+                }
+            }
             artifact.put("propertyIrSha256", propertyHash);
             artifact.put("propertyTemplate", requiredText(propertyIr, "template"));
             artifact.put("propertyId", requiredText(propertyIr, "propertyId"));
             artifact.put("propertyPath", requiredText(propertyIr, "sourcePath"));
-            artifact.put("ledgerValidityModeled", sellerPayment);
+            if (manifest.has("dslIr")) {
+                artifact.put("dslIrSchemaVersion",
+                        manifest.path("dslIr").path("schemaVersion").asInt());
+                artifact.put("dslIrSha256",
+                        manifest.path("dslIr").path("sha256").asText());
+                if (manifest.path("dslIr").path("schemaVersion").asInt(-1)
+                        == DslPropertySet.REVIEWED_DATA_ADAPTER_SCHEMA_VERSION) {
+                    artifact.put("reviewedRawDataAdapterAudit", Map.of(
+                            "schemaVersion", 1,
+                            "sha256", manifest.path("reviewedRawDataAdapterAudit")
+                                    .path("sha256").asText()));
+                }
+            }
+            artifact.put("ledgerValidityModeled", ledgerValidityModeled);
             artifact.put("fuelBounded", true);
             artifact.put("fuelScope", "Only executions completing within the pinned CEK fuel "
                     + "bound are covered; fuel-exhausted executions are outside the claim.");
@@ -772,6 +936,26 @@ public final class VerificationRunner {
             } else if (sellerPayment) {
                 artifact.put("domainAssumptions", List.of(
                         "validSpendingContext/v3-pinned"));
+                artifact.put("globalMultiInputLinkageModeled", false);
+            } else if (oneShotMint) {
+                artifact.put("domainAssumptions", List.of(
+                        "validMintingContext/v3-pinned"));
+                artifact.put("nonVacuityDomain", "BLASTER_VALID_MINTING_SUPERSET");
+                artifact.put("ledgerValidNonVacuityWitnessEstablished", false);
+                artifact.put("concreteVmSuccessfulWitnessReproduced", false);
+                artifact.put("counterexampleDomain", "BLASTER_VALID_MINTING_SUPERSET");
+                artifact.put("ledgerValidCounterexampleEstablished", false);
+                artifact.put("concreteVmCounterexampleReproduced", false);
+                artifact.put("anchorTransactionIdHex",
+                        requiredText(property, "anchorTransactionIdHex"));
+                artifact.put("anchorOutputIndex",
+                        requiredText(property, "anchorOutputIndex"));
+                artifact.put("ownPolicyAssetShape",
+                        "EXACT_SINGLETON_RAW_ASSOCIATION_LIST");
+                artifact.put("otherPoliciesPermitted", true);
+            } else if (ComposedDslProperty.LEDGER_TEMPLATE.equals(template)
+                    && manifest.path("dslIr").path("schemaVersion").asInt()
+                            >= DslPropertySet.VALUE_ALGEBRA_SCHEMA_VERSION) {
                 artifact.put("globalMultiInputLinkageModeled", false);
             }
         }
@@ -823,6 +1007,122 @@ public final class VerificationRunner {
                         + " is not pinned to a full commit");
             }
         }
+    }
+
+    private static void validateCapabilityInventory(JsonNode manifest) throws IOException {
+        JsonNode recorded = manifest.path("capabilityInventory");
+        var inventory = LedgerCapabilityInventories.pinnedV3();
+        String expectedHash = VerificationFiles.sha256(
+                LedgerCapabilityInventories.pinnedV3Bytes());
+        if (recorded.path("schemaVersion").asInt(-1) != inventory.schemaVersion()
+                || !inventory.ledgerApi().equals(recorded.path("ledgerApi").asText())
+                || !inventory.ledgerVersion().equals(recorded.path("ledgerVersion").asText())
+                || !inventory.revision().equals(recorded.path("revision").asText())
+                || !expectedHash.equals(recorded.path("sha256").asText())) {
+            throw new IOException(
+                    "Verification capability inventory is missing, stale, or tampered");
+        }
+    }
+
+    private static void validateReviewedAdapterAudit(JsonNode manifest) throws IOException {
+        JsonNode recorded = manifest.path("reviewedRawDataAdapterAudit");
+        String expectedHash = VerificationFiles.sha256(
+                ReviewedRawDataAdapterAudits.v1Bytes());
+        if (recorded.path("schemaVersion").asInt(-1) != 1
+                || !expectedHash.equals(recorded.path("sha256").asText())) {
+            throw new IOException(
+                    "Reviewed raw-data adapter audit is missing, stale, or tampered");
+        }
+    }
+
+    private static void validateCanonicalDslIr(
+            JsonNode manifest, JsonNode property, int expectedSchema) throws IOException {
+        JsonNode recorded = manifest.path("dslIr");
+        String canonicalDsl = property.path("canonicalDslJson").asText(null);
+        if (canonicalDsl == null
+                || recorded.path("schemaVersion").asInt(-1) != expectedSchema
+                || !VerificationFiles.sha256(canonicalDsl.getBytes(
+                        java.nio.charset.StandardCharsets.UTF_8))
+                    .equals(recorded.path("sha256").asText())) {
+            throw new IOException("Verification canonical DSL IR is missing or tampered");
+        }
+        JsonNode dsl;
+        try {
+            dsl = VerificationFiles.JSON.readTree(canonicalDsl);
+        } catch (IOException invalid) {
+            throw new IOException("Verification canonical DSL IR is invalid", invalid);
+        }
+        if (dsl.path("schemaVersion").asInt(-1) != expectedSchema) {
+            throw new IOException("Verification canonical DSL schema is unsupported");
+        }
+    }
+
+    private static void validateComposedPlanAndManifest(
+            VerificationRunPlan plan,
+            JsonNode manifest,
+            ComposedDslProperty property) throws IOException {
+        var expected = new ArrayList<String>();
+        for (var claim : property.claims()) {
+            expected.add(claim.id() + ".non-vacuity");
+            expected.add(claim.id());
+        }
+        List<String> manifestIds = java.util.stream.StreamSupport.stream(
+                        manifest.path("properties").spliterator(), false)
+                .map(node -> node.path("id").asText()).toList();
+        List<String> planIds = plan.verify().stream()
+                .map(VerificationRunPlan.Step::propertyId).toList();
+        if (!expected.equals(manifestIds) || !expected.equals(planIds)) {
+            throw new IOException(
+                    "Composed runner plan does not cover every claim exactly once");
+        }
+        for (int index = 0; index < property.claims().size(); index++) {
+            var claim = property.claims().get(index);
+            String nonVacuityId = claim.id() + ".non-vacuity";
+            String safe = ComposedDslPromotion.generatedName(claim.id())
+                    .toLowerCase(Locale.ROOT);
+            var nonVacuity = plan.verify().get(index * 2);
+            var proof = plan.verify().get(index * 2 + 1);
+            if (nonVacuity.nonVacuityGuardPropertyId() != null
+                    || !nonVacuityId.equals(proof.nonVacuityGuardPropertyId())
+                    || !("check-non-vacuity-" + safe).equals(nonVacuity.id())
+                    || !("prove-dsl-" + safe).equals(proof.id())
+                    || !List.of("scripts/verify-" + safe + "-non-vacuity.sh")
+                            .equals(nonVacuity.command())
+                    || !List.of("scripts/verify-" + safe + ".sh")
+                            .equals(proof.command())
+                    || !composedNonVacuityOutcomes().equals(nonVacuity.outcomes())
+                    || !composedProofOutcomes(claim.id()).equals(proof.outcomes())) {
+                throw new IOException(
+                        "Composed proof protocol is not bound to its canonical claim");
+            }
+        }
+    }
+
+    private static List<VerificationRunPlan.ObservedOutcome> composedNonVacuityOutcomes() {
+        return List.of(
+                new VerificationRunPlan.ObservedOutcome(0,
+                        "NON-VACUOUS: successful input witness exists",
+                        "REFUTED", "expected-negative-control"),
+                new VerificationRunPlan.ObservedOutcome(4,
+                        "VACUOUS: validator has no successful input",
+                        "COULD-NOT-EVALUATE", "property-vacuous"),
+                new VerificationRunPlan.ObservedOutcome(2,
+                        "COULD-NOT-EVALUATE: non-vacuity",
+                        "COULD-NOT-EVALUATE", "non-vacuity-undetermined"));
+    }
+
+    private static List<VerificationRunPlan.ObservedOutcome> composedProofOutcomes(
+            String claimId) {
+        return List.of(
+                new VerificationRunPlan.ObservedOutcome(0,
+                        "SMT-VALID: DSL property " + claimId + " established",
+                        "SMT-VALID", "dsl-property-established"),
+                new VerificationRunPlan.ObservedOutcome(3,
+                        "REFUTED: DSL property " + claimId + " counterexample found",
+                        "REFUTED", "dsl-property-counterexample"),
+                new VerificationRunPlan.ObservedOutcome(2,
+                        "COULD-NOT-EVALUATE: DSL property " + claimId,
+                        "COULD-NOT-EVALUATE", "dsl-property-undetermined"));
     }
 
     private VerificationExecutionBackend selectBackend(
@@ -918,6 +1218,129 @@ public final class VerificationRunner {
                     outcome.externalName(),
                     "REFUTED".equals(result) ? "expected-negative-control" : "established"));
         }
+    }
+
+    static void attachClaimMetadata(
+            JsonNode manifest, List<VerificationRunResult.Property> properties) {
+        if (!manifest.path("claims").isArray()) return;
+        var claims = new LinkedHashMap<String, JsonNode>();
+        for (JsonNode claim : manifest.path("claims")) {
+            claims.put(claim.path("id").asText(), claim);
+        }
+        for (int index = 0; index < properties.size(); index++) {
+            var result = properties.get(index);
+            String claimId = result.id().endsWith(".non-vacuity")
+                    ? result.id().substring(0,
+                            result.id().length() - ".non-vacuity".length())
+                    : result.id();
+            JsonNode claim = claims.get(claimId);
+            if (claim == null) continue;
+            List<String> capabilities = textList(claim.path("capabilities"));
+            List<String> guaranteeRules = textList(claim.path("guaranteeRules"));
+            List<String> valueSemantics = valueSemantics(guaranteeRules);
+            List<String> paymentScopes = paymentAggregationScopes(capabilities);
+            boolean domainImplied = guaranteeRules.contains("domain-implied:is-balanced");
+            boolean valueClaim = !valueSemantics.isEmpty() || !paymentScopes.isEmpty()
+                    || domainImplied;
+            boolean governanceSchema = manifest.path("dslIr").path("schemaVersion").asInt()
+                    >= DslPropertySet.GOVERNANCE_SCHEMA_VERSION;
+            var governanceScopes = new java.util.TreeSet<String>();
+            if (capabilities.contains("field.txInfo.votes")) governanceScopes.add("VOTES");
+            if (capabilities.contains("field.txInfo.proposals")) governanceScopes.add("PROPOSALS");
+            properties.set(index, new VerificationRunResult.Property(
+                    result.id(), result.outcome(), result.reason(),
+                    requiredTextUnchecked(claim, "domain"),
+                    requiredTextUnchecked(claim, "guaranteeSha256"),
+                    requiredTextUnchecked(claim, "envelopeSha256"),
+                    capabilities,
+                    guaranteeRules,
+                    valueClaim ? valueSemantics : null,
+                    valueClaim ? paymentScopes : null,
+                    valueClaim && domainImplied,
+                    valueClaim ? Boolean.FALSE : null,
+                    governanceSchema ? List.copyOf(governanceScopes) : null,
+                    governanceSchema && capabilities.contains(
+                            "dsl.governance.decode-action-strict"),
+                    governanceSchema && capabilities.contains("helper.isKnownProposal"),
+                    governanceSchema ? Boolean.FALSE : null,
+                    governanceSchema ? Boolean.FALSE : null,
+                    requiredTextUnchecked(claim, "counterexampleDomain"),
+                    claim.path("ledgerValidCounterexampleEstablished").asBoolean(),
+                    claim.path("concreteVmCounterexampleReproduced").asBoolean()));
+        }
+    }
+
+    private static List<String> textList(JsonNode array) {
+        return java.util.stream.StreamSupport.stream(array.spliterator(), false)
+                .map(JsonNode::asText).toList();
+    }
+
+    static List<String> valueSemantics(List<String> rules) {
+        var semantics = new java.util.TreeSet<String>();
+        for (String rule : rules) {
+            if (rule.equals("value-raw-policy-entries")
+                    || rule.startsWith("value-entry-when:")
+                    || rule.startsWith("value-arithmetic:")
+                    || rule.equals("domain-implied:is-balanced")
+                    || rule.equals("value-relation:STRUCTURAL_EQ")
+                    || rule.equals("value-relation:structural_eq")) {
+                semantics.add("STRUCTURAL");
+            }
+            if (rule.equals("value-quantity:FIRST_MATCH")
+                    || rule.equals("value-quantity:first_match")) {
+                semantics.add("FIRST_MATCH");
+            }
+            if (rule.equals("value-quantity:STRICT_SUMMED")
+                    || rule.equals("value-quantity:strict_summed")) {
+                semantics.add("STRICT_SUMMED");
+            }
+            if (rule.startsWith("value-relation:")
+                    && !rule.toLowerCase(java.util.Locale.ROOT)
+                            .endsWith("structural_eq")) {
+                semantics.add("EXTENSIONAL");
+            }
+        }
+        return List.copyOf(semantics);
+    }
+
+    static List<String> paymentAggregationScopes(List<String> capabilities) {
+        var scopes = new java.util.TreeSet<String>();
+        if (capabilities.contains("dsl.value.filter-full-address")) {
+            scopes.add("COMPLETE_ADDRESS");
+        }
+        if (capabilities.contains("dsl.value.filter-payment-credential")) {
+            scopes.add("PAYMENT_CREDENTIAL");
+        }
+        if (capabilities.contains("dsl.value.aggregate-inputs")) {
+            scopes.add("SELECTED_INPUTS");
+        }
+        if (capabilities.contains("dsl.value.aggregate-outputs")) {
+            scopes.add("SELECTED_OUTPUTS");
+        }
+        if (capabilities.contains("helper.valueSpent")) {
+            scopes.add("WHOLE_TRANSACTION_INPUTS");
+        }
+        if (capabilities.contains("helper.valueProduced")) {
+            scopes.add("WHOLE_TRANSACTION_OUTPUTS");
+        }
+        if (capabilities.contains("field.txInfo.mint")) {
+            scopes.add("WHOLE_TRANSACTION_MINT");
+        }
+        if (capabilities.contains("ledger.isBalanced")) {
+            scopes.add("WHOLE_TRANSACTION_BALANCE");
+        }
+        if (capabilities.contains("field.txOut.value") && scopes.isEmpty()) {
+            scopes.add("DIRECT_OUTPUT");
+        }
+        return List.copyOf(scopes);
+    }
+
+    private static String requiredTextUnchecked(JsonNode node, String field) {
+        String value = node.path(field).asText();
+        if (value.isBlank()) {
+            throw new IllegalStateException("Composed claim is missing " + field);
+        }
+        return value;
     }
 
     static VerificationOutcome aggregate(List<VerificationRunResult.Property> properties) {

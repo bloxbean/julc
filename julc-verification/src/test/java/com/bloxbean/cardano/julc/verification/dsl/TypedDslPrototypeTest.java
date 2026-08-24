@@ -30,12 +30,13 @@ class TypedDslPrototypeTest {
         var annotation = RequiresSignerResolver.resolve(
                 source, "Authorized.java", "Authorized", compiled.contractSchema())
                 .orElseThrow();
-        DslPropertySet annotationIr = RequiresSignerDslLowering.lower(annotation);
+        DslPropertySet annotationIr = RequiresSignerDslLowering.lower(
+                annotation, compiled.contractSchema());
 
         Path sources = tempDir.resolve("sources/generated");
         Files.createDirectories(sources);
         Path model = sources.resolve("AuthorizedModel.java");
-        Files.writeString(model, ContractMetamodelGenerator.generate(
+        Files.writeString(model, ContractMetamodelGenerator.generateTypedV10(
                 compiled.contractSchema(), "generated", "AuthorizedModel"));
         Path specification = sources.resolve("SignerSpec.java");
         Files.writeString(specification, """
@@ -47,11 +48,14 @@ class TypedDslPrototypeTest {
                     public SignerSpec() {}
                     public DslPropertySet properties() {
                         var contract = new AuthorizedModel();
-                        var required = contract.context().txInfo().signatories()
-                                .contains(contract.datum().owner());
-                        return DslPropertySet.of(property(
+                        var required = contract.datum().exists(datum -> {
+                            var context = new SpendingContractModel();
+                            return context.context().txInfo().signatories()
+                                .contains(datum.owner());
+                        });
+                        return contract.properties(property(
                                 "Authorized.requires-signer.owner",
-                                contract.exactUplcSucceeds().implies(required)));
+                                DslDomain.NONE, required));
                     }
                 }
                 """);
@@ -63,9 +67,12 @@ class TypedDslPrototypeTest {
 
         assertEquals(PropertyIrCodec.canonicalJson(annotationIr),
                 PropertyIrCodec.canonicalJson(dslIr));
-        assertEquals(PropertyLeanRenderer.render(annotationIr),
-                PropertyLeanRenderer.render(dslIr));
-        assertTrue(PropertyLeanRenderer.render(dslIr).contains("txInfoSignatories"));
+        var projection = com.bloxbean.cardano.julc.verification.dsl.type
+                .ContractTypeProjection.project(compiled.contractSchema());
+        assertEquals(TypedPropertyLeanRenderer.renderExpression(
+                        annotationIr.properties().getFirst().expression(), projection),
+                TypedPropertyLeanRenderer.renderExpression(
+                        dslIr.properties().getFirst().expression(), projection));
         assertTrue(Files.isRegularFile(
                 tempDir.resolve("worker/verification-property-dsl.json")));
     }
@@ -84,7 +91,8 @@ class TypedDslPrototypeTest {
         assertTrue(fieldError.getMessage().contains("Unknown datum field"));
 
         var valid = RequiresSignerDslLowering.lower(RequiresSignerResolver.resolve(
-                validatorSource(), "Authorized.java", "Authorized", schema).orElseThrow());
+                validatorSource(), "Authorized.java", "Authorized", schema).orElseThrow(),
+                schema);
         assertThrows(IllegalArgumentException.class,
                 () -> DslPropertyValidator.validate(valid, schema, 2));
     }
@@ -106,6 +114,46 @@ class TypedDslPrototypeTest {
         var formatError = assertThrows(IllegalArgumentException.class,
                 () -> DslPropertyValidator.validate(noncanonicalInteger, schema, 100));
         assertEquals("Invalid canonical integer literal", formatError.getMessage());
+    }
+
+    @Test
+    void workerPublishesParentNormalizedSchemaThreeRatherThanCandidateOrdering()
+            throws Exception {
+        var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(validatorSource());
+        Path sources = tempDir.resolve("schema-three-sources");
+        Files.createDirectories(sources);
+        Path specification = sources.resolve("ComposedSpec.java");
+        Files.writeString(specification, """
+                package generated;
+                import com.bloxbean.cardano.julc.verification.dsl.*;
+                import com.bloxbean.cardano.julc.verification.dsl.ir.*;
+                import static com.bloxbean.cardano.julc.verification.dsl.VerificationDsl.*;
+                public final class ComposedSpec implements VerificationSpecification {
+                    public ComposedSpec() {}
+                    public DslPropertySet properties() {
+                        var contract = new SpendingContractModel();
+                        var signer = contract.context().txInfo().signatories()
+                                .contains(contract.datum().bytesField("owner"));
+                        var guarantee = signer.and(signer);
+                        return DslPropertySet.composed(DslPurpose.SPENDING,
+                                property("Authorized.composed", DslDomain.NONE, guarantee));
+                    }
+                }
+                """);
+        Path classes = compile(specification);
+        Path worker = tempDir.resolve("schema-three-worker");
+        DslPropertySet normalized = new DslWorkerRunner().run(
+                classes + File.pathSeparator + System.getProperty("java.class.path"),
+                "generated.ComposedSpec", compiled.contractSchema(), worker,
+                Duration.ofSeconds(10));
+
+        assertFalse(normalized.properties().getFirst().expression()
+                instanceof BoolBinaryNode, "duplicate AND operand must be canonicalized");
+        assertNotEquals(Files.readString(worker.resolve("candidate-property-ir.json")),
+                Files.readString(worker.resolve("verification-property-dsl.json")));
+        assertEquals(PropertyIrCodec.canonicalJson(normalized),
+                Files.readString(worker.resolve("verification-property-dsl.json")));
     }
 
     private Path compile(Path... sources) throws Exception {

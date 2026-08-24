@@ -8,10 +8,20 @@ public enum DslType {
     DATA,
     SCRIPT_CONTEXT,
     TX_INFO,
+    POLICY_ID,
+    MINT_VALUE,
+    TX_OUT_REF,
     TX_OUT,
     VALUE,
     ADDRESS,
     CREDENTIAL,
+    WITHDRAWALS,
+    WITHDRAWAL_ENTRY,
+    TX_CERT,
+    LIST_TX_CERT,
     LIST_TX_OUT,
-    LIST_BYTE_STRING
+    LIST_TX_IN_INFO,
+    LIST_BYTE_STRING,
+    /** Structural schema-4 type is carried by the node's VerificationTypeRef. */
+    TYPED_VALUE
 }

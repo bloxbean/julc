@@ -27,4 +27,16 @@ public final class LedgerCapabilityInventories {
                     + e.getMessage(), e);
         }
     }
+
+    public static byte[] pinnedV3Bytes() {
+        try (var input = LedgerCapabilityInventories.class.getResourceAsStream(V3_RESOURCE)) {
+            if (input == null) {
+                throw new IllegalStateException("Missing bundled capability inventory "
+                        + V3_RESOURCE);
+            }
+            return input.readAllBytes();
+        } catch (IOException e) {
+            throw new IllegalStateException("Cannot read bundled capability inventory", e);
+        }
+    }
 }

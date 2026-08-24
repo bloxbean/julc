@@ -714,6 +714,50 @@ for full documentation.
 | `@OnchainLibrary` | Class | Reusable library class (auto-discovered from classpath) |
 | `@NewType` | Class | Zero-cost type alias for single-field records |
 
+### Verification annotations
+
+These source-retained annotations are provided by `julc-verification`. They are
+off-chain property frontends: adding or removing one does not change compiler
+lowering or emitted UPLC.
+
+Formal verification remains experimental. The API-v1 stability promise below
+applies to the documented DSL construction surface and schema-10 canonical
+meanings, not to production readiness or guaranteed solver completion.
+
+| Annotation | Purpose | Admitted form |
+|---|---|---|
+| `@RequiresSigner("datum.<field>")` | spending | selected datum field resolves to a supported byte-string/key-hash authority |
+| `@ControlledMint(authority=..., tokenName=..., quantity=..., action=...)` | minting | fixed 28-byte authority, token name up to 32 bytes, strictly positive magnitude interpreted according to `MINT`/`BURN` |
+| `@PreservesValue(output=SINGLE_CONTINUING_OUTPUT)` | spending | accepted only as part of the complete stateful profile |
+| `@Monotonic(current=..., next=..., relation=GREATER_THAN)` | spending | accepted only as part of the complete stateful profile |
+
+The complete stateful profile is
+`@RequiresSigner + @PreservesValue + @Monotonic`. Partial combinations fail
+closed. Every profile lowers to canonical typed DSL IR before Lean generation;
+there is no separate annotation-specific security formula.
+
+### Stable verification DSL API v1
+
+Schema 10 is the stable canonical property schema and the default emitted by
+`julc verify dsl-init`. The supported construction surface is:
+
+| Type/surface | Role |
+|---|---|
+| `VerificationSpecification` | trusted Java property-builder entry point |
+| `VerificationDsl` | property, integer, boolean, bytes, key-hash, token-name, policy-ID, and output-reference factories |
+| typed expression wrappers in `verification.dsl` | closed boolean, integer, bytes, option, list, map, contract, ledger, authorization, certificate, value, and governance composition |
+| `DslProperty`, `DslPropertySet` | canonical property envelope; generated models should construct it through `contract.properties(...)` |
+| `DslPurpose` | `SPENDING`, `MINTING`, `REWARDING`, or `CERTIFYING` |
+| `DslDomain` | `NONE` or one of the four pinned V3 ledger domains |
+| schema-10 generated metamodel | compiler-owned datum/redeemer and purpose-specific context API |
+
+Concrete classes in `verification.dsl.ir` other than the documented property
+envelope/enums are serialization infrastructure. Renderers, validators,
+promotion internals, worker protocols, arbitrary Lean, and custom AST node
+kinds are not supported construction APIs. See the
+[formal verification guide](/guides/formal-verification/) for workflow,
+capability boundaries, and certificate semantics.
+
 ### Purpose Enum
 
 The `Purpose` enum controls dispatch in `@MultiValidator` classes:

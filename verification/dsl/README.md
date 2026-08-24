@@ -1,14 +1,16 @@
-# Typed verification DSL prototype
+# Stable typed verification DSL (API v1)
 
-Milestone E.2 provides an experimental Java frontend in `julc-verification`.
-It is not yet a stable public API.
+Milestones E.2-E.4l established the Java frontend in `julc-verification`.
+ADR-029 declares the reviewed schema-10 construction surface stable as API
+version 1. The milestone sections below retain older schema details for
+compatibility and design history.
 
-The prototype contains:
+The stable implementation contains:
 
 - sealed, typed symbolic expressions rather than raw Lean strings;
 - deterministic contract-specific datum accessors generated from
   compiler-owned `ContractSchema`;
-- canonical schema-1 property IR;
+- canonical schema-1/schema-2 compatibility IR and compositional schema-3 IR;
 - a separate JVM worker with memory, timeout and output-size bounds;
 - authoritative post-worker type/path validation; and
 - deterministic Lean expression rendering.
@@ -30,6 +32,20 @@ property specification in a temporary directory, executes it in the worker,
 revalidates the returned AST, and proves that it has byte-identical canonical
 IR and identical generated Lean to the existing `@RequiresSigner` lowering.
 
+New projects should omit `--schema-version`; `dsl-init` now emits stable schema
+10. The expression wrappers, `VerificationDsl`, `VerificationSpecification`,
+the property envelope/enums, and generated metamodel methods are supported.
+Concrete node constructors, renderers, promotion internals, and worker protocol
+types are not supported construction APIs merely because Java serialization
+requires public visibility.
+
+The annotation profiles are frontends over this same semantic layer.
+`@RequiresSigner` and the complete stateful
+`@RequiresSigner + @PreservesValue + @Monotonic` profile now carry schema-10
+canonical IR and compiler-projected types; `@ControlledMint` retains its
+canonical minting DSL lowering. Their profile-specific proof/certificate UX
+does not define a second Lean security predicate.
+
 Milestone E.3 adds the first exact-UPLC vertical slice. From a built JuLC
 project, generate the metamodel and compile a trusted Java property:
 
@@ -44,12 +60,77 @@ javac -cp julc.jar -d build/verification-dsl/classes \
 
 julc verify dsl . --validator Sale \
   --spec-class evidence.SellerPaymentSpec \
-  --spec-classpath build/verification-dsl/classes \
+  --spec-classpath "build/verification-dsl/classes:/path/to/julc.jar" \
   --seller-field seller --price-field price \
   --source SellerPaymentSpec.java --backend local --force
 ```
 
-The accepted E.3 AST shape is intentionally fixed and reviewed. General DSL
-expressions can be represented by the prototype but are not automatically
-promoted to verification claims. See `verification/e3/README.md` for the
-positive, refuted, vacuous, and multi-satisfaction evidence controls.
+The JuLC JAR entry is required with the native CLI because the trusted DSL
+worker is a child JVM; it is harmless with the JVM CLI. Use the platform
+classpath separator (`;` on Windows).
+
+The E.3 schema-1 path remains a fixed compatibility profile. Schema 3 removes
+that whole-formula restriction: supported nodes may be composed into one or
+more independently named guarantees without adding a JuLC resolver. Exact
+UPLC success and optional reviewed ledger domains remain a parent-owned
+theorem envelope rather than user-composable assumptions. See
+[`verification/e4b/README.md`](../e4b/README.md).
+
+Milestone E.4a adds canonical schema-2 minting IR while retaining schema-1
+spending compatibility. It introduces a purpose-aware minting metamodel,
+current-policy identity, raw mint structure, consumed-input references, strict
+redeemer decoding, and an explicit pinned minting ledger domain. The existing
+`@ControlledMint` profile and its equivalent DSL expression now lower through
+the same canonical IR and Lean semantic renderer.
+
+The first contract-specific slice is a one-shot authorized mint: every
+successful exact-policy execution in the recorded domain must strictly decode
+the redeemer, contain the configured authority and consumed anchor, and have
+the exact configured current-policy asset. See
+[`verification/e4a/README.md`](../e4a/README.md) for commands, controls, raw
+association-list semantics, and local/Docker execution.
+
+Milestone E.4b makes schema 3 the generic path for new spending and minting
+specifications. Use `DslPropertySet.composed(purpose, ...)` and
+`property(id, domain, guarantee)`. `AND`/`OR` association, ordering, and exact
+duplicates normalize deterministically; quantifier and implication scopes are
+preserved. Every claim receives its own non-vacuity/proof steps and certificate
+metadata. The DSL remains closed: unsupported nodes, cross-purpose roots,
+arbitrary assumptions, and raw Lean fail before workspace publication.
+
+Milestones E.4e–E.4f add opt-in schema 4. Run `dsl-init` with
+`--schema-version 4` to generate wrappers for the selected compiler-owned datum
+and redeemer graph. The admitted surface includes nested records, guarded
+sealed variants, optionals, lists, ordered duplicate-preserving maps, Boolean
+negation/equality, closed linear integer arithmetic, collection quantifiers,
+counting, safe indexing, first/all map lookup, and structural equality. The
+parent process re-derives every structural type and binds the canonical
+projected graph into the property IR. See
+[`verification/e4e/README.md`](../e4e/README.md) and
+[`verification/e4f/README.md`](../e4f/README.md).
+
+Milestone E.4g adds opt-in schema 5. It combines the schema-4 contract graph
+with a closed view of the pinned non-value ledger context: ordered ordinary
+and reference inputs, resolved outputs, output references, fee/transaction ID,
+complete address/staking credentials, output datum/reference-script variants,
+own-input and continuing-output selection, and ordered datum/redeemer maps.
+Pinned helper semantics are canonical IR nodes, not Java callbacks. Raw
+datum/redeemer payloads remain opaque, and unsupported governance/value/time
+operations still fail closed. See
+[`verification/e4g/README.md`](../e4g/README.md).
+
+Milestone E.4h adds opt-in schema 6 authorization algebra over the complete
+pinned V3 signatory list. Zero-free fixed 28-byte keys and explicit
+compiler-owned datum/redeemer byte-string sources can be combined with `anySigned`,
+`allSigned`, `noneSigned`, `atLeastSigned`, `exactlySigned`,
+`noUnexpectedSigners`, `exactSignerSet`, and `noSigners`. Thresholds count
+distinct approved identities: duplicate authorities or signatories never count
+twice, and order is irrelevant only inside these authorization relations.
+These Boolean expressions remain freely composable with the schema-5 ledger
+and schema-4 contract vocabulary. Applied `@Param` authority roots remain
+fail-closed until JuLC can reconstruct ordered parameter application and match
+the exact verified UPLC bytes and script hash. See
+[`verification/e4h/README.md`](../e4h/README.md).
+The retained SMT-positive evidence covers a threshold relation; the stronger
+threshold-plus-allow-list calibration was solver-undetermined at the pinned
+revision and is documented there rather than promoted as proof.

@@ -1,0 +1,4 @@
+[project]
+name = "julc-verification-e4a-missing-anchor"
+version = "0.1.0"
+compiler = "local"

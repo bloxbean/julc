@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "decision": "REJECTED_AT_CALIBRATION_GATE",
+  "reason": "exact-artifact-depth-one-reachability-timeout",
+  "recordedAt": "2026-08-23T02:41:30+08:00",
+  "artifact": {
+    "validatorJavaBody": "returns-true",
+    "compiledSizeBytes": 396,
+    "compiledCodeSha256": "4304220724d7de16290d403a39cb7fe151a196934545fca498cc02bcba9c647b",
+    "cardanoScriptHash": "a403371245b9afcef5743cd07f6bd294ce0c805d122d2663be18b56a"
+  },
+  "bounds": {
+    "bmcDepth": 1,
+    "inductionDepth": 1,
+    "cekFuelPerStep": 3000,
+    "timeoutSeconds": 300,
+    "ledgerValidityModeled": false
+  },
+  "toolchain": {
+    "lean": "4.24.0",
+    "z3": "4.15.2",
+    "cardanoLedgerApiBlasterRevision": "5dab3c43f042b8735b6d067223baaa8d32ed28a1",
+    "leanBlasterRevision": "083bae7971414d894b56b5bbf4108c63e17bc42a",
+    "plutusCoreBlasterRevision": "7cf5a78c54b9694ef093bf49edb5d3799b2a49c9"
+  },
+  "execution": {
+    "workspaceCompiled": true,
+    "reachabilityOutcome": "COULD-NOT-EVALUATE",
+    "reachabilityReason": "verification-timeout",
+    "reachabilityElapsedSeconds": 300,
+    "bmcRan": false,
+    "kInductionRan": false,
+    "leanKernelProofEstablished": false,
+    "ledgerRealizableTraceEstablished": false
+  }
+}

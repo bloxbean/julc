@@ -1,0 +1,7 @@
+[project]
+name = "e4h-authorization-algebra"
+version = "0.1.0"
+
+[build]
+source-dir = "src"
+output-dir = "build/plutus"

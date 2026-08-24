@@ -103,3 +103,6 @@ limits even when the validator body is small.
 Strict decoding does not prove contract-specific authorization, value
 preservation, state-transition, or minting rules. Use normal VM tests and, when
 applicable, `julc verify` for those independent claims.
+
+See [Formal Verification](/guides/formal-verification/) for the stable
+annotation and typed-DSL property workflows built on these boundary semantics.

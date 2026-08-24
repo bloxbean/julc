@@ -1,0 +1,108 @@
+{
+  "artifactFormat" : "double_cbor_hex",
+  "artifactId" : "authorized-drep-registration",
+  "blueprintEntryTitle" : "AuthorizedDRepRegistration",
+  "boundarySemantics" : "strict-data-v1",
+  "builtinSemanticsVariant" : "E",
+  "builtins" : [ {
+    "name" : "EqualsInteger",
+    "flatTag" : 7
+  }, {
+    "name" : "LessThanInteger",
+    "flatTag" : 8
+  }, {
+    "name" : "IfThenElse",
+    "flatTag" : 26
+  }, {
+    "name" : "FstPair",
+    "flatTag" : 29
+  }, {
+    "name" : "SndPair",
+    "flatTag" : 30
+  }, {
+    "name" : "HeadList",
+    "flatTag" : 33
+  }, {
+    "name" : "TailList",
+    "flatTag" : 34
+  }, {
+    "name" : "NullList",
+    "flatTag" : 35
+  }, {
+    "name" : "UnConstrData",
+    "flatTag" : 42
+  }, {
+    "name" : "UnIData",
+    "flatTag" : 45
+  } ],
+  "capabilityInventory" : {
+    "ledgerApi" : "CardanoLedgerApiBlaster",
+    "ledgerVersion" : "V3",
+    "revision" : "5dab3c43f042b8735b6d067223baaa8d32ed28a1",
+    "schemaVersion" : 1,
+    "sha256" : "f55d08b47d71768e4ca67bcb417e6c556fdf55cfc6647c8ff45e73efe65675c8"
+  },
+  "cardanoScriptHash" : "dd7450212f98c9320341cdc5e612dcc0e3986c22ddad0be798ff89a1",
+  "claims" : [ {
+    "id" : "certificate.registration-deposit",
+    "generatedName" : "certificate_registration_deposit",
+    "domain" : "VALID_CERTIFYING_V3_PINNED",
+    "guaranteeSha256" : "4a3b170ce68060077aa0bedf27e637ba72c4c58f5cd85772f40b824c2086a1d9",
+    "envelopeSha256" : "608ceaecffaaa31b61ad8f17c6093656aecc12eef7e8489bc2154b242877a4a9",
+    "capabilities" : [ "constructor.txCert.regDRep", "field.scriptContext.scriptInfo", "ledger.validCertifyingContext", "purpose.certifying" ],
+    "guaranteeRules" : [ "compare:EQ", "integer-literal", "ledger-root:currentCertificate", "ledger-variant-field:TX_CERT.TxCertRegDRep.deposit", "ledger-variant-when:TX_CERT.TxCertRegDRep", "typed-variable" ],
+    "counterexampleDomain" : "BLASTER_VALID_CERTIFYING_SUPERSET",
+    "ledgerValidCounterexampleEstablished" : false,
+    "concreteVmCounterexampleReproduced" : false
+  } ],
+  "compiledCodeSha256" : "c10a6871a2eac7bad5b709207b81535127ccf2079c814177eb8065a76d438bef",
+  "dependencies" : {
+    "CardanoLedgerApiBlaster" : "5dab3c43f042b8735b6d067223baaa8d32ed28a1",
+    "Lean-blaster" : "083bae7971414d894b56b5bbf4108c63e17bc42a",
+    "PlutusCoreBlaster" : "7cf5a78c54b9694ef093bf49edb5d3799b2a49c9"
+  },
+  "domainAssumptions" : [ "validCertifyingContext/v3-pinned" ],
+  "dslIr" : {
+    "schemaVersion" : 7,
+    "sha256" : "95a50eea3dc29f1e2970699bd4d6c3603cc2dff9314f6d996ffe64f1e8ca9223"
+  },
+  "fuel" : 5000,
+  "generatedBy" : "julc verify init",
+  "generatedLeanSha256" : "5aa0e53a893778366023311b7a3538c4b7a02814fcb702b2185d9ddc3ed3d18b",
+  "julcVersion" : "0.1.0-pre16",
+  "leanVersion" : "4.24.0",
+  "ledgerValidityModeled" : true,
+  "plutusLanguage" : "PlutusV3",
+  "project" : "e4i-certificate-payloads",
+  "properties" : [ {
+    "id" : "certificate.registration-deposit.non-vacuity",
+    "reason" : "not-run",
+    "result" : "COULD-NOT-EVALUATE"
+  }, {
+    "id" : "certificate.registration-deposit",
+    "reason" : "not-run",
+    "result" : "COULD-NOT-EVALUATE"
+  } ],
+  "propertyIr" : {
+    "contractSchemaSha256" : "50ada3069d97bce5064e5642c1b5cc0a1e088fab6a4eefe42bfbd24bdfe28824",
+    "path" : "verification-property.json",
+    "projectedContractTypesSha256" : "50ada3069d97bce5064e5642c1b5cc0a1e088fab6a4eefe42bfbd24bdfe28824",
+    "propertyId" : "AuthorizedDRepRegistration.dsl-property-set",
+    "schemaVersion" : 3,
+    "sha256" : "5b5ae7c96f74fa8115edd2beb03b41dbca9be16135d619c8263fb5e0028ca462",
+    "sourcePath" : "/Users/satya/work/bloxbean/julc/verification/e4i/AuthorizedCertificatePayloadSpec.java",
+    "template" : "julc.dsl-ledger/v1"
+  },
+  "protocolVersion" : 11,
+  "recursiveDepth" : 4,
+  "runnerPlanSha256" : "2f9bd4c0fe691541f49363a48d938296345d19acd1c710c7add5069cf185bb80",
+  "schemaVersion" : 1,
+  "schemas" : [ {
+    "cip57" : "AuthorizedDRepRegistration:Redeemer",
+    "lean" : "AuthorizedDRepRegistrationRedeemer"
+  } ],
+  "scriptPurpose" : "certifying",
+  "uplcVersion" : "1.1.0",
+  "validatorTitle" : "AuthorizedDRepRegistration",
+  "z3Version" : "4.15.2"
+}

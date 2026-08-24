@@ -1,0 +1,60 @@
+{
+  "acquire" : [ {
+    "command" : [ "lake", "update" ],
+    "expectedExitCodes" : [ 0 ],
+    "id" : "lake-update",
+    "maxAttempts" : 3
+  }, {
+    "command" : [ "lake", "build", "@PlutusCore/PlutusCore", "@CardanoLedgerApi/CardanoLedgerApi", "@Blaster/Blaster", "GeneratedVerificationSupport" ],
+    "expectedExitCodes" : [ 0 ],
+    "id" : "build-pinned-dependencies"
+  } ],
+  "kind" : "generated-workspace",
+  "manifest" : "verification-manifest.json",
+  "schemaVersion" : 2,
+  "timeoutSeconds" : 1800,
+  "verify" : [ {
+    "command" : [ "scripts/verify-authorization_vacuous-non-vacuity.sh" ],
+    "executableSha256" : "5bca867d9fdcfdf2203e4c1947b50cfd8ba9b6d883025d23b6af428df78fe8fe",
+    "id" : "check-non-vacuity-authorization_vacuous",
+    "outcomes" : [ {
+      "exitCode" : 0,
+      "reason" : "expected-negative-control",
+      "requiredOutput" : "NON-VACUOUS: successful input witness exists",
+      "result" : "REFUTED"
+    }, {
+      "exitCode" : 4,
+      "reason" : "property-vacuous",
+      "requiredOutput" : "VACUOUS: validator has no successful input",
+      "result" : "COULD-NOT-EVALUATE"
+    }, {
+      "exitCode" : 2,
+      "reason" : "non-vacuity-undetermined",
+      "requiredOutput" : "COULD-NOT-EVALUATE: non-vacuity",
+      "result" : "COULD-NOT-EVALUATE"
+    } ],
+    "propertyId" : "authorization.vacuous.non-vacuity"
+  }, {
+    "command" : [ "scripts/verify-authorization_vacuous.sh" ],
+    "executableSha256" : "f7b0fd55d9dab6729007debe0e48887b4c616bb37162fbf34667120e6f82462e",
+    "id" : "prove-dsl-authorization_vacuous",
+    "nonVacuityGuardPropertyId" : "authorization.vacuous.non-vacuity",
+    "outcomes" : [ {
+      "exitCode" : 0,
+      "reason" : "dsl-property-established",
+      "requiredOutput" : "SMT-VALID: DSL property authorization.vacuous established",
+      "result" : "SMT-VALID"
+    }, {
+      "exitCode" : 3,
+      "reason" : "dsl-property-counterexample",
+      "requiredOutput" : "REFUTED: DSL property authorization.vacuous counterexample found",
+      "result" : "REFUTED"
+    }, {
+      "exitCode" : 2,
+      "reason" : "dsl-property-undetermined",
+      "requiredOutput" : "COULD-NOT-EVALUATE: DSL property authorization.vacuous",
+      "result" : "COULD-NOT-EVALUATE"
+    } ],
+    "propertyId" : "authorization.vacuous"
+  } ]
+}

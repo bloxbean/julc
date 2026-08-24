@@ -1,6 +1,7 @@
 package com.bloxbean.julc.cli.cmd.verify;
 
 import com.bloxbean.cardano.julc.verification.dsl.ContractMetamodelGenerator;
+import com.bloxbean.cardano.julc.verification.dsl.VerificationDslApi;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
@@ -10,16 +11,22 @@ import java.nio.file.Path;
 import java.util.concurrent.Callable;
 
 @Command(name = "dsl-init",
-        description = "Generate an experimental typed Java verification metamodel")
+        description = "Generate a stable typed Java verification metamodel")
 public final class VerifyDslInitCommand implements Callable<Integer> {
     @Parameters(index = "0", defaultValue = ".", description = "JuLC project directory")
     private Path projectDir;
     @Option(names = "--validator", required = true)
     private String validator;
+    @Option(names = "--purpose",
+            description = "Required for a multi-validator: ${COMPLETION-CANDIDATES}")
+    private VerificationPurpose purpose;
     @Option(names = "--package", required = true)
     private String packageName;
     @Option(names = "--class", required = true)
     private String className;
+    @Option(names = "--schema-version", defaultValue = "10",
+            description = "DSL schema to generate: 3 through 10 (default: stable schema 10)")
+    private int schemaVersion = VerificationDslApi.STABLE_PROPERTY_SCHEMA_VERSION;
     @Option(names = "--out", required = true,
             description = "Generated .java file (refuses to overwrite)")
     private Path output;
@@ -32,12 +39,32 @@ public final class VerifyDslInitCommand implements Callable<Integer> {
                 throw new IllegalArgumentException(
                         "Refusing to overwrite generated metamodel: " + target);
             }
-            var loaded = DslContractLoader.load(projectDir, validator);
-            String source = ContractMetamodelGenerator.generate(
-                    loaded.schema(), packageName, className);
+            var loaded = DslContractLoader.load(projectDir, validator, purpose);
+            String source = switch (schemaVersion) {
+                case 3 -> ContractMetamodelGenerator.generate(
+                        loaded.schema(), packageName, className);
+                case 4 -> ContractMetamodelGenerator.generateTypedV4(
+                        loaded.schema(), packageName, className);
+                case 5 -> ContractMetamodelGenerator.generateTypedV5(
+                        loaded.schema(), packageName, className);
+                case 6 -> ContractMetamodelGenerator.generateTypedV6(
+                        loaded.schema(), packageName, className);
+                case 7 -> ContractMetamodelGenerator.generateTypedV7(
+                        loaded.schema(), packageName, className);
+                case 8 -> ContractMetamodelGenerator.generateTypedV8(
+                        loaded.schema(), packageName, className);
+                case 9 -> ContractMetamodelGenerator.generateTypedV9(
+                        loaded.schema(), packageName, className);
+                case 10 -> ContractMetamodelGenerator.generateTypedV10(
+                        loaded.schema(), packageName, className);
+                default -> throw new IllegalArgumentException(
+                        "DSL metamodel schema version must be 3 through 10");
+            };
             if (target.getParent() != null) Files.createDirectories(target.getParent());
             Files.writeString(target, source);
-            System.out.println("Generated experimental DSL metamodel: " + target);
+            System.out.println("Generated stable DSL metamodel (API v"
+                    + VerificationDslApi.API_VERSION + ", schema " + schemaVersion
+                    + "): " + target);
             System.out.println("Trusted-source boundary: compiling/running a DSL specification "
                     + "executes project Java in a bounded worker.");
             return 0;

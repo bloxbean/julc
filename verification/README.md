@@ -11,7 +11,7 @@ or Docker.
 
 ## What is available today
 
-There are seven ways to explore the current integration. `julc verify run`
+There are thirteen ways to explore the current integration. `julc verify run`
 provides the managed execution path for both a generated workspace and the
 committed evidence suite:
 
@@ -42,6 +42,45 @@ committed evidence suite:
 7. `verification/c7` is the C.7 controlled-mint profile. It proves fixed
    authority, current-policy linkage, exact token/quantity/action, and no extra
    raw assets under the current policy for both mint and burn fixtures.
+8. `verification/e4a` is the typed minting DSL slice. It selects
+   normal or purpose-indexed minting interfaces, converges `@ControlledMint`
+   with canonical schema-2 DSL semantics, and proves a domain-aware one-shot
+   authority/anchor/exact-asset property with positive and adversarial controls.
+9. `verification/e4b` is the compositional schema-3 DSL path. It promotes any
+   admitted combination of the currently supported spending or minting nodes,
+   supports multiple independently certified properties, and retains a fixed
+   exact-execution/reviewed-domain theorem envelope. Its evidence includes
+   novel spending and minting formulas plus mixed-result and vacuous controls.
+10. `verification/e4c` extends that same compositional path to rewarding
+    validators. It exposes the current rewarding credential and the raw,
+    duplicate-preserving withdrawal association list, and includes exact VM,
+    local, Docker, native, refuted, and vacuity evidence for an authority plus
+    minimum-withdrawal property.
+11. `verification/e4d` extends schema 3 to certifying validators selected by
+    CIP-57 `publish`. It exposes the authoritative current certificate/index,
+    all 11 pinned certificate kinds, and ordered indexed membership, with exact
+    VM, local, Docker, native, refuted, malformed, and vacuity evidence for an
+    authorized `UpdateDRep` property.
+12. `verification/e4e` and `verification/e4f` record the schema-4 foundation. JuLC
+    projects compiler-owned nested datum/redeemer records, sealed variants,
+    optionals, lists, maps, and productive recursive references into a
+    hash-bound symbolic type graph. Generated Java wrappers expose guarded
+    variant/optional elimination, closed linear integer operations, list
+    quantifiers/count/indexing, and ordered duplicate-preserving association-map
+    traversal, first/all lookup, and structural equality. The E.4f controls
+    include exact VM, local, Docker, native, refuted, and vacuous evidence.
+13. `verification/e4g` records schema 5 for non-value transaction
+    context. It exposes ordered ordinary/reference inputs, resolved outputs,
+    output references, fee/transaction ID, complete address and staking
+    credentials, output datum/reference-script variants, own-input and
+    full-address continuing-output selection, plus ordered duplicate-preserving
+    datum/redeemer maps. Local, Docker, native, exact-VM, refuted, and vacuous
+    controls bind these meanings to the pinned ledger model.
+14. `verification/e4h` records schema 6 compositional authorization:
+    distinct any/all/none/threshold relations, explicit unexpected-signer and
+    exact-set constraints, fixed and compiler-owned contract-byte sources,
+    plus exact-VM and Lean-kernel duplicate/order controls. Applied parameter
+    authorities remain fail-closed pending exact application binding.
 
 The integration does not prove that every JuLC program is safe. It checks
 explicit properties for one exact compiled artifact. Solver-valid Blaster

@@ -7,7 +7,9 @@ import java.util.Locale;
 /** Verification-facing purpose names and their exact compiler/CIP-57 mappings. */
 enum VerificationPurpose {
     SPENDING("spending", "spend", ContractSchema.Purpose.SPEND),
-    MINTING("minting", "mint", ContractSchema.Purpose.MINT);
+    MINTING("minting", "mint", ContractSchema.Purpose.MINT),
+    REWARDING("rewarding", "withdraw", ContractSchema.Purpose.WITHDRAW),
+    CERTIFYING("certifying", "publish", ContractSchema.Purpose.CERTIFY);
 
     private final String userName;
     private final String cip57Name;
@@ -39,6 +41,7 @@ enum VerificationPurpose {
         for (var candidate : values()) {
             if (candidate.userName.equals(normalized)) return candidate;
         }
-        throw new IllegalArgumentException("Purpose must be spending or minting");
+        throw new IllegalArgumentException(
+                "Purpose must be spending, minting, rewarding, or certifying");
     }
 }

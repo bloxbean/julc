@@ -95,3 +95,6 @@ Single-purpose validator titles and script bytes are unchanged. A strict build
 that also contains `VOTE`, `PROPOSE`, or manual-dispatch interfaces will fail
 without replacing the previous complete blueprint; use
 `--no-blueprint` only as an explicit metadata opt-out while migrating.
+
+See [Formal Verification](/guides/formal-verification/) for annotation and
+typed-DSL workflows that consume these exact purpose-indexed interfaces.
