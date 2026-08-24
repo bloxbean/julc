@@ -3,7 +3,7 @@ package com.bloxbean.cardano.julc.verification.dsl;
 import com.bloxbean.cardano.julc.verification.dsl.ir.LedgerRootNode;
 import com.bloxbean.cardano.julc.verification.dsl.ir.LedgerByteAliasNode;
 
-/** Entry points for the closed schema-5 Cardano ledger expression surface. */
+/** Entry points for the closed public schema-1 Cardano ledger expression surface. */
 public final class LedgerExpressions {
     private LedgerExpressions() { }
 
@@ -15,6 +15,11 @@ public final class LedgerExpressions {
     public static TxCertExpr currentCertificate() {
         return new TxCertExpr(new LedgerRootNode(
                 "currentCertificate", LedgerTypeAuthority.TX_CERT));
+    }
+
+    public static LedgerCredentialExpr rewardingCredential() {
+        return new LedgerCredentialExpr(new LedgerRootNode(
+                "rewardingCredential", LedgerTypeAuthority.CREDENTIAL));
     }
 
     public static IntegerExpr currentCertificateIndex() {

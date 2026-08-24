@@ -13,36 +13,29 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class TypedSchemaFourAdmissionTest {
     @Test
-    void schemaFourBindsCompilerProjectionWhileSchemaThreeBytesStayFrozen() throws Exception {
+    void publicSchemaOneBindsCompilerProjectionAndUsesStableFormat() throws Exception {
         ContractSchema schema = spendingSchema();
         var model = new SpendingContractModel();
         var claim = property("state.nonnegative", DslDomain.NONE,
                 model.datum().integerField("state").ge(integer(0)));
         String hash = ContractTypeProjection.sha256(ContractTypeProjection.project(schema));
-        var schemaFour = DslPropertySet.typedV4(DslPurpose.SPENDING, hash, claim);
+        var schemaOne = DslPropertySet.schema1(DslPurpose.SPENDING, hash, claim);
 
         var promoted = ComposedDslPromotion.promote(
-                schemaFour, schema, "StateGate", "StateProperties.java");
+                schemaOne, schema, "StateGate", "StateProperties.java");
 
-        assertEquals(ComposedDslProperty.TYPED_SCHEMA_VERSION,
+        assertEquals(ComposedDslProperty.LEDGER_SCHEMA_VERSION,
                 promoted.schemaVersion());
-        assertEquals(ComposedDslProperty.TYPED_TEMPLATE, promoted.template());
+        assertEquals(ComposedDslProperty.LEDGER_TEMPLATE, promoted.template());
         assertEquals(hash, promoted.contractSchemaSha256());
         assertEquals(hash, ContractTypeProjection.sha256(
                 ContractTypeProjection.readCanonical(
                         promoted.projectedContractTypesJson(), 1_048_576)));
-        assertEquals(schemaFour, ComposedDslPromotion.verifyIntegrity(promoted));
-
-        String schemaThree = PropertyIrCodec.canonicalJson(
-                DslPropertySet.composed(DslPurpose.SPENDING, claim));
-        assertEquals("{\"properties\":[{\"domain\":\"NONE\",\"expression\":{"
-                + "\"op\":\"compare\",\"left\":{\"op\":\"field\",\"name\":\"state\","
-                + "\"resultType\":\"INTEGER\",\"target\":{\"op\":\"root\",\"name\":"
-                + "\"datum\",\"resultType\":\"DATA\"}},\"operator\":\"GE\",\"right\":{"
-                + "\"op\":\"literal\",\"resultType\":\"INTEGER\",\"value\":\"0\"}},"
-                + "\"id\":\"state.nonnegative\"}],"
-                + "\"purpose\":\"SPENDING\",\"schemaVersion\":3}", schemaThree);
-        assertFalse(schemaThree.contains("contractSchemaSha256"));
+        assertEquals(schemaOne, ComposedDslPromotion.verifyIntegrity(promoted));
+        String canonical = PropertyIrCodec.canonicalJson(schemaOne);
+        assertTrue(canonical.contains("\"format\":\"julc.verification.dsl\""));
+        assertTrue(canonical.contains("\"schemaVersion\":1"));
+        assertTrue(canonical.contains("\"contractSchemaSha256\":\"" + hash + "\""));
     }
 
     @Test
@@ -51,14 +44,14 @@ class TypedSchemaFourAdmissionTest {
         var model = new SpendingContractModel();
         var claim = property("state.nonnegative", DslDomain.NONE,
                 model.datum().integerField("state").ge(integer(0)));
-        var stale = DslPropertySet.typedV4(DslPurpose.SPENDING, "0".repeat(64), claim);
+        var stale = DslPropertySet.schema1(DslPurpose.SPENDING, "0".repeat(64), claim);
         assertTrue(assertThrows(IllegalArgumentException.class,
                 () -> DslPropertyValidator.validate(stale, schema, 100))
                 .getMessage().contains("does not match"));
 
         String hash = ContractTypeProjection.sha256(ContractTypeProjection.project(schema));
         var valid = ComposedDslPromotion.promote(
-                DslPropertySet.typedV4(DslPurpose.SPENDING, hash, claim),
+                DslPropertySet.schema1(DslPurpose.SPENDING, hash, claim),
                 schema, "StateGate", "StateProperties.java");
         var tampered = new ComposedDslProperty(
                 valid.schemaVersion(), valid.template(), valid.propertyId(),

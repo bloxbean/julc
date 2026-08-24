@@ -84,7 +84,7 @@ public final class StatefulSpendingDslLowering {
             });
         });
 
-        return DslPropertySet.typedV10(
+        return DslPropertySet.schema1(
                 DslPurpose.SPENDING,
                 ContractTypeProjection.sha256(projection),
                 property(propertyId, DslDomain.NONE, guarantee));

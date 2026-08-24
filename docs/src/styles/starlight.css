@@ -18,6 +18,17 @@
 }
 
 [data-theme='light'] {
+  /* Starlight uses these names semantically: "white" is foreground text and
+     "black" is the page background. Invert the custom dark palette in light
+     mode so asides and other components retain accessible contrast. */
+  --sl-color-white: #17191e;
+  --sl-color-gray-1: #24272f;
+  --sl-color-gray-2: #353841;
+  --sl-color-gray-3: #545861;
+  --sl-color-gray-4: #888b96;
+  --sl-color-gray-5: #c0c2c7;
+  --sl-color-gray-6: #eceef2;
+  --sl-color-black: #ffffff;
   --sl-color-accent-low: #fff3eb;
   --sl-color-accent: #D4600E;
   --sl-color-accent-high: #7a3508;

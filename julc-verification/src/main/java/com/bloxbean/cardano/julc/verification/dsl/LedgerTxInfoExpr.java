@@ -50,6 +50,13 @@ public record LedgerTxInfoExpr(PropertyNode node) implements Expr {
                         LedgerTypeAuthority.SCRIPT_PURPOSE, LedgerTypeAuthority.DATA)),
                 LedgerTypeAuthority.SCRIPT_PURPOSE, LedgerTypeAuthority.DATA);
     }
+    public TypedAssocMapExpr withdrawals() {
+        return new TypedAssocMapExpr(new LedgerFieldNode(node,
+                LedgerTypeAuthority.TX_INFO, "withdrawals",
+                new AssocMapTypeRef(LedgerTypeAuthority.CREDENTIAL,
+                        LedgerTypeAuthority.INTEGER)),
+                LedgerTypeAuthority.CREDENTIAL, LedgerTypeAuthority.INTEGER);
+    }
     public VoterMapExpr votes() {
         var inner = new AssocMapTypeRef(LedgerTypeAuthority.GOVERNANCE_ACTION_ID,
                 LedgerTypeAuthority.VOTE);
@@ -60,6 +67,11 @@ public record LedgerTxInfoExpr(PropertyNode node) implements Expr {
         return new ProposalProcedureListExpr(new LedgerFieldNode(node,
                 LedgerTypeAuthority.TX_INFO, "proposals",
                 new ListTypeRef(LedgerTypeAuthority.PROPOSAL_PROCEDURE)));
+    }
+    public ByteStringListExpr signatories() {
+        return new ByteStringListExpr(new LedgerFieldNode(node,
+                LedgerTypeAuthority.TX_INFO, "signatories",
+                new ListTypeRef(LedgerTypeAuthority.PUB_KEY_HASH)));
     }
     public ValidityRangeExpr validityRangeReviewed() {
         return new ValidityRangeExpr(node);

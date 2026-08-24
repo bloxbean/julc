@@ -5,6 +5,7 @@ import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
 import com.bloxbean.cardano.julc.verification.RequiresSignerResolver;
 import com.bloxbean.cardano.julc.verification.dsl.ir.*;
 import com.bloxbean.cardano.julc.verification.dsl.worker.DslWorkerRunner;
+import com.bloxbean.cardano.julc.verification.dsl.type.ContractTypeProjection;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -36,7 +37,7 @@ class TypedDslPrototypeTest {
         Path sources = tempDir.resolve("sources/generated");
         Files.createDirectories(sources);
         Path model = sources.resolve("AuthorizedModel.java");
-        Files.writeString(model, ContractMetamodelGenerator.generateTypedV10(
+        Files.writeString(model, ContractMetamodelGenerator.generate(
                 compiled.contractSchema(), "generated", "AuthorizedModel"));
         Path specification = sources.resolve("SignerSpec.java");
         Files.writeString(specification, """
@@ -81,7 +82,9 @@ class TypedDslPrototypeTest {
     void authoritativeValidationRejectsForgedDatumFieldAndOversizedAst() {
         var schema = new JulcCompiler(StdlibRegistry.defaultRegistry())
                 .compileContract(validatorSource()).contractSchema();
-        var forged = DslPropertySet.of(new DslProperty("forged", new CompareNode(
+        String hash = ContractTypeProjection.sha256(ContractTypeProjection.project(schema));
+        var forged = DslPropertySet.schema1(DslPurpose.SPENDING, hash,
+                new DslProperty("forged", DslDomain.NONE, new CompareNode(
                 CompareOperator.EQ,
                 new FieldNode(new RootNode("datum", DslType.DATA),
                         "notAField", DslType.BYTE_STRING),
@@ -101,13 +104,16 @@ class TypedDslPrototypeTest {
     void authoritativeValidationRejectsNonIntegerAndNoncanonicalLiterals() {
         var schema = new JulcCompiler(StdlibRegistry.defaultRegistry())
                 .compileContract(validatorSource()).contractSchema();
-        var rawLean = DslPropertySet.of(new DslProperty("raw-lean",
-                new LiteralNode(DslType.BOOL, "by exact True.intro")));
+        String hash = ContractTypeProjection.sha256(ContractTypeProjection.project(schema));
+        var rawLean = DslPropertySet.schema1(DslPurpose.SPENDING, hash,
+                new DslProperty("raw-lean", DslDomain.NONE,
+                        new LiteralNode(DslType.BOOL, "by exact True.intro")));
         var typeError = assertThrows(IllegalArgumentException.class,
                 () -> DslPropertyValidator.validate(rawLean, schema, 100));
         assertEquals("DSL v1 supports only integer literals", typeError.getMessage());
 
-        var noncanonicalInteger = DslPropertySet.of(new DslProperty("leading-zero",
+        var noncanonicalInteger = DslPropertySet.schema1(DslPurpose.SPENDING, hash,
+                new DslProperty("leading-zero", DslDomain.NONE,
                 new CompareNode(CompareOperator.EQ,
                         new LiteralNode(DslType.INTEGER, "01"),
                         new LiteralNode(DslType.INTEGER, "1"))));
@@ -124,6 +130,8 @@ class TypedDslPrototypeTest {
         Path sources = tempDir.resolve("schema-three-sources");
         Files.createDirectories(sources);
         Path specification = sources.resolve("ComposedSpec.java");
+        String hash = ContractTypeProjection.sha256(
+                ContractTypeProjection.project(compiled.contractSchema()));
         Files.writeString(specification, """
                 package generated;
                 import com.bloxbean.cardano.julc.verification.dsl.*;
@@ -136,11 +144,11 @@ class TypedDslPrototypeTest {
                         var signer = contract.context().txInfo().signatories()
                                 .contains(contract.datum().bytesField("owner"));
                         var guarantee = signer.and(signer);
-                        return DslPropertySet.composed(DslPurpose.SPENDING,
+                        return DslPropertySet.schema1(DslPurpose.SPENDING, "%s",
                                 property("Authorized.composed", DslDomain.NONE, guarantee));
                     }
                 }
-                """);
+                """.formatted(hash));
         Path classes = compile(specification);
         Path worker = tempDir.resolve("schema-three-worker");
         DslPropertySet normalized = new DslWorkerRunner().run(

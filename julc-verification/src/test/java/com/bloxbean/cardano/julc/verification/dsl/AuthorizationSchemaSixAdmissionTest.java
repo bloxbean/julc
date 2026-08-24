@@ -35,7 +35,7 @@ class AuthorizationSchemaSixAdmissionTest {
         Path sources = tempDir.resolve("sources/evidence");
         Files.createDirectories(sources);
         Path model = sources.resolve("AuthorizationModel.java");
-        Files.writeString(model, ContractMetamodelGenerator.generateTypedV6(
+        Files.writeString(model, ContractMetamodelGenerator.generate(
                 compiled.contractSchema(), "evidence", "AuthorizationModel"));
         Path specification = sources.resolve("AuthorizationProperties.java");
         Files.writeString(specification, """
@@ -69,7 +69,7 @@ class AuthorizationSchemaSixAdmissionTest {
                 "evidence.AuthorizationProperties", compiled.contractSchema(),
                 tempDir.resolve("worker"), Duration.ofSeconds(10));
 
-        assertEquals(DslPropertySet.AUTHORIZATION_SCHEMA_VERSION,
+        assertEquals(DslPropertySet.SCHEMA_VERSION,
                 candidate.schemaVersion());
         var promoted = ComposedDslPromotion.promote(candidate,
                 compiled.contractSchema(), "AuthorizationGate",
@@ -160,16 +160,6 @@ class AuthorizationSchemaSixAdmissionTest {
                 auth.authorities(auth.fixed(KEY_A)).atLeastSigned(17),
                 "at most 16");
 
-        String hash = ContractTypeProjection.sha256(
-                ContractTypeProjection.project(compiled.contractSchema()));
-        var forgedV5 = DslPropertySet.typedV5(DslPurpose.SPENDING, hash,
-                VerificationDsl.property("authorization.schema-five",
-                        DslDomain.NONE,
-                        auth.authorities(auth.fixed(KEY_A)).anySigned()));
-        assertTrue(assertThrows(IllegalArgumentException.class,
-                () -> DslPropertyValidator.validate(
-                        forgedV5, compiled.contractSchema(), 100))
-                .getMessage().contains("schema 6"));
     }
 
     @Test
@@ -218,7 +208,7 @@ class AuthorizationSchemaSixAdmissionTest {
             var auth = new AuthorizationDsl();
             String hash = ContractTypeProjection.sha256(
                     ContractTypeProjection.project(compiled.contractSchema()));
-            var candidate = DslPropertySet.typedV6(purpose, hash,
+            var candidate = DslPropertySet.schema1(purpose, hash,
                     VerificationDsl.property("authorization." + purpose.name().toLowerCase(),
                             DslDomain.NONE,
                             auth.authorities(auth.fixed(KEY_A), auth.fixed(KEY_B))
@@ -254,7 +244,7 @@ class AuthorizationSchemaSixAdmissionTest {
         Path sources = tempDir.resolve("action/evidence");
         Files.createDirectories(sources);
         Path model = sources.resolve("ActionModel.java");
-        Files.writeString(model, ContractMetamodelGenerator.generateTypedV6(
+        Files.writeString(model, ContractMetamodelGenerator.generate(
                 compiled.contractSchema(), "evidence", "ActionModel"));
         Path specification = sources.resolve("ActionProperties.java");
         Files.writeString(specification, """
@@ -295,7 +285,7 @@ class AuthorizationSchemaSixAdmissionTest {
             BoolExpr expression) {
         String hash = ContractTypeProjection.sha256(
                 ContractTypeProjection.project(compiled.contractSchema()));
-        return DslPropertySet.typedV6(DslPurpose.SPENDING, hash,
+        return DslPropertySet.schema1(DslPurpose.SPENDING, hash,
                 VerificationDsl.property("authorization.test", DslDomain.NONE,
                         expression));
     }

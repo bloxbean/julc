@@ -37,7 +37,7 @@ run_fixture() {
   set +e
   "${JULC[@]}" verify dsl "${project}" --validator "${validator}" \
     --spec-class evidence.SellerPaymentSpec --spec-classpath "${classes}" \
-    --seller-field seller --price-field price --source SellerPaymentSpec.java \
+    --source SellerPaymentSpec.java \
     --backend local --fuel "${fuel}" --out-dir "${workspace}" --force
   local actual_exit=$?
   set -e

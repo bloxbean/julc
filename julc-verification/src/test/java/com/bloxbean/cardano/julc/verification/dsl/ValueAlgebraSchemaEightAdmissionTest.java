@@ -27,7 +27,7 @@ class ValueAlgebraSchemaEightAdmissionTest {
         Path sources = tempDir.resolve("sources/evidence");
         Files.createDirectories(sources);
         Path model = sources.resolve("ValueModel.java");
-        Files.writeString(model, ContractMetamodelGenerator.generateTypedV8(
+        Files.writeString(model, ContractMetamodelGenerator.generate(
                 schema, "evidence", "ValueModel"));
         Path specification = sources.resolve("ValueProperties.java");
         Files.writeString(specification, """
@@ -54,7 +54,7 @@ class ValueAlgebraSchemaEightAdmissionTest {
                 "evidence.ValueProperties", schema, tempDir.resolve("worker"),
                 Duration.ofSeconds(10));
 
-        assertEquals(DslPropertySet.VALUE_ALGEBRA_SCHEMA_VERSION,
+        assertEquals(DslPropertySet.SCHEMA_VERSION,
                 candidate.schemaVersion());
         ComposedDslPromotion.promote(candidate, schema,
                 "ValueGate", "ValueProperties.java");
@@ -96,7 +96,7 @@ class ValueAlgebraSchemaEightAdmissionTest {
                 .and(context.valueSpent().pointwiseLe(context.valueProduced()))
                 .and(context.isBalanced())
                 .and(arithmetic);
-        var candidate = DslPropertySet.typedV8(DslPurpose.SPENDING, hash,
+        var candidate = DslPropertySet.schema1(DslPurpose.SPENDING, hash,
                 VerificationDsl.property("value.views",
                         DslDomain.VALID_SPENDING_V3_PINNED, guarantee));
 
@@ -104,8 +104,8 @@ class ValueAlgebraSchemaEightAdmissionTest {
                 candidate, schema, 10_000);
         var promoted = ComposedDslPromotion.promote(normalized, schema,
                 "ValueGate", "ValueProperties.java");
-        assertEquals(8, normalized.schemaVersion());
-        assertEquals(8, ComposedDslPromotion.verifyIntegrity(promoted).schemaVersion());
+        assertEquals(1, normalized.schemaVersion());
+        assertEquals(1, ComposedDslPromotion.verifyIntegrity(promoted).schemaVersion());
         assertTrue(promoted.claims().getFirst().capabilities()
                 .contains("helper.valueOf"));
         assertTrue(promoted.claims().getFirst().capabilities()
@@ -127,22 +127,13 @@ class ValueAlgebraSchemaEightAdmissionTest {
     void schemaSevenAndForgedValueRolesFailClosed() {
         ContractSchema schema = schema();
         String hash = ContractTypeProjection.sha256(ContractTypeProjection.project(schema));
-        var value = LedgerExpressions.context().txInfo().outputs()
-                .at(VerificationDsl.integer(0))
-                .exists(output -> output.value().extensionallyEquals(output.value()));
-        var oldSchema = DslPropertySet.typedV7(DslPurpose.SPENDING, hash,
-                VerificationDsl.property("value.old", DslDomain.NONE, value));
-        assertTrue(assertThrows(IllegalArgumentException.class,
-                () -> DslPropertyValidator.validate(oldSchema, schema, 1_000))
-                .getMessage().contains("schema 8"));
-
         var forged = new ValueQuantityNode(
                 ValueQuantityNode.ValueQuantityKind.STRICT_SUMMED,
                 LedgerExpressions.context().txInfo().fee().node(),
                 LedgerTypeAuthority.VALUE,
                 LedgerExpressions.currencySymbol(VerificationDsl.bytes("11")).node(),
                 LedgerExpressions.tokenName(VerificationDsl.bytes("aa")).node());
-        var forgedSet = DslPropertySet.typedV8(DslPurpose.SPENDING, hash,
+        var forgedSet = DslPropertySet.schema1(DslPurpose.SPENDING, hash,
                 VerificationDsl.property("value.forged", DslDomain.NONE,
                         new TypedOptionExpr(forged, LedgerTypeAuthority.INTEGER).isPresent()));
         assertThrows(IllegalArgumentException.class,
@@ -154,7 +145,7 @@ class ValueAlgebraSchemaEightAdmissionTest {
                 LedgerTypeAuthority.VALUE,
                 LedgerExpressions.context().txInfo().mint().node(),
                 LedgerTypeAuthority.MINT_VALUE);
-        var forgedCrossRoleSet = DslPropertySet.typedV8(DslPurpose.SPENDING, hash,
+        var forgedCrossRoleSet = DslPropertySet.schema1(DslPurpose.SPENDING, hash,
                 VerificationDsl.property("value.forged-cross-role", DslDomain.NONE,
                         new BoolExpr(forgedCrossRole)));
         assertTrue(assertThrows(IllegalArgumentException.class,
@@ -179,17 +170,17 @@ class ValueAlgebraSchemaEightAdmissionTest {
         var policy = LedgerExpressions.currencySymbol(VerificationDsl.bytes("11"));
         var token = LedgerExpressions.tokenName(VerificationDsl.bytes("aa"));
         var mint = LedgerExpressions.context().txInfo().mint();
-        var first = DslPropertySet.typedV8(DslPurpose.SPENDING, hash,
+        var first = DslPropertySet.schema1(DslPurpose.SPENDING, hash,
                 VerificationDsl.property("value.canonical", DslDomain.NONE,
                         mint.quantitySumStrict(policy, token).isPresent()));
         var normalized = DslPropertyCanonicalizer.normalize(first);
         assertEquals(PropertyIrCodec.canonicalJson(normalized),
                 PropertyIrCodec.canonicalJson(DslPropertyCanonicalizer.normalize(normalized)));
 
-        var seven = DslPropertySet.typedV7(DslPurpose.SPENDING, hash,
+        var seven = DslPropertySet.schema1(DslPurpose.SPENDING, hash,
                 VerificationDsl.property("frozen", DslDomain.NONE,
                         VerificationDsl.bool(true)));
-        assertEquals(7, seven.schemaVersion());
+        assertEquals(1, seven.schemaVersion());
         assertFalse(PropertyIrCodec.canonicalJson(seven).contains("value-"));
     }
 
@@ -207,14 +198,14 @@ class ValueAlgebraSchemaEightAdmissionTest {
                     .quantitySumStrict(policy, token).isPresent()
                     .and(context.valueProduced()
                             .extensionallyEquals(context.valueProduced()));
-            var candidate = DslPropertySet.typedV8(purpose, hash,
+            var candidate = DslPropertySet.schema1(purpose, hash,
                     VerificationDsl.property("value." + purpose.name().toLowerCase(),
                             domain(purpose), guarantee));
 
             var normalized = DslPropertyValidator.validateAndNormalize(
                     candidate, schema, 10_000);
             assertEquals(purpose, normalized.purpose());
-            assertEquals(8, normalized.schemaVersion());
+            assertEquals(1, normalized.schemaVersion());
         }
     }
 

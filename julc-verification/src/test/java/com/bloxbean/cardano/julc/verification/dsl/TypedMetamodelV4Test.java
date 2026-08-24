@@ -33,7 +33,7 @@ class TypedMetamodelV4Test {
                 }
                 """);
         assertTrue(assertThrows(IllegalArgumentException.class,
-                () -> ContractMetamodelGenerator.generateTypedV4(
+                () -> ContractMetamodelGenerator.generate(
                         compiled.contractSchema(), "evidence", "CollisionModel"))
                 .getMessage().contains("collide"));
     }
@@ -47,7 +47,7 @@ class TypedMetamodelV4Test {
         Path sources = tempDir.resolve("sources/evidence");
         Files.createDirectories(sources);
         Path model = sources.resolve("GateModel.java");
-        String generated = ContractMetamodelGenerator.generateTypedV4(
+        String generated = ContractMetamodelGenerator.generate(
                 compiled.contractSchema(), "evidence", "GateModel");
         Files.writeString(model, generated);
         Path specification = sources.resolve("GateProperties.java");
@@ -106,7 +106,7 @@ class TypedMetamodelV4Test {
                 "evidence.GateProperties", compiled.contractSchema(),
                 tempDir.resolve("worker"), Duration.ofSeconds(10));
 
-        assertEquals(DslPropertySet.TYPED_SCHEMA_VERSION, candidate.schemaVersion());
+        assertEquals(DslPropertySet.SCHEMA_VERSION, candidate.schemaVersion());
         assertEquals(ContractTypeProjection.sha256(
                 ContractTypeProjection.project(compiled.contractSchema())),
                 candidate.contractSchemaSha256());
@@ -164,7 +164,7 @@ class TypedMetamodelV4Test {
         var expression = new OptionExistsNode(datumRoot, "v0", datum,
                 new CompareNode(CompareOperator.EQ, forgedField,
                         new LiteralNode(DslType.INTEGER, "0")));
-        var candidate = DslPropertySet.typedV4(DslPurpose.SPENDING,
+        var candidate = DslPropertySet.schema1(DslPurpose.SPENDING,
                 ContractTypeProjection.sha256(projection),
                 new DslProperty("forged.owner", DslDomain.NONE, expression));
 

@@ -3,7 +3,7 @@ package com.bloxbean.cardano.julc.verification.dsl.type;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 
-/** Closed structural type reference admitted by schema-4/5 properties. */
+/** Closed structural type reference admitted by public schema-1 properties. */
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
 @JsonSubTypes({
         @JsonSubTypes.Type(value = BuiltinTypeRef.class, name = "builtin"),

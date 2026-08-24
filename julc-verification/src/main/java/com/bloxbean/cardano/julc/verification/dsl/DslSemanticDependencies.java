@@ -111,6 +111,11 @@ public final class DslSemanticDependencies {
                     state.certificate = true;
                     state.capabilities.add("purpose.certifying");
                 }
+                case "rewardingCredential" -> {
+                    state.rewardingCredential = true;
+                    state.capabilities.add("helper.credentialInWithdrawals");
+                    state.capabilities.add("purpose.rewarding");
+                }
                 default -> throw new IllegalArgumentException(
                         "No dependency mapping for ledger root " + root.name());
             }

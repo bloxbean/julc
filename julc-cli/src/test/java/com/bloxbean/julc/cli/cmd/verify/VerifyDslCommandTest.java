@@ -7,6 +7,7 @@ import java.nio.file.Path;
 import picocli.CommandLine;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class VerifyDslCommandTest {
@@ -44,10 +45,9 @@ class VerifyDslCommandTest {
     }
 
     @Test
-    void stableMetamodelDefaultsToSchemaTen() {
+    void stableMetamodelUsesOnlyPublicSchemaOne() {
         var command = new CommandLine(new VerifyDslInitCommand());
-        assertEquals("10", command.getCommandSpec()
-                .findOption("--schema-version").defaultValue());
+        assertNull(command.getCommandSpec().findOption("--schema-version"));
         assertTrue(command.getCommandSpec().usageMessage().description()[0]
                 .contains("stable typed Java verification metamodel"));
     }

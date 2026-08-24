@@ -7,7 +7,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-/** Lean renderer for parent-validated schema-4/5 structural nodes. */
+/** Lean renderer for parent-validated schema-1 structural nodes. */
 public final class TypedPropertyLeanRenderer {
     private TypedPropertyLeanRenderer() { }
 
@@ -40,6 +40,7 @@ public final class TypedPropertyLeanRenderer {
             return switch (root.name()) {
                 case "ledgerContext" -> "ctx";
                 case "currentCertificate" -> "certificateOf ctx";
+                case "rewardingCredential" -> "rewardingCredentialOf ctx";
                 default -> throw new IllegalArgumentException(
                         "No Lean mapping for ledger root " + root.name());
             };
@@ -135,9 +136,12 @@ public final class TypedPropertyLeanRenderer {
                             + ".txInfoData⟩ : JulcMap CardanoLedgerApi.V2.DatumHash Data)";
                     case "redeemers" -> "(⟨" + target
                             + ".txInfoRedeemers⟩ : JulcMap ScriptPurpose Data)";
+                    case "withdrawals" -> "(⟨" + target
+                            + ".txInfoWdrl⟩ : JulcMap Credential Int)";
                     case "votes" -> "julcVoterMap " + target + ".txInfoVotes";
                     case "proposals" -> "(⟨" + target
                             + ".txInfoProposalProcedures⟩ : JulcList ProposalProcedure)";
+                    case "signatories" -> target + ".txInfoSignatories";
                     case "id" -> target + ".txInfoId";
                     default -> unknownLedgerField(field);
                 };

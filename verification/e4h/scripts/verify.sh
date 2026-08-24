@@ -24,7 +24,7 @@ prepare() {
   local source="${BUILD_DIR}/src/evidence/${model}.java"
   rm -f "${source}"
   "${JULC[@]}" verify dsl-init "${PROJECT}" --validator "${validator}" \
-    --purpose spending --schema-version 6 --package evidence --class "${model}" \
+    --purpose spending --package evidence --class "${model}" \
     --out "${source}"
   javac -cp "${JULC_JAR}" -d "${BUILD_DIR}/classes" \
     "${source}" "${E4H_DIR}/${spec}.java"
@@ -56,7 +56,7 @@ if [[ "${BACKEND}" == "local" ]]; then
   run_property AuthorizedThresholdGate AuthorizedThresholdSpec authorized 0 SMT-VALID
   run_property VulnerableThresholdGate VulnerableThresholdSpec vulnerable 3 REFUTED
   run_property VacuousThresholdGate VacuousThresholdSpec vacuous 2 COULD-NOT-EVALUATE
-  grep -q '"schemaVersion" : 6' \
+  grep -q '"schemaVersion" : 1' \
     "${E4H_DIR}/generated/authorized/verification-manifest.json"
   grep -q 'julcExactlySigned 2' \
     "${E4H_DIR}/generated/authorized/SecurityProperty.lean"

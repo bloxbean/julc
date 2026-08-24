@@ -37,7 +37,7 @@ class ReviewedDataAdapterSchemaTenAdmissionTest {
                                                     numerator.le(denominator))));
                     return parameters.or(quorum);
                 }));
-        var candidate = DslPropertySet.typedV10(DslPurpose.SPENDING, hash,
+        var candidate = DslPropertySet.schema1(DslPurpose.SPENDING, hash,
                 VerificationDsl.property("reviewed.adapters",
                         DslDomain.VALID_SPENDING_V3_PINNED,
                         timeAndTreasury.and(governance)));
@@ -70,19 +70,11 @@ class ReviewedDataAdapterSchemaTenAdmissionTest {
     void oldSchemaAndWrongParentsFailBeforeLeanGeneration() {
         ContractSchema schema = schema();
         String hash = ContractTypeProjection.sha256(ContractTypeProjection.project(schema));
-        BoolExpr time = LedgerExpressions.context().txInfo().validityRangeReviewed()
-                .decoderValid();
-        var old = DslPropertySet.typedV9(DslPurpose.SPENDING, hash,
-                VerificationDsl.property("old.adapter", DslDomain.NONE, time));
-        assertTrue(assertThrows(IllegalArgumentException.class,
-                () -> DslPropertyValidator.validate(old, schema, 10_000))
-                .getMessage().contains("schema 10"));
-
         var wrongParent = new ReviewedAdapterPredicateNode(
                 ReviewedAdapterPredicateNode.ReviewedAdapterPredicate
                         .VALIDITY_DECODER_VALID,
                 List.of(LedgerExpressions.context().node()));
-        var forged = DslPropertySet.typedV10(DslPurpose.SPENDING, hash,
+        var forged = DslPropertySet.schema1(DslPurpose.SPENDING, hash,
                 VerificationDsl.property("wrong.parent", DslDomain.NONE,
                         new BoolExpr(wrongParent)));
         assertTrue(assertThrows(IllegalArgumentException.class,
@@ -93,7 +85,7 @@ class ReviewedDataAdapterSchemaTenAdmissionTest {
         var rawPayload = new ReviewedAdapterPredicateNode(
                 ReviewedAdapterPredicateNode.ReviewedAdapterPredicate
                         .CHANGED_PARAMETERS_WELL_FORMED, List.of(unguarded));
-        var forgedPayload = DslPropertySet.typedV10(DslPurpose.SPENDING, hash,
+        var forgedPayload = DslPropertySet.schema1(DslPurpose.SPENDING, hash,
                 VerificationDsl.property("wrong.guard", DslDomain.NONE,
                         new BoolExpr(rawPayload)));
         assertThrows(IllegalArgumentException.class,
@@ -104,7 +96,7 @@ class ReviewedDataAdapterSchemaTenAdmissionTest {
     void canonicalCodecRoundTripsAndRejectsUnknownAdapterOperation() throws Exception {
         ContractSchema schema = schema();
         String hash = ContractTypeProjection.sha256(ContractTypeProjection.project(schema));
-        var candidate = DslPropertySet.typedV10(DslPurpose.SPENDING, hash,
+        var candidate = DslPropertySet.schema1(DslPurpose.SPENDING, hash,
                 VerificationDsl.property("codec.adapter", DslDomain.NONE,
                         LedgerExpressions.context().txInfo()
                                 .treasuryDonationStrict().isAbsent()));

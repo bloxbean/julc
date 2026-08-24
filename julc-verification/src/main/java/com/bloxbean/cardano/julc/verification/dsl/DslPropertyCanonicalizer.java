@@ -9,34 +9,19 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/** Minimal deterministic normalization for pure schema-3 property expressions. */
+/** Deterministic normalization for public schema-1 property expressions. */
 public final class DslPropertyCanonicalizer {
     private DslPropertyCanonicalizer() { }
 
     public static DslPropertySet normalize(DslPropertySet propertySet) {
-        if (propertySet.schemaVersion() != DslPropertySet.COMPOSITION_SCHEMA_VERSION
-                && propertySet.schemaVersion() != DslPropertySet.TYPED_SCHEMA_VERSION
-                && propertySet.schemaVersion() != DslPropertySet.LEDGER_SCHEMA_VERSION
-                && propertySet.schemaVersion()
-                        != DslPropertySet.AUTHORIZATION_SCHEMA_VERSION
-                && propertySet.schemaVersion()
-                        != DslPropertySet.CERTIFICATE_PAYLOAD_SCHEMA_VERSION
-                && propertySet.schemaVersion()
-                        != DslPropertySet.VALUE_ALGEBRA_SCHEMA_VERSION
-                && propertySet.schemaVersion()
-                        != DslPropertySet.GOVERNANCE_SCHEMA_VERSION
-                && propertySet.schemaVersion()
-                        != DslPropertySet.REVIEWED_DATA_ADAPTER_SCHEMA_VERSION) {
-            return propertySet;
-        }
         List<DslProperty> properties = propertySet.properties().stream()
                 .map(property -> new DslProperty(
                         property.id(), property.domain(), alphaNormalize(
                                 normalize(alphaNormalize(property.expression())))))
                 .sorted(Comparator.comparing(DslProperty::id))
                 .toList();
-        return new DslPropertySet(propertySet.schemaVersion(), propertySet.purpose(),
-                propertySet.contractSchemaSha256(), properties);
+        return new DslPropertySet(propertySet.format(), propertySet.schemaVersion(),
+                propertySet.purpose(), propertySet.contractSchemaSha256(), properties);
     }
 
     static PropertyNode normalize(PropertyNode node) {

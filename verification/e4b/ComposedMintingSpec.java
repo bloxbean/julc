@@ -1,9 +1,9 @@
 package evidence;
 
 import com.bloxbean.cardano.julc.verification.dsl.VerificationSpecification;
+import com.bloxbean.cardano.julc.verification.dsl.MintingContractModel;
 import com.bloxbean.cardano.julc.verification.dsl.ir.DslDomain;
 import com.bloxbean.cardano.julc.verification.dsl.ir.DslPropertySet;
-import com.bloxbean.cardano.julc.verification.dsl.ir.DslPurpose;
 
 import static com.bloxbean.cardano.julc.verification.dsl.VerificationDsl.*;
 
@@ -16,7 +16,8 @@ public final class ComposedMintingSpec implements VerificationSpecification {
 
     @Override
     public DslPropertySet properties() {
-        var contract = new ComposedPolicyModel();
+        var generated = new ComposedPolicyModel();
+        var contract = new MintingContractModel();
         var quantity = integer(1);
         var guarantee = contract.redeemerStrictlyDecodes()
                 .and(contract.context().txInfo().signatories().contains(keyHash(AUTHORITY)))
@@ -24,7 +25,7 @@ public final class ComposedMintingSpec implements VerificationSpecification {
                 .and(contract.context().txInfo().mint().exactOwnPolicyAsset(
                         contract.ownPolicy(), tokenName("4a554c43"), quantity))
                 .and(quantity.gt(integer(0)).or(quantity.eq(integer(0))));
-        return DslPropertySet.composed(DslPurpose.MINTING,
+        return generated.properties(
                 property("policy.composed-one-shot",
                         DslDomain.VALID_MINTING_V3_PINNED, guarantee));
     }

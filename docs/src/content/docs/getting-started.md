@@ -1309,7 +1309,7 @@ security property against the exact compiled UPLC artifact. The stable API-v1
 frontend supports concise annotations and a compositional typed Java DSL:
 
 Formal verification remains an experimental JuLC feature. Stable API v1 refers
-to the documented DSL construction surface and schema-10 meanings, not a
+to the documented DSL construction surface and schema-1 meanings, not a
 production-safety certification for the compiler or contract.
 
 ```java
@@ -1331,7 +1331,7 @@ julc verify . --validator AuthorizedStateValidator --backend docker
 ```
 
 Annotations state properties but do not add validator checks or change UPLC.
-For custom composition, `julc verify dsl-init` generates a schema-10 typed
+For custom composition, `julc verify dsl-init` generates a schema-1 typed
 contract metamodel and `julc verify dsl` runs a trusted Java property builder.
 See the [formal verification guide](/guides/formal-verification/) for local and
 Docker setup, DSL examples, result meanings, certificates, and scope limits.

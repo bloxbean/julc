@@ -1,13 +1,7 @@
 package com.bloxbean.julc.cli.cmd.verify;
 
-import com.bloxbean.cardano.julc.verification.SellerPaymentProperty;
-import com.bloxbean.cardano.julc.verification.ControlledMintProperty;
-import com.bloxbean.cardano.julc.verification.OneShotMintProperty;
 import com.bloxbean.cardano.julc.verification.ComposedDslProperty;
-import com.bloxbean.cardano.julc.verification.VerificationProperty;
-import com.bloxbean.cardano.julc.verification.dsl.MintingDsl;
 import com.bloxbean.cardano.julc.verification.dsl.ComposedDslPromotion;
-import com.bloxbean.cardano.julc.verification.dsl.SellerPaymentDsl;
 import com.bloxbean.cardano.julc.verification.dsl.ir.DslPropertySet;
 import com.bloxbean.cardano.julc.verification.dsl.worker.DslWorkerRunner;
 import picocli.CommandLine.Command;
@@ -33,10 +27,6 @@ public final class VerifyDslCommand implements Callable<Integer> {
     private String specificationClass;
     @Option(names = "--spec-classpath", required = true)
     private String specificationClasspath;
-    @Option(names = "--seller-field")
-    private String sellerField;
-    @Option(names = "--price-field")
-    private String priceField;
     @Option(names = "--source", defaultValue = "VerificationSpecification.java")
     private String sourcePath;
     @Option(names = "--backend", defaultValue = "AUTO")
@@ -72,59 +62,19 @@ public final class VerifyDslCommand implements Callable<Integer> {
                         Duration.ofSeconds(workerTimeoutSeconds));
                 task.succeed();
             }
-            VerificationProperty property;
+            ComposedDslProperty property;
             try (var task = progress.start("Validating reviewed typed property")) {
-                if (candidate.schemaVersion()
-                        == DslPropertySet.COMPOSITION_SCHEMA_VERSION
-                        || candidate.schemaVersion()
-                        == DslPropertySet.TYPED_SCHEMA_VERSION
-                        || candidate.schemaVersion()
-                        == DslPropertySet.LEDGER_SCHEMA_VERSION
-                        || candidate.schemaVersion()
-                        == DslPropertySet.AUTHORIZATION_SCHEMA_VERSION
-                        || candidate.schemaVersion()
-                        == DslPropertySet.CERTIFICATE_PAYLOAD_SCHEMA_VERSION
-                        || candidate.schemaVersion()
-                        == DslPropertySet.VALUE_ALGEBRA_SCHEMA_VERSION
-                        || candidate.schemaVersion()
-                        == DslPropertySet.GOVERNANCE_SCHEMA_VERSION
-                        || candidate.schemaVersion()
-                        == DslPropertySet.REVIEWED_DATA_ADAPTER_SCHEMA_VERSION) {
-                    property = ComposedDslPromotion.promote(
-                            candidate, loaded.schema(), validator, sourcePath);
-                } else if (loaded.purpose() == VerificationPurpose.SPENDING) {
-                    if (sellerField == null || priceField == null) {
-                        throw new IllegalArgumentException(
-                                "Spending DSL requires --seller-field and --price-field");
-                    }
-                    property = SellerPaymentDsl.resolve(candidate, loaded.schema(), validator,
-                            sellerField, priceField, sourcePath);
-                } else {
-                    property = MintingDsl.resolve(
-                            candidate, loaded.schema(), validator, sourcePath);
-                }
+                property = ComposedDslPromotion.promote(
+                        candidate, loaded.schema(), validator, sourcePath);
                 task.succeed(property.template());
             }
             Path output = outputDirectory == null
                     ? loaded.project().resolve("verification").resolve(loaded.artifactId())
                     : outputDirectory.toAbsolutePath().normalize();
             try (var task = progress.start("Generating hash-bound verification workspace")) {
-                if (property instanceof SellerPaymentProperty payment) {
-                    VerificationProjectGenerator.generateSellerPayment(
-                            loaded.blueprint(), payment, fuel, recursiveDepth, output, force);
-                } else if (property instanceof ControlledMintProperty controlled) {
-                    VerificationProjectGenerator.generateControlledMint(
-                            loaded.blueprint(), controlled, fuel, recursiveDepth, output, force);
-                } else if (property instanceof OneShotMintProperty oneShot) {
-                    VerificationProjectGenerator.generateOneShotMint(
-                            loaded.blueprint(), oneShot,
-                            fuel, recursiveDepth, output, force);
-                } else {
-                    VerificationProjectGenerator.generateComposedDsl(
-                            loaded.blueprint(), (ComposedDslProperty) property,
-                            loaded.schema(),
-                            fuel, recursiveDepth, output, force);
-                }
+                VerificationProjectGenerator.generateComposedDsl(
+                        loaded.blueprint(), property, loaded.schema(),
+                        fuel, recursiveDepth, output, force);
                 task.succeed(output.toString());
             }
             progress.heading("Running verification ...");

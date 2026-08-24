@@ -30,60 +30,20 @@ public final class DslPropertyValidator {
 
     private static void validateInternal(
             DslPropertySet propertySet, ContractSchema schema, int maxNodes) {
-        boolean mintingV2 = propertySet.schemaVersion()
-                == DslPropertySet.MINTING_SCHEMA_VERSION;
-        boolean compositionV3 = propertySet.schemaVersion()
-                == DslPropertySet.COMPOSITION_SCHEMA_VERSION;
-        boolean typedV4 = propertySet.schemaVersion()
-                == DslPropertySet.TYPED_SCHEMA_VERSION;
-        boolean ledgerV5 = propertySet.schemaVersion()
-                == DslPropertySet.LEDGER_SCHEMA_VERSION;
-        boolean authorizationV6 = propertySet.schemaVersion()
-                == DslPropertySet.AUTHORIZATION_SCHEMA_VERSION;
-        boolean certificatePayloadV7 = propertySet.schemaVersion()
-                == DslPropertySet.CERTIFICATE_PAYLOAD_SCHEMA_VERSION;
-        boolean valueAlgebraV8 = propertySet.schemaVersion()
-                == DslPropertySet.VALUE_ALGEBRA_SCHEMA_VERSION;
-        boolean governanceV9 = propertySet.schemaVersion()
-                == DslPropertySet.GOVERNANCE_SCHEMA_VERSION;
-        boolean reviewedAdaptersV10 = propertySet.schemaVersion()
-                == DslPropertySet.REVIEWED_DATA_ADAPTER_SCHEMA_VERSION;
-        boolean composition = compositionV3 || typedV4 || ledgerV5 || authorizationV6
-                || certificatePayloadV7 || valueAlgebraV8 || governanceV9
-                || reviewedAdaptersV10;
-        ContractSchema.Purpose expectedPurpose = composition
-                ? contractPurpose(propertySet.purpose())
-                : mintingV2 ? ContractSchema.Purpose.MINT : ContractSchema.Purpose.SPEND;
+        boolean composition = true;
+        ContractSchema.Purpose expectedPurpose = contractPurpose(propertySet.purpose());
         if (schema.purpose() != expectedPurpose) {
             throw new IllegalArgumentException("DSL schema " + propertySet.schemaVersion()
                     + " requires a " + expectedPurpose + " contract interface");
         }
-        if (mintingV2 && propertySet.properties().size() != 1) {
+        ProjectedContractTypes projection = ContractTypeProjection.project(schema);
+        TypeAuthority typeAuthority = new TypeAuthority(
+                projection, true, true, true, true, true, propertySet.purpose());
+        String expectedHash = ContractTypeProjection.sha256(projection);
+        if (!expectedHash.equals(propertySet.contractSchemaSha256())) {
             throw new IllegalArgumentException(
-                    "Minting DSL schema 2 requires exactly one property");
-        }
-        ProjectedContractTypes projection = typedV4 || ledgerV5 || authorizationV6
-                || certificatePayloadV7 || valueAlgebraV8 || governanceV9
-                || reviewedAdaptersV10
-                ? ContractTypeProjection.project(schema) : null;
-        TypeAuthority typeAuthority = projection == null
-                ? null : new TypeAuthority(projection,
-                        ledgerV5 || authorizationV6 || certificatePayloadV7 || valueAlgebraV8
-                                || governanceV9 || reviewedAdaptersV10,
-                        authorizationV6 || certificatePayloadV7 || valueAlgebraV8
-                                || governanceV9 || reviewedAdaptersV10,
-                        certificatePayloadV7 || valueAlgebraV8 || governanceV9
-                                || reviewedAdaptersV10,
-                        valueAlgebraV8 || governanceV9 || reviewedAdaptersV10,
-                        governanceV9 || reviewedAdaptersV10, propertySet.purpose());
-        if (typedV4 || ledgerV5 || authorizationV6 || certificatePayloadV7
-                || valueAlgebraV8 || governanceV9 || reviewedAdaptersV10) {
-            String expectedHash = ContractTypeProjection.sha256(projection);
-            if (!expectedHash.equals(propertySet.contractSchemaSha256())) {
-                throw new IllegalArgumentException(
-                        "DSL schema " + propertySet.schemaVersion()
-                                + " contract schema hash does not match compiler-owned types");
-            }
+                    "DSL schema " + propertySet.schemaVersion()
+                            + " contract schema hash does not match compiler-owned types");
         }
         int[] nodes = {0};
         var normalizedIds = new HashSet<String>();
@@ -109,21 +69,18 @@ public final class DslPropertyValidator {
                 throw new IllegalArgumentException("Property " + property.id()
                         + " must have BOOL type, found " + type);
             }
-            if (valueAlgebraV8) {
-                var capabilities = DslSemanticDependencies.collect(
-                        property, propertySet.purpose()).capabilities();
-                boolean domainRequired = capabilities.stream().anyMatch(capability ->
-                        capability.equals("helper.valueSpent")
-                                || capability.equals("helper.valueProduced")
-                                || capability.equals("ledger.isBalanced")
-                                || capability.equals("dsl.value.aggregate-inputs")
-                                || capability.equals("dsl.value.aggregate-outputs"));
-                if (domainRequired && property.domain() == DslDomain.NONE) {
-                    throw new IllegalArgumentException(
-                            "Pinned Value aggregation requires a purpose-compatible valid V3 domain");
-                }
+            var capabilities = DslSemanticDependencies.collect(
+                    property, propertySet.purpose()).capabilities();
+            boolean domainRequired = capabilities.stream().anyMatch(capability ->
+                    capability.equals("helper.valueSpent")
+                            || capability.equals("helper.valueProduced")
+                            || capability.equals("ledger.isBalanced")
+                            || capability.equals("dsl.value.aggregate-inputs")
+                            || capability.equals("dsl.value.aggregate-outputs"));
+            if (domainRequired && property.domain() == DslDomain.NONE) {
+                throw new IllegalArgumentException(
+                        "Pinned Value aggregation requires a purpose-compatible valid V3 domain");
             }
-            if (mintingV2) validateMintingPremise(property.expression());
         }
     }
 
@@ -139,17 +96,10 @@ public final class DslPropertyValidator {
         }
         if (isTypedNode(node)) {
             throw new IllegalArgumentException(
-                    "Schema-4 typed node reached the legacy validator path");
+                    "Typed node reached the scalar-only validator path");
         }
-        boolean legacySpending = schemaVersion == DslPropertySet.SCHEMA_VERSION;
-        boolean composition = schemaVersion == DslPropertySet.COMPOSITION_SCHEMA_VERSION
-                || schemaVersion == DslPropertySet.TYPED_SCHEMA_VERSION
-                || schemaVersion == DslPropertySet.LEDGER_SCHEMA_VERSION
-                || schemaVersion == DslPropertySet.AUTHORIZATION_SCHEMA_VERSION
-                || schemaVersion == DslPropertySet.CERTIFICATE_PAYLOAD_SCHEMA_VERSION
-                || schemaVersion == DslPropertySet.VALUE_ALGEBRA_SCHEMA_VERSION
-                || schemaVersion == DslPropertySet.GOVERNANCE_SCHEMA_VERSION
-                || schemaVersion == DslPropertySet.REVIEWED_DATA_ADAPTER_SCHEMA_VERSION;
+        boolean legacySpending = false;
+        boolean composition = true;
         if (legacySpending && isMintingSchemaNode(node)) {
             throw new IllegalArgumentException("DSL schema 1 does not admit minting node "
                     + node.getClass().getSimpleName());
@@ -157,11 +107,11 @@ public final class DslPropertyValidator {
         if (!composition && (node instanceof TxCertKindNode
                 || node instanceof KnownCertificateNode)) {
             throw new IllegalArgumentException(
-                    "Certificate nodes require compositional DSL schema 3");
+                    "Certificate nodes require a compositional DSL property");
         }
         if (node instanceof RootNode root) {
             if (composition && isEnvelopeRoot(root.name())) {
-                throw new IllegalArgumentException("Schema-3 guarantee cannot contain theorem "
+                throw new IllegalArgumentException("DSL guarantee cannot contain theorem "
                         + "envelope root " + root.name());
             }
             DslType expected = switch (root.name()) {
@@ -375,16 +325,9 @@ public final class DslPropertyValidator {
             int[] count,
             int maxNodes,
             int schemaVersion) {
-        if (schemaVersion != DslPropertySet.TYPED_SCHEMA_VERSION
-                && schemaVersion != DslPropertySet.LEDGER_SCHEMA_VERSION
-                && schemaVersion != DslPropertySet.AUTHORIZATION_SCHEMA_VERSION
-                && schemaVersion != DslPropertySet.CERTIFICATE_PAYLOAD_SCHEMA_VERSION
-                && schemaVersion != DslPropertySet.VALUE_ALGEBRA_SCHEMA_VERSION
-                && schemaVersion != DslPropertySet.GOVERNANCE_SCHEMA_VERSION
-                && schemaVersion
-                        != DslPropertySet.REVIEWED_DATA_ADAPTER_SCHEMA_VERSION) {
+        if (schemaVersion != DslPropertySet.SCHEMA_VERSION) {
             throw new IllegalArgumentException(
-                    "Structural typed nodes require DSL schema 4 through 10");
+                    "Structural typed nodes require DSL schema 1");
         }
         if (++count[0] > maxNodes) {
             throw new IllegalArgumentException("Property AST exceeds " + maxNodes + " nodes");
@@ -725,10 +668,15 @@ public final class DslPropertyValidator {
             return DslType.BOOL;
         }
         if (node instanceof ContainsNode contains) {
-            DslType collection = validateNode(
-                    contains.collection(), schema, new HashMap<>(), count, maxNodes,
-                    schemaVersion);
-            if (collection != DslType.LIST_BYTE_STRING) {
+            Object collection = containsTyped(contains.collection())
+                    ? validateTypedValue(contains.collection(), authority,
+                            variables, count, maxNodes)
+                    : validateNode(contains.collection(), schema, new HashMap<>(),
+                            count, maxNodes, schemaVersion);
+            boolean byteStrings = collection == DslType.LIST_BYTE_STRING
+                    || collection.equals(new ListTypeRef(
+                            LedgerTypeAuthority.PUB_KEY_HASH));
+            if (!byteStrings) {
                 throw new IllegalArgumentException(
                         "contains requires a byte-string list");
             }
@@ -912,9 +860,9 @@ public final class DslPropertyValidator {
     }
 
     private static void requireReviewedAdapterSchema(int schemaVersion) {
-        if (schemaVersion != DslPropertySet.REVIEWED_DATA_ADAPTER_SCHEMA_VERSION) {
+        if (schemaVersion != DslPropertySet.SCHEMA_VERSION) {
             throw new IllegalArgumentException(
-                    "Reviewed raw-data adapters require DSL schema 10");
+                    "Reviewed raw-data adapters require DSL schema 1");
         }
     }
 
@@ -1079,7 +1027,7 @@ public final class DslPropertyValidator {
             case LedgerTypeRef ledger -> {
                 if (!LedgerTypeAuthority.equalityAdmitted(ledger)) {
                     throw new IllegalArgumentException(
-                            "Opaque ledger type equality is not admitted in DSL schema 5");
+                            "Opaque ledger type equality is not admitted in the DSL");
                 }
             }
             case OptionalTypeRef optional -> requireAdmittedEquality(optional.elementType());
@@ -1140,11 +1088,15 @@ public final class DslPropertyValidator {
                     authority.requireCertifyingCertificateRoot();
                     yield LedgerTypeAuthority.TX_CERT;
                 }
+                case "rewardingCredential" -> {
+                    authority.requireRewardingCredentialRoot();
+                    yield LedgerTypeAuthority.CREDENTIAL;
+                }
                 default -> null;
             };
             if (expected == null || !expected.equals(root.valueType())) {
                 throw new IllegalArgumentException(
-                        "Unknown or mistyped schema-5 ledger root " + root.name());
+                        "Unknown or mistyped ledger root " + root.name());
             }
             return expected;
         }
@@ -1439,7 +1391,7 @@ public final class DslPropertyValidator {
             LedgerTypeAuthority.requireByteAlias(alias.aliasType());
             VerificationTypeRef source = validateStructuralValue(alias.bytes(), null,
                     authority, variables, count, maxNodes,
-                    DslPropertySet.LEDGER_SCHEMA_VERSION);
+                    DslPropertySet.SCHEMA_VERSION);
             if (!source.equals(builtin(BuiltinTypeRef.BuiltinKind.BYTE_STRING))) {
                 throw new IllegalArgumentException(
                         "Ledger byte alias source must be a structural byte string");
@@ -1465,7 +1417,7 @@ public final class DslPropertyValidator {
                 }
                 VerificationTypeRef source = validateStructuralValue(
                         keyHash.bytes(), null, authority, variables, count, maxNodes,
-                        DslPropertySet.AUTHORIZATION_SCHEMA_VERSION);
+                        DslPropertySet.SCHEMA_VERSION);
                 if (!source.equals(builtin(BuiltinTypeRef.BuiltinKind.BYTE_STRING))) {
                     throw new IllegalArgumentException(
                             "Contract authority source must be a structural byte string");
@@ -1795,9 +1747,9 @@ public final class DslPropertyValidator {
     }
 
     private static void requireAuthorizationSchema(int schemaVersion) {
-        if (schemaVersion < DslPropertySet.AUTHORIZATION_SCHEMA_VERSION) {
+        if (schemaVersion != DslPropertySet.SCHEMA_VERSION) {
             throw new IllegalArgumentException(
-                    "Authorization nodes require DSL schema 6 or newer");
+                    "Authorization nodes require DSL schema 1");
         }
     }
 
@@ -1926,28 +1878,28 @@ public final class DslPropertyValidator {
         private void requireLedger() {
             if (!ledgerAllowed) {
                 throw new IllegalArgumentException(
-                        "Ledger transaction-context nodes require DSL schema 5");
+                        "Ledger transaction-context nodes are not admitted here");
             }
         }
 
         private void requireAuthorization() {
             if (!authorizationAllowed) {
                 throw new IllegalArgumentException(
-                        "Authorization nodes require DSL schema 6");
+                        "Authorization nodes are not admitted here");
             }
         }
 
         private void requireValueAlgebra() {
             if (!valueAlgebraAllowed) {
                 throw new IllegalArgumentException(
-                        "Value algebra nodes require DSL schema 8");
+                        "Value algebra nodes are not admitted here");
             }
         }
 
         private void requireGovernance() {
             if (!governanceAllowed) {
                 throw new IllegalArgumentException(
-                        "Governance transaction-data nodes require DSL schema 9");
+                        "Governance transaction-data nodes are not admitted here");
             }
         }
 
@@ -1958,14 +1910,14 @@ public final class DslPropertyValidator {
                     || sum.equals(LedgerTypeAuthority.DREP))
                     && !certificatePayloadAllowed) {
                 throw new IllegalArgumentException(
-                        "Certificate payload constructors require DSL schema 7");
+                        "Certificate payload constructors are not admitted here");
             }
             if ((sum.equals(LedgerTypeAuthority.VOTER)
                     || sum.equals(LedgerTypeAuthority.VOTE)
                     || sum.equals(LedgerTypeAuthority.GOVERNANCE_ACTION))
                     && !governanceAllowed) {
                 throw new IllegalArgumentException(
-                        "Governance constructors require DSL schema 9");
+                        "Governance constructors are not admitted here");
             }
             LedgerTypeAuthority.constructor(sum, constructor);
         }
@@ -1973,14 +1925,21 @@ public final class DslPropertyValidator {
         private void requireSpendingHelper(String description) {
             if (purpose != DslPurpose.SPENDING) {
                 throw new IllegalArgumentException(
-                        "Schema-5 " + description + " is available only for spending");
+                        description + " is available only for spending");
             }
         }
 
         private void requireCertifyingCertificateRoot() {
             if (!certificatePayloadAllowed || purpose != DslPurpose.CERTIFYING) {
                 throw new IllegalArgumentException(
-                        "Current certificate payload root requires a certifying schema-7 property");
+                        "Current certificate payload root requires a certifying property");
+            }
+        }
+
+        private void requireRewardingCredentialRoot() {
+            if (purpose != DslPurpose.REWARDING) {
+                throw new IllegalArgumentException(
+                        "Current rewarding credential root requires a rewarding property");
             }
         }
 
@@ -2022,12 +1981,6 @@ public final class DslPropertyValidator {
             return dslType(resolve(selected, schema));
         }
         String selected = target + "." + field;
-        if (schemaVersion == DslPropertySet.SCHEMA_VERSION
-                && (selected.equals("TX_INFO.inputs")
-                || selected.equals("TX_INFO.mint"))) {
-            throw new IllegalArgumentException(
-                    "DSL schema 1 does not admit field " + selected);
-        }
         if (selected.equals("TX_INFO.mint")
                 && schema.purpose() != ContractSchema.Purpose.MINT) {
             throw new IllegalArgumentException(

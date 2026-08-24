@@ -7,7 +7,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 
-/** Builders for opt-in schema-6 compositional authorization properties. */
+/** Builders for public schema-1 compositional authorization properties. */
 public final class AuthorizationDsl {
     public static final int MAX_STATIC_AUTHORITIES = 16;
 

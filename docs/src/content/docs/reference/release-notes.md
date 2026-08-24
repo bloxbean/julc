@@ -6,20 +6,19 @@ description: "JuLC release notes and migration guidance"
 ## Upcoming preview: stable typed formal-verification API v1
 
 JuLC now provides a stable construction API for exact-artifact formal
-verification. API version 1 uses canonical property schema 10 and supports
+verification. API version 1 uses canonical property schema 1 and supports
 typed composition over compiler-projected contract data, four standard Plutus
 purposes (spending, minting, rewarding, and certifying), transaction context,
 authorization, certificates, multi-asset values, governance data, and reviewed
 raw-data adapters.
 
-`julc verify dsl-init` now emits schema 10 by default. Readers for historical
-canonical values from schemas 1 through 9 remain available for compatibility;
-only schema 10 carries the API-v1 canonical-semantics freeze. New semantic
-vocabulary requires a new schema rather than changing schema-10 meanings.
-Historical certificates remain valid hash-bound records of their runs.
-Re-executing a historical workspace can require regeneration after additive
-capability-inventory or dependency-pin changes, even when its canonical
-property schema remains readable.
+`julc verify dsl-init` emits only schema 1. The unreleased E.2–E.4 milestone
+formats previously numbered 1 through 10 have been removed from public
+generation and replay rather than carried as compatibility aliases. Regenerate
+those experimental workspaces with the current CLI. Historical certificates
+remain hash-bound records of their original runs, but they are not accepted as
+current replay inputs. New semantic vocabulary requires a new schema rather
+than changing schema-1 meanings.
 
 `@RequiresSigner`, `@ControlledMint`, and the complete
 `@RequiresSigner + @PreservesValue + @Monotonic` stateful profile now lower to

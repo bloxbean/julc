@@ -12,9 +12,4 @@ public record DslProperty(String id, DslDomain domain, PropertyNode expression) 
         }
         expression = Objects.requireNonNull(expression, "expression");
     }
-
-    /** Frozen schema-1/schema-2 constructor. Their domain remains encoded in the expression. */
-    public DslProperty(String id, PropertyNode expression) {
-        this(id, null, expression);
-    }
 }

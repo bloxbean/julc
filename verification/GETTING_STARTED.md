@@ -315,8 +315,8 @@ and result messages remain for usability.
 ## 10. Stable typed verification DSL (API v1)
 
 ADR-029 stabilizes the reviewed E.4 DSL surface as Java API version 1 and
-canonical property schema 10. New `dsl-init` invocations generate schema 10 by
-default; pass `--schema-version` only to reproduce an older schema. The builder
+canonical property schema 1. New `dsl-init` invocations generate schema 1 by
+default, and the old milestone formats are not selectable. The builder
 still executes trusted project Java in a bounded worker, and proof completion
 is still subject to the recorded solver and execution bounds.
 
@@ -335,17 +335,16 @@ javac -cp julc.jar -d build/verification-dsl/classes \
 julc verify dsl . --validator Sale \
   --spec-class evidence.SellerPaymentSpec \
   --spec-classpath "build/verification-dsl/classes:/path/to/julc.jar" \
-  --seller-field seller --price-field price \
   --source SellerPaymentSpec.java --backend local --force
 ```
 
 The generated model's `properties(...)` method, typed datum/redeemer wrappers,
 ledger expressions, collection operations, authorization algebra, value
-algebra, governance data, and reviewed schema-10 adapters are the stable
+algebra, governance data, and reviewed schema-1 adapters are the stable
 construction surface. Concrete `dsl.ir` node constructors, renderers, worker
 protocols, and arbitrary Lean are not public construction APIs.
 
-For an inline output datum, schema 10 can strictly decode it through the
+For an inline output datum, schema 1 can strictly decode it through the
 compiler-owned datum type without a cast:
 
 ```java
@@ -372,9 +371,9 @@ property source and evidence controls.
 
 ## 11. Typed one-shot minting DSL
 
-ADR-018 E.4a extends the trusted Java property workflow to minting. Generate a
-purpose-aware model, compile it with a specification using
-`MintingDsl.oneShotPropertySet`, and select the minting interface explicitly:
+The trusted Java property workflow supports minting. Generate a purpose-aware
+model, compose the reviewed minting expressions in a specification, and select
+the minting interface explicitly:
 
 ```bash
 julc verify dsl-init . --validator TokenPolicy --purpose minting \
@@ -395,7 +394,7 @@ The JuLC JAR entry is required when using the GraalVM native CLI because the
 trusted property builder still executes in a bounded child JVM. It is harmless
 with the JVM CLI. Use `;` instead of `:` as the classpath separator on Windows.
 
-The generated certificate binds the schema-2 DSL hash, capability inventory,
+The generated certificate binds the canonical schema-1 DSL hash, capability inventory,
 selected blueprint entry, exact shared UPLC/hash, generated Lean, domain
 bridge, dependency pins, and execution bounds. Mint association-list order and
 duplicates are preserved; duplicate or malformed entries for the current
@@ -405,7 +404,7 @@ commands.
 
 ## 12. Compositional, rewarding, and certifying DSL
 
-ADR-019 schema 3 accepts freely composed guarantees built only from the
+The compositional DSL accepts freely composed guarantees built only from the
 reviewed typed nodes. Each property keeps the exact-execution and optional
 ledger-domain premise in a generator-owned theorem envelope; user code cannot
 insert either premise or raw Lean. A rewarding specification can therefore
@@ -414,16 +413,16 @@ withdrawal traversal:
 
 ```java
 var contract = new RewardingModel();
-var ownMinimum = contract.context().txInfo().withdrawals().exists(entry ->
-        entry.credential().eq(contract.rewardingCredential())
-                .and(entry.amount().ge(integer(1_000_000))));
+var ownMinimum = contract.context().txInfo().withdrawals().existsEntry(
+        (credential, amount) -> credential.eq(contract.rewardingCredential().typed())
+                .and(amount.asInteger().ge(integer(1_000_000))));
 var authorized = contract.context().txInfo().signatories()
         .contains(keyHash(AUTHORITY));
 
-return DslPropertySet.composed(DslPurpose.REWARDING,
+return contract.properties(
         property("reward.authorized-minimum",
                 DslDomain.VALID_REWARDING_V3_PINNED,
-                contract.redeemerStrictlyDecodes()
+                contract.redeemer().isPresent()
                         .and(authorized)
                         .and(ownMinimum)));
 ```
@@ -451,7 +450,7 @@ different duplicate rule. See [`e4b/README.md`](e4b/README.md) for generic
 multi-property composition and [`e4c/README.md`](e4c/README.md) for the full
 rewarding controls and Docker command.
 
-A certifying specification uses the same compositional schema-3 pipeline. The
+A certifying specification uses the same compositional schema-1 pipeline. The
 selected `publish` interface supplies the current certificate and its ledger
 index; user property code cannot replace either root:
 
@@ -462,10 +461,10 @@ var currentCertificate = contract.context().txInfo().certificates().containsAt(
 var authorized = contract.context().txInfo().signatories()
         .contains(keyHash(AUTHORITY));
 
-return DslPropertySet.composed(DslPurpose.CERTIFYING,
+return contract.properties(
         property("certificate.authorized-update",
                 DslDomain.VALID_CERTIFYING_V3_PINNED,
-                contract.redeemerStrictlyDecodes()
+                contract.redeemer().isPresent()
                         .and(contract.certificate().isKind(TxCertKind.UPDATE_DREP))
                         .and(currentCertificate)
                         .and(authorized)));
@@ -496,13 +495,11 @@ the certificate-kind and authority clauses are the additional policy. See
 
 ## 13. Generic contract types and collections
 
-ADR-022 schema 4 generates the datum and redeemer API from the selected
-compiler-owned contract schema. Schema 4 remains selectable for compatibility;
-new users should omit `--schema-version` and receive stable schema 10:
+ADR-022 introduced the datum and redeemer API generated from the selected
+compiler-owned contract schema. It is now part of the single public schema 1:
 
 ```bash
 julc verify dsl-init . --validator CollectionGate --purpose spending \
-  --schema-version 4 --package evidence --class CollectionGateModel \
   --out build/verification-dsl/src/evidence/CollectionGateModel.java
 ```
 
@@ -547,19 +544,18 @@ return an empty option. Wrong tags, arities, fields, element types, binder
 types, or forged nominal IDs fail in parent-process admission.
 
 The compiler currently erases source `@NewType` identity from its contract
-schema, so schema 4 sees the underlying representation and does not claim
+schema, so the generated model sees the underlying representation and does not claim
 nominal newtype separation. See [`e4e/README.md`](e4e/README.md) for type
 controls and [`e4f/README.md`](e4f/README.md) for reproducible local/Docker
 evidence.
 
 ## 14. Typed non-value transaction context
 
-ADR-023 schema 5 adds the closed ledger-context surface while retaining the
-schema-4 contract model. Generate it explicitly:
+The schema-1 model includes the closed ledger-context surface together with the
+compiler-projected contract model. Generate it with:
 
 ```bash
 julc verify dsl-init . --validator LedgerGate --purpose spending \
-  --schema-version 5 --package evidence --class LedgerGateModel \
   --out build/verification-dsl/src/evidence/LedgerGateModel.java
 ```
 
@@ -607,19 +603,18 @@ same command but still needs an installed child JVM and the JuLC JAR on
 Input/list and witness/redeemer map order and duplicates remain observable.
 `lookupFirst` is not `lookupAll`; continuing outputs use the complete address
 of the first resolved own input. Inline datum and redeemer payloads remain
-opaque raw `Data` in schema 5. Stable schema 10 additionally permits strict
+opaque raw `Data`. Schema 1 additionally permits strict
 decode through the compiler-owned datum type, but still permits neither
 unchecked casting nor raw-data equality. See [`e4g/README.md`](e4g/README.md) for the
 reproducible local/Docker/native evidence and current limitations.
 
 ## 15. Compositional authorization
 
-ADR-024 schema 6 extends the typed contract and ledger surface with distinct
-authorization relations. Generate schema 6 explicitly:
+The schema-1 typed contract and ledger surface includes distinct authorization
+relations. Generate the model with:
 
 ```bash
 julc verify dsl-init . --validator Treasury --purpose spending \
-  --schema-version 6 --package evidence --class TreasuryModel \
   --out build/verification-dsl/src/evidence/TreasuryModel.java
 ```
 
@@ -665,19 +660,18 @@ slice. The pinned Blaster UPLC-constant and Lean property-literal paths do not
 yet agree for that byte. This is a solver limitation, not a Cardano key-hash
 rule; JuLC fails closed instead of silently changing the authority identity.
 
-Compile and invoke `julc verify dsl` as in schema 4/5. Reproducible positive,
+Compile and invoke `julc verify dsl` as in the preceding examples. Reproducible positive,
 refuted, vacuous, exact-VM, and kernel controls are in
 [`e4h/README.md`](e4h/README.md).
 
 ## 16. Certificate payloads
 
-ADR-025 schema 7 adds guarded payload access for all 11 pinned V3 transaction
+Schema 1 includes guarded payload access for all 11 pinned V3 transaction
 certificate constructors and the nested `Delegatee` and `DRep` sums. Generate
-a certifying model explicitly:
+a certifying model with:
 
 ```bash
 julc verify dsl-init . --validator Certificates --purpose certifying \
-  --schema-version 7 --package evidence --class CertificatesModel \
   --out build/verification-dsl/src/evidence/CertificatesModel.java
 ```
 
@@ -712,12 +706,11 @@ covered by Lean kernel controls and exact-VM tests. See
 
 ## 17. Multi-asset value algebra
 
-ADR-025 schema 8 keeps output `Value`, transaction `MintValue`, and checked
-`ValueDelta` roles distinct. Generate the model explicitly:
+Schema 1 keeps output `Value`, transaction `MintValue`, and checked `ValueDelta`
+roles distinct. Generate the model with:
 
 ```bash
 julc verify dsl-init . --validator Sale --purpose spending \
-  --schema-version 8 --package evidence --class SaleModel \
   --out build/verification-dsl/src/evidence/SaleModel.java
 ```
 
@@ -737,8 +730,7 @@ var guarantee = firstOutput.exists(output ->
         .and(output.value().quantityFirst(policy, token).ge(integer(10)))
         // All matching duplicates are summed; absence/malformed data is none.
         .and(output.value().quantitySumStrict(policy, token)
-                .exists(quantity -> new IntegerExpr(quantity.node())
-                        .ge(integer(10))))
+                .exists(quantity -> quantity.asInteger().ge(integer(10))))
         // Ignores ordering and zero-sum decomposition after strict validation.
         .and(output.value().extensionallyEquals(output.value()))
         // Observes the exact ordered nested association-list representation.
@@ -771,19 +763,18 @@ pinned CardanoLedgerApi meanings. A balance-only result is marked
 `globalMultiInputLinkageModeled: false`.
 
 Compile the generated model and trusted specification, then invoke
-`julc verify dsl` exactly as in schemas 4–7. See
+`julc verify dsl` exactly as in the preceding sections. See
 [`e4j/README.md`](e4j/README.md) for the reproducible positive, refuted,
 vacuous, kernel, VM, Docker, and native controls and the current solver bounds.
 
-## 18. Typed governance transaction data (schema 9)
+## 18. Typed governance transaction data
 
-Schema 9 lets an existing spending, minting, rewarding, or certifying property
+Schema 1 lets an existing spending, minting, rewarding, or certifying property
 inspect `TxInfo` voters, votes, proposals, action identifiers, protocol
 versions, and reviewed governance-action payloads. Generate the model with:
 
 ```bash
 julc verify dsl-init . --validator MyValidator --purpose spending \
-  --schema-version 9 --package verification --class GovernanceModel \
   --out verification/GovernanceModel.java
 ```
 
@@ -794,15 +785,14 @@ inaccessible, and voting/proposing validator selection is still unsupported.
 See [`e4k/README.md`](e4k/README.md) for executable evidence and the proposal-
 validity domain limitation.
 
-## 19. Stable schema-10 reviewed raw-data adapters
+## 19. Reviewed raw-data adapters
 
-Schema 10 is the API-v1 default and provides closed reviewed operations for the pinned validity range,
+Schema 1 is the API-v1 default and provides closed reviewed operations for the pinned validity range,
 strict treasury optionals, changed-parameter integer keys, and governance
-quorum. Generate the schema-10 model explicitly:
+quorum. Generate the schema-1 model explicitly:
 
 ```bash
 julc verify dsl-init . --validator MyValidator --purpose spending \
-  --schema-version 10 --package verification --class MyContractModel \
   --out verification/MyContractModel.java
 ```
 

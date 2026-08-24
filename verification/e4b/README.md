@@ -1,6 +1,6 @@
 # E.4b compositional typed DSL evidence
 
-ADR-019 removes whole-formula recognition from the schema-3 DSL path. A
+ADR-019 removed whole-formula recognition from the compositional DSL path. A
 trusted Java specification may freely compose the supported typed nodes, while
 JuLC still owns the theorem envelope:
 
@@ -49,13 +49,13 @@ by the script.
 
 Regenerate these workspaces after upgrading JuLC. In particular, E.4c changed
 the authenticated derived existential rule name from `exists-output` to
-`exists:LIST_TX_OUT`. Canonical schema-3 DSL values kept the same meaning, but
+`exists:LIST_TX_OUT`. The historical canonical DSL values kept the same meaning, but
 a workspace generated before that change intentionally fails current
 integrity preflight. The failure does not invalidate its historical,
 hash-bound result; it prevents a stale workspace from being presented as a
 current run.
 
-## Use schema 3 in a project
+## Use the current schema-1 DSL in a project
 
 Generate a contract model from the compiler-owned schema:
 
@@ -76,13 +76,15 @@ import static com.bloxbean.cardano.julc.verification.dsl.VerificationDsl.*;
 public final class SaleProperties implements VerificationSpecification {
     public DslPropertySet properties() {
         var sale = new SaleModel();
-        var paid = sale.context().txInfo().outputs().exists(output ->
-            output.address().credential().matchesKeyHash(sale.datum().seller())
-                .and(output.value().lovelace().ge(sale.datum().price())));
+        var paid = sale.datum().exists(datum ->
+            sale.context().txInfo().outputs().exists(output ->
+                output.address().paymentCredential().whenPubKey(key -> key.eq(
+                    LedgerExpressions.publicKeyHash(datum.seller()).typed()))
+                    .and(output.value().lovelace().ge(datum.price()))));
         var fallbackSigned = sale.context().txInfo().signatories()
             .contains(keyHash("4a554c435f5645524946595f415554484f524954595f303030303031"));
 
-        return DslPropertySet.composed(DslPurpose.SPENDING,
+        return sale.properties(
             property("sale.paid", DslDomain.VALID_SPENDING_V3_PINNED, paid),
             property("sale.paid-or-fallback",
                 DslDomain.VALID_SPENDING_V3_PINNED,

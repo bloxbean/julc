@@ -3,7 +3,6 @@ package evidence;
 import com.bloxbean.cardano.julc.verification.dsl.VerificationSpecification;
 import com.bloxbean.cardano.julc.verification.dsl.ir.DslDomain;
 import com.bloxbean.cardano.julc.verification.dsl.ir.DslPropertySet;
-import com.bloxbean.cardano.julc.verification.dsl.ir.DslPurpose;
 import com.bloxbean.cardano.julc.verification.dsl.ir.TxCertKind;
 
 import static com.bloxbean.cardano.julc.verification.dsl.VerificationDsl.*;
@@ -20,10 +19,10 @@ public final class CertifyingSpec implements VerificationSpecification {
                 contract.certificateIndex(), contract.certificate());
         var authorized = contract.context().txInfo().signatories()
                 .contains(keyHash(AUTHORITY));
-        return DslPropertySet.composed(DslPurpose.CERTIFYING,
+        return contract.properties(
                 property("certificate.authorized-update",
                         DslDomain.VALID_CERTIFYING_V3_PINNED,
-                        contract.redeemerStrictlyDecodes()
+                        contract.redeemer().isPresent()
                                 .and(contract.certificate().isKind(TxCertKind.UPDATE_DREP))
                                 .and(currentCertificate)
                                 .and(authorized)));

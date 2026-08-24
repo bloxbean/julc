@@ -8,8 +8,6 @@ import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
 import com.bloxbean.cardano.julc.verification.RequiresSignerProperty;
 import com.bloxbean.cardano.julc.verification.StatefulSpendingProperty;
 import com.bloxbean.cardano.julc.verification.ControlledMintProperty;
-import com.bloxbean.cardano.julc.verification.SellerPaymentProperty;
-import com.bloxbean.cardano.julc.verification.OneShotMintProperty;
 import com.bloxbean.cardano.julc.verification.dsl.ComposedDslPromotion;
 import com.bloxbean.cardano.julc.verification.dsl.SpendingContractModel;
 import com.bloxbean.cardano.julc.verification.dsl.MintingContractModel;
@@ -20,7 +18,6 @@ import com.bloxbean.cardano.julc.verification.dsl.ir.DslPropertySet;
 import com.bloxbean.cardano.julc.verification.dsl.ir.DslPurpose;
 import com.bloxbean.cardano.julc.verification.dsl.ir.TxCertKind;
 import com.bloxbean.cardano.julc.verification.dsl.PropertyIrCodec;
-import com.bloxbean.cardano.julc.verification.dsl.SellerPaymentDsl;
 import com.bloxbean.cardano.julc.verification.dsl.MintingDsl;
 import com.bloxbean.cardano.julc.verification.dsl.ByteStringExpr;
 import com.bloxbean.cardano.julc.verification.dsl.IntegerExpr;
@@ -232,13 +229,15 @@ class VerificationProjectGeneratorTest {
         String propertyId = "TokenPolicy.controlled-mint-v1";
         String authority = "4a554c435f5645524946595f415554484f524954595f303030303031";
         String tokenName = "4a554c43";
+        String contractHash = ContractTypeProjection.sha256(
+                ContractTypeProjection.project(mintingSchema()));
         var property = new ControlledMintProperty(
                 1, ControlledMintProperty.TEMPLATE,
                 propertyId, "TokenPolicy", "minting",
                 "authority:" + authority + "|tokenName:" + tokenName + "|quantity:1",
                 authority, tokenName, "1", "MINT", "Redeemer",
                 PropertyIrCodec.canonicalJson(MintingDsl.controlledMintPropertySet(
-                        propertyId, authority, tokenName, "1")),
+                        propertyId, authority, tokenName, "1", contractHash)),
                 new ControlledMintProperty.SourceReference(
                         "TokenPolicy.java", 3, 1, "@ControlledMint"),
                 List.of(), List.of("exact own-policy asset"), false);
@@ -268,103 +267,6 @@ class VerificationProjectGeneratorTest {
     }
 
     @Test
-    void generatesDomainAwareOneShotMintAndKernelBridge() throws Exception {
-        String propertyId = "TokenPolicy.one-shot-authorized-mint";
-        String authority = "4a554c435f5645524946595f415554484f524954595f303030303031";
-        String txId = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
-        String token = "4a554c43";
-        var dsl = MintingDsl.oneShotPropertySet(
-                propertyId, authority, txId, 0, token);
-        var property = new OneShotMintProperty(
-                1, OneShotMintProperty.TEMPLATE, propertyId, "TokenPolicy", "minting",
-                "OneShotSpec.java", authority, txId, "0", token, "1", "Redeemer",
-                PropertyIrCodec.canonicalJson(dsl),
-                List.of("validMintingContext/v3-pinned"),
-                List.of("one-shot authorized mint"), true);
-        Path output = tempDir.resolve("one-shot-mint");
-
-        VerificationProjectGenerator.generateOneShotMint(
-                writeMintBlueprint(), property, 5000, 4, output, false);
-
-        String security = Files.readString(output.resolve("SecurityProperty.lean"));
-        assertTrue(security.contains("blasterValidMintingContext"));
-        assertTrue(security.contains("utxoConsumed"));
-        assertTrue(security.contains("exactOwnPolicyAsset"));
-        assertTrue(security.contains("redeemerStrictlyDecodes"));
-        String bridge = Files.readString(output.resolve("LedgerDomainEquivalence.lean"));
-        assertTrue(bridge.contains("validMintingContext_implies_blasterDomain"));
-        assertFalse(bridge.contains("sorry"));
-        assertFalse(bridge.contains("admit"));
-        assertTrue(Files.readString(output.resolve("TokenPolicyObligation.lean"))
-                .contains("mintingInputs"));
-        assertTrue(Files.readString(output.resolve("TokenPolicyLedgerCorollary.lean"))
-                .contains("ledgerValidSuccessfulImpliesOneShotAuthorizedMint"));
-        String semantics = Files.readString(output.resolve("MintingSemanticsTests.lean"));
-        assertTrue(semantics.contains("Duplicate current-policy entries"));
-        assertTrue(semantics.contains("Malformed matching policy value"));
-        assertTrue(semantics.contains("CardanoLedgerApi.V3.valueOf"));
-        assertTrue(semantics.contains("native_decide"));
-
-        var manifest = JSON.readTree(output.resolve("verification-manifest.json").toFile());
-        assertTrue(manifest.path("ledgerValidityModeled").asBoolean());
-        assertEquals("validMintingContext/v3-pinned",
-                manifest.path("domainAssumptions").get(0).asText());
-        assertEquals(OneShotMintProperty.TEMPLATE,
-                manifest.path("propertyIr").path("template").asText());
-        assertEquals(2, manifest.path("dslIr").path("schemaVersion").asInt());
-        assertEquals(64, manifest.path("dslIr").path("sha256").asText().length());
-        assertEquals(64, manifest.path("capabilityInventory").path("sha256")
-                .asText().length());
-        var plan = JSON.readTree(output.resolve("verification-runner.json").toFile());
-        assertEquals("prove-one-shot-authorized-mint-v1",
-                plan.path("verify").get(1).path("id").asText());
-    }
-
-    @Test
-    void generatesExactSellerPaymentDslProfileWithLedgerDomain() throws Exception {
-        Path output = tempDir.resolve("seller-payment");
-        var dsl = SellerPaymentDsl.propertySet(
-                "StateGate.seller-paid-at-least", "owner", "state");
-        var property = new SellerPaymentProperty(
-                1, SellerPaymentProperty.TEMPLATE,
-                "StateGate.seller-paid-at-least", "StateGate", "spending",
-                "StateGatePayment.java", "owner", "state", "StateDatum",
-                PropertyIrCodec.canonicalJson(dsl),
-                List.of("validSpendingContext/v3-pinned"),
-                List.of("strict-datum", "public-key-seller-output",
-                        "lovelace-paid-at-least"), true);
-
-        VerificationProjectGenerator.generateSellerPayment(
-                writeBlueprint(), property, 2000, 4, output, false);
-
-        String security = Files.readString(output.resolve("SecurityProperty.lean"));
-        assertTrue(security.contains("Option JulcGenerated.Schemas.StateDatum"));
-        assertTrue(security.contains(".PubKeyCredential actualSeller"));
-        assertTrue(security.contains("lovelaceOf out.txOutValue >= price"));
-        assertTrue(security.contains("datum.owner datum.state out"));
-        assertTrue(security.contains("Recursor.any out in"));
-        String equivalence = Files.readString(output.resolve("LedgerDomainEquivalence.lean"));
-        assertTrue(equivalence.contains(
-                "theorem validSpendingContext_implies_blasterDomain"));
-        assertTrue(equivalence.contains("validSpendingContext"));
-        assertTrue(Files.readString(output.resolve("StateGateLedgerCorollary.lean"))
-                .contains("ledgerValidSuccessfulImpliesSellerPaidAtLeast"));
-        String obligation = Files.readString(output.resolve("StateGateObligation.lean"));
-        assertTrue(obligation.contains("blasterValidSpendingContext ctx"));
-        assertTrue(obligation.contains("isSuccessful (appliedValidator.prop ctx)"));
-        var plan = JSON.readTree(output.resolve("verification-runner.json").toFile());
-        assertEquals("seller-payment-v1-established",
-                plan.path("verify").get(1).path("outcomes").get(0)
-                        .path("reason").asText());
-        var manifest = JSON.readTree(output.resolve("verification-manifest.json").toFile());
-        assertTrue(manifest.path("ledgerValidityModeled").asBoolean());
-        assertEquals("validSpendingContext/v3-pinned",
-                manifest.path("domainAssumptions").get(0).asText());
-        assertEquals(VerificationFiles.leanTreeHash(output),
-                manifest.path("generatedLeanSha256").asText());
-    }
-
-    @Test
     void generatesIndependentGenericClaimsWithoutTemplateShapeMatching() throws Exception {
         String source = """
                 import com.bloxbean.cardano.julc.stdlib.annotation.*;
@@ -381,7 +283,9 @@ class VerificationProjectGeneratorTest {
                 .compileContract(source);
         var model = new SpendingContractModel();
         String authority = "4a554c435f5645524946595f415554484f524954595f303030303031";
-        var candidate = DslPropertySet.composed(DslPurpose.SPENDING,
+        var candidate = DslPropertySet.schema1(DslPurpose.SPENDING,
+                ContractTypeProjection.sha256(
+                        ContractTypeProjection.project(compiled.contractSchema())),
                 property("StateGate.state-nonnegative",
                         DslDomain.VALID_SPENDING_V3_PINNED,
                         model.datum().integerField("state").ge(integer(0))),
@@ -394,7 +298,8 @@ class VerificationProjectGeneratorTest {
         Path output = tempDir.resolve("composed-spending");
 
         VerificationProjectGenerator.generateComposedDsl(
-                writeBlueprint(), promoted, 3000, 4, output, false);
+                writeBlueprint(), promoted, compiled.contractSchema(),
+                3000, 4, output, false);
 
         String security = Files.readString(output.resolve("SecurityProperty.lean"));
         assertTrue(security.contains("dslGuarantee_StateGate_state_nonnegative"));
@@ -417,20 +322,24 @@ class VerificationProjectGeneratorTest {
         var manifest = JSON.readTree(output.resolve("verification-manifest.json").toFile());
         assertEquals(2, manifest.path("claims").size());
         assertEquals(4, manifest.path("properties").size());
-        assertEquals(3, manifest.path("dslIr").path("schemaVersion").asInt());
+        assertEquals(1, manifest.path("dslIr").path("schemaVersion").asInt());
+        assertEquals("julc.verification.dsl",
+                manifest.path("dslIr").path("format").asText());
         assertEquals(ComposedDslPromotion.generatedName(
                         manifest.path("claims").get(0).path("id").asText()),
                 manifest.path("claims").get(0).path("generatedName").asText());
 
         Files.writeString(output.resolve("review-notes.txt"), "preserve me\n");
-        var reduced = DslPropertySet.composed(DslPurpose.SPENDING,
+        var reduced = DslPropertySet.schema1(DslPurpose.SPENDING,
+                ContractTypeProjection.sha256(
+                        ContractTypeProjection.project(compiled.contractSchema())),
                 property("StateGate.state-nonnegative",
                         DslDomain.NONE,
                         model.datum().integerField("state").ge(integer(0))));
         VerificationProjectGenerator.generateComposedDsl(writeBlueprint(),
                 ComposedDslPromotion.promote(reduced, compiled.contractSchema(),
                         "StateGate", "StateGateProperties.java"),
-                3000, 4, output, true);
+                compiled.contractSchema(), 3000, 4, output, true);
         assertFalse(Files.exists(output.resolve(
                 "StateGate_StateGate_authorized_or_ownedProof.lean")));
         assertFalse(Files.exists(output.resolve(
@@ -499,7 +408,7 @@ class VerificationProjectGeneratorTest {
                     .and(map.lookupAll(owner).count(amount ->
                             new IntegerExpr(amount.node()).gt(integer(0))).ge(integer(1)));
         });
-        var candidate = DslPropertySet.typedV4(DslPurpose.SPENDING,
+        var candidate = DslPropertySet.schema1(DslPurpose.SPENDING,
                 ContractTypeProjection.sha256(projection),
                 property("CollectionGate.nested-collections",
                         DslDomain.VALID_SPENDING_V3_PINNED, guarantee));
@@ -524,16 +433,10 @@ class VerificationProjectGeneratorTest {
         assertTrue(security.contains("julcListCount"));
         assertTrue(security.contains("typedDatum ctx"));
         var manifest = JSON.readTree(output.resolve("verification-manifest.json").toFile());
-        assertEquals(4, manifest.path("dslIr").path("schemaVersion").asInt());
-        assertEquals(2, manifest.path("propertyIr").path("schemaVersion").asInt());
+        assertEquals(1, manifest.path("dslIr").path("schemaVersion").asInt());
+        assertEquals(3, manifest.path("propertyIr").path("schemaVersion").asInt());
         assertEquals(ContractTypeProjection.sha256(projection),
                 manifest.path("propertyIr").path("contractSchemaSha256").asText());
-
-        var missingAuthority = assertThrows(IllegalArgumentException.class,
-                () -> VerificationProjectGenerator.generateComposedDsl(
-                        blueprint, promoted, 5000, 8,
-                        tempDir.resolve("schema-four-without-authority"), false));
-        assertTrue(missingAuthority.getMessage().contains("ContractSchema"));
 
         ObjectNode tamperedBlueprint = (ObjectNode) JSON.readTree(generated.toJson());
         var definitions = tamperedBlueprint.path("definitions");
@@ -585,7 +488,7 @@ class VerificationProjectGeneratorTest {
                 .and(tx.redeemers().lookupFirst(
                         context.scriptPurpose().typed()).isPresent())
                 .and(tx.fee().ge(integer(0)));
-        var candidate = DslPropertySet.typedV5(DslPurpose.SPENDING,
+        var candidate = DslPropertySet.schema1(DslPurpose.SPENDING,
                 ContractTypeProjection.sha256(projection),
                 property("LedgerGate.context", DslDomain.VALID_SPENDING_V3_PINNED,
                         guarantee));
@@ -623,7 +526,7 @@ class VerificationProjectGeneratorTest {
         assertTrue(Files.readString(output.resolve("lakefile.lean"))
                 .contains("`LedgerContextSemanticsTests"));
         var manifest = JSON.readTree(output.resolve("verification-manifest.json").toFile());
-        assertEquals(5, manifest.path("dslIr").path("schemaVersion").asInt());
+        assertEquals(1, manifest.path("dslIr").path("schemaVersion").asInt());
         assertEquals(3, manifest.path("propertyIr").path("schemaVersion").asInt());
     }
 
@@ -646,7 +549,7 @@ class VerificationProjectGeneratorTest {
         String key = "41".repeat(28);
         var guarantee = auth.authorities(auth.fixed(key)).anySigned()
                 .and(auth.authorities(auth.fixed(key)).noUnexpectedSigners());
-        var candidate = DslPropertySet.typedV6(DslPurpose.SPENDING,
+        var candidate = DslPropertySet.schema1(DslPurpose.SPENDING,
                 ContractTypeProjection.sha256(projection),
                 property("AuthorizationGate.exact", DslDomain.NONE, guarantee));
         var promoted = ComposedDslPromotion.promote(candidate,
@@ -682,7 +585,7 @@ class VerificationProjectGeneratorTest {
                 .contains("`AuthorizationSemanticsTests"));
         var manifest = JSON.readTree(
                 output.resolve("verification-manifest.json").toFile());
-        assertEquals(6, manifest.path("dslIr").path("schemaVersion").asInt());
+        assertEquals(1, manifest.path("dslIr").path("schemaVersion").asInt());
         assertEquals(3, manifest.path("propertyIr").path("schemaVersion").asInt());
     }
 
@@ -709,7 +612,9 @@ class VerificationProjectGeneratorTest {
                 .and(model.context().txInfo().mint().exactOwnPolicyAsset(
                         model.ownPolicy(), tokenName("4a554c43"), quantity))
                 .and(quantity.gt(integer(0)).or(quantity.eq(integer(0))));
-        var candidate = DslPropertySet.composed(DslPurpose.MINTING,
+        var candidate = DslPropertySet.schema1(DslPurpose.MINTING,
+                ContractTypeProjection.sha256(
+                        ContractTypeProjection.project(compiled.contractSchema())),
                 property("TokenPolicy.composed-mint",
                         DslDomain.VALID_MINTING_V3_PINNED, guarantee));
         var promoted = ComposedDslPromotion.promote(candidate,
@@ -717,7 +622,8 @@ class VerificationProjectGeneratorTest {
         Path output = tempDir.resolve("composed-mint");
 
         VerificationProjectGenerator.generateComposedDsl(
-                writeMintBlueprint(), promoted, 5000, 4, output, false);
+                writeMintBlueprint(), promoted, compiled.contractSchema(),
+                5000, 4, output, false);
 
         String security = Files.readString(output.resolve("SecurityProperty.lean"));
         assertTrue(security.contains("redeemerStrictlyDecodes"));
@@ -753,7 +659,9 @@ class VerificationProjectGeneratorTest {
                         entry.credential().eq(model.rewardingCredential())
                                 .and(entry.amount().ge(integer(1_000_000))))
                 .and(model.context().txInfo().signatories().contains(keyHash(authority)));
-        var candidate = DslPropertySet.composed(DslPurpose.REWARDING,
+        var candidate = DslPropertySet.schema1(DslPurpose.REWARDING,
+                ContractTypeProjection.sha256(
+                        ContractTypeProjection.project(compiled.contractSchema())),
                 property("Rewards.authorized", DslDomain.VALID_REWARDING_V3_PINNED,
                         guarantee));
         var promoted = ComposedDslPromotion.promote(candidate,
@@ -761,7 +669,8 @@ class VerificationProjectGeneratorTest {
         Path output = tempDir.resolve("composed-rewarding");
 
         VerificationProjectGenerator.generateComposedDsl(
-                writeRewardingBlueprint(), promoted, 5000, 4, output, false);
+                writeRewardingBlueprint(), promoted, compiled.contractSchema(),
+                5000, 4, output, false);
 
         String security = Files.readString(output.resolve("SecurityProperty.lean"));
         assertTrue(security.contains("rewardingCredentialOf"));
@@ -812,7 +721,9 @@ class VerificationProjectGeneratorTest {
                 .and(model.context().txInfo().certificates().containsAt(
                         model.certificateIndex(), model.certificate()))
                 .and(model.context().txInfo().signatories().contains(keyHash(authority)));
-        var candidate = DslPropertySet.composed(DslPurpose.CERTIFYING,
+        var candidate = DslPropertySet.schema1(DslPurpose.CERTIFYING,
+                ContractTypeProjection.sha256(
+                        ContractTypeProjection.project(compiled.contractSchema())),
                 property("Certificates.authorized-update",
                         DslDomain.VALID_CERTIFYING_V3_PINNED, guarantee));
         var promoted = ComposedDslPromotion.promote(candidate,
@@ -875,7 +786,7 @@ class VerificationProjectGeneratorTest {
                                 certificate)));
         String schemaHash = ContractTypeProjection.sha256(
                 ContractTypeProjection.project(compiled.contractSchema()));
-        var candidate = DslPropertySet.typedV7(DslPurpose.CERTIFYING, schemaHash,
+        var candidate = DslPropertySet.schema1(DslPurpose.CERTIFYING, schemaHash,
                 property("Certificates.pool-retirement",
                         DslDomain.VALID_CERTIFYING_V3_PINNED, guarantee));
         var promoted = ComposedDslPromotion.promote(candidate,
@@ -902,7 +813,7 @@ class VerificationProjectGeneratorTest {
                 .contains("Certificates_Certificates_pool_retirementLedgerCorollary.lean"));
         var manifest = JSON.readTree(
                 output.resolve("verification-manifest.json").toFile());
-        assertEquals(7, manifest.path("dslIr").path("schemaVersion").asInt());
+        assertEquals(1, manifest.path("dslIr").path("schemaVersion").asInt());
         assertEquals("certifying", manifest.path("scriptPurpose").asText());
         assertTrue(manifest.path("claims").get(0).path("capabilities").toString()
                 .contains("constructor.txCert.poolRetire"));
@@ -935,7 +846,7 @@ class VerificationProjectGeneratorTest {
                         (actualPolicy, tokens) -> tokens.all(tokenEntry ->
                                 tokenEntry.whenWellFormed((actualToken, quantity) ->
                                         quantity.eq(quantity))))));
-        var candidate = DslPropertySet.typedV8(DslPurpose.SPENDING, schemaHash,
+        var candidate = DslPropertySet.schema1(DslPurpose.SPENDING, schemaHash,
                 property("StateGate.value", DslDomain.VALID_SPENDING_V3_PINNED,
                         guarantee));
         var promoted = ComposedDslPromotion.promote(candidate,
@@ -960,7 +871,7 @@ class VerificationProjectGeneratorTest {
                 .contains("`ValueAlgebraSemanticsTests"));
         var manifest = JSON.readTree(
                 output.resolve("verification-manifest.json").toFile());
-        assertEquals(8, manifest.path("dslIr").path("schemaVersion").asInt());
+        assertEquals(1, manifest.path("dslIr").path("schemaVersion").asInt());
     }
 
     @Test
@@ -987,7 +898,7 @@ class VerificationProjectGeneratorTest {
                 .or(tx.votes().existsEntry((voter, actions) ->
                         voter.whenStakePool(pool -> actions.existsEntry((id, vote) ->
                                 id.index().eq(integer(2)).and(vote.isYes())))));
-        var candidate = DslPropertySet.typedV9(DslPurpose.SPENDING, hash,
+        var candidate = DslPropertySet.schema1(DslPurpose.SPENDING, hash,
                 property("GovernanceGate.policy", DslDomain.VALID_SPENDING_V3_PINNED,
                         guarantee));
         var promoted = ComposedDslPromotion.promote(candidate,
@@ -1014,7 +925,7 @@ class VerificationProjectGeneratorTest {
         assertTrue(Files.readString(output.resolve("lakefile.lean"))
                 .contains("`GovernanceSemanticsTests"));
         var manifest = JSON.readTree(output.resolve("verification-manifest.json").toFile());
-        assertEquals(9, manifest.path("dslIr").path("schemaVersion").asInt());
+        assertEquals(1, manifest.path("dslIr").path("schemaVersion").asInt());
     }
 
     @Test
@@ -1040,7 +951,7 @@ class VerificationProjectGeneratorTest {
                 .and(tx.currentTreasuryStrict().isWellFormed())
                 .and(tx.treasuryDonationStrict().whenPresent(
                         amount -> amount.ge(integer(0))));
-        var candidate = DslPropertySet.typedV10(DslPurpose.SPENDING, hash,
+        var candidate = DslPropertySet.schema1(DslPurpose.SPENDING, hash,
                 property("StateGate.reviewed-adapters",
                         DslDomain.VALID_SPENDING_V3_PINNED, guarantee));
         var promoted = ComposedDslPromotion.promote(candidate,
@@ -1066,7 +977,7 @@ class VerificationProjectGeneratorTest {
         assertTrue(Files.readString(output.resolve("lakefile.lean"))
                 .contains("`ReviewedDataAdapterSemanticsTests"));
         var manifest = JSON.readTree(output.resolve("verification-manifest.json").toFile());
-        assertEquals(10, manifest.path("dslIr").path("schemaVersion").asInt());
+        assertEquals(1, manifest.path("dslIr").path("schemaVersion").asInt());
     }
 
     @Test
@@ -1745,7 +1656,24 @@ class VerificationProjectGeneratorTest {
     }
 
     private Path writeMintBlueprint() throws Exception {
-        String source = """
+        var result = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(mintingSource());
+        var generated = BlueprintGenerator.generate(
+                new BlueprintConfig("controlled-mint-generator-test", "1"),
+                List.of(new BlueprintGenerator.CompiledValidator(
+                        "TokenPolicy", result.compileResult(), result.contractSchema())));
+        Path blueprint = tempDir.resolve("mint-" + System.nanoTime() + ".json");
+        Files.writeString(blueprint, generated.toJson());
+        return blueprint;
+    }
+
+    private com.bloxbean.cardano.julc.compiler.schema.ContractSchema mintingSchema() {
+        return new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(mintingSource()).contractSchema();
+    }
+
+    private static String mintingSource() {
+        return """
                 import com.bloxbean.cardano.julc.stdlib.annotation.*;
                 import com.bloxbean.cardano.julc.ledger.ScriptContext;
                 @MintingValidator
@@ -1757,14 +1685,6 @@ class VerificationProjectGeneratorTest {
                     }
                 }
                 """;
-        var result = new JulcCompiler(StdlibRegistry.defaultRegistry()).compileContract(source);
-        var generated = BlueprintGenerator.generate(
-                new BlueprintConfig("controlled-mint-generator-test", "1"),
-                List.of(new BlueprintGenerator.CompiledValidator(
-                        "TokenPolicy", result.compileResult(), result.contractSchema())));
-        Path blueprint = tempDir.resolve("mint-" + System.nanoTime() + ".json");
-        Files.writeString(blueprint, generated.toJson());
-        return blueprint;
     }
 
     private Path writeRewardingBlueprint() throws Exception {

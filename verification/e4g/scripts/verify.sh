@@ -24,7 +24,7 @@ prepare() {
   local source="${BUILD_DIR}/src/evidence/${model}.java"
   rm -f "${source}"
   "${JULC[@]}" verify dsl-init "${PROJECT}" --validator "${validator}" \
-    --purpose spending --schema-version 5 --package evidence --class "${model}" \
+    --purpose spending --package evidence --class "${model}" \
     --out "${source}"
   javac -cp "${JULC_JAR}" -d "${BUILD_DIR}/classes" \
     "${source}" "${E4G_DIR}/${spec}.java"
@@ -56,7 +56,7 @@ if [[ "${BACKEND}" == "local" ]]; then
   run_property AuthorizedLedgerContextGate AuthorizedLedgerContextSpec authorized 0 SMT-VALID
   run_property VulnerableLedgerContextGate VulnerableLedgerContextSpec vulnerable 3 REFUTED
   run_property VacuousLedgerContextGate VacuousLedgerContextSpec vacuous 2 COULD-NOT-EVALUATE
-  grep -q '"schemaVersion" : 5' \
+  grep -q '"schemaVersion" : 1' \
     "${E4G_DIR}/generated/authorized/verification-manifest.json"
   grep -q 'julcListAt' "${E4G_DIR}/generated/authorized/SecurityProperty.lean"
   grep -q 'txInfoReferenceInputs' \
