@@ -1,6 +1,6 @@
 # ADR-019: Milestone E.4b Compositional Property Promotion Core
 
-- **Status:** Implemented experimentally; awaiting manual review
+- **Status:** Implemented experimentally, manually reviewed, and integrated
 - **Date:** 2026-08-20
 - **Feature branch:** `feat/typed-verification-dsl-e4b-composition`
 - **Parent:**

@@ -707,7 +707,8 @@ See [ADR-026](026-milestone-e4k-typed-governance-transaction-data.md).
 ### E.4l: Reviewed raw-data adapters
 
 [ADR-027](027-milestone-e4l-reviewed-raw-data-adapters.md) implements this
-phase as opt-in property schema 10. It separates pinned-decoder from
+phase under the unreleased milestone property schema 10. It separates
+pinned-decoder from
 canonical validity-range semantics, models treasury optionals as the three
 distinct states present/absent/malformed, and permits only narrow
 duplicate-preserving views of changed-parameter IDs and structurally pinned
@@ -725,8 +726,10 @@ k-induction. It was rejected at the mandatory calibration gate: even an
 396-byte validator whose Java body returns true, with no ledger-domain premise,
 could not establish depth-1 target reachability within five minutes under the
 combined direct exact-artifact transition encoding. The product-facing
-prototype was removed, so schemas 1 through 10 and existing CLI/result meanings
-remain unchanged.
+prototype was removed, so the then-current milestone schemas 1 through 10 and
+CLI/result meanings remained unchanged. E.6 subsequently replaced those
+unreleased milestone gates with the public canonical
+`julc.verification.dsl` schema 1 contract.
 Any future temporal-verification attempt needs a materially different,
 separately reviewed execution-linkage strategy.
 
@@ -745,8 +748,10 @@ Stabilize the DSL only if the experiments demonstrate:
 Otherwise retain annotations/profiles as the product interface and the
 canonical IR or generated Lean workspace as the expert extension surface.
 
-Decision: the E.4 schema-10 construction surface is stable as verification DSL
-API version 1 under [ADR-029](029-milestone-e6-stable-verification-dsl-public-api.md).
+Decision: the complete reviewed E.4 construction surface is stable as
+verification DSL API version 1 and public canonical
+`julc.verification.dsl` schema 1 under
+[ADR-029](029-milestone-e6-stable-verification-dsl-public-api.md).
 Annotations are concise frontends over the same canonical DSL guarantee IR;
 profile-specific handwritten Lean predicates are not retained. E.5 is excluded.
 
@@ -818,6 +823,8 @@ entries and explicitly state whether equality is structural or extensional.
 ## Exit condition
 
 The E.4b compositional exit condition and the later purpose/type/value adapter
-gates have been met. ADR-029 freezes the resulting schema-10 public API without
-claiming complete CardanoLedgerApi coverage. New semantic vocabulary requires a
-new reviewed property schema and must preserve schemas 1 through 10.
+gates have been met. ADR-029 freezes the resulting API version 1 and public
+canonical `julc.verification.dsl` schema 1 without claiming complete
+CardanoLedgerApi coverage. New semantic vocabulary requires a new reviewed
+public property schema; the unreleased milestone schemas 1 through 10 are
+historical evidence formats, not supported compatibility inputs.

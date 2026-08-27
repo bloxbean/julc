@@ -1,6 +1,6 @@
 # ADR-017: Purpose-Indexed CIP-57 Blueprints for `@MultiValidator`
 
-- **Status:** Implemented (pending manual review and commit)
+- **Status:** Implemented, manually reviewed, and merged through PR #84
 - **Date:** 2026-08-13
 - **Parent:**
   [ADR-005 — Compiler-Owned Blueprint Schemas](005-milestone-c1-compiler-owned-blueprint-schema.md)
