@@ -861,10 +861,26 @@ See [O2–O6 evidence](evidence/032-o2-o6-case-builtins.md) and child issues
 
 ### Milestone 4 — Cost/use-directed rewrites
 
-- Implement list-to-array analysis.
-- Implement typed conversion sharing/motion.
-- Implement BLS fusion and explicit modular-exponentiation recognition where
-  evidence supports them.
+**Implementation status:** Complete on its milestone branch through explicit,
+evidence-backed deferrals (2026-08-29). See
+[cost/use evidence](evidence/032-cost-use-rewrite-deferrals.md) and issues
+[#102](https://github.com/bloxbean/julc/issues/102) through
+[#105](https://github.com/bloxbean/julc/issues/105); O11 remains governed by
+[#96](https://github.com/bloxbean/julc/issues/96).
+
+- Measured explicit native-Value sharing, list-to-array promotion, and
+  modular-exponentiation source shapes with exact Java/Truffle PV11 budgets.
+- Deferred O8/O15 automatic conversion sharing because `UnValueData` is
+  partial and JuLC has no typed dominance/use-analysis pass; explicit source
+  sharing is documented and equivalent.
+- Deferred O9 despite large valid-input gains because recursive List `get` and
+  `IndexArray` expose different negative/out-of-range failure text and timing,
+  and no list use/escape analysis exists.
+- Retained the O11 BLS deferral: native group and native-list representations
+  are prerequisites to any fusion.
+- Deferred O12 idiom recognition because ordinary `pow % modulus` differs from
+  `ExpModInteger` for negative exponents and failure paths. The existing
+  explicit `MathLib.expMod` direct lowering remains the safe API.
 
 ### Milestone 5 — Literal folding and aggregation
 

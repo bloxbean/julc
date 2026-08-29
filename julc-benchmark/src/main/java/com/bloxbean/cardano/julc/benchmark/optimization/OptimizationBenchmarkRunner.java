@@ -267,6 +267,41 @@ public final class OptimizationBenchmarkRunner {
     }
 
     /**
+     * Compare two explicit Java source shapes at BASELINE for design research.
+     * Non-equivalence is returned to the caller as evidence instead of being
+     * accepted as a compiler rule.
+     */
+    public static Comparison compareResearchFixturesWithJavaAndTruffle(
+            String fixtureId,
+            Fixture baselineFixture,
+            Fixture candidateFixture,
+            String candidateRule,
+            OptimizationCostProfile costProfile) {
+        requireText(fixtureId, "fixtureId");
+        requireText(candidateRule, "candidateRule");
+        requireMatchingInputs(baselineFixture.cases(), candidateFixture.cases());
+        var baseline = compile(baselineFixture, OptimizationLevel.BASELINE, costProfile);
+        var candidate = compile(candidateFixture, OptimizationLevel.BASELINE, costProfile);
+        var backends = List.of(Backend.javaVm(), Backend.truffleVm());
+        var candidateArtifact = measureArtifact(candidate, costProfile);
+        candidateArtifact = new ArtifactMeasurement(
+                candidateArtifact.level(),
+                candidateArtifact.targetId(),
+                candidateArtifact.costProfileId(),
+                candidateArtifact.costParameterHash(),
+                candidateArtifact.flatBytes(),
+                candidateArtifact.scriptHash(),
+                candidateArtifact.termMetrics(),
+                append(candidateArtifact.appliedRules(), candidateRule));
+        return new Comparison(
+                fixtureId,
+                measureArtifact(baseline, costProfile),
+                candidateArtifact,
+                evaluate(baselineFixture, baseline, costProfile, backends),
+                evaluate(candidateFixture, candidate, costProfile, backends));
+    }
+
+    /**
      * Compare two typed-by-construction UPLC templates under native constant
      * arguments. This is for ADR research only; it does not authorize an
      * untyped compiler rewrite.
@@ -436,6 +471,26 @@ public final class OptimizationBenchmarkRunner {
                     backend, caseId, Outcome.BUDGET_EXHAUSTED, null,
                     "budget exhausted", exhausted.consumed(), exhausted.traces());
         };
+    }
+
+    private static void requireMatchingInputs(
+            List<InputCase> baseline,
+            List<InputCase> candidate) {
+        if (baseline.size() != candidate.size()) {
+            throw new IllegalArgumentException("research fixture input counts differ");
+        }
+        for (int i = 0; i < baseline.size(); i++) {
+            if (!baseline.get(i).equals(candidate.get(i))) {
+                throw new IllegalArgumentException(
+                        "research fixture input differs at index " + i);
+            }
+        }
+    }
+
+    private static List<String> append(List<String> values, String value) {
+        var result = new ArrayList<>(values);
+        result.add(value);
+        return List.copyOf(result);
     }
 
     static TermMetrics metrics(Term term) {
