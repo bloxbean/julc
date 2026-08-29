@@ -1,6 +1,8 @@
 package com.bloxbean.cardano.julc.compiler.pir;
 
 import com.bloxbean.cardano.julc.compiler.CompilerException;
+import com.bloxbean.cardano.julc.compiler.CompilerTargetDiagnostics;
+import com.bloxbean.cardano.julc.compiler.LoweringRequirements;
 import com.bloxbean.cardano.julc.compiler.desugar.LoopDesugarer;
 import com.bloxbean.cardano.julc.compiler.desugar.PatternMatchDesugarer;
 import com.bloxbean.cardano.julc.compiler.error.CompilerDiagnostic;
@@ -179,6 +181,41 @@ public class PirGenerator {
             pirPositions.put(term, new SourceLocation(
                     fileName, range.begin.line, range.begin.column, fragment));
         });
+    }
+
+    private void validateLoweringRequirements(
+            LoweringRequirements requirements,
+            Node sourceNode) {
+        var profile = context.resolvedTarget().featureProfile();
+        var location = sourceLocation(sourceNode);
+        requirements.builtins().stream()
+                .sorted(Comparator.comparingInt(DefaultFun::flatCode))
+                .filter(builtin -> !profile.isBuiltinAvailable(builtin))
+                .findFirst()
+                .ifPresent(builtin -> {
+                    throw CompilerTargetDiagnostics.unavailableBuiltin(
+                            context, builtin, location);
+                });
+        requirements.capabilities().stream()
+                .sorted()
+                .filter(capability -> !context.supports(capability))
+                .findFirst()
+                .ifPresent(capability -> {
+                    throw CompilerTargetDiagnostics.unavailableCapability(
+                            context, capability, location);
+                });
+    }
+
+    private static SourceLocation sourceLocation(Node node) {
+        if (node == null || node.getRange().isEmpty()) {
+            return null;
+        }
+        var begin = node.getRange().orElseThrow().begin;
+        var fileName = node.findCompilationUnit()
+                .flatMap(cu -> cu.getStorage().map(s -> s.getFileName()))
+                .orElse("<source>");
+        return new SourceLocation(
+                fileName, begin.line, begin.column, node.toString());
     }
 
     /**
@@ -1014,6 +1051,8 @@ public class PirGenerator {
             }
         }
 
+        validateLoweringRequirements(
+                stdlibLookup.requirements(resolvedClassName, methodName), mce);
         var result = stdlibLookup.lookup(
                 context, resolvedClassName, methodName, compiledArgs, argPirTypes);
         if (result.isPresent()) {
@@ -1091,6 +1130,8 @@ public class PirGenerator {
                 return scope;
             }
 
+            validateLoweringRequirements(
+                    typeMethodRegistry.requirements(scopeType, methodName), mce);
             var registryResult = typeMethodRegistry.dispatch(
                     context, scope, methodName, compiledArgs, scopeType, argPirTypes);
             if (registryResult.isPresent()) return registryResult.get();

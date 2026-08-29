@@ -16,6 +16,7 @@ import com.bloxbean.cardano.julc.compiler.schema.ContractCompileResult;
 import com.bloxbean.cardano.julc.compiler.schema.ContractSchema;
 import com.bloxbean.cardano.julc.compiler.uplc.UplcGenerator;
 import com.bloxbean.cardano.julc.compiler.uplc.UplcOptimizer;
+import com.bloxbean.cardano.julc.compiler.uplc.UplcTargetValidator;
 import com.bloxbean.cardano.julc.compiler.util.MethodDependencyResolver;
 import com.bloxbean.cardano.julc.compiler.validate.SubsetValidator;
 import com.bloxbean.cardano.julc.core.Program;
@@ -607,12 +608,15 @@ public class JulcCompiler {
 
         // 19. Optimize UPLC (skip when source maps enabled to preserve Term identity)
         SourceMap sourceMap = null;
+        var producingStage = "UPLC lowering";
         if (context.isSourceMapEnabled()) {
             sourceMap = SourceMap.of(uplcGenerator.getUplcPositions());
             context.logf("Source map generated: %d entries (optimization skipped)", sourceMap.size());
         } else {
             var optimizer = new UplcOptimizer(context);
-            uplcTerm = optimizer.optimize(uplcTerm);
+            var optimization = optimizer.optimizeWithReport(uplcTerm);
+            uplcTerm = optimization.term();
+            producingStage = optimizerStage(optimization);
             context.log("UPLC optimization complete");
         }
 
@@ -621,6 +625,10 @@ public class JulcCompiler {
 
         // 21. Create Program
         var program = createProgram(context, uplcTerm);
+        UplcTargetValidator.validate(
+                program,
+                context,
+                producingStage);
 
         // 22. Build ParamInfo list
         var paramInfos = paramFields.stream()
@@ -726,7 +734,9 @@ public class JulcCompiler {
         var context = beginCompilation();
         var uplcGenerator = new UplcGenerator(context, null);
         var uplcTerm = uplcGenerator.generate(pirTerm);
-        return createProgram(context, uplcTerm);
+        var program = createProgram(context, uplcTerm);
+        UplcTargetValidator.validate(program, context, "UPLC lowering");
+        return program;
     }
 
     // --- Method compilation (for expression evaluation) ---
@@ -957,17 +967,24 @@ public class JulcCompiler {
         var uplcTerm = uplcGenerator.generate(body);
 
         SourceMap sourceMap = null;
+        var producingStage = "UPLC lowering";
         if (context.isSourceMapEnabled()) {
             sourceMap = SourceMap.of(uplcGenerator.getUplcPositions());
         } else {
             var optimizer = new UplcOptimizer(context);
-            uplcTerm = optimizer.optimize(uplcTerm);
+            var optimization = optimizer.optimizeWithReport(uplcTerm);
+            uplcTerm = optimization.term();
+            producingStage = optimizerStage(optimization);
         }
 
         var paramInfos = paramFields.stream()
                 .map(pf -> new CompileResult.ParamInfo(pf.name, pf.javaType))
                 .toList();
         var program = createProgram(context, uplcTerm);
+        UplcTargetValidator.validate(
+                program,
+                context,
+                producingStage);
         return new CompileResult(
                 program, diagnostics, paramInfos, body, uplcTerm, sourceMap, context.target());
     }
@@ -984,6 +1001,12 @@ public class JulcCompiler {
     private static Program createProgram(CompilationContext context, Term term) {
         var version = context.target().uplcVersion();
         return new Program(version.major(), version.minor(), version.patch(), term);
+    }
+
+    private static String optimizerStage(UplcOptimizer.OptimizationResult result) {
+        return result.appliedPasses().isEmpty()
+                ? "UPLC optimizer (no rewrites)"
+                : "UPLC optimizer passes " + result.appliedPasses();
     }
 
     /** Delegate to PirHelpers for self-recursion detection. */
@@ -1147,6 +1170,31 @@ public class JulcCompiler {
                 return base != null
                         ? base.lookup(className, methodName, args, argTypes)
                         : java.util.Optional.empty();
+            }
+
+            @Override
+            public java.util.Optional<PirTerm> lookup(
+                    CompilationContext context,
+                    String className,
+                    String methodName,
+                    java.util.List<PirTerm> args,
+                    java.util.List<PirType> argTypes) {
+                if (methodName.equals("of") && newTypeNames.contains(className)) {
+                    return lookup(className, methodName, args, argTypes);
+                }
+                return base != null
+                        ? base.lookup(context, className, methodName, args, argTypes)
+                        : java.util.Optional.empty();
+            }
+
+            @Override
+            public LoweringRequirements requirements(String className, String methodName) {
+                if (methodName.equals("of") && newTypeNames.contains(className)) {
+                    return LoweringRequirements.NONE;
+                }
+                return base != null
+                        ? base.requirements(className, methodName)
+                        : LoweringRequirements.NONE;
             }
 
             @Override

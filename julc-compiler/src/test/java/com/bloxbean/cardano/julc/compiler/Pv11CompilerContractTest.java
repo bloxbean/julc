@@ -11,6 +11,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -73,10 +74,14 @@ class Pv11CompilerContractTest {
                 () -> compiler.compileMethod(source, "select"));
 
         assertFutureBuiltinDiagnostic(error);
+        assertTrue(error.diagnostics().getFirst().line() > 0);
+        assertTrue(error.diagnostics().getFirst().column() > 0);
+        assertEquals("FutureArrayCall.java", error.diagnostics().getFirst().fileName());
     }
 
     private static void assertFutureBuiltinDiagnostic(CompilerException error) {
         assertAll(
+                () -> assertEquals("JULC0032", error.diagnostics().getFirst().code()),
                 () -> assertTrue(error.getMessage().contains("MultiIndexArray (FLAT tag 101)")),
                 () -> assertTrue(error.getMessage().contains("future/unreleased")),
                 () -> assertTrue(error.getMessage().contains("protocol version 11")),
