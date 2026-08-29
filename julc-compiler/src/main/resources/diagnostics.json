@@ -361,6 +361,17 @@
       "template": "Circular type dependency detected among: {0}",
       "summary": "Type registration found a cycle that cannot be resolved.",
       "fix": "Break the cycle by introducing a parameterized record or refactoring the involved types."
+    },
+    {
+      "code": "JULC0031",
+      "constant": "UNSUPPORTED_COMPILER_TARGET",
+      "status": "emitted",
+      "title": "Unsupported compiler target",
+      "category": "CONFIG",
+      "severity": "error",
+      "template": "Compiler target {0} is not supported. Supported targets: {1}",
+      "summary": "JuLC compilation is pinned to an explicit ledger language, protocol version, and UPLC version. Evaluator support for another profile does not imply compiler support.",
+      "fix": "Select a listed compiler target. This release supports Plutus V3/PV11/UPLC 1.1.0 only; do not rely on fallback to another target."
     }
   ]
 }

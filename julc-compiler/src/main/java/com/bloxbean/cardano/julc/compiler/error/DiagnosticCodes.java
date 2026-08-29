@@ -229,6 +229,14 @@ public final class DiagnosticCodes {
             "Unknown method: {0}",
             "Check the stdlib catalog at https://julc.dev/ai/catalog.json or the stdlib reference at https://julc.dev/stdlib/stdlib-guide/. Common: `JulcList<T>` has `head/tail/get/size/isEmpty/contains/prepend/reverse/concat/take/drop/map/filter/any/all/find`.");
 
+    public static final DiagnosticInfo UNSUPPORTED_COMPILER_TARGET = new DiagnosticInfo(
+            "JULC0031",
+            "UNSUPPORTED_COMPILER_TARGET",
+            CompilerDiagnostic.Level.ERROR,
+            "CONFIG",
+            "Compiler target {0} is not supported. Supported targets: {1}",
+            "Select a listed compiler target. This release supports Plutus V3/PV11/UPLC 1.1.0 only; do not rely on fallback to another target.");
+
     public static final DiagnosticInfo VALIDATOR_ANNOTATION_MISSING = new DiagnosticInfo(
             "JULC0010",
             "VALIDATOR_ANNOTATION_MISSING",
@@ -275,6 +283,7 @@ public final class DiagnosticCodes {
             TYPE_RESOLUTION_FAILED,
             UNDEFINED_VARIABLE,
             UNKNOWN_METHOD_ON_TYPE,
+            UNSUPPORTED_COMPILER_TARGET,
             VALIDATOR_ANNOTATION_MISSING,
             VARIABLE_UNINITIALIZED
     );
