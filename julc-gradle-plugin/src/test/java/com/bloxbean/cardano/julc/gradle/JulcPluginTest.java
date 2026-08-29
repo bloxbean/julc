@@ -80,6 +80,42 @@ class JulcPluginTest {
     }
 
     @Test
+    void targetPropertyIsExactAndReported() throws IOException {
+        Files.writeString(buildFile, """
+                plugins {
+                    id 'com.bloxbean.cardano.julc'
+                }
+                julc {
+                    target = 'plutus-v3-pv11-uplc-1.1.0'
+                }
+                """);
+        writeAlwaysTrueValidator();
+
+        var result = createRunner("compileJulc").build();
+
+        assertTrue(result.getOutput().contains(
+                "target: plutus-v3-pv11-uplc-1.1.0"));
+    }
+
+    @Test
+    void unknownFutureTargetFailsClosed() throws IOException {
+        Files.writeString(buildFile, """
+                plugins {
+                    id 'com.bloxbean.cardano.julc'
+                }
+                julc {
+                    target = 'plutus-v3-pv12-uplc-1.1.0'
+                }
+                """);
+        writeAlwaysTrueValidator();
+
+        var result = createRunner("compileJulc").buildAndFail();
+
+        assertTrue(result.getOutput().contains("JULC0031")
+                || result.getOutput().contains("Compiler target"));
+    }
+
+    @Test
     void compilesMintingValidator() throws IOException {
         Files.writeString(buildFile, """
                 plugins {

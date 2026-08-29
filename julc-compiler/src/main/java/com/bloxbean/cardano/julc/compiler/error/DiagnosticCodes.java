@@ -37,6 +37,14 @@ public final class DiagnosticCodes {
             "Builtin {0} is not available for compiler target {1}",
             "Use an operation available in the selected target, or explicitly select a future compiler target after JuLC adds and verifies support for it.");
 
+    public static final DiagnosticInfo COMPILER_EVALUATION_TARGET_MISMATCH = new DiagnosticInfo(
+            "JULC0036",
+            "COMPILER_EVALUATION_TARGET_MISMATCH",
+            CompilerDiagnostic.Level.ERROR,
+            "TARGET",
+            "Compiled target {0} cannot be evaluated as {1}",
+            "Evaluate with CompileResult.target().ledgerTarget(), or recompile for an explicitly supported compiler target.");
+
     public static final DiagnosticInfo COMPILER_FEATURE_UNAVAILABLE = new DiagnosticInfo(
             "JULC0033",
             "COMPILER_FEATURE_UNAVAILABLE",
@@ -291,6 +299,7 @@ public final class DiagnosticCodes {
             BREAK_OUTSIDE_LOOP,
             CIRCULAR_TYPE_DEPENDENCY,
             COMPILER_BUILTIN_UNAVAILABLE,
+            COMPILER_EVALUATION_TARGET_MISMATCH,
             COMPILER_FEATURE_UNAVAILABLE,
             COMPILER_PROGRAM_VERSION_MISMATCH,
             COMPILER_TARGET_INVARIANT_VIOLATION,

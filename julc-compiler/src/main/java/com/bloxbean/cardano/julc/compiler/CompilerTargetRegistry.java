@@ -27,6 +27,20 @@ public final class CompilerTargetRegistry {
         return target != null && SUPPORTED.contains(target);
     }
 
+    /**
+     * Resolve a stable profile ID to an exactly supported compiler target.
+     *
+     * <p>The lookup is deliberately exact and case-sensitive. Tooling must not
+     * reinterpret an unknown future profile as the current default.
+     */
+    public static CompilerTarget targetForProfileId(String profileId) {
+        Objects.requireNonNull(profileId, "profileId");
+        return SUPPORTED.stream()
+                .filter(target -> target.profileId().equals(profileId))
+                .findFirst()
+                .orElseThrow(() -> unsupported(profileId));
+    }
+
     /** Resolve an exact compiler-supported target against the canonical feature registry. */
     public static ResolvedCompilerTarget resolve(CompilerTarget requested) {
         Objects.requireNonNull(requested, "requested");
@@ -46,12 +60,16 @@ public final class CompilerTargetRegistry {
     }
 
     private static CompilerException unsupported(CompilerTarget requested) {
+        return unsupported(requested.profileId());
+    }
+
+    private static CompilerException unsupported(String requestedProfileId) {
         var info = DiagnosticCodes.UNSUPPORTED_COMPILER_TARGET;
         var supported = SUPPORTED.stream()
                 .map(CompilerTarget::profileId)
                 .sorted()
                 .collect(Collectors.joining(", "));
-        var message = info.format(requested.profileId(), supported);
+        var message = info.format(requestedProfileId, supported);
         var diagnostic = new CompilerDiagnostic(
                 info.level(), message, "<configuration>", 0, 0,
                 info.fix(), info.code());

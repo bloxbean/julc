@@ -17,6 +17,18 @@ class BuildCommandTest {
     private static final ObjectMapper JSON = new ObjectMapper();
 
     @Test
+    void acceptsExactPv11TargetAndRejectsUnknownFutureTarget(@TempDir Path tempDir)
+            throws Exception {
+        Path project = tempDir.resolve("target-build");
+        ProjectScaffolder.scaffold(project, "target-build");
+
+        assertEquals(0, new CommandLine(new BuildCommand()).execute(
+                project.toString(), "--target", "plutus-v3-pv11-uplc-1.1.0"));
+        assertEquals(1, new CommandLine(new BuildCommand()).execute(
+                project.toString(), "--target", "plutus-v3-pv12-uplc-1.1.0"));
+    }
+
+    @Test
     void noBlueprintEmitsRawArtifactAndCannotLeaveStaleBlueprint(@TempDir Path tempDir)
             throws Exception {
         Path project = tempDir.resolve("raw-build");

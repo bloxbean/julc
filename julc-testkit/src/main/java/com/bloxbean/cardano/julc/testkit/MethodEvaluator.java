@@ -63,13 +63,8 @@ public final class MethodEvaluator {
     public static EvalResult evaluateRaw(String javaSource, String methodName, PlutusData[] params, PlutusData... args) {
         Objects.requireNonNull(javaSource, "javaSource must not be null");
         Objects.requireNonNull(methodName, "methodName must not be null");
-        var program = compileMethod(javaSource, methodName);
-        var vm = JulcVm.create();
-        var allArgs = buildAllArgs(params, args);
-        if (allArgs.isEmpty()) {
-            return vm.evaluate(program);
-        }
-        return vm.evaluateWithArgs(program, allArgs);
+        var compiled = compileMethodResult(javaSource, methodName);
+        return evaluateCompiled(compiled, buildAllArgs(params, args));
     }
 
     /**
@@ -168,12 +163,17 @@ public final class MethodEvaluator {
      * Compile a single static method to a UPLC Program.
      */
     public static Program compileMethod(String javaSource, String methodName) {
+        return compileMethodResult(javaSource, methodName).program();
+    }
+
+    /** Compile a method while retaining the exact target needed for evaluation. */
+    public static CompileResult compileMethodResult(String javaSource, String methodName) {
         var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry());
         CompileResult result = compiler.compileMethod(javaSource, methodName);
         if (result.hasErrors()) {
             throw new AssertionError("Compilation produced errors: " + result.diagnostics());
         }
-        return result.program();
+        return result;
     }
 
     // --- File-based overloads (Class<?>) ---
@@ -219,13 +219,8 @@ public final class MethodEvaluator {
         Objects.requireNonNull(sourceClass, "sourceClass must not be null");
         Objects.requireNonNull(sourceRoot, "sourceRoot must not be null");
         Objects.requireNonNull(methodName, "methodName must not be null");
-        var program = compileMethod(sourceClass, sourceRoot, methodName);
-        var vm = JulcVm.create();
-        var allArgs = buildAllArgs(params, args);
-        if (allArgs.isEmpty()) {
-            return vm.evaluate(program);
-        }
-        return vm.evaluateWithArgs(program, allArgs);
+        var compiled = SourceDiscovery.compileMethod(sourceClass, sourceRoot, methodName);
+        return evaluateCompiled(compiled, buildAllArgs(params, args));
     }
 
     /**
@@ -418,5 +413,20 @@ public final class MethodEvaluator {
             java.util.Collections.addAll(allArgs, args);
         }
         return allArgs;
+    }
+
+    private static EvalResult evaluateCompiled(
+            CompileResult compiled,
+            List<PlutusData> args) {
+        var vm = JulcVm.create();
+        var target = compiled.target().ledgerTarget();
+        if (args.isEmpty()) {
+            return vm.evaluate(
+                    compiled.program(), target, null,
+                    com.bloxbean.cardano.julc.vm.EvalOptions.DEFAULT);
+        }
+        return vm.evaluateWithArgs(
+                compiled.program(), target, args, null,
+                com.bloxbean.cardano.julc.vm.EvalOptions.DEFAULT);
     }
 }

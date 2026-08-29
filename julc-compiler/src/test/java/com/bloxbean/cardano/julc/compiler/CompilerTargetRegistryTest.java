@@ -57,6 +57,22 @@ class CompilerTargetRegistryTest {
         assertFalse(CompilerTargetRegistry.isSupported(null));
         assertThrows(UnsupportedOperationException.class,
                 () -> CompilerTargetRegistry.supportedTargets().clear());
+        assertSame(CompilerTarget.PLUTUS_V3_PV11,
+                CompilerTargetRegistry.targetForProfileId(
+                        "plutus-v3-pv11-uplc-1.1.0"));
+    }
+
+    @Test
+    void profileIdLookupIsExactAndFailsClosed() {
+        for (var profileId : Set.of(
+                "PLUTUS-V3-PV11-UPLC-1.1.0",
+                "plutus-v3-pv12-uplc-1.1.0",
+                "latest")) {
+            var error = assertThrows(CompilerException.class,
+                    () -> CompilerTargetRegistry.targetForProfileId(profileId));
+            assertEquals("JULC0031", error.diagnostics().getFirst().code());
+            assertTrue(error.getMessage().contains(profileId));
+        }
     }
 
     @Test

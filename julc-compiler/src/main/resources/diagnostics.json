@@ -416,6 +416,17 @@
       "template": "Compiler stage {0} emitted target-illegal feature {1} for {2}",
       "summary": "Final post-lowering validation found a builtin, term form, or constant universe that an earlier compiler stage should have rejected.",
       "fix": "Report this as a JuLC compiler bug. Include the named compiler stage/pass, selected target, and a minimal reproducer."
+    },
+    {
+      "code": "JULC0036",
+      "constant": "COMPILER_EVALUATION_TARGET_MISMATCH",
+      "status": "emitted",
+      "title": "Compile and evaluation targets do not match",
+      "category": "TARGET",
+      "severity": "error",
+      "template": "Compiled target {0} cannot be evaluated as {1}",
+      "summary": "The evaluator must use the exact ledger language and protocol version retained by the compiler result.",
+      "fix": "Evaluate with CompileResult.target().ledgerTarget(), or recompile for an explicitly supported compiler target."
     }
   ]
 }

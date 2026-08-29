@@ -1,8 +1,11 @@
 package com.bloxbean.cardano.julc.jrl;
 
+import com.bloxbean.cardano.julc.compiler.CompilerOptions;
+import com.bloxbean.cardano.julc.compiler.CompilerTarget;
 import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.core.Program;
 import com.bloxbean.cardano.julc.vm.JulcVm;
+import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -89,6 +92,22 @@ class JrlIntegrationTest {
 
     @Nested
     class TranspilationTests {
+
+        @Test
+        void explicitCompilerTargetReachesJrlJavaLowering() {
+            var options = new CompilerOptions()
+                    .setTarget(CompilerTarget.PLUTUS_V3_PV11);
+            var result = new JrlCompiler(StdlibRegistry.defaultRegistry(), options)
+                    .compile("""
+                            contract "Targeted" version "1" purpose spending
+                            rule "always" when Condition( true ) then allow
+                            default: deny
+                            """, "targeted.jrl");
+
+            assertFalse(result.hasErrors(), result.jrlDiagnostics().toString());
+            assertSame(CompilerTarget.PLUTUS_V3_PV11,
+                    result.compileResult().target());
+        }
 
         @Test
         void simpleContract_compilesToUplc() {

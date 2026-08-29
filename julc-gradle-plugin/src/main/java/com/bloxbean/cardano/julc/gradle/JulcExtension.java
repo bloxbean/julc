@@ -14,6 +14,7 @@ import org.gradle.api.provider.Property;
  *   <li>{@code outputDir} — directory for compiled JSON output (default: {@code build/plutus})</li>
  *   <li>{@code sourceMap} — enable source map generation for debugging (default: {@code false})</li>
  *   <li>{@code blueprint} — generate strict CIP-57 metadata (default: {@code true})</li>
+ *   <li>{@code target} — exact compiler target profile ID (default: PV11)</li>
  * </ul>
  * <p>
  * Example:
@@ -29,6 +30,7 @@ public class JulcExtension {
     private final DirectoryProperty outputDir;
     private final Property<Boolean> sourceMap;
     private final Property<Boolean> blueprint;
+    private final Property<String> target;
 
     public JulcExtension(Project project) {
         ObjectFactory objects = project.getObjects();
@@ -38,6 +40,8 @@ public class JulcExtension {
                 .convention(project.getLayout().getBuildDirectory().dir("plutus"));
         sourceMap = objects.property(Boolean.class).convention(false);
         blueprint = objects.property(Boolean.class).convention(true);
+        target = objects.property(String.class)
+                .convention("plutus-v3-pv11-uplc-1.1.0");
     }
 
     public DirectoryProperty getSourceDir() {
@@ -60,5 +64,10 @@ public class JulcExtension {
     /** Whether compilation must also produce a complete CIP-57 blueprint. */
     public Property<Boolean> getBlueprint() {
         return blueprint;
+    }
+
+    /** Exact, fail-closed compiler target profile ID. */
+    public Property<String> getTarget() {
+        return target;
     }
 }

@@ -5,6 +5,7 @@ import com.bloxbean.cardano.julc.compiler.error.DiagnosticCodes;
 import com.bloxbean.cardano.julc.compiler.error.DiagnosticInfo;
 import com.bloxbean.cardano.julc.core.DefaultFun;
 import com.bloxbean.cardano.julc.core.source.SourceLocation;
+import com.bloxbean.cardano.julc.vm.LedgerEvaluationTarget;
 import com.bloxbean.cardano.julc.vm.ProtocolCapability;
 import com.bloxbean.cardano.julc.vm.UplcVersion;
 
@@ -52,6 +53,16 @@ public final class CompilerTargetDiagnostics {
             String feature) {
         var info = DiagnosticCodes.COMPILER_TARGET_INVARIANT_VIOLATION;
         var message = info.format(stage, feature, context.target().profileId());
+        return exception(info, message, null);
+    }
+
+    /** Diagnostic for a caller attempting to evaluate compiled output under another ledger target. */
+    public static CompilerException evaluationTargetMismatch(
+            CompilerTarget compiledTarget,
+            LedgerEvaluationTarget requestedEvaluationTarget) {
+        var info = DiagnosticCodes.COMPILER_EVALUATION_TARGET_MISMATCH;
+        var message = info.format(
+                compiledTarget.profileId(), requestedEvaluationTarget);
         return exception(info, message, null);
     }
 

@@ -2,11 +2,14 @@ package com.bloxbean.julc.cli.mcp.tools;
 
 import com.bloxbean.cardano.julc.compiler.CompileResult;
 import com.bloxbean.cardano.julc.compiler.CompilerException;
+import com.bloxbean.cardano.julc.compiler.CompilerOptions;
+import com.bloxbean.cardano.julc.compiler.CompilerTarget;
+import com.bloxbean.cardano.julc.compiler.CompilerTargetRegistry;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
 import com.bloxbean.cardano.julc.core.PlutusData;
-import com.bloxbean.cardano.julc.core.Program;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
 import com.bloxbean.cardano.julc.vm.EvalResult;
+import com.bloxbean.cardano.julc.vm.EvalOptions;
 import com.bloxbean.cardano.julc.vm.ExBudget;
 import com.bloxbean.cardano.julc.vm.JulcVm;
 import com.bloxbean.cardano.julc.vm.TermExtractor;
@@ -60,6 +63,7 @@ import java.util.Map;
  * <pre>{@code
  * {
  *   "ok": boolean,
+ *   "compilerTarget": "plutus-v3-pv11-uplc-1.1.0",
  *   "result": <auto-extracted: number | hex-string | boolean | string | recursive PlutusData object>,
  *   "resultType": "integer|bytes|boolean|string|data|none",
  *   "cpu": number,
@@ -89,6 +93,7 @@ public final class EvaluateTool {
                   "properties": {
                     "source": { "type": "string", "description": "JuLC Java source." },
                     "method": { "type": "string", "description": "Name of the static method to compile and evaluate." },
+                    "target": { "type": "string", "description": "Exact compiler target profile ID. Defaults to plutus-v3-pv11-uplc-1.1.0." },
                     "args": {
                       "type": "array",
                       "description": "Arguments to apply. Each is a PlutusData JSON shape: {int:n}, {bytes:'0x..'}, {string:'..'}, {bool:b}, {unit:true}, {constr:{tag:int,fields:[..]}}, {list:[..]}, or {map:[{key,value}]}.",
@@ -148,10 +153,18 @@ public final class EvaluateTool {
                     ". Pass each parameter explicitly via the `args` array.");
         }
 
+        Object targetObj = args.getOrDefault(
+                "target", CompilerTarget.PLUTUS_V3_PV11.profileId());
+        if (!(targetObj instanceof String targetProfile) || targetProfile.isBlank()) {
+            return errorResult("'target' must be a non-empty compiler target profile ID.");
+        }
+
         // Compile (with diagnostic-fallback for bare CompilerException).
-        Program program;
+        CompileResult compiled;
         try {
-            var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry());
+            var target = CompilerTargetRegistry.targetForProfileId(targetProfile);
+            var options = new CompilerOptions().setTarget(target);
+            var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), options);
             CompileResult cr = compiler.compileMethod(src, method);
             if (cr.hasErrors() || cr.program() == null) {
                 Map<String, Object> body = new LinkedHashMap<>();
@@ -160,7 +173,7 @@ public final class EvaluateTool {
                 body.put("diagnostics", CompileTool.renderDiagnostics(cr.diagnostics()));
                 return buildResult(body, jsonMapper);
             }
-            program = cr.program();
+            compiled = cr;
         } catch (CompilerException ce) {
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("ok", false);
@@ -182,13 +195,18 @@ public final class EvaluateTool {
         EvalResult result;
         try {
             result = pdArgs.isEmpty()
-                    ? vm.evaluate(program, DEFAULT_BUDGET)
-                    : vm.evaluateWithArgs(program, pdArgs, DEFAULT_BUDGET);
+                    ? vm.evaluate(
+                            compiled.program(), compiled.target().ledgerTarget(),
+                            DEFAULT_BUDGET, EvalOptions.DEFAULT)
+                    : vm.evaluateWithArgs(
+                            compiled.program(), compiled.target().ledgerTarget(), pdArgs,
+                            DEFAULT_BUDGET, EvalOptions.DEFAULT);
         } catch (Exception e) {
             return errorResult("VM error: " + e.getMessage());
         }
 
         Map<String, Object> body = new LinkedHashMap<>();
+        body.put("compilerTarget", compiled.target().profileId());
         if (result instanceof EvalResult.Success s) {
             body.put("ok", true);
             body.put("cpu", s.consumed().cpuSteps());
