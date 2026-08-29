@@ -135,6 +135,80 @@ public final class OptimizationEvidenceMain {
             }
             """;
 
+    private static final String O13_EXP_MOD_LITERAL_SOURCE = """
+            import com.bloxbean.cardano.julc.stdlib.lib.MathLib;
+            import java.math.BigInteger;
+            class ExpModLiteralEvidence {
+                static BigInteger literals() {
+                    return MathLib.expMod(
+                                    BigInteger.valueOf(2), BigInteger.valueOf(5),
+                                    BigInteger.valueOf(13))
+                            + MathLib.expMod(
+                                    BigInteger.valueOf(2), BigInteger.valueOf(-1),
+                                    BigInteger.valueOf(5))
+                            + MathLib.expMod(
+                                    BigInteger.valueOf(0), BigInteger.valueOf(0),
+                                    BigInteger.valueOf(7));
+                }
+            }
+            """;
+
+    private static final String O13_EXP_MOD_INVALID_LITERAL_SOURCE = """
+            import com.bloxbean.cardano.julc.stdlib.lib.MathLib;
+            import java.math.BigInteger;
+            class ExpModInvalidLiteralEvidence {
+                static BigInteger zeroModulus() {
+                    return MathLib.expMod(
+                            BigInteger.valueOf(2), BigInteger.valueOf(5),
+                            BigInteger.ZERO);
+                }
+            }
+            """;
+
+    private static final String O13_EXP_MOD_FAILURE_MATRIX_SOURCE = """
+            import com.bloxbean.cardano.julc.stdlib.lib.MathLib;
+            import java.math.BigInteger;
+            class ExpModFailureMatrixEvidence {
+                static BigInteger invalid(long mode) {
+                    if (mode == 0) {
+                        return MathLib.expMod(
+                                BigInteger.valueOf(2), BigInteger.valueOf(5),
+                                BigInteger.ZERO);
+                    }
+                    if (mode == 1) {
+                        return MathLib.expMod(
+                                BigInteger.valueOf(2), BigInteger.valueOf(5),
+                                BigInteger.valueOf(-7));
+                    }
+                    return MathLib.expMod(
+                            BigInteger.valueOf(2), BigInteger.valueOf(-1),
+                            BigInteger.valueOf(4));
+                }
+            }
+            """;
+
+    private static final String AGGREGATE_SOURCE = """
+            import com.bloxbean.cardano.julc.core.PlutusData;
+            import com.bloxbean.cardano.julc.core.types.JulcList;
+            import com.bloxbean.cardano.julc.stdlib.Builtins;
+            import com.bloxbean.cardano.julc.stdlib.lib.MathLib;
+            import java.math.BigInteger;
+            class Pv11AggregateEvidence {
+                static PlutusData validateLike(
+                        PlutusData data, long dropCount, BigInteger minimum) {
+                    JulcList<PlutusData> items = Builtins.unListData(data);
+                    JulcList<PlutusData> remaining = items.drop(dropCount);
+                    if (remaining.isEmpty()) return Builtins.iData(0);
+                    BigInteger head = Builtins.unIData(remaining.head());
+                    if (head.compareTo(minimum) < 0) return Builtins.iData(0);
+                    BigInteger bonus = MathLib.expMod(
+                            BigInteger.valueOf(2), BigInteger.valueOf(5),
+                            BigInteger.valueOf(13));
+                    return Builtins.iData(head.add(bonus));
+                }
+            }
+            """;
+
     private OptimizationEvidenceMain() {
     }
 
@@ -160,6 +234,12 @@ public final class OptimizationEvidenceMain {
         System.out.print(o9ArrayPromotionExperiment().toMarkdown());
         System.out.println();
         System.out.print(o12ExpModIdiomExperiment().toMarkdown());
+        System.out.println();
+        System.out.print(o13ExpModLiteralComparison().toMarkdown());
+        System.out.println();
+        System.out.print(o13ExpModInvalidLiteralComparison().toMarkdown());
+        System.out.println();
+        System.out.print(aggregatePv11SafeComparison().toMarkdown());
     }
 
     public static OptimizationBenchmarkRunner.Comparison o1DropListComparison() {
@@ -400,6 +480,66 @@ public final class OptimizationEvidenceMain {
                 new OptimizationBenchmarkRunner.Fixture(
                         "o12-exp-mod", O12_EXP_MOD_SOURCE, "explicitExpMod", cases),
                 "pv11.o12.exp-mod-idiom-research",
+                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+    }
+
+    public static OptimizationBenchmarkRunner.Comparison o13ExpModLiteralComparison() {
+        return OptimizationBenchmarkRunner.compareWithJavaAndTruffle(
+                new OptimizationBenchmarkRunner.Fixture(
+                        "o13-exp-mod-literal-fold",
+                        O13_EXP_MOD_LITERAL_SOURCE,
+                        "literals",
+                        List.of(OptimizationBenchmarkRunner.InputCase.of("literal-suite"))),
+                OptimizationLevel.PV11_SAFE,
+                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+    }
+
+    public static OptimizationBenchmarkRunner.Comparison o13ExpModInvalidLiteralComparison() {
+        return OptimizationBenchmarkRunner.compareWithJavaAndTruffle(
+                new OptimizationBenchmarkRunner.Fixture(
+                        "o13-exp-mod-invalid-literal",
+                        O13_EXP_MOD_INVALID_LITERAL_SOURCE,
+                        "zeroModulus",
+                        List.of(OptimizationBenchmarkRunner.InputCase.of("zero-modulus"))),
+                OptimizationLevel.PV11_SAFE,
+                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+    }
+
+    /** Failure matrix is checked in tests but omitted from release-note output. */
+    public static OptimizationBenchmarkRunner.Comparison o13ExpModFailureMatrix() {
+        return OptimizationBenchmarkRunner.compareWithJavaAndTruffle(
+                new OptimizationBenchmarkRunner.Fixture(
+                        "o13-exp-mod-failure-matrix",
+                        O13_EXP_MOD_FAILURE_MATRIX_SOURCE,
+                        "invalid",
+                        List.of(
+                                OptimizationBenchmarkRunner.InputCase.of(
+                                        "zero-modulus", PlutusData.integer(0)),
+                                OptimizationBenchmarkRunner.InputCase.of(
+                                        "negative-modulus", PlutusData.integer(1)),
+                                OptimizationBenchmarkRunner.InputCase.of(
+                                        "non-invertible", PlutusData.integer(2)))),
+                OptimizationLevel.PV11_SAFE,
+                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+    }
+
+    public static OptimizationBenchmarkRunner.Comparison aggregatePv11SafeComparison() {
+        return OptimizationBenchmarkRunner.compareWithJavaAndTruffle(
+                new OptimizationBenchmarkRunner.Fixture(
+                        "pv11-safe-aggregate-validator-like",
+                        AGGREGATE_SOURCE,
+                        "validateLike",
+                        List.of(
+                                input("accept", sampleList(), 1, 15),
+                                input("below-minimum", sampleList(), 1, 25),
+                                input("negative-drop", sampleList(), -1, 5),
+                                input("empty-after-drop", sampleList(), 3, 5),
+                                input("over-drop", sampleList(), 8, 5),
+                                input("empty-input", PlutusData.list(), 0, 5),
+                                input("malformed-list", PlutusData.integer(1), 0, 5),
+                                input("malformed-head", PlutusData.list(
+                                        PlutusData.bytes(new byte[] {1})), 0, 5))),
+                OptimizationLevel.PV11_SAFE,
                 OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
     }
 
