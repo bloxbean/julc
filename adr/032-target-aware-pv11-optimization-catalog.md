@@ -841,7 +841,8 @@ See [#95](https://github.com/bloxbean/julc/issues/95),
 
 ### Milestone 3 — Case-on-builtin experiments
 
-**Implementation status:** Complete on its milestone branch (2026-08-29).
+**Implementation status:** Complete and merged into the ADR-032 integration
+line (2026-08-29).
 See [O2–O6 evidence](evidence/032-o2-o6-case-builtins.md) and child issues
 [#97](https://github.com/bloxbean/julc/issues/97) through
 [#101](https://github.com/bloxbean/julc/issues/101).
