@@ -821,9 +821,22 @@ line (2026-08-29). See [#94](https://github.com/bloxbean/julc/issues/94) and
 
 ### Milestone 2 — Typed native operations
 
-- Design and review `JulcValue` and typed BLS group/list APIs.
-- Add explicit native Value and MSM operations without automatic fusion.
-- Establish conversion and representation tests.
+**Implementation status:** Complete on its milestone branch (2026-08-29).
+See [#95](https://github.com/bloxbean/julc/issues/95),
+[O7 evidence](evidence/032-o7-native-value.md), and the
+[O11 deferral](evidence/032-o11-bls-msm-deferral.md).
+
+- Added `JulcValue` in `julc-core` and a distinct `NativeValueType` in typed
+  PIR. The marker is erased during lowering and adds zero UPLC cost.
+- Retyped the experimental native Value API and reject Data/native mixing and
+  opaque native values at external Data argument boundaries.
+- Kept ledger `Value`/`ValuesLib` Data encoding unchanged and added explicit
+  migration guidance, stable diagnostics, malformed-Data tests, and exact
+  Java/Truffle budget/hash evidence.
+- Deferred typed BLS MSM and fusion: existing Data-wrapped JuLC lists cannot
+  represent the builtin's native scalar/G1/G2 lists, and the current shared
+  `byte[]` representation cannot preserve group identity. No unsafe bridge or
+  speculative fusion was introduced.
 
 ### Milestone 3 — Case-on-builtin experiments
 
@@ -916,15 +929,20 @@ Resolved by Milestone 0:
    deterministic source and arguments, not because it is convenient for a
    favorable result.
 
+Resolved by Milestone 2:
+
+1. `JulcValue` lives in `julc-core`'s on-chain `core.types` package because it
+   is an opaque UPLC representation shared by compiler and stdlib, not a ledger
+   Data schema.
+2. The current `byte[]` BLS API cannot safely preserve G1/G2/Miller identity.
+   A later focused type ADR must define native group and native-list types
+   before typed MSM or fusion; O11 is explicitly deferred.
+
 Still open for their focused child issues:
 
-1. Should `JulcValue` live in `julc-core`, `julc-ledger-api`, or a dedicated
-   on-chain type package?
-2. What typed G1/G2 representation best preserves existing byte-array API
-   compatibility?
-3. Should case-on-list be expressed as a new typed PIR match node or as
+1. Should case-on-list be expressed as a new typed PIR match node or as
    target-aware lowering metadata on existing list traversal builders?
-4. What objective should govern literal folding when CPU improves but embedded
+2. What objective should govern literal folding when CPU improves but embedded
    constant size grows?
 
 These questions are resolved in focused child ADRs/issues; they do not weaken

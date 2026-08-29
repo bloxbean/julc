@@ -34,6 +34,28 @@ public final class OptimizationEvidenceMain {
             }
             """;
 
+    private static final String O7_NATIVE_VALUE_SOURCE = """
+            import com.bloxbean.cardano.julc.core.PlutusData;
+            import com.bloxbean.cardano.julc.core.types.JulcValue;
+            import com.bloxbean.cardano.julc.stdlib.lib.NativeValueLib;
+            import java.math.BigInteger;
+            class NativeValueEvidence {
+                static BigInteger exercise(PlutusData data, byte[] policy, byte[] token) {
+                    JulcValue original = NativeValueLib.fromData(data);
+                    JulcValue inserted = NativeValueLib.insertCoin(
+                            policy, token, BigInteger.valueOf(3), original);
+                    JulcValue scaled = NativeValueLib.scale(BigInteger.valueOf(2), inserted);
+                    JulcValue merged = NativeValueLib.union(original, scaled);
+                    if (!NativeValueLib.contains(merged, original)) {
+                        return BigInteger.valueOf(-1);
+                    }
+                    PlutusData encoded = NativeValueLib.toData(merged);
+                    JulcValue restored = NativeValueLib.fromData(encoded);
+                    return NativeValueLib.lookupCoin(policy, token, restored);
+                }
+            }
+            """;
+
     private OptimizationEvidenceMain() {
     }
 
@@ -41,6 +63,8 @@ public final class OptimizationEvidenceMain {
         System.out.print(o1DropListComparison().toMarkdown());
         System.out.println();
         System.out.print(o1DropListComposedComparison().toMarkdown());
+        System.out.println();
+        System.out.print(o7NativeValueComparison().toMarkdown());
     }
 
     public static OptimizationBenchmarkRunner.Comparison o1DropListComparison() {
@@ -81,6 +105,37 @@ public final class OptimizationEvidenceMain {
                         O1_DROP_LIST_SOURCE,
                         "drop",
                         cases),
+                OptimizationLevel.PV11_SAFE,
+                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+    }
+
+    /**
+     * O7 establishes a typed representation boundary rather than an optimizer
+     * rewrite, so BASELINE and PV11_SAFE must remain byte- and cost-identical.
+     */
+    public static OptimizationBenchmarkRunner.Comparison o7NativeValueComparison() {
+        byte[] policy = new byte[] {1, 2, 3};
+        byte[] token = new byte[] {4, 5};
+        var valueData = PlutusData.map(new PlutusData.Pair(
+                PlutusData.bytes(policy),
+                PlutusData.map(new PlutusData.Pair(
+                        PlutusData.bytes(token),
+                        PlutusData.integer(42)))));
+        return OptimizationBenchmarkRunner.compareWithJavaAndTruffle(
+                new OptimizationBenchmarkRunner.Fixture(
+                        "o7-typed-native-value",
+                        O7_NATIVE_VALUE_SOURCE,
+                        "exercise",
+                        List.of(
+                                OptimizationBenchmarkRunner.InputCase.of(
+                                        "present", valueData,
+                                        PlutusData.bytes(policy), PlutusData.bytes(token)),
+                                OptimizationBenchmarkRunner.InputCase.of(
+                                        "absent", valueData,
+                                        PlutusData.bytes(policy), PlutusData.bytes(new byte[] {9})),
+                                OptimizationBenchmarkRunner.InputCase.of(
+                                        "malformed-data", PlutusData.integer(1),
+                                        PlutusData.bytes(policy), PlutusData.bytes(token)))),
                 OptimizationLevel.PV11_SAFE,
                 OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
     }

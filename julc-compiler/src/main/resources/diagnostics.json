@@ -471,6 +471,28 @@
       "template": "Optimization cost profile {0} is not supported. Supported profiles: {1}",
       "summary": "Cost-directed compilation requires a named profile whose complete parameters and provenance are pinned in JuLC.",
       "fix": "Select one of the listed cost profiles. Do not substitute live node parameters or a profile from another protocol version."
+    },
+    {
+      "code": "JULC0041",
+      "constant": "NATIVE_TYPE_MISMATCH",
+      "status": "emitted",
+      "title": "Native UPLC type mismatch",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "{0} received {1}, but requires {2}",
+      "summary": "Opaque native UPLC values are not Data and cannot be passed through a differently typed compiler boundary.",
+      "fix": "Use the matching typed native operation. Convert native Value explicitly with ValueData, or convert Data explicitly with UnValueData."
+    },
+    {
+      "code": "JULC0042",
+      "constant": "NATIVE_TYPE_AT_DATA_BOUNDARY",
+      "status": "emitted",
+      "title": "Native UPLC type at a Data argument boundary",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "Method parameter {0} has opaque type {1}, which cannot be decoded from a Plutus Data argument",
+      "summary": "compileMethod and validator inputs are Data-encoded; a native evaluator value has no implicit Data representation.",
+      "fix": "Accept PlutusData or a ledger type at the external boundary and call the explicit native conversion inside the method."
     }
   ]
 }

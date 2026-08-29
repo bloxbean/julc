@@ -915,7 +915,12 @@ public class JulcCompiler {
         // 11. Build body: Data-accepting lambda that calls target method by Var reference
         var paramTypes = new ArrayList<PirType>();
         for (var param : targetMethod.getParameters()) {
-            paramTypes.add(typeResolver.resolve(param.getType()));
+            var paramType = typeResolver.resolve(param.getType());
+            if (PirType.isNativeOpaque(paramType)) {
+                throw CompilerTypeDiagnostics.nativeTypeAtDataBoundary(
+                        param.getNameAsString(), paramType, sourceLocation(param));
+            }
+            paramTypes.add(paramType);
         }
 
         // Build application: Var("method") applied to decoded args

@@ -14,6 +14,8 @@ public sealed interface PirType {
     record BoolType() implements PirType {}
     record UnitType() implements PirType {}
     record DataType() implements PirType {}
+    /** Opaque PV11 native Value; never interchangeable with DataType. */
+    record NativeValueType() implements PirType {}
 
     // Container types
     record ListType(PirType elemType) implements PirType {}
@@ -42,5 +44,9 @@ public sealed interface PirType {
     record Field(String name, PirType type) {}
     record Constructor(String name, int tag, List<Field> fields) {
         public Constructor { fields = List.copyOf(fields); }
+    }
+
+    static boolean isNativeOpaque(PirType type) {
+        return type instanceof NativeValueType;
     }
 }

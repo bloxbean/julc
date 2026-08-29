@@ -1292,9 +1292,13 @@ boolean valid = BlsLib.finalVerify(ml1, ml2);
 
 ## NativeValueLib -- Native Value Operations (PV11)
 
-> **Protocol Version 11+ only.** These operations use native UPLC Value builtins (CIP-153) available from PV11 onwards. They will not work on PV10 networks. For PV10 networks, use `ValuesLib` which operates on Map-encoded PlutusData.
+> **PV11 target only.** These operations use native UPLC Value builtins
+> (CIP-153). `JulcValue` is opaque and cannot be used as `PlutusData` or as the
+> ledger API's Data-encoded `Value`.
 
-`NativeValueLib` provides efficient native MaryEra Value operations via PV11 builtins.
+`NativeValueLib` provides explicit native MaryEra Value operations. Convert
+Data once with `fromData`, keep intermediate operations in `JulcValue`, and
+convert back with `toData` only at a Data boundary.
 
 ### Quick Reference
 
@@ -1311,17 +1315,23 @@ boolean valid = BlsLib.finalVerify(ml1, ml2);
 ### Usage
 
 ```java
+import com.bloxbean.cardano.julc.core.PlutusData;
+import com.bloxbean.cardano.julc.core.types.JulcValue;
 import com.bloxbean.cardano.julc.stdlib.lib.NativeValueLib;
 
-// Build a Value with tokens
-var value = NativeValueLib.insertCoin(policyId, tokenName, BigInteger.valueOf(100), emptyValue);
+JulcValue value = NativeValueLib.fromData(dataEncodedValue);
+BigInteger quantity = NativeValueLib.lookupCoin(policyId, tokenName, value);
 
-// Check if one value contains another
-boolean ok = NativeValueLib.contains(outputValue, requiredValue);
-
-// Merge values
-var total = NativeValueLib.union(valueA, valueB);
+JulcValue updated = NativeValueLib.insertCoin(
+        policyId, tokenName, BigInteger.valueOf(100), value);
+PlutusData result = NativeValueLib.toData(updated);
 ```
+
+> **Migration from the pre-ADR-032 experimental API:** change native
+> intermediates previously declared as `PlutusData` to `JulcValue`. Ledger
+> `Value` and `ValuesLib` remain Data-encoded and unchanged. JuLC reports
+> `JULC0041` for Data/native mixing and `JULC0042` when a `JulcValue` is exposed
+> as a compiled method's Data argument.
 
 > **Off-chain:** NativeValueLib methods throw `UnsupportedOperationException` — use `JulcEval.forSource()` for UPLC evaluation.
 
