@@ -14,6 +14,12 @@ UPLC structure, CPU, memory, backend, applied-rule IDs, and the cost-parameter
 hash. `Comparison.toMarkdown()` produces the deterministic tables used in
 ADR evidence and release notes.
 
+Run every checked-in ADR-032 fixture and print those tables with:
+
+```bash
+./gradlew :julc-benchmark:optimizationEvidence
+```
+
 ## Benchmark Classes
 
 | Class | VM Backend | Description |

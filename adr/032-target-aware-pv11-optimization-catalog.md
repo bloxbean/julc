@@ -811,6 +811,10 @@ Implementation decisions for Milestone 0:
 
 ### Milestone 1 — Direct PV11 lowering
 
+**Implementation status:** Complete on the milestone branch; pending merge to
+the ADR-032 integration line. See [#94](https://github.com/bloxbean/julc/issues/94)
+and [O1 evidence](evidence/032-o1-drop-list.md).
+
 - Create the O1 child issue.
 - Implement and verify `JulcList.drop -> DropList`.
 - Publish exact size/budget results and script-hash impact.
