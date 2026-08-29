@@ -1131,7 +1131,7 @@ public class PirGenerator {
             }
 
             validateLoweringRequirements(
-                    typeMethodRegistry.requirements(scopeType, methodName), mce);
+                    typeMethodRegistry.requirements(context, scopeType, methodName), mce);
             var registryResult = typeMethodRegistry.dispatch(
                     context, scope, methodName, compiledArgs, scopeType, argPirTypes);
             if (registryResult.isPresent()) return registryResult.get();
