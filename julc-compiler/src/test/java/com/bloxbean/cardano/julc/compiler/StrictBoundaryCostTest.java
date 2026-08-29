@@ -43,7 +43,7 @@ class StrictBoundaryCostTest {
         var context = PlutusData.constr(0, PlutusData.integer(0),
                 new PlutusData.ListData(values),
                 PlutusData.constr(0, PlutusData.bytes(new byte[28])));
-        var vm = JulcVm.create();
+        var vm = CompilerTestVm.pv11();
         var strictResult = vm.evaluateWithArgs(strict, List.of(context));
 
         assertTrue(strictResult.isSuccess());
@@ -95,7 +95,7 @@ class StrictBoundaryCostTest {
                     new PlutusData.Pair(PlutusData.bytes(new byte[]{(byte) i}), value)));
         }
         var redeemer = PlutusData.constr(0, new PlutusData.ListData(maps));
-        var result = JulcVm.create().evaluateWithArgs(program,
+        var result = CompilerTestVm.pv11().evaluateWithArgs(program,
                 List.of(PlutusData.constr(0, PlutusData.integer(0), redeemer,
                         PlutusData.constr(0, PlutusData.bytes(new byte[28])))));
 

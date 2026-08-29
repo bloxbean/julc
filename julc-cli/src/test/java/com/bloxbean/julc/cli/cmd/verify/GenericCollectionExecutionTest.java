@@ -1,15 +1,14 @@
 package com.bloxbean.julc.cli.cmd.verify;
 
+import com.bloxbean.cardano.julc.compiler.CompileResult;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
 import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
-import com.bloxbean.cardano.julc.vm.JulcVm;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -36,47 +35,46 @@ class GenericCollectionExecutionTest {
                 duplicateMap);
         PlutusData datum = PlutusData.constr(0, config);
 
-        assertTrue(evaluate(compiled.program(), spendingContext(datum, redeemer, owner)),
+        assertTrue(evaluate(compiled, spendingContext(datum, redeemer, owner)),
                 "Canonical nested option/list/map data, including duplicate keys, must decode");
-        assertFalse(evaluate(compiled.program(), spendingContext(datum, redeemer, new byte[28])),
+        assertFalse(evaluate(compiled, spendingContext(datum, redeemer, new byte[28])),
                 "The fixture's signer condition must remain observable after strict decoding");
 
         PlutusData wrongConfigTag = PlutusData.constr(0, PlutusData.constr(1,
                 PlutusData.bytes(owner), PlutusData.constr(1), PlutusData.list(),
                 PlutusData.map()));
-        assertFalse(evaluate(compiled.program(),
+        assertFalse(evaluate(compiled,
                 spendingContext(wrongConfigTag, redeemer, owner)),
                 "A nested record with the wrong constructor tag must reject");
 
         PlutusData malformedOption = PlutusData.constr(0, PlutusData.constr(0,
                 PlutusData.bytes(owner), PlutusData.constr(2), PlutusData.list(),
                 PlutusData.map()));
-        assertFalse(evaluate(compiled.program(),
+        assertFalse(evaluate(compiled,
                 spendingContext(malformedOption, redeemer, owner)),
                 "An optional with an unknown constructor must reject");
 
         PlutusData malformedList = PlutusData.constr(0, PlutusData.constr(0,
                 PlutusData.bytes(owner), PlutusData.constr(1), PlutusData.map(),
                 PlutusData.map()));
-        assertFalse(evaluate(compiled.program(),
+        assertFalse(evaluate(compiled,
                 spendingContext(malformedList, redeemer, owner)),
                 "A Data.Map cannot decode as the declared list");
 
         PlutusData malformedMap = PlutusData.constr(0, PlutusData.constr(0,
                 PlutusData.bytes(owner), PlutusData.constr(1), PlutusData.list(),
                 PlutusData.list()));
-        assertFalse(evaluate(compiled.program(),
+        assertFalse(evaluate(compiled,
                 spendingContext(malformedMap, redeemer, owner)),
                 "A Data.List cannot decode as the declared association map");
 
-        assertFalse(evaluate(compiled.program(),
+        assertFalse(evaluate(compiled,
                 spendingContext(datum, PlutusData.constr(2), owner)),
                 "An unknown sealed-variant constructor must reject");
     }
 
-    private static boolean evaluate(
-            com.bloxbean.cardano.julc.core.Program program, PlutusData context) {
-        return JulcVm.create().evaluateWithArgs(program, List.of(context)).isSuccess();
+    private static boolean evaluate(CompileResult compiled, PlutusData context) {
+        return VerificationExecution.evaluate(compiled, context).isSuccess();
     }
 
     private static PlutusData spendingContext(

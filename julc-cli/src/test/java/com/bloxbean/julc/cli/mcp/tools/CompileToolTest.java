@@ -199,7 +199,7 @@ class CompileToolTest {
         assertEquals("plutus-v3-pv11-uplc-1.1.0", body.get("compilerTarget"));
         @SuppressWarnings("unchecked")
         var optimization = (Map<String, Object>) body.get("optimization");
-        assertEquals("baseline", optimization.get("level"));
+        assertEquals("pv11-safe", optimization.get("level"));
     }
 
     @Test

@@ -7,6 +7,7 @@ import com.bloxbean.cardano.julc.compiler.LibrarySourceResolver;
 import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.core.Term;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
+import com.bloxbean.cardano.julc.vm.EvalOptions;
 import com.bloxbean.cardano.julc.vm.EvalResult;
 import com.bloxbean.cardano.julc.vm.JulcVm;
 import com.bloxbean.cardano.julc.vm.TermExtractor;
@@ -102,7 +103,8 @@ public final class PlaygroundEvaluator {
         }
 
         // Evaluate
-        var evalResult = vm.evaluate(cr.program());
+        var evalResult = vm.evaluate(
+                cr.program(), cr.target().ledgerTarget(), null, EvalOptions.DEFAULT);
         String uplc = cr.uplcFormatted();
 
         return switch (evalResult) {

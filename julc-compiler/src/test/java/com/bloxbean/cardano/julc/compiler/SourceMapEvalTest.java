@@ -39,7 +39,7 @@ class SourceMapEvalTest {
         assertFalse(compiled.hasErrors());
         assertTrue(compiled.hasSourceMap());
 
-        var vm = JulcVm.create();
+        var vm = CompilerTestVm.pv11();
         var result = vm.evaluateWithArgs(compiled.program(), List.of(PlutusData.integer(1)));
 
         assertInstanceOf(EvalResult.Failure.class, result);
@@ -76,7 +76,7 @@ class SourceMapEvalTest {
         var compiled = compiler.compileMethod(source, "check");
 
         // Positive value succeeds
-        var vm = JulcVm.create();
+        var vm = CompilerTestVm.pv11();
         var success = vm.evaluateWithArgs(compiled.program(), List.of(PlutusData.integer(5)));
         assertTrue(success.isSuccess());
 
@@ -109,7 +109,7 @@ class SourceMapEvalTest {
 
         var compiled = compiler.compileMethod(source, "loop");
 
-        var vm = JulcVm.create();
+        var vm = CompilerTestVm.pv11();
         var result = vm.evaluateWithArgs(compiled.program(),
                 List.of(PlutusData.integer(1000000)),
                 new ExBudget(1000, 1000));
@@ -137,7 +137,7 @@ class SourceMapEvalTest {
 
         var compiled = compiler.compileMethod(source, "add");
 
-        var vm = JulcVm.create();
+        var vm = CompilerTestVm.pv11();
         var result = vm.evaluateWithArgs(compiled.program(),
                 List.of(PlutusData.integer(3), PlutusData.integer(4)));
 
@@ -163,7 +163,7 @@ class SourceMapEvalTest {
 
         var compiled = compiler.compileMethod(source, "fail");
 
-        var vm = JulcVm.create();
+        var vm = CompilerTestVm.pv11();
         var result = vm.evaluateWithArgs(compiled.program(), List.of(PlutusData.integer(1)));
 
         // Use testkit utility to resolve

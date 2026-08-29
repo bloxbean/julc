@@ -62,6 +62,7 @@ class JulcPluginTest {
 
         BuildResult result = createRunner("compileJulc").build();
         assertEquals(TaskOutcome.SUCCESS, result.task(":compileJulc").getOutcome());
+        assertTrue(result.getOutput().contains("optimization: pv11-safe"));
 
         // Verify output JSON exists
         Path outputJson = testProjectDir.resolve("build/plutus/AlwaysTrue.json");

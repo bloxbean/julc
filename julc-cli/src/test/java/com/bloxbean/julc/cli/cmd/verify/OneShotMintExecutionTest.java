@@ -3,12 +3,10 @@ package com.bloxbean.julc.cli.cmd.verify;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
 import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
-import com.bloxbean.cardano.julc.vm.JulcVm;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -36,13 +34,13 @@ class OneShotMintExecutionTest {
         PlutusData goodContext = mintingContext(policy, PlutusData.constr(0),
                 correctMint, PlutusData.list(input), PlutusData.list(PlutusData.bytes(authority)));
 
-        var result = JulcVm.create().evaluateWithArgs(compiled.program(), List.of(goodContext));
+        var result = VerificationExecution.evaluate(compiled, goodContext);
         assertTrue(result.isSuccess(), () -> "Expected concrete one-shot acceptance: " + result);
 
         PlutusData malformedRedeemer = mintingContext(policy, PlutusData.integer(0),
                 correctMint, PlutusData.list(input), PlutusData.list(PlutusData.bytes(authority)));
-        assertFalse(JulcVm.create().evaluateWithArgs(
-                compiled.program(), List.of(malformedRedeemer)).isSuccess(),
+        assertFalse(VerificationExecution.evaluate(
+                compiled, malformedRedeemer).isSuccess(),
                 "Strict boundary must reject a malformed redeemer before policy code");
 
         PlutusData duplicateMint = PlutusData.map(
@@ -52,19 +50,19 @@ class OneShotMintExecutionTest {
                 new PlutusData.Pair(PlutusData.bytes(policy),
                         PlutusData.map(new PlutusData.Pair(
                                 PlutusData.bytes(token), PlutusData.integer(1)))));
-        assertFalse(JulcVm.create().evaluateWithArgs(compiled.program(), List.of(
+        assertFalse(VerificationExecution.evaluate(compiled,
                 mintingContext(policy, PlutusData.constr(0), duplicateMint,
                         PlutusData.list(input),
-                        PlutusData.list(PlutusData.bytes(authority))))).isSuccess(),
+                        PlutusData.list(PlutusData.bytes(authority)))).isSuccess(),
                 "Duplicate current-policy entries must reject");
 
         PlutusData wrongQuantity = PlutusData.map(new PlutusData.Pair(
                 PlutusData.bytes(policy), PlutusData.map(new PlutusData.Pair(
                         PlutusData.bytes(token), PlutusData.integer(2)))));
-        assertFalse(JulcVm.create().evaluateWithArgs(compiled.program(), List.of(
+        assertFalse(VerificationExecution.evaluate(compiled,
                 mintingContext(policy, PlutusData.constr(0), wrongQuantity,
                         PlutusData.list(input),
-                        PlutusData.list(PlutusData.bytes(authority))))).isSuccess(),
+                        PlutusData.list(PlutusData.bytes(authority)))).isSuccess(),
                 "Wrong quantity must reject");
     }
 

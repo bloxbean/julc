@@ -4,7 +4,7 @@ import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.core.Program;
 import com.bloxbean.cardano.julc.ledger.*;
 import com.bloxbean.cardano.julc.testkit.ScriptContextTestBuilder;
-import com.bloxbean.cardano.julc.vm.JulcVm;
+import com.bloxbean.cardano.julc.testkit.ValidatorTest;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -14,7 +14,6 @@ import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Arrays;
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -23,8 +22,6 @@ import static org.junit.jupiter.api.Assertions.*;
  * Each test: JRL source -> compile -> apply params -> build context -> VM evaluate.
  */
 class JrlExampleValidatorsTest {
-
-    static JulcVm vm;
 
     static final byte[] PKH1 = new byte[28];
     static final byte[] PKH2 = new byte[28];
@@ -38,20 +35,15 @@ class JrlExampleValidatorsTest {
         Arrays.fill(PKH4, (byte) 0x04);
     }
 
-    @BeforeAll
-    static void setUp() {
-        vm = JulcVm.create();
-    }
-
     // ── Helpers ──────────────────────────────────────────────────
 
     private void assertEvalSuccess(Program program, PlutusData ctx) {
-        var result = vm.evaluateWithArgs(program, List.of(ctx));
+        var result = ValidatorTest.evaluate(program, ctx);
         assertTrue(result.isSuccess(), () -> "Expected success but got: " + result);
     }
 
     private void assertEvalFailure(Program program, PlutusData ctx) {
-        var result = vm.evaluateWithArgs(program, List.of(ctx));
+        var result = ValidatorTest.evaluate(program, ctx);
         assertFalse(result.isSuccess(), () -> "Expected failure but got: " + result);
     }
 

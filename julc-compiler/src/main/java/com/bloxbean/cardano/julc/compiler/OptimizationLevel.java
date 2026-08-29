@@ -20,6 +20,12 @@ public enum OptimizationLevel {
     /** PV11_SAFE plus rules justified by an explicit pinned cost profile. */
     PV11_COSTED("pv11-costed", true, true, true);
 
+    /** Default rollout selected when a public compiler entry point omits the level. */
+    public static final OptimizationLevel DEFAULT = PV11_SAFE;
+
+    /** Stable profile identifier corresponding to {@link #DEFAULT}. */
+    public static final String DEFAULT_PROFILE_ID = "pv11-safe";
+
     private final String profileId;
     private final boolean baselineOptimizerEnabled;
     private final boolean pv11SafeRulesEnabled;

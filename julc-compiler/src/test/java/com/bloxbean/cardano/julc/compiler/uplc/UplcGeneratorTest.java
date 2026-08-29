@@ -109,10 +109,13 @@ class UplcGeneratorTest {
                     new PirTerm.Const(Constant.integer(BigInteger.ONE)),
                     new PirTerm.Const(Constant.integer(BigInteger.ZERO)));
             var result = gen.generate(pir);
-            // Force(Apply(Apply(Apply(Force(Builtin(IfThenElse)), cond), Delay(then)), Delay(else)))
-            assertInstanceOf(Term.Force.class, result);
-            var force = (Term.Force) result;
-            assertInstanceOf(Term.Apply.class, force.term());
+            var caseTerm = assertInstanceOf(Term.Case.class, result);
+            assertEquals(Constant.bool(true),
+                    ((Term.Const) caseTerm.scrutinee()).value());
+            assertEquals(List.of(
+                    Term.const_(Constant.integer(BigInteger.ZERO)),
+                    Term.const_(Constant.integer(BigInteger.ONE))),
+                    caseTerm.branches());
         }
     }
 

@@ -41,14 +41,17 @@ class O2CaseBoolLoweringTest {
     }
 
     @Test
-    void defaultAndExplicitBaselineRemainByteIdentical() {
+    void defaultAndExplicitSafeRemainByteIdentical() {
         var defaults = new JulcCompiler(StdlibRegistry.defaultRegistry())
                 .compileMethod(SOURCE, "choose");
-        var baseline = compile(OptimizationLevel.BASELINE, false);
+        var safe = compile(OptimizationLevel.PV11_SAFE, false);
 
         assertArrayEquals(
                 UplcFlatEncoder.encodeProgram(defaults.program()),
-                UplcFlatEncoder.encodeProgram(baseline.program()));
+                UplcFlatEncoder.encodeProgram(safe.program()));
+        assertTrue(caseCount(defaults.program().term()) > 0);
+        assertEquals(OptimizationLevel.PV11_SAFE,
+                defaults.optimizationReport().level());
     }
 
     @Test

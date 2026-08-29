@@ -32,7 +32,7 @@ class SealedInterfaceTest {
 
     @BeforeAll
     static void setUp() {
-        vm = JulcVm.create();
+        vm = CompilerTestVm.pv11();
         StaticJavaParser.getParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
     }
 

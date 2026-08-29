@@ -99,7 +99,8 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
             this.compilerTarget = CompilerTargetRegistry.targetForProfileId(targetProfile);
             var optimizationOptions = OptimizationConfiguration.apply(
                     new CompilerOptions().setTarget(compilerTarget),
-                    processingEnv.getOptions().getOrDefault("julc.optimization", "baseline"),
+                    processingEnv.getOptions().getOrDefault(
+                            "julc.optimization", OptimizationLevel.DEFAULT_PROFILE_ID),
                     processingEnv.getOptions().get("julc.costProfile"));
             this.optimizationLevel = optimizationOptions.getOptimizationLevel();
             this.optimizationCostProfile = optimizationOptions.getOptimizationCostProfile();

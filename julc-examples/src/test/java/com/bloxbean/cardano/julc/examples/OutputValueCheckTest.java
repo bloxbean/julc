@@ -4,11 +4,9 @@ import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.core.Program;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
 import com.bloxbean.cardano.julc.testkit.ValidatorTest;
-import com.bloxbean.cardano.julc.vm.JulcVm;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -82,12 +80,10 @@ class OutputValueCheckTest {
             }
             """;
 
-    static JulcVm vm;
     static StdlibRegistry stdlib;
 
     @BeforeAll
     static void setUp() {
-        vm = JulcVm.create();
         stdlib = StdlibRegistry.defaultRegistry();
     }
 
@@ -187,7 +183,7 @@ class OutputValueCheckTest {
         var datum = PlutusData.constr(0, PlutusData.integer(3_000_000));
         var txInfo = buildTxInfoWithOutputs(buildTxOut(5_000_000));
         var ctx = buildSpendingCtx(datum, txInfo);
-        var result = vm.evaluateWithArgs(program, List.of(ctx));
+        var result = ValidatorTest.evaluate(program, ctx);
         assertTrue(result.isSuccess(), "5 ADA >= 3 ADA should pass. Got: " + result);
     }
 
@@ -197,7 +193,7 @@ class OutputValueCheckTest {
         var datum = PlutusData.constr(0, PlutusData.integer(3_000_000));
         var txInfo = buildTxInfoWithOutputs(buildTxOut(1_000_000));
         var ctx = buildSpendingCtx(datum, txInfo);
-        var result = vm.evaluateWithArgs(program, List.of(ctx));
+        var result = ValidatorTest.evaluate(program, ctx);
         assertFalse(result.isSuccess(), "1 ADA < 3 ADA should fail. Got: " + result);
     }
 
@@ -211,7 +207,7 @@ class OutputValueCheckTest {
                 buildTxOut(1_000_000),  // 1 ADA — not enough
                 buildTxOut(5_000_000)); // 5 ADA — enough
         var ctx = buildSpendingCtx(datum, txInfo);
-        var result = vm.evaluateWithArgs(program, List.of(ctx));
+        var result = ValidatorTest.evaluate(program, ctx);
         assertTrue(result.isSuccess(), "At least one output >= 3 ADA should pass. Got: " + result);
     }
 
@@ -223,7 +219,7 @@ class OutputValueCheckTest {
                 buildTxOut(1_000_000),  // 1 ADA
                 buildTxOut(2_000_000)); // 2 ADA
         var ctx = buildSpendingCtx(datum, txInfo);
-        var result = vm.evaluateWithArgs(program, List.of(ctx));
+        var result = ValidatorTest.evaluate(program, ctx);
         assertFalse(result.isSuccess(), "No output >= 3 ADA should fail. Got: " + result);
     }
 
@@ -237,7 +233,7 @@ class OutputValueCheckTest {
                 buildTxOut(5_000_000),  // 5 ADA
                 buildTxOut(4_000_000)); // 4 ADA → total 12 ADA
         var ctx = build2ParamCtx(txInfo);
-        var result = vm.evaluateWithArgs(program, List.of(ctx));
+        var result = ValidatorTest.evaluate(program, ctx);
         assertTrue(result.isSuccess(), "Total 12 ADA >= 10 ADA should pass. Got: " + result);
     }
 
@@ -248,7 +244,7 @@ class OutputValueCheckTest {
                 buildTxOut(1_000_000),  // 1 ADA
                 buildTxOut(2_000_000)); // 2 ADA → total 3 ADA
         var ctx = build2ParamCtx(txInfo);
-        var result = vm.evaluateWithArgs(program, List.of(ctx));
+        var result = ValidatorTest.evaluate(program, ctx);
         assertFalse(result.isSuccess(), "Total 3 ADA < 10 ADA should fail. Got: " + result);
     }
 }

@@ -314,6 +314,26 @@ class JulcAnnotationProcessorTest {
     }
 
     @Test
+    void optimizationDefaultsToPv11Safe() throws Exception {
+        var source = """
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                import java.math.BigInteger;
+                @SpendingValidator class DefaultOptimizationValidator {
+                    @Entrypoint static boolean validate(BigInteger r, BigInteger c) {
+                        return true;
+                    }
+                }
+                """;
+
+        var result = compileWithProcessor(
+                source, "DefaultOptimizationValidator");
+
+        assertTrue(result.success(), result.diagnostics().toString());
+        assertTrue(result.diagnostics().stream().anyMatch(diagnostic ->
+                diagnostic.getMessage(null).contains("optimization: pv11-safe")));
+    }
+
+    @Test
     void blueprintDefaultsWhenNoOptions() throws Exception {
         var source = """
                 import com.bloxbean.cardano.julc.stdlib.annotation.*;

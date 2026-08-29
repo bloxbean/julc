@@ -7,6 +7,7 @@ import com.bloxbean.cardano.julc.compiler.CompilerOptions;
 import com.bloxbean.cardano.julc.compiler.CompilerTargetRegistry;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
 import com.bloxbean.cardano.julc.compiler.OptimizationConfiguration;
+import com.bloxbean.cardano.julc.compiler.OptimizationLevel;
 import com.bloxbean.cardano.julc.core.text.UplcPrinter;
 import com.bloxbean.cardano.julc.jrl.JrlCompiler;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
@@ -49,7 +50,7 @@ public class BuildCommand implements Callable<Integer> {
     private String targetProfile;
 
     @Option(names = "--optimization",
-            defaultValue = "baseline",
+            defaultValue = OptimizationLevel.DEFAULT_PROFILE_ID,
             description = "Exact optimizer rollout ID: none, baseline, pv11-safe, or pv11-costed (default: ${DEFAULT-VALUE})")
     private String optimizationProfile;
 

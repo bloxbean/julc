@@ -42,15 +42,17 @@ class O1DropListLoweringTest {
     }
 
     @Test
-    void defaultAndExplicitBaselineRetainPreviousRecursiveLoweringBytes() {
+    void defaultAndExplicitSafeUseNativeLoweringBytes() {
         var defaults = new JulcCompiler(StdlibRegistry.defaultRegistry())
                 .compileMethod(SOURCE, "drop");
-        var baseline = compile(OptimizationLevel.BASELINE);
+        var safe = compile(OptimizationLevel.PV11_SAFE);
 
         assertArrayEquals(
                 UplcFlatEncoder.encodeProgram(defaults.program()),
-                UplcFlatEncoder.encodeProgram(baseline.program()));
-        assertEquals(0, builtinCount(defaults.program().term(), DefaultFun.DropList));
+                UplcFlatEncoder.encodeProgram(safe.program()));
+        assertEquals(1, builtinCount(defaults.program().term(), DefaultFun.DropList));
+        assertEquals(OptimizationLevel.PV11_SAFE,
+                defaults.optimizationReport().level());
     }
 
     @Test

@@ -1,5 +1,6 @@
 package com.bloxbean.cardano.julc.compiler.uplc;
 
+import com.bloxbean.cardano.julc.compiler.CompilerTestVm;
 import com.bloxbean.cardano.julc.core.*;
 import com.bloxbean.cardano.julc.vm.EvalResult;
 import com.bloxbean.cardano.julc.vm.JulcVm;
@@ -22,7 +23,7 @@ class UplcOptimizerTest {
 
     @BeforeAll
     static void setUp() {
-        vm = JulcVm.create();
+        vm = CompilerTestVm.pv11();
     }
 
     private BigInteger evalInteger(Term term) {

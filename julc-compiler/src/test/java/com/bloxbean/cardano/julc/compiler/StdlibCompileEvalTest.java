@@ -30,7 +30,7 @@ class StdlibCompileEvalTest {
 
     @BeforeAll
     static void setUp() {
-        vm = JulcVm.create();
+        vm = CompilerTestVm.pv11();
     }
 
     // ---- Test data helpers ----
@@ -944,7 +944,7 @@ class StdlibCompileEvalTest {
         void divisionSemanticsMatchOnScalusVm() {
             JulcVm scalusVm;
             try {
-                scalusVm = JulcVm.create("Scalus");
+                scalusVm = CompilerTestVm.pv11("Scalus");
             } catch (IllegalStateException ex) {
                 Assumptions.assumeTrue(false, "Scalus provider not available: " + ex.getMessage());
                 return;

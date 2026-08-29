@@ -15,7 +15,7 @@ public class CompilerOptions {
     private boolean verbose = false;
     private boolean sourceMapEnabled = false;
     private CompilerTarget target = CompilerTarget.PLUTUS_V3_PV11;
-    private OptimizationLevel optimizationLevel = OptimizationLevel.BASELINE;
+    private OptimizationLevel optimizationLevel = OptimizationLevel.DEFAULT;
     private OptimizationCostProfile optimizationCostProfile;
     private Consumer<String> logger = System.out::println;
 
