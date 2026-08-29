@@ -157,6 +157,22 @@ public final class DiagnosticCodes {
             "Mutually recursive bindings with more than 2 participants not yet supported: {0}",
             "Refactor: combine the helpers into a single function with an accumulator, or break the recursion via an explicit dispatch on a sealed interface.");
 
+    public static final DiagnosticInfo NATIVE_TYPE_AT_DATA_BOUNDARY = new DiagnosticInfo(
+            "JULC0042",
+            "NATIVE_TYPE_AT_DATA_BOUNDARY",
+            CompilerDiagnostic.Level.ERROR,
+            "TYPE",
+            "Method parameter {0} has opaque type {1}, which cannot be decoded from a Plutus Data argument",
+            "Accept PlutusData or a ledger type at the external boundary and call the explicit native conversion inside the method.");
+
+    public static final DiagnosticInfo NATIVE_TYPE_MISMATCH = new DiagnosticInfo(
+            "JULC0041",
+            "NATIVE_TYPE_MISMATCH",
+            CompilerDiagnostic.Level.ERROR,
+            "TYPE",
+            "{0} received {1}, but requires {2}",
+            "Use the matching typed native operation. Convert native Value explicitly with ValueData, or convert Data explicitly with UnValueData.");
+
     public static final DiagnosticInfo NEWTYPE_UNSUPPORTED_FIELD_TYPE = new DiagnosticInfo(
             "JULC0027",
             "NEWTYPE_UNSUPPORTED_FIELD_TYPE",
@@ -346,6 +362,8 @@ public final class DiagnosticCodes {
             METHOD_MISSING_RETURN,
             MISSING_OPTIMIZATION_COST_PROFILE,
             MUTUAL_RECURSION_TOO_LARGE,
+            NATIVE_TYPE_AT_DATA_BOUNDARY,
+            NATIVE_TYPE_MISMATCH,
             NEWTYPE_UNSUPPORTED_FIELD_TYPE,
             NEWTYPE_WRONG_FIELD_COUNT,
             NULL_UNSUPPORTED,

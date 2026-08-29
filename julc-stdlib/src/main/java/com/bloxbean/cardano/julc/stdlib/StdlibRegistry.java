@@ -1,6 +1,7 @@
 package com.bloxbean.cardano.julc.stdlib;
 
 import com.bloxbean.cardano.julc.compiler.LoweringRequirements;
+import com.bloxbean.cardano.julc.compiler.CompilerTypeDiagnostics;
 import com.bloxbean.cardano.julc.compiler.pir.PirHelpers;
 import com.bloxbean.cardano.julc.compiler.pir.PirTerm;
 import com.bloxbean.cardano.julc.compiler.pir.PirType;
@@ -103,6 +104,7 @@ public final class StdlibRegistry implements StdlibLookup {
     @Override
     public Optional<PirTerm> lookup(String className, String methodName,
                                       List<PirTerm> args, List<PirType> argTypes) {
+        validateNativeValueArguments(className, methodName, argTypes);
         // Optional.of(x) needs arg type info to properly encode the value
         if (isOptionalClass(className) && methodName.equals("of") && args.size() == 1) {
             var elemType = (argTypes != null && !argTypes.isEmpty()) ? argTypes.get(0) : new PirType.DataType();
@@ -189,6 +191,41 @@ public final class StdlibRegistry implements StdlibLookup {
         }
 
         return lookup(className, methodName, args);
+    }
+
+    private static void validateNativeValueArguments(
+            String className, String methodName, List<PirType> argTypes) {
+        if (!(className.equals("Builtins") || className.equals(PKG + "Builtins"))) {
+            return;
+        }
+        var requiredNativeIndexes = switch (methodName) {
+            case "insertCoin" -> java.util.Set.of(3);
+            case "lookupCoin" -> java.util.Set.of(2);
+            case "unionValue", "valueContains" -> java.util.Set.of(0, 1);
+            case "valueData" -> java.util.Set.of(0);
+            case "scaleValue" -> java.util.Set.of(1);
+            default -> java.util.Set.<Integer>of();
+        };
+        var types = argTypes != null ? argTypes : List.<PirType>of();
+        for (int i = 0; i < types.size(); i++) {
+            var actual = types.get(i);
+            if (requiredNativeIndexes.contains(i)
+                    && !(actual instanceof PirType.NativeValueType)) {
+                throw CompilerTypeDiagnostics.nativeTypeMismatch(
+                        "Builtins." + methodName + " argument " + (i + 1),
+                        actual,
+                        new PirType.NativeValueType(),
+                        null);
+            }
+            if (!requiredNativeIndexes.contains(i)
+                    && actual instanceof PirType.NativeValueType) {
+                throw CompilerTypeDiagnostics.nativeTypeMismatch(
+                        "Builtins." + methodName + " argument " + (i + 1),
+                        actual,
+                        new PirType.DataType(),
+                        null);
+            }
+        }
     }
 
     private static boolean isOptionalClass(String className) {

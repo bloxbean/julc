@@ -7,6 +7,7 @@ import com.bloxbean.cardano.julc.core.types.JulcArrayList;
 import com.bloxbean.cardano.julc.core.types.JulcAssocMap;
 import com.bloxbean.cardano.julc.core.types.JulcList;
 import com.bloxbean.cardano.julc.core.types.JulcMap;
+import com.bloxbean.cardano.julc.core.types.JulcValue;
 
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
@@ -951,37 +952,37 @@ public final class Builtins {
     // =========================================================================
 
     /** Insert or update a token quantity in a native Value. PV11 only. */
-    public static PlutusData insertCoin(byte[] policyId, byte[] tokenName, BigInteger amount, PlutusData value) {
+    public static JulcValue insertCoin(byte[] policyId, byte[] tokenName, BigInteger amount, JulcValue value) {
         throw new UnsupportedOperationException("Builtins.insertCoin: on-chain only — use Julc VM for off-chain evaluation");
     }
 
     /** Look up a token quantity in a native Value. Returns 0 if absent. PV11 only. */
-    public static BigInteger lookupCoin(byte[] policyId, byte[] tokenName, PlutusData value) {
+    public static BigInteger lookupCoin(byte[] policyId, byte[] tokenName, JulcValue value) {
         throw new UnsupportedOperationException("Builtins.lookupCoin: on-chain only — use Julc VM for off-chain evaluation");
     }
 
     /** Merge two native Values by adding quantities. PV11 only. */
-    public static PlutusData unionValue(PlutusData a, PlutusData b) {
+    public static JulcValue unionValue(JulcValue a, JulcValue b) {
         throw new UnsupportedOperationException("Builtins.unionValue: on-chain only — use Julc VM for off-chain evaluation");
     }
 
     /** Check if native Value a contains at least Value b (a >= b element-wise). PV11 only. */
-    public static boolean valueContains(PlutusData a, PlutusData b) {
+    public static boolean valueContains(JulcValue a, JulcValue b) {
         throw new UnsupportedOperationException("Builtins.valueContains: on-chain only — use Julc VM for off-chain evaluation");
     }
 
     /** Convert a native Value to its Data encoding. PV11 only. */
-    public static PlutusData valueData(PlutusData value) {
+    public static PlutusData valueData(JulcValue value) {
         throw new UnsupportedOperationException("Builtins.valueData: on-chain only — use Julc VM for off-chain evaluation");
     }
 
     /** Convert Data-encoded value to native Value. PV11 only. */
-    public static PlutusData unValueData(PlutusData data) {
+    public static JulcValue unValueData(PlutusData data) {
         throw new UnsupportedOperationException("Builtins.unValueData: on-chain only — use Julc VM for off-chain evaluation");
     }
 
     /** Scale all quantities in a native Value by a scalar. PV11 only. */
-    public static PlutusData scaleValue(BigInteger scalar, PlutusData value) {
+    public static JulcValue scaleValue(BigInteger scalar, JulcValue value) {
         throw new UnsupportedOperationException("Builtins.scaleValue: on-chain only — use Julc VM for off-chain evaluation");
     }
 

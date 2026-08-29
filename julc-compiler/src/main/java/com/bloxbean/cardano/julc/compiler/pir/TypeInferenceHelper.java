@@ -213,9 +213,6 @@ final class TypeInferenceHelper {
         }
         if (term instanceof PirTerm.App app) {
             PirTerm fn = app.function();
-            if (fn instanceof PirTerm.App innerApp && innerApp.function() instanceof PirTerm.Builtin b) {
-                return inferBuiltinReturnType(b.fun());
-            }
             if (fn instanceof PirTerm.Builtin b) {
                 if (b.fun() == DefaultFun.FstPair
                         && app.argument() instanceof PirTerm.App argApp
@@ -224,6 +221,13 @@ final class TypeInferenceHelper {
                     return new PirType.IntegerType();
                 }
                 return inferBuiltinReturnType(b.fun());
+            }
+            var root = fn;
+            while (root instanceof PirTerm.App nested) {
+                root = nested.function();
+            }
+            if (root instanceof PirTerm.Builtin builtin) {
+                return inferBuiltinReturnType(builtin.fun());
             }
             var fnType = inferPirType(fn);
             if (fnType instanceof PirType.FunType ft) {
@@ -270,6 +274,8 @@ final class TypeInferenceHelper {
                  Bls12_381_millerLoop, Bls12_381_mulMlResult,
                  Bls12_381_G1_multiScalarMul, Bls12_381_G2_multiScalarMul -> new PirType.ByteStringType();
             case AppendString, DecodeUtf8 -> new PirType.StringType();
+            case InsertCoin, UnionValue, UnValueData, ScaleValue ->
+                    new PirType.NativeValueType();
             case UnListData, TailList, MkCons, MkNilData,
                  DropList, MultiIndexArray -> new PirType.ListType(new PirType.DataType());
             case UnMapData, MkNilPairData -> new PirType.MapType(new PirType.DataType(), new PirType.DataType());

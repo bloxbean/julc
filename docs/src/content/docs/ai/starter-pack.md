@@ -364,7 +364,8 @@ G1/G2 add/scale/neg, pairing, and `bls12_381_finalVerify` are available on
 PV10+; multi-scalar multiplication (MSM) requires PV11.
 
 ### NativeValueLib (PV11)
-Native Mary-era `Value` operations.
+Native Mary-era `Value` operations use opaque `JulcValue`. Convert explicitly
+with `fromData(PlutusData)` and `toData(JulcValue)`; native Value is not Data.
 
 ### Builtins (`com.bloxbean.cardano.julc.stdlib.Builtins`)
 Plutus builtins exposed by the Java API include `equalsByteString`, `equalsData`, `unBData`, `unIData`, `unMapData`, `unListData`, `unConstrData`, `iData`, `bData`, `mapData`, `listData`, `constrData`, `mkCons`, `mkNilData`, `mkNilPairData`, `nullList`, `headList`, `tailList`, `fstPair`, `sndPair`, `constrTag`, `constrFields`, `error`, `trace`, `replicateByte`, `serialiseData`, byte-string helpers such as `appendByteString`, `sliceByteString`, `integerToByteString`, `byteStringToInteger`, hashing (`sha2_256`, `sha3_256`, `blake2b_256`, `blake2b_224`, `keccak_256`, `ripemd_160`), and BLS helpers. Use Java operators / `BigInteger` methods for integer arithmetic; there is no public `Builtins.addInteger(...)` API.
