@@ -726,6 +726,22 @@ class BlueprintTest {
     }
 
     @Test
+    void nativeValueBoundaryDoesNotFallBackToOpaqueData() {
+        var contract = new ContractSchema(
+                ContractSchema.Purpose.SPEND,
+                new ContractSchema.Argument(
+                        "datum", new PirType.NativeValueType(), null),
+                new ContractSchema.Argument(
+                        "redeemer", new PirType.DataType(), null),
+                List.of());
+
+        var error = assertThrows(SchemaGenerator.SchemaGenerationException.class,
+                () -> SchemaGenerator.from(contract));
+        assertTrue(error.getMessage().contains("NativeValueType"));
+        assertFalse(error.getMessage().contains("Any Plutus data"));
+    }
+
+    @Test
     void sameSimpleNamedTypesWithDifferentShapesFailClosed() {
         String validator = """
                 import com.bloxbean.cardano.julc.stdlib.annotation.*;

@@ -221,6 +221,7 @@ public final class ContractTypeProjection {
                 case PirType.SumType sum -> named(identity(sum), PirType.NamedKind.SUM);
                 case PirType.PairType ignored -> unsupported("pair");
                 case PirType.ArrayType ignored -> unsupported("array");
+                case PirType.NativeValueType ignored -> unsupported("native value");
                 case PirType.FunType ignored -> unsupported("function");
             };
         }

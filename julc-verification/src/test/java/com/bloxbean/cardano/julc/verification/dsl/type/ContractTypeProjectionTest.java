@@ -176,6 +176,18 @@ class ContractTypeProjectionTest {
     }
 
     @Test
+    void rejectsOpaqueNativeValueInsteadOfApproximatingItAsData() {
+        var redeemer = new ContractSchema.Argument(
+                "redeemer", new PirType.NativeValueType(), null);
+        var schema = new ContractSchema(
+                ContractSchema.Purpose.MINT, null, redeemer, List.of(), Map.of());
+
+        assertTrue(assertThrows(IllegalArgumentException.class,
+                () -> ContractTypeProjection.project(schema))
+                .getMessage().contains("native value"));
+    }
+
+    @Test
     void documentsCompilerErasedNewtypeAsItsAuthoritativeRepresentation() {
         ContractSchema schema = compile("""
                 import com.bloxbean.cardano.julc.stdlib.annotation.*;
