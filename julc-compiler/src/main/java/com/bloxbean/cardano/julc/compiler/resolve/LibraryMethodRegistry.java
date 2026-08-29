@@ -2,6 +2,7 @@ package com.bloxbean.cardano.julc.compiler.resolve;
 
 import com.bloxbean.cardano.julc.compiler.CompilerException;
 import com.bloxbean.cardano.julc.compiler.CompilerOptions;
+import com.bloxbean.cardano.julc.compiler.CompilationContext;
 import com.bloxbean.cardano.julc.compiler.pir.PirHelpers;
 import com.bloxbean.cardano.julc.compiler.pir.PirTerm;
 import com.bloxbean.cardano.julc.compiler.pir.PirType;
@@ -32,14 +33,23 @@ public class LibraryMethodRegistry implements StdlibLookup {
     private final Map<String, LibraryMethod> methods = new LinkedHashMap<>();
     // Simple class name -> set of FQCNs (for backward-compat lookup)
     private final Map<String, Set<String>> classNameIndex = new LinkedHashMap<>();
-    private final CompilerOptions options;
+    private final CompilationContext context;
 
     public LibraryMethodRegistry() {
-        this(new CompilerOptions());
+        this(CompilationContext.pv11Defaults());
     }
 
     public LibraryMethodRegistry(CompilerOptions options) {
-        this.options = options != null ? options : new CompilerOptions();
+        this(CompilationContext.resolve(options));
+    }
+
+    private LibraryMethodRegistry(CompilationContext context) {
+        this.context = Objects.requireNonNull(context, "context");
+    }
+
+    /** Create a registry that shares an already-resolved compilation context. */
+    public static LibraryMethodRegistry forCompilation(CompilationContext context) {
+        return new LibraryMethodRegistry(context);
     }
 
     /**
@@ -84,14 +94,14 @@ public class LibraryMethodRegistry implements StdlibLookup {
         var expectedTypes = extractParamTypes(method.type());
 
         // Apply coercions where caller type differs from callee's expected type
-        options.logf("Resolving library method: %s.%s", className, methodName);
+        context.logf("Resolving library method: %s.%s", className, methodName);
         var coercedArgs = new ArrayList<PirTerm>(args.size());
         for (int i = 0; i < args.size(); i++) {
             var arg = args.get(i);
             var callerType = i < argTypes.size() ? argTypes.get(i) : new PirType.DataType();
             var calleeType = i < expectedTypes.size() ? expectedTypes.get(i) : new PirType.DataType();
             if (!callerType.equals(calleeType) && callerType instanceof PirType.DataType && isPrimitiveType(calleeType)) {
-                options.logf("Coercing arg %d: Data -> %s", i, pirTypeName(calleeType));
+                context.logf("Coercing arg %d: Data -> %s", i, pirTypeName(calleeType));
             }
             coercedArgs.add(coerceArg(arg, callerType, calleeType));
         }

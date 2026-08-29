@@ -1,5 +1,6 @@
 package com.bloxbean.cardano.julc.compiler.uplc;
 
+import com.bloxbean.cardano.julc.compiler.CompilationContext;
 import com.bloxbean.cardano.julc.core.BuiltinSemantics;
 import com.bloxbean.cardano.julc.core.Constant;
 import com.bloxbean.cardano.julc.core.DefaultFun;
@@ -8,6 +9,7 @@ import com.bloxbean.cardano.julc.core.Term;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Multi-pass UPLC optimizer. Runs optimization passes iteratively until fixpoint.
@@ -39,6 +41,15 @@ import java.util.List;
 public class UplcOptimizer {
 
     private static final int MAX_ITERATIONS = 20;
+    private final CompilationContext context;
+
+    public UplcOptimizer() {
+        this(CompilationContext.pv11Defaults());
+    }
+
+    public UplcOptimizer(CompilationContext context) {
+        this.context = Objects.requireNonNull(context, "context");
+    }
 
     /**
      * Optimize a UPLC term by running all passes until fixpoint.
