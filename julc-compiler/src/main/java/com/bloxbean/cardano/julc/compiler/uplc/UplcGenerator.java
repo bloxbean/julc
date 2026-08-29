@@ -2,6 +2,7 @@ package com.bloxbean.cardano.julc.compiler.uplc;
 
 import com.bloxbean.cardano.julc.compiler.CompilerException;
 import com.bloxbean.cardano.julc.compiler.CompilationContext;
+import com.bloxbean.cardano.julc.compiler.CompilerTargetDiagnostics;
 import com.bloxbean.cardano.julc.compiler.pir.PirSubstitution;
 import com.bloxbean.cardano.julc.compiler.pir.PirTerm;
 import com.bloxbean.cardano.julc.compiler.pir.PirType;
@@ -22,8 +23,6 @@ import java.util.*;
  * building an {@link IdentityHashMap} for runtime error location tracking.
  */
 public class UplcGenerator {
-
-    private static final int LAST_RELEASED_PV11_BUILTIN_TAG = DefaultFun.ScaleValue.flatCode();
 
     private final Deque<String> scope = new ArrayDeque<>();
 
@@ -519,28 +518,16 @@ public class UplcGenerator {
      * common lowering boundary. This catches direct PIR, public Builtins calls,
      * library wrappers, and every JulcCompiler entry point.
      */
-    private static Term generateBuiltin(DefaultFun fun) {
-        if (fun.flatCode() > LAST_RELEASED_PV11_BUILTIN_TAG) {
-            throw unsupportedTargetBuiltin(fun);
+    private Term generateBuiltin(DefaultFun fun) {
+        if (!context.resolvedTarget().featureProfile().isBuiltinAvailable(fun)) {
+            throw CompilerTargetDiagnostics.unavailableBuiltin(
+                    context, fun, currentSourceLocation());
         }
         return wrapForces(Term.builtin(fun), forceCount(fun));
     }
 
-    private static CompilerException unsupportedTargetBuiltin(DefaultFun fun) {
-        if (fun == DefaultFun.MultiIndexArray) {
-            return new CompilerException(
-                    "Cannot compile " + fun + " (FLAT tag " + fun.flatCode()
-                            + "): it is a future/unreleased "
-                            + "CIP-156 builtin and is not available in Plutus V3 at protocol "
-                            + "version 11. Use IndexArray repeatedly "
-                            + "for PV11, or wait for a compiler target that explicitly enables CIP-156.");
-        }
-        return new CompilerException(
-                "Cannot compile " + fun + " (FLAT tag " + fun.flatCode()
-                        + "): it is not available in the current Plutus V3/PV11 target. "
-                        + "This compiler supports released builtins through "
-                        + DefaultFun.ScaleValue + " (FLAT tag "
-                        + LAST_RELEASED_PV11_BUILTIN_TAG + ").");
+    private SourceLocation currentSourceLocation() {
+        return locationStack.isEmpty() ? null : locationStack.peek();
     }
 
     private static Term wrapForces(Term term, int count) {

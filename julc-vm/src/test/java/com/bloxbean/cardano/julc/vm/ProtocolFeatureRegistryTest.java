@@ -121,6 +121,21 @@ class ProtocolFeatureRegistryTest {
     }
 
     @Test
+    void namedCapabilitiesAreDerivedFromTheCanonicalProfile() {
+        var pv10 = profile(PlutusLanguage.PLUTUS_V3, 10);
+        assertTrue(pv10.supports(ProtocolCapability.CONSTR_CASE));
+        assertTrue(pv10.supports(ProtocolCapability.BLS_CONSTANTS));
+        assertFalse(pv10.supports(ProtocolCapability.CASE_ON_BUILTIN_CONSTANTS));
+        assertFalse(pv10.supports(ProtocolCapability.ARRAY_CONSTANTS));
+        assertFalse(pv10.supports(ProtocolCapability.VALUE_CONSTANTS));
+
+        var pv11 = profile(PlutusLanguage.PLUTUS_V3, 11);
+        for (var capability : ProtocolCapability.values()) {
+            assertTrue(pv11.supports(capability), capability::name);
+        }
+    }
+
+    @Test
     void exactKnownSchemaIsPartOfEveryProfile() {
         assertEquals(CostModelSchema.PLUTUS_V1_LEGACY,
                 profile(PlutusLanguage.PLUTUS_V1, 10).costModelSchema());

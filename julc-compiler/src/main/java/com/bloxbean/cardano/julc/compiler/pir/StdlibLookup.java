@@ -1,6 +1,7 @@
 package com.bloxbean.cardano.julc.compiler.pir;
 
 import com.bloxbean.cardano.julc.compiler.CompilationContext;
+import com.bloxbean.cardano.julc.compiler.LoweringRequirements;
 
 import java.util.List;
 import java.util.Optional;
@@ -50,6 +51,11 @@ public interface StdlibLookup {
             List<PirTerm> args,
             List<PirType> argTypes) {
         return lookup(className, methodName, args, argTypes);
+    }
+
+    /** Protocol requirements declared by a registered lowering, if any. */
+    default LoweringRequirements requirements(String className, String methodName) {
+        return LoweringRequirements.NONE;
     }
 
     /**

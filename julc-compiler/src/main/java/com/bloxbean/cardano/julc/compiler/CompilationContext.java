@@ -1,6 +1,7 @@
 package com.bloxbean.cardano.julc.compiler;
 
 import com.bloxbean.cardano.julc.compiler.error.CompilerDiagnostic;
+import com.bloxbean.cardano.julc.vm.ProtocolCapability;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -62,6 +63,15 @@ public final class CompilationContext {
 
     public boolean isSourceMapEnabled() {
         return sourceMapEnabled;
+    }
+
+    /** Whether both the ledger profile and selected UPLC version support a capability. */
+    public boolean supports(ProtocolCapability capability) {
+        if (capability == ProtocolCapability.CONSTR_CASE
+                && !target().uplcVersion().supportsConstrAndCase()) {
+            return false;
+        }
+        return resolvedTarget.featureProfile().supports(capability);
     }
 
     /** Return an immutable snapshot of diagnostics reported in this compilation. */

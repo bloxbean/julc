@@ -29,6 +29,38 @@ public final class DiagnosticCodes {
             "Circular type dependency detected among: {0}",
             "Break the cycle by introducing a parameterized record or refactoring the involved types.");
 
+    public static final DiagnosticInfo COMPILER_BUILTIN_UNAVAILABLE = new DiagnosticInfo(
+            "JULC0032",
+            "COMPILER_BUILTIN_UNAVAILABLE",
+            CompilerDiagnostic.Level.ERROR,
+            "TARGET",
+            "Builtin {0} is not available for compiler target {1}",
+            "Use an operation available in the selected target, or explicitly select a future compiler target after JuLC adds and verifies support for it.");
+
+    public static final DiagnosticInfo COMPILER_FEATURE_UNAVAILABLE = new DiagnosticInfo(
+            "JULC0033",
+            "COMPILER_FEATURE_UNAVAILABLE",
+            CompilerDiagnostic.Level.ERROR,
+            "TARGET",
+            "Compiler feature {0} is not available for compiler target {1}",
+            "Use a portable lowering for the selected target, or add the future target through the reviewed compiler support process.");
+
+    public static final DiagnosticInfo COMPILER_PROGRAM_VERSION_MISMATCH = new DiagnosticInfo(
+            "JULC0034",
+            "COMPILER_PROGRAM_VERSION_MISMATCH",
+            CompilerDiagnostic.Level.ERROR,
+            "INTERNAL",
+            "Generated UPLC version {0} does not match compiler target {1}, which requires {2}",
+            "Report this as a JuLC compiler bug with the source, selected target, and verbose compiler log.");
+
+    public static final DiagnosticInfo COMPILER_TARGET_INVARIANT_VIOLATION = new DiagnosticInfo(
+            "JULC0035",
+            "COMPILER_TARGET_INVARIANT_VIOLATION",
+            CompilerDiagnostic.Level.ERROR,
+            "INTERNAL",
+            "Compiler stage {0} emitted target-illegal feature {1} for {2}",
+            "Report this as a JuLC compiler bug. Include the named compiler stage/pass, selected target, and a minimal reproducer.");
+
     public static final DiagnosticInfo C_STYLE_FOR_UNSUPPORTED = new DiagnosticInfo(
             "JULC0018",
             "C_STYLE_FOR_UNSUPPORTED",
@@ -258,6 +290,10 @@ public final class DiagnosticCodes {
             ARRAY_UNSUPPORTED,
             BREAK_OUTSIDE_LOOP,
             CIRCULAR_TYPE_DEPENDENCY,
+            COMPILER_BUILTIN_UNAVAILABLE,
+            COMPILER_FEATURE_UNAVAILABLE,
+            COMPILER_PROGRAM_VERSION_MISMATCH,
+            COMPILER_TARGET_INVARIANT_VIOLATION,
             C_STYLE_FOR_UNSUPPORTED,
             DO_WHILE_UNSUPPORTED,
             DUPLICATE_TYPE_DECLARATION,
