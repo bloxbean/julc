@@ -1,9 +1,11 @@
 package com.bloxbean.cardano.julc.compiler;
 
 import com.bloxbean.cardano.julc.compiler.error.CompilerDiagnostic;
+import com.bloxbean.cardano.julc.vm.OptimizationCostProfile;
 import com.bloxbean.cardano.julc.vm.ProtocolCapability;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
@@ -20,27 +22,48 @@ public final class CompilationContext {
     private final ResolvedCompilerTarget resolvedTarget;
     private final boolean verbose;
     private final boolean sourceMapEnabled;
+    private final OptimizationLevel optimizationLevel;
+    private final OptimizationCostProfile optimizationCostProfile;
     private final Consumer<String> logger;
     private final List<CompilerDiagnostic> diagnostics = new ArrayList<>();
+    private final LinkedHashSet<String> appliedOptimizationRules = new LinkedHashSet<>();
 
     private CompilationContext(
             ResolvedCompilerTarget resolvedTarget,
             boolean verbose,
             boolean sourceMapEnabled,
+            OptimizationLevel optimizationLevel,
+            OptimizationCostProfile optimizationCostProfile,
             Consumer<String> logger) {
         this.resolvedTarget = Objects.requireNonNull(resolvedTarget, "resolvedTarget");
         this.verbose = verbose;
         this.sourceMapEnabled = sourceMapEnabled;
+        this.optimizationLevel = Objects.requireNonNull(
+                optimizationLevel, "optimizationLevel");
+        this.optimizationCostProfile = optimizationCostProfile;
         this.logger = Objects.requireNonNull(logger, "logger");
     }
 
     /** Resolve and snapshot options for one compilation. */
     public static CompilationContext resolve(CompilerOptions options) {
         var effectiveOptions = options != null ? options : new CompilerOptions();
+        var resolvedTarget = CompilerTargetRegistry.resolve(effectiveOptions.getTarget());
+        var optimizationLevel = effectiveOptions.getOptimizationLevel();
+        var costProfile = effectiveOptions.getOptimizationCostProfile();
+        if (optimizationLevel.costProfileRequired() && costProfile == null) {
+            throw CompilerTargetDiagnostics.missingOptimizationCostProfile(optimizationLevel);
+        }
+        if (costProfile != null
+                && !costProfile.target().equals(resolvedTarget.target().ledgerTarget())) {
+            throw CompilerTargetDiagnostics.optimizationCostProfileTargetMismatch(
+                    costProfile, resolvedTarget.target());
+        }
         return new CompilationContext(
-                CompilerTargetRegistry.resolve(effectiveOptions.getTarget()),
+                resolvedTarget,
                 effectiveOptions.isVerbose(),
                 effectiveOptions.isSourceMapEnabled(),
+                optimizationLevel,
+                costProfile,
                 effectiveOptions.getLogger());
     }
 
@@ -63,6 +86,34 @@ public final class CompilationContext {
 
     public boolean isSourceMapEnabled() {
         return sourceMapEnabled;
+    }
+
+    public OptimizationLevel optimizationLevel() {
+        return optimizationLevel;
+    }
+
+    public OptimizationCostProfile optimizationCostProfile() {
+        return optimizationCostProfile;
+    }
+
+    /** Record one stable rule identity in first-application order. */
+    public void recordOptimizationRule(String ruleId) {
+        if (ruleId == null || ruleId.isBlank()) {
+            throw new IllegalArgumentException("ruleId must not be blank");
+        }
+        appliedOptimizationRules.add(ruleId);
+    }
+
+    public void recordOptimizationRules(Iterable<String> ruleIds) {
+        Objects.requireNonNull(ruleIds, "ruleIds");
+        ruleIds.forEach(this::recordOptimizationRule);
+    }
+
+    public OptimizationReport optimizationReport() {
+        return OptimizationReport.of(
+                optimizationLevel,
+                optimizationCostProfile,
+                List.copyOf(appliedOptimizationRules));
     }
 
     /** Whether both the ledger profile and selected UPLC version support a capability. */

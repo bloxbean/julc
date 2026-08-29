@@ -100,6 +100,13 @@ as a new pinned profile after its ledger baseline, compiler lowerings,
 optimizations, and conformance tests are reviewed. Adding it will not change
 the no-option default automatically.
 
+Optimization rollout is selected independently with `--optimization`. Its
+default is `baseline`, which preserves the pre-ADR-032 generated program.
+Reviewed target-aware rules can be requested with `pv11-safe`. The
+`pv11-costed` level additionally requires an exact `--cost-profile`; this
+release pins `cardano-node-11.0.1-plutus-v3-pv11`. Both identifiers are
+case-sensitive and fail closed.
+
 ## Documentation
 
 For full documentation, visit: https://github.com/bloxbean/julc

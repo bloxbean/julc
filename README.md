@@ -127,8 +127,26 @@ The Gradle plugin accepts the same stable profile ID:
 ```groovy
 julc {
     target = 'plutus-v3-pv11-uplc-1.1.0'
+    optimization = 'baseline'
 }
 ```
+
+Optimizer rollout is deliberately separate from the compiler target. The
+stable IDs are `none`, `baseline`, `pv11-safe`, and `pv11-costed`; `baseline`
+is the default and preserves the pre-ADR-032 lowering behavior. Cost-directed
+rules also require an exact pinned profile, for example:
+
+```groovy
+julc {
+    optimization = 'pv11-costed'
+    costProfile = 'cardano-node-11.0.1-plutus-v3-pv11'
+}
+```
+
+The same values are available through `CompilerOptions`, the CLI
+(`--optimization`, `--cost-profile`), annotation-processor options
+(`-Ajulc.optimization`, `-Ajulc.costProfile`), and MCP compile/evaluate tools.
+Unknown identifiers never fall back.
 
 For direct annotation-processor configuration, pass
 `-Ajulc.target=plutus-v3-pv11-uplc-1.1.0`. Supporting a later protocol version

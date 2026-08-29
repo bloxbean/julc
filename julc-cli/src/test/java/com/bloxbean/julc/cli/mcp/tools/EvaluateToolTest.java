@@ -139,6 +139,22 @@ class EvaluateToolTest {
     }
 
     @Test
+    void rejects_costed_optimization_without_profile() {
+        var req = new McpSchema.CallToolRequest("julc_evaluate", Map.of(
+                "source", "class X { static long x() { return 1; } }",
+                "method", "x",
+                "optimization", "pv11-costed"));
+        var res = EvaluateTool.handle(req, jsonMapper);
+        @SuppressWarnings("unchecked")
+        var body = (Map<String, Object>) res.structuredContent();
+        @SuppressWarnings("unchecked")
+        var diagnostics = (List<Map<String, Object>>) body.get("diagnostics");
+        assertEquals(Boolean.FALSE, body.get("ok"));
+        assertTrue(diagnostics.stream().anyMatch(
+                diagnostic -> "JULC0037".equals(diagnostic.get("code"))));
+    }
+
+    @Test
     void parses_all_arg_shapes() {
         // No actual evaluation — just confirm the parser accepts each shape.
         var raw = List.<Object>of(

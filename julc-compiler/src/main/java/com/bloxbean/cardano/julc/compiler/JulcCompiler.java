@@ -119,6 +119,12 @@ public class JulcCompiler {
     private CompilationContext beginCompilation() {
         var context = CompilationContext.resolve(options);
         context.logf("Compiler target: %s", context.target().profileId());
+        context.logf("Optimization level: %s", context.optimizationLevel());
+        if (context.optimizationCostProfile() != null) {
+            context.logf("Optimization cost profile: %s (sha256=%s)",
+                    context.optimizationCostProfile().profileId(),
+                    context.optimizationCostProfile().parameterHash());
+        }
         return context;
     }
 
@@ -616,6 +622,7 @@ public class JulcCompiler {
             var optimizer = new UplcOptimizer(context);
             var optimization = optimizer.optimizeWithReport(uplcTerm);
             uplcTerm = optimization.term();
+            context.recordOptimizationRules(optimization.appliedPasses());
             producingStage = optimizerStage(optimization);
             context.log("UPLC optimization complete");
         }
@@ -636,7 +643,8 @@ public class JulcCompiler {
                 .toList();
 
         var result = new CompileResult(
-                program, diagnostics, paramInfos, capturedPir, capturedUplc, sourceMap, context.target());
+                program, diagnostics, paramInfos, capturedPir, capturedUplc, sourceMap,
+                context.target(), context.optimizationReport());
         ContractSchema contractSchema = captureContractSchema
                 ? buildContractSchema(scriptPurpose, entrypointMethod, entrypointInfos,
                         paramFields, typeResolver, validatorClass)
@@ -974,6 +982,7 @@ public class JulcCompiler {
             var optimizer = new UplcOptimizer(context);
             var optimization = optimizer.optimizeWithReport(uplcTerm);
             uplcTerm = optimization.term();
+            context.recordOptimizationRules(optimization.appliedPasses());
             producingStage = optimizerStage(optimization);
         }
 
@@ -986,7 +995,8 @@ public class JulcCompiler {
                 context,
                 producingStage);
         return new CompileResult(
-                program, diagnostics, paramInfos, body, uplcTerm, sourceMap, context.target());
+                program, diagnostics, paramInfos, body, uplcTerm, sourceMap,
+                context.target(), context.optimizationReport());
     }
 
     // --- Library compilation ---
