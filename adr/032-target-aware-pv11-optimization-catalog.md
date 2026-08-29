@@ -957,6 +957,13 @@ line after the initial review window (2026-08-29).
   reconstructs a source conditional only when the scrutinee is statically a
   saturated Bool-returning builtin or Bool literal; an unknown two-branch case
   remains an SOP switch rather than being guessed to be Boolean.
+- Kept the legacy exact-artifact Blaster suite explicitly on `baseline` after
+  a PV11-safe smoke proof remained compute-bound beyond ten minutes in Lean
+  preprocessing. This is a proof-tool performance boundary, not a semantic
+  failure: PV11-safe remains gated by the differential VM, property, failure,
+  trace, deterministic-hash, aggregate, and benchmark suites. Managed Blaster
+  verification must not be cited as formal coverage of PV11-safe until its
+  `Case Bool` preprocessing is made practical.
 - Retained explicit `baseline` with unchanged lowering as the compatibility
   and historical-script reproduction path.
 - Updated release and evidence documentation to make the default script-hash

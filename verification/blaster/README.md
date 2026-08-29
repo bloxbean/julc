@@ -18,6 +18,16 @@ It compiles dedicated validators through JuLC's production CLI, exports the
 exact double-CBOR blueprint artifacts, validates their script hashes and UPLC
 builtin inventories, and builds a pinned Lean/Blaster project.
 
+The suite explicitly compiles its locked artifacts with `baseline`. It is a
+legacy exact-artifact proof suite, and PV11 `Case Bool` currently causes
+impractically slow Blaster preprocessing (the smoke module alone remained
+compute-bound beyond ten minutes during ADR-032 default-promotion review).
+ADR-032 optimizer correctness is gated separately by semantic, differential
+backend, failure, trace, property, deterministic-hash, and benchmark tests.
+This boundary is a proof-tool performance limitation, not evidence of a
+semantic mismatch, and this suite must not be cited as formal coverage of the
+`pv11-safe` lowering until that limitation is removed.
+
 ## Required tools
 
 - JDK 25
