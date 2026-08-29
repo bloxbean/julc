@@ -1,7 +1,11 @@
 package com.bloxbean.cardano.julc.benchmark.optimization;
 
 import com.bloxbean.cardano.julc.compiler.OptimizationLevel;
+import com.bloxbean.cardano.julc.core.Constant;
+import com.bloxbean.cardano.julc.core.DefaultFun;
+import com.bloxbean.cardano.julc.core.DefaultUni;
 import com.bloxbean.cardano.julc.core.PlutusData;
+import com.bloxbean.cardano.julc.core.Term;
 import com.bloxbean.cardano.julc.vm.OptimizationCostProfiles;
 
 import java.util.ArrayList;
@@ -40,18 +44,37 @@ public final class OptimizationEvidenceMain {
             import com.bloxbean.cardano.julc.stdlib.lib.NativeValueLib;
             import java.math.BigInteger;
             class NativeValueEvidence {
-                static BigInteger exercise(PlutusData data, byte[] policy, byte[] token) {
+                static boolean exercise(PlutusData data, byte[] policy, byte[] token) {
                     JulcValue original = NativeValueLib.fromData(data);
                     JulcValue inserted = NativeValueLib.insertCoin(
                             policy, token, BigInteger.valueOf(3), original);
-                    JulcValue scaled = NativeValueLib.scale(BigInteger.valueOf(2), inserted);
+                    BigInteger quantity = NativeValueLib.lookupCoin(
+                            policy, token, inserted);
+                    JulcValue scaled = NativeValueLib.scale(quantity, inserted);
                     JulcValue merged = NativeValueLib.union(original, scaled);
-                    if (!NativeValueLib.contains(merged, original)) {
-                        return BigInteger.valueOf(-1);
-                    }
                     PlutusData encoded = NativeValueLib.toData(merged);
                     JulcValue restored = NativeValueLib.fromData(encoded);
-                    return NativeValueLib.lookupCoin(policy, token, restored);
+                    return NativeValueLib.contains(restored, original);
+                }
+            }
+            """;
+
+    private static final String O2_CASE_BOOL_SOURCE = """
+            import com.bloxbean.cardano.julc.stdlib.Builtins;
+            class BoolCaseEvidence {
+                static long selected(boolean condition, long mode) {
+                    long encoded = condition ? 1 : 0;
+                    boolean observed = Builtins.unIData(Builtins.trace(
+                            "condition", Builtins.iData(encoded))) == 1;
+                    if (observed) {
+                        if (mode == 1) return Builtins.unIData(Builtins.error());
+                        return Builtins.unIData(Builtins.trace(
+                                "then", Builtins.iData(11)));
+                    } else {
+                        if (mode == 2) return Builtins.unIData(Builtins.error());
+                        return Builtins.unIData(Builtins.trace(
+                                "else", Builtins.iData(22)));
+                    }
                 }
             }
             """;
@@ -65,6 +88,16 @@ public final class OptimizationEvidenceMain {
         System.out.print(o1DropListComposedComparison().toMarkdown());
         System.out.println();
         System.out.print(o7NativeValueComparison().toMarkdown());
+        System.out.println();
+        System.out.print(o2CaseBoolComparison().toMarkdown());
+        System.out.println();
+        System.out.print(o3CaseListExperiment().toMarkdown());
+        System.out.println();
+        System.out.print(o4CasePairExperiment().toMarkdown());
+        System.out.println();
+        System.out.print(o5CaseIntegerExperiment().toMarkdown());
+        System.out.println();
+        System.out.print(o6CaseUnitExperiment().toMarkdown());
     }
 
     public static OptimizationBenchmarkRunner.Comparison o1DropListComparison() {
@@ -140,6 +173,120 @@ public final class OptimizationEvidenceMain {
                 OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
     }
 
+    public static OptimizationBenchmarkRunner.Comparison o2CaseBoolComparison() {
+        return OptimizationBenchmarkRunner.compareWithJavaAndTruffle(
+                new OptimizationBenchmarkRunner.Fixture(
+                        "o2-case-bool",
+                        O2_CASE_BOOL_SOURCE,
+                        "selected",
+                        List.of(
+                                boolInput("true", true, 0),
+                                boolInput("false", false, 0),
+                                boolInput("true-unselected-error", true, 2),
+                                boolInput("false-unselected-error", false, 1),
+                                boolInput("true-selected-error", true, 1),
+                                boolInput("false-selected-error", false, 2))),
+                OptimizationLevel.PV11_SAFE,
+                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+    }
+
+    public static OptimizationBenchmarkRunner.Comparison o3CaseListExperiment() {
+        var xs = Term.var(1);
+        var chooseList = force(Term.builtin(DefaultFun.ChooseList), 2);
+        var baseline = Term.lam("xs", Term.force(Term.apply(
+                Term.apply(
+                        Term.apply(chooseList, xs),
+                        Term.delay(Term.error())),
+                Term.delay(Term.apply(force(Term.builtin(DefaultFun.HeadList), 1), xs)))));
+        var candidate = Term.lam("xs", new Term.Case(
+                xs,
+                List.of(
+                        Term.lam("head", Term.lam("tail", Term.var(2))),
+                        Term.error())));
+        return OptimizationBenchmarkRunner.compareTermsWithJavaAndTruffle(
+                "o3-case-list-head-experiment",
+                baseline,
+                candidate,
+                List.of(
+                        termInput("empty", integerList()),
+                        termInput("singleton", integerList(7)),
+                        termInput("three", integerList(7, 8, 9))),
+                "pv11.o3.case-list-research",
+                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+    }
+
+    public static OptimizationBenchmarkRunner.Comparison o4CasePairExperiment() {
+        var pair = Term.var(1);
+        var fst = Term.apply(force(Term.builtin(DefaultFun.FstPair), 2), pair);
+        var snd = Term.apply(force(Term.builtin(DefaultFun.SndPair), 2), pair);
+        var baseline = Term.lam("pair", Term.apply(
+                Term.apply(Term.builtin(DefaultFun.AddInteger), fst), snd));
+        var candidate = Term.lam("pair", new Term.Case(
+                pair,
+                List.of(Term.lam("first", Term.lam("second", Term.apply(
+                        Term.apply(Term.builtin(DefaultFun.AddInteger), Term.var(2)),
+                        Term.var(1)))))));
+        return OptimizationBenchmarkRunner.compareTermsWithJavaAndTruffle(
+                "o4-case-pair-projection-experiment",
+                baseline,
+                candidate,
+                List.of(
+                        termInput("positive", Term.const_(new Constant.PairConst(
+                                Constant.integer(3), Constant.integer(4)))),
+                        termInput("negative", Term.const_(new Constant.PairConst(
+                                Constant.integer(-5), Constant.integer(2))))),
+                "pv11.o4.case-pair-research",
+                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+    }
+
+    public static OptimizationBenchmarkRunner.Comparison o5CaseIntegerExperiment() {
+        var integer = Term.var(1);
+        var baseline = Term.lam("integer", lazyIf(equalsInteger(integer, 0),
+                Term.const_(Constant.integer(10)),
+                lazyIf(equalsInteger(integer, 1),
+                        Term.const_(Constant.integer(20)),
+                        lazyIf(equalsInteger(integer, 2),
+                                Term.const_(Constant.integer(30)),
+                                Term.error()))));
+        var candidate = Term.lam("integer", new Term.Case(
+                integer,
+                List.of(
+                        Term.const_(Constant.integer(10)),
+                        Term.const_(Constant.integer(20)),
+                        Term.const_(Constant.integer(30)))));
+        return OptimizationBenchmarkRunner.compareResearchTermsWithJavaAndTruffle(
+                "o5-case-integer-dense-experiment",
+                baseline,
+                candidate,
+                List.of(
+                        termInput("negative", Term.const_(Constant.integer(-1))),
+                        termInput("zero", Term.const_(Constant.integer(0))),
+                        termInput("one", Term.const_(Constant.integer(1))),
+                        termInput("two", Term.const_(Constant.integer(2))),
+                        termInput("out-of-range", Term.const_(Constant.integer(3)))),
+                "pv11.o5.case-integer-research",
+                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+    }
+
+    public static OptimizationBenchmarkRunner.Comparison o6CaseUnitExperiment() {
+        var unit = Term.var(1);
+        var continuation = Term.apply(
+                Term.apply(force(Term.builtin(DefaultFun.Trace), 1),
+                        Term.const_(Constant.string("unit"))),
+                Term.const_(Constant.integer(7)));
+        var baseline = Term.lam("unit", Term.apply(
+                Term.apply(force(Term.builtin(DefaultFun.ChooseUnit), 1), unit),
+                continuation));
+        var candidate = Term.lam("unit", new Term.Case(unit, List.of(continuation)));
+        return OptimizationBenchmarkRunner.compareTermsWithJavaAndTruffle(
+                "o6-case-unit-sequencing-experiment",
+                baseline,
+                candidate,
+                List.of(termInput("unit", Term.const_(Constant.unit()))),
+                "pv11.o6.case-unit-research",
+                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+    }
+
     static OptimizationBenchmarkRunner.Fixture o1DropListFixture() {
         var list = sampleList();
         return new OptimizationBenchmarkRunner.Fixture(
@@ -164,6 +311,44 @@ public final class OptimizationEvidenceMain {
                 list,
                 PlutusData.integer(count),
                 PlutusData.integer(mode));
+    }
+
+    private static OptimizationBenchmarkRunner.InputCase boolInput(
+            String id, boolean value, long mode) {
+        return OptimizationBenchmarkRunner.InputCase.of(
+                id,
+                PlutusData.constr(value ? 1 : 0),
+                PlutusData.integer(mode));
+    }
+
+    private static OptimizationBenchmarkRunner.TermInputCase termInput(
+            String id, Term... arguments) {
+        return OptimizationBenchmarkRunner.TermInputCase.of(id, arguments);
+    }
+
+    private static Term integerList(long... values) {
+        var constants = new ArrayList<Constant>();
+        for (long value : values) constants.add(Constant.integer(value));
+        return Term.const_(new Constant.ListConst(DefaultUni.INTEGER, constants));
+    }
+
+    private static Term force(Term term, int count) {
+        for (int i = 0; i < count; i++) term = Term.force(term);
+        return term;
+    }
+
+    private static Term equalsInteger(Term value, long expected) {
+        return Term.apply(
+                Term.apply(Term.builtin(DefaultFun.EqualsInteger), value),
+                Term.const_(Constant.integer(expected)));
+    }
+
+    private static Term lazyIf(Term condition, Term whenTrue, Term whenFalse) {
+        return Term.force(Term.apply(
+                Term.apply(
+                        Term.apply(force(Term.builtin(DefaultFun.IfThenElse), 1), condition),
+                        Term.delay(whenTrue)),
+                Term.delay(whenFalse)));
     }
 
     private static PlutusData sampleList() {

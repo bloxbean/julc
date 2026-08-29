@@ -4,8 +4,6 @@ import com.bloxbean.cardano.julc.core.Constant;
 import com.bloxbean.cardano.julc.core.Term;
 import org.junit.jupiter.api.Test;
 
-import java.math.BigInteger;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -35,22 +33,22 @@ class O7NativeValueBenchmarkTest {
                 .filter(result -> result.outcome()
                         == OptimizationBenchmarkRunner.Outcome.FAILURE)
                 .count());
-        assertIntegerResults(comparison, "present", BigInteger.valueOf(48));
-        assertIntegerResults(comparison, "absent", BigInteger.valueOf(6));
+        assertBooleanResults(comparison, "present", true);
+        assertBooleanResults(comparison, "absent", true);
     }
 
-    private static void assertIntegerResults(
+    private static void assertBooleanResults(
             OptimizationBenchmarkRunner.Comparison comparison,
             String caseId,
-            BigInteger expected) {
+            boolean expected) {
         var results = comparison.candidateEvaluations().stream()
                 .filter(result -> result.caseId().equals(caseId))
                 .toList();
         assertEquals(2, results.size());
         for (var result : results) {
             var term = (Term.Const) result.resultTerm();
-            var integer = (Constant.IntegerConst) term.value();
-            assertEquals(expected, integer.value(), result.backend());
+            var bool = (Constant.BoolConst) term.value();
+            assertEquals(expected, bool.value(), result.backend());
         }
     }
 }

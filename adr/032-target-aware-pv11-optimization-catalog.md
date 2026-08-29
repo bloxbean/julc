@@ -841,9 +841,22 @@ See [#95](https://github.com/bloxbean/julc/issues/95),
 
 ### Milestone 3 — Case-on-builtin experiments
 
-- Split Bool, List, Pair, Integer, and Unit into independent issues.
-- Pin semantics and benchmark each form.
-- Enable only the forms with demonstrated benefit and complete equivalence.
+**Implementation status:** Complete on its milestone branch (2026-08-29).
+See [O2–O6 evidence](evidence/032-o2-o6-case-builtins.md) and child issues
+[#97](https://github.com/bloxbean/julc/issues/97) through
+[#101](https://github.com/bloxbean/julc/issues/101).
+
+- Split and measured Bool, List, Pair, Integer, and Unit independently against
+  the pinned PV11 cost model on Java and Truffle.
+- Enabled O2 as legality-only `pv11.o2.case-bool` at `PV11_SAFE`; false/true
+  branch order, condition-once, selected-branch-only, failures, traces, source
+  maps, size, budgets, and hashes are pinned.
+- Deferred O3 and O4 despite favorable raw measurements: safe compiler rules
+  require typed list/pair destructuring and local use analysis.
+- Deferred O5 because Case changes negative/out-of-range failure text, has no
+  default branch, and cannot implement existing Java switch semantics.
+- Deferred O6 despite favorable raw measurements because JuLC has no supported
+  typed Unit sequencing surface to own the transformation.
 
 ### Milestone 4 — Cost/use-directed rewrites
 
@@ -939,11 +952,16 @@ Resolved by Milestone 2:
    A later focused type ADR must define native group and native-list types
    before typed MSM or fusion; O11 is explicitly deferred.
 
+Resolved by Milestone 3:
+
+1. Case-on-list requires a new typed PIR match/destructuring node. Metadata on
+   existing traversal builders is insufficient across all traversal families;
+   no list rule ships until that representation preserves binding and decode
+   timing explicitly.
+
 Still open for their focused child issues:
 
-1. Should case-on-list be expressed as a new typed PIR match node or as
-   target-aware lowering metadata on existing list traversal builders?
-2. What objective should govern literal folding when CPU improves but embedded
+1. What objective should govern literal folding when CPU improves but embedded
    constant size grows?
 
 These questions are resolved in focused child ADRs/issues; they do not weaken

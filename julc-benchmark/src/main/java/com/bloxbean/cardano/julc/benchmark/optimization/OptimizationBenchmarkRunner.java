@@ -3,11 +3,14 @@ package com.bloxbean.cardano.julc.benchmark.optimization;
 import com.bloxbean.cardano.julc.clientlib.JulcScriptAdapter;
 import com.bloxbean.cardano.julc.compiler.CompileResult;
 import com.bloxbean.cardano.julc.compiler.CompilerOptions;
+import com.bloxbean.cardano.julc.compiler.CompilerTarget;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
 import com.bloxbean.cardano.julc.compiler.OptimizationLevel;
 import com.bloxbean.cardano.julc.core.DefaultFun;
 import com.bloxbean.cardano.julc.core.PlutusData;
+import com.bloxbean.cardano.julc.core.Program;
 import com.bloxbean.cardano.julc.core.Term;
+import com.bloxbean.cardano.julc.core.flat.UplcFlatEncoder;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
 import com.bloxbean.cardano.julc.vm.EvalOptions;
 import com.bloxbean.cardano.julc.vm.EvalResult;
@@ -60,6 +63,18 @@ public final class OptimizationBenchmarkRunner {
 
         public static InputCase of(String id, PlutusData... arguments) {
             return new InputCase(id, List.of(arguments));
+        }
+    }
+
+    /** Native UPLC arguments for research forms not yet exposed by typed Java/PIR. */
+    public record TermInputCase(String id, List<Term> arguments) {
+        public TermInputCase {
+            requireText(id, "id");
+            arguments = List.copyOf(arguments);
+        }
+
+        public static TermInputCase of(String id, Term... arguments) {
+            return new TermInputCase(id, List.of(arguments));
         }
     }
 
@@ -251,6 +266,66 @@ public final class OptimizationBenchmarkRunner {
                 List.of(Backend.javaVm(), Backend.truffleVm()));
     }
 
+    /**
+     * Compare two typed-by-construction UPLC templates under native constant
+     * arguments. This is for ADR research only; it does not authorize an
+     * untyped compiler rewrite.
+     */
+    public static Comparison compareTermsWithJavaAndTruffle(
+            String fixtureId,
+            Term baselineTemplate,
+            Term candidateTemplate,
+            List<TermInputCase> cases,
+            String candidateRule,
+            OptimizationCostProfile costProfile) {
+        return compareTerms(
+                fixtureId, baselineTemplate, candidateTemplate, cases,
+                candidateRule, costProfile, true);
+    }
+
+    /** Return deliberately non-equivalent research evidence for a deferred rule. */
+    public static Comparison compareResearchTermsWithJavaAndTruffle(
+            String fixtureId,
+            Term baselineTemplate,
+            Term candidateTemplate,
+            List<TermInputCase> cases,
+            String candidateRule,
+            OptimizationCostProfile costProfile) {
+        return compareTerms(
+                fixtureId, baselineTemplate, candidateTemplate, cases,
+                candidateRule, costProfile, false);
+    }
+
+    private static Comparison compareTerms(
+            String fixtureId,
+            Term baselineTemplate,
+            Term candidateTemplate,
+            List<TermInputCase> cases,
+            String candidateRule,
+            OptimizationCostProfile costProfile,
+            boolean requireEquivalent) {
+        requireText(fixtureId, "fixtureId");
+        Objects.requireNonNull(baselineTemplate, "baselineTemplate");
+        Objects.requireNonNull(candidateTemplate, "candidateTemplate");
+        cases = List.copyOf(cases);
+        if (cases.isEmpty()) throw new IllegalArgumentException("cases must not be empty");
+        requireText(candidateRule, "candidateRule");
+
+        var baseline = Program.plutusV3(baselineTemplate);
+        var candidate = Program.plutusV3(candidateTemplate);
+        var backends = List.of(Backend.javaVm(), Backend.truffleVm());
+        var comparison = new Comparison(
+                fixtureId,
+                measureArtifact(baseline, OptimizationLevel.BASELINE,
+                        List.of(), costProfile),
+                measureArtifact(candidate, OptimizationLevel.PV11_SAFE,
+                        List.of(candidateRule), costProfile),
+                evaluateTerms(baseline, cases, costProfile, backends),
+                evaluateTerms(candidate, cases, costProfile, backends));
+        if (requireEquivalent) comparison.verifyEquivalent();
+        return comparison;
+    }
+
     private static CompileResult compile(
             Fixture fixture,
             OptimizationLevel level,
@@ -299,6 +374,51 @@ public final class OptimizationBenchmarkRunner {
                 JulcScriptAdapter.scriptHash(compiled.program()),
                 metrics(compiled.program().term()),
                 compiled.optimizationReport().appliedRules());
+    }
+
+    private static ArtifactMeasurement measureArtifact(
+            Program program,
+            OptimizationLevel level,
+            List<String> appliedRules,
+            OptimizationCostProfile costProfile) {
+        return new ArtifactMeasurement(
+                level,
+                CompilerTarget.PLUTUS_V3_PV11.profileId(),
+                costProfile.profileId(),
+                costProfile.parameterHash(),
+                UplcFlatEncoder.encodeProgram(program).length,
+                JulcScriptAdapter.scriptHash(program),
+                metrics(program.term()),
+                appliedRules);
+    }
+
+    private static List<EvaluationMeasurement> evaluateTerms(
+            Program template,
+            List<TermInputCase> cases,
+            OptimizationCostProfile costProfile,
+            List<Backend> backends) {
+        var measurements = new ArrayList<EvaluationMeasurement>();
+        for (var backend : backends) {
+            var vm = JulcVm.withProvider(
+                    backend.providerFactory().get(),
+                    costProfile.target().ledgerLanguage());
+            vm.setCostModelParams(costProfile.costModelParameters(), costProfile.target());
+            for (var input : cases) {
+                var applied = template.term();
+                for (var argument : input.arguments()) {
+                    applied = Term.apply(applied, argument);
+                }
+                var program = new Program(
+                        template.major(), template.minor(), template.patch(), applied);
+                var result = vm.evaluate(
+                        program,
+                        costProfile.target(),
+                        null,
+                        EvalOptions.DEFAULT.withBuiltinTrace(false));
+                measurements.add(measure(backend.id(), input.id(), result));
+            }
+        }
+        return measurements;
     }
 
     private static EvaluationMeasurement measure(
