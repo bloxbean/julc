@@ -79,6 +79,62 @@ public final class OptimizationEvidenceMain {
             }
             """;
 
+    private static final String O8_VALUE_SHARING_SOURCE = """
+            import com.bloxbean.cardano.julc.core.PlutusData;
+            import com.bloxbean.cardano.julc.core.types.JulcValue;
+            import com.bloxbean.cardano.julc.stdlib.lib.NativeValueLib;
+            import java.math.BigInteger;
+            class ValueSharingEvidence {
+                static BigInteger repeated(PlutusData data, byte[] policy, byte[] token) {
+                    return NativeValueLib.lookupCoin(
+                                    policy, token, NativeValueLib.fromData(data))
+                            + NativeValueLib.lookupCoin(
+                                    policy, token, NativeValueLib.fromData(data));
+                }
+                static BigInteger shared(PlutusData data, byte[] policy, byte[] token) {
+                    JulcValue value = NativeValueLib.fromData(data);
+                    return NativeValueLib.lookupCoin(policy, token, value)
+                            + NativeValueLib.lookupCoin(policy, token, value);
+                }
+            }
+            """;
+
+    private static final String O9_ARRAY_PROMOTION_SOURCE = """
+            import com.bloxbean.cardano.julc.core.PlutusData;
+            import com.bloxbean.cardano.julc.core.types.JulcArray;
+            import com.bloxbean.cardano.julc.core.types.JulcList;
+            import com.bloxbean.cardano.julc.stdlib.Builtins;
+            import java.math.BigInteger;
+            class ArrayPromotionEvidence {
+                static BigInteger repeatedList(PlutusData data, long first, long second) {
+                    JulcList<PlutusData> items = Builtins.unListData(data);
+                    return Builtins.unIData(items.get(first))
+                            + Builtins.unIData(items.get(second));
+                }
+                static BigInteger promotedArray(PlutusData data, long first, long second) {
+                    JulcList<PlutusData> items = Builtins.unListData(data);
+                    JulcArray<PlutusData> array = items.toArray();
+                    return Builtins.unIData(array.get(first))
+                            + Builtins.unIData(array.get(second));
+                }
+            }
+            """;
+
+    private static final String O12_EXP_MOD_SOURCE = """
+            import com.bloxbean.cardano.julc.stdlib.lib.MathLib;
+            import java.math.BigInteger;
+            class ExpModIdiomEvidence {
+                static BigInteger powThenMod(
+                        BigInteger base, BigInteger exponent, BigInteger modulus) {
+                    return MathLib.pow(base, exponent) % modulus;
+                }
+                static BigInteger explicitExpMod(
+                        BigInteger base, BigInteger exponent, BigInteger modulus) {
+                    return MathLib.expMod(base, exponent, modulus);
+                }
+            }
+            """;
+
     private OptimizationEvidenceMain() {
     }
 
@@ -98,6 +154,12 @@ public final class OptimizationEvidenceMain {
         System.out.print(o5CaseIntegerExperiment().toMarkdown());
         System.out.println();
         System.out.print(o6CaseUnitExperiment().toMarkdown());
+        System.out.println();
+        System.out.print(o8ValueSharingExperiment().toMarkdown());
+        System.out.println();
+        System.out.print(o9ArrayPromotionExperiment().toMarkdown());
+        System.out.println();
+        System.out.print(o12ExpModIdiomExperiment().toMarkdown());
     }
 
     public static OptimizationBenchmarkRunner.Comparison o1DropListComparison() {
@@ -287,6 +349,60 @@ public final class OptimizationEvidenceMain {
                 OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
     }
 
+    public static OptimizationBenchmarkRunner.Comparison o8ValueSharingExperiment() {
+        byte[] policy = new byte[] {1, 2, 3};
+        byte[] token = new byte[] {4, 5};
+        var cases = List.of(
+                OptimizationBenchmarkRunner.InputCase.of(
+                        "valid", sampleValueData(policy, token),
+                        PlutusData.bytes(policy), PlutusData.bytes(token)),
+                OptimizationBenchmarkRunner.InputCase.of(
+                        "malformed", PlutusData.integer(1),
+                        PlutusData.bytes(policy), PlutusData.bytes(token)));
+        return OptimizationBenchmarkRunner.compareResearchFixturesWithJavaAndTruffle(
+                "o8-native-value-sharing-experiment",
+                new OptimizationBenchmarkRunner.Fixture(
+                        "o8-repeated", O8_VALUE_SHARING_SOURCE, "repeated", cases),
+                new OptimizationBenchmarkRunner.Fixture(
+                        "o8-shared", O8_VALUE_SHARING_SOURCE, "shared", cases),
+                "pv11.o8.value-sharing-research",
+                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+    }
+
+    public static OptimizationBenchmarkRunner.Comparison o9ArrayPromotionExperiment() {
+        var cases = List.of(
+                arrayInput("length-1", listOfLength(1), 0, 0),
+                arrayInput("length-3", listOfLength(3), 1, 2),
+                arrayInput("length-8", listOfLength(8), 6, 7),
+                arrayInput("negative", listOfLength(3), -1, 1),
+                arrayInput("out-of-range", listOfLength(3), 1, 3));
+        return OptimizationBenchmarkRunner.compareResearchFixturesWithJavaAndTruffle(
+                "o9-list-to-array-promotion-experiment",
+                new OptimizationBenchmarkRunner.Fixture(
+                        "o9-list", O9_ARRAY_PROMOTION_SOURCE, "repeatedList", cases),
+                new OptimizationBenchmarkRunner.Fixture(
+                        "o9-array", O9_ARRAY_PROMOTION_SOURCE, "promotedArray", cases),
+                "pv11.o9.list-to-array-research",
+                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+    }
+
+    public static OptimizationBenchmarkRunner.Comparison o12ExpModIdiomExperiment() {
+        var cases = List.of(
+                integerInput("ordinary", 2, 5, 13),
+                integerInput("zero-exponent", 0, 0, 7),
+                integerInput("negative-exponent", 2, -1, 5),
+                integerInput("zero-modulus", 2, 5, 0),
+                integerInput("negative-modulus", 2, 5, -7));
+        return OptimizationBenchmarkRunner.compareResearchFixturesWithJavaAndTruffle(
+                "o12-exp-mod-idiom-experiment",
+                new OptimizationBenchmarkRunner.Fixture(
+                        "o12-pow-mod", O12_EXP_MOD_SOURCE, "powThenMod", cases),
+                new OptimizationBenchmarkRunner.Fixture(
+                        "o12-exp-mod", O12_EXP_MOD_SOURCE, "explicitExpMod", cases),
+                "pv11.o12.exp-mod-idiom-research",
+                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+    }
+
     static OptimizationBenchmarkRunner.Fixture o1DropListFixture() {
         var list = sampleList();
         return new OptimizationBenchmarkRunner.Fixture(
@@ -319,6 +435,21 @@ public final class OptimizationEvidenceMain {
                 id,
                 PlutusData.constr(value ? 1 : 0),
                 PlutusData.integer(mode));
+    }
+
+    private static OptimizationBenchmarkRunner.InputCase arrayInput(
+            String id, PlutusData list, long first, long second) {
+        return OptimizationBenchmarkRunner.InputCase.of(
+                id, list, PlutusData.integer(first), PlutusData.integer(second));
+    }
+
+    private static OptimizationBenchmarkRunner.InputCase integerInput(
+            String id, long first, long second, long third) {
+        return OptimizationBenchmarkRunner.InputCase.of(
+                id,
+                PlutusData.integer(first),
+                PlutusData.integer(second),
+                PlutusData.integer(third));
     }
 
     private static OptimizationBenchmarkRunner.TermInputCase termInput(
@@ -356,6 +487,14 @@ public final class OptimizationEvidenceMain {
                 PlutusData.integer(10),
                 PlutusData.integer(20),
                 PlutusData.integer(30));
+    }
+
+    private static PlutusData sampleValueData(byte[] policy, byte[] token) {
+        return PlutusData.map(new PlutusData.Pair(
+                PlutusData.bytes(policy),
+                PlutusData.map(new PlutusData.Pair(
+                        PlutusData.bytes(token),
+                        PlutusData.integer(42)))));
     }
 
     private static PlutusData listOfLength(int length) {
