@@ -17,6 +17,15 @@ class BuildCommandTest {
     private static final ObjectMapper JSON = new ObjectMapper();
 
     @Test
+    void defaultsToPv11SafeOptimization() {
+        var commandLine = new CommandLine(new BuildCommand());
+        commandLine.parseArgs(".");
+
+        assertEquals("pv11-safe", commandLine.getCommandSpec()
+                .findOption("--optimization").getValue());
+    }
+
+    @Test
     void acceptsExactPv11TargetAndRejectsUnknownFutureTarget(@TempDir Path tempDir)
             throws Exception {
         Path project = tempDir.resolve("target-build");

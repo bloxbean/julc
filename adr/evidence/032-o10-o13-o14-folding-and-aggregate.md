@@ -119,5 +119,7 @@ Candidate hash: `2f2ea7f79a5dd083ed51e573dc247267ae7cb978ecc615692479c594`
 
 Every measured aggregate row is equal or lower in both CPU and memory. The
 numbers are fixture-specific ledger budgets, not universal percentage claims.
-Default compilation remains `baseline`; users select `pv11-safe` explicitly,
-and recompilation at that level intentionally changes the script hash.
+The aggregate candidate was initially opt-in. Milestone 6 promoted
+`pv11-safe` to the default after the complete ADR-032 validation gate passed,
+so default recompilation intentionally changes the script hash. Select
+`baseline` explicitly to reproduce the previous lowering and hash.

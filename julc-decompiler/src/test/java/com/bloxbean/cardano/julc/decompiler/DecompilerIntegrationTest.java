@@ -198,7 +198,9 @@ class DecompilerIntegrationTest {
         var result = JulcDecompiler.decompile(program, DecompileOptions.defaults());
 
         assertNotNull(result.javaSource());
-        assertTrue(result.javaSource().contains("if ("));
+        assertTrue(result.javaSource().contains("if (")
+                        || result.javaSource().contains(" ? "),
+                "decompiled conditional should use a Java if or conditional expression");
     }
 
     @Test

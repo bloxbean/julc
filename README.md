@@ -127,14 +127,15 @@ The Gradle plugin accepts the same stable profile ID:
 ```groovy
 julc {
     target = 'plutus-v3-pv11-uplc-1.1.0'
-    optimization = 'baseline'
+    optimization = 'pv11-safe'
 }
 ```
 
 Optimizer rollout is deliberately separate from the compiler target. The
-stable IDs are `none`, `baseline`, `pv11-safe`, and `pv11-costed`; `baseline`
-is the default and preserves the pre-ADR-032 lowering behavior. Cost-directed
-rules also require an exact pinned profile, for example:
+stable IDs are `none`, `baseline`, `pv11-safe`, and `pv11-costed`; `pv11-safe`
+is the default. Select `baseline` explicitly to reproduce the pre-ADR-032
+lowering and script bytes. Cost-directed rules also require an exact pinned
+profile, for example:
 
 ```groovy
 julc {
@@ -147,6 +148,19 @@ The same values are available through `CompilerOptions`, the CLI
 (`--optimization`, `--cost-profile`), annotation-processor options
 (`-Ajulc.optimization`, `-Ajulc.costProfile`), and MCP compile/evaluate tools.
 Unknown identifiers never fall back.
+
+Default compiler output may contain PV11-only `Case Bool` or `DropList` terms.
+`JulcVm` language-only overloads intentionally retain ADR-030's PV10
+compatibility behavior, so raw VM evaluation must use the compiled target:
+
+```java
+var result = compiler.compile(source);
+var evaluation = vm.evaluateWithArgs(
+        result.program(), result.target().ledgerTarget(), args, null,
+        EvalOptions.DEFAULT);
+```
+
+The testkit and CLI evaluation paths propagate this target automatically.
 
 For direct annotation-processor configuration, pass
 `-Ajulc.target=plutus-v3-pv11-uplc-1.1.0`. Supporting a later protocol version

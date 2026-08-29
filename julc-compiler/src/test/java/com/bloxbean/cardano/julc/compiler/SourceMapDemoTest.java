@@ -45,7 +45,7 @@ class SourceMapDemoTest {
         System.out.println();
 
         // --- Case 1: Positive value succeeds ---
-        var vm = JulcVm.create();
+        var vm = CompilerTestVm.pv11();
         var successResult = vm.evaluateWithArgs(compiled.program(), List.of(PlutusData.integer(42)));
         System.out.println("=== Case 1: checkAmount(42) ===");
         System.out.println("Result: " + (successResult.isSuccess() ? "SUCCESS" : "FAILURE"));
@@ -88,7 +88,7 @@ class SourceMapDemoTest {
         var compiled = compiler.compileMethod(source, "sum");
         var sourceMap = compiled.sourceMap();
 
-        var vm = JulcVm.create();
+        var vm = CompilerTestVm.pv11();
         var result = vm.evaluateWithArgs(compiled.program(),
                 List.of(PlutusData.integer(999999)),
                 new ExBudget(5000, 5000)); // very tight budget
@@ -123,7 +123,7 @@ class SourceMapDemoTest {
 
         var compiled = compiler.compileMethod(source, "validate");
         var sourceMap = compiled.sourceMap();
-        var vm = JulcVm.create();
+        var vm = CompilerTestVm.pv11();
 
         // Fails on first check (negative)
         var r1 = vm.evaluateWithArgs(compiled.program(), List.of(PlutusData.integer(-1)));

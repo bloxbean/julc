@@ -6,11 +6,9 @@ import com.bloxbean.cardano.julc.core.Program;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
 import com.bloxbean.cardano.julc.testkit.BudgetAssertions;
 import com.bloxbean.cardano.julc.testkit.ValidatorTest;
-import com.bloxbean.cardano.julc.vm.JulcVm;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -53,12 +51,10 @@ class RealisticMintingTest {
             }
             """;
 
-    static JulcVm vm;
     static StdlibRegistry stdlib;
 
     @BeforeAll
     static void setUp() {
-        vm = JulcVm.create();
         stdlib = StdlibRegistry.defaultRegistry();
     }
 
@@ -104,7 +100,7 @@ class RealisticMintingTest {
         // Redeemer is the authority PubKeyHash
         var ctx = buildMintingCtx(PlutusData.bytes(authorityPkh),
                 PlutusData.bytes(authorityPkh));  // signer matches redeemer
-        var result = vm.evaluateWithArgs(program, List.of(ctx));
+        var result = ValidatorTest.evaluate(program, ctx);
         assertTrue(result.isSuccess(), "Authorized signer should be able to mint: " + result);
     }
 
@@ -118,7 +114,7 @@ class RealisticMintingTest {
 
         var ctx = buildMintingCtx(PlutusData.bytes(authorityPkh),
                 PlutusData.bytes(attackerPkh));  // signer doesn't match
-        var result = vm.evaluateWithArgs(program, List.of(ctx));
+        var result = ValidatorTest.evaluate(program, ctx);
         assertFalse(result.isSuccess(), "Unauthorized signer should be rejected: " + result);
     }
 
@@ -130,7 +126,7 @@ class RealisticMintingTest {
 
         // No signatories
         var ctx = buildMintingCtx(PlutusData.bytes(authorityPkh));
-        var result = vm.evaluateWithArgs(program, List.of(ctx));
+        var result = ValidatorTest.evaluate(program, ctx);
         assertFalse(result.isSuccess(), "No signatories should cause rejection: " + result);
     }
 
@@ -138,7 +134,7 @@ class RealisticMintingTest {
     void alwaysTrueMintAccepts() {
         var program = compileWithStdlib(ALWAYS_TRUE_MINT);
         var ctx = buildMintingCtx(PlutusData.integer(0));
-        var result = vm.evaluateWithArgs(program, List.of(ctx));
+        var result = ValidatorTest.evaluate(program, ctx);
         assertTrue(result.isSuccess(), "Always-true mint should succeed: " + result);
     }
 
@@ -148,7 +144,7 @@ class RealisticMintingTest {
         var pkh = new byte[]{1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
                 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28};
         var ctx = buildMintingCtx(PlutusData.bytes(pkh), PlutusData.bytes(pkh));
-        var result = vm.evaluateWithArgs(program, List.of(ctx));
+        var result = ValidatorTest.evaluate(program, ctx);
         BudgetAssertions.assertBudgetUnder(result, 10_000_000_000L, 10_000_000_000L);
     }
 }

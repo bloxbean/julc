@@ -17,8 +17,10 @@ The evidence runner compiles the same Java source at `baseline` and
 `pv11-safe`, evaluates identical inputs on the Java and Truffle VMs, and fails
 on any difference in outcome, result term, failure text, or trace order. A
 separate bounded matrix covers list lengths 0–8 and counts -3–12 on both VMs.
-Default compilation remains `baseline` and is byte-identical to its
-pre-ADR-032 lowering.
+This evidence was captured while `baseline` was the implementation-window
+default. After the complete ADR-032 validation gate passed, Milestone 6
+promoted `pv11-safe` to the default. Explicit `baseline` remains byte-identical
+to the pre-ADR-032 lowering.
 
 ## Direct call
 
@@ -65,8 +67,7 @@ Baseline script hash: `a0b95c5867b9d02b0c0258048a2edf2a29cc2d869e07a67f6b1987f7`
 
 ## Decision
 
-Ship O1 at the opt-in `pv11-safe` and `pv11-costed` levels. It is a
-legality-only target-aware rewrite: all tested sizes and ledger budgets improve,
-but this milestone does not change the default level. A future default
-promotion remains a separate release decision with `baseline` retained as the
-migration path.
+Ship O1 at the `pv11-safe` and `pv11-costed` levels. It is a legality-only
+target-aware rewrite: all tested sizes and ledger budgets improve. It began
+opt-in; the evidence-backed Milestone 6 release decision promoted `pv11-safe`
+to the default, with `baseline` retained as the migration path.

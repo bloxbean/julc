@@ -4,13 +4,10 @@ import com.bloxbean.cardano.julc.compiler.CompilerOptions;
 import com.bloxbean.cardano.julc.compiler.CompilerTarget;
 import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.core.Program;
-import com.bloxbean.cardano.julc.vm.JulcVm;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
-import org.junit.jupiter.api.BeforeAll;
+import com.bloxbean.cardano.julc.testkit.ValidatorTest;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -19,13 +16,6 @@ import static org.junit.jupiter.api.Assertions.*;
  * Tests the full compilation pipeline end-to-end.
  */
 class JrlIntegrationTest {
-
-    static JulcVm vm;
-
-    @BeforeAll
-    static void setUp() {
-        vm = JulcVm.create();
-    }
 
     // ── Test helpers ────────────────────────────────────────────
 
@@ -247,7 +237,7 @@ class JrlIntegrationTest {
                     """);
 
             var ctx = buildSimpleSpendingCtx(new byte[][]{});
-            var result = vm.evaluateWithArgs(program, List.of(ctx));
+            var result = ValidatorTest.evaluate(program, ctx);
             assertTrue(result.isSuccess(), "Expected success: " + result);
         }
     }

@@ -598,18 +598,32 @@ PV11_SAFE     reviewed target-legal rules that are not input-size dependent
 PV11_COSTED   PV11_SAFE plus rules using an explicit OptimizationCostProfile
 ```
 
-Initial rollout rules:
+Initial rollout rules and completed review window:
 
 - existing behavior maps to `BASELINE`;
-- `BASELINE` remains the default during the first ADR-032 implementation and
-  review window, preserving ADR-031 script bytes;
-- new direct lowerings may begin opt-in if they change widely deployed script
+- `BASELINE` remained the default during the first ADR-032 implementation and
+  review window, preserving ADR-031 script bytes while the rules were opt-in;
+- new direct lowerings began opt-in because they change generated script
   hashes;
 - profile-cost rules are never enabled without a named cost profile;
 - source-map compilation may disable UPLC motion as today, but target
   validation remains active and typed lowerings must maintain source mapping;
 - release notes list every newly default-enabled rule and representative hash
   changes.
+
+Default-promotion decision after the review window:
+
+- `PV11_SAFE` is the default after O1, O2, and O13 passed their semantic,
+  failure, trace, deterministic-hash, Java/Truffle budget, aggregate,
+  repository, documentation, and hosted-verification gates;
+- `BASELINE` remains a stable explicit compatibility level for reproducing
+  pre-ADR-032 lowering and script bytes;
+- the Java compiler API, CLI, Gradle plugin, annotation processor, and MCP
+  tools consume the same named default and are regression-tested against it;
+- the promotion changes only newly compiled artifacts. Existing deployed
+  scripts are unaffected;
+- `PV11_COSTED` remains explicit and still requires a named cost profile. No
+  cost-profile-dependent rule becomes default through this decision.
 
 ## Measurement policy
 
@@ -675,6 +689,8 @@ landing a speculative pass.
 | `julc-testkit` | before/after semantic and budget assertion helpers |
 | `julc-benchmark` | reproducible optimization fixture runner distinct from VM throughput JMH benchmarks |
 | CLI/Gradle/AP | optimization level and cost-profile selection/reporting |
+| `julc-decompiler` | conservative recovery of PV11 `Case Bool` as source-level conditionals when the scrutinee is provably Boolean |
+| playground/JRL | preserve the compiler target when evaluating newly compiled programs |
 | docs/examples | public API migrations, target/cost profile, hash-change guidance |
 
 ## Compatibility and script hashes
@@ -806,8 +822,9 @@ Implementation decisions for Milestone 0:
 - the non-JMH comparison harness checks success/failure, returned terms,
   failure text, trace order, FLAT bytes, script hashes, UPLC structure, CPU,
   and memory, and emits deterministic Markdown tables for release notes;
-- default and explicit `baseline` compilation are byte-identical, and the
-  full affected VM/compiler/tooling test set passed before the milestone merge.
+- during the initial Milestone 0 review window, default and explicit
+  `baseline` compilation were byte-identical, and the full affected
+  VM/compiler/tooling test set passed before the milestone merge.
 
 ### Milestone 1 — Direct PV11 lowering
 
@@ -916,6 +933,37 @@ and formal-verification type projection now reject that opaque native type
 explicitly instead of failing compilation or approximating it as Data. Focused
 fail-closed regressions were added before the repository-wide build was rerun.
 
+### Milestone 6 — Promote reviewed safe rules to the default
+
+**Implementation status:** Complete and merged into the ADR-032 integration
+line after the initial review window (2026-08-29).
+
+- Promoted the single named compiler default from `BASELINE` to `PV11_SAFE`
+  after O1, O2, and O13 passed focused semantic tests, both VM backends, the
+  aggregate validator-like benchmark, the full repository build, and hosted
+  managed verification.
+- Applied the named default consistently to direct Java compilation, CLI,
+  Gradle, annotation processing, and MCP compile/evaluate entry points.
+- Added per-entry-point regressions so an omitted optimization option reports
+  `pv11-safe` rather than silently drifting between tooling surfaces.
+- Migrated compiler evaluation tests to the exact pinned PV11 profile. ADR-030
+  intentionally keeps raw language-only VM overloads on a PV10 compatibility
+  default; CLI, MCP, playground, and `CompileResult` testkit paths propagate the
+  target. The testkit's legacy raw-`Program` convenience overload now uses
+  JuLC's sole compiler target, V3/PV11, while raw VM callers are documented to
+  pass their target explicitly. JRL evaluation tests use this compiler-oriented
+  testkit boundary rather than the raw VM compatibility overload.
+- Added conservative decompiler recovery for the new `Case Bool` shape. It
+  reconstructs a source conditional only when the scrutinee is statically a
+  saturated Bool-returning builtin or Bool literal; an unknown two-branch case
+  remains an SOP switch rather than being guessed to be Boolean.
+- Retained explicit `baseline` with unchanged lowering as the compatibility
+  and historical-script reproduction path.
+- Updated release and evidence documentation to make the default script-hash
+  migration visible. This does not alter already deployed scripts.
+- Kept `pv11-costed` explicit with its pinned-profile requirement; the default
+  promotion enables no deferred or cost-directed optimization.
+
 ### O1–O15 completion audit
 
 | Operation | Child issue | Phase-5 disposition |
@@ -991,6 +1039,8 @@ each child issue's impact.
 - [x] Profile-cost rules record the cost-profile ID and parameter hash.
 - [x] Aggregate size, CPU, memory, and script-hash results are published.
 - [x] Public typed API migrations and generated-hash changes are documented.
+- [x] The evidence-backed `PV11_SAFE` default promotion is consistent across
+      every public compiler entry point, with explicit `BASELINE` fallback.
 - [x] Final target validation runs after all optimizations.
 - [x] Full affected-module and repository validation passes.
 
@@ -999,7 +1049,7 @@ each child issue's impact.
 Resolved by Milestone 0:
 
 1. `NONE`, `BASELINE`, `PV11_SAFE`, and `PV11_COSTED` are the public levels.
-   `BASELINE` is initially default; promotion of a safe rule to the default is
+   `BASELINE` was initially default; promotion of a safe rule to the default is
    an evidence and release decision, not a target change.
 2. The pinned optimization cost-profile contract and resource live in
    backend-neutral `julc-vm`; the compiler does not depend on a VM backend.
@@ -1031,3 +1081,16 @@ Resolved by Milestone 5:
    in `[0, modulus)` and replaces a complete three-constant application, so the
    result's integer encoding and full script are smaller. Array/Value folds
    remain deferred rather than adopting a weighted CPU/size trade-off.
+
+Resolved by Milestone 6:
+
+1. `PV11_SAFE` is the default after all shipped rules and the aggregate suite
+   passed the complete local and hosted validation gates. `BASELINE` remains
+   explicit and byte-compatible for historical-script reproduction.
+2. Default promotion is centralized through one named compiler constant and
+   consumed by Java, CLI, Gradle, annotation-processing, and MCP surfaces.
+3. Compiler consumers must carry `CompileResult.target()` into evaluation.
+   ADR-030's raw VM overload remains a PV10 compatibility API and is not a safe
+   target inference mechanism for PV11 compiler output. JuLC-owned CLI, MCP,
+   playground, testkit, examples, and JRL evaluation paths now follow this
+   rule.

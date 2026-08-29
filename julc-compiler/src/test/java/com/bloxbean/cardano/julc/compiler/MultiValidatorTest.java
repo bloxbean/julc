@@ -18,7 +18,7 @@ class MultiValidatorTest {
 
     @BeforeAll
     static void setUp() {
-        vm = JulcVm.create();
+        vm = CompilerTestVm.pv11();
     }
 
     // --- Helper methods for building ScriptContext Data ---

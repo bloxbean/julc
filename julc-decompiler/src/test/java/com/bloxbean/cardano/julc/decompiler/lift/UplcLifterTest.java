@@ -103,6 +103,36 @@ class UplcLifterTest {
     }
 
     @Test
+    void testLiftPv11CaseBool() {
+        var condition = Term.apply(
+                Term.apply(Term.builtin(DefaultFun.LessThanInteger),
+                        Term.const_(Constant.integer(1))),
+                Term.const_(Constant.integer(2)));
+        var term = Term.case_(condition,
+                Term.const_(Constant.integer(0)),
+                Term.const_(Constant.integer(1)));
+
+        var hir = UplcLifter.lift(term);
+
+        var iff = assertInstanceOf(HirTerm.If.class, hir);
+        assertInstanceOf(HirTerm.BuiltinCall.class, iff.condition());
+        assertEquals(1, assertInstanceOf(HirTerm.IntLiteral.class,
+                iff.thenBranch()).value().intValueExact());
+        assertEquals(0, assertInstanceOf(HirTerm.IntLiteral.class,
+                iff.elseBranch()).value().intValueExact());
+    }
+
+    @Test
+    void twoBranchCaseWithUnknownScrutineeRemainsSwitch() {
+        var term = Term.case_(
+                Term.var(new NamedDeBruijn("unknown", 1)),
+                Term.const_(Constant.integer(0)),
+                Term.const_(Constant.integer(1)));
+
+        assertInstanceOf(HirTerm.Switch.class, UplcLifter.lift(term));
+    }
+
+    @Test
     void testLiftSimpleBuiltinCall() {
         // Apply(Apply(Builtin(AddInteger), Const(1)), Const(2))
         var term = Term.apply(

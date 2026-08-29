@@ -179,7 +179,7 @@ class ContractSchemaTest {
                 """;
 
         var program = new JulcCompiler().compileContract(source).compileResult().program();
-        var vm = JulcVm.create();
+        var vm = CompilerTestVm.pv11();
         var datum = PlutusData.constr(0, PlutusData.integer(7));
         var spendRedeemer = PlutusData.constr(0, PlutusData.integer(8));
         var mintRedeemer = PlutusData.constr(0, PlutusData.bytes(new byte[]{1}));
@@ -348,7 +348,7 @@ class ContractSchemaTest {
         var twoNodes = PlutusData.constr(
                 1, PlutusData.integer(1),
                 PlutusData.constr(1, PlutusData.integer(2), end));
-        var vm = JulcVm.create();
+        var vm = CompilerTestVm.pv11();
 
         var accepted = vm.evaluateWithArgs(program, List.of(mintingContext(twoNodes)));
         var rejected = vm.evaluateWithArgs(program, List.of(mintingContext(oneNode)));

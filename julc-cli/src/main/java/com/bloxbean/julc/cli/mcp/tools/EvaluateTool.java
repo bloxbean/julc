@@ -94,7 +94,7 @@ public final class EvaluateTool {
                     "source": { "type": "string", "description": "JuLC Java source." },
                     "method": { "type": "string", "description": "Name of the static method to compile and evaluate." },
                     "target": { "type": "string", "description": "Exact compiler target profile ID. Defaults to plutus-v3-pv11-uplc-1.1.0." },
-                    "optimization": { "type": "string", "description": "Exact optimizer rollout ID. Defaults to baseline." },
+                    "optimization": { "type": "string", "description": "Exact optimizer rollout ID. Defaults to pv11-safe." },
                     "costProfile": { "type": "string", "description": "Exact pinned cost profile ID; required by pv11-costed." },
                     "args": {
                       "type": "array",

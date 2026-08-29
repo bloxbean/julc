@@ -9,6 +9,7 @@ import com.bloxbean.cardano.julc.compiler.error.CompilerDiagnostic;
 import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
 import com.bloxbean.cardano.julc.vm.EvalResult;
+import com.bloxbean.cardano.julc.vm.EvalOptions;
 import com.bloxbean.cardano.julc.vm.ExBudget;
 import com.bloxbean.cardano.julc.vm.JulcVm;
 import com.bloxbean.cardano.julc.vm.TermExtractor;
@@ -96,7 +97,9 @@ public final class ReplEngine {
             }
 
             // Evaluate
-            EvalResult evalResult = vm.evaluate(compileResult.program());
+            EvalResult evalResult = vm.evaluate(
+                    compileResult.program(), compileResult.target().ledgerTarget(),
+                    null, EvalOptions.DEFAULT);
 
             return switch (evalResult) {
                 case EvalResult.Success s -> {

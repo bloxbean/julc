@@ -7,6 +7,7 @@ import com.bloxbean.cardano.julc.compiler.LibrarySourceResolver;
 import com.bloxbean.cardano.julc.core.Constant;
 import com.bloxbean.cardano.julc.core.Term;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
+import com.bloxbean.cardano.julc.vm.EvalOptions;
 import com.bloxbean.cardano.julc.vm.EvalResult;
 import com.bloxbean.cardano.julc.vm.ExBudget;
 import com.bloxbean.cardano.julc.vm.JulcVm;
@@ -46,7 +47,9 @@ public final class TestRunner {
             }
 
             // Evaluate the compiled program
-            EvalResult evalResult = vm.evaluate(result.program());
+            EvalResult evalResult = vm.evaluate(
+                    result.program(), result.target().ledgerTarget(),
+                    null, EvalOptions.DEFAULT);
 
             return switch (evalResult) {
                 case EvalResult.Success s -> {

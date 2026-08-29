@@ -57,6 +57,18 @@ class TestkitTest {
         }
 
         @Test
+        void rawCompilerProgramEvaluationUsesCurrentPv11Target() {
+            var program = Program.plutusV3(Term.case_(
+                    Term.const_(Constant.bool(true)),
+                    Term.const_(Constant.integer(0)),
+                    Term.const_(Constant.integer(1))));
+
+            var result = ValidatorTest.evaluate(program);
+
+            assertTrue(result.isSuccess(), "PV11 Case Bool should evaluate: " + result);
+        }
+
+        @Test
         void assertValidatesSucceeds() {
             var program = Program.plutusV3(Term.const_(Constant.unit()));
             assertDoesNotThrow(() -> ValidatorTest.assertValidates(program));

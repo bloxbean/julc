@@ -71,7 +71,7 @@ class FailureReportIntegrationTest {
         assertFalse(compiled.hasErrors(), "Compilation should succeed: " + compiled.diagnostics());
         assertTrue(compiled.hasSourceMap());
 
-        var vm = JulcVm.create();
+        var vm = CompilerTestVm.pv11();
         var evalOptions = EvalOptions.DEFAULT.withSourceMap(compiled.sourceMap());
 
         var result = vm.evaluateWithArgs(compiled.program(), List.of(buildMintingCtx()), evalOptions);
@@ -111,7 +111,7 @@ class FailureReportIntegrationTest {
         var compiled = compiler.compile(EQUALITY_FAIL_MINT);
         assertFalse(compiled.hasErrors(), "Compilation should succeed: " + compiled.diagnostics());
 
-        var vm = JulcVm.create();
+        var vm = CompilerTestVm.pv11();
         var evalOptions = EvalOptions.DEFAULT.withSourceMap(compiled.sourceMap());
 
         var result = vm.evaluateWithArgs(compiled.program(), List.of(buildMintingCtx()), evalOptions);
@@ -137,7 +137,7 @@ class FailureReportIntegrationTest {
         var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), options);
         var compiled = compiler.compile(ALWAYS_PASS_MINT);
 
-        var vm = JulcVm.create();
+        var vm = CompilerTestVm.pv11();
         var evalOptions = EvalOptions.DEFAULT.withSourceMap(compiled.sourceMap());
 
         var result = vm.evaluateWithArgs(compiled.program(), List.of(buildMintingCtx()), evalOptions);

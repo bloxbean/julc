@@ -22,7 +22,7 @@ class GovernanceTypeTest {
 
     @BeforeAll
     static void setUp() {
-        vm = JulcVm.create();
+        vm = CompilerTestVm.pv11();
     }
 
     // --- PlutusData builders for governance types ---

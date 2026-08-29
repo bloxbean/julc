@@ -28,8 +28,10 @@ only where the compiler still has enough type and source-semantic information.
 
 Every typed PIR `IfThenElse` lowers to `Case Bool [else, then]` when the
 selected level enables safe PV11 rules and the target advertises
-`CASE_ON_BUILTIN_CONSTANTS`. `BASELINE` and the default retain the previous
-forced/delayed `IfThenElse` bytes. The stable rule ID is
+`CASE_ON_BUILTIN_CONSTANTS`. `BASELINE` retains the previous forced/delayed
+`IfThenElse` bytes. The initial measurement default did too; Milestone 6 later
+promoted `PV11_SAFE` to the default after the complete validation gate passed.
+The stable rule ID is
 `pv11.o2.case-bool`.
 
 The fixture evaluates the condition once through `Trace`, covers both branch

@@ -27,7 +27,7 @@ class StdlibIntegrationTest {
 
     @BeforeAll
     static void setUp() {
-        vm = JulcVm.create();
+        vm = CompilerTestVm.pv11();
     }
 
     /**

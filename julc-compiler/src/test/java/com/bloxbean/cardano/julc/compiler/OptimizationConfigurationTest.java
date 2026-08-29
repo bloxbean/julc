@@ -30,21 +30,29 @@ class OptimizationConfigurationTest {
             """;
 
     @Test
-    void defaultAndExplicitBaselineRemainByteIdentical() {
+    void defaultAndExplicitPv11SafeRemainByteIdentical() {
         var defaultResult = new JulcCompiler(StdlibRegistry.defaultRegistry())
                 .compileMethod(SOURCE, "validate");
-        var explicitResult = compile(OptimizationLevel.BASELINE, null);
+        var explicitResult = compile(OptimizationLevel.PV11_SAFE, null);
 
         assertArrayEquals(UplcFlatEncoder.encodeProgram(defaultResult.program()),
                 UplcFlatEncoder.encodeProgram(explicitResult.program()));
-        assertEquals(OptimizationLevel.BASELINE,
+        assertEquals(OptimizationLevel.PV11_SAFE,
                 defaultResult.optimizationReport().level());
         assertEquals(defaultResult.optimizationReport(),
                 explicitResult.optimizationReport());
     }
 
     @Test
-    void pv11SafeIsIndependentFromCostProfileAndInitiallyPreservesBytes() {
+    void baselineRemainsAnExplicitCompatibilityLevel() {
+        var result = compile(OptimizationLevel.BASELINE, null);
+
+        assertEquals(OptimizationLevel.BASELINE, result.optimizationReport().level());
+        assertEquals(List.of(), result.optimizationReport().appliedRules());
+    }
+
+    @Test
+    void pv11SafeNeedsNoCostProfileAndPreservesUnaffectedFixtureBytes() {
         var baseline = compile(OptimizationLevel.BASELINE, null);
         var safe = compile(OptimizationLevel.PV11_SAFE, null);
 
@@ -97,6 +105,8 @@ class OptimizationConfigurationTest {
 
     @Test
     void publicIdentifiersAreExactAndFailClosed() {
+        assertEquals(OptimizationLevel.DEFAULT,
+                OptimizationLevel.forProfileId(OptimizationLevel.DEFAULT_PROFILE_ID));
         assertEquals(OptimizationLevel.PV11_SAFE,
                 OptimizationLevel.forProfileId("pv11-safe"));
 

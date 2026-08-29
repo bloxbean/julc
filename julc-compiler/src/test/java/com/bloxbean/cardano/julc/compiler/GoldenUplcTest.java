@@ -32,6 +32,11 @@ class GoldenUplcTest {
         Files.createDirectories(GOLDEN_DIR);
     }
 
+    private static JulcCompiler baselineCompiler() {
+        return new JulcCompiler(STDLIB, new CompilerOptions()
+                .setOptimizationLevel(OptimizationLevel.BASELINE));
+    }
+
     // --- 1. Simple validator (no loops) ---
 
     static final String SIMPLE_VALIDATOR = """
@@ -49,7 +54,7 @@ class GoldenUplcTest {
 
     @Test
     void golden_simpleValidator() throws IOException {
-        verifyGolden("simple-validator", new JulcCompiler().compile(SIMPLE_VALIDATOR).program());
+        verifyGolden("simple-validator", baselineCompiler().compile(SIMPLE_VALIDATOR).program());
     }
 
     // --- 2. For-each with single accumulator ---
@@ -75,7 +80,7 @@ class GoldenUplcTest {
     @Test
     void golden_forEachSingleAcc() throws IOException {
         verifyGolden("foreach-single-acc",
-                new JulcCompiler(STDLIB).compile(FOREACH_SINGLE_ACC).program());
+                baselineCompiler().compile(FOREACH_SINGLE_ACC).program());
     }
 
     // --- 3. While loop with break ---
@@ -103,7 +108,7 @@ class GoldenUplcTest {
 
     @Test
     void golden_whileBreak() throws IOException {
-        verifyGolden("while-break", new JulcCompiler().compile(WHILE_BREAK).program());
+        verifyGolden("while-break", baselineCompiler().compile(WHILE_BREAK).program());
     }
 
     // --- 4. Nested loops (while-in-while) ---
@@ -132,7 +137,7 @@ class GoldenUplcTest {
 
     @Test
     void golden_nestedWhile() throws IOException {
-        verifyGolden("nested-while", new JulcCompiler().compile(NESTED_WHILE).program());
+        verifyGolden("nested-while", baselineCompiler().compile(NESTED_WHILE).program());
     }
 
     // --- 5. HOF lambda (list.map) ---
@@ -155,7 +160,7 @@ class GoldenUplcTest {
 
     @Test
     void golden_hofMap() throws IOException {
-        verifyGolden("hof-map", new JulcCompiler(STDLIB).compile(HOF_MAP).program());
+        verifyGolden("hof-map", baselineCompiler().compile(HOF_MAP).program());
     }
 
     // --- 6. HOF lambda (list.filter) ---
@@ -178,7 +183,7 @@ class GoldenUplcTest {
 
     @Test
     void golden_hofFilter() throws IOException {
-        verifyGolden("hof-filter", new JulcCompiler(STDLIB).compile(HOF_FILTER).program());
+        verifyGolden("hof-filter", baselineCompiler().compile(HOF_FILTER).program());
     }
 
     // --- 7. Multi-accumulator while ---
@@ -205,7 +210,7 @@ class GoldenUplcTest {
 
     @Test
     void golden_multiAccWhile() throws IOException {
-        verifyGolden("multi-acc-while", new JulcCompiler().compile(MULTI_ACC_WHILE).program());
+        verifyGolden("multi-acc-while", baselineCompiler().compile(MULTI_ACC_WHILE).program());
     }
 
     // --- 8. Nested while with self-contained inner loop (no outer accumulator contribution) ---
@@ -234,7 +239,7 @@ class GoldenUplcTest {
 
     @Test
     void golden_nestedWhileNoAcc() throws IOException {
-        verifyGolden("nested-while-no-acc", new JulcCompiler().compile(NESTED_WHILE_NO_ACC).program());
+        verifyGolden("nested-while-no-acc", baselineCompiler().compile(NESTED_WHILE_NO_ACC).program());
     }
 
     // --- Golden file infrastructure ---

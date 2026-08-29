@@ -7,6 +7,7 @@ import com.bloxbean.cardano.julc.compiler.CompilerTarget;
 import com.bloxbean.cardano.julc.compiler.CompilerTargetRegistry;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
 import com.bloxbean.cardano.julc.compiler.OptimizationConfiguration;
+import com.bloxbean.cardano.julc.compiler.OptimizationLevel;
 import com.bloxbean.cardano.julc.compiler.error.CompilerDiagnostic;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
 import io.modelcontextprotocol.json.McpJsonMapper;
@@ -74,7 +75,7 @@ public final class CompileTool {
                     },
                     "optimization": {
                       "type": "string",
-                      "description": "Exact optimizer rollout ID. Defaults to baseline."
+                      "description": "Exact optimizer rollout ID. Defaults to pv11-safe."
                     },
                     "costProfile": {
                       "type": "string",
@@ -205,7 +206,8 @@ public final class CompileTool {
     static CompilerOptions optimizationOptions(
             Map<String, Object> args,
             com.bloxbean.cardano.julc.compiler.CompilerTarget target) {
-        Object optimizationObj = args.getOrDefault("optimization", "baseline");
+        Object optimizationObj = args.getOrDefault(
+                "optimization", OptimizationLevel.DEFAULT_PROFILE_ID);
         if (!(optimizationObj instanceof String optimization) || optimization.isBlank()) {
             throw new IllegalArgumentException(
                     "'optimization' must be a non-empty optimizer rollout ID.");

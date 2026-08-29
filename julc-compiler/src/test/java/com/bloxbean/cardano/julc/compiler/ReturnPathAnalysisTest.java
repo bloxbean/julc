@@ -19,7 +19,7 @@ class ReturnPathAnalysisTest {
 
     @BeforeAll
     static void setUp() {
-        vm = JulcVm.create();
+        vm = CompilerTestVm.pv11();
     }
 
     static PlutusData mockCtx(PlutusData redeemer) {

@@ -14,7 +14,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 class StrictDataBoundaryTest {
-    private static final JulcVm VM = JulcVm.create();
+    private static final JulcVm VM = CompilerTestVm.pv11();
     private static final StdlibRegistry STDLIB = StdlibRegistry.defaultRegistry();
 
     @Test
