@@ -10,6 +10,7 @@ import com.bloxbean.cardano.julc.core.source.SourceMap;
 import com.bloxbean.cardano.julc.core.text.UplcPrinter;
 
 import java.util.List;
+import java.util.Objects;
 
 /**
  * The result of compiling a Java validator to UPLC.
@@ -19,11 +20,22 @@ import java.util.List;
  * When created via the standard {@link JulcCompiler#compile(String)}, they are null.
  */
 public record CompileResult(Program program, List<CompilerDiagnostic> diagnostics, List<ParamInfo> params,
-                             PirTerm pirTerm, Term uplcTerm, SourceMap sourceMap) {
+                             PirTerm pirTerm, Term uplcTerm, SourceMap sourceMap,
+                             CompilerTarget target) {
 
     public CompileResult {
         diagnostics = List.copyOf(diagnostics);
         params = List.copyOf(params);
+        target = Objects.requireNonNull(target, "target");
+    }
+
+    /**
+     * Backward-compatible constructor using the documented pinned PV11 target.
+     */
+    public CompileResult(Program program, List<CompilerDiagnostic> diagnostics, List<ParamInfo> params,
+                         PirTerm pirTerm, Term uplcTerm, SourceMap sourceMap) {
+        this(program, diagnostics, params, pirTerm, uplcTerm, sourceMap,
+                CompilerTarget.PLUTUS_V3_PV11);
     }
 
     /**
@@ -31,21 +43,24 @@ public record CompileResult(Program program, List<CompilerDiagnostic> diagnostic
      */
     public CompileResult(Program program, List<CompilerDiagnostic> diagnostics, List<ParamInfo> params,
                          PirTerm pirTerm, Term uplcTerm) {
-        this(program, diagnostics, params, pirTerm, uplcTerm, null);
+        this(program, diagnostics, params, pirTerm, uplcTerm, null,
+                CompilerTarget.PLUTUS_V3_PV11);
     }
 
     /**
      * Backward-compatible constructor (no PIR/UPLC).
      */
     public CompileResult(Program program, List<CompilerDiagnostic> diagnostics, List<ParamInfo> params) {
-        this(program, diagnostics, params, null, null, null);
+        this(program, diagnostics, params, null, null, null,
+                CompilerTarget.PLUTUS_V3_PV11);
     }
 
     /**
      * Backward-compatible constructor for non-parameterized validators.
      */
     public CompileResult(Program program, List<CompilerDiagnostic> diagnostics) {
-        this(program, diagnostics, List.of(), null, null, null);
+        this(program, diagnostics, List.of(), null, null, null,
+                CompilerTarget.PLUTUS_V3_PV11);
     }
 
     /**

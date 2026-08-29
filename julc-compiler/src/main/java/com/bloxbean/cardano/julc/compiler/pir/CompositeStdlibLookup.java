@@ -1,5 +1,7 @@
 package com.bloxbean.cardano.julc.compiler.pir;
 
+import com.bloxbean.cardano.julc.compiler.CompilationContext;
+
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
@@ -41,6 +43,22 @@ public class CompositeStdlibLookup implements StdlibLookup {
                                       List<PirTerm> args, List<PirType> argTypes) {
         for (var lookup : lookups) {
             var result = lookup.lookup(className, methodName, args, argTypes);
+            if (result.isPresent()) {
+                return result;
+            }
+        }
+        return Optional.empty();
+    }
+
+    @Override
+    public Optional<PirTerm> lookup(
+            CompilationContext context,
+            String className,
+            String methodName,
+            List<PirTerm> args,
+            List<PirType> argTypes) {
+        for (var lookup : lookups) {
+            var result = lookup.lookup(context, className, methodName, args, argTypes);
             if (result.isPresent()) {
                 return result;
             }

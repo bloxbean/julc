@@ -27,7 +27,8 @@ public final class CompilerTargetRegistry {
         return target != null && SUPPORTED.contains(target);
     }
 
-    static ResolvedCompilerTarget resolve(CompilerTarget requested) {
+    /** Resolve an exact compiler-supported target against the canonical feature registry. */
+    public static ResolvedCompilerTarget resolve(CompilerTarget requested) {
         Objects.requireNonNull(requested, "requested");
         if (!SUPPORTED.contains(requested)) {
             throw unsupported(requested);

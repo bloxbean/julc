@@ -55,8 +55,12 @@ public class CompilerOptions {
     }
 
     public CompilerOptions setLogger(Consumer<String> logger) {
-        this.logger = logger;
+        this.logger = Objects.requireNonNull(logger, "logger");
         return this;
+    }
+
+    Consumer<String> getLogger() {
+        return logger;
     }
 
     /**

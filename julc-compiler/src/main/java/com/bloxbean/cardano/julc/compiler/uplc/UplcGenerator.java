@@ -1,6 +1,7 @@
 package com.bloxbean.cardano.julc.compiler.uplc;
 
 import com.bloxbean.cardano.julc.compiler.CompilerException;
+import com.bloxbean.cardano.julc.compiler.CompilationContext;
 import com.bloxbean.cardano.julc.compiler.pir.PirSubstitution;
 import com.bloxbean.cardano.julc.compiler.pir.PirTerm;
 import com.bloxbean.cardano.julc.compiler.pir.PirType;
@@ -26,6 +27,9 @@ public class UplcGenerator {
 
     private final Deque<String> scope = new ArrayDeque<>();
 
+    /** The single resolved target shared by this lowering invocation. */
+    private final CompilationContext context;
+
     /** PIR term → source location (provided by PirGenerator when source maps are enabled). */
     private final Map<PirTerm, SourceLocation> pirPositions;
 
@@ -36,7 +40,7 @@ public class UplcGenerator {
     private final Deque<SourceLocation> locationStack = new ArrayDeque<>();
 
     public UplcGenerator() {
-        this(null);
+        this(CompilationContext.pv11Defaults(), null);
     }
 
     /**
@@ -45,6 +49,14 @@ public class UplcGenerator {
      * @param pirPositions PIR term to source location map from PirGenerator (nullable)
      */
     public UplcGenerator(Map<PirTerm, SourceLocation> pirPositions) {
+        this(CompilationContext.pv11Defaults(), pirPositions);
+    }
+
+    /** Create a target-aware UPLC generator with optional source positions. */
+    public UplcGenerator(
+            CompilationContext context,
+            Map<PirTerm, SourceLocation> pirPositions) {
+        this.context = Objects.requireNonNull(context, "context");
         this.pirPositions = pirPositions != null ? pirPositions : Map.of();
     }
 

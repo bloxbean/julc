@@ -1,5 +1,6 @@
 package com.bloxbean.cardano.julc.compiler.pir;
 
+import com.bloxbean.cardano.julc.compiler.CompilationContext;
 import com.bloxbean.cardano.julc.compiler.CompilerException;
 import com.bloxbean.cardano.julc.core.Constant;
 import com.bloxbean.cardano.julc.core.DefaultFun;
@@ -35,6 +36,19 @@ public final class TypeMethodRegistry {
 
     public Optional<PirTerm> dispatch(PirTerm scope, String method,
                                        List<PirTerm> args, PirType scopeType, List<PirType> argTypes) {
+        return dispatch(
+                CompilationContext.pv11Defaults(), scope, method, args, scopeType, argTypes);
+    }
+
+    /** Dispatch an instance-method lowering under one resolved compiler target. */
+    public Optional<PirTerm> dispatch(
+            CompilationContext context,
+            PirTerm scope,
+            String method,
+            List<PirTerm> args,
+            PirType scopeType,
+            List<PirType> argTypes) {
+        Objects.requireNonNull(context, "context");
         // Try named key first for RecordType (e.g., "Value.lovelaceOf" before "RecordType.lovelaceOf")
         if (scopeType instanceof PirType.RecordType rt) {
             var namedReg = registry.get(rt.name() + "." + method);

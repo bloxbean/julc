@@ -18,7 +18,6 @@ import com.bloxbean.cardano.julc.compiler.uplc.UplcGenerator;
 import com.bloxbean.cardano.julc.compiler.uplc.UplcOptimizer;
 import com.bloxbean.cardano.julc.compiler.util.MethodDependencyResolver;
 import com.bloxbean.cardano.julc.compiler.validate.SubsetValidator;
-import com.bloxbean.cardano.julc.core.PlutusTarget;
 import com.bloxbean.cardano.julc.core.Program;
 import com.bloxbean.cardano.julc.core.Term;
 import com.bloxbean.cardano.julc.core.source.SourceLocation;
@@ -116,18 +115,24 @@ public class JulcCompiler {
         this.options = options != null ? options : new CompilerOptions();
     }
 
+    private CompilationContext beginCompilation() {
+        var context = CompilationContext.resolve(options);
+        context.logf("Compiler target: %s", context.target().profileId());
+        return context;
+    }
+
     /**
      * Compile a single-file validator to a UPLC Program.
      * Auto-discovers @OnchainLibrary sources from classpath (META-INF/plutus-sources/).
      */
     public CompileResult compile(String javaSource) {
+        var context = beginCompilation();
         var availableLibs = LibrarySourceResolver.scanClasspathSources(
                 JulcCompiler.class.getClassLoader());
-        if (availableLibs.isEmpty()) {
-            return compile(javaSource, List.of());
-        }
-        var resolvedLibs = LibrarySourceResolver.resolve(javaSource, availableLibs);
-        return compile(javaSource, resolvedLibs);
+        var resolvedLibs = availableLibs.isEmpty()
+                ? List.<String>of()
+                : LibrarySourceResolver.resolve(javaSource, availableLibs);
+        return doCompile(javaSource, resolvedLibs, false, context);
     }
 
     /**
@@ -135,20 +140,20 @@ public class JulcCompiler {
      * The returned {@link CompileResult} will have non-null {@code pirTerm()} and {@code uplcTerm()}.
      */
     public CompileResult compileWithDetails(String javaSource) {
+        var context = beginCompilation();
         var availableLibs = LibrarySourceResolver.scanClasspathSources(
                 JulcCompiler.class.getClassLoader());
-        if (availableLibs.isEmpty()) {
-            return compileWithDetails(javaSource, List.of());
-        }
-        var resolvedLibs = LibrarySourceResolver.resolve(javaSource, availableLibs);
-        return compileWithDetails(javaSource, resolvedLibs);
+        var resolvedLibs = availableLibs.isEmpty()
+                ? List.<String>of()
+                : LibrarySourceResolver.resolve(javaSource, availableLibs);
+        return doCompile(javaSource, resolvedLibs, true, context);
     }
 
     /**
      * Compile a validator with library sources, capturing PIR and UPLC intermediate representations.
      */
     public CompileResult compileWithDetails(String validatorSource, List<String> librarySources) {
-        return doCompile(validatorSource, librarySources, true);
+        return doCompile(validatorSource, librarySources, true, beginCompilation());
     }
 
     /**
@@ -159,7 +164,7 @@ public class JulcCompiler {
      * @return the compile result containing the UPLC Program
      */
     public CompileResult compile(String validatorSource, List<String> librarySources) {
-        return doCompile(validatorSource, librarySources, false);
+        return doCompile(validatorSource, librarySources, false, beginCompilation());
     }
 
     /**
@@ -169,51 +174,63 @@ public class JulcCompiler {
      * Schema capture is observational and is intended for blueprint generation.</p>
      */
     public ContractCompileResult compileContract(String validatorSource) {
+        var context = beginCompilation();
         var availableLibs = LibrarySourceResolver.scanClasspathSources(
                 JulcCompiler.class.getClassLoader());
         var resolvedLibs = availableLibs.isEmpty()
                 ? List.<String>of()
                 : LibrarySourceResolver.resolve(validatorSource, availableLibs);
-        return compileContract(validatorSource, resolvedLibs);
+        var outcome = doCompileOutcome(validatorSource, resolvedLibs, false, true, context);
+        return new ContractCompileResult(outcome.compileResult(), outcome.contractSchema());
     }
 
     /** Compile a validator with library sources and capture its resolved contract schema. */
     public ContractCompileResult compileContract(
             String validatorSource, List<String> librarySources) {
-        var outcome = doCompileOutcome(validatorSource, librarySources, false, true);
+        var outcome = doCompileOutcome(
+                validatorSource, librarySources, false, true, beginCompilation());
         return new ContractCompileResult(outcome.compileResult(), outcome.contractSchema());
     }
 
     /** Compile with PIR/UPLC inspection details and resolved contract schema metadata. */
     public ContractCompileResult compileContractWithDetails(String validatorSource) {
+        var context = beginCompilation();
         var availableLibs = LibrarySourceResolver.scanClasspathSources(
                 JulcCompiler.class.getClassLoader());
         var resolvedLibs = availableLibs.isEmpty()
                 ? List.<String>of()
                 : LibrarySourceResolver.resolve(validatorSource, availableLibs);
-        return compileContractWithDetails(validatorSource, resolvedLibs);
+        var outcome = doCompileOutcome(validatorSource, resolvedLibs, true, true, context);
+        return new ContractCompileResult(outcome.compileResult(), outcome.contractSchema());
     }
 
     /** Compile with PIR/UPLC inspection details and resolved contract schema metadata. */
     public ContractCompileResult compileContractWithDetails(
             String validatorSource, List<String> librarySources) {
-        var outcome = doCompileOutcome(validatorSource, librarySources, true, true);
+        var outcome = doCompileOutcome(
+                validatorSource, librarySources, true, true, beginCompilation());
         return new ContractCompileResult(outcome.compileResult(), outcome.contractSchema());
     }
 
-    private CompileResult doCompile(String validatorSource, List<String> librarySources, boolean captureDetails) {
-        return doCompileOutcome(validatorSource, librarySources, captureDetails, false).compileResult();
+    private CompileResult doCompile(
+            String validatorSource,
+            List<String> librarySources,
+            boolean captureDetails,
+            CompilationContext context) {
+        return doCompileOutcome(
+                validatorSource, librarySources, captureDetails, false, context).compileResult();
     }
 
     private CompilationOutcome doCompileOutcome(
             String validatorSource,
             List<String> librarySources,
             boolean captureDetails,
-            boolean captureContractSchema) {
+            boolean captureContractSchema,
+            CompilationContext context) {
         StaticJavaParser.getParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
 
         // 1. Parse all sources
-        options.logf("Parsing %d source(s) (1 validator + %d libraries)",
+        context.logf("Parsing %d source(s) (1 validator + %d libraries)",
                 1 + librarySources.size(), librarySources.size());
         var validatorCu = parseSource(validatorSource, "validator");
         var libraryCus = new ArrayList<CompilationUnit>();
@@ -221,24 +238,27 @@ public class JulcCompiler {
             libraryCus.add(parseSource(librarySources.get(i), "library[" + i + "]"));
         }
 
-        return doCompileFromCus(validatorCu, libraryCus, captureDetails, captureContractSchema);
+        return doCompileFromCus(
+                validatorCu, libraryCus, captureDetails, captureContractSchema, context);
     }
 
     private CompilationOutcome doCompileFromCus(
             CompilationUnit validatorCu,
             List<CompilationUnit> libraryCus,
             boolean captureDetails,
-            boolean captureContractSchema) {
+            boolean captureContractSchema,
+            CompilationContext context) {
         // 2. Validate subset on all compilation units
         var subsetValidator = new SubsetValidator();
-        var diagnostics = new ArrayList<>(subsetValidator.validate(validatorCu));
+        var diagnostics = context.diagnosticBuffer();
+        diagnostics.addAll(subsetValidator.validate(validatorCu));
         for (var libCu : libraryCus) {
             diagnostics.addAll(subsetValidator.validate(libCu));
         }
         if (hasErrors(diagnostics)) {
             throw new CompilerException(diagnostics);
         }
-        options.log("Subset validation passed");
+        context.log("Subset validation passed");
 
         // 3. Validate: library CUs must not contain validator annotations
         for (var libCu : libraryCus) {
@@ -260,7 +280,7 @@ public class JulcCompiler {
         // 4. Find annotated validator class and determine purpose
         var validatorClass = findAnnotatedClass(validatorCu);
         var scriptPurpose = getScriptPurpose(validatorClass);
-        options.logf("Found @%sValidator: %s", scriptPurpose.name().charAt(0)
+        context.logf("Found @%sValidator: %s", scriptPurpose.name().charAt(0)
                 + scriptPurpose.name().substring(1).toLowerCase(), validatorClass.getNameAsString());
 
         // 5. Register types from ALL sources (topo-sorted)
@@ -272,14 +292,14 @@ public class JulcCompiler {
         new TypeRegistrar().registerAll(ledgerCus, typeResolver);
         // Add flat-FQCN aliases for inner variant types (backward compat with ImportResolver)
         typeResolver.addFlatVariantAliases("com.bloxbean.cardano.julc.ledger");
-        options.logf("Registered %d ledger type(s) dynamically", ledgerCus.size());
+        context.logf("Registered %d ledger type(s) dynamically", ledgerCus.size());
 
         // 5b. Register user-defined types from validator + library sources
         var allCus = new ArrayList<CompilationUnit>();
         allCus.addAll(libraryCus);
         allCus.add(validatorCu);
         registerTypesWithDiagnostics(allCus, typeResolver, diagnostics);
-        options.logf("Registered types from %d compilation unit(s)", allCus.size());
+        context.logf("Registered types from %d compilation unit(s)", allCus.size());
 
         // 5c. Build knownFqcns for ImportResolver (types + library classes + stdlib classes)
         var knownFqcns = new LinkedHashSet<String>();
@@ -311,7 +331,7 @@ public class JulcCompiler {
         }
 
         if (!paramFields.isEmpty()) {
-            options.logf("Found %d @Param field(s): %s", paramFields.size(),
+            context.logf("Found %d @Param field(s): %s", paramFields.size(),
                     paramFields.stream().map(pf -> pf.name + ": " + pf.javaType).toList());
         }
 
@@ -332,11 +352,12 @@ public class JulcCompiler {
         }
 
         // 8. Compile library static methods to PIR (progressive lookup: each library sees previous)
-        var libraryRegistry = new LibraryMethodRegistry(options);
+        var libraryRegistry = LibraryMethodRegistry.forCompilation(context);
         if (!libraryCus.isEmpty()) {
-            options.logf("Compiling %d library source(s)", libraryCus.size());
-            compileLibraryMethods(libraryCus, typeResolver, libraryRegistry, effectiveStdlibLookup, knownFqcns);
-            options.logf("Compiled %d library method(s)", libraryRegistry.allMethods().size());
+            context.logf("Compiling %d library source(s)", libraryCus.size());
+            compileLibraryMethods(
+                    libraryCus, typeResolver, libraryRegistry, effectiveStdlibLookup, knownFqcns, context);
+            context.logf("Compiled %d library method(s)", libraryRegistry.allMethods().size());
         }
 
         // Restore validator's import resolver after library compilation
@@ -363,8 +384,8 @@ public class JulcCompiler {
         }
 
         // 11. Generate PIR for helper methods
-        var pirGenerator = new PirGenerator(typeResolver, symbolTable, effectiveLookup,
-                TypeMethodRegistry.defaultRegistry(), null, options);
+        var pirGenerator = PirGenerator.forCompilation(typeResolver, symbolTable, effectiveLookup,
+                TypeMethodRegistry.defaultRegistry(), null, context);
 
         // 11b. Compile static field initializers
         var compiledStaticFields = new ArrayList<CompiledStaticField>();
@@ -382,7 +403,7 @@ public class JulcCompiler {
         }
 
         // Enable boolean return guard for entrypoint only (not helpers — they may legitimately return false)
-        if (options.isSourceMapEnabled()) {
+        if (context.isSourceMapEnabled()) {
             pirGenerator.setBooleanReturnGuard(true);
         }
 
@@ -409,7 +430,7 @@ public class JulcCompiler {
                 multiHandlers.put(ei.tag(), handlerPir);
                 multiParamCounts.put(ei.tag(), ei.method().getParameters().size());
             }
-            options.logf("PIR generation complete (%d auto-dispatch entrypoints)", entrypointInfos.size());
+            context.logf("PIR generation complete (%d auto-dispatch entrypoints)", entrypointInfos.size());
         } else if (scriptPurpose == ScriptPurpose.MULTI) {
             // Mode 2: Manual dispatch — single DEFAULT entrypoint
             entrypointMethod = entrypointInfos.get(0).method();
@@ -418,14 +439,14 @@ public class JulcCompiler {
                     validateFn, entrypointMethod, typeResolver);
             validateFn = transformed.function();
             strictRecordErrors.addAll(transformed.errors());
-            options.log("PIR generation complete (manual dispatch)");
+            context.log("PIR generation complete (manual dispatch)");
         } else {
             validateFn = pirGenerator.generateMethod(entrypointMethod);
             var transformed = transformStrictRecordEntrypoint(
                     validateFn, entrypointMethod, typeResolver);
             validateFn = transformed.function();
             strictRecordErrors.addAll(transformed.errors());
-            options.log("PIR generation complete");
+            context.log("PIR generation complete");
         }
 
         // Disable guard after entrypoint generation
@@ -546,7 +567,7 @@ public class JulcCompiler {
         }
 
         // 15b. Register wrapper Error terms in source map (points to @Entrypoint method)
-        if (options.isSourceMapEnabled() && !wrapper.getErrorTerms().isEmpty()) {
+        if (context.isSourceMapEnabled() && !wrapper.getErrorTerms().isEmpty()) {
             var pirPositions = pirGenerator.getPirPositions();
             // For multi-dispatch, use the first entrypoint; for single, use the entrypoint method
             var epMethod = entrypointMethod != null ? entrypointMethod : entrypointInfos.getFirst().method();
@@ -579,39 +600,40 @@ public class JulcCompiler {
         PirTerm capturedPir = captureDetails ? wrappedTerm : null;
 
         // 18. Lower to UPLC (with source map support)
-        var uplcGenerator = options.isSourceMapEnabled()
-                ? new UplcGenerator(pirGenerator.getPirPositions())
-                : new UplcGenerator();
+        var uplcGenerator = context.isSourceMapEnabled()
+                ? new UplcGenerator(context, pirGenerator.getPirPositions())
+                : new UplcGenerator(context, null);
         var uplcTerm = uplcGenerator.generate(wrappedTerm);
 
         // 19. Optimize UPLC (skip when source maps enabled to preserve Term identity)
         SourceMap sourceMap = null;
-        if (options.isSourceMapEnabled()) {
+        if (context.isSourceMapEnabled()) {
             sourceMap = SourceMap.of(uplcGenerator.getUplcPositions());
-            options.logf("Source map generated: %d entries (optimization skipped)", sourceMap.size());
+            context.logf("Source map generated: %d entries (optimization skipped)", sourceMap.size());
         } else {
-            var optimizer = new UplcOptimizer();
+            var optimizer = new UplcOptimizer(context);
             uplcTerm = optimizer.optimize(uplcTerm);
-            options.log("UPLC optimization complete");
+            context.log("UPLC optimization complete");
         }
 
         // 20. Capture UPLC if details requested
         Term capturedUplc = captureDetails ? uplcTerm : null;
 
         // 21. Create Program
-        var program = PlutusTarget.CURRENT.program(uplcTerm);
+        var program = createProgram(context, uplcTerm);
 
         // 22. Build ParamInfo list
         var paramInfos = paramFields.stream()
                 .map(pf -> new CompileResult.ParamInfo(pf.name, pf.javaType))
                 .toList();
 
-        var result = new CompileResult(program, diagnostics, paramInfos, capturedPir, capturedUplc, sourceMap);
+        var result = new CompileResult(
+                program, diagnostics, paramInfos, capturedPir, capturedUplc, sourceMap, context.target());
         ContractSchema contractSchema = captureContractSchema
                 ? buildContractSchema(scriptPurpose, entrypointMethod, entrypointInfos,
                         paramFields, typeResolver, validatorClass)
                 : null;
-        options.logf("Compilation complete: %s", result.scriptSizeFormatted());
+        context.logf("Compilation complete: %s", result.scriptSizeFormatted());
         return new CompilationOutcome(result, contractSchema);
     }
 
@@ -639,20 +661,25 @@ public class JulcCompiler {
     /** Compile a validator and library source files and capture contract schema metadata. */
     public ContractCompileResult compileContract(
             Path validatorFile, List<Path> libraryFiles) throws IOException {
-        var outcome = compileOutcomeFromPaths(validatorFile, libraryFiles, true);
+        var outcome = compileOutcomeFromPaths(
+                validatorFile, libraryFiles, true, beginCompilation());
         return new ContractCompileResult(outcome.compileResult(), outcome.contractSchema());
     }
 
     private CompileResult compileFromPaths(Path validatorFile, List<Path> libraryFiles) throws IOException {
-        return compileOutcomeFromPaths(validatorFile, libraryFiles, false).compileResult();
+        return compileOutcomeFromPaths(
+                validatorFile, libraryFiles, false, beginCompilation()).compileResult();
     }
 
     private CompilationOutcome compileOutcomeFromPaths(
-            Path validatorFile, List<Path> libraryFiles, boolean captureContractSchema)
+            Path validatorFile,
+            List<Path> libraryFiles,
+            boolean captureContractSchema,
+            CompilationContext context)
             throws IOException {
         StaticJavaParser.getParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
 
-        options.logf("Parsing %d source(s) (1 validator + %d libraries)",
+        context.logf("Parsing %d source(s) (1 validator + %d libraries)",
                 1 + libraryFiles.size(), libraryFiles.size());
         var validatorCu = parseSource(Files.readString(validatorFile), "validator", validatorFile);
         var libraryCus = new ArrayList<CompilationUnit>();
@@ -662,7 +689,7 @@ public class JulcCompiler {
         }
 
         return doCompileFromCus(
-                validatorCu, libraryCus, false, captureContractSchema);
+                validatorCu, libraryCus, false, captureContractSchema, context);
     }
 
     /**
@@ -677,25 +704,29 @@ public class JulcCompiler {
      * Non-validator/non-minting .java files in the same directory are treated as libraries.
      */
     public CompileResult compileWithSiblings(Path validatorFile) throws IOException {
+        var context = beginCompilation();
         var parentDir = validatorFile.getParent();
         if (parentDir == null) {
-            return compile(Files.readString(validatorFile));
+            return compileOutcomeFromPaths(
+                    validatorFile, List.of(), false, context).compileResult();
         }
         var libPaths = new ArrayList<Path>();
         try (var stream = Files.list(parentDir)) {
             stream.filter(p -> p.toString().endsWith(".java") && !p.equals(validatorFile))
                     .forEach(libPaths::add);
         }
-        return compile(validatorFile, libPaths);
+        return compileOutcomeFromPaths(
+                validatorFile, libPaths, false, context).compileResult();
     }
 
     /**
      * Compile a PIR expression directly to a UPLC Program (for testing).
      */
     public Program compilePirToProgram(PirTerm pirTerm) {
-        var uplcGenerator = new UplcGenerator();
+        var context = beginCompilation();
+        var uplcGenerator = new UplcGenerator(context, null);
         var uplcTerm = uplcGenerator.generate(pirTerm);
-        return PlutusTarget.CURRENT.program(uplcTerm);
+        return createProgram(context, uplcTerm);
     }
 
     // --- Method compilation (for expression evaluation) ---
@@ -710,13 +741,13 @@ public class JulcCompiler {
      * @return the compile result containing the UPLC Program
      */
     public CompileResult compileMethod(String javaSource, String methodName) {
+        var context = beginCompilation();
         var availableLibs = LibrarySourceResolver.scanClasspathSources(
                 Thread.currentThread().getContextClassLoader());
-        if (availableLibs.isEmpty()) {
-            return compileMethod(javaSource, methodName, List.of());
-        }
-        var resolvedLibs = LibrarySourceResolver.resolve(javaSource, availableLibs);
-        return compileMethod(javaSource, methodName, resolvedLibs);
+        var resolvedLibs = availableLibs.isEmpty()
+                ? List.<String>of()
+                : LibrarySourceResolver.resolve(javaSource, availableLibs);
+        return compileMethod(javaSource, methodName, resolvedLibs, context);
     }
 
     /**
@@ -728,6 +759,14 @@ public class JulcCompiler {
      * @return the compile result containing the UPLC Program
      */
     public CompileResult compileMethod(String javaSource, String methodName, List<String> librarySources) {
+        return compileMethod(javaSource, methodName, librarySources, beginCompilation());
+    }
+
+    private CompileResult compileMethod(
+            String javaSource,
+            String methodName,
+            List<String> librarySources,
+            CompilationContext context) {
         StaticJavaParser.getParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
 
         // 1. Parse all sources
@@ -739,7 +778,8 @@ public class JulcCompiler {
 
         // 2. Validate subset
         var subsetValidator = new SubsetValidator();
-        var diagnostics = new ArrayList<>(subsetValidator.validate(cu));
+        var diagnostics = context.diagnosticBuffer();
+        diagnostics.addAll(subsetValidator.validate(cu));
         for (var libCu : libraryCus) {
             diagnostics.addAll(subsetValidator.validate(libCu));
         }
@@ -804,9 +844,10 @@ public class JulcCompiler {
         var staticFields = findStaticFields(targetClass, typeResolver);
 
         // 8. Compile libraries (if any)
-        var libraryRegistry = new LibraryMethodRegistry(options);
+        var libraryRegistry = LibraryMethodRegistry.forCompilation(context);
         if (!libraryCus.isEmpty()) {
-            compileLibraryMethods(libraryCus, typeResolver, libraryRegistry, effectiveStdlibLookup, knownFqcns);
+            compileLibraryMethods(
+                    libraryCus, typeResolver, libraryRegistry, effectiveStdlibLookup, knownFqcns, context);
         }
         typeResolver.setCurrentImportResolver(importResolver);
 
@@ -830,8 +871,8 @@ public class JulcCompiler {
         }
 
         // 10. Generate PIR for helper methods
-        var pirGenerator = new PirGenerator(typeResolver, symbolTable, effectiveLookup,
-                TypeMethodRegistry.defaultRegistry(), null, options);
+        var pirGenerator = PirGenerator.forCompilation(typeResolver, symbolTable, effectiveLookup,
+                TypeMethodRegistry.defaultRegistry(), null, context);
 
         var compiledStaticFields = new ArrayList<CompiledStaticField>();
         for (var sf : staticFields) {
@@ -910,32 +951,39 @@ public class JulcCompiler {
         }
 
         // 17. Lower to UPLC (with source map support)
-        var uplcGenerator = options.isSourceMapEnabled()
-                ? new UplcGenerator(pirGenerator.getPirPositions())
-                : new UplcGenerator();
+        var uplcGenerator = context.isSourceMapEnabled()
+                ? new UplcGenerator(context, pirGenerator.getPirPositions())
+                : new UplcGenerator(context, null);
         var uplcTerm = uplcGenerator.generate(body);
 
         SourceMap sourceMap = null;
-        if (options.isSourceMapEnabled()) {
+        if (context.isSourceMapEnabled()) {
             sourceMap = SourceMap.of(uplcGenerator.getUplcPositions());
         } else {
-            var optimizer = new UplcOptimizer();
+            var optimizer = new UplcOptimizer(context);
             uplcTerm = optimizer.optimize(uplcTerm);
         }
 
         var paramInfos = paramFields.stream()
                 .map(pf -> new CompileResult.ParamInfo(pf.name, pf.javaType))
                 .toList();
-        var program = PlutusTarget.CURRENT.program(uplcTerm);
-        return new CompileResult(program, diagnostics, paramInfos, body, uplcTerm, sourceMap);
+        var program = createProgram(context, uplcTerm);
+        return new CompileResult(
+                program, diagnostics, paramInfos, body, uplcTerm, sourceMap, context.target());
     }
 
     // --- Library compilation ---
 
     private void compileLibraryMethods(List<CompilationUnit> libCus, TypeResolver typeResolver,
                                        LibraryMethodRegistry registry, StdlibLookup effectiveLookup,
-                                       Set<String> knownFqcns) {
-        new LibraryCompiler(options).compile(libCus, typeResolver, registry, effectiveLookup, knownFqcns);
+                                       Set<String> knownFqcns, CompilationContext context) {
+        new LibraryCompiler(context).compile(
+                libCus, typeResolver, registry, effectiveLookup, knownFqcns);
+    }
+
+    private static Program createProgram(CompilationContext context, Term term) {
+        var version = context.target().uplcVersion();
+        return new Program(version.major(), version.minor(), version.patch(), term);
     }
 
     /** Delegate to PirHelpers for self-recursion detection. */
