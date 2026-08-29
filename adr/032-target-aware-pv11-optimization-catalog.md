@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-29
 
-**Status:** Accepted; implementation in progress on a stacked integration branch
+**Status:** Accepted and implemented on the stacked ADR-032 integration branch
 
 **Related issue:** [#77 — PV11 compiler optimizations umbrella](https://github.com/bloxbean/julc/issues/77)
 
@@ -884,8 +884,8 @@ line through explicit, evidence-backed deferrals (2026-08-29). See
 
 ### Milestone 5 — Literal folding and aggregation
 
-**Implementation status:** Complete on the Milestone 5 branch; awaiting its
-validated merge into the ADR-032 integration line (2026-08-29). See
+**Implementation status:** Complete and merged into the ADR-032 integration
+line (2026-08-29). See
 [literal/aggregate evidence](evidence/032-o10-o13-o14-folding-and-aggregate.md)
 and issues [#106](https://github.com/bloxbean/julc/issues/106) through
 [#108](https://github.com/bloxbean/julc/issues/108).
@@ -909,6 +909,12 @@ and issues [#106](https://github.com/bloxbean/julc/issues/106) through
   CPU and memory, and FLAT falls from 169 to 88 bytes.
 - Published user-facing rollout, hash migration, exact budget, deferral, and
   future-target guidance in the release notes.
+
+Final integration validation found two downstream exhaustive switches that had
+not classified Milestone 2's `NativeValueType`. Blueprint schema generation
+and formal-verification type projection now reject that opaque native type
+explicitly instead of failing compilation or approximating it as Data. Focused
+fail-closed regressions were added before the repository-wide build was rerun.
 
 ### O1–O15 completion audit
 
@@ -974,19 +980,19 @@ each child issue's impact.
 
 ## Acceptance criteria for closing Phase 5
 
-- [ ] Every O1–O15 workstream has a completed child issue or an explicit,
+- [x] Every O1–O15 workstream has a completed child issue or an explicit,
       evidence-backed deferral.
-- [ ] Every shipped rule declares its target capabilities and cost
+- [x] Every shipped rule declares its target capabilities and cost
       classification.
-- [ ] No shipped rule uses raw/open-ended protocol checks.
-- [ ] Original/optimized semantic differential tests pass for Java and
+- [x] No shipped rule uses raw/open-ended protocol checks.
+- [x] Original/optimized semantic differential tests pass for Java and
       Truffle.
-- [ ] Failure, strictness, trace, and boundary cases are covered.
-- [ ] Profile-cost rules record the cost-profile ID and parameter hash.
-- [ ] Aggregate size, CPU, memory, and script-hash results are published.
-- [ ] Public typed API migrations and generated-hash changes are documented.
-- [ ] Final target validation runs after all optimizations.
-- [ ] Full affected-module and repository validation passes.
+- [x] Failure, strictness, trace, and boundary cases are covered.
+- [x] Profile-cost rules record the cost-profile ID and parameter hash.
+- [x] Aggregate size, CPU, memory, and script-hash results are published.
+- [x] Public typed API migrations and generated-hash changes are documented.
+- [x] Final target validation runs after all optimizations.
+- [x] Full affected-module and repository validation passes.
 
 ## Open questions
 
