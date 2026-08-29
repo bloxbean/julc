@@ -884,9 +884,51 @@ line through explicit, evidence-backed deferrals (2026-08-29). See
 
 ### Milestone 5 — Literal folding and aggregation
 
-- Add target-aware Array, Value, and ExpMod folds.
-- Run aggregate representative contracts.
-- Publish combined size/budget/hash results and deferred work.
+**Implementation status:** Complete on the Milestone 5 branch; awaiting its
+validated merge into the ADR-032 integration line (2026-08-29). See
+[literal/aggregate evidence](evidence/032-o10-o13-o14-folding-and-aggregate.md)
+and issues [#106](https://github.com/bloxbean/julc/issues/106) through
+[#108](https://github.com/bloxbean/julc/issues/108).
+
+- Enabled O13 as static-cost `pv11.o13.exp-mod-literal-fold` at `PV11_SAFE`.
+  Successful positive-modulus literal calls fold with exact positive/negative
+  exponent semantics; zero/negative modulus and non-invertible inverse calls
+  retain the runtime builtin and exact failure.
+- Track only lexically proven direct/shared `ExpModInteger` heads through
+  de Bruijn scope. Shadowing, non-literal uses, default-level bytes, and
+  shared-library binding shapes have regressions.
+- Deferred O10 because the supported source subset has no typed native Array
+  literal producer; untyped ListToArray/IndexArray matching cannot prove
+  representation or preserve index failures.
+- Deferred O14 because `JulcValue` is currently produced through partial
+  `UnValueData`, not a native literal, and the optimizer has no shared pinned
+  Value canonicalization/reference-semantic helper.
+- Added a validator-like aggregate fixture combining O1, O2, and O13 with
+  accepted, rejected, boundary, and malformed inputs. Java and Truffle report
+  identical outcomes/failures/traces; every measured row has equal or lower
+  CPU and memory, and FLAT falls from 169 to 88 bytes.
+- Published user-facing rollout, hash migration, exact budget, deferral, and
+  future-target guidance in the release notes.
+
+### O1–O15 completion audit
+
+| Operation | Child issue | Phase-5 disposition |
+|---|---:|---|
+| O1 | [#94](https://github.com/bloxbean/julc/issues/94) | enabled at `PV11_SAFE` |
+| O2 | [#97](https://github.com/bloxbean/julc/issues/97) | enabled at `PV11_SAFE` |
+| O3 | [#98](https://github.com/bloxbean/julc/issues/98) | deferred: typed list match required |
+| O4 | [#99](https://github.com/bloxbean/julc/issues/99) | deferred: typed pair use analysis required |
+| O5 | [#100](https://github.com/bloxbean/julc/issues/100) | deferred: default/failure semantics differ |
+| O6 | [#101](https://github.com/bloxbean/julc/issues/101) | deferred: no typed Unit sequencing surface |
+| O7 | [#95](https://github.com/bloxbean/julc/issues/95) | typed native Value boundary completed |
+| O8 | [#102](https://github.com/bloxbean/julc/issues/102) | deferred: partial conversion/use analysis |
+| O9 | [#103](https://github.com/bloxbean/julc/issues/103) | deferred: use/escape and failure proof required |
+| O10 | [#106](https://github.com/bloxbean/julc/issues/106) | deferred: no typed native Array literal producer |
+| O11 | [#96](https://github.com/bloxbean/julc/issues/96) | deferred: native BLS group/list types required |
+| O12 | [#104](https://github.com/bloxbean/julc/issues/104) | deferred: pow/mod semantics differ |
+| O13 | [#107](https://github.com/bloxbean/julc/issues/107) | enabled at `PV11_SAFE` |
+| O14 | [#108](https://github.com/bloxbean/julc/issues/108) | deferred: literal producer/reference semantics required |
+| O15 | [#105](https://github.com/bloxbean/julc/issues/105) | deferred: typed dominance/use analysis required |
 
 ## Verification strategy
 
@@ -976,10 +1018,10 @@ Resolved by Milestone 3:
    no list rule ships until that representation preserves binding and decode
    timing explicitly.
 
-Still open for their focused child issues:
+Resolved by Milestone 5:
 
-1. What objective should govern literal folding when CPU improves but embedded
-   constant size grows?
-
-These questions are resolved in focused child ADRs/issues; they do not weaken
-the invariants or authorize speculative rewrites.
+1. A literal fold may ship at `PV11_SAFE` only when it cannot increase the
+   generated artifact for the eligible shape. For O13, a successful result is
+   in `[0, modulus)` and replaces a complete three-constant application, so the
+   result's integer encoding and full script are smaller. Array/Value folds
+   remain deferred rather than adopting a weighted CPU/size trade-off.

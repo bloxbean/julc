@@ -11,6 +11,7 @@ import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.UnaryOperator;
 
 /**
@@ -20,6 +21,7 @@ import java.util.function.UnaryOperator;
  * <ol>
  *   <li>Force/Delay cancellation: Force(Delay(t)) → t</li>
  *   <li>Constant folding: Apply(Apply(Builtin(op), Const(a)), Const(b)) → Const(op(a,b))</li>
+ *   <li>Target-aware literal folding, including successful all-literal PV11 ExpMod calls</li>
  *   <li>Dead code elimination: Apply(Lam(x, body), arg) → body when x not free in body
  *       and arg is pure</li>
  *   <li>Beta reduction: Apply(Lam(x, body), arg) → body[x:=arg] when x used exactly once
@@ -42,6 +44,8 @@ import java.util.function.UnaryOperator;
  */
 public class UplcOptimizer {
 
+    public static final String PV11_EXP_MOD_LITERAL_RULE =
+            "pv11.o13.exp-mod-literal-fold";
     private static final int MAX_ITERATIONS = 20;
     private final CompilationContext context;
 
@@ -88,6 +92,10 @@ public class UplcOptimizer {
         Term t = term;
         t = applyPass("force-delay-cancel", t, this::forceDelayCancel, appliedPasses);
         t = applyPass("constant-fold", t, this::constantFold, appliedPasses);
+        if (context.optimizationLevel().pv11SafeRulesEnabled()) {
+            t = applyPass(PV11_EXP_MOD_LITERAL_RULE, t,
+                    this::foldLiteralExpMod, appliedPasses);
+        }
         t = applyPass("dead-code-elimination", t, this::deadCodeElimination, appliedPasses);
         t = applyPass("beta-reduce", t, this::betaReduce, appliedPasses);
         t = applyPass("eta-reduce", t, this::etaReduce, appliedPasses);
@@ -197,7 +205,100 @@ public class UplcOptimizer {
         return null;
     }
 
-    // ---- Pass 3: Dead code elimination ----
+    /**
+     * Fold successful all-literal ExpModInteger calls. Failure cases retain the
+     * runtime builtin so their operation-specific failure text and point remain
+     * observable. Since a successful result is in [0, modulus), replacing the
+     * complete three-literal application cannot increase embedded integer size.
+     */
+    Term foldLiteralExpMod(Term term) {
+        return foldLiteralExpMod(term, Set.of());
+    }
+
+    private Term foldLiteralExpMod(Term term, Set<Integer> expModAliases) {
+        var mapped = switch (term) {
+            case Term.Apply(Term.Lam(var name, var body), Term.Builtin(var fun))
+                    when fun == DefaultFun.ExpModInteger -> {
+                var withBinding = new LinkedHashSet<>(shiftAliases(expModAliases));
+                withBinding.add(1);
+                yield Term.apply(
+                        Term.lam(name, foldLiteralExpMod(body, Set.copyOf(withBinding))),
+                        Term.builtin(DefaultFun.ExpModInteger));
+            }
+            case Term.Apply(var fn, var arg) -> Term.apply(
+                    foldLiteralExpMod(fn, expModAliases),
+                    foldLiteralExpMod(arg, expModAliases));
+            case Term.Force(var inner) -> Term.force(
+                    foldLiteralExpMod(inner, expModAliases));
+            case Term.Delay(var inner) -> Term.delay(
+                    foldLiteralExpMod(inner, expModAliases));
+            case Term.Lam(var name, var body) -> Term.lam(
+                    name, foldLiteralExpMod(body, shiftAliases(expModAliases)));
+            case Term.Constr(var tag, var fields) -> new Term.Constr(
+                    tag, fields.stream()
+                            .map(field -> foldLiteralExpMod(field, expModAliases))
+                            .toList());
+            case Term.Case(var scrutinee, var branches) -> new Term.Case(
+                    foldLiteralExpMod(scrutinee, expModAliases),
+                    branches.stream()
+                            .map(branch -> foldLiteralExpMod(branch, expModAliases))
+                            .toList());
+            default -> term;
+        };
+        if (!context.resolvedTarget().featureProfile()
+                .isBuiltinAvailable(DefaultFun.ExpModInteger)) {
+            return mapped;
+        }
+        var application = applicationSpine(mapped);
+        if (application == null
+                || !isExpModHead(application.head(), expModAliases)
+                || application.args().size() != 3
+                || !(application.args().get(0) instanceof Term.Const(
+                        Constant.IntegerConst(var base)))
+                || !(application.args().get(1) instanceof Term.Const(
+                        Constant.IntegerConst(var exponent)))
+                || !(application.args().get(2) instanceof Term.Const(
+                        Constant.IntegerConst(var modulus)))
+                || modulus.signum() <= 0) {
+            return mapped;
+        }
+        try {
+            var result = exponent.signum() < 0
+                    ? base.modInverse(modulus).modPow(exponent.negate(), modulus)
+                    : base.modPow(exponent, modulus);
+            return Term.const_(Constant.integer(result));
+        } catch (ArithmeticException nonInvertible) {
+            return mapped;
+        }
+    }
+
+    private static Set<Integer> shiftAliases(Set<Integer> aliases) {
+        if (aliases.isEmpty()) return aliases;
+        var shifted = new LinkedHashSet<Integer>();
+        aliases.forEach(index -> shifted.add(index + 1));
+        return Set.copyOf(shifted);
+    }
+
+    private static boolean isExpModHead(Term head, Set<Integer> aliases) {
+        return head instanceof Term.Builtin(var fun) && fun == DefaultFun.ExpModInteger
+                || head instanceof Term.Var(var name) && aliases.contains(name.index());
+    }
+
+    private record ApplicationSpine(Term head, List<Term> args) {}
+
+    private static ApplicationSpine applicationSpine(Term term) {
+        var reversed = new ArrayList<Term>();
+        var head = term;
+        while (head instanceof Term.Apply(var function, var argument)) {
+            reversed.add(argument);
+            head = function;
+        }
+        if (reversed.isEmpty()) return null;
+        Collections.reverse(reversed);
+        return new ApplicationSpine(head, List.copyOf(reversed));
+    }
+
+    // ---- Pass 4: Dead code elimination ----
 
     Term deadCodeElimination(Term term) {
         return switch (term) {
@@ -227,7 +328,7 @@ public class UplcOptimizer {
         };
     }
 
-    // ---- Pass 4: Beta reduction ----
+    // ---- Pass 5: Beta reduction ----
 
     Term betaReduce(Term term) {
         return switch (term) {
@@ -255,7 +356,7 @@ public class UplcOptimizer {
         };
     }
 
-    // ---- Pass 5: Eta reduction ----
+    // ---- Pass 6: Eta reduction ----
 
     Term etaReduce(Term term) {
         return switch (term) {
@@ -287,7 +388,7 @@ public class UplcOptimizer {
         };
     }
 
-    // ---- Pass 6: Constr/Case reduction ----
+    // ---- Pass 7: Constr/Case reduction ----
 
     Term constrCaseReduce(Term term) {
         return switch (term) {
