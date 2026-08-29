@@ -32,9 +32,9 @@ Example validators demonstrating JuLC features. Each example is a JUnit test tha
 Each example follows the same pattern:
 
 1. Define the validator source as a Java string with `@SpendingValidator`/`@MintingValidator`/etc.
-2. Compile with `ValidatorTest.compile(source)` or `ValidatorTest.compile(source, stdlib)`
+2. Compile with `ValidatorTest.compileWithDetails(source)` to retain target provenance
 3. Build a mock `ScriptContext` as `PlutusData`
-4. Evaluate with `ValidatorTest.evaluate(program, ctx)`
+4. Evaluate with `ValidatorTest.evaluate(compiledResult, ctx)` so the exact compiler target reaches the VM
 5. Assert results with `BudgetAssertions.assertSuccess(result)`
 
 See `VestingValidatorTest.java` for the simplest starting point.

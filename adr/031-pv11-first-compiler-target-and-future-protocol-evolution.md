@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-29
 
-**Status:** Proposed (design only; implementation requires a separate reviewed PR)
+**Status:** Accepted and implemented (pending merge of the reviewed implementation PR)
 
 **Related issue:** [#76 — Add an explicit V3/PV11 compiler target and diagnostics](https://github.com/bloxbean/julc/issues/76)
 
@@ -647,16 +647,39 @@ entry path.
 
 ## Open questions
 
-1. Should `CompileResult` remain a record with an added component, or migrate to
-   a class to make future provenance fields additive?
-2. Which standard generated artifact, if any, can carry target metadata without
+The initial implementation resolved the previously open design choices as
+follows:
+
+- `CompileResult` remains a record with a target component and compatibility
+  constructors that use the documented PV11 default.
+- Initial CLI, Gradle, annotation-processor, and MCP configuration accepts only
+  the stable profile ID. Structured language/protocol/UPLC input is deferred
+  until a second compiler target creates a concrete need.
+- Named protocol capabilities live in the backend-neutral `julc-vm` contract
+  layer and are derived from `ProtocolFeatureProfile`; compiler passes do not
+  duplicate version thresholds.
+- Target provenance is carried by `CompileResult`, logs, lifecycle output, and
+  structured MCP results. No non-standard field or sidecar is added to UPLC,
+  CIP-57, or text-envelope artifacts in this implementation.
+- Testkit paths that retain `CompileResult` use the exact ledger target. The
+  protocol-aware Java VM is used for those paths; the Scalus provider continues
+  to fail closed on explicit targets until it independently satisfies the
+  ADR-030 parity requirements.
+- `julc-cardano-client-lib` has no compile-and-evaluate handoff API to update;
+  its existing protocol-aware decode and transaction-evaluation paths remain
+  unchanged and covered by their module tests.
+
+The remaining questions below apply to later profile or artifact-format work,
+not to the initial PV11 implementation.
+
+1. If later provenance fields grow beyond the initial target, should
+   `CompileResult` migrate from a record to a class in a versioned API change?
+2. Which future standard generated artifact, if any, can carry target metadata without
    violating its schema? Otherwise, should tooling emit a sidecar file?
-3. Should Gradle and annotation-processor target configuration initially accept
-   only the stable profile ID or also structured language/PV/UPLC components?
-4. Which named capability representation best covers term forms without
-   duplicating `ProtocolFeatureProfile` fields?
-5. Should a future protocol-contract module extraction preserve the existing
+3. Should a future protocol-contract module extraction preserve the existing
    package names or use a versioned public API migration?
+4. What conformance evidence is required before Scalus may implement the
+   explicit `LedgerEvaluationTarget` SPI instead of remaining compatibility-only?
 
 These questions do not change the initial support matrix or fail-closed future
 version policy.

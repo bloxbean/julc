@@ -22,17 +22,19 @@
 
 *Pronounced “jool-see” (J-U-L-C), or simply “jules”*
 
-Write Cardano smart contracts in Java and compile them to Plutus V3 UPLC. julc provides a complete
+Write Cardano smart contracts in Java and compile them to the pinned Plutus V3 / protocol 11 /
+UPLC 1.1.0 target. julc provides a complete
 toolchain: a Java-subset compiler, a pluggable VM for local evaluation, a standard library of on-chain
 operations, and first-class integration with [cardano-client-lib](https://github.com/bloxbean/cardano-client-lib).
 
 ## Powered by Scalus
 
-JuLC's end-to-end experience — from local testing to script evaluation — is powered by
-[Scalus](https://scalus.org/), a Scala implementation of the Plutus VM (CEK machine).
-JuLC uses the Scalus VM as its evaluation backend for local validator testing, cost estimation,
-and the testkit. Huge thanks to the Scalus team for building and open-sourcing a high-quality
-Plutus VM that made this project possible.
+JuLC includes a pure-Java VM and a [Scalus](https://scalus.org/) backend. The
+pure-Java VM implements the canonical protocol-aware evaluation path used when
+`CompileResult` target provenance is available. Scalus remains available for
+language-only compatibility evaluation and cross-checking. Huge thanks to the
+Scalus team for building and open-sourcing a high-quality Plutus VM that made
+this project possible.
 
 ## Features
 
@@ -101,11 +103,37 @@ dependencies {
     // Test: VM for local evaluation
     testImplementation "com.bloxbean.cardano:julc-testkit:${julcVersion}"
     testImplementation "com.bloxbean.cardano:julc-vm:${julcVersion}"
-    testRuntimeOnly "com.bloxbean.cardano:julc-vm-scalus:${julcVersion}"
+    testRuntimeOnly "com.bloxbean.cardano:julc-vm-java:${julcVersion}"
 }
 ```
 
 For detailed dependencies, check the [getting started](docs/src/content/docs/getting-started.md) guide or the `julc-helloworld` example at https://github.com/bloxbean/julc-helloworld.
+
+### Compiler target
+
+JuLC currently compiles exactly one profile:
+`plutus-v3-pv11-uplc-1.1.0`. Existing APIs default to that named profile;
+“latest” is intentionally not a target, and unknown future protocol versions
+fail closed.
+
+```java
+var options = new CompilerOptions()
+        .setTarget(CompilerTarget.PLUTUS_V3_PV11);
+var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), options);
+```
+
+The Gradle plugin accepts the same stable profile ID:
+
+```groovy
+julc {
+    target = 'plutus-v3-pv11-uplc-1.1.0'
+}
+```
+
+For direct annotation-processor configuration, pass
+`-Ajulc.target=plutus-v3-pv11-uplc-1.1.0`. Supporting a later protocol version
+will add a separately pinned compiler target and feature matrix; it will not
+silently change this default.
 
 ### Current Preview Version
 
@@ -236,19 +264,21 @@ var compiler = new JulcCompiler(stdlib);
 var result = compiler.compile(javaSource);
 if (!result.hasErrors()) {
     Program program = result.program();
-    // Ready for serialization and on-chain deployment
+    CompilerTarget target = result.target();
+    // Ready for serialization and on-chain deployment with explicit provenance
 }
 ```
 
 ### Test Locally
 
 ```java
-var vm = JulcVm.create();
-var evalResult = vm.evaluateWithArgs(program, datum, redeemer, scriptContext);
+var evalResult = ValidatorTest.evaluate(result, datum, redeemer, scriptContext);
 assertTrue(evalResult.isSuccess());
 ```
 
-`julc-testkit` provides utilities for unit testing your validators locally.
+Passing the `CompileResult` lets `julc-testkit` hand the exact compiler target
+to the VM. Raw `Program` evaluation overloads remain available for compatibility
+when target provenance is not available.
 
 ## Requirements
 

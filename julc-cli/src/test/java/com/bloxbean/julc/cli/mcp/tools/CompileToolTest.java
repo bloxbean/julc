@@ -196,6 +196,22 @@ class CompileToolTest {
         assertEquals(Boolean.TRUE, body.get("ok"));
         assertNotNull(body.get("uplc"),
                 "uplc must be present when includeUplc=true");
+        assertEquals("plutus-v3-pv11-uplc-1.1.0", body.get("compilerTarget"));
+    }
+
+    @Test
+    void rejectsUnknownCompilerTargetWithStableDiagnostic() {
+        var req = new McpSchema.CallToolRequest("julc_compile", Map.of(
+                "source", "class Empty {}",
+                "target", "plutus-v3-pv12-uplc-1.1.0"));
+        var res = CompileTool.handle(req, jsonMapper);
+        @SuppressWarnings("unchecked")
+        var body = (Map<String, Object>) res.structuredContent();
+        @SuppressWarnings("unchecked")
+        var diagnostics = (List<Map<String, Object>>) body.get("diagnostics");
+        assertEquals(Boolean.FALSE, body.get("ok"));
+        assertTrue(diagnostics.stream().anyMatch(
+                diagnostic -> "JULC0031".equals(diagnostic.get("code"))));
     }
 
     @Test

@@ -302,9 +302,12 @@ public final class JulcEval {
         var allArgs = MethodEvaluator.buildAllArgs(params, args);
         EvalResult result;
         if (allArgs.isEmpty()) {
-            result = vm.evaluate(compiled.program(), evalOpts);
+            result = vm.evaluate(
+                    compiled.program(), compiled.target().ledgerTarget(), null, evalOpts);
         } else {
-            result = vm.evaluateWithArgs(compiled.program(), allArgs, evalOpts);
+            result = vm.evaluateWithArgs(
+                    compiled.program(), compiled.target().ledgerTarget(),
+                    allArgs, null, evalOpts);
         }
         this.lastExecutionTrace = result.executionTrace();
         this.lastBuiltinTrace = result.builtinTrace();

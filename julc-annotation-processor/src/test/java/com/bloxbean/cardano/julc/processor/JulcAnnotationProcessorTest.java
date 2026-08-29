@@ -260,6 +260,32 @@ class JulcAnnotationProcessorTest {
     }
 
     @Test
+    void targetOptionIsExactAndReported() throws Exception {
+        var source = """
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                import java.math.BigInteger;
+                @SpendingValidator class TargetValidator {
+                    @Entrypoint static boolean validate(BigInteger r, BigInteger c) {
+                        return true;
+                    }
+                }
+                """;
+
+        var success = compileWithProcessorAndOptions(source, "TargetValidator", List.of(
+                "-Ajulc.target=plutus-v3-pv11-uplc-1.1.0"));
+        assertTrue(success.success(), success.diagnostics().toString());
+        assertTrue(success.diagnostics().stream().anyMatch(diagnostic ->
+                diagnostic.getMessage(null).contains(
+                        "target: plutus-v3-pv11-uplc-1.1.0")));
+
+        var failure = compileWithProcessorAndOptions(source, "TargetValidator", List.of(
+                "-Ajulc.target=plutus-v3-pv12-uplc-1.1.0"));
+        assertFalse(failure.success());
+        assertTrue(failure.diagnostics().stream().anyMatch(diagnostic ->
+                diagnostic.getMessage(null).contains("not supported")));
+    }
+
+    @Test
     void blueprintDefaultsWhenNoOptions() throws Exception {
         var source = """
                 import com.bloxbean.cardano.julc.stdlib.annotation.*;

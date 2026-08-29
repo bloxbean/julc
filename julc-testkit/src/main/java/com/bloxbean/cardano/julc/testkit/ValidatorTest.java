@@ -2,6 +2,7 @@ package com.bloxbean.cardano.julc.testkit;
 
 import com.bloxbean.cardano.julc.compiler.CompileResult;
 import com.bloxbean.cardano.julc.compiler.CompilerOptions;
+import com.bloxbean.cardano.julc.compiler.CompilerTargetDiagnostics;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
 import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.core.Program;
@@ -12,6 +13,7 @@ import com.bloxbean.cardano.julc.vm.EvalOptions;
 import com.bloxbean.cardano.julc.vm.EvalResult;
 import com.bloxbean.cardano.julc.vm.ExBudget;
 import com.bloxbean.cardano.julc.vm.JulcVm;
+import com.bloxbean.cardano.julc.vm.LedgerEvaluationTarget;
 import com.bloxbean.cardano.julc.vm.trace.FailureReport;
 import com.bloxbean.cardano.julc.vm.trace.FailureReportBuilder;
 import com.bloxbean.cardano.julc.vm.trace.FailureReportFormatter;
@@ -84,6 +86,37 @@ public final class ValidatorTest {
     }
 
     /**
+     * Evaluate compiler output using the exact ledger target retained in its provenance.
+     */
+    public static EvalResult evaluate(CompileResult compiled, PlutusData... args) {
+        Objects.requireNonNull(compiled, "compiled must not be null");
+        return evaluate(compiled, compiled.target().ledgerTarget(), args);
+    }
+
+    /**
+     * Evaluate compiler output under an explicitly requested ledger target.
+     * A target different from the compiled provenance fails before VM execution.
+     */
+    public static EvalResult evaluate(
+            CompileResult compiled,
+            LedgerEvaluationTarget evaluationTarget,
+            PlutusData... args) {
+        Objects.requireNonNull(compiled, "compiled must not be null");
+        Objects.requireNonNull(evaluationTarget, "evaluationTarget must not be null");
+        if (!compiled.target().ledgerTarget().equals(evaluationTarget)) {
+            throw CompilerTargetDiagnostics.evaluationTargetMismatch(
+                    compiled.target(), evaluationTarget);
+        }
+        var vm = JulcVm.create();
+        if (args.length == 0) {
+            return vm.evaluate(
+                    compiled.program(), evaluationTarget, null, EvalOptions.DEFAULT);
+        }
+        return vm.evaluateWithArgs(
+                compiled.program(), evaluationTarget, List.of(args), null, EvalOptions.DEFAULT);
+    }
+
+    /**
      * Compile Java source to a UPLC program, then evaluate with the given arguments.
      *
      * @param javaSource the Java source code containing a supported JuLC validator class
@@ -93,8 +126,7 @@ public final class ValidatorTest {
      */
     public static EvalResult evaluate(String javaSource, PlutusData... args) {
         Objects.requireNonNull(javaSource, "javaSource must not be null");
-        var program = compile(javaSource);
-        return evaluate(program, args);
+        return evaluate(compileResult(javaSource, StdlibRegistry.defaultRegistry()), args);
     }
 
     /**
@@ -145,8 +177,7 @@ public final class ValidatorTest {
                                       com.bloxbean.cardano.julc.compiler.pir.StdlibLookup stdlibLookup,
                                       PlutusData... args) {
         Objects.requireNonNull(javaSource, "javaSource must not be null");
-        var program = compile(javaSource, stdlibLookup);
-        return evaluate(program, args);
+        return evaluate(compileResult(javaSource, stdlibLookup), args);
     }
 
     /**
@@ -179,6 +210,24 @@ public final class ValidatorTest {
         }
     }
 
+    /** Assert success while preserving the compiler-to-evaluator target handoff. */
+    public static void assertValidates(CompileResult compiled, PlutusData... args) {
+        var result = evaluate(compiled, args);
+        if (!result.isSuccess()) {
+            throw new AssertionError("Expected validator to succeed, but got: "
+                    + formatResult(result));
+        }
+    }
+
+    /** Assert failure while preserving the compiler-to-evaluator target handoff. */
+    public static void assertRejects(CompileResult compiled, PlutusData... args) {
+        var result = evaluate(compiled, args);
+        if (result.isSuccess()) {
+            throw new AssertionError("Expected validator to reject, but it succeeded: "
+                    + formatResult(result));
+        }
+    }
+
     /**
      * Assert that compiling and evaluating Java source succeeds.
      *
@@ -186,8 +235,11 @@ public final class ValidatorTest {
      * @param args       the arguments to apply
      */
     public static void assertValidates(String javaSource, PlutusData... args) {
-        var program = compile(javaSource);
-        assertValidates(program, args);
+        var result = evaluate(javaSource, args);
+        if (!result.isSuccess()) {
+            throw new AssertionError("Expected validator to succeed, but got: "
+                    + formatResult(result));
+        }
     }
 
     /**
@@ -197,8 +249,11 @@ public final class ValidatorTest {
      * @param args       the arguments to apply
      */
     public static void assertRejects(String javaSource, PlutusData... args) {
-        var program = compile(javaSource);
-        assertRejects(program, args);
+        var result = evaluate(javaSource, args);
+        if (result.isSuccess()) {
+            throw new AssertionError("Expected validator to reject, but it succeeded: "
+                    + formatResult(result));
+        }
     }
 
     // --- Detailed compilation (with PIR/UPLC inspection) ---
@@ -292,7 +347,7 @@ public final class ValidatorTest {
         if (result.hasErrors()) {
             throw new AssertionError("Compilation produced errors: " + result.diagnostics());
         }
-        return evaluate(result.program(), args);
+        return evaluate(result, args);
     }
 
     // --- Class-based compilation ---
@@ -436,7 +491,7 @@ public final class ValidatorTest {
      * Usage:
      * <pre>{@code
      * var compiled = ValidatorTest.compileValidatorWithSourceMap(MyValidator.class);
-     * var result = ValidatorTest.evaluate(compiled.program(), datum, redeemer, ctx);
+     * var result = ValidatorTest.evaluate(compiled, datum, redeemer, ctx);
      * var location = ValidatorTest.resolveErrorLocation(result, compiled.sourceMap());
      * // location = "MyValidator.java:42 (amount < 0)"
      * }</pre>
@@ -488,7 +543,7 @@ public final class ValidatorTest {
      */
     public static EvalResult evaluateWithSourceMap(String javaSource, PlutusData... args) {
         var compiled = compileWithSourceMap(javaSource);
-        return evaluate(compiled.program(), args);
+        return evaluate(compiled, args);
     }
 
     /**
@@ -515,7 +570,7 @@ public final class ValidatorTest {
      * @param args          the arguments to apply
      */
     public static void assertValidatesWithSourceMap(CompileResult compileResult, PlutusData... args) {
-        var result = evaluate(compileResult.program(), args);
+        var result = evaluate(compileResult, args);
         BudgetAssertions.assertSuccess(result, compileResult.sourceMap());
     }
 
@@ -526,7 +581,7 @@ public final class ValidatorTest {
      * @param args          the arguments to apply
      */
     public static void assertRejectsWithSourceMap(CompileResult compileResult, PlutusData... args) {
-        var result = evaluate(compileResult.program(), args);
+        var result = evaluate(compileResult, args);
         BudgetAssertions.assertFailure(result, compileResult.sourceMap());
     }
 
@@ -613,10 +668,24 @@ public final class ValidatorTest {
                 .withSourceMap(compiled.sourceMap())
                 .withTracing(tracing);
         if (args.length == 0) {
-            return vm.evaluate(compiled.program(), options);
+            return vm.evaluate(
+                    compiled.program(), compiled.target().ledgerTarget(), null, options);
         } else {
-            return vm.evaluateWithArgs(compiled.program(), List.of(args), options);
+            return vm.evaluateWithArgs(
+                    compiled.program(), compiled.target().ledgerTarget(),
+                    List.of(args), null, options);
         }
+    }
+
+    private static CompileResult compileResult(
+            String javaSource,
+            com.bloxbean.cardano.julc.compiler.pir.StdlibLookup stdlibLookup) {
+        var compiler = new JulcCompiler(stdlibLookup);
+        var result = compiler.compile(javaSource);
+        if (result.hasErrors()) {
+            throw new AssertionError("Compilation produced errors: " + result.diagnostics());
+        }
+        return result;
     }
 
     /**

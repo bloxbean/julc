@@ -6,6 +6,8 @@ import com.bloxbean.cardano.julc.clientlib.JulcScriptAdapter;
 import com.bloxbean.cardano.julc.clientlib.ValidatorOutput;
 import com.bloxbean.cardano.julc.compiler.CompilerException;
 import com.bloxbean.cardano.julc.compiler.CompilerOptions;
+import com.bloxbean.cardano.julc.compiler.CompilerTarget;
+import com.bloxbean.cardano.julc.compiler.CompilerTargetRegistry;
 import com.bloxbean.cardano.julc.compiler.JavaSourceIntrospector;
 import com.bloxbean.cardano.julc.compiler.LibrarySource;
 import com.bloxbean.cardano.julc.compiler.LibrarySourceResolver;
@@ -54,7 +56,7 @@ import java.util.stream.Collectors;
         "com.bloxbean.cardano.julc.stdlib.annotation.ProposingValidator",
         "com.bloxbean.cardano.julc.stdlib.annotation.MultiValidator"
 })
-@SupportedOptions({"julc.projectName", "julc.projectVersion", "julc.sourceMap", "julc.blueprint"})
+@SupportedOptions({"julc.projectName", "julc.projectVersion", "julc.sourceMap", "julc.blueprint", "julc.target"})
 @SupportedSourceVersion(SourceVersion.RELEASE_24)
 public class JulcAnnotationProcessor extends AbstractProcessor {
 
@@ -63,6 +65,7 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
     private boolean sourceMapEnabled;
     private boolean blueprintEnabled;
     private boolean processingFailed;
+    private CompilerTarget compilerTarget;
 
     /** Accumulated compiled validators for CIP-57 blueprint generation. */
     private final List<BlueprintGenerator.CompiledValidator> compiledValidators = new ArrayList<>();
@@ -85,6 +88,15 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
                 processingEnv.getOptions().get("julc.sourceMap"));
         this.blueprintEnabled = !"false".equalsIgnoreCase(
                 processingEnv.getOptions().get("julc.blueprint"));
+        var targetProfile = processingEnv.getOptions().getOrDefault(
+                "julc.target", CompilerTarget.PLUTUS_V3_PV11.profileId());
+        try {
+            this.compilerTarget = CompilerTargetRegistry.targetForProfileId(targetProfile);
+        } catch (CompilerException e) {
+            this.processingFailed = true;
+            processingEnv.getMessager().printMessage(
+                    Diagnostic.Kind.ERROR, e.getMessage());
+        }
     }
 
     @Override
@@ -103,6 +115,9 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
 
     @Override
     public boolean process(Set<? extends TypeElement> annotations, RoundEnvironment roundEnv) {
+        if (processingFailed) {
+            return true;
+        }
         // 1. Collect same-project @OnchainLibrary sources
         collectSameProjectLibraries(roundEnv);
 
@@ -188,7 +203,7 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
             List<String> librarySources = resolveLibrarySources(source);
 
             // 3. Compile with JulcCompiler (multi-file if libraries found)
-            var options = new CompilerOptions();
+            var options = new CompilerOptions().setTarget(compilerTarget);
             if (sourceMapEnabled) {
                 options.setSourceMapEnabled(true);
             }
@@ -269,7 +284,9 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
 
             String libMsg = librarySources.isEmpty() ? "" : " (with " + librarySources.size() + " library file(s))";
             processingEnv.getMessager().printMessage(Diagnostic.Kind.NOTE,
-                    "Compiled Plutus validator: " + className + " (hash: " + scriptHash + ", size: " + sizeStr + ")" + libMsg,
+                    "Compiled Plutus validator: " + className + " (target: "
+                            + result.target().profileId() + ", hash: " + scriptHash
+                            + ", size: " + sizeStr + ")" + libMsg,
                     element);
 
         } catch (CompilerException e) {

@@ -99,6 +99,11 @@ public abstract class ContractTest {
         return ValidatorTest.evaluate(program, args);
     }
 
+    /** Evaluate compiler output using its retained compiler target. */
+    protected EvalResult evaluate(CompileResult compiled, PlutusData... args) {
+        return ValidatorTest.evaluate(compiled, args);
+    }
+
     /**
      * Compile Java source to a UPLC program.
      *
@@ -300,7 +305,7 @@ public abstract class ContractTest {
      * Usage:
      * <pre>{@code
      * var compiled = compileValidatorWithSourceMap(SwapOrder.class);
-     * var result = evaluate(compiled.program(), ctx);
+     * var result = evaluate(compiled, ctx);
      * assertFailure(result, compiled.sourceMap());
      * }</pre>
      *
@@ -412,9 +417,12 @@ public abstract class ContractTest {
                 .withTracing(tracing);
         EvalResult result;
         if (args.length == 0) {
-            result = v.evaluate(compiled.program(), options);
+            result = v.evaluate(
+                    compiled.program(), compiled.target().ledgerTarget(), null, options);
         } else {
-            result = v.evaluateWithArgs(compiled.program(), java.util.List.of(args), options);
+            result = v.evaluateWithArgs(
+                    compiled.program(), compiled.target().ledgerTarget(),
+                    java.util.List.of(args), null, options);
         }
         this.lastResult = result;
         return result;

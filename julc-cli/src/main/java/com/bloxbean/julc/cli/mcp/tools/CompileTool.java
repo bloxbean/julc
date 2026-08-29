@@ -2,6 +2,9 @@ package com.bloxbean.julc.cli.mcp.tools;
 
 import com.bloxbean.cardano.julc.compiler.CompileResult;
 import com.bloxbean.cardano.julc.compiler.CompilerException;
+import com.bloxbean.cardano.julc.compiler.CompilerOptions;
+import com.bloxbean.cardano.julc.compiler.CompilerTarget;
+import com.bloxbean.cardano.julc.compiler.CompilerTargetRegistry;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
 import com.bloxbean.cardano.julc.compiler.error.CompilerDiagnostic;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
@@ -25,6 +28,7 @@ import java.util.Map;
  * <pre>{@code
  * {
  *   "source": "string  // required — Java source of the validator class",
+ *   "target": "string  // optional — exact compiler target profile ID",
  *   "librarySources": "string[]  // optional — @OnchainLibrary source files",
  *   "includeUplc": "boolean  // optional, default false — include formatted UPLC",
  *   "includePir": "boolean  // optional, default false — include formatted PIR"
@@ -35,6 +39,7 @@ import java.util.Map;
  * <pre>{@code
  * {
  *   "ok": boolean,
+ *   "compilerTarget": "plutus-v3-pv11-uplc-1.1.0",
  *   "diagnostics": [
  *     { "level":"error|warning|info", "code":"JULC0003"?, "message":..., "line":..., "column":..., "suggestion":... }
  *   ],
@@ -61,6 +66,10 @@ public final class CompileTool {
                       "type": "array",
                       "items": { "type": "string" },
                       "description": "Optional @OnchainLibrary source files to make available."
+                    },
+                    "target": {
+                      "type": "string",
+                      "description": "Exact compiler target profile ID. Defaults to plutus-v3-pv11-uplc-1.1.0."
                     },
                     "includeUplc": {
                       "type": "boolean",
@@ -123,13 +132,21 @@ public final class CompileTool {
         }
         boolean includeUplc = Boolean.TRUE.equals(args.get("includeUplc"));
         boolean includePir = Boolean.TRUE.equals(args.get("includePir"));
+        Object targetObj = args.getOrDefault(
+                "target", CompilerTarget.PLUTUS_V3_PV11.profileId());
+        if (!(targetObj instanceof String targetProfile) || targetProfile.isBlank()) {
+            return errorResult("'target' must be a non-empty compiler target profile ID.");
+        }
 
         Map<String, Object> result = new LinkedHashMap<>();
         try {
-            var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry());
+            var target = CompilerTargetRegistry.targetForProfileId(targetProfile);
+            var options = new CompilerOptions().setTarget(target);
+            var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), options);
             CompileResult cr = compiler.compileWithDetails(src, librarySources);
 
             result.put("ok", !cr.hasErrors());
+            result.put("compilerTarget", cr.target().profileId());
             result.put("diagnostics", renderDiagnostics(cr.diagnostics()));
             if (!cr.hasErrors() && cr.program() != null) {
                 result.put("scriptSizeBytes", cr.scriptSizeBytes());

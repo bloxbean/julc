@@ -2,6 +2,7 @@ package com.bloxbean.cardano.julc.jrl;
 
 import com.bloxbean.cardano.julc.compiler.CompileResult;
 import com.bloxbean.cardano.julc.compiler.CompilerException;
+import com.bloxbean.cardano.julc.compiler.CompilerOptions;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
 import com.bloxbean.cardano.julc.jrl.ast.ContractNode;
 import com.bloxbean.cardano.julc.jrl.check.JrlDiagnostic;
@@ -12,6 +13,7 @@ import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * JRL (JuLC Rule Language) compiler facade.
@@ -23,13 +25,20 @@ import java.util.List;
 public class JrlCompiler {
 
     private final StdlibRegistry stdlib;
+    private final CompilerOptions compilerOptions;
 
     public JrlCompiler() {
-        this(StdlibRegistry.defaultRegistry());
+        this(StdlibRegistry.defaultRegistry(), new CompilerOptions());
     }
 
     public JrlCompiler(StdlibRegistry stdlib) {
-        this.stdlib = stdlib;
+        this(stdlib, new CompilerOptions());
+    }
+
+    /** Create a JRL compiler using the same explicit target/options as Java compilation. */
+    public JrlCompiler(StdlibRegistry stdlib, CompilerOptions compilerOptions) {
+        this.stdlib = Objects.requireNonNull(stdlib, "stdlib");
+        this.compilerOptions = Objects.requireNonNull(compilerOptions, "compilerOptions");
     }
 
     /**
@@ -73,7 +82,7 @@ public class JrlCompiler {
 
         // 4. Compile Java -> UPLC via JulcCompiler
         try {
-            var julcCompiler = new JulcCompiler(stdlib);
+            var julcCompiler = new JulcCompiler(stdlib, compilerOptions);
             if (captureContractSchema) {
                 var compiled = julcCompiler.compileContract(javaSource);
                 return new JrlCompileResult(

@@ -33,6 +33,9 @@ julc new <project-name>
 # Build validators (compile Java to UPLC)
 julc build
 
+# Explicitly pin the compiler profile (also the current default)
+julc build --target plutus-v3-pv11-uplc-1.1.0
+
 # Compile raw deployable artifacts when no CIP-57 blueprint is wanted
 julc build --no-blueprint
 
@@ -89,6 +92,13 @@ mistaken for the new script. Schema-dependent commands such as
 A normal strict build also refreshes those raw files. Compilation and schema
 validation finish before any artifacts are published, so a failed strict build
 preserves the previous complete build rather than mixing old and new outputs.
+
+Every successful build reports its resolved compiler target. JuLC currently
+supports only `plutus-v3-pv11-uplc-1.1.0`; an unknown or future target is an
+error and never falls back to PV11. A later protocol version will be introduced
+as a new pinned profile after its ledger baseline, compiler lowerings,
+optimizations, and conformance tests are reviewed. Adding it will not change
+the no-option default automatically.
 
 ## Documentation
 
