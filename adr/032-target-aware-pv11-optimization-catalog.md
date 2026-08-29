@@ -861,8 +861,8 @@ See [O2–O6 evidence](evidence/032-o2-o6-case-builtins.md) and child issues
 
 ### Milestone 4 — Cost/use-directed rewrites
 
-**Implementation status:** Complete on its milestone branch through explicit,
-evidence-backed deferrals (2026-08-29). See
+**Implementation status:** Complete and merged into the ADR-032 integration
+line through explicit, evidence-backed deferrals (2026-08-29). See
 [cost/use evidence](evidence/032-cost-use-rewrite-deferrals.md) and issues
 [#102](https://github.com/bloxbean/julc/issues/102) through
 [#105](https://github.com/bloxbean/julc/issues/105); O11 remains governed by
