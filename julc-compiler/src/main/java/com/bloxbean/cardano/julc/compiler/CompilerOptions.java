@@ -1,5 +1,7 @@
 package com.bloxbean.cardano.julc.compiler;
 
+import com.bloxbean.cardano.julc.vm.OptimizationCostProfile;
+
 import java.util.Objects;
 import java.util.function.Consumer;
 
@@ -13,6 +15,8 @@ public class CompilerOptions {
     private boolean verbose = false;
     private boolean sourceMapEnabled = false;
     private CompilerTarget target = CompilerTarget.PLUTUS_V3_PV11;
+    private OptimizationLevel optimizationLevel = OptimizationLevel.BASELINE;
+    private OptimizationCostProfile optimizationCostProfile;
     private Consumer<String> logger = System.out::println;
 
     /**
@@ -30,6 +34,32 @@ public class CompilerOptions {
     /** Return the requested compiler target. */
     public CompilerTarget getTarget() {
         return target;
+    }
+
+    /** Select optimizer rollout independently from compiler-target legality. */
+    public CompilerOptions setOptimizationLevel(OptimizationLevel optimizationLevel) {
+        this.optimizationLevel = Objects.requireNonNull(
+                optimizationLevel, "optimizationLevel");
+        return this;
+    }
+
+    public OptimizationLevel getOptimizationLevel() {
+        return optimizationLevel;
+    }
+
+    /**
+     * Select a pinned cost profile for {@link OptimizationLevel#PV11_COSTED}.
+     * Supplying a profile does not enable cost-directed rules by itself.
+     */
+    public CompilerOptions setOptimizationCostProfile(
+            OptimizationCostProfile optimizationCostProfile) {
+        this.optimizationCostProfile = Objects.requireNonNull(
+                optimizationCostProfile, "optimizationCostProfile");
+        return this;
+    }
+
+    public OptimizationCostProfile getOptimizationCostProfile() {
+        return optimizationCostProfile;
     }
 
     public CompilerOptions setVerbose(boolean verbose) {

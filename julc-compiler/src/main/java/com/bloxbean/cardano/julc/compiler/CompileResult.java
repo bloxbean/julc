@@ -21,12 +21,22 @@ import java.util.Objects;
  */
 public record CompileResult(Program program, List<CompilerDiagnostic> diagnostics, List<ParamInfo> params,
                              PirTerm pirTerm, Term uplcTerm, SourceMap sourceMap,
-                             CompilerTarget target) {
+                             CompilerTarget target, OptimizationReport optimizationReport) {
 
     public CompileResult {
         diagnostics = List.copyOf(diagnostics);
         params = List.copyOf(params);
         target = Objects.requireNonNull(target, "target");
+        optimizationReport = Objects.requireNonNull(
+                optimizationReport, "optimizationReport");
+    }
+
+    /** Backward-compatible constructor without optimization provenance. */
+    public CompileResult(Program program, List<CompilerDiagnostic> diagnostics, List<ParamInfo> params,
+                         PirTerm pirTerm, Term uplcTerm, SourceMap sourceMap,
+                         CompilerTarget target) {
+        this(program, diagnostics, params, pirTerm, uplcTerm, sourceMap, target,
+                OptimizationReport.baseline());
     }
 
     /**
@@ -35,7 +45,7 @@ public record CompileResult(Program program, List<CompilerDiagnostic> diagnostic
     public CompileResult(Program program, List<CompilerDiagnostic> diagnostics, List<ParamInfo> params,
                          PirTerm pirTerm, Term uplcTerm, SourceMap sourceMap) {
         this(program, diagnostics, params, pirTerm, uplcTerm, sourceMap,
-                CompilerTarget.PLUTUS_V3_PV11);
+                CompilerTarget.PLUTUS_V3_PV11, OptimizationReport.baseline());
     }
 
     /**
@@ -44,7 +54,7 @@ public record CompileResult(Program program, List<CompilerDiagnostic> diagnostic
     public CompileResult(Program program, List<CompilerDiagnostic> diagnostics, List<ParamInfo> params,
                          PirTerm pirTerm, Term uplcTerm) {
         this(program, diagnostics, params, pirTerm, uplcTerm, null,
-                CompilerTarget.PLUTUS_V3_PV11);
+                CompilerTarget.PLUTUS_V3_PV11, OptimizationReport.baseline());
     }
 
     /**
@@ -52,7 +62,7 @@ public record CompileResult(Program program, List<CompilerDiagnostic> diagnostic
      */
     public CompileResult(Program program, List<CompilerDiagnostic> diagnostics, List<ParamInfo> params) {
         this(program, diagnostics, params, null, null, null,
-                CompilerTarget.PLUTUS_V3_PV11);
+                CompilerTarget.PLUTUS_V3_PV11, OptimizationReport.baseline());
     }
 
     /**
@@ -60,7 +70,7 @@ public record CompileResult(Program program, List<CompilerDiagnostic> diagnostic
      */
     public CompileResult(Program program, List<CompilerDiagnostic> diagnostics) {
         this(program, diagnostics, List.of(), null, null, null,
-                CompilerTarget.PLUTUS_V3_PV11);
+                CompilerTarget.PLUTUS_V3_PV11, OptimizationReport.baseline());
     }
 
     /**

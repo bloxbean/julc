@@ -141,6 +141,14 @@ public final class DiagnosticCodes {
             "Method {0} may not return a value on all execution paths",
             "Ensure every if/else branch returns, or add a fallthrough return at the end of the method.");
 
+    public static final DiagnosticInfo MISSING_OPTIMIZATION_COST_PROFILE = new DiagnosticInfo(
+            "JULC0037",
+            "MISSING_OPTIMIZATION_COST_PROFILE",
+            CompilerDiagnostic.Level.ERROR,
+            "CONFIG",
+            "Optimization level {0} requires an explicit pinned optimization cost profile",
+            "Select a supported named optimization cost profile, or use BASELINE/PV11_SAFE when cost-directed rules are not required.");
+
     public static final DiagnosticInfo MUTUAL_RECURSION_TOO_LARGE = new DiagnosticInfo(
             "JULC0023",
             "MUTUAL_RECURSION_TOO_LARGE",
@@ -172,6 +180,14 @@ public final class DiagnosticCodes {
             "SYNTAX",
             "null is not supported on-chain",
             "Use Optional<T> (Optional.of(x) / Optional.empty()) to represent absence of a value");
+
+    public static final DiagnosticInfo OPTIMIZATION_COST_PROFILE_TARGET_MISMATCH = new DiagnosticInfo(
+            "JULC0038",
+            "OPTIMIZATION_COST_PROFILE_TARGET_MISMATCH",
+            CompilerDiagnostic.Level.ERROR,
+            "CONFIG",
+            "Optimization cost profile {0} targets {1}, but compiler target {2} evaluates as {3}",
+            "Use a cost profile pinned for the selected compiler target, or select a compatible compiler target explicitly.");
 
     public static final DiagnosticInfo PARAM_RAW_PLUTUS_DATA = new DiagnosticInfo(
             "JULC0013",
@@ -277,6 +293,22 @@ public final class DiagnosticCodes {
             "Compiler target {0} is not supported. Supported targets: {1}",
             "Select a listed compiler target. This release supports Plutus V3/PV11/UPLC 1.1.0 only; do not rely on fallback to another target.");
 
+    public static final DiagnosticInfo UNSUPPORTED_OPTIMIZATION_COST_PROFILE = new DiagnosticInfo(
+            "JULC0040",
+            "UNSUPPORTED_OPTIMIZATION_COST_PROFILE",
+            CompilerDiagnostic.Level.ERROR,
+            "CONFIG",
+            "Optimization cost profile {0} is not supported. Supported profiles: {1}",
+            "Select one of the listed cost profiles. Do not substitute live node parameters or a profile from another protocol version.");
+
+    public static final DiagnosticInfo UNSUPPORTED_OPTIMIZATION_LEVEL = new DiagnosticInfo(
+            "JULC0039",
+            "UNSUPPORTED_OPTIMIZATION_LEVEL",
+            CompilerDiagnostic.Level.ERROR,
+            "CONFIG",
+            "Optimization level {0} is not supported. Supported levels: {1}",
+            "Select one of the listed optimization levels. Use baseline to preserve the pre-ADR-032 generated program.");
+
     public static final DiagnosticInfo VALIDATOR_ANNOTATION_MISSING = new DiagnosticInfo(
             "JULC0010",
             "VALIDATOR_ANNOTATION_MISSING",
@@ -312,10 +344,12 @@ public final class DiagnosticCodes {
             LAMBDA_STORED_IN_VARIABLE_UNSUPPORTED,
             METHOD_BODY_MISSING,
             METHOD_MISSING_RETURN,
+            MISSING_OPTIMIZATION_COST_PROFILE,
             MUTUAL_RECURSION_TOO_LARGE,
             NEWTYPE_UNSUPPORTED_FIELD_TYPE,
             NEWTYPE_WRONG_FIELD_COUNT,
             NULL_UNSUPPORTED,
+            OPTIMIZATION_COST_PROFILE_TARGET_MISMATCH,
             PARAM_RAW_PLUTUS_DATA,
             RETURN_INSIDE_WHILE,
             SOURCE_PARSE_FAILED,
@@ -329,6 +363,8 @@ public final class DiagnosticCodes {
             UNDEFINED_VARIABLE,
             UNKNOWN_METHOD_ON_TYPE,
             UNSUPPORTED_COMPILER_TARGET,
+            UNSUPPORTED_OPTIMIZATION_COST_PROFILE,
+            UNSUPPORTED_OPTIMIZATION_LEVEL,
             VALIDATOR_ANNOTATION_MISSING,
             VARIABLE_UNINITIALIZED
     );

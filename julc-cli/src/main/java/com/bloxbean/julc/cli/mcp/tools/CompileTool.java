@@ -6,6 +6,7 @@ import com.bloxbean.cardano.julc.compiler.CompilerOptions;
 import com.bloxbean.cardano.julc.compiler.CompilerTarget;
 import com.bloxbean.cardano.julc.compiler.CompilerTargetRegistry;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
+import com.bloxbean.cardano.julc.compiler.OptimizationConfiguration;
 import com.bloxbean.cardano.julc.compiler.error.CompilerDiagnostic;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
 import io.modelcontextprotocol.json.McpJsonMapper;
@@ -70,6 +71,14 @@ public final class CompileTool {
                     "target": {
                       "type": "string",
                       "description": "Exact compiler target profile ID. Defaults to plutus-v3-pv11-uplc-1.1.0."
+                    },
+                    "optimization": {
+                      "type": "string",
+                      "description": "Exact optimizer rollout ID. Defaults to baseline."
+                    },
+                    "costProfile": {
+                      "type": "string",
+                      "description": "Exact pinned cost profile ID; required by pv11-costed."
                     },
                     "includeUplc": {
                       "type": "boolean",
@@ -141,12 +150,13 @@ public final class CompileTool {
         Map<String, Object> result = new LinkedHashMap<>();
         try {
             var target = CompilerTargetRegistry.targetForProfileId(targetProfile);
-            var options = new CompilerOptions().setTarget(target);
+            var options = optimizationOptions(args, target);
             var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), options);
             CompileResult cr = compiler.compileWithDetails(src, librarySources);
 
             result.put("ok", !cr.hasErrors());
             result.put("compilerTarget", cr.target().profileId());
+            result.put("optimization", renderOptimization(cr));
             result.put("diagnostics", renderDiagnostics(cr.diagnostics()));
             if (!cr.hasErrors() && cr.program() != null) {
                 result.put("scriptSizeBytes", cr.scriptSizeBytes());
@@ -190,6 +200,37 @@ public final class CompileTool {
         }
 
         return buildResult(result, jsonMapper);
+    }
+
+    static CompilerOptions optimizationOptions(
+            Map<String, Object> args,
+            com.bloxbean.cardano.julc.compiler.CompilerTarget target) {
+        Object optimizationObj = args.getOrDefault("optimization", "baseline");
+        if (!(optimizationObj instanceof String optimization) || optimization.isBlank()) {
+            throw new IllegalArgumentException(
+                    "'optimization' must be a non-empty optimizer rollout ID.");
+        }
+        Object costObj = args.get("costProfile");
+        if (costObj != null && (!(costObj instanceof String) || ((String) costObj).isBlank())) {
+            throw new IllegalArgumentException(
+                    "'costProfile' must be a non-empty pinned cost profile ID.");
+        }
+        return OptimizationConfiguration.apply(
+                new CompilerOptions().setTarget(target),
+                optimization,
+                (String) costObj);
+    }
+
+    static Map<String, Object> renderOptimization(CompileResult result) {
+        var report = result.optimizationReport();
+        var rendered = new LinkedHashMap<String, Object>();
+        rendered.put("level", report.level().profileId());
+        if (report.costProfileId() != null) {
+            rendered.put("costProfile", report.costProfileId());
+            rendered.put("costProfileHash", report.costParameterHash());
+        }
+        rendered.put("appliedRules", report.appliedRules());
+        return rendered;
     }
 
     /**

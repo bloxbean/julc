@@ -69,6 +69,9 @@ public class UplcOptimizer {
     }
 
     public OptimizationResult optimizeWithReport(Term term) {
+        if (!context.optimizationLevel().baselineOptimizerEnabled()) {
+            return new OptimizationResult(term, List.of());
+        }
         Term current = term;
         var appliedPasses = new LinkedHashSet<String>();
         for (int i = 0; i < MAX_ITERATIONS; i++) {

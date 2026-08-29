@@ -286,6 +286,34 @@ class JulcAnnotationProcessorTest {
     }
 
     @Test
+    void optimizationOptionsAreExactAndReported() throws Exception {
+        var source = """
+                import com.bloxbean.cardano.julc.stdlib.annotation.*;
+                import java.math.BigInteger;
+                @SpendingValidator class OptimizationValidator {
+                    @Entrypoint static boolean validate(BigInteger r, BigInteger c) {
+                        return true;
+                    }
+                }
+                """;
+
+        var success = compileWithProcessorAndOptions(
+                source, "OptimizationValidator", List.of(
+                        "-Ajulc.optimization=pv11-costed",
+                        "-Ajulc.costProfile=cardano-node-11.0.1-plutus-v3-pv11"));
+        assertTrue(success.success(), success.diagnostics().toString());
+        assertTrue(success.diagnostics().stream().anyMatch(diagnostic ->
+                diagnostic.getMessage(null).contains("optimization: pv11-costed")));
+
+        var failure = compileWithProcessorAndOptions(
+                source, "OptimizationValidator", List.of(
+                        "-Ajulc.optimization=PV11_COSTED"));
+        assertFalse(failure.success());
+        assertTrue(failure.diagnostics().stream().anyMatch(diagnostic ->
+                diagnostic.getMessage(null).contains("not supported")));
+    }
+
+    @Test
     void blueprintDefaultsWhenNoOptions() throws Exception {
         var source = """
                 import com.bloxbean.cardano.julc.stdlib.annotation.*;

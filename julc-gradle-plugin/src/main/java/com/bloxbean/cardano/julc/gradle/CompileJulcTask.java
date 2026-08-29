@@ -9,6 +9,7 @@ import com.bloxbean.cardano.julc.compiler.CompilerTargetRegistry;
 import com.bloxbean.cardano.julc.compiler.JavaSourceIntrospector;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
 import com.bloxbean.cardano.julc.compiler.ScriptPurposeMetadata;
+import com.bloxbean.cardano.julc.compiler.OptimizationConfiguration;
 import com.bloxbean.cardano.julc.core.source.SourceMapSerializer;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
 
@@ -57,6 +58,13 @@ public abstract class CompileJulcTask extends DefaultTask {
     @Input
     public abstract Property<String> getTarget();
 
+    @Input
+    public abstract Property<String> getOptimization();
+
+    @Input
+    @Optional
+    public abstract Property<String> getCostProfile();
+
     @TaskAction
     public void compile() throws IOException {
         File srcDir = getSourceDir().get().getAsFile();
@@ -67,7 +75,10 @@ public abstract class CompileJulcTask extends DefaultTask {
         var compilerTarget = CompilerTargetRegistry.targetForProfileId(getTarget().get());
 
         var stdlib = StdlibRegistry.defaultRegistry();
-        var options = new CompilerOptions().setTarget(compilerTarget);
+        var options = OptimizationConfiguration.apply(
+                new CompilerOptions().setTarget(compilerTarget),
+                getOptimization().get(),
+                getCostProfile().getOrNull());
         if (sourceMapEnabled) {
             options.setSourceMapEnabled(true);
         }
@@ -176,9 +187,10 @@ public abstract class CompileJulcTask extends DefaultTask {
                         outDir.toPath().resolve(pending.validatorName() + ".sourcemap.json"),
                         pending.sourceMapJson());
             }
-            getLogger().lifecycle("Compiled {} → {}.json (target: {}, hash: {}, size: {})",
+            getLogger().lifecycle("Compiled {} → {}.json (target: {}, optimization: {}, hash: {}, size: {})",
                     pending.sourceFileName(), pending.validatorName(),
-                    compilerTarget.profileId(), pending.scriptHash(), pending.size());
+                    compilerTarget.profileId(), options.getOptimizationLevel().profileId(),
+                    pending.scriptHash(), pending.size());
         }
         cleanupStaleOutputs(outDir, pendingOutputs);
 

@@ -31,6 +31,8 @@ public class JulcExtension {
     private final Property<Boolean> sourceMap;
     private final Property<Boolean> blueprint;
     private final Property<String> target;
+    private final Property<String> optimization;
+    private final Property<String> costProfile;
 
     public JulcExtension(Project project) {
         ObjectFactory objects = project.getObjects();
@@ -42,6 +44,8 @@ public class JulcExtension {
         blueprint = objects.property(Boolean.class).convention(true);
         target = objects.property(String.class)
                 .convention("plutus-v3-pv11-uplc-1.1.0");
+        optimization = objects.property(String.class).convention("baseline");
+        costProfile = objects.property(String.class);
     }
 
     public DirectoryProperty getSourceDir() {
@@ -69,5 +73,15 @@ public class JulcExtension {
     /** Exact, fail-closed compiler target profile ID. */
     public Property<String> getTarget() {
         return target;
+    }
+
+    /** Exact optimizer rollout ID. Defaults to byte-compatible {@code baseline}. */
+    public Property<String> getOptimization() {
+        return optimization;
+    }
+
+    /** Exact pinned cost-profile ID. Required only by cost-directed levels. */
+    public Property<String> getCostProfile() {
+        return costProfile;
     }
 }
