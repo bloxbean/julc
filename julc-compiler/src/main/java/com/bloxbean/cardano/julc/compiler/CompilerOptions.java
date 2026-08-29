@@ -1,5 +1,6 @@
 package com.bloxbean.cardano.julc.compiler;
 
+import java.util.Objects;
 import java.util.function.Consumer;
 
 /**
@@ -11,7 +12,25 @@ import java.util.function.Consumer;
 public class CompilerOptions {
     private boolean verbose = false;
     private boolean sourceMapEnabled = false;
+    private CompilerTarget target = CompilerTarget.PLUTUS_V3_PV11;
     private Consumer<String> logger = System.out::println;
+
+    /**
+     * Select the ledger target for this compilation.
+     *
+     * <p>JuLC currently supports only {@link CompilerTarget#PLUTUS_V3_PV11}.
+     * Unsupported targets fail explicitly when compilation begins; they never
+     * fall back to this default.
+     */
+    public CompilerOptions setTarget(CompilerTarget target) {
+        this.target = Objects.requireNonNull(target, "target");
+        return this;
+    }
+
+    /** Return the requested compiler target. */
+    public CompilerTarget getTarget() {
+        return target;
+    }
 
     public CompilerOptions setVerbose(boolean verbose) {
         this.verbose = verbose;
