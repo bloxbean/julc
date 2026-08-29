@@ -10,6 +10,7 @@ import com.bloxbean.cardano.julc.core.Constant;
 import com.bloxbean.cardano.julc.core.DefaultFun;
 import com.bloxbean.cardano.julc.core.Term;
 import com.bloxbean.cardano.julc.core.source.SourceLocation;
+import com.bloxbean.cardano.julc.vm.ProtocolCapability;
 
 import java.math.BigInteger;
 import java.util.*;
@@ -23,6 +24,8 @@ import java.util.*;
  * building an {@link IdentityHashMap} for runtime error location tracking.
  */
 public class UplcGenerator {
+
+    public static final String PV11_CASE_BOOL_RULE = "pv11.o2.case-bool";
 
     private final Deque<String> scope = new ArrayDeque<>();
 
@@ -145,6 +148,15 @@ public class UplcGenerator {
             case PirTerm.LetRec letRec -> generateLetRec(letRec);
 
             case PirTerm.IfThenElse(var cond, var thenBranch, var elseBranch) -> {
+                if (context.optimizationLevel().pv11SafeRulesEnabled()
+                        && context.supports(ProtocolCapability.CASE_ON_BUILTIN_CONSTANTS)) {
+                    context.recordOptimizationRule(PV11_CASE_BOOL_RULE);
+                    // Case Bool branch order is False (0), then True (1).
+                    // Case evaluates the scrutinee once and only the selected branch.
+                    yield new Term.Case(
+                            generate(cond),
+                            List.of(generate(elseBranch), generate(thenBranch)));
+                }
                 // Force(Apply(Apply(Apply(Force(Builtin(IfThenElse)), cond), Delay(then)), Delay(else)))
                 var ifBuiltin = Term.force(Term.builtin(DefaultFun.IfThenElse));
                 yield Term.force(

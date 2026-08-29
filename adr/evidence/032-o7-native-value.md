@@ -38,25 +38,26 @@ Reproduce with:
 ./gradlew :julc-benchmark:optimizationEvidence
 ```
 
-The fixture performs Data conversion, insert, scale, union, containment,
-conversion round-trip, and lookup. It asserts quantities 48 for a present coin
-and 6 for an initially absent coin on both backends.
+The fixture performs Data conversion, insert, lookup, scale, union, conversion
+round-trip, and containment. It asserts successful containment for present and
+initially absent lookup keys on both backends without introducing an unrelated
+conditional lowering into the O7 measurement.
 
-Baseline script hash: `4ef6a1c10f93d51c37bac7cfba0000e541de0a94be26e16c5a46e82b`; candidate
-script hash: `4ef6a1c10f93d51c37bac7cfba0000e541de0a94be26e16c5a46e82b`.
+Baseline script hash: `9ff21a6e8d3a3e85e6596103a99bdac629796629b1af6979c0f1fd07`; candidate
+script hash: `9ff21a6e8d3a3e85e6596103a99bdac629796629b1af6979c0f1fd07`.
 
 | Metric | Baseline | PV11 safe | Delta |
 |---|---:|---:|---:|
-| FLAT bytes | 89 | 89 | 0 |
-| UPLC term nodes | 96 | 96 | 0 |
+| FLAT bytes | 77 | 77 | 0 |
+| UPLC term nodes | 82 | 82 | 0 |
 
 | Backend | Case | Outcome | CPU baseline | CPU candidate | CPU delta | Memory baseline | Memory candidate | Memory delta |
 |---|---|---|---:|---:|---:|---:|---:|---:|
-| Java | present | success | 4709116 | 4709116 | 0 | 10490 | 10490 | 0 |
-| Java | absent | success | 5411340 | 5411340 | 0 | 10576 | 10576 | 0 |
+| Java | present | success | 4365018 | 4365018 | 0 | 9288 | 9288 | 0 |
+| Java | absent | success | 5067242 | 5067242 | 0 | 9374 | 9374 | 0 |
 | Java | malformed Data | failure | 761318 | 761318 | 0 | 4076 | 4076 | 0 |
-| Truffle | present | success | 4709116 | 4709116 | 0 | 10490 | 10490 | 0 |
-| Truffle | absent | success | 5411340 | 5411340 | 0 | 10576 | 10576 | 0 |
+| Truffle | present | success | 4365018 | 4365018 | 0 | 9288 | 9288 | 0 |
+| Truffle | absent | success | 5067242 | 5067242 | 0 | 9374 | 9374 | 0 |
 | Truffle | malformed Data | failure | 761318 | 761318 | 0 | 4076 | 4076 | 0 |
 
 Success values, exact failure text, traces, and budgets match across levels and
