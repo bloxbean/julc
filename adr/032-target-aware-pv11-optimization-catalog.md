@@ -821,7 +821,8 @@ line (2026-08-29). See [#94](https://github.com/bloxbean/julc/issues/94) and
 
 ### Milestone 2 — Typed native operations
 
-**Implementation status:** Complete on its milestone branch (2026-08-29).
+**Implementation status:** Complete and merged into the ADR-032 integration
+line (2026-08-29).
 See [#95](https://github.com/bloxbean/julc/issues/95),
 [O7 evidence](evidence/032-o7-native-value.md), and the
 [O11 deferral](evidence/032-o11-bls-msm-deferral.md).
