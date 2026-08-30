@@ -125,7 +125,9 @@ For detailed dependencies, check the [getting started](docs/src/content/docs/get
 JuLC currently compiles exactly one profile:
 `plutus-v3-pv11-uplc-1.1.0`. Existing APIs default to that named profile;
 “latest” is intentionally not a target, and unknown future protocol versions
-fail closed.
+fail closed. The target contract and process for adding later protocol versions
+are documented in
+[ADR-031](adr/031-pv11-first-compiler-target-and-future-protocol-evolution.md).
 
 ```java
 var options = new CompilerOptions()
@@ -138,40 +140,14 @@ The Gradle plugin accepts the same stable profile ID:
 ```groovy
 julc {
     target = 'plutus-v3-pv11-uplc-1.1.0'
-    optimization = 'pv11-safe'
 }
 ```
 
-Optimizer rollout is deliberately separate from the compiler target. The
-stable IDs are `none`, `baseline`, `pv11-safe`, and `pv11-costed`; `pv11-safe`
-is the default. Select `baseline` explicitly to reproduce the pre-ADR-032
-lowering and script bytes. Cost-directed rules also require an exact pinned
-profile, for example:
-
-```groovy
-julc {
-    optimization = 'pv11-costed'
-    costProfile = 'cardano-node-11.0.1-plutus-v3-pv11'
-}
-```
-
-The same values are available through `CompilerOptions`, the CLI
-(`--optimization`, `--cost-profile`), annotation-processor options
-(`-Ajulc.optimization`, `-Ajulc.costProfile`), and MCP compile/evaluate tools.
-Unknown identifiers never fall back.
-
-Default compiler output may contain PV11-only `Case Bool` or `DropList` terms.
-`JulcVm` language-only overloads intentionally retain ADR-030's PV10
-compatibility behavior, so raw VM evaluation must use the compiled target:
-
-```java
-var result = compiler.compile(source);
-var evaluation = vm.evaluateWithArgs(
-        result.program(), result.target().ledgerTarget(), args, null,
-        EvalOptions.DEFAULT);
-```
-
-The testkit and CLI evaluation paths propagate this target automatically.
+The reviewed `pv11-safe` optimization profile is the default and may change
+newly compiled script bytes. Select `baseline` explicitly when reproducing the
+pre-optimization lowering. See the
+[release notes](docs/src/content/docs/reference/release-notes.md) for the
+enabled rules, configuration options, measured costs, and hash migration.
 
 For direct annotation-processor configuration, pass
 `-Ajulc.target=plutus-v3-pv11-uplc-1.1.0`. Supporting a later protocol version
@@ -321,21 +297,21 @@ if (!result.hasErrors()) {
 // in issue #74.
 var evalResult = ValidatorTest.evaluate(result, datum, redeemer, scriptContext);
 
-// Scalus VM alternative: replace the line above with the language-compatible
-// Program overload for now.
-// The Java VM also supports this overload, but it does not retain the explicit
-// compiler-target provenance carried by CompileResult.
-// var evalResult = ValidatorTest.evaluate(
-//         result.program(), datum, redeemer, scriptContext);
+// Scalus VM alternative: replace the line above with direct language-compatible
+// evaluation. Both ValidatorTest overloads use the explicit PV11 target in the
+// current compiler testkit, which the Scalus adapter does not yet accept.
+// var scalus = JulcVm.create("Scalus");
+// var evalResult = scalus.evaluateWithArgs(
+//         result.program(), List.of(datum, redeemer, scriptContext));
 
 assertTrue(evalResult.isSuccess());
 ```
 
 Passing the `CompileResult` lets `julc-testkit` hand the exact compiler target
-to the VM. Raw `Program` evaluation overloads remain available for compatibility
-when target provenance is not available. The Scalus adapter currently supports
-the `Program` overload but not the explicit-target `CompileResult` overload;
-that integration is tracked in
+to the VM. The testkit's raw `Program` overload assumes JuLC's current
+V3/PV11 compiler target when provenance is unavailable. The Scalus adapter
+currently supports direct language-compatible evaluation but not this
+explicit-target testkit path; that integration is tracked in
 [issue #74](https://github.com/bloxbean/julc/issues/74).
 
 ## Requirements

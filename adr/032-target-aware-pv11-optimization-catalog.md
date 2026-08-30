@@ -8,7 +8,7 @@
 
 **Prerequisite:** [ADR-031 — PV11-first compiler target and future protocol evolution](031-pv11-first-compiler-target-and-future-protocol-evolution.md) / [#76](https://github.com/bloxbean/julc/issues/76)
 
-**Related roadmap:** [ADR-029 — PV11 ledger readiness and optimization roadmap](029-pv11-ledger-readiness-and-optimization-roadmap.md)
+**Related roadmap:** [#65 — ADR-029 PV11 ledger-conformant evaluation readiness tracker](https://github.com/bloxbean/julc/issues/65)
 
 **Normative semantic and cost baseline:** cardano-node 11.0.1 / Plutus 1.63.0.0 at
 [`f92b7d7d82622a26caf456a6be33859f697e2cfc`](https://github.com/IntersectMBO/plutus/tree/f92b7d7d82622a26caf456a6be33859f697e2cfc)
