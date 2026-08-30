@@ -22,8 +22,7 @@
 
 *Pronounced “jool-see” (J-U-L-C), or simply “jules”*
 
-Write Cardano smart contracts in Java and compile them to the pinned Plutus V3 / protocol 11 /
-UPLC 1.1.0 target. julc provides a complete
+Write Cardano smart contracts in Java and compile them to Plutus V3 UPLC. JuLC provides a complete
 toolchain: a Java-subset compiler, a pluggable VM for local evaluation, a standard library of on-chain
 operations, and first-class integration with [cardano-client-lib](https://github.com/bloxbean/cardano-client-lib).
 
