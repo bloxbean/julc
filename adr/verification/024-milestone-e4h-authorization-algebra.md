@@ -1,6 +1,6 @@
 # ADR-024: Milestone E.4h — Compositional Authorization Algebra
 
-- **Status:** Implemented experimentally; manual review pending
+- **Status:** Implemented experimentally, manually reviewed, and integrated
 - **Date:** 2026-08-21
 - **Parent:**
   [ADR-016 — Typed Verification DSL and Foundational Profile Catalog](016-typed-verification-dsl-and-profile-catalog.md)

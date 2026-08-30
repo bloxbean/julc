@@ -1,6 +1,6 @@
 # ADR-029: E.6 stable verification DSL and annotation convergence
 
-- **Status:** Accepted; implemented on feature branch, awaiting review
+- **Status:** Accepted; implemented and merged through PRs #89 and #90
 - **Date:** 2026-08-23
 - **Integration branch:** `feat/typed-verification-dsl-e4`
 - **Schema-reset branch:** `feat/verification-dsl-schema-v1`
@@ -285,8 +285,9 @@ require separate ADRs and property-schema versions.
 
 ## Implementation outcome
 
-The pre-release schema reset is implemented on
-`feat/verification-dsl-schema-v1`.
+The pre-release schema reset was implemented on
+`feat/verification-dsl-schema-v1` and merged through PR #90 after the E.4/E.6
+integration branch landed through PR #89.
 
 - `VerificationDslApi` declares Java construction API version 1 and canonical
   property schema 1. No older canonical DSL schema is readable.
