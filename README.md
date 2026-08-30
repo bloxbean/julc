@@ -102,12 +102,22 @@ dependencies {
     // Annotation processor -- compiles validators during javac
     annotationProcessor "com.bloxbean.cardano:julc-annotation-processor:${julcVersion}"
 
-    // Test: VM for local evaluation
+    // Test: choose a VM backend for local evaluation
     testImplementation "com.bloxbean.cardano:julc-testkit:${julcVersion}"
     testImplementation "com.bloxbean.cardano:julc-vm:${julcVersion}"
+
+    // Java VM: supports CompileResult-aware protocol target propagation
     testRuntimeOnly "com.bloxbean.cardano:julc-vm-java:${julcVersion}"
+
+    // Scalus VM: supported alternative for direct UPLC evaluation and cross-checking
+    // testRuntimeOnly "com.bloxbean.cardano:julc-vm-scalus:${julcVersion}"
 }
 ```
+
+Only one VM backend is required. If both are present, JuLC selects the Java VM
+by default; select `Scalus` explicitly when an independent evaluation is
+desired. Protocol-target propagation through the Scalus adapter is tracked in
+[issue #74](https://github.com/bloxbean/julc/issues/74).
 
 For detailed dependencies, check the [getting started](docs/src/content/docs/getting-started.md) guide or the `julc-helloworld` example at https://github.com/bloxbean/julc-helloworld.
 
