@@ -38,6 +38,12 @@ The fixture evaluates the condition once through `Trace`, covers both branch
 values, selected and unselected `Error`, and exact trace order. Results,
 failure text, and traces are identical on Java and Truffle.
 
+Scalus 1.1.0 is additionally pinned as a language-level compatibility
+cross-check. Its focused regression confirms False/True branch selection and
+selected-branch-only evaluation for `Case Bool`. This does not make the Scalus
+adapter a protocol-aware ledger-cost backend; JuLC continues to use target
+provenance for canonical evaluation.
+
 Baseline hash: `11c11d8c4bb4027ee56c3277a64c620c738e1d7b9ee3429490696968`
 
 Candidate hash: `8a7649d2c3d23c9d3da8c504e851f340d04bac3911139a77dbe432e0`

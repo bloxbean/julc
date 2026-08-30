@@ -1,5 +1,6 @@
 package com.bloxbean.cardano.julc.compiler.pir;
 
+import com.bloxbean.cardano.julc.compiler.CompilerTypeDiagnostics;
 import com.bloxbean.cardano.julc.core.Constant;
 import com.bloxbean.cardano.julc.core.DefaultFun;
 
@@ -27,6 +28,10 @@ public final class PirHelpers {
      * Wrap a raw Data term with the appropriate decode builtin for the target type.
      */
     public static PirTerm wrapDecode(PirTerm data, PirType targetType) {
+        if (PirType.containsNativeOpaque(targetType)) {
+            throw CompilerTypeDiagnostics.nativeTypeMismatch(
+                    "Data decoding", new PirType.DataType(), targetType, null);
+        }
         if (targetType instanceof PirType.IntegerType) {
             return new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnIData), data);
         }
@@ -60,6 +65,10 @@ public final class PirHelpers {
      * Wrap a value with the appropriate encode builtin for the target type (inverse of wrapDecode).
      */
     public static PirTerm wrapEncode(PirTerm value, PirType type) {
+        if (PirType.containsNativeOpaque(type)) {
+            throw CompilerTypeDiagnostics.nativeTypeMismatch(
+                    "Data encoding", type, new PirType.DataType(), null);
+        }
         if (type instanceof PirType.IntegerType) {
             return new PirTerm.App(new PirTerm.Builtin(DefaultFun.IData), value);
         }

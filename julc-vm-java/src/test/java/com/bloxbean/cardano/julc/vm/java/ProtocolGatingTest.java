@@ -24,6 +24,27 @@ class ProtocolGatingTest {
     }
 
     @Test
+    void expModEnforcesPinnedOperandBoundsAtPv11() {
+        var outOfBounds = BigInteger.ONE.shiftLeft(8191);
+        var negativeOutOfBounds = outOfBounds.negate().subtract(BigInteger.ONE);
+
+        assertFailureContains(evaluate(expMod(outOfBounds, BigInteger.ONE, BigInteger.valueOf(7)),
+                        PlutusLanguage.PLUTUS_V3, 11),
+                "expMod: out of bounds");
+        assertFailureContains(evaluate(expMod(BigInteger.TWO, outOfBounds, BigInteger.valueOf(7)),
+                        PlutusLanguage.PLUTUS_V3, 11),
+                "expMod: out of bounds");
+        assertFailureContains(evaluate(expMod(BigInteger.TWO, BigInteger.ONE, outOfBounds),
+                        PlutusLanguage.PLUTUS_V3, 11),
+                "expMod: invalid modulus");
+        assertFailureContains(evaluate(expMod(negativeOutOfBounds, BigInteger.ONE,
+                        BigInteger.valueOf(7)), PlutusLanguage.PLUTUS_V3, 11),
+                "expMod: out of bounds");
+        assertInteger(evaluate(expMod(outOfBounds, outOfBounds, BigInteger.ONE),
+                PlutusLanguage.PLUTUS_V3, 11), 0);
+    }
+
+    @Test
     void multiIndexArrayIsRejectedAtPv11() {
         var program = Program.plutusV3(Term.builtin(DefaultFun.MultiIndexArray));
         var result = provider.evaluate(program,
@@ -162,6 +183,12 @@ class ProtocolGatingTest {
         Term term = Term.builtin(fun);
         for (var arg : args) term = Term.apply(term, Term.const_(arg));
         return term;
+    }
+
+    private static Term expMod(
+            BigInteger base, BigInteger exponent, BigInteger modulus) {
+        return apply(DefaultFun.ExpModInteger,
+                Constant.integer(base), Constant.integer(exponent), Constant.integer(modulus));
     }
 
     private static void assertInteger(EvalResult result, long expected) {

@@ -12,10 +12,12 @@ class NativeValueTypingTest {
 
     private static final String IMPORTS = """
             import com.bloxbean.cardano.julc.core.PlutusData;
+            import com.bloxbean.cardano.julc.core.types.JulcList;
             import com.bloxbean.cardano.julc.core.types.JulcValue;
             import com.bloxbean.cardano.julc.stdlib.Builtins;
             import com.bloxbean.cardano.julc.stdlib.lib.NativeValueLib;
             import java.math.BigInteger;
+            import java.util.Optional;
             """;
 
     @Test
@@ -83,6 +85,113 @@ class NativeValueTypingTest {
                 }
                 """, "bad");
         assertEquals("JULC0042", boundary.diagnostics().getFirst().code());
+    }
+
+    @Test
+    void rejectsNativeValueAndDataVariableAssignmentInBothDirections() {
+        var dataAsNative = assertCompileError(IMPORTS + """
+                class DataAsNativeVariable {
+                    static boolean bad(PlutusData data) {
+                        JulcValue value = data;
+                        return true;
+                    }
+                }
+                """, "bad");
+        assertEquals("JULC0041", dataAsNative.diagnostics().getFirst().code());
+
+        var nativeAsData = assertCompileError(IMPORTS + """
+                class NativeAsDataVariable {
+                    static boolean bad(PlutusData data) {
+                        PlutusData value = NativeValueLib.fromData(data);
+                        return true;
+                    }
+                }
+                """, "bad");
+        assertEquals("JULC0041", nativeAsData.diagnostics().getFirst().code());
+    }
+
+    @Test
+    void rejectsNativeValueEquality() {
+        var error = assertCompileError(IMPORTS + """
+                class NativeEquality {
+                    static boolean bad(PlutusData left, PlutusData right) {
+                        var a = NativeValueLib.fromData(left);
+                        var b = NativeValueLib.fromData(right);
+                        return a == b;
+                    }
+                }
+                """, "bad");
+        assertEquals("JULC0041", error.diagnostics().getFirst().code());
+    }
+
+    @Test
+    void rejectsNativeValueInsideDataBackedContainers() {
+        var list = assertCompileError(IMPORTS + """
+                class NativeList {
+                    static boolean bad(PlutusData data) {
+                        var value = NativeValueLib.fromData(data);
+                        var values = JulcList.of(value);
+                        return true;
+                    }
+                }
+                """, "bad");
+        assertEquals("JULC0041", list.diagnostics().getFirst().code());
+
+        var optional = assertCompileError(IMPORTS + """
+                class NativeOptional {
+                    static boolean bad(PlutusData data) {
+                        var value = NativeValueLib.fromData(data);
+                        var maybe = Optional.of(value);
+                        return true;
+                    }
+                }
+                """, "bad");
+        assertEquals("JULC0041", optional.diagnostics().getFirst().code());
+    }
+
+    @Test
+    void rejectsNativeValueInsideRecordDataEncoding() {
+        var error = assertCompileError(IMPORTS + """
+                record NativeBox(JulcValue value) {}
+
+                class NativeRecord {
+                    static boolean bad(PlutusData data) {
+                        var box = new NativeBox(NativeValueLib.fromData(data));
+                        return true;
+                    }
+                }
+                """, "bad");
+        assertEquals("JULC0041", error.diagnostics().getFirst().code());
+    }
+
+    @Test
+    void rejectsNestedNativeValueAtCompileMethodBoundary() {
+        var error = assertCompileError(IMPORTS + """
+                class NativeListBoundary {
+                    static BigInteger bad(JulcList<JulcValue> values) {
+                        return BigInteger.ZERO;
+                    }
+                }
+                """, "bad");
+        assertEquals("JULC0042", error.diagnostics().getFirst().code());
+    }
+
+    @Test
+    void reportsStableDiagnosticForNativeValidatorDatum() {
+        var error = assertThrows(CompilerException.class, () ->
+                new JulcCompiler(StdlibRegistry.defaultRegistry()).compile(IMPORTS + """
+                        @SpendingValidator
+                        class NativeDatumValidator {
+                            @Entrypoint
+                            static boolean validate(
+                                    JulcValue datum,
+                                    PlutusData redeemer,
+                                    ScriptContext context) {
+                                return true;
+                            }
+                        }
+                        """));
+        assertEquals("JULC0042", error.diagnostics().getFirst().code());
     }
 
     private static CompileResult compile(String source, String method) {

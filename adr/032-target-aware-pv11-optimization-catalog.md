@@ -971,6 +971,29 @@ line after the initial review window (2026-08-29).
 - Kept `pv11-costed` explicit with its pinned-profile requirement; the default
   promotion enables no deferred or cost-directed optimization.
 
+### Milestone 7 — Post-review correctness corrections
+
+**Implementation status:** Complete on the ADR-032 integration line
+(2026-08-30).
+
+- Upgraded both Scalus coordinates to the stable 1.1.0 release and added
+  focused language-level regressions for PV11 `Case Bool` branch order and
+  laziness. Scalus remains outside JuLC's protocol-aware ledger-cost contract;
+  raw budget parity tests configure the same pinned profile on both backends
+  rather than comparing version-dependent built-in defaults.
+- Centralized the pinned `ExpModInteger` semantics shared by literal folding
+  and Java/Truffle execution. The exact reference guard order, 8191-bit operand
+  bounds, modulus-one shortcut, and failure messages now have boundary tests;
+  the optimizer retains every failing call instead of baking in a value.
+- Extended native-Value isolation through assignments, equality,
+  Data-backed containers and records, recursive type graphs, method arguments,
+  and validator boundaries. Defensive Data-codec and final-lowering checks
+  fail closed with stable JULC0041/JULC0042 diagnostics.
+- Corrected the verification claim: the pre-existing 3,000-case generic
+  optimizer property suite is regression evidence for shared optimizer passes,
+  not direct coverage of O1, O2, or O13. Shipped rules are supported by their
+  focused differential, boundary, aggregate, and cross-backend suites.
+
 ### O1–O15 completion audit
 
 | Operation | Child issue | Phase-5 disposition |

@@ -48,11 +48,20 @@ inlining.
 
 For a positive modulus, successful positive exponents use `modPow`; negative
 exponents first require `modInverse`, exactly matching the pinned builtin.
-Zero/negative moduli and non-invertible negative exponents remain runtime
-builtin calls. They are not converted to diagnostics or generic `Error`, so
-failure text and timing remain unchanged. A successful result is non-negative
-and smaller than the positive modulus, so replacing the three-constant
-application cannot grow the embedded integer or FLAT artifact.
+The fold and Java/Truffle runtime share one pinned semantic helper, including
+the reference guard order and the signed 8191-bit base/exponent and positive
+8191-bit modulus bounds. Modulus one retains the reference shortcut even for
+otherwise out-of-range base or exponent. Zero, negative, oversized modulus,
+out-of-range operands, and non-invertible negative exponents remain runtime
+builtin calls in the optimizer. They are not converted to diagnostics or
+generic `Error`, so failure text and timing remain unchanged. A successful
+result is non-negative and smaller than the positive modulus, so replacing the
+three-constant application cannot grow the embedded integer or FLAT artifact.
+
+Boundary regressions cover the four review cases: `2^8191` as base, exponent,
+or modulus, and `-2^8191-1` as base. Compiler folding leaves all four calls
+intact, while Java/Truffle evaluation fails according to the shared pinned
+semantics. Exact accepted bounds and the modulus-one ordering are also pinned.
 
 The successful fixture evaluates `2^5 mod 13`, `2^-1 mod 5`, and `0^0 mod 7`
 and returns their sum. Java and Truffle produce identical results and budgets.

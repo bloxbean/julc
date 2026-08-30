@@ -121,8 +121,19 @@ is now the default and enables these reviewed rules:
 
 The experimental native Value surface now uses a distinct `JulcValue` type.
 Conversion from and to ledger `Data` is explicit, and the compiler rejects
-native/Data mixing. This type correction adds no UPLC cost by itself and does
-not automatically rewrite existing Data-encoded ledger Value operations.
+native/Data mixing at assignments, equality, Data-backed containers/records,
+and external method or validator boundaries. These checks apply at every
+optimization level, including `baseline`. This type correction adds no UPLC
+cost by itself and does not automatically rewrite existing Data-encoded ledger
+Value operations.
+
+The Scalus backend is pinned to the stable 1.1.0 release. Focused PV11
+cross-checks now cover `Case Bool` false/true branch order and confirm that an
+unselected failing branch is not evaluated. Scalus remains a language-only
+compatibility backend in JuLC; protocol/cost provenance still belongs to the
+canonical target-aware evaluation path. Cross-backend budget tests therefore
+configure one explicit cost profile on both VMs rather than treating Scalus's
+version-dependent built-in default as ledger evidence.
 
 Measurements use the immutable
 `cardano-node-11.0.1-plutus-v3-pv11` cost profile (parameter SHA-256

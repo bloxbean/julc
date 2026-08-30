@@ -24,6 +24,24 @@ class ProtocolGatingParityTest {
     }
 
     @Test
+    void expModOperandBoundsMatchJava() {
+        var outOfBounds = BigInteger.ONE.shiftLeft(8191);
+        var negativeOutOfBounds = outOfBounds.negate().subtract(BigInteger.ONE);
+
+        assertExpModFailure(outOfBounds, BigInteger.ONE, BigInteger.valueOf(7),
+                "expMod: out of bounds");
+        assertExpModFailure(BigInteger.TWO, outOfBounds, BigInteger.valueOf(7),
+                "expMod: out of bounds");
+        assertExpModFailure(BigInteger.TWO, BigInteger.ONE, outOfBounds,
+                "expMod: invalid modulus");
+        assertExpModFailure(negativeOutOfBounds, BigInteger.ONE, BigInteger.valueOf(7),
+                "expMod: out of bounds");
+
+        var modulusOne = expModProgram(outOfBounds, outOfBounds, BigInteger.ONE);
+        assertBackendParity(modulusOne, PlutusLanguage.PLUTUS_V3, 11);
+    }
+
+    @Test
     void v2Batch4bBoundaryMatchesJava() {
         var term = apply(DefaultFun.IntegerToByteString,
                 Constant.bool(true), Constant.integer(0), Constant.integer(258));
@@ -111,6 +129,22 @@ class ProtocolGatingParityTest {
         } else {
             assertEquals(javaResult.budgetConsumed(), truffleResult.budgetConsumed());
         }
+    }
+
+    private void assertExpModFailure(
+            BigInteger base, BigInteger exponent, BigInteger modulus, String expected) {
+        var target = LedgerEvaluationTarget.pv11(PlutusLanguage.PLUTUS_V3);
+        var program = expModProgram(base, exponent, modulus);
+        assertFailure(java.evaluate(program, target, null), expected);
+        assertFailure(truffle.evaluate(program, target, null), expected);
+    }
+
+    private static Program expModProgram(
+            BigInteger base, BigInteger exponent, BigInteger modulus) {
+        return Program.plutusV3(apply(DefaultFun.ExpModInteger,
+                Constant.integer(base),
+                Constant.integer(exponent),
+                Constant.integer(modulus)));
     }
 
     private static Term apply(DefaultFun fun, Constant... args) {

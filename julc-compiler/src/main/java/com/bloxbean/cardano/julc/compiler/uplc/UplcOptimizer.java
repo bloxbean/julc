@@ -4,6 +4,7 @@ import com.bloxbean.cardano.julc.compiler.CompilationContext;
 import com.bloxbean.cardano.julc.core.BuiltinSemantics;
 import com.bloxbean.cardano.julc.core.Constant;
 import com.bloxbean.cardano.julc.core.DefaultFun;
+import com.bloxbean.cardano.julc.core.ExpModIntegerSemantics;
 import com.bloxbean.cardano.julc.core.Term;
 
 import java.util.ArrayList;
@@ -258,16 +259,13 @@ public class UplcOptimizer {
                 || !(application.args().get(1) instanceof Term.Const(
                         Constant.IntegerConst(var exponent)))
                 || !(application.args().get(2) instanceof Term.Const(
-                        Constant.IntegerConst(var modulus)))
-                || modulus.signum() <= 0) {
+                        Constant.IntegerConst(var modulus)))) {
             return mapped;
         }
         try {
-            var result = exponent.signum() < 0
-                    ? base.modInverse(modulus).modPow(exponent.negate(), modulus)
-                    : base.modPow(exponent, modulus);
+            var result = ExpModIntegerSemantics.evaluate(base, exponent, modulus);
             return Term.const_(Constant.integer(result));
-        } catch (ArithmeticException nonInvertible) {
+        } catch (ExpModIntegerSemantics.EvaluationFailure referenceFailure) {
             return mapped;
         }
     }

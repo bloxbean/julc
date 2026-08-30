@@ -14,7 +14,7 @@ dependencies {
 
     testImplementation project(':julc-vm-java')
     testRuntimeOnly project(':julc-vm-scalus')
-    testImplementation 'org.scalus:scalus-bloxbean-cardano-client-lib_3:0.18.2'
+    testImplementation 'org.scalus:scalus-bloxbean-cardano-client-lib_3:1.1.0'
 }
 
 publishing {
