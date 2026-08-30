@@ -315,13 +315,28 @@ if (!result.hasErrors()) {
 ### Test Locally
 
 ```java
+// Java VM: preferred target-aware evaluation. This passes result.target()
+// through to the VM. With only the Scalus VM on the classpath, this currently
+// throws UnsupportedOperationException; Scalus target propagation is tracked
+// in issue #74.
 var evalResult = ValidatorTest.evaluate(result, datum, redeemer, scriptContext);
+
+// Scalus VM alternative: replace the line above with the language-compatible
+// Program overload for now.
+// The Java VM also supports this overload, but it does not retain the explicit
+// compiler-target provenance carried by CompileResult.
+// var evalResult = ValidatorTest.evaluate(
+//         result.program(), datum, redeemer, scriptContext);
+
 assertTrue(evalResult.isSuccess());
 ```
 
 Passing the `CompileResult` lets `julc-testkit` hand the exact compiler target
 to the VM. Raw `Program` evaluation overloads remain available for compatibility
-when target provenance is not available.
+when target provenance is not available. The Scalus adapter currently supports
+the `Program` overload but not the explicit-target `CompileResult` overload;
+that integration is tracked in
+[issue #74](https://github.com/bloxbean/julc/issues/74).
 
 ## Requirements
 

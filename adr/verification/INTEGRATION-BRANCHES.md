@@ -7,16 +7,18 @@ decisions in the linked ADRs.
 ## Shared foundation
 
 - **Branch:** `main`
-- **Recorded point:** `bcfc3c7` (PR #86), superseded normally by later `main`
-  commits.
+- **Recorded point:** `5d67f04` (PR #90 merge), superseded normally by later
+  `main` commits.
 - **Included foundation:** C.1–C.7, managed local/Docker execution, strict
   `strict-data-v1` compiler boundaries, purpose-indexed CIP-57 blueprints, and
-  line-oriented verification progress. ADR-016 E.1 capability inventory, E.2
-  typed AST prototype, and E.3 seller-payment vertical slice are also landed.
+  line-oriented verification progress. ADR-016 E.1 through E.4l and E.6 are
+  landed; E.5 remains a rejected calibration rather than a product API. The
+  public verification construction contract is API version 1 with canonical
+  `julc.verification.dsl` schema 1.
 - **Rule:** new verification milestone branches start from current `main`
   after their prerequisite integration PR has landed.
 
-## Active integration branches
+## Completed integration branches
 
 ### Typed verification DSL E.4
 
@@ -31,16 +33,18 @@ decisions in the linked ADRs.
   `feat/typed-verification-dsl-e6-public-api`
 - **Completed final milestone ADR:**
   [ADR-029](029-milestone-e6-stable-verification-dsl-public-api.md)
-- **Current scope:** integration review and landing through PR #89.
-- **Current state:** E.4a through E.4l are merged into this integration branch.
+- **Landing:** PR #89 merged the E.4/E.6 integration branch; PR #90 merged the
+  public schema-1 reset and documentation.
+- **Final state:** E.4a through E.4l were merged into this integration branch.
   E.5 retained only its exact-artifact calibration result and did not promote a
   temporal product API; its scoped merge is `823f4e3`. E.6 was manually
   reviewed, committed as `4ba114f`, and merged into this integration branch as
-  `fbe2619`. Schema 10 is the stable API-v1 default and every annotation profile
-  lowers through canonical DSL IR before Lean generation.
-- **Next scope:** merge PR #89 into `main` after its integration checks and
-  review are complete. Further DSL semantics require a new property-schema ADR
-  rather than changing schema 10.
+  `fbe2619`. The complete reviewed surface is now stable as construction API
+  version 1 with public canonical `julc.verification.dsl` schema 1, and every
+  annotation profile lowers through canonical DSL IR before Lean generation.
+- **Next scope:** new verification work starts from current `main`. Further DSL
+  semantics require a new public property-schema ADR rather than changing
+  canonical schema 1 in place.
 
 Milestone work is developed on a dedicated feature branch and merged with a
 non-fast-forward merge into this integration branch. Existing examples are:
@@ -132,15 +136,16 @@ main (C.1-C.7 + strict boundaries + purpose-indexed blueprints + E.1-E.3)
           -> merged to E.4 integration after completed evidence and manual review
 ```
 
-Preferred landing sequence:
+Completed landing sequence:
 
-1. Keep completed E.4a–E.4l commits scoped and merged non-fast-forward into
+1. E.4a–E.4l were merged as scoped milestone commits into
    `feat/typed-verification-dsl-e4`.
-2. Keep E.5 outside the stable API until a later exact temporal calibration
-   passes a separately accepted ADR gate.
-3. Land the completed integration branch through PR #89.
-4. Keep compiler and blueprint work independent of the verification DSL unless
-   a separate accepted ADR changes that module boundary.
+2. E.5 stayed outside the stable API after its exact temporal calibration
+   failed the accepted gate.
+3. PR #89 landed the completed integration branch on `main`.
+4. PR #90 landed the canonical public schema-1 reset and documentation.
+5. Compiler and blueprint work remain independent of the verification DSL
+   unless a separate accepted ADR changes that module boundary.
 
 ## Maintenance rules
 

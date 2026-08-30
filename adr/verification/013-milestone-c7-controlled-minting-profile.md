@@ -1,6 +1,6 @@
 # ADR-013: Milestone C.7 Controlled Minting Profile v1
 
-- **Status:** Implemented; pending manual review
+- **Status:** Implemented, manually reviewed, and integrated
 - **Date:** 2026-08-13
 - **Related:**
   [ADR-007 — Java-Annotation Security Properties](007-java-annotation-security-properties-and-one-command-verification.md),

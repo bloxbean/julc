@@ -39,6 +39,43 @@ See the [formal verification guide](/guides/formal-verification/) for annotation
 and DSL workflows, local/Docker backends, exact certificate scope, outcome
 classification, and CI guidance.
 
+## Upcoming preview: explicit PV11 compiler target
+
+JuLC compilation now resolves one explicit, immutable compiler profile:
+`plutus-v3-pv11-uplc-1.1.0`. The profile covers the Plutus language, ledger
+protocol version, and UPLC version together. Existing compile entry points
+select this named profile by default; unknown profiles, future protocol
+versions, and a `latest` alias are rejected rather than interpreted as PV11.
+
+`CompileResult` now has a public `target()` record component containing this
+provenance. Compatibility constructors preserve existing constructor call
+sites by assigning the documented PV11 target, but code that inspects the
+record shape, uses record patterns, or depends on generated record equality or
+string representation must account for the additional component. Compiler
+target plumbing and validation alone do not change generated UPLC, FLAT bytes,
+or script hashes.
+
+Testkit operations that retain a `CompileResult` now pass its exact ledger
+target to the selected VM. With the Java VM, this means source-based validator
+and method evaluation uses explicit PV11 semantics and costs instead of the
+legacy language-only path, which defaults to PV10 when no protocol-aware cost
+model is configured. A caller may also provide an explicit evaluation target;
+it must match `CompileResult.target()` or evaluation fails before VM execution.
+
+The Scalus adapter does not yet implement JuLC's explicit-target VM SPI.
+Consequently, `ValidatorTest.evaluate(result, ...)` throws
+`UnsupportedOperationException` when Scalus is the only available provider.
+For a Scalus compatibility cross-check, evaluate `result.program()` through
+the language-only overload. The Java VM supports both forms, although the raw
+`Program` form cannot carry compiler-target provenance. Scalus target
+propagation is tracked in
+[#74](https://github.com/bloxbean/julc/issues/74).
+
+The CLI, Gradle plugin, annotation processor, JRL compiler, and MCP tools accept
+and report the same stable profile ID. Supporting a later protocol version will
+add and verify a separate pinned profile; it will not silently change the PV11
+default.
+
 ## Upcoming preview: strict typed datum/redeemer boundaries
 
 Typed validator boundaries now reject non-canonical `Data` before user code

@@ -1,6 +1,6 @@
 # ADR-025: Milestones E.4i–E.4j — Certificate Payloads and Value Algebra
 
-- **Status:** E.4i and E.4j implemented experimentally; E.4j manual review pending
+- **Status:** E.4i and E.4j implemented experimentally, manually reviewed, and integrated
 - **Date:** 2026-08-22
 - **Parent:**
   [ADR-016 — Typed Verification DSL and Foundational Profile Catalog](016-typed-verification-dsl-and-profile-catalog.md)

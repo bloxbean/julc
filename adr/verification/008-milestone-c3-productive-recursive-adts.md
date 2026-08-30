@@ -1,6 +1,6 @@
 # ADR-008: Milestone C.3 — Productive Recursive ADTs
 
-- **Status:** Implemented on feature branch; pending manual review
+- **Status:** Implemented, manually reviewed, and integrated
 - **Date:** 2026-08-12
 - **Feature branch:** `feat/verification-c3-productive-recursion`
 - **Related:**
