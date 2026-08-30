@@ -5,7 +5,10 @@ import com.bloxbean.cardano.julc.core.DefaultFun;
 import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.core.Program;
 import com.bloxbean.cardano.julc.core.Term;
+import com.bloxbean.cardano.julc.compiler.CompilerException;
 import com.bloxbean.cardano.julc.vm.EvalResult;
+import com.bloxbean.cardano.julc.vm.LedgerEvaluationTarget;
+import com.bloxbean.cardano.julc.vm.PlutusLanguage;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
@@ -75,6 +78,21 @@ class TestkitTest {
         void assertRejectsThrowsOnSuccess() {
             var program = Program.plutusV3(Term.const_(Constant.unit()));
             assertThrows(AssertionError.class, () -> ValidatorTest.assertRejects(program));
+        }
+
+        @Test
+        void compileResultEvaluationUsesExactTargetAndRejectsMismatch() {
+            var compiled = MethodEvaluator.compileMethodResult(
+                    "class Targeted { static BigInteger answer() { return 42; } }",
+                    "answer");
+
+            assertTrue(ValidatorTest.evaluate(compiled).isSuccess());
+            var error = assertThrows(CompilerException.class,
+                    () -> ValidatorTest.evaluate(
+                            compiled,
+                            LedgerEvaluationTarget.pv10(PlutusLanguage.PLUTUS_V3)));
+            assertEquals("JULC0036", error.diagnostics().getFirst().code());
+            assertTrue(error.getMessage().contains(compiled.target().profileId()));
         }
     }
 

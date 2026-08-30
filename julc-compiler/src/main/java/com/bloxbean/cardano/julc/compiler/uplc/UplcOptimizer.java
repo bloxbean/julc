@@ -1,5 +1,6 @@
 package com.bloxbean.cardano.julc.compiler.uplc;
 
+import com.bloxbean.cardano.julc.compiler.CompilationContext;
 import com.bloxbean.cardano.julc.core.BuiltinSemantics;
 import com.bloxbean.cardano.julc.core.Constant;
 import com.bloxbean.cardano.julc.core.DefaultFun;
@@ -7,7 +8,10 @@ import com.bloxbean.cardano.julc.core.Term;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Objects;
+import java.util.function.UnaryOperator;
 
 /**
  * Multi-pass UPLC optimizer. Runs optimization passes iteratively until fixpoint.
@@ -39,31 +43,65 @@ import java.util.List;
 public class UplcOptimizer {
 
     private static final int MAX_ITERATIONS = 20;
+    private final CompilationContext context;
+
+    public UplcOptimizer() {
+        this(CompilationContext.pv11Defaults());
+    }
+
+    public UplcOptimizer(CompilationContext context) {
+        this.context = Objects.requireNonNull(context, "context");
+    }
+
+    /** Optimized term plus the stable identities of passes that changed it. */
+    public record OptimizationResult(Term term, List<String> appliedPasses) {
+        public OptimizationResult {
+            Objects.requireNonNull(term, "term");
+            appliedPasses = List.copyOf(appliedPasses);
+        }
+    }
 
     /**
      * Optimize a UPLC term by running all passes until fixpoint.
      */
     public Term optimize(Term term) {
+        return optimizeWithReport(term).term();
+    }
+
+    public OptimizationResult optimizeWithReport(Term term) {
         Term current = term;
+        var appliedPasses = new LinkedHashSet<String>();
         for (int i = 0; i < MAX_ITERATIONS; i++) {
-            Term optimized = runAllPasses(current);
+            Term optimized = runAllPasses(current, appliedPasses);
             if (optimized.equals(current)) {
                 break; // Fixpoint reached
             }
             current = optimized;
         }
-        return current;
+        return new OptimizationResult(current, List.copyOf(appliedPasses));
     }
 
-    private Term runAllPasses(Term term) {
+    private Term runAllPasses(Term term, LinkedHashSet<String> appliedPasses) {
         Term t = term;
-        t = forceDelayCancel(t);
-        t = constantFold(t);
-        t = deadCodeElimination(t);
-        t = betaReduce(t);
-        t = etaReduce(t);
-        t = constrCaseReduce(t);
+        t = applyPass("force-delay-cancel", t, this::forceDelayCancel, appliedPasses);
+        t = applyPass("constant-fold", t, this::constantFold, appliedPasses);
+        t = applyPass("dead-code-elimination", t, this::deadCodeElimination, appliedPasses);
+        t = applyPass("beta-reduce", t, this::betaReduce, appliedPasses);
+        t = applyPass("eta-reduce", t, this::etaReduce, appliedPasses);
+        t = applyPass("constr-case-reduce", t, this::constrCaseReduce, appliedPasses);
         return t;
+    }
+
+    private static Term applyPass(
+            String passName,
+            Term input,
+            UnaryOperator<Term> pass,
+            LinkedHashSet<String> appliedPasses) {
+        var output = pass.apply(input);
+        if (!output.equals(input)) {
+            appliedPasses.add(passName);
+        }
+        return output;
     }
 
     // ---- Pass 1: Force/Delay cancellation ----
@@ -128,6 +166,9 @@ public class UplcOptimizer {
      * cannot-fail check on the operand values.
      */
     private Term foldBinaryOp(DefaultFun fun, Constant a, Constant b) {
+        if (!context.resolvedTarget().featureProfile().isBuiltinAvailable(fun)) {
+            return null;
+        }
         if (a instanceof Constant.IntegerConst(var va) && b instanceof Constant.IntegerConst(var vb)) {
             return switch (fun) {
                 case AddInteger -> Term.const_(Constant.integer(va.add(vb)));

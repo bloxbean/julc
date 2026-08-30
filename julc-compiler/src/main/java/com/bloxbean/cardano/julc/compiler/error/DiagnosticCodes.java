@@ -29,6 +29,46 @@ public final class DiagnosticCodes {
             "Circular type dependency detected among: {0}",
             "Break the cycle by introducing a parameterized record or refactoring the involved types.");
 
+    public static final DiagnosticInfo COMPILER_BUILTIN_UNAVAILABLE = new DiagnosticInfo(
+            "JULC0032",
+            "COMPILER_BUILTIN_UNAVAILABLE",
+            CompilerDiagnostic.Level.ERROR,
+            "TARGET",
+            "Builtin {0} is not available for compiler target {1}",
+            "Use an operation available in the selected target, or explicitly select a future compiler target after JuLC adds and verifies support for it.");
+
+    public static final DiagnosticInfo COMPILER_EVALUATION_TARGET_MISMATCH = new DiagnosticInfo(
+            "JULC0036",
+            "COMPILER_EVALUATION_TARGET_MISMATCH",
+            CompilerDiagnostic.Level.ERROR,
+            "TARGET",
+            "Compiled target {0} cannot be evaluated as {1}",
+            "Evaluate with CompileResult.target().ledgerTarget(), or recompile for an explicitly supported compiler target.");
+
+    public static final DiagnosticInfo COMPILER_FEATURE_UNAVAILABLE = new DiagnosticInfo(
+            "JULC0033",
+            "COMPILER_FEATURE_UNAVAILABLE",
+            CompilerDiagnostic.Level.ERROR,
+            "TARGET",
+            "Compiler feature {0} is not available for compiler target {1}",
+            "Use a portable lowering for the selected target, or add the future target through the reviewed compiler support process.");
+
+    public static final DiagnosticInfo COMPILER_PROGRAM_VERSION_MISMATCH = new DiagnosticInfo(
+            "JULC0034",
+            "COMPILER_PROGRAM_VERSION_MISMATCH",
+            CompilerDiagnostic.Level.ERROR,
+            "INTERNAL",
+            "Generated UPLC version {0} does not match compiler target {1}, which requires {2}",
+            "Report this as a JuLC compiler bug with the source, selected target, and verbose compiler log.");
+
+    public static final DiagnosticInfo COMPILER_TARGET_INVARIANT_VIOLATION = new DiagnosticInfo(
+            "JULC0035",
+            "COMPILER_TARGET_INVARIANT_VIOLATION",
+            CompilerDiagnostic.Level.ERROR,
+            "INTERNAL",
+            "Compiler stage {0} emitted target-illegal feature {1} for {2}",
+            "Report this as a JuLC compiler bug. Include the named compiler stage/pass, selected target, and a minimal reproducer.");
+
     public static final DiagnosticInfo C_STYLE_FOR_UNSUPPORTED = new DiagnosticInfo(
             "JULC0018",
             "C_STYLE_FOR_UNSUPPORTED",
@@ -229,6 +269,14 @@ public final class DiagnosticCodes {
             "Unknown method: {0}",
             "Check the stdlib catalog at https://julc.dev/ai/catalog.json or the stdlib reference at https://julc.dev/stdlib/stdlib-guide/. Common: `JulcList<T>` has `head/tail/get/size/isEmpty/contains/prepend/reverse/concat/take/drop/map/filter/any/all/find`.");
 
+    public static final DiagnosticInfo UNSUPPORTED_COMPILER_TARGET = new DiagnosticInfo(
+            "JULC0031",
+            "UNSUPPORTED_COMPILER_TARGET",
+            CompilerDiagnostic.Level.ERROR,
+            "CONFIG",
+            "Compiler target {0} is not supported. Supported targets: {1}",
+            "Select a listed compiler target. This release supports Plutus V3/PV11/UPLC 1.1.0 only; do not rely on fallback to another target.");
+
     public static final DiagnosticInfo VALIDATOR_ANNOTATION_MISSING = new DiagnosticInfo(
             "JULC0010",
             "VALIDATOR_ANNOTATION_MISSING",
@@ -250,6 +298,11 @@ public final class DiagnosticCodes {
             ARRAY_UNSUPPORTED,
             BREAK_OUTSIDE_LOOP,
             CIRCULAR_TYPE_DEPENDENCY,
+            COMPILER_BUILTIN_UNAVAILABLE,
+            COMPILER_EVALUATION_TARGET_MISMATCH,
+            COMPILER_FEATURE_UNAVAILABLE,
+            COMPILER_PROGRAM_VERSION_MISMATCH,
+            COMPILER_TARGET_INVARIANT_VIOLATION,
             C_STYLE_FOR_UNSUPPORTED,
             DO_WHILE_UNSUPPORTED,
             DUPLICATE_TYPE_DECLARATION,
@@ -275,6 +328,7 @@ public final class DiagnosticCodes {
             TYPE_RESOLUTION_FAILED,
             UNDEFINED_VARIABLE,
             UNKNOWN_METHOD_ON_TYPE,
+            UNSUPPORTED_COMPILER_TARGET,
             VALIDATOR_ANNOTATION_MISSING,
             VARIABLE_UNINITIALIZED
     );

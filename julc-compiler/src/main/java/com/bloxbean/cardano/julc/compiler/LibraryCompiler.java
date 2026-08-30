@@ -22,10 +22,10 @@ import java.util.Set;
  */
 final class LibraryCompiler {
 
-    private final CompilerOptions options;
+    private final CompilationContext context;
 
-    LibraryCompiler(CompilerOptions options) {
-        this.options = options;
+    LibraryCompiler(CompilationContext context) {
+        this.context = context;
     }
 
     /**
@@ -51,7 +51,7 @@ final class LibraryCompiler {
                     // Unexpected: likely a compiler bug. Retry to avoid blocking the user,
                     // but warn so developers can investigate.
                     var cuName = libCu.getStorage().map(s -> s.getFileName()).orElse("<unknown>");
-                    options.warnf("Unexpected error compiling library %s (will retry): %s: %s",
+                    context.warnf("Unexpected error compiling library %s (will retry): %s: %s",
                             cuName, e.getClass().getSimpleName(), e.getMessage());
                     nextRemaining.add(libCu);
                 }
@@ -89,8 +89,9 @@ final class LibraryCompiler {
             }
 
             var composedLookup = new CompositeStdlibLookup(effectiveLookup, registry);
-            var libPirGenerator = new PirGenerator(typeResolver, libSymbolTable, composedLookup,
-                    TypeMethodRegistry.defaultRegistry(), classNameFqcn);
+            var libPirGenerator = PirGenerator.forCompilation(
+                    typeResolver, libSymbolTable, composedLookup,
+                    TypeMethodRegistry.defaultRegistry(), classNameFqcn, context);
 
             record LibCompiledField(String name, PirTerm initPir) {}
             var compiledLibFields = new ArrayList<LibCompiledField>();

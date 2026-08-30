@@ -1,6 +1,8 @@
 package com.bloxbean.cardano.julc.compiler.pir;
 
+import com.bloxbean.cardano.julc.compiler.CompilationContext;
 import com.bloxbean.cardano.julc.compiler.CompilerException;
+import com.bloxbean.cardano.julc.compiler.LoweringRequirements;
 import com.bloxbean.cardano.julc.core.Constant;
 import com.bloxbean.cardano.julc.core.DefaultFun;
 
@@ -23,18 +25,44 @@ public final class TypeMethodRegistry {
         PirType resolve(PirType scopeType);
     }
 
-    record MethodRegistration(InstanceMethodHandler handler, ReturnTypeResolver returnType) {}
+    record MethodRegistration(
+            InstanceMethodHandler handler,
+            ReturnTypeResolver returnType,
+            LoweringRequirements requirements) {}
 
     // Key: "IntegerType.abs", "ListType.contains", etc.
     private final Map<String, MethodRegistration> registry = new HashMap<>();
 
     public void register(String typeKey, String method,
                          InstanceMethodHandler handler, ReturnTypeResolver returnType) {
-        registry.put(typeKey + "." + method, new MethodRegistration(handler, returnType));
+        register(typeKey, method, handler, returnType, LoweringRequirements.NONE);
+    }
+
+    public void register(
+            String typeKey,
+            String method,
+            InstanceMethodHandler handler,
+            ReturnTypeResolver returnType,
+            LoweringRequirements requirements) {
+        registry.put(typeKey + "." + method,
+                new MethodRegistration(handler, returnType, requirements));
     }
 
     public Optional<PirTerm> dispatch(PirTerm scope, String method,
                                        List<PirTerm> args, PirType scopeType, List<PirType> argTypes) {
+        return dispatch(
+                CompilationContext.pv11Defaults(), scope, method, args, scopeType, argTypes);
+    }
+
+    /** Dispatch an instance-method lowering under one resolved compiler target. */
+    public Optional<PirTerm> dispatch(
+            CompilationContext context,
+            PirTerm scope,
+            String method,
+            List<PirTerm> args,
+            PirType scopeType,
+            List<PirType> argTypes) {
+        Objects.requireNonNull(context, "context");
         // Try named key first for RecordType (e.g., "Value.lovelaceOf" before "RecordType.lovelaceOf")
         if (scopeType instanceof PirType.RecordType rt) {
             var namedReg = registry.get(rt.name() + "." + method);
@@ -56,6 +84,18 @@ public final class TypeMethodRegistry {
         var reg = registry.get(key);
         if (reg == null) return Optional.empty();
         return Optional.of(reg.returnType().resolve(scopeType));
+    }
+
+    /** Protocol requirements declared by an instance-method lowering. */
+    public LoweringRequirements requirements(PirType scopeType, String method) {
+        if (scopeType instanceof PirType.RecordType rt) {
+            var namedReg = registry.get(rt.name() + "." + method);
+            if (namedReg != null) return namedReg.requirements();
+        }
+        var registration = registry.get(scopeType.getClass().getSimpleName() + "." + method);
+        return registration != null
+                ? registration.requirements()
+                : LoweringRequirements.NONE;
     }
 
     public boolean contains(String typeKey, String method) {
@@ -503,7 +543,8 @@ public final class TypeMethodRegistry {
         reg.register("ListType", "toArray",
                 (scope, args, scopeType, argTypes) ->
                         new PirTerm.App(new PirTerm.Builtin(DefaultFun.ListToArray), scope),
-                scopeType -> new PirType.ArrayType(((PirType.ListType) scopeType).elemType()));
+                scopeType -> new PirType.ArrayType(((PirType.ListType) scopeType).elemType()),
+                LoweringRequirements.builtin(DefaultFun.ListToArray));
     }
 
     // --- Array methods (2): length, get ---
@@ -513,7 +554,8 @@ public final class TypeMethodRegistry {
         reg.register("ArrayType", "length",
                 (scope, args, scopeType, argTypes) ->
                         new PirTerm.App(new PirTerm.Builtin(DefaultFun.LengthOfArray), scope),
-                scopeType -> new PirType.IntegerType());
+                scopeType -> new PirType.IntegerType(),
+                LoweringRequirements.builtin(DefaultFun.LengthOfArray));
 
         // get(index): wrapDecode(IndexArray(arr, index), elemType)
         reg.register("ArrayType", "get",
@@ -523,7 +565,8 @@ public final class TypeMethodRegistry {
                     var raw = PirHelpers.builtinApp2(DefaultFun.IndexArray, scope, args.get(0));
                     return PirHelpers.wrapDecode(raw, at.elemType());
                 },
-                scopeType -> ((PirType.ArrayType) scopeType).elemType());
+                scopeType -> ((PirType.ArrayType) scopeType).elemType(),
+                LoweringRequirements.builtin(DefaultFun.IndexArray));
     }
 
     // --- List HOF instance methods (5): map, filter, any, all, find ---

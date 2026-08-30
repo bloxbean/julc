@@ -5,6 +5,7 @@ import com.bloxbean.cardano.julc.blueprint.BlueprintFileWriter;
 import com.bloxbean.cardano.julc.blueprint.BlueprintGenerator;
 import com.bloxbean.cardano.julc.clientlib.JulcScriptAdapter;
 import com.bloxbean.cardano.julc.compiler.CompilerOptions;
+import com.bloxbean.cardano.julc.compiler.CompilerTargetRegistry;
 import com.bloxbean.cardano.julc.compiler.JavaSourceIntrospector;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
 import com.bloxbean.cardano.julc.compiler.ScriptPurposeMetadata;
@@ -53,6 +54,9 @@ public abstract class CompileJulcTask extends DefaultTask {
     @Optional
     public abstract Property<Boolean> getBlueprint();
 
+    @Input
+    public abstract Property<String> getTarget();
+
     @TaskAction
     public void compile() throws IOException {
         File srcDir = getSourceDir().get().getAsFile();
@@ -60,9 +64,10 @@ public abstract class CompileJulcTask extends DefaultTask {
         outDir.mkdirs();
         boolean blueprintEnabled = Boolean.TRUE.equals(getBlueprint().getOrElse(true));
         boolean sourceMapEnabled = Boolean.TRUE.equals(getSourceMap().getOrElse(false));
+        var compilerTarget = CompilerTargetRegistry.targetForProfileId(getTarget().get());
 
         var stdlib = StdlibRegistry.defaultRegistry();
-        var options = new CompilerOptions();
+        var options = new CompilerOptions().setTarget(compilerTarget);
         if (sourceMapEnabled) {
             options.setSourceMapEnabled(true);
         }
@@ -171,9 +176,9 @@ public abstract class CompileJulcTask extends DefaultTask {
                         outDir.toPath().resolve(pending.validatorName() + ".sourcemap.json"),
                         pending.sourceMapJson());
             }
-            getLogger().lifecycle("Compiled {} → {}.json (hash: {}, size: {})",
+            getLogger().lifecycle("Compiled {} → {}.json (target: {}, hash: {}, size: {})",
                     pending.sourceFileName(), pending.validatorName(),
-                    pending.scriptHash(), pending.size());
+                    compilerTarget.profileId(), pending.scriptHash(), pending.size());
         }
         cleanupStaleOutputs(outDir, pendingOutputs);
 

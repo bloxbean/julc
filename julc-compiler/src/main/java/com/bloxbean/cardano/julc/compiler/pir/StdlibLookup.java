@@ -1,5 +1,8 @@
 package com.bloxbean.cardano.julc.compiler.pir;
 
+import com.bloxbean.cardano.julc.compiler.CompilationContext;
+import com.bloxbean.cardano.julc.compiler.LoweringRequirements;
+
 import java.util.List;
 import java.util.Optional;
 
@@ -33,6 +36,27 @@ public interface StdlibLookup {
      */
     Optional<PirTerm> lookup(String className, String methodName,
                              List<PirTerm> args, List<PirType> argTypes);
+
+    /**
+     * Target-aware lookup used by the compiler pipeline.
+     *
+     * <p>The compatibility default delegates to the existing lookup. Registries
+     * with target-gated lowerings can override this method without duplicating
+     * compiler target state.
+     */
+    default Optional<PirTerm> lookup(
+            CompilationContext context,
+            String className,
+            String methodName,
+            List<PirTerm> args,
+            List<PirType> argTypes) {
+        return lookup(className, methodName, args, argTypes);
+    }
+
+    /** Protocol requirements declared by a registered lowering, if any. */
+    default LoweringRequirements requirements(String className, String methodName) {
+        return LoweringRequirements.NONE;
+    }
 
     /**
      * Check if this lookup has any methods registered for the given class name.

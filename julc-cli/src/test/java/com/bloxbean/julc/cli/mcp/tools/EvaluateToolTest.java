@@ -45,6 +45,7 @@ class EvaluateToolTest {
         assertEquals(Boolean.TRUE, body.get("ok"), "evaluation failed: " + body);
         assertEquals("42", body.get("result"));
         assertEquals("integer", body.get("resultType"));
+        assertEquals("plutus-v3-pv11-uplc-1.1.0", body.get("compilerTarget"));
         assertTrue(((Number) body.get("cpu")).longValue() > 0, "cpu must be > 0");
     }
 
@@ -119,6 +120,22 @@ class EvaluateToolTest {
         ));
         var res = EvaluateTool.handle(req, jsonMapper);
         assertEquals(Boolean.TRUE, res.isError());
+    }
+
+    @Test
+    void rejects_unknown_future_compiler_target() {
+        var req = new McpSchema.CallToolRequest("julc_evaluate", Map.of(
+                "source", "class X { static BigInteger x() { return 1; } }",
+                "method", "x",
+                "target", "plutus-v3-pv12-uplc-1.1.0"));
+        var res = EvaluateTool.handle(req, jsonMapper);
+        @SuppressWarnings("unchecked")
+        var body = (Map<String, Object>) res.structuredContent();
+        @SuppressWarnings("unchecked")
+        var diagnostics = (List<Map<String, Object>>) body.get("diagnostics");
+        assertEquals(Boolean.FALSE, body.get("ok"));
+        assertTrue(diagnostics.stream().anyMatch(
+                diagnostic -> "JULC0031".equals(diagnostic.get("code"))));
     }
 
     @Test

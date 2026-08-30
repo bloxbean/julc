@@ -4,6 +4,7 @@ import com.bloxbean.cardano.julc.clientlib.JulcScriptAdapter;
 import com.bloxbean.cardano.julc.compiler.CompileResult;
 import com.bloxbean.cardano.julc.compiler.CompilerException;
 import com.bloxbean.cardano.julc.compiler.CompilerOptions;
+import com.bloxbean.cardano.julc.compiler.CompilerTargetRegistry;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
 import com.bloxbean.cardano.julc.core.text.UplcPrinter;
 import com.bloxbean.cardano.julc.jrl.JrlCompiler;
@@ -41,6 +42,11 @@ public class BuildCommand implements Callable<Integer> {
             description = "Compile raw artifacts without generating build/plutus/plutus.json")
     private boolean noBlueprint;
 
+    @Option(names = "--target",
+            defaultValue = "plutus-v3-pv11-uplc-1.1.0",
+            description = "Exact compiler target profile ID (default: ${DEFAULT-VALUE})")
+    private String targetProfile;
+
     @Override
     public Integer call() {
         try {
@@ -52,7 +58,9 @@ public class BuildCommand implements Callable<Integer> {
             }
 
             var config = TomlParser.parse(tomlFile);
-            System.out.println("Building " + AnsiColors.bold(config.name()) + " ...");
+            var compilerTarget = CompilerTargetRegistry.targetForProfileId(targetProfile);
+            System.out.println("Building " + AnsiColors.bold(config.name())
+                    + " for " + compilerTarget.profileId() + " ...");
 
             // Scan sources (single walk for .java + .jrl)
             var scanResult = ProjectScanner.scan(ProjectLayout.srcDir(root));
@@ -69,7 +77,9 @@ public class BuildCommand implements Callable<Integer> {
             var pool = ProjectSourceResolver.buildPool(scanResult.libraries());
 
             // Compile each validator
-            var options = new CompilerOptions().setVerbose(verbose);
+            var options = new CompilerOptions()
+                    .setTarget(compilerTarget)
+                    .setVerbose(verbose);
             var stdlib = StdlibRegistry.defaultRegistry();
             var compiledValidators = new ArrayList<BlueprintGenerator.CompiledValidator>();
             var compiledOutputs = new ArrayList<CompiledOutput>();
@@ -128,7 +138,7 @@ public class BuildCommand implements Callable<Integer> {
             }
 
             // Compile JRL files
-            var jrlCompiler = new JrlCompiler(stdlib);
+            var jrlCompiler = new JrlCompiler(stdlib, options);
             for (var entry : scanResult.jrlFiles().entrySet()) {
                 String name = entry.getKey();
                 String jrlSource = entry.getValue();
@@ -188,12 +198,20 @@ public class BuildCommand implements Callable<Integer> {
                             plutusDir.resolve("plutus.json"), blueprintJson);
                 }
                 System.out.println(AnsiColors.green("Build successful: "
-                        + compiledCount + " validator(s) compiled to build/plutus/"));
+                        + compiledCount + " validator(s) compiled for "
+                        + compilerTarget.profileId() + " to build/plutus/"));
                 return 0;
             } else {
                 System.out.println(AnsiColors.red("Build failed: " + errorCount + " error(s)"));
                 return 1;
             }
+        } catch (CompilerException e) {
+            if (!e.diagnostics().isEmpty()) {
+                System.err.println(DiagnosticFormatter.formatAll(e.diagnostics()));
+            } else {
+                System.err.println(AnsiColors.red("Build error: " + e.getMessage()));
+            }
+            return 1;
         } catch (IOException e) {
             System.err.println(AnsiColors.red("Build error: " + e.getMessage()));
             return 1;
@@ -216,7 +234,8 @@ public class BuildCommand implements Callable<Integer> {
         String hash = JulcScriptAdapter.scriptHash(result.program());
         String sizeStr = result.scriptSizeFormatted();
         System.out.println(AnsiColors.green("OK") + " "
-                + AnsiColors.dim("[" + sizeStr + ", " + hash.substring(0, 8) + "...]"));
+                + AnsiColors.dim("[" + result.target().profileId() + ", "
+                        + sizeStr + ", " + hash.substring(0, 8) + "...]"));
     }
 
     private void cleanupGeneratedArtifacts(Path plutusDir, Set<String> currentNames)

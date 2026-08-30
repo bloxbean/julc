@@ -75,7 +75,8 @@ dependencies {
     // Test: VM for local evaluation
     testImplementation "com.bloxbean.cardano:julc-testkit:${julcVersion}"
     testImplementation "com.bloxbean.cardano:julc-vm:${julcVersion}"
-    testRuntimeOnly "com.bloxbean.cardano:julc-vm-scalus:${julcVersion}"
+    // Protocol-aware handoff from CompileResult.target()
+    testRuntimeOnly "com.bloxbean.cardano:julc-vm-java:${julcVersion}"
 
     testImplementation platform('org.junit:junit-bom:5.10.0')
     testImplementation 'org.junit.jupiter:junit-jupiter'

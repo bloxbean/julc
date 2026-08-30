@@ -1,5 +1,6 @@
 package com.bloxbean.cardano.julc.stdlib;
 
+import com.bloxbean.cardano.julc.compiler.LoweringRequirements;
 import com.bloxbean.cardano.julc.compiler.pir.PirHelpers;
 import com.bloxbean.cardano.julc.compiler.pir.PirTerm;
 import com.bloxbean.cardano.julc.compiler.pir.PirType;
@@ -47,7 +48,11 @@ public final class StdlibRegistry implements StdlibLookup {
         PirTerm build(List<PirTerm> args);
     }
 
-    private final Map<String, PirTermBuilder> registry = new HashMap<>();
+    private record Registration(
+            PirTermBuilder builder,
+            LoweringRequirements requirements) {}
+
+    private final Map<String, Registration> registry = new HashMap<>();
 
     /**
      * Creates a new empty registry.
@@ -62,8 +67,19 @@ public final class StdlibRegistry implements StdlibLookup {
      * @param builder    the PIR term builder
      */
     public void register(String className, String methodName, PirTermBuilder builder) {
+        register(className, methodName, builder, LoweringRequirements.NONE);
+    }
+
+    /** Register a lowering with explicit target requirements. */
+    public void register(
+            String className,
+            String methodName,
+            PirTermBuilder builder,
+            LoweringRequirements requirements) {
         String key = className + "." + methodName;
-        registry.put(key, builder);
+        registry.put(key, new Registration(
+                java.util.Objects.requireNonNull(builder, "builder"),
+                java.util.Objects.requireNonNull(requirements, "requirements")));
     }
 
     /**
@@ -77,11 +93,11 @@ public final class StdlibRegistry implements StdlibLookup {
     @Override
     public Optional<PirTerm> lookup(String className, String methodName, List<PirTerm> args) {
         String key = className + "." + methodName;
-        PirTermBuilder builder = registry.get(key);
-        if (builder == null) {
+        Registration registration = registry.get(key);
+        if (registration == null) {
             return Optional.empty();
         }
-        return Optional.of(builder.build(args));
+        return Optional.of(registration.builder().build(args));
     }
 
     @Override
@@ -227,7 +243,15 @@ public final class StdlibRegistry implements StdlibLookup {
      */
     public Optional<PirTermBuilder> lookupBuilder(String className, String methodName) {
         String key = className + "." + methodName;
-        return Optional.ofNullable(registry.get(key));
+        return Optional.ofNullable(registry.get(key)).map(Registration::builder);
+    }
+
+    @Override
+    public LoweringRequirements requirements(String className, String methodName) {
+        var registration = registry.get(className + "." + methodName);
+        return registration != null
+                ? registration.requirements()
+                : LoweringRequirements.NONE;
     }
 
     /**
@@ -467,7 +491,7 @@ public final class StdlibRegistry implements StdlibLookup {
             reg.register(B, method, args -> {
                 requireArgs("Builtins." + method, args, 1);
                 return builtinApp1(fun, args.get(0));
-            });
+            }, LoweringRequirements.builtin(fun));
         }
         for (var entry : BUILTIN_2_ARG) {
             var method = (String) entry[0];
@@ -475,7 +499,7 @@ public final class StdlibRegistry implements StdlibLookup {
             reg.register(B, method, args -> {
                 requireArgs("Builtins." + method, args, 2);
                 return builtinApp2(fun, args.get(0), args.get(1));
-            });
+            }, LoweringRequirements.builtin(fun));
         }
         for (var entry : BUILTIN_3_ARG) {
             var method = (String) entry[0];
@@ -483,7 +507,7 @@ public final class StdlibRegistry implements StdlibLookup {
             reg.register(B, method, args -> {
                 requireArgs("Builtins." + method, args, 3);
                 return builtinApp3(fun, args.get(0), args.get(1), args.get(2));
-            });
+            }, LoweringRequirements.builtin(fun));
         }
 
         // Special cases that don't follow the standard builtin pattern
@@ -548,7 +572,7 @@ public final class StdlibRegistry implements StdlibLookup {
         reg.register(B, "insertCoin", args -> {
             requireArgs("Builtins.insertCoin", args, 4);
             return builtinApp4(DefaultFun.InsertCoin, args.get(0), args.get(1), args.get(2), args.get(3));
-        });
+        }, LoweringRequirements.builtin(DefaultFun.InsertCoin));
     }
 
     /**
@@ -689,7 +713,7 @@ public final class StdlibRegistry implements StdlibLookup {
         reg.register("JulcArray", "fromList", args -> {
             requireArgs("JulcArray.fromList", args, 1);
             return builtinApp1(DefaultFun.ListToArray, args.get(0));
-        });
+        }, LoweringRequirements.builtin(DefaultFun.ListToArray));
     }
 
     /**

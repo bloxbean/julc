@@ -361,6 +361,72 @@
       "template": "Circular type dependency detected among: {0}",
       "summary": "Type registration found a cycle that cannot be resolved.",
       "fix": "Break the cycle by introducing a parameterized record or refactoring the involved types."
+    },
+    {
+      "code": "JULC0031",
+      "constant": "UNSUPPORTED_COMPILER_TARGET",
+      "status": "emitted",
+      "title": "Unsupported compiler target",
+      "category": "CONFIG",
+      "severity": "error",
+      "template": "Compiler target {0} is not supported. Supported targets: {1}",
+      "summary": "JuLC compilation is pinned to an explicit ledger language, protocol version, and UPLC version. Evaluator support for another profile does not imply compiler support.",
+      "fix": "Select a listed compiler target. This release supports Plutus V3/PV11/UPLC 1.1.0 only; do not rely on fallback to another target."
+    },
+    {
+      "code": "JULC0032",
+      "constant": "COMPILER_BUILTIN_UNAVAILABLE",
+      "status": "emitted",
+      "title": "Builtin unavailable for compiler target",
+      "category": "TARGET",
+      "severity": "error",
+      "template": "Builtin {0} is not available for compiler target {1}",
+      "summary": "A source lowering or low-level PIR route requested a builtin that is not in the canonical protocol feature profile selected for this compilation.",
+      "fix": "Use an operation available in the selected target, or explicitly select a future compiler target after JuLC adds and verifies support for it."
+    },
+    {
+      "code": "JULC0033",
+      "constant": "COMPILER_FEATURE_UNAVAILABLE",
+      "status": "emitted",
+      "title": "Term or constant feature unavailable for compiler target",
+      "category": "TARGET",
+      "severity": "error",
+      "template": "Compiler feature {0} is not available for compiler target {1}",
+      "summary": "A lowering requires a UPLC term form or constant universe that the canonical protocol feature profile does not authorize.",
+      "fix": "Use a portable lowering for the selected target, or add the future target through the reviewed compiler support process."
+    },
+    {
+      "code": "JULC0034",
+      "constant": "COMPILER_PROGRAM_VERSION_MISMATCH",
+      "status": "emitted",
+      "title": "Generated UPLC version does not match compiler target",
+      "category": "INTERNAL",
+      "severity": "error",
+      "template": "Generated UPLC version {0} does not match compiler target {1}, which requires {2}",
+      "summary": "Program construction and the resolved compiler target disagreed. This is a compiler invariant violation, not a user source error.",
+      "fix": "Report this as a JuLC compiler bug with the source, selected target, and verbose compiler log."
+    },
+    {
+      "code": "JULC0035",
+      "constant": "COMPILER_TARGET_INVARIANT_VIOLATION",
+      "status": "emitted",
+      "title": "Compiler stage emitted a target-illegal feature",
+      "category": "INTERNAL",
+      "severity": "error",
+      "template": "Compiler stage {0} emitted target-illegal feature {1} for {2}",
+      "summary": "Final post-lowering validation found a builtin, term form, or constant universe that an earlier compiler stage should have rejected.",
+      "fix": "Report this as a JuLC compiler bug. Include the named compiler stage/pass, selected target, and a minimal reproducer."
+    },
+    {
+      "code": "JULC0036",
+      "constant": "COMPILER_EVALUATION_TARGET_MISMATCH",
+      "status": "emitted",
+      "title": "Compile and evaluation targets do not match",
+      "category": "TARGET",
+      "severity": "error",
+      "template": "Compiled target {0} cannot be evaluated as {1}",
+      "summary": "The evaluator must use the exact ledger language and protocol version retained by the compiler result.",
+      "fix": "Evaluate with CompileResult.target().ledgerTarget(), or recompile for an explicitly supported compiler target."
     }
   ]
 }

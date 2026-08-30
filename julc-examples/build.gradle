@@ -13,5 +13,6 @@ dependencies {
     testImplementation project(':julc-testkit-jqwik')
     testImplementation project(':julc-vm')
     testImplementation "net.jqwik:jqwik:${jqwikVersion}"
+    testRuntimeOnly project(':julc-vm-java')
     testRuntimeOnly project(':julc-vm-scalus')
 }

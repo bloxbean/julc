@@ -1,6 +1,8 @@
 package com.bloxbean.cardano.julc.compiler.pir;
 
 import com.bloxbean.cardano.julc.compiler.CompilerException;
+import com.bloxbean.cardano.julc.compiler.CompilerTargetDiagnostics;
+import com.bloxbean.cardano.julc.compiler.LoweringRequirements;
 import com.bloxbean.cardano.julc.compiler.desugar.LoopDesugarer;
 import com.bloxbean.cardano.julc.compiler.desugar.PatternMatchDesugarer;
 import com.bloxbean.cardano.julc.compiler.error.CompilerDiagnostic;
@@ -14,6 +16,7 @@ import com.github.javaparser.ast.expr.*;
 import com.github.javaparser.ast.stmt.*;
 
 import com.bloxbean.cardano.julc.compiler.CompilerOptions;
+import com.bloxbean.cardano.julc.compiler.CompilationContext;
 import com.bloxbean.cardano.julc.compiler.resolve.LibraryMethodRegistry;
 import com.bloxbean.cardano.julc.core.source.SourceLocation;
 import com.bloxbean.cardano.julc.compiler.util.StringUtils;
@@ -36,7 +39,7 @@ public class PirGenerator {
     private final TypeInferenceHelper typeInference;
     private final LoopBodyGenerator loopBody;
     private final String libraryClassName; // non-null when compiling library class methods
-    private final CompilerOptions options;
+    private final CompilationContext context;
     private final List<CompilerDiagnostic> collectedErrors = new ArrayList<>();
     private final LoopDesugarer loopDesugarer = new LoopDesugarer();
 
@@ -67,35 +70,59 @@ public class PirGenerator {
     private boolean booleanReturnGuard = false;
     private boolean booleanReturnGuardActive = false; // true when inside a boolean method with guard enabled
     public PirGenerator(TypeResolver typeResolver, SymbolTable symbolTable) {
-        this(typeResolver, symbolTable, null, TypeMethodRegistry.defaultRegistry(), null, new CompilerOptions());
+        this(typeResolver, symbolTable, null, TypeMethodRegistry.defaultRegistry(), null,
+                CompilationContext.pv11Defaults());
     }
 
     public PirGenerator(TypeResolver typeResolver, SymbolTable symbolTable, StdlibLookup stdlibLookup) {
-        this(typeResolver, symbolTable, stdlibLookup, TypeMethodRegistry.defaultRegistry(), null, new CompilerOptions());
+        this(typeResolver, symbolTable, stdlibLookup, TypeMethodRegistry.defaultRegistry(), null,
+                CompilationContext.pv11Defaults());
     }
 
     public PirGenerator(TypeResolver typeResolver, SymbolTable symbolTable,
                         StdlibLookup stdlibLookup, TypeMethodRegistry typeMethodRegistry) {
-        this(typeResolver, symbolTable, stdlibLookup, typeMethodRegistry, null, new CompilerOptions());
+        this(typeResolver, symbolTable, stdlibLookup, typeMethodRegistry, null,
+                CompilationContext.pv11Defaults());
     }
 
     public PirGenerator(TypeResolver typeResolver, SymbolTable symbolTable,
                         StdlibLookup stdlibLookup, TypeMethodRegistry typeMethodRegistry,
                         String libraryClassName) {
-        this(typeResolver, symbolTable, stdlibLookup, typeMethodRegistry, libraryClassName, new CompilerOptions());
+        this(typeResolver, symbolTable, stdlibLookup, typeMethodRegistry, libraryClassName,
+                CompilationContext.pv11Defaults());
     }
 
     public PirGenerator(TypeResolver typeResolver, SymbolTable symbolTable,
                         StdlibLookup stdlibLookup, TypeMethodRegistry typeMethodRegistry,
                         String libraryClassName, CompilerOptions options) {
+        this(typeResolver, symbolTable, stdlibLookup, typeMethodRegistry, libraryClassName,
+                CompilationContext.resolve(options));
+    }
+
+    private PirGenerator(TypeResolver typeResolver, SymbolTable symbolTable,
+                         StdlibLookup stdlibLookup, TypeMethodRegistry typeMethodRegistry,
+                         String libraryClassName, CompilationContext context) {
         this.typeResolver = typeResolver;
         this.symbolTable = symbolTable;
         this.stdlibLookup = stdlibLookup;
         this.typeMethodRegistry = typeMethodRegistry;
         this.libraryClassName = libraryClassName;
-        this.options = options != null ? options : new CompilerOptions();
+        this.context = Objects.requireNonNull(context, "context");
         this.typeInference = new TypeInferenceHelper(symbolTable, typeResolver, stdlibLookup, typeMethodRegistry);
         this.loopBody = new LoopBodyGenerator(this, symbolTable);
+    }
+
+    /** Create a PIR generator that shares an already-resolved compilation context. */
+    public static PirGenerator forCompilation(
+            TypeResolver typeResolver,
+            SymbolTable symbolTable,
+            StdlibLookup stdlibLookup,
+            TypeMethodRegistry typeMethodRegistry,
+            String libraryClassName,
+            CompilationContext context) {
+        return new PirGenerator(
+                typeResolver, symbolTable, stdlibLookup, typeMethodRegistry,
+                libraryClassName, context);
     }
 
     /**
@@ -141,7 +168,7 @@ public class PirGenerator {
      * Record the Java source position for a PIR term (only when source maps are enabled).
      */
     private void recordPosition(PirTerm term, Node javaNode) {
-        if (!options.isSourceMapEnabled() || term == null || javaNode == null) return;
+        if (!context.isSourceMapEnabled() || term == null || javaNode == null) return;
         javaNode.getRange().ifPresent(range -> {
             var fileName = javaNode.findCompilationUnit()
                     .flatMap(cu -> cu.getStorage().map(s -> s.getFileName()))
@@ -154,6 +181,41 @@ public class PirGenerator {
             pirPositions.put(term, new SourceLocation(
                     fileName, range.begin.line, range.begin.column, fragment));
         });
+    }
+
+    private void validateLoweringRequirements(
+            LoweringRequirements requirements,
+            Node sourceNode) {
+        var profile = context.resolvedTarget().featureProfile();
+        var location = sourceLocation(sourceNode);
+        requirements.builtins().stream()
+                .sorted(Comparator.comparingInt(DefaultFun::flatCode))
+                .filter(builtin -> !profile.isBuiltinAvailable(builtin))
+                .findFirst()
+                .ifPresent(builtin -> {
+                    throw CompilerTargetDiagnostics.unavailableBuiltin(
+                            context, builtin, location);
+                });
+        requirements.capabilities().stream()
+                .sorted()
+                .filter(capability -> !context.supports(capability))
+                .findFirst()
+                .ifPresent(capability -> {
+                    throw CompilerTargetDiagnostics.unavailableCapability(
+                            context, capability, location);
+                });
+    }
+
+    private static SourceLocation sourceLocation(Node node) {
+        if (node == null || node.getRange().isEmpty()) {
+            return null;
+        }
+        var begin = node.getRange().orElseThrow().begin;
+        var fileName = node.findCompilationUnit()
+                .flatMap(cu -> cu.getStorage().map(s -> s.getFileName()))
+                .orElse("<source>");
+        return new SourceLocation(
+                fileName, begin.line, begin.column, node.toString());
     }
 
     /**
@@ -902,7 +964,7 @@ public class PirGenerator {
             var resolvedClassName = typeResolver.resolveClassName(ne.getNameAsString());
             var targetType = typeResolver.resolveNameToType(resolvedClassName);
             if (targetType.isPresent()) {
-                options.logf("Resolved fromPlutusData identity: %s.fromPlutusData", ne.getNameAsString());
+                context.logf("Resolved fromPlutusData identity: %s.fromPlutusData", ne.getNameAsString());
                 return generateExpression(args.get(0));
             }
         }
@@ -924,7 +986,7 @@ public class PirGenerator {
                 mce);
         }
         var classExpr = (ClassExpr) args.get(1);
-        options.logf("Resolved PlutusData.cast: %s", classExpr.getType());
+        context.logf("Resolved PlutusData.cast: %s", classExpr.getType());
         var inner = generateExpression(args.get(0));
         try {
             var castTargetType = typeResolver.resolve(classExpr.getType());
@@ -989,9 +1051,12 @@ public class PirGenerator {
             }
         }
 
-        var result = stdlibLookup.lookup(resolvedClassName, methodName, compiledArgs, argPirTypes);
+        validateLoweringRequirements(
+                stdlibLookup.requirements(resolvedClassName, methodName), mce);
+        var result = stdlibLookup.lookup(
+                context, resolvedClassName, methodName, compiledArgs, argPirTypes);
         if (result.isPresent()) {
-            options.logf("Resolved stdlib: %s.%s", className, methodName);
+            context.logf("Resolved stdlib: %s.%s", className, methodName);
             checkCrossLibraryTypeWarnings(className, methodName, mce, argPirTypes);
             return result.get();
         }
@@ -1065,7 +1130,10 @@ public class PirGenerator {
                 return scope;
             }
 
-            var registryResult = typeMethodRegistry.dispatch(scope, methodName, compiledArgs, scopeType, argPirTypes);
+            validateLoweringRequirements(
+                    typeMethodRegistry.requirements(scopeType, methodName), mce);
+            var registryResult = typeMethodRegistry.dispatch(
+                    context, scope, methodName, compiledArgs, scopeType, argPirTypes);
             if (registryResult.isPresent()) return registryResult.get();
 
             // Auto-recognize toPlutusData() — encode value as Data

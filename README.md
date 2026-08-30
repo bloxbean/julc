@@ -22,17 +22,20 @@
 
 *Pronounced “jool-see” (J-U-L-C), or simply “jules”*
 
-Write Cardano smart contracts in Java and compile them to Plutus V3 UPLC. julc provides a complete
+Write Cardano smart contracts in Java and compile them to Plutus V3 UPLC. JuLC provides a complete
 toolchain: a Java-subset compiler, a pluggable VM for local evaluation, a standard library of on-chain
 operations, and first-class integration with [cardano-client-lib](https://github.com/bloxbean/cardano-client-lib).
 
-## Powered by Scalus
+## Evaluation backends
 
-JuLC's end-to-end experience — from local testing to script evaluation — is powered by
-[Scalus](https://scalus.org/), a Scala implementation of the Plutus VM (CEK machine).
-JuLC uses the Scalus VM as its evaluation backend for local validator testing, cost estimation,
-and the testkit. Huge thanks to the Scalus team for building and open-sourcing a high-quality
-Plutus VM that made this project possible.
+JuLC supports two VM choices for local evaluation: its pure-Java VM and the
+[Scalus](https://scalus.org/) backend. Both can evaluate JuLC-generated UPLC.
+The Java VM additionally integrates with JuLC's complete compiler-target
+provenance for explicit protocol-aware evaluation and cost selection. Scalus is
+a supported alternative evaluator and provides a valuable independent
+cross-check of generated programs. Users can choose the backend that best fits
+their application. Huge thanks to the Scalus team for building and
+open-sourcing a high-quality Plutus VM that made this project possible.
 
 ## Features
 
@@ -50,7 +53,7 @@ Plutus VM that made this project possible.
 - **JulcList/JulcMap** — typed collection interfaces with IDE autocomplete for on-chain methods
 - **Multi-validator** — `@MultiValidator` for handling multiple script purposes (mint + spend + withdraw, etc.) in a single compiled script
 - **Annotation processor** — `@SpendingValidator`, `@MintingValidator`, `@MultiValidator`, `@Entrypoint` for compile-time code generation
-- **Pluggable VM** — evaluate UPLC programs locally via SPI (Scalus backend included)
+- **Pluggable VM** — choose the pure-Java VM or Scalus backend for local UPLC evaluation
 - **Testkit** — test validators locally without a running node
 - **Gradle plugin** — compile validators and bundle on-chain sources as part of your build
 - **cardano-client-lib integration** — deploy and submit transactions with compiled scripts
@@ -98,14 +101,50 @@ dependencies {
     // Annotation processor -- compiles validators during javac
     annotationProcessor "com.bloxbean.cardano:julc-annotation-processor:${julcVersion}"
 
-    // Test: VM for local evaluation
+    // Test: choose a VM backend for local evaluation
     testImplementation "com.bloxbean.cardano:julc-testkit:${julcVersion}"
     testImplementation "com.bloxbean.cardano:julc-vm:${julcVersion}"
-    testRuntimeOnly "com.bloxbean.cardano:julc-vm-scalus:${julcVersion}"
+
+    // Java VM: supports CompileResult-aware protocol target propagation
+    testRuntimeOnly "com.bloxbean.cardano:julc-vm-java:${julcVersion}"
+
+    // Scalus VM: supported alternative for direct UPLC evaluation and cross-checking
+    // testRuntimeOnly "com.bloxbean.cardano:julc-vm-scalus:${julcVersion}"
 }
 ```
 
+Only one VM backend is required. If both are present, JuLC selects the Java VM
+by default; select `Scalus` explicitly when an independent evaluation is
+desired. Protocol-target propagation through the Scalus adapter is tracked in
+[issue #74](https://github.com/bloxbean/julc/issues/74).
+
 For detailed dependencies, check the [getting started](docs/src/content/docs/getting-started.md) guide or the `julc-helloworld` example at https://github.com/bloxbean/julc-helloworld.
+
+### Compiler target
+
+JuLC currently compiles exactly one profile:
+`plutus-v3-pv11-uplc-1.1.0`. Existing APIs default to that named profile;
+“latest” is intentionally not a target, and unknown future protocol versions
+fail closed.
+
+```java
+var options = new CompilerOptions()
+        .setTarget(CompilerTarget.PLUTUS_V3_PV11);
+var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), options);
+```
+
+The Gradle plugin accepts the same stable profile ID:
+
+```groovy
+julc {
+    target = 'plutus-v3-pv11-uplc-1.1.0'
+}
+```
+
+For direct annotation-processor configuration, pass
+`-Ajulc.target=plutus-v3-pv11-uplc-1.1.0`. Supporting a later protocol version
+will add a separately pinned compiler target and feature matrix; it will not
+silently change this default.
 
 ### Current Preview Version
 
@@ -236,19 +275,36 @@ var compiler = new JulcCompiler(stdlib);
 var result = compiler.compile(javaSource);
 if (!result.hasErrors()) {
     Program program = result.program();
-    // Ready for serialization and on-chain deployment
+    CompilerTarget target = result.target();
+    // Ready for serialization and on-chain deployment with explicit provenance
 }
 ```
 
 ### Test Locally
 
 ```java
-var vm = JulcVm.create();
-var evalResult = vm.evaluateWithArgs(program, datum, redeemer, scriptContext);
+// Java VM: preferred target-aware evaluation. This passes result.target()
+// through to the VM. With only the Scalus VM on the classpath, this currently
+// throws UnsupportedOperationException; Scalus target propagation is tracked
+// in issue #74.
+var evalResult = ValidatorTest.evaluate(result, datum, redeemer, scriptContext);
+
+// Scalus VM alternative: replace the line above with the language-compatible
+// Program overload for now.
+// The Java VM also supports this overload, but it does not retain the explicit
+// compiler-target provenance carried by CompileResult.
+// var evalResult = ValidatorTest.evaluate(
+//         result.program(), datum, redeemer, scriptContext);
+
 assertTrue(evalResult.isSuccess());
 ```
 
-`julc-testkit` provides utilities for unit testing your validators locally.
+Passing the `CompileResult` lets `julc-testkit` hand the exact compiler target
+to the VM. Raw `Program` evaluation overloads remain available for compatibility
+when target provenance is not available. The Scalus adapter currently supports
+the `Program` overload but not the explicit-target `CompileResult` overload;
+that integration is tracked in
+[issue #74](https://github.com/bloxbean/julc/issues/74).
 
 ## Requirements
 

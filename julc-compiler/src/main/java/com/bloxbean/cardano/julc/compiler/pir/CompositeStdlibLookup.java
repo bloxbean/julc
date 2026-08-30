@@ -1,5 +1,8 @@
 package com.bloxbean.cardano.julc.compiler.pir;
 
+import com.bloxbean.cardano.julc.compiler.CompilationContext;
+import com.bloxbean.cardano.julc.compiler.LoweringRequirements;
+
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
@@ -46,6 +49,33 @@ public class CompositeStdlibLookup implements StdlibLookup {
             }
         }
         return Optional.empty();
+    }
+
+    @Override
+    public Optional<PirTerm> lookup(
+            CompilationContext context,
+            String className,
+            String methodName,
+            List<PirTerm> args,
+            List<PirType> argTypes) {
+        for (var lookup : lookups) {
+            var result = lookup.lookup(context, className, methodName, args, argTypes);
+            if (result.isPresent()) {
+                return result;
+            }
+        }
+        return Optional.empty();
+    }
+
+    @Override
+    public LoweringRequirements requirements(String className, String methodName) {
+        for (var lookup : lookups) {
+            var requirements = lookup.requirements(className, methodName);
+            if (!requirements.isEmpty()) {
+                return requirements;
+            }
+        }
+        return LoweringRequirements.NONE;
     }
 
     @Override
