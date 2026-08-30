@@ -108,6 +108,7 @@ public final class StdlibRegistry implements StdlibLookup {
         // Optional.of(x) needs arg type info to properly encode the value
         if (isOptionalClass(className) && methodName.equals("of") && args.size() == 1) {
             var elemType = (argTypes != null && !argTypes.isEmpty()) ? argTypes.get(0) : new PirType.DataType();
+            rejectNativeDataArgument("Optional.of argument 1", elemType);
             var recordType = new PirType.RecordType("Optional",
                     List.of(new PirType.Field("value", elemType)));
             return Optional.of(new PirTerm.DataConstr(0, recordType, List.of(args.get(0))));
@@ -218,13 +219,20 @@ public final class StdlibRegistry implements StdlibLookup {
                         null);
             }
             if (!requiredNativeIndexes.contains(i)
-                    && actual instanceof PirType.NativeValueType) {
+                    && PirType.containsNativeOpaque(actual)) {
                 throw CompilerTypeDiagnostics.nativeTypeMismatch(
                         "Builtins." + methodName + " argument " + (i + 1),
                         actual,
                         new PirType.DataType(),
                         null);
             }
+        }
+    }
+
+    private static void rejectNativeDataArgument(String operation, PirType actual) {
+        if (PirType.containsNativeOpaque(actual)) {
+            throw CompilerTypeDiagnostics.nativeTypeMismatch(
+                    operation, actual, new PirType.DataType(), null);
         }
     }
 

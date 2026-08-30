@@ -145,8 +145,8 @@ JuLC is organized into focused modules. Here are the key ones grouped by role:
 | Module | Role | Key Types |
 |--------|------|-----------|
 | `julc-vm` | VM SPI — pluggable execution backend | `JulcVm`, `JulcVmProvider`, `EvalResult` |
-| `julc-vm-scalus` | Default VM backend (wraps Scalus CEK machine) | `ScalusVmProvider` |
-| `julc-vm-java` | Future pure-Java VM backend | (in development) |
+| `julc-vm-scalus` | Language-compatible backend (wraps Scalus 1.1.0 CEK machine) | `ScalusVmProvider` |
+| `julc-vm-java` | Canonical protocol-aware pure-Java backend | `JavaVmProvider` |
 
 ### Developer Experience
 
@@ -1040,9 +1040,9 @@ EvalResult result = vm.evaluate(program, scriptContext);
 
 | Backend | Module | Priority | Status |
 |---------|--------|----------|--------|
-| Scalus | `julc-vm-scalus` | 50 | Default, wraps Scalus 0.16.0 (Scala) |
-| Pure Java | `julc-vm-java` | — | In development |
-| Truffle | `julc-vm-truffle` | — | Experimental (GraalVM) |
+| Scalus | `julc-vm-scalus` | 50 | Language-compatible, wraps Scalus 1.1.0 (Scala) |
+| Pure Java | `julc-vm-java` | 100 | Canonical protocol-aware backend |
+| Truffle | `julc-vm-truffle` | 200 | Protocol-aware experimental backend (GraalVM) |
 
 ### EvalResult
 

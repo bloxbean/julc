@@ -49,4 +49,30 @@ public sealed interface PirType {
     static boolean isNativeOpaque(PirType type) {
         return type instanceof NativeValueType;
     }
+
+    /**
+     * Return whether this structural type contains a PV11 native Value.
+     * Nominal recursive references require a {@code TypeResolver} and are
+     * intentionally handled by its resolver-aware overload.
+     */
+    static boolean containsNativeOpaque(PirType type) {
+        return switch (type) {
+            case NativeValueType _ -> true;
+            case ListType list -> containsNativeOpaque(list.elemType());
+            case PairType pair -> containsNativeOpaque(pair.first())
+                    || containsNativeOpaque(pair.second());
+            case MapType map -> containsNativeOpaque(map.keyType())
+                    || containsNativeOpaque(map.valueType());
+            case OptionalType optional -> containsNativeOpaque(optional.elemType());
+            case ArrayType array -> containsNativeOpaque(array.elemType());
+            case FunType function -> containsNativeOpaque(function.paramType())
+                    || containsNativeOpaque(function.returnType());
+            case RecordType record -> record.fields().stream()
+                    .anyMatch(field -> containsNativeOpaque(field.type()));
+            case SumType sum -> sum.constructors().stream()
+                    .flatMap(constructor -> constructor.fields().stream())
+                    .anyMatch(field -> containsNativeOpaque(field.type()));
+            default -> false;
+        };
+    }
 }

@@ -2,6 +2,7 @@ package com.bloxbean.cardano.julc.compiler.codegen;
 
 import com.bloxbean.cardano.julc.compiler.pir.PirTerm;
 import com.bloxbean.cardano.julc.compiler.pir.PirType;
+import com.bloxbean.cardano.julc.compiler.pir.PirHelpers;
 import com.bloxbean.cardano.julc.core.Constant;
 import com.bloxbean.cardano.julc.core.DefaultFun;
 
@@ -118,41 +119,14 @@ public class DataCodecGenerator {
      * Wrap a value in the appropriate encoding builtin based on type.
      */
     PirTerm wrapEncode(PirTerm value, PirType type) {
-        return switch (type) {
-            case PirType.IntegerType _ -> builtinApp1(DefaultFun.IData, value);
-            case PirType.ByteStringType _ -> builtinApp1(DefaultFun.BData, value);
-            case PirType.DataType _ -> value; // Already Data
-            case PirType.BoolType _ -> {
-                // True -> Constr(1, []), False -> Constr(0, [])
-                var nilData = builtinApp1(DefaultFun.MkNilData, new PirTerm.Const(Constant.unit()));
-                yield new PirTerm.IfThenElse(value,
-                        builtinApp2(DefaultFun.ConstrData, new PirTerm.Const(Constant.integer(BigInteger.ONE)), nilData),
-                        builtinApp2(DefaultFun.ConstrData, new PirTerm.Const(Constant.integer(BigInteger.ZERO)), nilData));
-            }
-            case PirType.ListType _ -> builtinApp1(DefaultFun.ListData, value);
-            case PirType.MapType _ -> builtinApp1(DefaultFun.MapData, value);
-            case PirType.StringType _ -> builtinApp1(DefaultFun.BData,
-                    builtinApp1(DefaultFun.EncodeUtf8, value));
-            default -> value; // Pass through for complex types
-        };
+        return PirHelpers.wrapEncode(value, type);
     }
 
     /**
      * Wrap a Data value in the appropriate decoding builtin based on type.
      */
     PirTerm wrapDecode(PirTerm data, PirType type) {
-        return switch (type) {
-            case PirType.IntegerType _ -> builtinApp1(DefaultFun.UnIData, data);
-            case PirType.ByteStringType _ -> builtinApp1(DefaultFun.UnBData, data);
-            case PirType.DataType _ -> data;
-            case PirType.ListType _ -> builtinApp1(DefaultFun.UnListData, data);
-            case PirType.MapType _ -> builtinApp1(DefaultFun.UnMapData, data);
-            case PirType.StringType _ -> {
-                var byteString = builtinApp1(DefaultFun.UnBData, data);
-                yield builtinApp1(DefaultFun.DecodeUtf8, byteString);
-            }
-            default -> data; // Pass through
-        };
+        return PirHelpers.wrapDecode(data, type);
     }
 
     // --- Helpers ---

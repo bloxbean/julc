@@ -21,14 +21,23 @@ This milestone is a type-safety correction, not an optimizer rewrite:
 - it emits no wrapper, coercion, or new UPLC node;
 - explicit `JulcValue` locals and `var` inference produce identical FLAT;
 - ledger `Value` and `ValuesLib` encoding and lowering are unchanged;
-- Data/native misuse fails compilation with `JULC0041`;
-- opaque native values cannot be decoded from external Data arguments
-  (`JULC0042`).
+- Data/native misuse fails compilation with `JULC0041`, including explicit
+  assignments, equality, Data-backed list/optional elements, and record fields;
+- opaque native values, including nested container/record graphs, cannot be
+  decoded from external method or validator Data arguments (`JULC0042`);
+- final Data codec and UPLC-constructor checks remain fail-closed if an earlier
+  source-level check is bypassed.
 
 The pre-ADR-032 experimental Java signatures used `PlutusData` for native
 values. Source that explicitly typed native intermediates as `PlutusData` must
 change those locals to `JulcValue`; `var` source needs no change. No automatic
 conversion cancellation, motion, or `ValuesLib` replacement is enabled here.
+
+These checks apply at every optimization level, including `baseline`. They are
+a correction to the experimental native-Value type contract, not a
+`pv11-safe` rewrite. Existing code that passed Data to native builtins or put a
+native Value in a Data-backed container must migrate to explicit
+`NativeValueLib.fromData(...)`/`toData(...)` boundaries.
 
 ## Cross-backend measurement
 

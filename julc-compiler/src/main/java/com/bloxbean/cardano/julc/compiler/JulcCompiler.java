@@ -888,6 +888,19 @@ public class JulcCompiler {
             }
         }
 
+        // The selected compileMethod entry point is decoded from external Data.
+        // Reject native Value anywhere in its boundary graph before generating
+        // helper bodies, where a lower-level Data codec error would lose context.
+        var paramTypes = new ArrayList<PirType>();
+        for (var param : targetMethod.getParameters()) {
+            var paramType = typeResolver.resolve(param.getType());
+            if (typeResolver.containsNativeOpaque(paramType)) {
+                throw CompilerTypeDiagnostics.nativeTypeAtDataBoundary(
+                        param.getNameAsString(), paramType, sourceLocation(param));
+            }
+            paramTypes.add(paramType);
+        }
+
         // 10. Generate PIR for helper methods
         var pirGenerator = PirGenerator.forCompilation(typeResolver, symbolTable, effectiveLookup,
                 TypeMethodRegistry.defaultRegistry(), null, context);
@@ -913,16 +926,6 @@ public class JulcCompiler {
         }
 
         // 11. Build body: Data-accepting lambda that calls target method by Var reference
-        var paramTypes = new ArrayList<PirType>();
-        for (var param : targetMethod.getParameters()) {
-            var paramType = typeResolver.resolve(param.getType());
-            if (PirType.isNativeOpaque(paramType)) {
-                throw CompilerTypeDiagnostics.nativeTypeAtDataBoundary(
-                        param.getNameAsString(), paramType, sourceLocation(param));
-            }
-            paramTypes.add(paramType);
-        }
-
         // Build application: Var("method") applied to decoded args
         PirTerm application = new PirTerm.Var(methodName, computeMethodType(targetMethod, typeResolver));
         for (int i = 0; i < paramTypes.size(); i++) {
@@ -1625,6 +1628,10 @@ public class JulcCompiler {
             com.github.javaparser.ast.body.Parameter parameter,
             PirType type,
             TypeResolver typeResolver) {
+        if (typeResolver.containsNativeOpaque(type)) {
+            throw CompilerTypeDiagnostics.nativeTypeAtDataBoundary(
+                    parameter.getNameAsString(), type, sourceLocation(parameter));
+        }
         try {
             typeResolver.findStandaloneVariantRecord(type).ifPresent(description -> {
                 throw new IllegalArgumentException(

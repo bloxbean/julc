@@ -439,7 +439,7 @@ public final class CekMachine {
      * - Bool: False=tag0, True=tag1 (no fields)
      * - Unit: tag0 (no fields)
      * - Integer: tag=value (no fields)
-     * - List: Nil=tag0, Cons=tag1(head, tail)
+     * - List: Cons=tag0(head, tail), Nil=tag1
      * - Pair: tag0(fst, snd)
      */
     private record CaseDecomposition(int tag, List<CekValue> fields) {}

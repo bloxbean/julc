@@ -51,6 +51,24 @@ class O13ExpModLiteralFoldTest {
     }
 
     @Test
+    void outOfBoundsOperandsRemainAtRuntime() {
+        var positiveOutOfBounds = BigInteger.ONE.shiftLeft(8191);
+        var negativeOutOfBounds = positiveOutOfBounds.negate().subtract(BigInteger.ONE);
+
+        assertNotFolded(expMod(positiveOutOfBounds, BigInteger.ONE, BigInteger.valueOf(7)));
+        assertNotFolded(expMod(BigInteger.TWO, positiveOutOfBounds, BigInteger.valueOf(7)));
+        assertNotFolded(expMod(BigInteger.TWO, BigInteger.ONE, positiveOutOfBounds));
+        assertNotFolded(expMod(negativeOutOfBounds, BigInteger.ONE, BigInteger.valueOf(7)));
+    }
+
+    @Test
+    void modulusOneShortcutStillFoldsBeforeBaseAndExponentBounds() {
+        var outOfBounds = BigInteger.ONE.shiftLeft(8191);
+
+        assertFold(expMod(outOfBounds, outOfBounds, BigInteger.ONE), 0);
+    }
+
+    @Test
     void baselineDoesNotAdoptNewLiteralFold() {
         var term = expMod(2, 5, 13);
         var result = optimizer(OptimizationLevel.BASELINE).optimizeWithReport(term);
@@ -134,6 +152,16 @@ class O13ExpModLiteralFoldTest {
 
     private static void assertNotFolded(Term term) {
         assertEquals(term, optimizer(OptimizationLevel.PV11_SAFE).foldLiteralExpMod(term));
+    }
+
+    private static Term expMod(
+            BigInteger base, BigInteger exponent, BigInteger modulus) {
+        return Term.apply(
+                Term.apply(
+                        Term.apply(Term.builtin(DefaultFun.ExpModInteger),
+                                Term.const_(Constant.integer(base))),
+                        Term.const_(Constant.integer(exponent))),
+                Term.const_(Constant.integer(modulus)));
     }
 
     private static UplcOptimizer optimizer(OptimizationLevel level) {

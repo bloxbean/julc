@@ -101,7 +101,7 @@ public class LibraryMethodRegistry implements StdlibLookup {
             var arg = args.get(i);
             var callerType = i < argTypes.size() ? argTypes.get(i) : new PirType.DataType();
             var calleeType = i < expectedTypes.size() ? expectedTypes.get(i) : new PirType.DataType();
-            if ((PirType.isNativeOpaque(callerType) || PirType.isNativeOpaque(calleeType))
+            if ((PirType.containsNativeOpaque(callerType) || PirType.containsNativeOpaque(calleeType))
                     && !callerType.equals(calleeType)) {
                 throw CompilerTypeDiagnostics.nativeTypeMismatch(
                         method.qualifiedName() + " argument " + (i + 1),

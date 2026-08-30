@@ -1,6 +1,7 @@
 package com.bloxbean.cardano.julc.compiler.uplc;
 
 import com.bloxbean.cardano.julc.compiler.CompilerException;
+import com.bloxbean.cardano.julc.compiler.CompilerTypeDiagnostics;
 import com.bloxbean.cardano.julc.compiler.CompilationContext;
 import com.bloxbean.cardano.julc.compiler.CompilerTargetDiagnostics;
 import com.bloxbean.cardano.julc.compiler.pir.PirSubstitution;
@@ -570,7 +571,12 @@ public class UplcGenerator {
      * Wrap a UPLC term with the appropriate Data encoding based on PIR type.
      * Integer → IData, ByteString → BData, List → ListData, Map → MapData, etc.
      */
-    private static Term wrapDataEncode(Term value, PirType type) {
+    private Term wrapDataEncode(Term value, PirType type) {
+        if (PirType.containsNativeOpaque(type)) {
+            throw CompilerTypeDiagnostics.nativeTypeMismatch(
+                    "UPLC Data construction", type, new PirType.DataType(),
+                    currentSourceLocation());
+        }
         return switch (type) {
             case PirType.IntegerType _ -> Term.apply(Term.builtin(DefaultFun.IData), value);
             case PirType.ByteStringType _ -> Term.apply(Term.builtin(DefaultFun.BData), value);
