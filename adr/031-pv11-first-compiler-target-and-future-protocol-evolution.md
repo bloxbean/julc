@@ -6,7 +6,7 @@
 
 **Related issue:** [#76 — Add an explicit V3/PV11 compiler target and diagnostics](https://github.com/bloxbean/julc/issues/76)
 
-**Related roadmap:** [ADR-029 — PV11 ledger readiness and optimization roadmap](029-pv11-ledger-readiness-and-optimization-roadmap.md)
+**Related roadmap:** [#65 — ADR-029 PV11 ledger-conformant evaluation readiness tracker](https://github.com/bloxbean/julc/issues/65)
 
 **Evaluator foundation:** [ADR-030 — Protocol version propagation and PV11 builtin semantics](030-protocol-version-propagation-and-pv11-builtin-semantics.md)
 
