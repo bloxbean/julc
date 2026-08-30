@@ -4,6 +4,7 @@ import com.bloxbean.cardano.julc.compiler.JulcCompiler;
 import com.bloxbean.cardano.julc.compiler.pir.PirType;
 import com.bloxbean.cardano.julc.compiler.schema.ContractSchema;
 import com.bloxbean.cardano.julc.core.PlutusData;
+import com.bloxbean.cardano.julc.vm.EvalOptions;
 import com.bloxbean.cardano.julc.vm.JulcVm;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -525,8 +526,10 @@ class BlueprintTest {
                 PlutusData.constr(1));
         var context = PlutusData.constr(0,
                 PlutusData.integer(0), redeemer, PlutusData.integer(0));
+        var compileResult = compiled.compileResult();
         var result = JulcVm.create().evaluateWithArgs(
-                compiled.compileResult().program(), List.of(context));
+                compileResult.program(), compileResult.target().ledgerTarget(),
+                List.of(context), null, EvalOptions.DEFAULT);
         assertTrue(result.isSuccess(),
                 "compiled validator must consume the encoding advertised by its schema: " + result);
     }
@@ -722,6 +725,22 @@ class BlueprintTest {
                         .compileContract(source));
         assertTrue(error.getMessage().contains("ArrayType"));
         assertTrue(error.getMessage().contains("ArrayGate.java"));
+        assertFalse(error.getMessage().contains("Any Plutus data"));
+    }
+
+    @Test
+    void nativeValueBoundaryDoesNotFallBackToOpaqueData() {
+        var contract = new ContractSchema(
+                ContractSchema.Purpose.SPEND,
+                new ContractSchema.Argument(
+                        "datum", new PirType.NativeValueType(), null),
+                new ContractSchema.Argument(
+                        "redeemer", new PirType.DataType(), null),
+                List.of());
+
+        var error = assertThrows(SchemaGenerator.SchemaGenerationException.class,
+                () -> SchemaGenerator.from(contract));
+        assertTrue(error.getMessage().contains("NativeValueType"));
         assertFalse(error.getMessage().contains("Any Plutus data"));
     }
 

@@ -5,10 +5,10 @@ import com.bloxbean.cardano.julc.compiler.JulcCompiler;
 import com.bloxbean.cardano.julc.compiler.LibrarySource;
 import com.bloxbean.cardano.julc.compiler.LibrarySourceResolver;
 import com.bloxbean.cardano.julc.core.PlutusData;
-
-import java.util.ArrayList;
+import com.bloxbean.cardano.julc.vm.EvalOptions;
 import com.bloxbean.cardano.julc.vm.EvalResult;
 import com.bloxbean.cardano.julc.vm.JulcVm;
+import com.bloxbean.cardano.julc.vm.LedgerEvaluationTarget;
 import com.bloxbean.julc.playground.java.JavaMetadataExtractor;
 import com.bloxbean.julc.playground.model.*;
 import com.bloxbean.julc.playground.sandbox.CompilationSandbox;
@@ -17,6 +17,7 @@ import io.javalin.http.Context;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -99,7 +100,8 @@ public class EvaluateController {
                     req.scenario(), datum, redeemer);
 
             // 5. Evaluate
-            evaluateAndRespond(ctx, program, scriptContext, start);
+            evaluateAndRespond(
+                    ctx, program, cr.target().ledgerTarget(), scriptContext, start);
 
         } catch (CompilationSandbox.CompilationTimeoutException e) {
             log.warn("Evaluate timeout after {}ms", System.currentTimeMillis() - start);
@@ -120,9 +122,11 @@ public class EvaluateController {
     }
 
     private void evaluateAndRespond(Context ctx, com.bloxbean.cardano.julc.core.Program program,
+                                     LedgerEvaluationTarget target,
                                      PlutusData scriptContext, long start) {
         var vm = JulcVm.create();
-        var result = vm.evaluateWithArgs(program, List.of(scriptContext));
+        var result = vm.evaluateWithArgs(
+                program, target, List.of(scriptContext), null, EvalOptions.DEFAULT);
         long duration = System.currentTimeMillis() - start;
 
         switch (result) {

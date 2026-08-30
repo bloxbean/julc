@@ -1,5 +1,6 @@
 package com.bloxbean.cardano.julc.vm.java.builtins;
 
+import com.bloxbean.cardano.julc.core.ExpModIntegerSemantics;
 import com.bloxbean.cardano.julc.vm.java.CekValue;
 
 import java.math.BigInteger;
@@ -105,22 +106,10 @@ public final class IntegerBuiltins {
         var base = asInteger(args.get(0), "ExpModInteger");
         var exp = asInteger(args.get(1), "ExpModInteger");
         var mod = asInteger(args.get(2), "ExpModInteger");
-        if (mod.signum() == 0) {
-            throw new BuiltinException("ExpModInteger: modulus is zero");
+        try {
+            return mkInteger(ExpModIntegerSemantics.evaluate(base, exp, mod));
+        } catch (ExpModIntegerSemantics.EvaluationFailure referenceFailure) {
+            throw new BuiltinException(referenceFailure.getMessage(), referenceFailure);
         }
-        if (mod.signum() < 0) {
-            throw new BuiltinException("ExpModInteger: negative modulus");
-        }
-        if (exp.signum() < 0) {
-            // Negative exponent: compute modular inverse first
-            // base^(-n) mod m = (base^(-1))^n mod m
-            try {
-                BigInteger inverse = base.modInverse(mod);
-                return mkInteger(inverse.modPow(exp.negate(), mod));
-            } catch (ArithmeticException e) {
-                throw new BuiltinException("ExpModInteger: base has no modular inverse");
-            }
-        }
-        return mkInteger(base.modPow(exp, mod));
     }
 }

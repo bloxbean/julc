@@ -34,7 +34,21 @@ jmh {
     }
 }
 
+tasks.register('optimizationEvidence', JavaExec) {
+    group = 'verification'
+    description = 'Run ADR-032 semantic/cost fixtures and print release-note Markdown'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.bloxbean.cardano.julc.benchmark.optimization.OptimizationEvidenceMain'
+}
+
 dependencies {
+    implementation project(':julc-compiler')
+    implementation project(':julc-stdlib')
+    implementation project(':julc-cardano-client-lib')
+    implementation project(':julc-vm')
+    implementation project(':julc-vm-java')
+    implementation project(':julc-vm-truffle')
+
     jmh project(':julc-core')
     jmh project(':julc-vm')
     jmh project(':julc-vm-java')

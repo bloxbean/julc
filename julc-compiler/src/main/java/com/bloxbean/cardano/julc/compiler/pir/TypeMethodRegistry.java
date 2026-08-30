@@ -21,14 +21,29 @@ public final class TypeMethodRegistry {
     }
 
     @FunctionalInterface
+    public interface ContextualInstanceMethodHandler {
+        PirTerm handle(
+                CompilationContext context,
+                PirTerm scope,
+                List<PirTerm> args,
+                PirType scopeType,
+                List<PirType> argTypes);
+    }
+
+    @FunctionalInterface
+    public interface RequirementsResolver {
+        LoweringRequirements resolve(CompilationContext context);
+    }
+
+    @FunctionalInterface
     public interface ReturnTypeResolver {
         PirType resolve(PirType scopeType);
     }
 
     record MethodRegistration(
-            InstanceMethodHandler handler,
+            ContextualInstanceMethodHandler handler,
             ReturnTypeResolver returnType,
-            LoweringRequirements requirements) {}
+            RequirementsResolver requirements) {}
 
     // Key: "IntegerType.abs", "ListType.contains", etc.
     private final Map<String, MethodRegistration> registry = new HashMap<>();
@@ -44,6 +59,20 @@ public final class TypeMethodRegistry {
             InstanceMethodHandler handler,
             ReturnTypeResolver returnType,
             LoweringRequirements requirements) {
+        registry.put(typeKey + "." + method,
+                new MethodRegistration(
+                        (context, scope, args, scopeType, argTypes) ->
+                                handler.handle(scope, args, scopeType, argTypes),
+                        returnType,
+                        context -> requirements));
+    }
+
+    public void registerContextual(
+            String typeKey,
+            String method,
+            ContextualInstanceMethodHandler handler,
+            ReturnTypeResolver returnType,
+            RequirementsResolver requirements) {
         registry.put(typeKey + "." + method,
                 new MethodRegistration(handler, returnType, requirements));
     }
@@ -66,12 +95,13 @@ public final class TypeMethodRegistry {
         // Try named key first for RecordType (e.g., "Value.lovelaceOf" before "RecordType.lovelaceOf")
         if (scopeType instanceof PirType.RecordType rt) {
             var namedReg = registry.get(rt.name() + "." + method);
-            if (namedReg != null) return Optional.of(namedReg.handler().handle(scope, args, scopeType, argTypes));
+            if (namedReg != null) return Optional.of(namedReg.handler().handle(
+                    context, scope, args, scopeType, argTypes));
         }
         String key = scopeType.getClass().getSimpleName() + "." + method;
         var reg = registry.get(key);
         if (reg == null) return Optional.empty();
-        return Optional.of(reg.handler().handle(scope, args, scopeType, argTypes));
+        return Optional.of(reg.handler().handle(context, scope, args, scopeType, argTypes));
     }
 
     public Optional<PirType> resolveReturnType(PirType scopeType, String method) {
@@ -88,13 +118,20 @@ public final class TypeMethodRegistry {
 
     /** Protocol requirements declared by an instance-method lowering. */
     public LoweringRequirements requirements(PirType scopeType, String method) {
+        return requirements(CompilationContext.pv11Defaults(), scopeType, method);
+    }
+
+    /** Protocol requirements for the lowering selected by this compilation context. */
+    public LoweringRequirements requirements(
+            CompilationContext context, PirType scopeType, String method) {
+        Objects.requireNonNull(context, "context");
         if (scopeType instanceof PirType.RecordType rt) {
             var namedReg = registry.get(rt.name() + "." + method);
-            if (namedReg != null) return namedReg.requirements();
+            if (namedReg != null) return namedReg.requirements().resolve(context);
         }
         var registration = registry.get(scopeType.getClass().getSimpleName() + "." + method);
         return registration != null
-                ? registration.requirements()
+                ? registration.requirements().resolve(context)
                 : LoweringRequirements.NONE;
     }
 
@@ -510,10 +547,21 @@ public final class TypeMethodRegistry {
                 },
                 scopeType -> scopeType);
 
-        // drop(n): LetRec go(lst, n) = if n<=0 || null(lst) then lst else go(tail(lst), n-1)
-        reg.register("ListType", "drop",
-                (scope, args, scopeType, argTypes) -> {
+        // drop(n): PV11-safe uses DropList with receiver-first lets; baseline keeps recursion.
+        reg.registerContextual("ListType", "drop",
+                (context, scope, args, scopeType, argTypes) -> {
                     if (args.isEmpty()) throw new CompilerException("drop() requires a count argument. Usage: list.drop(n)");
+                    if (context.optimizationLevel().pv11SafeRulesEnabled()) {
+                        context.recordOptimizationRule("pv11.o1.drop-list");
+                        var listName = "list__pv11_drop";
+                        var countName = "count__pv11_drop";
+                        var listVar = new PirTerm.Var(listName, scopeType);
+                        var countVar = new PirTerm.Var(countName, new PirType.IntegerType());
+                        var nativeDrop = PirHelpers.builtinApp2(
+                                DefaultFun.DropList, countVar, listVar);
+                        return new PirTerm.Let(listName, scope,
+                                new PirTerm.Let(countName, args.get(0), nativeDrop));
+                    }
                     var lstVar = new PirTerm.Var("lst_drop", new PirType.ListType(new PirType.DataType()));
                     var nVar = new PirTerm.Var("n_drop", new PirType.IntegerType());
                     var goVar = new PirTerm.Var("go_drop", new PirType.FunType(
@@ -537,7 +585,10 @@ public final class TypeMethodRegistry {
                     return new PirTerm.LetRec(List.of(binding),
                             new PirTerm.App(new PirTerm.App(goVar, scope), args.get(0)));
                 },
-                scopeType -> scopeType);
+                scopeType -> scopeType,
+                context -> context.optimizationLevel().pv11SafeRulesEnabled()
+                        ? LoweringRequirements.builtin(DefaultFun.DropList)
+                        : LoweringRequirements.NONE);
 
         // toArray: ListToArray(list) — PV11 only
         reg.register("ListType", "toArray",

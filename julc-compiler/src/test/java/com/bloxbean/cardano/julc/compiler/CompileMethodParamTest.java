@@ -21,7 +21,7 @@ class CompileMethodParamTest {
 
     @BeforeAll
     static void setUp() {
-        vm = JulcVm.create();
+        vm = CompilerTestVm.pv11();
     }
 
     private CompileResult compile(String source, String methodName) {

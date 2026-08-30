@@ -3,12 +3,10 @@ package com.bloxbean.julc.cli.cmd.verify;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
 import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
-import com.bloxbean.cardano.julc.vm.JulcVm;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -49,8 +47,7 @@ class ControlledMintExecutionTest {
         PlutusData context = PlutusData.constr(0, txInfo, PlutusData.constr(0),
                 PlutusData.constr(0, PlutusData.bytes(policy)));
 
-        var result = JulcVm.create().evaluateWithArgs(
-                compiled.program(), List.of(context));
+        var result = VerificationExecution.evaluate(compiled, context);
         assertTrue(result.isSuccess(), () -> "Expected concrete policy acceptance: " + result);
     }
 

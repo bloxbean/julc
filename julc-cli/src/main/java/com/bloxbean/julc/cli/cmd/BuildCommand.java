@@ -6,6 +6,8 @@ import com.bloxbean.cardano.julc.compiler.CompilerException;
 import com.bloxbean.cardano.julc.compiler.CompilerOptions;
 import com.bloxbean.cardano.julc.compiler.CompilerTargetRegistry;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
+import com.bloxbean.cardano.julc.compiler.OptimizationConfiguration;
+import com.bloxbean.cardano.julc.compiler.OptimizationLevel;
 import com.bloxbean.cardano.julc.core.text.UplcPrinter;
 import com.bloxbean.cardano.julc.jrl.JrlCompiler;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
@@ -47,6 +49,15 @@ public class BuildCommand implements Callable<Integer> {
             description = "Exact compiler target profile ID (default: ${DEFAULT-VALUE})")
     private String targetProfile;
 
+    @Option(names = "--optimization",
+            defaultValue = OptimizationLevel.DEFAULT_PROFILE_ID,
+            description = "Exact optimizer rollout ID: none, baseline, pv11-safe, or pv11-costed (default: ${DEFAULT-VALUE})")
+    private String optimizationProfile;
+
+    @Option(names = "--cost-profile",
+            description = "Exact pinned cost profile ID; required by pv11-costed")
+    private String costProfile;
+
     @Override
     public Integer call() {
         try {
@@ -59,8 +70,13 @@ public class BuildCommand implements Callable<Integer> {
 
             var config = TomlParser.parse(tomlFile);
             var compilerTarget = CompilerTargetRegistry.targetForProfileId(targetProfile);
+            var options = OptimizationConfiguration.apply(
+                    new CompilerOptions().setTarget(compilerTarget).setVerbose(verbose),
+                    optimizationProfile,
+                    costProfile);
             System.out.println("Building " + AnsiColors.bold(config.name())
-                    + " for " + compilerTarget.profileId() + " ...");
+                    + " for " + compilerTarget.profileId()
+                    + " (optimization: " + options.getOptimizationLevel().profileId() + ") ...");
 
             // Scan sources (single walk for .java + .jrl)
             var scanResult = ProjectScanner.scan(ProjectLayout.srcDir(root));
@@ -77,9 +93,6 @@ public class BuildCommand implements Callable<Integer> {
             var pool = ProjectSourceResolver.buildPool(scanResult.libraries());
 
             // Compile each validator
-            var options = new CompilerOptions()
-                    .setTarget(compilerTarget)
-                    .setVerbose(verbose);
             var stdlib = StdlibRegistry.defaultRegistry();
             var compiledValidators = new ArrayList<BlueprintGenerator.CompiledValidator>();
             var compiledOutputs = new ArrayList<CompiledOutput>();
@@ -199,7 +212,9 @@ public class BuildCommand implements Callable<Integer> {
                 }
                 System.out.println(AnsiColors.green("Build successful: "
                         + compiledCount + " validator(s) compiled for "
-                        + compilerTarget.profileId() + " to build/plutus/"));
+                        + compilerTarget.profileId() + " with "
+                        + options.getOptimizationLevel().profileId()
+                        + " optimization to build/plutus/"));
                 return 0;
             } else {
                 System.out.println(AnsiColors.red("Build failed: " + errorCount + " error(s)"));
@@ -235,6 +250,7 @@ public class BuildCommand implements Callable<Integer> {
         String sizeStr = result.scriptSizeFormatted();
         System.out.println(AnsiColors.green("OK") + " "
                 + AnsiColors.dim("[" + result.target().profileId() + ", "
+                        + result.optimizationReport().level().profileId() + ", "
                         + sizeStr + ", " + hash.substring(0, 8) + "...]"));
     }
 

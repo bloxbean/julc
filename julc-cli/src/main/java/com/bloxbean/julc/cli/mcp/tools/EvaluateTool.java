@@ -94,6 +94,8 @@ public final class EvaluateTool {
                     "source": { "type": "string", "description": "JuLC Java source." },
                     "method": { "type": "string", "description": "Name of the static method to compile and evaluate." },
                     "target": { "type": "string", "description": "Exact compiler target profile ID. Defaults to plutus-v3-pv11-uplc-1.1.0." },
+                    "optimization": { "type": "string", "description": "Exact optimizer rollout ID. Defaults to pv11-safe." },
+                    "costProfile": { "type": "string", "description": "Exact pinned cost profile ID; required by pv11-costed." },
                     "args": {
                       "type": "array",
                       "description": "Arguments to apply. Each is a PlutusData JSON shape: {int:n}, {bytes:'0x..'}, {string:'..'}, {bool:b}, {unit:true}, {constr:{tag:int,fields:[..]}}, {list:[..]}, or {map:[{key,value}]}.",
@@ -163,7 +165,7 @@ public final class EvaluateTool {
         CompileResult compiled;
         try {
             var target = CompilerTargetRegistry.targetForProfileId(targetProfile);
-            var options = new CompilerOptions().setTarget(target);
+            var options = CompileTool.optimizationOptions(args, target);
             var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry(), options);
             CompileResult cr = compiler.compileMethod(src, method);
             if (cr.hasErrors() || cr.program() == null) {
@@ -207,6 +209,7 @@ public final class EvaluateTool {
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("compilerTarget", compiled.target().profileId());
+        body.put("optimization", CompileTool.renderOptimization(compiled));
         if (result instanceof EvalResult.Success s) {
             body.put("ok", true);
             body.put("cpu", s.consumed().cpuSteps());

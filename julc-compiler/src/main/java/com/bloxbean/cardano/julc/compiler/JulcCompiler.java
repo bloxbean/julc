@@ -119,6 +119,12 @@ public class JulcCompiler {
     private CompilationContext beginCompilation() {
         var context = CompilationContext.resolve(options);
         context.logf("Compiler target: %s", context.target().profileId());
+        context.logf("Optimization level: %s", context.optimizationLevel());
+        if (context.optimizationCostProfile() != null) {
+            context.logf("Optimization cost profile: %s (sha256=%s)",
+                    context.optimizationCostProfile().profileId(),
+                    context.optimizationCostProfile().parameterHash());
+        }
         return context;
     }
 
@@ -616,6 +622,7 @@ public class JulcCompiler {
             var optimizer = new UplcOptimizer(context);
             var optimization = optimizer.optimizeWithReport(uplcTerm);
             uplcTerm = optimization.term();
+            context.recordOptimizationRules(optimization.appliedPasses());
             producingStage = optimizerStage(optimization);
             context.log("UPLC optimization complete");
         }
@@ -636,7 +643,8 @@ public class JulcCompiler {
                 .toList();
 
         var result = new CompileResult(
-                program, diagnostics, paramInfos, capturedPir, capturedUplc, sourceMap, context.target());
+                program, diagnostics, paramInfos, capturedPir, capturedUplc, sourceMap,
+                context.target(), context.optimizationReport());
         ContractSchema contractSchema = captureContractSchema
                 ? buildContractSchema(scriptPurpose, entrypointMethod, entrypointInfos,
                         paramFields, typeResolver, validatorClass)
@@ -880,6 +888,19 @@ public class JulcCompiler {
             }
         }
 
+        // The selected compileMethod entry point is decoded from external Data.
+        // Reject native Value anywhere in its boundary graph before generating
+        // helper bodies, where a lower-level Data codec error would lose context.
+        var paramTypes = new ArrayList<PirType>();
+        for (var param : targetMethod.getParameters()) {
+            var paramType = typeResolver.resolve(param.getType());
+            if (typeResolver.containsNativeOpaque(paramType)) {
+                throw CompilerTypeDiagnostics.nativeTypeAtDataBoundary(
+                        param.getNameAsString(), paramType, sourceLocation(param));
+            }
+            paramTypes.add(paramType);
+        }
+
         // 10. Generate PIR for helper methods
         var pirGenerator = PirGenerator.forCompilation(typeResolver, symbolTable, effectiveLookup,
                 TypeMethodRegistry.defaultRegistry(), null, context);
@@ -905,11 +926,6 @@ public class JulcCompiler {
         }
 
         // 11. Build body: Data-accepting lambda that calls target method by Var reference
-        var paramTypes = new ArrayList<PirType>();
-        for (var param : targetMethod.getParameters()) {
-            paramTypes.add(typeResolver.resolve(param.getType()));
-        }
-
         // Build application: Var("method") applied to decoded args
         PirTerm application = new PirTerm.Var(methodName, computeMethodType(targetMethod, typeResolver));
         for (int i = 0; i < paramTypes.size(); i++) {
@@ -974,6 +990,7 @@ public class JulcCompiler {
             var optimizer = new UplcOptimizer(context);
             var optimization = optimizer.optimizeWithReport(uplcTerm);
             uplcTerm = optimization.term();
+            context.recordOptimizationRules(optimization.appliedPasses());
             producingStage = optimizerStage(optimization);
         }
 
@@ -986,7 +1003,8 @@ public class JulcCompiler {
                 context,
                 producingStage);
         return new CompileResult(
-                program, diagnostics, paramInfos, body, uplcTerm, sourceMap, context.target());
+                program, diagnostics, paramInfos, body, uplcTerm, sourceMap,
+                context.target(), context.optimizationReport());
     }
 
     // --- Library compilation ---
@@ -1610,6 +1628,10 @@ public class JulcCompiler {
             com.github.javaparser.ast.body.Parameter parameter,
             PirType type,
             TypeResolver typeResolver) {
+        if (typeResolver.containsNativeOpaque(type)) {
+            throw CompilerTypeDiagnostics.nativeTypeAtDataBoundary(
+                    parameter.getNameAsString(), type, sourceLocation(parameter));
+        }
         try {
             typeResolver.findStandaloneVariantRecord(type).ifPresent(description -> {
                 throw new IllegalArgumentException(

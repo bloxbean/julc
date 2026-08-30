@@ -46,6 +46,8 @@ public class JulcPlugin implements Plugin<Project> {
             task.getSourceMap().set(extension.getSourceMap());
             task.getBlueprint().set(extension.getBlueprint());
             task.getTarget().set(extension.getTarget());
+            task.getOptimization().set(extension.getOptimization());
+            task.getCostProfile().set(extension.getCostProfile());
         });
 
         // 3. Register bundleJulcSources task
@@ -76,6 +78,12 @@ public class JulcPlugin implements Plugin<Project> {
                         }
                         task.getOptions().getCompilerArgs().add(
                                 "-Ajulc.target=" + extension.getTarget().get());
+                        task.getOptions().getCompilerArgs().add(
+                                "-Ajulc.optimization=" + extension.getOptimization().get());
+                        if (extension.getCostProfile().isPresent()) {
+                            task.getOptions().getCompilerArgs().add(
+                                    "-Ajulc.costProfile=" + extension.getCostProfile().get());
+                        }
                         if (!Boolean.TRUE.equals(extension.getBlueprint().getOrElse(true))) {
                             task.getOptions().getCompilerArgs().add("-Ajulc.blueprint=false");
                             // Filer cannot delete a resource from an earlier invocation.

@@ -8,6 +8,7 @@ import com.bloxbean.cardano.julc.compiler.LibrarySourceResolver;
 import com.bloxbean.cardano.julc.core.Constant;
 import com.bloxbean.cardano.julc.core.Term;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
+import com.bloxbean.cardano.julc.vm.EvalOptions;
 import com.bloxbean.cardano.julc.vm.EvalResult;
 import com.bloxbean.cardano.julc.vm.JulcVm;
 import io.modelcontextprotocol.json.McpJsonMapper;
@@ -164,7 +165,9 @@ public final class TestTool {
                 // Apply the same budget cap as EvaluateTool — an agent-generated
                 // infinite loop in a @Test method must NOT hang the MCP server.
                 // Phase D review (Codex P1#2 + impl-validator P0).
-                EvalResult ev = vm.evaluate(cr.program(), EvaluateTool.DEFAULT_BUDGET);
+                EvalResult ev = vm.evaluate(
+                        cr.program(), cr.target().ledgerTarget(),
+                        EvaluateTool.DEFAULT_BUDGET, EvalOptions.DEFAULT);
                 if (ev instanceof EvalResult.Success s) {
                     boolean truth = isTruthy(s.resultTerm());
                     entry.put("passed", truth);

@@ -26,6 +26,26 @@ import static org.junit.jupiter.api.Assertions.*;
 class JulcIntegrationTest {
 
     @Test
+    void checkRunnerEvaluatesDefaultPv11LoweringUnderCompiledTarget() {
+        String source = """
+                import com.bloxbean.cardano.julc.stdlib.test.Test;
+                public class Pv11BranchTest {
+                    @Test
+                    public static boolean branches() {
+                        if (1 + 1 == 2) return true;
+                        return false;
+                    }
+                }
+                """;
+        var method = new TestDiscovery.TestMethod(
+                "Pv11BranchTest.java", "Pv11BranchTest", "branches", source);
+
+        var result = new TestRunner(java.util.Map.of()).run(method);
+
+        assertTrue(result.passed(), result.error());
+    }
+
+    @Test
     void scaffoldBuildCheck(@TempDir Path tempDir) throws IOException {
         Path projectRoot = tempDir.resolve("myproject");
 

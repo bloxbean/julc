@@ -76,7 +76,11 @@ prepare_fixture() {
   local fixture_dir="${VERIFY_DIR}/fixtures/${fixture_id}"
   local fixture_generated="${GENERATED_DIR}/${fixture_id}"
 
-  java -jar "${JULC_JAR}" build "${fixture_dir}"
+  # This legacy exact-artifact proof suite is intentionally pinned to the
+  # pre-ADR-032 lowering. PV11 Case Bool currently makes Blaster preprocessing
+  # impractically slow; optimizer correctness is gated by the ADR-032
+  # differential, property, trace, failure, and benchmark suites instead.
+  java -jar "${JULC_JAR}" build "${fixture_dir}" --optimization baseline
   mkdir -p "${fixture_generated}"
   java -jar "${JULC_JAR}" blueprint artifact "${fixture_dir}" \
     --validator "${validator_title}" \

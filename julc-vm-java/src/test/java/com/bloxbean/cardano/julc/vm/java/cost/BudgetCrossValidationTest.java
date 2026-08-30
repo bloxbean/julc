@@ -19,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class BudgetCrossValidationTest {
 
     private final JavaVmProvider javaProvider = new JavaVmProvider();
+    private final JavaVmProvider v3CrossJavaProvider = new JavaVmProvider();
     private final JulcVmProvider scalusProvider;
 
     BudgetCrossValidationTest() {
@@ -30,6 +31,15 @@ class BudgetCrossValidationTest {
             }
         }
         this.scalusProvider = found;
+        if (found != null) {
+            // Scalus 1.1.0 intentionally moved its built-in V3 default forward.
+            // This suite compares cost implementations, so pin both providers
+            // to the same immutable V3/PV10 profile instead of comparing two
+            // unrelated defaults.
+            var pv10 = CostModelParser.defaultToFlatArray(10);
+            v3CrossJavaProvider.setCostModelParams(pv10, PlutusLanguage.PLUTUS_V3, 10, 0);
+            found.setCostModelParams(pv10, PlutusLanguage.PLUTUS_V3, 10, 0);
+        }
     }
 
     private boolean hasScalus() {
@@ -657,7 +667,7 @@ class BudgetCrossValidationTest {
         }
 
         Program program = UplcParser.parseProgram(uplcProgram);
-        var javaResult = javaProvider.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
+        var javaResult = v3CrossJavaProvider.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
         var scalusResult = scalusProvider.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
 
         assertEquals(scalusResult.isSuccess(), javaResult.isSuccess(),

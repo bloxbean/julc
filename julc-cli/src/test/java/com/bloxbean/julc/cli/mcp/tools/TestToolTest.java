@@ -53,6 +53,27 @@ class TestToolTest {
     }
 
     @Test
+    void evaluatesDefaultPv11CaseBoolLoweringUnderCompiledTarget() {
+        String src = """
+                import com.bloxbean.cardano.julc.stdlib.test.Test;
+
+                public class Pv11Branch {
+                    @Test
+                    public static boolean branches() {
+                        if (1 + 1 == 2) return true;
+                        return false;
+                    }
+                }
+                """;
+
+        var res = call(src, null);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> body = (Map<String, Object>) res.structuredContent();
+        assertEquals(Boolean.TRUE, body.get("ok"), body::toString);
+        assertEquals(1, ((Number) body.get("passed")).intValue());
+    }
+
+    @Test
     void surfaces_failing_test() {
         String src = """
                 import com.bloxbean.cardano.julc.stdlib.test.Test;

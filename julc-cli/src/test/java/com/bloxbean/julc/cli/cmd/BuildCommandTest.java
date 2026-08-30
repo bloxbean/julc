@@ -17,6 +17,15 @@ class BuildCommandTest {
     private static final ObjectMapper JSON = new ObjectMapper();
 
     @Test
+    void defaultsToPv11SafeOptimization() {
+        var commandLine = new CommandLine(new BuildCommand());
+        commandLine.parseArgs(".");
+
+        assertEquals("pv11-safe", commandLine.getCommandSpec()
+                .findOption("--optimization").getValue());
+    }
+
+    @Test
     void acceptsExactPv11TargetAndRejectsUnknownFutureTarget(@TempDir Path tempDir)
             throws Exception {
         Path project = tempDir.resolve("target-build");
@@ -26,6 +35,24 @@ class BuildCommandTest {
                 project.toString(), "--target", "plutus-v3-pv11-uplc-1.1.0"));
         assertEquals(1, new CommandLine(new BuildCommand()).execute(
                 project.toString(), "--target", "plutus-v3-pv12-uplc-1.1.0"));
+    }
+
+    @Test
+    void optimizerSelectionIsExactAndCostedRequiresPinnedProfile(@TempDir Path tempDir)
+            throws Exception {
+        Path project = tempDir.resolve("optimization-build");
+        ProjectScaffolder.scaffold(project, "optimization-build");
+
+        assertEquals(0, new CommandLine(new BuildCommand()).execute(
+                project.toString(), "--optimization", "pv11-safe"));
+        assertEquals(1, new CommandLine(new BuildCommand()).execute(
+                project.toString(), "--optimization", "PV11_SAFE"));
+        assertEquals(1, new CommandLine(new BuildCommand()).execute(
+                project.toString(), "--optimization", "pv11-costed"));
+        assertEquals(0, new CommandLine(new BuildCommand()).execute(
+                project.toString(),
+                "--optimization", "pv11-costed",
+                "--cost-profile", "cardano-node-11.0.1-plutus-v3-pv11"));
     }
 
     @Test

@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class MultiFileCompilerTest {
 
     private final JulcCompiler compiler = new JulcCompiler();
-    private final JulcVm vm = JulcVm.create();
+    private final JulcVm vm = CompilerTestVm.pv11();
 
     private Program compile(String validatorSource, String... librarySources) {
         var result = compiler.compile(validatorSource, List.of(librarySources));

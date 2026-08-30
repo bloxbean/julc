@@ -6,6 +6,7 @@ import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.core.Term;
 import com.bloxbean.cardano.julc.decompiler.hir.HirTerm;
 import com.bloxbean.cardano.julc.decompiler.hir.HirType;
+import com.bloxbean.cardano.julc.decompiler.typing.BuiltinTypeRules;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -31,7 +32,15 @@ public final class UplcLifter {
     }
 
     private HirTerm liftTerm(Term term) {
-        // Priority 1: V3 SOP patterns (Constr/Case)
+        // Priority 1: PV11 Case Bool. Only recover an If when the scrutinee is
+        // statically known to return Bool; an arbitrary two-branch SOP case is
+        // not enough evidence in untyped UPLC.
+        var caseBool = liftCaseBool(term);
+        if (caseBool != null) {
+            return caseBool;
+        }
+
+        // Priority 2: V3 SOP patterns (Constr/Case)
         var sopConstr = SopRecognizer.matchConstr(term);
         if (sopConstr != null) {
             return liftConstr(sopConstr);
@@ -42,7 +51,7 @@ public final class UplcLifter {
             return liftCase(sopCase);
         }
 
-        // Priority 2: IfThenElse
+        // Priority 3: IfThenElse
         var ifMatch = IfThenElseRecognizer.match(term);
         if (ifMatch != null) {
             return new HirTerm.If(
@@ -51,31 +60,31 @@ public final class UplcLifter {
                     liftTerm(ifMatch.elseBranch()));
         }
 
-        // Priority 3: Z-combinator (loops/recursion)
+        // Priority 4: Z-combinator (loops/recursion)
         var zMatch = LoopRecognizer.match(term);
         if (zMatch != null) {
             return liftZCombinator(zMatch);
         }
 
-        // Priority 4: Data pattern matching (UnConstrData + tag dispatch)
+        // Priority 5: Data pattern matching (UnConstrData + tag dispatch)
         var dataMatch = DataMatchRecognizer.match(term);
         if (dataMatch != null) {
             return liftDataMatch(dataMatch);
         }
 
-        // Priority 5: Let binding
+        // Priority 6: Let binding
         var letMatch = LetRecognizer.match(term);
         if (letMatch != null) {
             return liftLet(letMatch);
         }
 
-        // Priority 6: Forced builtins with all args
+        // Priority 7: Forced builtins with all args
         var fb = ForceCollapser.matchForcedBuiltin(term);
         if (fb != null) {
             return liftForcedBuiltin(fb);
         }
 
-        // Priority 7: Direct term types
+        // Priority 8: Direct term types
         return switch (term) {
             case Term.Var v -> new HirTerm.Var(v.name().name(), HirType.UNKNOWN);
 
@@ -106,6 +115,53 @@ public final class UplcLifter {
                 yield caseResult != null ? liftCase(caseResult) : new HirTerm.RawUplc(term);
             }
         };
+    }
+
+    private HirTerm liftCaseBool(Term term) {
+        if (!(term instanceof Term.Case cs) || cs.branches().size() != 2) {
+            return null;
+        }
+        // Bool has no constructor fields. Lambdas here indicate an SOP branch.
+        if (cs.branches().stream().anyMatch(Term.Lam.class::isInstance)) {
+            return null;
+        }
+
+        if (!isDefinitelyBoolean(cs.scrutinee())) {
+            return null;
+        }
+
+        // The ledger-defined Case Bool order is False (0), then True (1).
+        return new HirTerm.If(
+                liftTerm(cs.scrutinee()),
+                liftTerm(cs.branches().get(1)),
+                liftTerm(cs.branches().get(0)));
+    }
+
+    private static boolean isDefinitelyBoolean(Term term) {
+        if (term instanceof Term.Const c && c.value() instanceof Constant.BoolConst) {
+            return true;
+        }
+        if (term instanceof Term.Force f && f.term() instanceof Term.Delay d) {
+            return isDefinitelyBoolean(d.term());
+        }
+
+        int argumentCount = 0;
+        Term head = term;
+        while (head instanceof Term.Apply app) {
+            argumentCount++;
+            head = app.function();
+        }
+        while (head instanceof Term.Force force) {
+            head = force.term();
+        }
+        if (!(head instanceof Term.Builtin builtin)) {
+            return false;
+        }
+
+        var signature = BuiltinTypeRules.getSignature(builtin.fun());
+        return signature != null
+                && signature.returnType().equals(HirType.BOOL)
+                && argumentCount == signature.paramTypes().size();
     }
 
     private HirTerm liftConstant(Constant value) {

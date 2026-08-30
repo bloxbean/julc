@@ -62,6 +62,7 @@ class JulcPluginTest {
 
         BuildResult result = createRunner("compileJulc").build();
         assertEquals(TaskOutcome.SUCCESS, result.task(":compileJulc").getOutcome());
+        assertTrue(result.getOutput().contains("optimization: pv11-safe"));
 
         // Verify output JSON exists
         Path outputJson = testProjectDir.resolve("build/plutus/AlwaysTrue.json");
@@ -113,6 +114,31 @@ class JulcPluginTest {
 
         assertTrue(result.getOutput().contains("JULC0031")
                 || result.getOutput().contains("Compiler target"));
+    }
+
+    @Test
+    void optimizerPropertiesAreExactAndReported() throws IOException {
+        Files.writeString(buildFile, """
+                plugins {
+                    id 'com.bloxbean.cardano.julc'
+                }
+                julc {
+                    optimization = 'pv11-costed'
+                    costProfile = 'cardano-node-11.0.1-plutus-v3-pv11'
+                }
+                """);
+        writeAlwaysTrueValidator();
+
+        var result = createRunner("compileJulc").build();
+        assertTrue(result.getOutput().contains("optimization: pv11-costed"));
+
+        Files.writeString(buildFile, """
+                plugins { id 'com.bloxbean.cardano.julc' }
+                julc { optimization = 'PV11_COSTED' }
+                """);
+        var failure = createRunner("compileJulc").buildAndFail();
+        assertTrue(failure.getOutput().contains("JULC0039")
+                || failure.getOutput().contains("Optimization level"));
     }
 
     @Test

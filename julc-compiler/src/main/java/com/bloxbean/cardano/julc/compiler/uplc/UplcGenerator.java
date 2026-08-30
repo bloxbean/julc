@@ -1,6 +1,7 @@
 package com.bloxbean.cardano.julc.compiler.uplc;
 
 import com.bloxbean.cardano.julc.compiler.CompilerException;
+import com.bloxbean.cardano.julc.compiler.CompilerTypeDiagnostics;
 import com.bloxbean.cardano.julc.compiler.CompilationContext;
 import com.bloxbean.cardano.julc.compiler.CompilerTargetDiagnostics;
 import com.bloxbean.cardano.julc.compiler.pir.PirSubstitution;
@@ -10,6 +11,7 @@ import com.bloxbean.cardano.julc.core.Constant;
 import com.bloxbean.cardano.julc.core.DefaultFun;
 import com.bloxbean.cardano.julc.core.Term;
 import com.bloxbean.cardano.julc.core.source.SourceLocation;
+import com.bloxbean.cardano.julc.vm.ProtocolCapability;
 
 import java.math.BigInteger;
 import java.util.*;
@@ -23,6 +25,8 @@ import java.util.*;
  * building an {@link IdentityHashMap} for runtime error location tracking.
  */
 public class UplcGenerator {
+
+    public static final String PV11_CASE_BOOL_RULE = "pv11.o2.case-bool";
 
     private final Deque<String> scope = new ArrayDeque<>();
 
@@ -145,6 +149,15 @@ public class UplcGenerator {
             case PirTerm.LetRec letRec -> generateLetRec(letRec);
 
             case PirTerm.IfThenElse(var cond, var thenBranch, var elseBranch) -> {
+                if (context.optimizationLevel().pv11SafeRulesEnabled()
+                        && context.supports(ProtocolCapability.CASE_ON_BUILTIN_CONSTANTS)) {
+                    context.recordOptimizationRule(PV11_CASE_BOOL_RULE);
+                    // Case Bool branch order is False (0), then True (1).
+                    // Case evaluates the scrutinee once and only the selected branch.
+                    yield new Term.Case(
+                            generate(cond),
+                            List.of(generate(elseBranch), generate(thenBranch)));
+                }
                 // Force(Apply(Apply(Apply(Force(Builtin(IfThenElse)), cond), Delay(then)), Delay(else)))
                 var ifBuiltin = Term.force(Term.builtin(DefaultFun.IfThenElse));
                 yield Term.force(
@@ -558,7 +571,12 @@ public class UplcGenerator {
      * Wrap a UPLC term with the appropriate Data encoding based on PIR type.
      * Integer → IData, ByteString → BData, List → ListData, Map → MapData, etc.
      */
-    private static Term wrapDataEncode(Term value, PirType type) {
+    private Term wrapDataEncode(Term value, PirType type) {
+        if (PirType.containsNativeOpaque(type)) {
+            throw CompilerTypeDiagnostics.nativeTypeMismatch(
+                    "UPLC Data construction", type, new PirType.DataType(),
+                    currentSourceLocation());
+        }
         return switch (type) {
             case PirType.IntegerType _ -> Term.apply(Term.builtin(DefaultFun.IData), value);
             case PirType.ByteStringType _ -> Term.apply(Term.builtin(DefaultFun.BData), value);

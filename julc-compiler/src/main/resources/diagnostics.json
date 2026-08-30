@@ -427,6 +427,72 @@
       "template": "Compiled target {0} cannot be evaluated as {1}",
       "summary": "The evaluator must use the exact ledger language and protocol version retained by the compiler result.",
       "fix": "Evaluate with CompileResult.target().ledgerTarget(), or recompile for an explicitly supported compiler target."
+    },
+    {
+      "code": "JULC0037",
+      "constant": "MISSING_OPTIMIZATION_COST_PROFILE",
+      "status": "emitted",
+      "title": "Optimization cost profile is required",
+      "category": "CONFIG",
+      "severity": "error",
+      "template": "Optimization level {0} requires an explicit pinned optimization cost profile",
+      "summary": "Cost-directed optimizer rules cannot infer live or default ledger prices from the compiler target.",
+      "fix": "Select a supported named optimization cost profile, or use BASELINE/PV11_SAFE when cost-directed rules are not required."
+    },
+    {
+      "code": "JULC0038",
+      "constant": "OPTIMIZATION_COST_PROFILE_TARGET_MISMATCH",
+      "status": "emitted",
+      "title": "Optimization cost profile does not match compiler target",
+      "category": "CONFIG",
+      "severity": "error",
+      "template": "Optimization cost profile {0} targets {1}, but compiler target {2} evaluates as {3}",
+      "summary": "A cost profile is valid only for the exact ledger language and protocol profile from which its parameters were pinned.",
+      "fix": "Use a cost profile pinned for the selected compiler target, or select a compatible compiler target explicitly."
+    },
+    {
+      "code": "JULC0039",
+      "constant": "UNSUPPORTED_OPTIMIZATION_LEVEL",
+      "status": "emitted",
+      "title": "Unsupported optimization level",
+      "category": "CONFIG",
+      "severity": "error",
+      "template": "Optimization level {0} is not supported. Supported levels: {1}",
+      "summary": "Optimizer selection uses an exact, versioned identifier and never falls back to a different rollout level.",
+      "fix": "Select one of the listed optimization levels. Use baseline to preserve the pre-ADR-032 generated program."
+    },
+    {
+      "code": "JULC0040",
+      "constant": "UNSUPPORTED_OPTIMIZATION_COST_PROFILE",
+      "status": "emitted",
+      "title": "Unsupported optimization cost profile",
+      "category": "CONFIG",
+      "severity": "error",
+      "template": "Optimization cost profile {0} is not supported. Supported profiles: {1}",
+      "summary": "Cost-directed compilation requires a named profile whose complete parameters and provenance are pinned in JuLC.",
+      "fix": "Select one of the listed cost profiles. Do not substitute live node parameters or a profile from another protocol version."
+    },
+    {
+      "code": "JULC0041",
+      "constant": "NATIVE_TYPE_MISMATCH",
+      "status": "emitted",
+      "title": "Native UPLC type mismatch",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "{0} received {1}, but requires {2}",
+      "summary": "Opaque native UPLC values are not Data and cannot be passed through a differently typed compiler boundary.",
+      "fix": "Use the matching typed native operation. Convert native Value explicitly with ValueData, or convert Data explicitly with UnValueData."
+    },
+    {
+      "code": "JULC0042",
+      "constant": "NATIVE_TYPE_AT_DATA_BOUNDARY",
+      "status": "emitted",
+      "title": "Native UPLC type at a Data argument boundary",
+      "category": "TYPE",
+      "severity": "error",
+      "template": "Method parameter {0} has opaque type {1}, which cannot be decoded from a Plutus Data argument",
+      "summary": "compileMethod and validator inputs are Data-encoded; a native evaluator value has no implicit Data representation.",
+      "fix": "Accept PlutusData or a ledger type at the external boundary and call the explicit native conversion inside the method."
     }
   ]
 }

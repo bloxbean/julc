@@ -7,11 +7,9 @@ import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
 import com.bloxbean.cardano.julc.testkit.BudgetAssertions;
 import com.bloxbean.cardano.julc.testkit.TestDataBuilder;
 import com.bloxbean.cardano.julc.testkit.ValidatorTest;
-import com.bloxbean.cardano.julc.vm.JulcVm;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -64,12 +62,10 @@ class RealisticVestingTest {
             }
             """;
 
-    static JulcVm vm;
     static StdlibRegistry stdlib;
 
     @BeforeAll
     static void setUp() {
-        vm = JulcVm.create();
         stdlib = StdlibRegistry.defaultRegistry();
     }
 
@@ -142,7 +138,7 @@ class RealisticVestingTest {
         var ctx = buildSpendingCtx(datum, PlutusData.integer(0),
                 PlutusData.bytes(beneficiaryPkh));  // signer matches beneficiary
 
-        var result = vm.evaluateWithArgs(program, List.of(ctx));
+        var result = ValidatorTest.evaluate(program, ctx);
         assertTrue(result.isSuccess(), "Beneficiary should be able to unlock: " + result);
     }
 
@@ -161,7 +157,7 @@ class RealisticVestingTest {
         var ctx = buildSpendingCtx(datum, PlutusData.integer(0),
                 PlutusData.bytes(attackerPkh));  // signer doesn't match
 
-        var result = vm.evaluateWithArgs(program, List.of(ctx));
+        var result = ValidatorTest.evaluate(program, ctx);
         assertFalse(result.isSuccess(), "Non-beneficiary should be rejected: " + result);
     }
 
@@ -178,7 +174,7 @@ class RealisticVestingTest {
         // No signatories at all
         var ctx = buildSpendingCtx(datum, PlutusData.integer(0));
 
-        var result = vm.evaluateWithArgs(program, List.of(ctx));
+        var result = ValidatorTest.evaluate(program, ctx);
         assertFalse(result.isSuccess(), "No signatures should cause rejection: " + result);
     }
 
@@ -189,7 +185,7 @@ class RealisticVestingTest {
                 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28};
         var datum = PlutusData.constr(0, PlutusData.bytes(pkh), PlutusData.integer(1000));
         var ctx = buildSpendingCtx(datum, PlutusData.integer(0), PlutusData.bytes(pkh));
-        var result = vm.evaluateWithArgs(program, List.of(ctx));
+        var result = ValidatorTest.evaluate(program, ctx);
         BudgetAssertions.assertBudgetUnder(result, 10_000_000_000L, 10_000_000_000L);
     }
 
@@ -209,7 +205,7 @@ class RealisticVestingTest {
 
         // Redeemer is the PubKeyHash to check
         var ctx = build2ParamCtx(PlutusData.bytes(pkh), PlutusData.bytes(pkh));
-        var result = vm.evaluateWithArgs(program, List.of(ctx));
+        var result = ValidatorTest.evaluate(program, ctx);
         assertTrue(result.isSuccess(), "Authorized signer should succeed: " + result);
     }
 
@@ -222,7 +218,7 @@ class RealisticVestingTest {
                 89, 88, 87, 86, 85, 84, 83, 82, 81, 80, 79, 78, 77, 76, 75, 74, 73, 72};
 
         var ctx = build2ParamCtx(PlutusData.bytes(redeemer), PlutusData.bytes(otherSigner));
-        var result = vm.evaluateWithArgs(program, List.of(ctx));
+        var result = ValidatorTest.evaluate(program, ctx);
         assertFalse(result.isSuccess(), "Unauthorized signer should be rejected: " + result);
     }
 }

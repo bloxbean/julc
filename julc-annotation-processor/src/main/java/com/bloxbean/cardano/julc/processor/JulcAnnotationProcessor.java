@@ -13,8 +13,11 @@ import com.bloxbean.cardano.julc.compiler.LibrarySource;
 import com.bloxbean.cardano.julc.compiler.LibrarySourceResolver;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
 import com.bloxbean.cardano.julc.compiler.ScriptPurposeMetadata;
+import com.bloxbean.cardano.julc.compiler.OptimizationConfiguration;
+import com.bloxbean.cardano.julc.compiler.OptimizationLevel;
 import com.bloxbean.cardano.julc.core.source.SourceMapSerializer;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
+import com.bloxbean.cardano.julc.vm.OptimizationCostProfile;
 import com.sun.source.util.Trees;
 
 import javax.annotation.processing.*;
@@ -56,7 +59,7 @@ import java.util.stream.Collectors;
         "com.bloxbean.cardano.julc.stdlib.annotation.ProposingValidator",
         "com.bloxbean.cardano.julc.stdlib.annotation.MultiValidator"
 })
-@SupportedOptions({"julc.projectName", "julc.projectVersion", "julc.sourceMap", "julc.blueprint", "julc.target"})
+@SupportedOptions({"julc.projectName", "julc.projectVersion", "julc.sourceMap", "julc.blueprint", "julc.target", "julc.optimization", "julc.costProfile"})
 @SupportedSourceVersion(SourceVersion.RELEASE_24)
 public class JulcAnnotationProcessor extends AbstractProcessor {
 
@@ -66,6 +69,8 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
     private boolean blueprintEnabled;
     private boolean processingFailed;
     private CompilerTarget compilerTarget;
+    private OptimizationLevel optimizationLevel;
+    private OptimizationCostProfile optimizationCostProfile;
 
     /** Accumulated compiled validators for CIP-57 blueprint generation. */
     private final List<BlueprintGenerator.CompiledValidator> compiledValidators = new ArrayList<>();
@@ -92,6 +97,13 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
                 "julc.target", CompilerTarget.PLUTUS_V3_PV11.profileId());
         try {
             this.compilerTarget = CompilerTargetRegistry.targetForProfileId(targetProfile);
+            var optimizationOptions = OptimizationConfiguration.apply(
+                    new CompilerOptions().setTarget(compilerTarget),
+                    processingEnv.getOptions().getOrDefault(
+                            "julc.optimization", OptimizationLevel.DEFAULT_PROFILE_ID),
+                    processingEnv.getOptions().get("julc.costProfile"));
+            this.optimizationLevel = optimizationOptions.getOptimizationLevel();
+            this.optimizationCostProfile = optimizationOptions.getOptimizationCostProfile();
         } catch (CompilerException e) {
             this.processingFailed = true;
             processingEnv.getMessager().printMessage(
@@ -203,7 +215,12 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
             List<String> librarySources = resolveLibrarySources(source);
 
             // 3. Compile with JulcCompiler (multi-file if libraries found)
-            var options = new CompilerOptions().setTarget(compilerTarget);
+            var options = new CompilerOptions()
+                    .setTarget(compilerTarget)
+                    .setOptimizationLevel(optimizationLevel);
+            if (optimizationCostProfile != null) {
+                options.setOptimizationCostProfile(optimizationCostProfile);
+            }
             if (sourceMapEnabled) {
                 options.setSourceMapEnabled(true);
             }
@@ -285,7 +302,8 @@ public class JulcAnnotationProcessor extends AbstractProcessor {
             String libMsg = librarySources.isEmpty() ? "" : " (with " + librarySources.size() + " library file(s))";
             processingEnv.getMessager().printMessage(Diagnostic.Kind.NOTE,
                     "Compiled Plutus validator: " + className + " (target: "
-                            + result.target().profileId() + ", hash: " + scriptHash
+                            + result.target().profileId() + ", optimization: "
+                            + result.optimizationReport().level().profileId() + ", hash: " + scriptHash
                             + ", size: " + sizeStr + ")" + libMsg,
                     element);
 

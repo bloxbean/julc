@@ -1,6 +1,7 @@
 package com.bloxbean.cardano.julc.compiler.pir;
 
 import com.bloxbean.cardano.julc.compiler.CompilerException;
+import com.bloxbean.cardano.julc.compiler.CompilerTypeDiagnostics;
 import com.bloxbean.cardano.julc.compiler.CompilerTargetDiagnostics;
 import com.bloxbean.cardano.julc.compiler.LoweringRequirements;
 import com.bloxbean.cardano.julc.compiler.desugar.LoopDesugarer;
@@ -399,6 +400,19 @@ public class PirGenerator {
                                 + ". Hint: On-chain variables need initial values, e.g. var " + name + " = BigInteger.ZERO;"));
                 var value = generateExpression(initExpr);
                 var pirType = inferType(decl.getType(), value, initExpr);
+                var initializerType = resolveExpressionType(initExpr);
+                if (initializerType instanceof PirType.DataType) {
+                    initializerType = inferPirType(value);
+                }
+                if ((typeResolver.containsNativeOpaque(pirType)
+                        || typeResolver.containsNativeOpaque(initializerType))
+                        && !pirType.equals(initializerType)) {
+                    throw CompilerTypeDiagnostics.nativeTypeMismatch(
+                            "Variable '" + name + "' initializer",
+                            initializerType,
+                            pirType,
+                            sourceLocation(initExpr));
+                }
                 symbolTable.define(name, pirType);
                 var body = generateStatements(stmts, index + 1, cont);
                 return new PirTerm.Let(name, value, body);
@@ -835,10 +849,21 @@ public class PirGenerator {
         // Infer operand type for type-aware dispatching
         var leftType = resolveExpressionType(be.getLeft());
         if (leftType instanceof PirType.DataType) leftType = inferPirType(left);
+        var rightType = resolveExpressionType(be.getRight());
+        if (rightType instanceof PirType.DataType) rightType = inferPirType(right);
+
+        if ((be.getOperator() == BinaryExpr.Operator.EQUALS
+                || be.getOperator() == BinaryExpr.Operator.NOT_EQUALS)
+                && (typeResolver.containsNativeOpaque(leftType)
+                || typeResolver.containsNativeOpaque(rightType))) {
+            throw CompilerTypeDiagnostics.nativeTypeMismatch(
+                    "Equality comparison",
+                    typeResolver.containsNativeOpaque(leftType) ? leftType : rightType,
+                    new PirType.DataType(),
+                    sourceLocation(be));
+        }
         // If left is still DataType, try the right operand for better type inference
         if (leftType instanceof PirType.DataType) {
-            var rightType = resolveExpressionType(be.getRight());
-            if (rightType instanceof PirType.DataType) rightType = inferPirType(right);
             if (!(rightType instanceof PirType.DataType)) leftType = rightType;
         }
 
@@ -1131,7 +1156,7 @@ public class PirGenerator {
             }
 
             validateLoweringRequirements(
-                    typeMethodRegistry.requirements(scopeType, methodName), mce);
+                    typeMethodRegistry.requirements(context, scopeType, methodName), mce);
             var registryResult = typeMethodRegistry.dispatch(
                     context, scope, methodName, compiledArgs, scopeType, argPirTypes);
             if (registryResult.isPresent()) return registryResult.get();
@@ -1395,6 +1420,7 @@ public class PirGenerator {
         // Check if this is a variant of a sealed interface (sum type)
         var sumType = typeResolver.lookupSumTypeForVariant(resolvedTypeName);
         if (sumType.isPresent()) {
+            rejectNativeDataConstruction(typeName, sumType.get(), oce);
             for (var ctor : sumType.get().constructors()) {
                 if (ctor.name().equals(typeName)) {
                     var fields = new ArrayList<PirTerm>();
@@ -1411,6 +1437,7 @@ public class PirGenerator {
         if (typeName.equals("Tuple2") || typeName.equals("Tuple3")) {
             var resolvedType = typeResolver.resolve(ct);
             if (resolvedType instanceof PirType.RecordType rt) {
+                rejectNativeDataConstruction(typeName, rt, oce);
                 var fields = new ArrayList<PirTerm>();
                 for (var arg : oce.getArguments()) {
                     fields.add(generateExpression(arg));
@@ -1422,6 +1449,7 @@ public class PirGenerator {
         // Check standalone record type
         var recordType = typeResolver.lookupRecord(resolvedTypeName);
         if (recordType.isPresent()) {
+            rejectNativeDataConstruction(typeName, recordType.get(), oce);
             var fields = new ArrayList<PirTerm>();
             for (var arg : oce.getArguments()) {
                 fields.add(generateExpression(arg));
@@ -1431,6 +1459,16 @@ public class PirGenerator {
         throw enrichedError("Cannot construct non-record type: " + typeName,
                 "Only record types can be constructed on-chain. Define " + typeName + " as a record.",
                 oce);
+    }
+
+    private void rejectNativeDataConstruction(String typeName, PirType type, Node source) {
+        if (typeResolver.containsNativeOpaque(type)) {
+            throw CompilerTypeDiagnostics.nativeTypeMismatch(
+                    "Data construction for '" + typeName + "'",
+                    type,
+                    new PirType.DataType(),
+                    sourceLocation(source));
+        }
     }
 
     PirTerm generateForEachStmt(ForEachStmt fes, List<Statement> followingStmts, int followingIndex,

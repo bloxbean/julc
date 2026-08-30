@@ -2,6 +2,7 @@ package com.bloxbean.cardano.julc.testkit;
 
 import com.bloxbean.cardano.julc.compiler.CompileResult;
 import com.bloxbean.cardano.julc.compiler.CompilerOptions;
+import com.bloxbean.cardano.julc.compiler.CompilerTarget;
 import com.bloxbean.cardano.julc.compiler.CompilerTargetDiagnostics;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
 import com.bloxbean.cardano.julc.core.PlutusData;
@@ -51,7 +52,10 @@ public final class ValidatorTest {
      * Evaluate a UPLC program with the given PlutusData arguments using unlimited budget.
      * <p>
      * The program is applied to each argument in order. Arguments are wrapped as
-     * Data constants. A JulcVm is auto-discovered via ServiceLoader.
+     * Data constants. A JulcVm is auto-discovered via ServiceLoader. Because a
+     * raw Program has no target provenance, this JuLC compiler testkit overload
+     * evaluates it under the current compiler target (V3/PV11). Use the
+     * CompileResult overload to retain exact provenance across future targets.
      *
      * @param program the UPLC program to evaluate
      * @param args    the arguments to apply (as PlutusData)
@@ -61,10 +65,12 @@ public final class ValidatorTest {
     public static EvalResult evaluate(Program program, PlutusData... args) {
         Objects.requireNonNull(program, "program must not be null");
         var vm = JulcVm.create();
+        var target = CompilerTarget.PLUTUS_V3_PV11.ledgerTarget();
         if (args.length == 0) {
-            return vm.evaluate(program);
+            return vm.evaluate(program, target, null, EvalOptions.DEFAULT);
         }
-        return vm.evaluateWithArgs(program, List.of(args));
+        return vm.evaluateWithArgs(
+                program, target, List.of(args), null, EvalOptions.DEFAULT);
     }
 
     /**
@@ -79,10 +85,12 @@ public final class ValidatorTest {
         Objects.requireNonNull(program, "program must not be null");
         Objects.requireNonNull(budget, "budget must not be null");
         var vm = JulcVm.create();
+        var target = CompilerTarget.PLUTUS_V3_PV11.ledgerTarget();
         if (args.length == 0) {
-            return vm.evaluate(program, budget);
+            return vm.evaluate(program, target, budget, EvalOptions.DEFAULT);
         }
-        return vm.evaluateWithArgs(program, List.of(args), budget);
+        return vm.evaluateWithArgs(
+                program, target, List.of(args), budget, EvalOptions.DEFAULT);
     }
 
     /**

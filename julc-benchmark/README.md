@@ -2,6 +2,24 @@
 
 JMH benchmarks for JuLC VM backends — compares the pure Java CEK interpreter against the GraalVM Truffle JIT CEK machine.
 
+## Compiler optimization evidence
+
+ADR-032 compiler-lowering comparisons use
+`OptimizationBenchmarkRunner`, not JMH throughput measurements. A fixture is
+compiled at `baseline` and a candidate level, then both programs are evaluated
+with identical inputs and the pinned
+`cardano-node-11.0.1-plutus-v3-pv11` parameters. The comparison fails on any
+result, failure, or trace-order difference and records FLAT bytes, script hash,
+UPLC structure, CPU, memory, backend, applied-rule IDs, and the cost-parameter
+hash. `Comparison.toMarkdown()` produces the deterministic tables used in
+ADR evidence and release notes.
+
+Run every checked-in ADR-032 fixture and print those tables with:
+
+```bash
+./gradlew :julc-benchmark:optimizationEvidence
+```
+
 ## Benchmark Classes
 
 | Class | VM Backend | Description |

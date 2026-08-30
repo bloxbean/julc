@@ -4,13 +4,11 @@ import com.bloxbean.cardano.julc.compiler.CompileResult;
 import com.bloxbean.cardano.julc.compiler.JulcCompiler;
 import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
-import com.bloxbean.cardano.julc.vm.JulcVm;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -44,7 +42,7 @@ class CertifyingExecutionTest {
     }
 
     private static boolean evaluate(CompileResult compiled, PlutusData context) {
-        return JulcVm.create().evaluateWithArgs(compiled.program(), List.of(context))
+        return VerificationExecution.evaluate(compiled, context)
                 .isSuccess();
     }
 

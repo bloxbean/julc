@@ -28,7 +28,7 @@ class OptimizerSourceSoundnessTest {
 
     @BeforeAll
     static void setUp() {
-        vm = JulcVm.create("Java");
+        vm = CompilerTestVm.pv11("Java");
     }
 
     private CompileResult compileMethod(String source, String methodName) {

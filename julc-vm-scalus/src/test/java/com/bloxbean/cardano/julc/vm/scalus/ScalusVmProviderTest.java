@@ -620,6 +620,36 @@ class ScalusVmProviderTest {
     class ConstrAndCase {
 
         @Test
+        void caseOnBoolSelectsFalseAndTrueBranches() {
+            var branches = List.of(
+                    Term.const_(Constant.integer(0)),
+                    Term.const_(Constant.integer(1)));
+
+            var falseResult = provider.evaluate(
+                    Program.plutusV3(new Term.Case(
+                            Term.const_(Constant.bool(false)), branches)),
+                    PlutusLanguage.PLUTUS_V3, null);
+            var trueResult = provider.evaluate(
+                    Program.plutusV3(new Term.Case(
+                            Term.const_(Constant.bool(true)), branches)),
+                    PlutusLanguage.PLUTUS_V3, null);
+
+            assertEquals(BigInteger.ZERO, integerResult(falseResult));
+            assertEquals(BigInteger.ONE, integerResult(trueResult));
+        }
+
+        @Test
+        void caseOnBoolDoesNotEvaluateUnselectedBranch() {
+            var result = provider.evaluate(
+                    Program.plutusV3(new Term.Case(
+                            Term.const_(Constant.bool(true)),
+                            List.of(Term.error(), Term.const_(Constant.integer(1))))),
+                    PlutusLanguage.PLUTUS_V3, null);
+
+            assertEquals(BigInteger.ONE, integerResult(result));
+        }
+
+        @Test
         void constrCreatesTaggedValue() {
             // (constr 0 (con integer 1) (con integer 2))
             var term = new Term.Constr(0, List.of(
@@ -667,6 +697,14 @@ class ScalusVmProviderTest {
             var c = (Term.Const) ((EvalResult.Success) result).resultTerm();
             assertEquals(BigInteger.valueOf(99), ((Constant.IntegerConst) c.value()).value());
         }
+    }
+
+    private static BigInteger integerResult(EvalResult result) {
+        assertTrue(result.isSuccess(), () -> "Expected success, got " + result);
+        var constant = assertInstanceOf(
+                Term.Const.class, ((EvalResult.Success) result).resultTerm());
+        var integer = assertInstanceOf(Constant.IntegerConst.class, constant.value());
+        return integer.value();
     }
 
     @Nested

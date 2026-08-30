@@ -683,7 +683,10 @@ for full documentation.
 
 ### NativeValueLib (PV11)
 
-> **Protocol Version 11+ only.** Native MaryEra Value operations via CIP-153 builtins. For PV10 networks, use `ValuesLib`. See [Standard Library Guide](/stdlib/stdlib-guide/#nativevaluelib----native-value-operations-pv11) for full documentation.
+> **PV11 target only.** Native MaryEra Value operations use the opaque
+> `JulcValue` type. It is not `PlutusData` or the ledger API's Data-encoded
+> `Value`; cross the representation boundary explicitly with `fromData` and
+> `toData`. See [Standard Library Guide](/stdlib/stdlib-guide/#nativevaluelib----native-value-operations-pv11) for full documentation.
 
 | Method | Args | Description |
 |--------|------|-------------|

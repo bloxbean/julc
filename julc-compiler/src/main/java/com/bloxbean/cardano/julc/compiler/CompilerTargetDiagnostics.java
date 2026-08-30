@@ -6,8 +6,11 @@ import com.bloxbean.cardano.julc.compiler.error.DiagnosticInfo;
 import com.bloxbean.cardano.julc.core.DefaultFun;
 import com.bloxbean.cardano.julc.core.source.SourceLocation;
 import com.bloxbean.cardano.julc.vm.LedgerEvaluationTarget;
+import com.bloxbean.cardano.julc.vm.OptimizationCostProfile;
 import com.bloxbean.cardano.julc.vm.ProtocolCapability;
 import com.bloxbean.cardano.julc.vm.UplcVersion;
+
+import java.util.Collection;
 
 /** Catalog-backed diagnostics shared by target-aware compiler stages. */
 public final class CompilerTargetDiagnostics {
@@ -64,6 +67,38 @@ public final class CompilerTargetDiagnostics {
         var message = info.format(
                 compiledTarget.profileId(), requestedEvaluationTarget);
         return exception(info, message, null);
+    }
+
+    public static CompilerException missingOptimizationCostProfile(
+            OptimizationLevel optimizationLevel) {
+        var info = DiagnosticCodes.MISSING_OPTIMIZATION_COST_PROFILE;
+        return exception(info, info.format(optimizationLevel), null);
+    }
+
+    public static CompilerException optimizationCostProfileTargetMismatch(
+            OptimizationCostProfile costProfile,
+            CompilerTarget compilerTarget) {
+        var info = DiagnosticCodes.OPTIMIZATION_COST_PROFILE_TARGET_MISMATCH;
+        var message = info.format(
+                costProfile.profileId(),
+                costProfile.target(),
+                compilerTarget.profileId(),
+                compilerTarget.ledgerTarget());
+        return exception(info, message, null);
+    }
+
+    public static CompilerException unsupportedOptimizationLevel(
+            String requestedProfileId,
+            Collection<String> supportedProfileIds) {
+        var info = DiagnosticCodes.UNSUPPORTED_OPTIMIZATION_LEVEL;
+        return exception(info, info.format(requestedProfileId, supportedProfileIds), null);
+    }
+
+    public static CompilerException unsupportedOptimizationCostProfile(
+            String requestedProfileId,
+            Collection<String> supportedProfileIds) {
+        var info = DiagnosticCodes.UNSUPPORTED_OPTIMIZATION_COST_PROFILE;
+        return exception(info, info.format(requestedProfileId, supportedProfileIds), null);
     }
 
     private static CompilerException exception(

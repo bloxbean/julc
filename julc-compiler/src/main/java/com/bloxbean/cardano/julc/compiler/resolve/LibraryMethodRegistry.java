@@ -3,6 +3,7 @@ package com.bloxbean.cardano.julc.compiler.resolve;
 import com.bloxbean.cardano.julc.compiler.CompilerException;
 import com.bloxbean.cardano.julc.compiler.CompilerOptions;
 import com.bloxbean.cardano.julc.compiler.CompilationContext;
+import com.bloxbean.cardano.julc.compiler.CompilerTypeDiagnostics;
 import com.bloxbean.cardano.julc.compiler.pir.PirHelpers;
 import com.bloxbean.cardano.julc.compiler.pir.PirTerm;
 import com.bloxbean.cardano.julc.compiler.pir.PirType;
@@ -100,6 +101,14 @@ public class LibraryMethodRegistry implements StdlibLookup {
             var arg = args.get(i);
             var callerType = i < argTypes.size() ? argTypes.get(i) : new PirType.DataType();
             var calleeType = i < expectedTypes.size() ? expectedTypes.get(i) : new PirType.DataType();
+            if ((PirType.containsNativeOpaque(callerType) || PirType.containsNativeOpaque(calleeType))
+                    && !callerType.equals(calleeType)) {
+                throw CompilerTypeDiagnostics.nativeTypeMismatch(
+                        method.qualifiedName() + " argument " + (i + 1),
+                        callerType,
+                        calleeType,
+                        null);
+            }
             if (!callerType.equals(calleeType) && callerType instanceof PirType.DataType && isPrimitiveType(calleeType)) {
                 context.logf("Coercing arg %d: Data -> %s", i, pirTypeName(calleeType));
             }
@@ -210,6 +219,7 @@ public class LibraryMethodRegistry implements StdlibLookup {
             case PirType.BoolType _ -> "Bool";
             case PirType.StringType _ -> "String";
             case PirType.DataType _ -> "Data";
+            case PirType.NativeValueType _ -> "NativeValue";
             case PirType.UnitType _ -> "Unit";
             case PirType.ListType lt -> "List[" + pirTypeName(lt.elemType()) + "]";
             case PirType.MapType mt -> "Map[" + pirTypeName(mt.keyType()) + "," + pirTypeName(mt.valueType()) + "]";

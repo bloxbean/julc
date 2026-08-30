@@ -34,18 +34,15 @@ class PlutusConformanceTest {
     private static final ScalusVmProvider PROVIDER = new ScalusVmProvider();
 
     /**
-     * Tests skipped due to Scalus 0.16.0 limitations.
-     * Re-evaluate when upgrading Scalus version.
+     * Tests skipped due to remaining Scalus FLAT-bridge limitations.
+     * Case-on-constant tests are enabled with Scalus 1.1.0.
      */
     private static final Set<String> SKIP_DIRS = Set.of(
-            // PV11 Value/Array types: Scalus 0.16.0 FLAT codec can't decode these
+            // PV11 Value/Array types: the current FLAT bridge can't decode these
             "insertCoin", "lookupCoin", "unionValue", "valueContains",
             "valueData", "unValueData", "scaleValue",
             "listToArray",
-            "array", "value",
-            // Case-on-constant for built-in types: Scalus doesn't support
-            // scrutinizing built-in values (Bool, Integer, List, Pair, Unit) via case.
-            "constant-case"
+            "array", "value"
     );
 
     /**

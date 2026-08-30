@@ -197,6 +197,9 @@ class CompileToolTest {
         assertNotNull(body.get("uplc"),
                 "uplc must be present when includeUplc=true");
         assertEquals("plutus-v3-pv11-uplc-1.1.0", body.get("compilerTarget"));
+        @SuppressWarnings("unchecked")
+        var optimization = (Map<String, Object>) body.get("optimization");
+        assertEquals("pv11-safe", optimization.get("level"));
     }
 
     @Test
@@ -212,6 +215,21 @@ class CompileToolTest {
         assertEquals(Boolean.FALSE, body.get("ok"));
         assertTrue(diagnostics.stream().anyMatch(
                 diagnostic -> "JULC0031".equals(diagnostic.get("code"))));
+    }
+
+    @Test
+    void rejectsUnknownOptimizationWithStableDiagnostic() {
+        var req = new McpSchema.CallToolRequest("julc_compile", Map.of(
+                "source", "class Empty {}",
+                "optimization", "PV11_SAFE"));
+        var res = CompileTool.handle(req, jsonMapper);
+        @SuppressWarnings("unchecked")
+        var body = (Map<String, Object>) res.structuredContent();
+        @SuppressWarnings("unchecked")
+        var diagnostics = (List<Map<String, Object>>) body.get("diagnostics");
+        assertEquals(Boolean.FALSE, body.get("ok"));
+        assertTrue(diagnostics.stream().anyMatch(
+                diagnostic -> "JULC0039".equals(diagnostic.get("code"))));
     }
 
     @Test

@@ -21,7 +21,7 @@ class NewTypeTest {
 
     @BeforeAll
     static void setUp() {
-        vm = JulcVm.create();
+        vm = CompilerTestVm.pv11();
     }
 
     static Program compileValidator(String source) {

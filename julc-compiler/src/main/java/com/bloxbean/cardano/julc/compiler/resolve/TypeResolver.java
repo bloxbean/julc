@@ -377,6 +377,7 @@ public class TypeResolver {
             case "String" -> new PirType.StringType();
             case "Boolean" -> new PirType.BoolType();
             case "PlutusData", "ConstrData", "MapData", "ListData", "IntData", "BytesData" -> new PirType.DataType();
+            case "JulcValue" -> new PirType.NativeValueType();
             case "List", "JulcList" -> {
                 PirType elemType = new PirType.DataType();
                 var listArgs = ct.getTypeArguments();
@@ -574,6 +575,64 @@ public class TypeResolver {
                     "Recursive type definition is incomplete: '" + ref.stableId() + "'");
         }
         return resolved;
+    }
+
+    /** Return whether a type graph contains a PV11 native Value. */
+    public boolean containsNativeOpaque(PirType type) {
+        return containsNativeOpaque(type, new HashSet<>(),
+                Collections.newSetFromMap(new IdentityHashMap<>()));
+    }
+
+    private boolean containsNativeOpaque(
+            PirType type, Set<String> activeNames, Set<PirType> activeTypes) {
+        if (type instanceof PirType.NativeValueType) return true;
+        if (type instanceof PirType.NamedTypeRef ref) {
+            if (!activeNames.add(ref.stableId())) return false;
+            try {
+                return containsNativeOpaque(resolveNamed(ref), activeNames, activeTypes);
+            } finally {
+                activeNames.remove(ref.stableId());
+            }
+        }
+        if (!activeTypes.add(type)) return false;
+        try {
+            if (type instanceof PirType.ListType list) {
+                return containsNativeOpaque(list.elemType(), activeNames, activeTypes);
+            }
+            if (type instanceof PirType.PairType pair) {
+                return containsNativeOpaque(pair.first(), activeNames, activeTypes)
+                        || containsNativeOpaque(pair.second(), activeNames, activeTypes);
+            }
+            if (type instanceof PirType.MapType map) {
+                return containsNativeOpaque(map.keyType(), activeNames, activeTypes)
+                        || containsNativeOpaque(map.valueType(), activeNames, activeTypes);
+            }
+            if (type instanceof PirType.OptionalType optional) {
+                return containsNativeOpaque(optional.elemType(), activeNames, activeTypes);
+            }
+            if (type instanceof PirType.ArrayType array) {
+                return containsNativeOpaque(array.elemType(), activeNames, activeTypes);
+            }
+            if (type instanceof PirType.FunType function) {
+                return containsNativeOpaque(function.paramType(), activeNames, activeTypes)
+                        || containsNativeOpaque(function.returnType(), activeNames, activeTypes);
+            }
+            if (type instanceof PirType.RecordType record) {
+                for (var field : record.fields()) {
+                    if (containsNativeOpaque(field.type(), activeNames, activeTypes)) return true;
+                }
+            }
+            if (type instanceof PirType.SumType sum) {
+                for (var constructor : sum.constructors()) {
+                    for (var field : constructor.fields()) {
+                        if (containsNativeOpaque(field.type(), activeNames, activeTypes)) return true;
+                    }
+                }
+            }
+            return false;
+        } finally {
+            activeTypes.remove(type);
+        }
     }
 
     /** Snapshot of completed named definitions, keyed by stable compiler identity. */
