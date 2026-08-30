@@ -27,14 +27,16 @@ UPLC 1.1.0 target. julc provides a complete
 toolchain: a Java-subset compiler, a pluggable VM for local evaluation, a standard library of on-chain
 operations, and first-class integration with [cardano-client-lib](https://github.com/bloxbean/cardano-client-lib).
 
-## Powered by Scalus
+## Evaluation backends
 
-JuLC includes a pure-Java VM and a [Scalus](https://scalus.org/) backend. The
-pure-Java VM implements the canonical protocol-aware evaluation path used when
-`CompileResult` target provenance is available. Scalus remains available for
-language-only compatibility evaluation and cross-checking. Huge thanks to the
-Scalus team for building and open-sourcing a high-quality Plutus VM that made
-this project possible.
+JuLC supports two VM choices for local evaluation: its pure-Java VM and the
+[Scalus](https://scalus.org/) backend. Both can evaluate JuLC-generated UPLC.
+The Java VM additionally integrates with JuLC's complete compiler-target
+provenance for explicit protocol-aware evaluation and cost selection. Scalus is
+a supported alternative evaluator and provides a valuable independent
+cross-check of generated programs. Users can choose the backend that best fits
+their application. Huge thanks to the Scalus team for building and
+open-sourcing a high-quality Plutus VM that made this project possible.
 
 ## Features
 
@@ -52,7 +54,7 @@ this project possible.
 - **JulcList/JulcMap** — typed collection interfaces with IDE autocomplete for on-chain methods
 - **Multi-validator** — `@MultiValidator` for handling multiple script purposes (mint + spend + withdraw, etc.) in a single compiled script
 - **Annotation processor** — `@SpendingValidator`, `@MintingValidator`, `@MultiValidator`, `@Entrypoint` for compile-time code generation
-- **Pluggable VM** — evaluate UPLC programs locally via SPI (Scalus backend included)
+- **Pluggable VM** — choose the pure-Java VM or Scalus backend for local UPLC evaluation
 - **Testkit** — test validators locally without a running node
 - **Gradle plugin** — compile validators and bundle on-chain sources as part of your build
 - **cardano-client-lib integration** — deploy and submit transactions with compiled scripts
