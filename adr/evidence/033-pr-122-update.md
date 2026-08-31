@@ -51,8 +51,9 @@ budgets match and 37 differ because of seven snapshot coefficients.
   312/0/0/0.
 - Consumer suites: `julc-testkit` 191/0/0/0 and
   `julc-cardano-client-lib` 204/0/0/0.
-- `./gradlew build --no-daemon`: successful; final JUnit XML total
-  10,776 tests, 0 failures, 0 errors, 531 intentional skips. Per-module totals
+- `./gradlew build --no-daemon`: successful; final JUnit XML total across the
+  modules declared in `settings.gradle` is 10,664 tests, 0 failures, 0 errors,
+  531 intentional skips. Per-module totals
   are retained in `adr/evidence/033-build-validation.md`.
 
 Tracks #74. Related: #65 and #121. Issue #40 remains independent and

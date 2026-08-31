@@ -19,7 +19,8 @@ one provider leaves all three language-only paths usable and keeps their
 configuration snapshots independent.
 
 The final build's JUnit XML totals are shown as tests / failures / errors /
-skipped:
+skipped. Totals include only modules declared in `settings.gradle`; unrelated
+local build directories are excluded.
 
 | Gradle module | XML totals |
 |---|---:|
@@ -46,9 +47,8 @@ skipped:
 | `julc-verification` | 92 / 0 / 0 / 0 |
 | `julc-cli` | 442 / 0 / 0 / 0 |
 | `julc-jrl:julc-jrl-core` | 165 / 0 / 0 / 0 |
-| `julc-crl:julc-crl-core` | 112 / 0 / 0 / 0 |
 | `julc-playground` | 31 / 0 / 0 / 0 |
-| **Total XML** | **10,776 / 0 / 0 / 531** |
+| **Total XML** | **10,664 / 0 / 0 / 531** |
 
 `julc-e2e-tests`, `julc-plugin-test`, and `julc-bom` emitted no JUnit XML in
 the full build. They are included here explicitly so absence of an XML row is
