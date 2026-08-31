@@ -7,13 +7,17 @@ import com.bloxbean.cardano.julc.core.Term;
 import com.bloxbean.cardano.julc.core.flat.UplcFlatEncoder;
 import com.bloxbean.cardano.julc.vm.*;
 import scalus.cardano.ledger.CostModels;
+import scalus.cardano.ledger.ExUnits;
 import scalus.cardano.ledger.Language;
 import scalus.cardano.ledger.MajorProtocolVersion;
 import scalus.uplc.ProgramFlatCodec$;
+import scalus.uplc.eval.BudgetSpender;
 import scalus.uplc.eval.CountingBudgetSpender;
 import scalus.uplc.eval.Log;
 import scalus.uplc.eval.MachineParams;
+import scalus.uplc.eval.OutOfExBudgetError;
 import scalus.uplc.eval.PlutusVM;
+import scalus.uplc.eval.RestrictingBudgetSpender;
 
 import java.util.Arrays;
 import java.util.List;
@@ -37,7 +41,9 @@ import java.util.Set;
  *
  * <p>Protocol-aware cost-model configuration is target-bound and published
  * atomically. Explicit-target evaluation remains fail-closed until the
- * certification gates in ADR-033 are complete.</p>
+ * certification gates in ADR-033 are complete. Budget exhaustion reports a
+ * {@code null} {@link EvalResult.BudgetExhausted#failedTerm()} because Scalus
+ * 1.1.0 does not expose the term whose budget charge failed.</p>
  */
 public class ScalusVmProvider implements JulcVmProvider {
 
@@ -159,7 +165,7 @@ public class ScalusVmProvider implements JulcVmProvider {
         var configuration = configurationForLanguage(language);
         var failure = compatibilityConfigurationFailure(configuration, language);
         if (failure != null) return failure;
-        return evaluateInternal(program, language, asReady(configuration));
+        return evaluateInternal(program, language, asReady(configuration), budget);
     }
 
     @Override
@@ -187,7 +193,8 @@ public class ScalusVmProvider implements JulcVmProvider {
                         emptyAnn);
             }
 
-            return evaluateScalusTerm(scalusTerm, language, asReady(configuration));
+            return evaluateScalusTerm(
+                    scalusTerm, language, asReady(configuration), budget);
         } catch (Exception e) {
             String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
             return new EvalResult.Failure(errorMsg, ExBudget.ZERO, List.of());
@@ -195,8 +202,8 @@ public class ScalusVmProvider implements JulcVmProvider {
     }
 
     /**
-     * Evaluates for an explicit ledger target. The budget remains advisory in
-     * ADR-033 Milestone 3; Milestone 4 adds restricting-budget enforcement.
+     * Evaluates for an explicit ledger target. A non-null budget restricts
+     * execution; a null budget counts without imposing a limit.
      */
     @Override
     public EvalResult evaluate(Program program, LedgerEvaluationTarget target,
@@ -205,8 +212,8 @@ public class ScalusVmProvider implements JulcVmProvider {
     }
 
     /**
-     * Evaluates with arguments for an explicit ledger target. The budget remains
-     * advisory in ADR-033 Milestone 3; Milestone 4 enforces it.
+     * Evaluates with arguments for an explicit ledger target. A non-null budget
+     * restricts execution; a null budget counts without imposing a limit.
      */
     @Override
     public EvalResult evaluateWithArgs(Program program, LedgerEvaluationTarget target,
@@ -283,7 +290,8 @@ public class ScalusVmProvider implements JulcVmProvider {
                         emptyAnn);
             }
 
-            return evaluateScalusTerm(scalusTerm, target.ledgerLanguage(), ready);
+            return evaluateScalusTerm(
+                    scalusTerm, target.ledgerLanguage(), ready, budget);
         } catch (Exception e) {
             return new EvalResult.Failure(messageOf(e), ExBudget.ZERO, List.of());
         }
@@ -363,7 +371,8 @@ public class ScalusVmProvider implements JulcVmProvider {
     }
 
     private EvalResult evaluateInternal(Program program, PlutusLanguage language,
-                                        ReadyScalusConfiguration configuration) {
+                                        ReadyScalusConfiguration configuration,
+                                        ExBudget budget) {
         try {
             // FLAT-encode our Program to bytes
             byte[] flatBytes = UplcFlatEncoder.encodeProgram(program);
@@ -371,7 +380,8 @@ public class ScalusVmProvider implements JulcVmProvider {
             // Decode via Scalus FLAT codec -> DeBruijnedProgram
             var dbProgram = ProgramFlatCodec$.MODULE$.decodeFlat(flatBytes);
 
-            return evaluateScalusTerm(dbProgram.term(), language, configuration);
+            return evaluateScalusTerm(
+                    dbProgram.term(), language, configuration, budget);
         } catch (Exception e) {
             String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
             return new EvalResult.Failure(errorMsg, ExBudget.ZERO, List.of());
@@ -379,9 +389,10 @@ public class ScalusVmProvider implements JulcVmProvider {
     }
 
     private EvalResult evaluateScalusTerm(scalus.uplc.Term scalusTerm, PlutusLanguage language,
-                                          ReadyScalusConfiguration configuration) {
+                                          ReadyScalusConfiguration configuration,
+                                          ExBudget budgetLimit) {
         // Create budget/logger outside try so we can capture partial budget on error
-        var budgetSpender = new CountingBudgetSpender();
+        BudgetSpender budgetSpender = createBudgetSpender(budgetLimit);
         var logger = new Log();
         try {
             // Create the appropriate VM
@@ -396,18 +407,36 @@ public class ScalusVmProvider implements JulcVmProvider {
 
             // Convert result
             Term resultTerm = TermConverter.fromScalus(scalusResult);
-            var budget = budgetSpender.getSpentBudget();
-            var consumed = new ExBudget(budget.steps(), budget.memory());
+            var consumed = consumedBudget(budgetSpender);
             var traces = List.of(logger.getLogs());
 
             return new EvalResult.Success(resultTerm, consumed, traces);
+        } catch (OutOfExBudgetError e) {
+            var consumed = consumedBudget(budgetSpender);
+            var traces = List.of(logger.getLogs());
+            // Scalus exposes the CEK environment/source position but not the
+            // term whose charge failed, so failedTerm is intentionally null.
+            return new EvalResult.BudgetExhausted(consumed, traces, null);
         } catch (Exception e) {
             String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
-            var budget = budgetSpender.getSpentBudget();
-            var consumed = new ExBudget(budget.steps(), budget.memory());
+            var consumed = consumedBudget(budgetSpender);
             var traces = List.of(logger.getLogs());
             return new EvalResult.Failure(errorMsg, consumed, traces);
         }
+    }
+
+    private static BudgetSpender createBudgetSpender(ExBudget budgetLimit) {
+        if (budgetLimit == null) {
+            return new CountingBudgetSpender();
+        }
+        long memoryLimit = budgetLimit.memoryUnits();
+        long stepLimit = budgetLimit.cpuSteps();
+        return new RestrictingBudgetSpender(new ExUnits(memoryLimit, stepLimit));
+    }
+
+    private static ExBudget consumedBudget(BudgetSpender budgetSpender) {
+        var spent = budgetSpender.getSpentBudget();
+        return new ExBudget(spent.steps(), spent.memory());
     }
 
     private PlutusVM createVm(PlutusLanguage language,
