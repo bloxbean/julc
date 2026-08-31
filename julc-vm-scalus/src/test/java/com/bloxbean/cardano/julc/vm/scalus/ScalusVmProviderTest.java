@@ -749,7 +749,7 @@ class ScalusVmProviderTest {
         }
 
         @Test
-        void currentConfiguredV1AndV2PathsIgnoreSuppliedValues() {
+        void configuredV1AndV2PathsNowFailClosed() {
             var syntheticValues = new long[350];
             Arrays.fill(syntheticValues, 1L);
 
@@ -761,12 +761,14 @@ class ScalusVmProviderTest {
 
                 var result = configured.evaluate(program, language, null);
 
-                assertTrue(result.isSuccess(), () -> language + " failed: " + result);
-                assertEquals(new ExBudget(16_100, 200), result.budgetConsumed(),
-                        () -> "Current compatibility behavior changed for " + language);
-                assertNull(configured.machineParams,
-                        "V1/V2 currently do not publish custom machine params");
-                assertEquals(11, configured.protocolVersion.version());
+                var failure = assertInstanceOf(EvalResult.Failure.class, result);
+                assertEquals(ExBudget.ZERO, failure.consumed());
+                assertTrue(failure.error().startsWith(
+                        ScalusVmProvider.UNSUPPORTED_TARGET_PREFIX));
+                assertInstanceOf(UnsupportedScalusConfiguration.class,
+                        language == PlutusLanguage.PLUTUS_V1
+                                ? configured.plutusV1Configuration
+                                : configured.plutusV2Configuration);
             }
         }
 
@@ -787,65 +789,11 @@ class ScalusVmProviderTest {
 
             assertTrue(result.isSuccess(), () -> "Configured V3 failed: " + result);
             assertEquals(new ExBudget(8, 8), result.budgetConsumed());
-            assertNotNull(configured.machineParams);
-            assertEquals(11, configured.protocolVersion.version());
-        }
-
-        @Test
-        void customMachineParams_usedByVm() {
-            // Verify the machineParams field is wired through to createVm.
-            // Directly set machineParams via Scalus API and confirm evaluation uses it.
-            var customProvider = new ScalusVmProvider();
-            var defaultMp = scalus.uplc.eval.MachineParams.defaultPlutusV3Params();
-            // Invoke setCostModelParams indirectly by setting the field
-            // (accessible since test is in same package).
-            // Instead, use the Scalus API directly to set machineParams.
-            customProvider.machineParams = defaultMp;
-            customProvider.protocolVersion = scalus.cardano.ledger.MajorProtocolVersion.changPV();
-
-            // Evaluate: 10 + 20 = 30
-            var term = Term.apply(
-                    Term.apply(
-                            Term.builtin(DefaultFun.AddInteger),
-                            Term.const_(Constant.integer(10))),
-                    Term.const_(Constant.integer(20)));
-            var program = Program.plutusV3(term);
-
-            var result = customProvider.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
-            assertTrue(result.isSuccess());
-            var c = (Term.Const) ((EvalResult.Success) result).resultTerm();
-            assertEquals(BigInteger.valueOf(30), ((Constant.IntegerConst) c.value()).value());
-            assertTrue(result.budgetConsumed().cpuSteps() > 0);
-            assertTrue(result.budgetConsumed().memoryUnits() > 0);
-        }
-
-        @Test
-        void customMachineParams_budgetMatchesDefault() {
-            // Verify that using default params explicitly produces the same budget
-            // as the no-params path.
-            var term = Term.apply(
-                    Term.apply(
-                            Term.builtin(DefaultFun.AddInteger),
-                            Term.const_(Constant.integer(2))),
-                    Term.const_(Constant.integer(3)));
-            var program = Program.plutusV3(term);
-
-            // Without custom params
-            var defaultProvider = new ScalusVmProvider();
-            var defaultResult = defaultProvider.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
-
-            // With default params set explicitly
-            var customProvider = new ScalusVmProvider();
-            customProvider.machineParams = scalus.uplc.eval.MachineParams.defaultPlutusV3Params();
-            customProvider.protocolVersion = scalus.cardano.ledger.MajorProtocolVersion.changPV();
-            var customResult = customProvider.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
-
-            assertTrue(defaultResult.isSuccess());
-            assertTrue(customResult.isSuccess());
-            assertEquals(defaultResult.budgetConsumed().cpuSteps(),
-                    customResult.budgetConsumed().cpuSteps());
-            assertEquals(defaultResult.budgetConsumed().memoryUnits(),
-                    customResult.budgetConsumed().memoryUnits());
+            var ready = assertInstanceOf(
+                    ReadyScalusConfiguration.class, configured.plutusV3Configuration);
+            assertEquals(LedgerEvaluationTarget.pv11(PlutusLanguage.PLUTUS_V3),
+                    ready.target());
+            assertEquals(11, ready.scalusProtocol().version());
         }
 
         @Test
