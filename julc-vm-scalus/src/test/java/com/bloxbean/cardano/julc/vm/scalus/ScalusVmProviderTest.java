@@ -37,20 +37,28 @@ class ScalusVmProviderTest {
             LedgerEvaluationTarget target) {
         var program = Program.plutusV3(new Term.Error());
 
+        if (target.protocolVersion().major() <= 11) {
+            var error = assertThrows(UnsupportedOperationException.class,
+                    () -> provider.evaluate(program, target, null));
+            assertTrue(error.getMessage().startsWith(
+                    "Scalus provider does not support protocol-aware evaluation for "
+                            + target));
+            if (target.ledgerLanguage() == PlutusLanguage.PLUTUS_V3) {
+                assertTrue(error.getMessage().endsWith(": not certified"));
+            } else {
+                assertTrue(error.getMessage().contains(
+                        ScalusVmProvider.SCALUS_V1V2_PV11_REFERENCE_FILL));
+            }
+            return;
+        }
+
         var failure = assertInstanceOf(EvalResult.Failure.class,
                 provider.evaluate(program, target, null));
 
         assertEquals(ExBudget.ZERO, failure.consumed());
         assertTrue(failure.error().startsWith(
                 ScalusVmProvider.UNSUPPORTED_TARGET_PREFIX + target));
-        if (target.ledgerLanguage() != PlutusLanguage.PLUTUS_V3) {
-            assertTrue(failure.error().contains(
-                    ScalusVmProvider.SCALUS_V1V2_PV11_REFERENCE_FILL));
-        } else if (target.protocolVersion().major() <= 11) {
-            assertTrue(failure.error().endsWith(": not certified"));
-        } else {
-            assertTrue(failure.error().contains("newer than the supported PV11 profile"));
-        }
+        assertTrue(failure.error().contains("newer than the supported PV11 profile"));
     }
 
     private static Stream<Arguments> uncertifiedLedgerTargets() {

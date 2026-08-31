@@ -375,7 +375,7 @@ Issue #74 will establish the following initial explicit-target matrix:
 
 | Ledger target | Initial status | Required semantics | Cost source |
 |---|---|---|---|
-| V3/PV10 | Candidate — blocked upstream (`SCALUS_HASHTOGROUP_DST_HIGH_BYTE`, `SCALUS_SLICEBYTESTRING_INT64_NARROWING`) | C | Matching configured model required; bundled snapshot is not exact |
+| V3/PV10 | Candidate — blocked upstream (`SCALUS_HASHTOGROUP_DST_HIGH_BYTE`, `SCALUS_SLICEBYTESTRING_INT64_NARROWING`, `SCALUS_NEGATIVE_CONSTR_TAG_C`) | C | Matching configured model required; bundled snapshot is not exact |
 | V3/PV11 | Candidate — blocked upstream (all five codes in Certification evidence) | E | Matching configured model; bundled snapshot is exact but stays disabled until certification |
 | V1/PV10 | Explicit target uncertified — no pinned corpus | B | Live supplied array used by compatibility path; no exact profile claim |
 | V1/PV11 | Explicit target uncertified — reference fill/ignored costs and no pinned corpus | D | Live supplied array used where Scalus maps it; `SCALUS_V1V2_PV11_REFERENCE_FILL` |
@@ -505,15 +505,18 @@ will report those constants as non-ledger-serializable before invoking Scalus.
 ### D5. Keep target selection independent from cost parsing
 
 `setCostModelParams(values, target)` first resolves the target through the
-canonical registry. The target selects the expected schema; array length never
-selects protocol semantics.
+canonical registry. The target selects protocol semantics; array length never
+selects protocol semantics. Cost-array tagging follows the same rule as the
+Java backend and ADR-030: it uses the complete known parameter-name enum for
+the language regardless of protocol major (332 entries for V1/V2 and 350 for
+V3). The resolved target still determines which prefix is active in Scalus.
 
 For the initial V3 candidate profiles, the active target schemas are:
 
-| Target | Active serialized parameter count |
-|---|---:|
-| V3/PV10 | 297 |
-| V3/PV11 | 350 |
+| Target | Active Scalus parameter count | Normalized/tagged count |
+|---|---:|---:|
+| V3/PV10 | 297 | 350 |
+| V3/PV11 | 350 | 350 |
 
 The adapter must reproduce ADR-030's pinned `tagWithParamNames` behavior where
 the SPI permits short or excess arrays: missing values are `Long.MAX_VALUE`
@@ -621,6 +624,11 @@ specified behavior:
 | Configured V1/V2 while explicit profiles are uncertified | Build the matching target-bound VM from the live supplied array; do not claim complete PV11 cost coverage or ledger certification |
 | Unconfigured V1/V2 | Preserve the existing no-argument factories for experimental compatibility; do not describe them as configured or ledger-certified |
 
+Every configured language-only path runs `ProgramValidator` against the
+retained profile before FLAT encoding. This prevents, for example, a V3/PV10
+configuration from executing a Batch-6 builtin at padded sentinel prices.
+Unconfigured language-only behavior remains unchanged for compatibility.
+
 `setCostModelParams` for V1/V2 constructs `MachineParams` from the array that
 Cardano Client Lib read from the current protocol parameters. This preserves
 the established transaction-evaluation path and applies governance changes to
@@ -649,6 +657,11 @@ The adapter catches Scalus `OutOfExBudgetError` separately and returns
 `EvalResult.Failure`. Tests pin the CPU/memory orientation because Scalus
 `ExUnits` exposes memory and steps in an order that is easy to transpose at the
 Java interop boundary.
+
+`RestrictingBudgetSpender` can wrap its raw `limit - remaining` accounting when
+a `Long.MAX_VALUE`-padded price is charged after earlier work. The adapter
+saturates any resulting negative CPU or memory component to `Long.MAX_VALUE`,
+matching the Java backend's non-negative budget contract.
 
 This correction applies to both explicit and legacy paths so callers do not
 receive backend-dependent budget-limit behavior.
@@ -688,9 +701,17 @@ semantic mismatch in a serializable BLS program, including the observed
 255-byte DST `hashToGroup` cases if reproduced after compression, blocks target
 certification.
 
-Negative constructor tags rejected by `DataConverter` remain a documented
-bridge constraint unless issue #74 changes the representation safely. Tests
-must distinguish a bridge failure from a ledger semantic failure.
+Scalus 1.1.0 rejects negative `Data.Constr` tags both when constructed at
+runtime and when present as a literal. Variant C permits them, while variant E
+rejects them. `SCALUS_NEGATIVE_CONSTR_TAG_C` therefore blocks V3/PV10/C and is
+pinned separately for the runtime CEK failure and the pre-CEK literal bridge
+failure; the PV11/E cases are controls, not divergences.
+
+The BLS-literal classifier walks terms and nested constants iteratively. The
+pinned JuLC encoder and Scalus decoder remain recursive, so the adapter catches
+`StackOverflowError` at configured-language and explicit bridge boundaries and
+returns a deterministic zero-budget serialization-depth failure. Replacing the
+recursive core encoder is separate follow-up work.
 
 ### D10. Keep errors deterministic and target-aware
 
@@ -705,17 +726,21 @@ the rejected condition. At minimum, tests cover:
 - illegal UPLC version or `Constr`/`Case` form;
 - invalid cost configuration.
 
-These failures consume `ExBudget.ZERO`. Once CEK execution begins, failures
-report Scalus's consumed budget and logs.
+Registry, target validation, bridge, and configuration failures consume
+`ExBudget.ZERO`. Once CEK execution begins, failures report Scalus's consumed
+budget and logs.
 
-This ADR chooses `EvalResult.Failure` rather than throwing for an unsupported
-Scalus target. Java and Truffle already convert registry/target validation
-errors into zero-budget `Failure` results, and matching that behavior avoids a
-provider-specific exception path. Scalus-specific unsupported-profile messages
-use a stable `Unsupported Scalus ledger target:` prefix. The current
-`EvalResult` type has no typed configuration-error variant, so callers must not
-interpret every `Failure` as a CEK script failure; a future typed SPI result is
-outside this issue.
+An uncertified Scalus backend profile is different from a script or target
+validation failure: public explicit-target calls throw
+`UnsupportedOperationException` using the SPI's backend-capability wording.
+This applies to every uncertified V1/V2/V3 × PV10/PV11 profile after successful
+registry resolution. It prevents generic testkit assertions from treating an
+unevaluated zero-budget backend rejection as a successful negative script test.
+The package-private candidate runner bypasses only this capability gate;
+registry errors and all other pre-execution conditions remain deterministic
+zero-budget `EvalResult.Failure` values. The language-only compatibility API
+used by `JulcTransactionEvaluator` does not pass through this certification
+gate and continues to evaluate configured V1/V2/V3 transactions.
 
 ### D11. Certification gates
 
@@ -768,11 +793,14 @@ gate D11.4 because of these pinned Scalus 1.1.0 divergences:
 |---|---|---|---|
 | `SCALUS_HASHTOGROUP_DST_HIGH_BYTE` | V3/PV10/C and V3/PV11/E | Plutus G1/G2 `hashToGroup` consumes raw DST bytes ([G1 lines 164–166](https://github.com/IntersectMBO/plutus/blob/f92b7d7d82622a26caf456a6be33859f697e2cfc/plutus-core/plutus-core/src/PlutusCore/Crypto/BLS12_381/G1.hs#L164-L166), [G2 lines 123–125](https://github.com/IntersectMBO/plutus/blob/f92b7d7d82622a26caf456a6be33859f697e2cfc/plutus-core/plutus-core/src/PlutusCore/Crypto/BLS12_381/G2.hs#L123-L125)); Scalus converts the DST bytes to a Latin-1 Java `String` before calling BLST ([JVMPlatformSpecific.scala lines 146–205](https://github.com/nau/scalus/blob/v1.1.0/scalus-core/jvm/src/main/scala/scalus/uplc/builtin/JVMPlatformSpecific.scala#L146-L205)). | `highByteDstHashToGroupDivergenceIsExplicitAndPinned` pins the G1/G2 255-byte-DST compressed points; `derivedHighByteDstSignatureDivergenceIsExplicitAndPinned` pins the large-DST signature result and point. ASCII and empty-DST controls pass. |
 | `SCALUS_SLICEBYTESTRING_INT64_NARROWING` | V3/PV10/C and V3/PV11/E | Plutus unpacks both indices as signed `Int` ([Builtins.hs lines 1301–1315](https://github.com/IntersectMBO/plutus/blob/f92b7d7d82622a26caf456a6be33859f697e2cfc/plutus-core/plutus-core/src/PlutusCore/Default/Builtins.hs#L1301-L1315)); Scalus accepts `BigInt` and narrows with 32-bit `.toInt` ([Builtin.scala lines 229–239](https://github.com/nau/scalus/blob/v1.1.0/scalus-core/shared/src/main/scala/scalus/uplc/Builtin.scala#L229-L239), [Builtins.scala lines 227–228](https://github.com/nau/scalus/blob/v1.1.0/scalus-core/shared/src/main/scala/scalus/uplc/builtin/Builtins.scala#L227-L228)). | `sliceByteStringInt64NarrowingDivergenceIsExplicitAndPinned` covers both positions, the Int32/Int64 band, and values outside Int64 through plain and empty-argument paths. |
+| `SCALUS_NEGATIVE_CONSTR_TAG_C` | V3/PV10/C | Variant C accepts arbitrary integer `Data.Constr` tags; Scalus 1.1.0 requires non-negative tags in its Data representation. Variant E's unsigned-tag restriction is the control. | `negativeRuntimeConstructorTagDivergenceIsExplicitAndPinned` pins the post-CEK runtime failure; `negativeConstructorLiteralDivergenceIsExplicitAndPinned` pins the pre-CEK bridge rejection. |
 | `SCALUS_MISSING_CARDANO_INTEGER_BOUND_E` | V3/PV11/E | D/E builtins use `CInteger` ([Builtins.hs lines 1091–1218](https://github.com/IntersectMBO/plutus/blob/f92b7d7d82622a26caf456a6be33859f697e2cfc/plutus-core/plutus-core/src/PlutusCore/Default/Builtins.hs#L1091-L1218)) with bounds `[-2^262143, 2^262143-1]` ([Cardano.hs lines 9–15](https://github.com/IntersectMBO/plutus/blob/f92b7d7d82622a26caf456a6be33859f697e2cfc/plutus-core/plutus-core/src/PlutusCore/Default/Universe/Cardano.hs#L9-L15)); Scalus's runtime unlifts unrestricted integers ([Builtin.scala lines 88–206](https://github.com/nau/scalus/blob/v1.1.0/scalus-core/shared/src/main/scala/scalus/uplc/Builtin.scala#L88-L206)). | `everyPv11CardanoIntegerPositionMissingBoundIsExplicitAndPinned` covers all 18 wrapped argument positions; inclusive-bound controls pass. |
 | `SCALUS_MISSING_CARDANO_BYTESTRING_BOUND_E` | V3/PV11/E | D/E `CByteString` is limited to 65,536 bytes ([Cardano.hs lines 17–18](https://github.com/IntersectMBO/plutus/blob/f92b7d7d82622a26caf456a6be33859f697e2cfc/plutus-core/plutus-core/src/PlutusCore/Default/Universe/Cardano.hs#L17-L18)) at the wrapped builtin positions in `Builtins.hs`; Scalus performs no equivalent D/E unlifting bound. | `everyPv11CardanoByteStringPositionMissingBoundIsExplicitAndPinned` covers all 33 wrapped positions; 65,536-byte controls pass. |
 | `SCALUS_MISSING_WRITEBITS_4096_BOUND_E` | V3/PV11/E | Plutus separately limits D/E `writeBits` input to 4,096 bytes ([Builtins.hs lines 2191–2205](https://github.com/IntersectMBO/plutus/blob/f92b7d7d82622a26caf456a6be33859f697e2cfc/plutus-core/plutus-core/src/PlutusCore/Default/Builtins.hs#L2191-L2205)); Scalus's runtime delegates without that length check ([Builtin.scala lines 1112–1125](https://github.com/nau/scalus/blob/v1.1.0/scalus-core/shared/src/main/scala/scalus/uplc/Builtin.scala#L1112-L1125), [Bitwise.scala lines 410–430](https://github.com/nau/scalus/blob/v1.1.0/scalus-core/shared/src/main/scala/scalus/uplc/builtin/Bitwise.scala#L410-L430)). | `pv11WriteBits4096ByteLimitDivergenceIsExplicitAndPinned` pins success at 4,097 bytes where the ledger golden is failure; the 4,096-byte control passes. |
 
-These are semantic differences inside CEK builtin execution. The adapter will
+The five builtin reason codes are semantic differences inside CEK execution;
+the negative-constructor reason spans a runtime semantic difference and a
+Scalus representation limit at the bridge. The adapter will
 not pre-scan literals or pre-reject oversized values: runtime arguments may be
 computed during evaluation, and an adapter scan would change failure timing and
 consumed budget while implementing only a partial second copy of builtin
@@ -939,7 +967,8 @@ additional explicit target.
 At minimum, the implementation must add tests for:
 
 - explicit V3/PV10 and V3/PV11 success;
-- uncertified public V1/V2 targets returning deterministic failures;
+- all uncertified public V1/V2/V3 targets throwing the documented
+  backend-capability exception;
 - target/configured-model mismatch before bridge work;
 - protocol minor differences retaining the same major-version semantics;
 - PV12 and later rejection;
@@ -1010,8 +1039,8 @@ Scalus 1.1.0 V3 PV11/E versus Java/Truffle PV10 divergence.
 
 Intentional corrections are:
 
-- explicit V3/PV10 and V3/PV11 no longer throw the SPI's unsupported-method
-  exception once certified;
+- explicit profiles throw the SPI-style unsupported-capability exception until
+  certified, then evaluate through the target-aware pipeline;
 - target/model mismatches fail deterministically;
 - V1/V2 configuration no longer leaks protocol state into V3;
 - configured V1/V2 evaluation uses target-bound machines constructed from the
@@ -1141,7 +1170,7 @@ vectors.
 - [x] Configuration is atomically published as one immutable ready or
       unsupported per-language state.
 - [x] Existing configured language-only V3 tests remain green.
-- [x] Public V1/V2 explicit targets fail at the documented certification gate
+- [x] Public V1/V2 explicit targets throw at the documented certification gate
       until separately certified.
 - [x] Configured language-only V1/V2 calls publish target-bound ready states,
       use mapped live supplied costs, and do not alter configured V3 state;
@@ -1156,7 +1185,7 @@ vectors.
 - [x] PV-sensitive tests cover builtin availability, UPLC feature gating,
       case-on-builtin behavior, PV11 bounds, and Scalus variants C/E.
 - [ ] Target certification remains unsatisfied: exact supplied-model budgets
-      pass, but the five reason-coded runtime-semantic divergences block every
+      pass, but the six reason-coded runtime/representation divergences block every
       V3 target.
 - [x] The complete bundled-default matrix separately determines whether an
       unconfigured explicit target is enabled.

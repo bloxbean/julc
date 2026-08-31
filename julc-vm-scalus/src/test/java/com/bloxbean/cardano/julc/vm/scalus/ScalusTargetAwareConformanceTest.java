@@ -7,6 +7,7 @@ import com.bloxbean.cardano.julc.core.Program;
 import com.bloxbean.cardano.julc.core.Term;
 import com.bloxbean.cardano.julc.core.text.UplcParser;
 import com.bloxbean.cardano.julc.vm.EvalResult;
+import com.bloxbean.cardano.julc.vm.ExBudget;
 import com.bloxbean.cardano.julc.vm.LedgerEvaluationTarget;
 import com.bloxbean.cardano.julc.vm.PlutusLanguage;
 import org.junit.jupiter.api.Test;
@@ -175,6 +176,11 @@ class ScalusTargetAwareConformanceTest {
                 if (result.isSuccess()) {
                     increment(counts, "RESULT_MISMATCH");
                     details.add(fixture + " expected failure but succeeded");
+                } else if (ExBudget.ZERO.equals(result.budgetConsumed())) {
+                    increment(counts, "RESULT_MISMATCH");
+                    details.add(fixture
+                            + " expected an evaluated failure but got a zero-budget "
+                            + "pre-execution/backend rejection: " + result);
                 } else {
                     increment(counts, "EXPECTED_EVALUATION_FAILURE");
                 }

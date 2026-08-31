@@ -170,3 +170,39 @@ Apply these checks at the runtime unlifting/denotation positions selected by
 semantics D/E, not by scanning program literals before CEK evaluation. Values
 may be computed mid-evaluation, and a pre-scan would change failure timing and
 consumed budget.
+
+## Draft 4 — semantics C rejects negative Data constructor tags
+
+### Suggested title
+
+`Semantics C rejects negative Data.Constr tags accepted by Plutus`
+
+### Description
+
+Under V3/PV10 semantics C, Plutus `Data.Constr` carries an arbitrary integer
+tag. Scalus 1.1.0 requires a non-negative constructor tag in its Data
+representation. This affects both values created during CEK evaluation with
+`constrData` and negative-tag Data literals crossing the FLAT bridge. The
+unsigned restriction at V3/PV11 semantics E is expected and serves as the
+control.
+
+### Reproducer
+
+```bash
+./gradlew :julc-vm-scalus:test \
+  --tests '*ScalusKnownUpstreamDivergenceTest.negativeRuntimeConstructorTagDivergenceIsExplicitAndPinned' \
+  --tests '*ScalusKnownUpstreamDivergenceTest.negativeConstructorLiteralDivergenceIsExplicitAndPinned' \
+  --rerun-tasks --no-daemon
+```
+
+The runtime test evaluates `constrData(-1, [])`: the V3/PV10 ledger result is
+`Data.Constr(-1, [])`, while Scalus fails after CEK work has begun. The literal
+test pins the separate zero-budget bridge rejection. Reason code:
+`SCALUS_NEGATIVE_CONSTR_TAG_C`.
+
+### Expected fix
+
+Represent the arbitrary-integer constructor tags required by semantics C while
+retaining the unsigned restriction required by semantics E. Runtime failures
+must remain aligned with the selected semantic variant rather than being
+implemented as an adapter pre-scan.

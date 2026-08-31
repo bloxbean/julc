@@ -5,7 +5,7 @@
 PR #122 implements ADR-033's protocol-aware Scalus candidate pipeline and all
 eight implementation milestones. The evidence does **not** add Scalus to the
 ledger-parity claim: `CERTIFIED_TARGETS` remains empty and public explicit
-targets fail closed with zero consumed budget.
+targets throw `UnsupportedOperationException` at the backend-capability gate.
 
 The supplied-profile conformance matrix is cost-exact for every executable
 numeric fixture:
@@ -16,7 +16,8 @@ numeric fixture:
 | V3/PV11/E | 999 | 111 | 614 matches + 3 pinned DST mismatches | 216 | 617/617 | Blocked upstream |
 
 V3/PV10 is blocked by `SCALUS_HASHTOGROUP_DST_HIGH_BYTE` and
-`SCALUS_SLICEBYTESTRING_INT64_NARROWING`. V3/PV11 is blocked by those plus
+`SCALUS_SLICEBYTESTRING_INT64_NARROWING`, plus
+`SCALUS_NEGATIVE_CONSTR_TAG_C`. V3/PV11 is blocked by the first two plus
 `SCALUS_MISSING_CARDANO_INTEGER_BOUND_E`,
 `SCALUS_MISSING_CARDANO_BYTESTRING_BOUND_E`, and
 `SCALUS_MISSING_WRITEBITS_4096_BOUND_E`.

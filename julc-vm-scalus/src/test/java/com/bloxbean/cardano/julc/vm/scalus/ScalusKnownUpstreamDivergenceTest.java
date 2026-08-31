@@ -2,11 +2,14 @@ package com.bloxbean.cardano.julc.vm.scalus;
 
 import com.bloxbean.cardano.julc.core.Constant;
 import com.bloxbean.cardano.julc.core.DefaultFun;
+import com.bloxbean.cardano.julc.core.DefaultUni;
+import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.core.Program;
 import com.bloxbean.cardano.julc.core.Term;
 import com.bloxbean.cardano.julc.core.text.UplcParser;
 import com.bloxbean.cardano.julc.vm.EvalOptions;
 import com.bloxbean.cardano.julc.vm.EvalResult;
+import com.bloxbean.cardano.julc.vm.ExBudget;
 import com.bloxbean.cardano.julc.vm.LedgerEvaluationTarget;
 import com.bloxbean.cardano.julc.vm.PlutusLanguage;
 import org.junit.jupiter.api.Test;
@@ -19,6 +22,7 @@ import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Objects;
 import java.util.stream.Stream;
 
@@ -44,6 +48,8 @@ class ScalusKnownUpstreamDivergenceTest {
             "SCALUS_MISSING_WRITEBITS_4096_BOUND_E";
     static final String SCALUS_SLICEBYTESTRING_INT64_NARROWING =
             "SCALUS_SLICEBYTESTRING_INT64_NARROWING";
+    static final String SCALUS_NEGATIVE_CONSTR_TAG_C =
+            "SCALUS_NEGATIVE_CONSTR_TAG_C";
 
     private static final LedgerEvaluationTarget PV11 =
             LedgerEvaluationTarget.pv11(PlutusLanguage.PLUTUS_V3);
@@ -204,6 +210,49 @@ class ScalusKnownUpstreamDivergenceTest {
         }
     }
 
+    @Test
+    void negativeRuntimeConstructorTagDivergenceIsExplicitAndPinned() {
+        var program = negativeRuntimeConstrDataProgram();
+        var pv10 = LedgerEvaluationTarget.pv10(PlutusLanguage.PLUTUS_V3);
+
+        for (var result : evaluateBoth(program, pv10)) {
+            var failure = assertInstanceOf(EvalResult.Failure.class, result,
+                    SCALUS_NEGATIVE_CONSTR_TAG_C
+                            + ": variant C ledger semantics construct Data.Constr(-1, [])");
+            assertNotEquals(ExBudget.ZERO,
+                    failure.consumed(),
+                    SCALUS_NEGATIVE_CONSTR_TAG_C
+                            + ": runtime divergence must remain a CEK failure");
+        }
+
+        for (var result : evaluateBoth(program, PV11)) {
+            assertInstanceOf(EvalResult.Failure.class, result,
+                    "variant E rejects negative constructor tags");
+        }
+    }
+
+    @Test
+    void negativeConstructorLiteralDivergenceIsExplicitAndPinned() {
+        var negative = new PlutusData.ConstrData(BigInteger.valueOf(-1), List.of());
+        var program = Program.plutusV3(Term.const_(Constant.data(negative)));
+        var pv10 = LedgerEvaluationTarget.pv10(PlutusLanguage.PLUTUS_V3);
+
+        for (var result : evaluateBoth(program, pv10)) {
+            var failure = assertInstanceOf(EvalResult.Failure.class, result,
+                    SCALUS_NEGATIVE_CONSTR_TAG_C
+                            + ": variant C ledger semantics accept a negative Data literal");
+            assertEquals(ExBudget.ZERO,
+                    failure.consumed(),
+                    SCALUS_NEGATIVE_CONSTR_TAG_C
+                            + ": literal is rejected by the Scalus bridge before CEK");
+        }
+
+        for (var result : evaluateBoth(program, PV11)) {
+            assertInstanceOf(EvalResult.Failure.class, result,
+                    "variant E rejects negative constructor-tag literals");
+        }
+    }
+
     private static Stream<Arguments> ledgerSerializableControls() {
         return Stream.of(
                 Arguments.of(
@@ -273,6 +322,14 @@ class ScalusKnownUpstreamDivergenceTest {
                         Constant.integer(value), Constant.integer(1), bytes)
                 : ScalusBoundaryMatrix.apply(DefaultFun.SliceByteString,
                         Constant.integer(0), Constant.integer(value), bytes);
+    }
+
+    private static Program negativeRuntimeConstrDataProgram() {
+        var emptyDataList = new Constant.ListConst(DefaultUni.DATA, List.of());
+        return ScalusBoundaryMatrix.apply(
+                DefaultFun.ConstrData,
+                Constant.integer(BigInteger.valueOf(-1)),
+                emptyDataList);
     }
 
     private static byte[] expectedCompressedPoint(String fixture) throws IOException {

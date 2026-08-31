@@ -68,7 +68,7 @@ class ScalusConfigurationTest {
     }
 
     @Test
-    void normalizationUsesResolvedTargetSchemaAndHaskellPaddingRules() {
+    void normalizationUsesCompleteLanguageSchemaAndHaskellPaddingRules() {
         var pv10 = LedgerEvaluationTarget.pv10(PlutusLanguage.PLUTUS_V3);
         var pv10Profile = ProtocolFeatureRegistry.resolve(pv10);
         var pv11 = LedgerEvaluationTarget.pv11(PlutusLanguage.PLUTUS_V3);
@@ -76,19 +76,19 @@ class ScalusConfigurationTest {
 
         var shortPv10 = ScalusVmProvider.normalizeCostModelParams(
                 new long[]{7, 8}, pv10, pv10Profile);
-        assertEquals(297, shortPv10.length);
+        assertEquals(350, shortPv10.length);
         assertEquals(7, shortPv10[0]);
         assertEquals(8, shortPv10[1]);
         assertEquals(Long.MAX_VALUE, shortPv10[2]);
-        assertEquals(Long.MAX_VALUE, shortPv10[296]);
+        assertEquals(Long.MAX_VALUE, shortPv10[349]);
 
-        var oversizedPv10 = new long[298];
+        var oversizedPv10 = new long[351];
         Arrays.fill(oversizedPv10, 9L);
-        oversizedPv10[297] = 123_456L;
+        oversizedPv10[350] = 123_456L;
         var truncatedPv10 = ScalusVmProvider.normalizeCostModelParams(
                 oversizedPv10, pv10, pv10Profile);
-        assertEquals(297, truncatedPv10.length);
-        assertEquals(9, truncatedPv10[296]);
+        assertEquals(350, truncatedPv10.length);
+        assertEquals(9, truncatedPv10[349]);
 
         var shortPv11 = ScalusVmProvider.normalizeCostModelParams(
                 new long[]{11}, pv11, pv11Profile);

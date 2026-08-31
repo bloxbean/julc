@@ -33,8 +33,9 @@ JuLC supports two VM choices for local evaluation: its pure-Java VM and the
 The Java VM integrates with JuLC's complete compiler-target provenance for
 explicit protocol-aware evaluation and cost selection. The Scalus adapter also
 implements the explicit-target SPI, but Scalus 1.1.0 has no certified ledger
-target in JuLC: those calls return a deterministic zero-budget failure. Its
-language-only compatibility API remains available for V1/V2/V3 evaluation and
+target in JuLC: those calls throw `UnsupportedOperationException` at the
+backend-capability gate before evaluation. Its language-only compatibility API
+remains available for V1/V2/V3 evaluation and
 uses live supplied cost arrays when configured, subject to the documented
 Scalus V1/V2 PV11 cost-field limitations. Scalus remains a valuable independent
 cross-check of generated programs. Huge thanks to the Scalus team for building and
@@ -297,7 +298,8 @@ if (!result.hasErrors()) {
 ```java
 // Java VM: preferred target-aware evaluation. This passes result.target()
 // through to the VM. With only Scalus present, the implemented target-aware
-// path currently returns a zero-budget Failure because no Scalus 1.1.0 target
+// path currently throws UnsupportedOperationException because no Scalus
+// 1.1.0 target
 // has passed ADR-033 certification.
 var evalResult = ValidatorTest.evaluate(result, datum, redeemer, scriptContext);
 
@@ -314,9 +316,9 @@ assertTrue(evalResult.isSuccess());
 Passing the `CompileResult` lets `julc-testkit` hand the exact compiler target
 to the VM. The testkit's raw `Program` overload assumes JuLC's current
 V3/PV11 compiler target when provenance is unavailable. The Scalus adapter
-implements this explicit-target testkit path, but returns a deterministic
-`EvalResult.Failure` prefixed `Unsupported Scalus ledger target:` while its
-certification set is empty. Use the Java VM for canonical target-aware
+implements this explicit-target testkit path, but throws
+`UnsupportedOperationException` while its certification set is empty. Use the
+Java VM for canonical target-aware
 evaluation and Scalus's language-only overloads for an independent
 compatibility cross-check. See
 [ADR-033](adr/033-scalus-protocol-aware-ledger-target-evaluation.md#certification-evidence).

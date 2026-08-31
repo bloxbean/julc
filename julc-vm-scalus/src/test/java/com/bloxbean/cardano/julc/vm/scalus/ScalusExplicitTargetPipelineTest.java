@@ -19,10 +19,14 @@ import org.junit.jupiter.params.provider.MethodSource;
 import java.math.BigInteger;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.fail;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -43,14 +47,17 @@ class ScalusExplicitTargetPipelineTest {
         var provider = configuredV3Provider(target);
         var program = Program.plutusV3(new Term.Error());
 
-        var plain = provider.evaluate(program, target, new ExBudget(1, 1));
-        var withArgs = provider.evaluateWithArgs(
-                program, target, Arrays.asList((PlutusData) null),
-                new ExBudget(1, 1));
+        var plain = assertThrows(UnsupportedOperationException.class,
+                () -> provider.evaluate(program, target, new ExBudget(1, 1)));
+        var withArgs = assertThrows(UnsupportedOperationException.class,
+                () -> provider.evaluateWithArgs(
+                        program, target, Arrays.asList((PlutusData) null),
+                        new ExBudget(1, 1)));
 
-        assertPreExecutionFailure(plain, target, "not certified");
-        assertPreExecutionFailure(withArgs, target, "not certified");
-        assertEquals(plain, withArgs);
+        assertTrue(plain.getMessage().startsWith(
+                "Scalus provider does not support protocol-aware evaluation for " + target));
+        assertTrue(plain.getMessage().endsWith(": not certified"));
+        assertEquals(plain.getMessage(), withArgs.getMessage());
     }
 
     @Test
@@ -64,6 +71,18 @@ class ScalusExplicitTargetPipelineTest {
                 "newer than the supported PV11 profile");
         assertPreExecutionFailure(provider.evaluate(program, beforeIntroduction, null),
                 beforeIntroduction, "introduced in PV9");
+    }
+
+    @Test
+    void testkitShapedNegativeAssertionCannotTreatUncertifiedProfileAsScriptFailure() {
+        var provider = new ScalusVmProvider();
+        var target = LedgerEvaluationTarget.pv11(PlutusLanguage.PLUTUS_V3);
+        var validator = Program.plutusV3(Term.lam("ctx", new Term.Error()));
+        var args = List.of(PlutusData.integer(42));
+
+        assertThrows(UnsupportedOperationException.class,
+                () -> provider.evaluateWithArgs(
+                        validator, target, args, null, EvalOptions.DEFAULT));
     }
 
     @Test
@@ -164,12 +183,19 @@ class ScalusExplicitTargetPipelineTest {
         var provider = new ScalusVmProvider();
         provider.setCostModelParams(ones(parameterCount), target);
 
-        var result = provider.evaluate(
-                additionProgram(target.ledgerLanguage()), target, null);
+        var plain = assertThrows(UnsupportedOperationException.class,
+                () -> provider.evaluate(
+                        additionProgram(target.ledgerLanguage()), target, null));
+        var withArgs = assertThrows(UnsupportedOperationException.class,
+                () -> provider.evaluateWithArgs(
+                        additionProgram(target.ledgerLanguage()), target, List.of(), null));
 
-        assertPreExecutionFailure(result, target,
-                ScalusVmProvider.SCALUS_V1V2_PV11_REFERENCE_FILL);
-        assertPreExecutionFailure(result, target, "no pinned corpus");
+        assertTrue(plain.getMessage().startsWith(
+                "Scalus provider does not support protocol-aware evaluation for " + target));
+        assertTrue(plain.getMessage().contains(
+                ScalusVmProvider.SCALUS_V1V2_PV11_REFERENCE_FILL));
+        assertTrue(plain.getMessage().contains("no pinned corpus"));
+        assertEquals(plain.getMessage(), withArgs.getMessage());
     }
 
     @ParameterizedTest(name = "candidate plain and args paths agree for V3/PV{0}")
@@ -245,6 +271,49 @@ class ScalusExplicitTargetPipelineTest {
         var resultConstant = assertInstanceOf(Term.Const.class, success.resultTerm());
         assertEquals(BigInteger.ONE,
                 assertInstanceOf(Constant.IntegerConst.class, resultConstant.value()).value());
+    }
+
+    @Test
+    void configuredLanguageOnlyPathValidatesBuiltinAvailabilityBeforeBridge() {
+        var program = expModProgram();
+        var pv10 = LedgerEvaluationTarget.pv10(PlutusLanguage.PLUTUS_V3);
+        var pv11 = LedgerEvaluationTarget.pv11(PlutusLanguage.PLUTUS_V3);
+        var provider10 = configuredV3Provider(pv10);
+        var provider11 = configuredV3Provider(pv11);
+
+        for (var result : List.of(
+                provider10.evaluate(program, PlutusLanguage.PLUTUS_V3, null),
+                provider10.evaluateWithArgs(
+                        program, PlutusLanguage.PLUTUS_V3, List.of(), null))) {
+            var failure = assertInstanceOf(EvalResult.Failure.class, result);
+            assertEquals(ExBudget.ZERO, failure.consumed());
+            assertTrue(failure.error().contains("ExpModInteger is not available"));
+        }
+
+        assertInstanceOf(EvalResult.Success.class,
+                provider11.evaluate(program, PlutusLanguage.PLUTUS_V3, null));
+        assertInstanceOf(EvalResult.Success.class,
+                provider11.evaluateWithArgs(
+                        program, PlutusLanguage.PLUTUS_V3, List.of(), null));
+    }
+
+    @Test
+    void deeplyNestedProgramsFailDeterministicallyAcrossScalusBridgePaths()
+            throws InterruptedException {
+        var target = LedgerEvaluationTarget.pv11(PlutusLanguage.PLUTUS_V3);
+        var provider = configuredV3Provider(target);
+        var program = deeplyNestedProgram(6_000);
+
+        var legacyPlain = evaluateOnSmallStack(() -> provider.evaluate(
+                program, PlutusLanguage.PLUTUS_V3, null));
+        var legacyArgs = evaluateOnSmallStack(() -> provider.evaluateWithArgs(
+                program, PlutusLanguage.PLUTUS_V3, List.of(), null));
+        var candidate = evaluateOnSmallStack(() -> provider.evaluateCandidate(
+                program, target, null, EvalOptions.DEFAULT));
+
+        assertSerializationDepthFailure(legacyPlain, null);
+        assertSerializationDepthFailure(legacyArgs, null);
+        assertSerializationDepthFailure(candidate, target);
     }
 
     @Test
@@ -340,6 +409,48 @@ class ScalusExplicitTargetPipelineTest {
             term = Term.apply(term, Term.const_(constant));
         }
         return Program.plutusV3(term);
+    }
+
+    private static Program deeplyNestedProgram(int depth) {
+        Term term = Term.const_(Constant.unit());
+        for (int i = 0; i < depth; i++) {
+            term = Term.delay(term);
+        }
+        return Program.plutusV3(term);
+    }
+
+    private static EvalResult evaluateOnSmallStack(Supplier<EvalResult> evaluation)
+            throws InterruptedException {
+        var result = new AtomicReference<EvalResult>();
+        var thrown = new AtomicReference<Throwable>();
+        var thread = new Thread(null, () -> {
+            try {
+                result.set(evaluation.get());
+            } catch (Throwable t) {
+                thrown.set(t);
+            }
+        }, "scalus-serialization-depth", 512 * 1024L);
+        thread.start();
+        thread.join(10_000);
+        assertFalse(thread.isAlive(), "deep-program evaluation did not terminate");
+        if (thrown.get() != null) {
+            fail("Scalus provider leaked an error from its bridge", thrown.get());
+        }
+        return result.get();
+    }
+
+    private static void assertSerializationDepthFailure(
+            EvalResult result, LedgerEvaluationTarget target) {
+        var failure = assertInstanceOf(EvalResult.Failure.class, result);
+        assertEquals(ExBudget.ZERO, failure.consumed());
+        if (target == null) {
+            assertEquals(ScalusVmProvider.PROGRAM_NESTING_EXCEEDS_SERIALIZATION_DEPTH,
+                    failure.error());
+        } else {
+            assertEquals(ScalusVmProvider.UNSUPPORTED_TARGET_PREFIX + target + ": "
+                            + ScalusVmProvider.PROGRAM_NESTING_EXCEEDS_SERIALIZATION_DEPTH,
+                    failure.error());
+        }
     }
 
     private static void assertPreExecutionFailure(

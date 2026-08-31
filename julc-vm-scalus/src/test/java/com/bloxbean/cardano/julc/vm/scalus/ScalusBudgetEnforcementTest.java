@@ -117,22 +117,46 @@ class ScalusBudgetEnforcementTest {
     @Test
     void configuredLanguageOnlyPathMatchesTransactionEvaluatorBudgetShape() {
         var provider = providerFor(true);
-        var program = builtinHeavyProgram();
-        var required = new ExBudget(74, 74);
+        var program = Program.plutusV3(Term.lam("arg", Term.var(1)));
+        var args = List.of(PlutusData.integer(42));
+        var required = new ExBudget(5, 5);
 
-        var counted = provider.evaluate(
-                program, PlutusLanguage.PLUTUS_V3, null);
+        var counted = provider.evaluateWithArgs(
+                program, PlutusLanguage.PLUTUS_V3, args, null);
         assertSuccessWithBudget(counted, required);
 
-        var txBudgetTooSmall = new ExBudget(73, 74);
-        var exhausted = assertBudgetExhausted(provider.evaluate(
-                program, PlutusLanguage.PLUTUS_V3, txBudgetTooSmall), required);
+        var txBudgetTooSmall = new ExBudget(4, 5);
+        var exhausted = assertBudgetExhausted(provider.evaluateWithArgs(
+                program, PlutusLanguage.PLUTUS_V3, args, txBudgetTooSmall), required);
         assertTrue(exhausted.consumed().cpuSteps() > txBudgetTooSmall.cpuSteps(),
                 "transaction-shaped path: consumed CPU must exceed the tx budget");
 
-        var sufficient = provider.evaluate(
-                program, PlutusLanguage.PLUTUS_V3, required);
+        var sufficient = provider.evaluateWithArgs(
+                program, PlutusLanguage.PLUTUS_V3, args, required);
         assertEquals(counted, sufficient);
+    }
+
+    @Test
+    void paddedCostsSaturateWrappedScalusCountersWithAndWithoutLimit() {
+        var provider = new ScalusVmProvider();
+        var stalePv10Values = new long[297];
+        Arrays.fill(stalePv10Values, 1L);
+        provider.setCostModelParams(stalePv10Values, V3_PV11);
+
+        var unlimited = assertInstanceOf(EvalResult.Success.class,
+                provider.evaluateWithArgs(
+                        expModIdentityProgram(), PlutusLanguage.PLUTUS_V3,
+                        List.of(PlutusData.integer(42)), null));
+        assertEquals(Long.MAX_VALUE, unlimited.consumed().cpuSteps());
+        assertEquals(Long.MAX_VALUE, unlimited.consumed().memoryUnits());
+
+        var result = provider.evaluateWithArgs(
+                expModIdentityProgram(), PlutusLanguage.PLUTUS_V3,
+                List.of(PlutusData.integer(42)), new ExBudget(100, 100));
+
+        var exhausted = assertInstanceOf(EvalResult.BudgetExhausted.class, result);
+        assertEquals(Long.MAX_VALUE, exhausted.consumed().cpuSteps());
+        assertEquals(Long.MAX_VALUE, exhausted.consumed().memoryUnits());
     }
 
     private static Stream<Arguments> budgetCases() {
@@ -200,6 +224,16 @@ class ScalusBudgetEnforcementTest {
                     Term.const_(Constant.integer(i)));
         }
         return Program.plutusV3(term);
+    }
+
+    private static Program expModIdentityProgram() {
+        var expMod = Term.apply(
+                Term.apply(
+                        Term.apply(Term.builtin(DefaultFun.ExpModInteger),
+                                Term.const_(Constant.integer(2))),
+                        Term.const_(Constant.integer(8))),
+                Term.const_(Constant.integer(17)));
+        return Program.plutusV3(Term.lam("ignored", expMod));
     }
 
     private static EvalResult.Success assertSuccessWithBudget(

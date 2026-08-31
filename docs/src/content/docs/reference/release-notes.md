@@ -64,10 +64,10 @@ it must match `CompileResult.target()` or evaluation fails before VM execution.
 
 The Scalus adapter now implements JuLC's explicit-target VM SPI. Scalus 1.1.0
 has no certified target in JuLC, so `ValidatorTest.evaluate(result, ...)` with
-Scalus as the only provider returns a deterministic zero-budget
-`EvalResult.Failure` prefixed `Unsupported Scalus ledger target:` rather than
-throwing `UnsupportedOperationException`. For a Scalus compatibility
-cross-check, evaluate `result.program()` through the language-only overload.
+Scalus as the only provider throws `UnsupportedOperationException` at the
+backend-capability gate. This prevents a testkit rejection assertion from
+mistaking an unevaluated profile for a rejected script. For a Scalus
+compatibility cross-check, evaluate `result.program()` through the language-only overload.
 The Java VM supports both forms, although the raw `Program` form cannot carry
 compiler-target provenance. See
 [ADR-033's certification evidence](https://github.com/bloxbean/julc/blob/main/adr/033-scalus-protocol-aware-ledger-target-evaluation.md#certification-evidence).
@@ -81,7 +81,7 @@ default.
 
 The Scalus adapter now has atomic per-language configurations, target-bound
 V1/V2/V3 VM construction, and one validated explicit-target pipeline. Public
-explicit-target calls remain fail-closed because five reason-coded upstream
+explicit-target calls remain fail-closed because six reason-coded upstream
 Scalus 1.1.0 divergences prevent V3/PV10 and V3/PV11 certification.
 
 Cardano Client Lib continues to supply current protocol-parameter cost arrays
