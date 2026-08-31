@@ -53,6 +53,8 @@ public class ScalusVmProvider implements JulcVmProvider {
     static final int V3_PV11_DROP_LIST_CPU_INTERCEPT_INDEX = 302;
     static final long SCALUS_MISSING_PARAMETER_SENTINEL = 300_000_000L;
     static final String UNSUPPORTED_TARGET_PREFIX = "Unsupported Scalus ledger target: ";
+    static final String SCALUS_V1V2_PV11_REFERENCE_FILL =
+            "SCALUS_V1V2_PV11_REFERENCE_FILL";
     static final Set<LedgerEvaluationTarget> CERTIFIED_TARGETS = Set.of();
 
     // Package-private so tests can assert publication and snapshot identity.
@@ -83,7 +85,10 @@ public class ScalusVmProvider implements JulcVmProvider {
                     target,
                     profile,
                     unsupportedReason(target,
-                            "supplied V1/V2 cost models are not certified by this adapter"));
+                            SCALUS_V1V2_PV11_REFERENCE_FILL
+                                    + ": supplied V1/V2 cost models are not certified; "
+                                    + "no pinned corpus proves exact budgets, and Scalus 1.1.0 "
+                                    + "reference-fills or ignores PV11-only costs"));
             publishConfiguration(target.ledgerLanguage(), unsupported);
             return;
         }

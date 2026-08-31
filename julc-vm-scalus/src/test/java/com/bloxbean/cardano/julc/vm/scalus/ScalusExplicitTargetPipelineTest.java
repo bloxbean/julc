@@ -152,7 +152,8 @@ class ScalusExplicitTargetPipelineTest {
                 Program.plutusV1(new Term.Error()), target, null, EvalOptions.DEFAULT);
 
         assertPreExecutionFailure(result, target,
-                "supplied V1/V2 cost models are not certified by this adapter");
+                ScalusVmProvider.SCALUS_V1V2_PV11_REFERENCE_FILL);
+        assertPreExecutionFailure(result, target, "no pinned corpus");
     }
 
     @ParameterizedTest(name = "unconfigured public {0} remains uncertified")
