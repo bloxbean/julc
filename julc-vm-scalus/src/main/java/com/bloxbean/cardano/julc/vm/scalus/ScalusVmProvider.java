@@ -1,5 +1,6 @@
 package com.bloxbean.cardano.julc.vm.scalus;
 
+import com.bloxbean.cardano.julc.core.Constant;
 import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.core.Program;
 import com.bloxbean.cardano.julc.core.Term;
@@ -17,6 +18,7 @@ import scalus.uplc.eval.PlutusVM;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * {@link JulcVmProvider} implementation backed by the Scalus CEK machine.
@@ -45,6 +47,7 @@ public class ScalusVmProvider implements JulcVmProvider {
     static final int V3_PV11_DROP_LIST_CPU_INTERCEPT_INDEX = 302;
     static final long SCALUS_MISSING_PARAMETER_SENTINEL = 300_000_000L;
     static final String UNSUPPORTED_TARGET_PREFIX = "Unsupported Scalus ledger target: ";
+    static final Set<LedgerEvaluationTarget> CERTIFIED_TARGETS = Set.of();
 
     // Package-private so tests can assert publication and snapshot identity.
     volatile ScalusConfiguration plutusV1Configuration;
@@ -189,6 +192,174 @@ public class ScalusVmProvider implements JulcVmProvider {
             String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
             return new EvalResult.Failure(errorMsg, ExBudget.ZERO, List.of());
         }
+    }
+
+    /**
+     * Evaluates for an explicit ledger target. The budget remains advisory in
+     * ADR-033 Milestone 3; Milestone 4 adds restricting-budget enforcement.
+     */
+    @Override
+    public EvalResult evaluate(Program program, LedgerEvaluationTarget target,
+                               ExBudget budget, EvalOptions options) {
+        return evaluateExplicitTarget(program, target, List.of(), budget, options, false);
+    }
+
+    /**
+     * Evaluates with arguments for an explicit ledger target. The budget remains
+     * advisory in ADR-033 Milestone 3; Milestone 4 enforces it.
+     */
+    @Override
+    public EvalResult evaluateWithArgs(Program program, LedgerEvaluationTarget target,
+                                       List<PlutusData> args, ExBudget budget,
+                                       EvalOptions options) {
+        return evaluateExplicitTarget(program, target, args, budget, options, false);
+    }
+
+    /**
+     * Exercises a candidate profile through the production explicit-target
+     * pipeline while deliberately skipping only the certification gate.
+     */
+    EvalResult evaluateCandidate(Program program, LedgerEvaluationTarget target,
+                                 List<PlutusData> args, ExBudget budget,
+                                 EvalOptions options) {
+        return evaluateExplicitTarget(program, target, args, budget, options, true);
+    }
+
+    EvalResult evaluateCandidate(Program program, LedgerEvaluationTarget target,
+                                 ExBudget budget, EvalOptions options) {
+        return evaluateCandidate(program, target, List.of(), budget, options);
+    }
+
+    private EvalResult evaluateExplicitTarget(
+            Program program, LedgerEvaluationTarget target, List<PlutusData> args,
+            ExBudget budget, EvalOptions options, boolean skipCertificationGate) {
+        ReadyScalusConfiguration ready;
+        List<PlutusData> argumentSnapshot;
+        try {
+            Objects.requireNonNull(target, "target");
+            var profile = ProtocolFeatureRegistry.resolve(target);
+            if (!skipCertificationGate && !isCertified(target)) {
+                return preExecutionFailure(target, "not certified");
+            }
+
+            Objects.requireNonNull(program, "program");
+            ProgramValidator.validate(program, profile);
+            var blsLiteralType = firstBlsLiteralType(program.term());
+            if (blsLiteralType != null) {
+                return preExecutionFailure(target,
+                        "non-ledger-serializable constant type " + blsLiteralType);
+            }
+
+            var configuration = configurationForEvaluation(target);
+            if (configuration == null) {
+                return preExecutionFailure(target,
+                        "no matching configured cost model; call setCostModelParams first");
+            }
+            if (configuration instanceof UnsupportedScalusConfiguration unsupported) {
+                return new EvalResult.Failure(
+                        targetAwareMessage(target, unsupported.reason()),
+                        ExBudget.ZERO, List.of());
+            }
+            ready = (ReadyScalusConfiguration) configuration;
+            argumentSnapshot = List.copyOf(Objects.requireNonNull(args, "args"));
+        } catch (RuntimeException e) {
+            return preExecutionFailure(target, messageOf(e));
+        }
+
+        try {
+            byte[] flatBytes = UplcFlatEncoder.encodeProgram(program);
+            var dbProgram = ProgramFlatCodec$.MODULE$.decodeFlat(flatBytes);
+            scalus.uplc.Term scalusTerm = dbProgram.term();
+
+            // Validation and target/configuration selection intentionally precede
+            // argument application so both public overloads share one fail-closed path.
+            for (var arg : argumentSnapshot) {
+                scalus.uplc.builtin.Data scalusData = DataConverter.toScalus(arg);
+                scalus.uplc.Constant dataConst = new scalus.uplc.Constant.Data(scalusData);
+                var emptyAnn = scalus.uplc.UplcAnnotation.empty();
+                scalusTerm = scalus.uplc.Term.Apply.apply(
+                        scalusTerm,
+                        scalus.uplc.Term.Const.apply(dataConst, emptyAnn),
+                        emptyAnn);
+            }
+
+            return evaluateScalusTerm(scalusTerm, target.ledgerLanguage(), ready);
+        } catch (Exception e) {
+            return new EvalResult.Failure(messageOf(e), ExBudget.ZERO, List.of());
+        }
+    }
+
+    private static boolean isCertified(LedgerEvaluationTarget target) {
+        return CERTIFIED_TARGETS.stream().anyMatch(target::hasSamePlutusSemantics);
+    }
+
+    private static EvalResult.Failure preExecutionFailure(
+            LedgerEvaluationTarget target, String detail) {
+        return new EvalResult.Failure(
+                targetAwareMessage(target, detail), ExBudget.ZERO, List.of());
+    }
+
+    private static String targetAwareMessage(
+            LedgerEvaluationTarget target, String detail) {
+        if (detail != null && detail.startsWith(UNSUPPORTED_TARGET_PREFIX)) {
+            return detail;
+        }
+        return unsupportedReason(target, detail == null ? "unknown failure" : detail);
+    }
+
+    private static String messageOf(Exception e) {
+        return e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+    }
+
+    private static String firstBlsLiteralType(Term term) {
+        return switch (term) {
+            case Term.Var _, Term.Error _, Term.Builtin _ -> null;
+            case Term.Lam lam -> firstBlsLiteralType(lam.body());
+            case Term.Apply apply -> firstNonNull(
+                    firstBlsLiteralType(apply.function()),
+                    firstBlsLiteralType(apply.argument()));
+            case Term.Force force -> firstBlsLiteralType(force.term());
+            case Term.Delay delay -> firstBlsLiteralType(delay.term());
+            case Term.Const constant -> firstBlsLiteralType(constant.value());
+            case Term.Constr constr -> constr.fields().stream()
+                    .map(ScalusVmProvider::firstBlsLiteralType)
+                    .filter(Objects::nonNull)
+                    .findFirst()
+                    .orElse(null);
+            case Term.Case caseTerm -> firstNonNull(
+                    firstBlsLiteralType(caseTerm.scrutinee()),
+                    caseTerm.branches().stream()
+                            .map(ScalusVmProvider::firstBlsLiteralType)
+                            .filter(Objects::nonNull)
+                            .findFirst()
+                            .orElse(null));
+        };
+    }
+
+    private static String firstBlsLiteralType(Constant constant) {
+        return switch (constant) {
+            case Constant.Bls12_381_G1Element _ -> "bls12_381_G1_element";
+            case Constant.Bls12_381_G2Element _ -> "bls12_381_G2_element";
+            case Constant.Bls12_381_MlResult _ -> "bls12_381_mlresult";
+            case Constant.ListConst list -> list.values().stream()
+                    .map(ScalusVmProvider::firstBlsLiteralType)
+                    .filter(Objects::nonNull)
+                    .findFirst()
+                    .orElse(null);
+            case Constant.PairConst pair -> firstNonNull(
+                    firstBlsLiteralType(pair.first()),
+                    firstBlsLiteralType(pair.second()));
+            case Constant.ArrayConst array -> array.values().stream()
+                    .map(ScalusVmProvider::firstBlsLiteralType)
+                    .filter(Objects::nonNull)
+                    .findFirst()
+                    .orElse(null);
+            default -> null;
+        };
+    }
+
+    private static String firstNonNull(String first, String second) {
+        return first != null ? first : second;
     }
 
     private EvalResult evaluateInternal(Program program, PlutusLanguage language,

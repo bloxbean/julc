@@ -35,13 +35,19 @@ class ScalusVmProviderTest {
     @MethodSource("uncertifiedLedgerTargets")
     void explicitLedgerTargetsFailClosedUntilProfileMatrixIsSupported(
             LedgerEvaluationTarget target) {
-        var program = Program.plutusV3(Term.const_(Constant.unit()));
+        var program = Program.plutusV3(new Term.Error());
 
-        var error = assertThrows(UnsupportedOperationException.class,
-                () -> provider.evaluate(program, target, null));
+        var failure = assertInstanceOf(EvalResult.Failure.class,
+                provider.evaluate(program, target, null));
 
-        assertTrue(error.getMessage().contains("does not support protocol-aware evaluation"));
-        assertTrue(error.getMessage().contains(target.toString()));
+        assertEquals(ExBudget.ZERO, failure.consumed());
+        assertTrue(failure.error().startsWith(
+                ScalusVmProvider.UNSUPPORTED_TARGET_PREFIX + target));
+        if (target.protocolVersion().major() <= 11) {
+            assertTrue(failure.error().endsWith(": not certified"));
+        } else {
+            assertTrue(failure.error().contains("newer than the supported PV11 profile"));
+        }
     }
 
     private static Stream<Arguments> uncertifiedLedgerTargets() {
