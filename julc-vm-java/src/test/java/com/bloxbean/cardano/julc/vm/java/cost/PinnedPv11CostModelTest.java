@@ -8,6 +8,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -17,20 +18,21 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 class PinnedPv11CostModelTest {
 
     @Test
-    void defaultsMatchCardanoNode1101PlutusV3Pv11Exactly() throws IOException {
-        var stream = getClass().getResourceAsStream(
-                "/cost-model/cardano-node-11.0.1-plutus-v3-pv11.params");
-        assertNotNull(stream);
-
-        long[] expected;
-        try (var reader = new BufferedReader(
-                new InputStreamReader(stream, StandardCharsets.UTF_8))) {
-            expected = reader.lines()
-                    .map(String::trim)
-                    .filter(line -> !line.isEmpty() && !line.startsWith("#"))
-                    .mapToLong(Long::parseLong)
-                    .toArray();
+    void v3DefaultsMatchAdr033PinnedProfiles() throws IOException {
+        for (var profile : List.of(
+                new PinnedProfile("v3-pv10-C-f92b7d7d8.txt", 10),
+                new PinnedProfile("v3-pv11-E-f92b7d7d8.txt", 11))) {
+            assertArrayEquals(
+                    readParams("/costmodels/" + profile.resource()),
+                    CostModelParser.defaultToFlatArray(profile.protocolMajor()),
+                    profile.resource());
         }
+    }
+
+    @Test
+    void defaultsMatchCardanoNode1101PlutusV3Pv11Exactly() throws IOException {
+        var expected = readParams(
+                "/cost-model/cardano-node-11.0.1-plutus-v3-pv11.params");
 
         assertArrayEquals(expected, CostModelParser.defaultToFlatArray(11));
 
@@ -38,6 +40,19 @@ class PinnedPv11CostModelTest {
                 DefaultCostModel.defaultBuiltinCostModel(BuiltinSemanticsVariant.E));
         assertPinnedDivisionShapes(
                 CostModelParser.parse(expected, 11).builtinCostModel());
+    }
+
+    private long[] readParams(String resource) throws IOException {
+        var stream = getClass().getResourceAsStream(resource);
+        assertNotNull(stream, resource);
+        try (var reader = new BufferedReader(
+                new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+            return reader.lines()
+                    .map(String::trim)
+                    .filter(line -> !line.isEmpty() && !line.startsWith("#"))
+                    .mapToLong(Long::parseLong)
+                    .toArray();
+        }
     }
 
     private static void assertPinnedDivisionShapes(BuiltinCostModel model) {
@@ -58,4 +73,6 @@ class PinnedPv11CostModelTest {
         assertEquals(85_848, quotient.apply(1, 16));
         assertEquals(85_848, remainder.apply(1, 16));
     }
+
+    private record PinnedProfile(String resource, int protocolMajor) {}
 }

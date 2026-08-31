@@ -7,11 +7,15 @@ import com.bloxbean.cardano.julc.core.Program;
 import com.bloxbean.cardano.julc.core.Term;
 import com.bloxbean.cardano.julc.core.text.UplcParser;
 import com.bloxbean.cardano.julc.vm.EvalResult;
+import com.bloxbean.cardano.julc.vm.LedgerEvaluationTarget;
 import com.bloxbean.cardano.julc.vm.PlutusLanguage;
 import org.junit.jupiter.api.Test;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -27,12 +31,8 @@ import java.util.regex.Pattern;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/**
- * Pins the behavior of the unconfigured, language-only V3 provider before ADR-033 changes it.
- * The current Scalus 1.1.0 default is PV11/E, so result and budget comparisons use the PV11
- * overlay. Structural exclusions are derived from parsed terms, never fixture paths.
- */
-class ScalusCurrentBehaviorConformanceTest {
+/** ADR-033 target-aware Scalus conformance and bundled-default characterization matrix. */
+class ScalusTargetAwareConformanceTest {
 
     private static final int EXPECTED_CASE_COUNT = 999;
     private static final int EXPECTED_PV10_APPLICABLE_CASES = 737;
@@ -42,12 +42,7 @@ class ScalusCurrentBehaviorConformanceTest {
     private static final int EXPECTED_PV11_BUDGET_OVERRIDES = 61;
     private static final int EXPECTED_PV11_RESULT_OVERRIDES = 4;
     private static final int EXPECTED_PARSE_ERRORS = 55;
-    private static final int EXPECTED_BLS_VALIDATOR_REJECTIONS = 15;
     private static final int EXPECTED_NON_SERIALIZABLE_BLS_INPUTS = 111;
-    private static final int EXPECTED_BLS_OUTPUT_ONLY_CASES = 12;
-    private static final int EXPECTED_EVALUATED_CASES = 833;
-    private static final int EXPECTED_EVALUATED_NUMERIC_BUDGETS = 617;
-    private static final int EXPECTED_RESULT_CONVERSION_GAPS = 45;
     private static final int EXPECTED_HIGH_BYTE_DST_MISMATCHES = 3;
     private static final Set<String> EXPECTED_HIGH_BYTE_DST_MISMATCH_FIXTURES = Set.of(
             "builtin/semantics/bls12_381-cardano-crypto-tests/signature/large-dst/large-dst.uplc",
@@ -58,7 +53,8 @@ class ScalusCurrentBehaviorConformanceTest {
             Pattern.compile("cpu:\\s*(\\d+)\\s*\\|\\s*mem:\\s*(\\d+)");
 
     @Test
-    void recordsCurrentPv11DefaultCorpusBehavior() throws IOException, URISyntaxException {
+    void runsSuppliedAndBundledTargetAwareMatrices()
+            throws IOException, URISyntaxException {
         var conformanceDir = Paths.get(
                 Objects.requireNonNull(getClass().getResource("/conformance")).toURI());
         var pv11OverlayDir = Paths.get(
@@ -67,183 +63,305 @@ class ScalusCurrentBehaviorConformanceTest {
 
         assertCorpusInventory(conformanceDir, pv11OverlayDir, inputFiles);
 
+        var profiles = List.of(
+                new ConformanceProfile(
+                        "V3/PV10/C",
+                        LedgerEvaluationTarget.pv10(PlutusLanguage.PLUTUS_V3),
+                        null,
+                        "v3-pv10-C-f92b7d7d8.txt",
+                        EXPECTED_PV10_APPLICABLE_CASES,
+                        EXPECTED_BASE_NUMERIC_BUDGETS,
+                        63),
+                new ConformanceProfile(
+                        "V3/PV11/E",
+                        LedgerEvaluationTarget.pv11(PlutusLanguage.PLUTUS_V3),
+                        pv11OverlayDir,
+                        "v3-pv11-E-f92b7d7d8.txt",
+                        EXPECTED_CASE_COUNT,
+                        EXPECTED_PV11_NUMERIC_BUDGETS,
+                        EXPECTED_NON_SERIALIZABLE_BLS_INPUTS));
+
+        for (var profile : profiles) {
+            for (var costSource : CostSource.values()) {
+                runMatrix(conformanceDir, inputFiles, profile, costSource);
+            }
+        }
+    }
+
+    private void runMatrix(
+            Path conformanceDir, List<Path> inputFiles,
+            ConformanceProfile profile, CostSource costSource) throws IOException {
         var provider = new ScalusVmProvider();
+        if (costSource == CostSource.SUPPLIED_PROFILE) {
+            provider.setCostModelParams(
+                    readPinnedParams(profile.resource()), profile.target());
+        }
+
         var counts = new LinkedHashMap<String, Integer>();
         var details = new ArrayList<String>();
-        var resultMismatchFixtures = new java.util.LinkedHashSet<String>();
+        var dstMismatchFixtures = new java.util.LinkedHashSet<String>();
 
         for (var inputFile : inputFiles) {
             var relative = conformanceDir.relativize(inputFile);
-            var input = Files.readString(inputFile).trim();
-            var baseExpectedFile = selectExpectation(conformanceDir, null,
-                    relative + ".expected");
-            var pv11ExpectedFile = selectExpectation(conformanceDir, pv11OverlayDir,
-                    relative + ".expected");
-            var budgetFile = selectExpectation(conformanceDir, pv11OverlayDir,
-                    relative + ".budget.expected");
-            var baseExpected = Files.readString(baseExpectedFile).trim();
-            var pv11Expected = Files.readString(pv11ExpectedFile).trim();
+            var fixture = relative.toString().replace('\\', '/');
+            var inapplicableReason = inapplicableReason(inputFile, profile.target());
+            if (inapplicableReason != null) {
+                increment(counts, "INAPPLICABLE");
+                increment(counts, inapplicableReason);
+                continue;
+            }
+            increment(counts, "APPLICABLE");
 
+            var expectedFile = selectExpectation(
+                    conformanceDir, profile.overlayDir(), relative + ".expected");
+            var budgetFile = selectExpectation(
+                    conformanceDir, profile.overlayDir(), relative + ".budget.expected");
+            var expected = Files.readString(expectedFile).trim();
             var budgetMatcher = BUDGET_PATTERN.matcher(Files.readString(budgetFile));
             boolean hasNumericBudget = budgetMatcher.find();
-            if (hasNumericBudget) {
-                increment(counts, "PV11_NUMERIC_BUDGET");
-            }
+            if (hasNumericBudget) increment(counts, "NUMERIC_BUDGET");
 
             Program program;
             try {
-                program = UplcParser.parseProgram(input);
+                program = UplcParser.parseProgram(Files.readString(inputFile).trim());
             } catch (Exception parseFailure) {
-                if ("parse error".equals(pv11Expected)) {
-                    increment(counts, "EXPECTED_PARSE_ERROR");
-                    if (parseFailure.getMessage() != null
-                            && parseFailure.getMessage().contains("Invalid bls12_381_")) {
-                        increment(counts, "BLS_VALIDATOR_REJECTED_INVALID_LITERAL");
-                    }
+                if ("parse error".equals(expected)) {
+                    increment(counts, "PARSE_ERROR");
                 } else {
-                    increment(counts, "UNEXPECTED_PARSE_ERROR");
-                    details.add(relative + " UNEXPECTED_PARSE_ERROR " + parseFailure.getMessage());
+                    increment(counts, "RESULT_MISMATCH");
+                    details.add(fixture + " unexpected parse error: "
+                            + parseFailure.getMessage());
                 }
                 continue;
             }
 
-            if ("parse error".equals(pv11Expected)) {
-                increment(counts, "EXPECTED_PARSE_ERROR_BUT_PARSED");
-                details.add(relative + " EXPECTED_PARSE_ERROR_BUT_PARSED");
+            if ("parse error".equals(expected)) {
+                increment(counts, "RESULT_MISMATCH");
+                details.add(fixture + " expected parse error but parsed");
                 continue;
             }
-
             if (containsBlsLiteral(program.term())) {
                 increment(counts, "NON_LEDGER_SERIALIZABLE_BLS_LITERAL");
                 continue;
             }
 
-            if (expectedOutputContainsBlsLiteral(pv11Expected)) {
-                increment(counts, "BLS_OUTPUT_ONLY_APPLICABLE");
-            }
+            EvalResult result = costSource == CostSource.SUPPLIED_PROFILE
+                    ? provider.evaluateCandidate(program, profile.target(), null, null)
+                    : provider.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
 
-            increment(counts, "EVALUATED_NON_BLS_INPUT");
-            EvalResult result = provider.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
-            boolean resultConversionGap = result instanceof EvalResult.Failure failure
-                    && (failure.error().contains("Unsupported Scalus constant type")
-                    || failure.error().contains("MlResult cannot be converted"));
             boolean numericBudgetExact = false;
             if (hasNumericBudget) {
-                increment(counts, "PV11_NUMERIC_EVALUATED");
+                increment(counts, "NUMERIC_EVALUATED");
                 long expectedCpu = Long.parseLong(budgetMatcher.group(1));
                 long expectedMemory = Long.parseLong(budgetMatcher.group(2));
                 if (result.budgetConsumed().cpuSteps() == expectedCpu
                         && result.budgetConsumed().memoryUnits() == expectedMemory) {
-                    increment(counts, "PV11_NUMERIC_EXACT");
+                    increment(counts, "NUMERIC_EXACT");
                     numericBudgetExact = true;
                 } else {
-                    increment(counts, "PV11_NUMERIC_MISMATCH");
-                    details.add(relative + " PV11_NUMERIC_MISMATCH expected="
-                            + expectedCpu + "/" + expectedMemory + " actual="
+                    increment(counts, "NUMERIC_MISMATCH");
+                    details.add(fixture + " budget expected=" + expectedCpu + "/"
+                            + expectedMemory + " actual="
                             + result.budgetConsumed().cpuSteps() + "/"
                             + result.budgetConsumed().memoryUnits());
                 }
-                if (!resultConversionGap) {
-                    increment(counts, "PV11_NUMERIC_BRIDGE_REPRESENTABLE");
-                    if (result.budgetConsumed().cpuSteps() == expectedCpu
-                            && result.budgetConsumed().memoryUnits() == expectedMemory) {
-                        increment(counts, "PV11_NUMERIC_BRIDGE_EXACT");
-                    } else {
-                        increment(counts, "PV11_NUMERIC_BRIDGE_MISMATCH");
-                    }
-                }
             }
 
-            if ("evaluation failure".equals(pv11Expected)) {
+            if ("evaluation failure".equals(expected)) {
                 if (result.isSuccess()) {
-                    increment(counts, "EXPECTED_EVALUATION_FAILURE_BUT_SUCCEEDED");
-                    details.add(relative + " EXPECTED_EVALUATION_FAILURE_BUT_SUCCEEDED");
+                    increment(counts, "RESULT_MISMATCH");
+                    details.add(fixture + " expected failure but succeeded");
                 } else {
                     increment(counts, "EXPECTED_EVALUATION_FAILURE");
-                    if (!baseExpected.equals(pv11Expected)) {
-                        increment(counts, "PV11_RESULT_OVERRIDE_REQUIRED");
-                    }
                 }
                 continue;
             }
 
             if (!result.isSuccess()) {
                 var error = ((EvalResult.Failure) result).error();
-                if (error.contains("Unsupported Scalus constant type")) {
-                    increment(counts, "ARRAY_VALUE_RESULT_CONVERSION_GAP");
-                } else if (error.contains("MlResult cannot be converted")) {
-                    increment(counts, "BLS_MLRESULT_CONVERSION_GAP");
-                    details.add(relative + " BLS_MLRESULT_CONVERSION_GAP " + error);
+                if (error.contains("MlResult cannot be converted")) {
+                    increment(counts, "NON_SERIALIZABLE_MLRESULT_OUTPUT");
                 } else {
-                    increment(counts, "UNEXPECTED_EVALUATION_FAILURE");
-                    details.add(relative + " UNEXPECTED_EVALUATION_FAILURE " + error);
+                    increment(counts, "RESULT_MISMATCH");
+                    details.add(fixture + " unexpected evaluation failure: " + error);
                 }
                 continue;
             }
 
-            var actual = ((EvalResult.Success) result).resultTerm();
-            var pv11ExpectedTerm = UplcParser.parseProgram(pv11Expected).term();
-            if (termsEqual(pv11ExpectedTerm, actual)) {
-                increment(counts, "PV11_RESULT_MATCH");
-                if (!baseExpected.equals(pv11Expected)) {
-                    var baseExpectedTerm = UplcParser.parseProgram(baseExpected).term();
-                    if (!termsEqual(baseExpectedTerm, actual)) {
-                        increment(counts, "PV11_RESULT_OVERRIDE_REQUIRED");
-                    }
-                }
-            } else {
+            var expectedTerm = UplcParser.parseProgram(expected).term();
+            var actualTerm = ((EvalResult.Success) result).resultTerm();
+            if (termsEqual(expectedTerm, actualTerm)) {
+                increment(counts, "RESULT_MATCH");
+            } else if (EXPECTED_HIGH_BYTE_DST_MISMATCH_FIXTURES.contains(fixture)) {
                 increment(counts, "SCALUS_HASHTOGROUP_DST_HIGH_BYTE");
                 if (numericBudgetExact) {
                     increment(counts, "SCALUS_HASHTOGROUP_DST_HIGH_BYTE_BUDGET_EXACT");
                 }
-                resultMismatchFixtures.add(relative.toString().replace('\\', '/'));
-                details.add(relative
-                        + " SCALUS_HASHTOGROUP_DST_HIGH_BYTE budget exact, result differs");
+                dstMismatchFixtures.add(fixture);
+            } else {
+                increment(counts, "RESULT_MISMATCH");
+                details.add(fixture + " structural result mismatch");
             }
         }
 
-        System.out.println("SCALUS_M1_COUNTS " + counts);
-        details.forEach(detail -> System.out.println("SCALUS_M1_DETAIL " + detail));
+        System.out.println("SCALUS_M6_COUNTS " + profile.name() + " "
+                + costSource + " " + counts);
+        details.forEach(detail -> System.out.println("SCALUS_M6_DETAIL "
+                + profile.name() + " " + costSource + " " + detail));
 
-        assertEquals(EXPECTED_PV11_NUMERIC_BUDGETS,
-                counts.getOrDefault("PV11_NUMERIC_BUDGET", 0));
-        assertEquals(EXPECTED_PARSE_ERRORS,
-                counts.getOrDefault("EXPECTED_PARSE_ERROR", 0));
-        assertEquals(EXPECTED_BLS_VALIDATOR_REJECTIONS,
-                counts.getOrDefault("BLS_VALIDATOR_REJECTED_INVALID_LITERAL", 0));
-        assertEquals(EXPECTED_NON_SERIALIZABLE_BLS_INPUTS,
+        var expectedCounts = expectedCounts(profile, costSource);
+        assertEquals(profile.expectedApplicable(), counts.getOrDefault("APPLICABLE", 0));
+        assertEquals(EXPECTED_CASE_COUNT - profile.expectedApplicable(),
+                counts.getOrDefault("INAPPLICABLE", 0));
+        assertEquals(profile.target().protocolVersion().major() == 10 ? 236 : 0,
+                counts.getOrDefault("BATCH6_BUILTIN_UNAVAILABLE", 0));
+        assertEquals(profile.target().protocolVersion().major() == 10 ? 26 : 0,
+                counts.getOrDefault("CASE_ON_BUILTIN_CONSTANT_UNAVAILABLE", 0));
+        assertEquals(profile.expectedNumericBudgets(),
+                counts.getOrDefault("NUMERIC_BUDGET", 0));
+        assertEquals(EXPECTED_PARSE_ERRORS, counts.getOrDefault("PARSE_ERROR", 0));
+        assertEquals(profile.expectedBlsLiterals(),
                 counts.getOrDefault("NON_LEDGER_SERIALIZABLE_BLS_LITERAL", 0));
-        assertEquals(EXPECTED_BLS_OUTPUT_ONLY_CASES,
-                counts.getOrDefault("BLS_OUTPUT_ONLY_APPLICABLE", 0));
-        assertEquals(EXPECTED_EVALUATED_CASES,
-                counts.getOrDefault("EVALUATED_NON_BLS_INPUT", 0));
-        assertEquals(EXPECTED_EVALUATED_NUMERIC_BUDGETS,
-                counts.getOrDefault("PV11_NUMERIC_EVALUATED", 0));
-        assertEquals(EXPECTED_EVALUATED_NUMERIC_BUDGETS,
-                counts.getOrDefault("PV11_NUMERIC_EXACT", 0));
-        assertEquals(EXPECTED_RESULT_CONVERSION_GAPS,
-                counts.getOrDefault("ARRAY_VALUE_RESULT_CONVERSION_GAP", 0));
         assertEquals(EXPECTED_HIGH_BYTE_DST_MISMATCHES,
                 counts.getOrDefault("SCALUS_HASHTOGROUP_DST_HIGH_BYTE", 0));
         assertEquals(EXPECTED_HIGH_BYTE_DST_MISMATCHES,
                 counts.getOrDefault("SCALUS_HASHTOGROUP_DST_HIGH_BYTE_BUDGET_EXACT", 0));
-        assertEquals(EXPECTED_HIGH_BYTE_DST_MISMATCH_FIXTURES, resultMismatchFixtures);
-        assertEquals(EXPECTED_CASE_COUNT,
-                counts.getOrDefault("EXPECTED_PARSE_ERROR", 0)
+        assertEquals(EXPECTED_HIGH_BYTE_DST_MISMATCH_FIXTURES, dstMismatchFixtures);
+        assertEquals(0, counts.getOrDefault("NON_SERIALIZABLE_MLRESULT_OUTPUT", 0));
+        assertEquals(expectedCounts.numericEvaluated(),
+                counts.getOrDefault("NUMERIC_EVALUATED", 0));
+        assertEquals(expectedCounts.numericExact(),
+                counts.getOrDefault("NUMERIC_EXACT", 0));
+        assertEquals(expectedCounts.numericMismatch(),
+                counts.getOrDefault("NUMERIC_MISMATCH", 0));
+        assertEquals(expectedCounts.resultMatches(),
+                counts.getOrDefault("RESULT_MATCH", 0));
+        assertEquals(expectedCounts.expectedFailures(),
+                counts.getOrDefault("EXPECTED_EVALUATION_FAILURE", 0));
+        assertEquals(expectedCounts.resultMismatches(),
+                counts.getOrDefault("RESULT_MISMATCH", 0));
+        assertEquals(counts.getOrDefault("NUMERIC_EVALUATED", 0),
+                counts.getOrDefault("NUMERIC_EXACT", 0)
+                        + counts.getOrDefault("NUMERIC_MISMATCH", 0));
+        assertEquals(profile.expectedApplicable(),
+                counts.getOrDefault("PARSE_ERROR", 0)
                         + counts.getOrDefault("NON_LEDGER_SERIALIZABLE_BLS_LITERAL", 0)
-                        + counts.getOrDefault("EVALUATED_NON_BLS_INPUT", 0));
-        assertEquals(EXPECTED_EVALUATED_CASES,
-                counts.getOrDefault("ARRAY_VALUE_RESULT_CONVERSION_GAP", 0)
+                        + counts.getOrDefault("NON_SERIALIZABLE_MLRESULT_OUTPUT", 0)
                         + counts.getOrDefault("EXPECTED_EVALUATION_FAILURE", 0)
-                        + counts.getOrDefault("PV11_RESULT_MATCH", 0)
-                        + counts.getOrDefault("SCALUS_HASHTOGROUP_DST_HIGH_BYTE", 0));
-        assertEquals(0, counts.getOrDefault("UNEXPECTED_PARSE_ERROR", 0));
-        assertEquals(0, counts.getOrDefault("EXPECTED_PARSE_ERROR_BUT_PARSED", 0));
-        assertEquals(0, counts.getOrDefault("PV11_NUMERIC_MISMATCH", 0));
-        assertEquals(0, counts.getOrDefault("BLS_MLRESULT_CONVERSION_GAP", 0));
-        assertEquals(0, counts.getOrDefault("UNEXPECTED_EVALUATION_FAILURE", 0));
-        assertEquals(0, counts.getOrDefault("EXPECTED_EVALUATION_FAILURE_BUT_SUCCEEDED", 0));
+                        + counts.getOrDefault("RESULT_MATCH", 0)
+                        + counts.getOrDefault("SCALUS_HASHTOGROUP_DST_HIGH_BYTE", 0)
+                        + counts.getOrDefault("RESULT_MISMATCH", 0));
+        if (costSource == CostSource.SUPPLIED_PROFILE) {
+            assertEquals(0, counts.getOrDefault("NUMERIC_MISMATCH", 0),
+                    () -> String.join("\n", details));
+            assertEquals(0, counts.getOrDefault("RESULT_MISMATCH", 0),
+                    () -> String.join("\n", details));
+        }
     }
+
+    private ExpectedCounts expectedCounts(
+            ConformanceProfile profile, CostSource costSource) {
+        if (profile.target().protocolVersion().major() == 10) {
+            return costSource == CostSource.SUPPLIED_PROFILE
+                    ? new ExpectedCounts(482, 482, 0, 479, 137, 0)
+                    : new ExpectedCounts(482, 442, 40, 475, 137, 4);
+        }
+        return new ExpectedCounts(617, 617, 0, 614, 216, 0);
+    }
+
+    private long[] readPinnedParams(String resource) throws IOException {
+        var stream = Objects.requireNonNull(
+                getClass().getResourceAsStream("/costmodels/" + resource), resource);
+        try (var reader = new BufferedReader(
+                new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+            return reader.lines()
+                    .map(String::trim)
+                    .filter(line -> !line.isEmpty() && !line.startsWith("#"))
+                    .mapToLong(Long::parseLong)
+                    .toArray();
+        }
+    }
+
+    private boolean isApplicable(Path inputFile, LedgerEvaluationTarget target)
+            throws IOException {
+        return inapplicableReason(inputFile, target) == null;
+    }
+
+    private String inapplicableReason(Path inputFile, LedgerEvaluationTarget target)
+            throws IOException {
+        try {
+            var program = UplcParser.parseProgram(Files.readString(inputFile).trim());
+            var profile = com.bloxbean.cardano.julc.vm.ProtocolFeatureRegistry.resolve(target);
+            if (containsUnavailableBuiltin(program.term(), profile.availableBuiltins())) {
+                return "BATCH6_BUILTIN_UNAVAILABLE";
+            }
+            if (!profile.caseOnBuiltinConstants()
+                    && containsCaseOnBuiltinConstant(program.term())) {
+                return "CASE_ON_BUILTIN_CONSTANT_UNAVAILABLE";
+            }
+            return null;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private boolean containsUnavailableBuiltin(
+            Term term, java.util.Set<com.bloxbean.cardano.julc.core.DefaultFun> available) {
+        return switch (term) {
+            case Term.Var _, Term.Const _, Term.Error _ -> false;
+            case Term.Lam lam -> containsUnavailableBuiltin(lam.body(), available);
+            case Term.Apply apply -> containsUnavailableBuiltin(apply.function(), available)
+                    || containsUnavailableBuiltin(apply.argument(), available);
+            case Term.Force force -> containsUnavailableBuiltin(force.term(), available);
+            case Term.Delay delay -> containsUnavailableBuiltin(delay.term(), available);
+            case Term.Builtin builtin -> !available.contains(builtin.fun());
+            case Term.Constr constr -> constr.fields().stream()
+                    .anyMatch(field -> containsUnavailableBuiltin(field, available));
+            case Term.Case caseTerm -> containsUnavailableBuiltin(
+                    caseTerm.scrutinee(), available)
+                    || caseTerm.branches().stream()
+                    .anyMatch(branch -> containsUnavailableBuiltin(branch, available));
+        };
+    }
+
+    private boolean containsCaseOnBuiltinConstant(Term term) {
+        return switch (term) {
+            case Term.Var _, Term.Const _, Term.Error _, Term.Builtin _ -> false;
+            case Term.Lam lam -> containsCaseOnBuiltinConstant(lam.body());
+            case Term.Apply apply -> containsCaseOnBuiltinConstant(apply.function())
+                    || containsCaseOnBuiltinConstant(apply.argument());
+            case Term.Force force -> containsCaseOnBuiltinConstant(force.term());
+            case Term.Delay delay -> containsCaseOnBuiltinConstant(delay.term());
+            case Term.Constr constr -> constr.fields().stream()
+                    .anyMatch(this::containsCaseOnBuiltinConstant);
+            case Term.Case caseTerm -> caseTerm.scrutinee() instanceof Term.Const
+                    || containsCaseOnBuiltinConstant(caseTerm.scrutinee())
+                    || caseTerm.branches().stream()
+                    .anyMatch(this::containsCaseOnBuiltinConstant);
+        };
+    }
+
+    private enum CostSource {
+        SUPPLIED_PROFILE,
+        BUNDLED_DEFAULT
+    }
+
+    private record ConformanceProfile(
+            String name,
+            LedgerEvaluationTarget target,
+            Path overlayDir,
+            String resource,
+            int expectedApplicable,
+            int expectedNumericBudgets,
+            int expectedBlsLiterals) {}
+
+    private record ExpectedCounts(
+            int numericEvaluated,
+            int numericExact,
+            int numericMismatch,
+            int resultMatches,
+            int expectedFailures,
+            int resultMismatches) {}
 
     private void assertCorpusInventory(Path conformanceDir, Path pv11OverlayDir,
                                        List<Path> inputFiles) throws IOException {
@@ -276,7 +394,8 @@ class ScalusCurrentBehaviorConformanceTest {
         int pv10ApplicableCases = 0;
         for (var inputFile : inputFiles) {
             var relative = conformanceDir.relativize(inputFile);
-            if (isPv10Applicable(inputFile)) {
+            if (isApplicable(inputFile,
+                    LedgerEvaluationTarget.pv10(PlutusLanguage.PLUTUS_V3))) {
                 pv10ApplicableCases++;
                 var budget = Files.readString(selectExpectation(
                         conformanceDir, null, relative + ".budget.expected"));
@@ -287,53 +406,6 @@ class ScalusCurrentBehaviorConformanceTest {
         }
         assertEquals(EXPECTED_BASE_NUMERIC_BUDGETS, baseNumericBudgets);
         assertEquals(EXPECTED_PV10_APPLICABLE_CASES, pv10ApplicableCases);
-    }
-
-    private boolean isPv10Applicable(Path inputFile) throws IOException {
-        try {
-            var program = UplcParser.parseProgram(Files.readString(inputFile).trim());
-            var profile = com.bloxbean.cardano.julc.vm.ProtocolFeatureRegistry.resolve(
-                    com.bloxbean.cardano.julc.vm.LedgerEvaluationTarget.pv10(
-                            PlutusLanguage.PLUTUS_V3));
-            return isApplicable(program.term(), profile.availableBuiltins(),
-                    profile.caseOnBuiltinConstants());
-        } catch (Exception ignored) {
-            return true;
-        }
-    }
-
-    private boolean isApplicable(Term term,
-                                 java.util.Set<com.bloxbean.cardano.julc.core.DefaultFun> available,
-                                 boolean caseOnBuiltinConstants) {
-        return switch (term) {
-            case Term.Var _ -> true;
-            case Term.Lam lam -> isApplicable(lam.body(), available, caseOnBuiltinConstants);
-            case Term.Apply apply -> isApplicable(apply.function(), available, caseOnBuiltinConstants)
-                    && isApplicable(apply.argument(), available, caseOnBuiltinConstants);
-            case Term.Force force -> isApplicable(force.term(), available, caseOnBuiltinConstants);
-            case Term.Delay delay -> isApplicable(delay.term(), available, caseOnBuiltinConstants);
-            case Term.Const _, Term.Error _ -> true;
-            case Term.Builtin builtin -> available.contains(builtin.fun());
-            case Term.Constr constr -> constr.fields().stream()
-                    .allMatch(field -> isApplicable(field, available, caseOnBuiltinConstants));
-            case Term.Case caseTerm -> (caseOnBuiltinConstants
-                    || !(caseTerm.scrutinee() instanceof Term.Const))
-                    && isApplicable(caseTerm.scrutinee(), available, caseOnBuiltinConstants)
-                    && caseTerm.branches().stream()
-                    .allMatch(branch -> isApplicable(branch, available, caseOnBuiltinConstants));
-        };
-    }
-
-    private boolean expectedOutputContainsBlsLiteral(String expected) {
-        if ("parse error".equals(expected) || "evaluation failure".equals(expected)) {
-            return false;
-        }
-        try {
-            return containsBlsLiteral(UplcParser.parseProgram(expected).term());
-        } catch (Exception parseFailure) {
-            throw new AssertionError(
-                    "Expected successful output must be parseable for classification", parseFailure);
-        }
     }
 
     private boolean containsBlsLiteral(Term term) {

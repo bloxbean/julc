@@ -93,6 +93,16 @@ final class TermConverter {
             return new Constant.PairConst(
                     fromScalusConstant(p.a()),
                     fromScalusConstant(p.b()));
+        } else if (constant instanceof scalus.uplc.Constant.Array array) {
+            var values = new ArrayList<Constant>();
+            var iter = array.value().iterator();
+            while (iter.hasNext()) {
+                values.add(fromScalusConstant(iter.next()));
+            }
+            return new Constant.ArrayConst(
+                    fromScalusDefaultUni(array.elemType()), values);
+        } else if (constant instanceof scalus.uplc.Constant.BuiltinValue value) {
+            return fromScalusBuiltinValue(value.value());
         } else if (constant instanceof scalus.uplc.Constant.BLS12_381_G1_Element g1) {
             return new Constant.Bls12_381_G1Element(g1.value().toCompressedByteString().bytes());
         } else if (constant instanceof scalus.uplc.Constant.BLS12_381_G2_Element g2) {
@@ -103,6 +113,26 @@ final class TermConverter {
             throw new IllegalArgumentException("BLS12-381 MlResult cannot be converted to bytes");
         }
         throw new IllegalArgumentException("Unsupported Scalus constant type: " + constant.getClass());
+    }
+
+    private static Constant.ValueConst fromScalusBuiltinValue(
+            scalus.uplc.builtin.BuiltinValue value) {
+        var entries = new ArrayList<Constant.ValueConst.ValueEntry>();
+        var currencyIterator = scalus.uplc.builtin.BuiltinValue
+                .toEntryList(value).iterator();
+        while (currencyIterator.hasNext()) {
+            var currency = currencyIterator.next();
+            var tokens = new ArrayList<Constant.ValueConst.TokenEntry>();
+            var tokenIterator = currency._2().iterator();
+            while (tokenIterator.hasNext()) {
+                var token = tokenIterator.next();
+                tokens.add(new Constant.ValueConst.TokenEntry(
+                        token._1().bytes(), token._2().bigInteger()));
+            }
+            entries.add(new Constant.ValueConst.ValueEntry(
+                    currency._1().bytes(), tokens));
+        }
+        return new Constant.ValueConst(entries);
     }
 
     // ---- PlutusData: Scalus Data -> ours ----
@@ -178,8 +208,19 @@ final class TermConverter {
         if (uni == scalus.uplc.DefaultUni.Unit$.MODULE$) return com.bloxbean.cardano.julc.core.DefaultUni.UNIT;
         if (uni == scalus.uplc.DefaultUni.Bool$.MODULE$) return com.bloxbean.cardano.julc.core.DefaultUni.BOOL;
         if (uni == scalus.uplc.DefaultUni.Data$.MODULE$) return com.bloxbean.cardano.julc.core.DefaultUni.DATA;
+        if (uni == scalus.uplc.DefaultUni.BLS12_381_G1_Element$.MODULE$) {
+            return com.bloxbean.cardano.julc.core.DefaultUni.BLS12_381_G1;
+        }
+        if (uni == scalus.uplc.DefaultUni.BLS12_381_G2_Element$.MODULE$) {
+            return com.bloxbean.cardano.julc.core.DefaultUni.BLS12_381_G2;
+        }
+        if (uni == scalus.uplc.DefaultUni.BLS12_381_MlResult$.MODULE$) {
+            return com.bloxbean.cardano.julc.core.DefaultUni.BLS12_381_ML;
+        }
         if (uni == scalus.uplc.DefaultUni.ProtoList$.MODULE$) return new com.bloxbean.cardano.julc.core.DefaultUni.ProtoList();
         if (uni == scalus.uplc.DefaultUni.ProtoPair$.MODULE$) return new com.bloxbean.cardano.julc.core.DefaultUni.ProtoPair();
+        if (uni == scalus.uplc.DefaultUni.ProtoArray$.MODULE$) return new com.bloxbean.cardano.julc.core.DefaultUni.ProtoArray();
+        if (uni == scalus.uplc.DefaultUni.BuiltinValue$.MODULE$) return new com.bloxbean.cardano.julc.core.DefaultUni.ProtoValue();
         if (uni instanceof scalus.uplc.DefaultUni.Apply a) {
             return new com.bloxbean.cardano.julc.core.DefaultUni.Apply(
                     fromScalusDefaultUni(a.f()),

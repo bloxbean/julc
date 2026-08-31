@@ -42,7 +42,7 @@ class ScalusProtocolBehaviorTest {
     @ParameterizedTest(name = "Batch 6 {0}")
     @MethodSource("batch6Cases")
     void batch6IsRejectedAtPv10AndReachesPinnedPv11Semantics(
-            DefaultFun builtin, String fixture, ExpectedOutcome outcome) throws IOException {
+            DefaultFun builtin, String fixture) throws IOException {
         Program program;
         Term expected = null;
         if (fixture == null) {
@@ -58,9 +58,7 @@ class ScalusProtocolBehaviorTest {
             expected = program.term();
         } else {
             program = loadProgram(fixture);
-            if (outcome == ExpectedOutcome.SUCCESS) {
-                expected = loadProgram(fixture + ".expected").term();
-            }
+            expected = loadProgram(fixture + ".expected").term();
         }
 
         forBothPaths(program, PV10, result -> {
@@ -70,22 +68,8 @@ class ScalusProtocolBehaviorTest {
         });
 
         var pinnedExpected = expected;
-        forBothPaths(program, PV11, result -> {
-            switch (outcome) {
-                case SUCCESS -> assertEquals(pinnedExpected, success(result).resultTerm());
-                case SEMANTIC_FAILURE -> {
-                    var failure = assertInstanceOf(EvalResult.Failure.class, result);
-                    assertTrue(failure.consumed().cpuSteps() > 0, failure::error);
-                    assertTrue(!failure.error().contains("not available"), failure::error);
-                }
-                case RESULT_CONVERSION_GAP -> {
-                    var failure = assertInstanceOf(EvalResult.Failure.class, result);
-                    assertTrue(failure.error().contains("Unsupported Scalus constant type"),
-                            failure::error);
-                    assertTrue(failure.consumed().cpuSteps() > 0, failure::error);
-                }
-            }
-        });
+        forBothPaths(program, PV11,
+                result -> assertEquals(pinnedExpected, success(result).resultTerm()));
     }
 
     @Test
@@ -373,45 +357,31 @@ class ScalusProtocolBehaviorTest {
     private static Stream<Arguments> batch6Cases() {
         return Stream.of(
                 batch(DefaultFun.ExpModInteger,
-                        "builtin/semantics/expModInteger/expMod-01/expMod-01.uplc",
-                        ExpectedOutcome.SUCCESS),
+                        "builtin/semantics/expModInteger/expMod-01/expMod-01.uplc"),
                 batch(DefaultFun.DropList,
-                        "builtin/semantics/dropList/dropList-01/dropList-01.uplc",
-                        ExpectedOutcome.SUCCESS),
+                        "builtin/semantics/dropList/dropList-01/dropList-01.uplc"),
                 batch(DefaultFun.LengthOfArray,
-                        "builtin/semantics/lengthOfArray/lengthOfArray-01/lengthOfArray-01.uplc",
-                        ExpectedOutcome.SUCCESS),
+                        "builtin/semantics/lengthOfArray/lengthOfArray-01/lengthOfArray-01.uplc"),
                 batch(DefaultFun.ListToArray,
-                        "builtin/semantics/listToArray/listToArray-01/listToArray-01.uplc",
-                        ExpectedOutcome.RESULT_CONVERSION_GAP),
+                        "builtin/semantics/listToArray/listToArray-01/listToArray-01.uplc"),
                 batch(DefaultFun.IndexArray,
-                        "builtin/semantics/indexArray/indexArray-01/indexArray-01.uplc",
-                        ExpectedOutcome.SUCCESS),
-                batch(DefaultFun.Bls12_381_G1_multiScalarMul, null,
-                        ExpectedOutcome.SUCCESS),
-                batch(DefaultFun.Bls12_381_G2_multiScalarMul, null,
-                        ExpectedOutcome.SUCCESS),
+                        "builtin/semantics/indexArray/indexArray-01/indexArray-01.uplc"),
+                batch(DefaultFun.Bls12_381_G1_multiScalarMul, null),
+                batch(DefaultFun.Bls12_381_G2_multiScalarMul, null),
                 batch(DefaultFun.InsertCoin,
-                        "builtin/semantics/insertCoin/long-key-zero-1/long-key-zero-1.uplc",
-                        ExpectedOutcome.RESULT_CONVERSION_GAP),
+                        "builtin/semantics/insertCoin/long-key-zero-1/long-key-zero-1.uplc"),
                 batch(DefaultFun.LookupCoin,
-                        "builtin/semantics/lookupCoin/absent/absent.uplc",
-                        ExpectedOutcome.SUCCESS),
+                        "builtin/semantics/lookupCoin/absent/absent.uplc"),
                 batch(DefaultFun.UnionValue,
-                        "builtin/semantics/unionValue/cancel-01/cancel-01.uplc",
-                        ExpectedOutcome.RESULT_CONVERSION_GAP),
+                        "builtin/semantics/unionValue/cancel-01/cancel-01.uplc"),
                 batch(DefaultFun.ValueContains,
-                        "builtin/semantics/valueContains/ccy-missing/ccy-missing.uplc",
-                        ExpectedOutcome.SUCCESS),
+                        "builtin/semantics/valueContains/ccy-missing/ccy-missing.uplc"),
                 batch(DefaultFun.ValueData,
-                        "builtin/semantics/valueData/empty/empty.uplc",
-                        ExpectedOutcome.SUCCESS),
+                        "builtin/semantics/valueData/empty/empty.uplc"),
                 batch(DefaultFun.UnValueData,
-                        "builtin/semantics/unValueData/empty/empty.uplc",
-                        ExpectedOutcome.RESULT_CONVERSION_GAP),
+                        "builtin/semantics/unValueData/empty/empty.uplc"),
                 batch(DefaultFun.ScaleValue,
-                        "builtin/semantics/scaleValue/by-neg/by-neg.uplc",
-                        ExpectedOutcome.RESULT_CONVERSION_GAP));
+                        "builtin/semantics/scaleValue/by-neg/by-neg.uplc"));
     }
 
     private static Stream<ScalusBoundaryMatrix.IntegerCase> cardanoIntegerCases() {
@@ -422,9 +392,8 @@ class ScalusProtocolBehaviorTest {
         return ScalusBoundaryMatrix.byteStringCases();
     }
 
-    private static Arguments batch(
-            DefaultFun fun, String fixture, ExpectedOutcome outcome) {
-        return Arguments.of(fun, fixture, outcome);
+    private static Arguments batch(DefaultFun fun, String fixture) {
+        return Arguments.of(fun, fixture);
     }
 
     private static Stream<Arguments> caseOnBuiltinFixtures() {
@@ -513,12 +482,6 @@ class ScalusProtocolBehaviorTest {
         var term = assertInstanceOf(Term.Const.class, success(result).resultTerm());
         assertEquals(expected,
                 assertInstanceOf(Constant.StringConst.class, term.value()).value());
-    }
-
-    private enum ExpectedOutcome {
-        SUCCESS,
-        SEMANTIC_FAILURE,
-        RESULT_CONVERSION_GAP
     }
 
     private record RejectedCase(String label, Program program) {}
