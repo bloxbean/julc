@@ -251,7 +251,6 @@ public class ScalusVmProvider implements JulcVmProvider {
 
             Objects.requireNonNull(program, "program");
             ProgramValidator.validate(program, profile);
-            validateCaseOnBuiltinConstants(program.term(), profile);
             var blsLiteralType = firstBlsLiteralType(program.term());
             if (blsLiteralType != null) {
                 return preExecutionFailure(target,
@@ -318,36 +317,6 @@ public class ScalusVmProvider implements JulcVmProvider {
 
     private static String messageOf(Exception e) {
         return e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
-    }
-
-    private static void validateCaseOnBuiltinConstants(
-            Term term, ProtocolFeatureProfile profile) {
-        if (profile.caseOnBuiltinConstants()) {
-            return;
-        }
-        switch (term) {
-            case Term.Var _, Term.Error _, Term.Builtin _, Term.Const _ -> {
-            }
-            case Term.Lam lam -> validateCaseOnBuiltinConstants(lam.body(), profile);
-            case Term.Apply apply -> {
-                validateCaseOnBuiltinConstants(apply.function(), profile);
-                validateCaseOnBuiltinConstants(apply.argument(), profile);
-            }
-            case Term.Force force -> validateCaseOnBuiltinConstants(force.term(), profile);
-            case Term.Delay delay -> validateCaseOnBuiltinConstants(delay.term(), profile);
-            case Term.Constr constr -> constr.fields().forEach(
-                    field -> validateCaseOnBuiltinConstants(field, profile));
-            case Term.Case caseTerm -> {
-                if (caseTerm.scrutinee() instanceof Term.Const constant) {
-                    throw new UnsupportedLedgerTargetException(
-                            "Case on builtin constant " + constant.value().type()
-                                    + " is not available for " + profile.target());
-                }
-                validateCaseOnBuiltinConstants(caseTerm.scrutinee(), profile);
-                caseTerm.branches().forEach(
-                        branch -> validateCaseOnBuiltinConstants(branch, profile));
-            }
-        }
     }
 
     private static String firstBlsLiteralType(Term term) {

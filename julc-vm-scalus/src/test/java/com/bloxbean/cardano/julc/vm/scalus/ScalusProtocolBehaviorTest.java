@@ -121,30 +121,36 @@ class ScalusProtocolBehaviorTest {
 
     @ParameterizedTest(name = "case-on-builtin fixture {0}")
     @MethodSource("caseOnBuiltinFixtures")
-    void caseOnBuiltinConstantsIsPreRejectedAtPv10AndEvaluatedAtPv11(
+    void caseOnBuiltinConstantsFailInCekAtPv10AndEvaluateAtPv11(
             String fixture) throws IOException {
         var program = loadProgram(fixture);
         var expected = loadProgram(fixture + ".expected").term();
 
         forBothPaths(program, PV10, result -> {
-            var failure = assertZeroFailure(result);
-            assertTrue(failure.error().contains(PV10.toString()), failure::error);
-            assertTrue(failure.error().contains("Case on builtin constant"), failure::error);
+            var failure = assertInstanceOf(EvalResult.Failure.class, result);
+            assertTrue(failure.consumed().cpuSteps() > 0, failure::error);
+            assertTrue(!failure.error().contains("Unsupported Scalus ledger target:"),
+                    failure::error);
+            assertTrue(failure.error().contains("non-constructor value was scrutinized"),
+                    failure::error);
         });
         forBothPaths(program, PV11,
                 result -> assertEquals(expected, success(result).resultTerm()));
     }
 
     @Test
-    void caseOnDataIsPreRejectedAtPv10AndReachesCekAtPv11() {
+    void caseOnDataFailsInCekAtBothTargets() {
         var program = Program.plutusV3(new Term.Case(
                 Term.const_(Constant.data(PlutusData.integer(42))),
                 List.of(Term.const_(Constant.integer(0)))));
 
         forBothPaths(program, PV10, result -> {
-            var failure = assertZeroFailure(result);
-            assertTrue(failure.error().contains(PV10.toString()), failure::error);
-            assertTrue(failure.error().contains("Case on builtin constant"), failure::error);
+            var failure = assertInstanceOf(EvalResult.Failure.class, result);
+            assertTrue(failure.consumed().cpuSteps() > 0, failure::error);
+            assertTrue(!failure.error().contains("Unsupported Scalus ledger target:"),
+                    failure::error);
+            assertTrue(failure.error().contains("non-constructor value was scrutinized"),
+                    failure::error);
         });
         forBothPaths(program, PV11, result -> {
             var failure = assertInstanceOf(EvalResult.Failure.class, result);
@@ -190,8 +196,9 @@ class ScalusProtocolBehaviorTest {
                 Constant.integer(CARDANO_INTEGER_LIMIT), Constant.integer(0));
         forBothPaths(hugeAdd, PV10,
                 result -> assertInteger(result, CARDANO_INTEGER_LIMIT));
-        // Scalus 1.1.0 currently omits the E Cardano-integer argument bound;
-        // ScalusKnownUpstreamDivergenceTest pins that mismatch explicitly.
+        // SCALUS_MISSING_CARDANO_INTEGER_BOUND_E: Scalus 1.1.0 omits
+        // the E Cardano-integer argument bound; the dedicated divergence
+        // matrix pins every affected position explicitly.
         forBothPaths(hugeAdd, PV11,
                 result -> assertInteger(result, CARDANO_INTEGER_LIMIT));
 
@@ -202,8 +209,9 @@ class ScalusProtocolBehaviorTest {
                 Constant.byteString(oversized), Constant.byteString(new byte[0]));
         forBothPaths(append, PV10,
                 result -> assertBytes(result, oversized));
-        // Scalus 1.1.0 also omits the E Cardano-ByteString argument bound;
-        // the dedicated known-divergence test keeps the ledger expectation visible.
+        // SCALUS_MISSING_CARDANO_BYTESTRING_BOUND_E: Scalus 1.1.0 omits
+        // the E Cardano-ByteString argument bound; the dedicated divergence
+        // matrix keeps the ledger expectation visible.
         forBothPaths(append, PV11,
                 result -> assertBytes(result, oversized));
     }
