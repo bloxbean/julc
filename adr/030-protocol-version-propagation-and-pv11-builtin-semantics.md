@@ -565,11 +565,16 @@ cardano-node 11.0.1 / Plutus `f92b7d7d8` baseline:
   999 PV11 cases with 724 numeric budget assertions and 737 applicable PV10
   cases with 545 numeric budget assertions; the runner asserts all counts and
   the 65 overlay files.
-- Scalus does not implement the explicit-target SPI and fails closed on it. It
-  is therefore explicitly excluded from this ADR's PV10/PV11 ledger-parity
-  claim until it passes the same pinned matrix. Its current `Data.Constr`
-  representation also rejects negative constructor integers that pinned
-  pre-D/E Plutus can construct; JuLC reports that bridge limitation explicitly.
+- Scalus now implements the target-bound candidate pipeline, atomic
+  configuration, bridge coverage, and exact supplied-profile budget matrix,
+  but its public explicit-target gate remains empty. V3/PV10/C is blocked by
+  high-byte-DST hashing and `sliceByteString` narrowing; V3/PV11/E is blocked
+  by those plus missing Cardano Integer/ByteString and `writeBits` bounds.
+  V1/V2 remain unsupported because Scalus 1.1.0 reference-fills or ignores
+  supplied PV11-only costs and JuLC has no pinned V1/V2 corpus. Scalus is
+  therefore still excluded from this ADR's ledger-parity claim; the exact
+  reason codes, matrices, bundled-default result, and committed reproducers are
+  recorded in [ADR-033's Certification evidence](033-scalus-protocol-aware-ledger-target-evaluation.md#certification-evidence).
 
 ### Post-implementation exactness audit
 

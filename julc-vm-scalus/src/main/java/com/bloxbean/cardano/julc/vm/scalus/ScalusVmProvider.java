@@ -40,10 +40,39 @@ import java.util.Set;
  * returned {@link EvalResult} will always be empty.
  *
  * <p>Protocol-aware cost-model configuration is target-bound and published
- * atomically. Explicit-target evaluation remains fail-closed until the
- * certification gates in ADR-033 are complete. Budget exhaustion reports a
- * {@code null} {@link EvalResult.BudgetExhausted#failedTerm()} because Scalus
- * 1.1.0 does not expose the term whose budget charge failed.</p>
+ * atomically. The candidate matrix maps V3/PV10 to semantics C and V3/PV11 to
+ * semantics E, but neither profile is certified with Scalus 1.1.0. Public
+ * explicit-target evaluation therefore fails closed with zero consumed budget.
+ * V1/V2 profiles are also unsupported: there is no pinned corpus, and Scalus
+ * reference-fills PV11-only builtin costs while ignoring supplied Constr/Case
+ * costs ({@code SCALUS_V1V2_PV11_REFERENCE_FILL}).</p>
+ *
+ * <p>The five upstream divergences blocking certification are
+ * {@code SCALUS_HASHTOGROUP_DST_HIGH_BYTE} and
+ * {@code SCALUS_SLICEBYTESTRING_INT64_NARROWING} for both V3 targets, plus
+ * {@code SCALUS_MISSING_CARDANO_INTEGER_BOUND_E},
+ * {@code SCALUS_MISSING_CARDANO_BYTESTRING_BOUND_E}, and
+ * {@code SCALUS_MISSING_WRITEBITS_4096_BOUND_E} for V3/PV11/E. They are pinned
+ * by ledger-serializable tests; the adapter does not pre-scan runtime values or
+ * otherwise implement partial builtin semantics to conceal them.</p>
+ *
+ * <p>A configured candidate uses only the normalized model associated with its
+ * exact language/protocol-major target. V3/PV11 rejects Scalus's ambiguous
+ * {@code 300_000_000} DropList sentinel before publication. The Scalus 1.1.0
+ * bundled epoch-645 snapshot is exact for V3/PV11/E, but may become available
+ * to the explicit path only together with that target's future certification.
+ * Interpreted as V3/PV10/C it has 37 budget mismatches caused by seven snapshot
+ * parameters, so that target requires a matching configured model even after
+ * its semantic blockers are resolved.</p>
+ *
+ * <p>Language-only overloads remain an experimental compatibility surface:
+ * configured V3 uses its retained target/model, while unconfigured V3 uses
+ * Scalus's PV11/E bundled default (unlike Java/Truffle's PV10 default).
+ * Configured V1/V2 fail explicitly; unconfigured V1/V2 retain Scalus defaults
+ * without a ledger-parity claim. A non-null {@link ExBudget} restricts both
+ * legacy and candidate execution. Exhaustion reports a {@code null}
+ * {@link EvalResult.BudgetExhausted#failedTerm()} because Scalus 1.1.0 does not
+ * expose the term whose budget charge failed.</p>
  */
 public class ScalusVmProvider implements JulcVmProvider {
 

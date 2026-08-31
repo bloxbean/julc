@@ -34,6 +34,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class ScalusV1V2EvidenceTest {
 
     private static final int ADD_INTEGER_CPU_INTERCEPT = 0;
+    // These are V3-schema positions deliberately placed beyond the 166/185
+    // fields consumed by PlutusV1Params/PlutusV2Params.fromSeq. They prove that
+    // appended values in a 332-entry supplied array are ignored; they are not
+    // asserted to be V1/V2 ledger-layout indices.
     private static final int CEK_CONSTR_CPU = 193;
     private static final int CEK_CONSTR_MEMORY = 194;
     private static final int CEK_CASE_CPU = 195;
@@ -75,6 +79,9 @@ class ScalusV1V2EvidenceTest {
     @MethodSource("ignoredMachineCostPositions")
     void suppliedConstrAndCasePositionsAreBudgetNeutral(
             Language language, int parameterIndex, Program program) {
+        // This directly exercises parameter plumbing inside Scalus. Constr/Case
+        // in a Program.plutusV3 term evaluated by a V1/V2 VM is not claimed to
+        // be a ledger-legal V1/V2 program.
         var baselineValues = bundledPrefix(language, 332);
         var changedValues = baselineValues.clone();
         changedValues[parameterIndex] += PERTURBATION;
@@ -93,8 +100,10 @@ class ScalusV1V2EvidenceTest {
         var actual = evaluate(language, 10, bundledPrefix(language, parameterCount),
                 addIntegerProgram());
 
-        // Copied from julc-vm-java's pinned addInteger-01 conformance result for
-        // the same program and model-B parameters: cpu 181,308; memory 602.
+        // Copied from julc-vm-java's pinned V3/C addInteger-01 conformance
+        // result. AddInteger and CEK machine costs are identical under B/C,
+        // and the bundled V1/V2 vectors carry those same shared parameters:
+        // cpu 181,308; memory 602.
         assertEquals(new ExBudget(181_308, 602), actual);
     }
 

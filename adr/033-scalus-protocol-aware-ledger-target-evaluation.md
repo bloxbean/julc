@@ -1,10 +1,10 @@
 # ADR-033: Scalus Protocol-Aware Ledger-Target Evaluation
 
-**Status:** Proposed
+**Status:** Proposed — implementation complete; certification blocked upstream
 
 **Date:** 2026-08-30
 
-**Revised:** 2026-08-31 after review evidence audit
+**Revised:** 2026-08-31 after implementation and certification evidence audit
 
 **Authors:** JuLC team
 
@@ -36,16 +36,16 @@ The target binds the ledger language and protocol version used to select:
 - the cost-model schema and supplied prices.
 
 The Java and Truffle providers implement the explicit-target API and have a
-pinned V3/PV10/C and V3/PV11/E conformance matrix. `ScalusVmProvider` does not
-override the target-aware methods, so the default VM SPI implementation throws
-`UnsupportedOperationException`. Scalus is therefore intentionally excluded
-from ADR-030's ledger-parity claim.
+pinned V3/PV10/C and V3/PV11/E conformance matrix. At the start of issue #74,
+`ScalusVmProvider` did not override the target-aware methods, so the default VM
+SPI implementation threw `UnsupportedOperationException`. Scalus was therefore
+intentionally excluded from ADR-030's ledger-parity claim.
 
-This exclusion is correct. The ability to execute a builtin is not evidence
+That exclusion was correct. The ability to execute a builtin is not evidence
 that a backend selected the right ledger profile or charged the exact reference
 budget.
 
-### Current Scalus provider behavior
+### Scalus provider behavior before this work
 
 The provider uses a FLAT serialization bridge:
 
@@ -133,7 +133,7 @@ legitimately supplies `300_000_000` at that position. Before JuLC claims a
 supplied model is in use, it must prevent either mechanism from silently
 substituting a different cost.
 
-### Existing verification gap
+### Verification gap before this work
 
 `julc-vm-scalus` has useful unit tests, but its `PlutusConformanceTest` is
 disabled. The disabled runner also:
@@ -150,43 +150,60 @@ numeric PV10 budget assertions, and an asserted 65-file PV11 overlay. The
 Scalus support claim must be based on an equally reviewable inventory, not a
 disabled or open-ended skip list.
 
-### Review evidence audited on 2026-08-31
+### Implemented outcome and audited evidence
 
-The Java conformance class was rerun from this branch and passed its complete
-asserted V3/PV10 and V3/PV11 matrices. This confirms that the reference corpus
-and JuLC representation are not the source of the Scalus coverage gap.
+The implementation is committed on PR #122. It replaces the two independently
+mutable configuration fields with immutable per-language snapshots, implements
+one validated explicit-target candidate pipeline, completes Array/Value result
+conversion, and enforces non-null budgets. The public explicit-target gate is
+still empty because the semantic gates below found upstream divergences.
 
-An exploratory Scalus 1.1.0 run supplied during ADR review removed the disabled
-annotation and existing skip lists. It reported 999 cases, 174 failures, and
-zero skips. A separate PV11 budget probe reported exact CPU and memory for all
-572 bridge-representable numeric cases it reached. These are useful triage
-results, but they were produced by temporary test edits; the implementation
-must reproduce and assert the final counts in committed tests.
+Milestone 1 first froze the unconfigured Scalus 1.1.0 PV11/E behavior in a
+committed content-classified diagnostic. Its asserted inventory and outcome
+were:
 
-The failures divide into materially different categories:
+| Measure | Committed M1 count |
+|---|---:|
+| Corpus inputs | 999 |
+| PV11 overlay | 65 = 61 budget + 4 result files |
+| Expected parse errors | 55, including 15 invalid-BLS validator rejections |
+| Non-ledger-serializable BLS-literal inputs | 111 |
+| BLS-output-only, ledger-serializable inputs | 12 |
+| Evaluated non-BLS-input cases | 833 |
+| Numeric budgets exact | 617/617 evaluated; 572/572 bridge-representable |
+| Array/Value result-conversion gaps | 45 |
+| High-byte-DST result mismatches | 3/3, with exact budgets |
 
-- BLS G1, G2, and MlResult literal constants cannot cross Scalus's FLAT codec.
-  This is not merely a Scalus omission. The pinned Plutus `Flat` instances also
-  deliberately reject encoding and decoding these values; ledger scripts must
-  carry compressed ByteStrings and call the uncompress builtins. A direct AST
-  bridge would bypass that ledger serialization rule and is not required for a
-  ledger-target claim. See the pinned
-  [`G1`](https://github.com/IntersectMBO/plutus/blob/f92b7d7d82622a26caf456a6be33859f697e2cfc/plutus-core/plutus-core/src/PlutusCore/Crypto/BLS12_381/G1.hs),
-  [`G2`](https://github.com/IntersectMBO/plutus/blob/f92b7d7d82622a26caf456a6be33859f697e2cfc/plutus-core/plutus-core/src/PlutusCore/Crypto/BLS12_381/G2.hs),
-  and
-  [`MlResult`](https://github.com/IntersectMBO/plutus/blob/f92b7d7d82622a26caf456a6be33859f697e2cfc/plutus-core/plutus-core/src/PlutusCore/Crypto/BLS12_381/Pairing.hs)
-  instances.
-- Array and Value constants do cross the Scalus input bridge. Their observed
-  failures are missing Scalus-to-JuLC result cases in `TermConverter` and are
-  adapter work for this issue.
-- Four shift/rotate result differences came from running Scalus's unconfigured
-  PV11/E default against PV10 base expectations. They confirm the legacy
-  default divergence above, rather than a PV11 semantic failure.
-- The G1 and G2 `hashToGroup/hash-dst-len-255` cases had exact budgets but
-  different results. This is a potential semantic blocker. It must be
-  reproduced with ledger-serializable programs that compress or compare the
-  internally produced point; a persistent mismatch blocks the affected target
-  instead of changing the pinned golden result.
+The final target-aware runner asserts the corpus inventory before
+classification, uses the candidate path for both cost sources, and has no
+disabled cases or assumptions. “Numeric files” is the profile inventory;
+“numeric exact” counts only executable fixtures after parse and structurally
+non-serializable BLS-literal classification.
+
+| Profile | Cost source | Applicable / inapplicable | Parse | BLS literal | Result matches | Expected failures | DST mismatches | Numeric files | Numeric exact |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| V3/PV10/C | Supplied pinned C | 737 / 262 | 55 | 63 | 479 | 137 | 3, budgets exact | 545 | 482/482 |
+| V3/PV10/C | Bundled epoch-645 snapshot interpreted as C | 737 / 262 | 55 | 63 | 479 | 137 | 3, budgets exact | 545 | 445/482 |
+| V3/PV11/E | Supplied pinned E | 999 / 0 | 55 | 111 | 614 | 216 | 3, budgets exact | 724 | 617/617 |
+| V3/PV11/E | Bundled epoch-645 snapshot interpreted as E | 999 / 0 | 55 | 111 | 614 | 216 | 3, budgets exact | 724 | 617/617 |
+
+PV10's 262 inapplicable cases are exactly 236 Batch-6-builtin fixtures plus 26
+case-on-builtin-constant fixtures. Its smaller BLS count is not a skip: 48
+BLS-literal fixtures are already in the Batch-6 inapplicable bucket, and every
+fixture belongs to exactly one category.
+
+The 37 PV10 bundled budget mismatches are snapshot-specific. The bundled vector
+differs from pinned model C at seven positions: the `c11` coefficients for
+`divideInteger`, `modInteger`, `quotientInteger`, and `remainderInteger`, plus
+the constant, intercept, and slope for `equalsByteString`. The supplied-profile
+run, not the bundled run, is the target-certification evidence.
+
+The V1/V2 audit confirms factory mappings B/D and proves that caller-supplied
+legacy AddInteger prices are active, but Scalus 1.1.0 ignores supplied
+V3-schema Constr/Case positions and reference-fills Batch-6 costs for PV11.
+Every V1/V2 row therefore remains unsupported under reason code
+`SCALUS_V1V2_PV11_REFERENCE_FILL`; there is also no pinned V1/V2 corpus on
+which to base an exact claim.
 
 ## Problem statement
 
@@ -342,12 +359,12 @@ Issue #74 will establish the following initial explicit-target matrix:
 
 | Ledger target | Initial status | Required semantics | Cost source |
 |---|---|---|---|
-| V3/PV10 | Candidate; enable only after D11 passes | C | Matching configured model; bundled-default mode is a separate evidence gate |
-| V3/PV11 | Candidate; enable only after D11 passes | E | Matching configured model; bundled-default mode is a separate evidence gate |
-| V1/PV10 | Explicitly unsupported initially | B | Not claimed |
-| V1/PV11 | Explicitly unsupported initially | D | Not claimed |
-| V2/PV10 | Explicitly unsupported initially | B | Not claimed |
-| V2/PV11 | Explicitly unsupported initially | D | Not claimed |
+| V3/PV10 | Candidate — blocked upstream (`SCALUS_HASHTOGROUP_DST_HIGH_BYTE`, `SCALUS_SLICEBYTESTRING_INT64_NARROWING`) | C | Matching configured model required; bundled snapshot is not exact |
+| V3/PV11 | Candidate — blocked upstream (all five codes in Certification evidence) | E | Matching configured model; bundled snapshot is exact but stays disabled until certification |
+| V1/PV10 | Explicitly unsupported — no pinned corpus | B | Not claimed; `SCALUS_V1V2_PV11_REFERENCE_FILL` records the shared audit outcome |
+| V1/PV11 | Explicitly unsupported — reference fill/ignored costs and no pinned corpus | D | Not claimed; `SCALUS_V1V2_PV11_REFERENCE_FILL` |
+| V2/PV10 | Explicitly unsupported — no pinned corpus | B | Not claimed; `SCALUS_V1V2_PV11_REFERENCE_FILL` records the shared audit outcome |
+| V2/PV11 | Explicitly unsupported — reference fill/ignored costs and no pinned corpus | D | Not claimed; `SCALUS_V1V2_PV11_REFERENCE_FILL` |
 | Any target above PV11 | Unsupported | Unknown to JuLC | Rejected by `ProtocolFeatureRegistry` |
 | Other language/protocol pairs | Unsupported by this ADR | Not certified here | Rejected by the Scalus support gate |
 
@@ -456,6 +473,12 @@ and argument-bearing overloads therefore cannot drift in target handling.
 Arguments remain applied as Scalus `Data` constants to preserve the existing
 avoidance of the 64-byte ByteString limitation in the CBOR route.
 
+`Case` on a builtin constant below PV11 is not a pre-execution validation
+error. The canonical validator accepts the UPLC form, and Scalus's CEK reports
+the non-constructor-scrutinized machine failure after consuming budget. The
+candidate tests pin that runtime timing. At PV11 the same form evaluates under
+the enabled case-on-builtin semantics.
+
 The FLAT bridge remains the program boundary because it exercises the same
 serializability constraint as a ledger script. In particular, a direct
 JuLC-term-to-Scalus-term bridge will not be introduced merely to inject BLS
@@ -547,6 +570,21 @@ Certification therefore has two explicit cost-source runs:
 Callers performing live ledger validation should configure the cost model
 obtained with the transaction's protocol parameters even when a bundled-default
 run happens to pass.
+
+The completed bundled-default matrix yields a target-specific availability
+decision without changing certification status:
+
+- V3/PV11/E is exact at 617/617 executable numeric budgets and 614 reference
+  result matches. An unconfigured explicit PV11 route may be enabled only in
+  the same reviewed change that certifies the target, never before it.
+- V3/PV10/C is not exact: 445/482 executable numeric budgets match and 37
+  differ because the vendored epoch-645 snapshot carries seven PV11-governance
+  coefficients. Even after semantic blockers are fixed, unconfigured explicit
+  PV10 remains disabled and requires a matching configured model.
+
+These statements describe the snapshot vendored in Scalus 1.1.0; they are
+independent of target certification and currently moot while
+`CERTIFIED_TARGETS` is empty.
 
 ### D7. Preserve and isolate the legacy language-only API
 
@@ -690,6 +728,35 @@ upstream issue with the minimal serializable reproducer and keeps the target
 disabled. Resolution requires either an upstream fix in a reviewed pinned
 release or an independently specified JuLC implementation; pinned goldens are
 never changed to match the backend.
+
+## Certification evidence
+
+The supplied-profile cost evidence is exact for every executable numeric
+fixture: 482/482 at V3/PV10/C and 617/617 at V3/PV11/E. Array and Value results
+now cross the bridge, all structural categories have fixed counts, and the
+candidate paths pass target mapping, availability, UPLC legality, budget-limit,
+and failure-timing tests. Certification nevertheless fails runtime-semantics
+gate D11.4 because of these pinned Scalus 1.1.0 divergences:
+
+| Reason code | Affected targets | Reference and Scalus evidence | Committed pin |
+|---|---|---|---|
+| `SCALUS_HASHTOGROUP_DST_HIGH_BYTE` | V3/PV10/C and V3/PV11/E | Plutus G1/G2 `hashToGroup` consumes raw DST bytes ([G1 lines 164–166](https://github.com/IntersectMBO/plutus/blob/f92b7d7d82622a26caf456a6be33859f697e2cfc/plutus-core/plutus-core/src/PlutusCore/Crypto/BLS12_381/G1.hs#L164-L166), [G2 lines 123–125](https://github.com/IntersectMBO/plutus/blob/f92b7d7d82622a26caf456a6be33859f697e2cfc/plutus-core/plutus-core/src/PlutusCore/Crypto/BLS12_381/G2.hs#L123-L125)); Scalus converts the DST bytes to a Latin-1 Java `String` before calling BLST ([JVMPlatformSpecific.scala lines 146–205](https://github.com/nau/scalus/blob/v1.1.0/scalus-core/jvm/src/main/scala/scalus/uplc/builtin/JVMPlatformSpecific.scala#L146-L205)). | `highByteDstHashToGroupDivergenceIsExplicitAndPinned` pins the G1/G2 255-byte-DST compressed points; `derivedHighByteDstSignatureDivergenceIsExplicitAndPinned` pins the large-DST signature result and point. ASCII and empty-DST controls pass. |
+| `SCALUS_SLICEBYTESTRING_INT64_NARROWING` | V3/PV10/C and V3/PV11/E | Plutus unpacks both indices as signed `Int` ([Builtins.hs lines 1301–1315](https://github.com/IntersectMBO/plutus/blob/f92b7d7d82622a26caf456a6be33859f697e2cfc/plutus-core/plutus-core/src/PlutusCore/Default/Builtins.hs#L1301-L1315)); Scalus accepts `BigInt` and narrows with 32-bit `.toInt` ([Builtin.scala lines 229–239](https://github.com/nau/scalus/blob/v1.1.0/scalus-core/shared/src/main/scala/scalus/uplc/Builtin.scala#L229-L239), [Builtins.scala lines 227–228](https://github.com/nau/scalus/blob/v1.1.0/scalus-core/shared/src/main/scala/scalus/uplc/builtin/Builtins.scala#L227-L228)). | `sliceByteStringInt64NarrowingDivergenceIsExplicitAndPinned` covers both positions, the Int32/Int64 band, and values outside Int64 through plain and empty-argument paths. |
+| `SCALUS_MISSING_CARDANO_INTEGER_BOUND_E` | V3/PV11/E | D/E builtins use `CInteger` ([Builtins.hs lines 1091–1218](https://github.com/IntersectMBO/plutus/blob/f92b7d7d82622a26caf456a6be33859f697e2cfc/plutus-core/plutus-core/src/PlutusCore/Default/Builtins.hs#L1091-L1218)) with bounds `[-2^262143, 2^262143-1]` ([Cardano.hs lines 9–15](https://github.com/IntersectMBO/plutus/blob/f92b7d7d82622a26caf456a6be33859f697e2cfc/plutus-core/plutus-core/src/PlutusCore/Default/Universe/Cardano.hs#L9-L15)); Scalus's runtime unlifts unrestricted integers ([Builtin.scala lines 88–206](https://github.com/nau/scalus/blob/v1.1.0/scalus-core/shared/src/main/scala/scalus/uplc/Builtin.scala#L88-L206)). | `everyPv11CardanoIntegerPositionMissingBoundIsExplicitAndPinned` covers all 18 wrapped argument positions; inclusive-bound controls pass. |
+| `SCALUS_MISSING_CARDANO_BYTESTRING_BOUND_E` | V3/PV11/E | D/E `CByteString` is limited to 65,536 bytes ([Cardano.hs lines 17–18](https://github.com/IntersectMBO/plutus/blob/f92b7d7d82622a26caf456a6be33859f697e2cfc/plutus-core/plutus-core/src/PlutusCore/Default/Universe/Cardano.hs#L17-L18)) at the wrapped builtin positions in `Builtins.hs`; Scalus performs no equivalent D/E unlifting bound. | `everyPv11CardanoByteStringPositionMissingBoundIsExplicitAndPinned` covers all 33 wrapped positions; 65,536-byte controls pass. |
+| `SCALUS_MISSING_WRITEBITS_4096_BOUND_E` | V3/PV11/E | Plutus separately limits D/E `writeBits` input to 4,096 bytes ([Builtins.hs lines 2191–2205](https://github.com/IntersectMBO/plutus/blob/f92b7d7d82622a26caf456a6be33859f697e2cfc/plutus-core/plutus-core/src/PlutusCore/Default/Builtins.hs#L2191-L2205)); Scalus's runtime delegates without that length check ([Builtin.scala lines 1112–1125](https://github.com/nau/scalus/blob/v1.1.0/scalus-core/shared/src/main/scala/scalus/uplc/Builtin.scala#L1112-L1125), [Bitwise.scala lines 410–430](https://github.com/nau/scalus/blob/v1.1.0/scalus-core/shared/src/main/scala/scalus/uplc/builtin/Bitwise.scala#L410-L430)). | `pv11WriteBits4096ByteLimitDivergenceIsExplicitAndPinned` pins success at 4,097 bytes where the ledger golden is failure; the 4,096-byte control passes. |
+
+These are semantic differences inside CEK builtin execution. The adapter will
+not pre-scan literals or pre-reject oversized values: runtime arguments may be
+computed during evaluation, and an adapter scan would change failure timing and
+consumed budget while implementing only a partial second copy of builtin
+semantics. The public gate therefore remains empty. An upstream fix must land
+in a reviewed pinned Scalus release and pass the complete matrix; alternatively,
+an independently specified JuLC implementation requires a separate decision.
+
+Case-on-builtin below PV11 is not in this blocker table. The final design lets
+Scalus's CEK produce the reference runtime failure with non-zero budget rather
+than introducing an adapter-level validation failure.
 
 ## Affected modules and stages
 
@@ -1018,62 +1085,71 @@ vectors.
 
 ## Acceptance criteria
 
-- [ ] Explicit V3/PV10 and V3/PV11 calls select Scalus variants C and E,
-      respectively.
-- [ ] Both explicit overloads resolve and validate the same JuLC profile before
+- [x] The gated candidate V3/PV10 and V3/PV11 paths select Scalus variants C
+      and E respectively; public calls remain closed before candidate execution.
+- [x] Both explicit overloads resolve and validate the same JuLC profile before
       the bridge.
-- [ ] A matching configured V3 model is used by plain and argument-bearing
+- [x] A matching configured V3 model is used by plain and argument-bearing
       evaluation.
-- [ ] A configured/requested major mismatch fails deterministically with zero
+- [x] A configured/requested major mismatch fails deterministically with zero
       budget consumed.
-- [ ] Configuration is atomically published as one immutable ready or
+- [x] Configuration is atomically published as one immutable ready or
       unsupported per-language state.
-- [ ] Existing configured language-only V3 tests remain green.
-- [ ] V1/V2 explicit targets fail with a documented unsupported-profile result
+- [x] Existing configured language-only V3 tests remain green.
+- [x] V1/V2 explicit targets fail with a documented unsupported-profile result
       until separately certified.
-- [ ] Configured language-only V1/V2 calls also fail explicitly, while their
+- [x] Configured language-only V1/V2 calls also fail explicitly, while their
       state does not prevent configured V3 evaluation in Cardano Client Lib.
-- [ ] Unconfigured language-only V3 remains pinned to the documented Scalus
+- [x] Unconfigured language-only V3 remains pinned to the documented Scalus
       1.1.0 PV11/E default and its divergence from Java/Truffle is tested.
-- [ ] V3/PV11 configuration rejects the exact `300_000_000`
+- [x] V3/PV11 configuration rejects the exact `300_000_000`
       `dropList-cpu-arguments-intercept` sentinel without replacing prior
       configuration.
-- [ ] A non-null execution budget is enforced and exhaustion is reported as
+- [x] A non-null execution budget is enforced and exhaustion is reported as
       `EvalResult.BudgetExhausted`.
-- [ ] PV-sensitive tests cover builtin availability, UPLC feature gating,
+- [x] PV-sensitive tests cover builtin availability, UPLC feature gating,
       case-on-builtin behavior, PV11 bounds, and Scalus variants C/E.
-- [ ] Exact reference results and budgets pass for the complete supplied-model
-      matrix of every certified target.
-- [ ] The complete bundled-default matrix separately determines whether an
+- [ ] Target certification remains unsatisfied: exact supplied-model budgets
+      pass, but the five reason-coded runtime-semantic divergences block every
+      V3 target.
+- [x] The complete bundled-default matrix separately determines whether an
       unconfigured explicit target is enabled.
-- [ ] The disabled Scalus conformance runner is replaced; all structural
+- [x] The disabled Scalus conformance runner is replaced; all structural
       classifications have fixed reason codes and asserted counts.
-- [ ] Array and Value result conversions pass, BLS literal fixtures are
+- [x] Array and Value result conversions pass, BLS literal fixtures are
       classified as non-ledger-serializable, and serializable BLS builtin
       coverage includes both 255-byte DST `hashToGroup` cases.
-- [ ] Any negative-constructor or other bridge limitation is precisely
+- [x] Any negative-constructor or other bridge limitation is precisely
       documented and cannot be confused with a successful ledger-profile case.
-- [ ] ADR-030, provider Javadocs, and issues #65/#74/#121 state the final
-      verified scope; draft ADR-029/PR #58 is updated only if still applicable.
-- [ ] Focused, affected-module, consumer, and full builds pass.
+- [x] ADR-030 and provider Javadocs state the verified scope; ready-to-post
+      drafts for issues #65/#74/#121, PR #122, and upstream Scalus reports are
+      retained under `adr/evidence/` without posting them.
+- [x] Focused, affected-module, consumer, and full builds pass; commands,
+      durations, and every module's XML totals are retained in
+      `adr/evidence/033-build-validation.md`.
 
-## Open evidence questions
+## Evidence questions resolved by the implementation
 
-These questions do not weaken the fail-closed design. They determine how much
-work is required before a profile can pass the gates:
+1. **Bundled defaults:** V3/PV11/E is exact at 617/617 executable numeric
+   budgets and 614 reference result matches. V3/PV10/C is not exact: 445/482
+   budgets match and 37 differ because of seven snapshot parameters. This
+   controls only future unconfigured availability, not target certification.
+2. **High-byte DST:** all three discrepancies persist in ledger-serializable
+   programs. The two 255-byte-DST points differ after compression, and the
+   derived large-DST signature fixture returns `False` instead of the ledger
+   golden `True`. `SCALUS_HASHTOGROUP_DST_HIGH_BYTE` blocks both V3 targets.
+3. **V1/V2 supplied costs:** Scalus 1.1.0 consumes perturbed legacy prices, but
+   its V1/V2 parameter adapters ignore supplied Constr/Case positions and use
+   `vanRossemReferenceD` for PV11-only builtin prices. With no pinned V1/V2
+   corpus, all four profiles remain unsupported under
+   `SCALUS_V1V2_PV11_REFERENCE_FILL`. A later Scalus release requires a new
+   complete audit; no support is inferred from its factory signatures.
+4. **Budget-exhaustion failed term:** Scalus 1.1.0 does not expose the term
+   whose charge failed. The adapter returns `EvalResult.BudgetExhausted` with
+   the consumed budget and logs and with `failedTerm = null`; tests pin CPU and
+   memory orientation from consumed-versus-limit values.
 
-1. Does the complete bundled-mainnet default run match the pinned V3/PV10 and
-   V3/PV11 matrices? The exploratory PV11 subset matched 572/572 reachable
-   numeric budgets, but PV10 and the formerly blocked cases remain unproven.
-2. Do the two 255-byte DST `hashToGroup` result differences persist when the
-   point is consumed and compressed by a ledger-serializable program? If so,
-   which upstream Scalus fix or independently reviewed implementation resolves
-   them?
-3. Can a later Scalus release consume every supplied V1/V2 PV11 machine and
-   builtin cost without fallback? Scalus 1.1.0 cannot support that claim.
-4. Does Scalus expose enough structured information on out-of-budget failure
-   to preserve a useful failed term, or must Scalus initially return null for
-   that optional `EvalResult` field?
-
-Until the corresponding evidence is recorded, the conservative behavior is to
-reject the affected profile or capability rather than infer parity.
+The remaining questions are external resolution choices: which upstream
+Scalus fixes to adopt and whether any divergence should instead receive a
+separately reviewed JuLC implementation. Neither choice is made by this ADR's
+adapter implementation.
