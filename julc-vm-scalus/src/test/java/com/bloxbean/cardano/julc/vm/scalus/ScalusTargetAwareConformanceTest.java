@@ -92,10 +92,15 @@ class ScalusTargetAwareConformanceTest {
             Path conformanceDir, List<Path> inputFiles,
             ConformanceProfile profile, CostSource costSource) throws IOException {
         var provider = new ScalusVmProvider();
-        if (costSource == CostSource.SUPPLIED_PROFILE) {
-            provider.setCostModelParams(
-                    readPinnedParams(profile.resource()), profile.target());
+        var costModelParams = costSource == CostSource.SUPPLIED_PROFILE
+                ? readPinnedParams(profile.resource())
+                : readBundledParams(profile);
+        if (costSource == CostSource.BUNDLED_DEFAULT
+                && profile.target().protocolVersion().major() == 10) {
+            reportBundledParameterDifferences(
+                    readPinnedParams(profile.resource()), costModelParams);
         }
+        provider.setCostModelParams(costModelParams, profile.target());
 
         var counts = new LinkedHashMap<String, Integer>();
         var details = new ArrayList<String>();
@@ -145,9 +150,8 @@ class ScalusTargetAwareConformanceTest {
                 continue;
             }
 
-            EvalResult result = costSource == CostSource.SUPPLIED_PROFILE
-                    ? provider.evaluateCandidate(program, profile.target(), null, null)
-                    : provider.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
+            EvalResult result = provider.evaluateCandidate(
+                    program, profile.target(), null, null);
 
             boolean numericBudgetExact = false;
             if (hasNumericBudget) {
@@ -264,7 +268,7 @@ class ScalusTargetAwareConformanceTest {
         if (profile.target().protocolVersion().major() == 10) {
             return costSource == CostSource.SUPPLIED_PROFILE
                     ? new ExpectedCounts(482, 482, 0, 479, 137, 0)
-                    : new ExpectedCounts(482, 442, 40, 475, 137, 4);
+                    : new ExpectedCounts(482, 445, 37, 479, 137, 0);
         }
         return new ExpectedCounts(617, 617, 0, 614, 216, 0);
     }
@@ -280,6 +284,60 @@ class ScalusTargetAwareConformanceTest {
                     .mapToLong(Long::parseLong)
                     .toArray();
         }
+    }
+
+    private long[] readBundledParams(ConformanceProfile profile) {
+        var models = scalus.cardano.ledger.CardanoInfo.mainnet()
+                .protocolParams().costModels().models();
+        @SuppressWarnings("unchecked")
+        var values = (scala.collection.immutable.IndexedSeq<Object>) models.apply(
+                Integer.valueOf(scalus.cardano.ledger.Language.PlutusV3.languageId()));
+        var result = new long[profile.expectedNumericParams()];
+        for (int i = 0; i < result.length; i++) {
+            result[i] = ((Number) values.apply(i)).longValue();
+        }
+        return result;
+    }
+
+    private void reportBundledParameterDifferences(long[] pinned, long[] bundled) {
+        var actual = new ArrayList<BundledParamDiff>();
+        for (int i = 0; i < pinned.length; i++) {
+            if (pinned[i] != bundled[i]) {
+                actual.add(new BundledParamDiff(i, paramName(i), pinned[i], bundled[i]));
+                System.out.println("SCALUS_M6_BUNDLED_PARAM_DIFF index=" + i
+                        + " name=" + paramName(i) + " pinned=" + pinned[i]
+                        + " bundled=" + bundled[i]);
+            }
+        }
+        assertEquals(List.of(
+                new BundledParamDiff(54,
+                        "divideInteger-cpu-arguments-model-arguments-c11", 549, 960),
+                new BundledParamDiff(64,
+                        "equalsByteString-cpu-arguments-constant", 24548, 30623),
+                new BundledParamDiff(65,
+                        "equalsByteString-cpu-arguments-intercept", 29498, 28755),
+                new BundledParamDiff(66,
+                        "equalsByteString-cpu-arguments-slope", 38, 75),
+                new BundledParamDiff(119,
+                        "modInteger-cpu-arguments-model-arguments-c11", 549, 960),
+                new BundledParamDiff(135,
+                        "quotientInteger-cpu-arguments-model-arguments-c11", 549, 960),
+                new BundledParamDiff(146,
+                        "remainderInteger-cpu-arguments-model-arguments-c11", 549, 960)),
+                actual);
+    }
+
+    private String paramName(int index) {
+        return switch (index) {
+            case 54 -> "divideInteger-cpu-arguments-model-arguments-c11";
+            case 64 -> "equalsByteString-cpu-arguments-constant";
+            case 65 -> "equalsByteString-cpu-arguments-intercept";
+            case 66 -> "equalsByteString-cpu-arguments-slope";
+            case 119 -> "modInteger-cpu-arguments-model-arguments-c11";
+            case 135 -> "quotientInteger-cpu-arguments-model-arguments-c11";
+            case 146 -> "remainderInteger-cpu-arguments-model-arguments-c11";
+            default -> "unexpected-index-" + index;
+        };
     }
 
     private boolean isApplicable(Path inputFile, LedgerEvaluationTarget target)
@@ -301,6 +359,8 @@ class ScalusTargetAwareConformanceTest {
             }
             return null;
         } catch (Exception ignored) {
+            // Parse-error fixtures are applicable just as in the Java runner;
+            // their expected parse failure is classified later in runMatrix.
             return null;
         }
     }
@@ -353,7 +413,11 @@ class ScalusTargetAwareConformanceTest {
             String resource,
             int expectedApplicable,
             int expectedNumericBudgets,
-            int expectedBlsLiterals) {}
+            int expectedBlsLiterals) {
+        int expectedNumericParams() {
+            return target.protocolVersion().major() == 10 ? 297 : 350;
+        }
+    }
 
     private record ExpectedCounts(
             int numericEvaluated,
@@ -362,6 +426,9 @@ class ScalusTargetAwareConformanceTest {
             int resultMatches,
             int expectedFailures,
             int resultMismatches) {}
+
+    private record BundledParamDiff(
+            int index, String name, long pinned, long bundled) {}
 
     private void assertCorpusInventory(Path conformanceDir, Path pv11OverlayDir,
                                        List<Path> inputFiles) throws IOException {
