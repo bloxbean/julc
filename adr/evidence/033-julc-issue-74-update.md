@@ -24,7 +24,7 @@ Completed work includes:
 |---|---|---|
 | V3/PV10/C | Candidate, public gate closed | Supplied costs 482/482 exact; blocked by high-byte DST and SliceByteString narrowing |
 | V3/PV11/E | Candidate, public gate closed | Supplied costs 617/617 exact; blocked by all five reason-coded upstream divergences |
-| V1/V2 PV10/PV11 | Explicitly unsupported | No pinned corpus; PV11-only costs are reference-filled or ignored |
+| V1/V2 PV10/PV11 | Language-only live-cost compatibility; explicit targets uncertified | Mapped supplied prices are active; no pinned corpus and PV11-only costs are reference-filled or ignored |
 | Above PV11 | Unsupported | Canonical registry rejects it |
 
 The bundled Scalus 1.1.0 snapshot is exact for PV11/E but cannot be enabled
@@ -33,8 +33,8 @@ so an eventual PV10 target still requires configured matching parameters.
 
 ## Verification
 
-- `:julc-vm-scalus:test --rerun-tasks --no-daemon`: 297 tests, 0 failures,
-  0 errors, 0 skipped after Milestone 7.
+- `:julc-vm-scalus:test --rerun-tasks --no-daemon`: 306 tests, 0 failures,
+  0 errors, 0 skipped after the live-cost compatibility correction.
 - Final repository-wide build totals are recorded in the PR #122 draft and
   ADR-033 after Milestone 8 validation.
 

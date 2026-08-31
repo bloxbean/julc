@@ -2,9 +2,9 @@ package com.bloxbean.cardano.julc.vm.scalus;
 
 import com.bloxbean.cardano.julc.core.Constant;
 import com.bloxbean.cardano.julc.core.DefaultFun;
+import com.bloxbean.cardano.julc.core.DefaultUni;
 import com.bloxbean.cardano.julc.core.Program;
 import com.bloxbean.cardano.julc.core.Term;
-import com.bloxbean.cardano.julc.vm.EvalResult;
 import com.bloxbean.cardano.julc.vm.ExBudget;
 import com.bloxbean.cardano.julc.vm.LedgerEvaluationTarget;
 import com.bloxbean.cardano.julc.vm.PlutusLanguage;
@@ -31,20 +31,21 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ScalusConfigurationTest {
 
-    @ParameterizedTest(name = "V3/PV{0} publishes one ready target-bound record")
-    @MethodSource("v3Targets")
-    void v3ConfigurationIsMappedAndPublishedAtomically(
-            int protocolMajor, int parameterCount, String expectedVariant) {
+    @ParameterizedTest(name = "{0}/PV{1} publishes one ready target-bound record")
+    @MethodSource("configuredTargets")
+    void configurationIsMappedAndPublishedAtomically(
+            PlutusLanguage language, int protocolMajor, int parameterCount,
+            Language expectedLanguage, String expectedVariant) {
         var provider = new ScalusVmProvider();
-        var target = target(PlutusLanguage.PLUTUS_V3, protocolMajor);
+        var target = target(language, protocolMajor);
 
         provider.setCostModelParams(ones(parameterCount), target);
 
         var ready = assertInstanceOf(
-                ReadyScalusConfiguration.class, provider.plutusV3Configuration);
+                ReadyScalusConfiguration.class, configuration(provider, language));
         assertEquals(target, ready.target());
         assertEquals(target, ready.profile().target());
-        assertEquals(Language.PlutusV3, ready.scalusLanguage());
+        assertEquals(expectedLanguage, ready.scalusLanguage());
         assertEquals(protocolMajor, ready.scalusProtocol().version());
         assertEquals(expectedVariant, ready.profile().semanticsVariant().name());
         assertNotNull(ready.machineParams());
@@ -146,7 +147,7 @@ class ScalusConfigurationTest {
         var baseline = new ScalusVmProvider();
         baseline.setCostModelParams(ones(parameterCount), target);
         var baselineAdd = baseline.evaluate(
-                additionProgram(), PlutusLanguage.PLUTUS_V3, null);
+                additionProgram(PlutusLanguage.PLUTUS_V3), PlutusLanguage.PLUTUS_V3, null);
         var baselineBData = baseline.evaluate(
                 bDataProgram(), PlutusLanguage.PLUTUS_V3, null);
 
@@ -155,7 +156,7 @@ class ScalusConfigurationTest {
         var changed = new ScalusVmProvider();
         changed.setCostModelParams(changedValues, target);
         var changedAdd = changed.evaluate(
-                additionProgram(), PlutusLanguage.PLUTUS_V3, null);
+                additionProgram(PlutusLanguage.PLUTUS_V3), PlutusLanguage.PLUTUS_V3, null);
         var changedBData = changed.evaluate(
                 bDataProgram(), PlutusLanguage.PLUTUS_V3, null);
 
@@ -202,35 +203,84 @@ class ScalusConfigurationTest {
 
         assertSame(readyV3, provider.plutusV3Configuration);
         assertInstanceOf(
-                UnsupportedScalusConfiguration.class, provider.plutusV1Configuration);
+                ReadyScalusConfiguration.class, provider.plutusV1Configuration);
         assertInstanceOf(
-                UnsupportedScalusConfiguration.class, provider.plutusV2Configuration);
+                ReadyScalusConfiguration.class, provider.plutusV2Configuration);
         assertEquals(new ExBudget(8, 8), provider.evaluate(
-                additionProgram(), PlutusLanguage.PLUTUS_V3, null).budgetConsumed());
+                additionProgram(PlutusLanguage.PLUTUS_V3),
+                PlutusLanguage.PLUTUS_V3, null).budgetConsumed());
     }
 
-    @ParameterizedTest(name = "{0}/PV{1} publishes an unsupported configuration")
-    @MethodSource("unsupportedConfiguredTargets")
-    void configuredV1AndV2TargetsPublishUnsupportedWithoutThrowing(
+    @ParameterizedTest(name = "{0}/PV{1} supplied AddInteger cost reaches provider path")
+    @MethodSource("v1V2Targets")
+    void configuredV1AndV2TargetsUseSuppliedLiveCosts(
+            PlutusLanguage language, int protocolMajor, int parameterCount) {
+        var target = target(language, protocolMajor);
+        var baseline = new ScalusVmProvider();
+        baseline.setCostModelParams(ones(parameterCount), target);
+        var changedValues = ones(parameterCount);
+        changedValues[0] += 12_345;
+        var changed = new ScalusVmProvider();
+        changed.setCostModelParams(changedValues, target);
+
+        var baselineResult = baseline.evaluate(
+                additionProgram(language), language, null);
+        var changedResult = changed.evaluate(
+                additionProgram(language), language, null);
+
+        var ready = assertInstanceOf(
+                ReadyScalusConfiguration.class, configuration(changed, language));
+        assertEquals(target, ready.target());
+        assertTrue(baselineResult.isSuccess());
+        assertTrue(changedResult.isSuccess());
+        assertEquals(12_345,
+                changedResult.budgetConsumed().cpuSteps()
+                        - baselineResult.budgetConsumed().cpuSteps());
+        assertEquals(baselineResult.budgetConsumed().memoryUnits(),
+                changedResult.budgetConsumed().memoryUnits());
+    }
+
+    @ParameterizedTest(name = "{0}/PV{1} has the pinned synthetic live-model budget")
+    @MethodSource("v1V2Targets")
+    void configuredV1AndV2TargetsHavePinnedSyntheticBudget(
             PlutusLanguage language, int protocolMajor, int parameterCount) {
         var provider = new ScalusVmProvider();
-        var target = target(language, protocolMajor);
+        provider.setCostModelParams(
+                ones(parameterCount), target(language, protocolMajor));
 
-        provider.setCostModelParams(ones(parameterCount), target);
+        var result = provider.evaluate(
+                additionProgram(language), language, null);
 
-        var configuration = language == PlutusLanguage.PLUTUS_V1
-                ? provider.plutusV1Configuration
-                : provider.plutusV2Configuration;
-        var unsupported = assertInstanceOf(
-                UnsupportedScalusConfiguration.class, configuration);
-        assertEquals(target, unsupported.target());
-        assertEquals(target, unsupported.profile().target());
-        assertTrue(unsupported.reason().startsWith(
-                ScalusVmProvider.UNSUPPORTED_TARGET_PREFIX));
+        assertTrue(result.isSuccess(), () -> language + " failed: " + result);
+        assertEquals(new ExBudget(8, 8), result.budgetConsumed());
     }
 
     @Test
-    void configuringAllTransactionLanguagesKeepsV3UsableAndV1V2FailClosed() {
+    void configuredV1Pv11ReferenceFillsPv11OnlyDropListCost() {
+        var target = LedgerEvaluationTarget.pv11(PlutusLanguage.PLUTUS_V1);
+        var baselineValues = ones(332);
+        var changedValues = baselineValues.clone();
+        changedValues[ScalusVmProvider.V3_PV11_DROP_LIST_CPU_INTERCEPT_INDEX]
+                += 12_345;
+        var baseline = new ScalusVmProvider();
+        baseline.setCostModelParams(baselineValues, target);
+        var changed = new ScalusVmProvider();
+        changed.setCostModelParams(changedValues, target);
+
+        var baselineResult = baseline.evaluate(
+                dropListProgram(), PlutusLanguage.PLUTUS_V1, null);
+        var changedResult = changed.evaluate(
+                dropListProgram(), PlutusLanguage.PLUTUS_V1, null);
+
+        assertTrue(baselineResult.isSuccess(), () -> "baseline failed: " + baselineResult);
+        assertTrue(changedResult.isSuccess(), () -> "changed failed: " + changedResult);
+        assertEquals(baselineResult.budgetConsumed(), changedResult.budgetConsumed(),
+                "Scalus 1.1.0 must expose that the supplied PV11-only position "
+                        + "is ignored by its V1 adapter");
+    }
+
+    @Test
+    void configuringAllTransactionLanguagesKeepsEveryLanguageUsable() {
         var provider = new ScalusVmProvider();
         provider.setCostModelParams(
                 ones(332), LedgerEvaluationTarget.pv11(PlutusLanguage.PLUTUS_V1));
@@ -239,20 +289,31 @@ class ScalusConfigurationTest {
         provider.setCostModelParams(
                 ones(350), LedgerEvaluationTarget.pv11(PlutusLanguage.PLUTUS_V3));
 
-        var v3 = provider.evaluate(
-                additionProgram(), PlutusLanguage.PLUTUS_V3, null);
-        assertTrue(v3.isSuccess());
-        assertEquals(new ExBudget(8, 8), v3.budgetConsumed());
-
         for (var language : List.of(
-                PlutusLanguage.PLUTUS_V1, PlutusLanguage.PLUTUS_V2)) {
+                PlutusLanguage.PLUTUS_V1,
+                PlutusLanguage.PLUTUS_V2,
+                PlutusLanguage.PLUTUS_V3)) {
             var result = provider.evaluate(
-                    Program.plutusV1(Term.const_(Constant.unit())), language, null);
-            var failure = assertInstanceOf(EvalResult.Failure.class, result);
-            assertEquals(ExBudget.ZERO, failure.consumed());
-            assertTrue(failure.error().startsWith(
-                    ScalusVmProvider.UNSUPPORTED_TARGET_PREFIX));
+                    additionProgram(language), language, null);
+            assertTrue(result.isSuccess(), () -> language + " failed: " + result);
+            assertEquals(new ExBudget(8, 8), result.budgetConsumed());
         }
+    }
+
+    private static Stream<Arguments> configuredTargets() {
+        return Stream.of(
+                Arguments.of(PlutusLanguage.PLUTUS_V1, 10, 166,
+                        Language.PlutusV1, "B"),
+                Arguments.of(PlutusLanguage.PLUTUS_V1, 11, 332,
+                        Language.PlutusV1, "D"),
+                Arguments.of(PlutusLanguage.PLUTUS_V2, 10, 185,
+                        Language.PlutusV2, "B"),
+                Arguments.of(PlutusLanguage.PLUTUS_V2, 11, 332,
+                        Language.PlutusV2, "D"),
+                Arguments.of(PlutusLanguage.PLUTUS_V3, 10, 297,
+                        Language.PlutusV3, "C"),
+                Arguments.of(PlutusLanguage.PLUTUS_V3, 11, 350,
+                        Language.PlutusV3, "E"));
     }
 
     private static Stream<Arguments> v3Targets() {
@@ -261,7 +322,7 @@ class ScalusConfigurationTest {
                 Arguments.of(11, 350, "E"));
     }
 
-    private static Stream<Arguments> unsupportedConfiguredTargets() {
+    private static Stream<Arguments> v1V2Targets() {
         return Stream.of(
                 Arguments.of(PlutusLanguage.PLUTUS_V1, 10, 166),
                 Arguments.of(PlutusLanguage.PLUTUS_V1, 11, 332),
@@ -279,16 +340,39 @@ class ScalusConfigurationTest {
         return values;
     }
 
-    private Program additionProgram() {
-        return Program.plutusV3(Term.apply(
+    private Program additionProgram(PlutusLanguage language) {
+        var term = Term.apply(
                 Term.apply(Term.builtin(DefaultFun.AddInteger),
                         Term.const_(Constant.integer(2))),
-                Term.const_(Constant.integer(3))));
+                Term.const_(Constant.integer(3)));
+        return switch (language) {
+            case PLUTUS_V1 -> Program.plutusV1(term);
+            case PLUTUS_V2 -> Program.plutusV2(term);
+            case PLUTUS_V3 -> Program.plutusV3(term);
+        };
+    }
+
+    private ScalusConfiguration configuration(
+            ScalusVmProvider provider, PlutusLanguage language) {
+        return switch (language) {
+            case PLUTUS_V1 -> provider.plutusV1Configuration;
+            case PLUTUS_V2 -> provider.plutusV2Configuration;
+            case PLUTUS_V3 -> provider.plutusV3Configuration;
+        };
     }
 
     private Program bDataProgram() {
         return Program.plutusV3(Term.apply(
                 Term.builtin(DefaultFun.BData),
                 Term.const_(Constant.byteString(new byte[]{1, 2, 3}))));
+    }
+
+    private Program dropListProgram() {
+        var list = new Constant.ListConst(DefaultUni.INTEGER,
+                List.of(Constant.integer(11), Constant.integer(22)));
+        return Program.plutusV1(Term.apply(
+                Term.apply(Term.force(Term.builtin(DefaultFun.DropList)),
+                        Term.const_(Constant.integer(1))),
+                Term.const_(list)));
     }
 }

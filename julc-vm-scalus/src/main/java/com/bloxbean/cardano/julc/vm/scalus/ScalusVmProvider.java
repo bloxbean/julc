@@ -43,9 +43,12 @@ import java.util.Set;
  * atomically. The candidate matrix maps V3/PV10 to semantics C and V3/PV11 to
  * semantics E, but neither profile is certified with Scalus 1.1.0. Public
  * explicit-target evaluation therefore fails closed with zero consumed budget.
- * V1/V2 profiles are also unsupported: there is no pinned corpus, and Scalus
- * reference-fills PV11-only builtin costs while ignoring supplied Constr/Case
- * costs ({@code SCALUS_V1V2_PV11_REFERENCE_FILL}).</p>
+ * V1/V2 explicit targets are also uncertified because there is no pinned
+ * corpus. Their language-only compatibility paths nevertheless retain the
+ * caller's live cost-model array and protocol target. Scalus 1.1.0 consumes
+ * the legacy prices from those arrays but reference-fills PV11-only builtin
+ * costs and ignores supplied Constr/Case costs
+ * ({@code SCALUS_V1V2_PV11_REFERENCE_FILL}).</p>
  *
  * <p>The five upstream divergences blocking certification are
  * {@code SCALUS_HASHTOGROUP_DST_HIGH_BYTE} and
@@ -68,9 +71,11 @@ import java.util.Set;
  * <p>Language-only overloads remain an experimental compatibility surface:
  * configured V3 uses its retained target/model, while unconfigured V3 uses
  * Scalus's PV11/E bundled default (unlike Java/Truffle's PV10 default).
- * Configured V1/V2 fail explicitly; unconfigured V1/V2 retain Scalus defaults
- * without a ledger-parity claim. A non-null {@link ExBudget} restricts both
- * legacy and candidate execution. Exhaustion reports a {@code null}
+ * Configured V1/V2 language-only calls use target-bound Scalus VMs built from
+ * the live supplied arrays; this preserves compatibility but is not an exact
+ * ledger-parity claim for the reference-filled PV11 cost centres.
+ * Unconfigured V1/V2 retain Scalus defaults. A non-null {@link ExBudget}
+ * restricts both legacy and candidate execution. Exhaustion reports a {@code null}
  * {@link EvalResult.BudgetExhausted#failedTerm()} because Scalus 1.1.0 does not
  * expose the term whose budget charge failed.</p>
  */
@@ -107,31 +112,32 @@ public class ScalusVmProvider implements JulcVmProvider {
         var scalusLanguage = toScalusLanguage(target.ledgerLanguage());
         var scalusProtocol = new MajorProtocolVersion(target.protocolVersion().major());
 
-        // Scalus 1.1.0 cannot faithfully carry every supplied V1/V2 cost. Publish an
-        // explicit unsupported state so configuring all transaction languages remains safe.
-        if (target.ledgerLanguage() != PlutusLanguage.PLUTUS_V3) {
-            var unsupported = new UnsupportedScalusConfiguration(
-                    target,
-                    profile,
-                    unsupportedReason(target,
-                            SCALUS_V1V2_PV11_REFERENCE_FILL
-                                    + ": supplied V1/V2 cost models are not certified; "
-                                    + "no pinned corpus proves exact budgets, and Scalus 1.1.0 "
-                                    + "reference-fills or ignores PV11-only costs"));
-            publishConfiguration(target.ledgerLanguage(), unsupported);
-            return;
-        }
-
         var normalized = normalizeCostModelParams(costModelValues, target, profile);
         rejectScalusSentinel(normalized, target);
         var machineParams = machineParamsFrom(normalized, scalusLanguage, scalusProtocol);
         var ready = new ReadyScalusConfiguration(
                 target, profile, scalusLanguage, scalusProtocol, machineParams);
         verifyReadyConfiguration(ready);
+        warnAboutScalusV1V2Pv11ReferenceFill(target);
 
         // This is the only publication point for a ready state. Any exception above
         // leaves the previously published state untouched.
         publishConfiguration(target.ledgerLanguage(), ready);
+    }
+
+    private static void warnAboutScalusV1V2Pv11ReferenceFill(
+            LedgerEvaluationTarget target) {
+        if (target.ledgerLanguage() != PlutusLanguage.PLUTUS_V3
+                && target.protocolVersion().major() >= 11) {
+            int consumedLegacyParameters =
+                    target.ledgerLanguage() == PlutusLanguage.PLUTUS_V1 ? 166 : 185;
+            LOGGER.log(System.Logger.Level.WARNING,
+                    SCALUS_V1V2_PV11_REFERENCE_FILL + ": " + target
+                            + " received the live normalized cost model, but Scalus 1.1.0 "
+                            + "consumes only its first " + consumedLegacyParameters
+                            + " V1/V2 parameters and uses vanRossemReferenceD for "
+                            + "PV11-only builtin prices");
+        }
     }
 
     static long[] normalizeCostModelParams(
@@ -279,6 +285,13 @@ public class ScalusVmProvider implements JulcVmProvider {
         try {
             Objects.requireNonNull(target, "target");
             var profile = ProtocolFeatureRegistry.resolve(target);
+            if (target.ledgerLanguage() != PlutusLanguage.PLUTUS_V3) {
+                return preExecutionFailure(target,
+                        SCALUS_V1V2_PV11_REFERENCE_FILL
+                                + ": explicit V1/V2 profiles remain unsupported; "
+                                + "no pinned corpus proves exact budgets, and Scalus 1.1.0 "
+                                + "reference-fills or ignores PV11-only costs at PV11");
+            }
             if (!skipCertificationGate && !isCertified(target)) {
                 return preExecutionFailure(target, "not certified");
             }

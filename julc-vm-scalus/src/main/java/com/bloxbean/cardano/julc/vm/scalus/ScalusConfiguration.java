@@ -17,7 +17,7 @@ sealed interface ScalusConfiguration
     ProtocolFeatureProfile profile();
 }
 
-/** A target whose complete V3 configuration can be passed to Scalus unchanged. */
+/** A target-bound configuration constructed from the caller-supplied cost array. */
 record ReadyScalusConfiguration(
         LedgerEvaluationTarget target,
         ProtocolFeatureProfile profile,

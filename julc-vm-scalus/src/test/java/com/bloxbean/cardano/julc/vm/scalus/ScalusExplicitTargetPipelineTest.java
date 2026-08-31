@@ -141,31 +141,35 @@ class ScalusExplicitTargetPipelineTest {
                 "non-ledger-serializable constant type " + expectedType);
     }
 
-    @ParameterizedTest(name = "configured unsupported {0} fails before CEK")
-    @MethodSource("unsupportedV1V2Targets")
-    void candidateRejectsConfiguredUnsupportedV1AndV2(
+    @ParameterizedTest(name = "configured candidate {0} remains unsupported")
+    @MethodSource("configuredV1V2Targets")
+    void candidateV1AndV2PathRemainsUnsupported(
             LedgerEvaluationTarget target, int parameterCount) {
         var provider = new ScalusVmProvider();
         provider.setCostModelParams(ones(parameterCount), target);
 
         var result = provider.evaluateCandidate(
-                Program.plutusV1(new Term.Error()), target, null, EvalOptions.DEFAULT);
+                additionProgram(target.ledgerLanguage()),
+                target, null, EvalOptions.DEFAULT);
 
         assertPreExecutionFailure(result, target,
                 ScalusVmProvider.SCALUS_V1V2_PV11_REFERENCE_FILL);
         assertPreExecutionFailure(result, target, "no pinned corpus");
     }
 
-    @ParameterizedTest(name = "unconfigured public {0} remains uncertified")
-    @MethodSource("v1V2Targets")
-    void publicV1AndV2TargetsAreUncertifiedEvenWithoutConfiguration(
-            LedgerEvaluationTarget target) {
+    @ParameterizedTest(name = "configured public {0} remains uncertified")
+    @MethodSource("configuredV1V2Targets")
+    void publicV1AndV2TargetsRemainUncertifiedWithReadyConfiguration(
+            LedgerEvaluationTarget target, int parameterCount) {
         var provider = new ScalusVmProvider();
+        provider.setCostModelParams(ones(parameterCount), target);
 
         var result = provider.evaluate(
-                Program.plutusV1(new Term.Error()), target, null);
+                additionProgram(target.ledgerLanguage()), target, null);
 
-        assertPreExecutionFailure(result, target, "not certified");
+        assertPreExecutionFailure(result, target,
+                ScalusVmProvider.SCALUS_V1V2_PV11_REFERENCE_FILL);
+        assertPreExecutionFailure(result, target, "no pinned corpus");
     }
 
     @ParameterizedTest(name = "candidate plain and args paths agree for V3/PV{0}")
@@ -277,7 +281,7 @@ class ScalusExplicitTargetPipelineTest {
                         "bls12_381_mlresult"));
     }
 
-    private static Stream<Arguments> unsupportedV1V2Targets() {
+    private static Stream<Arguments> configuredV1V2Targets() {
         return Stream.of(
                 Arguments.of(LedgerEvaluationTarget.pv10(PlutusLanguage.PLUTUS_V1), 166),
                 Arguments.of(LedgerEvaluationTarget.pv11(PlutusLanguage.PLUTUS_V1), 332),
@@ -286,7 +290,7 @@ class ScalusExplicitTargetPipelineTest {
     }
 
     private static Stream<Arguments> v1V2Targets() {
-        return unsupportedV1V2Targets().map(arguments ->
+        return configuredV1V2Targets().map(arguments ->
                 Arguments.of(arguments.get()[0]));
     }
 
@@ -314,10 +318,19 @@ class ScalusExplicitTargetPipelineTest {
     }
 
     private static Program additionProgram() {
-        return Program.plutusV3(Term.apply(
+        return additionProgram(PlutusLanguage.PLUTUS_V3);
+    }
+
+    private static Program additionProgram(PlutusLanguage language) {
+        var term = Term.apply(
                 Term.apply(Term.builtin(DefaultFun.AddInteger),
                         Term.const_(Constant.integer(2))),
-                Term.const_(Constant.integer(3))));
+                Term.const_(Constant.integer(3)));
+        return switch (language) {
+            case PLUTUS_V1 -> Program.plutusV1(term);
+            case PLUTUS_V2 -> Program.plutusV2(term);
+            case PLUTUS_V3 -> Program.plutusV3(term);
+        };
     }
 
     private static Program expModProgram() {

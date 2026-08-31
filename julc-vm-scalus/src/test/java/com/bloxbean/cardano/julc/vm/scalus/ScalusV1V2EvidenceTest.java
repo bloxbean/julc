@@ -27,9 +27,10 @@ import java.util.stream.Stream;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
- * Milestone-7 evidence for the V1/V2 profiles that ADR-033 leaves unsupported.
- * These probes call Scalus directly because the provider deliberately rejects
- * these profiles before VM construction.
+ * Milestone-7 evidence for the V1/V2 profiles that ADR-033 leaves uncertified.
+ * These probes call Scalus directly to characterize which entries its 1.1.0
+ * parameter adapters consume or substitute; provider-path live-cost coverage
+ * is asserted separately in {@link ScalusConfigurationTest}.
  */
 class ScalusV1V2EvidenceTest {
 

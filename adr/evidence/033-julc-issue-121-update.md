@@ -7,8 +7,9 @@ documented Scalus support matrix. No unproven profile is enabled:
 
 - V3/PV10/C and V3/PV11/E remain fail-closed because committed tests reproduce
   upstream semantic divergences;
-- V1/V2 remain explicitly unsupported because supplied PV11-only costs are not
-  faithfully represented and there is no pinned corpus;
+- V1/V2 language-only compatibility uses mapped live supplied costs, while
+  their explicit targets remain uncertified because supplied PV11-only costs
+  are not fully represented and there is no pinned corpus;
 - protocol versions above PV11 remain rejected by the shared registry.
 
 The release-gate wording “#74 has an explicit, documented support matrix and
@@ -18,8 +19,8 @@ the PR's outcome. After PR #122 merges, update the tracker as follows:
 ```markdown
 - [x] #74 — ADR-033 implementation complete; no Scalus profile certified.
   Both V3 targets remain fail-closed on reason-coded upstream blockers, and
-  V1/V2 remain unsupported pending faithful supplied-cost handling plus a
-  pinned corpus.
+  V1/V2 compatibility uses mapped live costs but explicit targets remain
+  uncertified pending complete supplied-cost handling plus a pinned corpus.
 ```
 
 The Scalus upstream fixes should not become a pre17 blocker unless the release

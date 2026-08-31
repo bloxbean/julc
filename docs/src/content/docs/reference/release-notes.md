@@ -62,19 +62,44 @@ legacy language-only path, which defaults to PV10 when no protocol-aware cost
 model is configured. A caller may also provide an explicit evaluation target;
 it must match `CompileResult.target()` or evaluation fails before VM execution.
 
-The Scalus adapter does not yet implement JuLC's explicit-target VM SPI.
-Consequently, `ValidatorTest.evaluate(result, ...)` throws
-`UnsupportedOperationException` when Scalus is the only available provider.
-For a Scalus compatibility cross-check, evaluate `result.program()` through
-the language-only overload. The Java VM supports both forms, although the raw
-`Program` form cannot carry compiler-target provenance. Scalus target
-propagation is tracked in
-[#74](https://github.com/bloxbean/julc/issues/74).
+The Scalus adapter now implements JuLC's explicit-target VM SPI. Scalus 1.1.0
+has no certified target in JuLC, so `ValidatorTest.evaluate(result, ...)` with
+Scalus as the only provider returns a deterministic zero-budget
+`EvalResult.Failure` prefixed `Unsupported Scalus ledger target:` rather than
+throwing `UnsupportedOperationException`. For a Scalus compatibility
+cross-check, evaluate `result.program()` through the language-only overload.
+The Java VM supports both forms, although the raw `Program` form cannot carry
+compiler-target provenance. See
+[ADR-033's certification evidence](https://github.com/bloxbean/julc/blob/main/adr/033-scalus-protocol-aware-ledger-target-evaluation.md#certification-evidence).
 
 The CLI, Gradle plugin, annotation processor, JRL compiler, and MCP tools accept
 and report the same stable profile ID. Supporting a later protocol version will
 add and verify a separate pinned profile; it will not silently change the PV11
 default.
+
+## Upcoming preview: Scalus protocol-aware evaluation (ADR-033)
+
+The Scalus adapter now has atomic per-language configurations, target-bound
+V1/V2/V3 VM construction, and one validated explicit-target pipeline. Public
+explicit-target calls remain fail-closed because five reason-coded upstream
+Scalus 1.1.0 divergences prevent V3/PV10 and V3/PV11 certification.
+
+Cardano Client Lib continues to supply current protocol-parameter cost arrays
+for V1, V2, and V3. Configured Scalus language-only evaluation now passes all
+three arrays to `MachineParams.fromCostModels` with the matching language and
+protocol. Compared with `main`, this changes configured V1/V2 transaction
+evaluation from Scalus's bundled mainnet defaults to the current live model.
+Scalus consumes the mapped live V1/V2 prices; its 1.1.0 V1/V2
+adapters still reference-fill PV11-only builtin costs and ignore audited
+Constr/Case positions, so that compatibility behavior is not a complete
+ledger-parity claim. Pinned conformance vectors are test evidence only and are
+never substituted for runtime protocol parameters.
+
+A non-null `ExBudget` is now enforced; exceeding it returns
+`EvalResult.BudgetExhausted`. Array and Value results now cross the Scalus
+bridge. Unconfigured language-only V3 retains Scalus 1.1.0's PV11/E bundled
+default, which differs from Java/Truffle's PV10 compatibility default. These VM
+changes do not modify compiled UPLC, FLAT bytes, or script hashes.
 
 ## Upcoming preview: strict typed datum/redeemer boundaries
 

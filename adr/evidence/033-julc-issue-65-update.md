@@ -27,10 +27,12 @@ target itself is certified. It is not exact as V3/PV10/C (445/482; 37 budget
 mismatches caused by seven snapshot coefficients), so explicit PV10 requires a
 matching configured model even after semantic blockers are resolved.
 
-V1/V2 remain unsupported under `SCALUS_V1V2_PV11_REFERENCE_FILL`: legacy
-prices propagate, but Scalus ignores supplied Constr/Case positions and fills
-PV11-only builtin prices from its reference model, and JuLC has no pinned V1/V2
-corpus.
+V1/V2 language-only compatibility now passes the live node arrays into
+target-bound Scalus machines, and provider-path perturbations prove mapped
+legacy prices propagate for all four PV10/PV11 profiles. Their explicit
+targets remain uncertified under `SCALUS_V1V2_PV11_REFERENCE_FILL`: Scalus
+ignores supplied Constr/Case positions and fills PV11-only builtin prices from
+its reference model, and JuLC has no pinned V1/V2 corpus.
 
 ADR-030 now points to ADR-033's Certification evidence for the exact matrix and
 committed reproducers. This completes #74's evidence-producing work without

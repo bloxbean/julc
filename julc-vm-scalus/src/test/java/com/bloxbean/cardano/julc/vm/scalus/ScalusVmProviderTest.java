@@ -43,7 +43,10 @@ class ScalusVmProviderTest {
         assertEquals(ExBudget.ZERO, failure.consumed());
         assertTrue(failure.error().startsWith(
                 ScalusVmProvider.UNSUPPORTED_TARGET_PREFIX + target));
-        if (target.protocolVersion().major() <= 11) {
+        if (target.ledgerLanguage() != PlutusLanguage.PLUTUS_V3) {
+            assertTrue(failure.error().contains(
+                    ScalusVmProvider.SCALUS_V1V2_PV11_REFERENCE_FILL));
+        } else if (target.protocolVersion().major() <= 11) {
             assertTrue(failure.error().endsWith(": not certified"));
         } else {
             assertTrue(failure.error().contains("newer than the supported PV11 profile"));
@@ -755,23 +758,26 @@ class ScalusVmProviderTest {
         }
 
         @Test
-        void configuredV1AndV2PathsNowFailClosed() {
-            var syntheticValues = new long[350];
-            Arrays.fill(syntheticValues, 1L);
-
+        void configuredV1AndV2PathsUseSuppliedLiveModels() {
             for (var language : List.of(
                     PlutusLanguage.PLUTUS_V1, PlutusLanguage.PLUTUS_V2)) {
+                var syntheticValues = new long[332];
+                Arrays.fill(syntheticValues, 1L);
                 var configured = new ScalusVmProvider();
                 configured.setCostModelParams(syntheticValues, language, 11, 0);
-                var program = new Program(1, 0, 0, Term.const_(Constant.unit()));
+                var term = Term.apply(
+                        Term.apply(Term.builtin(DefaultFun.AddInteger),
+                                Term.const_(Constant.integer(1))),
+                        Term.const_(Constant.integer(2)));
+                var program = language == PlutusLanguage.PLUTUS_V1
+                        ? Program.plutusV1(term)
+                        : Program.plutusV2(term);
 
                 var result = configured.evaluate(program, language, null);
 
-                var failure = assertInstanceOf(EvalResult.Failure.class, result);
-                assertEquals(ExBudget.ZERO, failure.consumed());
-                assertTrue(failure.error().startsWith(
-                        ScalusVmProvider.UNSUPPORTED_TARGET_PREFIX));
-                assertInstanceOf(UnsupportedScalusConfiguration.class,
+                assertTrue(result.isSuccess(), () -> language + " failed: " + result);
+                assertEquals(new ExBudget(8, 8), result.budgetConsumed());
+                assertInstanceOf(ReadyScalusConfiguration.class,
                         language == PlutusLanguage.PLUTUS_V1
                                 ? configured.plutusV1Configuration
                                 : configured.plutusV2Configuration);

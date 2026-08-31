@@ -4,7 +4,8 @@
 
 **Date:** 2026-08-30
 
-**Revised:** 2026-08-31 after implementation and certification evidence audit
+**Revised:** 2026-08-31 after implementation, certification evidence audit,
+and the compatibility correction preserving live-cost V1/V2 evaluation
 
 **Authors:** JuLC team
 
@@ -59,7 +60,8 @@ JuLC Program
     -> JuLC EvalResult
 ```
 
-Its current configuration consists of two independently published fields:
+Before this ADR was implemented, its configuration consisted of two
+independently published fields:
 
 ```java
 volatile MachineParams machineParams;
@@ -71,9 +73,9 @@ but constructs custom `MachineParams` only for V3. The language-only V3 path
 uses both values when they are non-null. V1 and V2 continue to use Scalus's
 no-argument factories and ignore the supplied parameter array.
 
-The resulting behavior is:
+The resulting baseline behavior was:
 
-| API path | Current behavior |
+| API path | Pre-ADR behavior |
 |---|---|
 | Language-only V3 after matching configuration | Uses the configured V3 machine parameters and retained protocol major |
 | Language-only V3 without configuration | Uses Scalus's bundled mainnet defaults |
@@ -199,11 +201,13 @@ the constant, intercept, and slope for `equalsByteString`. The supplied-profile
 run, not the bundled run, is the target-certification evidence.
 
 The V1/V2 audit confirms factory mappings B/D and proves that caller-supplied
-legacy AddInteger prices are active, but Scalus 1.1.0 ignores supplied
-V3-schema Constr/Case positions and reference-fills Batch-6 costs for PV11.
-Every V1/V2 row therefore remains unsupported under reason code
-`SCALUS_V1V2_PV11_REFERENCE_FILL`; there is also no pinned V1/V2 corpus on
-which to base an exact claim.
+legacy AddInteger prices are active. The compatibility path therefore builds
+target-bound V1/V2 machines from the live supplied arrays instead of rejecting
+all configured V1/V2 calls or reverting to bundled defaults. Scalus 1.1.0
+still ignores supplied V3-schema Constr/Case positions and reference-fills
+Batch-6 costs for PV11. Every V1/V2 explicit-target row therefore remains
+uncertified under reason code `SCALUS_V1V2_PV11_REFERENCE_FILL`; there is also
+no pinned V1/V2 corpus on which to base an exact ledger-parity claim.
 
 ## Problem statement
 
@@ -329,7 +333,7 @@ coverage. The corresponding builtins must be exercised through compressed
 ByteStrings and intermediate G1/G2/MlResult values, with a ledger-serializable
 final result such as ByteString, Bool, or Unit.
 
-### I8. Legacy V3 remains compatible
+### I8. Legacy language-only evaluation remains compatible
 
 After `setCostModelParams(values, PLUTUS_V3, major, minor)`, the language-only
 V3 API continues to use the configured parameters and corresponding protocol
@@ -339,6 +343,18 @@ The preserved unconfigured default is explicitly Scalus-specific and currently
 means PV11/E, unlike the Java/Truffle PV10 compatibility default. It is not a
 ledger-parity claim and must not be used to choose semantics for the canonical
 explicit-target path.
+
+After `setCostModelParams` for V1 or V2, the language-only path constructs the
+matching Scalus language/protocol VM from the caller-supplied array. This is
+required by Cardano Client Lib, which supplies current governance-controlled
+cost values for all three languages before resolving the redeemer language.
+It is a compatibility guarantee, not certification that Scalus consumes every
+PV11-appended V1/V2 field.
+
+The human decision recorded through the review mailbox at
+`2026-08-31 20:16 +08` is: “Pinned costs are only for conformance tests, never
+runtime transaction evaluation” and “we should also pass V1, V2 live costs.”
+This supersedes the earlier planning-only V1/V2 bundled-default fallback.
 
 ### I9. Budget limits are not advisory
 
@@ -361,10 +377,10 @@ Issue #74 will establish the following initial explicit-target matrix:
 |---|---|---|---|
 | V3/PV10 | Candidate — blocked upstream (`SCALUS_HASHTOGROUP_DST_HIGH_BYTE`, `SCALUS_SLICEBYTESTRING_INT64_NARROWING`) | C | Matching configured model required; bundled snapshot is not exact |
 | V3/PV11 | Candidate — blocked upstream (all five codes in Certification evidence) | E | Matching configured model; bundled snapshot is exact but stays disabled until certification |
-| V1/PV10 | Explicitly unsupported — no pinned corpus | B | Not claimed; `SCALUS_V1V2_PV11_REFERENCE_FILL` records the shared audit outcome |
-| V1/PV11 | Explicitly unsupported — reference fill/ignored costs and no pinned corpus | D | Not claimed; `SCALUS_V1V2_PV11_REFERENCE_FILL` |
-| V2/PV10 | Explicitly unsupported — no pinned corpus | B | Not claimed; `SCALUS_V1V2_PV11_REFERENCE_FILL` records the shared audit outcome |
-| V2/PV11 | Explicitly unsupported — reference fill/ignored costs and no pinned corpus | D | Not claimed; `SCALUS_V1V2_PV11_REFERENCE_FILL` |
+| V1/PV10 | Explicit target uncertified — no pinned corpus | B | Live supplied array used by compatibility path; no exact profile claim |
+| V1/PV11 | Explicit target uncertified — reference fill/ignored costs and no pinned corpus | D | Live supplied array used where Scalus maps it; `SCALUS_V1V2_PV11_REFERENCE_FILL` |
+| V2/PV10 | Explicit target uncertified — no pinned corpus | B | Live supplied array used by compatibility path; no exact profile claim |
+| V2/PV11 | Explicit target uncertified — reference fill/ignored costs and no pinned corpus | D | Live supplied array used where Scalus maps it; `SCALUS_V1V2_PV11_REFERENCE_FILL` |
 | Any target above PV11 | Unsupported | Unknown to JuLC | Rejected by `ProtocolFeatureRegistry` |
 | Other language/protocol pairs | Unsupported by this ADR | Not certified here | Rejected by the Scalus support gate |
 
@@ -412,12 +428,13 @@ Construction happens entirely in local variables. A ready state is assigned
 only after target resolution, parameter normalization, Scalus model
 construction, and consistency checks all succeed.
 
-Configuration for a profile that this adapter cannot faithfully honor is
-recorded as unsupported instead of being silently ignored. This is important
-for the language-only consumer path: `JulcTransactionEvaluator` configures
-V1/V2/V3 before it knows which redeemer language will execute. Recording an
-unsupported V1/V2 state allows a V3 transaction to proceed while making a
-later V1/V2 evaluation fail closed rather than use unrelated bundled prices.
+Configuration for a target/model mismatch is represented as unsupported rather
+than silently redirected to another target. `JulcTransactionEvaluator`
+configures V1/V2/V3 from current protocol parameters before it knows which
+redeemer language will execute, so each valid supplied array is instead
+published as an independent ready state. A later language-only V1/V2 call uses
+that state and never falls back to unrelated bundled prices merely because the
+profile is not yet certified for the strict explicit-target API.
 
 An evaluation reads the relevant slot exactly once and passes that local
 snapshot through the remaining call chain. It either uses a complete ready
@@ -517,9 +534,14 @@ sentinel and therefore must remain intact rather than being rewritten to
 `300_000_000`.
 
 For V1/V2/PV11, Scalus's parameter types themselves do not carry all supplied
-PV11 machine and builtin values. Those profiles therefore produce an
-`UnsupportedScalusConfiguration` in the initial implementation; JuLC does not
-publish the partially substituted `MachineParams` as ready.
+PV11 machine and builtin values. The adapter still passes the complete live
+array to `MachineParams.fromCostModels` and publishes the resulting target-bound
+configuration for the compatibility API. It does not describe that state as
+fully supplied or ledger-certified: Scalus consumes the supported legacy
+prices but internally reference-fills or ignores the audited PV11-only fields.
+The provider emits one warning for each V1/V2 PV11 configuration call so this
+provenance limitation is observable without adding per-evaluation traces. The
+explicit-target support gate remains closed independently.
 
 Before publication, the implementation constructs `CostModels` under the
 selected Scalus language id and calls
@@ -596,14 +618,18 @@ specified behavior:
 | Configured V3 with a ready state | Use the retained V3 target and supplied model |
 | Configured V3 with an unsupported state | Fail with zero budget; never use bundled defaults |
 | Unconfigured V3 | Preserve Scalus's no-argument factory; in 1.1.0 this is PV11/E plus the bundled epoch-645 mainnet model |
-| Configured V1/V2 while those profiles are uncertified | Record unsupported configuration and fail evaluation with zero budget |
+| Configured V1/V2 while explicit profiles are uncertified | Build the matching target-bound VM from the live supplied array; do not claim complete PV11 cost coverage or ledger certification |
 | Unconfigured V1/V2 | Preserve the existing no-argument factories for experimental compatibility; do not describe them as configured or ledger-certified |
 
-`setCostModelParams` for an uncertified V1/V2 profile does not throw
-immediately because `JulcTransactionEvaluator` configures every language before
-resolving the redeemer's actual language. Publishing an unsupported state lets
-unrelated V3 scripts continue, while a V1/V2 script fails when selected instead
-of silently using bundled costs.
+`setCostModelParams` for V1/V2 constructs `MachineParams` from the array that
+Cardano Client Lib read from the current protocol parameters. This preserves
+the established transaction-evaluation path and applies governance changes to
+every V1/V2 cost that Scalus 1.1.0 maps. It does not silently substitute the
+entire bundled model. For PV11, the audited Scalus parameter adapters still
+reference-fill Batch-6 prices and ignore the appended Constr/Case positions;
+that limitation is the reason the strict explicit-target profiles remain
+uncertified, not a reason to reject ordinary compatibility evaluation that
+uses mapped live prices.
 
 Configuring V1/V2 must no longer mutate protocol state later observed by a V3
 evaluation. Language-only calls do not expand the explicit certified matrix.
@@ -775,6 +801,23 @@ than introducing an adapter-level validation failure.
 No compiler lowering, AST representation, serialized program, or validator
 argument interpretation is intended to change.
 
+## Milestone log
+
+| Milestone | Commit |
+|---|---|
+| M1 — baseline and corpus inventory | `f490fd55` |
+| M2 — atomic configuration and cost adaptation | `49e460f4` |
+| M3 — explicit-target candidate pipeline | `9a2b01eb` |
+| M4 — budget enforcement | `157ed71a` |
+| M5 — protocol behavior and upstream reproducers | `7cc615ed`, corrected by `e5f8bfbd` |
+| M6 — bridge and pinned conformance matrix | `c8bee9ad`, corrected by `1feaccc3` |
+| M7 — V1/V2 evidence audit | `cba93701` |
+| M8 — integration evidence and documentation | `56d953bc` |
+
+The post-M8 compatibility correction retains the milestone evidence while
+restoring live-cost language-only V1/V2 evaluation. It does not certify an
+additional explicit target.
+
 ## Detailed implementation plan
 
 ### Milestone 1 — Freeze the current behavior and reference inventory
@@ -805,8 +848,8 @@ argument interpretation is intended to change.
   failed update leaves the previous ready state intact.
 - Add a regression proving V1/V2 configuration cannot alter a V3 snapshot.
 - Add a Cardano Client Lib-shaped regression proving that configuring all
-  three languages permits a ready V3 evaluation while configured V1/V2 fail
-  explicitly until certified.
+  three languages publishes independent ready snapshots and preserves
+  language-only V1/V2/V3 evaluation from the supplied arrays.
 
 ### Milestone 3 — One explicit-target evaluation pipeline
 
@@ -885,7 +928,7 @@ argument interpretation is intended to change.
   has merged; issue #65 is the authoritative tracker in the meantime.
 - Run `JulcVm` and testkit explicit-target consumer tests.
 - Run Cardano Client Lib tests for its actual language-only evaluator path:
-  configured V3, configured-unsupported V1/V2, and non-null budget exhaustion.
+  configured V1/V2/V3 live-cost propagation and non-null budget exhaustion.
   Its current explicit target is used for script decoding, not provider
   evaluation.
 
@@ -896,7 +939,7 @@ argument interpretation is intended to change.
 At minimum, the implementation must add tests for:
 
 - explicit V3/PV10 and V3/PV11 success;
-- unsupported V1/V2 targets returning deterministic failures;
+- uncertified public V1/V2 targets returning deterministic failures;
 - target/configured-model mismatch before bridge work;
 - protocol minor differences retaining the same major-version semantics;
 - PV12 and later rejection;
@@ -904,7 +947,7 @@ At minimum, the implementation must add tests for:
 - custom parameter perturbation changing the expected budget component;
 - failed configuration leaving the previous record intact;
 - no cross-language configuration leakage;
-- configured-unsupported V1/V2 behavior through the language-only consumer
+- configured V1/V2 live-cost perturbations through the language-only provider
   path;
 - rejection of the exact V3/PV11 `300_000_000` fallback sentinel;
 - non-null budget enforcement and CPU/memory orientation;
@@ -971,8 +1014,10 @@ Intentional corrections are:
   exception once certified;
 - target/model mismatches fail deterministically;
 - V1/V2 configuration no longer leaks protocol state into V3;
-- configured V1/V2 evaluation fails explicitly while those profiles are
-  uncertified instead of silently ignoring the supplied model;
+- configured V1/V2 evaluation uses target-bound machines constructed from the
+  live supplied models instead of ignoring the arrays or falling back to the
+  entire bundled model; PV11 fields Scalus internally substitutes remain
+  documented and outside the certification claim;
 - a supplied budget is enforced instead of ignored.
 
 These changes affect evaluation behavior, not compiled script bytes or hashes.
@@ -1046,7 +1091,7 @@ vectors.
 | Risk | Mitigation |
 |---|---|
 | Scalus semantics selection drifts in a dependency update | Pin the exact reviewed release and assert VM language/protocol/variant plus the complete matrix before any upgrade |
-| Caller-supplied costs are replaced by Scalus fallback values | Normalize explicitly, reject the V3 sentinel, publish V1/V2 as unsupported, and perturb individual parameters |
+| Caller-supplied costs are replaced by Scalus fallback values | Normalize explicitly, reject the V3 sentinel, perturb V1/V2/V3 provider-path parameters, document audited V1/V2 PV11 substitutions, and keep those explicit profiles uncertified |
 | CPU and memory are transposed at Scala/Java boundaries | Exact asymmetric budget vectors and restricting-budget tests |
 | Bridge conversion is mistaken for CEK correctness | Classify bridge failures separately and test the entire adapter path |
 | New corpus files are silently skipped | Assert complete inventory and fixed reason-coded classification counts |
@@ -1079,9 +1124,9 @@ vectors.
   certification is complete.
 - Enforcing `ExBudget` changes a previously ignored argument into observable
   behavior.
-- Configured language-only V1/V2 evaluation changes from silently using
-  unrelated defaults to an explicit failure until those profiles are
-  certified.
+- Scalus 1.1.0 can use live supplied V1/V2 legacy prices while still
+  reference-filling or ignoring audited PV11-only fields; compatibility calls
+  therefore remain usable but cannot be advertised as exact ledger parity.
 
 ## Acceptance criteria
 
@@ -1096,10 +1141,11 @@ vectors.
 - [x] Configuration is atomically published as one immutable ready or
       unsupported per-language state.
 - [x] Existing configured language-only V3 tests remain green.
-- [x] V1/V2 explicit targets fail with a documented unsupported-profile result
+- [x] Public V1/V2 explicit targets fail at the documented certification gate
       until separately certified.
-- [x] Configured language-only V1/V2 calls also fail explicitly, while their
-      state does not prevent configured V3 evaluation in Cardano Client Lib.
+- [x] Configured language-only V1/V2 calls publish target-bound ready states,
+      use mapped live supplied costs, and do not alter configured V3 state;
+      PV11 reference-filled fields remain outside the certification claim.
 - [x] Unconfigured language-only V3 remains pinned to the documented Scalus
       1.1.0 PV11/E default and its divergence from Java/Truffle is tested.
 - [x] V3/PV11 configuration rejects the exact `300_000_000`
@@ -1138,12 +1184,15 @@ vectors.
    programs. The two 255-byte-DST points differ after compression, and the
    derived large-DST signature fixture returns `False` instead of the ledger
    golden `True`. `SCALUS_HASHTOGROUP_DST_HIGH_BYTE` blocks both V3 targets.
-3. **V1/V2 supplied costs:** Scalus 1.1.0 consumes perturbed legacy prices, but
-   its V1/V2 parameter adapters ignore supplied Constr/Case positions and use
+3. **V1/V2 supplied costs:** the provider passes the live arrays to Scalus and
+   target-bound language-only evaluation consumes perturbed legacy prices for
+   V1/PV10, V1/PV11, V2/PV10, and V2/PV11. Scalus 1.1.0's V1/V2 parameter
+   adapters nevertheless ignore supplied Constr/Case positions and use
    `vanRossemReferenceD` for PV11-only builtin prices. With no pinned V1/V2
-   corpus, all four profiles remain unsupported under
+   corpus, all four explicit profiles remain uncertified under
    `SCALUS_V1V2_PV11_REFERENCE_FILL`. A later Scalus release requires a new
-   complete audit; no support is inferred from its factory signatures.
+   complete audit; compatibility execution is not promoted into a parity
+   claim.
 4. **Budget-exhaustion failed term:** Scalus 1.1.0 does not expose the term
    whose charge failed. The adapter returns `EvalResult.BudgetExhausted` with
    the consumed budget and logs and with `failedTerm = null`; tests pin CPU and
