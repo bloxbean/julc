@@ -30,11 +30,15 @@ operations, and first-class integration with [cardano-client-lib](https://github
 
 JuLC supports two VM choices for local evaluation: its pure-Java VM and the
 [Scalus](https://scalus.org/) backend. Both can evaluate JuLC-generated UPLC.
-The Java VM additionally integrates with JuLC's complete compiler-target
-provenance for explicit protocol-aware evaluation and cost selection. Scalus is
-a supported alternative evaluator and provides a valuable independent
-cross-check of generated programs. Users can choose the backend that best fits
-their application. Huge thanks to the Scalus team for building and
+The Java VM integrates with JuLC's complete compiler-target provenance for
+explicit protocol-aware evaluation and cost selection. The Scalus adapter also
+implements the explicit-target SPI, but Scalus 1.1.0 has no certified ledger
+target in JuLC: those calls throw `UnsupportedOperationException` at the
+backend-capability gate before evaluation. Its language-only compatibility API
+remains available for V1/V2/V3 evaluation and
+uses live supplied cost arrays when configured, subject to the documented
+Scalus V1/V2 PV11 cost-field limitations. Scalus remains a valuable independent
+cross-check of generated programs. Huge thanks to the Scalus team for building and
 open-sourcing a high-quality Plutus VM that made this project possible.
 
 ## Features
@@ -115,8 +119,9 @@ dependencies {
 
 Only one VM backend is required. If both are present, JuLC selects the Java VM
 by default; select `Scalus` explicitly when an independent evaluation is
-desired. Protocol-target propagation through the Scalus adapter is tracked in
-[issue #74](https://github.com/bloxbean/julc/issues/74).
+desired. The Scalus adapter implements target propagation, but its public
+explicit-target gate remains closed until a profile passes the complete
+[ADR-033 certification matrix](adr/033-scalus-protocol-aware-ledger-target-evaluation.md#certification-evidence).
 
 For detailed dependencies, check the [getting started](docs/src/content/docs/getting-started.md) guide or the `julc-helloworld` example at https://github.com/bloxbean/julc-helloworld.
 
@@ -292,14 +297,15 @@ if (!result.hasErrors()) {
 
 ```java
 // Java VM: preferred target-aware evaluation. This passes result.target()
-// through to the VM. With only the Scalus VM on the classpath, this currently
-// throws UnsupportedOperationException; Scalus target propagation is tracked
-// in issue #74.
+// through to the VM. With only Scalus present, the implemented target-aware
+// path currently throws UnsupportedOperationException because no Scalus
+// 1.1.0 target
+// has passed ADR-033 certification.
 var evalResult = ValidatorTest.evaluate(result, datum, redeemer, scriptContext);
 
-// Scalus VM alternative: replace the line above with direct language-compatible
-// evaluation. Both ValidatorTest overloads use the explicit PV11 target in the
-// current compiler testkit, which the Scalus adapter does not yet accept.
+// Scalus compatibility cross-check: use the language-only API. Configured
+// V1/V2/V3 calls receive live protocol cost arrays; see ADR-033 for the audited
+// V1/V2 PV11 fields that Scalus 1.1.0 reference-fills or ignores.
 // var scalus = JulcVm.create("Scalus");
 // var evalResult = scalus.evaluateWithArgs(
 //         result.program(), List.of(datum, redeemer, scriptContext));
@@ -310,9 +316,12 @@ assertTrue(evalResult.isSuccess());
 Passing the `CompileResult` lets `julc-testkit` hand the exact compiler target
 to the VM. The testkit's raw `Program` overload assumes JuLC's current
 V3/PV11 compiler target when provenance is unavailable. The Scalus adapter
-currently supports direct language-compatible evaluation but not this
-explicit-target testkit path; that integration is tracked in
-[issue #74](https://github.com/bloxbean/julc/issues/74).
+implements this explicit-target testkit path, but throws
+`UnsupportedOperationException` while its certification set is empty. Use the
+Java VM for canonical target-aware
+evaluation and Scalus's language-only overloads for an independent
+compatibility cross-check. See
+[ADR-033](adr/033-scalus-protocol-aware-ledger-target-evaluation.md#certification-evidence).
 
 ## Requirements
 

@@ -16,6 +16,7 @@ sourceSets {
 dependencies {
     api project(':julc-vm')
     implementation 'org.scalus:scalus_3:1.1.0'
+    testRuntimeOnly project(':julc-bls')
 }
 
 publishing {

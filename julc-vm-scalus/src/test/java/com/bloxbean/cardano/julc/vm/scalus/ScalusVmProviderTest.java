@@ -5,9 +5,14 @@ import com.bloxbean.cardano.julc.vm.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.math.BigInteger;
+import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -26,15 +31,47 @@ class ScalusVmProviderTest {
         assertEquals(50, provider.priority());
     }
 
-    @Test
-    void explicitLedgerTargetFailsClosedUntilProfileMatrixIsSupported() {
-        var program = Program.plutusV3(Term.const_(Constant.unit()));
+    @ParameterizedTest(name = "explicit target {0} fails closed before certification")
+    @MethodSource("uncertifiedLedgerTargets")
+    void explicitLedgerTargetsFailClosedUntilProfileMatrixIsSupported(
+            LedgerEvaluationTarget target) {
+        var program = Program.plutusV3(new Term.Error());
 
-        var error = assertThrows(UnsupportedOperationException.class,
-                () -> provider.evaluate(program,
-                        LedgerEvaluationTarget.pv11(PlutusLanguage.PLUTUS_V3), null));
+        if (target.protocolVersion().major() <= 11) {
+            var error = assertThrows(UnsupportedOperationException.class,
+                    () -> provider.evaluate(program, target, null));
+            assertTrue(error.getMessage().startsWith(
+                    "Scalus provider does not support protocol-aware evaluation for "
+                            + target));
+            if (target.ledgerLanguage() == PlutusLanguage.PLUTUS_V3) {
+                assertTrue(error.getMessage().endsWith(": not certified"));
+            } else {
+                assertTrue(error.getMessage().contains(
+                        ScalusVmProvider.SCALUS_V1V2_PV11_REFERENCE_FILL));
+            }
+            return;
+        }
 
-        assertTrue(error.getMessage().contains("does not support protocol-aware evaluation"));
+        var failure = assertInstanceOf(EvalResult.Failure.class,
+                provider.evaluate(program, target, null));
+
+        assertEquals(ExBudget.ZERO, failure.consumed());
+        assertTrue(failure.error().startsWith(
+                ScalusVmProvider.UNSUPPORTED_TARGET_PREFIX + target));
+        assertTrue(failure.error().contains("newer than the supported PV11 profile"));
+    }
+
+    private static Stream<Arguments> uncertifiedLedgerTargets() {
+        return Stream.of(
+                LedgerEvaluationTarget.pv10(PlutusLanguage.PLUTUS_V3),
+                LedgerEvaluationTarget.pv11(PlutusLanguage.PLUTUS_V3),
+                LedgerEvaluationTarget.pv10(PlutusLanguage.PLUTUS_V1),
+                LedgerEvaluationTarget.pv11(PlutusLanguage.PLUTUS_V1),
+                LedgerEvaluationTarget.pv10(PlutusLanguage.PLUTUS_V2),
+                LedgerEvaluationTarget.pv11(PlutusLanguage.PLUTUS_V2),
+                new LedgerEvaluationTarget(
+                        PlutusLanguage.PLUTUS_V3, new ProtocolVersion(12, 0)))
+                .map(Arguments::of);
     }
 
     @Test
@@ -711,60 +748,72 @@ class ScalusVmProviderTest {
     class CostModelParams {
 
         @Test
-        void customMachineParams_usedByVm() {
-            // Verify the machineParams field is wired through to createVm.
-            // Directly set machineParams via Scalus API and confirm evaluation uses it.
-            var customProvider = new ScalusVmProvider();
-            var defaultMp = scalus.uplc.eval.MachineParams.defaultPlutusV3Params();
-            // Invoke setCostModelParams indirectly by setting the field
-            // (accessible since test is in same package).
-            // Instead, use the Scalus API directly to set machineParams.
-            customProvider.machineParams = defaultMp;
-            customProvider.protocolVersion = scalus.cardano.ledger.MajorProtocolVersion.changPV();
+        void currentUnconfiguredLanguageOnlyBudgetsArePinned() {
+            for (var language : List.of(
+                    PlutusLanguage.PLUTUS_V1,
+                    PlutusLanguage.PLUTUS_V2,
+                    PlutusLanguage.PLUTUS_V3)) {
+                var versionMinor = language == PlutusLanguage.PLUTUS_V3 ? 1 : 0;
+                var program = new Program(1, versionMinor, 0,
+                        Term.const_(Constant.unit()));
 
-            // Evaluate: 10 + 20 = 30
-            var term = Term.apply(
-                    Term.apply(
-                            Term.builtin(DefaultFun.AddInteger),
-                            Term.const_(Constant.integer(10))),
-                    Term.const_(Constant.integer(20)));
-            var program = Program.plutusV3(term);
+                var result = new ScalusVmProvider().evaluate(program, language, null);
 
-            var result = customProvider.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
-            assertTrue(result.isSuccess());
-            var c = (Term.Const) ((EvalResult.Success) result).resultTerm();
-            assertEquals(BigInteger.valueOf(30), ((Constant.IntegerConst) c.value()).value());
-            assertTrue(result.budgetConsumed().cpuSteps() > 0);
-            assertTrue(result.budgetConsumed().memoryUnits() > 0);
+                assertTrue(result.isSuccess(), () -> language + " failed: " + result);
+                assertEquals(new ExBudget(16_100, 200), result.budgetConsumed(),
+                        () -> "Unexpected bundled-default budget for " + language);
+            }
         }
 
         @Test
-        void customMachineParams_budgetMatchesDefault() {
-            // Verify that using default params explicitly produces the same budget
-            // as the no-params path.
+        void configuredV1AndV2PathsUseSuppliedLiveModels() {
+            for (var language : List.of(
+                    PlutusLanguage.PLUTUS_V1, PlutusLanguage.PLUTUS_V2)) {
+                var syntheticValues = new long[332];
+                Arrays.fill(syntheticValues, 1L);
+                var configured = new ScalusVmProvider();
+                configured.setCostModelParams(syntheticValues, language, 11, 0);
+                var term = Term.apply(
+                        Term.apply(Term.builtin(DefaultFun.AddInteger),
+                                Term.const_(Constant.integer(1))),
+                        Term.const_(Constant.integer(2)));
+                var program = language == PlutusLanguage.PLUTUS_V1
+                        ? Program.plutusV1(term)
+                        : Program.plutusV2(term);
+
+                var result = configured.evaluate(program, language, null);
+
+                assertTrue(result.isSuccess(), () -> language + " failed: " + result);
+                assertEquals(new ExBudget(8, 8), result.budgetConsumed());
+                assertInstanceOf(ReadyScalusConfiguration.class,
+                        language == PlutusLanguage.PLUTUS_V1
+                                ? configured.plutusV1Configuration
+                                : configured.plutusV2Configuration);
+            }
+        }
+
+        @Test
+        void currentConfiguredV3PathUsesSyntheticCostModelExactly() {
+            var syntheticValues = new long[350];
+            Arrays.fill(syntheticValues, 1L);
+            var configured = new ScalusVmProvider();
+            configured.setCostModelParams(
+                    syntheticValues, PlutusLanguage.PLUTUS_V3, 11, 0);
             var term = Term.apply(
-                    Term.apply(
-                            Term.builtin(DefaultFun.AddInteger),
+                    Term.apply(Term.builtin(DefaultFun.AddInteger),
                             Term.const_(Constant.integer(2))),
                     Term.const_(Constant.integer(3)));
-            var program = Program.plutusV3(term);
 
-            // Without custom params
-            var defaultProvider = new ScalusVmProvider();
-            var defaultResult = defaultProvider.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
+            var result = configured.evaluate(
+                    Program.plutusV3(term), PlutusLanguage.PLUTUS_V3, null);
 
-            // With default params set explicitly
-            var customProvider = new ScalusVmProvider();
-            customProvider.machineParams = scalus.uplc.eval.MachineParams.defaultPlutusV3Params();
-            customProvider.protocolVersion = scalus.cardano.ledger.MajorProtocolVersion.changPV();
-            var customResult = customProvider.evaluate(program, PlutusLanguage.PLUTUS_V3, null);
-
-            assertTrue(defaultResult.isSuccess());
-            assertTrue(customResult.isSuccess());
-            assertEquals(defaultResult.budgetConsumed().cpuSteps(),
-                    customResult.budgetConsumed().cpuSteps());
-            assertEquals(defaultResult.budgetConsumed().memoryUnits(),
-                    customResult.budgetConsumed().memoryUnits());
+            assertTrue(result.isSuccess(), () -> "Configured V3 failed: " + result);
+            assertEquals(new ExBudget(8, 8), result.budgetConsumed());
+            var ready = assertInstanceOf(
+                    ReadyScalusConfiguration.class, configured.plutusV3Configuration);
+            assertEquals(LedgerEvaluationTarget.pv11(PlutusLanguage.PLUTUS_V3),
+                    ready.target());
+            assertEquals(11, ready.scalusProtocol().version());
         }
 
         @Test

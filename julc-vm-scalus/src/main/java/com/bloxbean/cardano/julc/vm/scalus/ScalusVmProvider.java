@@ -1,20 +1,29 @@
 package com.bloxbean.cardano.julc.vm.scalus;
 
+import com.bloxbean.cardano.julc.core.Constant;
 import com.bloxbean.cardano.julc.core.PlutusData;
 import com.bloxbean.cardano.julc.core.Program;
 import com.bloxbean.cardano.julc.core.Term;
 import com.bloxbean.cardano.julc.core.flat.UplcFlatEncoder;
 import com.bloxbean.cardano.julc.vm.*;
 import scalus.cardano.ledger.CostModels;
+import scalus.cardano.ledger.ExUnits;
 import scalus.cardano.ledger.Language;
 import scalus.cardano.ledger.MajorProtocolVersion;
 import scalus.uplc.ProgramFlatCodec$;
+import scalus.uplc.eval.BudgetSpender;
 import scalus.uplc.eval.CountingBudgetSpender;
 import scalus.uplc.eval.Log;
 import scalus.uplc.eval.MachineParams;
+import scalus.uplc.eval.OutOfExBudgetError;
 import scalus.uplc.eval.PlutusVM;
+import scalus.uplc.eval.RestrictingBudgetSpender;
 
+import java.util.ArrayDeque;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 
 /**
  * {@link JulcVmProvider} implementation backed by the Scalus CEK machine.
@@ -31,60 +40,200 @@ import java.util.List;
  * trace collection. {@link EvalOptions} is accepted but ignored — traces in the
  * returned {@link EvalResult} will always be empty.
  *
- * <p>The protocol-aware {@link LedgerEvaluationTarget} SPI is intentionally not
- * implemented. Calling it fails closed through {@link JulcVmProvider}'s default
- * method, so this backend is excluded from ADR-030's PV10/PV11 ledger-parity
- * claim until it passes the same pinned profile matrix as Java and Truffle.</p>
+ * <p>Protocol-aware cost-model configuration is target-bound and published
+ * atomically. The candidate matrix maps V3/PV10 to semantics C and V3/PV11 to
+ * semantics E, but neither profile is certified with Scalus 1.1.0. Public
+ * explicit-target evaluation therefore throws {@link UnsupportedOperationException}
+ * at the backend-capability gate before evaluation.
+ * V1/V2 explicit targets are also uncertified because there is no pinned
+ * corpus. Their language-only compatibility paths nevertheless retain the
+ * caller's live cost-model array and protocol target. Scalus 1.1.0 consumes
+ * the legacy prices from those arrays but reference-fills PV11-only builtin
+ * costs and ignores supplied Constr/Case costs
+ * ({@code SCALUS_V1V2_PV11_REFERENCE_FILL}).</p>
+ *
+ * <p>The six upstream divergences blocking certification are
+ * {@code SCALUS_HASHTOGROUP_DST_HIGH_BYTE} and
+ * {@code SCALUS_SLICEBYTESTRING_INT64_NARROWING} for both V3 targets, plus
+ * {@code SCALUS_MISSING_CARDANO_INTEGER_BOUND_E},
+ * {@code SCALUS_MISSING_CARDANO_BYTESTRING_BOUND_E}, and
+ * {@code SCALUS_MISSING_WRITEBITS_4096_BOUND_E} for V3/PV11/E, plus
+ * {@code SCALUS_NEGATIVE_CONSTR_TAG_C} for V3/PV10/C. They are pinned
+ * by ledger-serializable tests; the adapter does not pre-scan runtime values or
+ * otherwise implement partial builtin semantics to conceal them.</p>
+ *
+ * <p>A configured candidate uses only the normalized model associated with its
+ * exact language/protocol-major target. V3/PV11 rejects Scalus's ambiguous
+ * {@code 300_000_000} DropList sentinel before publication. The Scalus 1.1.0
+ * bundled epoch-645 snapshot is exact for V3/PV11/E, but may become available
+ * to the explicit path only together with that target's future certification.
+ * Interpreted as V3/PV10/C it has 37 budget mismatches caused by seven snapshot
+ * parameters, so that target requires a matching configured model even after
+ * its semantic blockers are resolved.</p>
+ *
+ * <p>Language-only overloads remain an experimental compatibility surface:
+ * configured V3 uses its retained target/model, while unconfigured V3 uses
+ * Scalus's PV11/E bundled default (unlike Java/Truffle's PV10 default).
+ * Configured V1/V2 language-only calls use target-bound Scalus VMs built from
+ * the live supplied arrays; this preserves compatibility but is not an exact
+ * ledger-parity claim for the reference-filled PV11 cost centres.
+ * Unconfigured V1/V2 retain Scalus defaults. A non-null {@link ExBudget}
+ * restricts both legacy and candidate execution. Exhaustion reports a {@code null}
+ * {@link EvalResult.BudgetExhausted#failedTerm()} because Scalus 1.1.0 does not
+ * expose the term whose budget charge failed.</p>
  */
 public class ScalusVmProvider implements JulcVmProvider {
 
-    // Package-private for testing
-    volatile MachineParams machineParams;
-    volatile MajorProtocolVersion protocolVersion;
+    private static final System.Logger LOGGER =
+            System.getLogger(ScalusVmProvider.class.getName());
+
+    static final int V3_PV11_DROP_LIST_CPU_INTERCEPT_INDEX = 302;
+    static final long SCALUS_MISSING_PARAMETER_SENTINEL = 300_000_000L;
+    static final String UNSUPPORTED_TARGET_PREFIX = "Unsupported Scalus ledger target: ";
+    static final String SCALUS_V1V2_PV11_REFERENCE_FILL =
+            "SCALUS_V1V2_PV11_REFERENCE_FILL";
+    static final String PROGRAM_NESTING_EXCEEDS_SERIALIZATION_DEPTH =
+            "program nesting exceeds this backend's serialization depth";
+    static final Set<LedgerEvaluationTarget> CERTIFIED_TARGETS = Set.of();
+
+    // Package-private so tests can assert publication and snapshot identity.
+    volatile ScalusConfiguration plutusV1Configuration;
+    volatile ScalusConfiguration plutusV2Configuration;
+    volatile ScalusConfiguration plutusV3Configuration;
 
     @Override
     public void setCostModelParams(long[] costModelValues, PlutusLanguage language,
                                    int protocolMajorVersion, int protocolMinorVersion) {
-        // Map the chain's protocol major version DIRECTLY to Scalus's MajorProtocolVersion
-        // (9 -> changPV, 10 -> plominPV, 11 -> vanRossemPV, and future versions). Do NOT collapse
-        // 11+ to plominPV: PlutusVM gates PV11 semantics (e.g. case-on-builtins) on
-        // protocolVersion >= vanRossemPV, so feeding the wrong version silently disables them.
-        MajorProtocolVersion pv = new MajorProtocolVersion(protocolMajorVersion);
-        this.protocolVersion = pv;
+        setCostModelParams(costModelValues, new LedgerEvaluationTarget(
+                language, new ProtocolVersion(protocolMajorVersion, protocolMinorVersion)));
+    }
 
-        // Only V3 supports custom MachineParams in Scalus; V1/V2 use built-in defaults
-        if (language != PlutusLanguage.PLUTUS_V3) {
-            return;
+    @Override
+    public void setCostModelParams(long[] costModelValues, LedgerEvaluationTarget target) {
+        Objects.requireNonNull(target, "target");
+
+        // Resolve first. Unknown/future targets throw exactly as the Java provider does.
+        var profile = ProtocolFeatureRegistry.resolve(target);
+        var scalusLanguage = toScalusLanguage(target.ledgerLanguage());
+        var scalusProtocol = new MajorProtocolVersion(target.protocolVersion().major());
+
+        var normalized = normalizeCostModelParams(costModelValues, target, profile);
+        rejectScalusSentinel(normalized, target);
+        var machineParams = machineParamsFrom(normalized, scalusLanguage, scalusProtocol);
+        var ready = new ReadyScalusConfiguration(
+                target, profile, scalusLanguage, scalusProtocol, machineParams);
+        verifyReadyConfiguration(ready);
+        warnAboutScalusV1V2Pv11ReferenceFill(target);
+
+        // This is the only publication point for a ready state. Any exception above
+        // leaves the previously published state untouched.
+        publishConfiguration(target.ledgerLanguage(), ready);
+    }
+
+    private static void warnAboutScalusV1V2Pv11ReferenceFill(
+            LedgerEvaluationTarget target) {
+        if (target.ledgerLanguage() != PlutusLanguage.PLUTUS_V3
+                && target.protocolVersion().major() >= 11) {
+            int consumedLegacyParameters =
+                    target.ledgerLanguage() == PlutusLanguage.PLUTUS_V1 ? 166 : 185;
+            LOGGER.log(System.Logger.Level.WARNING,
+                    SCALUS_V1V2_PV11_REFERENCE_FILL + ": " + target
+                            + " received the live normalized cost model, but Scalus 1.1.0 "
+                            + "consumes only its first " + consumedLegacyParameters
+                            + " V1/V2 parameters and uses vanRossemReferenceD for "
+                            + "PV11-only builtin prices");
+        }
+    }
+
+    static long[] normalizeCostModelParams(
+            long[] values, LedgerEvaluationTarget target, ProtocolFeatureProfile profile) {
+        Objects.requireNonNull(values, "Cost model parameters must not be null");
+        Objects.requireNonNull(target, "target");
+        Objects.requireNonNull(profile, "profile");
+        if (!profile.target().equals(target)) {
+            throw new IllegalArgumentException("Profile target does not match " + target);
+        }
+        int expected = completeLanguageSchema(target.ledgerLanguage()).parameterCount();
+        if (values.length > expected) {
+            LOGGER.log(System.Logger.Level.WARNING,
+                    target + " cost model has too many parameters: expected " + expected
+                            + ", got " + values.length
+                            + "; excess trailing parameters were ignored");
+            return Arrays.copyOf(values, expected);
         }
 
-        // Convert long[] to Scala IndexedSeq<Long> (boxed)
+        var normalized = Arrays.copyOf(values, expected);
+        if (values.length < expected) {
+            Arrays.fill(normalized, values.length, expected, Long.MAX_VALUE);
+            LOGGER.log(System.Logger.Level.WARNING,
+                    target + " cost model has too few parameters: expected " + expected
+                            + ", got " + values.length
+                            + "; missing trailing parameters were set to Long.MAX_VALUE");
+        }
+        return normalized;
+    }
+
+    private static CostModelSchema completeLanguageSchema(PlutusLanguage language) {
+        return switch (language) {
+            case PLUTUS_V1 -> CostModelSchema.PLUTUS_V1_PV11;
+            case PLUTUS_V2 -> CostModelSchema.PLUTUS_V2_PV11;
+            case PLUTUS_V3 -> CostModelSchema.PLUTUS_V3_PV11;
+        };
+    }
+
+    private static void rejectScalusSentinel(
+            long[] normalized, LedgerEvaluationTarget target) {
+        if (target.ledgerLanguage() == PlutusLanguage.PLUTUS_V3
+                && target.protocolVersion().major() == 11
+                && normalized[V3_PV11_DROP_LIST_CPU_INTERCEPT_INDEX]
+                == SCALUS_MISSING_PARAMETER_SENTINEL) {
+            throw new IllegalArgumentException(
+                    "Invalid Scalus cost model for " + target
+                            + ": dropList-cpu-arguments-intercept must not equal "
+                            + SCALUS_MISSING_PARAMETER_SENTINEL
+                            + " because Scalus 1.1.0 treats it as a missing-parameter sentinel");
+        }
+    }
+
+    private static MachineParams machineParamsFrom(
+            long[] normalized, Language scalusLanguage,
+            MajorProtocolVersion scalusProtocol) {
         var builder = scala.collection.immutable.Vector$.MODULE$.<Object>newBuilder();
-        for (long v : costModelValues) {
+        for (long v : normalized) {
             builder.addOne(Long.valueOf(v));
         }
         scala.collection.immutable.IndexedSeq<Object> indexedSeq = builder.result();
 
-        // Build CostModels map: the key MUST be the integer languageId (Language.PlutusV3.languageId() == 2,
-        // which equals the enum ordinal). MachineParams.fromCostModels() looks the model up via
-        // boxToInteger(language.ordinal()), so keying by the Language enum object caused "key not found: 2".
         scala.collection.immutable.Map<Object, scala.collection.immutable.IndexedSeq<Object>> map =
                 scala.collection.immutable.Map$.MODULE$.<Object, scala.collection.immutable.IndexedSeq<Object>>empty()
-                        .updated(Language.PlutusV3.languageId(), indexedSeq);
+                        .updated(scalusLanguage.languageId(), indexedSeq);
 
         CostModels costModels = new CostModels(map);
-        this.machineParams = MachineParams.fromCostModels(costModels, Language.PlutusV3, pv);
+        return MachineParams.fromCostModels(costModels, scalusLanguage, scalusProtocol);
     }
 
     @Override
     public EvalResult evaluate(Program program, PlutusLanguage language, ExBudget budget,
                                EvalOptions options) {
-        return evaluateInternal(program, language);
+        var configuration = configurationForLanguage(language);
+        var failure = compatibilityConfigurationFailure(configuration, language);
+        if (failure != null) return failure;
+        var ready = asReady(configuration);
+        var validationFailure = configuredCompatibilityValidationFailure(program, ready);
+        if (validationFailure != null) return validationFailure;
+        return evaluateInternal(program, language, ready, budget);
     }
 
     @Override
     public EvalResult evaluateWithArgs(Program program, PlutusLanguage language,
                                        List<PlutusData> args, ExBudget budget,
                                        EvalOptions options) {
+        var configuration = configurationForLanguage(language);
+        var failure = compatibilityConfigurationFailure(configuration, language);
+        if (failure != null) return failure;
+        var ready = asReady(configuration);
+        var validationFailure = configuredCompatibilityValidationFailure(program, ready);
+        if (validationFailure != null) return validationFailure;
         try {
             // FLAT-encode the base program (without args) to bridge to Scalus types
             byte[] flatBytes = UplcFlatEncoder.encodeProgram(program);
@@ -103,14 +252,215 @@ public class ScalusVmProvider implements JulcVmProvider {
                         emptyAnn);
             }
 
-            return evaluateScalusTerm(scalusTerm, language);
+            return evaluateScalusTerm(
+                    scalusTerm, language, ready, budget);
+        } catch (StackOverflowError e) {
+            return serializationDepthFailure();
         } catch (Exception e) {
             String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
             return new EvalResult.Failure(errorMsg, ExBudget.ZERO, List.of());
         }
     }
 
-    private EvalResult evaluateInternal(Program program, PlutusLanguage language) {
+    /**
+     * Evaluates for an explicit ledger target. A non-null budget restricts
+     * execution; a null budget counts without imposing a limit.
+     */
+    @Override
+    public EvalResult evaluate(Program program, LedgerEvaluationTarget target,
+                               ExBudget budget, EvalOptions options) {
+        return evaluateExplicitTarget(program, target, List.of(), budget, options, false);
+    }
+
+    /**
+     * Evaluates with arguments for an explicit ledger target. A non-null budget
+     * restricts execution; a null budget counts without imposing a limit.
+     */
+    @Override
+    public EvalResult evaluateWithArgs(Program program, LedgerEvaluationTarget target,
+                                       List<PlutusData> args, ExBudget budget,
+                                       EvalOptions options) {
+        return evaluateExplicitTarget(program, target, args, budget, options, false);
+    }
+
+    /**
+     * Exercises a candidate profile through the production explicit-target
+     * pipeline while deliberately skipping only the certification gate.
+     */
+    EvalResult evaluateCandidate(Program program, LedgerEvaluationTarget target,
+                                 List<PlutusData> args, ExBudget budget,
+                                 EvalOptions options) {
+        return evaluateExplicitTarget(program, target, args, budget, options, true);
+    }
+
+    EvalResult evaluateCandidate(Program program, LedgerEvaluationTarget target,
+                                 ExBudget budget, EvalOptions options) {
+        return evaluateCandidate(program, target, List.of(), budget, options);
+    }
+
+    private EvalResult evaluateExplicitTarget(
+            Program program, LedgerEvaluationTarget target, List<PlutusData> args,
+            ExBudget budget, EvalOptions options, boolean skipCertificationGate) {
+        ReadyScalusConfiguration ready;
+        List<PlutusData> argumentSnapshot;
+        try {
+            Objects.requireNonNull(target, "target");
+            var profile = ProtocolFeatureRegistry.resolve(target);
+            if (!skipCertificationGate && !isCertified(target)) {
+                var reason = target.ledgerLanguage() == PlutusLanguage.PLUTUS_V3
+                        ? "not certified"
+                        : SCALUS_V1V2_PV11_REFERENCE_FILL
+                        + ": explicit V1/V2 profiles remain unsupported; "
+                        + "no pinned corpus proves exact budgets, and Scalus 1.1.0 "
+                        + "reference-fills or ignores PV11-only costs at PV11";
+                throw unsupportedProfile(target, reason);
+            }
+            if (target.ledgerLanguage() != PlutusLanguage.PLUTUS_V3) {
+                return preExecutionFailure(target,
+                        SCALUS_V1V2_PV11_REFERENCE_FILL
+                                + ": explicit V1/V2 profiles remain unsupported; "
+                                + "no pinned corpus proves exact budgets, and Scalus 1.1.0 "
+                                + "reference-fills or ignores PV11-only costs at PV11");
+            }
+            Objects.requireNonNull(program, "program");
+            ProgramValidator.validate(program, profile);
+            var blsLiteralType = firstBlsLiteralType(program.term());
+            if (blsLiteralType != null) {
+                return preExecutionFailure(target,
+                        "non-ledger-serializable constant type " + blsLiteralType);
+            }
+
+            var configuration = configurationForEvaluation(target);
+            if (configuration == null) {
+                return preExecutionFailure(target,
+                        "no matching configured cost model; call setCostModelParams first");
+            }
+            if (configuration instanceof UnsupportedScalusConfiguration unsupported) {
+                return new EvalResult.Failure(
+                        targetAwareMessage(target, unsupported.reason()),
+                        ExBudget.ZERO, List.of());
+            }
+            ready = (ReadyScalusConfiguration) configuration;
+            argumentSnapshot = List.copyOf(Objects.requireNonNull(args, "args"));
+        } catch (UnsupportedOperationException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            return preExecutionFailure(target, messageOf(e));
+        }
+
+        try {
+            byte[] flatBytes = UplcFlatEncoder.encodeProgram(program);
+            var dbProgram = ProgramFlatCodec$.MODULE$.decodeFlat(flatBytes);
+            scalus.uplc.Term scalusTerm = dbProgram.term();
+
+            // Validation and target/configuration selection intentionally precede
+            // argument application so both public overloads share one fail-closed path.
+            for (var arg : argumentSnapshot) {
+                scalus.uplc.builtin.Data scalusData = DataConverter.toScalus(arg);
+                scalus.uplc.Constant dataConst = new scalus.uplc.Constant.Data(scalusData);
+                var emptyAnn = scalus.uplc.UplcAnnotation.empty();
+                scalusTerm = scalus.uplc.Term.Apply.apply(
+                        scalusTerm,
+                        scalus.uplc.Term.Const.apply(dataConst, emptyAnn),
+                        emptyAnn);
+            }
+
+            return evaluateScalusTerm(
+                    scalusTerm, target.ledgerLanguage(), ready, budget);
+        } catch (StackOverflowError e) {
+            return preExecutionFailure(
+                    target, PROGRAM_NESTING_EXCEEDS_SERIALIZATION_DEPTH);
+        } catch (Exception e) {
+            return new EvalResult.Failure(messageOf(e), ExBudget.ZERO, List.of());
+        }
+    }
+
+    private static boolean isCertified(LedgerEvaluationTarget target) {
+        return CERTIFIED_TARGETS.stream().anyMatch(target::hasSamePlutusSemantics);
+    }
+
+    private static UnsupportedOperationException unsupportedProfile(
+            LedgerEvaluationTarget target, String reason) {
+        return new UnsupportedOperationException(
+                "Scalus provider does not support protocol-aware evaluation for "
+                        + target + ": " + reason);
+    }
+
+    private static EvalResult.Failure preExecutionFailure(
+            LedgerEvaluationTarget target, String detail) {
+        return new EvalResult.Failure(
+                targetAwareMessage(target, detail), ExBudget.ZERO, List.of());
+    }
+
+    private static String targetAwareMessage(
+            LedgerEvaluationTarget target, String detail) {
+        if (detail != null && detail.startsWith(UNSUPPORTED_TARGET_PREFIX)) {
+            return detail;
+        }
+        return unsupportedReason(target, detail == null ? "unknown failure" : detail);
+    }
+
+    private static String messageOf(Exception e) {
+        return e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+    }
+
+    private static String firstBlsLiteralType(Term root) {
+        var pending = new ArrayDeque<Object>();
+        pending.push(root);
+        while (!pending.isEmpty()) {
+            var value = pending.pop();
+            if (value instanceof Term term) {
+                switch (term) {
+                    case Term.Var _, Term.Error _, Term.Builtin _ -> { }
+                    case Term.Lam lam -> pending.push(lam.body());
+                    case Term.Apply apply -> {
+                        pending.push(apply.argument());
+                        pending.push(apply.function());
+                    }
+                    case Term.Force force -> pending.push(force.term());
+                    case Term.Delay delay -> pending.push(delay.term());
+                    case Term.Const constant -> pending.push(constant.value());
+                    case Term.Constr constr -> pushReverse(pending, constr.fields());
+                    case Term.Case caseTerm -> {
+                        pushReverse(pending, caseTerm.branches());
+                        pending.push(caseTerm.scrutinee());
+                    }
+                }
+                continue;
+            }
+
+            var constant = (Constant) value;
+            switch (constant) {
+                case Constant.Bls12_381_G1Element _ -> {
+                    return "bls12_381_G1_element";
+                }
+                case Constant.Bls12_381_G2Element _ -> {
+                    return "bls12_381_G2_element";
+                }
+                case Constant.Bls12_381_MlResult _ -> {
+                    return "bls12_381_mlresult";
+                }
+                case Constant.ListConst list -> pushReverse(pending, list.values());
+                case Constant.PairConst pair -> {
+                    pending.push(pair.second());
+                    pending.push(pair.first());
+                }
+                case Constant.ArrayConst array -> pushReverse(pending, array.values());
+                default -> { }
+            }
+        }
+        return null;
+    }
+
+    private static void pushReverse(ArrayDeque<Object> pending, List<?> values) {
+        for (int i = values.size() - 1; i >= 0; i--) {
+            pending.push(values.get(i));
+        }
+    }
+
+    private EvalResult evaluateInternal(Program program, PlutusLanguage language,
+                                        ReadyScalusConfiguration configuration,
+                                        ExBudget budget) {
         try {
             // FLAT-encode our Program to bytes
             byte[] flatBytes = UplcFlatEncoder.encodeProgram(program);
@@ -118,20 +468,25 @@ public class ScalusVmProvider implements JulcVmProvider {
             // Decode via Scalus FLAT codec -> DeBruijnedProgram
             var dbProgram = ProgramFlatCodec$.MODULE$.decodeFlat(flatBytes);
 
-            return evaluateScalusTerm(dbProgram.term(), language);
+            return evaluateScalusTerm(
+                    dbProgram.term(), language, configuration, budget);
+        } catch (StackOverflowError e) {
+            return serializationDepthFailure();
         } catch (Exception e) {
             String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
             return new EvalResult.Failure(errorMsg, ExBudget.ZERO, List.of());
         }
     }
 
-    private EvalResult evaluateScalusTerm(scalus.uplc.Term scalusTerm, PlutusLanguage language) {
+    private EvalResult evaluateScalusTerm(scalus.uplc.Term scalusTerm, PlutusLanguage language,
+                                          ReadyScalusConfiguration configuration,
+                                          ExBudget budgetLimit) {
         // Create budget/logger outside try so we can capture partial budget on error
-        var budgetSpender = new CountingBudgetSpender();
+        BudgetSpender budgetSpender = createBudgetSpender(budgetLimit);
         var logger = new Log();
         try {
             // Create the appropriate VM
-            PlutusVM vm = createVm(language);
+            PlutusVM vm = createVm(language, configuration);
 
             // Evaluate using evaluateDeBruijnedTerm (general evaluation,
             // does not enforce script return-value semantics like evaluateScriptDebug)
@@ -142,32 +497,166 @@ public class ScalusVmProvider implements JulcVmProvider {
 
             // Convert result
             Term resultTerm = TermConverter.fromScalus(scalusResult);
-            var budget = budgetSpender.getSpentBudget();
-            var consumed = new ExBudget(budget.steps(), budget.memory());
+            var consumed = consumedBudget(budgetSpender);
             var traces = List.of(logger.getLogs());
 
             return new EvalResult.Success(resultTerm, consumed, traces);
+        } catch (OutOfExBudgetError e) {
+            var consumed = consumedBudget(budgetSpender);
+            var traces = List.of(logger.getLogs());
+            // Scalus exposes the CEK environment/source position but not the
+            // term whose charge failed, so failedTerm is intentionally null.
+            return new EvalResult.BudgetExhausted(consumed, traces, null);
         } catch (Exception e) {
             String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
-            var budget = budgetSpender.getSpentBudget();
-            var consumed = new ExBudget(budget.steps(), budget.memory());
+            var consumed = consumedBudget(budgetSpender);
             var traces = List.of(logger.getLogs());
             return new EvalResult.Failure(errorMsg, consumed, traces);
         }
     }
 
-    private PlutusVM createVm(PlutusLanguage language) {
+    private static BudgetSpender createBudgetSpender(ExBudget budgetLimit) {
+        if (budgetLimit == null) {
+            return new CountingBudgetSpender();
+        }
+        long memoryLimit = budgetLimit.memoryUnits();
+        long stepLimit = budgetLimit.cpuSteps();
+        return new RestrictingBudgetSpender(new ExUnits(memoryLimit, stepLimit));
+    }
+
+    private static ExBudget consumedBudget(BudgetSpender budgetSpender) {
+        var spent = budgetSpender.getSpentBudget();
+        return new ExBudget(
+                saturateWrappedBudget(spent.steps()),
+                saturateWrappedBudget(spent.memory()));
+    }
+
+    private static long saturateWrappedBudget(long consumed) {
+        return consumed < 0 ? Long.MAX_VALUE : consumed;
+    }
+
+    private PlutusVM createVm(PlutusLanguage language,
+                              ReadyScalusConfiguration configuration) {
+        if (configuration != null) {
+            return createConfiguredVm(configuration);
+        }
         return switch (language) {
             case PLUTUS_V1 -> PlutusVM.makePlutusV1VM();
             case PLUTUS_V2 -> PlutusVM.makePlutusV2VM();
-            case PLUTUS_V3 -> {
-                if (machineParams != null && protocolVersion != null) {
-                    yield PlutusVM.makePlutusV3VM(machineParams, protocolVersion);
-                } else {
-                    yield PlutusVM.makePlutusV3VM();
-                }
-            }
+            case PLUTUS_V3 -> PlutusVM.makePlutusV3VM();
         };
+    }
+
+    private static PlutusVM createConfiguredVm(ReadyScalusConfiguration configuration) {
+        if (configuration.scalusLanguage() == Language.PlutusV1) {
+            return PlutusVM.makePlutusV1VM(
+                    configuration.machineParams(), configuration.scalusProtocol());
+        }
+        if (configuration.scalusLanguage() == Language.PlutusV2) {
+            return PlutusVM.makePlutusV2VM(
+                    configuration.machineParams(), configuration.scalusProtocol());
+        }
+        if (configuration.scalusLanguage() == Language.PlutusV3) {
+            return PlutusVM.makePlutusV3VM(
+                    configuration.machineParams(), configuration.scalusProtocol());
+        }
+        throw new IllegalArgumentException(
+                "Unsupported Scalus language: " + configuration.scalusLanguage());
+    }
+
+    private static void verifyReadyConfiguration(ReadyScalusConfiguration configuration) {
+        var vm = createConfiguredVm(configuration);
+        if (vm.language() != configuration.scalusLanguage()
+                || vm.protocolVersion().version()
+                != configuration.target().protocolVersion().major()
+                || !vm.semanticVariant().toString()
+                .equals(configuration.profile().semanticsVariant().name())) {
+            throw new IllegalArgumentException(
+                    "Scalus configuration does not match resolved target "
+                            + configuration.target());
+        }
+    }
+
+    static Language toScalusLanguage(PlutusLanguage language) {
+        return switch (language) {
+            case PLUTUS_V1 -> Language.PlutusV1;
+            case PLUTUS_V2 -> Language.PlutusV2;
+            case PLUTUS_V3 -> Language.PlutusV3;
+        };
+    }
+
+    ScalusConfiguration configurationForEvaluation(LedgerEvaluationTarget target) {
+        var requestedProfile = ProtocolFeatureRegistry.resolve(target);
+        var configuration = configurationForLanguage(target.ledgerLanguage());
+        if (configuration == null
+                || configuration.target().hasSamePlutusSemantics(target)) {
+            return configuration;
+        }
+        return new UnsupportedScalusConfiguration(
+                target,
+                requestedProfile,
+                unsupportedReason(target,
+                        "configured cost model targets " + configuration.target()));
+    }
+
+    private ScalusConfiguration configurationForLanguage(PlutusLanguage language) {
+        return switch (language) {
+            case PLUTUS_V1 -> plutusV1Configuration;
+            case PLUTUS_V2 -> plutusV2Configuration;
+            case PLUTUS_V3 -> plutusV3Configuration;
+        };
+    }
+
+    private void publishConfiguration(
+            PlutusLanguage language, ScalusConfiguration configuration) {
+        switch (language) {
+            case PLUTUS_V1 -> plutusV1Configuration = configuration;
+            case PLUTUS_V2 -> plutusV2Configuration = configuration;
+            case PLUTUS_V3 -> plutusV3Configuration = configuration;
+        }
+    }
+
+    private static ReadyScalusConfiguration asReady(ScalusConfiguration configuration) {
+        return configuration instanceof ReadyScalusConfiguration ready ? ready : null;
+    }
+
+    private static EvalResult.Failure compatibilityConfigurationFailure(
+            ScalusConfiguration configuration, PlutusLanguage language) {
+        if (configuration instanceof UnsupportedScalusConfiguration unsupported) {
+            return new EvalResult.Failure(unsupported.reason(), ExBudget.ZERO, List.of());
+        }
+        if (configuration instanceof ReadyScalusConfiguration ready
+                && ready.target().ledgerLanguage() != language) {
+            return new EvalResult.Failure(
+                    unsupportedReason(ready.target(),
+                            "configured language does not match requested " + language),
+                    ExBudget.ZERO,
+                    List.of());
+        }
+        return null;
+    }
+
+    private static EvalResult.Failure configuredCompatibilityValidationFailure(
+            Program program, ReadyScalusConfiguration configuration) {
+        if (configuration == null) return null;
+        try {
+            ProgramValidator.validate(program, configuration.profile());
+            return null;
+        } catch (RuntimeException e) {
+            return new EvalResult.Failure(messageOf(e), ExBudget.ZERO, List.of());
+        }
+    }
+
+    private static EvalResult.Failure serializationDepthFailure() {
+        return new EvalResult.Failure(
+                PROGRAM_NESTING_EXCEEDS_SERIALIZATION_DEPTH,
+                ExBudget.ZERO,
+                List.of());
+    }
+
+    private static String unsupportedReason(
+            LedgerEvaluationTarget target, String detail) {
+        return UNSUPPORTED_TARGET_PREFIX + target + ": " + detail;
     }
 
     @Override
