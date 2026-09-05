@@ -64,22 +64,9 @@ public class JulcCompiler {
     private record CompiledStaticField(String name, PirTerm initPir) {}
     private record CompilationOutcome(CompileResult compileResult, ContractSchema contractSchema) {}
 
-    /** Stdlib class FQCNs — must match StdlibRegistry registration keys. */
+    /** Builtins has no @OnchainLibrary source; other library FQCNs come from discovered sources. */
     private static final Set<String> STDLIB_FQCNS = Set.of(
-            "com.bloxbean.cardano.julc.stdlib.Builtins",
-            "com.bloxbean.cardano.julc.stdlib.lib.ContextsLib",
-            "com.bloxbean.cardano.julc.stdlib.lib.ListsLib",
-            "com.bloxbean.cardano.julc.stdlib.lib.MapLib",
-            "com.bloxbean.cardano.julc.stdlib.lib.ValuesLib",
-            "com.bloxbean.cardano.julc.stdlib.lib.OutputLib",
-            "com.bloxbean.cardano.julc.stdlib.lib.MathLib",
-            "com.bloxbean.cardano.julc.stdlib.lib.IntervalLib",
-            "com.bloxbean.cardano.julc.stdlib.lib.CryptoLib",
-            "com.bloxbean.cardano.julc.stdlib.lib.ByteStringLib",
-            "com.bloxbean.cardano.julc.stdlib.lib.BitwiseLib",
-            "com.bloxbean.cardano.julc.stdlib.lib.AddressLib",
-            "com.bloxbean.cardano.julc.stdlib.lib.BlsLib",
-            "com.bloxbean.cardano.julc.stdlib.lib.NativeValueLib"
+            "com.bloxbean.cardano.julc.stdlib.Builtins"
     );
 
     /** Typed Data subtypes that must not be used with @Param. */
