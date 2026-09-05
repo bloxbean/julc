@@ -1,0 +1,53 @@
+def localJulcVersion = System.getProperty('julc.localVersion')
+if (!localJulcVersion) throw new GradleException('Set -Djulc.localVersion to the published implementation version')
+settingsEvaluated { settings ->
+    settings.pluginManagement.resolutionStrategy.eachPlugin {
+        if (requested.id.id == 'com.bloxbean.cardano.julc') useVersion(localJulcVersion)
+    }
+}
+allprojects {
+    configurations.configureEach {
+        resolutionStrategy.eachDependency {
+            if (requested.group == 'com.bloxbean.cardano' && requested.name.startsWith('julc-')) {
+                useVersion(localJulcVersion)
+                because('Validate issue 111 using its exact Maven-local implementation')
+            }
+        }
+    }
+    tasks.register('verifyJulcLocalArtifacts') {
+        doLast {
+            def plugin = project.plugins.findPlugin('com.bloxbean.cardano.julc')
+            def location = plugin.class.protectionDomain.codeSource.location.toString()
+            assert location.contains(localJulcVersion): "Unexpected plugin: ${location}"
+            println "LOCAL_JULC_PLUGIN ${location}"
+            ['compileClasspath', 'annotationProcessor', 'testRuntimeClasspath'].each { name ->
+                def artifacts = project.configurations.getByName(name).resolvedConfiguration.resolvedArtifacts
+                    .findAll { it.moduleVersion.id.group == 'com.bloxbean.cardano' && it.name.startsWith('julc-') }
+                assert !artifacts.empty: "No JuLC artifacts in ${name}"
+                artifacts.each { artifact ->
+                    assert artifact.moduleVersion.id.version == localJulcVersion: artifact.moduleVersion.id
+                    assert artifact.file.canonicalPath.contains('/.m2/repository/'): artifact.file
+                    println "LOCAL_JULC_ARTIFACT ${name} ${artifact.moduleVersion.id} ${artifact.file}"
+                }
+            }
+        }
+    }
+}
+// Optional isolated fixture for examples checkouts without src/main/plutus.
+// Only the compileJulc task input changes; ordinary Java/AP/test sources stay intact.
+allprojects {
+    plugins.withId('com.bloxbean.cardano.julc') {
+        if (System.getProperty('julc.pairFixtureDir')) {
+            tasks.named('compileJulc') {
+                sourceDir.set(file(System.getProperty('julc.pairFixtureDir')))
+                outputDir.set(layout.buildDirectory.dir('pair-case-plugin'))
+                doLast {
+                    def script = new groovy.json.JsonSlurper().parse(
+                        outputDir.file('PairRecord.json').get().asFile)
+                    assert script.sizeBytes == 323: script.sizeBytes
+                    assert script.hash == '3f073c9faf8ff14323aad26d7e4e049425924e32766b5cfeffb4e154': script.hash
+                }
+            }
+        }
+    }
+}

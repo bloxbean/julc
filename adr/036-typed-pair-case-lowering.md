@@ -1,6 +1,6 @@
 # ADR-036: Typed local Pair Case lowering
 
-Status: Implemented on `feat/111-typed-pair-case`; validation in progress; independent review pending.
+Status: Implementation and local validation complete on `feat/111-typed-pair-case`; independent correctness review pending before merge/release.
 Parent: ADR-032 O4, issue #111. Base: `991cf66b`.
 Target: `plutus-v3-pv11-uplc-1.1.0`.
 
@@ -20,8 +20,9 @@ UnConstrData application whose correctly typed local pair is used only by direct
 FstPair/SndPair projections, with at least one of each. This covers compiler-owned
 record, sum, Optional and Boolean boundary checks. Establish typed local analysis,
 explicit destructuring, deterministic scope, and measurable complete-program gains.
-Do not optimize arbitrary pairs, aliases/escaping pair values, map traversal,
-Data-encoded JulcPair/Tuple2/records, or unrelated projections. No generic CSE,
+Do not extend the rule to arbitrary pair producers, aliases/escaping pair values,
+map traversal or unrelated projections. Never match a Data-encoded Tuple2, record
+or other pair-like value itself as a native pair. No generic CSE,
 dominance framework, decoder motion, new Java construct or new ledger encoding.
 
 ## Decision and invariants
@@ -218,3 +219,60 @@ malformed element even when the validator body would not visit it.
 - Opt-in `julc-e2e-tests` and `julc-plugin-test` are disabled in the default build.
   The separately requested Maven-local consumer/Yaci validation is recorded below
   after publishing the implementation commit.
+
+## Maven-local consumer validation
+
+Implementation commit: `002b2ea7`. Published with
+`./gradlew publishToMavenLocal -PskipSigning=true` as
+`0.1.0-pre17-002b2ea-SNAPSHOT` (all publications succeeded).
+
+The external checkout `/Users/satya/work/bloxbean/julc-examples` already had a
+modified `build.gradle`, including WingRiders source exclusions. Those settings
+and all existing files were preserved. The validation override is checked in at
+`adr/evidence/036-local-examples.init.gradle`. It selects the exact published
+plugin version, overrides all JuLC dependency versions, and asserts Maven-local
+resolution for compile, annotation-processor and test-runtime configurations.
+It also checks the actual loaded plugin JAR version.
+
+Reproduction (from the external examples checkout, after local publication):
+
+```sh
+./gradlew -I ../julc/adr/evidence/036-local-examples.init.gradle \
+  -Djulc.localVersion=0.1.0-pre17-002b2ea-SNAPSHOT verifyJulcLocalArtifacts
+./gradlew -I ../julc/adr/evidence/036-local-examples.init.gradle \
+  -Djulc.localVersion=0.1.0-pre17-002b2ea-SNAPSHOT clean test
+./gradlew -I ../julc/adr/evidence/036-local-examples.init.gradle \
+  -Djulc.localVersion=0.1.0-pre17-002b2ea-SNAPSHOT \
+  -Djulc.pairFixtureDir=../julc/adr/evidence/036-pair-case-plugin build
+```
+
+The existing local Yaci node reports protocol 11.0. The examples tests use their
+existing account top-up and transaction workflow on that node; no devnet reset
+or restart was performed. Inspection of the freshly generated artifacts finds
+three direct UnConstrData Pair Case sites in CfVaultValidator and one in
+CfAnonymousDataValidator. Anonymous-data commit/reveal transactions confirmed.
+The escrow comparison reports identical Java and Ogmios/Haskell budgets:
+55,675,512 CPU / 180,627 memory.
+
+
+Final external results: **409 passed, 11 skipped, zero failures** out of 420
+reported cases. The 11 skips are the pre-existing disabled JulcEvalProxyTests
+for classes with `@Param` fields. All **54 transaction integration tests** ran and passed. The
+escrow budget comparison additionally passed (it is outside the IntegrationTest
+name count). The existing `build.gradle` checksum and git status were unchanged.
+
+The initial `clean build` ran those tests successfully, then failed at
+`compileJulc` because the checkout has no `src/main/plutus`. Running that task
+with its original `0.1.0-pre17-f7c3e04-SNAPSHOT` plugin reproduced the same Gradle
+input-directory validation error. This is an existing checkout/plugin setup
+problem, not a pair-lowering regression. No plugin implementation was changed.
+For a complete build, the evidence init script optionally points only
+`compileJulc` at the checked-in standalone pair fixture and writes its output to
+`build/pair-case-plugin`. With that override, `build` passed and produced the
+same **323-byte** PairRecord script and hash pinned above, plus its CIP-57
+blueprint. The preceding clean run's passing tests were correctly up-to-date in
+this final packaging check; they were not rerun or claimed as fresh twice.
+
+All implementation and local validation milestones are complete. Broader native
+pair/map families remain excluded. Independent correctness review remains a
+pre-merge requirement; these self-review and test results do not replace it.
