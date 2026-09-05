@@ -474,6 +474,14 @@ fusion is research/static analysis and profile-cost.
 
 ### O12. `ExpModInteger` idiom lowering
 
+**Follow-up #118 decision:** No additional implementation is required. The
+supported explicit APIs already lower directly to `ExpModInteger`; no distinct
+supported source abstraction requiring another recognition rule has been
+introduced. Ordinary pow/remainder remains deliberately unrecognized. See the
+[decision and cleanup evidence](evidence/022-library-discovery-118-decision.md).
+A future distinct source contract must reopen the ADR/evidence gate rather than
+reinterpret this decision as permission to recognize ordinary exponentiation.
+
 `MathLib.expMod` and `Builtins.expModInteger` already map directly to the
 builtin. Additional compiler work may recognize only explicit modular
 exponentiation abstractions whose source contract matches:
@@ -482,9 +490,9 @@ exponentiation abstractions whose source contract matches:
 (base ^ exponent) mod modulus
 ```
 
-Ordinary `MathLib.pow(base, exponent)` followed by an unrelated `%` is not
-rewritten unless the compiler proves the exact explicit-modulus idiom and its
-failure behavior.
+Ordinary `MathLib.pow(base, exponent)` followed by `%` must remain untouched:
+its negative-exponent and failure semantics differ from `ExpModInteger`. Any
+future recognition must belong to a distinct explicit source contract.
 
 **Boundary matrix**
 
@@ -1016,7 +1024,7 @@ line after the initial review window (2026-08-29).
 | O9 | [#103](https://github.com/bloxbean/julc/issues/103) | deferred: use/escape and failure proof required |
 | O10 | [#106](https://github.com/bloxbean/julc/issues/106) | deferred: no typed native Array literal producer |
 | O11 | [#96](https://github.com/bloxbean/julc/issues/96) | deferred: native BLS group/list types required |
-| O12 | [#104](https://github.com/bloxbean/julc/issues/104) | deferred: pow/mod semantics differ |
+| O12 | [#104](https://github.com/bloxbean/julc/issues/104), [#118](https://github.com/bloxbean/julc/issues/118) | decision: no additional implementation required; explicit API exists, ordinary pow/mod rewrite rejected |
 | O13 | [#107](https://github.com/bloxbean/julc/issues/107) | enabled at `PV11_SAFE` |
 | O14 | [#108](https://github.com/bloxbean/julc/issues/108) | deferred: literal producer/reference semantics required |
 | O15 | [#105](https://github.com/bloxbean/julc/issues/105) | deferred: typed dominance/use analysis required |

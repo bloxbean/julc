@@ -64,24 +64,6 @@ public class JulcCompiler {
     private record CompiledStaticField(String name, PirTerm initPir) {}
     private record CompilationOutcome(CompileResult compileResult, ContractSchema contractSchema) {}
 
-    /** Stdlib class FQCNs — must match StdlibRegistry registration keys. */
-    private static final Set<String> STDLIB_FQCNS = Set.of(
-            "com.bloxbean.cardano.julc.stdlib.Builtins",
-            "com.bloxbean.cardano.julc.stdlib.lib.ContextsLib",
-            "com.bloxbean.cardano.julc.stdlib.lib.ListsLib",
-            "com.bloxbean.cardano.julc.stdlib.lib.MapLib",
-            "com.bloxbean.cardano.julc.stdlib.lib.ValuesLib",
-            "com.bloxbean.cardano.julc.stdlib.lib.OutputLib",
-            "com.bloxbean.cardano.julc.stdlib.lib.MathLib",
-            "com.bloxbean.cardano.julc.stdlib.lib.IntervalLib",
-            "com.bloxbean.cardano.julc.stdlib.lib.CryptoLib",
-            "com.bloxbean.cardano.julc.stdlib.lib.ByteStringLib",
-            "com.bloxbean.cardano.julc.stdlib.lib.BitwiseLib",
-            "com.bloxbean.cardano.julc.stdlib.lib.AddressLib",
-            "com.bloxbean.cardano.julc.stdlib.lib.BlsLib",
-            "com.bloxbean.cardano.julc.stdlib.lib.NativeValueLib"
-    );
-
     /** Typed Data subtypes that must not be used with @Param. */
     private static final Set<String> BANNED_PARAM_TYPES = Set.of(
             "PlutusData.BytesData", "BytesData",
@@ -312,7 +294,7 @@ public class JulcCompiler {
         var knownFqcns = new LinkedHashSet<String>();
         knownFqcns.addAll(typeResolver.allRegisteredFqcns());
         knownFqcns.addAll(TypeResolver.ledgerHashFqcns());
-        knownFqcns.addAll(STDLIB_FQCNS);
+        if (stdlibLookup != null) knownFqcns.addAll(stdlibLookup.registeredClassNames());
         for (var libCu : libraryCus) {
             for (var cls : libCu.findAll(ClassOrInterfaceDeclaration.class)) {
                 if (!cls.isInterface()) {
@@ -835,7 +817,7 @@ public class JulcCompiler {
         var knownFqcns = new LinkedHashSet<String>();
         knownFqcns.addAll(typeResolver.allRegisteredFqcns());
         knownFqcns.addAll(TypeResolver.ledgerHashFqcns());
-        knownFqcns.addAll(STDLIB_FQCNS);
+        if (stdlibLookup != null) knownFqcns.addAll(stdlibLookup.registeredClassNames());
         for (var libCu : libraryCus) {
             for (var cls : libCu.findAll(ClassOrInterfaceDeclaration.class)) {
                 if (!cls.isInterface()) {
@@ -1213,6 +1195,11 @@ public class JulcCompiler {
                 return base != null
                         ? base.requirements(className, methodName)
                         : LoweringRequirements.NONE;
+            }
+
+            @Override
+            public Set<String> registeredClassNames() {
+                return base != null ? base.registeredClassNames() : Set.of();
             }
 
             @Override

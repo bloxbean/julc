@@ -14,6 +14,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.Collections;
+import java.util.TreeSet;
 
 /**
  * Central registry mapping method names to PIR term builders.
@@ -361,6 +364,15 @@ public final class StdlibRegistry implements StdlibLookup {
             }
         }
         return classNames;
+    }
+
+    @Override
+    public Set<String> registeredClassNames() {
+        var names = new TreeSet<String>();
+        for (var name : allRegisteredClassNames()) {
+            if (name.contains(".")) names.add(name);
+        }
+        return Collections.unmodifiableSet(names);
     }
 
     /**

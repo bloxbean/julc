@@ -6,6 +6,9 @@ import com.bloxbean.cardano.julc.compiler.LoweringRequirements;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.Collections;
 
 /**
  * Chains multiple {@link StdlibLookup} instances. First match wins.
@@ -76,6 +79,13 @@ public class CompositeStdlibLookup implements StdlibLookup {
             }
         }
         return LoweringRequirements.NONE;
+    }
+
+    @Override
+    public Set<String> registeredClassNames() {
+        var names = new TreeSet<String>();
+        for (var lookup : lookups) names.addAll(lookup.registeredClassNames());
+        return Collections.unmodifiableSet(names);
     }
 
     @Override
