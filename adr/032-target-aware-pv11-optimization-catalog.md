@@ -312,8 +312,9 @@ one `Case Pair` binding both fields.
 This does not apply to `Tuple2`, which is Data-encoded and has a different
 representation.
 
-**Classification:** research, requiring local use analysis or a typed PIR
-destructuring form.
+**Classification:** ADR-036 implements the bounded `UnConstrData` family with
+typed local use analysis and explicit PIR destructuring; independent review is
+pending. Other candidate families remain deferred.
 
 ### O5. Case-on-`Integer` switches
 
@@ -1016,7 +1017,7 @@ line after the initial review window (2026-08-29).
 | O1 | [#94](https://github.com/bloxbean/julc/issues/94) | enabled at `PV11_SAFE` |
 | O2 | [#97](https://github.com/bloxbean/julc/issues/97) | enabled at `PV11_SAFE` |
 | O3 | [#98](https://github.com/bloxbean/julc/issues/98), [#110](https://github.com/bloxbean/julc/issues/110) | implemented at `PV11_SAFE`: guarded for-each via ADR-034; other traversal families deferred |
-| O4 | [#99](https://github.com/bloxbean/julc/issues/99) | deferred: typed pair use analysis required |
+| O4 | [#111](https://github.com/bloxbean/julc/issues/111) | ADR-036 implements local UnConstrData pair use proof; independent review pending; broader pair/map families deferred |
 | O5 | [#100](https://github.com/bloxbean/julc/issues/100) | deferred: default/failure semantics differ |
 | O6 | [#101](https://github.com/bloxbean/julc/issues/101) | deferred: no typed Unit sequencing surface |
 | O7 | [#95](https://github.com/bloxbean/julc/issues/95) | typed native Value boundary completed |

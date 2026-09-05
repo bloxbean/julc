@@ -34,7 +34,8 @@ public final class StrictRecordEntrypoint {
 
             String pairName = "__boundary-pair-" + root.parameter();
             String fieldsName = "__boundary-fields-" + root.parameter();
-            var pair = new PirTerm.Var(pairName, new PirType.DataType());
+            var pair = new PirTerm.Var(pairName, new PirType.PairType(new PirType.IntegerType(),
+                    new PirType.ListType(new PirType.DataType())));
             var fields = new PirTerm.Var(fieldsName,
                     new PirType.ListType(new PirType.DataType()));
             var rawFields = new ArrayList<PirTerm>();
@@ -142,6 +143,9 @@ public final class StrictRecordEntrypoint {
             case PirTerm.DataConstr(var tag, var type, var fields) -> new PirTerm.DataConstr(
                     tag, type, fields.stream().map(field ->
                             replace(field, target, replacement)).toList());
+            case PirTerm.PairMatch(var pair, var type, var first, var second, var body) ->
+                    new PirTerm.PairMatch(replace(pair, target, replacement), type, first, second,
+                            replace(body, target, replacement));
             case PirTerm.ListMatch(var xs, var head, var tail, var nil, var cons) ->
                     new PirTerm.ListMatch(replace(xs, target, replacement), head, tail,
                             replace(nil, target, replacement), replace(cons, target, replacement));

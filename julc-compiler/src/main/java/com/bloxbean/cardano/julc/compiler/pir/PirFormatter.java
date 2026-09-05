@@ -113,6 +113,13 @@ public final class PirFormatter {
                 }
                 sb.append(')');
             }
+            case PirTerm.PairMatch m -> {
+                sb.append("(pair-match ");
+                formatTerm(m.scrutinee(), sb);
+                sb.append(" [").append(m.firstName()).append(", ").append(m.secondName()).append("] => ");
+                formatTerm(m.body(), sb);
+                sb.append(')');
+            }
             case PirTerm.ListMatch m -> {
                 sb.append("(list-match ");
                 formatTerm(m.scrutinee(), sb);
@@ -224,6 +231,13 @@ public final class PirFormatter {
                     sb.append(' ');
                     formatTermPretty(field, sb, indent);
                 }
+                sb.append(')');
+            }
+            case PirTerm.PairMatch m -> {
+                sb.append("(pair-match ");
+                formatTerm(m.scrutinee(), sb);
+                sb.append(" [").append(m.firstName()).append(", ").append(m.secondName()).append("] => ");
+                formatTerm(m.body(), sb);
                 sb.append(')');
             }
             case PirTerm.ListMatch m -> {

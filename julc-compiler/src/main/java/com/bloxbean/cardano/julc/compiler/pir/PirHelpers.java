@@ -301,6 +301,9 @@ public final class PirHelpers {
             case PirTerm.IfThenElse ite -> containsVarRef(ite.cond(), name)
                     || containsVarRef(ite.thenBranch(), name) || containsVarRef(ite.elseBranch(), name);
             case PirTerm.DataConstr dc -> dc.fields().stream().anyMatch(f -> containsVarRef(f, name));
+            case PirTerm.PairMatch m -> containsVarRef(m.scrutinee(), name)
+                    || (!m.firstName().equals(name) && !m.secondName().equals(name)
+                        && containsVarRef(m.body(), name));
             case PirTerm.ListMatch m -> containsVarRef(m.scrutinee(), name)
                     || containsVarRef(m.nilBranch(), name) || containsVarRef(m.consBranch(), name);
             case PirTerm.DataMatch dm -> containsVarRef(dm.scrutinee(), name)

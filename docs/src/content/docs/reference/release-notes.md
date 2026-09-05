@@ -3,6 +3,20 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+## Upcoming preview: typed native Pair Case lowering
+
+`PV11_SAFE` (the default) and `PV11_COSTED` now destructure proven native pairs
+from strict constructor-boundary checks with a single PV11 `Case`. The compiler
+requires both tag/fields projections of the same once-bound `UnConstrData`
+result; it leaves field decoding and failure/trace order unchanged. Arbitrary
+pair values, aliases, map traversal and Data-encoded tuples are outside this rule.
+The optimization report records `pv11.o4.case-pair`.
+
+Recompiling an eligible validator with a safe profile changes its script bytes
+and hash. NONE/BASELINE retain historical bytes; deployed scripts and ledger
+Data encodings are unchanged. This remains experimental compiler behavior and
+requires independent correctness review before merge/release.
+
 ## Upcoming preview: stable typed formal-verification API v1
 
 JuLC now provides a stable construction API for exact-artifact formal

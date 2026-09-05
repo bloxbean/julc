@@ -225,6 +225,19 @@ class RecognizerTest {
         assertEquals(2, match.branches().get(1).fieldNames().size());
     }
 
+    @Test
+    void nativePairCaseKeepsItsSingleBranchAndOrderedFields() {
+        var scrutinee = Term.apply(Term.builtin(DefaultFun.UnConstrData), Term.var(1));
+        var body = Term.var(2);
+        var term = Term.case_(scrutinee, Term.lam("tag", Term.lam("fields", body)));
+        var match = SopRecognizer.matchCase(term);
+        assertNotNull(match);
+        assertSame(scrutinee, match.scrutinee());
+        assertEquals(1, match.branches().size());
+        assertEquals(List.of("tag", "fields"), match.branches().getFirst().fieldNames());
+        assertSame(body, match.branches().getFirst().body());
+    }
+
     // --- FieldAccessRecognizer tests ---
 
     @Test

@@ -71,7 +71,7 @@ Force(Apply(Apply(Apply(Force(Builtin(IfThenElse)), Const(True)),
 
 ### 2.2 What is PIR?
 
-Plutus Intermediate Representation (PIR) is the typed bridge between Java and UPLC. It has 13 term variants defined in `julc-compiler/.../pir/PirTerm.java`:
+Plutus Intermediate Representation (PIR) is the typed bridge between Java and UPLC. It has 14 term variants defined in `julc-compiler/.../pir/PirTerm.java`:
 
 | # | Variant | Description |
 |---|---------|-------------|
@@ -88,6 +88,7 @@ Plutus Intermediate Representation (PIR) is the typed bridge between Java and UP
 | 11 | `Error(PirType type)` | Typed error |
 | 12 | `Trace(PirTerm message, PirTerm body)` | Trace debug output |
 | 13 | `ListMatch(scrutinee, headName, tailName, nilBranch, consBranch)` | Native list match; raw head/tail bindings scoped to cons branch |
+| 14 | `PairMatch(scrutinee, pairType, firstName, secondName, body)` | Proven native pair; raw first/second bindings scoped to body |
 
 `ListMatch` performs no Data decoding. The for-each producer retains its
 `NullList` representation guard and places the match only in the non-empty
@@ -98,6 +99,23 @@ The guard makes the emitted nil branch unreachable; it is `Error`.
 Map/native pair loops and unconditional-break loops without a tail use retain
 their existing form. `NONE`/`BASELINE` produce the historical PIR directly.
 See ADR-034 for the eligibility and validation contract.
+
+`PairDestructuringPass` runs immediately before UPLC generation in all compiler
+entry points. It replaces a strict `Let p = UnConstrData(d)` only when every use
+of that lexical binding is a correctly typed direct `FstPair(p)` or `SndPair(p)`,
+with both projections present. This covers constructor decomposition in strict
+record, sum, Boolean and Optional boundaries. `UnConstrData` remains strict and
+runs once; `PairMatch` binds raw tag and fields, leaving all partial decoders,
+traces and branches in place. The one UPLC branch takes first then second.
+Aliases, escaping pairs, one-sided projections, unproven producers and
+Data-encoded pair-like values are excluded. The pass and lowering both require
+the exact PV11 target and a safe optimization level; NONE/BASELINE retain their
+historical bytes. Rule provenance is `pv11.o4.case-pair` (ADR-036).
+
+Run `./gradlew :julc-compiler:pairCaseTest` for the dedicated Java/Truffle/Scalus
+pair suite. It is included in `check`/`build`; its additional Truffle dependency
+does not change default VM selection in the existing compiler tests.
+
 
 
 **Side-by-side compilation example:**

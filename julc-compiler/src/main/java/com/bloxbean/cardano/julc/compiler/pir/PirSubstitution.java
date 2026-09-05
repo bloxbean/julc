@@ -81,6 +81,11 @@ public final class PirSubstitution {
                 yield new PirTerm.DataConstr(tag, dataType, newFields);
             }
 
+            case PirTerm.PairMatch(var pair, var type, var first, var second, var body) ->
+                    new PirTerm.PairMatch(substitute(pair, varName, replacement), type, first, second,
+                            first.equals(varName) || second.equals(varName) ? body
+                                    : substitute(body, varName, replacement));
+
             case PirTerm.ListMatch(var xs, var head, var tail, var nil, var cons) ->
                     new PirTerm.ListMatch(substitute(xs, varName, replacement), head, tail,
                             substitute(nil, varName, replacement),
@@ -156,6 +161,13 @@ public final class PirSubstitution {
             }
             case PirTerm.DataConstr(_, _, var fields) -> {
                 for (var field : fields) collectFreeVars(field, bound, free);
+            }
+            case PirTerm.PairMatch(var pair, _, var first, var second, var body) -> {
+                collectFreeVars(pair, bound, free);
+                var innerBound = new LinkedHashSet<>(bound);
+                innerBound.add(first);
+                innerBound.add(second);
+                collectFreeVars(body, innerBound, free);
             }
             case PirTerm.ListMatch(var xs, var head, var tail, var nil, var cons) -> {
                 collectFreeVars(xs, bound, free);
