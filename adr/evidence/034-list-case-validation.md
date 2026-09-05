@@ -44,9 +44,14 @@ change, new source syntax, or VM implementation change is introduced.
 - Isolated benchmark source methods so unrelated strict recursive helper
   bindings do not inflate measured artifacts or obscure the new rule's effect.
 
-This is implementation self-review with executable evidence, not independent
-review or a formal compiler-correctness proof. ADR-032/#110's independent review
-remains a pre-merge requirement. No merge or release is performed here.
+The preceding section is implementation self-review with executable evidence,
+not a formal compiler-correctness proof. The developer subsequently supplied an
+independent Claude review: **approve with notes; no compiler correctness defect
+found**. That review independently checked upstream branch semantics, failure and
+evaluation order, profile context, binding scope and all 30 historical byte rows.
+It reported fresh compiler, stdlib, testkit, in-repo examples and O3 benchmark
+runs; VM and other module results were taken from the author's build. External
+examples and Yaci E2E were not run. No merge or release is performed here.
 
 ## Test scenarios
 
@@ -143,7 +148,9 @@ Fresh VM suite results:
 
 Java and Truffle each report 1,998 conformance rows: 737 applicable PV10/C
 cases and all 999 PV11/E cases pass; the 262 skips are PV10-inapplicable cases,
-not skipped PV11 coverage. Exact pinned budget comparisons remain active.
+not skipped PV11 coverage. This inventory contains builtin/example vectors and
+does not itself pin term-level List Case semantics. Exact pinned budget
+comparisons remain active.
 Scalus runs the 999-case inventory for supplied/bundled cost sources under
 PV10/C and PV11/E inside one matrix test, classifying expected parse errors,
 inapplicable cases, non-serializable inputs and known upstream divergences.
@@ -157,3 +164,33 @@ new Case List output is made. Existing default-build skip conditions remain.
 One intermediate build overlapped a focused compiler run and collided writing
 XML reports; subsequent validation runs were serialized. No compiler/test
 assertion was weakened to address that infrastructure collision.
+
+## Follow-up validation after independent review
+
+- `ListCaseRecognitionTest`: freshly compile NONE/BASELINE/PV11_SAFE, FLAT
+  roundtrip, recognize the recursive list fold and run full decompilation.
+  Negative cases cover missing/mismatched guards, reversed or incomplete
+  branches, constructor scrutinees and matching on the empty path.
+- `ListCaseSemanticsTest`: explicit serialized terms with empty, singleton and
+  multiple elements pin cons branch 0, nil branch 1, raw head then tail binding,
+  unselected Error laziness and both selected failure paths. Runs against Java
+  and Truffle with explicit PV11 targets and Scalus's language-only API.
+- Decompiler recognition is deliberately narrow and changes no compiler output,
+  VM semantics, ledger encoding or public API. The existing lifter still emits
+  LetRec; this is not new Java for-each reconstruction.
+- ADR-032's catalog records the bounded O3 implementation; broader traversal
+  families, the one-branch size optimization and the Yaci pre-release gate remain
+  outside this follow-up. The original independent review predates these edits.
+
+Follow-up commands completed successfully:
+
+```
+./gradlew :julc-decompiler:test --tests '*ListCaseRecognitionTest' :julc-benchmark:test --tests '*ListCaseSemanticsTest'
+./gradlew :julc-decompiler:test :julc-benchmark:test
+./gradlew build -PskipSigning=true
+```
+
+The affected suites report 96 decompiler tests and 21 benchmark tests, with zero
+failures, errors or skips. The repository build passed after these changes;
+unchanged tasks may be up-to-date. The original fresh VM conformance results
+above are retained as prior evidence, not represented as fresh follow-up runs.

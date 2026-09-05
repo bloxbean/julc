@@ -48,6 +48,7 @@ dependencies {
     implementation project(':julc-vm')
     implementation project(':julc-vm-java')
     implementation project(':julc-vm-truffle')
+    testImplementation project(':julc-vm-scalus')
 
     jmh project(':julc-core')
     jmh project(':julc-vm')

@@ -1,6 +1,6 @@
 # ADR-034: Typed List Case lowering for compiler-generated for-each
 
-Status: Implemented and locally validated on `feat/110-typed-list-case`; independent review pending before merge.
+Status: Implemented and locally validated on `feat/110-typed-list-case`; independent Claude review reported by the developer: approve with notes. Review follow-ups are recorded below; merge/release approval is separate.
 
 Parent: ADR-032 O3; issue #110. Target: `plutus-v3-pv11-uplc-1.1.0`.
 
@@ -102,7 +102,8 @@ requires the evidence below and independent correctness review before merge.
 ## Affected modules and stages
 
 - julc-compiler: for-each desugaring, typed PIR/visitors, UPLC generation.
-- julc-benchmark: compiled-source cross-backend evidence and budget fixtures.
+- julc-benchmark: compiled-source cross-backend evidence, explicit List Case semantic vectors and budget fixtures.
+- julc-decompiler: recognize the guarded List Case traversal alongside historical projections.
 - compiler/stdlib/testkit/tooling/examples: regression validation.
 - Java/Truffle/Scalus VMs: conformance and differential validation; no VM changes.
 - docs: rollout, scope and script-hash migration.
@@ -149,4 +150,30 @@ No shared traversal abstraction or broader rewrite is authorized by this ADR.
 See the [validation and review report](evidence/034-list-case-validation.md) and
 [reproducible size/budget/hash tables](evidence/034-list-case-measurements.md).
 Focused tests, affected modules, fresh VM/conformance suites, repository build
-and documentation build passed. The independent pre-merge review remains open.
+and documentation build passed. The developer supplied an independent Claude
+review approving with notes; see the validation report for its fresh-run scope
+and the follow-up changes. These follow-ups have local self-review and tests,
+not a second independent review.
+
+## Review follow-ups
+
+The decompiler recognizes the specific O3 shape: a two-branch Case on NullList
+whose false branch immediately cases on the same variable, with head/tail
+lambdas in branch 0 and Error in branch 1. Compare de Bruijn indices, not names,
+so FLAT roundtrips preserve recognition. Unrelated constructor Cases, mismatched
+scrutinees and reversed branches do not qualify. Historical recognition remains.
+This restores loop classification only: the existing lifter emits LetRec and
+does not use that classification to reconstruct a Java for-each statement.
+
+Explicit serialized term-level tests pin List Case branch order, head/tail
+binding, laziness and selected failures on Java/Truffle PV11 and Scalus's
+language-only API. The 999-case builtin/example conformance inventory does not
+itself cover term-level List Case; it is separate regression evidence.
+
+Retain the two-branch List Case. Dropping the unreachable nil branch is deferred
+to a separately reviewed ADR change with backend verification and measurements.
+Retain the explicit O3 target gate; its asymmetry with O2 is harmless while the
+compiler registry accepts only the exact PV11 target.
+
+A for-each validator executed on an available Yaci DevKit remains an outstanding
+pre-release gate, not a result implied by local VM or conformance tests.

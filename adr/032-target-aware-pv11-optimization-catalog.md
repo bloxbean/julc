@@ -1007,7 +1007,7 @@ line after the initial review window (2026-08-29).
 |---|---:|---|
 | O1 | [#94](https://github.com/bloxbean/julc/issues/94) | enabled at `PV11_SAFE` |
 | O2 | [#97](https://github.com/bloxbean/julc/issues/97) | enabled at `PV11_SAFE` |
-| O3 | [#98](https://github.com/bloxbean/julc/issues/98) | deferred: typed list match required |
+| O3 | [#98](https://github.com/bloxbean/julc/issues/98), [#110](https://github.com/bloxbean/julc/issues/110) | implemented at `PV11_SAFE`: guarded for-each via ADR-034; other traversal families deferred |
 | O4 | [#99](https://github.com/bloxbean/julc/issues/99) | deferred: typed pair use analysis required |
 | O5 | [#100](https://github.com/bloxbean/julc/issues/100) | deferred: default/failure semantics differ |
 | O6 | [#101](https://github.com/bloxbean/julc/issues/101) | deferred: no typed Unit sequencing surface |
