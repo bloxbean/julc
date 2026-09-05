@@ -113,6 +113,15 @@ public final class PirFormatter {
                 }
                 sb.append(')');
             }
+            case PirTerm.ListMatch m -> {
+                sb.append("(list-match ");
+                formatTerm(m.scrutinee(), sb);
+                sb.append(" [] => ");
+                formatTerm(m.nilBranch(), sb);
+                sb.append(" [").append(m.headName()).append(" :: ").append(m.tailName()).append("] => ");
+                formatTerm(m.consBranch(), sb);
+                sb.append(')');
+            }
             case PirTerm.DataMatch dm -> {
                 sb.append("(match ");
                 formatTerm(dm.scrutinee(), sb);
@@ -215,6 +224,15 @@ public final class PirFormatter {
                     sb.append(' ');
                     formatTermPretty(field, sb, indent);
                 }
+                sb.append(')');
+            }
+            case PirTerm.ListMatch m -> {
+                sb.append("(list-match ");
+                formatTerm(m.scrutinee(), sb);
+                sb.append(" [] => ");
+                formatTerm(m.nilBranch(), sb);
+                sb.append(" [").append(m.headName()).append(" :: ").append(m.tailName()).append("] => ");
+                formatTerm(m.consBranch(), sb);
                 sb.append(')');
             }
             case PirTerm.DataMatch dm -> {

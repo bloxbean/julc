@@ -3,6 +3,7 @@ package com.bloxbean.cardano.julc.compiler.uplc;
 import com.bloxbean.cardano.julc.compiler.CompilerException;
 import com.bloxbean.cardano.julc.compiler.CompilerTypeDiagnostics;
 import com.bloxbean.cardano.julc.compiler.CompilationContext;
+import com.bloxbean.cardano.julc.compiler.CompilerTarget;
 import com.bloxbean.cardano.julc.compiler.CompilerTargetDiagnostics;
 import com.bloxbean.cardano.julc.compiler.pir.PirSubstitution;
 import com.bloxbean.cardano.julc.compiler.pir.PirTerm;
@@ -25,6 +26,8 @@ import java.util.*;
  * building an {@link IdentityHashMap} for runtime error location tracking.
  */
 public class UplcGenerator {
+
+    public static final String PV11_CASE_LIST_RULE = "pv11.o3.case-list";
 
     public static final String PV11_CASE_BOOL_RULE = "pv11.o2.case-bool";
 
@@ -166,6 +169,29 @@ public class UplcGenerator {
                                         Term.apply(ifBuiltin, generate(cond)),
                                         Term.delay(generate(thenBranch))),
                                 Term.delay(generate(elseBranch))));
+            }
+
+            case PirTerm.ListMatch(var scrutinee, var head, var tail, var nil, var cons) -> {
+                if (!context.target().equals(CompilerTarget.PLUTUS_V3_PV11)
+                        || !context.optimizationLevel().pv11SafeRulesEnabled()
+                        || !context.supports(ProtocolCapability.CASE_ON_BUILTIN_CONSTANTS)) {
+                    throw new CompilerException("ListMatch requires the PV11 safe lowering profile");
+                }
+                context.recordOptimizationRule(PV11_CASE_LIST_RULE);
+                var listTerm = generate(scrutinee);
+                var nilTerm = generate(nil);
+                scope.push(head);
+                scope.push(tail);
+                Term consTerm;
+                try {
+                    consTerm = generate(cons);
+                } finally {
+                    scope.pop();
+                    scope.pop();
+                }
+                // List Case: h::t selects branch 0 (applied to h then t); [] selects branch 1.
+                yield new Term.Case(listTerm,
+                        List.of(Term.lam(head, Term.lam(tail, consTerm)), nilTerm));
             }
 
             case PirTerm.DataConstr(var tag, var dataType, var fields) -> {

@@ -18,7 +18,7 @@ import com.bloxbean.cardano.julc.core.Term;
  * This is equivalent to: let name = fix(\name -> recBody) in expr
  * <p>
  * The recognizer classifies the recursive body as:
- * - ForEach: uses NullList for termination, HeadList/TailList for traversal
+ * - ForEach: uses NullList for termination, HeadList/TailList or a guarded List Case for traversal
  * - While: uses a condition for termination
  * - General recursion: anything else
  */
@@ -99,6 +99,7 @@ public final class LoopRecognizer {
      */
     public static LoopKind classifyBody(Term recBody) {
         // Check for list iteration pattern: NullList used as termination condition
+        if (usesGuardedListCase(recBody)) return LoopKind.FOR_EACH;
         if (usesBuiltin(recBody, DefaultFun.NullList)
                 && usesBuiltin(recBody, DefaultFun.HeadList)
                 && usesBuiltin(recBody, DefaultFun.TailList)) {
@@ -109,6 +110,34 @@ public final class LoopRecognizer {
             return LoopKind.WHILE;
         }
         return LoopKind.GENERAL_RECURSION;
+    }
+
+    /** Recognize the ADR-034 shape, not an arbitrary two-branch constructor Case. */
+    private static boolean usesGuardedListCase(Term term) {
+        if (term instanceof Term.Case guard && guard.branches().size() == 2) {
+            var test = ForceCollapser.matchForcedBuiltin(guard.scrutinee());
+            if (test != null && test.fun() == DefaultFun.NullList && test.args().size() == 1
+                    && test.args().getFirst() instanceof Term.Var xs
+                    && guard.branches().getFirst() instanceof Term.Case match
+                    && match.scrutinee() instanceof Term.Var matched
+                    && xs.name().index() == matched.name().index()
+                    && match.branches().size() == 2
+                    && match.branches().getFirst() instanceof Term.Lam head
+                    && head.body() instanceof Term.Lam
+                    && match.branches().get(1) instanceof Term.Error) {
+                return true;
+            }
+        }
+        return switch (term) {
+            case Term.Apply a -> usesGuardedListCase(a.function()) || usesGuardedListCase(a.argument());
+            case Term.Lam l -> usesGuardedListCase(l.body());
+            case Term.Force f -> usesGuardedListCase(f.term());
+            case Term.Delay d -> usesGuardedListCase(d.term());
+            case Term.Constr c -> c.fields().stream().anyMatch(LoopRecognizer::usesGuardedListCase);
+            case Term.Case c -> usesGuardedListCase(c.scrutinee())
+                    || c.branches().stream().anyMatch(LoopRecognizer::usesGuardedListCase);
+            default -> false;
+        };
     }
 
     private static boolean usesBuiltin(Term term, DefaultFun fun) {

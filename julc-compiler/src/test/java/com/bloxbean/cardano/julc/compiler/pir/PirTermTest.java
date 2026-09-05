@@ -11,6 +11,18 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class PirTermTest {
 
+    @Test void listMatchRetainsResultTypeWithUnreachableEmptyBranch() {
+        var type = new PirType.IntegerType();
+        var xs = new PirTerm.Var("xs", new PirType.ListType(new PirType.DataType()));
+        var match = new PirTerm.ListMatch(xs, "head", "tail", new PirTerm.Error(type),
+                new PirTerm.Const(Constant.integer(7)));
+        var inference = new TypeInferenceHelper(
+                new com.bloxbean.cardano.julc.compiler.resolve.SymbolTable(),
+                new com.bloxbean.cardano.julc.compiler.resolve.TypeResolver(), null, null);
+        assertEquals(type, inference.inferPirType(match));
+    }
+
+
     @Test void varTerm() {
         var t = new PirTerm.Var("x", new PirType.IntegerType());
         assertEquals("x", t.name());

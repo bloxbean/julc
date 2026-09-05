@@ -48,9 +48,17 @@ dependencies {
     implementation project(':julc-vm')
     implementation project(':julc-vm-java')
     implementation project(':julc-vm-truffle')
+    testImplementation project(':julc-vm-scalus')
 
     jmh project(':julc-core')
     jmh project(':julc-vm')
     jmh project(':julc-vm-java')
     jmh project(':julc-vm-truffle')
+}
+
+tasks.register('listCaseEvidence', JavaExec) {
+    group = 'verification'
+    description = 'Run ADR-034 compiled for-each semantic/cost fixtures'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.bloxbean.cardano.julc.benchmark.optimization.ListCaseEvidence'
 }

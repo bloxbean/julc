@@ -254,6 +254,13 @@ the target enables it and the selected form preserves lazy branch evaluation.
 
 ### O3. Case-on-`List` traversal
 
+**Follow-up #110:** ADR-034 implements the guarded compiler-generated for-each
+slice. It retains NullList for malformed-runtime-representation failure
+compatibility and replaces head/tail projections only where the tail is used.
+The original research and broader per-family deferrals below remain historical
+context; HOFs, map/native pairs and other traversal builders are not enabled by
+this follow-up. See [ADR-034](034-typed-list-case-lowering.md).
+
 Replace a single traversal step:
 
 ```text
@@ -1000,7 +1007,7 @@ line after the initial review window (2026-08-29).
 |---|---:|---|
 | O1 | [#94](https://github.com/bloxbean/julc/issues/94) | enabled at `PV11_SAFE` |
 | O2 | [#97](https://github.com/bloxbean/julc/issues/97) | enabled at `PV11_SAFE` |
-| O3 | [#98](https://github.com/bloxbean/julc/issues/98) | deferred: typed list match required |
+| O3 | [#98](https://github.com/bloxbean/julc/issues/98), [#110](https://github.com/bloxbean/julc/issues/110) | implemented at `PV11_SAFE`: guarded for-each via ADR-034; other traversal families deferred |
 | O4 | [#99](https://github.com/bloxbean/julc/issues/99) | deferred: typed pair use analysis required |
 | O5 | [#100](https://github.com/bloxbean/julc/issues/100) | deferred: default/failure semantics differ |
 | O6 | [#101](https://github.com/bloxbean/julc/issues/101) | deferred: no typed Unit sequencing surface |

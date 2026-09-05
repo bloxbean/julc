@@ -81,6 +81,12 @@ public final class PirSubstitution {
                 yield new PirTerm.DataConstr(tag, dataType, newFields);
             }
 
+            case PirTerm.ListMatch(var xs, var head, var tail, var nil, var cons) ->
+                    new PirTerm.ListMatch(substitute(xs, varName, replacement), head, tail,
+                            substitute(nil, varName, replacement),
+                            head.equals(varName) || tail.equals(varName) ? cons
+                                    : substitute(cons, varName, replacement));
+
             case PirTerm.DataMatch(var scrutinee, var branches) -> {
                 var newScrutinee = substitute(scrutinee, varName, replacement);
                 var newBranches = new ArrayList<PirTerm.MatchBranch>();
@@ -151,6 +157,15 @@ public final class PirSubstitution {
             case PirTerm.DataConstr(_, _, var fields) -> {
                 for (var field : fields) collectFreeVars(field, bound, free);
             }
+            case PirTerm.ListMatch(var xs, var head, var tail, var nil, var cons) -> {
+                collectFreeVars(xs, bound, free);
+                collectFreeVars(nil, bound, free);
+                var innerBound = new LinkedHashSet<>(bound);
+                innerBound.add(head);
+                innerBound.add(tail);
+                collectFreeVars(cons, innerBound, free);
+            }
+
             case PirTerm.DataMatch(var scrutinee, var branches) -> {
                 collectFreeVars(scrutinee, bound, free);
                 for (var branch : branches) {

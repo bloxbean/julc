@@ -21,6 +21,25 @@ public sealed interface PirTerm {
     record Const(Constant value) implements PirTerm {}
     record Builtin(DefaultFun fun) implements PirTerm {}
     record IfThenElse(PirTerm cond, PirTerm thenBranch, PirTerm elseBranch) implements PirTerm {}
+    /**
+     * Match a native List<Data>, binding its raw head and tail only in consBranch.
+     * The scrutinee is evaluated once; only the selected branch runs. No element
+     * decoding is implicit: partial decoders must remain explicit in consBranch.
+     * Producers must prove the List<Data> representation (currently for-each only).
+     * Native pairs, arrays and Data-wrapped lists are not this representation.
+     */
+    record ListMatch(PirTerm scrutinee, String headName, String tailName,
+                     PirTerm nilBranch, PirTerm consBranch) implements PirTerm {
+        public ListMatch {
+            java.util.Objects.requireNonNull(scrutinee, "scrutinee");
+            java.util.Objects.requireNonNull(nilBranch, "nilBranch");
+            java.util.Objects.requireNonNull(consBranch, "consBranch");
+            if (headName == null || headName.isBlank() || tailName == null
+                    || tailName.isBlank() || headName.equals(tailName)) {
+                throw new IllegalArgumentException("ListMatch requires distinct head/tail binders");
+            }
+        }
+    }
     record DataConstr(int tag, PirType dataType, List<PirTerm> fields) implements PirTerm {
         public DataConstr { fields = List.copyOf(fields); }
     }
