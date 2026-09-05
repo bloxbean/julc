@@ -18,6 +18,8 @@ import com.github.javaparser.ast.stmt.*;
 
 import com.bloxbean.cardano.julc.compiler.CompilerOptions;
 import com.bloxbean.cardano.julc.compiler.CompilationContext;
+import com.bloxbean.cardano.julc.compiler.CompilerTarget;
+import com.bloxbean.cardano.julc.vm.ProtocolCapability;
 import com.bloxbean.cardano.julc.compiler.resolve.LibraryMethodRegistry;
 import com.bloxbean.cardano.julc.core.source.SourceLocation;
 import com.bloxbean.cardano.julc.compiler.util.StringUtils;
@@ -42,7 +44,7 @@ public class PirGenerator {
     private final String libraryClassName; // non-null when compiling library class methods
     private final CompilationContext context;
     private final List<CompilerDiagnostic> collectedErrors = new ArrayList<>();
-    private final LoopDesugarer loopDesugarer = new LoopDesugarer();
+    private final LoopDesugarer loopDesugarer;
 
     /** PIR term → Java source location. Only populated when source maps are enabled. */
     private final IdentityHashMap<PirTerm, SourceLocation> pirPositions = new IdentityHashMap<>();
@@ -109,6 +111,10 @@ public class PirGenerator {
         this.typeMethodRegistry = typeMethodRegistry;
         this.libraryClassName = libraryClassName;
         this.context = Objects.requireNonNull(context, "context");
+        this.loopDesugarer = new LoopDesugarer(
+                context.target().equals(CompilerTarget.PLUTUS_V3_PV11)
+                        && context.optimizationLevel().pv11SafeRulesEnabled()
+                        && context.supports(ProtocolCapability.CASE_ON_BUILTIN_CONSTANTS));
         this.typeInference = new TypeInferenceHelper(symbolTable, typeResolver, stdlibLookup, typeMethodRegistry);
         this.loopBody = new LoopBodyGenerator(this, symbolTable);
     }

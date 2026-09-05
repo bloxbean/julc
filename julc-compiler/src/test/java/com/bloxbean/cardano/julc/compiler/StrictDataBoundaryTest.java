@@ -491,6 +491,8 @@ class StrictDataBoundaryTest {
                             + countBuiltin(no, target);
             case PirTerm.DataConstr(_, _, var fields) -> fields.stream()
                     .mapToInt(field -> countBuiltin(field, target)).sum();
+            case PirTerm.ListMatch(var xs, _, _, var nil, var cons) ->
+                    countBuiltin(xs, target) + countBuiltin(nil, target) + countBuiltin(cons, target);
             case PirTerm.DataMatch(var scrutinee, var branches) ->
                     countBuiltin(scrutinee, target) + branches.stream()
                             .mapToInt(branch -> countBuiltin(branch.body(), target)).sum();

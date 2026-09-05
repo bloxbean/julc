@@ -324,6 +324,8 @@ class MethodOrderingTest {
                 case PirTerm.IfThenElse ite -> containsVar(ite.cond(), name)
                         || containsVar(ite.thenBranch(), name) || containsVar(ite.elseBranch(), name);
                 case PirTerm.DataConstr dc -> dc.fields().stream().anyMatch(f -> containsVar(f, name));
+                case PirTerm.ListMatch m -> containsVar(m.scrutinee(), name)
+                        || containsVar(m.nilBranch(), name) || containsVar(m.consBranch(), name);
                 case PirTerm.DataMatch dm -> containsVar(dm.scrutinee(), name)
                         || dm.branches().stream().anyMatch(b -> containsVar(b.body(), name));
                 case PirTerm.Trace t -> containsVar(t.message(), name) || containsVar(t.body(), name);

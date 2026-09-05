@@ -71,7 +71,7 @@ Force(Apply(Apply(Apply(Force(Builtin(IfThenElse)), Const(True)),
 
 ### 2.2 What is PIR?
 
-Plutus Intermediate Representation (PIR) is the typed bridge between Java and UPLC. It has 12 term variants defined in `julc-compiler/.../pir/PirTerm.java`:
+Plutus Intermediate Representation (PIR) is the typed bridge between Java and UPLC. It has 13 term variants defined in `julc-compiler/.../pir/PirTerm.java`:
 
 | # | Variant | Description |
 |---|---------|-------------|
@@ -87,6 +87,18 @@ Plutus Intermediate Representation (PIR) is the typed bridge between Java and UP
 | 10 | `DataMatch(PirTerm scrutinee, List<MatchBranch> branches)` | Pattern match |
 | 11 | `Error(PirType type)` | Typed error |
 | 12 | `Trace(PirTerm message, PirTerm body)` | Trace debug output |
+| 13 | `ListMatch(scrutinee, headName, tailName, nilBranch, consBranch)` | Native list match; raw head/tail bindings scoped to cons branch |
+
+`ListMatch` performs no Data decoding. The for-each producer retains its
+`NullList` representation guard and places the match only in the non-empty
+branch, preserving failures for unchecked non-list casts. Head/tail binding
+must not move partial element decoders or loop effects. PV11 UPLC branch order
+is **cons first, nil second**, with the cons branch applied to head then tail.
+The guard makes the emitted nil branch unreachable; it is `Error`.
+Map/native pair loops and unconditional-break loops without a tail use retain
+their existing form. `NONE`/`BASELINE` produce the historical PIR directly.
+See ADR-034 for the eligibility and validation contract.
+
 
 **Side-by-side compilation example:**
 

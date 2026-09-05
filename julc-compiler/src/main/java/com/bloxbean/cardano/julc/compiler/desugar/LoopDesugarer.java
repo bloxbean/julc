@@ -2,6 +2,7 @@ package com.bloxbean.cardano.julc.compiler.desugar;
 
 import com.bloxbean.cardano.julc.compiler.pir.PirHelpers;
 import com.bloxbean.cardano.julc.compiler.pir.PirTerm;
+import com.bloxbean.cardano.julc.compiler.pir.PirSubstitution;
 import com.bloxbean.cardano.julc.compiler.pir.PirType;
 import com.bloxbean.cardano.julc.core.Constant;
 import com.bloxbean.cardano.julc.core.DefaultFun;
@@ -24,6 +25,16 @@ import java.util.function.BiFunction;
 public class LoopDesugarer {
 
     private int loopCounter = 0;
+    private final boolean listCaseEnabled;
+
+    /** Preserve the standalone desugarer's historical PIR form. */
+    public LoopDesugarer() {
+        this(false);
+    }
+
+    public LoopDesugarer(boolean listCaseEnabled) {
+        this.listCaseEnabled = listCaseEnabled;
+    }
 
     private String nextLoopName(String prefix) {
         return prefix + "__" + (loopCounter++);
@@ -44,6 +55,8 @@ public class LoopDesugarer {
     public PirTerm desugarForEach(PirTerm iterableExpr, String itemName, String accName,
                                    PirTerm accInit, PirType accType, PirTerm loopBody,
                                    PirType elemType) {
+        // Map iteration also reaches this builder, but carries native pairs, not Data.
+        boolean useListCase = listCaseEnabled && !(elemType instanceof PirType.PairType);
         var listType = new PirType.ListType(new PirType.DataType());
         var loopName = nextLoopName("loop__forEach");
         var xsName = "xs__";
@@ -52,9 +65,16 @@ public class LoopDesugarer {
         // where body substitutes item = wrapDecode(HeadList(xs), elemType)
         var xsVar = new PirTerm.Var(xsName, listType);
         var accVar = new PirTerm.Var(accName, accType);
-        var headExpr = PirHelpers.wrapDecode(
-                new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), xsVar), elemType);
-        var tailExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), xsVar);
+        // '#' cannot occur in a Java identifier; loopName makes nested binders distinct.
+        var headName = "#head_" + loopName;
+        var tailName = "#tail_" + loopName;
+        PirTerm rawHead = useListCase
+                ? new PirTerm.Var(headName, new PirType.DataType())
+                : new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), xsVar);
+        var headExpr = PirHelpers.wrapDecode(rawHead, elemType);
+        PirTerm tailExpr = useListCase
+                ? new PirTerm.Var(tailName, listType)
+                : new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), xsVar);
         var nullCheck = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), xsVar);
 
         // Bind item = HeadList(xs), then evaluate body to get new acc
@@ -67,10 +87,15 @@ public class LoopDesugarer {
                         tailExpr),
                 bodyWithItem);
 
+        // Keep NullList as a representation guard: unchecked source casts can carry
+        // non-lists. Only its non-empty branch proves Case/projections equivalent.
         // if NullList(xs) then acc else loop(TailList(xs), body)
         var loopLambda = new PirTerm.Lam(xsName, listType,
                 new PirTerm.Lam(accName, accType,
-                        new PirTerm.IfThenElse(nullCheck, accVar, recursiveCall)));
+                        useListCase
+                                ? new PirTerm.IfThenElse(nullCheck, accVar,
+                                        new PirTerm.ListMatch(xsVar, headName, tailName, new PirTerm.Error(accType), recursiveCall))
+                                : new PirTerm.IfThenElse(nullCheck, accVar, recursiveCall)));
 
         // Initial call: loop(items, accInit)
         var initialCall = new PirTerm.App(
@@ -109,15 +134,24 @@ public class LoopDesugarer {
                                             PirTerm accInit, PirType accType,
                                             BiFunction<java.util.function.Function<PirTerm, PirTerm>, PirTerm, PirTerm> bodyBuilder,
                                             PirType elemType) {
+        // Map iteration also reaches this builder, but carries native pairs, not Data.
+        boolean useListCase = listCaseEnabled && !(elemType instanceof PirType.PairType);
         var listType = new PirType.ListType(new PirType.DataType());
         var loopName = nextLoopName("loop__forEach");
         var xsName = "xs__";
 
         var xsVar = new PirTerm.Var(xsName, listType);
         var accVar = new PirTerm.Var(accName, accType);
-        var headExpr = PirHelpers.wrapDecode(
-                new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), xsVar), elemType);
-        var tailExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), xsVar);
+        // '#' cannot occur in a Java identifier; loopName makes nested binders distinct.
+        var headName = "#head_" + loopName;
+        var tailName = "#tail_" + loopName;
+        PirTerm rawHead = useListCase
+                ? new PirTerm.Var(headName, new PirType.DataType())
+                : new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), xsVar);
+        var headExpr = PirHelpers.wrapDecode(rawHead, elemType);
+        PirTerm tailExpr = useListCase
+                ? new PirTerm.Var(tailName, listType)
+                : new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), xsVar);
         var nullCheck = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), xsVar);
 
         var loopFunType = new PirType.FunType(listType, new PirType.FunType(accType, accType));
@@ -130,12 +164,23 @@ public class LoopDesugarer {
 
         // Build body: Let(item, HeadList(xs), bodyBuilder(continueFn, accVar))
         var bodyTerm = bodyBuilder.apply(continueFn, accVar);
+        // An unconditional break does not consume the tail. Case's two binders
+        // increase size for that shape, so retain its single legacy projection.
+        // Keep bodyTerm by identity so its source-position mappings survive.
+        if (useListCase && !PirSubstitution.collectFreeVarNames(bodyTerm).contains(tailName)) {
+            headExpr = PirHelpers.wrapDecode(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), xsVar), elemType);
+            useListCase = false;
+        }
         var bodyWithItem = new PirTerm.Let(itemName, headExpr, bodyTerm);
 
         // loop = \xs \acc -> IfThenElse(NullList(xs), acc, bodyWithItem)
         var loopLambda = new PirTerm.Lam(xsName, listType,
                 new PirTerm.Lam(accName, accType,
-                        new PirTerm.IfThenElse(nullCheck, accVar, bodyWithItem)));
+                        useListCase
+                                ? new PirTerm.IfThenElse(nullCheck, accVar,
+                                        new PirTerm.ListMatch(xsVar, headName, tailName, new PirTerm.Error(accType), bodyWithItem))
+                                : new PirTerm.IfThenElse(nullCheck, accVar, bodyWithItem)));
 
         // Initial call: loop(items, accInit)
         var initialCall = new PirTerm.App(

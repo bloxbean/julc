@@ -254,6 +254,13 @@ the target enables it and the selected form preserves lazy branch evaluation.
 
 ### O3. Case-on-`List` traversal
 
+**Follow-up #110:** ADR-034 implements the guarded compiler-generated for-each
+slice. It retains NullList for malformed-runtime-representation failure
+compatibility and replaces head/tail projections only where the tail is used.
+The original research and broader per-family deferrals below remain historical
+context; HOFs, map/native pairs and other traversal builders are not enabled by
+this follow-up. See [ADR-034](034-typed-list-case-lowering.md).
+
 Replace a single traversal step:
 
 ```text

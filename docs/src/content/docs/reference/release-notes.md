@@ -168,6 +168,34 @@ the blueprint opt-out to compile without metadata when needed. See the
 [purpose-indexed blueprint guide](../guides/purpose-indexed-blueprints/) for
 examples and limitations.
 
+## Upcoming preview: typed List-case lowering (#110)
+
+`pv11-safe` (the default) and `pv11-costed` now use PV11 `Case List` for
+eligible compiler-generated `for-each` loops. The compiler binds the raw head
+and tail together and keeps element decoding at its original point. Nested
+loops, records, accumulators, conditional `break`, and recursive methods retain
+their source behavior.
+
+The existing `NullList` guard remains: it preserves failures for unchecked casts
+that carry a non-list value. Loops with an unconditional break and no tail use
+retain their prior projection form to avoid increasing script size. Map/native
+pair iteration, arbitrary `while` traversals and HOF builders are outside this
+rule's scope.
+
+`none` and `baseline` preserve their prior bytes, checked against fixtures from
+commit `8c9f1f63`, including source-map compilation. This does not add a PV10
+compiler target. Recompilation at `pv11-safe` can change script bytes and hashes;
+existing deployed scripts are unaffected. Use `baseline` when reproducing
+historical lowering, or retain the prior compiler version for exact reproduction
+of its `pv11-safe` artifacts.
+
+The new `PirTerm.ListMatch` variant is an internal compiler IR extension;
+consumers with exhaustive switches over PIR must handle it. Java validator APIs
+and ledger Data encodings are unchanged. See
+[ADR-034](https://github.com/bloxbean/julc/blob/main/adr/034-typed-list-case-lowering.md)
+and its [measured evidence](https://github.com/bloxbean/julc/blob/main/adr/evidence/034-list-case-measurements.md)
+for scope, failure analysis, pinned budgets and hash migration.
+
 ## Upcoming preview: target-aware PV11 optimizations
 
 ADR-032 adds an explicit optimizer rollout boundary without adding another
@@ -227,8 +255,9 @@ The decompiler also recovers the PV11 `Case Bool` form as a Java conditional
 only when its untyped UPLC scrutinee is provably Boolean, leaving ambiguous SOP
 cases as switches.
 
-Array promotion/folding, native Value algebra, BLS fusion, list/pair/integer/
-unit Case rewrites, and general conversion sharing remain explicitly deferred:
+Array promotion/folding, native Value algebra, BLS fusion, broader list traversal
+rewrites beyond #110, pair/integer/unit Case rewrites, and general conversion
+sharing remain explicitly deferred:
 the current compiler lacks the typed literal, representation, or use-analysis
 proof needed to preserve failures and strict evaluation. A future protocol
 target starts with ADR-032 rules disabled and enables each rule only after its

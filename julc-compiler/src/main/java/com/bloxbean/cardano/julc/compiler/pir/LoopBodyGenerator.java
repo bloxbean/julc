@@ -441,6 +441,11 @@ final class LoopBodyGenerator {
                 collectReferencedVars(ite.elseBranch(), candidates, result);
             }
             case PirTerm.DataConstr dc -> { for (var f : dc.fields()) collectReferencedVars(f, candidates, result); }
+            case PirTerm.ListMatch m -> {
+                collectReferencedVars(m.scrutinee(), candidates, result);
+                collectReferencedVars(m.nilBranch(), candidates, result);
+                collectReferencedVars(m.consBranch(), candidates, result);
+            }
             case PirTerm.DataMatch dm -> {
                 collectReferencedVars(dm.scrutinee(), candidates, result);
                 for (var b : dm.branches()) collectReferencedVars(b.body(), candidates, result);
