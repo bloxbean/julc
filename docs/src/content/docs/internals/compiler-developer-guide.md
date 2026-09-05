@@ -1241,17 +1241,33 @@ Used for type inference in chained method calls. For example, `list.tail()` retu
 
 ### StdlibLookup Interface
 
+The lookup contract includes both untyped and typed lookup methods. This excerpt
+shows the import-name metadata alongside them; target-aware lookup and legality
+requirements remain separate.
+
 ```java
-@FunctionalInterface
 public interface StdlibLookup {
     Optional<PirTerm> lookup(String className, String methodName, List<PirTerm> args);
 
-    default Optional<PirTerm> lookup(String className, String methodName,
-                                      List<PirTerm> args, List<PirType> argTypes) {
-        return lookup(className, methodName, args);
+    Optional<PirTerm> lookup(String className, String methodName,
+                             List<PirTerm> args, List<PirType> argTypes);
+
+    default Set<String> registeredClassNames() {
+        return Set.of();
     }
 }
 ```
+
+`registeredClassNames()` exposes importable FQCNs served by a lookup, excluding
+simple-name aliases. `StdlibRegistry` derives these names from registrations;
+composites union their delegates' names and decorators should preserve this
+metadata. Custom lookups with FQCN-only registrations should override it.
+
+Both compiler entry points combine lookup-owned names with parsed source/type
+names. This matters for the explicit-library-list overloads: they do **not** scan
+the classpath, but registry-only methods such as `ListsLib.any`,
+`ContextsLib.trace`, and `MathLib.floorDiv` must still resolve. Adding a name does
+not bypass lookup or target-legality checks. See ADR-035 for the contract.
 
 ### Registered Methods
 
@@ -2001,7 +2017,7 @@ ADR files are in the `adr/` directory at the project root.
 | `julc-compiler/.../pir/CompositeStdlibLookup.java` | — | Chains multiple StdlibLookup instances (first match wins) |
 | `julc-compiler/.../pir/PirTerm.java` | — | PIR term AST (12 variants) |
 | `julc-compiler/.../pir/PirType.java` | — | PIR type system (13 variants) |
-| `julc-compiler/.../pir/StdlibLookup.java` | — | Functional interface for stdlib method resolution |
+| `julc-compiler/.../pir/StdlibLookup.java` | — | Interface for stdlib method resolution |
 | `julc-compiler/.../pir/PirFormatter.java` | — | PIR pretty-printing |
 | `julc-compiler/.../pir/PirSubstitution.java` | — | PIR variable substitution |
 | `julc-compiler/.../resolve/TypeResolver.java` | — | Java → PIR type mapping |

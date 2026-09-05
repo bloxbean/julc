@@ -64,11 +64,6 @@ public class JulcCompiler {
     private record CompiledStaticField(String name, PirTerm initPir) {}
     private record CompilationOutcome(CompileResult compileResult, ContractSchema contractSchema) {}
 
-    /** Builtins has no @OnchainLibrary source; other library FQCNs come from discovered sources. */
-    private static final Set<String> STDLIB_FQCNS = Set.of(
-            "com.bloxbean.cardano.julc.stdlib.Builtins"
-    );
-
     /** Typed Data subtypes that must not be used with @Param. */
     private static final Set<String> BANNED_PARAM_TYPES = Set.of(
             "PlutusData.BytesData", "BytesData",
@@ -299,7 +294,7 @@ public class JulcCompiler {
         var knownFqcns = new LinkedHashSet<String>();
         knownFqcns.addAll(typeResolver.allRegisteredFqcns());
         knownFqcns.addAll(TypeResolver.ledgerHashFqcns());
-        knownFqcns.addAll(STDLIB_FQCNS);
+        if (stdlibLookup != null) knownFqcns.addAll(stdlibLookup.registeredClassNames());
         for (var libCu : libraryCus) {
             for (var cls : libCu.findAll(ClassOrInterfaceDeclaration.class)) {
                 if (!cls.isInterface()) {
@@ -822,7 +817,7 @@ public class JulcCompiler {
         var knownFqcns = new LinkedHashSet<String>();
         knownFqcns.addAll(typeResolver.allRegisteredFqcns());
         knownFqcns.addAll(TypeResolver.ledgerHashFqcns());
-        knownFqcns.addAll(STDLIB_FQCNS);
+        if (stdlibLookup != null) knownFqcns.addAll(stdlibLookup.registeredClassNames());
         for (var libCu : libraryCus) {
             for (var cls : libCu.findAll(ClassOrInterfaceDeclaration.class)) {
                 if (!cls.isInterface()) {
@@ -1200,6 +1195,11 @@ public class JulcCompiler {
                 return base != null
                         ? base.requirements(className, methodName)
                         : LoweringRequirements.NONE;
+            }
+
+            @Override
+            public Set<String> registeredClassNames() {
+                return base != null ? base.registeredClassNames() : Set.of();
             }
 
             @Override

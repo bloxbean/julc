@@ -5,6 +5,7 @@ import com.bloxbean.cardano.julc.compiler.LoweringRequirements;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Interface for resolving stdlib method calls to PIR terms.
@@ -51,6 +52,15 @@ public interface StdlibLookup {
             List<PirTerm> args,
             List<PirType> argTypes) {
         return lookup(className, methodName, args, argTypes);
+    }
+
+    /**
+     * Importable fully qualified class names served by this lookup, excluding simple-name aliases.
+     * Used even when callers supply explicit library sources and no classpath scan occurs.
+     * Decorators should delegate this metadata; implementations without a registry may return empty.
+     */
+    default Set<String> registeredClassNames() {
+        return Set.of();
     }
 
     /** Protocol requirements declared by a registered lowering, if any. */

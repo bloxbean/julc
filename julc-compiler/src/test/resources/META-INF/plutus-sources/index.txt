@@ -1,2 +1,0 @@
-example/cleanup/DiscoveryIncrement.java
-example/cleanup/DiscoveryWrapper.java
