@@ -106,6 +106,7 @@ When a change affects generated UPLC:
 ## Coding Rules
 
 - Follow existing Java style and local patterns.
+- Prefer imports and simple class names over fully qualified class names in Java code. For example, import `java.util.ArrayList` and use `ArrayList`. Use fully qualified names only when needed to resolve a naming conflict.
 - Prefer clear explicit compiler transformations over clever shortcuts.
 - Reuse existing AST/type/lowering abstractions.
 - Avoid parallel representations for the same concept.
