@@ -1,6 +1,5 @@
 package com.bloxbean.cardano.julc.core.cbor;
 
-import co.nstant.in.cbor.CborDecoder;
 import co.nstant.in.cbor.CborException;
 import co.nstant.in.cbor.model.*;
 import co.nstant.in.cbor.model.Map;
@@ -20,11 +19,11 @@ public final class PlutusDataCborDecoder {
     private PlutusDataCborDecoder() {}
 
     /**
-     * Decode PlutusData from CBOR bytes.
+     * Decode PlutusData from CBOR bytes, preserving map entry order and duplicate keys.
      */
     public static PlutusData decode(byte[] cborBytes) {
         try {
-            var items = new CborDecoder(new ByteArrayInputStream(cborBytes)).decode();
+            var items = new MapPreservingCborDecoder(new ByteArrayInputStream(cborBytes)).decode();
             if (items.isEmpty()) {
                 throw new CborDecodingException("Empty CBOR data");
             }
@@ -36,6 +35,8 @@ public final class PlutusDataCborDecoder {
 
     /**
      * Convert a CBOR DataItem to PlutusData.
+     * A standard cbor-java Map has already collapsed duplicate keys; this method
+     * cannot recover them. Use {@link #decode(byte[])} for lossless byte decoding.
      */
     public static PlutusData fromDataItem(DataItem item) {
         // Check for CBOR tags first
@@ -91,8 +92,7 @@ public final class PlutusDataCborDecoder {
             case MAP -> {
                 var entries = new ArrayList<PlutusData.Pair>();
                 if (item instanceof PlutusDataCborEncoder.OrderedMap om) {
-                    // Order- and duplicate-preserving map produced by our own encoder
-                    // (fromDataItem(toDataItem(x)) round-trip).
+                    // Lossless map produced by our byte decoder or encoder DataItem conversion.
                     var keys = om.orderedKeys();
                     var values = om.orderedValues();
                     for (int i = 0; i < keys.size(); i++) {

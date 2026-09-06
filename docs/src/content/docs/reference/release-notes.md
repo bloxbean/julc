@@ -3,6 +3,20 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+## Upcoming preview: lossless Data map decoding
+
+CBOR decoding now preserves Plutus Data map entry order and duplicate keys,
+including nested maps and Data constants read from serialized FLAT programs.
+Previously, the decoder could collapse `{1:10,1:20}` to `{1:20}` before evaluation.
+Encoding and compiler lowering are unchanged. Re-encoding affected decoded data
+now retains entries that older versions lost; stored scripts are not modified.
+
+Incomplete map pairs, misplaced map breaks and impossible declared map lengths
+are rejected. This is a focused decoder correction, not a general strict-CBOR or
+resource-limits change. Converting an already deduplicated external cbor-java
+`Map` cannot recover its missing entries; use `PlutusDataCborDecoder.decode` when
+starting from bytes. See ADR-037 for design and validation scope.
+
 ## Upcoming preview: typed native Pair Case lowering
 
 `PV11_SAFE` (the default) and `PV11_COSTED` now destructure proven native pairs
