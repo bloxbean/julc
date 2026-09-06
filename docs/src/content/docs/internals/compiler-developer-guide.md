@@ -112,6 +112,15 @@ Data-encoded pair-like values are excluded. The pass and lowering both require
 the exact PV11 target and a safe optimization level; NONE/BASELINE retain their
 historical bytes. Rule provenance is `pv11.o4.case-pair` (ADR-036).
 
+ADR-038 also constructs `PairMatch` directly inside `generateDataMatch`, after
+preserving the strict once-bound Data scrutinee. This producer proves the native
+pair by its own `UnConstrData`; the earlier proof pass cannot see this late
+expansion. Tag dispatch and branch-local field decoding remain unchanged. A
+free dispatch reference to the historical `__match_pair` binder retains the old
+expansion for lexical compatibility. The producer and PairMatch consumer share
+the exact O4 gate and rule identity. This changes safe-profile direct-PIR output
+as well as source switches.
+
 Run `./gradlew :julc-compiler:pairCaseTest` for the dedicated Java/Truffle/Scalus
 pair suite. It is included in `check`/`build`; its additional Truffle dependency
 does not change default VM selection in the existing compiler tests.

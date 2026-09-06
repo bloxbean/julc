@@ -31,8 +31,14 @@ and hash. NONE/BASELINE retain historical bytes; deployed scripts and ledger
 Data encodings are unchanged. The bounded rule has passed independent correctness
 review; JuLC remains experimental. `compilePirToProgram` also applies this rule
 in safe profiles, so eligible caller-supplied PIR can produce new bytes/hashes.
-Sealed-interface switch decomposition generated during UPLC lowering remains
-outside this rule.
+ADR-038 extends the same rule to sealed-interface switch decomposition during
+UPLC lowering. This preserves the integer tag-dispatch chain and selected-field
+decoding, including errors in unused fields. The measured switch fixtures save
+10 bytes per site compared with the previous safe output; NONE/BASELINE remain
+byte-identical. Direct PIR DataMatch callers also receive this safe-profile
+change. The switch extension passed its own independent correctness review in
+PR #129. Decompilation currently uses generic Case recovery; dedicated switch
+recognition is tracked in [#130](https://github.com/bloxbean/julc/issues/130).
 
 ## Upcoming preview: stable typed formal-verification API v1
 
