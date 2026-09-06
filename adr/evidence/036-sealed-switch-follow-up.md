@@ -1,6 +1,6 @@
 # Issue draft: ADR-036 follow-up — native Pair Case for sealed-interface switches
 
-Status: Local draft; not filed on GitHub.
+Status: Filed as https://github.com/bloxbean/julc/issues/125 on 2026-09-06; the issue body supersedes this draft.
 Parent: #111; release plan #121. Governing design: ADR-032 O4 / ADR-036.
 
 ## Problem
