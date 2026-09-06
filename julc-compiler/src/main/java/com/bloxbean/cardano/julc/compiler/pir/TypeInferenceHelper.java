@@ -237,6 +237,9 @@ final class TypeInferenceHelper {
         if (term instanceof PirTerm.Var v) {
             return v.type();
         }
+        if (term instanceof PirTerm.PairMatch m) {
+            return m.body() instanceof PirTerm.Error error ? error.type() : inferPirType(m.body());
+        }
         if (term instanceof PirTerm.ListMatch m) {
             // The guarded for-each producer uses a typed Error for unreachable nil.
             return m.nilBranch() instanceof PirTerm.Error error

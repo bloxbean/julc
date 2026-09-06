@@ -4,6 +4,7 @@ import com.bloxbean.cardano.julc.core.Constant;
 import com.bloxbean.cardano.julc.core.DefaultFun;
 
 import java.util.List;
+import java.util.Objects;
 
 /**
  * PIR (Plutus Intermediate Representation) term AST.
@@ -21,6 +22,19 @@ public sealed interface PirTerm {
     record Const(Constant value) implements PirTerm {}
     record Builtin(DefaultFun fun) implements PirTerm {}
     record IfThenElse(PirTerm cond, PirTerm thenBranch, PirTerm elseBranch) implements PirTerm {}
+    /** Match a proven native pair once; bind raw first/second fields without decoding them. */
+    record PairMatch(PirTerm scrutinee, PirType.PairType pairType, String firstName,
+                     String secondName, PirTerm body) implements PirTerm {
+        public PairMatch {
+            Objects.requireNonNull(scrutinee, "scrutinee");
+            Objects.requireNonNull(pairType, "pairType");
+            Objects.requireNonNull(body, "body");
+            if (firstName == null || firstName.isBlank() || secondName == null
+                    || secondName.isBlank() || firstName.equals(secondName)) {
+                throw new IllegalArgumentException("PairMatch requires distinct field binders");
+            }
+        }
+    }
     /**
      * Match a native List<Data>, binding its raw head and tail only in consBranch.
      * The scrutinee is evaluated once; only the selected branch runs. No element

@@ -11,6 +11,10 @@ shadowJar {
     mergeServiceFiles()
 }
 
+configurations {
+    pairCaseBackend
+}
+
 dependencies {
     api project(':julc-core')
     api project(':julc-ledger-api')
@@ -19,9 +23,29 @@ dependencies {
 
     testImplementation project(':julc-stdlib')
     testImplementation project(':julc-testkit')
+    testImplementation project(':julc-cardano-client-lib')
     testImplementation "net.jqwik:jqwik:${jqwikVersion}"
     testRuntimeOnly project(':julc-vm-java')
+    pairCaseBackend project(':julc-vm-truffle')
     testRuntimeOnly project(':julc-vm-scalus')
+}
+
+// Keep Truffle's higher-priority provider off the existing compiler-test classpath.
+// These tests deliberately compare Java, Truffle and Scalus with explicit selection.
+tasks.named('test') {
+    useJUnitPlatform { excludeTags 'pair-case-backends' }
+}
+
+tasks.register('pairCaseTest', Test) {
+    description = 'Verify typed pair lowering across Java, Truffle and Scalus.'
+    group = 'verification'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath + configurations.pairCaseBackend
+    useJUnitPlatform { includeTags 'pair-case-backends' }
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('pairCaseTest')
 }
 
 def diagnosticCatalogFile = layout.projectDirectory.file('src/main/resources/diagnostics.json')

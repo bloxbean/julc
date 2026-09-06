@@ -585,12 +585,15 @@ public class JulcCompiler {
                     new PirTerm.Let(pf.name, decoded, wrappedTerm));
         }
 
+        var pairLowering = new PairDestructuringPass(context, pirGenerator.getPirPositions()).lower(wrappedTerm);
+        wrappedTerm = pairLowering.term();
+
         // 17. Capture PIR if details requested
         PirTerm capturedPir = captureDetails ? wrappedTerm : null;
 
         // 18. Lower to UPLC (with source map support)
         var uplcGenerator = context.isSourceMapEnabled()
-                ? new UplcGenerator(context, pirGenerator.getPirPositions())
+                ? new UplcGenerator(context, pairLowering.positions())
                 : new UplcGenerator(context, null);
         var uplcTerm = uplcGenerator.generate(wrappedTerm);
 
@@ -723,7 +726,7 @@ public class JulcCompiler {
     public Program compilePirToProgram(PirTerm pirTerm) {
         var context = beginCompilation();
         var uplcGenerator = new UplcGenerator(context, null);
-        var uplcTerm = uplcGenerator.generate(pirTerm);
+        var uplcTerm = uplcGenerator.generate(new PairDestructuringPass(context, null).lower(pirTerm).term());
         var program = createProgram(context, uplcTerm);
         UplcTargetValidator.validate(program, context, "UPLC lowering");
         return program;
@@ -958,9 +961,12 @@ public class JulcCompiler {
                     new PirTerm.Let(pf.name, decoded, body));
         }
 
+        var pairLowering = new PairDestructuringPass(context, pirGenerator.getPirPositions()).lower(body);
+        body = pairLowering.term();
+
         // 17. Lower to UPLC (with source map support)
         var uplcGenerator = context.isSourceMapEnabled()
-                ? new UplcGenerator(context, pirGenerator.getPirPositions())
+                ? new UplcGenerator(context, pairLowering.positions())
                 : new UplcGenerator(context, null);
         var uplcTerm = uplcGenerator.generate(body);
 

@@ -29,6 +29,7 @@ public class UplcGenerator {
 
     public static final String PV11_CASE_LIST_RULE = "pv11.o3.case-list";
 
+    public static final String PV11_CASE_PAIR_RULE = "pv11.o4.case-pair";
     public static final String PV11_CASE_BOOL_RULE = "pv11.o2.case-bool";
 
     private final Deque<String> scope = new ArrayDeque<>();
@@ -169,6 +170,26 @@ public class UplcGenerator {
                                         Term.apply(ifBuiltin, generate(cond)),
                                         Term.delay(generate(thenBranch))),
                                 Term.delay(generate(elseBranch))));
+            }
+
+            case PirTerm.PairMatch(var scrutinee, _, var first, var second, var body) -> {
+                if (!context.target().equals(CompilerTarget.PLUTUS_V3_PV11)
+                        || !context.optimizationLevel().pv11SafeRulesEnabled()
+                        || !context.supports(ProtocolCapability.CASE_ON_BUILTIN_CONSTANTS)) {
+                    throw new CompilerException("PairMatch requires the PV11 safe lowering profile");
+                }
+                context.recordOptimizationRule(PV11_CASE_PAIR_RULE);
+                var pairTerm = generate(scrutinee);
+                scope.push(first);
+                scope.push(second);
+                Term bodyTerm;
+                try {
+                    bodyTerm = generate(body);
+                } finally {
+                    scope.pop();
+                    scope.pop();
+                }
+                yield new Term.Case(pairTerm, List.of(Term.lam(first, Term.lam(second, bodyTerm))));
             }
 
             case PirTerm.ListMatch(var scrutinee, var head, var tail, var nil, var cons) -> {

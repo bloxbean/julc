@@ -24,6 +24,7 @@ public final class StrictBoundaryGenerator {
     private static final PirType BOOL = new PirType.BoolType();
     private static final PirType DATA = new PirType.DataType();
     private static final PirType INTEGER = new PirType.IntegerType();
+    private static final PirType CONSTRUCTOR_PAIR = new PirType.PairType(INTEGER, new PirType.ListType(DATA));
 
     private final Map<String, PirType> namedDefinitions;
     private final LinkedHashMap<PirType, Integer> typeIds = new LinkedHashMap<>();
@@ -180,7 +181,7 @@ public final class StrictBoundaryGenerator {
 
     private PirTerm checkBoolean(PirTerm data) {
         var pairName = "__bool-pair";
-        var pair = new PirTerm.Var(pairName, DATA);
+        var pair = new PirTerm.Var(pairName, CONSTRUCTOR_PAIR);
         var tag = builtin1(DefaultFun.FstPair, pair);
         var fields = builtin1(DefaultFun.SndPair, pair);
         var empty = builtin1(DefaultFun.NullList, fields);
@@ -191,7 +192,7 @@ public final class StrictBoundaryGenerator {
 
     private PirTerm checkOptional(PirTerm data, PirType elementType) {
         var pairName = "__optional-pair";
-        var pair = new PirTerm.Var(pairName, DATA);
+        var pair = new PirTerm.Var(pairName, CONSTRUCTOR_PAIR);
         var tag = builtin1(DefaultFun.FstPair, pair);
         var fields = builtin1(DefaultFun.SndPair, pair);
         var some = and(equalsInteger(tag, 0), checkFields(fields, List.of(elementType), 0));
@@ -202,7 +203,7 @@ public final class StrictBoundaryGenerator {
 
     private PirTerm checkSum(PirTerm data, PirType.SumType sum) {
         var pairName = "__sum-pair";
-        var pair = new PirTerm.Var(pairName, DATA);
+        var pair = new PirTerm.Var(pairName, CONSTRUCTOR_PAIR);
         var tag = builtin1(DefaultFun.FstPair, pair);
         var fields = builtin1(DefaultFun.SndPair, pair);
         PirTerm alternatives = bool(false);
@@ -219,7 +220,7 @@ public final class StrictBoundaryGenerator {
 
     private PirTerm checkConstructor(PirTerm data, int expectedTag, List<PirType> fields) {
         var pairName = "__record-pair";
-        var pair = new PirTerm.Var(pairName, DATA);
+        var pair = new PirTerm.Var(pairName, CONSTRUCTOR_PAIR);
         var tag = builtin1(DefaultFun.FstPair, pair);
         var fieldList = builtin1(DefaultFun.SndPair, pair);
         return new PirTerm.Let(pairName, builtin1(DefaultFun.UnConstrData, data),
