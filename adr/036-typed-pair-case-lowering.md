@@ -1,6 +1,6 @@
 # ADR-036: Typed local Pair Case lowering
 
-Status: Implementation and local validation complete on `feat/111-typed-pair-case`; independent correctness review pending before merge/release.
+Status: Implementation and local validation complete on `feat/111-typed-pair-case`; independent correctness review approved with documentation notes (review supplied 2026-09-06).
 Parent: ADR-032 O4, issue #111. Base: `991cf66b`.
 Target: `plutus-v3-pv11-uplc-1.1.0`.
 
@@ -78,8 +78,9 @@ are unchanged; test explicit Pair Case semantics across Java/Truffle/Scalus.
 NONE/BASELINE must preserve historical bytes. Safe-profile recompilation may
 change script hashes; deployed scripts and ledger Data representation do not
 change. The sealed PIR variant requires exhaustive downstream consumers to adapt.
-Independent correctness review remains required before merge/enablement release;
-local self-review is not that independent approval.
+The independent correctness review requirement for this bounded implementation
+is satisfied by the review recorded below. Future extensions require their own
+review; local self-review does not replace independent approval.
 
 ## Alternatives rejected
 
@@ -274,5 +275,34 @@ blueprint. The preceding clean run's passing tests were correctly up-to-date in
 this final packaging check; they were not rerun or claimed as fresh twice.
 
 All implementation and local validation milestones are complete. Broader native
-pair/map families remain excluded. Independent correctness review remains a
-pre-merge requirement; these self-review and test results do not replace it.
+pair/map families remain excluded. Independent correctness review approved this
+bounded implementation; the supplied review is recorded separately below.
+
+
+## Independent review and disposition (2026-09-06)
+
+The independent review supplied by the developer approved the implementation
+with notes and found no correctness defects. The reviewer reported regenerating
+all 18 historical rows at `991cf66b`, fresh passing compiler/pair/decompiler and
+downstream suites, reproduction of the recorded metrics/hashes, and adversarial
+scope/strictness probes. These are reviewer-reported checks, distinct from the
+author's validation recorded above.
+
+Reinspection confirms that proof and replacement both use `mapUses`: a matching
+LetRec binder shadows the name in every recursive RHS and the body; DataMatch
+always visits its scrutinee, while field bindings or its pattern variable shadow
+the name only in the corresponding branch body. No compiler change was required.
+The ADR status, O4 catalog and release notes now reflect review approval.
+
+The sealed-interface switch family remains excluded: `generateDataMatch`
+constructs its native pair binding inside UPLC generation, after this pass, and
+currently marks the pair reference as Data. Retyping that reference alone would
+not make it eligible for this earlier pass. A separate issue draft is at
+`adr/evidence/036-sealed-switch-follow-up.md`; no broader lowering is enabled here.
+
+Two intentional integration details remain: `:julc-compiler:test` excludes the
+pair-tagged tests (including historical bytes), so use `pairCaseTest` or `check`
+for that coverage; CI's `build` includes it. The client-lib test dependency is
+used for canonical script hashing. Also, `compilePirToProgram` now applies the
+pass in safe profiles: external PIR callers can observe different script bytes
+and hashes for eligible input. NONE/BASELINE retain the previous lowering.

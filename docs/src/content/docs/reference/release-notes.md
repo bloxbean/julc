@@ -14,8 +14,11 @@ The optimization report records `pv11.o4.case-pair`.
 
 Recompiling an eligible validator with a safe profile changes its script bytes
 and hash. NONE/BASELINE retain historical bytes; deployed scripts and ledger
-Data encodings are unchanged. This remains experimental compiler behavior and
-requires independent correctness review before merge/release.
+Data encodings are unchanged. The bounded rule has passed independent correctness
+review; JuLC remains experimental. `compilePirToProgram` also applies this rule
+in safe profiles, so eligible caller-supplied PIR can produce new bytes/hashes.
+Sealed-interface switch decomposition generated during UPLC lowering remains
+outside this rule.
 
 ## Upcoming preview: stable typed formal-verification API v1
 
