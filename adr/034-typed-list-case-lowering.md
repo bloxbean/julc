@@ -175,5 +175,8 @@ to a separately reviewed ADR change with backend verification and measurements.
 Retain the explicit O3 target gate; its asymmetry with O2 is harmless while the
 compiler registry accepts only the exact PV11 target.
 
-A for-each validator executed on an available Yaci DevKit remains an outstanding
-pre-release gate, not a result implied by local VM or conformance tests.
+The on-chain pre-release gate was completed locally on 2026-09-06: eight
+BASELINE/PV11_SAFE spending transactions confirmed on Haskell cardano-node 11.0.1,
+with exact direct-Haskell/Java budget agreement and malformed-input probes.
+See [the node evidence](evidence/034-list-case-onchain.md). The additional test
+and evidence are pending review/merge; this does not widen the compiler rule.

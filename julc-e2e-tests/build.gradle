@@ -20,7 +20,40 @@ dependencies {
 }
 
 test {
-    useJUnitPlatform()
-    // E2E tests only run when explicitly enabled: ./gradlew :plutus-e2e-tests:test -Pe2e
+    useJUnitPlatform {
+        excludeTags 'list-case-onchain'
+    }
+    // E2E tests only run when explicitly enabled: ./gradlew :julc-e2e-tests:test -Pe2e
     enabled = System.getProperty('e2e') != null || project.hasProperty('e2e')
+}
+
+// Requires direct Haskell CLI access, unlike the existing backend-only E2E tests.
+// Keep this explicit release gate separate so -Pe2e retains its existing setup.
+tasks.register('listCaseOnChainTest', Test) {
+    group = 'verification'
+    description = 'Validate generated List Case on a PV11 DevKit with direct Haskell budgets'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform {
+        includeTags 'list-case-onchain'
+    }
+    testLogging {
+        events 'passed', 'failed', 'skipped'
+        showStandardStreams = true
+    }
+    afterSuite { descriptor, result ->
+        if (descriptor.parent == null && (result.testCount < 2 || result.skippedTestCount > 0)) {
+            throw new GradleException('List Case release gate requires both profiles to run without skips')
+        }
+    }
+    // External chain state is not a Gradle input; never reuse an old passing run.
+    outputs.upToDateWhen { false }
+    doFirst {
+        if (!project.hasProperty('e2e') && System.getProperty('e2e') == null) {
+            throw new GradleException('Explicitly enable the developer devnet test with -Pe2e')
+        }
+        if (!System.getenv('JULC_E2E_CARDANO_CONTAINER')) {
+            throw new GradleException('Set JULC_E2E_CARDANO_CONTAINER to the running developer DevKit container')
+        }
+    }
 }
