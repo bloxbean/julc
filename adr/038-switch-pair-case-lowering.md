@@ -1,7 +1,7 @@
 # ADR-038: Native pair destructuring for DataMatch dispatch
 
 **Date:** 2026-09-06
-**Status:** Implemented; validation in progress; independent review required before merge
+**Status:** Implemented and validated; independent review required before merge
 **Issue:** [#125](https://github.com/bloxbean/julc/issues/125)
 **Governing decisions:** ADR-032 O4 and ADR-036
 
@@ -97,9 +97,9 @@ names are retained; this change does not redesign naming conventions.
       language-level cross-check (not ledger certification).
 - [x] Verify deterministic bytes, historical compatibility, source maps,
       provenance and decompiler behavior.
-- [ ] Run affected suites, full build/conformance, local-Maven external examples
+- [x] Run affected suites, full build/conformance, local-Maven external examples
       and available direct Haskell-node evidence.
-- [ ] Self-review final diff, record measurements and limitations.
+- [x] Self-review final diff, record measurements and limitations.
 - [ ] Independent correctness review before merge.
 
 ## Open questions

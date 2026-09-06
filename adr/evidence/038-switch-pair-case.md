@@ -29,11 +29,11 @@ safe rules. Source maps off; tests additionally cover maps on and PV11_COSTED.
 | NestedSwitchPair / Link(7,End) | 315 → 295 | 6,932,138 → 5,948,364 | 28,650 → 25,922 |
 | SingleSwitchPair / Only(7) | 164 → 154 | 4,041,018 → 3,549,131 | 16,856 → 15,492 |
 
-New safe hashes, respectively:
+Safe script-hash migration (before → after):
 
-- SwitchPair: `140692d0051a2f9018e7e3e03437f3f18fc691eff974119ef47d7dd6`
-- NestedSwitchPair: `899731f6aa1ce40cfcad4083aa2b83304efeb15ac3ff87096d8d8ea3`
-- SingleSwitchPair: `c59229b7819fd0a8ca837f797f9e46c01d6e19543b12e41b72d07144`
+- SwitchPair: `8898d7993c7c804bd6426977e3e8ed282b7f6b8e1f8192af23c9ac0b` → `140692d0051a2f9018e7e3e03437f3f18fc691eff974119ef47d7dd6`
+- NestedSwitchPair: `627b7f88fe0c9363dfb81e0f9d6c28240b00a7929b6f7bc33f262e2e` → `899731f6aa1ce40cfcad4083aa2b83304efeb15ac3ff87096d8d8ea3`
+- SingleSwitchPair: `8bb44f812729736d003966f9087886b3398cba39e7d82918788b304a` → `c59229b7819fd0a8ca837f797f9e46c01d6e19543b12e41b72d07144`
 
 All sampled malformed inputs rejected before dispatch retain identical budgets
 against the previous safe program. Raw PIR tests bypass strict boundaries to
@@ -106,7 +106,62 @@ Each row has exact Java/backend/direct-Haskell budget equality. These rows
 include all safe rules, unlike the incremental table above. Transaction IDs
 are recorded in `038-switch-pair-case-transactions.csv`.
 
-## Remaining validation
+## Repository validation
 
-Full build/conformance and Maven-local external examples are in progress.
+Implementation commit: `dbcbba2dd07187e599be806d46db54f5408afcfa`.
+
+- `./gradlew build -PskipSigning=true --rerun-tasks`: passed, all 218 tasks
+  executed, 10,823 cases: **10,292 passed, 531 existing/profile skips, zero
+  failures/errors**. Counts use only tasks run by this build, excluding stale
+  optional E2E reports and duplicate task-log entries.
+- Compiler: 1,483 regular tests plus 21 dedicated pair tests, all passed.
+  Decompiler: 98 passed. Annotation processor: 20; Gradle plugin: 30;
+  benchmark: 70; in-repository examples: 81; testkit: 191; all passed.
+- Java and Truffle: **999/999 PV11 conformance vectors each**, no PV11 skips or
+  failures. Their additional 262 skips each belong to profile-inapplicable
+  PV10 rows. Scalus: 312 tests passed, including the known-divergence matrix.
+- `:julc-e2e-tests:switchPairCaseOnChainTest` and the existing
+  `:julc-e2e-tests:listCaseOnChainTest`: two profile cases each, no skips or
+  failures. These explicit devnet gates are not part of default `build`.
+- `npm run build` in docs: passed, 32 pages.
+- After the full build, the dedicated pair suite passed again with a final
+  test refinement pinning hash migration and exercising the source default
+  branch explicitly. Production code did not change after full validation.
+
 Independent correctness review remains pending before merge.
+
+## Maven-local external examples
+
+Published with `./gradlew publishToMavenLocal -PskipSigning=true` as
+`0.1.0-pre17-dbcbba2-SNAPSHOT`. This names the implementation commit above;
+later evidence/test-only commits do not change its production code.
+
+Reused ADR-036's artifact-verification init script, which overrides the plugin
+and JuLC dependency versions and checks actual local Maven artifact resolution:
+
+```sh
+# From ~/work/bloxbean/julc-examples
+./gradlew -I ../julc/adr/evidence/036-local-examples.init.gradle \
+  -Djulc.localVersion=0.1.0-pre17-dbcbba2-SNAPSHOT \
+  -Djulc.pairFixtureDir=../julc/adr/evidence/036-pair-case-plugin \
+  clean verifyJulcLocalArtifacts build
+```
+
+The optional fixture supplies compileJulc's input in this checkout, which has
+no src/main/plutus; normal Java/AP/test sources remain those of the examples.
+The existing PairRecord plugin fixture retains its 323-byte artifact and hash.
+The examples' pre-existing WingRiders exclusions are retained. Its modified
+build.gradle SHA-256 remains
+`3a60b026d48bc58a03a1043975a3cf0f471f6e5e21a75ee146ba71782932cd21`.
+
+External build: all 12 tasks executed, **409 passed, 11 pre-existing skips,
+zero failures/errors** (420 reported cases). All **54 transaction integration
+tests passed**. The skips are the existing disabled @Param JulcEvalProxy tests:
+eight CIP-68 NFT and three collateral-loan cases. The escrow comparison reports
+52,724,190 CPU / 172,443 memory on both Java and the backend; the latter is not
+labelled direct Haskell evidence here, despite the examples' console heading.
+
+No compiler behavior regression was found in the exercised matrix. This is
+bounded testing and self-review evidence, not a production-safety certification
+or a substitute for independent review. The nested-yield frontend finding
+above remains a separate investigation.

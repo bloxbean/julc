@@ -101,7 +101,10 @@ class SwitchPairCaseLoweringTest {
                             PairCaseLoweringTest.compile(SOURCES.get(i), level, maps).program()));
                     var old = golden(i, level.pv11SafeRulesEnabled() ? OptimizationLevel.PV11_SAFE : level, maps);
                     if (!level.pv11SafeRulesEnabled()) assertArrayEquals(UplcFlatEncoder.encodeProgram(old), bytes);
-                    else assertTrue(bytes.length < UplcFlatEncoder.encodeProgram(old).length, i + "/" + maps);
+                    else {
+                        assertTrue(bytes.length < UplcFlatEncoder.encodeProgram(old).length, i + "/" + maps);
+                        assertNotEquals(JulcScriptAdapter.scriptHash(old), JulcScriptAdapter.scriptHash(program));
+                    }
                     for (var input : inputs) {
                         EvalResult javaResult = null;
                         for (String provider : List.of("Java", "Truffle", "Scalus")) {
@@ -122,7 +125,8 @@ class SwitchPairCaseLoweringTest {
                         }
                     }
                     if (level == OptimizationLevel.PV11_SAFE && !maps) System.out.println("SWITCH_ARTIFACT " + i + " "
-                            + UplcFlatEncoder.encodeProgram(old).length + " -> " + bytes.length + " " + JulcScriptAdapter.scriptHash(program));
+                            + UplcFlatEncoder.encodeProgram(old).length + " -> " + bytes.length + " "
+                            + JulcScriptAdapter.scriptHash(old) + " -> " + JulcScriptAdapter.scriptHash(program));
                 }
             }
         }
@@ -156,6 +160,10 @@ class SwitchPairCaseLoweringTest {
                         var result = provider.equals("Scalus") ? vm.evaluateWithArgs(compiled.program(), args)
                                 : vm.evaluateWithArgs(compiled.program(), CompilerTarget.PLUTUS_V3_PV11.ledgerTarget(), args, null, EvalOptions.DEFAULT);
                         assertEquals(Term.const_(Constant.integer(100 + Math.max(0, amount))), ((EvalResult.Success) result).resultTerm());
+                        var cancelArgs = List.of(PlutusData.constr(1), PlutusData.integer(100));
+                        var cancel = provider.equals("Scalus") ? vm.evaluateWithArgs(compiled.program(), cancelArgs)
+                                : vm.evaluateWithArgs(compiled.program(), CompilerTarget.PLUTUS_V3_PV11.ledgerTarget(), cancelArgs, null, EvalOptions.DEFAULT);
+                        assertEquals(Term.const_(Constant.integer(100)), ((EvalResult.Success) cancel).resultTerm());
                     }
                 }
             }
