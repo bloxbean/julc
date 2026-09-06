@@ -78,7 +78,7 @@ consumer tests and full build; inspect all HIR consumers and diff against PR129.
 - [x] Implement strict recovery and explicit HIR/rendering.
 - [x] Add source, adversarial and semantic regression coverage.
 - [x] Run affected and full validation; review and record limitations.
-- [ ] Open separate PR targeting feat/125-switch-pair-case.
+- [x] Open [PR #131](https://github.com/bloxbean/julc/pull/131) targeting feat/125-switch-pair-case.
 
 ## Review refinements
 
