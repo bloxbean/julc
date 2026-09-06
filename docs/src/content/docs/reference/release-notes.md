@@ -36,8 +36,9 @@ UPLC lowering. This preserves the integer tag-dispatch chain and selected-field
 decoding, including errors in unused fields. The measured switch fixtures save
 10 bytes per site compared with the previous safe output; NONE/BASELINE remain
 byte-identical. Direct PIR DataMatch callers also receive this safe-profile
-change. The switch extension requires separate independent review before merge;
-the earlier boundary-family review does not cover it.
+change. The switch extension passed its own independent correctness review in
+PR #129. Decompilation currently uses generic Case recovery; dedicated switch
+recognition is tracked in [#130](https://github.com/bloxbean/julc/issues/130).
 
 ## Upcoming preview: stable typed formal-verification API v1
 

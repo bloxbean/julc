@@ -128,7 +128,8 @@ Implementation commit: `dbcbba2dd07187e599be806d46db54f5408afcfa`.
   test refinement pinning hash migration and exercising the source default
   branch explicitly. Production code did not change after full validation.
 
-Independent correctness review remains pending before merge.
+Independent correctness review approved `7f398b2f` with notes; see the review
+record below.
 
 ## Maven-local external examples
 
@@ -162,6 +163,40 @@ eight CIP-68 NFT and three collateral-loan cases. The escrow comparison reports
 labelled direct Haskell evidence here, despite the examples' console heading.
 
 No compiler behavior regression was found in the exercised matrix. This is
-bounded testing and self-review evidence, not a production-safety certification
-or a substitute for independent review. The nested-yield frontend finding
+bounded testing evidence, supplemented by the independent review below, not a
+production-safety certification. The nested-yield frontend finding
 above remains a separate investigation.
+
+
+## Independent review of PR #129
+
+Claude's review, supplied by the maintainer, approved head `7f398b2f` with no
+correctness findings. This section records the reviewer's reported checks;
+it does not represent another fresh run by the implementer.
+
+The reviewer reproduced all 18 golden rows at base `f27f1ca0`, reran the pair,
+compiler and downstream suites in isolated worktrees, and checked the cost/hash
+tables against XML. Nine additional adversarial PIR probes covered nested
+private-binder references and mixed fallback/new lowering, user shadowing,
+LetRec reuse, matches in scrutinee position, retained internal binders, closure
+capture, same-name pattern variables and strict unused-field failure. Results,
+traces and failure classes agreed across Java, Truffle and Scalus, with
+non-increasing budgets.
+
+The reviewer independently reran the live node gate (four confirmed spends,
+eight rejected variants, exact Java/backend/direct-Haskell costs) and external
+examples (420 cases, zero failures, 11 pre-existing skips; 54 integration tests).
+Their local snapshot is `0.1.0-pre17-7f398b2f-SNAPSHOT`; its eight-character suffix
+comes from the worktree Git fallback. It is distinct from the author's
+`0.1.0-pre17-dbcbba2-SNAPSHOT`. The reviewer reported eight transactions including
+locks and spends, plus one admin top-up. The full rerun-tasks build, 999-case
+conformance runs and docs build remain author-run evidence, not independent
+reviewer reruns.
+
+The decompiler note is confirmed by code inspection: `DataMatchRecognizer`
+requires the legacy Let/projection chain and the new form takes generic Case
+recovery. Existing tests assert successful decompilation, not exact Java-switch
+reconstruction. Follow-up [#130](https://github.com/bloxbean/julc/issues/130)
+tracks dedicated recognition. The unrelated nested-yield finding remains
+separate. Post-review changes update documentation only; compiler code at the
+reviewed head is unchanged.

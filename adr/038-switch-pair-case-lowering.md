@@ -1,7 +1,7 @@
 # ADR-038: Native pair destructuring for DataMatch dispatch
 
 **Date:** 2026-09-06
-**Status:** Implemented and validated; independent review required before merge
+**Status:** Implemented, validated and independently reviewed (PR #129 at 7f398b2f)
 **Issue:** [#125](https://github.com/bloxbean/julc/issues/125)
 **Governing decisions:** ADR-032 O4 and ADR-036
 
@@ -100,11 +100,12 @@ names are retained; this change does not redesign naming conventions.
 - [x] Run affected suites, full build/conformance, local-Maven external examples
       and available direct Haskell-node evidence.
 - [x] Self-review final diff, record measurements and limitations.
-- [ ] Independent correctness review before merge.
+- [x] Independent correctness review before merge (Claude review supplied by the maintainer; approved with notes).
 
 ## Open questions
 
-Independent review remains a merge gate, not a claim made by the implementer
-after self-review. See [validation evidence](evidence/038-switch-pair-case.md)
-for measurements, reproduction and the unrelated pre-existing nested-yield
-limitation discovered while designing source probes.
+Independent review approved the implementation at `7f398b2f` with no correctness
+findings. Dedicated decompiler recognition is tracked in
+[#130](https://github.com/bloxbean/julc/issues/130). See
+[validation evidence](evidence/038-switch-pair-case.md) for the review scope,
+measurements, reproduction and the unrelated pre-existing nested-yield finding.

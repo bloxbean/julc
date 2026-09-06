@@ -315,9 +315,9 @@ representation.
 **Classification:** ADR-036 implements the bounded `UnConstrData` family with
 typed local use analysis and explicit PIR destructuring, approved by independent
 correctness review (2026-09-06). ADR-038/#125 extends the producer to
-sealed-interface switch decomposition inside UPLC lowering; that extension
-requires its own independent review before merge. Other candidate families
-remain deferred.
+sealed-interface switch decomposition inside UPLC lowering, independently
+approved in the review of PR #129 at `7f398b2f`. Dedicated decompiler recovery
+is tracked in #130; other pair/map candidate families remain deferred.
 
 ### O5. Case-on-`Integer` switches
 
@@ -1020,7 +1020,7 @@ line after the initial review window (2026-08-29).
 | O1 | [#94](https://github.com/bloxbean/julc/issues/94) | enabled at `PV11_SAFE` |
 | O2 | [#97](https://github.com/bloxbean/julc/issues/97) | enabled at `PV11_SAFE` |
 | O3 | [#98](https://github.com/bloxbean/julc/issues/98), [#110](https://github.com/bloxbean/julc/issues/110) | implemented at `PV11_SAFE`: guarded for-each via ADR-034; other traversal families deferred |
-| O4 | [#111](https://github.com/bloxbean/julc/issues/111) | ADR-036 implemented and independently reviewed; strict-boundary UnConstrData pairs; ADR-038/#125 adds switch decomposition pending independent review; broader pair/map families deferred |
+| O4 | [#111](https://github.com/bloxbean/julc/issues/111) | ADR-036 implemented and independently reviewed; strict-boundary UnConstrData pairs; ADR-038/#125 switch decomposition implemented and independently reviewed (PR #129); broader pair/map families deferred |
 | O5 | [#100](https://github.com/bloxbean/julc/issues/100) | deferred: default/failure semantics differ |
 | O6 | [#101](https://github.com/bloxbean/julc/issues/101) | deferred: no typed Unit sequencing surface |
 | O7 | [#95](https://github.com/bloxbean/julc/issues/95) | typed native Value boundary completed |
