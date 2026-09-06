@@ -12,6 +12,7 @@ import com.bloxbean.cardano.client.function.helper.SignerProviders;
 import com.bloxbean.cardano.client.plutus.spec.BigIntPlutusData;
 import com.bloxbean.cardano.client.plutus.spec.BytesPlutusData;
 import com.bloxbean.cardano.client.plutus.spec.Language;
+import com.bloxbean.cardano.client.plutus.spec.ConstrPlutusData;
 import com.bloxbean.cardano.client.plutus.spec.ListPlutusData;
 import com.bloxbean.cardano.client.plutus.spec.PlutusData;
 import com.bloxbean.cardano.client.quicktx.ScriptTx;
@@ -33,33 +34,30 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 
-import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Opt-in ADR-034 release gate: :julc-e2e-tests:listCaseOnChainTest -Pe2e. */
-@Tag("list-case-onchain")
-class ListCaseOnChainTest extends E2ETestBase {
+/** Opt-in ADR-038 release gate: :julc-e2e-tests:switchPairCaseOnChainTest -Pe2e. */
+@Tag("switch-pair-case-onchain")
+class SwitchPairCaseOnChainTest extends E2ETestBase {
     private static final String SOURCE = """
             import java.math.BigInteger;
-            import com.bloxbean.cardano.julc.core.types.JulcList;
-            @SpendingValidator
-            class ListCaseGate {
-                @Entrypoint
-                static boolean validate(BigInteger datum, JulcList<BigInteger> redeemer, PlutusData ctx) {
-                    BigInteger sum = BigInteger.ZERO;
-                    for (BigInteger item : redeemer) {
-                        sum = sum.add(item);
-                        if (item.equals(BigInteger.ZERO)) { break; }
-                    }
-                    return sum.equals(datum);
+            @SpendingValidator class SwitchPairGate {
+                sealed interface Action permits Pay, Cancel {}
+                record Pay(BigInteger amount, BigInteger unused) implements Action {}
+                record Cancel() implements Action {}
+                @Entrypoint static boolean validate(BigInteger datum, Action redeemer, PlutusData ctx) {
+                    return switch (redeemer) {
+                        case Pay p -> p.amount().equals(datum);
+                        case Cancel c -> datum.equals(BigInteger.ZERO);
+                    };
                 }
             }
             """;
 
-    private record Scenario(String name, long expected, long[] items) {}
+    private record Scenario(String name, long expected, PlutusData redeemer) {}
 
     @Override
     @BeforeAll
@@ -71,7 +69,7 @@ class ListCaseOnChainTest extends E2ETestBase {
 
     @ParameterizedTest
     @EnumSource(value = OptimizationLevel.class, names = {"BASELINE", "PV11_SAFE"})
-    void confirmedTraversalMatchesNodeBudgets(OptimizationLevel level) throws Exception {
+    void confirmedSwitchMatchesNodeBudgets(OptimizationLevel level) throws Exception {
         var params = new DefaultProtocolParamsSupplier(backendService.getEpochService()).getProtocolParams();
         assertEquals(11, params.getProtocolMajorVer());
         assertEquals(0, params.getProtocolMinorVer());
@@ -81,11 +79,11 @@ class ListCaseOnChainTest extends E2ETestBase {
         var compiled = new JulcCompiler(stdlib, options).compile(SOURCE);
         assertFalse(compiled.hasErrors(), compiled.diagnostics().toString());
         boolean safe = level == OptimizationLevel.PV11_SAFE;
-        assertEquals(safe, compiled.optimizationReport().appliedRules().contains(UplcGenerator.PV11_CASE_LIST_RULE));
+        assertEquals(safe, compiled.optimizationReport().appliedRules().contains(UplcGenerator.PV11_CASE_PAIR_RULE));
         byte[] flat = UplcFlatEncoder.encodeProgram(compiled.program());
         var decoded = UplcFlatDecoder.decodeProgram(flat);
         assertArrayEquals(flat, UplcFlatEncoder.encodeProgram(decoded));
-        assertEquals(safe ? 1 : 0, listCaseSites(decoded.term()));
+        assertEquals(safe ? 2 : 0, pairCaseSites(decoded.term()));
         if (safe) {
             var defaults = new JulcCompiler(stdlib).compile(SOURCE);
             assertFalse(defaults.hasErrors(), defaults.diagnostics().toString());
@@ -93,13 +91,12 @@ class ListCaseOnChainTest extends E2ETestBase {
         }
         var script = JulcScriptAdapter.fromProgram(decoded);
         String address = AddressProvider.getEntAddress(script, Networks.testnet()).toBech32();
-        System.out.printf("LIST_CASE_ARTIFACT %s bytes=%d hash=%s sites=%d%n",
-                level, flat.length, JulcScriptAdapter.scriptHash(decoded), listCaseSites(decoded.term()));
+        System.out.printf("SWITCH_PAIR_CASE_ARTIFACT %s bytes=%d hash=%s sites=%d%n",
+                level, flat.length, JulcScriptAdapter.scriptHash(decoded), pairCaseSites(decoded.term()));
 
-        for (var scenario : List.of(new Scenario("empty", 0, new long[]{}),
-                new Scenario("singleton", 7, new long[]{7}),
-                new Scenario("multiple", 9, new long[]{2, 3, 4}),
-                new Scenario("break", 2, new long[]{2, 0, 99}))) {
+        for (var scenario : List.of(new Scenario("pay", 7, new ConstrPlutusData(0,
+                        ListPlutusData.of(BigIntPlutusData.of(7), BigIntPlutusData.of(9)))),
+                new Scenario("cancel", 0, new ConstrPlutusData(1, ListPlutusData.of())))) {
             var lock = quickTxBuilder.compose(new Tx()
                             .payToContract(address, Amount.ada(5), BigIntPlutusData.of(scenario.expected()))
                             .from(testAccount.baseAddress()))
@@ -107,8 +104,7 @@ class ListCaseOnChainTest extends E2ETestBase {
             assertTrue(lock.isSuccessful(), lock.toString());
             waitForConfirmation(lock.getValue());
             Utxo input = exactUtxo(address, lock.getValue());
-            var redeemer = ListPlutusData.of(Arrays.stream(scenario.items())
-                    .mapToObj(BigIntPlutusData::of).toArray(PlutusData[]::new));
+            var redeemer = scenario.redeemer();
             var evaluator = new JulcTransactionEvaluator(
                     new DefaultUtxoSupplier(backendService.getUtxoService()),
                     new DefaultProtocolParamsSupplier(backendService.getEpochService()),
@@ -133,16 +129,16 @@ class ListCaseOnChainTest extends E2ETestBase {
             assertEquals(budget, backendEvaluation.getValue().getFirst().getExUnits());
             assertEquals(1, transaction.getWitnessSet().getRedeemers().size());
             assertEquals(budget, transaction.getWitnessSet().getRedeemers().getFirst().getExUnits());
-            if (scenario.name().equals("singleton")) {
+            if (scenario.name().equals("pay")) {
                 // Evaluate invalid variants only. The original signed bytes above are
                 // immutable and are the only bytes submitted after these probes.
                 var witness = transaction.getWitnessSet().getRedeemers().getFirst();
                 var original = witness.getData();
                 List<PlutusData> invalid = List.of(
-                        ListPlutusData.of(BigIntPlutusData.of(8)),
+                        new ConstrPlutusData(0, ListPlutusData.of(BigIntPlutusData.of(8), BigIntPlutusData.of(9))),
                         BigIntPlutusData.of(7),
-                        ListPlutusData.of(BytesPlutusData.of(new byte[]{0})),
-                        ListPlutusData.of(BigIntPlutusData.of(0), BytesPlutusData.of(new byte[]{0})));
+                        new ConstrPlutusData(0, ListPlutusData.of(BigIntPlutusData.of(7), BytesPlutusData.of(new byte[]{0}))),
+                        new ConstrPlutusData(99, ListPlutusData.of()));
                 try {
                     for (int i = 0; i < invalid.size(); i++) {
                         witness.setData(invalid.get(i));
@@ -151,18 +147,18 @@ class ListCaseOnChainTest extends E2ETestBase {
                         var rejectedBackend = backendService.getTransactionService().evaluateTx(rejectedBytes);
                         assertFalse(rejectedLocal.isSuccessful(), "Java accepted invalid case " + i);
                         assertFalse(rejectedBackend.isSuccessful(), "Backend accepted invalid case " + i);
-                        String failure = i == 0 ? "Error term encountered" : i == 1 ? "UnListData" : "UnIData";
+                        String failure = i == 0 || i == 3 ? "Error term encountered" : i == 1 ? "UnConstrData" : "UnIData";
                         assertTrue(rejectedLocal.getResponse().contains("Script evaluation failed"), rejectedLocal.getResponse());
                         assertTrue(rejectedLocal.getResponse().contains(failure), rejectedLocal.getResponse());
                         assertTrue(rejectedBackend.getResponse().contains("EvaluationFailure"), rejectedBackend.getResponse());
-                        assertTrue(rejectedBackend.getResponse().contains(i == 0 ? "Error evaluated" : failure), rejectedBackend.getResponse());
+                        assertTrue(rejectedBackend.getResponse().contains(i == 0 || i == 3 ? "Error evaluated" : failure), rejectedBackend.getResponse());
                         var rejectedHaskell = HaskellScriptCost.evaluate(rejectedBytes);
                         assertNotEquals(0, rejectedHaskell.exitCode(), rejectedHaskell.output());
                         assertTrue(rejectedHaskell.output().contains("Script evaluation error:"), rejectedHaskell.output());
-                        String cause = i == 0 ? "Caused by: (error)"
-                                : i == 1 ? "Caused by: [ (builtin unListData)" : "Caused by: [ (builtin unIData)";
+                        String cause = i == 0 || i == 3 ? "Caused by: (error)"
+                                : i == 1 ? "Caused by: [ (builtin unConstrData)" : "Caused by: [ (builtin unIData)";
                         assertTrue(rejectedHaskell.output().contains(cause), rejectedHaskell.output());
-                        System.out.printf("LIST_CASE_REJECTED %s case=%d java/backend/haskell=%s%n", level, i, failure);
+                        System.out.printf("SWITCH_PAIR_CASE_REJECTED %s case=%d java/backend/haskell=%s%n", level, i, failure);
                     }
                 } finally {
                     witness.setData(original);
@@ -177,12 +173,12 @@ class ListCaseOnChainTest extends E2ETestBase {
             var units = costs.get(0).path("executionUnits");
             assertEquals(budget.getSteps(), units.path("steps").bigIntegerValue());
             assertEquals(budget.getMem(), units.path("memory").bigIntegerValue());
-            System.out.printf("LIST_CASE_HASKELL_MATCH %s %s cpu=%s mem=%s%n",
+            System.out.printf("SWITCH_PAIR_CASE_HASKELL_MATCH %s %s cpu=%s mem=%s%n",
                     level, scenario.name(), budget.getSteps(), budget.getMem());
             var submitted = backendService.getTransactionService().submitTransaction(cbor);
             assertTrue(submitted.isSuccessful(), submitted.getResponse());
             waitForConfirmation(submitted.getValue());
-            System.out.printf("LIST_CASE_CONFIRMED %s %s cpu=%s mem=%s lock=%s spend=%s%n",
+            System.out.printf("SWITCH_PAIR_CASE_CONFIRMED %s %s cpu=%s mem=%s lock=%s spend=%s%n",
                     level, scenario.name(), budget.getSteps(), budget.getMem(), lock.getValue(), submitted.getValue());
         }
     }
@@ -198,25 +194,18 @@ class ListCaseOnChainTest extends E2ETestBase {
         throw new AssertionError("Missing exact script UTXO for " + hash);
     }
 
-    private static int listCaseSites(Term term) {
-        int here = 0;
-        if (term instanceof Term.Case guard && guard.branches().size() == 2
-                && guard.scrutinee() instanceof Term.Apply test
-                && test.function() instanceof Term.Force force
-                && force.term() instanceof Term.Builtin builtin && builtin.fun() == DefaultFun.NullList
-                && guard.branches().getFirst() instanceof Term.Case match
-                && match.scrutinee().equals(test.argument()) && match.branches().size() == 2
-                && match.branches().getFirst() instanceof Term.Lam head && head.body() instanceof Term.Lam
-                && match.branches().get(1) instanceof Term.Error) {
-            here = 1;
-        }
+    private static int pairCaseSites(Term term) {
+        int here = term instanceof Term.Case c && c.branches().size() == 1
+                && c.scrutinee() instanceof Term.Apply a && a.function() instanceof Term.Builtin b
+                && b.fun() == DefaultFun.UnConstrData && c.branches().getFirst() instanceof Term.Lam l
+                && l.body() instanceof Term.Lam ? 1 : 0;
         return here + switch (term) {
-            case Term.Apply a -> listCaseSites(a.function()) + listCaseSites(a.argument());
-            case Term.Lam l -> listCaseSites(l.body());
-            case Term.Force f -> listCaseSites(f.term());
-            case Term.Delay d -> listCaseSites(d.term());
-            case Term.Case c -> listCaseSites(c.scrutinee()) + c.branches().stream().mapToInt(ListCaseOnChainTest::listCaseSites).sum();
-            case Term.Constr c -> c.fields().stream().mapToInt(ListCaseOnChainTest::listCaseSites).sum();
+            case Term.Apply a -> pairCaseSites(a.function()) + pairCaseSites(a.argument());
+            case Term.Lam l -> pairCaseSites(l.body());
+            case Term.Force f -> pairCaseSites(f.term());
+            case Term.Delay d -> pairCaseSites(d.term());
+            case Term.Case c -> pairCaseSites(c.scrutinee()) + c.branches().stream().mapToInt(SwitchPairCaseOnChainTest::pairCaseSites).sum();
+            case Term.Constr c -> c.fields().stream().mapToInt(SwitchPairCaseOnChainTest::pairCaseSites).sum();
             default -> 0;
         };
     }

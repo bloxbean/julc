@@ -21,7 +21,7 @@ dependencies {
 
 test {
     useJUnitPlatform {
-        excludeTags 'list-case-onchain'
+        excludeTags 'list-case-onchain', 'switch-pair-case-onchain'
     }
     // E2E tests only run when explicitly enabled: ./gradlew :julc-e2e-tests:test -Pe2e
     enabled = System.getProperty('e2e') != null || project.hasProperty('e2e')
@@ -44,6 +44,35 @@ tasks.register('listCaseOnChainTest', Test) {
     afterSuite { descriptor, result ->
         if (descriptor.parent == null && (result.testCount < 2 || result.skippedTestCount > 0)) {
             throw new GradleException('List Case release gate requires both profiles to run without skips')
+        }
+    }
+    // External chain state is not a Gradle input; never reuse an old passing run.
+    outputs.upToDateWhen { false }
+    doFirst {
+        if (!project.hasProperty('e2e') && System.getProperty('e2e') == null) {
+            throw new GradleException('Explicitly enable the developer devnet test with -Pe2e')
+        }
+        if (!System.getenv('JULC_E2E_CARDANO_CONTAINER')) {
+            throw new GradleException('Set JULC_E2E_CARDANO_CONTAINER to the running developer DevKit container')
+        }
+    }
+}
+
+tasks.register('switchPairCaseOnChainTest', Test) {
+    group = 'verification'
+    description = 'Validate generated Switch Pair Case on a PV11 DevKit with direct Haskell budgets'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform {
+        includeTags 'switch-pair-case-onchain'
+    }
+    testLogging {
+        events 'passed', 'failed', 'skipped'
+        showStandardStreams = true
+    }
+    afterSuite { descriptor, result ->
+        if (descriptor.parent == null && (result.testCount < 2 || result.skippedTestCount > 0)) {
+            throw new GradleException('Switch Pair Case release gate requires both profiles to run without skips')
         }
     }
     // External chain state is not a Gradle input; never reuse an old passing run.

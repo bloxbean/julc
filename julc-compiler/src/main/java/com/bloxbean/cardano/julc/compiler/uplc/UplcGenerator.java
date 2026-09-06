@@ -173,9 +173,7 @@ public class UplcGenerator {
             }
 
             case PirTerm.PairMatch(var scrutinee, _, var first, var second, var body) -> {
-                if (!context.target().equals(CompilerTarget.PLUTUS_V3_PV11)
-                        || !context.optimizationLevel().pv11SafeRulesEnabled()
-                        || !context.supports(ProtocolCapability.CASE_ON_BUILTIN_CONSTANTS)) {
+                if (!pairCaseEnabled()) {
                     throw new CompilerException("PairMatch requires the PV11 safe lowering profile");
                 }
                 context.recordOptimizationRule(PV11_CASE_PAIR_RULE);
@@ -441,11 +439,16 @@ public class UplcGenerator {
         return generate(outerLetRecA);
     }
 
+    private boolean pairCaseEnabled() {
+        return context.target().equals(CompilerTarget.PLUTUS_V3_PV11)
+                && context.optimizationLevel().pv11SafeRulesEnabled()
+                && context.supports(ProtocolCapability.CASE_ON_BUILTIN_CONSTANTS);
+    }
+
     /**
-     * Generate Data-based pattern matching for DataMatch.
-     * Builds the equivalent PIR using UnConstrData + FstPair + SndPair +
-     * IfThenElse tag dispatch + HeadList/TailList field extraction,
-     * then generates UPLC from that PIR.
+     * Expand DataMatch with branch-local field extraction and unchanged tag dispatch.
+     * ADR-038 uses typed pair destructuring under the O4 gate; other profiles retain
+     * the historical UnConstrData/FstPair/SndPair expansion.
      */
     private Term generateDataMatch(PirTerm scrutinee, List<PirTerm.MatchBranch> branches) {
         var dataName = "__match_data";
@@ -475,6 +478,17 @@ public class UplcGenerator {
         //          let fields = SndPair(pair)
         //          dispatch
         var dataVar = new PirTerm.Var(dataName, new PirType.DataType());
+        // Direct PIR can reference this historical internal binder. Removing it in
+        // that case would change lexical binding, so retain the old expansion.
+        if (pairCaseEnabled() && !PirSubstitution.collectFreeVarNames(dispatch).contains(pairName)) {
+            // ADR-038: successful UnConstrData proves the native pair by construction.
+            // Keep data strict and once-bound, and decoding inside the unchanged dispatch.
+            var pairType = new PirType.PairType(new PirType.IntegerType(),
+                    new PirType.ListType(new PirType.DataType()));
+            return generate(new PirTerm.Let(dataName, scrutinee,
+                    new PirTerm.PairMatch(pirApp1(DefaultFun.UnConstrData, dataVar),
+                            pairType, tagName, fieldsName, dispatch)));
+        }
         var pairVar = new PirTerm.Var(pairName, new PirType.DataType());
         var matchPir = new PirTerm.Let(dataName, scrutinee,
                 new PirTerm.Let(pairName,
