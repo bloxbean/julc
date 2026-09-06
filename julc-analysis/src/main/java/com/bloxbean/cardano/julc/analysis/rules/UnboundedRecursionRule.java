@@ -35,7 +35,8 @@ public final class UnboundedRecursionRule implements SecurityRule {
             var lr = (HirTerm.LetRec) node;
             // Check if the recursive value body contains a conditional guard
             boolean hasGuard = HirTreeWalker.anyMatch(lr.value(),
-                    n -> n instanceof HirTerm.If || n instanceof HirTerm.Switch);
+                    n -> n instanceof HirTerm.If || n instanceof HirTerm.Switch
+                            || n instanceof HirTerm.DataMatch m && !m.branches().isEmpty());
 
             // Also check for NullList (list termination check)
             boolean hasNullCheck = HirTreeWalker.anyMatch(lr.value(),

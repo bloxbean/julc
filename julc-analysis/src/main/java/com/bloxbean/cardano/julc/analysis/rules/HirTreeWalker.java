@@ -41,6 +41,11 @@ public final class HirTreeWalker {
                 walk(iff.thenBranch(), visitor);
                 walk(iff.elseBranch(), visitor);
             }
+            case HirTerm.DataMatch m -> {
+                walk(m.scrutinee(), visitor);
+                m.branches().forEach(b -> walk(b.body(), visitor));
+                walk(m.fallback(), visitor);
+            }
             case HirTerm.Switch sw -> {
                 walk(sw.scrutinee(), visitor);
                 for (var branch : sw.branches()) {

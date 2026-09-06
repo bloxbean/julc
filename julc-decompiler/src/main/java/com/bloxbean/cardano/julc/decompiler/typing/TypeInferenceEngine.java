@@ -86,6 +86,24 @@ public final class TypeInferenceEngine {
                     inferTerm(iff.thenBranch()),
                     inferTerm(iff.elseBranch()));
 
+            case HirTerm.DataMatch m -> {
+                var scrutinee = inferTerm(m.scrutinee());
+                var saved = new HashMap<>(typeEnv);
+                var fieldsType = new HirType.ListType(HirType.DATA);
+                typeEnv.put(m.pairName(), new HirType.PairType(HirType.INTEGER, fieldsType));
+                typeEnv.put(m.tagName(), HirType.INTEGER);
+                typeEnv.put(m.fieldsName(), fieldsType);
+                var matchScope = new HashMap<>(typeEnv);
+                var branches = m.branches().stream().map(b -> {
+                    typeEnv.clear(); typeEnv.putAll(matchScope);
+                    return new HirTerm.DataMatchBranch(b.tag(), inferTerm(b.body()));
+                }).toList();
+                typeEnv.clear(); typeEnv.putAll(matchScope);
+                var fallback = inferTerm(m.fallback());
+                typeEnv.clear(); typeEnv.putAll(saved);
+                yield new HirTerm.DataMatch(scrutinee, m.pairName(), m.tagName(), m.fieldsName(), branches, fallback);
+            }
+
             case HirTerm.Switch sw -> {
                 HirTerm scrutinee = inferTerm(sw.scrutinee());
                 List<HirTerm.SwitchBranch> branches = sw.branches().stream()

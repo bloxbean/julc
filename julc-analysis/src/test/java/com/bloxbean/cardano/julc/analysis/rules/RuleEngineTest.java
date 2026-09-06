@@ -210,6 +210,17 @@ class RuleEngineTest {
     // ==== UnboundedRecursionRule ====
 
     @Test
+    void unboundedRecursionDistinguishesTagDispatchFromUnconditionalDecomposition() {
+        for (boolean guarded : List.of(false, true)) {
+            var match = new HirTerm.DataMatch(new HirTerm.Var("data", HirType.DATA), "pair", "tag", "fields",
+                    guarded ? List.of(new HirTerm.DataMatchBranch(BigInteger.ZERO, new HirTerm.UnitLiteral())) : List.of(),
+                    new HirTerm.FunCall("loop", List.of()));
+            var recursive = new HirTerm.LetRec("loop", match, new HirTerm.UnitLiteral());
+            assertEquals(guarded ? 0 : 1, new UnboundedRecursionRule().analyze(mockResult(recursive)).size());
+        }
+    }
+
+    @Test
     void unboundedRecursion_flagsUnguardedLetRec() {
         // LetRec with no If/Switch guard in value
         var hir = new HirTerm.LetRec("loop",

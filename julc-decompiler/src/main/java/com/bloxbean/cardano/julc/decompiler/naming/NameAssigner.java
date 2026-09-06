@@ -99,6 +99,26 @@ public final class NameAssigner {
                 case HirTerm.If iff -> new HirTerm.If(
                         rename(iff.condition()), rename(iff.thenBranch()), rename(iff.elseBranch()));
 
+                case HirTerm.DataMatch m -> {
+                    var scrutinee = rename(m.scrutinee());
+                    // Match binders are local; preserve mappings even for hand-built HIR.
+                    var saved = new HashMap<>(renames);
+                    String pair = makeUnique("constrPair"), tag = makeUnique("tag"), fields = makeUnique("fields");
+                    renames.put(m.pairName(), pair);
+                    renames.put(m.tagName(), tag);
+                    renames.put(m.fieldsName(), fields);
+                    var matchScope = new HashMap<>(renames);
+                    var branches = m.branches().stream().map(b -> {
+                        renames.clear(); renames.putAll(matchScope);
+                        return new HirTerm.DataMatchBranch(b.tag(), rename(b.body()));
+                    }).toList();
+                    renames.clear(); renames.putAll(matchScope);
+                    var fallback = rename(m.fallback());
+                    renames.clear();
+                    renames.putAll(saved);
+                    yield new HirTerm.DataMatch(scrutinee, pair, tag, fields, branches, fallback);
+                }
+
                 case HirTerm.Switch sw -> {
                     HirTerm scrutinee = rename(sw.scrutinee());
                     List<HirTerm.SwitchBranch> branches = sw.branches().stream()
