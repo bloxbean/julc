@@ -226,6 +226,10 @@ and ledger Data encodings are unchanged. See
 [ADR-034](https://github.com/bloxbean/julc/blob/main/adr/034-typed-list-case-lowering.md)
 and its [measured evidence](https://github.com/bloxbean/julc/blob/main/adr/evidence/034-list-case-measurements.md)
 for scope, failure analysis, pinned budgets and hash migration.
+The [on-chain validation](https://github.com/bloxbean/julc/blob/main/adr/evidence/034-list-case-onchain.md)
+adds confirmed PV11 spending transactions, direct Haskell/Java budget agreement,
+and malformed-input checks. This completes the bounded rule's node evidence gate
+without enabling additional traversal families.
 
 ## Upcoming preview: target-aware PV11 optimizations
 

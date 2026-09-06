@@ -194,3 +194,11 @@ The affected suites report 96 decompiler tests and 21 benchmark tests, with zero
 failures, errors or skips. The repository build passed after these changes;
 unchanged tasks may be up-to-date. The original fresh VM conformance results
 above are retained as prior evidence, not represented as fresh follow-up runs.
+
+## On-chain gate follow-up (2026-09-06)
+
+The prior statement that Yaci tests were not run describes the original PR #123
+validation. The remaining gate has now been exercised with direct Haskell CLI
+budgets and confirmed PV11 List Case spending transactions. See
+[the separate node evidence](034-list-case-onchain.md) for exact scope, IDs,
+backend-provenance findings, failure probes and the opt-in replay command.
