@@ -27,8 +27,9 @@ public final class DataMatchRecognizer {
     private DataMatchRecognizer() {}
 
     /**
-     * Try to match a data pattern-match chain.
-     * Returns null if the term doesn't match the pattern.
+     * Legacy heuristic retained for source compatibility. It does not prove lexical
+     * binding relationships. The lifter uses {@link #matchConstructorDispatch(Term)}.
+     * Returns null if the term doesn't match the legacy pattern.
      */
     public static DataMatchResult match(Term term) {
         // Step 1: Look for Let(d, scrutinee, Let(p, UnConstrData(d), ...))
@@ -164,6 +165,81 @@ public final class DataMatchRecognizer {
         var fb = ForceCollapser.matchForcedBuiltinPartial(term);
         return fb != null && fb.fun() == DefaultFun.SndPair && fb.args().size() == 1;
     }
+
+    /** Strict ADR-039 entry point. All relationships are checked by index, never debug names. */
+    public static ConstructorMatch matchConstructorDispatch(Term term) {
+        Term data, body;
+        String pair, tag, fields;
+        if (term instanceof Term.Case c && c.branches().size() == 1
+                && c.scrutinee() instanceof Term.Apply a
+                && a.function() instanceof Term.Builtin b && b.fun() == DefaultFun.UnConstrData
+                && c.branches().getFirst() instanceof Term.Lam first
+                && first.body() instanceof Term.Lam second) {
+            data = a.argument();
+            pair = null; // Native pair Case has no pair binder visible in its body.
+            tag = first.paramName();
+            fields = second.paramName();
+            body = second.body();
+        } else {
+            var p = LetRecognizer.match(term);
+            if (p == null || !(p.value() instanceof Term.Apply a)
+                    || !(a.function() instanceof Term.Builtin b) || b.fun() != DefaultFun.UnConstrData) return null;
+            var t = LetRecognizer.match(p.body());
+            if (t == null || !projection(t.value(), DefaultFun.FstPair, 1)) return null;
+            var f = LetRecognizer.match(t.body());
+            if (f == null || !projection(f.value(), DefaultFun.SndPair, 2)) return null;
+            data = a.argument(); pair = p.name(); tag = t.name(); fields = f.name(); body = f.body();
+        }
+        List<TagBranch> branches = new ArrayList<>();
+        Term rest = body;
+        while (true) {
+            var conditional = tagConditional(rest);
+            if (conditional == null) break;
+            branches.add(new TagBranch(conditional.tag(), conditional.yes()));
+            rest = conditional.no();
+        }
+        // A conditional without a proven tag test is ambiguous. In particular, do not
+        // recover a "constructor dispatch" from a comparison against fields or a capture.
+        if (branches.isEmpty() && (body instanceof Term.Case || IfThenElseRecognizer.match(body) != null)) return null;
+        return new ConstructorMatch(data, pair, tag, fields, branches, rest);
+    }
+
+    private static boolean projection(Term term, DefaultFun fun, int index) {
+        return term instanceof Term.Apply a && a.argument() instanceof Term.Var v && v.name().index() == index
+                && a.function() instanceof Term.Force f && f.term() instanceof Term.Force g
+                && g.term() instanceof Term.Builtin b && b.fun() == fun;
+    }
+
+    private record TagConditional(BigInteger tag, Term yes, Term no) {}
+
+    private static TagConditional tagConditional(Term term) {
+        Term condition, yes, no;
+        if (term instanceof Term.Case c && c.branches().size() == 2) {
+            condition = c.scrutinee(); no = c.branches().getFirst(); yes = c.branches().get(1);
+        } else if (term instanceof Term.Force force && force.term() instanceof Term.Apply last
+                && last.argument() instanceof Term.Delay otherwise && last.function() instanceof Term.Apply middle
+                && middle.argument() instanceof Term.Delay then && middle.function() instanceof Term.Apply first
+                && first.function() instanceof Term.Force f && f.term() instanceof Term.Builtin b
+                && b.fun() == DefaultFun.IfThenElse) {
+            condition = first.argument(); yes = then.term(); no = otherwise.term();
+        } else return null;
+        if (!(condition instanceof Term.Apply a) || !(a.function() instanceof Term.Apply b)
+                || !(b.function() instanceof Term.Builtin fun) || fun.fun() != DefaultFun.EqualsInteger) return null;
+        var tag = comparedTag(b.argument(), a.argument());
+        if (tag == null) tag = comparedTag(a.argument(), b.argument());
+        return tag == null ? null : new TagConditional(tag, yes, no);
+    }
+
+    private static BigInteger comparedTag(Term variable, Term constant) {
+        return variable instanceof Term.Var v && v.name().index() == 2
+                && constant instanceof Term.Const c && c.value() instanceof Constant.IntegerConst n ? n.value() : null;
+    }
+
+    public record ConstructorMatch(Term scrutinee, String pairName, String tagName, String fieldsName,
+                                   List<TagBranch> branches, Term fallback) {
+        public ConstructorMatch { branches = List.copyOf(branches); }
+    }
+    public record TagBranch(BigInteger tag, Term body) {}
 
     public record DataMatchResult(Term scrutinee, String dataVarName, String fieldsVarName,
                                   List<DataMatchBranch> branches) {

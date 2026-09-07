@@ -37,8 +37,13 @@ decoding, including errors in unused fields. The measured switch fixtures save
 10 bytes per site compared with the previous safe output; NONE/BASELINE remain
 byte-identical. Direct PIR DataMatch callers also receive this safe-profile
 change. The switch extension passed its own independent correctness review in
-PR #129. Decompilation currently uses generic Case recovery; dedicated switch
-recognition is tracked in [#130](https://github.com/bloxbean/julc/issues/130).
+PR #129. The decompiler follow-up [#130](https://github.com/bloxbean/julc/issues/130)
+recovers native pair and verified legacy constructor decomposition as explicit
+HIR `DataMatch`, preserving raw fields, ordered integer tag tests and the final
+fallback. Readable output uses decomposition and if/else dispatch; it does not
+invent Java record schemas. FLAT-erased bindings are recovered from de Bruijn
+indices. External exhaustive HIR visitors must handle the new `DataMatch` node;
+the compiler's output bytes and costs are unaffected by this decompiler change.
 
 ## Upcoming preview: stable typed formal-verification API v1
 

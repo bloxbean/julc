@@ -13,6 +13,14 @@ import static org.junit.jupiter.api.Assertions.*;
 class HirTreeWalkerTest {
 
     @Test
+    void dataMatchVisitsScrutineeEveryBranchAndFallback() {
+        var error = new HirTerm.Error();
+        var tree = new HirTerm.DataMatch(error, "pair", "tag", "fields",
+                List.of(new HirTerm.DataMatchBranch(BigInteger.ZERO, error)), error);
+        assertEquals(3, HirTreeWalker.count(tree, node -> node instanceof HirTerm.Error));
+    }
+
+    @Test
     void walk_visitsAllNodes() {
         var inner = new HirTerm.IntLiteral(BigInteger.TEN);
         var tree = new HirTerm.Let("x", inner,

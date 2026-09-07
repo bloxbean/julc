@@ -15,8 +15,8 @@ import java.util.List;
  * Main UPLC to HIR lifter.
  * <p>
  * Orchestrates pattern recognizers in priority order to convert raw UPLC terms
- * into structured HIR nodes. The lifting proceeds in a single recursive pass,
- * trying recognizers from most specific to least specific at each node.
+ * into structured HIR nodes. Programs with constructor matches first receive
+ * a names-only de Bruijn resolution pass. Recursive lifting then tries recognizers from most specific to least specific at each node.
  */
 public final class UplcLifter {
 
@@ -28,10 +28,31 @@ public final class UplcLifter {
      * Lift a UPLC term to HIR.
      */
     public static HirTerm lift(Term term) {
-        return new UplcLifter().liftTerm(term);
+        return new UplcLifter().liftTerm(containsConstructorMatch(term) ? ScopedNames.resolve(term) : term);
+    }
+
+    private static boolean containsConstructorMatch(Term term) {
+        if (DataMatchRecognizer.matchConstructorDispatch(term) != null) return true;
+        return switch (term) {
+            case Term.Apply a -> containsConstructorMatch(a.function()) || containsConstructorMatch(a.argument());
+            case Term.Lam l -> containsConstructorMatch(l.body());
+            case Term.Force f -> containsConstructorMatch(f.term());
+            case Term.Delay d -> containsConstructorMatch(d.term());
+            case Term.Case c -> containsConstructorMatch(c.scrutinee()) || c.branches().stream().anyMatch(UplcLifter::containsConstructorMatch);
+            case Term.Constr c -> c.fields().stream().anyMatch(UplcLifter::containsConstructorMatch);
+            default -> false;
+        };
     }
 
     private HirTerm liftTerm(Term term) {
+        var constructorMatch = DataMatchRecognizer.matchConstructorDispatch(term);
+        if (constructorMatch != null) {
+            return new HirTerm.DataMatch(liftTerm(constructorMatch.scrutinee()),
+                    constructorMatch.pairName() != null ? constructorMatch.pairName() : freshVar("constrPair"),
+                    constructorMatch.tagName(), constructorMatch.fieldsName(),
+                    constructorMatch.branches().stream().map(b -> new HirTerm.DataMatchBranch(b.tag(), liftTerm(b.body()))).toList(),
+                    liftTerm(constructorMatch.fallback()));
+        }
         // Priority 1: PV11 Case Bool. Only recover an If when the scrutinee is
         // statically known to return Bool; an arbitrary two-branch SOP case is
         // not enough evidence in untyped UPLC.
@@ -64,12 +85,6 @@ public final class UplcLifter {
         var zMatch = LoopRecognizer.match(term);
         if (zMatch != null) {
             return liftZCombinator(zMatch);
-        }
-
-        // Priority 5: Data pattern matching (UnConstrData + tag dispatch)
-        var dataMatch = DataMatchRecognizer.match(term);
-        if (dataMatch != null) {
-            return liftDataMatch(dataMatch);
         }
 
         // Priority 6: Let binding
@@ -295,24 +310,6 @@ public final class UplcLifter {
         return new HirTerm.LetRec(z.name(), body, continuation);
     }
 
-    private HirTerm liftDataMatch(DataMatchRecognizer.DataMatchResult match) {
-        HirTerm scrutinee = liftTerm(match.scrutinee());
-        List<HirTerm.SwitchBranch> branches = new ArrayList<>();
-
-        for (var branch : match.branches()) {
-            HirTerm body = liftTerm(branch.body());
-            // Extract field names from the branch body's Let bindings
-            List<String> fieldNames = extractFieldNames(branch.body());
-            branches.add(new HirTerm.SwitchBranch(
-                    branch.tag(),
-                    "Case" + branch.tag(),
-                    fieldNames,
-                    body));
-        }
-
-        return new HirTerm.Switch(scrutinee, "", branches);
-    }
-
     private HirTerm liftConstr(SopRecognizer.ConstrResult constr) {
         List<HirTerm> fields = constr.fields().stream().map(this::liftTerm).toList();
         return new HirTerm.Constructor("Constr" + constr.tag(), constr.tag(), fields);
@@ -332,24 +329,6 @@ public final class UplcLifter {
         }
 
         return new HirTerm.Switch(scrutinee, "", branches);
-    }
-
-    /**
-     * Try to extract field variable names from Let bindings in a branch body
-     * that use HeadList/TailList patterns.
-     */
-    private List<String> extractFieldNames(Term branchBody) {
-        List<String> names = new ArrayList<>();
-        Term current = branchBody;
-        while (current instanceof Term.Apply app && app.function() instanceof Term.Lam lam) {
-            // This is a Let binding
-            var fa = FieldAccessRecognizer.match(app.argument());
-            if (fa != null) {
-                names.add(lam.paramName());
-            }
-            current = lam.body();
-        }
-        return names;
     }
 
     private String freshVar(String prefix) {

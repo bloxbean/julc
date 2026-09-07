@@ -116,6 +116,8 @@ public final class JavaCodeGenerator {
                     sb.append("}\n");
                 }
 
+                case HirTerm.DataMatch m -> emitDataMatchBody(m);
+
                 case HirTerm.Switch sw -> {
                     emitIndent();
                     sb.append("switch (");
@@ -359,6 +361,14 @@ public final class JavaCodeGenerator {
 
                 case HirTerm.Let let -> emitLetExpr(let);
                 case HirTerm.LetRec letRec -> emitLetRecExpr(letRec);
+                case HirTerm.DataMatch m -> {
+                    sb.append("((java.util.function.Supplier<Object>) () -> {\n");
+                    indent++;
+                    emitDataMatchBody(m);
+                    indent--;
+                    emitIndent();
+                    sb.append("}).get()");
+                }
                 case HirTerm.Switch sw -> emitSwitchExpr(sw);
 
                 case HirTerm.ConstValue cv -> sb.append("/* const ").append(cv.value().type()).append(" */");
@@ -450,6 +460,35 @@ public final class JavaCodeGenerator {
             indent--;
             emitIndent();
             sb.append("}).get()");
+        }
+
+        // Keep integer equality explicit: native tags are BigInteger, not int/long or Java record tags.
+        private void emitDataMatchBody(HirTerm.DataMatch m) {
+            emitIndent();
+            sb.append("var ").append(m.pairName()).append(" = Builtins.unConstrData(");
+            emitExpr(m.scrutinee());
+            sb.append(");\n");
+            emitIndent();
+            sb.append("var ").append(m.tagName()).append(" = Builtins.fstPair(").append(m.pairName()).append(");\n");
+            emitIndent();
+            sb.append("var ").append(m.fieldsName()).append(" = Builtins.sndPair(").append(m.pairName()).append(");\n");
+            for (var branch : m.branches()) {
+                emitIndent();
+                sb.append("if (").append(m.tagName()).append(".equals(new BigInteger(\"")
+                        .append(branch.tag()).append("\"))) {\n");
+                indent++;
+                emitBody(branch.body());
+                indent--;
+                emitIndent();
+                sb.append("} else {\n");
+                indent++;
+            }
+            emitBody(m.fallback());
+            for (int i = 0; i < m.branches().size(); i++) {
+                indent--;
+                emitIndent();
+                sb.append("}\n");
+            }
         }
 
         void emitSwitchExpr(HirTerm.Switch sw) {
@@ -581,6 +620,11 @@ public final class JavaCodeGenerator {
                 case HirTerm.Let let -> { collectImports(let.value()); collectImports(let.body()); }
                 case HirTerm.LetRec lr -> { collectImports(lr.value()); collectImports(lr.body()); }
                 case HirTerm.If iff -> { collectImports(iff.condition()); collectImports(iff.thenBranch()); collectImports(iff.elseBranch()); }
+                case HirTerm.DataMatch m -> {
+                    collectImports(m.scrutinee());
+                    m.branches().forEach(b -> collectImports(b.body()));
+                    collectImports(m.fallback());
+                }
                 case HirTerm.Switch sw -> { collectImports(sw.scrutinee()); sw.branches().forEach(b -> collectImports(b.body())); }
                 case HirTerm.Lambda lam -> collectImports(lam.body());
                 case HirTerm.FunCall fc -> fc.args().forEach(this::collectImports);

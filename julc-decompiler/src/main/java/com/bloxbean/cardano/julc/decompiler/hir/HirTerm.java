@@ -5,6 +5,8 @@ import com.bloxbean.cardano.julc.core.DefaultFun;
 import com.bloxbean.cardano.julc.core.Term;
 
 import java.util.List;
+import java.math.BigInteger;
+import java.util.Objects;
 
 /**
  * High-level Intermediate Representation for decompiled UPLC.
@@ -67,6 +69,29 @@ public sealed interface HirTerm {
     /** A single branch in a switch statement. */
     record SwitchBranch(int tag, String constructorName, List<String> fieldNames, HirTerm body) {
         public SwitchBranch { fieldNames = List.copyOf(fieldNames); }
+    }
+
+    /** Strict UnConstrData decomposition and ordered tag tests, with an explicit residual body.
+     * Pair/tag/fields bind only in branches and fallback, never in the scrutinee.
+     * Empty branches mean unconditional decomposition, not an invented tag-zero test.
+     */
+    record DataMatch(HirTerm scrutinee, String pairName, String tagName, String fieldsName,
+                     List<DataMatchBranch> branches, HirTerm fallback) implements HirTerm {
+        public DataMatch {
+            Objects.requireNonNull(scrutinee, "scrutinee");
+            Objects.requireNonNull(fallback, "fallback");
+            Objects.requireNonNull(pairName, "pairName");
+            Objects.requireNonNull(tagName, "tagName");
+            Objects.requireNonNull(fieldsName, "fieldsName");
+            if (pairName.equals(tagName) || pairName.equals(fieldsName) || tagName.equals(fieldsName)) {
+                throw new IllegalArgumentException("DataMatch binders must be distinct");
+            }
+            branches = List.copyOf(branches);
+        }
+    }
+
+    record DataMatchBranch(BigInteger tag, HirTerm body) {
+        public DataMatchBranch { Objects.requireNonNull(tag, "tag"); Objects.requireNonNull(body, "body"); }
     }
 
     /** For-each loop over a list. */
