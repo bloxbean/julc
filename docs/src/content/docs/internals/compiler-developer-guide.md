@@ -1003,8 +1003,13 @@ Polymorphic builtins need `Force` wrappers to instantiate type variables:
 | Forces | Builtins |
 |--------|----------|
 | 2 (∀ a b) | `FstPair`, `SndPair`, `ChooseList` |
-| 1 (∀ a) | `IfThenElse`, `ChooseUnit`, `Trace`, `ChooseData`, `SerialiseData`, `MkCons`, `HeadList`, `TailList`, `NullList` |
-| 0 (mono) | All arithmetic, comparisons, Data encode/decode, crypto, string/bytestring ops |
+| 1 (∀ a) | `IfThenElse`, `ChooseUnit`, `Trace`, `ChooseData`, `MkCons`, `HeadList`, `TailList`, `NullList`, `DropList`, `LengthOfArray`, `ListToArray`, `IndexArray` |
+| 0 (mono) | All arithmetic, comparisons, Data encode/decode, `SerialiseData`, crypto, string/bytestring ops |
+
+`UplcGeneratorTest.ForceCountTable` checks every `DefaultFun` against
+`BuiltinSemantics.Sig.typeArity`; the VM's `BuiltinSemanticsCrossCheckTest` checks
+that metadata against runtime signatures. Experimental `MultiIndexArray` also
+requires one force, but is unavailable to the current compiler target.
 
 ### 12.2 UplcOptimizer
 
