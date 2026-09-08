@@ -3,12 +3,15 @@ package com.bloxbean.cardano.julc.compiler.uplc;
 import com.bloxbean.cardano.julc.compiler.CompilerException;
 import com.bloxbean.cardano.julc.compiler.pir.PirTerm;
 import com.bloxbean.cardano.julc.compiler.pir.PirType;
+import com.bloxbean.cardano.julc.core.BuiltinSemantics;
 import com.bloxbean.cardano.julc.core.Constant;
 import com.bloxbean.cardano.julc.core.DefaultFun;
 import com.bloxbean.cardano.julc.core.Term;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 import java.math.BigInteger;
 import java.util.List;
@@ -148,6 +151,17 @@ class UplcGeneratorTest {
 
     @Nested
     class ForceCountTable {
+        // BuiltinSemanticsCrossCheckTest separately checks this metadata against the VM.
+        // Include every enum entry, even builtins gated out of the current compiler target.
+        @ParameterizedTest
+        @EnumSource(DefaultFun.class)
+        void matchesBuiltinSemantics(DefaultFun fun) {
+            var signature = BuiltinSemantics.find(fun);
+            assertNotNull(signature, "Missing builtin semantics for " + fun);
+            assertEquals(signature.typeArity(), UplcGenerator.forceCount(fun),
+                    "Compiler force count must match builtin type arity for " + fun);
+        }
+
         @Test void ifThenElse() { assertEquals(1, UplcGenerator.forceCount(DefaultFun.IfThenElse)); }
         @Test void trace() { assertEquals(1, UplcGenerator.forceCount(DefaultFun.Trace)); }
         @Test void chooseData() { assertEquals(1, UplcGenerator.forceCount(DefaultFun.ChooseData)); }
