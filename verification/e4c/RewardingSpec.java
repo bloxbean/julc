@@ -1,10 +1,10 @@
 package evidence;
 
-import com.bloxbean.cardano.julc.verification.dsl.VerificationSpecification;
-import com.bloxbean.cardano.julc.verification.dsl.ir.DslDomain;
-import com.bloxbean.cardano.julc.verification.dsl.ir.DslPropertySet;
+import org.julclang.verification.dsl.VerificationSpecification;
+import org.julclang.verification.dsl.ir.DslDomain;
+import org.julclang.verification.dsl.ir.DslPropertySet;
 
-import static com.bloxbean.cardano.julc.verification.dsl.VerificationDsl.*;
+import static org.julclang.verification.dsl.VerificationDsl.*;
 
 /** Rewarding property: strict redeemer, authority signer, and minimum own withdrawal. */
 public final class RewardingSpec implements VerificationSpecification {
@@ -16,7 +16,7 @@ public final class RewardingSpec implements VerificationSpecification {
         var contract = new RewardingModel();
         var ownMinimumWithdrawal = contract.context().txInfo().withdrawals().existsEntry(
                 (credential, amount) -> credential.eq(contract.rewardingCredential().typed())
-                        .and(new com.bloxbean.cardano.julc.verification.dsl.IntegerExpr(
+                        .and(new org.julclang.verification.dsl.IntegerExpr(
                                 amount.node()).ge(integer(1_000_000))));
         var authorized = contract.context().txInfo().signatories()
                 .contains(keyHash(AUTHORITY));

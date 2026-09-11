@@ -1,0 +1,22 @@
+package org.julclang.verification.dsl;
+
+import org.julclang.verification.dsl.ir.PropertyNode;
+import org.julclang.verification.dsl.ir.TypedEqualityNode;
+import org.julclang.verification.dsl.type.BuiltinTypeRef;
+
+import java.util.Objects;
+
+/** Source String remains distinct from byte[] even though both encode as bytes. */
+public record StringExpr(PropertyNode node) implements Expr {
+    public StringExpr {
+        node = Objects.requireNonNull(node, "node");
+    }
+
+    public BoolExpr eq(StringExpr other) { return equality(other, false); }
+    public BoolExpr ne(StringExpr other) { return equality(other, true); }
+    private BoolExpr equality(StringExpr other, boolean negated) {
+        Objects.requireNonNull(other, "other");
+        return new BoolExpr(new TypedEqualityNode(node, other.node,
+                new BuiltinTypeRef(BuiltinTypeRef.BuiltinKind.STRING), negated));
+    }
+}

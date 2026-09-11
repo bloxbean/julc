@@ -380,7 +380,7 @@ export async function generateLlmsFiles({ outDir, logger, catalog }) {
     'Raw `PlutusData` constructors (subtypes: `ConstrData`, `IntData`, `BytesData`, `MapData`, `ListData`) are an **anti-pattern** in nearly all on-chain code.');
   indexLines.push('- The Java subset is restricted: no mutation after assignment, no lambda `.apply()`, ' +
     'no uninitialized variables, no `return` inside `while` loops, no reflection, no I/O.');
-  indexLines.push('- Stdlib lives in `com.bloxbean.cardano.julc.stdlib.lib.*` and is imported per library: ' +
+  indexLines.push('- Stdlib lives in `org.julclang.stdlib.lib.*` and is imported per library: ' +
     '`ContextsLib`, `ListsLib`, `ValuesLib`, `MapLib`, `OutputLib`, `MathLib`, `IntervalLib`, `CryptoLib`, ' +
     '`ByteStringLib`, `BitwiseLib`, `AddressLib`, `BlsLib`, `NativeValueLib`.');
   indexLines.push('');

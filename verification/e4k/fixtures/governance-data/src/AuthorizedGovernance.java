@@ -1,5 +1,5 @@
-import com.bloxbean.cardano.julc.ledger.*;
-import com.bloxbean.cardano.julc.stdlib.annotation.*;
+import org.julclang.ledger.*;
+import org.julclang.stdlib.annotation.*;
 import java.math.BigInteger;
 
 @SpendingValidator

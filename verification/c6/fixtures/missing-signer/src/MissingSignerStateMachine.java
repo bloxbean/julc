@@ -1,6 +1,6 @@
-import com.bloxbean.cardano.julc.ledger.ScriptContext;
-import com.bloxbean.cardano.julc.stdlib.annotation.*;
-import com.bloxbean.cardano.julc.verification.annotation.*;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.*;
+import org.julclang.verification.annotation.*;
 import java.math.BigInteger;
 
 @RequiresSigner("datum.owner")

@@ -50,7 +50,7 @@ tasks.named('check') {
 
 def diagnosticCatalogFile = layout.projectDirectory.file('src/main/resources/diagnostics.json')
 def diagnosticCodesFile = layout.projectDirectory.file(
-        'src/main/java/com/bloxbean/cardano/julc/compiler/error/DiagnosticCodes.java')
+        'src/main/java/org/julclang/compiler/error/DiagnosticCodes.java')
 
 def renderDiagnosticCodes = { File catalogFile, File outputFile ->
     def root = new groovy.json.JsonSlurper().parse(catalogFile)
@@ -113,7 +113,7 @@ def renderDiagnosticCodes = { File catalogFile, File outputFile ->
     def out = new StringBuilder()
     out.append('// GENERATED FROM julc-compiler/src/main/resources/diagnostics.json\n')
     out.append('// DO NOT EDIT - run `./gradlew :julc-compiler:generateDiagnosticCodes` and commit.\n')
-    out.append('package com.bloxbean.cardano.julc.compiler.error;\n\n')
+    out.append('package org.julclang.compiler.error;\n\n')
     out.append('public final class DiagnosticCodes {\n')
     out.append('    private DiagnosticCodes() {}\n\n')
 

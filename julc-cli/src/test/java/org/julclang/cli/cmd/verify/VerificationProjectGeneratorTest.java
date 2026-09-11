@@ -1,0 +1,1766 @@
+package org.julclang.cli.cmd.verify;
+
+import org.julclang.blueprint.BlueprintConfig;
+import org.julclang.blueprint.BlueprintGenerator;
+import org.julclang.compiler.JulcCompiler;
+import org.julclang.compiler.DataBoundarySemantics;
+import org.julclang.stdlib.StdlibRegistry;
+import org.julclang.verification.RequiresSignerProperty;
+import org.julclang.verification.StatefulSpendingProperty;
+import org.julclang.verification.ControlledMintProperty;
+import org.julclang.verification.dsl.ComposedDslPromotion;
+import org.julclang.verification.dsl.SpendingContractModel;
+import org.julclang.verification.dsl.MintingContractModel;
+import org.julclang.verification.dsl.RewardingContractModel;
+import org.julclang.verification.dsl.CertifyingContractModel;
+import org.julclang.verification.dsl.ir.DslDomain;
+import org.julclang.verification.dsl.ir.DslPropertySet;
+import org.julclang.verification.dsl.ir.DslPurpose;
+import org.julclang.verification.dsl.ir.TxCertKind;
+import org.julclang.verification.dsl.PropertyIrCodec;
+import org.julclang.verification.dsl.MintingDsl;
+import org.julclang.verification.dsl.ByteStringExpr;
+import org.julclang.verification.dsl.IntegerExpr;
+import org.julclang.verification.dsl.TypedExpressions;
+import org.julclang.verification.dsl.TypedListExpr;
+import org.julclang.verification.dsl.TypedAssocMapExpr;
+import org.julclang.verification.dsl.RequiresSignerDslLowering;
+import org.julclang.verification.dsl.StatefulSpendingDslLowering;
+import org.julclang.verification.dsl.DslPropertyCanonicalizer;
+import org.julclang.verification.dsl.LedgerExpressions;
+import org.julclang.verification.dsl.AuthorizationDsl;
+import org.julclang.verification.dsl.LedgerValueExpr;
+import org.julclang.verification.dsl.type.*;
+import org.julclang.cli.JulcCommand;
+import org.julclang.cli.cmd.blueprint.ArtifactCommand;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import picocli.CommandLine;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.julclang.verification.dsl.VerificationDsl.*;
+
+class VerificationProjectGeneratorTest {
+
+    private static final ObjectMapper JSON = new ObjectMapper();
+
+    @TempDir
+    Path tempDir;
+
+    @Test
+    void generatesDeterministicStrictWorkspace() throws Exception {
+        Path blueprint = writeBlueprint();
+        Path output = tempDir.resolve("verification");
+
+        var result = VerificationProjectGenerator.generate(
+                blueprint, "StateGate", "spending", 12345, output, false);
+
+        assertEquals("state-gate", result.artifactId());
+        assertTrue(Files.isExecutable(output.resolve("scripts/verify.sh")));
+        assertTrue(Files.readString(output.resolve(".gitignore"))
+                .contains("/verification-result.json"));
+        assertTrue(Files.readString(output.resolve("CheckedExecution.lean"))
+                .contains("defaultFunSemanticsVariantE"));
+        assertTrue(Files.readString(output.resolve("CheckedExecution.lean"))
+                .contains("stepExhausted"));
+        assertTrue(Files.readString(output.resolve("scripts/verify.sh"))
+                .contains(manifestHash(output)));
+        String schemas = Files.readString(output.resolve("GeneratedSchemas.lean"));
+        assertTrue(schemas.contains("structure StateDatum where"));
+        assertTrue(schemas.contains("owner : ByteString"));
+        assertTrue(schemas.contains("state : Integer"));
+        assertTrue(schemas.contains("Data.Constr 0 [r_owner, r_state]"));
+        assertTrue(schemas.contains("| _, _ => none"));
+
+        var manifest = JSON.readTree(output.resolve("verification-manifest.json").toFile());
+        assertEquals("E", manifest.path("builtinSemanticsVariant").asText());
+        assertEquals(11, manifest.path("protocolVersion").asInt());
+        assertEquals(12345, manifest.path("fuel").asInt());
+        assertEquals(4, manifest.path("recursiveDepth").asInt());
+        assertEquals(DataBoundarySemantics.STRICT_V1,
+                manifest.path("boundarySemantics").asText());
+        assertEquals("COULD-NOT-EVALUATE",
+                manifest.path("properties").get(0).path("result").asText());
+
+        String firstManifest = Files.readString(output.resolve("verification-manifest.json"));
+        VerificationProjectGenerator.generate(
+                blueprint, "StateGate", "spending", 12345, output, true);
+        assertEquals(firstManifest, Files.readString(output.resolve("verification-manifest.json")));
+    }
+
+    @Test
+    void generatesTypedRequiresSignerWorkspaceAndObservedResultProtocol() throws Exception {
+        Path output = tempDir.resolve("requires-signer");
+        var projection = ContractTypeProjection.project(stateGateSchema());
+        var dsl = DslPropertyCanonicalizer.normalize(
+                RequiresSignerDslLowering.lower(
+                        "StateGate.requires-signer.owner", "owner", projection));
+        var property = new RequiresSignerProperty(
+                1, RequiresSignerProperty.TEMPLATE,
+                "StateGate.requires-signer.owner", "StateGate", "spending",
+                "datum.owner",
+                List.of(
+                        new RequiresSignerProperty.PathSegment(
+                                "root", "datum", "record:StateDatum"),
+                        new RequiresSignerProperty.PathSegment(
+                                "field", "owner", "bytes")),
+                "StateDatum", "bytes",
+                PropertyIrCodec.canonicalJson(dsl),
+                ContractTypeProjection.canonicalJson(projection),
+                ContractTypeProjection.sha256(projection),
+                new RequiresSignerProperty.SourceReference(
+                        "StateGate.java", 4, 1, "@RequiresSigner"),
+                List.of(),
+                List.of("strict datum decoding", "complete signatory membership"),
+                false);
+
+        VerificationProjectGenerator.generateRequiresSigner(
+                writeBlueprint(), property, 1000, 4, output, false);
+
+        assertTrue(Files.isExecutable(output.resolve("scripts/verify.sh")));
+        assertTrue(Files.isExecutable(output.resolve("scripts/verify-non-vacuity.sh")));
+        String lean = Files.readString(output.resolve("SecurityProperty.lean"));
+        assertTrue(lean.contains("def typedDatum"));
+        assertTrue(lean.contains(".owner"));
+        assertTrue(lean.contains("txInfoSignatories"));
+        assertFalse(lean.contains("firstSignerAuthorized"));
+        assertTrue(Files.readString(output.resolve("StateGateProof.lean"))
+                .contains("by\n  blaster"));
+        assertTrue(Files.readString(output.resolve("StateGateCounterexample.lean"))
+                .contains("gen-cex: 1"));
+
+        var plan = JSON.readTree(output.resolve("verification-runner.json").toFile());
+        assertEquals(2, plan.path("schemaVersion").asInt());
+        assertEquals("SMT-VALID",
+                plan.path("verify").get(1).path("outcomes").get(0).path("result").asText());
+        assertEquals("REFUTED",
+                plan.path("verify").get(1).path("outcomes").get(1).path("result").asText());
+        var manifest = JSON.readTree(output.resolve("verification-manifest.json").toFile());
+        assertEquals(VerificationFiles.sha256(output.resolve("verification-property.json")),
+                manifest.path("propertyIr").path("sha256").asText());
+        assertEquals(VerificationFiles.leanTreeHash(output),
+                manifest.path("generatedLeanSha256").asText());
+        assertFalse(manifest.path("ledgerValidityModeled").asBoolean(true));
+
+        Files.writeString(output.resolve("SecurityProperty.lean"), "stale generated property\n");
+        VerificationProjectGenerator.generateRequiresSigner(
+                writeBlueprint(), property, 1000, 4, output, true);
+        assertFalse(Files.readString(output.resolve("SecurityProperty.lean"))
+                .contains("stale generated property"));
+
+        var tampered = new RequiresSignerProperty(
+                property.schemaVersion(), property.template(), property.propertyId(),
+                property.validatorTitle(), property.scriptPurpose(), property.sourcePath(),
+                property.path(), property.datumType(), property.ownerType(),
+                property.canonicalDslJson().replace("\"owner\"", "\"state\""),
+                property.projectedContractTypesJson(), property.contractSchemaSha256(),
+                property.source(), property.domainAssumptions(), property.guaranteeRules(),
+                property.ledgerValidityModeled());
+        var mismatch = assertThrows(IllegalArgumentException.class,
+                () -> VerificationProjectGenerator.generateRequiresSigner(
+                        writeBlueprint(), tampered, 1000, 4,
+                        tempDir.resolve("tampered-requires-signer"), false));
+        assertTrue(mismatch.getMessage().contains(
+                "canonical DSL does not match its typed fields"));
+    }
+
+    @Test
+    void generatesCompleteStatefulSpendingProfile() throws Exception {
+        Path output = tempDir.resolve("stateful-spending");
+        var authority = new StatefulSpendingProperty.Selection("datum", "owner", "bytes");
+        var currentState = new StatefulSpendingProperty.Selection(
+                "datum", "state", "integer");
+        var nextState = new StatefulSpendingProperty.Selection(
+                "redeemer", "nextState", "integer");
+        var projection = ContractTypeProjection.project(stateGateSchema());
+        var dsl = DslPropertyCanonicalizer.normalize(
+                StatefulSpendingDslLowering.lower(
+                        "StateGate.stateful-spending-v1", authority,
+                        currentState, nextState, projection));
+        var property = new StatefulSpendingProperty(
+                1, StatefulSpendingProperty.TEMPLATE,
+                "StateGate.stateful-spending-v1", "StateGate", "spending",
+                "datum.owner|datum.state|redeemer.nextState",
+                authority, currentState, nextState,
+                "StateDatum", "Transition", "GREATER_THAN",
+                "SINGLE_CONTINUING_OUTPUT",
+                PropertyIrCodec.canonicalJson(dsl),
+                ContractTypeProjection.canonicalJson(projection),
+                ContractTypeProjection.sha256(projection),
+                List.of(new StatefulSpendingProperty.SourceReference(
+                        "Monotonic", "StateGate.java", 4, 1, "@Monotonic")),
+                List.of(), List.of("complete stateful profile"), false);
+
+        VerificationProjectGenerator.generateStatefulSpending(
+                writeBlueprint(), property, 2000, 4, output, false);
+
+        String lean = Files.readString(output.resolve("SecurityProperty.lean"));
+        assertTrue(lean.contains("findOwnInput ctx"));
+        assertTrue(lean.contains("julcContinuingOutputs"));
+        assertTrue(lean.contains("with | [v"));
+        assertTrue(lean.contains("IsData.fromData"));
+        assertTrue(lean.contains(".owner"));
+        assertTrue(lean.contains(".nextState"));
+        assertTrue(lean.contains(".state"));
+        assertTrue(lean.contains("List.elem (v0.owner)"));
+        var plan = JSON.readTree(output.resolve("verification-runner.json").toFile());
+        assertEquals("stateful-spending-v1-established",
+                plan.path("verify").get(1).path("outcomes").get(0)
+                        .path("reason").asText());
+        var manifest = JSON.readTree(output.resolve("verification-manifest.json").toFile());
+        assertEquals(StatefulSpendingProperty.TEMPLATE,
+                manifest.path("propertyIr").path("template").asText());
+        assertEquals(VerificationFiles.leanTreeHash(output),
+                manifest.path("generatedLeanSha256").asText());
+    }
+
+    @Test
+    void generatesExactControlledMintProfile() throws Exception {
+        Path output = tempDir.resolve("controlled-mint");
+        String propertyId = "TokenPolicy.controlled-mint-v1";
+        String authority = "4a554c435f5645524946595f415554484f524954595f303030303031";
+        String tokenName = "4a554c43";
+        String contractHash = ContractTypeProjection.sha256(
+                ContractTypeProjection.project(mintingSchema()));
+        var property = new ControlledMintProperty(
+                1, ControlledMintProperty.TEMPLATE,
+                propertyId, "TokenPolicy", "minting",
+                "authority:" + authority + "|tokenName:" + tokenName + "|quantity:1",
+                authority, tokenName, "1", "MINT", "Redeemer",
+                PropertyIrCodec.canonicalJson(MintingDsl.controlledMintPropertySet(
+                        propertyId, authority, tokenName, "1", contractHash)),
+                new ControlledMintProperty.SourceReference(
+                        "TokenPolicy.java", 3, 1, "@ControlledMint"),
+                List.of(), List.of("exact own-policy asset"), false);
+
+        VerificationProjectGenerator.generateControlledMint(
+                writeMintBlueprint(), property, 2000, 4, output, false);
+
+        String lean = Files.readString(output.resolve("SecurityProperty.lean"));
+        assertTrue(lean.contains("IsData.fromData ctx.scriptContextRedeemer"));
+        assertTrue(lean.contains("exactOwnPolicyAsset"));
+        assertTrue(lean.contains("List.elem"));
+        assertTrue(lean.contains("actualPolicy == policy"));
+        assertTrue(lean.contains("actualToken == token"));
+        assertTrue(lean.contains("actualQuantity == quantity"));
+        assertTrue(lean.contains("1 > 0"));
+        assertTrue(Files.readString(output.resolve("TokenPolicyObligation.lean"))
+                .contains("mintingInputs"));
+        var plan = JSON.readTree(output.resolve("verification-runner.json").toFile());
+        assertEquals("controlled-mint-v1-established",
+                plan.path("verify").get(1).path("outcomes").get(0)
+                        .path("reason").asText());
+        var manifest = JSON.readTree(output.resolve("verification-manifest.json").toFile());
+        assertEquals(ControlledMintProperty.TEMPLATE,
+                manifest.path("propertyIr").path("template").asText());
+        assertEquals(VerificationFiles.leanTreeHash(output),
+                manifest.path("generatedLeanSha256").asText());
+    }
+
+    @Test
+    void generatesIndependentGenericClaimsWithoutTemplateShapeMatching() throws Exception {
+        String source = """
+                import org.julclang.stdlib.annotation.*;
+                import org.julclang.ledger.ScriptContext;
+                import java.math.BigInteger;
+                @SpendingValidator class StateGate {
+                    record StateDatum(byte[] owner, BigInteger state) {}
+                    record Transition(BigInteger nextState) {}
+                    @Entrypoint static boolean validate(StateDatum datum,
+                            Transition redeemer, ScriptContext ctx) { return true; }
+                }
+                """;
+        var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(source);
+        var model = new SpendingContractModel();
+        String authority = "4a554c435f5645524946595f415554484f524954595f303030303031";
+        var candidate = DslPropertySet.schema1(DslPurpose.SPENDING,
+                ContractTypeProjection.sha256(
+                        ContractTypeProjection.project(compiled.contractSchema())),
+                property("StateGate.state-nonnegative",
+                        DslDomain.VALID_SPENDING_V3_PINNED,
+                        model.datum().integerField("state").ge(integer(0))),
+                property("StateGate.authorized-or-owned", DslDomain.NONE,
+                        model.context().txInfo().signatories().contains(keyHash(authority))
+                                .or(model.context().txInfo().signatories().contains(
+                                        model.datum().bytesField("owner")))));
+        var promoted = ComposedDslPromotion.promote(candidate,
+                compiled.contractSchema(), "StateGate", "StateGateProperties.java");
+        Path output = tempDir.resolve("composed-spending");
+
+        VerificationProjectGenerator.generateComposedDsl(
+                writeBlueprint(), promoted, compiled.contractSchema(),
+                3000, 4, output, false);
+
+        String security = Files.readString(output.resolve("SecurityProperty.lean"));
+        assertTrue(security.contains("dslGuarantee_StateGate_state_nonnegative"));
+        assertTrue(security.contains("dslGuarantee_StateGate_authorized_or_owned"));
+        assertTrue(security.contains("Option JulcGenerated.Schemas.StateDatum"));
+        assertTrue(security.contains("List.elem"));
+        assertTrue(Files.readString(output.resolve(
+                "StateGate_StateGate_state_nonnegativeObligation.lean"))
+                .contains("blasterValidSpendingContext ctx = true"));
+        assertTrue(Files.isExecutable(output.resolve(
+                "scripts/verify-stategate_state_nonnegative.sh")));
+        assertTrue(Files.readString(output.resolve(
+                "scripts/verify-stategate_state_nonnegative.sh"))
+                .contains("StateGate_StateGate_state_nonnegativeLedgerCorollary.lean"));
+
+        var plan = JSON.readTree(output.resolve("verification-runner.json").toFile());
+        assertEquals(4, plan.path("verify").size());
+        assertEquals("StateGate.authorized-or-owned.non-vacuity",
+                plan.path("verify").get(1).path("nonVacuityGuardPropertyId").asText());
+        var manifest = JSON.readTree(output.resolve("verification-manifest.json").toFile());
+        assertEquals(2, manifest.path("claims").size());
+        assertEquals(4, manifest.path("properties").size());
+        assertEquals(1, manifest.path("dslIr").path("schemaVersion").asInt());
+        assertEquals("julc.verification.dsl",
+                manifest.path("dslIr").path("format").asText());
+        assertEquals(ComposedDslPromotion.generatedName(
+                        manifest.path("claims").get(0).path("id").asText()),
+                manifest.path("claims").get(0).path("generatedName").asText());
+
+        Files.writeString(output.resolve("review-notes.txt"), "preserve me\n");
+        var reduced = DslPropertySet.schema1(DslPurpose.SPENDING,
+                ContractTypeProjection.sha256(
+                        ContractTypeProjection.project(compiled.contractSchema())),
+                property("StateGate.state-nonnegative",
+                        DslDomain.NONE,
+                        model.datum().integerField("state").ge(integer(0))));
+        VerificationProjectGenerator.generateComposedDsl(writeBlueprint(),
+                ComposedDslPromotion.promote(reduced, compiled.contractSchema(),
+                        "StateGate", "StateGateProperties.java"),
+                compiled.contractSchema(), 3000, 4, output, true);
+        assertFalse(Files.exists(output.resolve(
+                "StateGate_StateGate_authorized_or_ownedProof.lean")));
+        assertFalse(Files.exists(output.resolve(
+                "scripts/verify-stategate_authorized_or_owned.sh")));
+        assertFalse(Files.exists(output.resolve("LedgerDomainEquivalence.lean")));
+        assertTrue(Files.exists(output.resolve("review-notes.txt")));
+        assertEquals(VerificationFiles.leanTreeHash(output),
+                JSON.readTree(output.resolve("verification-manifest.json").toFile())
+                        .path("generatedLeanSha256").asText());
+    }
+
+    @Test
+    void generatesSchemaFourNestedCollectionSemanticsFromCompilerTypes() throws Exception {
+        String source = """
+                import org.julclang.stdlib.annotation.*;
+                import org.julclang.ledger.ScriptContext;
+                import java.math.BigInteger;
+                import java.util.List;
+                import java.util.Map;
+                import java.util.Optional;
+                @SpendingValidator class CollectionGate {
+                    record Child(byte[] owner) {}
+                    sealed interface Action permits Update, Close {}
+                    record Update(BigInteger amount) implements Action {}
+                    record Close() implements Action {}
+                    record Datum(Child child, Optional<byte[]> backup,
+                                 List<BigInteger> values,
+                                 Map<byte[], BigInteger> balances) {}
+                    @Entrypoint static boolean validate(
+                            Datum datum, Action redeemer, ScriptContext ctx) { return true; }
+                }
+                """;
+        var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(source);
+        var projection = ContractTypeProjection.project(compiled.contractSchema());
+        var datumType = (NominalTypeRef) projection.datumType();
+        var datumDefinition = projection.definitions().stream()
+                .filter(definition -> definition.stableId().equals(datumType.stableId()))
+                .findFirst().orElseThrow();
+        var childType = (NominalTypeRef) projectedField(datumDefinition, "child");
+        var valuesType = (ListTypeRef) projectedField(datumDefinition, "values");
+        var balancesType = (AssocMapTypeRef) projectedField(datumDefinition, "balances");
+        var childDefinition = projection.definitions().stream()
+                .filter(definition -> definition.stableId().equals(childType.stableId()))
+                .findFirst().orElseThrow();
+        var ownerType = projectedField(childDefinition, "owner");
+        var datum = TypedExpressions.optionalRoot("typedDatum", datumType);
+        var context = new SpendingContractModel().context();
+        var guarantee = datum.exists(value -> {
+            var child = TypedExpressions.field(value, datumType, "child", childType);
+            var owner = TypedExpressions.field(child, childType, "owner", ownerType);
+            var values = TypedExpressions.field(value, datumType, "values", valuesType);
+            var balances = TypedExpressions.field(
+                    value, datumType, "balances", balancesType);
+            var list = new TypedListExpr(values.node(), valuesType.elementType());
+            var map = new TypedAssocMapExpr(balances.node(),
+                    balancesType.keyType(), balancesType.valueType());
+            return list.exactlyOne(item -> new IntegerExpr(item.node()).gt(integer(0)))
+                    .and(list.at(integer(-1)).isEmpty())
+                    .and(map.existsEntry((key, amount) ->
+                            context.txInfo().signatories()
+                                    .contains(new ByteStringExpr(key.node()))
+                                    .and(new IntegerExpr(amount.node()).gt(integer(0)))))
+                    .and(map.lookupFirst(owner).exists(amount ->
+                            new IntegerExpr(amount.node()).gt(integer(0))))
+                    .and(map.lookupAll(owner).count(amount ->
+                            new IntegerExpr(amount.node()).gt(integer(0))).ge(integer(1)));
+        });
+        var candidate = DslPropertySet.schema1(DslPurpose.SPENDING,
+                ContractTypeProjection.sha256(projection),
+                property("CollectionGate.nested-collections",
+                        DslDomain.VALID_SPENDING_V3_PINNED, guarantee));
+        var promoted = ComposedDslPromotion.promote(candidate,
+                compiled.contractSchema(), "CollectionGate", "CollectionProperties.java");
+        var generated = BlueprintGenerator.generate(
+                new BlueprintConfig("schema-four-generator-test", "1"),
+                List.of(new BlueprintGenerator.CompiledValidator(
+                        "CollectionGate", compiled.compileResult(),
+                        compiled.contractSchema())));
+        Path blueprint = tempDir.resolve("schema-four.json");
+        Files.writeString(blueprint, generated.toJson());
+        Path output = tempDir.resolve("schema-four");
+
+        VerificationProjectGenerator.generateComposedDsl(
+                blueprint, promoted, compiled.contractSchema(), 5000, 8, output, false);
+
+        String security = Files.readString(output.resolve("SecurityProperty.lean"));
+        assertTrue(security.contains("def julcListAt"));
+        assertTrue(security.contains("def julcMapLookupFirst"));
+        assertTrue(security.contains("def julcMapLookupAll"));
+        assertTrue(security.contains("julcListCount"));
+        assertTrue(security.contains("typedDatum ctx"));
+        var manifest = JSON.readTree(output.resolve("verification-manifest.json").toFile());
+        assertEquals(1, manifest.path("dslIr").path("schemaVersion").asInt());
+        assertEquals(3, manifest.path("propertyIr").path("schemaVersion").asInt());
+        assertEquals(ContractTypeProjection.sha256(projection),
+                manifest.path("propertyIr").path("contractSchemaSha256").asText());
+
+        ObjectNode tamperedBlueprint = (ObjectNode) JSON.readTree(generated.toJson());
+        var definitions = tamperedBlueprint.path("definitions");
+        var datumSchema = java.util.stream.StreamSupport.stream(
+                        java.util.Spliterators.spliteratorUnknownSize(
+                                definitions.elements(), 0), false)
+                .filter(definition -> "Datum".equals(definition.path("title").asText()))
+                .findFirst().orElseThrow();
+        ((ObjectNode) datumSchema.path("anyOf").get(0).path("fields").get(0))
+                .put("title", "tamperedChild");
+        Path tampered = tempDir.resolve("schema-four-tampered.json");
+        Files.writeString(tampered, JSON.writeValueAsString(tamperedBlueprint));
+        var mismatch = assertThrows(UnsupportedVerificationException.class,
+                () -> VerificationProjectGenerator.generateComposedDsl(
+                        tampered, promoted, compiled.contractSchema(), 5000, 8,
+                        tempDir.resolve("schema-four-tampered"), false));
+        assertTrue(mismatch.getMessage().contains(
+                "projected type graph does not match blueprint"));
+    }
+
+    private static VerificationTypeRef projectedField(
+            ProjectedContractTypes.NominalDefinition definition, String name) {
+        return definition.fields().stream()
+                .filter(field -> field.name().equals(name))
+                .map(ProjectedContractTypes.Field::type)
+                .findFirst().orElseThrow();
+    }
+
+    @Test
+    void generatesSchemaFiveLedgerContextWorkspace() throws Exception {
+        String source = """
+                import org.julclang.stdlib.annotation.*;
+                import org.julclang.ledger.ScriptContext;
+                import java.math.BigInteger;
+                @SpendingValidator class LedgerGate {
+                    record Datum(BigInteger state) {}
+                    record Redeemer(BigInteger next) {}
+                    @Entrypoint static boolean validate(
+                            Datum datum, Redeemer redeemer, ScriptContext ctx) { return true; }
+                }
+                """;
+        var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(source);
+        var projection = ContractTypeProjection.project(compiled.contractSchema());
+        var context = LedgerExpressions.context();
+        var tx = context.txInfo();
+        var guarantee = tx.referenceInputs().exists(input ->
+                        input.resolved().datum().isInline())
+                .and(tx.redeemers().lookupFirst(
+                        context.scriptPurpose().typed()).isPresent())
+                .and(tx.fee().ge(integer(0)));
+        var candidate = DslPropertySet.schema1(DslPurpose.SPENDING,
+                ContractTypeProjection.sha256(projection),
+                property("LedgerGate.context", DslDomain.VALID_SPENDING_V3_PINNED,
+                        guarantee));
+        var promoted = ComposedDslPromotion.promote(candidate,
+                compiled.contractSchema(), "LedgerGate", "LedgerProperties.java");
+        var generated = BlueprintGenerator.generate(
+                new BlueprintConfig("schema-five-generator-test", "1"),
+                List.of(new BlueprintGenerator.CompiledValidator(
+                        "LedgerGate", compiled.compileResult(), compiled.contractSchema())));
+        Path blueprint = tempDir.resolve("schema-five.json");
+        Files.writeString(blueprint, generated.toJson());
+        Path output = tempDir.resolve("schema-five");
+
+        VerificationProjectGenerator.generateComposedDsl(
+                blueprint, promoted, compiled.contractSchema(), 5000, 8, output, false);
+
+        String security = Files.readString(output.resolve("SecurityProperty.lean"));
+        assertTrue(security.contains("txInfoReferenceInputs"), security);
+        assertTrue(security.contains("toScriptPurpose"), security);
+        assertTrue(security.contains("txInfoFee"), security);
+        assertTrue(security.contains("def julcContinuingOutputs"), security);
+        String semantics = Files.readString(
+                output.resolve("LedgerContextSemanticsTests.lean"));
+        assertTrue(semantics.contains("resolveInput ref0 [firstInput, duplicateInput]"),
+                semantics);
+        assertTrue(semantics.contains("julcContinuingOutputs"), semantics);
+        assertTrue(semantics.contains(".toScriptPurpose)"), semantics);
+        assertTrue(semantics.contains("julcMapLookupFirst redeemerEntries spendingPurpose"),
+                semantics);
+        assertTrue(semantics.contains("julcMapContainsKey redeemerEntries votingPurpose"),
+                semantics);
+        assertTrue(semantics.contains("findRedeemer spendingPurpose redeemerEntries"),
+                semantics);
+        assertTrue(semantics.contains("CardanoLedgerApi.V2.findDatum"), semantics);
+        assertTrue(Files.readString(output.resolve("lakefile.lean"))
+                .contains("`LedgerContextSemanticsTests"));
+        var manifest = JSON.readTree(output.resolve("verification-manifest.json").toFile());
+        assertEquals(1, manifest.path("dslIr").path("schemaVersion").asInt());
+        assertEquals(3, manifest.path("propertyIr").path("schemaVersion").asInt());
+    }
+
+    @Test
+    void generatesSchemaSixAuthorizationHelpersAndKernelControls() throws Exception {
+        String source = """
+                import org.julclang.stdlib.annotation.*;
+                import org.julclang.ledger.ScriptContext;
+                @SpendingValidator class AuthorizationGate {
+                    record Datum(byte[] owner, byte[] recovery) {}
+                    record Redeemer() {}
+                    @Entrypoint static boolean validate(
+                            Datum datum, Redeemer redeemer, ScriptContext ctx) { return true; }
+                }
+                """;
+        var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(source);
+        var projection = ContractTypeProjection.project(compiled.contractSchema());
+        var auth = new AuthorizationDsl();
+        String key = "41".repeat(28);
+        var guarantee = auth.authorities(auth.fixed(key)).anySigned()
+                .and(auth.authorities(auth.fixed(key)).noUnexpectedSigners());
+        var candidate = DslPropertySet.schema1(DslPurpose.SPENDING,
+                ContractTypeProjection.sha256(projection),
+                property("AuthorizationGate.exact", DslDomain.NONE, guarantee));
+        var promoted = ComposedDslPromotion.promote(candidate,
+                compiled.contractSchema(), "AuthorizationGate", "Authorization.java");
+        var generated = BlueprintGenerator.generate(
+                new BlueprintConfig("schema-six-generator-test", "1"),
+                List.of(new BlueprintGenerator.CompiledValidator(
+                        "AuthorizationGate", compiled.compileResult(),
+                        compiled.contractSchema())));
+        Path blueprint = tempDir.resolve("schema-six.json");
+        Files.writeString(blueprint, generated.toJson());
+        Path output = tempDir.resolve("schema-six");
+
+        VerificationProjectGenerator.generateComposedDsl(
+                blueprint, promoted, compiled.contractSchema(), 5000, 8,
+                output, false);
+
+        String security = Files.readString(output.resolve("SecurityProperty.lean"));
+        assertTrue(security.contains("def julcDistinctKeyHashes"), security);
+        assertTrue(security.contains("def julcSignedAuthorityCount"), security);
+        assertTrue(security.contains("julcAnySigned"), security);
+        assertTrue(security.contains("julcNoUnexpectedSigners"), security);
+        assertTrue(security.contains("signers.all\n"
+                + "    (fun signer => julcAuthorizationContains signer authorities)"),
+                security);
+        String semantics = Files.readString(
+                output.resolve("AuthorizationSemanticsTests.lean"));
+        assertTrue(semantics.contains("julcExactlySigned 2"), semantics);
+        assertTrue(semantics.contains("[keyA, keyA, keyB]"), semantics);
+        assertTrue(semantics.contains("[keyA, keyB, outsider]"), semantics);
+        assertTrue(semantics.contains("List.elem keyA"), semantics);
+        assertTrue(Files.readString(output.resolve("lakefile.lean"))
+                .contains("`AuthorizationSemanticsTests"));
+        var manifest = JSON.readTree(
+                output.resolve("verification-manifest.json").toFile());
+        assertEquals(1, manifest.path("dslIr").path("schemaVersion").asInt());
+        assertEquals(3, manifest.path("propertyIr").path("schemaVersion").asInt());
+    }
+
+    @Test
+    void generatesNovelGenericMintCompositionAndReviewedDomainBridge() throws Exception {
+        String source = """
+                import org.julclang.stdlib.annotation.*;
+                import org.julclang.ledger.ScriptContext;
+                @MintingValidator class TokenPolicy {
+                    record Redeemer() {}
+                    @Entrypoint static boolean validate(Redeemer redeemer,
+                            ScriptContext ctx) { return true; }
+                }
+                """;
+        var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(source);
+        var model = new MintingContractModel();
+        String authority = "4a554c435f5645524946595f415554484f524954595f303030303031";
+        String txId = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
+        var quantity = integer(2);
+        var guarantee = model.redeemerStrictlyDecodes()
+                .and(model.context().txInfo().signatories().contains(keyHash(authority)))
+                .and(model.context().txInfo().inputs().consumes(txOutRef(txId, 1)))
+                .and(model.context().txInfo().mint().exactOwnPolicyAsset(
+                        model.ownPolicy(), tokenName("4a554c43"), quantity))
+                .and(quantity.gt(integer(0)).or(quantity.eq(integer(0))));
+        var candidate = DslPropertySet.schema1(DslPurpose.MINTING,
+                ContractTypeProjection.sha256(
+                        ContractTypeProjection.project(compiled.contractSchema())),
+                property("TokenPolicy.composed-mint",
+                        DslDomain.VALID_MINTING_V3_PINNED, guarantee));
+        var promoted = ComposedDslPromotion.promote(candidate,
+                compiled.contractSchema(), "TokenPolicy", "TokenPolicyProperties.java");
+        Path output = tempDir.resolve("composed-mint");
+
+        VerificationProjectGenerator.generateComposedDsl(
+                writeMintBlueprint(), promoted, compiled.contractSchema(),
+                5000, 4, output, false);
+
+        String security = Files.readString(output.resolve("SecurityProperty.lean"));
+        assertTrue(security.contains("redeemerStrictlyDecodes"));
+        assertTrue(security.contains("exactOwnPolicyAsset"));
+        assertTrue(security.contains("utxoConsumed"));
+        assertTrue(security.contains("(2 == 0) || (2 > 0)"));
+        assertTrue(Files.readString(output.resolve("LedgerDomainEquivalence.lean"))
+                .contains("validMintingContext_implies_blasterDomain"));
+        assertTrue(Files.readString(output.resolve(
+                "TokenPolicy_TokenPolicy_composed_mintLedgerCorollary.lean"))
+                .contains("composedLedgerCorollary"));
+        assertTrue(Files.readString(output.resolve(
+                "scripts/verify-tokenpolicy_composed_mint.sh"))
+                .contains("TokenPolicy_TokenPolicy_composed_mintLedgerCorollary.lean"));
+    }
+
+    @Test
+    void generatesRewardingCompositionAndExecutesReviewedDomainBridge() throws Exception {
+        String source = """
+                import org.julclang.stdlib.annotation.*;
+                import org.julclang.ledger.ScriptContext;
+                @WithdrawValidator class Rewards {
+                    record Redeemer() {}
+                    @Entrypoint static boolean validate(Redeemer redeemer,
+                            ScriptContext ctx) { return true; }
+                }
+                """;
+        var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(source);
+        var model = new RewardingContractModel();
+        String authority = "4a554c435f5645524946595f415554484f524954595f303030303031";
+        var guarantee = model.context().txInfo().withdrawals().exists(entry ->
+                        entry.credential().eq(model.rewardingCredential())
+                                .and(entry.amount().ge(integer(1_000_000))))
+                .and(model.context().txInfo().signatories().contains(keyHash(authority)));
+        var candidate = DslPropertySet.schema1(DslPurpose.REWARDING,
+                ContractTypeProjection.sha256(
+                        ContractTypeProjection.project(compiled.contractSchema())),
+                property("Rewards.authorized", DslDomain.VALID_REWARDING_V3_PINNED,
+                        guarantee));
+        var promoted = ComposedDslPromotion.promote(candidate,
+                compiled.contractSchema(), "Rewards", "RewardProperties.java");
+        Path output = tempDir.resolve("composed-rewarding");
+
+        VerificationProjectGenerator.generateComposedDsl(
+                writeRewardingBlueprint(), promoted, compiled.contractSchema(),
+                5000, 4, output, false);
+
+        String security = Files.readString(output.resolve("SecurityProperty.lean"));
+        assertTrue(security.contains("rewardingCredentialOf"));
+        assertTrue(security.contains("txInfoWdrl"));
+        assertTrue(security.contains("blasterValidRewardingContext"));
+        String obligation = Files.readString(output.resolve(
+                "Rewards_Rewards_authorizedObligation.lean"));
+        assertTrue(obligation.contains("rewardingInputs"));
+        assertTrue(obligation.contains("blasterValidRewardingContext"));
+        assertTrue(Files.readString(output.resolve("LedgerDomainEquivalence.lean"))
+                .contains("validRewardingContext_implies_blasterDomain"));
+        assertTrue(Files.readString(output.resolve(
+                "Rewards_Rewards_authorizedLedgerCorollary.lean"))
+                .contains("validRewardingContext"));
+        assertTrue(Files.readString(output.resolve(
+                "scripts/verify-rewards_authorized.sh"))
+                .contains("Rewards_Rewards_authorizedLedgerCorollary.lean"));
+        String rewardingSemantics = Files.readString(
+                output.resolve("RewardingSemanticsTests.lean"));
+        assertTrue(rewardingSemantics.contains("matchingMinimum"));
+        assertTrue(rewardingSemantics.contains(
+                "Data.Map [(Data.I 0, Data.I 1)]"));
+        assertTrue(rewardingSemantics.contains("Data.B \"bad\""));
+        var manifest = JSON.readTree(
+                output.resolve("verification-manifest.json").toFile());
+        assertEquals("rewarding", manifest.path("scriptPurpose").asText());
+        assertEquals("Rewards", manifest.path("blueprintEntryTitle").asText());
+    }
+
+    @Test
+    void generatesCertifyingCompositionKindsIndexAndReviewedDomainBridge()
+            throws Exception {
+        String source = """
+                import org.julclang.stdlib.annotation.*;
+                import org.julclang.ledger.ScriptContext;
+                @CertifyingValidator class Certificates {
+                    record Redeemer() {}
+                    @Entrypoint static boolean validate(Redeemer redeemer,
+                            ScriptContext ctx) { return true; }
+                }
+                """;
+        var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(source);
+        var model = new CertifyingContractModel();
+        String authority = "4a554c435f5645524946595f415554484f524954595f303030303031";
+        var guarantee = model.redeemerStrictlyDecodes()
+                .and(model.certificate().isKind(TxCertKind.UPDATE_DREP))
+                .and(model.context().txInfo().certificates().containsAt(
+                        model.certificateIndex(), model.certificate()))
+                .and(model.context().txInfo().signatories().contains(keyHash(authority)));
+        var candidate = DslPropertySet.schema1(DslPurpose.CERTIFYING,
+                ContractTypeProjection.sha256(
+                        ContractTypeProjection.project(compiled.contractSchema())),
+                property("Certificates.authorized-update",
+                        DslDomain.VALID_CERTIFYING_V3_PINNED, guarantee));
+        var promoted = ComposedDslPromotion.promote(candidate,
+                compiled.contractSchema(), "Certificates", "CertSpec.java");
+        Path output = tempDir.resolve("composed-certifying");
+
+        VerificationProjectGenerator.generateComposedDsl(
+                writeCertifyingBlueprint(), promoted, compiled.contractSchema(),
+                5000, 4, output, false);
+
+        String security = Files.readString(output.resolve("SecurityProperty.lean"));
+        assertTrue(security.contains("certificateOf"));
+        assertTrue(security.contains("certificateIndexOf"));
+        assertTrue(security.contains("TxCertUpdateDRep"));
+        assertTrue(security.contains("isKnownCertificate"));
+        assertTrue(security.contains("blasterValidCertifyingContext"));
+        String obligation = Files.readString(output.resolve(
+                "Certificates_Certificates_authorized_updateObligation.lean"));
+        assertTrue(obligation.contains("certifyingInputs"));
+        assertTrue(obligation.contains("blasterValidCertifyingContext"));
+        assertTrue(Files.readString(output.resolve("LedgerDomainEquivalence.lean"))
+                .contains("validCertifyingContext_implies_blasterDomain"));
+        assertTrue(Files.readString(output.resolve(
+                "scripts/verify-certificates_authorized_update.sh"))
+                .contains("Certificates_Certificates_authorized_updateLedgerCorollary.lean"));
+        String semantics = Files.readString(output.resolve(
+                "CertifyingSemanticsTests.lean"));
+        for (String constructor : List.of("TxCertRegStaking", "TxCertUnRegStaking",
+                "TxCertDelegStaking", "TxCertRegDeleg", "TxCertRegDRep",
+                "TxCertUpdateDRep", "TxCertUnRegDRep", "TxCertPoolRegister",
+                "TxCertPoolRetire", "TxCertAuthHotCommittee",
+                "TxCertResignColdCommittee")) {
+            assertTrue(semantics.contains(constructor), constructor);
+        }
+        assertTrue(semantics.contains("Data.Constr 11 []"));
+        var manifest = JSON.readTree(
+                output.resolve("verification-manifest.json").toFile());
+        assertEquals("certifying", manifest.path("scriptPurpose").asText());
+        assertEquals("Certificates", manifest.path("blueprintEntryTitle").asText());
+    }
+
+    @Test
+    void generatesSchemaSevenGuardedCertificatePayloadWorkspace() throws Exception {
+        String source = """
+                import org.julclang.stdlib.annotation.*;
+                import org.julclang.ledger.ScriptContext;
+                @CertifyingValidator class Certificates {
+                    record Redeemer() {}
+                    @Entrypoint static boolean validate(Redeemer redeemer,
+                            ScriptContext ctx) { return true; }
+                }
+                """;
+        var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(source);
+        var certificate = LedgerExpressions.currentCertificate();
+        var guarantee = certificate.whenPoolRetire((pool, epoch) ->
+                epoch.ge(integer(10)).and(LedgerExpressions.context().txInfo()
+                        .certificates().containsAt(
+                                LedgerExpressions.currentCertificateIndex(),
+                                certificate)));
+        String schemaHash = ContractTypeProjection.sha256(
+                ContractTypeProjection.project(compiled.contractSchema()));
+        var candidate = DslPropertySet.schema1(DslPurpose.CERTIFYING, schemaHash,
+                property("Certificates.pool-retirement",
+                        DslDomain.VALID_CERTIFYING_V3_PINNED, guarantee));
+        var promoted = ComposedDslPromotion.promote(candidate,
+                compiled.contractSchema(), "Certificates", "CertSpec.java");
+        Path output = tempDir.resolve("schema-seven-certifying");
+
+        VerificationProjectGenerator.generateComposedDsl(
+                writeCertifyingBlueprint(), promoted, compiled.contractSchema(),
+                5000, 4, output, false);
+
+        String security = Files.readString(output.resolve("SecurityProperty.lean"));
+        assertTrue(security.contains("certificateOf ctx"));
+        assertTrue(security.contains(".TxCertPoolRetire"));
+        assertTrue(security.contains("julcListAt"));
+        String semantics = Files.readString(
+                output.resolve("CertifyingSemanticsTests.lean"));
+        assertTrue(semantics.contains("encodedTagAndArity"));
+        assertTrue(semantics.contains("stakeVoteDelegatee"));
+        assertTrue(semantics.contains("Data.Constr 8 [Data.B \"key\", Data.I 8, Data.I 9]"));
+        assertTrue(Files.readString(output.resolve("lakefile.lean"))
+                .contains("`CertifyingSemanticsTests"));
+        assertTrue(Files.readString(output.resolve(
+                "scripts/verify-certificates_pool_retirement.sh"))
+                .contains("Certificates_Certificates_pool_retirementLedgerCorollary.lean"));
+        var manifest = JSON.readTree(
+                output.resolve("verification-manifest.json").toFile());
+        assertEquals(1, manifest.path("dslIr").path("schemaVersion").asInt());
+        assertEquals("certifying", manifest.path("scriptPurpose").asText());
+        assertTrue(manifest.path("claims").get(0).path("capabilities").toString()
+                .contains("constructor.txCert.poolRetire"));
+    }
+
+    @Test
+    void generatesSchemaEightValueAlgebraAndKernelControls() throws Exception {
+        String source = """
+                import org.julclang.stdlib.annotation.*;
+                import org.julclang.ledger.ScriptContext;
+                import java.math.BigInteger;
+                @SpendingValidator class StateGate {
+                    record StateDatum(byte[] owner, BigInteger state) {}
+                    record Transition(BigInteger nextState) {}
+                    @Entrypoint static boolean validate(StateDatum datum,
+                            Transition redeemer, ScriptContext ctx) { return true; }
+                }
+                """;
+        var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(source);
+        String schemaHash = ContractTypeProjection.sha256(
+                ContractTypeProjection.project(compiled.contractSchema()));
+        var policy = LedgerExpressions.currencySymbol(bytes("11"));
+        var token = LedgerExpressions.tokenName(bytes("aa"));
+        LedgerValueExpr produced = LedgerExpressions.context().valueProduced();
+        var guarantee = produced.quantitySumStrict(policy, token)
+                .exists(quantity -> new IntegerExpr(quantity.node()).ge(integer(0)))
+                .and(produced.extensionallyEquals(produced))
+                .and(produced.rawPolicies().all(entry -> entry.whenWellFormed(
+                        (actualPolicy, tokens) -> tokens.all(tokenEntry ->
+                                tokenEntry.whenWellFormed((actualToken, quantity) ->
+                                        quantity.eq(quantity))))));
+        var candidate = DslPropertySet.schema1(DslPurpose.SPENDING, schemaHash,
+                property("StateGate.value", DslDomain.VALID_SPENDING_V3_PINNED,
+                        guarantee));
+        var promoted = ComposedDslPromotion.promote(candidate,
+                compiled.contractSchema(), "StateGate", "ValueSpec.java");
+        String retained = System.getenv("JULC_E4J_WORKSPACE");
+        Path output = retained == null
+                ? tempDir.resolve("schema-eight-value") : Path.of(retained);
+
+        VerificationProjectGenerator.generateComposedDsl(
+                writeBlueprint(), promoted, compiled.contractSchema(),
+                5000, 4, output, retained != null);
+
+        String security = Files.readString(output.resolve("SecurityProperty.lean"));
+        assertTrue(security.contains("julcValueQuantitySumStrict"));
+        assertTrue(security.contains("julcValueExtensionalEq"));
+        String semantics = Files.readString(output.resolve(
+                "ValueAlgebraSemanticsTests.lean"));
+        assertTrue(semantics.contains("duplicateValue"));
+        assertTrue(semantics.contains("malformedQuantity"));
+        assertTrue(semantics.contains("misplacedAda"));
+        assertTrue(Files.readString(output.resolve("lakefile.lean"))
+                .contains("`ValueAlgebraSemanticsTests"));
+        var manifest = JSON.readTree(
+                output.resolve("verification-manifest.json").toFile());
+        assertEquals(1, manifest.path("dslIr").path("schemaVersion").asInt());
+    }
+
+    @Test
+    void generatesSchemaNineGovernanceAndKernelControls() throws Exception {
+        String source = """
+                import org.julclang.stdlib.annotation.*;
+                import org.julclang.ledger.ScriptContext;
+                import java.math.BigInteger;
+                @SpendingValidator class StateGate {
+                    record StateDatum(byte[] owner, BigInteger state) {}
+                    record Transition(BigInteger nextState) {}
+                    @Entrypoint static boolean validate(StateDatum d, Transition r,
+                            ScriptContext ctx) { return true; }
+                }
+                """;
+        var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(source);
+        String hash = ContractTypeProjection.sha256(
+                ContractTypeProjection.project(compiled.contractSchema()));
+        var tx = LedgerExpressions.context().txInfo();
+        var guarantee = tx.proposals().exists(proposal -> proposal.actionStrict()
+                .exists(action -> action.whenHardFork((previous, version) ->
+                        version.major().eq(integer(11)))))
+                .or(tx.votes().existsEntry((voter, actions) ->
+                        voter.whenStakePool(pool -> actions.existsEntry((id, vote) ->
+                                id.index().eq(integer(2)).and(vote.isYes())))));
+        var candidate = DslPropertySet.schema1(DslPurpose.SPENDING, hash,
+                property("GovernanceGate.policy", DslDomain.VALID_SPENDING_V3_PINNED,
+                        guarantee));
+        var promoted = ComposedDslPromotion.promote(candidate,
+                compiled.contractSchema(), "StateGate", "GovernanceSpec.java");
+        String retained = System.getenv("JULC_E4K_WORKSPACE");
+        Path output = retained == null ? tempDir.resolve("schema-nine-governance")
+                : Path.of(retained);
+
+        VerificationProjectGenerator.generateComposedDsl(writeBlueprint(), promoted,
+                compiled.contractSchema(), 5000, 4, output, retained != null);
+
+        String security = Files.readString(output.resolve("SecurityProperty.lean"));
+        assertTrue(security.contains("txInfoProposalProcedures"), security);
+        assertTrue(security.contains("IsData.fromData"), security);
+        assertTrue(security.contains("txInfoVotes"), security);
+        String semantics = Files.readString(output.resolve("GovernanceSemanticsTests.lean"));
+        assertTrue(semantics.contains("trailActionData action6"));
+        assertTrue(semantics.contains("decodeVoter (IsData.toData committeeVoter)"));
+        assertTrue(semantics.contains("decodeAction (IsData.toData action0)"));
+        assertTrue(semantics.contains("julcMapLookupAll innerVotes actionId"));
+        assertTrue(semantics.contains("decodeProposal (Data.Constr 0"));
+        assertTrue(semantics.contains("isKnownVoter"));
+        assertTrue(semantics.contains("isKnownProposal"));
+        assertTrue(Files.readString(output.resolve("lakefile.lean"))
+                .contains("`GovernanceSemanticsTests"));
+        var manifest = JSON.readTree(output.resolve("verification-manifest.json").toFile());
+        assertEquals(1, manifest.path("dslIr").path("schemaVersion").asInt());
+    }
+
+    @Test
+    void generatesSchemaTenReviewedAdaptersAndKernelControls() throws Exception {
+        String source = """
+                import org.julclang.stdlib.annotation.*;
+                import org.julclang.ledger.ScriptContext;
+                import java.math.BigInteger;
+                @SpendingValidator class StateGate {
+                    record StateDatum(byte[] owner, BigInteger state) {}
+                    record Transition(BigInteger nextState) {}
+                    @Entrypoint static boolean validate(StateDatum d, Transition r,
+                            ScriptContext ctx) { return true; }
+                }
+                """;
+        var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(source);
+        String hash = ContractTypeProjection.sha256(
+                ContractTypeProjection.project(compiled.contractSchema()));
+        var tx = LedgerExpressions.context().txInfo();
+        var guarantee = tx.validityRangeReviewed().contains(integer(10))
+                .and(tx.validityRangeReviewed().decoderValid())
+                .and(tx.currentTreasuryStrict().isWellFormed())
+                .and(tx.treasuryDonationStrict().whenPresent(
+                        amount -> amount.ge(integer(0))));
+        var candidate = DslPropertySet.schema1(DslPurpose.SPENDING, hash,
+                property("StateGate.reviewed-adapters",
+                        DslDomain.VALID_SPENDING_V3_PINNED, guarantee));
+        var promoted = ComposedDslPromotion.promote(candidate,
+                compiled.contractSchema(), "StateGate", "ReviewedAdapterSpec.java");
+        String retained = System.getenv("JULC_E4L_WORKSPACE");
+        Path output = retained == null ? tempDir.resolve("schema-ten-adapters")
+                : Path.of(retained);
+
+        VerificationProjectGenerator.generateComposedDsl(writeBlueprint(), promoted,
+                compiled.contractSchema(), 5000, 4, output, retained != null);
+
+        String security = Files.readString(output.resolve("SecurityProperty.lean"));
+        assertTrue(security.contains("julcDecodeValidity"), security);
+        assertTrue(security.contains("julcDecodeTreasury"), security);
+        assertTrue(security.contains("julcChangedParameterIds"), security);
+        assertTrue(security.contains("julcDecodeQuorum"), security);
+        String semantics = Files.readString(
+                output.resolve("ReviewedDataAdapterSemanticsTests.lean"));
+        assertTrue(semantics.contains("noncanonicalInfinite"), semantics);
+        assertTrue(semantics.contains("validTreasuryAmount malformed"), semantics);
+        assertTrue(semantics.contains("julcChangedParametersCountId duplicate"), semantics);
+        assertTrue(semantics.contains("julcQuorumCanonical unreducedHalf"), semantics);
+        assertTrue(Files.readString(output.resolve("lakefile.lean"))
+                .contains("`ReviewedDataAdapterSemanticsTests"));
+        var manifest = JSON.readTree(output.resolve("verification-manifest.json").toFile());
+        assertEquals(1, manifest.path("dslIr").path("schemaVersion").asInt());
+    }
+
+    @Test
+    void generatesStrictVariantEncoding() throws Exception {
+        var document = JSON.readTree("""
+                {
+                  "validators": [{
+                    "title": "Gate",
+                    "redeemer": {"schema": {"$ref": "#/definitions/Action"}}
+                  }],
+                  "definitions": {
+                    "Int": {"dataType": "integer"},
+                    "Action": {"anyOf": [
+                      {"title": "Stop", "dataType": "constructor", "index": 0,
+                       "fields": []},
+                      {"title": "Advance", "dataType": "constructor", "index": 1,
+                       "fields": [{"title": "amount", "$ref": "#/definitions/Int"}]}
+                    ]}
+                  }
+                }
+                """);
+
+        var result = VerificationProjectGenerator.generateSchemas(
+                document.path("definitions"), document.path("validators").get(0));
+
+        assertTrue(result.source().contains("inductive Action where"));
+        assertTrue(result.source().contains("| Stop"));
+        assertTrue(result.source().contains("| Advance (amount : Integer)"));
+        assertTrue(result.source().contains("Data.Constr 0 []"));
+        assertTrue(result.source().contains("Data.Constr 1 [r_amount]"));
+    }
+
+    @Test
+    void rejectsUnsupportedSchemaWithoutWritingWorkspace() throws Exception {
+        Path blueprint = writeBlueprint();
+        var root = (com.fasterxml.jackson.databind.node.ObjectNode)
+                JSON.readTree(blueprint.toFile());
+        var unsupportedField = (com.fasterxml.jackson.databind.node.ObjectNode)
+                root.path("definitions").path("StateDatum").path("anyOf")
+                        .get(0).path("fields").get(1);
+        unsupportedField.remove("$ref");
+        unsupportedField.put("dataType", "future-container");
+        JSON.writerWithDefaultPrettyPrinter().writeValue(blueprint.toFile(), root);
+        Path output = tempDir.resolve("unsupported");
+
+        var error = assertThrows(UnsupportedVerificationException.class,
+                () -> VerificationProjectGenerator.generate(
+                        blueprint, "StateGate", "spending", 100, output, false));
+
+        assertTrue(error.getMessage().toLowerCase(java.util.Locale.ROOT).contains("unsupported"));
+        assertFalse(Files.exists(output));
+    }
+
+    @Test
+    void generatesStrictBooleanOptionalListMapAndNestedTypes() throws Exception {
+        String source = """
+                import org.julclang.stdlib.annotation.*;
+                import org.julclang.ledger.ScriptContext;
+                import java.math.BigInteger;
+                import java.util.List;
+                import java.util.Map;
+                import java.util.Optional;
+
+                @MintingValidator
+                class ContainerGate {
+                    record Redeemer(List<BigInteger> values,
+                                    Map<byte[], BigInteger> balances,
+                                    Optional<List<Map<byte[], BigInteger>>> nested,
+                                    boolean enabled) {}
+                    @Entrypoint
+                    static boolean validate(Redeemer redeemer, ScriptContext ctx) {
+                        return true;
+                    }
+                }
+                """;
+        var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry()).compileContract(source);
+        var blueprint = BlueprintGenerator.generate(
+                new BlueprintConfig("container-generator-test", "1"),
+                List.of(new BlueprintGenerator.CompiledValidator(
+                        "ContainerGate", compiled.compileResult(), compiled.contractSchema())));
+        var document = JSON.readTree(blueprint.toJson());
+
+        var result = VerificationProjectGenerator.generateSchemas(
+                document.path("definitions"), document.path("validators").get(0));
+
+        assertTrue(result.source().contains("structure JulcList (α : Type)"));
+        assertTrue(result.source().contains("structure JulcMap (κ υ : Type)"));
+        assertTrue(result.source().contains("values : JulcList (Integer)"));
+        assertTrue(result.source().contains("balances : JulcMap (ByteString) (Integer)"));
+        assertTrue(result.source().contains(
+                "nested : Option (JulcList (JulcMap (ByteString) (Integer)))"));
+        assertTrue(result.source().contains("enabled : Bool"));
+        assertTrue(result.source().contains("Data.List (encodeDataList values.items)"));
+        assertTrue(result.source().contains("Data.Map (encodeDataMap values.entries)"));
+        assertFalse(result.source().contains("inductive JulcOptional"));
+        assertEquals("Redeemer", result.leanTypes().get("Redeemer"));
+    }
+
+    @Test
+    void generatesProductiveRecursiveSumsAndContainerCodecs() throws Exception {
+        String source = """
+                import org.julclang.stdlib.annotation.*;
+                import org.julclang.ledger.ScriptContext;
+                import java.math.BigInteger;
+                import java.util.List;
+                import java.util.Map;
+                import java.util.Optional;
+
+                @MintingValidator
+                class RecursiveContainerGate {
+                    sealed interface Node permits End, Cons {}
+                    record End() implements Node {}
+                    record Cons(BigInteger value, Optional<Node> next) implements Node {}
+                    record Tree(List<Tree> children) {}
+                    record Graph(Map<BigInteger, Graph> edges) {}
+                    record Redeemer(Node node, Tree tree, Graph graph) {}
+
+                    @Entrypoint
+                    static boolean validate(Redeemer redeemer, ScriptContext ctx) {
+                        return true;
+                    }
+                }
+                """;
+        var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry()).compileContract(source);
+        var blueprint = BlueprintGenerator.generate(
+                new BlueprintConfig("recursive-generator-test", "1"),
+                List.of(new BlueprintGenerator.CompiledValidator(
+                        "RecursiveContainerGate", compiled.compileResult(),
+                        compiled.contractSchema())));
+        var document = JSON.readTree(blueprint.toJson());
+
+        var result = VerificationProjectGenerator.generateSchemas(
+                document.path("definitions"), document.path("validators").get(0));
+
+        assertTrue(result.source().contains("inductive Node where"));
+        assertTrue(result.source().contains("| End"));
+        assertTrue(result.source().contains("| Cons (value : Integer) (next : Option (Node))"));
+        assertTrue(result.source().contains("inductive Tree where"));
+        assertTrue(result.source().contains("children : JulcList (Tree)"));
+        assertTrue(result.source().contains("inductive Graph where"));
+        assertTrue(result.source().contains("edges : JulcMap (Integer) (Graph)"));
+        assertTrue(result.source().contains("def encodeNode : Node → Data"));
+        assertTrue(result.source().contains("def decodeNode : Nat → Data → Option Node"));
+        assertTrue(result.source().contains("decodeOptionalWith"));
+        assertTrue(result.source().contains("decodeJulcListWith"));
+        assertTrue(result.source().contains("decodeJulcMapWith"));
+        assertFalse(result.source().contains("partial def"));
+        assertFalse(result.source().contains("sorry"));
+    }
+
+    @Test
+    void rejectsMalformedContainerSchema() throws Exception {
+        var document = JSON.readTree("""
+                {
+                  "validators": [{
+                    "title": "Gate",
+                    "redeemer": {"schema": {"$ref": "#/definitions/Values"}}
+                  }],
+                  "definitions": {
+                    "Values": {"dataType": "list"}
+                  }
+                }
+                """);
+
+        var error = assertThrows(UnsupportedVerificationException.class,
+                () -> VerificationProjectGenerator.generateSchemas(
+                        document.path("definitions"), document.path("validators").get(0)));
+
+        assertTrue(error.getMessage().contains("requires items"));
+    }
+
+    @Test
+    void rejectsMapWithoutKeysOrValues() throws Exception {
+        for (String mapSchema : List.of(
+                "{\"dataType\": \"map\", \"values\": {\"dataType\": \"integer\"}}",
+                "{\"dataType\": \"map\", \"keys\": {\"dataType\": \"bytes\"}}")) {
+            var document = JSON.readTree("""
+                    {
+                      "validators": [{
+                        "title": "Gate",
+                        "redeemer": {"schema": {"$ref": "#/definitions/Balances"}}
+                      }],
+                      "definitions": {"Balances": %s}
+                    }
+                    """.formatted(mapSchema));
+
+            var error = assertThrows(UnsupportedVerificationException.class,
+                    () -> VerificationProjectGenerator.generateSchemas(
+                            document.path("definitions"),
+                            document.path("validators").get(0)));
+
+            assertTrue(error.getMessage().contains("requires keys and values"));
+        }
+    }
+
+    @Test
+    void refusesNonEmptyOutputWithoutForceAndPreservesUnknownFiles() throws Exception {
+        Path blueprint = writeBlueprint();
+        Path output = tempDir.resolve("existing");
+        Files.createDirectories(output);
+        Path userFile = output.resolve("UserProperty.lean");
+        Files.writeString(userFile, "-- user owned\n");
+
+        assertThrows(IllegalArgumentException.class,
+                () -> VerificationProjectGenerator.generate(
+                        blueprint, "StateGate", "spending", 100, output, false));
+
+        VerificationProjectGenerator.generate(
+                blueprint, "StateGate", "spending", 100, output, true);
+        assertEquals("-- user owned\n", Files.readString(userFile));
+
+        Path securityProperty = output.resolve("SecurityProperty.lean");
+        Files.writeString(securityProperty, "-- specialized property\n");
+        VerificationProjectGenerator.generate(
+                blueprint, "StateGate", "spending", 100, output, true);
+        assertEquals("-- specialized property\n", Files.readString(securityProperty));
+
+        Path gitignore = output.resolve(".gitignore");
+        Files.writeString(gitignore, "/local-review-notes/\n");
+        VerificationProjectGenerator.generate(
+                blueprint, "StateGate", "spending", 100, output, true);
+        assertEquals("/local-review-notes/\n", Files.readString(gitignore));
+    }
+
+    @Test
+    void exposesVerifyCommandInRootCli() {
+        var commandLine = new CommandLine(new JulcCommand());
+        assertTrue(commandLine.getSubcommands().containsKey("verify"));
+        assertTrue(commandLine.getSubcommands().get("verify")
+                .getSubcommands().containsKey("init"));
+        assertTrue(commandLine.getSubcommands().get("verify")
+                .getSubcommands().containsKey("run"));
+        assertTrue(commandLine.getSubcommands().get("verify")
+                .getSubcommands().containsKey("dsl-init"));
+        assertTrue(commandLine.getSubcommands().get("verify")
+                .getSubcommands().containsKey("dsl"));
+        assertTrue(commandLine.getSubcommands().get("verify")
+                .getCommandSpec().findOption("--validator") != null);
+        assertTrue(commandLine.getSubcommands().get("verify").getSubcommands().get("init")
+                .getCommandSpec().findOption("--recursive-depth") != null);
+        assertTrue(commandLine.getSubcommands().get("verify").getSubcommands().get("run")
+                .getCommandSpec().findOption("--backend") != null);
+    }
+
+    @Test
+    void rejectsNonPositiveFuel() throws Exception {
+        Path blueprint = writeBlueprint();
+        var error = assertThrows(IllegalArgumentException.class,
+                () -> VerificationProjectGenerator.generate(
+                        blueprint, "StateGate", "spending", 0,
+                        tempDir.resolve("zero"), false));
+        assertTrue(error.getMessage().contains("positive"));
+    }
+
+    @Test
+    void recordsRecursiveDepthSeparatelyFromCekFuel() throws Exception {
+        Path output = tempDir.resolve("recursive-depth");
+        VerificationProjectGenerator.generate(
+                writeBlueprint(), "StateGate", "spending", 20000, 7, output, false);
+
+        var manifest = JSON.readTree(
+                output.resolve("verification-manifest.json").toFile());
+        assertEquals(20000, manifest.path("fuel").asInt());
+        assertEquals(7, manifest.path("recursiveDepth").asInt());
+        assertTrue(Files.readString(output.resolve("PropertyTemplates.lean"))
+                .contains("recursiveVerificationDepth : Nat := 7"));
+
+        var error = assertThrows(IllegalArgumentException.class,
+                () -> VerificationProjectGenerator.generate(
+                        writeBlueprint(), "StateGate", "spending", 20000, 0,
+                        tempDir.resolve("bad-depth"), false));
+        assertTrue(error.getMessage().contains("Recursive verification depth"));
+    }
+
+    @Test
+    void rejectsPurposeThatContradictsBlueprintShape() throws Exception {
+        Path blueprint = writeBlueprint();
+        var error = assertThrows(UnsupportedVerificationException.class,
+                () -> VerificationProjectGenerator.generate(
+                        blueprint, "StateGate", "minting", 100,
+                        tempDir.resolve("wrong-purpose"), false));
+        assertTrue(error.getMessage().contains("Minting"));
+    }
+
+    @Test
+    void asksVerifyInitUsersToRebuildLegacyPurposeFreeBlueprint() throws Exception {
+        Path blueprint = writeBlueprint();
+        String legacyJson = Files.readString(blueprint)
+                .replace("        \"purpose\": \"spend\",\n", "");
+        Files.writeString(blueprint, legacyJson);
+
+        var error = assertThrows(ArtifactCommand.ArtifactSelectionException.class,
+                () -> VerificationProjectGenerator.generate(
+                        blueprint, "StateGate", "spending", 100,
+                        tempDir.resolve("legacy-purpose-free"), false));
+
+        assertTrue(error.getMessage().contains("Rebuild plutus.json"), error.getMessage());
+        assertFalse(Files.exists(tempDir.resolve("legacy-purpose-free")));
+    }
+
+    @Test
+    void rejectsBuiltinOutsidePinnedBlasterCoverage() {
+        var error = assertThrows(UnsupportedVerificationException.class,
+                () -> VerificationProjectGenerator.ensureSupportedBuiltins(List.of(
+                        new ArtifactCommand.BuiltinUse("LengthOfArray", 89))));
+        assertTrue(error.getMessage().contains("tag 89"));
+    }
+
+    @Test
+    void rejectsRecursiveSchema() throws Exception {
+        var document = JSON.readTree("""
+                {
+                  "validators": [{
+                    "title": "Gate",
+                    "redeemer": {"schema": {"$ref": "#/definitions/Node"}}
+                  }],
+                  "definitions": {
+                    "Node": {"anyOf": [{
+                      "title": "Node", "dataType": "constructor", "index": 0,
+                      "fields": [{"title": "next", "$ref": "#/definitions/Node"}]
+                    }]}
+                  }
+                }
+                """);
+        var error = assertThrows(UnsupportedVerificationException.class,
+                () -> VerificationProjectGenerator.generateSchemas(
+                        document.path("definitions"), document.path("validators").get(0)));
+        assertTrue(error.getMessage().contains("Recursive"));
+    }
+
+    @Test
+    void generatesProductiveMutualRecursiveGroup() throws Exception {
+        var document = JSON.readTree("""
+                {
+                  "validators": [{
+                    "title": "Gate",
+                    "redeemer": {"schema": {"$ref": "#/definitions/Left"}}
+                  }],
+                  "definitions": {
+                    "Left": {"anyOf": [
+                      {"title": "LeftEnd", "dataType": "constructor", "index": 0,
+                       "fields": []},
+                      {"title": "ToRight", "dataType": "constructor", "index": 1,
+                       "fields": [{"title": "next", "$ref": "#/definitions/Right"}]}
+                    ]},
+                    "Right": {"anyOf": [
+                      {"title": "RightEnd", "dataType": "constructor", "index": 0,
+                       "fields": []},
+                      {"title": "ToLeft", "dataType": "constructor", "index": 1,
+                       "fields": [{"title": "next", "$ref": "#/definitions/Left"}]}
+                    ]}
+                  }
+                }
+                """);
+
+        var result = VerificationProjectGenerator.generateSchemas(
+                document.path("definitions"), document.path("validators").get(0));
+
+        assertTrue(result.source().contains("mutual\n  inductive Right where"));
+        assertTrue(result.source().contains("  inductive Left where"));
+        assertTrue(result.source().contains("def encodeRight : Right → Data"));
+        assertTrue(result.source().contains("def decodeLeft : Nat → Data → Option Left"));
+    }
+
+    @Test
+    void rejectsNonproductiveMutualSchema() throws Exception {
+        var document = JSON.readTree("""
+                {
+                  "validators": [{
+                    "title": "Gate",
+                    "redeemer": {"schema": {"$ref": "#/definitions/Left"}}
+                  }],
+                  "definitions": {
+                    "Left": {"anyOf": [{
+                      "title": "Left", "dataType": "constructor", "index": 0,
+                      "fields": [{"title": "next", "$ref": "#/definitions/Right"}]
+                    }]},
+                    "Right": {"anyOf": [{
+                      "title": "Right", "dataType": "constructor", "index": 0,
+                      "fields": [{"title": "next", "$ref": "#/definitions/Left"}]
+                    }]}
+                  }
+                }
+                """);
+
+        var error = assertThrows(UnsupportedVerificationException.class,
+                () -> VerificationProjectGenerator.generateSchemas(
+                        document.path("definitions"), document.path("validators").get(0)));
+
+        assertTrue(error.getMessage().contains("no finite base constructor"));
+        assertTrue(error.getMessage().contains("Left"));
+        assertTrue(error.getMessage().contains("Right"));
+    }
+
+    @Test
+    void rejectsDanglingRecursiveReference() throws Exception {
+        var document = JSON.readTree("""
+                {
+                  "validators": [{
+                    "title": "Gate",
+                    "redeemer": {"schema": {"$ref": "#/definitions/Node"}}
+                  }],
+                  "definitions": {
+                    "Node": {"anyOf": [
+                      {"title": "End", "dataType": "constructor", "index": 0,
+                       "fields": []},
+                      {"title": "Cons", "dataType": "constructor", "index": 1,
+                       "fields": [{"title": "next", "$ref": "#/definitions/Missing"}]}
+                    ]}
+                  }
+                }
+                """);
+
+        var error = assertThrows(UnsupportedVerificationException.class,
+                () -> VerificationProjectGenerator.generateSchemas(
+                        document.path("definitions"), document.path("validators").get(0)));
+
+        assertTrue(error.getMessage().contains("Unknown schema definition 'Missing'"));
+    }
+
+    @Test
+    void followsContainerAliasesWhenOrderingNamedLeanDefinitions() throws Exception {
+        var document = JSON.readTree("""
+                {
+                  "validators": [{
+                    "title": "Gate",
+                    "redeemer": {"schema": {"$ref": "#/definitions/Envelope"}}
+                  }],
+                  "definitions": {
+                    "Envelope": {"anyOf": [{
+                      "title": "Envelope", "dataType": "constructor", "index": 0,
+                      "fields": [{"title": "nodes", "$ref": "#/definitions/NodeList"}]
+                    }]},
+                    "NodeList": {
+                      "dataType": "list", "items": {"$ref": "#/definitions/Node"}
+                    },
+                    "Node": {"anyOf": [{
+                      "title": "Node", "dataType": "constructor", "index": 0,
+                      "fields": [{"title": "value", "dataType": "integer"}]
+                    }]}
+                  }
+                }
+                """);
+
+        var result = VerificationProjectGenerator.generateSchemas(
+                document.path("definitions"), document.path("validators").get(0));
+
+        int node = result.source().indexOf("structure Node where");
+        int envelope = result.source().indexOf("structure Envelope where");
+        assertTrue(node >= 0 && envelope > node,
+                "named dependencies reached through an alias must be declared first");
+        assertEquals("JulcList (Node)", result.leanTypes().get("NodeList"));
+    }
+
+    @Test
+    void rejectsRecursionThroughContainerItems() throws Exception {
+        var document = JSON.readTree("""
+                {
+                  "validators": [{
+                    "title": "Gate",
+                    "redeemer": {"schema": {"$ref": "#/definitions/Values"}}
+                  }],
+                  "definitions": {
+                    "Values": {
+                      "dataType": "list",
+                      "items": {"$ref": "#/definitions/Values"}
+                    }
+                  }
+                }
+                """);
+
+        var error = assertThrows(UnsupportedVerificationException.class,
+                () -> VerificationProjectGenerator.generateSchemas(
+                        document.path("definitions"), document.path("validators").get(0)));
+
+        assertTrue(error.getMessage().contains("Recursive"));
+    }
+
+    @Test
+    void rejectsSchemaNamesThatShadowGeneratedBoolOrOptionTypes() throws Exception {
+        for (String schemaName : List.of("Bool", "bool", "Option", "option")) {
+            var document = JSON.readTree("""
+                    {
+                      "validators": [{
+                        "title": "Gate",
+                        "redeemer": {"schema": {"$ref": "#/definitions/%s"}}
+                      }],
+                      "definitions": {
+                        "%s": {"anyOf": [{
+                          "title": "Wrapped", "dataType": "constructor", "index": 0,
+                          "fields": [{"title": "value", "dataType": "integer"}]
+                        }]}
+                      }
+                    }
+                    """.formatted(schemaName, schemaName));
+
+            var error = assertThrows(UnsupportedVerificationException.class,
+                    () -> VerificationProjectGenerator.generateSchemas(
+                            document.path("definitions"),
+                            document.path("validators").get(0)));
+
+            assertTrue(error.getMessage().contains("conflicts with generated Lean imports"));
+            assertTrue(error.getMessage().contains(
+                    Character.toUpperCase(schemaName.charAt(0)) + schemaName.substring(1)));
+        }
+    }
+
+    @Test
+    void rejectsSchemaNamesThatCollideAfterLeanNormalization() throws Exception {
+        var document = JSON.readTree("""
+                {
+                  "validators": [{
+                    "title": "Gate",
+                    "datum": {"schema": {"$ref": "#/definitions/Foo-Bar"}},
+                    "redeemer": {"schema": {"$ref": "#/definitions/Foo_Bar"}}
+                  }],
+                  "definitions": {
+                    "Foo-Bar": {"anyOf": [{
+                      "title": "First", "dataType": "constructor", "index": 0,
+                      "fields": []
+                    }]},
+                    "Foo_Bar": {"anyOf": [{
+                      "title": "Second", "dataType": "constructor", "index": 0,
+                      "fields": []
+                    }]}
+                  }
+                }
+                """);
+        var error = assertThrows(UnsupportedVerificationException.class,
+                () -> VerificationProjectGenerator.generateSchemas(
+                        document.path("definitions"), document.path("validators").get(0)));
+        assertTrue(error.getMessage().contains("collide"));
+    }
+
+    @Test
+    void rejectsSchemaNameWithoutLeanIdentifierCharacters() throws Exception {
+        var document = JSON.readTree("""
+                {
+                  "validators": [{
+                    "title": "Gate",
+                    "redeemer": {"schema": {"$ref": "#/definitions/!!!"}}
+                  }],
+                  "definitions": {
+                    "!!!": {"anyOf": [{
+                      "title": "Only", "dataType": "constructor", "index": 0,
+                      "fields": []
+                    }]}
+                  }
+                }
+                """);
+        var error = assertThrows(UnsupportedVerificationException.class,
+                () -> VerificationProjectGenerator.generateSchemas(
+                        document.path("definitions"), document.path("validators").get(0)));
+        assertTrue(error.getMessage().contains("cannot form"));
+    }
+
+    @Test
+    void resolvesEscapedJsonPointerDefinitionNames() throws Exception {
+        var document = JSON.readTree("""
+                {
+                  "validators": [{
+                    "title": "Gate",
+                    "redeemer": {"schema": {"$ref": "#/definitions/Foo~0Bar"}}
+                  }],
+                  "definitions": {
+                    "Foo~Bar": {"anyOf": [{
+                      "title": "Only", "dataType": "constructor", "index": 0,
+                      "fields": []
+                    }]}
+                  }
+                }
+                """);
+
+        var result = VerificationProjectGenerator.generateSchemas(
+                document.path("definitions"), document.path("validators").get(0));
+
+        assertTrue(result.source().contains("inductive FooBar where"));
+    }
+
+    @Test
+    void rejectsAmbiguousValidatorTitleWithoutWritingWorkspace() throws Exception {
+        Path blueprint = writeBlueprint();
+        var root = (com.fasterxml.jackson.databind.node.ObjectNode)
+                JSON.readTree(blueprint.toFile());
+        var validators = (com.fasterxml.jackson.databind.node.ArrayNode)
+                root.path("validators");
+        validators.add(validators.get(0).deepCopy());
+        JSON.writerWithDefaultPrettyPrinter().writeValue(blueprint.toFile(), root);
+        Path output = tempDir.resolve("ambiguous");
+
+        var error = assertThrows(IllegalArgumentException.class,
+                () -> VerificationProjectGenerator.generate(
+                        blueprint, "StateGate", "spending", 100, output, false));
+        assertTrue(error.getMessage().contains("found 2"));
+        assertFalse(Files.exists(output));
+    }
+
+    @Test
+    void rejectsNonV3Blueprint() throws Exception {
+        Path blueprint = writeBlueprint();
+        var root = (com.fasterxml.jackson.databind.node.ObjectNode)
+                JSON.readTree(blueprint.toFile());
+        ((com.fasterxml.jackson.databind.node.ObjectNode) root.path("preamble"))
+                .put("plutusVersion", "v2");
+        JSON.writerWithDefaultPrettyPrinter().writeValue(blueprint.toFile(), root);
+
+        var error = assertThrows(UnsupportedVerificationException.class,
+                () -> VerificationProjectGenerator.generate(
+                        blueprint, "StateGate", "spending", 100,
+                        tempDir.resolve("v2"), false));
+        assertTrue(error.getMessage().contains("Plutus V3"));
+    }
+
+    @Test
+    void generatesPurposeSpecificWorkspacesBoundToOneSharedArtifact() throws Exception {
+        Path blueprint = writeMultiBlueprint();
+        Path spendOutput = tempDir.resolve("protocol-spend");
+        Path mintOutput = tempDir.resolve("protocol-mint");
+
+        VerificationProjectGenerator.generate(
+                blueprint, "Protocol", "spending", 1000, spendOutput, false);
+        VerificationProjectGenerator.generate(
+                blueprint, "Protocol", "minting", 1000, mintOutput, false);
+
+        var spend = JSON.readTree(
+                spendOutput.resolve("verification-manifest.json").toFile());
+        var mint = JSON.readTree(
+                mintOutput.resolve("verification-manifest.json").toFile());
+        assertEquals("Protocol", spend.path("validatorTitle").asText());
+        assertEquals("Protocol", mint.path("validatorTitle").asText());
+        assertEquals("Protocol.spend", spend.path("blueprintEntryTitle").asText());
+        assertEquals("Protocol.mint", mint.path("blueprintEntryTitle").asText());
+        assertEquals(spend.path("compiledCodeSha256").asText(),
+                mint.path("compiledCodeSha256").asText());
+        assertEquals(spend.path("cardanoScriptHash").asText(),
+                mint.path("cardanoScriptHash").asText());
+        assertTrue(Files.readString(spendOutput.resolve("GeneratedSchemas.lean"))
+                .contains("structure ProtocolDatum"));
+        assertTrue(Files.readString(mintOutput.resolve("GeneratedSchemas.lean"))
+                .contains("structure ProtocolMint"));
+    }
+
+    private Path writeBlueprint() throws Exception {
+        var result = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(stateGateSource());
+        var generated = BlueprintGenerator.generate(
+                new BlueprintConfig("verification-generator-test", "1"),
+                List.of(new BlueprintGenerator.CompiledValidator(
+                        "StateGate", result.compileResult(), result.contractSchema())));
+        Path blueprint = tempDir.resolve("plutus-" + System.nanoTime() + ".json");
+        Files.writeString(blueprint, generated.toJson());
+        return blueprint;
+    }
+
+    private org.julclang.compiler.schema.ContractSchema stateGateSchema() {
+        return new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(stateGateSource()).contractSchema();
+    }
+
+    private static String stateGateSource() {
+        return """
+                import org.julclang.stdlib.annotation.*;
+                import org.julclang.ledger.ScriptContext;
+                import java.math.BigInteger;
+                @SpendingValidator
+                class StateGate {
+                    record StateDatum(byte[] owner, BigInteger state) {}
+                    record Transition(BigInteger nextState) {}
+                    @Entrypoint
+                    static boolean validate(StateDatum datum, Transition redeemer,
+                            ScriptContext ctx) {
+                        return redeemer.nextState().compareTo(datum.state()) > 0;
+                    }
+                }
+                """;
+    }
+
+    private Path writeMintBlueprint() throws Exception {
+        var result = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(mintingSource());
+        var generated = BlueprintGenerator.generate(
+                new BlueprintConfig("controlled-mint-generator-test", "1"),
+                List.of(new BlueprintGenerator.CompiledValidator(
+                        "TokenPolicy", result.compileResult(), result.contractSchema())));
+        Path blueprint = tempDir.resolve("mint-" + System.nanoTime() + ".json");
+        Files.writeString(blueprint, generated.toJson());
+        return blueprint;
+    }
+
+    private org.julclang.compiler.schema.ContractSchema mintingSchema() {
+        return new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(mintingSource()).contractSchema();
+    }
+
+    private static String mintingSource() {
+        return """
+                import org.julclang.stdlib.annotation.*;
+                import org.julclang.ledger.ScriptContext;
+                @MintingValidator
+                class TokenPolicy {
+                    record Redeemer() {}
+                    @Entrypoint
+                    static boolean validate(Redeemer redeemer, ScriptContext ctx) {
+                        return true;
+                    }
+                }
+                """;
+    }
+
+    private Path writeRewardingBlueprint() throws Exception {
+        String source = """
+                import org.julclang.stdlib.annotation.*;
+                import org.julclang.ledger.ScriptContext;
+                @WithdrawValidator class Rewards {
+                    record Redeemer() {}
+                    @Entrypoint
+                    static boolean validate(Redeemer redeemer, ScriptContext ctx) {
+                        return true;
+                    }
+                }
+                """;
+        var result = new JulcCompiler(StdlibRegistry.defaultRegistry()).compileContract(source);
+        var generated = BlueprintGenerator.generate(
+                new BlueprintConfig("rewarding-generator-test", "1"),
+                List.of(new BlueprintGenerator.CompiledValidator(
+                        "Rewards", result.compileResult(), result.contractSchema())));
+        Path blueprint = tempDir.resolve("rewarding-" + System.nanoTime() + ".json");
+        Files.writeString(blueprint, generated.toJson());
+        return blueprint;
+    }
+
+    private Path writeCertifyingBlueprint() throws Exception {
+        String source = """
+                import org.julclang.stdlib.annotation.*;
+                import org.julclang.ledger.ScriptContext;
+                @CertifyingValidator class Certificates {
+                    record Redeemer() {}
+                    @Entrypoint
+                    static boolean validate(Redeemer redeemer, ScriptContext ctx) {
+                        return true;
+                    }
+                }
+                """;
+        var result = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(source);
+        var generated = BlueprintGenerator.generate(
+                new BlueprintConfig("certifying-generator-test", "1"),
+                List.of(new BlueprintGenerator.CompiledValidator(
+                        "Certificates", result.compileResult(), result.contractSchema())));
+        Path blueprint = tempDir.resolve("certifying-" + System.nanoTime() + ".json");
+        Files.writeString(blueprint, generated.toJson());
+        return blueprint;
+    }
+
+    private Path writeMultiBlueprint() throws Exception {
+        String source = """
+                import org.julclang.stdlib.annotation.*;
+                import org.julclang.ledger.ScriptContext;
+                import java.math.BigInteger;
+                @MultiValidator class Protocol {
+                    record Datum(BigInteger state) {}
+                    record Spend(BigInteger next) {}
+                    record Mint(byte[] tokenName) {}
+                    @Entrypoint(purpose = Purpose.SPEND)
+                    static boolean spend(Datum datum, Spend redeemer, ScriptContext ctx) {
+                        return true;
+                    }
+                    @Entrypoint(purpose = Purpose.MINT)
+                    static boolean mint(Mint redeemer, ScriptContext ctx) { return true; }
+                }
+                """;
+        var result = new JulcCompiler(StdlibRegistry.defaultRegistry()).compileContract(source);
+        var generated = BlueprintGenerator.generate(
+                new BlueprintConfig("verification-multi-test", "1"),
+                List.of(new BlueprintGenerator.CompiledValidator(
+                        "Protocol", result.compileResult(), result.contractSchema())));
+        Path blueprint = tempDir.resolve("multi-" + System.nanoTime() + ".json");
+        Files.writeString(blueprint, generated.toJson());
+        return blueprint;
+    }
+
+    private String manifestHash(Path output) throws Exception {
+        return JSON.readTree(output.resolve("verification-manifest.json").toFile())
+                .path("compiledCodeSha256").asText();
+    }
+}

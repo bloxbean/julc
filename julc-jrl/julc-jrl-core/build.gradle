@@ -19,7 +19,7 @@ dependencies {
 }
 
 generateGrammarSource {
-    arguments += ['-visitor', '-no-listener', '-package', 'com.bloxbean.cardano.julc.jrl.grammar']
+    arguments += ['-visitor', '-no-listener', '-package', 'org.julclang.jrl.grammar']
     outputDirectory = file("${project.buildDir}/generated-src/antlr/main")
 }
 

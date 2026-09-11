@@ -1,0 +1,20 @@
+package org.julclang.cli;
+
+import org.julclang.blueprint.JulcVersion;
+import picocli.CommandLine;
+
+public class JulcVersionProvider implements CommandLine.IVersionProvider {
+
+    public static final String VERSION = JulcVersion.VERSION;
+    public static final String PLUTUS_VERSION = "V3";
+    public static final String CARDANO_CLIENT_LIB_VERSION = "0.8.0-pre4";
+
+    @Override
+    public String[] getVersion() {
+        return new String[]{
+                "julc " + VERSION,
+                "  Plutus: " + PLUTUS_VERSION,
+                "  Java:   " + Runtime.version().feature()
+        };
+    }
+}

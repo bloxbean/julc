@@ -18,11 +18,11 @@ for backend setup, trust boundaries, outcomes, fuel, and CI guidance.
 The shortest example is a spending validator whose datum owner must sign:
 
 ```java
-import com.bloxbean.cardano.julc.ledger.ScriptContext;
-import com.bloxbean.cardano.julc.stdlib.annotation.Entrypoint;
-import com.bloxbean.cardano.julc.stdlib.annotation.SpendingValidator;
-import com.bloxbean.cardano.julc.stdlib.lib.ContextsLib;
-import com.bloxbean.cardano.julc.verification.annotation.RequiresSigner;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
+import org.julclang.stdlib.lib.ContextsLib;
+import org.julclang.verification.annotation.RequiresSigner;
 
 @RequiresSigner("datum.owner")
 @SpendingValidator

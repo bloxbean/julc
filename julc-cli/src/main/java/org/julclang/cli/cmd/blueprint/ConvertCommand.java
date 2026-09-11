@@ -1,0 +1,55 @@
+package org.julclang.cli.cmd.blueprint;
+
+import org.julclang.core.PlutusTarget;
+import org.julclang.cli.cmd.EvalCommand;
+import org.julclang.cli.output.AnsiColors;
+import org.julclang.cli.project.ProjectLayout;
+import picocli.CommandLine.Command;
+import picocli.CommandLine.Option;
+import picocli.CommandLine.Parameters;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+@Command(name = "convert", description = "Convert blueprint to cardano-cli TextEnvelope format")
+public class ConvertCommand implements Runnable {
+
+    @Parameters(index = "0", defaultValue = ".", description = "Project directory")
+    private Path projectDir;
+
+    @Option(names = {"-o", "--out"}, description = "Output file path")
+    private Path outFile;
+
+    @Override
+    public void run() {
+        try {
+            Path blueprintFile = ProjectLayout.plutusDir(projectDir.toAbsolutePath()).resolve("plutus.json");
+            if (!Files.exists(blueprintFile)) {
+                System.err.println(AnsiColors.red("No blueprint found. Run 'julc build' first."));
+                System.exit(1);
+            }
+
+            String json = Files.readString(blueprintFile);
+            String hex = EvalCommand.extractCompiledCode(json);
+
+            // cardano-cli TextEnvelope format
+            String textEnvelope = """
+                    {
+                        "type": "%s",
+                        "description": "",
+                        "cborHex": "%s"
+                    }
+                    """.formatted(PlutusTarget.CURRENT.textEnvelopeType(), hex);
+
+            if (outFile != null) {
+                Files.writeString(outFile, textEnvelope);
+                System.out.println("Written to " + outFile);
+            } else {
+                System.out.println(textEnvelope);
+            }
+        } catch (Exception e) {
+            System.err.println(AnsiColors.red("Error: " + e.getMessage()));
+            System.exit(1);
+        }
+    }
+}

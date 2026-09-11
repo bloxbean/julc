@@ -7,7 +7,7 @@ plugins {
 description = 'julc-cli - Cardano smart contract CLI for Java'
 
 application {
-    mainClass = 'com.bloxbean.julc.cli.JulcMain'
+    mainClass = 'org.julclang.cli.JulcMain'
 }
 
 dependencies {
@@ -88,7 +88,7 @@ tasks.register('bundleStdlibSources') {
         tempDir.mkdirs()
 
         // Stdlib: annotations + lib + test + Builtins + CryptoProvider
-        def stdlibBase = 'com/bloxbean/cardano/julc/stdlib'
+        def stdlibBase = 'org/julclang/stdlib'
         fileTree(stdlibSrcDir).matching {
             include "${stdlibBase}/annotation/*.java"
             include "${stdlibBase}/lib/*.java"
@@ -112,7 +112,7 @@ tasks.register('bundleStdlibSources') {
             'PlutusDataConverter.java', 'LedgerConstants.java'
         ] as Set
         fileTree(ledgerSrcDir).matching {
-            include 'com/bloxbean/cardano/julc/ledger/**/*.java'
+            include 'org/julclang/ledger/**/*.java'
         }.each { File f ->
             if (!ledgerExcludes.contains(f.name)) {
                 def rel = ledgerSrcDir.toPath().relativize(f.toPath()).toString()
@@ -124,8 +124,8 @@ tasks.register('bundleStdlibSources') {
 
         // Core: PlutusData + types (JulcList, JulcMap, Tuple2, Tuple3, Optional)
         fileTree(coreSrcDir).matching {
-            include 'com/bloxbean/cardano/julc/core/PlutusData.java'
-            include 'com/bloxbean/cardano/julc/core/types/*.java'
+            include 'org/julclang/core/PlutusData.java'
+            include 'org/julclang/core/types/*.java'
         }.each { File f ->
             def rel = coreSrcDir.toPath().relativize(f.toPath()).toString()
             def target = new File(tempDir, rel)

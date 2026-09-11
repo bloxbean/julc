@@ -36,7 +36,7 @@ This is the primary and recommended approach. You write normal-looking Java stat
 The `@OnchainLibrary` annotation (defined in `julc-stdlib`) marks a class whose static methods can be called from `@SpendingValidator` (or other validator annotation) classes and from other `@OnchainLibrary` classes.
 
 ```java
-package com.bloxbean.cardano.julc.stdlib.annotation;
+package org.julclang.stdlib.annotation;
 
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
@@ -44,7 +44,7 @@ public @interface OnchainLibrary {
 }
 ```
 
-**Source:** `julc-stdlib/src/main/java/com/bloxbean/cardano/julc/onchain/annotation/OnchainLibrary.java`
+**Source:** `julc-stdlib/src/main/java/org/julclang/onchain/annotation/OnchainLibrary.java`
 
 ### 2.2 Basic Structure
 
@@ -58,11 +58,11 @@ A library class must:
 Here is `MathLib`, the simplest real library in the codebase:
 
 ```java
-package com.bloxbean.cardano.julc.stdlib.lib;
+package org.julclang.stdlib.lib;
 
-import com.bloxbean.cardano.julc.core.PlutusData;
-import com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary;
-import com.bloxbean.cardano.julc.stdlib.Builtins;
+import org.julclang.core.PlutusData;
+import org.julclang.stdlib.annotation.OnchainLibrary;
+import org.julclang.stdlib.Builtins;
 
 @OnchainLibrary
 public class MathLib {
@@ -115,7 +115,7 @@ public class MathLib {
 }
 ```
 
-**Source:** `julc-stdlib/src/main/java/com/bloxbean/cardano/julc/stdlib/lib/MathLib.java`
+**Source:** `julc-stdlib/src/main/java/org/julclang/stdlib/lib/MathLib.java`
 
 Key observations:
 - Pure functions, no state.
@@ -169,7 +169,7 @@ Builtins.error()                // abort execution
 Builtins.trace(msg, val)        // trace message, return val
 ```
 
-**Source:** `julc-stdlib/src/main/java/com/bloxbean/cardano/julc/onchain/stdlib/Builtins.java`
+**Source:** `julc-stdlib/src/main/java/org/julclang/onchain/stdlib/Builtins.java`
 
 Here is a real example from `CryptoLib` -- the simplest pattern, where library methods are thin wrappers around builtins:
 
@@ -191,7 +191,7 @@ public class CryptoLib {
 }
 ```
 
-**Source:** `julc-stdlib/src/main/java/com/bloxbean/cardano/julc/stdlib/lib/CryptoLib.java`
+**Source:** `julc-stdlib/src/main/java/org/julclang/stdlib/lib/CryptoLib.java`
 
 ### 2.4 Complete Example: A Custom `TokenUtils` Library
 
@@ -200,9 +200,9 @@ Here is an example of a custom library that checks whether a `Value` contains a 
 ```java
 package com.example.myproject;
 
-import com.bloxbean.cardano.julc.core.PlutusData;
-import com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary;
-import com.bloxbean.cardano.julc.stdlib.Builtins;
+import org.julclang.core.PlutusData;
+import org.julclang.stdlib.annotation.OnchainLibrary;
+import org.julclang.stdlib.Builtins;
 
 @OnchainLibrary
 public class TokenUtils {
@@ -265,7 +265,7 @@ A validator using this library:
 package com.example.myproject;
 
 import java.math.BigInteger;
-import com.bloxbean.cardano.julc.stdlib.Builtins;
+import org.julclang.stdlib.Builtins;
 
 @SpendingValidator
 class TokenGateValidator {
@@ -340,7 +340,7 @@ public static boolean contains(PlutusData list, PlutusData target) {
 }
 ```
 
-**Source:** `julc-stdlib/src/main/java/com/bloxbean/cardano/julc/stdlib/lib/ListsLib.java`
+**Source:** `julc-stdlib/src/main/java/org/julclang/stdlib/lib/ListsLib.java`
 
 ### 2.6 Limitations
 
@@ -379,7 +379,7 @@ public static PlutusData flatten(PlutusData value) {
 }
 ```
 
-**Source:** `julc-stdlib/src/main/java/com/bloxbean/cardano/julc/stdlib/lib/ValuesLib.java` (line 213)
+**Source:** `julc-stdlib/src/main/java/org/julclang/stdlib/lib/ValuesLib.java` (line 213)
 
 Cross-library calls work as long as:
 1. The called library is also annotated with `@OnchainLibrary`.
@@ -407,7 +407,7 @@ The JuLC Gradle plugin registers a `bundleJulcSources` task that:
 3. Generates an `index.txt` manifest listing all bundled source paths.
 4. The `jar` task depends on `bundleJulcSources`, so sources are automatically included in the published JAR.
 
-**Source:** `julc-gradle-plugin/src/main/java/com/bloxbean/cardano/julc/gradle/BundleJulcSourcesTask.java`
+**Source:** `julc-gradle-plugin/src/main/java/org/julclang/gradle/BundleJulcSourcesTask.java`
 
 Example directory layout in a published JAR:
 
@@ -438,15 +438,15 @@ Each entry's path is also the library identity used by consumers: `com/example/m
 **Example from the standard library (`julc-stdlib`):**
 
 ```
-com/bloxbean/cardano/julc/stdlib/lib/MapLib.java
-com/bloxbean/cardano/julc/stdlib/lib/MathLib.java
-com/bloxbean/cardano/julc/stdlib/lib/IntervalLib.java
-com/bloxbean/cardano/julc/stdlib/lib/CryptoLib.java
-com/bloxbean/cardano/julc/stdlib/lib/ByteStringLib.java
-com/bloxbean/cardano/julc/stdlib/lib/BitwiseLib.java
-com/bloxbean/cardano/julc/stdlib/lib/ContextsLib.java
-com/bloxbean/cardano/julc/stdlib/lib/ValuesLib.java
-com/bloxbean/cardano/julc/stdlib/lib/ListsLib.java
+org/julclang/stdlib/lib/MapLib.java
+org/julclang/stdlib/lib/MathLib.java
+org/julclang/stdlib/lib/IntervalLib.java
+org/julclang/stdlib/lib/CryptoLib.java
+org/julclang/stdlib/lib/ByteStringLib.java
+org/julclang/stdlib/lib/BitwiseLib.java
+org/julclang/stdlib/lib/ContextsLib.java
+org/julclang/stdlib/lib/ValuesLib.java
+org/julclang/stdlib/lib/ListsLib.java
 ```
 
 ### 3.3 Auto-Discovery from Classpath
@@ -457,7 +457,7 @@ When the compiler encounters a call to a library method (e.g., `TokenUtils.hasTo
 2. **Tier 2 -- Classpath JAR sources:** Scans `META-INF/plutus-sources/index.txt` from all classpath JARs.
 3. **Tier 3 -- Transitive resolution:** For each discovered library, recursively resolves its imports until no new libraries are found.
 
-**Source:** `julc-compiler/src/main/java/com/bloxbean/cardano/julc/compiler/LibrarySourceResolver.java`
+**Source:** `julc-compiler/src/main/java/org/julclang/compiler/LibrarySourceResolver.java`
 
 ### 3.4 Setting Up `build.gradle` for a Library Project
 
@@ -469,8 +469,8 @@ plugins {
 }
 
 dependencies {
-    api 'com.bloxbean.cardano:julc-core:<version>'
-    implementation 'com.bloxbean.cardano:julc-stdlib:<version>'
+    api 'org.julclang:julc-core:<version>'
+    implementation 'org.julclang:julc-stdlib:<version>'
 }
 
 // Bundle @OnchainLibrary Java sources into META-INF/plutus-sources/
@@ -520,9 +520,9 @@ class TokenUtilsTest {
     @Test
     void hasTokenReturnsTrueWhenPresent() {
         var libSource = """
-            import com.bloxbean.cardano.julc.core.PlutusData;
-            import com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary;
-            import com.bloxbean.cardano.julc.stdlib.Builtins;
+            import org.julclang.core.PlutusData;
+            import org.julclang.stdlib.annotation.OnchainLibrary;
+            import org.julclang.stdlib.Builtins;
 
             @OnchainLibrary
             public class TokenUtils {
@@ -565,7 +565,7 @@ class TokenUtilsTest {
 For library projects that use the `@OnchainLibrary` annotation on real source files, the `SourceDiscovery` utility automates discovery and compilation:
 
 ```java
-import com.bloxbean.cardano.julc.testkit.SourceDiscovery;
+import org.julclang.testkit.SourceDiscovery;
 
 @Test
 void testMyValidator() {
@@ -576,7 +576,7 @@ void testMyValidator() {
 }
 ```
 
-**Source:** `julc-testkit/src/main/java/com/bloxbean/cardano/julc/testkit/SourceDiscovery.java`
+**Source:** `julc-testkit/src/main/java/org/julclang/testkit/SourceDiscovery.java`
 
 `SourceDiscovery` performs the three-tier library resolution (same-project, classpath JARs, transitive) automatically.
 
@@ -684,7 +684,7 @@ reg.register("Builtins", "constrTag", args -> {
 });
 ```
 
-**Source:** `julc-stdlib/src/main/java/com/bloxbean/cardano/julc/stdlib/StdlibRegistry.java` (lines 382-386)
+**Source:** `julc-stdlib/src/main/java/org/julclang/stdlib/StdlibRegistry.java` (lines 382-386)
 
 ### 5.5 Pattern: Recursive List Operation with `LetRec`
 
@@ -727,7 +727,7 @@ public static PirTerm foldl(PirTerm f, PirTerm init, PirTerm list) {
 }
 ```
 
-**Source:** `julc-stdlib/src/main/java/com/bloxbean/cardano/julc/stdlib/ListsLibHof.java` (lines 99-123)
+**Source:** `julc-stdlib/src/main/java/org/julclang/stdlib/ListsLibHof.java` (lines 99-123)
 
 The recursion pattern:
 1. Declare a `goVar` that refers to the recursive function itself.
@@ -753,7 +753,7 @@ public static PirTerm any(PirTerm list, PirTerm predicate) {
 }
 ```
 
-**Source:** `julc-stdlib/src/main/java/com/bloxbean/cardano/julc/stdlib/ListsLibHof.java` (lines 28-39)
+**Source:** `julc-stdlib/src/main/java/org/julclang/stdlib/ListsLibHof.java` (lines 28-39)
 
 ### 5.7 Registering PIR Methods in `StdlibRegistry`
 
@@ -788,7 +788,7 @@ public static StdlibRegistry defaultRegistry() {
 }
 ```
 
-**Source:** `julc-stdlib/src/main/java/com/bloxbean/cardano/julc/stdlib/StdlibRegistry.java` (lines 113-120, 405-440)
+**Source:** `julc-stdlib/src/main/java/org/julclang/stdlib/StdlibRegistry.java` (lines 113-120, 405-440)
 
 **Important:** `@OnchainLibrary` Java source methods do NOT need registry entries. Only PIR-based methods need explicit registration. The compiler automatically discovers and compiles `@OnchainLibrary` source files.
 
@@ -838,7 +838,7 @@ class StdlibTest {
 }
 ```
 
-**Source:** `julc-stdlib/src/test/java/com/bloxbean/cardano/julc/stdlib/StdlibTest.java`
+**Source:** `julc-stdlib/src/test/java/org/julclang/stdlib/StdlibTest.java`
 
 ---
 

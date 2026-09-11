@@ -3,26 +3,26 @@ title: "JuLC Standard Library Usage Guide"
 description: "JuLC Standard Library Usage Guide - JuLC documentation"
 ---
 
-The JuLC standard library provides 13 on-chain libraries in the `com.bloxbean.cardano.julc.stdlib.lib` package. Each library is annotated with `@OnchainLibrary` and compiled from Java source to UPLC. All methods are `static` and can be called directly from your validator code.
+The JuLC standard library provides 13 on-chain libraries in the `org.julclang.stdlib.lib` package. Each library is annotated with `@OnchainLibrary` and compiled from Java source to UPLC. All methods are `static` and can be called directly from your validator code.
 
 
 ## Overview
 
 | Library | Import Path | Purpose |
 |---------|-------------|---------|
-| **ContextsLib** | `com.bloxbean.cardano.julc.stdlib.lib.ContextsLib` | Script context, TxInfo field access, signatory checks, datum lookup |
-| **ListsLib** | `com.bloxbean.cardano.julc.stdlib.lib.ListsLib` | List construction, traversal, search, and higher-order functions |
-| **ValuesLib** | `com.bloxbean.cardano.julc.stdlib.lib.ValuesLib` | Multi-asset Value comparison, arithmetic, and extraction |
-| **MapLib** | `com.bloxbean.cardano.julc.stdlib.lib.MapLib` | Association list (map) lookup, insert, delete, keys/values |
-| **OutputLib** | `com.bloxbean.cardano.julc.stdlib.lib.OutputLib` | Output filtering by address/token, lovelace summation, datum extraction |
-| **MathLib** | `com.bloxbean.cardano.julc.stdlib.lib.MathLib` | abs, max, min, pow, floorDiv, floorMod, divMod, quotRem, expMod (PV11), sign |
-| **IntervalLib** | `com.bloxbean.cardano.julc.stdlib.lib.IntervalLib` | Time interval construction, containment, bound extraction |
-| **CryptoLib** | `com.bloxbean.cardano.julc.stdlib.lib.CryptoLib` | Hash functions and signature verification |
-| **ByteStringLib** | `com.bloxbean.cardano.julc.stdlib.lib.ByteStringLib` | ByteString slicing, comparison, encoding, serialization |
-| **BitwiseLib** | `com.bloxbean.cardano.julc.stdlib.lib.BitwiseLib` | Bitwise AND/OR/XOR, shift, rotate, bit read/write |
-| **AddressLib** | `com.bloxbean.cardano.julc.stdlib.lib.AddressLib` | Credential extraction, address type checks |
-| **BlsLib** | `com.bloxbean.cardano.julc.stdlib.lib.BlsLib` | BLS12-381 G1/G2/pairing operations; MSM requires PV11 |
-| **NativeValueLib** *(PV11)* | `com.bloxbean.cardano.julc.stdlib.lib.NativeValueLib` | Native MaryEra Value insert, lookup, union, contains, scale |
+| **ContextsLib** | `org.julclang.stdlib.lib.ContextsLib` | Script context, TxInfo field access, signatory checks, datum lookup |
+| **ListsLib** | `org.julclang.stdlib.lib.ListsLib` | List construction, traversal, search, and higher-order functions |
+| **ValuesLib** | `org.julclang.stdlib.lib.ValuesLib` | Multi-asset Value comparison, arithmetic, and extraction |
+| **MapLib** | `org.julclang.stdlib.lib.MapLib` | Association list (map) lookup, insert, delete, keys/values |
+| **OutputLib** | `org.julclang.stdlib.lib.OutputLib` | Output filtering by address/token, lovelace summation, datum extraction |
+| **MathLib** | `org.julclang.stdlib.lib.MathLib` | abs, max, min, pow, floorDiv, floorMod, divMod, quotRem, expMod (PV11), sign |
+| **IntervalLib** | `org.julclang.stdlib.lib.IntervalLib` | Time interval construction, containment, bound extraction |
+| **CryptoLib** | `org.julclang.stdlib.lib.CryptoLib` | Hash functions and signature verification |
+| **ByteStringLib** | `org.julclang.stdlib.lib.ByteStringLib` | ByteString slicing, comparison, encoding, serialization |
+| **BitwiseLib** | `org.julclang.stdlib.lib.BitwiseLib` | Bitwise AND/OR/XOR, shift, rotate, bit read/write |
+| **AddressLib** | `org.julclang.stdlib.lib.AddressLib` | Credential extraction, address type checks |
+| **BlsLib** | `org.julclang.stdlib.lib.BlsLib` | BLS12-381 G1/G2/pairing operations; MSM requires PV11 |
+| **NativeValueLib** *(PV11)* | `org.julclang.stdlib.lib.NativeValueLib` | Native MaryEra Value insert, lookup, union, contains, scale |
 
 ---
 
@@ -240,7 +240,7 @@ Use `MathLib.floorDiv` and `MathLib.floorMod` for `BigInteger` floor division. `
 
 ## ContextsLib -- Script Context Operations
 
-**Import**: `com.bloxbean.cardano.julc.stdlib.lib.ContextsLib`
+**Import**: `org.julclang.stdlib.lib.ContextsLib`
 
 ContextsLib provides access to the Plutus V3 `ScriptContext`, `TxInfo`, and `ScriptInfo` types. For modern validators using typed `ScriptContext`, you can access fields directly (e.g., `ctx.txInfo()`) instead of using the legacy accessor methods.
 
@@ -249,8 +249,8 @@ ContextsLib provides access to the Plutus V3 `ScriptContext`, `TxInfo`, and `Scr
 The most common operation: verify that a specific public key hash signed the transaction.
 
 ```java
-import com.bloxbean.cardano.julc.ledger.*;
-import com.bloxbean.cardano.julc.stdlib.lib.ContextsLib;
+import org.julclang.ledger.*;
+import org.julclang.stdlib.lib.ContextsLib;
 import java.math.BigInteger;
 
 @SpendingValidator
@@ -349,7 +349,7 @@ class TracingValidator {
 
 ## ListsLib -- List Operations
 
-**Import**: `com.bloxbean.cardano.julc.stdlib.lib.ListsLib`
+**Import**: `org.julclang.stdlib.lib.ListsLib`
 
 ListsLib provides list construction, traversal, searching, and higher-order functions. In Plutus, lists are singly-linked (cons lists). Most operations are O(n).
 
@@ -489,7 +489,7 @@ class ForEachExample {
 
 ## ValuesLib -- Value Manipulation
 
-**Import**: `com.bloxbean.cardano.julc.stdlib.lib.ValuesLib`
+**Import**: `org.julclang.stdlib.lib.ValuesLib`
 
 ValuesLib operates on Plutus `Value` types, which are nested maps: `Map<PolicyId, Map<TokenName, Integer>>`. Lovelace is stored under the empty bytestring policy and token name.
 
@@ -637,7 +637,7 @@ The index is encoded as fixed 2-byte big-endian so index 0 still contributes byt
 
 ## MapLib -- Association List Operations
 
-**Import**: `com.bloxbean.cardano.julc.stdlib.lib.MapLib`
+**Import**: `org.julclang.stdlib.lib.MapLib`
 
 In Plutus, maps are association lists (`List<Pair<Data, Data>>`), not hash maps. Lookups are O(n). Insert prepends (shadowing existing keys).
 
@@ -727,7 +727,7 @@ class MapIterateExample {
 
 ## OutputLib -- Transaction Output Utilities
 
-**Import**: `com.bloxbean.cardano.julc.stdlib.lib.OutputLib`
+**Import**: `org.julclang.stdlib.lib.OutputLib`
 
 OutputLib provides high-level operations for filtering and inspecting transaction outputs. It uses typed ledger types (`TxOut`, `Address`, `Value`, `OutputDatum`).
 
@@ -836,7 +836,7 @@ class DatumExample {
 
 ## MathLib -- Mathematical Operations
 
-**Import**: `com.bloxbean.cardano.julc.stdlib.lib.MathLib`
+**Import**: `org.julclang.stdlib.lib.MathLib`
 
 MathLib provides common mathematical functions operating on `BigInteger`. All computations use Plutus integer arithmetic.
 
@@ -871,7 +871,7 @@ Compatibility note: `MathLib.divMod` is floor-based. Code that needs Java-style 
 > builtin. The other division and modulo helpers in this section do not require PV11.
 
 ```java
-import com.bloxbean.cardano.julc.core.types.Tuple2;
+import org.julclang.core.types.Tuple2;
 
 @SpendingValidator
 class DivModExample {
@@ -900,16 +900,16 @@ class DivModExample {
 
 ## IntervalLib -- Time Interval Operations
 
-**Import**: `com.bloxbean.cardano.julc.stdlib.lib.IntervalLib`
+**Import**: `org.julclang.stdlib.lib.IntervalLib`
 
 IntervalLib operates on Plutus `Interval` (POSIXTimeRange) types. Use these for time-locked validators. Time values are POSIX milliseconds as `BigInteger`.
 
 ### Time-Locked Validator
 
 ```java
-import com.bloxbean.cardano.julc.ledger.*;
-import com.bloxbean.cardano.julc.stdlib.lib.IntervalLib;
-import com.bloxbean.cardano.julc.stdlib.lib.ContextsLib;
+import org.julclang.ledger.*;
+import org.julclang.stdlib.lib.IntervalLib;
+import org.julclang.stdlib.lib.ContextsLib;
 
 @SpendingValidator
 class TimeLockValidator {
@@ -971,7 +971,7 @@ class IntervalExample {
 
 ## CryptoLib -- Cryptographic Operations
 
-**Import**: `com.bloxbean.cardano.julc.stdlib.lib.CryptoLib`
+**Import**: `org.julclang.stdlib.lib.CryptoLib`
 
 CryptoLib wraps Plutus cryptographic builtins for hashing and signature verification. These are also available directly via `Builtins`.
 
@@ -1040,7 +1040,7 @@ class Secp256k1Example {
 
 ## ByteStringLib -- ByteString Operations
 
-**Import**: `com.bloxbean.cardano.julc.stdlib.lib.ByteStringLib`
+**Import**: `org.julclang.stdlib.lib.ByteStringLib`
 
 ByteStringLib provides operations on `byte[]` (ByteString in Plutus). Includes slicing, comparison, and encoding/serialization.
 
@@ -1122,7 +1122,7 @@ BigInteger n = ByteStringLib.utf8ToInteger(bs);  // 42
 
 ## BitwiseLib -- Bitwise Operations
 
-**Import**: `com.bloxbean.cardano.julc.stdlib.lib.BitwiseLib`
+**Import**: `org.julclang.stdlib.lib.BitwiseLib`
 
 BitwiseLib provides bit-level operations on `byte[]`. The `padding` parameter in AND/OR/XOR controls behavior when bytestrings have different lengths (`true` = zero-extend shorter, `false` = truncate longer).
 
@@ -1178,7 +1178,7 @@ class BitManipExample {
 
 ## AddressLib -- Address Operations
 
-**Import**: `com.bloxbean.cardano.julc.stdlib.lib.AddressLib`
+**Import**: `org.julclang.stdlib.lib.AddressLib`
 
 AddressLib inspects Plutus `Address` types: extracting credential hashes and checking whether an address is a script or public key address.
 
@@ -1274,7 +1274,7 @@ All methods are `static`. Base curve and pairing methods are available on PV10+;
 ### Usage
 
 ```java
-import com.bloxbean.cardano.julc.stdlib.lib.BlsLib;
+import org.julclang.stdlib.lib.BlsLib;
 
 // G1 operations
 var sum = BlsLib.g1Add(pointA, pointB);
@@ -1315,9 +1315,9 @@ convert back with `toData` only at a Data boundary.
 ### Usage
 
 ```java
-import com.bloxbean.cardano.julc.core.PlutusData;
-import com.bloxbean.cardano.julc.core.types.JulcValue;
-import com.bloxbean.cardano.julc.stdlib.lib.NativeValueLib;
+import org.julclang.core.PlutusData;
+import org.julclang.core.types.JulcValue;
+import org.julclang.stdlib.lib.NativeValueLib;
 
 JulcValue value = NativeValueLib.fromData(dataEncodedValue);
 BigInteger quantity = NativeValueLib.lookupCoin(policyId, tokenName, value);
