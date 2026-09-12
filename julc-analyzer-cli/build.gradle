@@ -7,7 +7,7 @@ plugins {
 description = 'CLI for JuLC security analysis of Cardano Plutus scripts'
 
 application {
-    mainClass = 'com.bloxbean.cardano.julc.analyzer.cli.Main'
+    mainClass = 'org.julclang.analyzer.cli.Main'
 }
 
 dependencies {

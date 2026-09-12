@@ -1,7 +1,7 @@
-import com.bloxbean.cardano.julc.ledger.ScriptContext;
-import com.bloxbean.cardano.julc.stdlib.annotation.Entrypoint;
-import com.bloxbean.cardano.julc.stdlib.annotation.MultiValidator;
-import com.bloxbean.cardano.julc.stdlib.annotation.Purpose;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.MultiValidator;
+import org.julclang.stdlib.annotation.Purpose;
 
 import java.math.BigInteger;
 

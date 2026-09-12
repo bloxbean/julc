@@ -1,10 +1,10 @@
 package evidence;
 
-import com.bloxbean.cardano.julc.verification.dsl.VerificationSpecification;
-import com.bloxbean.cardano.julc.verification.dsl.ir.DslDomain;
-import com.bloxbean.cardano.julc.verification.dsl.ir.DslPropertySet;
+import org.julclang.verification.dsl.VerificationSpecification;
+import org.julclang.verification.dsl.ir.DslDomain;
+import org.julclang.verification.dsl.ir.DslPropertySet;
 
-import static com.bloxbean.cardano.julc.verification.dsl.VerificationDsl.property;
+import static org.julclang.verification.dsl.VerificationDsl.property;
 
 public final class VulnerableReviewedAdaptersSpec implements VerificationSpecification {
     @Override

@@ -1,0 +1,149 @@
+package org.julclang.verification;
+
+import org.julclang.compiler.JulcCompiler;
+import org.julclang.core.flat.UplcFlatEncoder;
+import org.julclang.core.text.UplcPrinter;
+import org.julclang.stdlib.StdlibRegistry;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class RequiresSignerResolverTest {
+
+    @Test
+    void resolvesDatumByteStringThroughCompilerOwnedSchema() {
+        String source = validator("byte[]", "@RequiresSigner(\"datum.owner\")");
+        var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(source);
+
+        var property = RequiresSignerResolver.resolve(
+                source, "Authorized.java", "Authorized", compiled.contractSchema())
+                .orElseThrow();
+
+        assertEquals("julc.requires-signer/v1", property.template());
+        assertEquals("Authorized.requires-signer.owner", property.propertyId());
+        assertEquals("datum.owner", property.sourcePath());
+        assertEquals("Datum", property.datumType());
+        assertEquals("bytes", property.ownerType());
+        assertTrue(property.domainAssumptions().isEmpty());
+        assertEquals(2, property.path().size());
+        assertTrue(property.source().line() > 1);
+    }
+
+    @Test
+    void rejectsMissingAndIncompatibleFieldsAtAnnotationLocation() {
+        for (String annotation : new String[]{
+                "@RequiresSigner(\"datum.missing\")",
+                "@RequiresSigner(\"redeemer.owner\")"}) {
+            String source = validator("byte[]", annotation);
+            var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                    .compileContract(source);
+            var error = assertThrows(VerificationPropertyException.class,
+                    () -> RequiresSignerResolver.resolve(
+                            source, "Bad.java", "Authorized", compiled.contractSchema()));
+            assertTrue(error.getMessage().contains("Bad.java"));
+            assertTrue(error.getMessage().contains("@RequiresSigner"));
+        }
+
+        String source = validator("BigInteger", "@RequiresSigner(\"datum.owner\")")
+                .replace("import org.julclang.ledger.ScriptContext;",
+                        "import org.julclang.ledger.ScriptContext;\n"
+                                + "import java.math.BigInteger;");
+        var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(source);
+        var error = assertThrows(VerificationPropertyException.class,
+                () -> RequiresSignerResolver.resolve(
+                        source, "WrongType.java", "Authorized", compiled.contractSchema()));
+        assertTrue(error.getMessage().contains("must resolve to byte[] or a key-hash type"));
+    }
+
+    @Test
+    void annotationHasZeroEffectOnEmittedUplc() {
+        String annotated = validator("byte[]", "@RequiresSigner(\"datum.owner\")");
+        String plain = annotated
+                .replace("import org.julclang.verification.annotation.RequiresSigner;\n", "")
+                .replace("@RequiresSigner(\"datum.owner\")\n", "");
+        var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry());
+
+        var annotatedProgram = compiler.compile(annotated).program();
+        var plainProgram = compiler.compile(plain).program();
+
+        assertEquals(UplcPrinter.print(plainProgram), UplcPrinter.print(annotatedProgram));
+        assertArrayEquals(UplcFlatEncoder.encodeProgram(plainProgram),
+                UplcFlatEncoder.encodeProgram(annotatedProgram),
+                "a verification annotation must be byte-neutral for a typed record boundary");
+    }
+
+    @Test
+    void acceptsCompilerKeyHashNewtypeButRejectsJavaString() {
+        String keyHash = validator("PubKeyHash", "@RequiresSigner(\"datum.owner\")")
+                .replace("import org.julclang.ledger.ScriptContext;",
+                        "import org.julclang.ledger.ScriptContext;\n"
+                                + "import org.julclang.ledger.PubKeyHash;");
+        var compiledKeyHash = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(keyHash);
+        assertTrue(RequiresSignerResolver.resolve(
+                keyHash, "KeyHash.java", "Authorized", compiledKeyHash.contractSchema())
+                .isPresent());
+
+        String string = validator("String", "@RequiresSigner(\"datum.owner\")");
+        var compiledString = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(string);
+        assertThrows(VerificationPropertyException.class,
+                () -> RequiresSignerResolver.resolve(
+                        string, "StringOwner.java", "Authorized",
+                        compiledString.contractSchema()));
+    }
+
+    @Test
+    void ignoresAnUnrelatedAnnotationWithTheSameSimpleName() {
+        String source = validator("byte[]", "@RequiresSigner(\"datum.owner\")")
+                .replace(
+                        "import org.julclang.verification.annotation.RequiresSigner;",
+                        "@interface RequiresSigner { String value(); }");
+        var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(source);
+
+        assertTrue(RequiresSignerResolver.resolve(
+                source, "Unrelated.java", "Authorized", compiled.contractSchema())
+                .isEmpty());
+    }
+
+    @Test
+    void acceptsTheFullyQualifiedVerificationAnnotation() {
+        String source = validator("byte[]",
+                        "@org.julclang.verification.annotation.RequiresSigner(\"datum.owner\")")
+                .replace(
+                        "import org.julclang.verification.annotation.RequiresSigner;\n",
+                        "");
+        var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(source);
+
+        assertTrue(RequiresSignerResolver.resolve(
+                source, "Qualified.java", "Authorized", compiled.contractSchema())
+                .isPresent());
+    }
+
+    private static String validator(String ownerType, String property) {
+        return """
+                import org.julclang.stdlib.annotation.*;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.verification.annotation.RequiresSigner;
+
+                %s
+                @SpendingValidator
+                class Authorized {
+                    record Datum(%s owner) {}
+                    record Redeemer() {}
+
+                    @Entrypoint
+                    static boolean validate(Datum datum, Redeemer redeemer, ScriptContext ctx) {
+                        return true;
+                    }
+                }
+                """.formatted(property, ownerType);
+    }
+}

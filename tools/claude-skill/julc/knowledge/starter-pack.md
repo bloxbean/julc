@@ -295,7 +295,7 @@ For the full troubleshooting guide, see [/reference/troubleshooting/](/reference
 
 ## 8. Stdlib API surface (one-line signatures)
 
-All imports are from `com.bloxbean.cardano.julc.stdlib.lib.*`.
+All imports are from `org.julclang.stdlib.lib.*`.
 
 ### ContextsLib
 `signedBy(txInfo, pkh)`, `findOwnInput(ctx)`, `getContinuingOutputs(ctx)`, `findDatum(txInfo, hash)`, `valueSpent(txInfo)`, `valuePaid(txInfo, addr)`, `ownHash(ctx)`, `scriptOutputsAt(txInfo, hash)`, `listIndex(list, n)`, `trace(msg)`. Field shorthands: `txInfoInputs`, `txInfoOutputs`, `txInfoSignatories`, `txInfoValidRange`, `txInfoMint`, `txInfoFee`, `txInfoId`, `txInfoRefInputs`, `txInfoWithdrawals`, `txInfoRedeemers`. **Prefer `ctx.txInfo().outputs()` etc. via type-class field access.**
@@ -337,7 +337,7 @@ G1/G2 add/scale/neg, pairing, MSM, and `bls12_381_finalVerify`.
 Native Mary-era `Value` operations use opaque `JulcValue`. Convert explicitly
 with `fromData(PlutusData)` and `toData(JulcValue)`; native Value is not Data.
 
-### Builtins (`com.bloxbean.cardano.julc.stdlib.Builtins`)
+### Builtins (`org.julclang.stdlib.Builtins`)
 Plutus builtins exposed by the Java API include `equalsByteString`, `equalsData`, `unBData`, `unIData`, `unMapData`, `unListData`, `unConstrData`, `iData`, `bData`, `mapData`, `listData`, `constrData`, `mkCons`, `mkNilData`, `mkNilPairData`, `nullList`, `headList`, `tailList`, `fstPair`, `sndPair`, `constrTag`, `constrFields`, `error`, `trace`, `replicateByte`, `serialiseData`, byte-string helpers such as `appendByteString`, `sliceByteString`, `integerToByteString`, `byteStringToInteger`, hashing (`sha2_256`, `sha3_256`, `blake2b_256`, `blake2b_224`, `keccak_256`, `ripemd_160`), and BLS helpers. Use Java operators / `BigInteger` methods for integer arithmetic; there is no public `Builtins.addInteger(...)` API.
 
 <!-- catalog:stdlib-start -->
@@ -348,7 +348,7 @@ For the complete machine-readable stdlib catalog (every class, method, signature
 
 ## 9. Ledger types (always prefer over raw PlutusData)
 
-All ledger types live in `com.bloxbean.cardano.julc.ledger.*`.
+All ledger types live in `org.julclang.ledger.*`.
 
 ### Core context
 - **`ScriptContext`** — `txInfo() : TxInfo`, `redeemer() : PlutusData`, `scriptInfo() : ScriptInfo`.
@@ -408,11 +408,11 @@ These are real, tested validators from [`julc-examples`](https://github.com/blox
 ```java
 package com.example.validators;
 
-import com.bloxbean.cardano.julc.stdlib.annotation.SpendingValidator;
-import com.bloxbean.cardano.julc.stdlib.annotation.Entrypoint;
-import com.bloxbean.cardano.julc.ledger.ScriptContext;
-import com.bloxbean.cardano.julc.ledger.TxInfo;
-import com.bloxbean.cardano.julc.ledger.PubKeyHash;
+import org.julclang.stdlib.annotation.SpendingValidator;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.ledger.PubKeyHash;
 
 import java.math.BigInteger;
 
@@ -460,9 +460,9 @@ public class AuctionValidator {
 ### 10.3 Parameterized minting policy (one-shot mint)
 
 ```java
-import com.bloxbean.cardano.julc.stdlib.annotation.MintingValidator;
-import com.bloxbean.cardano.julc.stdlib.annotation.Param;
-import com.bloxbean.cardano.julc.stdlib.Builtins;
+import org.julclang.stdlib.annotation.MintingValidator;
+import org.julclang.stdlib.annotation.Param;
+import org.julclang.stdlib.Builtins;
 
 @MintingValidator
 public class OneShotMintPolicy {
@@ -612,7 +612,7 @@ Before writing any JuLC code, verify the agent can answer "yes" to each:
 7. ✅ Have I used `PubKeyHash.of(bytes)` style factories instead of `(PubKeyHash)(Object) bytes` casts?
 8. ✅ Are switch case binding names different from method parameter names?
 9. ✅ Am I using `@SpendingValidator` / `@MintingValidator` etc. correctly with a `static @Entrypoint` method?
-10. ✅ Have I imported from `com.bloxbean.cardano.julc.ledger.*` and `com.bloxbean.cardano.julc.stdlib.lib.*`?
+10. ✅ Have I imported from `org.julclang.ledger.*` and `org.julclang.stdlib.lib.*`?
 
 If yes to all → write the code. If unsure on any → re-read the relevant section above.
 

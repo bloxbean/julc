@@ -60,7 +60,7 @@ exactly five variants:
 These `Builtins` methods wrap primitive values into their Data representation:
 
 ```java
-import com.bloxbean.cardano.julc.stdlib.Builtins;
+import org.julclang.stdlib.Builtins;
 
 // Wrap an integer as IntData
 PlutusData wrapped = Builtins.iData(42);
@@ -685,7 +685,7 @@ The typed API covers most standard Plutus V3 types, but you may need raw
 The `PlutusData` interface provides convenience factory methods:
 
 ```java
-import com.bloxbean.cardano.julc.core.PlutusData;
+import org.julclang.core.PlutusData;
 
 // V3 ScriptContext structure: Constr(0, [txInfo, redeemer, scriptInfo])
 PlutusData scriptContext = PlutusData.constr(0,

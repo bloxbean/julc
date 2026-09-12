@@ -1,4 +1,4 @@
-import com.bloxbean.cardano.julc.core.PlutusData;
+import org.julclang.core.PlutusData;
 
 /**
  * Typed multi-signature validator using Milestone 6 typed access features.

@@ -1,9 +1,9 @@
-import com.bloxbean.cardano.julc.ledger.Interval;
-import com.bloxbean.cardano.julc.ledger.IntervalBoundType;
-import com.bloxbean.cardano.julc.ledger.ScriptContext;
-import com.bloxbean.cardano.julc.stdlib.Builtins;
-import com.bloxbean.cardano.julc.stdlib.annotation.Entrypoint;
-import com.bloxbean.cardano.julc.stdlib.annotation.SpendingValidator;
+import org.julclang.ledger.Interval;
+import org.julclang.ledger.IntervalBoundType;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.Builtins;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
 
 import java.math.BigInteger;
 

@@ -1,0 +1,200 @@
+package org.julclang.verification.dsl;
+
+import org.julclang.compiler.JulcCompiler;
+import org.julclang.stdlib.StdlibRegistry;
+import org.julclang.verification.RequiresSignerResolver;
+import org.julclang.verification.dsl.ir.*;
+import org.julclang.verification.dsl.worker.DslWorkerRunner;
+import org.julclang.verification.dsl.type.ContractTypeProjection;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import javax.tools.StandardLocation;
+import javax.tools.ToolProvider;
+import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+class TypedDslPrototypeTest {
+    @TempDir
+    Path tempDir;
+
+    @Test
+    void generatedDslAndAnnotationProduceIdenticalCanonicalIrAndLean() throws Exception {
+        String source = validatorSource();
+        var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(source);
+        var annotation = RequiresSignerResolver.resolve(
+                source, "Authorized.java", "Authorized", compiled.contractSchema())
+                .orElseThrow();
+        DslPropertySet annotationIr = RequiresSignerDslLowering.lower(
+                annotation, compiled.contractSchema());
+
+        Path sources = tempDir.resolve("sources/generated");
+        Files.createDirectories(sources);
+        Path model = sources.resolve("AuthorizedModel.java");
+        Files.writeString(model, ContractMetamodelGenerator.generate(
+                compiled.contractSchema(), "generated", "AuthorizedModel"));
+        Path specification = sources.resolve("SignerSpec.java");
+        Files.writeString(specification, """
+                package generated;
+                import org.julclang.verification.dsl.*;
+                import org.julclang.verification.dsl.ir.*;
+                import static org.julclang.verification.dsl.VerificationDsl.property;
+                public final class SignerSpec implements VerificationSpecification {
+                    public SignerSpec() {}
+                    public DslPropertySet properties() {
+                        var contract = new AuthorizedModel();
+                        var required = contract.datum().exists(datum -> {
+                            var context = new SpendingContractModel();
+                            return context.context().txInfo().signatories()
+                                .contains(datum.owner());
+                        });
+                        return contract.properties(property(
+                                "Authorized.requires-signer.owner",
+                                DslDomain.NONE, required));
+                    }
+                }
+                """);
+        Path classes = compile(model, specification);
+        String classPath = classes + File.pathSeparator + System.getProperty("java.class.path");
+        DslPropertySet dslIr = new DslWorkerRunner().run(
+                classPath, "generated.SignerSpec", compiled.contractSchema(),
+                tempDir.resolve("worker"), Duration.ofSeconds(10));
+
+        assertEquals(PropertyIrCodec.canonicalJson(annotationIr),
+                PropertyIrCodec.canonicalJson(dslIr));
+        var projection = org.julclang.verification.dsl.type
+                .ContractTypeProjection.project(compiled.contractSchema());
+        assertEquals(TypedPropertyLeanRenderer.renderExpression(
+                        annotationIr.properties().getFirst().expression(), projection),
+                TypedPropertyLeanRenderer.renderExpression(
+                        dslIr.properties().getFirst().expression(), projection));
+        assertTrue(Files.isRegularFile(
+                tempDir.resolve("worker/verification-property-dsl.json")));
+    }
+
+    @Test
+    void authoritativeValidationRejectsForgedDatumFieldAndOversizedAst() {
+        var schema = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(validatorSource()).contractSchema();
+        String hash = ContractTypeProjection.sha256(ContractTypeProjection.project(schema));
+        var forged = DslPropertySet.schema1(DslPurpose.SPENDING, hash,
+                new DslProperty("forged", DslDomain.NONE, new CompareNode(
+                CompareOperator.EQ,
+                new FieldNode(new RootNode("datum", DslType.DATA),
+                        "notAField", DslType.BYTE_STRING),
+                new LiteralNode(DslType.BYTE_STRING, "00"))));
+        var fieldError = assertThrows(IllegalArgumentException.class,
+                () -> DslPropertyValidator.validate(forged, schema, 100));
+        assertTrue(fieldError.getMessage().contains("Unknown datum field"));
+
+        var valid = RequiresSignerDslLowering.lower(RequiresSignerResolver.resolve(
+                validatorSource(), "Authorized.java", "Authorized", schema).orElseThrow(),
+                schema);
+        assertThrows(IllegalArgumentException.class,
+                () -> DslPropertyValidator.validate(valid, schema, 2));
+    }
+
+    @Test
+    void authoritativeValidationRejectsNonIntegerAndNoncanonicalLiterals() {
+        var schema = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(validatorSource()).contractSchema();
+        String hash = ContractTypeProjection.sha256(ContractTypeProjection.project(schema));
+        var rawLean = DslPropertySet.schema1(DslPurpose.SPENDING, hash,
+                new DslProperty("raw-lean", DslDomain.NONE,
+                        new LiteralNode(DslType.BOOL, "by exact True.intro")));
+        var typeError = assertThrows(IllegalArgumentException.class,
+                () -> DslPropertyValidator.validate(rawLean, schema, 100));
+        assertEquals("DSL v1 supports only integer literals", typeError.getMessage());
+
+        var noncanonicalInteger = DslPropertySet.schema1(DslPurpose.SPENDING, hash,
+                new DslProperty("leading-zero", DslDomain.NONE,
+                new CompareNode(CompareOperator.EQ,
+                        new LiteralNode(DslType.INTEGER, "01"),
+                        new LiteralNode(DslType.INTEGER, "1"))));
+        var formatError = assertThrows(IllegalArgumentException.class,
+                () -> DslPropertyValidator.validate(noncanonicalInteger, schema, 100));
+        assertEquals("Invalid canonical integer literal", formatError.getMessage());
+    }
+
+    @Test
+    void workerPublishesParentNormalizedSchemaThreeRatherThanCandidateOrdering()
+            throws Exception {
+        var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry())
+                .compileContract(validatorSource());
+        Path sources = tempDir.resolve("schema-three-sources");
+        Files.createDirectories(sources);
+        Path specification = sources.resolve("ComposedSpec.java");
+        String hash = ContractTypeProjection.sha256(
+                ContractTypeProjection.project(compiled.contractSchema()));
+        Files.writeString(specification, """
+                package generated;
+                import org.julclang.verification.dsl.*;
+                import org.julclang.verification.dsl.ir.*;
+                import static org.julclang.verification.dsl.VerificationDsl.*;
+                public final class ComposedSpec implements VerificationSpecification {
+                    public ComposedSpec() {}
+                    public DslPropertySet properties() {
+                        var contract = new SpendingContractModel();
+                        var signer = contract.context().txInfo().signatories()
+                                .contains(contract.datum().bytesField("owner"));
+                        var guarantee = signer.and(signer);
+                        return DslPropertySet.schema1(DslPurpose.SPENDING, "%s",
+                                property("Authorized.composed", DslDomain.NONE, guarantee));
+                    }
+                }
+                """.formatted(hash));
+        Path classes = compile(specification);
+        Path worker = tempDir.resolve("schema-three-worker");
+        DslPropertySet normalized = new DslWorkerRunner().run(
+                classes + File.pathSeparator + System.getProperty("java.class.path"),
+                "generated.ComposedSpec", compiled.contractSchema(), worker,
+                Duration.ofSeconds(10));
+
+        assertFalse(normalized.properties().getFirst().expression()
+                instanceof BoolBinaryNode, "duplicate AND operand must be canonicalized");
+        assertNotEquals(Files.readString(worker.resolve("candidate-property-ir.json")),
+                Files.readString(worker.resolve("verification-property-dsl.json")));
+        assertEquals(PropertyIrCodec.canonicalJson(normalized),
+                Files.readString(worker.resolve("verification-property-dsl.json")));
+    }
+
+    private Path compile(Path... sources) throws Exception {
+        var compiler = ToolProvider.getSystemJavaCompiler();
+        assertNotNull(compiler);
+        Path classes = tempDir.resolve("classes");
+        Files.createDirectories(classes);
+        try (var files = compiler.getStandardFileManager(null, null, null)) {
+            files.setLocationFromPaths(StandardLocation.CLASS_OUTPUT, List.of(classes));
+            var units = files.getJavaFileObjects(sources);
+            Boolean result = compiler.getTask(null, files, null,
+                    List.of("-classpath", System.getProperty("java.class.path")),
+                    null, units).call();
+            assertTrue(result, "Generated DSL sources must compile");
+        }
+        return classes;
+    }
+
+    private static String validatorSource() {
+        return """
+                import org.julclang.stdlib.annotation.*;
+                import org.julclang.ledger.ScriptContext;
+                import org.julclang.verification.annotation.RequiresSigner;
+                @RequiresSigner("datum.owner")
+                @SpendingValidator
+                class Authorized {
+                    record Datum(byte[] owner) {}
+                    record Redeemer() {}
+                    @Entrypoint
+                    static boolean validate(Datum datum, Redeemer redeemer, ScriptContext ctx) {
+                        return true;
+                    }
+                }
+                """;
+    }
+}

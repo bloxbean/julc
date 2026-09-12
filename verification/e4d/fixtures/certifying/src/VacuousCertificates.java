@@ -1,5 +1,5 @@
-import com.bloxbean.cardano.julc.ledger.ScriptContext;
-import com.bloxbean.cardano.julc.stdlib.annotation.*;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.*;
 
 @CertifyingValidator
 class VacuousCertificates {

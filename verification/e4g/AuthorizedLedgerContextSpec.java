@@ -1,10 +1,10 @@
 package evidence;
 
-import com.bloxbean.cardano.julc.verification.dsl.VerificationSpecification;
-import com.bloxbean.cardano.julc.verification.dsl.ir.DslDomain;
-import com.bloxbean.cardano.julc.verification.dsl.ir.DslPropertySet;
+import org.julclang.verification.dsl.VerificationSpecification;
+import org.julclang.verification.dsl.ir.DslDomain;
+import org.julclang.verification.dsl.ir.DslPropertySet;
 
-import static com.bloxbean.cardano.julc.verification.dsl.VerificationDsl.*;
+import static org.julclang.verification.dsl.VerificationDsl.*;
 
 public final class AuthorizedLedgerContextSpec implements VerificationSpecification {
     @Override public DslPropertySet properties() {

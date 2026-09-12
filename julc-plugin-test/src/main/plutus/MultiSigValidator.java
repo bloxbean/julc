@@ -1,4 +1,4 @@
-import com.bloxbean.cardano.julc.core.PlutusData;
+import org.julclang.core.PlutusData;
 
 /**
  * Multi-signature spending validator: requires two signers to unlock funds.

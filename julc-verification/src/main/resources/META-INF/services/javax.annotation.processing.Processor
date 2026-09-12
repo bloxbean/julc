@@ -1,1 +1,1 @@
-com.bloxbean.cardano.julc.verification.processor.VerificationAnnotationProcessor
+org.julclang.verification.processor.VerificationAnnotationProcessor

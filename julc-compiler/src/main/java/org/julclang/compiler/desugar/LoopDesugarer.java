@@ -1,0 +1,295 @@
+package org.julclang.compiler.desugar;
+
+import org.julclang.compiler.pir.PirHelpers;
+import org.julclang.compiler.pir.PirTerm;
+import org.julclang.compiler.pir.PirSubstitution;
+import org.julclang.compiler.pir.PirType;
+import org.julclang.core.Constant;
+import org.julclang.core.DefaultFun;
+
+import java.util.List;
+import java.util.function.BiFunction;
+
+/**
+ * Transforms loops into PIR recursive terms.
+ *
+ * For-each desugaring (accumulator fold pattern):
+ *   for (var item : items) { acc = f(acc, item); }
+ *   → LetRec(["loop" = \xs \acc -> IfThenElse(NullList(xs), acc, loop(TailList(xs), f(acc, HeadList(xs))))],
+ *            loop(items, initAcc))
+ *
+ * While desugaring:
+ *   while (cond) { body; }
+ *   → LetRec(["loop" = \_ -> IfThenElse(cond, Let("_", body, loop(Unit)), Unit)], loop(Unit))
+ */
+public class LoopDesugarer {
+
+    private int loopCounter = 0;
+    private final boolean listCaseEnabled;
+
+    /** Preserve the standalone desugarer's historical PIR form. */
+    public LoopDesugarer() {
+        this(false);
+    }
+
+    public LoopDesugarer(boolean listCaseEnabled) {
+        this.listCaseEnabled = listCaseEnabled;
+    }
+
+    private String nextLoopName(String prefix) {
+        return prefix + "__" + (loopCounter++);
+    }
+
+    /**
+     * Desugar a for-each loop with an accumulator pattern.
+     *
+     * @param iterableExpr the list being iterated over
+     * @param itemName     the loop variable name
+     * @param accName      the accumulator variable name
+     * @param accInit      the initial accumulator value
+     * @param accType      the accumulator type
+     * @param loopBody     the body that computes new acc from (acc, item)
+     * @param elemType     the element type for auto-unwrapping (IntegerType → UnIData, etc.)
+     * @return LetRec term that folds over the list
+     */
+    public PirTerm desugarForEach(PirTerm iterableExpr, String itemName, String accName,
+                                   PirTerm accInit, PirType accType, PirTerm loopBody,
+                                   PirType elemType) {
+        // Map iteration also reaches this builder, but carries native pairs, not Data.
+        boolean useListCase = listCaseEnabled && !(elemType instanceof PirType.PairType);
+        var listType = new PirType.ListType(new PirType.DataType());
+        var loopName = nextLoopName("loop__forEach");
+        var xsName = "xs__";
+
+        // loop = \xs \acc -> IfThenElse(NullList(xs), acc, loop(TailList(xs), body))
+        // where body substitutes item = wrapDecode(HeadList(xs), elemType)
+        var xsVar = new PirTerm.Var(xsName, listType);
+        var accVar = new PirTerm.Var(accName, accType);
+        // '#' cannot occur in a Java identifier; loopName makes nested binders distinct.
+        var headName = "#head_" + loopName;
+        var tailName = "#tail_" + loopName;
+        PirTerm rawHead = useListCase
+                ? new PirTerm.Var(headName, new PirType.DataType())
+                : new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), xsVar);
+        var headExpr = PirHelpers.wrapDecode(rawHead, elemType);
+        PirTerm tailExpr = useListCase
+                ? new PirTerm.Var(tailName, listType)
+                : new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), xsVar);
+        var nullCheck = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), xsVar);
+
+        // Bind item = HeadList(xs), then evaluate body to get new acc
+        var bodyWithItem = new PirTerm.Let(itemName, headExpr, loopBody);
+
+        // Recursive call: loop(TailList(xs), newAcc)
+        var recursiveCall = new PirTerm.App(
+                new PirTerm.App(
+                        new PirTerm.Var(loopName, new PirType.FunType(listType, new PirType.FunType(accType, accType))),
+                        tailExpr),
+                bodyWithItem);
+
+        // Keep NullList as a representation guard: unchecked source casts can carry
+        // non-lists. Only its non-empty branch proves Case/projections equivalent.
+        // if NullList(xs) then acc else loop(TailList(xs), body)
+        var loopLambda = new PirTerm.Lam(xsName, listType,
+                new PirTerm.Lam(accName, accType,
+                        useListCase
+                                ? new PirTerm.IfThenElse(nullCheck, accVar,
+                                        new PirTerm.ListMatch(xsVar, headName, tailName, new PirTerm.Error(accType), recursiveCall))
+                                : new PirTerm.IfThenElse(nullCheck, accVar, recursiveCall)));
+
+        // Initial call: loop(items, accInit)
+        var initialCall = new PirTerm.App(
+                new PirTerm.App(
+                        new PirTerm.Var(loopName, new PirType.FunType(listType, new PirType.FunType(accType, accType))),
+                        iterableExpr),
+                accInit);
+
+        return new PirTerm.LetRec(
+                List.of(new PirTerm.Binding(loopName, loopLambda)),
+                initialCall);
+    }
+
+    /**
+     * Desugar a for-each loop with break support.
+     * The bodyBuilder receives (loopRef applied to tailExpr, accVar) and must construct
+     * a term that either returns accVal directly (break) or calls loopRef(tailExpr, newAcc) (continue).
+     *
+     * Generated structure:
+     *   LetRec([loop = \xs \acc ->
+     *     IfThenElse(NullList(xs), acc,
+     *       Let(item, HeadList(xs), bodyBuilder(loop(TailList(xs)), acc)))
+     *   ], loop(items, accInit))
+     *
+     * @param iterableExpr the list being iterated over
+     * @param itemName     the loop variable name
+     * @param accName      the accumulator variable name
+     * @param accInit      the initial accumulator value
+     * @param accType      the accumulator type
+     * @param bodyBuilder  (continueFn, accVar) → term. continueFn accepts a newAcc and returns loop(tail, newAcc).
+     *                     To break: return newAcc directly. To continue: return continueFn.apply(newAcc).
+     * @param elemType     the element type for auto-unwrapping (IntegerType → UnIData, etc.)
+     * @return LetRec term that folds over the list with break support
+     */
+    public PirTerm desugarForEachWithBreak(PirTerm iterableExpr, String itemName, String accName,
+                                            PirTerm accInit, PirType accType,
+                                            BiFunction<java.util.function.Function<PirTerm, PirTerm>, PirTerm, PirTerm> bodyBuilder,
+                                            PirType elemType) {
+        // Map iteration also reaches this builder, but carries native pairs, not Data.
+        boolean useListCase = listCaseEnabled && !(elemType instanceof PirType.PairType);
+        var listType = new PirType.ListType(new PirType.DataType());
+        var loopName = nextLoopName("loop__forEach");
+        var xsName = "xs__";
+
+        var xsVar = new PirTerm.Var(xsName, listType);
+        var accVar = new PirTerm.Var(accName, accType);
+        // '#' cannot occur in a Java identifier; loopName makes nested binders distinct.
+        var headName = "#head_" + loopName;
+        var tailName = "#tail_" + loopName;
+        PirTerm rawHead = useListCase
+                ? new PirTerm.Var(headName, new PirType.DataType())
+                : new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), xsVar);
+        var headExpr = PirHelpers.wrapDecode(rawHead, elemType);
+        PirTerm tailExpr = useListCase
+                ? new PirTerm.Var(tailName, listType)
+                : new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), xsVar);
+        var nullCheck = new PirTerm.App(new PirTerm.Builtin(DefaultFun.NullList), xsVar);
+
+        var loopFunType = new PirType.FunType(listType, new PirType.FunType(accType, accType));
+
+        // continueFn: given a newAcc, produces loop(TailList(xs), newAcc)
+        java.util.function.Function<PirTerm, PirTerm> continueFn = newAcc ->
+                new PirTerm.App(
+                        new PirTerm.App(new PirTerm.Var(loopName, loopFunType), tailExpr),
+                        newAcc);
+
+        // Build body: Let(item, HeadList(xs), bodyBuilder(continueFn, accVar))
+        var bodyTerm = bodyBuilder.apply(continueFn, accVar);
+        // An unconditional break does not consume the tail. Case's two binders
+        // increase size for that shape, so retain its single legacy projection.
+        // Keep bodyTerm by identity so its source-position mappings survive.
+        if (useListCase && !PirSubstitution.collectFreeVarNames(bodyTerm).contains(tailName)) {
+            headExpr = PirHelpers.wrapDecode(
+                    new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), xsVar), elemType);
+            useListCase = false;
+        }
+        var bodyWithItem = new PirTerm.Let(itemName, headExpr, bodyTerm);
+
+        // loop = \xs \acc -> IfThenElse(NullList(xs), acc, bodyWithItem)
+        var loopLambda = new PirTerm.Lam(xsName, listType,
+                new PirTerm.Lam(accName, accType,
+                        useListCase
+                                ? new PirTerm.IfThenElse(nullCheck, accVar,
+                                        new PirTerm.ListMatch(xsVar, headName, tailName, new PirTerm.Error(accType), bodyWithItem))
+                                : new PirTerm.IfThenElse(nullCheck, accVar, bodyWithItem)));
+
+        // Initial call: loop(items, accInit)
+        var initialCall = new PirTerm.App(
+                new PirTerm.App(new PirTerm.Var(loopName, loopFunType), iterableExpr),
+                accInit);
+
+        return new PirTerm.LetRec(
+                List.of(new PirTerm.Binding(loopName, loopLambda)),
+                initialCall);
+    }
+
+    /**
+     * Desugar a while loop with an accumulator.
+     * Pattern: loop = \acc -> IfThenElse(cond(acc), loop(body(acc)), acc)
+     *
+     * @param condition the loop condition (references acc as free variable)
+     * @param body      the body that computes the new accumulator value
+     * @param accName   the accumulator variable name
+     * @param accInit   the initial accumulator value
+     * @param accType   the accumulator type
+     * @return LetRec term that loops until condition is false
+     */
+    public PirTerm desugarWhileWithAccumulator(
+            PirTerm condition, PirTerm body,
+            String accName, PirTerm accInit, PirType accType) {
+        var loopName = nextLoopName("loop__while");
+        var funType = new PirType.FunType(accType, accType);
+        var accVar = new PirTerm.Var(accName, accType);
+
+        // loop(body) — body evaluates to the new accumulator value
+        var recursiveCall = new PirTerm.App(
+                new PirTerm.Var(loopName, funType), body);
+
+        // loop = \acc -> IfThenElse(cond, loop(body), acc)
+        var loopLambda = new PirTerm.Lam(accName, accType,
+                new PirTerm.IfThenElse(condition, recursiveCall, accVar));
+
+        var initialCall = new PirTerm.App(
+                new PirTerm.Var(loopName, funType), accInit);
+
+        return new PirTerm.LetRec(
+                List.of(new PirTerm.Binding(loopName, loopLambda)),
+                initialCall);
+    }
+
+    /**
+     * Desugar a while loop with an accumulator and break support.
+     * Pattern: loop = \acc -> IfThenElse(cond(acc), bodyTerm(loopFn, acc), acc)
+     * Where bodyTerm can either call loopFn(newAcc) to continue or return acc to break.
+     *
+     * @param condition   the loop condition (references acc as free variable)
+     * @param accName     the accumulator variable name
+     * @param accInit     the initial accumulator value
+     * @param accType     the accumulator type
+     * @param bodyBuilder (continueFn, accVar) → term. continueFn accepts newAcc and returns loop(newAcc).
+     * @return LetRec term that loops with break support
+     */
+    public PirTerm desugarWhileWithAccumulatorAndBreak(
+            PirTerm condition, String accName, PirTerm accInit, PirType accType,
+            BiFunction<java.util.function.Function<PirTerm, PirTerm>, PirTerm, PirTerm> bodyBuilder) {
+        var loopName = nextLoopName("loop__while");
+        var funType = new PirType.FunType(accType, accType);
+        var accVar = new PirTerm.Var(accName, accType);
+
+        // continueFn: given newAcc, produces loop(newAcc)
+        java.util.function.Function<PirTerm, PirTerm> continueFn = newAcc ->
+                new PirTerm.App(new PirTerm.Var(loopName, funType), newAcc);
+
+        var bodyTerm = bodyBuilder.apply(continueFn, accVar);
+
+        // loop = \acc -> IfThenElse(cond, bodyTerm, acc)
+        var loopLambda = new PirTerm.Lam(accName, accType,
+                new PirTerm.IfThenElse(condition, bodyTerm, accVar));
+
+        var initialCall = new PirTerm.App(
+                new PirTerm.Var(loopName, funType), accInit);
+
+        return new PirTerm.LetRec(
+                List.of(new PirTerm.Binding(loopName, loopLambda)),
+                initialCall);
+    }
+
+    /**
+     * Desugar a while loop.
+     *
+     * @param condition the loop condition
+     * @param body      the loop body
+     * @return LetRec term that loops until condition is false
+     */
+    public PirTerm desugarWhile(PirTerm condition, PirTerm body) {
+        var unitType = new PirType.UnitType();
+        var loopName = nextLoopName("loop__while");
+
+        // loop = \_ -> IfThenElse(cond, Let("_", body, loop(Unit)), Unit)
+        var recursiveCall = new PirTerm.App(
+                new PirTerm.Var(loopName, new PirType.FunType(unitType, unitType)),
+                new PirTerm.Const(Constant.unit()));
+
+        var bodyThenContinue = new PirTerm.Let("_body", body, recursiveCall);
+
+        var loopLambda = new PirTerm.Lam("_u", unitType,
+                new PirTerm.IfThenElse(condition, bodyThenContinue, new PirTerm.Const(Constant.unit())));
+
+        var initialCall = new PirTerm.App(
+                new PirTerm.Var(loopName, new PirType.FunType(unitType, unitType)),
+                new PirTerm.Const(Constant.unit()));
+
+        return new PirTerm.LetRec(
+                List.of(new PirTerm.Binding(loopName, loopLambda)),
+                initialCall);
+    }
+}

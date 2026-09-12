@@ -7,7 +7,7 @@ description: Add a JuLC test method or JVM testkit case for a validator/helper
 
 Add a test for a JuLC validator or helper. There are two valid styles:
 
-- **JuLC CLI / MCP tests**: `com.bloxbean.cardano.julc.stdlib.test.Test` on `public static boolean` methods. These are compiled and evaluated by `julc_test` / `julc check`.
+- **JuLC CLI / MCP tests**: `org.julclang.stdlib.test.Test` on `public static boolean` methods. These are compiled and evaluated by `julc_test` / `julc check`.
 - **JVM testkit tests**: `org.junit.jupiter.api.Test` methods using `ContractTest`, `ValidatorTest`, and `ScriptContextTestBuilder`. These run under Gradle/Maven/JUnit.
 
 ## Steps
@@ -30,16 +30,16 @@ Add a test for a JuLC validator or helper. There are two valid styles:
    ```java
    package myorg;
 
-   import com.bloxbean.cardano.julc.core.PlutusData;
-   import com.bloxbean.cardano.julc.core.types.JulcList;
-   import com.bloxbean.cardano.julc.ledger.PubKeyHash;
-   import com.bloxbean.cardano.julc.ledger.TxId;
-   import com.bloxbean.cardano.julc.ledger.TxOut;
-   import com.bloxbean.cardano.julc.ledger.TxOutRef;
-   import com.bloxbean.cardano.julc.stdlib.Builtins;
-   import com.bloxbean.cardano.julc.stdlib.lib.ListsLib;
-   import com.bloxbean.cardano.julc.stdlib.test.Test;
-   import com.bloxbean.cardano.julc.stdlib.test.TestContextLib;
+   import org.julclang.core.PlutusData;
+   import org.julclang.core.types.JulcList;
+   import org.julclang.ledger.PubKeyHash;
+   import org.julclang.ledger.TxId;
+   import org.julclang.ledger.TxOut;
+   import org.julclang.ledger.TxOutRef;
+   import org.julclang.stdlib.Builtins;
+   import org.julclang.stdlib.lib.ListsLib;
+   import org.julclang.stdlib.test.Test;
+   import org.julclang.stdlib.test.TestContextLib;
    import java.math.BigInteger;
 
    public final class SignedValidatorTest {
@@ -75,7 +75,7 @@ Add a test for a JuLC validator or helper. There are two valid styles:
 
    | Helper | What it does |
    |---|---|
-   | `com.bloxbean.cardano.julc.stdlib.test.Test` | marks a JuLC static boolean test |
+   | `org.julclang.stdlib.test.Test` | marks a JuLC static boolean test |
    | `TestContextLib.spending(...)` | builds an on-chain `ScriptContext` for spending validators |
    | `TestContextLib.txOut(...)` / `pubKeyAddress(...)` | builds typed ledger values that compile to UPLC |
    | `ListsLib.empty()` / `ListsLib.prepend(...)` | builds `JulcList` values for signers/outputs |
@@ -86,11 +86,11 @@ Add a test for a JuLC validator or helper. There are two valid styles:
    ```java
    package myorg;
 
-   import com.bloxbean.cardano.julc.core.PlutusData;
-   import com.bloxbean.cardano.julc.ledger.Interval;
-   import com.bloxbean.cardano.julc.testkit.ContractTest;
-   import com.bloxbean.cardano.julc.testkit.ScriptContextTestBuilder;
-   import com.bloxbean.cardano.julc.testkit.TestDataBuilder;
+   import org.julclang.core.PlutusData;
+   import org.julclang.ledger.Interval;
+   import org.julclang.testkit.ContractTest;
+   import org.julclang.testkit.ScriptContextTestBuilder;
+   import org.julclang.testkit.TestDataBuilder;
    import org.junit.jupiter.api.Test;
    import java.math.BigInteger;
 
@@ -125,7 +125,7 @@ Add a test for a JuLC validator or helper. There are two valid styles:
 
 ## Conventions
 
-- Use `com.bloxbean.cardano.julc.stdlib.test.Test` only for `public static boolean` JuLC tests.
+- Use `org.julclang.stdlib.test.Test` only for `public static boolean` JuLC tests.
 - Use `org.junit.jupiter.api.Test` only for JVM/JUnit tests.
 - Test method names describe the scenario in plain English.
 - Each test is independent — no shared mutable state.

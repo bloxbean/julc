@@ -69,9 +69,9 @@ Write a trusted specification. The following two properties are independent;
 adding the second requires no JuLC resolver or fixed profile:
 
 ```java
-import com.bloxbean.cardano.julc.verification.dsl.VerificationSpecification;
-import com.bloxbean.cardano.julc.verification.dsl.ir.*;
-import static com.bloxbean.cardano.julc.verification.dsl.VerificationDsl.*;
+import org.julclang.verification.dsl.VerificationSpecification;
+import org.julclang.verification.dsl.ir.*;
+import static org.julclang.verification.dsl.VerificationDsl.*;
 
 public final class SaleProperties implements VerificationSpecification {
     public DslPropertySet properties() {

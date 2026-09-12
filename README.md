@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/bloxbean/julc/actions/workflows/build.yml"><img src="https://github.com/bloxbean/julc/actions/workflows/build.yml/badge.svg" alt="Build & Test"/></a>
-  <a href="https://central.sonatype.com/artifact/com.bloxbean.cardano/julc-core"><img src="https://img.shields.io/maven-central/v/com.bloxbean.cardano/julc-core.svg?label=Maven%20Central" alt="Maven Central"/></a>
+  <a href="https://central.sonatype.com/artifact/org.julclang/julc-core"><img src="https://img.shields.io/maven-central/v/org.julclang/julc-core.svg?label=Maven%20Central" alt="Maven Central"/></a>
   <a href="https://github.com/bloxbean/julc/releases"><img src="https://img.shields.io/github/v/release/bloxbean/julc?include_prereleases&label=release" alt="GitHub Release"/></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/bloxbean/julc.svg" alt="License"/></a>
   <img src="https://img.shields.io/badge/Java-25-orange.svg" alt="Java 25"/>
@@ -99,21 +99,21 @@ For the full list of compiler limitations and workarounds, see the [Compiler Lim
 
 ```groovy
 dependencies {
-    implementation "com.bloxbean.cardano:julc-stdlib:${julcVersion}"
-    implementation "com.bloxbean.cardano:julc-ledger-api:${julcVersion}"
+    implementation "org.julclang:julc-stdlib:${julcVersion}"
+    implementation "org.julclang:julc-ledger-api:${julcVersion}"
 
     // Annotation processor -- compiles validators during javac
-    annotationProcessor "com.bloxbean.cardano:julc-annotation-processor:${julcVersion}"
+    annotationProcessor "org.julclang:julc-annotation-processor:${julcVersion}"
 
     // Test: choose a VM backend for local evaluation
-    testImplementation "com.bloxbean.cardano:julc-testkit:${julcVersion}"
-    testImplementation "com.bloxbean.cardano:julc-vm:${julcVersion}"
+    testImplementation "org.julclang:julc-testkit:${julcVersion}"
+    testImplementation "org.julclang:julc-vm:${julcVersion}"
 
     // Java VM: supports CompileResult-aware protocol target propagation
-    testRuntimeOnly "com.bloxbean.cardano:julc-vm-java:${julcVersion}"
+    testRuntimeOnly "org.julclang:julc-vm-java:${julcVersion}"
 
     // Scalus VM: supported alternative for direct UPLC evaluation and cross-checking
-    // testRuntimeOnly "com.bloxbean.cardano:julc-vm-scalus:${julcVersion}"
+    // testRuntimeOnly "org.julclang:julc-vm-scalus:${julcVersion}"
 }
 ```
 
@@ -206,7 +206,7 @@ repositories {
 Then use the snapshot version in your dependencies:
 
 ```groovy
-implementation "com.bloxbean.cardano:julc-stdlib:${julcVersion}"
+implementation "org.julclang:julc-stdlib:${julcVersion}"
 ```
 
 ### Write a Spending Validator

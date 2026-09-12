@@ -131,11 +131,11 @@ Open the generated `AlwaysSucceeds.java` and replace it with a real vesting vali
 ```java
 package com.example.my_contract;
 
-import com.bloxbean.cardano.julc.stdlib.annotation.SpendingValidator;
-import com.bloxbean.cardano.julc.stdlib.annotation.Entrypoint;
-import com.bloxbean.cardano.julc.ledger.*;
-import com.bloxbean.cardano.julc.core.PlutusData;
-import com.bloxbean.cardano.julc.core.types.PubKeyHash;
+import org.julclang.stdlib.annotation.SpendingValidator;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.ledger.*;
+import org.julclang.core.PlutusData;
+import org.julclang.core.types.PubKeyHash;
 import java.math.BigInteger;
 
 @SpendingValidator
@@ -221,7 +221,7 @@ Same annotation processor behavior as Gradle.
 Create `test/VestingValidatorTest.java`:
 
 ```java
-import com.bloxbean.cardano.julc.stdlib.test.Test;
+import org.julclang.stdlib.test.Test;
 
 public class VestingValidatorTest {
 
@@ -246,9 +246,9 @@ The scaffolded test extends `ContractTest` which provides helpers:
 ```java
 package com.example.my_contract;
 
-import com.bloxbean.cardano.julc.core.PlutusData;
-import com.bloxbean.cardano.julc.testkit.ContractTest;
-import com.bloxbean.cardano.julc.testkit.TestDataBuilder;
+import org.julclang.core.PlutusData;
+import org.julclang.testkit.ContractTest;
+import org.julclang.testkit.TestDataBuilder;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;

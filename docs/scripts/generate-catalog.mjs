@@ -24,10 +24,10 @@ const DOCS_ROOT = path.resolve(__dirname, '..');
 const REPO_ROOT = path.resolve(DOCS_ROOT, '..');
 const execFileAsync = promisify(execFile);
 
-const STDLIB_LIB_DIR = path.join(REPO_ROOT, 'julc-stdlib/src/main/java/com/bloxbean/cardano/julc/stdlib/lib');
-const STDLIB_PKG = 'com.bloxbean.cardano.julc.stdlib.lib';
-const LEDGER_DIR = path.join(REPO_ROOT, 'julc-ledger-api/src/main/java/com/bloxbean/cardano/julc/ledger');
-const LEDGER_PKG = 'com.bloxbean.cardano.julc.ledger';
+const STDLIB_LIB_DIR = path.join(REPO_ROOT, 'julc-stdlib/src/main/java/org/julclang/stdlib/lib');
+const STDLIB_PKG = 'org.julclang.stdlib.lib';
+const LEDGER_DIR = path.join(REPO_ROOT, 'julc-ledger-api/src/main/java/org/julclang/ledger');
+const LEDGER_PKG = 'org.julclang.ledger';
 const DIAGNOSTICS_FILE = path.join(REPO_ROOT, 'julc-compiler/src/main/resources/diagnostics.json');
 const GRADLE_PROPERTIES_FILE = path.join(REPO_ROOT, 'gradle.properties');
 const VERSION_PROPERTIES_CANDIDATES = [

@@ -21,8 +21,8 @@ dependencies {
 gradlePlugin {
     plugins {
         julc {
-            id = 'com.bloxbean.cardano.julc'
-            implementationClass = 'com.bloxbean.cardano.julc.gradle.JulcPlugin'
+            id = 'org.julclang.julc'
+            implementationClass = 'org.julclang.gradle.JulcPlugin'
         }
     }
 }

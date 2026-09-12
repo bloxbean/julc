@@ -1060,7 +1060,7 @@ These errors occur when evaluating compiled UPLC programs on the Plutus VM.
 ```groovy
 // build.gradle
 dependencies {
-    implementation 'com.bloxbean.cardano:julc-vm-scalus:<version>'
+    implementation 'org.julclang:julc-vm-scalus:<version>'
 }
 ```
 

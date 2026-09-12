@@ -964,7 +964,7 @@ for (var diag : diagnostics) {
 ### Gradle/Maven dependency
 
 ```groovy
-implementation 'com.bloxbean.cardano:julc-jrl-core:<version>'
+implementation 'org.julclang:julc-jrl-core:<version>'
 ```
 
 ---

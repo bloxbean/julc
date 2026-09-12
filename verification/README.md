@@ -129,12 +129,12 @@ dependencies and annotate one spending validator:
 
 ```groovy
 dependencies {
-    implementation "com.bloxbean.cardano:julc-verification:${julcVersion}"
+    implementation "org.julclang:julc-verification:${julcVersion}"
 }
 ```
 
 ```java
-import com.bloxbean.cardano.julc.verification.annotation.RequiresSigner;
+import org.julclang.verification.annotation.RequiresSigner;
 
 @RequiresSigner("datum.owner")
 @SpendingValidator

@@ -1,6 +1,6 @@
-import com.bloxbean.cardano.julc.ledger.ScriptContext;
-import com.bloxbean.cardano.julc.stdlib.annotation.*;
-import com.bloxbean.cardano.julc.stdlib.lib.ValuesLib;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.stdlib.annotation.*;
+import org.julclang.stdlib.lib.ValuesLib;
 import java.math.BigInteger;
 
 @SpendingValidator
