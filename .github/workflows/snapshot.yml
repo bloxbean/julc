@@ -22,8 +22,11 @@ jobs:
     - name: Build
       run: ./gradlew clean build -PskipSigning=true --stacktrace
 
+    # `publish` no longer reaches a remote: the OSSRH staging repository went
+    # away with nexusPublishing, and the Central Portal snapshot endpoint is
+    # driven by nmcp's aggregation task instead.
     - name: Publish to Snapshot Repository
-      run: ./gradlew publish -PskipSigning=true --warn --stacktrace
+      run: ./gradlew publishAggregationToCentralPortalSnapshots -PskipSigning=true --stacktrace
       env:
         MAVEN_USERNAME: ${{ secrets.OSSRH_USERNAME }}
         MAVEN_PASSWORD: ${{ secrets.OSSRH_TOKEN }}
