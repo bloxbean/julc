@@ -114,6 +114,17 @@ counterexample bindings in this suite are refreshed for `strict-data-v1`. The
 old Milestone A permissive-decoder refutation is now a gating theorem that the
 smoke artifact succeeds exactly for its declared one-field schema shape.
 
+PR #138 (issue #137) fixed the lowering of a conditional `yield` followed by
+further statements in a switch-expression block. Both controlled-mint fixtures
+use that shape to reject an empty mint map. The controlled-mint and
+controlled-mint-broken artifacts, their lock entries, the
+`controlled-mint-broken.authority` counterexample binding, and the manifest
+lock hash are refreshed for the corrected lowering; the other five artifacts
+are byte-identical. The artifacts' success sets are unchanged (the empty-map
+path previously failed in `tailList` and now yields `false`), and the suite
+re-establishes the same outcomes. See ADR-003, "Implementation finding:
+conditional yield lowering".
+
 Blaster's current solver-valid results trust Z3 and its SMT translation. They
 must be reported as `SMT-VALID`, not `KERNEL-PROVED`.
 

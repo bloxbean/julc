@@ -23,7 +23,9 @@ This is frontend statement lowering, so recompiling a source that uses the
 affected shape changes its script bytes and hash under every profile, including
 `NONE` and `BASELINE`. Sources that do not use the shape keep their bytes.
 Deployed scripts and ledger Data encodings are unchanged. The shipped stdlib and
-examples were scanned and do not use the shape.
+examples were scanned and do not use the shape. The two Blaster controlled-mint
+verification fixtures do; their locked artifacts and counterexample binding are
+refreshed for the corrected lowering with the same property outcomes.
 
 ## Upcoming preview: lossless Data map decoding
 
