@@ -44,14 +44,28 @@ final class LoopBodyGenerator {
     }
 
     boolean containsReturn(Statement stmt) {
-        if (stmt instanceof ReturnStmt) return true;
+        return containsExit(stmt, ReturnStmt.class);
+    }
+
+    boolean containsYield(Statement stmt) {
+        return containsExit(stmt, YieldStmt.class);
+    }
+
+    /**
+     * True when the loop body directly contains an exit statement of the given kind.
+     * Nested loops are not entered (their own lowering diagnoses their exits), and only
+     * statement structure is inspected, so a {@code yield} inside a nested switch
+     * expression is never visited.
+     */
+    private boolean containsExit(Statement stmt, Class<? extends Statement> exit) {
+        if (exit.isInstance(stmt)) return true;
         if (stmt instanceof WhileStmt || stmt instanceof ForEachStmt) return false;
         if (stmt instanceof BlockStmt bs) {
-            return bs.getStatements().stream().anyMatch(this::containsReturn);
+            return bs.getStatements().stream().anyMatch(s -> containsExit(s, exit));
         }
         if (stmt instanceof IfStmt is) {
-            if (containsReturn(is.getThenStmt())) return true;
-            return is.getElseStmt().map(this::containsReturn).orElse(false);
+            if (containsExit(is.getThenStmt(), exit)) return true;
+            return is.getElseStmt().map(e -> containsExit(e, exit)).orElse(false);
         }
         return false;
     }

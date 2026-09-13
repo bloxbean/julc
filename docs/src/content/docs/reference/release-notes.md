@@ -3,6 +3,28 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+## Upcoming preview: conditional `yield` in switch case blocks
+
+A `yield` inside an `if`/`else` branch of a switch-expression case block was
+silently discarded when statements followed the conditional: the block lowered
+as "evaluate the `if`, then run the rest", so a guard such as
+`if (cond) { yield false; } yield true;` always produced `true`
+([#137](https://github.com/bloxbean/julc/issues/137)). The frontend now applies
+the same fall-through continuation lowering that #79 introduced for early
+`return`, so a `yield` exits its owning switch expression and the trailing
+statements only run for branches that fall through. A `yield` inside a nested
+switch expression still belongs to that inner switch.
+
+Two diagnostics accompany the fix: a case block whose paths do not all end in a
+`yield` is rejected instead of falling off the end, and a `yield` inside a
+for-each or while loop body is rejected like `return` already was.
+
+This is frontend statement lowering, so recompiling a source that uses the
+affected shape changes its script bytes and hash under every profile, including
+`NONE` and `BASELINE`. Sources that do not use the shape keep their bytes.
+Deployed scripts and ledger Data encodings are unchanged. The shipped stdlib and
+examples were scanned and do not use the shape.
+
 ## Upcoming preview: lossless Data map decoding
 
 CBOR decoding now preserves Plutus Data map entry order and duplicate keys,
