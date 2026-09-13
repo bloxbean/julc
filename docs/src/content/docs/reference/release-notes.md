@@ -19,10 +19,13 @@ The output for the motivating shape is byte-identical to writing
 `BigInteger amount = b.amount();` yourself. The optimization report records
 `pv11.o15.projection-sharing`.
 
-Nothing observable changes: the shared projection already ran first on every
-path, so results, traces, the failure point and the failure text are identical
-on Java, Truffle and Scalus for well-formed and malformed input, at every level.
-A path that reaches a later occurrence saves the whole projection (about
+Nothing observable on-chain changes: the shared projection already ran first on
+every path, so results, traces, the failure point and the failure text are
+identical on Java, Truffle and Scalus for well-formed and malformed input, at
+every level. Budgets move, on failing paths too (a failing path that reaches
+only the leading site pays the binding, one that fails inside the shared unit
+pays a few machine steps less), so off-chain tests that pin a budget need
+refreshing. A path that reaches a later occurrence saves the whole projection (about
 462,000 CPU for an integer field at the first position, 1,058,000 CPU for a raw
 field at the sixth, 279,000 CPU for the fields list); a path that reaches none,
 such as an untaken branch or an empty loop, pays at most one lambda, one
@@ -33,10 +36,11 @@ conditional are left exactly as written. A validator that projects
 `ctx.txInfo().outputs()` twice drops from 429 to 380 bytes and from 11.6 million
 to 8.8 million CPU on the path that uses both.
 
-This is the first default-level rule that changes the bytes and hash of most
-existing validators: any program that projects one field of one variable twice
-in leading position, or two fields of one variable, compiles to a different
-(smaller) script. Deployed scripts are unaffected; recompiling changes the
+Earlier safe-profile rules (Case on booleans, pairs and integers, list Case
+loops) already moved most `pv11-safe` hashes; this is the first whose trigger
+shape is in most validators since the safe profile became the default: any
+program that projects one field of one variable twice in leading position, or
+two fields of one variable, compiles to a different (smaller) script. Deployed scripts are unaffected; recompiling changes the
 script hash and therefore the script address. Tests or deployments that pin a
 hash need to be refreshed. `NONE`/`BASELINE` retain historical bytes.
 

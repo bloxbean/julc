@@ -8,11 +8,15 @@ are asserted equal, Scalus agrees on results, traces, failure text and budgets.
 ## Provenance
 
 - Base commit `1fd98c93` (ADR-043 head, `feat/115-list-to-array-promotion`). The goldens in
-  `julc-compiler/src/test/resources/optimization/o15-pre-change-bytes.txt` (18 fixtures × 4
-  levels × source maps off/on = 144 rows) were captured from a detached worktree at that
-  commit with the fixture file final, before any pass change; the same capture on the branch
-  after the per-rule switch (milestone 1) was byte-identical, which is the switch's inertness
-  proof.
+  `julc-compiler/src/test/resources/optimization/o15-pre-change-bytes.txt` (24 fixtures × 4
+  levels × source maps off/on = 192 rows) were captured from a detached worktree at that
+  commit with the fixture sources final, before any pass change (the chain-count expectations
+  and three javadocs were corrected after capture and are not inputs to it); the same capture
+  on the branch after the per-rule switch (milestone 1) was byte-identical, which is the
+  switch's inertness proof. The six fixtures added after review (`SWITCH_BRANCH` to
+  `TRACE_BETWEEN`) were captured the same way and the first 144 rows reproduced
+  byte-for-byte; the matrix test now also reproduces every row at the final commit with
+  `pv11.o15.projection-sharing` disabled, so the file is self-verifying.
 - Census before writing the pass: the only earlier golden O15 moves is O9's `FIELD` (a cast
   local with two leading `h.items()` chains; the O9 suite now compiles with O15 off). O5's
   pattern-variable fields reuse the match binders, O8's fixtures have no projections,
@@ -36,6 +40,7 @@ Machine step: 16,000 CPU / 100 memory (lambda, application, variable lookup meas
 | `sndPair(unConstrData(x))` (fields prefix) | 278,580 | 764 |
 | `unIData(headList(P))` (integer, depth 0) | 462,474 | 1,328 |
 | `unListData(headList(tailList(P)))` (list, depth 1) | 597,326 | 1,660 |
+| `unMapData(headList(P))` (map, depth 0, two-entry map) | 466,353 | 1,328 |
 | `unBData(headList(tailList²(P)))` (bytes, depth 2) | 721,198 | 1,992 |
 | `headList(tailList⁵(P))` (raw, depth 5) | 1,058,045 | 2,756 |
 | `equalsInteger(fstPair(unConstrData(headList(tailList³(P)))), 1)` (Bool, depth 3) | 1,177,535 | 3,157 |
@@ -71,6 +76,12 @@ costed-only `FIELD_THEN_INDEX` out-of-range rows, which carry ADR-043's `IndexAr
 | FIELD_THEN_INDEX | 139 → 130 | `7355343a…` → `b2164abc…` |
 | SINGLE | 20 → 20 | unchanged |
 | LEDGER | 132 → 114 | `5c277897…` → `b7fc07c2…` |
+| SWITCH_BRANCH | 84 → 70 | `cde9340a…` → `ea5d2687…` |
+| MAP_FIELD | 111 → 97 | `a43b0346…` → `12276f1f…` |
+| ERROR_GUARD | 55 → 48 | `f8e8bdb1…` → `83a03d3d…` |
+| ESCAPE | 55 → 48 | `ba7cc7cf…` → `ce5ca9bb…` |
+| CALL_BETWEEN | 55 → 55 | unchanged |
+| TRACE_BETWEEN | 51 → 42 | `68155763…` → `86552cc3…` |
 
 | Fixture | Input | CPU before → after | Δ CPU | Δ memory |
 |---|---|---:|---:|---:|
@@ -122,6 +133,23 @@ costed-only `FIELD_THEN_INDEX` out-of-range rows, which carry ADR-043's `IndexAr
 | LEDGER | no-outputs | 1,860,985 → 1,694,405 | −166,580 | −64 |
 | LEDGER | not-a-record (fail) | 520,688 → 312,688 | −208,000 | −1,300 |
 | LEDGER | empty-record (fail) | 744,343 → 760,343 | +16,000 | +100 |
+| SWITCH_BRANCH | spend (shared pair in the case body) | 2,339,339 → 1,726,285 | −613,054 | −1,292 |
+| SWITCH_BRANCH | mint (prefix only) | 1,727,657 → 1,513,077 | −214,580 | −364 |
+| SWITCH_BRANCH | not-a-record (fail) | 408,688 → 312,688 | −96,000 | −600 |
+| SWITCH_BRANCH | empty-record / bad-kind / unknown-kind (fail after the prefix) | | +48,000 | +300 |
+| SWITCH_BRANCH | bad-amount-spend (fail) | 1,658,449 → 1,379,869 | −278,580 | −764 |
+| MAP_FIELD | two | 4,135,925 → 3,518,992 | −616,933 | −1,292 |
+| MAP_FIELD | empty | 1,341,023 → 1,174,443 | −166,580 | −64 |
+| MAP_FIELD | not-a-record (fail) | 424,688 → 312,688 | −112,000 | −700 |
+| MAP_FIELD | empty-record / bad-balances (fail) | | +16,000 | +100 |
+| ERROR_GUARD | pass | 1,821,072 → 1,422,598 | −398,474 | −928 |
+| ERROR_GUARD | guard / guard-not-a-record (error before the projections) | unchanged | 0 | 0 |
+| ERROR_GUARD | not-a-record / bad-amount (fail) | | −16,000 | −100 |
+| ESCAPE | open / closed | 2,091,146 → 1,692,672 | −398,474 | −928 |
+| ESCAPE | fails | | −64,000 | −400 |
+| CALL_BETWEEN | all (not shared) | unchanged | 0 | 0 |
+| TRACE_BETWEEN | open / closed | 1,453,754 → 1,007,280 | −446,474 | −1,228 |
+| TRACE_BETWEEN | fails (before the trace) | unchanged | 0 | 0 |
 
 Notes. `REPEATED`'s three source projections are four chains in PIR because `compareTo`
 evaluates its receiver twice; all four become one. `CAST` after sharing is the same program as
@@ -171,10 +199,20 @@ Candidate script hashes: REPEATED `c357d6f4f2bcfdf19c23029001dcb7dd87b37a8cfed9e
   left in the body, both chains re-rooted.
 - Chain on chain: `#field-0` = inner raw projection, then `#fields-0` = prefix of `#field-0`,
   three units after.
+- Raw beside decoded (`let a = H in let b = H in unIData(H) + unIData(H)`): the raw binding
+  takes the two bare sites, the decode is shared as its own unit (one `unIData` survives) and
+  the prefix is shared above both; the rewriter never descends into a unit of another key.
+- Error arm: `if flag then error else H' + H'` keeps the `error` arm and shares the pair inside
+  the other arm only.
+- Source positions: the scope's location moves to the inserted `Let`, each replaced site's
+  location to its variable, the unit keeps its own.
+- A single recursive binding of a lambda leads (the `x` pair is shared above it); a
+  two-binding `LetRec` blocks (only the live lambda's own pair is shared inside it).
 - Rebinding under `Let`, `Lam` and a `DataMatch` binder named `x`: unchanged; a leading pair
   followed by a rebinding shares the pair only.
 - Dead lambda binding, transitively dead pair of bindings, dead `LetRec`: unchanged, no
-  provenance; the same helper once called shares inside its body and records provenance.
+  provenance for any of the three; the same helper once called shares inside its body and
+  records provenance.
 - Round order: `unValueData(raw(x,1))` twice becomes `#field-0` then `#value-0`, both rules
   recorded; with `pv11.o15.projection-sharing` off nothing changes and nothing is recorded;
   with `pv11.o8.value-sharing` off the projection is shared and both `unValueData`

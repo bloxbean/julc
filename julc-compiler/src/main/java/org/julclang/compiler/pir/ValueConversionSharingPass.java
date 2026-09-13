@@ -14,7 +14,6 @@ import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.UnaryOperator;
@@ -56,7 +55,9 @@ import java.util.function.UnaryOperator;
  * prefix over whatever distinct chains remain, including those inside the bindings just
  * inserted; then native Value conversions, which may now apply to a shared projection. Each
  * round re-reads the current term; fresh names ({@code #field-N}, {@code #fields-N},
- * {@code #value-N}) stay unique across rounds.
+ * {@code #value-N}) stay unique across rounds. Two refinements apply to every class: the body
+ * of a single recursive binding of a lambda can lead (see {@link #leadingUnit}), and units
+ * inside a binding the UPLC optimiser will drop are ignored (see {@link #isDead}).
  *
  * <p>Gate: exact PV11 target and a safe optimization level; the Value class additionally needs
  * {@link ProtocolCapability#VALUE_CONSTANTS}. Each class can be switched off on its own
@@ -296,11 +297,16 @@ public final class ValueConversionSharingPass {
      * The unique occurrence of {@code key} that every path through {@code term} evaluates
      * before any other non-trivial step, or null. Function position evaluates before argument
      * position; a {@code Let} value before its body; a condition or scrutinee before its
-     * branches; the body of a recursive binding of lambdas after that binding. Branch bodies,
-     * lambdas, traces, errors, other recursive bindings and constructor builds never lead.
+     * branches; the body of a single recursive binding of a lambda after that binding. Branch
+     * bodies, lambdas, traces, errors, other recursive bindings and constructor builds never
+     * lead.
      */
     private PirTerm leadingUnit(PirTerm term, Key key) {
-        if (key.equals(keyOf(term, key.shape()))) return term;
+        var found = keyOf(term, key.shape());
+        if (key.equals(found)) return term;
+        // A unit of another key is a leaf: the raw chain inside a decode belongs to the decode
+        // and never leads on its own, exactly as the collector sees it.
+        if (found != null) return null;
         return switch (term) {
             case PirTerm.App app -> {
                 var inFunction = leadingUnit(app.function(), key);
@@ -316,12 +322,15 @@ public final class ValueConversionSharingPass {
                 yield isTrivial(let.value()) && !let.name().equals(key.variable()) && !aliases.contains(let.name())
                         ? leadingUnit(let.body(), key) : null;
             }
-            // A recursive binding of lambdas only builds closures (a fixed number of beta steps
-            // over values; the UPLC optimiser relies on the same fact to drop an unused one), so
-            // its body can lead when the binding does not capture a free variable of the unit.
-            // The per-site JulcList.get lowering wraps every site in such a binding.
-            case PirTerm.LetRec rec -> rec.bindings().stream().allMatch(b -> b.value() instanceof PirTerm.Lam
-                    && !b.name().equals(key.variable()) && !aliases.contains(b.name()))
+            // A single recursive binding of a lambda only builds its closure (Z applied to a
+            // lambda: a fixed number of beta steps over values, the fact the UPLC optimiser
+            // relies on to drop an unused one), so its body can lead when the binding does not
+            // capture a free variable of the unit. The per-site JulcList.get lowering wraps every
+            // site in such a binding. The multi-binding (Bekić) lowering is not claimed.
+            case PirTerm.LetRec rec -> rec.bindings().size() == 1
+                    && rec.bindings().getFirst().value() instanceof PirTerm.Lam
+                    && !rec.bindings().getFirst().name().equals(key.variable())
+                    && !aliases.contains(rec.bindings().getFirst().name())
                     ? leadingUnit(rec.body(), key) : null;
             // Branches are exclusive: a unit leading in both arms of a conditional would be
             // evaluated once per path either way, so sharing it above the conditional only adds
@@ -461,10 +470,13 @@ public final class ValueConversionSharingPass {
 
     /**
      * Visit every occurrence of {@code key} under this lexical binding of its variable; a
-     * matched unit is a leaf, and rebindings are opaque.
+     * matched unit is a leaf, a unit of another key of the same class is an opaque leaf (the
+     * raw chain inside a decode is part of the decode), and rebindings are opaque.
      */
     private PirTerm mapUnits(PirTerm term, Key key, UnaryOperator<PirTerm> use) {
-        if (key.equals(keyOf(term, key.shape()))) return use.apply(term);
+        var found = keyOf(term, key.shape());
+        if (key.equals(found)) return use.apply(term);
+        if (found != null) return term;
         String variable = key.variable();
         var result = switch (term) {
             case PirTerm.Lam lam when lam.param().equals(variable) -> term;
@@ -544,10 +556,5 @@ public final class ValueConversionSharingPass {
         var location = positions.get(original);
         if (location != null) positions.put(replacement, location);
         return replacement;
-    }
-
-    /** The unit classes in round order, for tests and documentation. */
-    static List<Shape> rounds() {
-        return List.of(Shape.FIELD_CHAIN, Shape.FIELDS_PREFIX, Shape.VALUE_CONVERSION);
     }
 }

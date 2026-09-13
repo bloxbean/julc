@@ -323,6 +323,100 @@ final class O15ProjectionSharingFixtures {
             }
             """;
 
+    /**
+     * 18: a sealed-interface field as switch scrutinee. The scrutinee is a raw chain evaluated
+     * once; the repeated {@code amount} in the first case body is shared inside that body; the
+     * fields prefix, common to the scrutinee and both bodies, is shared above the switch. Case
+     * pattern fields ({@code s.fee()}, {@code m.qty()}) reuse the match binders and are not chains.
+     */
+    static final String SWITCH_BRANCH = IMPORTS + """
+            class SwitchBranch {
+                sealed interface Kind permits Spend, Mint {}
+                record Spend(BigInteger fee) implements Kind {}
+                record Mint(BigInteger qty) implements Kind {}
+                record Order(BigInteger amount, Kind kind) {}
+                static BigInteger switchBranch(Order o) {
+                    return switch (o.kind()) {
+                        case Spend s -> o.amount().add(o.amount()).add(s.fee());
+                        case Mint m -> o.amount().subtract(m.qty());
+                    };
+                }
+            }
+            """;
+
+    /** 19: the map decode arm ({@code unMapData}) leads and is shared; {@code total} is exclusive per branch, the prefix shared. */
+    static final String MAP_FIELD = IMPORTS + """
+            import org.julclang.core.types.JulcMap;
+            class MapField {
+                record Wallet(JulcMap<BigInteger, BigInteger> balances, BigInteger total) {}
+                static BigInteger mapField(Wallet w) {
+                    if (w.balances().isEmpty()) {
+                        return w.total();
+                    }
+                    return w.total().add(BigInteger.valueOf(w.balances().size()));
+                }
+            }
+            """;
+
+    /** 20: an {@code error} guard precedes the projections; sharing happens after the guard, never above it. */
+    static final String ERROR_GUARD = IMPORTS + """
+            class ErrorGuard {
+            """ + BOX + """
+                static BigInteger errorGuard(Box b, boolean flag) {
+                    if (flag) {
+                        Builtins.error();
+                    }
+                    return b.amount().add(b.amount());
+                }
+            }
+            """;
+
+    /** 21: the root escapes to a helper between two leading projections: Data is immutable, so the pair is shared. */
+    static final String ESCAPE = IMPORTS + """
+            class Escape {
+            """ + BOX + """
+                static BigInteger helper(Box b) {
+                    return b.amount().add(BigInteger.ONE);
+                }
+                static BigInteger escape(Box b) {
+                    return b.amount().add(helper(b)).add(b.amount());
+                }
+            }
+            """;
+
+    /** 22: a saturated call runs first and nothing binds its result: the two later projections do not lead (documented limitation). */
+    static final String CALL_BETWEEN = IMPORTS + """
+            class CallBetween {
+            """ + BOX + """
+                static BigInteger helper(Box b) {
+                    return b.amount().add(BigInteger.ONE);
+                }
+                static BigInteger callBetween(Box b) {
+                    return helper(b).add(b.amount()).add(b.amount());
+                }
+            }
+            """;
+
+    /** 23: a trace between the two projections: the binding sits where the first projection was, the trace order is kept. */
+    static final String TRACE_BETWEEN = IMPORTS + """
+            class TraceBetween {
+            """ + BOX + """
+                static BigInteger traceBetween(Box b) {
+                    BigInteger first = b.amount();
+                    ContextsLib.trace("between");
+                    return first.add(b.amount());
+                }
+            }
+            """;
+
+    static final PlutusData SPEND_FIVE = PlutusData.constr(0, FIVE);
+    static final PlutusData MINT_FIVE = PlutusData.constr(1, FIVE);
+    /** A wallet with two balances and total 7. */
+    static final PlutusData WALLET_TWO = wallet(PlutusData.map(
+            new PlutusData.Pair(PlutusData.integer(1), PlutusData.integer(2)),
+            new PlutusData.Pair(PlutusData.integer(3), PlutusData.integer(4))), TEN);
+    static final PlutusData WALLET_EMPTY = wallet(PlutusData.map(), TEN);
+
     private static final List<Input> BOX_LIMIT = List.of(
             Input.ok("above", BOX_OPEN, FIVE),
             Input.ok("below", BOX_OPEN, TEN),
@@ -397,7 +491,45 @@ final class O15ProjectionSharingFixtures {
                     Input.ok("two-outputs", txInfo(PlutusData.constr(0), PlutusData.constr(0))),
                     Input.ok("no-outputs", txInfo()),
                     Input.fails("not-a-record", NOT_A_RECORD),
-                    Input.fails("empty-record", EMPTY_RECORD))));
+                    Input.fails("empty-record", EMPTY_RECORD))),
+            // Chains: the scrutinee and three amounts before; the scrutinee, the shared amount
+            // and the Mint body's amount after, all rooted at the shared prefix.
+            new Fixture("SWITCH_BRANCH", SWITCH_BRANCH, "switchBranch", true, 1, 1, 4, 3, List.of(
+                    Input.ok("spend", order(7, SPEND_FIVE)),
+                    Input.ok("mint", order(7, MINT_FIVE)),
+                    Input.fails("not-a-record", NOT_A_RECORD),
+                    Input.fails("empty-record", EMPTY_RECORD),
+                    Input.fails("bad-kind", order(7, PlutusData.integer(1))),
+                    Input.fails("unknown-kind", order(7, PlutusData.constr(2, FIVE))),
+                    Input.fails("bad-amount-spend", PlutusData.constr(0, PlutusData.bytes(OWNER), SPEND_FIVE)))),
+            new Fixture("MAP_FIELD", MAP_FIELD, "mapField", true, 1, 1, 4, 3, List.of(
+                    Input.ok("two", WALLET_TWO),
+                    Input.ok("empty", WALLET_EMPTY),
+                    Input.fails("not-a-record", NOT_A_RECORD),
+                    Input.fails("empty-record", EMPTY_RECORD),
+                    Input.fails("bad-balances", PlutusData.constr(0, PlutusData.integer(1), TEN)))),
+            new Fixture("ERROR_GUARD", ERROR_GUARD, "errorGuard", true, 1, 0, 2, 1, List.of(
+                    Input.ok("pass", BOX_OPEN, FALSE),
+                    Input.fails("guard", BOX_OPEN, TRUE),
+                    Input.fails("not-a-record", NOT_A_RECORD, FALSE),
+                    Input.fails("guard-not-a-record", NOT_A_RECORD, TRUE),
+                    Input.fails("bad-amount", BAD_AMOUNT, FALSE))),
+            new Fixture("ESCAPE", ESCAPE, "escape", true, 1, 0, 3, 2, List.of(
+                    Input.ok("open", BOX_OPEN),
+                    Input.ok("closed", BOX_CLOSED),
+                    Input.fails("not-a-record", NOT_A_RECORD),
+                    Input.fails("empty-record", EMPTY_RECORD),
+                    Input.fails("bad-amount", BAD_AMOUNT))),
+            new Fixture("CALL_BETWEEN", CALL_BETWEEN, "callBetween", false, 0, 0, 3, 3, BOX_ONLY),
+            new Fixture("TRACE_BETWEEN", TRACE_BETWEEN, "traceBetween", true, 1, 0, 2, 1, BOX_ONLY));
+
+    static PlutusData order(long amount, PlutusData kind) {
+        return PlutusData.constr(0, PlutusData.integer(amount), kind);
+    }
+
+    static PlutusData wallet(PlutusData balances, PlutusData total) {
+        return PlutusData.constr(0, balances, total);
+    }
 
     static PlutusData box(long amount, PlutusData items, byte[] owner, boolean open, String label, long x, long y) {
         return box(PlutusData.integer(amount), items, owner, open ? TRUE : FALSE, utf8(label), x, y);

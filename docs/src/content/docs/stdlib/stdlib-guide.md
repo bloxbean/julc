@@ -1330,7 +1330,8 @@ convert back with `toData` only at a Data boundary.
 > `out.value()` repeated on one loop item, or two different fields of one
 > variable (`txInfo.outputs()` and `txInfo.fee()`) are bound once per scope at
 > the default level when the first of them is already the first thing the scope
-> evaluates. The output is byte-identical to binding the field yourself, and
+> evaluates. For a repeated field the output is byte-identical to binding the
+> field yourself (the fields-list sharing has no source-level spelling), and
 > results, traces and failures never change. A projection that only appears in
 > one branch of a conditional, or that sits behind a saturated call or a trace,
 > is left as written; binding it explicitly before the branch remains the way

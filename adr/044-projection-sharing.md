@@ -87,13 +87,14 @@ Definitions, for a scope term `S` and a variable `x` not rebound between `S` and
 Two occurrences are the same unit when their key, the root variable's *name*, the class and
 for chains `(k, D)`, is equal; the `Var` node's type annotation is never compared (the loop
 lowering annotates the same name differently at different sites). Trivial evaluations and
-**leads** are as in ADR-042, with one addition: the body of a `LetRec` whose binding values are
-all lambdas can lead, provided no binding name is the unit's variable or a wrapper alias.
-Evaluating such a binding performs a fixed number of beta steps over lambda values and builds
-the recursive closures; it cannot fail, trace or run user code (the UPLC optimiser drops an
-unused one on the same argument, `isFixpointOfFunction`). The per-site `JulcList.get` lowering
-wraps each site in exactly such a binding, so without this addition `b.items().get(0)` beside
-`b.items().get(1)` could never lead.
+**leads** are as in ADR-042, with one addition: the body of a single-binding `LetRec` whose
+value is a lambda can lead, provided the binding's name is neither the unit's variable nor a
+wrapper alias. Such a binding lowers to `Z (λf. lambda)`; evaluating it performs a fixed number
+of beta steps over lambda values and builds the recursive closure, and cannot fail, trace or
+run user code (the UPLC optimiser drops an unused one on exactly this argument,
+`isFixpointOfFunction`). The multi-binding Bekić lowering is not claimed and never leads. The
+per-site `JulcList.get` lowering wraps each site in exactly such a single binding, so without
+this addition `b.items().get(0)` beside `b.items().get(1)` could never lead.
 
 **Dead bindings.** A `Let` (or single-binding `LetRec`) whose value is a lambda and whose name
 is not referenced by the live part of its body, computed transitively with the dead bindings of
@@ -177,9 +178,9 @@ CPU; a path pays only when it evaluates one site of a unit that another path eva
    prefix first would leave the chains rooted at a variable that the chain matcher does not
    recognise; sharing chains first and then the prefix over what remains is both simpler and
    never worse.
-3. The recursive-binding-of-lambdas leading rule and the dead-binding exclusion apply to all
-   three classes. Both are neutral for the ADR-042 fixtures, whose suite runs with every rule
-   enabled and stays byte-identical.
+3. The single-recursive-binding leading rule and the dead-binding exclusion apply to all three
+   classes. Both are neutral for the ADR-042 fixtures, whose suite runs with every rule enabled
+   and stays byte-identical.
 4. Add `CompilerOptions.disableOptimizationRule(ruleId)` and `CompilationContext.ruleEnabled`.
    The three PIR passes consult it inside their gates; `CompilationContext.resolve` validates
    each id against `switchableOptimizationRules()` and fails with `JULC0043`
@@ -204,7 +205,10 @@ CPU; a path pays only when it evaluates one site of a unit that another path eva
   fail to match. Names are keyed; structure is matched.
 - **Counting the raw sub-chain inside a decode as its own unit.** It would be bound first,
   leaving the decode unshared, and it double-counts. A matched unit is a leaf for both the
-  collector and the rewriter.
+  collector and the rewriter: a unit of another key of the same class is opaque to the leading
+  walk, the counter and the mapper, so the output shape of one scope does not depend on which
+  keys other scopes happen to contribute (the first review found the rewriter descending into
+  decodes for a raw key; pinned by a direct-PIR probe).
 - **Sharing inside dead library bindings** (ADR-042's behaviour, inherited by accident). Every
   program importing `ContextsLib` recorded O15 provenance for helpers it never called. Excluded
   by the transitive dead-binding test; the UPLC optimiser drops those bindings anyway.
@@ -298,6 +302,13 @@ asserted equal to Java. Full table in `adr/evidence/044-projection-sharing.md`.
 | FIELD_THEN_INDEX (safe) | 139 → 130 | three items | 3,411,618 → 2,878,292 | −533,326 |
 | LEDGER (`outputs` twice, `fee` per branch) | 132 → 114 | two outputs | 4,964,523 → 4,086,954 | −877,569 |
 | LEDGER | | no outputs | 1,860,985 → 1,694,405 | −166,580 |
+| SWITCH_BRANCH (projection as scrutinee, pair in a case body, prefix above) | 84 → 70 | spend | 2,339,339 → 1,726,285 | −613,054 |
+| MAP_FIELD (`unMapData` arm, prefix) | 111 → 97 | two entries | 4,135,925 → 3,518,992 | −616,933 |
+| ERROR_GUARD (shared after the guard) | 55 → 48 | pass | 1,821,072 → 1,422,598 | −398,474 |
+| ERROR_GUARD | | guard taken | 762,916 → 762,916 | 0 |
+| ESCAPE (root passed to a helper between two sites) | 55 → 48 | valid | 2,091,146 → 1,692,672 | −398,474 |
+| CALL_BETWEEN (call first, nothing binds it) | unchanged | all | unchanged | 0 (not shared) |
+| TRACE_BETWEEN (trace between two sites) | 51 → 42 | valid | 1,453,754 → 1,007,280 | −446,474, trace order kept |
 
 Validator shape (`@MintingValidator`, `ctx.txInfo().outputs()` twice and `ctx.txInfo().fee()`,
 record redeemer root cached by the boundary): 429 → 380 bytes; two outputs 11,627,269 →
@@ -312,8 +323,12 @@ One milestone, delivered on `feat/120-projection-sharing` stacked on ADR-043:
 
 1. Per-rule switch, `JULC0043`, O9 goldens pinned with O15 off; census of every earlier
    golden, hash pin and Blaster fixture (only O9's `FIELD` collides).
-2. Fixtures final, goldens captured at `1fd98c93` from a detached worktree before any pass
-   change (the switch alone reproduced them byte-for-byte).
+2. Fixture sources final, goldens captured at `1fd98c93` from a detached worktree before any
+   pass change (the switch alone reproduced them byte-for-byte; the chain-count expectations
+   and javadocs were corrected afterwards and are not inputs to the capture). The six
+   fixtures added after review were captured the same way, with the first 144 rows
+   reproduced byte-for-byte; the matrix test also reproduces every golden row at the final
+   commit with the rule switched off.
 3. Pass generalisation with the ADR-042 suite byte-identical; dead-binding exclusion and
    recursive-binding leading found by the O8 suite and the handoff fixture respectively.
 4. Fixture matrix on Java, Truffle and Scalus; exact cost model; validator shape; direct-PIR
@@ -324,14 +339,18 @@ One milestone, delivered on `feat/120-projection-sharing` stacked on ADR-043:
 
 ## Verification
 
-- `O15ProjectionSharingTest` (`pair-case-backends`, Java/Truffle/Scalus): 18 fixtures × 4
-  levels × source maps off/on against the goldens; provenance; `#field-`/`#fields-` binding
-  counts and chain-unit counts on the emitted PIR; every shared binding is a unit and never
-  wraps a lambda; the O15-to-O9 handoff at the costed profile; byte identity with the manual
-  binding; exact cost model on six unit shapes; validator shape on a real script context;
-  direct-PIR probes (Bool unit, distinct arms, prefix only, chain on chain, `Let`/`Lam`/pattern
-  rebinding, dead and transitively dead bindings, dead `LetRec`, live helper, round order with
-  O8, each switch, NONE/BASELINE identity).
+- `O15ProjectionSharingTest` (`pair-case-backends`, Java/Truffle/Scalus): 24 fixtures × 4
+  levels × source maps off/on against the goldens, each golden reproduced with the rule off;
+  provenance; `#field-`/`#fields-` binding counts and chain-unit counts on the emitted PIR;
+  every shared binding is a unit and never wraps a lambda; strictly smaller bytes at the safe
+  level; the O15-to-O9 handoff at the costed profile; byte identity with the manual binding;
+  exact cost model on seven unit shapes (including the map arm); validator shape on a real
+  script context; direct-PIR probes (Bool unit, distinct arms, prefix only, chain on chain,
+  raw beside decoded, error arm, source positions, `Let`/`Lam`/pattern rebinding, dead and
+  transitively dead bindings, dead `LetRec`, single and mutual recursive bindings, live
+  helper, round order with O8, each switch, NONE/BASELINE identity). Fixtures cover the
+  sealed-switch scrutinee and case body, the map arm, an `error` guard, an escaping root, a
+  call between two projections and a trace between two projections.
 - `OptimizationConfigurationTest`: switchable ids, `JULC0043`, blank id, O8 off reproduces the
   pre-O8 bytes, disabling an inactive rule is inert.
 - `O8ValueSharingTest` with every rule enabled (byte-identical goldens); `O9ListIndexPromotionTest`
@@ -359,6 +378,15 @@ One milestone, delivered on `feat/120-projection-sharing` stacked on ADR-043:
   covers the common case (uncalled library methods); a unit shared in a live helper that the
   optimiser later inlines away still records provenance.
 - `compareTo` on a projection evaluates its receiver twice by construction; O15 now shares
-  it, but the generator could bind the receiver once at every level.
+  it, but the generator could bind the receiver once at every level (filed separately).
+- Leading through a multi-binding (Bekić) `LetRec`: sound if that lowering is also a fixed
+  number of steps over values, which nobody has verified; single bindings cover every
+  generated shape on the corpus.
 - Exposing the per-rule switch in the Gradle plugin and CLI. Deliberately not done: the level
   is the supported rollout control and the switch is a review instrument.
+- The self-alias `let x = x` the loop lowering emits for pre-loop variables is opaque to the
+  pass (ADR-043's promotion sees through it), so projections before and after a for-each form
+  two scopes. Sharing across it would be sound; left for a follow-up.
+- A field used both raw and decoded in one scope (`b.inner()` passed on and `(BigInteger)
+  b.inner()` cast, say) shares each form as its own unit and evaluates the chain once per
+  form; re-rooting the decode at the raw binding would need a decode-of-variable unit class.

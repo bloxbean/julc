@@ -13,6 +13,7 @@ import org.julclang.core.Program;
 import org.julclang.core.Term;
 import org.julclang.core.flat.UplcFlatDecoder;
 import org.julclang.core.flat.UplcFlatEncoder;
+import org.julclang.core.source.SourceLocation;
 import org.julclang.stdlib.StdlibRegistry;
 import org.julclang.vm.EvalOptions;
 import org.julclang.vm.EvalResult;
@@ -26,6 +27,7 @@ import java.io.IOException;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.util.HexFormat;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
@@ -36,6 +38,7 @@ import static org.julclang.compiler.O15ProjectionSharingFixtures.BOX_OPEN;
 import static org.julclang.compiler.O15ProjectionSharingFixtures.EMPTY_RECORD;
 import static org.julclang.compiler.O15ProjectionSharingFixtures.FIXTURES;
 import static org.julclang.compiler.O15ProjectionSharingFixtures.NOT_A_RECORD;
+import static org.julclang.compiler.O15ProjectionSharingFixtures.WALLET_TWO;
 import static org.julclang.compiler.O15ProjectionSharingFixtures.txInfo;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -97,14 +100,23 @@ class O15ProjectionSharingTest {
 
                     var old = golden(i, level, maps);
                     var oldBytes = UplcFlatEncoder.encodeProgram(old);
+                    // The golden is reproducible at this commit with the rule switched off.
+                    assertArrayEquals(oldBytes, UplcFlatEncoder.encodeProgram(
+                            compile(fixture.source(), fixture.method(), level, maps, ValueConversionSharingPass.PROJECTION_RULE).program()),
+                            label + " with the rule off");
                     if (!expectRule) {
                         assertArrayEquals(oldBytes, bytes, label);
                     } else {
                         // Sharing k sites of a chain of n builtin applications removes (k-1)·n
                         // applications (and their forces) for one lambda, one application and k
-                        // variable uses, so a shared program is never larger than the original plus
-                        // one byte of alignment; source-map builds skip the UPLC optimiser.
-                        if (!maps) assertTrue(bytes.length <= oldBytes.length + 1, label + " " + oldBytes.length + " -> " + bytes.length);
+                        // variable uses, so a shared program is strictly smaller at the safe level;
+                        // at the costed level the O9 handoff may add an array conversion, and
+                        // source-map builds skip the UPLC optimiser.
+                        if (!maps && level == OptimizationLevel.PV11_SAFE) {
+                            assertTrue(bytes.length < oldBytes.length, label + " " + oldBytes.length + " -> " + bytes.length);
+                        } else if (!maps) {
+                            assertTrue(bytes.length <= oldBytes.length + 1, label + " " + oldBytes.length + " -> " + bytes.length);
+                        }
                         assertNotEquals(JulcScriptAdapter.scriptHash(old), JulcScriptAdapter.scriptHash(program), label);
                     }
                     for (var input : fixture.inputs()) {
@@ -245,6 +257,56 @@ class O15ProjectionSharingTest {
         assertEquivalent(nested, BAD_INNER);
         assertEquivalent(nested, NOT_A_RECORD);
 
+        // 4b. A matched unit is a leaf for the rewriter too: with a bare raw chain and a decode
+        //     of the same field in one scope, the raw binding takes only the bare sites, the
+        //     decode is shared as its own unit (one unIData survives), and the prefix common to
+        //     both is shared above them; the shape does not depend on candidate order.
+        var rawAndDecoded = new PirTerm.Let("a", raw(x, 0), new PirTerm.Let("b", raw(x, 0), add(intField(x, 0), intField(x, 0))));
+        var loweredRaw = assertInstanceOf(PirTerm.Let.class, lower(rawAndDecoded, OptimizationLevel.PV11_SAFE));
+        assertEquals("#fields-0", loweredRaw.name());
+        assertEquals(prefix(x), loweredRaw.value());
+        var rawLet = assertInstanceOf(PirTerm.Let.class, loweredRaw.body());
+        assertEquals("#field-0", rawLet.name());
+        assertEquals(new ChainKey("#fields-0", 0, "raw"), chainKey(rawLet.value()));
+        var decodedLet = assertInstanceOf(PirTerm.Let.class, rawLet.body());
+        assertEquals("#field-1", decodedLet.name());
+        assertEquals(new ChainKey("#fields-0", 0, "UnIData"), chainKey(decodedLet.value()));
+        assertEquals(1, count(loweredRaw, t -> t instanceof PirTerm.App app && isBuiltin(app.function(), DefaultFun.UnIData)));
+        assertEquals(2, countChains(loweredRaw));
+        assertEquals(0, countPrefixes(loweredRaw.body()));
+        assertEquivalent(rawAndDecoded, BOX_OPEN);
+        assertEquivalent(rawAndDecoded, EMPTY_RECORD);
+
+        // 4c. An error arm never leads: the pair in the other arm is shared inside that arm.
+        var errorGuard = new PirTerm.IfThenElse(flag, new PirTerm.Error(INT), add(intField(x, 0), intField(x, 0)));
+        var loweredError = assertInstanceOf(PirTerm.IfThenElse.class, lower(errorGuard, OptimizationLevel.PV11_SAFE));
+        assertEquals(errorGuard.thenBranch(), loweredError.thenBranch());
+        assertEquals("#field-0", assertInstanceOf(PirTerm.Let.class, loweredError.elseBranch()).name());
+        assertEquals(1, countChains(loweredError));
+        assertEquivalent(errorGuard, BOX_OPEN);
+
+        // 4d. Source positions: the scope's location moves to the inserted binding, each
+        //     replaced site's location to the variable that replaced it; the unit keeps its own.
+        var siteA = intField(x, 0);
+        var siteB = intField(x, 0);
+        var scope = add(siteA, siteB);
+        var scopeAt = new SourceLocation("Scope.java", 1, 1, "scope");
+        var siteAAt = new SourceLocation("Scope.java", 2, 1, "a");
+        var siteBAt = new SourceLocation("Scope.java", 3, 1, "b");
+        var positions = new IdentityHashMap<PirTerm, SourceLocation>();
+        positions.put(scope, scopeAt);
+        positions.put(siteA, siteAAt);
+        positions.put(siteB, siteBAt);
+        var located = new ValueConversionSharingPass(context(OptimizationLevel.PV11_SAFE), positions).lower(closed(scope, BOX_OPEN));
+        var locatedLet = assertInstanceOf(PirTerm.Let.class, stripClosing(located.term()));
+        assertEquals(scopeAt, located.positions().get(locatedLet));
+        assertSame(siteA, locatedLet.value());
+        assertEquals(siteAAt, located.positions().get(locatedLet.value()));
+        var uses = new java.util.ArrayList<PirTerm>();
+        walkUser(locatedLet.body(), t -> { if (t instanceof PirTerm.Var v && v.name().equals("#field-0")) uses.add(t); });
+        assertEquals(2, uses.size());
+        assertEquals(List.of(siteAAt, siteBAt), uses.stream().map(located.positions()::get).toList());
+
         // 5. Rebinding: a use under a Let, lambda or pattern binder named x belongs to that binder.
         var underLet = add(intField(x, 0), new PirTerm.Let("x", y, intField(x, 0)));
         assertSame(underLet, lower(underLet, OptimizationLevel.PV11_SAFE));
@@ -273,6 +335,27 @@ class O15ProjectionSharingTest {
         assertSame(transitivelyDead, lower(transitivelyDead, OptimizationLevel.PV11_SAFE));
         var deadLoop = new PirTerm.LetRec(List.of(new PirTerm.Binding("loop", twice)), intField(x, 0));
         assertSame(deadLoop, lower(deadLoop, OptimizationLevel.PV11_SAFE));
+        // A single recursive binding of a lambda is a trivial prefix (its body can lead); the
+        // multi-binding lowering is not claimed and blocks.
+        var callLoop = new PirTerm.App(new PirTerm.Var("loop", DATA), intField(x, 0));
+        var singleRecursive = add(new PirTerm.LetRec(List.of(new PirTerm.Binding("loop", twice)), callLoop), intField(x, 0));
+        var loweredSingle = assertInstanceOf(PirTerm.Let.class, lower(singleRecursive, OptimizationLevel.PV11_SAFE));
+        assertEquals("#field-0", loweredSingle.name());
+        assertEquivalent(singleRecursive, BOX_OPEN);
+        var mutual = add(new PirTerm.LetRec(List.of(new PirTerm.Binding("loop", twice),
+                new PirTerm.Binding("other", new PirTerm.Lam("e", DATA, new PirTerm.App(new PirTerm.Var("loop", DATA), new PirTerm.Var("e", DATA))))),
+                callLoop), intField(x, 0));
+        var loweredMutual = assertInstanceOf(PirTerm.App.class, lower(mutual, OptimizationLevel.PV11_SAFE));
+        // Only the live lambda's own pair of d projections is shared; the two x chains stay.
+        assertEquals(1, countLets(loweredMutual, "#field-"));
+        assertEquals(3, countChains(loweredMutual));
+        assertEquivalent(mutual, BOX_OPEN);
+        var transitivelyDeadContext = context(OptimizationLevel.PV11_SAFE);
+        lowerWith(transitivelyDeadContext, closed(transitivelyDead, BOX_OPEN));
+        assertFalse(transitivelyDeadContext.optimizationReport().appliedRules().contains(ValueConversionSharingPass.PROJECTION_RULE));
+        var deadLoopContext = context(OptimizationLevel.PV11_SAFE);
+        lowerWith(deadLoopContext, closed(deadLoop, BOX_OPEN));
+        assertFalse(deadLoopContext.optimizationReport().appliedRules().contains(ValueConversionSharingPass.PROJECTION_RULE));
         var liveHelper = new PirTerm.Let("helper", twice, new PirTerm.App(new PirTerm.Var("helper", DATA), x));
         var liveContext = context(OptimizationLevel.PV11_SAFE);
         var loweredLive = assertInstanceOf(PirTerm.Let.class, stripClosing(
@@ -319,26 +402,27 @@ class O15ProjectionSharingTest {
         long stepMemory = overhead.memoryUnits() / 3;
         assertEquals(overhead.cpuSteps(), 3 * step);
         assertEquals(overhead.memoryUnits(), 3 * stepMemory);
-        record Shape(String name, List<PirTerm> sites, PirTerm unit) {}
+        record Shape(String name, List<PirTerm> sites, PirTerm unit, PlutusData input) {}
         var shapes = List.of(
-                new Shape("integer-depth-0", List.of(intField(x, 0), intField(x, 0), intField(x, 0)), intField(x, 0)),
-                new Shape("raw-depth-5", List.of(raw(x, 5), raw(x, 5)), raw(x, 5)),
-                new Shape("list-depth-1", List.of(listField(x, 1), listField(x, 1)), listField(x, 1)),
-                new Shape("bool-depth-3", List.of(boolField(x, 3), boolField(x, 3)), boolField(x, 3)),
-                new Shape("bytes-depth-2", List.of(bytesRaw(x, 2), bytesRaw(x, 2)), bytesRaw(x, 2)),
-                new Shape("prefix", List.of(intField(x, 0), bytesRaw(x, 2), raw(x, 5)), prefix(x)));
+                new Shape("integer-depth-0", List.of(intField(x, 0), intField(x, 0), intField(x, 0)), intField(x, 0), BOX_OPEN),
+                new Shape("raw-depth-5", List.of(raw(x, 5), raw(x, 5)), raw(x, 5), BOX_OPEN),
+                new Shape("list-depth-1", List.of(listField(x, 1), listField(x, 1)), listField(x, 1), BOX_OPEN),
+                new Shape("bool-depth-3", List.of(boolField(x, 3), boolField(x, 3)), boolField(x, 3), BOX_OPEN),
+                new Shape("bytes-depth-2", List.of(bytesRaw(x, 2), bytesRaw(x, 2)), bytesRaw(x, 2), BOX_OPEN),
+                new Shape("map-depth-0", List.of(mapField(x, 0), mapField(x, 0)), mapField(x, 0), WALLET_TWO),
+                new Shape("prefix", List.of(intField(x, 0), bytesRaw(x, 2), raw(x, 5)), prefix(x), BOX_OPEN));
         for (var shape : shapes) {
             // The unit's own cost including the lookup of its root variable.
-            var unitCost = budget(unoptimized(closed(shape.unit(), BOX_OPEN), OptimizationLevel.BASELINE));
-            var rootCost = budget(unoptimized(closed(x, BOX_OPEN), OptimizationLevel.BASELINE));
+            var unitCost = budget(unoptimized(closed(shape.unit(), shape.input()), OptimizationLevel.BASELINE));
+            var rootCost = budget(unoptimized(closed(x, shape.input()), OptimizationLevel.BASELINE));
             long unitCpu = unitCost.cpuSteps() - rootCost.cpuSteps() + step;
             long unitMemory = unitCost.memoryUnits() - rootCost.memoryUnits() + stepMemory;
             System.out.println("PROJECTION_SHARING_UNIT " + shape.name() + " cpu=" + unitCpu + " mem=" + unitMemory);
             for (int sites = 2; sites <= shape.sites().size(); sites++) {
                 PirTerm body = zero();
                 for (int i = sites - 1; i >= 0; i--) body = new PirTerm.Let("site" + i, shape.sites().get(i), body);
-                var before = budget(unoptimized(closed(body, BOX_OPEN), OptimizationLevel.BASELINE));
-                var after = budget(unoptimized(closed(body, BOX_OPEN), OptimizationLevel.PV11_SAFE));
+                var before = budget(unoptimized(closed(body, shape.input()), OptimizationLevel.BASELINE));
+                var after = budget(unoptimized(closed(body, shape.input()), OptimizationLevel.PV11_SAFE));
                 String label = shape.name() + "/" + sites;
                 assertEquals(before.cpuSteps() + (2 + sites) * step - (sites - 1) * unitCpu, after.cpuSteps(), label);
                 assertEquals(before.memoryUnits() + (2 + sites) * stepMemory - (sites - 1) * unitMemory, after.memoryUnits(), label);
@@ -458,6 +542,10 @@ class O15ProjectionSharingTest {
         return PirHelpers.wrapDecode(raw(root, index), new PirType.BoolType());
     }
 
+    static PirTerm mapField(PirTerm root, int index) {
+        return PirHelpers.wrapDecode(raw(root, index), new PirType.MapType(INT, INT));
+    }
+
     static PirTerm unValue(PirTerm data) {
         return new PirTerm.App(new PirTerm.Builtin(DefaultFun.UnValueData), data);
     }
@@ -527,6 +615,11 @@ class O15ProjectionSharingTest {
     }
 
     // --- observation helpers over the emitted PIR ---
+    // These matchers restate the pass's unit grammar from the ADR, so a shared misreading would
+    // make the structural counts agree with the pass; the three-VM result, trace, failure-text
+    // and budget assertions, and the golden bytes, carry the semantic weight. Library bindings
+    // are recognised by their fully qualified names, not by the pass's liveness notion: a live
+    // library helper's inside is invisible to the counts but visible to provenance.
 
     record ChainKey(String root, int depth, String arm) {}
 
@@ -648,10 +741,11 @@ class O15ProjectionSharingTest {
 
     // --- compilation and evaluation ---
 
-    static CompileResult compile(String source, String method, OptimizationLevel level, boolean maps) {
-        return new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()
-                .setOptimizationLevel(level).setSourceMapEnabled(maps).setOptimizationCostProfile(PROFILE))
-                .compileMethod(source, method);
+    static CompileResult compile(String source, String method, OptimizationLevel level, boolean maps, String... disabledRules) {
+        var options = new CompilerOptions()
+                .setOptimizationLevel(level).setSourceMapEnabled(maps).setOptimizationCostProfile(PROFILE);
+        for (var rule : disabledRules) options.disableOptimizationRule(rule);
+        return new JulcCompiler(StdlibRegistry.defaultRegistry(), options).compileMethod(source, method);
     }
 
     /** The validator entry point with its PIR captured (the plain {@code compile} drops it). */
