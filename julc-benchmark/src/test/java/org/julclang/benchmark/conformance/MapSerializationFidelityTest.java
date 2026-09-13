@@ -1,14 +1,14 @@
-package com.bloxbean.cardano.julc.benchmark.conformance;
+package org.julclang.benchmark.conformance;
 
-import com.bloxbean.cardano.julc.core.Constant;
-import com.bloxbean.cardano.julc.core.DefaultFun;
-import com.bloxbean.cardano.julc.core.PlutusData;
-import com.bloxbean.cardano.julc.core.Program;
-import com.bloxbean.cardano.julc.core.Term;
-import com.bloxbean.cardano.julc.vm.EvalOptions;
-import com.bloxbean.cardano.julc.vm.EvalResult;
-import com.bloxbean.cardano.julc.vm.JulcVm;
-import com.bloxbean.cardano.julc.vm.OptimizationCostProfiles;
+import org.julclang.core.Constant;
+import org.julclang.core.DefaultFun;
+import org.julclang.core.PlutusData;
+import org.julclang.core.Program;
+import org.julclang.core.Term;
+import org.julclang.vm.EvalOptions;
+import org.julclang.vm.EvalResult;
+import org.julclang.vm.JulcVm;
+import org.julclang.vm.OptimizationCostProfiles;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -20,9 +20,12 @@ import java.util.stream.Stream;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * #55: builtin serialization and VM argument conversion preserve map order and duplicates.
- * Serialized-program read-back uses the separate core CBOR decoder, whose duplicate-key
- * limitation was deferred in #54; that path is outside this backend regression suite.
+ * #55: builtin serialization and VM argument conversion preserve map order and duplicates
+ * on every backend. Serialized-program (FLAT) read-back of map literals, including the
+ * literal {@code serialiseData} bytes, is covered by {@link MapDecoderProgramFidelityTest}
+ * since the ADR-037 / PR #127 decoder fix. This suite pins the paths that test does not
+ * exercise: serialization of a map supplied as a VM argument, the default Scalus
+ * configuration, and adapter identity round-trips of the supplied argument.
  */
 class MapSerializationFidelityTest {
     private record Vector(String name, PlutusData data, String expectedHex) {
@@ -52,20 +55,12 @@ class MapSerializationFidelityTest {
                 vectors().stream().map(vector -> Arguments.of(backend, vector)));
     }
 
-    private static Stream<Arguments> serializationCases() {
-        return Stream.of("Java", "Truffle", "Scalus").flatMap(backend ->
-                vectors().stream().flatMap(vector -> Stream.of("literal", "argument")
-                        .map(path -> Arguments.of(backend, vector, path))));
-    }
-
-    @ParameterizedTest(name = "{0}: {1}, {2}")
-    @MethodSource("serializationCases")
-    void serialiseDataPreservesExactMapBytes(String backend, Vector vector, String path) {
-        boolean argument = path.equals("argument");
-        var expression = Term.apply(Term.builtin(DefaultFun.SerialiseData),
-                argument ? Term.var(1) : Term.const_(Constant.data(vector.data())));
-        var program = Program.plutusV3(argument ? Term.lam("data", expression) : expression);
-        var result = evaluate(backend, program, argument ? List.of(vector.data()) : List.of());
+    @ParameterizedTest(name = "{0}: serialise supplied argument {1}")
+    @MethodSource("backendVectors")
+    void serialiseDataPreservesExactMapBytesOfSuppliedArgument(String backend, Vector vector) {
+        var program = Program.plutusV3(Term.lam("data",
+                Term.apply(Term.builtin(DefaultFun.SerialiseData), Term.var(1))));
+        var result = evaluate(backend, program, List.of(vector.data()));
         assertSerializedBytes(vector, result);
     }
 
