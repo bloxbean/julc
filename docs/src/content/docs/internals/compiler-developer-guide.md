@@ -206,9 +206,31 @@ Because O15 binds a projected list once, ADR-043 sees that binding as a proven
 list and promotes `b.items().get(i)` sites at the costed profile that it could
 not reach before.
 
+ADR-045 (O14) adds `ValueLiteralFoldPass`, which runs first among the PIR-to-PIR
+passes. `Builtins.emptyValue()` lowers to a UPLC Value constant, typed
+`NativeValueType`, gated by the `VALUE_CONSTANTS` capability;
+`Builtins.singletonValue(...)` and `lovelaceValue(...)` inline `InsertCoin` into
+it (intrinsics, so a program that does not call them is unchanged: a library
+source method would be compiled and bound whether called or not). The pass folds a
+saturated call of one of the seven Value builtins whose arguments are all
+literals (constants, or names bound once by a `Let` to a literal) into the
+literal it evaluates to, spelled as the bare builtin or through a once-bound
+wrapper whose body is that builtin over its parameters and constants (every
+`NativeValueLib` method). The result comes from `NativeValueSemantics` in
+`julc-core`, the same code `ValueBuiltins` runs in the VM: a call the semantics
+reject stays exactly as written, so failure text and failure point are
+untouched; a trace, an error or a runtime variable in argument position blocks
+the fold. Objective: the literal's FLAT encoding must not exceed the direct
+builtin application's (measured at fold time; `toData(empty)` and `fromData`
+of a Data literal with six or more tokens therefore stay). Gate: exact PV11
+target, safe level, the capability, the switch; provenance
+`pv11.o14.value-literal-fold`. No program compiled before ADR-045 contains a
+Value or Data literal argument to these builtins, so the rule is additive.
+
 Each PIR-to-PIR rule can be switched off on its own:
 `CompilerOptions.disableOptimizationRule(id)` for `pv11.o8.value-sharing`,
-`pv11.o15.projection-sharing` and `pv11.o9.list-to-array`
+`pv11.o15.projection-sharing`, `pv11.o9.list-to-array` and
+`pv11.o14.value-literal-fold`
 (`CompilationContext.switchableOptimizationRules()`); any other identifier
 fails with `JULC0043` before compilation, and the rules implemented inside
 `UplcGenerator`/`UplcOptimizer` are selected by the level only. The switch

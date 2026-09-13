@@ -1348,6 +1348,40 @@ convert back with `toData` only at a Data boundary.
 | `scale(scalar, value)` | Scale all quantities |
 | `fromData(mapData)` | Convert Map-encoded PlutusData to native Value |
 | `toData(value)` | Convert native Value back to Map encoding |
+| `Builtins.emptyValue()` | The empty Value, as a literal constant (ADR-045) |
+| `Builtins.singletonValue(policyId, tokenName, quantity)` | A Value holding exactly one token quantity |
+| `Builtins.lovelaceValue(quantity)` | A Value holding exactly that many lovelace |
+
+### Literals (ADR-045)
+
+`Builtins.emptyValue()`, `Builtins.singletonValue(...)` and `Builtins.lovelaceValue(...)`
+write a native Value down instead of decoding one. `emptyValue()` is a UPLC Value
+constant (it needs the PV11 target, which is where `NativeValueLib` is legal anyway);
+the other two are `insertCoin` into it and keep the builtin's rules: a zero quantity
+yields the empty Value, a non-zero quantity needs keys of at most 32 bytes and a
+quantity within the signed 128-bit range, and fails with `InsertCoin`'s text otherwise.
+They live in `Builtins` rather than `NativeValueLib` so that programs which do not use
+them keep their bytes at every level.
+
+```java
+JulcValue required = NativeValueLib.union(
+        Builtins.singletonValue(policyId, tokenName, BigInteger.ONE),
+        Builtins.lovelaceValue(BigInteger.valueOf(2_000_000)));
+return NativeValueLib.contains(NativeValueLib.fromData(minted), required);
+```
+
+> **Literal folding (ADR-045).** At the default `pv11-safe` level a call of any
+> `NativeValueLib` operation whose arguments are all literals (constants, or locals
+> bound once to a literal) is replaced at compile time by the Value, integer, boolean
+> or Data it evaluates to, computed by the same code the VM runs. The `required` Value
+> above is one constant in the script; `fromData` and `contains` stay because `minted`
+> is runtime data. A literal call the builtin would reject (a 33-byte key with a
+> non-zero quantity, an overflowing union or scale, a negative quantity under
+> `contains`) is left as written and fails at runtime exactly as before. Nothing is
+> folded at `none`/`baseline`, and no algebraic identity is applied: `scale(1, v)`
+> or `union(v, empty())` with a runtime `v` stay calls. Spell a negative literal
+> quantity as `new BigInteger("-5")`; `BigInteger.valueOf(-5)` is a runtime
+> subtraction, not a constant.
 
 ### Usage
 
