@@ -21,6 +21,22 @@ jobs:
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v4
 
+    - name: Read project version
+      id: version
+      shell: bash
+      run: |
+        set -euo pipefail
+        VERSION=$(./gradlew -q properties | awk '/^version:/ { print $2; exit }')
+        if [ "${GITHUB_REF_NAME}" != "v${VERSION}" ]; then
+          echo "::error::Git tag ${GITHUB_REF_NAME} does not match Gradle version ${VERSION}" >&2
+          exit 1
+        fi
+        if [[ "$VERSION" == *-SNAPSHOT* ]]; then
+          echo "::error::Release tags require a non-SNAPSHOT version. Got: $VERSION" >&2
+          exit 1
+        fi
+        echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
     - name: Build
       run: ./gradlew clean build --stacktrace
 
@@ -30,8 +46,50 @@ jobs:
         echo "${{ secrets.SIGNING_KEY }}" > ~/.gradle/secring.gpg.b64
         base64 -d ~/.gradle/secring.gpg.b64 > ~/.gradle/secring.gpg
 
-    - name: Publish to Maven Central
-      run: ./gradlew publishToSonatype closeSonatypeStagingRepository -Psigning.keyId=${{ secrets.SIGNING_KEY_ID }} -Psigning.password=${{ secrets.SIGNING_PASSWORD }} -Psigning.secretKeyRingFile=$(echo ~/.gradle/secring.gpg) --warn --stacktrace
+    # Uploads a USER_MANAGED deployment and waits for Sonatype validation. It
+    # stops there: nothing is on Maven Central until a human publishes it, via
+    # publish-central.yml or the portal. See nmcpAggregation in build.gradle.
+    - name: Upload deployment to Maven Central staging
+      id: upload
+      shell: bash
       env:
         MAVEN_USERNAME: ${{ secrets.OSSRH_USERNAME }}
         MAVEN_PASSWORD: ${{ secrets.OSSRH_TOKEN }}
+      run: |
+        set -euo pipefail
+        # Do not add --warn here. It lowers Gradle below LIFECYCLE, which is
+        # the level nmcp reports the deployment id at, and the grep below
+        # would then fail every release after a successful upload.
+        ./gradlew publishAggregationToCentralPortal \
+          -Psigning.keyId=${{ secrets.SIGNING_KEY_ID }} \
+          -Psigning.password=${{ secrets.SIGNING_PASSWORD }} \
+          -Psigning.secretKeyRingFile=$HOME/.gradle/secring.gpg \
+          --stacktrace 2>&1 | tee upload.log
+        # The deployment id exists only in nmcp's output. Fail loudly if the
+        # log format changes rather than reporting a release with no id.
+        id=$(grep -oE "deployment bundle '[0-9a-f-]{36}'" upload.log \
+          | head -1 | grep -oE '[0-9a-f-]{36}' || true)
+        if [[ -z "$id" ]]; then
+          echo "::error::Upload succeeded but no deployment id was found in the log." >&2
+          exit 1
+        fi
+        echo "deployment-id=$id" >> "$GITHUB_OUTPUT"
+
+    - name: Record the pending deployment
+      shell: bash
+      env:
+        DEPLOYMENT_ID: ${{ steps.upload.outputs.deployment-id }}
+        VERSION: ${{ steps.version.outputs.version }}
+      run: |
+        set -euo pipefail
+        {
+          echo "## Maven Central deployment staged - NOT published"
+          echo
+          echo "Deployment \`$DEPLOYMENT_ID\` (\`julc:$VERSION\`) passed validation"
+          echo "and is waiting for a human."
+          echo
+          echo "Publish it through the approval-gated workflow:"
+          echo "https://github.com/$GITHUB_REPOSITORY/actions/workflows/publish-central.yml"
+          echo
+          echo "Or from the portal: https://central.sonatype.com/publishing/deployments"
+        } >> "$GITHUB_STEP_SUMMARY"

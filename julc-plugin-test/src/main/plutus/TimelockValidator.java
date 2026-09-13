@@ -1,4 +1,4 @@
-import com.bloxbean.cardano.julc.core.PlutusData;
+import org.julclang.core.PlutusData;
 
 /**
  * Timelock spending validator: checks that a deadline falls within

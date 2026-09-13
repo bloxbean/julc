@@ -265,7 +265,7 @@ sealed interface Shape {
 ### Internal Package Structure of julc-compiler
 
 ```
-com.bloxbean.cardano.julc.compiler/
+org.julclang.compiler/
 ├── JulcCompiler.java          # Main pipeline orchestrator 
 ├── LibraryCompiler.java       # Library compilation sub-pipeline 
 ├── CompileResult.java         # Compilation result record

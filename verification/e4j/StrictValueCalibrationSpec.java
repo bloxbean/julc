@@ -1,9 +1,9 @@
 package evidence;
 
-import com.bloxbean.cardano.julc.verification.dsl.*;
-import com.bloxbean.cardano.julc.verification.dsl.ir.*;
+import org.julclang.verification.dsl.*;
+import org.julclang.verification.dsl.ir.*;
 
-import static com.bloxbean.cardano.julc.verification.dsl.VerificationDsl.*;
+import static org.julclang.verification.dsl.VerificationDsl.*;
 
 /** Solver calibration only: retained results do not replace the positive theorem. */
 public final class StrictValueCalibrationSpec implements VerificationSpecification {

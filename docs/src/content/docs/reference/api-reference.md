@@ -463,7 +463,7 @@ Raw `PlutusData` variables support `.equals()` and `==`/`!=` operators using `Eq
 
 ## Standard Library Reference
 
-Import from `com.bloxbean.cardano.julc.stdlib.lib.*` in validators. See [Standard Library Guide](/stdlib/stdlib-guide/) for comprehensive documentation.
+Import from `org.julclang.stdlib.lib.*` in validators. See [Standard Library Guide](/stdlib/stdlib-guide/) for comprehensive documentation.
 
 ### ContextsLib
 
@@ -779,9 +779,9 @@ var result = JulcEval.forClass(MyHelper.class).call("methodName", arg1, arg2);
 ## Complete Example
 
 ```java
-import com.bloxbean.cardano.julc.onchain.annotation.*;
-import com.bloxbean.cardano.julc.onchain.ledger.*;
-import com.bloxbean.cardano.julc.core.PlutusData;
+import org.julclang.onchain.annotation.*;
+import org.julclang.onchain.ledger.*;
+import org.julclang.core.PlutusData;
 import java.math.BigInteger;
 
 @SpendingValidator

@@ -1,1 +1,1 @@
-com.bloxbean.cardano.julc.processor.JulcAnnotationProcessor
+org.julclang.processor.JulcAnnotationProcessor

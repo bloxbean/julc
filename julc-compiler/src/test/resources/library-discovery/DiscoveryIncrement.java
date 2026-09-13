@@ -1,7 +1,7 @@
 package example.cleanup;
 
 import java.math.BigInteger;
-import com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary;
+import org.julclang.stdlib.annotation.OnchainLibrary;
 
 @OnchainLibrary
 public class DiscoveryIncrement {

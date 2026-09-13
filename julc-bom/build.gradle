@@ -4,6 +4,12 @@ plugins {
     id 'signing'
 }
 
+// The root subprojects block returns before it reaches this module (java-platform
+// is incompatible with java-library), so the nmcp apply it performs for every
+// other publishing module does not happen here. Without this the BOM is still
+// published locally but silently drops out of the Central deployment.
+apply plugin: 'com.gradleup.nmcp'
+
 description = 'JuLC Bill of Materials — import this platform to align all JuLC module versions'
 
 javaPlatform {

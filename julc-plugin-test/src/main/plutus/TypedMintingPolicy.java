@@ -1,4 +1,4 @@
-import com.bloxbean.cardano.julc.core.PlutusData;
+import org.julclang.core.PlutusData;
 
 /**
  * Typed authorized minting policy using Milestone 6 typed access features.

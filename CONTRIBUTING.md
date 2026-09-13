@@ -86,7 +86,7 @@ If you find a bug or have a feature request, please [open a GitHub issue](https:
 | `julc-e2e-tests` | End-to-end tests (require Yaci Devkit) |
 | `julc-plugin-test` | Gradle plugin integration tests |
 
-All modules use the `com.bloxbean.cardano.julc.*` package convention.
+All modules use the `org.julclang.*` package convention.
 
 ## Development Workflow
 
@@ -177,7 +177,7 @@ JUnit 5 (Jupiter) with `junit-bom:5.11.4`. Test files follow the `*Test.java` na
 
 - No enforced formatter — follow existing patterns in the file you're modifying
 - UTF-8 encoding for all source files
-- Package convention: `com.bloxbean.cardano.julc.*`
+- Package convention: `org.julclang.*`
 - All on-chain methods must be `static`
 - Prefer immutable variables and accumulator patterns for loops
 - Use meaningful names and minimal complexity; reuse existing utilities

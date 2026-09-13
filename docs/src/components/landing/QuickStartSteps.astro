@@ -2,12 +2,12 @@
 import { createHighlighter } from 'shiki'
 
 const step1Code = `dependencies {
-    implementation "com.bloxbean.cardano:julc-stdlib:\${julcVersion}"
-    implementation "com.bloxbean.cardano:julc-ledger-api:\${julcVersion}"
-    annotationProcessor "com.bloxbean.cardano:julc-annotation-processor:\${julcVersion}"
+    implementation "org.julclang:julc-stdlib:\${julcVersion}"
+    implementation "org.julclang:julc-ledger-api:\${julcVersion}"
+    annotationProcessor "org.julclang:julc-annotation-processor:\${julcVersion}"
 
-    testImplementation "com.bloxbean.cardano:julc-testkit:\${julcVersion}"
-    testRuntimeOnly "com.bloxbean.cardano:julc-vm-scalus:\${julcVersion}"
+    testImplementation "org.julclang:julc-testkit:\${julcVersion}"
+    testRuntimeOnly "org.julclang:julc-vm-scalus:\${julcVersion}"
 }`
 
 const step2Code = `@SpendingValidator

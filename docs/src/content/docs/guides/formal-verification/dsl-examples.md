@@ -26,12 +26,12 @@ returned by generated accessors instead of naming those wrapper classes.
 ## Common imports and property envelope
 
 ```java
-import com.bloxbean.cardano.julc.verification.dsl.*;
-import com.bloxbean.cardano.julc.verification.dsl.ir.DslDomain;
-import com.bloxbean.cardano.julc.verification.dsl.ir.DslPropertySet;
-import com.bloxbean.cardano.julc.verification.dsl.ir.TxCertKind;
+import org.julclang.verification.dsl.*;
+import org.julclang.verification.dsl.ir.DslDomain;
+import org.julclang.verification.dsl.ir.DslPropertySet;
+import org.julclang.verification.dsl.ir.TxCertKind;
 
-import static com.bloxbean.cardano.julc.verification.dsl.VerificationDsl.*;
+import static org.julclang.verification.dsl.VerificationDsl.*;
 ```
 
 The generated model owns the purpose and contract-schema hash. Return one or

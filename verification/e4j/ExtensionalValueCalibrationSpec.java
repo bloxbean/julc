@@ -1,9 +1,9 @@
 package evidence;
 
-import com.bloxbean.cardano.julc.verification.dsl.*;
-import com.bloxbean.cardano.julc.verification.dsl.ir.*;
+import org.julclang.verification.dsl.*;
+import org.julclang.verification.dsl.ir.*;
 
-import static com.bloxbean.cardano.julc.verification.dsl.VerificationDsl.*;
+import static org.julclang.verification.dsl.VerificationDsl.*;
 
 /** Solver calibration only: the full extensional formula can exceed useful bounds. */
 public final class ExtensionalValueCalibrationSpec implements VerificationSpecification {

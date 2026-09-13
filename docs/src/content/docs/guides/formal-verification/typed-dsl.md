@@ -80,11 +80,11 @@ For an explicit `@MultiValidator`, `--validator` is the base Java class and
 ```java
 package verification;
 
-import com.bloxbean.cardano.julc.verification.dsl.VerificationSpecification;
-import com.bloxbean.cardano.julc.verification.dsl.ir.DslDomain;
-import com.bloxbean.cardano.julc.verification.dsl.ir.DslPropertySet;
+import org.julclang.verification.dsl.VerificationSpecification;
+import org.julclang.verification.dsl.ir.DslDomain;
+import org.julclang.verification.dsl.ir.DslPropertySet;
 
-import static com.bloxbean.cardano.julc.verification.dsl.VerificationDsl.property;
+import static org.julclang.verification.dsl.VerificationDsl.property;
 
 public final class AuthorizedStateSpec implements VerificationSpecification {
     @Override
@@ -138,7 +138,7 @@ On Windows, use `;` instead of `:` in the classpath. If you substitute a native
 the trusted property specification, so Java and the exact matching JuLC worker
 classpath must remain available on `--spec-classpath`.
 
-For Gradle or Maven, add `com.bloxbean.cardano:julc-verification` at the same
+For Gradle or Maven, add `org.julclang:julc-verification` at the same
 version as the compiler and pass the compiled specification's complete runtime
 classpath to `--spec-classpath`.
 
@@ -149,7 +149,7 @@ The API-v1 construction surface consists of:
 - `VerificationSpecification`;
 - `VerificationDsl` literal and property factories;
 - typed expression wrappers in
-  `com.bloxbean.cardano.julc.verification.dsl`;
+  `org.julclang.verification.dsl`;
 - `DslProperty`, `DslPropertySet`, `DslPurpose`, and `DslDomain`; and
 - reproducible schema-1 generated contract metamodels.
 

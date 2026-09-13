@@ -55,7 +55,7 @@ certificates have separate versioned protocols and may contain a different
 |---|---|
 | `VerificationSpecification` | Trusted Java property-builder entry point. |
 | `VerificationDsl` | Property, integer, boolean, bytes, key-hash, token-name, policy-ID, and output-reference factories. |
-| Typed wrappers in `com.bloxbean.cardano.julc.verification.dsl` | Closed expressions for booleans, integers, bytes, options, lists, maps, contract types, ledger data, authorization, certificates, values, and governance data. |
+| Typed wrappers in `org.julclang.verification.dsl` | Closed expressions for booleans, integers, bytes, options, lists, maps, contract types, ledger data, authorization, certificates, values, and governance data. |
 | `DslProperty` | One named guarantee with an explicit modeled domain. |
 | `DslPropertySet` | Canonical schema-1 envelope; generated models normally construct it through `contract.properties(...)`. |
 | `DslPurpose` | `SPENDING`, `MINTING`, `REWARDING`, or `CERTIFYING`. |

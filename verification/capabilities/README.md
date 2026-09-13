@@ -5,7 +5,7 @@ verification evidence suite. The machine-readable inventory is bundled in the
 `julc-verification` artifact at:
 
 ```text
-com/bloxbean/cardano/julc/verification/cardano-ledger-api-v3-capabilities.json
+org/julclang/verification/cardano-ledger-api-v3-capabilities.json
 ```
 
 Each entry distinguishes typed property support from raw-`Data`, missing

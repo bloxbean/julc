@@ -1,4 +1,4 @@
-import com.bloxbean.cardano.julc.core.PlutusData;
+import org.julclang.core.PlutusData;
 
 /**
  * Authorized minting policy: the redeemer is a PubKeyHash,

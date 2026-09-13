@@ -1,1 +1,1 @@
-com.bloxbean.cardano.julc.testkit.jqwik.CardanoArbitraryProvider
+org.julclang.testkit.jqwik.CardanoArbitraryProvider

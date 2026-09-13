@@ -1,11 +1,11 @@
 package evidence;
 
-import com.bloxbean.cardano.julc.verification.dsl.VerificationSpecification;
-import com.bloxbean.cardano.julc.verification.dsl.ir.DslDomain;
-import com.bloxbean.cardano.julc.verification.dsl.ir.DslPropertySet;
-import com.bloxbean.cardano.julc.verification.dsl.ir.TxCertKind;
+import org.julclang.verification.dsl.VerificationSpecification;
+import org.julclang.verification.dsl.ir.DslDomain;
+import org.julclang.verification.dsl.ir.DslPropertySet;
+import org.julclang.verification.dsl.ir.TxCertKind;
 
-import static com.bloxbean.cardano.julc.verification.dsl.VerificationDsl.*;
+import static org.julclang.verification.dsl.VerificationDsl.*;
 
 /** Certifying property: strict redeemer, current certificate, kind, and signer. */
 public final class CertifyingSpec implements VerificationSpecification {

@@ -28,7 +28,7 @@ tasks.register('bundleLedgerSources') {
         ] as Set
 
         def entries = []
-        fileTree(srcDir).matching { include 'com/bloxbean/cardano/julc/ledger/*.java' }.each { File f ->
+        fileTree(srcDir).matching { include 'org/julclang/ledger/*.java' }.each { File f ->
             if (!excludes.contains(f.name)) {
                 def relative = srcDir.toPath().relativize(f.toPath()).toString()
                 def target = outDir.toPath().resolve(relative)

@@ -1,0 +1,87 @@
+package org.julclang.cli.scaffold;
+
+import org.julclang.cli.project.JulcToml;
+import org.julclang.cli.project.ProjectLayout;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+/**
+ * Creates the directory structure and template files for a new julc project.
+ */
+public final class ProjectScaffolder {
+
+    private ProjectScaffolder() {}
+
+    public static void scaffold(Path projectRoot, String projectName) throws IOException {
+        // Create directory structure
+        Files.createDirectories(ProjectLayout.srcDir(projectRoot));
+        Files.createDirectories(ProjectLayout.testDir(projectRoot));
+        Files.createDirectories(ProjectLayout.julcDir(projectRoot));
+        Files.createDirectories(ProjectLayout.plutusDir(projectRoot));
+
+        // julc.toml
+        var toml = JulcToml.defaultProject(projectName);
+        Files.writeString(ProjectLayout.tomlFile(projectRoot), toml.toToml());
+
+        // .gitignore
+        Files.writeString(projectRoot.resolve(".gitignore"),
+                """
+                build/
+                .julc/stdlib/
+                *.class
+                """);
+
+        // Starter validator. Uses a typed record redeemer + @SpendingValidator,
+        // modelling the idiomatic JuLC pattern (no raw PlutusData) so the file the
+        // AI sees in a fresh project matches the rules in AGENTS.md.
+        Files.writeString(ProjectLayout.srcDir(projectRoot).resolve("AlwaysSucceeds.java"),
+                """
+                import org.julclang.stdlib.annotation.SpendingValidator;
+                import org.julclang.stdlib.annotation.Entrypoint;
+                import org.julclang.ledger.ScriptContext;
+
+                @SpendingValidator
+                public class AlwaysSucceeds {
+
+                    record Datum() {}
+                    record Redeemer() {}
+
+                    @Entrypoint
+                    public static boolean validate(Datum datum, Redeemer redeemer, ScriptContext ctx) {
+                        return true;
+                    }
+                }
+                """);
+
+        // Starter test
+        Files.writeString(ProjectLayout.testDir(projectRoot).resolve("AlwaysSucceedsTest.java"),
+                """
+                import org.julclang.stdlib.test.Test;
+
+                public class AlwaysSucceedsTest {
+
+                    @Test
+                    public static boolean test_always_passes() {
+                        return true;
+                    }
+
+                    @Test
+                    public static boolean test_math() {
+                        return 1 + 1 == 2;
+                    }
+                }
+                """);
+
+        // Install stdlib sources
+        String sha256 = StdlibInstaller.installFromEmbedded(projectRoot);
+        StdlibInstaller.writeLock(projectRoot, sha256);
+
+        // AI agent guide (AGENTS.md + CLAUDE.md)
+        AgentsTemplate.write(projectRoot, projectName);
+
+        // Generate IntelliJ project files
+        IdeaConfigGenerator.generate(projectRoot, projectName);
+    }
+}

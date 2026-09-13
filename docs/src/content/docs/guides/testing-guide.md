@@ -33,14 +33,14 @@ Add these test dependencies to your `build.gradle`:
 ```groovy
 dependencies {
     // Core compilation + ledger types
-    implementation 'com.bloxbean.cardano:julc-core:<version>'
-    implementation 'com.bloxbean.cardano:julc-compiler:<version>'
-    implementation 'com.bloxbean.cardano:julc-ledger-api:<version>'
-    implementation 'com.bloxbean.cardano:julc-stdlib:<version>'
+    implementation 'org.julclang:julc-core:<version>'
+    implementation 'org.julclang:julc-compiler:<version>'
+    implementation 'org.julclang:julc-ledger-api:<version>'
+    implementation 'org.julclang:julc-stdlib:<version>'
 
     // Test framework
-    testImplementation 'com.bloxbean.cardano:julc-testkit:<version>'
-    testRuntimeOnly    'com.bloxbean.cardano:julc-vm-scalus:<version>'
+    testImplementation 'org.julclang:julc-testkit:<version>'
+    testRuntimeOnly    'org.julclang:julc-vm-scalus:<version>'
 }
 ```
 
@@ -48,7 +48,7 @@ To add property-based testing with jqwik:
 
 ```groovy
 dependencies {
-    testImplementation 'com.bloxbean.cardano:julc-testkit-jqwik:<version>'
+    testImplementation 'org.julclang:julc-testkit-jqwik:<version>'
     testImplementation 'net.jqwik:jqwik:1.9.2'
 }
 ```
@@ -71,13 +71,13 @@ test {
 
 ```xml
 <dependency>
-    <groupId>com.bloxbean.cardano</groupId>
+    <groupId>org.julclang</groupId>
     <artifactId>julc-testkit</artifactId>
     <version><version></version>
     <scope>test</scope>
 </dependency>
 <dependency>
-    <groupId>com.bloxbean.cardano</groupId>
+    <groupId>org.julclang</groupId>
     <artifactId>julc-vm-scalus</artifactId>
     <version><version></version>
     <scope>test</scope>
@@ -85,7 +85,7 @@ test {
 
 <!-- Optional: property-based testing -->
 <dependency>
-    <groupId>com.bloxbean.cardano</groupId>
+    <groupId>org.julclang</groupId>
     <artifactId>julc-testkit-jqwik</artifactId>
     <version><version></version>
     <scope>test</scope>
@@ -131,8 +131,8 @@ class VestingValidator {
 The test compiles it by class reference:
 
 ```java
-import com.bloxbean.cardano.julc.testkit.ContractTest;
-import com.bloxbean.cardano.julc.testkit.BudgetAssertions;
+import org.julclang.testkit.ContractTest;
+import org.julclang.testkit.BudgetAssertions;
 import org.junit.jupiter.api.*;
 
 class VestingValidatorTest extends ContractTest {
@@ -261,9 +261,9 @@ ScriptContexts with the correct structure.
 ### Spending Context
 
 ```java
-import com.bloxbean.cardano.julc.testkit.ScriptContextTestBuilder;
-import com.bloxbean.cardano.julc.testkit.TestDataBuilder;
-import com.bloxbean.cardano.julc.ledger.*;
+import org.julclang.testkit.ScriptContextTestBuilder;
+import org.julclang.testkit.TestDataBuilder;
+import org.julclang.ledger.*;
 
 var spentRef = TestDataBuilder.randomTxOutRef_typed();
 var beneficiary = TestDataBuilder.randomPubKeyHash_typed();
@@ -348,7 +348,7 @@ ScriptContextTestBuilder.proposing(BigInteger.ZERO, proposalProcedure)
 `TestDataBuilder` provides random and typed test data generators:
 
 ```java
-import com.bloxbean.cardano.julc.testkit.TestDataBuilder;
+import org.julclang.testkit.TestDataBuilder;
 
 // Random typed ledger values
 PubKeyHash pkh       = TestDataBuilder.randomPubKeyHash_typed();
@@ -386,7 +386,7 @@ with natural Java types.
 Define a Java interface matching the on-chain methods and call them directly:
 
 ```java
-import com.bloxbean.cardano.julc.testkit.JulcEval;
+import org.julclang.testkit.JulcEval;
 
 // Given an on-chain class:
 //   class MathHelper {
@@ -488,7 +488,7 @@ inheritance.
 ### Compile
 
 ```java
-import com.bloxbean.cardano.julc.testkit.ValidatorTest;
+import org.julclang.testkit.ValidatorTest;
 
 // From class — recommended for real projects
 // Auto-discovers source file + @OnchainLibrary dependencies
@@ -545,7 +545,7 @@ Script size testing ensures your validators fit within the 16 KB Plutus limit.
 ### BudgetAssertions API
 
 ```java
-import com.bloxbean.cardano.julc.testkit.BudgetAssertions;
+import org.julclang.testkit.BudgetAssertions;
 
 var result = ValidatorTest.evaluate(program, ctx);
 
@@ -603,7 +603,7 @@ void budgetDoesNotRegress() {
 ### Script Size Analysis
 
 ```java
-import com.bloxbean.cardano.julc.testkit.ScriptAnalysis;
+import org.julclang.testkit.ScriptAnalysis;
 
 var compiled = ValidatorTest.compileValidator(MyValidator.class);
 var analysis = ScriptAnalysis.of(compiled);
@@ -648,7 +648,7 @@ says "for ALL valid inputs, this invariant holds":
 Add `julc-testkit-jqwik` and `jqwik` to your test dependencies:
 
 ```groovy
-testImplementation 'com.bloxbean.cardano:julc-testkit-jqwik:<version>'
+testImplementation 'org.julclang:julc-testkit-jqwik:<version>'
 testImplementation 'net.jqwik:jqwik:1.9.2'
 ```
 
@@ -674,16 +674,16 @@ class VestingValidator {
 The property test compiles it once and runs hundreds of random scenarios:
 
 ```java
-import com.bloxbean.cardano.julc.compiler.CompileResult;
-import com.bloxbean.cardano.julc.core.PlutusData;
-import com.bloxbean.cardano.julc.core.Program;
-import com.bloxbean.cardano.julc.ledger.*;
-import com.bloxbean.cardano.julc.testkit.BudgetAssertions;
-import com.bloxbean.cardano.julc.testkit.ScriptContextTestBuilder;
-import com.bloxbean.cardano.julc.testkit.TestDataBuilder;
-import com.bloxbean.cardano.julc.testkit.ValidatorTest;
-import com.bloxbean.cardano.julc.testkit.jqwik.BudgetCollector;
-import com.bloxbean.cardano.julc.testkit.jqwik.CardanoArbitraries;
+import org.julclang.compiler.CompileResult;
+import org.julclang.core.PlutusData;
+import org.julclang.core.Program;
+import org.julclang.ledger.*;
+import org.julclang.testkit.BudgetAssertions;
+import org.julclang.testkit.ScriptContextTestBuilder;
+import org.julclang.testkit.TestDataBuilder;
+import org.julclang.testkit.ValidatorTest;
+import org.julclang.testkit.jqwik.BudgetCollector;
+import org.julclang.testkit.jqwik.CardanoArbitraries;
 import net.jqwik.api.*;
 import net.jqwik.api.lifecycle.AfterProperty;
 
@@ -965,7 +965,7 @@ void reportBudget() {
 the spent reference appears in inputs, signers appear in address credentials, etc.
 
 ```java
-import com.bloxbean.cardano.julc.testkit.jqwik.ArbitraryScriptContext;
+import org.julclang.testkit.jqwik.ArbitraryScriptContext;
 
 // Spending context with 1-3 signers, 2-5 inputs, 1-3 outputs
 Arbitrary<PlutusData> ctxArb = ArbitraryScriptContext.spending()
@@ -1396,8 +1396,8 @@ class StdlibDirectTests {
 
 ```groovy
 dependencies {
-    testImplementation 'com.bloxbean.cardano:julc-testkit:<version>'
-    testRuntimeOnly    'com.bloxbean.cardano:julc-vm-scalus:<version>'
+    testImplementation 'org.julclang:julc-testkit:<version>'
+    testRuntimeOnly    'org.julclang:julc-vm-scalus:<version>'
 }
 
 test { useJUnitPlatform() }
@@ -1407,10 +1407,10 @@ test { useJUnitPlatform() }
 
 ```groovy
 dependencies {
-    testImplementation 'com.bloxbean.cardano:julc-testkit:<version>'
-    testImplementation 'com.bloxbean.cardano:julc-testkit-jqwik:<version>'
+    testImplementation 'org.julclang:julc-testkit:<version>'
+    testImplementation 'org.julclang:julc-testkit-jqwik:<version>'
     testImplementation 'net.jqwik:jqwik:1.9.2'
-    testRuntimeOnly    'com.bloxbean.cardano:julc-vm-scalus:<version>'
+    testRuntimeOnly    'org.julclang:julc-vm-scalus:<version>'
 }
 
 test { useJUnitPlatform() }

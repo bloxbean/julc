@@ -38,7 +38,7 @@ tasks.register('optimizationEvidence', JavaExec) {
     group = 'verification'
     description = 'Run ADR-032 semantic/cost fixtures and print release-note Markdown'
     classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.bloxbean.cardano.julc.benchmark.optimization.OptimizationEvidenceMain'
+    mainClass = 'org.julclang.benchmark.optimization.OptimizationEvidenceMain'
 }
 
 dependencies {
@@ -60,5 +60,5 @@ tasks.register('listCaseEvidence', JavaExec) {
     group = 'verification'
     description = 'Run ADR-034 compiled for-each semantic/cost fixtures'
     classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.bloxbean.cardano.julc.benchmark.optimization.ListCaseEvidence'
+    mainClass = 'org.julclang.benchmark.optimization.ListCaseEvidence'
 }

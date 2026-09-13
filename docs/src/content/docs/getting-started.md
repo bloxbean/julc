@@ -59,24 +59,24 @@ repositories {
 
 dependencies {
     // Core: stdlib + ledger types + annotations
-    implementation "com.bloxbean.cardano:julc-stdlib:${julcVersion}"
-    implementation "com.bloxbean.cardano:julc-ledger-api:${julcVersion}"
+    implementation "org.julclang:julc-stdlib:${julcVersion}"
+    implementation "org.julclang:julc-ledger-api:${julcVersion}"
 
     // Stable typed verification annotations and DSL (off-chain tooling only)
-    implementation "com.bloxbean.cardano:julc-verification:${julcVersion}"
+    implementation "org.julclang:julc-verification:${julcVersion}"
 
     // Annotation processor -- compiles validators during javac
-    annotationProcessor "com.bloxbean.cardano:julc-annotation-processor:${julcVersion}"
+    annotationProcessor "org.julclang:julc-annotation-processor:${julcVersion}"
 
     // Runtime -- load pre-compiled scripts from classpath
-    implementation "com.bloxbean.cardano:julc-cardano-client-lib:${julcVersion}"
+    implementation "org.julclang:julc-cardano-client-lib:${julcVersion}"
     implementation "com.bloxbean.cardano:cardano-client-lib:${cardanoClientLibVersion}"
 
     // Test: VM for local evaluation
-    testImplementation "com.bloxbean.cardano:julc-testkit:${julcVersion}"
-    testImplementation "com.bloxbean.cardano:julc-vm:${julcVersion}"
+    testImplementation "org.julclang:julc-testkit:${julcVersion}"
+    testImplementation "org.julclang:julc-vm:${julcVersion}"
     // Protocol-aware handoff from CompileResult.target()
-    testRuntimeOnly "com.bloxbean.cardano:julc-vm-java:${julcVersion}"
+    testRuntimeOnly "org.julclang:julc-vm-java:${julcVersion}"
 
     testImplementation platform('org.junit:junit-bom:5.10.0')
     testImplementation 'org.junit.jupiter:junit-jupiter'
@@ -108,22 +108,22 @@ test {
 
 <dependencies>
     <dependency>
-        <groupId>com.bloxbean.cardano</groupId>
+        <groupId>org.julclang</groupId>
         <artifactId>julc-stdlib</artifactId>
         <version>${julc.version}</version>
     </dependency>
     <dependency>
-        <groupId>com.bloxbean.cardano</groupId>
+        <groupId>org.julclang</groupId>
         <artifactId>julc-ledger-api</artifactId>
         <version>${julc.version}</version>
     </dependency>
     <dependency>
-        <groupId>com.bloxbean.cardano</groupId>
+        <groupId>org.julclang</groupId>
         <artifactId>julc-verification</artifactId>
         <version>${julc.version}</version>
     </dependency>
     <dependency>
-        <groupId>com.bloxbean.cardano</groupId>
+        <groupId>org.julclang</groupId>
         <artifactId>julc-cardano-client-lib</artifactId>
         <version>${julc.version}</version>
     </dependency>
@@ -144,7 +144,7 @@ test {
                 <release>25</release>
                 <annotationProcessorPaths>
                     <path>
-                        <groupId>com.bloxbean.cardano</groupId>
+                        <groupId>org.julclang</groupId>
                         <artifactId>julc-annotation-processor</artifactId>
                         <version>${julc.version}</version>
                     </path>
@@ -174,12 +174,12 @@ the full `ScriptContext`.
 ```java
 package com.example;
 
-import com.bloxbean.cardano.julc.core.PlutusData;
-import com.bloxbean.cardano.julc.ledger.PubKeyHash;
-import com.bloxbean.cardano.julc.ledger.ScriptContext;
-import com.bloxbean.cardano.julc.ledger.TxInfo;
-import com.bloxbean.cardano.julc.stdlib.annotation.Entrypoint;
-import com.bloxbean.cardano.julc.stdlib.annotation.SpendingValidator;
+import org.julclang.core.PlutusData;
+import org.julclang.ledger.PubKeyHash;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.SpendingValidator;
 
 import java.math.BigInteger;
 
@@ -227,11 +227,11 @@ policy. It receives a redeemer and the `ScriptContext`.
 ```java
 package com.example;
 
-import com.bloxbean.cardano.julc.stdlib.annotation.MintingValidator;
-import com.bloxbean.cardano.julc.stdlib.annotation.Entrypoint;
-import com.bloxbean.cardano.julc.ledger.ScriptContext;
-import com.bloxbean.cardano.julc.ledger.TxInfo;
-import com.bloxbean.cardano.julc.core.PlutusData;
+import org.julclang.stdlib.annotation.MintingValidator;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.ledger.TxInfo;
+import org.julclang.core.PlutusData;
 import java.math.BigInteger;
 
 @MintingValidator
@@ -284,7 +284,7 @@ specific annotations:
 | `@VotingValidator` | Authorizes governance votes (DRep) | `(redeemer, ctx)` |
 | `@ProposingValidator` | Authorizes governance proposals | `(redeemer, ctx)` |
 
-All annotations live in `com.bloxbean.cardano.julc.stdlib.annotation`.
+All annotations live in `org.julclang.stdlib.annotation`.
 
 > **Migration note**: The old `@Validator` and `@MintingPolicy` aliases are no
 > longer supported. Use `@SpendingValidator` and `@MintingValidator`.
@@ -461,7 +461,7 @@ On-chain, the constructor and `.of()` factory method compile to identity (no
 `ConstrData` wrapping).
 
 ```java
-import com.bloxbean.cardano.julc.stdlib.annotation.NewType;
+import org.julclang.stdlib.annotation.NewType;
 
 @NewType
 record AssetId(byte[] hash) {}
@@ -482,11 +482,11 @@ Multi-field records or unsupported field types produce a compiler error.
 
 ### 5.4 Tuple2 and Tuple3
 
-Generic tuples are provided in `com.bloxbean.cardano.julc.core.types`:
+Generic tuples are provided in `org.julclang.core.types`:
 
 ```java
-import com.bloxbean.cardano.julc.core.types.Tuple2;
-import com.bloxbean.cardano.julc.core.types.Tuple3;
+import org.julclang.core.types.Tuple2;
+import org.julclang.core.types.Tuple3;
 
 // Generic type parameters enable auto-unwrap on field access
 Tuple2<BigInteger, byte[]> pair = new Tuple2<>(someInt, someBytes);
@@ -887,7 +887,7 @@ for (TxInInfo input : ctx.txInfo().inputs()) {
 
 ## 9. Standard Library
 
-All standard library classes live in `com.bloxbean.cardano.julc.stdlib.lib` and are
+All standard library classes live in `org.julclang.stdlib.lib` and are
 annotated with `@OnchainLibrary`. They are automatically discovered and compiled
 when your validator references them.
 
@@ -918,8 +918,8 @@ You can write your own on-chain libraries that are auto-discovered by the compil
 ```java
 package com.example.lib;
 
-import com.bloxbean.cardano.julc.stdlib.annotation.OnchainLibrary;
-import com.bloxbean.cardano.julc.stdlib.Builtins;
+import org.julclang.stdlib.annotation.OnchainLibrary;
+import org.julclang.stdlib.Builtins;
 import java.math.BigInteger;
 
 @OnchainLibrary
@@ -982,11 +982,11 @@ partial application. Each unique set of parameter values produces a different sc
 hash/address.
 
 ```java
-import com.bloxbean.cardano.julc.stdlib.annotation.SpendingValidator;
-import com.bloxbean.cardano.julc.stdlib.annotation.Entrypoint;
-import com.bloxbean.cardano.julc.stdlib.annotation.Param;
-import com.bloxbean.cardano.julc.ledger.ScriptContext;
-import com.bloxbean.cardano.julc.core.PlutusData;
+import org.julclang.stdlib.annotation.SpendingValidator;
+import org.julclang.stdlib.annotation.Entrypoint;
+import org.julclang.stdlib.annotation.Param;
+import org.julclang.ledger.ScriptContext;
+import org.julclang.core.PlutusData;
 import java.math.BigInteger;
 
 @SpendingValidator
@@ -1025,7 +1025,7 @@ These are registered as PIR-level functions in the `StdlibRegistry`.
 ### ListsLib HOFs
 
 ```java
-import com.bloxbean.cardano.julc.stdlib.lib.ListsLib;
+import org.julclang.stdlib.lib.ListsLib;
 
 // map: transform each element
 var doubled = ListsLib.map(amounts, x -> x.multiply(BigInteger.TWO));
@@ -1112,9 +1112,9 @@ signatories.any((PubKeyHash sig) -> Builtins.equalsByteString((byte[])(Object) s
 ### JulcCompiler (programmatic)
 
 ```java
-import com.bloxbean.cardano.julc.compiler.JulcCompiler;
-import com.bloxbean.cardano.julc.compiler.CompileResult;
-import com.bloxbean.cardano.julc.stdlib.StdlibRegistry;
+import org.julclang.compiler.JulcCompiler;
+import org.julclang.compiler.CompileResult;
+import org.julclang.stdlib.StdlibRegistry;
 
 // With stdlib support (recommended)
 var stdlib = StdlibRegistry.defaultRegistry();
@@ -1148,7 +1148,7 @@ For projects that prefer separate validator source files, apply the Gradle plugi
 
 ```groovy
 plugins {
-    id 'com.bloxbean.cardano.julc' version '0.1.0-SNAPSHOT'
+    id 'org.julclang.julc' version '0.1.0-SNAPSHOT'
 }
 ```
 
@@ -1165,9 +1165,9 @@ locally without a blockchain.
 ### ValidatorTest
 
 ```java
-import com.bloxbean.cardano.julc.testkit.ValidatorTest;
-import com.bloxbean.cardano.julc.testkit.BudgetAssertions;
-import com.bloxbean.cardano.julc.core.PlutusData;
+import org.julclang.testkit.ValidatorTest;
+import org.julclang.testkit.BudgetAssertions;
+import org.julclang.core.PlutusData;
 
 // Compile from source string
 var program = ValidatorTest.compile(javaSource);
@@ -1193,8 +1193,8 @@ The `ScriptContextTestBuilder` provides a fluent API for constructing test
 ScriptContexts:
 
 ```java
-import com.bloxbean.cardano.julc.testkit.ScriptContextTestBuilder;
-import com.bloxbean.cardano.julc.ledger.*;
+import org.julclang.testkit.ScriptContextTestBuilder;
+import org.julclang.ledger.*;
 
 var ref = new TxOutRef(TxId.of(txHashBytes), BigInteger.ZERO);
 var ctx = ScriptContextTestBuilder.spending(ref)
@@ -1214,7 +1214,7 @@ The builder supports three output modes:
 ### BudgetAssertions
 
 ```java
-import com.bloxbean.cardano.julc.testkit.BudgetAssertions;
+import org.julclang.testkit.BudgetAssertions;
 
 var result = ValidatorTest.evaluate(program, ctx);
 
@@ -1347,7 +1347,7 @@ Load pre-compiled scripts from the classpath (produced by the annotation
 processor):
 
 ```java
-import com.bloxbean.cardano.julc.clientlib.JulcScriptLoader;
+import org.julclang.clientlib.JulcScriptLoader;
 import com.bloxbean.cardano.client.plutus.spec.PlutusV3Script;
 
 // Non-parameterized
@@ -1371,7 +1371,7 @@ Convert a `Program` (from programmatic compilation) to a cardano-client-lib
 `PlutusV3Script`:
 
 ```java
-import com.bloxbean.cardano.julc.clientlib.JulcScriptAdapter;
+import org.julclang.clientlib.JulcScriptAdapter;
 
 var program = compiler.compile(source).program();
 PlutusV3Script script = JulcScriptAdapter.fromProgram(program);
@@ -1436,7 +1436,7 @@ use `PlutusDataAdapter.convert()` to automatically convert your on-chain Java
 records and sealed interfaces to/from CCL `PlutusData`:
 
 ```java
-import com.bloxbean.cardano.julc.clientlib.PlutusDataAdapter;
+import org.julclang.clientlib.PlutusDataAdapter;
 
 // Given your on-chain types:
 record AuctionDatum(byte[] seller, BigInteger deadline, BigInteger minBid) {}

@@ -1,8 +1,8 @@
 package evidence;
 
-import com.bloxbean.cardano.julc.verification.dsl.*;
-import com.bloxbean.cardano.julc.verification.dsl.ir.*;
-import static com.bloxbean.cardano.julc.verification.dsl.VerificationDsl.*;
+import org.julclang.verification.dsl.*;
+import org.julclang.verification.dsl.ir.*;
+import static org.julclang.verification.dsl.VerificationDsl.*;
 
 public final class AuthorizedValueSpec implements VerificationSpecification {
     public DslPropertySet properties() {

@@ -1,0 +1,26 @@
+package org.julclang.ledger;
+
+import org.julclang.core.PlutusData;
+
+import java.math.BigInteger;
+import java.util.List;
+
+/**
+ * A reference to a transaction output (TxId + output index).
+ */
+public record TxOutRef(TxId txId, BigInteger index) implements PlutusDataConvertible {
+
+    @Override
+    public PlutusData.ConstrData toPlutusData() {
+        return new PlutusData.ConstrData(0, List.of(
+                txId.toPlutusData(),
+                new PlutusData.IntData(index)));
+    }
+
+    public static TxOutRef fromPlutusData(PlutusData data) {
+        var fields = PlutusDataHelper.expectConstr(data, 0);
+        return new TxOutRef(
+                TxId.fromPlutusData(fields.get(0)),
+                PlutusDataHelper.decodeInteger(fields.get(1)));
+    }
+}

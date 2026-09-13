@@ -1,11 +1,11 @@
 package evidence;
 
-import com.bloxbean.cardano.julc.verification.dsl.VerificationSpecification;
-import com.bloxbean.cardano.julc.verification.dsl.MintingContractModel;
-import com.bloxbean.cardano.julc.verification.dsl.ir.DslDomain;
-import com.bloxbean.cardano.julc.verification.dsl.ir.DslPropertySet;
+import org.julclang.verification.dsl.VerificationSpecification;
+import org.julclang.verification.dsl.MintingContractModel;
+import org.julclang.verification.dsl.ir.DslDomain;
+import org.julclang.verification.dsl.ir.DslPropertySet;
 
-import static com.bloxbean.cardano.julc.verification.dsl.VerificationDsl.*;
+import static org.julclang.verification.dsl.VerificationDsl.*;
 
 /** User-owned E.4a typed property; generated TokenPolicyModel is disposable. */
 public final class OneShotMintSpec implements VerificationSpecification {
