@@ -1,0 +1,42 @@
+// Gradle init script: run an external julc-examples checkout against an exact Maven-local
+// JuLC implementation without editing the examples build file (ADR-036 pattern, updated for
+// the org.julclang coordinates of ADR-040).
+//
+//   cd ../julc-examples && ./gradlew clean test --refresh-dependencies \
+//       -I ../julc/adr/evidence/041-local-examples.init.gradle \
+//       -Djulc.localVersion=0.1.0-pre17-<sha>-SNAPSHOT
+def localJulcVersion = System.getProperty('julc.localVersion')
+if (!localJulcVersion) throw new GradleException('Set -Djulc.localVersion to the published implementation version')
+settingsEvaluated { settings ->
+    settings.pluginManagement.resolutionStrategy.eachPlugin {
+        if (requested.id.id == 'org.julclang.julc') useVersion(localJulcVersion)
+    }
+}
+allprojects {
+    configurations.configureEach {
+        resolutionStrategy.eachDependency {
+            if (requested.group == 'org.julclang' && requested.name.startsWith('julc-')) {
+                useVersion(localJulcVersion)
+                because('Validate ADR-041 using its exact Maven-local implementation')
+            }
+        }
+    }
+    tasks.register('verifyJulcLocalArtifacts') {
+        doLast {
+            def plugin = project.plugins.findPlugin('org.julclang.julc')
+            def location = plugin.class.protectionDomain.codeSource.location.toString()
+            assert location.contains(localJulcVersion): "Unexpected plugin: ${location}"
+            println "LOCAL_JULC_PLUGIN ${location}"
+            ['compileClasspath', 'annotationProcessor', 'testRuntimeClasspath'].each { name ->
+                def artifacts = project.configurations.getByName(name).resolvedConfiguration.resolvedArtifacts
+                    .findAll { it.moduleVersion.id.group == 'org.julclang' && it.name.startsWith('julc-') }
+                assert !artifacts.empty: "No JuLC artifacts in ${name}"
+                artifacts.each { artifact ->
+                    assert artifact.moduleVersion.id.version == localJulcVersion: artifact.moduleVersion.id
+                    assert artifact.file.canonicalPath.contains('/.m2/repository/'): artifact.file
+                    println "LOCAL_JULC_ARTIFACT ${name} ${artifact.moduleVersion.id} ${artifact.file}"
+                }
+            }
+        }
+    }
+}

@@ -61,6 +61,40 @@ class ConstructorDispatchTest {
     }
 
     @Test
+    void recognizesIntegerCaseDispatchOnTheTagBinderOnly() {
+        // ADR-041: PV11_SAFE dispatch is `case tag [b0 .. bn-1]` on the tag binder (index 2 under
+        // the fields binder). One TagBranch per branch, tags 0..n-1, Error as the residual.
+        var dispatch = Term.case_(Term.var(2), integer(10), integer(20), trace("third", integer(30)));
+        for (Term producer : List.of(nativeMatch(data(PlutusData.constr(2)), dispatch),
+                legacy(data(PlutusData.constr(2)), dispatch, 1, 2))) {
+            var match = DataMatchRecognizer.matchConstructorDispatch(producer);
+            assertNotNull(match, producer.toString());
+            assertEquals(List.of(BigInteger.ZERO, BigInteger.ONE, BigInteger.TWO),
+                    match.branches().stream().map(DataMatchRecognizer.TagBranch::tag).toList());
+            assertSame(((Term.Case) dispatch).branches().get(2), match.branches().get(2).body());
+            assertInstanceOf(Term.Error.class, match.fallback());
+            var rendered = JulcDecompiler.decompile(Program.plutusV3(producer), DecompileOptions.defaults()).javaSource();
+            assertTrue(rendered.contains("unConstrData"), rendered);
+            assertTrue(rendered.contains("if ("), rendered);
+            assertTrue(rendered.contains("Builtins.error()"), rendered);
+            assertFalse(rendered.contains("case Case0"), rendered);
+        }
+        // Selected branch, its trace, and the out-of-range residual all round-trip.
+        assertEquals(integer(30), ((EvalResult.Success) equivalent(nativeMatch(data(PlutusData.constr(2)), dispatch))).resultTerm());
+        assertEquals(integer(10), ((EvalResult.Success) equivalent(nativeMatch(data(PlutusData.constr(0)), dispatch))).resultTerm());
+        assertInstanceOf(EvalResult.Failure.class, equivalent(nativeMatch(data(PlutusData.constr(99)), dispatch)));
+        // A Case on the fields binder (1), on an outer binder (3), with one branch, or with lambda
+        // branches is not constructor dispatch.
+        for (Term wrong : List.of(
+                nativeMatch(data(PlutusData.constr(0)), Term.case_(Term.var(1), integer(10), integer(20))),
+                nativeMatch(data(PlutusData.constr(0)), Term.case_(Term.var(3), integer(10), integer(20))),
+                nativeMatch(data(PlutusData.constr(0)), Term.case_(Term.var(2), integer(10))),
+                nativeMatch(data(PlutusData.constr(0)), Term.case_(Term.var(2), Term.lam("x", integer(10)), integer(20))))) {
+            assertNull(DataMatchRecognizer.matchConstructorDispatch(wrong), wrong.toString());
+        }
+    }
+
+    @Test
     void recoversHugeReversedTagsAndRetainsResidualFallbackByIdentity() {
         var huge = BigInteger.ONE.shiftLeft(70);
         var fallback = trace("fallback", integer(19));
@@ -167,11 +201,26 @@ class ConstructorDispatchTest {
                     assertEquals(before.getClass(), result.getClass(), provider);
                     assertEquals(before.traces(), result.traces(), provider);
                     if (before instanceof EvalResult.Success s) assertEquals(s.resultTerm(), ((EvalResult.Success) result).resultTerm(), provider);
-                    if (before instanceof EvalResult.Failure f) assertEquals(f.error(), ((EvalResult.Failure) result).error(), provider);
+                    if (before instanceof EvalResult.Failure f) assertFailureTextEquivalent(f.error(), ((EvalResult.Failure) result).error(), provider);
                 }
             }
         }
         return result;
+    }
+
+    /**
+     * ADR-041 O5: the original PV11_SAFE program dispatches with an integer Case, while the
+     * reconstruction is re-lowered at BASELINE with the legacy equality chain. On a malformed
+     * constructor tag both fail at the same point; only the failure text differs, and only in
+     * exactly this way (Java/Truffle wording first, Scalus wording second).
+     */
+    private static void assertFailureTextEquivalent(String original, String restored, String provider) {
+        if (original.equals(restored)) return;
+        boolean substitution = (original.matches("Case: tag \\d+ out of range for \\d+ branches")
+                        && restored.equals("Error term encountered"))
+                || (original.matches("Case index \\d+ out of bounds for \\d+ branches")
+                        && restored.equals("Error evaluated"));
+        assertTrue(substitution, provider + ": <" + original + "> vs <" + restored + ">");
     }
 
     // Bounded reconstruction oracle; unsupported HIR fails the test instead of silently approximating it.

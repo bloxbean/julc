@@ -71,7 +71,7 @@ Force(Apply(Apply(Apply(Force(Builtin(IfThenElse)), Const(True)),
 
 ### 2.2 What is PIR?
 
-Plutus Intermediate Representation (PIR) is the typed bridge between Java and UPLC. It has 14 term variants defined in `julc-compiler/.../pir/PirTerm.java`:
+Plutus Intermediate Representation (PIR) is the typed bridge between Java and UPLC. It has 15 term variants defined in `julc-compiler/.../pir/PirTerm.java`:
 
 | # | Variant | Description |
 |---|---------|-------------|
@@ -89,6 +89,7 @@ Plutus Intermediate Representation (PIR) is the typed bridge between Java and UP
 | 12 | `Trace(PirTerm message, PirTerm body)` | Trace debug output |
 | 13 | `ListMatch(scrutinee, headName, tailName, nilBranch, consBranch)` | Native list match; raw head/tail bindings scoped to cons branch |
 | 14 | `PairMatch(scrutinee, pairType, firstName, secondName, body)` | Proven native pair; raw first/second bindings scoped to body |
+| 15 | `IntegerCase(scrutinee, branches)` | Generator-local: branch `i` for native integer scrutinee `i`, no binders; created only during DataMatch lowering (ADR-041) |
 
 `ListMatch` performs no Data decoding. The for-each producer retains its
 `NullList` representation guard and places the match only in the non-empty
@@ -120,6 +121,17 @@ free dispatch reference to the historical `__match_pair` binder retains the old
 expansion for lexical compatibility. The producer and PairMatch consumer share
 the exact O4 gate and rule identity. This changes safe-profile direct-PIR output
 as well as source switches.
+
+ADR-041 replaces the tag dispatch itself under the same gate. When a `DataMatch`
+has two or more constructors, `generateDataMatch` emits a generator-local
+`IntegerCase` on the decoded tag binder instead of the `EqualsInteger`/`IfThenElse`
+chain; it lowers to one UPLC `Case` with one argument-free branch per constructor
+in tag order, so branch `i` runs for tag `i` and any other tag fails at selection
+without evaluating a branch. Single-constructor matches are unchanged. Rule
+provenance is `pv11.o5.case-integer`. The strict typed boundary rejects invalid
+tags before user dispatch, so the only observable change for validators is the
+smaller, flat dispatch cost; direct-PIR consumers see the VM's Case out-of-range
+failure text instead of the chain's `error` term on a malformed tag.
 
 Run `./gradlew :julc-compiler:pairCaseTest` for the dedicated Java/Truffle/Scalus
 pair suite. It is included in `check`/`build`; its additional Truffle dependency
@@ -859,6 +871,21 @@ Let(pair, UnConstrData(scrutinee),
           ... body1 ...,
           Error)))))
 ```
+
+That is the `NONE`/`BASELINE` shape. Under the PV11 safe profile the pair
+binding becomes a native pair `Case` (ADR-038) and, for two or more
+constructors, the dispatch becomes one integer `Case` on the tag (ADR-041):
+
+```
+Case(UnConstrData(scrutinee), [\tag -> \fields ->
+  Case(tag, [
+    Let(binding0, decode(HeadList(fields)), ... body0 ...),
+    ... body1 ...])])
+```
+
+Branch `i` is the branch for constructor tag `i`; a tag outside `0..n-1` fails at
+selection. The equality chain and its terminal `Error` are gone, so the dispatch
+cost no longer grows with the constructor's position.
 
 ### Instanceof Chains
 

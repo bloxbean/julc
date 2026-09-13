@@ -143,6 +143,9 @@ public final class StrictRecordEntrypoint {
             case PirTerm.DataConstr(var tag, var type, var fields) -> new PirTerm.DataConstr(
                     tag, type, fields.stream().map(field ->
                             replace(field, target, replacement)).toList());
+            case PirTerm.IntegerCase(var scrutinee, var branches) ->
+                    new PirTerm.IntegerCase(replace(scrutinee, target, replacement),
+                            branches.stream().map(b -> replace(b, target, replacement)).toList());
             case PirTerm.PairMatch(var pair, var type, var first, var second, var body) ->
                     new PirTerm.PairMatch(replace(pair, target, replacement), type, first, second,
                             replace(body, target, replacement));

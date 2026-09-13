@@ -81,6 +81,10 @@ public final class PirSubstitution {
                 yield new PirTerm.DataConstr(tag, dataType, newFields);
             }
 
+            case PirTerm.IntegerCase(var scrutinee, var branches) ->
+                    new PirTerm.IntegerCase(substitute(scrutinee, varName, replacement),
+                            branches.stream().map(b -> substitute(b, varName, replacement)).toList());
+
             case PirTerm.PairMatch(var pair, var type, var first, var second, var body) ->
                     new PirTerm.PairMatch(substitute(pair, varName, replacement), type, first, second,
                             first.equals(varName) || second.equals(varName) ? body
@@ -161,6 +165,10 @@ public final class PirSubstitution {
             }
             case PirTerm.DataConstr(_, _, var fields) -> {
                 for (var field : fields) collectFreeVars(field, bound, free);
+            }
+            case PirTerm.IntegerCase(var scrutinee, var branches) -> {
+                collectFreeVars(scrutinee, bound, free);
+                for (var branch : branches) collectFreeVars(branch, bound, free);
             }
             case PirTerm.PairMatch(var pair, _, var first, var second, var body) -> {
                 collectFreeVars(pair, bound, free);

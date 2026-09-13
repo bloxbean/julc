@@ -22,6 +22,22 @@ public sealed interface PirTerm {
     record Const(Constant value) implements PirTerm {}
     record Builtin(DefaultFun fun) implements PirTerm {}
     record IfThenElse(PirTerm cond, PirTerm thenBranch, PirTerm elseBranch) implements PirTerm {}
+    /**
+     * Select one branch by a native, non-negative integer scrutinee (PV11 {@code Case} on
+     * Integer). Branch {@code i} runs for scrutinee value {@code i}; any other value fails at
+     * the selection point without evaluating a branch. Generator-local: created during
+     * DataMatch lowering for dense constructor-tag dispatch (ADR-041 O5) and never present in
+     * PIR before UPLC lowering.
+     */
+    record IntegerCase(PirTerm scrutinee, List<PirTerm> branches) implements PirTerm {
+        public IntegerCase {
+            Objects.requireNonNull(scrutinee, "scrutinee");
+            branches = List.copyOf(branches);
+            if (branches.size() < 2) {
+                throw new IllegalArgumentException("IntegerCase requires at least two branches");
+            }
+        }
+    }
     /** Match a proven native pair once; bind raw first/second fields without decoding them. */
     record PairMatch(PirTerm scrutinee, PirType.PairType pairType, String firstName,
                      String secondName, PirTerm body) implements PirTerm {

@@ -181,8 +181,8 @@ are:
 | Scrutinee | Current common form | Candidate form |
 |---|---|---|
 | `Bool` | forced `IfThenElse` with delayed branches | `Case Bool` with equivalent branch laziness |
-| `Unit` | `ChooseUnit` sequencing | `Case Unit` when it removes force/chooser overhead |
-| `Integer` | equality chain for a bounded switch | `Case Integer` only after exact branch/default semantics are pinned |
+| `Unit` | `ChooseUnit` sequencing | `Case Unit` when it removes force/chooser overhead (rejected by ADR-041: JuLC emits no `ChooseUnit` and has no typed Unit statement surface) |
+| `Integer` | equality chain for a bounded switch | `Case Integer` only after exact branch/default semantics are pinned (pinned by ADR-041 for compiler-generated sealed dispatch; `pv11.o5.case-integer`) |
 | `List` | `NullList`, then `HeadList` and `TailList` | `Case List` binding head/tail once |
 | `Pair` | separate `FstPair` and `SndPair` | `Case Pair` binding both components once |
 
@@ -586,7 +586,7 @@ original roadmap ID and the O-number so aggregate completion can be audited.
 | P2 | O11 BLS MSM typed API/fusion | strong domain-specific gain; substantial semantic/type work |
 | P2 | O12/O13 ExpMod idiom/folding | explicit builtin exists; automatic recognition is narrower |
 | P2 | O8/O10/O14/O15 conversion, folding, and sharing | depends on typed regions and robust static analysis |
-| P3 | O5/O6 integer/unit case lowerings | benchmark/research value is less certain |
+| P3 | O5/O6 integer/unit case lowerings | benchmark/research value is less certain (resolved by ADR-041: O5 enabled for sealed dispatch, O6 rejected) |
 
 Priority does not authorize implementation. Each row is split into focused
 issues before code changes.
@@ -892,8 +892,13 @@ See [O2–O6 evidence](evidence/032-o2-o6-case-builtins.md) and child issues
   require typed list/pair destructuring and local use analysis.
 - Deferred O5 because Case changes negative/out-of-range failure text, has no
   default branch, and cannot implement existing Java switch semantics.
+  (Superseded by ADR-041 on 2026-09-13: compiler-generated sealed dispatch is a
+  dense, no-default match, the strict boundary rejects invalid tags before
+  dispatch, and the failure-text contract is now pinned; enabled as
+  `pv11.o5.case-integer` at `PV11_SAFE`.)
 - Deferred O6 despite favorable raw measurements because JuLC has no supported
-  typed Unit sequencing surface to own the transformation.
+  typed Unit sequencing surface to own the transformation. (Rejected by ADR-041
+  after a census of shipped artifacts; see its evidence document.)
 
 ### Milestone 4 — Cost/use-directed rewrites
 
@@ -1021,8 +1026,8 @@ line after the initial review window (2026-08-29).
 | O2 | [#97](https://github.com/bloxbean/julc/issues/97) | enabled at `PV11_SAFE` |
 | O3 | [#98](https://github.com/bloxbean/julc/issues/98), [#110](https://github.com/bloxbean/julc/issues/110) | implemented at `PV11_SAFE`: guarded for-each via ADR-034; other traversal families deferred |
 | O4 | [#111](https://github.com/bloxbean/julc/issues/111) | ADR-036 implemented and independently reviewed; strict-boundary UnConstrData pairs; ADR-038/#125 switch decomposition implemented and independently reviewed (PR #129); broader pair/map families deferred |
-| O5 | [#100](https://github.com/bloxbean/julc/issues/100) | deferred: default/failure semantics differ |
-| O6 | [#101](https://github.com/bloxbean/julc/issues/101) | deferred: no typed Unit sequencing surface |
+| O5 | [#100](https://github.com/bloxbean/julc/issues/100), [#112](https://github.com/bloxbean/julc/issues/112) | ADR-041 implemented: compiler-generated sealed dispatch with two or more constructors lowers to one integer `Case` at `PV11_SAFE` (`pv11.o5.case-integer`); failure contract on malformed tags pinned; Java `int` switches remain unsupported |
+| O6 | [#101](https://github.com/bloxbean/julc/issues/101), [#113](https://github.com/bloxbean/julc/issues/113) | rejected by ADR-041: no `ChooseUnit` is emitted and no typed Unit statement surface exists; census of shipped artifacts shows negligible reachable gain |
 | O7 | [#95](https://github.com/bloxbean/julc/issues/95) | typed native Value boundary completed |
 | O8 | [#102](https://github.com/bloxbean/julc/issues/102) | deferred: partial conversion/use analysis |
 | O9 | [#103](https://github.com/bloxbean/julc/issues/103) | deferred: use/escape and failure proof required |

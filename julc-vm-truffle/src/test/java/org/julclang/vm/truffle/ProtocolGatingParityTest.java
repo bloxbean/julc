@@ -76,6 +76,29 @@ class ProtocolGatingParityTest {
     }
 
     @Test
+    void caseOnIntegerChecksFullValueOnBothBackends() {
+        // ADR-041: integer Case scrutinees are unbounded; both backends must fail identically
+        // for negative, out-of-range, and beyond-int/long values, and agree on budgets.
+        var target = LedgerEvaluationTarget.pv11(PlutusLanguage.PLUTUS_V3);
+        var branches = List.of(Term.const_(Constant.integer(10)), Term.const_(Constant.integer(20)),
+                Term.const_(Constant.integer(30)));
+        for (var tag : List.of(BigInteger.valueOf(-1), BigInteger.valueOf(3), BigInteger.ONE.shiftLeft(40),
+                BigInteger.ONE.shiftLeft(64), BigInteger.ONE.shiftLeft(64).negate())) {
+            var program = Program.plutusV3(new Term.Case(Term.const_(Constant.integer(tag)), branches));
+            var expected = "Case: tag " + tag + " out of range for 3 branches";
+            var javaResult = java.evaluate(program, target, null);
+            var truffleResult = truffle.evaluate(program, target, null);
+            assertFailure(javaResult, expected);
+            assertFailure(truffleResult, expected);
+            assertEquals(javaResult.budgetConsumed(), truffleResult.budgetConsumed(), tag.toString());
+        }
+        for (int tag = 0; tag < 3; tag++) {
+            assertBackendParity(Program.plutusV3(new Term.Case(Term.const_(Constant.integer(tag)), branches)),
+                    PlutusLanguage.PLUTUS_V3, 11);
+        }
+    }
+
+    @Test
     void futureBuiltinIsRejectedByBothBackends() {
         var program = Program.plutusV3(Term.builtin(DefaultFun.MultiIndexArray));
         var target = LedgerEvaluationTarget.pv11(PlutusLanguage.PLUTUS_V3);

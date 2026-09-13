@@ -93,6 +93,8 @@ public final class PairDestructuringPass {
                     mapUses(match.nilBranch(), name, use),
                     match.headName().equals(name) || match.tailName().equals(name) ? match.consBranch()
                             : mapUses(match.consBranch(), name, use));
+            case PirTerm.IntegerCase c -> new PirTerm.IntegerCase(mapUses(c.scrutinee(), name, use),
+                    c.branches().stream().map(b -> mapUses(b, name, use)).toList());
             case PirTerm.PairMatch match -> new PirTerm.PairMatch(
                     mapUses(match.scrutinee(), name, use), match.pairType(), match.firstName(), match.secondName(),
                     match.firstName().equals(name) || match.secondName().equals(name) ? match.body()
@@ -119,6 +121,7 @@ public final class PairDestructuringPass {
             case PirTerm.Let l -> names.add(l.name());
             case PirTerm.LetRec r -> r.bindings().forEach(b -> names.add(b.name()));
             case PirTerm.ListMatch m -> { names.add(m.headName()); names.add(m.tailName()); }
+            case PirTerm.IntegerCase _ -> { }
             case PirTerm.PairMatch m -> { names.add(m.firstName()); names.add(m.secondName()); }
             case PirTerm.DataMatch m -> m.branches().forEach(b -> {
                 names.addAll(b.bindings());
@@ -156,6 +159,8 @@ public final class PairDestructuringPass {
                     map.apply(m.nilBranch()), map.apply(m.consBranch()));
             case PirTerm.PairMatch m -> new PirTerm.PairMatch(map.apply(m.scrutinee()), m.pairType(),
                     m.firstName(), m.secondName(), map.apply(m.body()));
+            case PirTerm.IntegerCase c -> new PirTerm.IntegerCase(map.apply(c.scrutinee()),
+                    c.branches().stream().map(map).toList());
         };
         return remember(term, mapped);
     }

@@ -455,6 +455,10 @@ final class LoopBodyGenerator {
                 collectReferencedVars(ite.elseBranch(), candidates, result);
             }
             case PirTerm.DataConstr dc -> { for (var f : dc.fields()) collectReferencedVars(f, candidates, result); }
+            case PirTerm.IntegerCase c -> {
+                collectReferencedVars(c.scrutinee(), candidates, result);
+                for (var branch : c.branches()) collectReferencedVars(branch, candidates, result);
+            }
             case PirTerm.PairMatch m -> {
                 collectReferencedVars(m.scrutinee(), candidates, result);
                 var innerCandidates = new LinkedHashMap<>(candidates);
