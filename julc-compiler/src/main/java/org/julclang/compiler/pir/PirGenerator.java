@@ -620,7 +620,9 @@ public class PirGenerator {
             // They always produce a value, but they are not "return" statements themselves.
             // A while loop as the last statement is fine as a loop-accumulator return pattern,
             // but we conservatively consider it a return path since the desugaring handles it.
-            if (stmt instanceof WhileStmt || stmt instanceof ForEachStmt) {
+            // This leniency is method-only: a switch case block must end in an explicit
+            // `yield`, so a trailing loop never satisfies the yield check (#137).
+            if (exit == ReturnStmt.class && (stmt instanceof WhileStmt || stmt instanceof ForEachStmt)) {
                 // The loop produces a value via accumulator desugaring — treat as return path
                 // only when it's the last statement (the accumulator IS the return value)
                 if (i == stmts.size() - 1) return true;

@@ -328,6 +328,99 @@ class ConditionalYieldLoweringTest {
                 () -> "unexpected message: " + ex.getMessage());
     }
 
+    // A trailing loop satisfies the method-level missing-return check (loop-accumulator
+    // return pattern) but must never satisfy the case-block yield check: the loop's
+    // accumulator is not a yield, so the block would silently produce it on the
+    // fall-through path.
+    @Test
+    void caseBlockEndingInWhileLoopIsDiagnosed() {
+        var source = """
+                import java.math.BigInteger;
+
+                class TrailingWhile {
+                    sealed interface Action permits Check, Stop {}
+                    record Check(BigInteger n) implements Action {}
+                    record Stop() implements Action {}
+
+                    static boolean check(Action action) {
+                        return switch (action) {
+                            case Check c -> {
+                                if (c.n().signum() > 0) { yield false; }
+                                boolean acc = true;
+                                while (!acc) { acc = true; }
+                            }
+                            case Stop s -> false;
+                        };
+                    }
+                }
+                """;
+        var ex = assertThrows(CompilerException.class,
+                () -> new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(source, "check"));
+        assertTrue(ex.getMessage().contains("switch case block may not yield a value on all execution paths"),
+                () -> "unexpected message: " + ex.getMessage());
+    }
+
+    @Test
+    void caseBlockEndingInForEachLoopIsDiagnosed() {
+        var source = """
+                import java.math.BigInteger;
+                import org.julclang.core.types.JulcList;
+
+                class TrailingForEach {
+                    sealed interface Action permits Check, Stop {}
+                    record Check(BigInteger n) implements Action {}
+                    record Stop() implements Action {}
+
+                    static boolean anyPositive(Action action, JulcList<BigInteger> xs) {
+                        return switch (action) {
+                            case Check c -> {
+                                boolean found = false;
+                                for (BigInteger x : xs) {
+                                    if (x.signum() > 0) { found = true; }
+                                }
+                            }
+                            case Stop s -> false;
+                        };
+                    }
+                }
+                """;
+        var ex = assertThrows(CompilerException.class,
+                () -> new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(source, "anyPositive"));
+        assertTrue(ex.getMessage().contains("switch case block may not yield a value on all execution paths"),
+                () -> "unexpected message: " + ex.getMessage());
+    }
+
+    @Test
+    void caseBlockBranchEndingInLoopIsDiagnosed() {
+        var source = """
+                import java.math.BigInteger;
+
+                class NestedTrailingWhile {
+                    sealed interface Action permits Check, Stop {}
+                    record Check(BigInteger n) implements Action {}
+                    record Stop() implements Action {}
+
+                    static boolean check(Action action) {
+                        return switch (action) {
+                            case Check c -> {
+                                if (c.n().signum() > 0) {
+                                    yield false;
+                                } else {
+                                    boolean acc = true;
+                                    while (!acc) { acc = true; }
+                                }
+                            }
+                            case Stop s -> false;
+                        };
+                    }
+                }
+                """;
+        var ex = assertThrows(CompilerException.class,
+                () -> new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(source, "check"));
+        assertTrue(ex.getMessage().contains("switch case block may not yield a value on all execution paths"),
+                () -> "unexpected message: " + ex.getMessage());
+    }
+
     @Test
     void yieldInsideForEachBodyIsRejected() {
         var source = """
