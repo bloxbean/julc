@@ -378,7 +378,7 @@ One milestone, delivered on `feat/120-projection-sharing` stacked on ADR-043:
   covers the common case (uncalled library methods); a unit shared in a live helper that the
   optimiser later inlines away still records provenance.
 - `compareTo` on a projection evaluates its receiver twice by construction; O15 now shares
-  it, but the generator could bind the receiver once at every level (filed separately).
+  it, but the generator could bind the receiver once at every level (issue #146).
 - Leading through a multi-binding (Bekić) `LetRec`: sound if that lowering is also a fixed
   number of steps over values, which nobody has verified; single bindings cover every
   generated shape on the corpus.
