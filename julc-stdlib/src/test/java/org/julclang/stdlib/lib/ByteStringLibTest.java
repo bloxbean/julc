@@ -3,7 +3,6 @@ package org.julclang.stdlib.lib;
 import org.julclang.core.PlutusData;
 import org.julclang.testkit.JulcEval;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
@@ -216,11 +215,15 @@ class ByteStringLibTest {
     @Nested
     class SerialisedData {
 
+        // Previously @Disabled: the compiler emitted a forced SerialiseData builtin that failed
+        // at evaluation (#132, fixed in PR #133). Pin the exact CBOR: integer 42 encodes as
+        // major type 0 with a one-byte argument, 0x18 0x2a.
         @Test
-        @Disabled("PlutusData param triggers compileMethod entry-point issue (Force instead of Apply)")
-        void serialiseProducesNonEmpty() {
+        void serialiseIntegerProducesExactCbor() {
             byte[] result = eval.call("serialiseData", PlutusData.integer(42)).asByteString();
-            assertTrue(result.length > 0);
+            assertEquals(2, result.length);
+            assertEquals(0x18, result[0] & 0xff);
+            assertEquals(0x2a, result[1] & 0xff);
         }
     }
 

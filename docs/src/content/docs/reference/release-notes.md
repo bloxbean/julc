@@ -27,6 +27,28 @@ examples were scanned and do not use the shape. The two Blaster controlled-mint
 verification fixtures do; their locked artifacts and counterexample binding are
 refreshed for the corrected lowering with the same property outcomes.
 
+## Upcoming preview: `serialiseData` compiled without a force wrapper
+
+`Builtins.serialiseData` and `ByteStringLib.serialiseData` previously compiled
+to a forced `SerialiseData` builtin. `SerialiseData` is monomorphic and takes
+its Data argument directly, so the extra force made every generated program
+that reached the call fail at evaluation on the Java, Truffle and Scalus
+backends ([#132](https://github.com/bloxbean/julc/issues/132)). The compiler
+now emits the builtin without the type-instantiation force.
+
+Recompiling a program that calls `serialiseData` changes its script bytes and
+hash under every profile; programs that do not call it keep their bytes. The
+CBOR serialization format, VM behavior and ledger Data encodings are unchanged,
+and already deployed scripts are not modified. Any execution path that reached
+the old forced builtin failed, so the new hash only replaces scripts that could
+not have succeeded on that path.
+
+Two follow-ups guard against regression: an exhaustive comparison of all 102
+`DefaultFun` force counts against the shared builtin metadata (PR #134), and a
+Java-source regression matrix for `serialiseData` under `BASELINE` and
+`PV11_SAFE` on Java and Scalus with exact CBOR and BLAKE2b-256 vectors
+(PR #135).
+
 ## Upcoming preview: lossless Data map decoding
 
 CBOR decoding now preserves Plutus Data map entry order and duplicate keys,
