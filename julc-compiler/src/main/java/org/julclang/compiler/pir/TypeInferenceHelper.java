@@ -208,6 +208,7 @@ final class TypeInferenceHelper {
                 case Constant.StringConst _ -> new PirType.StringType();
                 case Constant.ByteStringConst _ -> new PirType.ByteStringType();
                 case Constant.UnitConst _ -> new PirType.UnitType();
+                case Constant.ValueConst _ -> new PirType.NativeValueType();
                 default -> new PirType.DataType();
             };
         }

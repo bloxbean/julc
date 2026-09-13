@@ -8,6 +8,7 @@ import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.pir.StdlibLookup;
 import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
+import org.julclang.vm.ProtocolCapability;
 
 import java.math.BigInteger;
 import java.util.HashMap;
@@ -624,6 +625,24 @@ public final class StdlibRegistry implements StdlibLookup {
             requireArgs("Builtins.toByteString", args, 1);
             return args.get(0);
         });
+
+        // PV11 native Value literal (ADR-045): a Value constant, gated by the constant capability
+        reg.register(B, "emptyValue", args -> {
+            requireArgs("Builtins.emptyValue", args, 0);
+            return new PirTerm.Const(new Constant.ValueConst(List.of()));
+        }, LoweringRequirements.capability(ProtocolCapability.VALUE_CONSTANTS));
+        var literalRequirements = new LoweringRequirements(Set.of(DefaultFun.InsertCoin), Set.of(ProtocolCapability.VALUE_CONSTANTS));
+        reg.register(B, "singletonValue", args -> {
+            requireArgs("Builtins.singletonValue", args, 3);
+            return builtinApp4(DefaultFun.InsertCoin, args.get(0), args.get(1), args.get(2),
+                    new PirTerm.Const(new Constant.ValueConst(List.of())));
+        }, literalRequirements);
+        reg.register(B, "lovelaceValue", args -> {
+            requireArgs("Builtins.lovelaceValue", args, 1);
+            return builtinApp4(DefaultFun.InsertCoin, new PirTerm.Const(Constant.byteString(new byte[0])),
+                    new PirTerm.Const(Constant.byteString(new byte[0])), args.get(0),
+                    new PirTerm.Const(new Constant.ValueConst(List.of())));
+        }, literalRequirements);
 
         // PV11 InsertCoin: 4-arg builtin (special case, not in tables)
         reg.register(B, "insertCoin", args -> {
