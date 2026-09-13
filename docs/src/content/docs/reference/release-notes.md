@@ -3,6 +3,36 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+## Upcoming preview: automatic sharing of repeated native Value conversions (ADR-042)
+
+`PV11_SAFE` (the default) and `PV11_COSTED` now share a repeated native Value
+conversion of the same variable, `NativeValueLib.fromData(x)` or
+`Builtins.unValueData(x)`, once per scope when that conversion is already the
+first non-trivial evaluation of the scope. The compiler binds it as one strict
+`let` and reuses the bound value at every later occurrence, including
+occurrences inside a loop body, which hoists a per-iteration conversion out of
+the loop. The output for the motivating shape is byte-identical to writing the
+`JulcValue` binding by hand. The optimization report records
+`pv11.o8.value-sharing`.
+
+Nothing observable changes: the conversion that is shared already ran first on
+every path, so results, traces, the failure point and the failure text are
+identical on Java, Truffle and Scalus for valid, malformed and non-canonical
+input. A path that reaches a second occurrence saves one full conversion
+(about 513,000 CPU for even a one-token Value, more for larger Values); a path
+that reaches none, such as an untaken branch or an empty loop, pays at most one
+lambda, one application and one variable lookup (48,000 CPU). A conversion is
+never hoisted above a trace, an `error`, a saturated call or another partial
+conversion, and conversions in exclusive branches of one conditional are left
+exactly as written; binding `JulcValue` explicitly remains the recommended style
+and applies at every level.
+
+Only safe-profile output of programs that convert one `Data` variable at least
+twice changes bytes and hash; no shipped example uses native Values, and
+`ValuesLib` is untouched. `NONE`/`BASELINE` retain historical bytes. `ValueData`
+sinking, adjacent conversion cancellation and Data-side (`ValuesLib`) sharing
+remain deferred (ADR-032 O8/O15).
+
 ## Upcoming preview: integer Case dispatch for sealed-interface switches (ADR-041)
 
 `PV11_SAFE` (the default) and `PV11_COSTED` now dispatch every `switch` on a
@@ -387,7 +417,8 @@ cases as switches.
 Array promotion/folding, native Value algebra, BLS fusion, broader list traversal
 rewrites beyond #110, and general conversion sharing remain explicitly deferred
 (pair Case rewrites were later delivered by ADR-036/038, integer Case dispatch
-by ADR-041, and unit Case sequencing was rejected by ADR-041):
+by ADR-041, unit Case sequencing was rejected by ADR-041, and strict-prefix
+native Value conversion sharing was delivered by ADR-042):
 the current compiler lacks the typed literal, representation, or use-analysis
 proof needed to preserve failures and strict evaluation. A future protocol
 target starts with ADR-032 rules disabled and enables each rule only after its

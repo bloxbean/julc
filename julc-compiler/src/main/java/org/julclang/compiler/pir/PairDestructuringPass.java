@@ -141,27 +141,6 @@ public final class PairDestructuringPass {
     }
 
     private PirTerm mapChildren(PirTerm term, UnaryOperator<PirTerm> map) {
-        var mapped = switch (term) {
-            case PirTerm.Var _, PirTerm.Const _, PirTerm.Builtin _, PirTerm.Error _ -> term;
-            case PirTerm.Lam l -> new PirTerm.Lam(l.param(), l.paramType(), map.apply(l.body()));
-            case PirTerm.Let l -> new PirTerm.Let(l.name(), map.apply(l.value()), map.apply(l.body()));
-            case PirTerm.LetRec r -> new PirTerm.LetRec(r.bindings().stream()
-                    .map(b -> new PirTerm.Binding(b.name(), map.apply(b.value()))).toList(), map.apply(r.body()));
-            case PirTerm.App a -> new PirTerm.App(map.apply(a.function()), map.apply(a.argument()));
-            case PirTerm.IfThenElse i -> new PirTerm.IfThenElse(map.apply(i.cond()),
-                    map.apply(i.thenBranch()), map.apply(i.elseBranch()));
-            case PirTerm.Trace t -> new PirTerm.Trace(map.apply(t.message()), map.apply(t.body()));
-            case PirTerm.DataConstr c -> new PirTerm.DataConstr(c.tag(), c.dataType(), c.fields().stream().map(map).toList());
-            case PirTerm.DataMatch m -> new PirTerm.DataMatch(map.apply(m.scrutinee()), m.branches().stream()
-                    .map(b -> new PirTerm.MatchBranch(b.constructorName(), b.bindings(), b.bindingTypes(),
-                            map.apply(b.body()), b.patternVar())).toList());
-            case PirTerm.ListMatch m -> new PirTerm.ListMatch(map.apply(m.scrutinee()), m.headName(), m.tailName(),
-                    map.apply(m.nilBranch()), map.apply(m.consBranch()));
-            case PirTerm.PairMatch m -> new PirTerm.PairMatch(map.apply(m.scrutinee()), m.pairType(),
-                    m.firstName(), m.secondName(), map.apply(m.body()));
-            case PirTerm.IntegerCase c -> new PirTerm.IntegerCase(map.apply(c.scrutinee()),
-                    c.branches().stream().map(map).toList());
-        };
-        return remember(term, mapped);
+        return remember(term, PirHelpers.mapChildren(term, map));
     }
 }

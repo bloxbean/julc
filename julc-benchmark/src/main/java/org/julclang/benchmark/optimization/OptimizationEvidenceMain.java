@@ -79,18 +79,26 @@ public final class OptimizationEvidenceMain {
             }
             """;
 
-    private static final String O8_VALUE_SHARING_SOURCE = """
+    private static final String O8_IMPORTS = """
             import org.julclang.core.PlutusData;
             import org.julclang.core.types.JulcValue;
             import org.julclang.stdlib.lib.NativeValueLib;
             import java.math.BigInteger;
-            class ValueSharingEvidence {
+            """;
+    /** Two leading conversions of one Data argument; ADR-042 shares them at the safe profile. */
+    private static final String O8_REPEATED_SOURCE = O8_IMPORTS + """
+            class ValueSharingRepeated {
                 static BigInteger repeated(PlutusData data, byte[] policy, byte[] token) {
                     return NativeValueLib.lookupCoin(
                                     policy, token, NativeValueLib.fromData(data))
                             + NativeValueLib.lookupCoin(
                                     policy, token, NativeValueLib.fromData(data));
                 }
+            }
+            """;
+    /** The manual workaround; kept in its own class so no dead method carries rule provenance. */
+    private static final String O8_SHARED_SOURCE = O8_IMPORTS + """
+            class ValueSharingShared {
                 static BigInteger shared(PlutusData data, byte[] policy, byte[] token) {
                     JulcValue value = NativeValueLib.fromData(data);
                     return NativeValueLib.lookupCoin(policy, token, value)
@@ -229,7 +237,9 @@ public final class OptimizationEvidenceMain {
         System.out.println();
         System.out.print(o6CaseUnitExperiment().toMarkdown());
         System.out.println();
-        System.out.print(o8ValueSharingExperiment().toMarkdown());
+        System.out.print(o8ValueSharingComparison().toMarkdown());
+        System.out.println();
+        System.out.print(o8ManualSharingControlComparison().toMarkdown());
         System.out.println();
         System.out.print(o9ArrayPromotionExperiment().toMarkdown());
         System.out.println();
@@ -429,24 +439,39 @@ public final class OptimizationEvidenceMain {
                 OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
     }
 
-    public static OptimizationBenchmarkRunner.Comparison o8ValueSharingExperiment() {
+    /**
+     * O8 (ADR-042): the {@code repeated} source converts the same Data twice in leading
+     * position; the safe profile shares one conversion and must match the hand-written
+     * {@code shared} source byte for byte. Valid and malformed inputs must agree with
+     * BASELINE on result, traces and failure text.
+     */
+    public static OptimizationBenchmarkRunner.Comparison o8ValueSharingComparison() {
+        return OptimizationBenchmarkRunner.compareWithJavaAndTruffle(
+                new OptimizationBenchmarkRunner.Fixture(
+                        "o8-native-value-sharing", O8_REPEATED_SOURCE, "repeated", o8Cases()),
+                OptimizationLevel.PV11_SAFE,
+                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+    }
+
+    /** The manual-sharing control: BASELINE and PV11_SAFE of {@code shared} carry no O8 rule. */
+    public static OptimizationBenchmarkRunner.Comparison o8ManualSharingControlComparison() {
+        return OptimizationBenchmarkRunner.compareWithJavaAndTruffle(
+                new OptimizationBenchmarkRunner.Fixture(
+                        "o8-native-value-shared-control", O8_SHARED_SOURCE, "shared", o8Cases()),
+                OptimizationLevel.PV11_SAFE,
+                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+    }
+
+    private static List<OptimizationBenchmarkRunner.InputCase> o8Cases() {
         byte[] policy = new byte[] {1, 2, 3};
         byte[] token = new byte[] {4, 5};
-        var cases = List.of(
+        return List.of(
                 OptimizationBenchmarkRunner.InputCase.of(
                         "valid", sampleValueData(policy, token),
                         PlutusData.bytes(policy), PlutusData.bytes(token)),
                 OptimizationBenchmarkRunner.InputCase.of(
                         "malformed", PlutusData.integer(1),
                         PlutusData.bytes(policy), PlutusData.bytes(token)));
-        return OptimizationBenchmarkRunner.compareResearchFixturesWithJavaAndTruffle(
-                "o8-native-value-sharing-experiment",
-                new OptimizationBenchmarkRunner.Fixture(
-                        "o8-repeated", O8_VALUE_SHARING_SOURCE, "repeated", cases),
-                new OptimizationBenchmarkRunner.Fixture(
-                        "o8-shared", O8_VALUE_SHARING_SOURCE, "shared", cases),
-                "pv11.o8.value-sharing-research",
-                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
     }
 
     public static OptimizationBenchmarkRunner.Comparison o9ArrayPromotionExperiment() {

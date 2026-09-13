@@ -122,6 +122,23 @@ expansion for lexical compatibility. The producer and PairMatch consumer share
 the exact O4 gate and rule identity. This changes safe-profile direct-PIR output
 as well as source switches.
 
+`ValueConversionSharingPass` (ADR-042, O8) runs just before `PairDestructuringPass`
+at the same three entry points. For a scope in which one variable is converted to
+a native Value at least twice (`Builtins.unValueData(x)` or
+`NativeValueLib.fromData(x)`, outside any rebinding of `x`), it binds the
+conversion once, `let #value-N = C(x) in …`, exactly when that conversion is the
+first non-trivial evaluation on every path through the scope: function position
+before argument, a `Let` value before its body, a condition or scrutinee before
+its branches, with variables, constants, lambdas and under-saturated builtin or
+once-bound library-lambda spines counted as trivial. Branch bodies, traces,
+errors, recursive bindings and lambdas never lead, so nothing is hoisted across
+them and a binding never wraps a lambda. The shared conversion already ran first
+on every path, so results, traces, failure points and failure text are unchanged;
+a path that reaches no second occurrence pays one lambda, one application and one
+variable lookup. Gate: the exact PV11 target and a safe level as for O4/O5, but
+on `VALUE_CONSTANTS` instead of `CASE_ON_BUILTIN_CONSTANTS`; rule provenance is
+`pv11.o8.value-sharing`; NONE/BASELINE keep their bytes.
+
 ADR-041 replaces the tag dispatch itself under the same gate. When a `DataMatch`
 has two or more constructors, `generateDataMatch` emits a generator-local
 `IntegerCase` on the decoded tag binder instead of the `EqualsInteger`/`IfThenElse`

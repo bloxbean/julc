@@ -1300,6 +1300,19 @@ boolean valid = BlsLib.finalVerify(ml1, ml2);
 Data once with `fromData`, keep intermediate operations in `JulcValue`, and
 convert back with `toData` only at a Data boundary.
 
+> **Automatic sharing (ADR-042).** At the default `pv11-safe` level the compiler
+> binds a repeated `fromData(x)` / `Builtins.unValueData(x)` of the same variable
+> once per scope when that conversion is already the first thing the scope
+> evaluates, including a conversion repeated inside a loop body. The output is
+> byte-identical to writing the `JulcValue` binding yourself, and results,
+> traces and failures never change. A conversion that sits behind another
+> partial step is deliberately left alone: in
+> `NativeValueLib.contains(NativeValueLib.fromData(out), NativeValueLib.fromData(required))`
+> inside a loop, `fromData(out)` runs first on every iteration, so
+> `fromData(required)` is not hoisted (doing so would change which malformed
+> input fails first). Writing the binding explicitly, once, before the loop is
+> still the clearest style and works at every optimization level.
+
 ### Quick Reference
 
 | Method | Description |
