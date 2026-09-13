@@ -3,6 +3,54 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+## Upcoming preview: automatic sharing of repeated record field projections (ADR-044)
+
+`PV11_SAFE` (the default) and `PV11_COSTED` now share a repeated projection of
+the same record field of the same variable (`txInfo.outputs()` on a `TxInfo`
+local or parameter, `b.amount()` on a cast local, `out.value()` on a loop item)
+once per scope when that projection is already the first non-trivial
+evaluation of the scope, and share the record's decoded fields list when two
+or more different fields of one variable are projected. The compiler binds the
+projection (or the fields list) as one strict `let` and reuses it at every
+later occurrence, including occurrences inside a loop body and inside
+`compareTo`, which evaluates its receiver twice on its own. A projection of a
+projection (`b.inner().x()` and `b.inner().y()`) shares the inner record first.
+The output for the motivating shape is byte-identical to writing
+`BigInteger amount = b.amount();` yourself. The optimization report records
+`pv11.o15.projection-sharing`.
+
+Nothing observable changes: the shared projection already ran first on every
+path, so results, traces, the failure point and the failure text are identical
+on Java, Truffle and Scalus for well-formed and malformed input, at every level.
+A path that reaches a later occurrence saves the whole projection (about
+462,000 CPU for an integer field at the first position, 1,058,000 CPU for a raw
+field at the sixth, 279,000 CPU for the fields list); a path that reaches none,
+such as an untaken branch or an empty loop, pays at most one lambda, one
+application and one variable lookup (48,000 CPU) per shared binding. A
+projection is never hoisted above a trace, an `error`, a saturated call or a
+projection of another variable, and projections in exclusive branches of one
+conditional are left exactly as written. A validator that projects
+`ctx.txInfo().outputs()` twice drops from 429 to 380 bytes and from 11.6 million
+to 8.8 million CPU on the path that uses both.
+
+This is the first default-level rule that changes the bytes and hash of most
+existing validators: any program that projects one field of one variable twice
+in leading position, or two fields of one variable, compiles to a different
+(smaller) script. Deployed scripts are unaffected; recompiling changes the
+script hash and therefore the script address. Tests or deployments that pin a
+hash need to be refreshed. `NONE`/`BASELINE` retain historical bytes.
+
+One costed-only consequence: because the shared list projection is a variable,
+`pv11-costed` now also promotes `b.items().get(0)` beside `b.items().get(1)`
+to a PV11 array (ADR-043), with ADR-043's `IndexArray` failure text for an
+out-of-range index on such sites.
+
+Each PIR-to-PIR rule can be switched off on its own for review and measurement:
+`new CompilerOptions().disableOptimizationRule("pv11.o15.projection-sharing")`
+(also `pv11.o8.value-sharing` and `pv11.o9.list-to-array`); any other id fails
+with `JULC0043`. The optimization level remains the supported rollout control,
+and the Gradle plugin and CLI do not expose the switch.
+
 ## Upcoming preview: list-to-array promotion at `pv11-costed` (ADR-043)
 
 `PV11_COSTED` (opt-in; `julc { optimization = 'pv11-costed' }` with a pinned

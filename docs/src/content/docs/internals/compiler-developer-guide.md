@@ -170,6 +170,48 @@ through an unchecked cast fails at the conversion on every path below the
 binding (the ADR-043 typing-trust exposure). Rule provenance is `pv11.o9.list-to-array`; NONE/BASELINE/PV11_SAFE keep
 their bytes, and `MultiIndexArray` is never emitted.
 
+ADR-044 (O15) generalises `ValueConversionSharingPass` from one unit class to
+three, under the same leading rule. A *unit* is a closed, deterministic
+computation of one variable `x`: the native Value conversion of ADR-042; a
+record field projection `D(headList(tailList^k(sndPair(unConstrData(x)))))`
+where `D` is exactly one `PirHelpers.wrapDecode` arm (none, `unIData`,
+`unBData`, `unListData`, `unMapData`, the Bool form
+`equalsInteger(fstPair(unConstrData(·)), 1)` or the String form
+`decodeUtf8(unBData(·))`), matched outermost arm first so the raw chain inside
+a decode is never a unit of its own; and the fields prefix
+`sndPair(unConstrData(x))`. Two occurrences are the same unit when the root
+variable's name, the depth and the arm agree. Rounds run field chains to a
+fixed point (a shared inner projection is a variable and roots the outer
+chains of `b.inner().x()` / `b.inner().y()`), then the prefix over whatever
+distinct chains remain, then Value conversions, which may now apply to a
+shared projection. Two refinements apply to every class: the body of a
+recursive binding whose values are all lambdas can lead (building the
+closures is a fixed number of pure steps, the fact the UPLC optimiser also
+relies on; the per-site `JulcList.get` lowering wraps each site this way), and
+units inside a lambda binding the live program never references are neither
+counted nor rewritten, so provenance is recorded only for code that reaches
+the artifact (every uncalled library method is such a binding). Root-level
+projections of an entrypoint's own record parameters are already bound once by
+the strict boundary, and a switch pattern variable's fields reuse the match
+binders, so neither produces chains; nested projections (`ctx.txInfo()`,
+`txInfo.outputs()` on a local or parameter, loop items, cast locals) do. Gate:
+the exact PV11 target and a safe level, no capability (the builtins predate
+PV11; the gate is rollout policy); provenance `pv11.o15.projection-sharing`.
+Because O15 binds a projected list once, ADR-043 sees that binding as a proven
+list and promotes `b.items().get(i)` sites at the costed profile that it could
+not reach before.
+
+Each PIR-to-PIR rule can be switched off on its own:
+`CompilerOptions.disableOptimizationRule(id)` for `pv11.o8.value-sharing`,
+`pv11.o15.projection-sharing` and `pv11.o9.list-to-array`
+(`CompilationContext.switchableOptimizationRules()`); any other identifier
+fails with `JULC0043` before compilation, and the rules implemented inside
+`UplcGenerator`/`UplcOptimizer` are selected by the level only. The switch
+exists so that a rule can be reviewed and measured in isolation (the O9 golden
+suite pins its bytes with O15 off, the benchmark compares a level with a rule
+off against the same level with it on); the level remains the supported way to
+choose a rollout, and the Gradle plugin and CLI do not expose the switch.
+
 ADR-041 replaces the tag dispatch itself under the same gate. When a `DataMatch`
 has two or more constructors, `generateDataMatch` emits a generator-local
 `IntegerCase` on the decoded tag binder instead of the `EqualsInteger`/`IfThenElse`

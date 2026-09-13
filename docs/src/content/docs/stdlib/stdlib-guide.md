@@ -1325,6 +1325,17 @@ convert back with `toData` only at a Data boundary.
 > input fails first). Writing the binding explicitly, once, before the loop is
 > still the clearest style and works at every optimization level.
 
+> **Automatic projection sharing (ADR-044).** The same rule applies to record
+> field access: `txInfo.outputs()` repeated on one `TxInfo` variable,
+> `out.value()` repeated on one loop item, or two different fields of one
+> variable (`txInfo.outputs()` and `txInfo.fee()`) are bound once per scope at
+> the default level when the first of them is already the first thing the scope
+> evaluates. The output is byte-identical to binding the field yourself, and
+> results, traces and failures never change. A projection that only appears in
+> one branch of a conditional, or that sits behind a saturated call or a trace,
+> is left as written; binding it explicitly before the branch remains the way
+> to share it at every level.
+
 ### Quick Reference
 
 | Method | Description |
