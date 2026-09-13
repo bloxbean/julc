@@ -227,6 +227,76 @@ and used at every site.
 
 ## Repository validation
 
-Recorded in the pull request after the final commit: full build, Blaster lock check, Maven-local
-publish, external `julc-examples` at the default and costed levels with the per-validator
-size/hash diff against the ADR-043 run.
+Final code commit `6cbdd0a1` (review fixes). `64c51faa` adds one ADR line (issue #146) and is
+the commit the publish and example runs below used; its compiled artifacts are those of
+`6cbdd0a1`.
+
+- Full build (`./gradlew build --continue`) on the `6cbdd0a1` tree: 10,904 tests, 0 failures,
+  0 errors, 530 skipped (the pre-existing on-chain and DevKit-gated suites).
+- Blaster: `verification/blaster/scripts/prepare-artifacts.sh` completed and the regenerated
+  `verification/blaster/generated/artifact-lock.json` is identical to the committed one (the
+  seven fixtures compile at `baseline`, which O15 does not touch).
+- Published `0.1.0-pre17-64c51fa-SNAPSHOT` to Maven local.
+- External `julc-examples` (`../julc-examples`, resolved through
+  `adr/evidence/041-local-examples.init.gradle`, the examples' `build.gradle` untouched) at the
+  default level and at `pv11-costed` (`043-costed-examples.init.gradle`): 418 tests,
+  55 failures, 11 skipped in each run. Every failure is an `InsufficientBalanceException` from
+  cardano-client-lib against the local Yaci DevKit, whose funded accounts are exhausted and
+  were not reset for this run (external devnet, not mutated): 52 `*IntegrationTest` steps and
+  the three `EscrowBudgetComparisonTest` steps, which are not named `IntegrationTest` but submit
+  transactions the same way. The failure set is identical to the ADR-043 validation run and to
+  the run at `8258bfa1` before the review fixes; no compile-time or off-chain evaluation test
+  fails.
+- Validators compiled at the default level: 41. 26 differ from the ADR-043 default run: 11 with
+  a new hash and 15 parameterized validators (the plugin prints no hash for them) with a smaller
+  rounded size; 9 parameterized validators keep their rounded size (a byte change cannot be
+  excluded from the log); 6 are unchanged. At `pv11-costed` exactly one validator differs from
+  the default-level run: `LinkedListValidator` 4.0KB → 3.8KB, the first corpus promotion
+  ADR-043 could not reach before O15 (the O15 binding makes its projected list a proven
+  variable for O9). The `64c51fa` run is identical, validator for validator at both levels, to
+  the `8258bfa1` run: the rewriter leaf rule and the single-binding restriction change nothing
+  in the corpus.
+
+| Validator | ADR-043 default | ADR-044 default | Hash |
+|---|---:|---:|---|
+| AuctionValidator | 669B | 669B | unchanged |
+| CfAnonymousDataValidator | 1.8KB | 1.8KB | new hash |
+| CfAtomicTxValidator | 325B | 325B | unchanged |
+| CfAuctionValidator | 3.7KB | 3.2KB | new hash |
+| CfBetValidator | 2.4KB | 2.2KB | new hash |
+| CfCrowdfundValidator | 1.9KB | 1.9KB | parameterized, size unchanged |
+| CfEscrowValidator | 1.8KB | 1.6KB | new hash |
+| CfFactoryValidator | 2.5KB | 2.4KB | parameterized, size changed |
+| CfHtlcValidator | 618B | 618B | parameterized, size unchanged |
+| CfIdentityValidator | 1.6KB | 1.5KB | new hash |
+| CfLotteryValidator | 3.7KB | 3.5KB | parameterized, size changed |
+| CfPaymentSplitterValidator | 805B | 736B | parameterized, size changed |
+| CfPriceBetValidator | 2.3KB | 2.0KB | new hash |
+| CfProductValidator | 1.2KB | 1.2KB | parameterized, size unchanged |
+| CfProxyValidator | 4.4KB | 4.3KB | parameterized, size changed |
+| CfScriptLogicV1 | 1.6KB | 1.6KB | parameterized, size unchanged |
+| CfScriptLogicV2 | 1.5KB | 1.5KB | parameterized, size unchanged |
+| CfSimpleTransferValidator | 257B | 257B | parameterized, size unchanged |
+| CfSimpleWalletValidator | 1.3KB | 1.2KB | parameterized, size changed |
+| CfStorageValidator | 1.4KB | 1.3KB | parameterized, size changed |
+| CfTokenTransferValidator | 1.5KB | 1.5KB | parameterized, size unchanged |
+| CfVaultValidator | 1.4KB | 1.4KB | parameterized, size unchanged |
+| CfVestingValidator | 496B | 496B | unchanged |
+| CfWalletFundsValidator | 1.3KB | 1.2KB | parameterized, size changed |
+| Cip68Nft | 2.1KB | 2.0KB | parameterized, size changed |
+| CollateralLoan | 1.8KB | 1.7KB | parameterized, size changed |
+| EscrowValidator | 1.1KB | 1.1KB | new hash |
+| GuardedMinting | 123B | 123B | unchanged |
+| LinkedListValidator | 4.0KB | 4.0KB (costed: 3.8KB) | parameterized, size unchanged |
+| MpfRegistryValidator | 2.5KB | 2.4KB | new hash |
+| MultiSigMinting | 586B | 556B | new hash |
+| MultiSigTreasury | 423B | 423B | unchanged |
+| OneShotMintPolicy | 707B | 690B | parameterized, size changed |
+| OutputCheckValidator | 821B | 816B | new hash |
+| SwapOrder | 1.6KB | 1.6KB | new hash |
+| TokenDistributionValidator | 1.0KB | 1012B | parameterized, size changed |
+| UVerifyFeePot | 2.0KB | 1.9KB | parameterized, size changed |
+| UVerifyProxy | 3.3KB | 3.1KB | parameterized, size changed |
+| UVerifyV1 | 8.0KB | 7.5KB | parameterized, size changed |
+| VestingValidator | 812B | 807B | parameterized, size changed |
+| WhitelistTreasuryValidator | 904B | 904B | unchanged |
