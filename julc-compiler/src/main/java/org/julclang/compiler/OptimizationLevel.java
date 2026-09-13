@@ -72,4 +72,12 @@ public enum OptimizationLevel {
     public boolean costProfileRequired() {
         return costProfileRequired;
     }
+
+    /**
+     * Whether rules justified only by a pinned cost profile (ADR-032 "profile-cost" class,
+     * ADR-043 O9) are enabled. Exactly the levels that require a cost profile.
+     */
+    public boolean pv11CostedRulesEnabled() {
+        return costProfileRequired;
+    }
 }

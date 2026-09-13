@@ -586,7 +586,8 @@ public class JulcCompiler {
         }
 
         var sharing = new ValueConversionSharingPass(context, pirGenerator.getPirPositions()).lower(wrappedTerm);
-        var pairLowering = new PairDestructuringPass(context, sharing.positions()).lower(sharing.term());
+        var promotion = new ListIndexPromotionPass(context, sharing.positions()).lower(sharing.term());
+        var pairLowering = new PairDestructuringPass(context, promotion.positions()).lower(promotion.term());
         wrappedTerm = pairLowering.term();
 
         // 17. Capture PIR if details requested
@@ -728,7 +729,8 @@ public class JulcCompiler {
         var context = beginCompilation();
         var uplcGenerator = new UplcGenerator(context, null);
         var shared = new ValueConversionSharingPass(context, null).lower(pirTerm).term();
-        var uplcTerm = uplcGenerator.generate(new PairDestructuringPass(context, null).lower(shared).term());
+        var promoted = new ListIndexPromotionPass(context, null).lower(shared).term();
+        var uplcTerm = uplcGenerator.generate(new PairDestructuringPass(context, null).lower(promoted).term());
         var program = createProgram(context, uplcTerm);
         UplcTargetValidator.validate(program, context, "UPLC lowering");
         return program;
@@ -964,7 +966,8 @@ public class JulcCompiler {
         }
 
         var sharing = new ValueConversionSharingPass(context, pirGenerator.getPirPositions()).lower(body);
-        var pairLowering = new PairDestructuringPass(context, sharing.positions()).lower(sharing.term());
+        var promotion = new ListIndexPromotionPass(context, sharing.positions()).lower(sharing.term());
+        var pairLowering = new PairDestructuringPass(context, promotion.positions()).lower(promotion.term());
         body = pairLowering.term();
 
         // 17. Lower to UPLC (with source map support)

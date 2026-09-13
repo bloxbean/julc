@@ -5,7 +5,6 @@ import org.julclang.core.Term;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CostUseRewriteExperimentTest {
@@ -13,21 +12,10 @@ class CostUseRewriteExperimentTest {
     // O8 value sharing graduated from research to a compiler rule in ADR-042; see
     // O8ValueSharingBenchmarkTest for the BASELINE vs PV11_SAFE comparison.
 
-    @Test
-    void listToArrayValidResultsMatchButFailureTextDoesNot() {
-        var comparison = OptimizationEvidenceMain.o9ArrayPromotionExperiment();
-
-        for (int i = 0; i < comparison.baselineEvaluations().size(); i++) {
-            var before = comparison.baselineEvaluations().get(i);
-            var after = comparison.candidateEvaluations().get(i);
-            assertEquals(before.outcome(), after.outcome());
-            if (before.outcome() == OptimizationBenchmarkRunner.Outcome.SUCCESS) {
-                assertEquals(before.resultTerm(), after.resultTerm());
-            } else {
-                assertNotEquals(before.failure(), after.failure());
-            }
-        }
-    }
+    // O9 list-to-array promotion graduated from research to a costed compiler rule in ADR-043;
+    // see O9ListIndexPromotionBenchmarkTest for the PV11_SAFE vs PV11_COSTED comparison. The
+    // research finding (valid results match, out-of-range failure text differs) is now the
+    // ADR-043 failure contract, pinned by the compiler's O9ListIndexPromotionTest.
 
     @Test
     void powModAndExpModDifferOnDocumentedBoundaryDomain() {

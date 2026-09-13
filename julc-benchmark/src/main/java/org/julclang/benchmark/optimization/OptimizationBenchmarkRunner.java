@@ -237,13 +237,27 @@ public final class OptimizationBenchmarkRunner {
             OptimizationLevel candidateLevel,
             OptimizationCostProfile costProfile,
             List<Backend> backends) {
+        return compare(fixture, OptimizationLevel.BASELINE, candidateLevel, costProfile, backends);
+    }
+
+    /**
+     * Compare two optimizer levels under selected backends. A costed-only rule (ADR-043 O9) is
+     * measured against {@code PV11_SAFE} so the delta is the rule alone, not the safe rules too.
+     */
+    public static Comparison compare(
+            Fixture fixture,
+            OptimizationLevel baselineLevel,
+            OptimizationLevel candidateLevel,
+            OptimizationCostProfile costProfile,
+            List<Backend> backends) {
         Objects.requireNonNull(fixture, "fixture");
+        Objects.requireNonNull(baselineLevel, "baselineLevel");
         Objects.requireNonNull(candidateLevel, "candidateLevel");
         Objects.requireNonNull(costProfile, "costProfile");
         backends = List.copyOf(backends);
         if (backends.isEmpty()) throw new IllegalArgumentException("backends must not be empty");
 
-        var baseline = compile(fixture, OptimizationLevel.BASELINE, costProfile);
+        var baseline = compile(fixture, baselineLevel, costProfile);
         var candidate = compile(fixture, candidateLevel, costProfile);
         var baselineEvals = evaluate(fixture, baseline, costProfile, backends);
         var candidateEvals = evaluate(fixture, candidate, costProfile, backends);
@@ -263,6 +277,15 @@ public final class OptimizationBenchmarkRunner {
             OptimizationLevel candidateLevel,
             OptimizationCostProfile costProfile) {
         return compare(fixture, candidateLevel, costProfile,
+                List.of(Backend.javaVm(), Backend.truffleVm()));
+    }
+
+    public static Comparison compareLevelsWithJavaAndTruffle(
+            Fixture fixture,
+            OptimizationLevel baselineLevel,
+            OptimizationLevel candidateLevel,
+            OptimizationCostProfile costProfile) {
+        return compare(fixture, baselineLevel, candidateLevel, costProfile,
                 List.of(Backend.javaVm(), Backend.truffleVm()));
     }
 

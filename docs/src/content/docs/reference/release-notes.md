@@ -3,6 +3,60 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+## Upcoming preview: list-to-array promotion at `pv11-costed` (ADR-043)
+
+`PV11_COSTED` (opt-in; `julc { optimization = 'pv11-costed' }` with a pinned
+cost profile) now converts a `JulcList` variable that its scope indexes at two
+or more `get` sites, or at a `get` site inside a loop body, to a PV11 array once
+(`ListToArray`) and rewrites those sites to `IndexArray`. Every other use of the
+list (for-each, `size`, `head`, passing it to a helper) is untouched, the array
+binding is placed at the innermost sub-term that contains every index site (so a
+path on which the binding is not placed, such as a branch whose sibling holds all
+the sites, pays nothing), and for two sites in one expression the output is
+byte-identical to writing `list.toArray()` by hand at that point. The
+optimization report records `pv11.o9.list-to-array`. `PV11_SAFE` (the default),
+`BASELINE` and `NONE` keep their bytes and hashes.
+
+The recursive `get` costs about 620,000 CPU plus 683,000 CPU per index step and
+60 FLAT bytes per site; the array form costs 49,000 + 24,838 CPU per element
+once plus 312,000 CPU per site. Two sites at indexes 0 and 1 save CPU for lists
+of up to 44 elements, sites at indexes 3 and 7 for up to 291, and loops
+multiply the saving: a WingRiders-shaped request loop with sixteen requests
+drops from 349.6 million to 81.9 million CPU. A path that converts but then
+indexes less than twice pays at most the conversion plus one binding
+(97,000 + 24,838·n CPU per list): an empty loop, or an untaken branch when both
+branches index. The compiler assumes a promoted list is indexed at least twice
+per evaluation; this is why the rule is confined to the costed profile.
+
+Failure contract (costed profile only): a promoted `get` with an index outside
+`0..length-1` now fails at the `IndexArray` builtin instead of inside the
+recursive traversal. Both fail after the index is evaluated and before any other
+effect, so results, traces and the failure point are unchanged; only the
+off-chain text and the failing path's budget (smaller) differ. Because the typed
+boundary does not range-check integers, a redeemer- or datum-supplied index
+reaches `get` unchecked and a validator compiled at `pv11-costed` itself
+reports `IndexArray: index I out of bounds for array of size N` (Scalus:
+`… indexArray: index I out of bounds for array of length N`) instead of
+`HeadList: empty list` (index equal to the length) or `TailList: empty list`
+(negative or larger). You see it wherever the costed artifact is evaluated: the
+Gradle plugin or annotation processor with `julc.optimization=pv11-costed`,
+`julc build --optimization pv11-costed` followed by `julc eval`, direct
+`JulcCompiler` use, and the MCP tools. The testkit's `JulcEval`,
+`MethodEvaluator` and `ValidatorTest` compile at the default level and never
+show it. On-chain a failure is a failure. Tests that assert on that text under
+the costed profile need updating; nothing changes at the default level.
+`MultiIndexArray` remains illegal at PV11.
+
+One typing caveat, also costed-only: a `JulcList` variable that actually holds a
+non-list (only possible through an unchecked cast such as
+`(JulcList<T>) (Object) somePlutusData`, which Java itself would reject at the
+cast) fails at the array conversion on every path below the binding, including a
+path that never indexes, once the value has crossed a helper boundary through a
+list-typed parameter or return or has been carried through a loop as its state.
+A `JulcList` local bound to such a cast, and every alias of it, is never
+promoted, and a callback lambda's list-typed parameter is never promoted either.
+Well-typed programs are unaffected.
+
 ## Upcoming preview: automatic sharing of repeated native Value conversions (ADR-042)
 
 `PV11_SAFE` (the default) and `PV11_COSTED` now share a repeated native Value

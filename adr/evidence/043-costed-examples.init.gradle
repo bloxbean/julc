@@ -1,0 +1,19 @@
+// Gradle init script: compile an external julc-examples checkout at the opt-in pv11-costed
+// level with the pinned cardano-node-11.0.1 PV11 cost profile, without editing the examples
+// build file. Layer it on the Maven-local override (ADR-041 script):
+//
+//   cd ../julc-examples && ./gradlew clean test --refresh-dependencies \
+//       -I ../julc/adr/evidence/041-local-examples.init.gradle \
+//       -I ../julc/adr/evidence/043-costed-examples.init.gradle \
+//       -Djulc.localVersion=0.1.0-pre17-<sha>-SNAPSHOT
+//
+// Tests that pin default-level script hashes or budgets are expected to differ at this level;
+// every other test exercises the costed output for semantic equivalence (ADR-043).
+allprojects {
+    plugins.withId('org.julclang.julc') {
+        def julc = project.extensions.getByName('julc')
+        julc.optimization.set('pv11-costed')
+        julc.costProfile.set('cardano-node-11.0.1-plutus-v3-pv11')
+        println "JULC_COSTED_EXAMPLES ${project.path} optimization=pv11-costed costProfile=cardano-node-11.0.1-plutus-v3-pv11"
+    }
+}

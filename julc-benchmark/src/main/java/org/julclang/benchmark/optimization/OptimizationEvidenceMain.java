@@ -107,23 +107,45 @@ public final class OptimizationEvidenceMain {
             }
             """;
 
-    private static final String O9_ARRAY_PROMOTION_SOURCE = """
-            import org.julclang.core.PlutusData;
+    private static final String O9_IMPORTS = """
             import org.julclang.core.types.JulcArray;
             import org.julclang.core.types.JulcList;
-            import org.julclang.stdlib.Builtins;
             import java.math.BigInteger;
-            class ArrayPromotionEvidence {
-                static BigInteger repeatedList(PlutusData data, long first, long second) {
-                    JulcList<PlutusData> items = Builtins.unListData(data);
-                    return Builtins.unIData(items.get(first))
-                            + Builtins.unIData(items.get(second));
+            """;
+    /**
+     * The WingRiders pool-validator shape (ADR-043): three lists indexed once each inside a
+     * loop driven by a redeemer index list. Every list is promoted at PV11_COSTED.
+     */
+    private static final String O9_REQUEST_LOOP_SOURCE = O9_IMPORTS + """
+            class ListIndexRequestLoop {
+                static BigInteger requests(JulcList<BigInteger> inputs, JulcList<BigInteger> outputs,
+                                           JulcList<BigInteger> requestIndices) {
+                    BigInteger total = BigInteger.ZERO;
+                    int i = 0;
+                    int n = requestIndices.size();
+                    while (i < n) {
+                        BigInteger requestIndex = requestIndices.get(i);
+                        total = total.add(inputs.get(requestIndex)).add(outputs.get(i + 1));
+                        i = i + 1;
+                    }
+                    return total;
                 }
-                static BigInteger promotedArray(PlutusData data, long first, long second) {
-                    JulcList<PlutusData> items = Builtins.unListData(data);
-                    JulcArray<PlutusData> array = items.toArray();
-                    return Builtins.unIData(array.get(first))
-                            + Builtins.unIData(array.get(second));
+            }
+            """;
+    /** Two sites on one parameter; the costed bytes must equal the manual array form below. */
+    private static final String O9_TWO_SITES_SOURCE = O9_IMPORTS + """
+            class ListIndexTwoSites {
+                static BigInteger twoSites(JulcList<BigInteger> items, BigInteger first, BigInteger second) {
+                    return items.get(first).add(items.get(second));
+                }
+            }
+            """;
+    /** The manual array form; kept in its own class so no dead method carries rule provenance. */
+    private static final String O9_MANUAL_ARRAY_SOURCE = O9_IMPORTS + """
+            class ListIndexManualArray {
+                static BigInteger manualArray(JulcList<BigInteger> items, BigInteger first, BigInteger second) {
+                    JulcArray<BigInteger> array = items.toArray();
+                    return array.get(first).add(array.get(second));
                 }
             }
             """;
@@ -241,7 +263,11 @@ public final class OptimizationEvidenceMain {
         System.out.println();
         System.out.print(o8ManualSharingControlComparison().toMarkdown());
         System.out.println();
-        System.out.print(o9ArrayPromotionExperiment().toMarkdown());
+        System.out.print(o9RequestLoopComparison().toMarkdown());
+        System.out.println();
+        System.out.print(o9TwoSitesComparison().toMarkdown());
+        System.out.println();
+        System.out.print(o9ManualArrayControlComparison().toMarkdown());
         System.out.println();
         System.out.print(o12ExpModIdiomExperiment().toMarkdown());
         System.out.println();
@@ -474,21 +500,56 @@ public final class OptimizationEvidenceMain {
                         PlutusData.bytes(policy), PlutusData.bytes(token)));
     }
 
-    public static OptimizationBenchmarkRunner.Comparison o9ArrayPromotionExperiment() {
-        var cases = List.of(
-                arrayInput("length-1", listOfLength(1), 0, 0),
-                arrayInput("length-3", listOfLength(3), 1, 2),
-                arrayInput("length-8", listOfLength(8), 6, 7),
-                arrayInput("negative", listOfLength(3), -1, 1),
-                arrayInput("out-of-range", listOfLength(3), 1, 3));
-        return OptimizationBenchmarkRunner.compareResearchFixturesWithJavaAndTruffle(
-                "o9-list-to-array-promotion-experiment",
+    /**
+     * O9 (ADR-043): the request loop indexes three lists once each per iteration; PV11_COSTED
+     * converts each list to an array once before the loop. Measured against PV11_SAFE so the
+     * delta is the promotion alone. Inputs are valid so results, traces and failures agree.
+     */
+    public static OptimizationBenchmarkRunner.Comparison o9RequestLoopComparison() {
+        return OptimizationBenchmarkRunner.compareLevelsWithJavaAndTruffle(
                 new OptimizationBenchmarkRunner.Fixture(
-                        "o9-list", O9_ARRAY_PROMOTION_SOURCE, "repeatedList", cases),
-                new OptimizationBenchmarkRunner.Fixture(
-                        "o9-array", O9_ARRAY_PROMOTION_SOURCE, "promotedArray", cases),
-                "pv11.o9.list-to-array-research",
+                        "o9-list-index-request-loop", O9_REQUEST_LOOP_SOURCE, "requests", o9LoopCases()),
+                OptimizationLevel.PV11_SAFE,
+                OptimizationLevel.PV11_COSTED,
                 OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+    }
+
+    /** Two sites on one list: the costed program must be the manual array program byte for byte. */
+    public static OptimizationBenchmarkRunner.Comparison o9TwoSitesComparison() {
+        return OptimizationBenchmarkRunner.compareLevelsWithJavaAndTruffle(
+                new OptimizationBenchmarkRunner.Fixture(
+                        "o9-list-index-two-sites", O9_TWO_SITES_SOURCE, "twoSites", o9TwoSiteCases()),
+                OptimizationLevel.PV11_SAFE,
+                OptimizationLevel.PV11_COSTED,
+                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+    }
+
+    /** The manual array control: PV11_SAFE and PV11_COSTED of {@code manualArray} carry no O9 rule. */
+    public static OptimizationBenchmarkRunner.Comparison o9ManualArrayControlComparison() {
+        return OptimizationBenchmarkRunner.compareLevelsWithJavaAndTruffle(
+                new OptimizationBenchmarkRunner.Fixture(
+                        "o9-list-index-manual-array-control", O9_MANUAL_ARRAY_SOURCE, "manualArray", o9TwoSiteCases()),
+                OptimizationLevel.PV11_SAFE,
+                OptimizationLevel.PV11_COSTED,
+                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+    }
+
+    private static List<OptimizationBenchmarkRunner.InputCase> o9LoopCases() {
+        var cases = new ArrayList<OptimizationBenchmarkRunner.InputCase>();
+        for (int requests : List.of(0, 1, 2, 4, 8, 16)) {
+            var indices = new PlutusData[requests];
+            for (int r = 0; r < requests; r++) indices[r] = PlutusData.integer(requests - 1 - r);
+            cases.add(OptimizationBenchmarkRunner.InputCase.of(
+                    "requests-" + requests, listOfLength(16), listOfLength(17), PlutusData.list(indices)));
+        }
+        return cases;
+    }
+
+    private static List<OptimizationBenchmarkRunner.InputCase> o9TwoSiteCases() {
+        return List.of(
+                arrayInput("length-8-0-1", listOfLength(8), 0, 1),
+                arrayInput("length-8-6-7", listOfLength(8), 6, 7),
+                arrayInput("length-64-0-63", listOfLength(64), 0, 63));
     }
 
     public static OptimizationBenchmarkRunner.Comparison o12ExpModIdiomExperiment() {
