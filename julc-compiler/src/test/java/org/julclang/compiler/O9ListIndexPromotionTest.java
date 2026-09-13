@@ -6,6 +6,7 @@ import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirSubstitution;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
+import org.julclang.compiler.pir.ValueConversionSharingPass;
 import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
 import org.julclang.core.PlutusData;
@@ -956,9 +957,15 @@ class O9ListIndexPromotionTest {
         }
     }
 
+    /**
+     * ADR-044 (O15) shares repeated record projections at the safe profile, which moves the
+     * safe and costed bytes of {@code FIELD} (two leading {@code h.items()} chains). The goldens
+     * pin O9 alone, so O15 is switched off here; the O15 suite pins the O15-then-O9 handoff.
+     */
     static CompileResult compile(String source, String method, OptimizationLevel level, boolean maps) {
         return new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()
-                .setOptimizationLevel(level).setSourceMapEnabled(maps).setOptimizationCostProfile(PROFILE))
+                .setOptimizationLevel(level).setSourceMapEnabled(maps).setOptimizationCostProfile(PROFILE)
+                .disableOptimizationRule(ValueConversionSharingPass.PROJECTION_RULE))
                 .compileMethod(source, method);
     }
 

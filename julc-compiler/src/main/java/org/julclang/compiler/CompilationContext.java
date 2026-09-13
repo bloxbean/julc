@@ -1,6 +1,8 @@
 package org.julclang.compiler;
 
 import org.julclang.compiler.error.CompilerDiagnostic;
+import org.julclang.compiler.pir.ListIndexPromotionPass;
+import org.julclang.compiler.pir.ValueConversionSharingPass;
 import org.julclang.vm.OptimizationCostProfile;
 import org.julclang.vm.ProtocolCapability;
 
@@ -8,6 +10,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Consumer;
 
 /**
@@ -19,11 +22,23 @@ import java.util.function.Consumer;
  */
 public final class CompilationContext {
 
+    /**
+     * The rules that {@link CompilerOptions#disableOptimizationRule(String)} accepts: the
+     * PIR-to-PIR passes, each of which checks {@link #ruleEnabled(String)} before it rewrites.
+     * Rules implemented inside {@code UplcGenerator} and {@code UplcOptimizer} are selected by
+     * the optimization level only.
+     */
+    private static final Set<String> SWITCHABLE_OPTIMIZATION_RULES = Set.of(
+            ValueConversionSharingPass.RULE,
+            ValueConversionSharingPass.PROJECTION_RULE,
+            ListIndexPromotionPass.RULE);
+
     private final ResolvedCompilerTarget resolvedTarget;
     private final boolean verbose;
     private final boolean sourceMapEnabled;
     private final OptimizationLevel optimizationLevel;
     private final OptimizationCostProfile optimizationCostProfile;
+    private final Set<String> disabledOptimizationRules;
     private final Consumer<String> logger;
     private final List<CompilerDiagnostic> diagnostics = new ArrayList<>();
     private final LinkedHashSet<String> appliedOptimizationRules = new LinkedHashSet<>();
@@ -34,6 +49,7 @@ public final class CompilationContext {
             boolean sourceMapEnabled,
             OptimizationLevel optimizationLevel,
             OptimizationCostProfile optimizationCostProfile,
+            Set<String> disabledOptimizationRules,
             Consumer<String> logger) {
         this.resolvedTarget = Objects.requireNonNull(resolvedTarget, "resolvedTarget");
         this.verbose = verbose;
@@ -41,6 +57,7 @@ public final class CompilationContext {
         this.optimizationLevel = Objects.requireNonNull(
                 optimizationLevel, "optimizationLevel");
         this.optimizationCostProfile = optimizationCostProfile;
+        this.disabledOptimizationRules = Set.copyOf(disabledOptimizationRules);
         this.logger = Objects.requireNonNull(logger, "logger");
     }
 
@@ -58,13 +75,36 @@ public final class CompilationContext {
             throw CompilerTargetDiagnostics.optimizationCostProfileTargetMismatch(
                     costProfile, resolvedTarget.target());
         }
+        for (var ruleId : effectiveOptions.getDisabledOptimizationRules()) {
+            if (!SWITCHABLE_OPTIMIZATION_RULES.contains(ruleId)) {
+                throw CompilerTargetDiagnostics.unknownOptimizationRule(
+                        ruleId, switchableOptimizationRules());
+            }
+        }
         return new CompilationContext(
                 resolvedTarget,
                 effectiveOptions.isVerbose(),
                 effectiveOptions.isSourceMapEnabled(),
                 optimizationLevel,
                 costProfile,
+                effectiveOptions.getDisabledOptimizationRules(),
                 effectiveOptions.getLogger());
+    }
+
+    /** The rule ids that can be disabled individually, in catalog order. */
+    public static List<String> switchableOptimizationRules() {
+        return List.of(
+                ValueConversionSharingPass.RULE,
+                ValueConversionSharingPass.PROJECTION_RULE,
+                ListIndexPromotionPass.RULE);
+    }
+
+    /**
+     * Whether a switchable rule may fire in this compilation. The level gates remain the
+     * primary selection; this only subtracts rules that were explicitly disabled.
+     */
+    public boolean ruleEnabled(String ruleId) {
+        return !disabledOptimizationRules.contains(ruleId);
     }
 
     /** Create a context for the documented pinned PV11 defaults. */

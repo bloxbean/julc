@@ -301,6 +301,14 @@ public final class DiagnosticCodes {
             "Unknown method: {0}",
             "Check the stdlib catalog at https://julc.dev/ai/catalog.json or the stdlib reference at https://julc.dev/stdlib/stdlib-guide/. Common: `JulcList<T>` has `head/tail/get/size/isEmpty/contains/prepend/reverse/concat/take/drop/map/filter/any/all/find`.");
 
+    public static final DiagnosticInfo UNKNOWN_OPTIMIZATION_RULE = new DiagnosticInfo(
+            "JULC0043",
+            "UNKNOWN_OPTIMIZATION_RULE",
+            CompilerDiagnostic.Level.ERROR,
+            "CONFIG",
+            "Optimization rule {0} cannot be disabled. Rules that can be disabled: {1}",
+            "Use one of the listed rule identifiers exactly as reported in the optimization report, or lower the optimization level to disable a whole class of rules.");
+
     public static final DiagnosticInfo UNSUPPORTED_COMPILER_TARGET = new DiagnosticInfo(
             "JULC0031",
             "UNSUPPORTED_COMPILER_TARGET",
@@ -380,6 +388,7 @@ public final class DiagnosticCodes {
             TYPE_RESOLUTION_FAILED,
             UNDEFINED_VARIABLE,
             UNKNOWN_METHOD_ON_TYPE,
+            UNKNOWN_OPTIMIZATION_RULE,
             UNSUPPORTED_COMPILER_TARGET,
             UNSUPPORTED_OPTIMIZATION_COST_PROFILE,
             UNSUPPORTED_OPTIMIZATION_LEVEL,

@@ -101,6 +101,13 @@ public final class CompilerTargetDiagnostics {
         return exception(info, info.format(requestedProfileId, supportedProfileIds), null);
     }
 
+    public static CompilerException unknownOptimizationRule(
+            String requestedRuleId,
+            Collection<String> switchableRuleIds) {
+        var info = DiagnosticCodes.UNKNOWN_OPTIMIZATION_RULE;
+        return exception(info, info.format(requestedRuleId, switchableRuleIds), null);
+    }
+
     private static CompilerException exception(
             DiagnosticInfo info,
             String message,

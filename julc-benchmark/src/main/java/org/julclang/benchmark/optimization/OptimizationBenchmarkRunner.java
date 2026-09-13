@@ -26,6 +26,7 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
@@ -250,6 +251,31 @@ public final class OptimizationBenchmarkRunner {
             OptimizationLevel candidateLevel,
             OptimizationCostProfile costProfile,
             List<Backend> backends) {
+        return compare(fixture, baselineLevel, options -> { }, candidateLevel, options -> { }, costProfile, backends);
+    }
+
+    /**
+     * Compare one level with a switchable rule off against the same level with it on, so the
+     * delta is that rule alone (ADR-044 O15 is a safe-profile rule measured this way).
+     */
+    public static Comparison compareRuleWithJavaAndTruffle(
+            Fixture fixture,
+            OptimizationLevel level,
+            String ruleId,
+            OptimizationCostProfile costProfile) {
+        Objects.requireNonNull(ruleId, "ruleId");
+        return compare(fixture, level, options -> options.disableOptimizationRule(ruleId), level, options -> { },
+                costProfile, List.of(Backend.javaVm(), Backend.truffleVm()));
+    }
+
+    private static Comparison compare(
+            Fixture fixture,
+            OptimizationLevel baselineLevel,
+            Consumer<CompilerOptions> baselineTuning,
+            OptimizationLevel candidateLevel,
+            Consumer<CompilerOptions> candidateTuning,
+            OptimizationCostProfile costProfile,
+            List<Backend> backends) {
         Objects.requireNonNull(fixture, "fixture");
         Objects.requireNonNull(baselineLevel, "baselineLevel");
         Objects.requireNonNull(candidateLevel, "candidateLevel");
@@ -257,8 +283,8 @@ public final class OptimizationBenchmarkRunner {
         backends = List.copyOf(backends);
         if (backends.isEmpty()) throw new IllegalArgumentException("backends must not be empty");
 
-        var baseline = compile(fixture, baselineLevel, costProfile);
-        var candidate = compile(fixture, candidateLevel, costProfile);
+        var baseline = compile(fixture, baselineLevel, costProfile, baselineTuning);
+        var candidate = compile(fixture, candidateLevel, costProfile, candidateTuning);
         var baselineEvals = evaluate(fixture, baseline, costProfile, backends);
         var candidateEvals = evaluate(fixture, candidate, costProfile, backends);
 
@@ -303,8 +329,8 @@ public final class OptimizationBenchmarkRunner {
         requireText(fixtureId, "fixtureId");
         requireText(candidateRule, "candidateRule");
         requireMatchingInputs(baselineFixture.cases(), candidateFixture.cases());
-        var baseline = compile(baselineFixture, OptimizationLevel.BASELINE, costProfile);
-        var candidate = compile(candidateFixture, OptimizationLevel.BASELINE, costProfile);
+        var baseline = compile(baselineFixture, OptimizationLevel.BASELINE, costProfile, options -> { });
+        var candidate = compile(candidateFixture, OptimizationLevel.BASELINE, costProfile, options -> { });
         var backends = List.of(Backend.javaVm(), Backend.truffleVm());
         var candidateArtifact = measureArtifact(candidate, costProfile);
         candidateArtifact = new ArtifactMeasurement(
@@ -387,11 +413,13 @@ public final class OptimizationBenchmarkRunner {
     private static CompileResult compile(
             Fixture fixture,
             OptimizationLevel level,
-            OptimizationCostProfile costProfile) {
+            OptimizationCostProfile costProfile,
+            Consumer<CompilerOptions> tuning) {
         var options = new CompilerOptions().setOptimizationLevel(level);
         if (level.costProfileRequired()) {
             options.setOptimizationCostProfile(costProfile);
         }
+        tuning.accept(options);
         return new JulcCompiler(StdlibRegistry.defaultRegistry(), options)
                 .compileMethod(fixture.javaSource(), fixture.methodName());
     }

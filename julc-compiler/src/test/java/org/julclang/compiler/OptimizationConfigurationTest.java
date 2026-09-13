@@ -11,11 +11,17 @@ import org.julclang.vm.OptimizationCostProfiles;
 import org.julclang.vm.PlutusLanguage;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.HexFormat;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class OptimizationConfigurationTest {
@@ -118,6 +124,53 @@ class OptimizationConfigurationTest {
                 () -> OptimizationConfiguration.apply(
                         new CompilerOptions(), "pv11-costed", "latest"));
         assertEquals("JULC0040", profileError.diagnostics().getFirst().code());
+    }
+
+    /**
+     * ADR-044: each PIR-to-PIR rule can be switched off on its own so that it can be reviewed
+     * and measured in isolation. The identifier must be one of the switchable rule ids exactly;
+     * anything else fails closed before compilation instead of leaving the rule enabled.
+     */
+    @Test
+    void individualPirRulesCanBeDisabledAndUnknownRuleIdsFailClosed() {
+        assertEquals(List.of("pv11.o8.value-sharing", "pv11.o15.projection-sharing", "pv11.o9.list-to-array"),
+                CompilationContext.switchableOptimizationRules());
+
+        var unknown = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
+                new CompilerOptions().disableOptimizationRule("pv11.o2.case-bool")).compileMethod(SOURCE, "validate"));
+        assertEquals("JULC0043", unknown.diagnostics().getFirst().code());
+        assertThrows(IllegalArgumentException.class, () -> new CompilerOptions().disableOptimizationRule(" "));
+
+        var sharing = O8ValueSharingFixtures.FIXTURES.getFirst();
+        assertEquals("REPEATED", sharing.name());
+        var shared = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()
+                .setOptimizationLevel(OptimizationLevel.PV11_SAFE)).compileMethod(sharing.source(), sharing.method());
+        var unshared = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()
+                .setOptimizationLevel(OptimizationLevel.PV11_SAFE).disableOptimizationRule("pv11.o8.value-sharing"))
+                .compileMethod(sharing.source(), sharing.method());
+        assertEquals(List.of("pv11.o8.value-sharing"), shared.optimizationReport().appliedRules().stream()
+                .filter(rule -> rule.startsWith("pv11.o8")).toList());
+        assertFalse(unshared.optimizationReport().appliedRules().contains("pv11.o8.value-sharing"));
+        // With O8 off, the safe profile reproduces the pre-O8 bytes captured at ADR-042's base commit.
+        var preO8 = golden("/optimization/o8-pre-change-bytes.txt", "0-PV11_SAFE-false");
+        assertArrayEquals(preO8, UplcFlatEncoder.encodeProgram(unshared.program()));
+        assertFalse(Arrays.equals(preO8, UplcFlatEncoder.encodeProgram(shared.program())));
+        // Disabling a rule the level would not run anyway changes nothing.
+        assertArrayEquals(UplcFlatEncoder.encodeProgram(compile(OptimizationLevel.BASELINE, null).program()),
+                UplcFlatEncoder.encodeProgram(new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()
+                        .setOptimizationLevel(OptimizationLevel.BASELINE).disableOptimizationRule("pv11.o9.list-to-array"))
+                        .compileMethod(SOURCE, "validate").program()));
+    }
+
+    private static byte[] golden(String resource, String id) {
+        try (var input = OptimizationConfigurationTest.class.getResourceAsStream(resource)) {
+            assertNotNull(input, resource);
+            String hex = new String(input.readAllBytes(), StandardCharsets.UTF_8).lines()
+                    .filter(line -> line.startsWith(id + " ")).findFirst().orElseThrow().substring(id.length() + 1);
+            return HexFormat.of().parseHex(hex);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     private static CompileResult compile(
