@@ -4,8 +4,8 @@
   "fixture": "controlled-mint-broken",
   "source": "fixtures/controlled-mint-broken/src/VerificationControlledMintBroken.java",
   "omittedCheck": "fixed-authority signatory requirement",
-  "compiledCodeSha256": "eb6759ee8a7d4a17ecf6bd58f14e2f906166c8e097b903cea508b6c22b9b6bf4",
-  "cardanoScriptHash": "a2f6daf89269d70a33a617d2ec9cfef6e8fa9b5a874a69d9f851f4e4",
+  "compiledCodeSha256": "7e326377feabcee76b651fbe4cadff4899765acae6ace5e42e0fce7e107a4905",
+  "cardanoScriptHash": "a4ca65738b79083a0953a868d66c1d9012ec0e47e9703e8e7c908fff",
   "expectedResult": "REFUTED",
   "witness": {
     "signatories": [],

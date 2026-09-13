@@ -244,6 +244,27 @@ commitment more directly. The verification driver invokes Lean directly for
 every artifact-importing module and writes fresh `.olean` files, preventing a
 cached proof from being replayed against changed UPLC bytes.
 
+## Implementation finding: conditional yield lowering (#137)
+
+Both controlled-mint fixtures guard the minted map with
+`if (Builtins.nullList(outer)) { yield false; }` followed by further checks in
+the same switch-expression block. Until PR #138 fixed issue #137, the compiler
+discarded that conditional `yield` and ran the trailing statements
+unconditionally, so on an empty mint map the locked artifacts failed inside
+`tailList` on an empty list instead of yielding `false`. The success set of both
+artifacts was unchanged, which is why the Milestone B properties were
+established and refuted as intended against the miscompiled bytes; the
+divergence was confined to a rejection path.
+
+The controlled-mint and controlled-mint-broken artifacts, their lock entries,
+the `controlled-mint-broken.authority` counterexample binding, and the manifest
+lock hash are refreshed for the corrected lowering. The other five locked
+artifacts are byte-identical. The refreshed suite re-establishes the same
+property outcomes. This is a second instance of exact-artifact verification
+holding a compiler lowering to account, although here the bounded property set
+could not observe the defect; the regression coverage lives in the compiler's
+`ConditionalYieldLoweringTest`.
+
 ## Implementation result
 
 The exit criteria are implemented by the property catalogue, paired correct

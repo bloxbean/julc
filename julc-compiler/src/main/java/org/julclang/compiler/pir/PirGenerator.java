@@ -464,16 +464,17 @@ public class PirGenerator {
     private PirTerm generateIfStmt(IfStmt is, List<Statement> followingStmts, int followingIndex,
             Supplier<PirTerm> cont) {
         boolean hasFollowing = followingIndex + 1 < followingStmts.size();
-        boolean thenHasReturn = containsMethodReturn(is.getThenStmt());
-        boolean elseHasReturn = is.getElseStmt().map(PirGenerator::containsMethodReturn).orElse(false);
+        boolean thenExits = containsEarlyExit(is.getThenStmt());
+        boolean elseExits = is.getElseStmt().map(PirGenerator::containsEarlyExit).orElse(false);
 
-        // Early-return-aware lowering: when a branch contains a `return`, the statements
-        // after the if (plus the enclosing fall-through continuation) become each branch's
-        // continuation. A path that returns short-circuits them; a path that falls through
-        // runs them. This subsumes the old `if (cond) { return X; } rest` fallthrough
-        // optimization and fixes the miscompilation where `Let("_if", ifExpr, rest)`
-        // discarded a branch's return value and ran `rest` unconditionally.
-        if (thenHasReturn || elseHasReturn) {
+        // Early-exit-aware lowering: when a branch contains a `return` (method exit, #79) or
+        // a `yield` (switch-expression exit, #137), the statements after the if (plus the
+        // enclosing fall-through continuation) become each branch's continuation. A path
+        // that exits short-circuits them; a path that falls through runs them. This subsumes
+        // the old `if (cond) { return X; } rest` fallthrough optimization and fixes the
+        // miscompilation where `Let("_if", ifExpr, rest)` discarded a branch's exit value
+        // and ran `rest` unconditionally.
+        if (thenExits || elseExits) {
             // Generate the after-if term eagerly in the CURRENT scope (not a branch scope),
             // so names in it cannot resolve against branch-local variables. Both branches
             // share the same term instance; only branches that actually fall through embed it.
@@ -501,8 +502,8 @@ public class PirGenerator {
             return result;
         }
 
-        // No `return` anywhere in the branches: evaluate the if for effect and continue
-        // (legacy shape, preserved for generated-code stability).
+        // No `return`/`yield` anywhere in the branches: evaluate the if for effect and
+        // continue (legacy shape, preserved for generated-code stability).
         PirTerm ifExpr;
         if (is.getCondition() instanceof InstanceOfExpr ioe && ioe.getPattern().isPresent()
                 && ioe.getPattern().get() instanceof TypePatternExpr tpe) {
@@ -542,18 +543,22 @@ public class PirGenerator {
     }
 
     /**
-     * True when {@code stmt} contains a {@code return} belonging to the enclosing method
-     * (returns inside nested lambdas or local methods do not count).
+     * True when {@code stmt} contains an early exit owned by the enclosing scope: a
+     * {@code return} belonging to the enclosing method, or a {@code yield} belonging to
+     * the enclosing switch expression. Exits inside nested lambdas or local methods do not
+     * count, and a {@code yield} inside a nested switch expression belongs to that inner
+     * switch, not to the scope being lowered (#137).
      */
-    private static boolean containsMethodReturn(Statement stmt) {
-        if (stmt instanceof ReturnStmt) {
+    private static boolean containsEarlyExit(Statement stmt) {
+        if (isEarlyExit(stmt)) {
             return true;
         }
-        for (var ret : stmt.findAll(ReturnStmt.class)) {
-            Node cur = ret.getParentNode().orElse(null);
+        for (var exit : stmt.findAll(Statement.class, PirGenerator::isEarlyExit)) {
+            Node cur = exit.getParentNode().orElse(null);
             boolean nested = false;
             while (cur != null && cur != stmt) {
-                if (cur instanceof LambdaExpr || cur instanceof MethodDeclaration) {
+                if (cur instanceof LambdaExpr || cur instanceof MethodDeclaration
+                        || cur instanceof SwitchExpr) {
                     nested = true;
                     break;
                 }
@@ -566,27 +571,48 @@ public class PirGenerator {
         return false;
     }
 
+    private static boolean isEarlyExit(Statement stmt) {
+        return stmt instanceof ReturnStmt || stmt instanceof YieldStmt;
+    }
+
     /**
-     * Check if all execution paths through a list of statements end with a return.
+     * Check if all execution paths through a method body end with a {@code return}.
      * Used to detect methods with missing return paths.
      */
     private static boolean allPathsReturn(List<Statement> stmts) {
+        return allPathsExit(stmts, ReturnStmt.class);
+    }
+
+    /**
+     * Check if all execution paths through a switch-expression case block end with a
+     * {@code yield}. Used to diagnose case blocks that would otherwise fall off the end.
+     */
+    private static boolean allPathsYield(List<Statement> stmts) {
+        return allPathsExit(stmts, YieldStmt.class);
+    }
+
+    /**
+     * Check if all execution paths through a list of statements end with the given exit
+     * statement kind. Only statement structure is inspected, so exits inside nested
+     * expressions (lambdas, inner switch expressions) are never visited.
+     */
+    private static boolean allPathsExit(List<Statement> stmts, Class<? extends Statement> exit) {
         if (stmts.isEmpty()) return false;
 
         // Check from the end of the list for terminal statements
         for (int i = 0; i < stmts.size(); i++) {
             var stmt = stmts.get(i);
-            if (stmt instanceof ReturnStmt) return true;
+            if (exit.isInstance(stmt)) return true;
 
             if (stmt instanceof IfStmt ifStmt) {
-                boolean thenReturns = allPathsReturn(blockStmts(ifStmt.getThenStmt()));
-                boolean elseReturns = ifStmt.getElseStmt().isPresent()
-                        && allPathsReturn(blockStmts(ifStmt.getElseStmt().get()));
-                if (thenReturns && elseReturns) return true;
-                // if-without-else or partial: check if remaining stmts after this provide a return
-                if (thenReturns && i + 1 < stmts.size()) {
+                boolean thenExits = allPathsExit(blockStmts(ifStmt.getThenStmt()), exit);
+                boolean elseExits = ifStmt.getElseStmt().isPresent()
+                        && allPathsExit(blockStmts(ifStmt.getElseStmt().get()), exit);
+                if (thenExits && elseExits) return true;
+                // if-without-else or partial: check if remaining stmts after this provide an exit
+                if (thenExits && i + 1 < stmts.size()) {
                     // Fallthrough case: if (cond) return X; ... return Y;
-                    if (allPathsReturn(stmts.subList(i + 1, stmts.size()))) return true;
+                    if (allPathsExit(stmts.subList(i + 1, stmts.size()), exit)) return true;
                 }
             }
 
@@ -594,7 +620,9 @@ public class PirGenerator {
             // They always produce a value, but they are not "return" statements themselves.
             // A while loop as the last statement is fine as a loop-accumulator return pattern,
             // but we conservatively consider it a return path since the desugaring handles it.
-            if (stmt instanceof WhileStmt || stmt instanceof ForEachStmt) {
+            // This leniency is method-only: a switch case block must end in an explicit
+            // `yield`, so a trailing loop never satisfies the yield check (#137).
+            if (exit == ReturnStmt.class && (stmt instanceof WhileStmt || stmt instanceof ForEachStmt)) {
                 // The loop produces a value via accumulator desugaring — treat as return path
                 // only when it's the last statement (the accumulator IS the return value)
                 if (i == stmts.size() - 1) return true;
@@ -1487,6 +1515,14 @@ public class PirGenerator {
                             + "then return result; after the loop.",
                     fes);
         }
+        if (containsYield(fes.getBody())) {
+            throw enrichedError(
+                    "'yield' is not supported inside for-each loop body",
+                    "Use 'break' to exit the loop early, then yield after the loop. "
+                            + "Or use the accumulator pattern: result = value; (continue iterating) "
+                            + "then yield result; after the loop.",
+                    fes);
+        }
         var iterableExpr = generateExpression(fes.getIterable());
         var itemName = fes.getVariable().getVariables().get(0).getNameAsString();
 
@@ -1714,6 +1750,10 @@ public class PirGenerator {
         return loopBody.containsReturn(stmt);
     }
 
+    private boolean containsYield(Statement stmt) {
+        return loopBody.containsYield(stmt);
+    }
+
     private boolean needsForEachUnwrapTracking(PirType elemType) {
         return loopBody.needsForEachUnwrapTracking(elemType);
     }
@@ -1775,6 +1815,14 @@ public class PirGenerator {
                     "Use 'break' to exit the loop early, then return after the loop. "
                             + "Or use the accumulator pattern: result = value; (continue iterating) "
                             + "then return result; after the loop.",
+                    ws);
+        }
+        if (containsYield(ws.getBody())) {
+            throw enrichedError(
+                    "'yield' is not supported inside while loop body",
+                    "Use 'break' to exit the loop early, then yield after the loop. "
+                            + "Or use the accumulator pattern: result = value; (continue iterating) "
+                            + "then yield result; after the loop.",
                     ws);
         }
         var desugarer = loopDesugarer;
@@ -2072,6 +2120,13 @@ public class PirGenerator {
                 return generateExpression(es.getExpression());
             }
             if (stmt instanceof BlockStmt block) {
+                // A case block must yield on every path; falling off the end would silently
+                // produce unit instead of a value (#137).
+                if (!allPathsYield(block.getStatements())) {
+                    collectError("switch case block may not yield a value on all execution paths",
+                            "Ensure all code paths in the case block end with a 'yield' statement.",
+                            block);
+                }
                 return generateBlock(block);
             }
             if (stmt instanceof ReturnStmt rs) {

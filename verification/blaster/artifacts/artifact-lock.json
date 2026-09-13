@@ -4,8 +4,8 @@
     {
       "artifactId": "verification-controlled-mint",
       "title": "VerificationControlledMint",
-      "compiledCodeSha256": "7f15d0913b0901c3f1ff5106d5bc0dbeabe633b6ffe09c3f1b019cf2b1fcf2cb",
-      "cardanoScriptHash": "2e7b2bdf0a790fbb94d98a6ad81e6765cd528f3c5410c93df707b025",
+      "compiledCodeSha256": "9e5bbaaf7ccf21f66d2edc9cb07cdce088b2567f01af34412481d0434157ef42",
+      "cardanoScriptHash": "ae528c2722b401110cb5617b3b8a90abcd71bc1037d67cc2c301c85d",
       "uplcVersion": "1.1.0",
       "builtins": [
         {
@@ -67,8 +67,8 @@
     {
       "artifactId": "verification-controlled-mint-broken",
       "title": "VerificationControlledMintBroken",
-      "compiledCodeSha256": "eb6759ee8a7d4a17ecf6bd58f14e2f906166c8e097b903cea508b6c22b9b6bf4",
-      "cardanoScriptHash": "a2f6daf89269d70a33a617d2ec9cfef6e8fa9b5a874a69d9f851f4e4",
+      "compiledCodeSha256": "7e326377feabcee76b651fbe4cadff4899765acae6ace5e42e0fce7e107a4905",
+      "cardanoScriptHash": "a4ca65738b79083a0953a868d66c1d9012ec0e47e9703e8e7c908fff",
       "uplcVersion": "1.1.0",
       "builtins": [
         {
