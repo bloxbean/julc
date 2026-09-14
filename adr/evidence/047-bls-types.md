@@ -199,7 +199,9 @@ from O7).
 
 ## Repository validation
 
-At `840589fa` (implementation `3a45a967` plus the documentation commit):
+At the final commit `5de83694` (implementation `3a45a967`, review fixes `2583e42b`, documentation
+`840589fa`/`5de83694`); the same gate at `840589fa`, before the review fixes, gave identical
+results:
 
 - Full build (`./gradlew build --continue`): 10,941 tests, 0 failures, 0 errors, 530 skipped
   (the pre-existing on-chain/DevKit-gated skips); the count is the ADR-046 build plus the
@@ -207,11 +209,11 @@ At `840589fa` (implementation `3a45a967` plus the documentation commit):
 - Additivity probe: two `var`-style BLS programs (the `BlsLibTest` style: `Builtins.bls12_381_*`
   add/equal over hashed points; `BlsLib` pairing with `millerLoop`/`mulMlResult`/`finalVerify`,
   `g1Neg`, compress/uncompress round trips) compiled in a worktree at the base commit
-  `f4d9cbed` and at head at every level with source maps off and on: 16 of 16 FLAT encodings
-  byte-identical.
+  `f4d9cbed` and at the final commit at every level with source maps off and on: 16 of 16
+  FLAT encodings byte-identical.
 - Blaster `prepare-artifacts.sh`: regenerated `artifact-lock.json` identical to the committed
   one.
-- Published `0.1.0-pre17-840589f-SNAPSHOT`; external `julc-examples` at the default level and at
+- Published `0.1.0-pre17-5de8369-SNAPSHOT`; external `julc-examples` at the default level and at
   `pv11-costed` (init-script override, examples `build.gradle` untouched): 418 tests / 55
   failures / 11 skipped in each run. All 55 failures are `InsufficientBalanceException`
   against the local Yaci DevKit (exhausted funded accounts, not reset for this run): the same
@@ -219,3 +221,4 @@ At `840589fa` (implementation `3a45a967` plus the documentation commit):
   ADR-043 to ADR-046 runs. No compile-time or off-chain evaluation test fails.
 - Additivity census: 41 of 41 validators unchanged (same size and hash as the ADR-046 run) at
   the default level and at `pv11-costed`.
+- Docs site (`npm run build`): 32 pages, no warnings.
