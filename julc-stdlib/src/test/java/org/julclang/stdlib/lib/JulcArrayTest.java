@@ -166,6 +166,37 @@ class JulcArrayTest {
             }
 
             @Test
+            void ofFactoryBuildsAnArrayFromElements() {
+                // ADR-046: JulcArray.of over literal and runtime elements; the runtime element keeps the access.
+                var eval = JulcEval.forSource("""
+                        import org.julclang.core.types.JulcArray;
+                        import java.math.BigInteger;
+                        class T {
+                            static BigInteger test(BigInteger x) {
+                                JulcArray<BigInteger> arr = JulcArray.of(BigInteger.valueOf(7), x, BigInteger.valueOf(9));
+                                return arr.get(1).add(arr.get(0)).add(BigInteger.valueOf(arr.length()));
+                            }
+                        }
+                        """);
+                assertEquals(7 + 5 + 3, eval.call("test", BigInteger.valueOf(5)).asLong());
+            }
+
+            @Test
+            void ofFactoryOfLiteralsFoldsToAConstantAtTheDefaultLevel() {
+                var eval = JulcEval.forSource("""
+                        import org.julclang.core.types.JulcArray;
+                        import java.math.BigInteger;
+                        class T {
+                            static BigInteger test() {
+                                JulcArray<BigInteger> arr = JulcArray.of(BigInteger.valueOf(7), BigInteger.valueOf(8));
+                                return arr.get(1).add(BigInteger.valueOf(arr.length()));
+                            }
+                        }
+                        """);
+                assertEquals(10, eval.call("test").asLong());
+            }
+
+            @Test
             void fromListStaticFactory() {
                 var eval = JulcEval.forSource("""
                         import org.julclang.stdlib.Builtins;
@@ -258,6 +289,16 @@ class JulcArrayTest {
 
     @Nested
     class OffChainTests {
+
+        @Test
+        void ofBuildsAnImmutableArray() {
+            JulcArray<Integer> arr = JulcArray.of(1, 2, 3);
+            assertEquals(3, arr.length());
+            assertEquals(2, arr.get(1));
+            assertEquals(0, JulcArray.<Integer>of().length());
+            assertEquals(JulcArray.fromList(JulcList.of(1, 2, 3)), arr);
+        }
+
 
         @Test
         void getReturnsCorrectElement() {

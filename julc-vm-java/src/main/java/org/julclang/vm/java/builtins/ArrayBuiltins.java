@@ -1,5 +1,6 @@
 package org.julclang.vm.java.builtins;
 
+import org.julclang.core.ArraySemantics;
 import org.julclang.core.Constant;
 import org.julclang.vm.java.CekValue;
 
@@ -12,6 +13,9 @@ import static org.julclang.vm.java.builtins.BuiltinHelper.*;
 /**
  * Base Array operation builtins (PV11 Batch 6, CIP-138), plus the
  * future/experimental CIP-156 multi-index operation.
+ * <p>
+ * The three ledger-valid operations delegate to {@link ArraySemantics}, which the compiler's
+ * literal fold (ADR-046) shares with this runtime, so results and failure texts agree.
  */
 public final class ArrayBuiltins {
 
@@ -23,7 +27,7 @@ public final class ArrayBuiltins {
      */
     public static CekValue lengthOfArray(List<CekValue> args) {
         var ac = asArrayConst(args.get(0), "LengthOfArray");
-        return mkInteger(ac.values().size());
+        return mkInteger(ArraySemantics.lengthOfArray(ac));
     }
 
     /**
@@ -32,7 +36,7 @@ public final class ArrayBuiltins {
      */
     public static CekValue listToArray(List<CekValue> args) {
         var lc = asListConst(args.get(0), "ListToArray");
-        return mkArray(lc.elemType(), lc.values());
+        return new CekValue.VCon(ArraySemantics.listToArray(lc));
     }
 
     /**
@@ -42,17 +46,11 @@ public final class ArrayBuiltins {
     public static CekValue indexArray(List<CekValue> args) {
         var ac = asArrayConst(args.get(0), "IndexArray");
         var idx = asInteger(args.get(1), "IndexArray");
-        int i;
         try {
-            i = idx.intValueExact();
-        } catch (ArithmeticException e) {
-            throw new BuiltinException("IndexArray: index out of range: " + idx);
+            return new CekValue.VCon(ArraySemantics.indexArray(ac, idx));
+        } catch (ArraySemantics.EvaluationFailure failure) {
+            throw new BuiltinException(failure.getMessage());
         }
-        if (i < 0 || i >= ac.values().size()) {
-            throw new BuiltinException("IndexArray: index " + i +
-                    " out of bounds for array of size " + ac.values().size());
-        }
-        return new CekValue.VCon(ac.values().get(i));
     }
 
     /**
