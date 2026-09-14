@@ -929,7 +929,9 @@ line through explicit, evidence-backed deferrals (2026-08-29). See
   lowering that dominates it at single sites is recorded there as a separate
   decision.)
 - Retained the O11 BLS deferral: native group and native-list representations
-  are prerequisites to any fusion.
+  are prerequisites to any fusion. (Both were supplied by ADR-047: distinct
+  G1/G2/Miller PIR types, native scalar and point lists with intrinsic
+  producers, and the explicit typed MSM API; fusion itself remains deferred.)
 - Deferred O12 idiom recognition because ordinary `pow % modulus` differs from
   `ExpModInteger` for negative exponents and failure paths. The existing
   explicit `MathLib.expMod` direct lowering remains the safe API.
@@ -1047,7 +1049,7 @@ line after the initial review window (2026-08-29).
 | O8 | [#102](https://github.com/bloxbean/julc/issues/102), [#114](https://github.com/bloxbean/julc/issues/114) | ADR-042 implemented: strict-prefix sharing of repeated `UnValueData` conversions of one variable at `PV11_SAFE` (`pv11.o8.value-sharing`), failure-text neutral; `ValueData` sinking and adjacent cancellation remain out of scope |
 | O9 | [#103](https://github.com/bloxbean/julc/issues/103), [#115](https://github.com/bloxbean/julc/issues/115) | ADR-043 implemented at `PV11_COSTED` only: a list variable indexed at two or more sites, or at a site inside a recursive binding (a loop body, an inlined list-operation callback or a recursive helper), is converted once with `ListToArray` and indexed with `IndexArray` (`pv11.o9.list-to-array`); failure contract on out-of-range indexes pinned; typing-trust exposure through unchecked casts documented; break-even derived from the pinned profile; default-level output unchanged |
 | O10 | [#106](https://github.com/bloxbean/julc/issues/106), [#116](https://github.com/bloxbean/julc/issues/116) | ADR-046 implemented: `JulcArray.of(...)` as the typed array literal (the `JulcList.of` list literal converted, Data-encoded elements) and folding of `ListToArray` over a list literal, `LengthOfArray` and literal-index `IndexArray` over an array constant, plus the `get` decode over the produced element, at `PV11_SAFE` (`pv11.o10.array-literal-fold`) by the pinned `ArraySemantics` the VM shares; out-of-range indexes stay runtime failures; `MultiIndexArray` never emitted; additive for existing programs |
-| O11 | [#96](https://github.com/bloxbean/julc/issues/96) | deferred: native BLS group/list types required |
+| O11 | [#96](https://github.com/bloxbean/julc/issues/96), [#117](https://github.com/bloxbean/julc/issues/117) | ADR-047 implemented the typed surface: `JulcG1`/`JulcG2`/`JulcMlResult` and the native lists `JulcScalars`/`JulcG1Points`/`JulcG2Points` (opaque PIR types under the O7 isolation rules), retyped `Builtins`/`BlsLib`, the `scalars`/`g1Points`/`g2Points` producers and their `FromList`/`FromCompressed` converters as intrinsics, and explicit `g1MultiScalarMul`/`g2MultiScalarMul` with the VM-pinned semantics; MSM overtakes the manual chain at seven points on the pinned profile; automatic chain fusion stays deferred |
 | O12 | [#104](https://github.com/bloxbean/julc/issues/104), [#118](https://github.com/bloxbean/julc/issues/118) | decision: no additional implementation required; explicit API exists, ordinary pow/mod rewrite rejected |
 | O13 | [#107](https://github.com/bloxbean/julc/issues/107) | enabled at `PV11_SAFE` |
 | O14 | [#108](https://github.com/bloxbean/julc/issues/108), [#119](https://github.com/bloxbean/julc/issues/119) | ADR-045 implemented: typed literal producers (`Builtins.emptyValue/singletonValue/lovelaceValue`, a UPLC Value constant and `InsertCoin` into it) and folding of all-literal calls of the seven Value builtins at `PV11_SAFE` (`pv11.o14.value-literal-fold`) by the pinned `NativeValueSemantics` the VM shares, under a script-size objective; failing literal calls stay; no algebraic identities; additive for existing programs |
@@ -1134,7 +1136,8 @@ Resolved by Milestone 2:
    Data schema.
 2. The current `byte[]` BLS API cannot safely preserve G1/G2/Miller identity.
    A later focused type ADR must define native group and native-list types
-   before typed MSM or fusion; O11 is explicitly deferred.
+   before typed MSM or fusion; O11 is explicitly deferred. (ADR-047 is that
+   ADR: the typed surface and explicit MSM are implemented; fusion is not.)
 
 Resolved by Milestone 3:
 

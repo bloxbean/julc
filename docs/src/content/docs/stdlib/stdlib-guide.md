@@ -21,7 +21,7 @@ The JuLC standard library provides 13 on-chain libraries in the `org.julclang.st
 | **ByteStringLib** | `org.julclang.stdlib.lib.ByteStringLib` | ByteString slicing, comparison, encoding, serialization |
 | **BitwiseLib** | `org.julclang.stdlib.lib.BitwiseLib` | Bitwise AND/OR/XOR, shift, rotate, bit read/write |
 | **AddressLib** | `org.julclang.stdlib.lib.AddressLib` | Credential extraction, address type checks |
-| **BlsLib** | `org.julclang.stdlib.lib.BlsLib` | BLS12-381 G1/G2/pairing operations; MSM requires PV11 |
+| **BlsLib** | `org.julclang.stdlib.lib.BlsLib` | BLS12-381 G1/G2/pairing operations over the typed `JulcG1`/`JulcG2`/`JulcMlResult` values; MSM requires PV11 |
 | **NativeValueLib** *(PV11)* | `org.julclang.stdlib.lib.NativeValueLib` | Native MaryEra Value insert, lookup, union, contains, scale |
 
 ---
@@ -1275,44 +1275,102 @@ class DestinationCheckExample {
 All methods are `static`. Base curve and pairing methods are available on PV10+;
 `g1MultiScalarMul` and `g2MultiScalarMul` require PV11.
 
+BLS values have their own types (ADR-047): `JulcG1` and `JulcG2` for points,
+`JulcMlResult` for a Miller-loop result, and for multi-scalar multiplication the
+native lists `JulcScalars`, `JulcG1Points` and `JulcG2Points` (all in
+`org.julclang.core.types`). They are opaque native UPLC values, not `byte[]`
+and not `PlutusData`: the compiler rejects a compressed byte string where a
+point is required, a G2 point where a G1 point is required, a `JulcList` where
+a native list is required, and a point in a datum, redeemer, record, list or
+`==` (`JULC0041`), or at a validator/`compileMethod` boundary (`JULC0042`).
+Only `g1Compress`/`g2Compress` turn a point into bytes and only
+`g1Uncompress`/`g2Uncompress` turn bytes back into a point.
+
 ### Quick Reference
 
 | Method | Description |
 |--------|-------------|
-| `g1Add(a, b)` | Add two G1 elements |
-| `g1Neg(a)` | Negate a G1 element |
-| `g1ScalarMul(scalar, g1)` | Scalar multiplication of G1 |
-| `g1Equal(a, b)` | Check G1 equality |
-| `g1Compress(g1)` | Compress G1 to bytes |
-| `g1Uncompress(compressed)` | Uncompress bytes to G1 |
-| `g1HashToGroup(msg, dst)` | Hash to G1 |
-| `g2Add(a, b)` | Add two G2 elements |
-| `g2Neg(a)` | Negate a G2 element |
-| `g2ScalarMul(scalar, g2)` | Scalar multiplication of G2 |
-| `g2Equal(a, b)` | Check G2 equality |
-| `g2Compress(g2)` | Compress G2 to bytes |
-| `g2Uncompress(compressed)` | Uncompress bytes to G2 |
-| `g2HashToGroup(msg, dst)` | Hash to G2 |
-| `millerLoop(g1, g2)` | Compute Miller loop pairing |
-| `mulMlResult(a, b)` | Multiply two Miller loop results |
-| `finalVerify(a, b)` | Final pairing verification |
-| `g1MultiScalarMul(scalars, points)` | Multi-scalar multiplication on G1 (PV11 only) |
-| `g2MultiScalarMul(scalars, points)` | Multi-scalar multiplication on G2 (PV11 only) |
+| `g1Add(JulcG1 a, JulcG1 b)` | Add two G1 points |
+| `g1Neg(JulcG1 a)` | Negate a G1 point |
+| `g1ScalarMul(BigInteger scalar, JulcG1 g1)` | Scalar multiplication of G1 |
+| `g1Equal(JulcG1 a, JulcG1 b)` | Check G1 equality |
+| `g1Compress(JulcG1 g1)` | Compress G1 to 48 bytes |
+| `g1Uncompress(byte[] compressed)` | Uncompress bytes to G1 (fails on an invalid encoding) |
+| `g1HashToGroup(byte[] msg, byte[] dst)` | Hash to G1 |
+| `g2Add(JulcG2 a, JulcG2 b)` | Add two G2 points |
+| `g2Neg(JulcG2 a)` | Negate a G2 point |
+| `g2ScalarMul(BigInteger scalar, JulcG2 g2)` | Scalar multiplication of G2 |
+| `g2Equal(JulcG2 a, JulcG2 b)` | Check G2 equality |
+| `g2Compress(JulcG2 g2)` | Compress G2 to 96 bytes |
+| `g2Uncompress(byte[] compressed)` | Uncompress bytes to G2 |
+| `g2HashToGroup(byte[] msg, byte[] dst)` | Hash to G2 |
+| `millerLoop(JulcG1 g1, JulcG2 g2)` | Compute the Miller loop |
+| `mulMlResult(JulcMlResult a, JulcMlResult b)` | Multiply two Miller-loop results |
+| `finalVerify(JulcMlResult a, JulcMlResult b)` | Final pairing verification |
+| `g1MultiScalarMul(JulcScalars scalars, JulcG1Points points)` | `Σ scalarᵢ · pointᵢ` on G1 (PV11 only) |
+| `g2MultiScalarMul(JulcScalars scalars, JulcG2Points points)` | `Σ scalarᵢ · pointᵢ` on G2 (PV11 only) |
+
+The native lists come from `Builtins`:
+
+| Producer | Description |
+|--------|-------------|
+| `Builtins.scalars(BigInteger...)` | A native `list integer` from literal or runtime integers |
+| `Builtins.scalarsFromList(JulcList<BigInteger>)` | Decode a Data list of integers element by element (fails at a non-integer element) |
+| `Builtins.g1Points(JulcG1...)` / `g2Points(JulcG2...)` | A native point list from points |
+| `Builtins.g1PointsFromCompressed(JulcList<byte[]>)` / `g2PointsFromCompressed(...)` | Uncompress each element of a Data list of compressed points, in order (fails at a non-bytes element or an invalid encoding) |
 
 ### Usage
 
 ```java
+import org.julclang.core.types.JulcG1;
+import org.julclang.core.types.JulcG2;
+import org.julclang.core.types.JulcMlResult;
+import org.julclang.core.types.JulcList;
+import org.julclang.stdlib.Builtins;
 import org.julclang.stdlib.lib.BlsLib;
 
 // G1 operations
-var sum = BlsLib.g1Add(pointA, pointB);
-var scaled = BlsLib.g1ScalarMul(scalar, point);
-boolean eq = BlsLib.g1Equal(a, b);
+JulcG1 p = BlsLib.g1HashToGroup(message, dst);
+JulcG1 sum = BlsLib.g1Add(p, BlsLib.g1ScalarMul(scalar, p));
+boolean eq = BlsLib.g1Equal(sum, p);
+byte[] encoded = BlsLib.g1Compress(sum);          // the only way out to bytes
 
-// Pairing
-var ml = BlsLib.millerLoop(g1Point, g2Point);
-boolean valid = BlsLib.finalVerify(ml1, ml2);
+// Pairing: e(2P, Q) == e(P, 2Q)
+JulcG2 q = BlsLib.g2HashToGroup(message, dst);
+JulcMlResult left = BlsLib.millerLoop(BlsLib.g1ScalarMul(BigInteger.TWO, p), q);
+JulcMlResult right = BlsLib.millerLoop(p, BlsLib.g2ScalarMul(BigInteger.TWO, q));
+boolean valid = BlsLib.finalVerify(left, right);
+
+// Multi-scalar multiplication (PV11): 3·P1 + 5·P2 in one builtin call
+JulcG1 msm = BlsLib.g1MultiScalarMul(
+        Builtins.scalars(BigInteger.valueOf(3), BigInteger.valueOf(5)),
+        Builtins.g1Points(p1, p2));
+
+// The same over lists that arrived as Data (a redeemer, say)
+static boolean verify(JulcList<BigInteger> scalars, JulcList<byte[]> compressedPoints) {
+    JulcG1 msm = BlsLib.g1MultiScalarMul(
+            Builtins.scalarsFromList(scalars),
+            Builtins.g1PointsFromCompressed(compressedPoints));
+    ...
+}
 ```
+
+Multi-scalar multiplication semantics (pinned by the VM and the conformance
+suite): every scalar is checked first (each must fit 512 bytes of two's
+complement, −2^4095 to 2^4095−1, or the builtin fails, extra scalars beyond the
+shorter list included), then the two lists are zipped to the shorter one (the
+extra entries of the longer list are ignored), and the empty sum is the
+identity. On the pinned `cardano-node-11.0.1` PV11 costs a single
+`g1MultiScalarMul` is smaller than the manual `g1ScalarMul`/`g1Add` chain from
+three points and cheaper in CPU from seven (the builtin costs about 325 million
+CPU to enter plus 78 million per point; the chain costs 130 million per point).
+Nothing rewrites one form into the other; choose MSM for larger sums.
+
+> **Migration from the `byte[]` API:** a local or helper parameter that named a
+> BLS value as `byte[]` (`byte[] p = Builtins.bls12_381_G1_hashToGroup(...)`)
+> is now `JULC0041`; declare it as `JulcG1`/`JulcG2`/`JulcMlResult` or use
+> `var`. Code that used `var` compiles unchanged. Compressed encodings remain
+> `byte[]`.
 
 > **Off-chain:** BlsLib methods throw `UnsupportedOperationException` — use `JulcEval.forSource()` for UPLC evaluation.
 
@@ -1553,7 +1611,7 @@ The following features require protocol version 11 or later and will not work on
 - **Builtins.expModInteger()** — Modular exponentiation (tag 87, CIP-109)
 - **Builtins.dropList()** — Drop the first n elements from a list (tag 88, CIP-132)
 - **JulcArray\<T\>** — Immutable arrays with O(1) random access (tags 89-91, CIP-138); `JulcArray.of(...)` writes one down and folds to an array constant at `pv11-safe` (ADR-046); at the opt-in `pv11-costed` level the compiler also promotes a repeatedly indexed `JulcList` variable to an array automatically (ADR-043)
-- **BLS multi-scalar multiplication** — G1/G2 MSM operations (tags 92-93, CIP-133)
+- **BLS multi-scalar multiplication** — `BlsLib.g1MultiScalarMul`/`g2MultiScalarMul` over the typed `JulcScalars` and `JulcG1Points`/`JulcG2Points` lists (tags 92-93, CIP-133; ADR-047)
 - **NativeValueLib** — Native MaryEra Value operations (CIP-153)
 
 Together these are the exact released PV11 Batch 6 set, tags 87-100.
