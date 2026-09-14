@@ -19,11 +19,12 @@ wrong representation, and recognising chains over interchangeable `byte[]` could
 and reorder failures.
 
 The VM (`Bls12381Builtins`, shared by Truffle, delegating to `julc-bls`'s `BlsOperations`
-over blst) and the conformance suite already pin the semantics this ADR needs. MSM validates
-every scalar first (`multiScalarMul: scalar too large (N bytes, max 512)`: a scalar must fit
+over blst) and the conformance suite already pin the semantics this ADR needs.
+Multi-scalar multiplication (MSM) validates every scalar first (`multiScalarMul: scalar too large (N bytes, max 512)`: a scalar must fit
 512 bytes of two's complement, so the range is −2^4095 to 2^4095−1), then zips the two lists
-to the shorter length (extra entries are ignored, conformance `multiScalarMul-09/10`); an
-empty list on either side gives the identity (`06`–`08`); the scalar bounds are `13a`–`13d`.
+to the shorter length (extra entries are ignored, conformance `multiScalarMul-09a/09b/10a/10b`);
+an empty list on either side gives the identity (`06a/06b/07/08`); the scalar bounds are
+`13a`–`13d`.
 
 ## Goals and non-goals
 
@@ -76,8 +77,14 @@ result; compress: `ByteString`; equal, finalVerify: `Bool`) and a BLS or native-
 constant its type. The registry's argument check (`validateNativeValueArguments`, now a
 per-builtin signature table) rejects at compile time a byte string, Data, a Data list or a
 wrong-group value where a point, a Miller result or a native list is required, and a native
-value where Data is required. `Builtins.g1Points`/`g2Points` require every element to be a
-point of their group.
+value where Data is required. `Builtins.scalars` requires every element to be an integer and
+`g1Points`/`g2Points` a point of their group (the all-constant path checks the constants'
+universes once more before it builds the list constant); the converters require a Data list
+whose static element type is the one they decode (`List[Integer]`, `List[ByteString]`) or
+untyped Data. The same comparison guards the two routes that are internal to a class: an
+argument to a same-class helper against the helper's parameter type, and a `return`
+expression against the declared return type (a lambda's own `return` is exempt), so a point
+cannot be laundered into a `byte[]` helper parameter or out of a `byte[]` method.
 
 **Semantics pinned.** MSM: all scalars validated before any zip (the ones beyond the shorter
 list included), then `Σ scalar_i · point_i` over `min(len)` pairs, the empty sum being the
@@ -108,7 +115,8 @@ programs importing `BlsLib` are unchanged.
    `g2PointsFromCompressed(JulcList<byte[]>)`. Literal forms become a native list constant
    when every element is a constant and a `MkCons` chain otherwise; the converters decode a
    Data list element by element (`UnIData`; `UnBData` then `uncompress`) and fail where the
-   element is not what the list claims.
+   element is not what the list claims. An element or list whose static type is wrong is
+   rejected at compile time (`JULC0041`).
 4. No fusion, no pass, no optimization rule, no switch: this is a typing and lowering ADR;
    the crossover is documented so that authors choose MSM knowingly.
 5. The experimental `byte[]` BLS API is replaced; see Compatibility.
@@ -159,8 +167,17 @@ programs importing `BlsLib` are unchanged.
   parameter of a helper that receives a point) now fails to compile with `JULC0041`; change
   the declaration to `JulcG1`/`JulcG2`/`JulcMlResult` or use `var`. Programs that used `var`
   for every BLS value (the repository's own `BlsLibTest` style) compile unchanged and produce
-  the same bytes. The two MSM signatures change from `PlutusData` to the typed lists; no
-  program could call the old ones from source.
+  the same bytes. The two MSM signatures change from `PlutusData` to the typed lists; the old
+  ones compiled but could not evaluate successfully (the builtins reject Data lists).
+- **Isolation coverage and residuals.** Compile-time isolation is enforced at `Builtins`
+  and library call sites, variable initializers, record construction, containers, `==`, the
+  boundaries, and now same-class helper arguments and `return` expressions. Inherited from
+  ADR-032 O7 and unchanged here: a cast (`(JulcG1) data`) is trusted and fails in the CEK;
+  a `switch` expression's inferred type is Data, so a native-typed local, argument or return
+  fed by one is rejected as a mismatch (spell the switch as a helper method); an instance call
+  on a native receiver (`p.equals(q)`) fails as an unbound variable rather than with a native
+  diagnostic; the message for a native value in a non-native slot names `Data` as the
+  expected type even where the slot is `byte[]` or `BigInteger`.
 - **Hash impact.** None for any program in the censused corpus or the golden suites (no BLS
   users), and none for a BLS program that compiles under both APIs (the types erase, no
   library method was added).
@@ -201,9 +218,13 @@ returning the compressed sum (`O11BlsMsmBenchmarkTest`; full rows in the evidenc
 | 7 | 913,444,725 / 12,898 / 149 | 870,279,258 / 11,306 / 134 |
 | 8 | 1,043,630,745 / 14,452 / 167 | 948,173,100 / 12,556 / 149 |
 
-The builtin costs about 325 million CPU to enter plus 78 million per point; the chain costs
-130 million per point. MSM is smaller from three points and cheaper from seven on this
-profile; below that the chain wins. The choice is the author's; nothing rewrites either way.
+Both programs hash every point first (`hashToGroup`, 52.5 million CPU each on this profile),
+so the measured increments are 78 million CPU per point for MSM and 130 million for the
+chain. Net of the hashing, the builtin's own cost is its pinned intercept of 322 million plus
+25 million per point, and the chain's own cost about 77 million per point (`scalarMul` 76.4
+million plus `add`). MSM is smaller from three points and cheaper in CPU from seven on this
+profile whether or not the points are hashed; below that the chain wins. The choice is the
+author's; nothing rewrites either way.
 
 ## Implementation milestones
 
@@ -214,10 +235,13 @@ One milestone on `feat/117-bls-types`, stacked on ADR-046:
    all three VMs); G2; pairing; the diagnostics for every misuse shape; census of the corpus.
 2. The markers, the PIR types, the resolver, inference, the boundary and schema exclusions.
 3. The retyped `Builtins`/`BlsLib`, the producers, the signature table in the registry.
-4. Fixture matrix (12 fixtures, 25 inputs, 4 levels, 3 VMs), the diagnostics test, the
+4. Fixture matrix (16 fixtures, 31 inputs, 4 levels, 3 VMs), the diagnostics test, the
    producer-shape test, the requirements test, the crossover benchmark.
-5. Two independent agent reviews; full build, Blaster lock check, publish, external examples
-   (additivity census); stacked PR; release-plan update.
+5. Two independent agent reviews (element typing of `scalars` and the converters, the
+   same-class helper and return routes, a `false`-valued fixture, the validator boundary,
+   empty converters, a negative literal scalar, nested producers, the cost attribution in
+   prose); full build, Blaster lock check, publish, external examples (additivity census);
+   stacked PR; release-plan update.
 
 ## Verification
 
@@ -226,12 +250,19 @@ One milestone on `feat/117-bls-types`, stacked on ADR-046:
   outcome, `true` on every successful path, the pinned failure text on Java and Truffle
   (`scalar too large (513 bytes, max 512)` for both bounds, `UnIData`/`UnBData`/`uncompress`
   for the converters, the O9 `IndexArray` text where the costed profile promoted the chain's
-  own list), trace order around MSM, equal budgets on all three backends. Misuse: fourteen
-  shapes with their codes and message fragments (`requires G1`, `requires
-  NativeList[Integer]`, `received List[Integer], but requires NativeList[Integer]`, the
-  boundary, `==`, a Data list, a record). Producers: constants for all-literal lists, `MkCons`
-  chains otherwise, the decoders in the converters, never a Data encoder. Requirements: the
-  PV11 builtins, `BLS_CONSTANTS`, `uncompress`; a pre-PV11 target fails closed.
+  own list), trace order around MSM, equal budgets on all three backends; a disagreeing
+  pair returns `false`; empty converters against a non-empty other list; a negative literal
+  scalar on the constant path; a producer nested in another producer's element and a
+  converter used twice in one method. Misuse: twenty-eight shapes with their codes and
+  message fragments (`requires G1`/`G2`/`Integer`, `requires NativeList[Integer]`, `received
+  List[Integer], but requires NativeList[Integer]`, `received List[ByteString], but requires
+  List[Integer]`, the `compileMethod` boundary for points, scalars, Miller results and point
+  lists, `==`, a Data list, a record, a helper parameter, a return), a validator entrypoint
+  with a point datum and a native-list redeemer (`JULC0042`), and a native-typed method that
+  uses a block lambda with its own `return`. Producers: constants for all-literal lists,
+  `MkCons` chains otherwise, the decoders in the converters, never a Data encoder.
+  Requirements: both PV11 MSM builtins, `BLS_CONSTANTS`, `uncompress`; a pre-PV11 target
+  fails closed.
 - `O11BlsMsmBenchmarkTest`: equivalence and the crossover for one to eight points.
 - Existing suites: `BlsLibTest` (unchanged, `var` style), `LoweringRequirementsTest`,
   `NativeValueTypingTest`, `LibraryDiscoveryCleanupTest`, `julc-blueprint`,

@@ -1302,7 +1302,7 @@ Only `g1Compress`/`g2Compress` turn a point into bytes and only
 | `g2ScalarMul(BigInteger scalar, JulcG2 g2)` | Scalar multiplication of G2 |
 | `g2Equal(JulcG2 a, JulcG2 b)` | Check G2 equality |
 | `g2Compress(JulcG2 g2)` | Compress G2 to 96 bytes |
-| `g2Uncompress(byte[] compressed)` | Uncompress bytes to G2 |
+| `g2Uncompress(byte[] compressed)` | Uncompress bytes to G2 (fails on an invalid encoding) |
 | `g2HashToGroup(byte[] msg, byte[] dst)` | Hash to G2 |
 | `millerLoop(JulcG1 g1, JulcG2 g2)` | Compute the Miller loop |
 | `mulMlResult(JulcMlResult a, JulcMlResult b)` | Multiply two Miller-loop results |
@@ -1328,30 +1328,44 @@ import org.julclang.core.types.JulcMlResult;
 import org.julclang.core.types.JulcList;
 import org.julclang.stdlib.Builtins;
 import org.julclang.stdlib.lib.BlsLib;
+import java.math.BigInteger;
 
-// G1 operations
-JulcG1 p = BlsLib.g1HashToGroup(message, dst);
-JulcG1 sum = BlsLib.g1Add(p, BlsLib.g1ScalarMul(scalar, p));
-boolean eq = BlsLib.g1Equal(sum, p);
-byte[] encoded = BlsLib.g1Compress(sum);          // the only way out to bytes
+class BlsExamples {
+    // G1 operations: only compress leads out to bytes, only uncompress leads back in
+    static byte[] scaled(byte[] message, byte[] dst, BigInteger scalar) {
+        JulcG1 p = BlsLib.g1HashToGroup(message, dst);
+        JulcG1 sum = BlsLib.g1Add(p, BlsLib.g1ScalarMul(scalar, p));
+        return BlsLib.g1Compress(sum);
+    }
 
-// Pairing: e(2P, Q) == e(P, 2Q)
-JulcG2 q = BlsLib.g2HashToGroup(message, dst);
-JulcMlResult left = BlsLib.millerLoop(BlsLib.g1ScalarMul(BigInteger.TWO, p), q);
-JulcMlResult right = BlsLib.millerLoop(p, BlsLib.g2ScalarMul(BigInteger.TWO, q));
-boolean valid = BlsLib.finalVerify(left, right);
+    // Pairing: e(2P, Q) == e(P, 2Q)
+    static boolean bilinear(byte[] message, byte[] dst) {
+        JulcG1 p = BlsLib.g1HashToGroup(message, dst);
+        JulcG2 q = BlsLib.g2HashToGroup(message, dst);
+        JulcMlResult left = BlsLib.millerLoop(BlsLib.g1ScalarMul(BigInteger.TWO, p), q);
+        JulcMlResult right = BlsLib.millerLoop(p, BlsLib.g2ScalarMul(BigInteger.TWO, q));
+        return BlsLib.finalVerify(left, right);
+    }
 
-// Multi-scalar multiplication (PV11): 3·P1 + 5·P2 in one builtin call
-JulcG1 msm = BlsLib.g1MultiScalarMul(
-        Builtins.scalars(BigInteger.valueOf(3), BigInteger.valueOf(5)),
-        Builtins.g1Points(p1, p2));
+    // Multi-scalar multiplication (PV11): 3·P1 + 5·P2 in one builtin call
+    static boolean msmEqualsChain(byte[] dst) {
+        JulcG1 p1 = BlsLib.g1HashToGroup(new byte[]{1}, dst);
+        JulcG1 p2 = BlsLib.g1HashToGroup(new byte[]{2}, dst);
+        JulcG1 msm = BlsLib.g1MultiScalarMul(
+                Builtins.scalars(BigInteger.valueOf(3), BigInteger.valueOf(5)),
+                Builtins.g1Points(p1, p2));
+        JulcG1 chain = BlsLib.g1Add(BlsLib.g1ScalarMul(BigInteger.valueOf(3), p1),
+                BlsLib.g1ScalarMul(BigInteger.valueOf(5), p2));
+        return BlsLib.g1Equal(msm, chain);
+    }
 
-// The same over lists that arrived as Data (a redeemer, say)
-static boolean verify(JulcList<BigInteger> scalars, JulcList<byte[]> compressedPoints) {
-    JulcG1 msm = BlsLib.g1MultiScalarMul(
-            Builtins.scalarsFromList(scalars),
-            Builtins.g1PointsFromCompressed(compressedPoints));
-    ...
+    // The same over lists that arrived as Data (a redeemer, say), decoded element by element
+    static boolean verify(JulcList<BigInteger> scalars, JulcList<byte[]> compressedPoints, byte[] expected) {
+        JulcG1 sum = BlsLib.g1MultiScalarMul(
+                Builtins.scalarsFromList(scalars),
+                Builtins.g1PointsFromCompressed(compressedPoints));
+        return BlsLib.g1Equal(sum, BlsLib.g1Uncompress(expected));
+    }
 }
 ```
 
@@ -1362,15 +1376,18 @@ shorter list included), then the two lists are zipped to the shorter one (the
 extra entries of the longer list are ignored), and the empty sum is the
 identity. On the pinned `cardano-node-11.0.1` PV11 costs a single
 `g1MultiScalarMul` is smaller than the manual `g1ScalarMul`/`g1Add` chain from
-three points and cheaper in CPU from seven (the builtin costs about 325 million
-CPU to enter plus 78 million per point; the chain costs 130 million per point).
-Nothing rewrites one form into the other; choose MSM for larger sums.
+three points and cheaper in CPU from seven: the builtin costs about 322 million
+CPU to enter plus 25 million per point, the chain about 77 million per point
+(measured over hashed points, whose 52.5 million `hashToGroup` each is the
+same on both sides). Nothing rewrites one form into the other; choose MSM for
+larger sums.
 
-> **Migration from the `byte[]` API:** a local or helper parameter that named a
-> BLS value as `byte[]` (`byte[] p = Builtins.bls12_381_G1_hashToGroup(...)`)
-> is now `JULC0041`; declare it as `JulcG1`/`JulcG2`/`JulcMlResult` or use
-> `var`. Code that used `var` compiles unchanged. Compressed encodings remain
-> `byte[]`.
+> **Migration from the `byte[]` API:** a local, helper parameter or return
+> type that named a BLS value as `byte[]` (`byte[] p =
+> Builtins.bls12_381_G1_hashToGroup(...)`, `static byte[] point(...)`) is now
+> `JULC0041`; declare it as `JulcG1`/`JulcG2`/`JulcMlResult` or use `var`. Code
+> that used `var` compiles unchanged to the same bytes. Compressed encodings
+> remain `byte[]`.
 
 > **Off-chain:** BlsLib methods throw `UnsupportedOperationException` — use `JulcEval.forSource()` for UPLC evaluation.
 

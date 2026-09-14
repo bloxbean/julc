@@ -14,15 +14,19 @@ converters build the lists from Data lists; the empty product is the identity an
 list's extra entries are ignored; a scalar of 2^4095−1 and of −2^4095 succeeds and one beyond
 each fails on all three VMs (`multiScalarMul: scalar too large (513 bytes, max 512)` on Java
 and Truffle, a `Builtin error: Bls12_381_G1_multiScalarMul` on Scalus); G2 and pairing
-agree; every misuse shape below is rejected with the code intended. Census: no program in
+agree; the eight misuse shapes probed (a byte string into `g1Add`, G2 into G1, a G1 held as
+`byte[]`, `==`, a Data list of points, the boundary, a Data list as scalars, G2 in
+`g1Points`) were rejected with the codes intended, the other shapes below were first
+exercised in the test. Census: no program in
 either `julc-examples` tree, the golden suites or the Blaster fixtures uses `BlsLib` or a
 BLS builtin.
 
 ## Fixture matrix (`O11BlsTypesTest.typedBlsProgramsAgreeWithTheirManualChainsOnEveryBackend`)
 
-12 fixtures × 4 levels × 3 VMs, 25 inputs. Every successful path returns `true` (the typed
-program agrees with its manual chain); every failing path fails on all three VMs with the
-pinned text on Java and Truffle. Budgets at `PV11_SAFE`, Java VM:
+16 fixtures × 4 levels × 3 VMs, 31 inputs. Every successful path returns the pinned boolean
+(`true` where the typed program agrees with its manual chain, `false` for the disagreeing
+pair of `NOT_EQUAL`); every failing path fails on all three VMs with the pinned text on Java
+and Truffle. Budgets at `PV11_SAFE`, Java VM:
 
 | Fixture | Input | CPU | Memory | Outcome |
 |---|---|---:|---:|---|
@@ -52,6 +56,11 @@ pinned text on Java and Truffle. Budgets at `PV11_SAFE`, Java VM:
 | TRACE_ORDER | pass | 478,141,222 | 8,848 | true |
 | TRACE_ORDER | fail | 401,129,340 | 8,029 | fails: Error term encountered |
 | VAR_LOCALS | run | 400,657,536 | 4,301 | true |
+| NOT_EQUAL | four | 477,360,154 | 5,851 | false |
+| NOT_EQUAL | three | 477,360,154 | 5,851 | true |
+| EMPTY_CONVERTERS | both-empty | 801,083,594 | 13,866 | true |
+| NEGATIVE_LITERAL | run | 477,463,339 | 4,937 | true |
+| NESTED_PRODUCERS | three | 1,253,270,040 | 21,603 | true |
 
 At `PV11_COSTED` the two chain-side failures `FROM_LISTS/one-scalar` and
 `POINTS_FROM_DATA/empty` fail as `IndexArray: index 1 out of bounds for array of size 1` and
@@ -75,6 +84,10 @@ Artifacts at `PV11_SAFE` (bytes, script hash prefix):
 | ROUND_TRIP | 59 | `baeb454ca380944b…` |
 | TRACE_ORDER | 101 | `961db7bacf1dba33…` |
 | VAR_LOCALS | 42 | `24bffdb3f2696e80…` |
+| NOT_EQUAL | 56 | `fca6f0020e970d4c…` |
+| EMPTY_CONVERTERS | 182 | `2c92f970d549cd84…` |
+| NEGATIVE_LITERAL | 52 | `a38724ab836cc109…` |
+| NESTED_PRODUCERS | 199 | `153565db3fed18cd…` |
 
 ## Diagnostics (`misuseIsRejectedAtCompileTimeWithTheNativeIsolationCodes`)
 
@@ -94,6 +107,24 @@ Artifacts at `PV11_SAFE` (bytes, script hash prefix):
 | G1 points into `bls12_381_G2_multiScalarMul` | JULC0041 | `requires NativeList[G2]` |
 | a point where Data is required (`equalsData`) | JULC0041 | `G1` |
 | a point as a record field | JULC0041 | `requires Data` |
+| `byte[]` into `g2Add` | JULC0041 | `requires G2` |
+| G1 point into `bls12_381_G2_add` | JULC0041 | `requires G2` |
+| `byte[] q = g2HashToGroup(...)` | JULC0041 | `G2` |
+| `static boolean m(JulcMlResult r)` | JULC0042 | `MlResult` |
+| `static boolean m(JulcG2Points ps)` | JULC0042 | `NativeList[G2]` |
+| `scalars(new byte[]{1})` (constant path) | JULC0041 | `requires Integer` |
+| `scalars(BigInteger.ONE, dst)` with `byte[] dst` | JULC0041 | `requires Integer` |
+| `scalars(d)` with `PlutusData d` | JULC0041 | `requires Integer` |
+| `scalarsFromList(JulcList<byte[]>)` | JULC0041 | `received List[ByteString], but requires List[Integer]` |
+| `g1PointsFromCompressed(JulcList<BigInteger>)` | JULC0041 | `received List[Integer], but requires List[ByteString]` |
+| a point into a same-class helper's `byte[]` parameter | JULC0041 | `h argument 1` |
+| a `JulcList<BigInteger>` into a helper's `JulcScalars` parameter | JULC0041 | `received List[Integer], but requires NativeList[Integer]` |
+| `static byte[] m(...) { return hashToGroup(...); }` | JULC0041 | `Return value` |
+| `static JulcG1 h(byte[] b) { return b; }` | JULC0041 | `requires G1` |
+
+A `@SpendingValidator` entrypoint with a `JulcG1` datum and a `JulcScalars` redeemer is
+`JULC0042`. A native-typed method whose body uses a block lambda with its own `return`
+compiles (the lambda's return is not the method's).
 
 A method returning `JulcG1` compiles and evaluates to a `bls12_381_G1_element` constant (as a
 `JulcValue` result does); `var` locals infer the typed values (`VAR_LOCALS`).
@@ -130,16 +161,61 @@ and as the manual chain (baseline); both compiled at `BASELINE` and equivalent o
 | 7 | 913,444,725 | 12,898 | 149 | 870,279,258 | 11,306 | 134 |
 | 8 | 1,043,630,745 | 14,452 | 167 | 948,173,100 | 12,556 | 149 |
 
-MSM: about 325 million CPU plus 78 million per point; chain: 130 million per point. Bytes
-and memory favour MSM from three points, CPU from seven. The test pins both crossovers.
+Per-point increments from the rows: MSM +77,893,842 at every n; chain +130,234,020 up to
+n=3 and +130,186,020 from n=4. Both programs hash every point (`hashToGroup` intercept
+52,538,055 on this profile), so net of hashing the builtin's own increment is 25.1 million
+(its pinned slope 25,087,669; intercept 321,837,444) and the chain's about 77.4 million
+(`scalarMul` 76,433,006 plus `add` 962,335 plus machine steps). Bytes and memory favour MSM
+from three points, CPU from seven; the crossover does not depend on the hashing, which is
+the same on both sides. The test pins both crossovers.
 
 ## Neighbouring suites
 
-`LoweringRequirementsTest`, `NativeValueTypingTest`, `OptimizationConfigurationTest`,
-`LibraryDiscoveryCleanupTest`, `O14ValueLiteralFoldTest`, `O10ArrayLiteralFoldTest`,
-`julc-stdlib` (411, `BlsLibTest` included, unchanged), `julc-blueprint` (26),
-`julc-verification` (92), `julc-annotation-processor` (20): 579 tests, 0 failures.
+Before the review round: `LoweringRequirementsTest`, `NativeValueTypingTest`,
+`OptimizationConfigurationTest`, `LibraryDiscoveryCleanupTest` (30), `julc-stdlib` (411,
+`BlsLibTest` included, unchanged), `julc-blueprint` (26), `julc-verification` (92),
+`julc-annotation-processor` (20): 579 tests, 0 failures; the `pair-case-backends` suites
+(`O10ArrayLiteralFoldTest`, `O14ValueLiteralFoldTest` and the rest) ran in the full build.
+After the review round (the helper-argument and return checks touch every method):
+`:julc-compiler:test` and `pairCaseTest` 1,624, `julc-stdlib` 411, the benchmark test: 0
+failures.
+
+## Review round
+
+Two independent agent reviews (types and lowering; tests, evidence and docs), no blocking
+finding. Folded in: `Builtins.scalars` elements must be integers and the converters' Data
+lists must carry the element they decode (`JULC0041`, with a universe check on the
+all-constant path so no ill-formed list constant can be built); a native value can no
+longer be passed into a same-class helper's differently typed parameter or returned through
+a differently typed method (`JULC0041`; a lambda's own `return` is exempt); a `false`-valued
+fixture, the empty converters, a negative literal scalar on the constant path, nested
+producers, the G2 and Miller-result misuse shapes, the validator boundary and the G2 MSM
+requirement added; the per-point cost prose now separates the hashing both programs share;
+the tautological rule assertion dropped from the benchmark test; wording (26 became 31 inputs
+with the new fixtures, the old MSM signatures compiled but could not evaluate, the
+conformance ids). Recorded residuals: casts, `switch` expressions typed as Data, instance
+calls on native receivers, the `requires Data` wording for non-native slots (all inherited
+from O7).
 
 ## Repository validation
 
-(recorded after the final commit)
+At `840589fa` (implementation `3a45a967` plus the documentation commit):
+
+- Full build (`./gradlew build --continue`): 10,941 tests, 0 failures, 0 errors, 530 skipped
+  (the pre-existing on-chain/DevKit-gated skips); the count is the ADR-046 build plus the
+  four `O11BlsTypesTest` cases and `O11BlsMsmBenchmarkTest`.
+- Additivity probe: two `var`-style BLS programs (the `BlsLibTest` style: `Builtins.bls12_381_*`
+  add/equal over hashed points; `BlsLib` pairing with `millerLoop`/`mulMlResult`/`finalVerify`,
+  `g1Neg`, compress/uncompress round trips) compiled in a worktree at the base commit
+  `f4d9cbed` and at head at every level with source maps off and on: 16 of 16 FLAT encodings
+  byte-identical.
+- Blaster `prepare-artifacts.sh`: regenerated `artifact-lock.json` identical to the committed
+  one.
+- Published `0.1.0-pre17-840589f-SNAPSHOT`; external `julc-examples` at the default level and at
+  `pv11-costed` (init-script override, examples `build.gradle` untouched): 418 tests / 55
+  failures / 11 skipped in each run. All 55 failures are `InsufficientBalanceException`
+  against the local Yaci DevKit (exhausted funded accounts, not reset for this run): the same
+  52 `*IntegrationTest` steps plus the three `EscrowBudgetComparisonTest` steps as the
+  ADR-043 to ADR-046 runs. No compile-time or off-chain evaluation test fails.
+- Additivity census: 41 of 41 validators unchanged (same size and hash as the ADR-046 run) at
+  the default level and at `pv11-costed`.

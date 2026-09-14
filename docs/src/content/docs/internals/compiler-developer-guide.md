@@ -264,7 +264,12 @@ native-list constant by its universe. The registry's
 `Builtins` method must have (Values, points, Miller results, native lists),
 and `validateNativeValueArguments` rejects anything else at compile time with
 the expected type in the message (`requires G1`, `requires
-NativeList[Integer]`). The native lists for `bls12_381_G1_multiScalarMul` and
+NativeList[Integer]`); the variadic producers check every element
+(`requires Integer` for `scalars`), the converters check the Data list's
+static element type, and `PirGenerator` applies the same native comparison to
+same-class helper arguments and to `return` expressions against the declared
+return type (a lambda's own `return` is exempt), so no route inside a class
+launders a point into `byte[]` or Data. The native lists for `bls12_381_G1_multiScalarMul` and
 its G2 form come only from the `Builtins` intrinsics `scalars`/`g1Points`/
 `g2Points` (a list constant when every element is a constant, else `MkCons`
 over the empty native list constant, bound once so inference reads the list

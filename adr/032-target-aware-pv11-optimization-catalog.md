@@ -907,7 +907,9 @@ line through explicit, evidence-backed deferrals (2026-08-29). See
 [cost/use evidence](evidence/032-cost-use-rewrite-deferrals.md) and issues
 [#102](https://github.com/bloxbean/julc/issues/102) through
 [#105](https://github.com/bloxbean/julc/issues/105); O11 remains governed by
-[#96](https://github.com/bloxbean/julc/issues/96).
+[#96](https://github.com/bloxbean/julc/issues/96) (its typed surface and explicit
+MSM were delivered by ADR-047 under
+[#117](https://github.com/bloxbean/julc/issues/117); fusion stays deferred).
 
 - Measured explicit native-Value sharing, list-to-array promotion, and
   modular-exponentiation source shapes with exact Java/Truffle PV11 budgets.
