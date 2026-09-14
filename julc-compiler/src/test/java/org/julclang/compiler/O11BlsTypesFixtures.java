@@ -17,9 +17,11 @@ import java.util.List;
  */
 final class O11BlsTypesFixtures {
 
-    record Input(String name, List<PlutusData> args, boolean success) {
-        static Input ok(String name, PlutusData... args) { return new Input(name, List.of(args), true); }
-        static Input fails(String name, PlutusData... args) { return new Input(name, List.of(args), false); }
+    /** An input: {@code success} says whether evaluation succeeds, {@code value} the boolean it returns when it does. */
+    record Input(String name, List<PlutusData> args, boolean success, boolean value) {
+        static Input ok(String name, PlutusData... args) { return new Input(name, List.of(args), true, true); }
+        static Input isFalse(String name, PlutusData... args) { return new Input(name, List.of(args), true, false); }
+        static Input fails(String name, PlutusData... args) { return new Input(name, List.of(args), false, false); }
         @Override public String toString() { return name; }
     }
 
@@ -189,6 +191,44 @@ final class O11BlsTypesFixtures {
                     return BlsLib.g1Equal(Builtins.bls12_381_G1_multiScalarMul(s, ps), p);
                 }""");
 
+    /** 12: a disagreeing pair returns {@code false}: the equality is decided by the builtin, not by construction. */
+    static final String NOT_EQUAL = method("""
+                static boolean notEqual(byte[] dst, BigInteger s) {
+                    JulcG1 p = Builtins.bls12_381_G1_hashToGroup(new byte[]{1}, dst);
+                    JulcG1 msm = BlsLib.g1MultiScalarMul(Builtins.scalars(BigInteger.valueOf(3)), Builtins.g1Points(p));
+                    return BlsLib.g1Equal(msm, BlsLib.g1ScalarMul(s, p));
+                }""");
+
+    /** 13: an empty Data list through each converter, against a non-empty other list, is the identity. */
+    static final String EMPTY_CONVERTERS = method("""
+                static boolean emptyConverters(JulcList<BigInteger> noScalars, JulcList<byte[]> noPoints, byte[] dst) {
+                    JulcG1 p = Builtins.bls12_381_G1_hashToGroup(new byte[]{1}, dst);
+                    JulcG1 zero = BlsLib.g1ScalarMul(BigInteger.ZERO, p);
+                    JulcG1 noScalarSum = BlsLib.g1MultiScalarMul(Builtins.scalarsFromList(noScalars), Builtins.g1Points(p));
+                    JulcG1 noPointSum = BlsLib.g1MultiScalarMul(Builtins.scalars(BigInteger.ONE), Builtins.g1PointsFromCompressed(noPoints));
+                    return BlsLib.g1Equal(noScalarSum, zero) && BlsLib.g1Equal(noPointSum, zero);
+                }""");
+
+    /** 14: a negative literal scalar takes the constant path (a negative integer inside the list constant). */
+    static final String NEGATIVE_LITERAL = method("""
+                static boolean negativeLiteral(byte[] dst) {
+                    JulcG1 p = Builtins.bls12_381_G1_hashToGroup(new byte[]{1}, dst);
+                    JulcG1 msm = BlsLib.g1MultiScalarMul(Builtins.scalars(new BigInteger("-3")), Builtins.g1Points(p));
+                    return BlsLib.g1Equal(msm, BlsLib.g1Neg(BlsLib.g1ScalarMul(BigInteger.valueOf(3), p)));
+                }""");
+
+    /** 15: a producer nested inside another producer's element, and the same converter used twice in one method. */
+    static final String NESTED_PRODUCERS = method("""
+                static boolean nestedProducers(JulcList<BigInteger> xs, byte[] dst) {
+                    JulcG1 p = Builtins.bls12_381_G1_hashToGroup(new byte[]{1}, dst);
+                    JulcG1 q = Builtins.bls12_381_G1_hashToGroup(new byte[]{2}, dst);
+                    JulcG1 outer = BlsLib.g1MultiScalarMul(
+                            Builtins.scalars(BigInteger.TWO, BigInteger.ONE),
+                            Builtins.g1Points(p, BlsLib.g1MultiScalarMul(Builtins.scalarsFromList(xs), Builtins.g1Points(q))));
+                    JulcG1 again = BlsLib.g1MultiScalarMul(Builtins.scalarsFromList(xs), Builtins.g1Points(q));
+                    return BlsLib.g1Equal(outer, BlsLib.g1Add(BlsLib.g1ScalarMul(BigInteger.TWO, p), again));
+                }""");
+
     private static final List<Input> RUN = List.of(Input.ok("run", DST));
 
     static final List<Fixture> FIXTURES = List.of(
@@ -222,5 +262,13 @@ final class O11BlsTypesFixtures {
             new Fixture("TRACE_ORDER", TRACE_ORDER, "traceOrder", List.of(
                     Input.ok("pass", DST, PlutusData.constr(0)),
                     Input.fails("fail", DST, PlutusData.constr(1)))),
-            new Fixture("VAR_LOCALS", VAR_LOCALS, "varLocals", RUN));
+            new Fixture("VAR_LOCALS", VAR_LOCALS, "varLocals", RUN),
+            new Fixture("NOT_EQUAL", NOT_EQUAL, "notEqual", List.of(
+                    Input.isFalse("four", DST, PlutusData.integer(4)),
+                    Input.ok("three", DST, PlutusData.integer(3)))),
+            new Fixture("EMPTY_CONVERTERS", EMPTY_CONVERTERS, "emptyConverters", List.of(
+                    Input.ok("both-empty", PlutusData.list(), PlutusData.list(), DST))),
+            new Fixture("NEGATIVE_LITERAL", NEGATIVE_LITERAL, "negativeLiteral", RUN),
+            new Fixture("NESTED_PRODUCERS", NESTED_PRODUCERS, "nestedProducers", List.of(
+                    Input.ok("three", integers(3), DST))));
 }

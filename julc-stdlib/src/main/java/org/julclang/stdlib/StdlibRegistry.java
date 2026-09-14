@@ -146,17 +146,20 @@ public final class StdlibRegistry implements StdlibLookup {
                 case "g2Points" -> { return Optional.of(nativeListLiteral("g2Points", args, DefaultUni.BLS12_381_G2, G2_POINTS)); }
                 case "scalarsFromList" -> {
                     requireArgs("Builtins.scalarsFromList", args, 1);
+                    requireDataListOf("Builtins.scalarsFromList", safeArgType(argTypes, 0), new PirType.IntegerType());
                     return Optional.of(nativeListFromData("scalars", asUplcList(args.get(0), safeArgType(argTypes, 0)),
                             DefaultUni.INTEGER, SCALARS, e -> builtinApp1(DefaultFun.UnIData, e)));
                 }
                 case "g1PointsFromCompressed" -> {
                     requireArgs("Builtins.g1PointsFromCompressed", args, 1);
+                    requireDataListOf("Builtins.g1PointsFromCompressed", safeArgType(argTypes, 0), new PirType.ByteStringType());
                     return Optional.of(nativeListFromData("g1Points", asUplcList(args.get(0), safeArgType(argTypes, 0)),
                             DefaultUni.BLS12_381_G1, G1_POINTS,
                             e -> builtinApp1(DefaultFun.Bls12_381_G1_uncompress, builtinApp1(DefaultFun.UnBData, e))));
                 }
                 case "g2PointsFromCompressed" -> {
                     requireArgs("Builtins.g2PointsFromCompressed", args, 1);
+                    requireDataListOf("Builtins.g2PointsFromCompressed", safeArgType(argTypes, 0), new PirType.ByteStringType());
                     return Optional.of(nativeListFromData("g2Points", asUplcList(args.get(0), safeArgType(argTypes, 0)),
                             DefaultUni.BLS12_381_G2, G2_POINTS,
                             e -> builtinApp1(DefaultFun.Bls12_381_G2_uncompress, builtinApp1(DefaultFun.UnBData, e))));
@@ -276,8 +279,9 @@ public final class StdlibRegistry implements StdlibLookup {
             return;
         }
         var types = argTypes != null ? argTypes : List.<PirType>of();
-        // The variadic point lists: every element must be a point of the group.
+        // The variadic native lists: every element must be an integer, or a point of the group.
         PirType every = switch (methodName) {
+            case "scalars" -> new PirType.IntegerType();
             case "g1Points" -> G1;
             case "g2Points" -> G2;
             default -> null;
@@ -301,6 +305,39 @@ public final class StdlibRegistry implements StdlibLookup {
         }
     }
 
+    /** The PIR type of a constant, for the diagnostic on an ill-typed native list element. */
+    private static PirType constantType(Constant value) {
+        return switch (value) {
+            case Constant.IntegerConst _ -> new PirType.IntegerType();
+            case Constant.ByteStringConst _ -> new PirType.ByteStringType();
+            case Constant.StringConst _ -> new PirType.StringType();
+            case Constant.BoolConst _ -> new PirType.BoolType();
+            case Constant.UnitConst _ -> new PirType.UnitType();
+            case Constant.Bls12_381_G1Element _ -> G1;
+            case Constant.Bls12_381_G2Element _ -> G2;
+            case Constant.Bls12_381_MlResult _ -> ML;
+            case Constant.ValueConst _ -> NATIVE_VALUE;
+            default -> new PirType.DataType();
+        };
+    }
+
+    private static PirType elemTypeOf(PirType listType) {
+        return ((PirType.NativeListType) listType).elemType();
+    }
+
+    /**
+     * ADR-047: the Data list a converter decodes must carry the element the decode expects
+     * (integers for scalars, byte strings for compressed points) or untyped Data; any other
+     * statically known element type is rejected here instead of at the element's decode.
+     */
+    private static void requireDataListOf(String method, PirType actual, PirType elem) {
+        boolean ok = actual == null || actual instanceof PirType.DataType
+                || (actual instanceof PirType.ListType lt && (lt.elemType().equals(elem) || lt.elemType() instanceof PirType.DataType));
+        if (!ok) {
+            throw CompilerTypeDiagnostics.nativeTypeMismatch(method + " argument 1", actual, new PirType.ListType(elem), null);
+        }
+    }
+
     private static boolean isBuiltinsClass(String className) {
         return className.equals("Builtins") || className.equals(PKG + "Builtins");
     }
@@ -312,6 +349,15 @@ public final class StdlibRegistry implements StdlibLookup {
      */
     private static PirTerm nativeListLiteral(String name, List<PirTerm> args, DefaultUni elemUni, PirType listType) {
         if (args.stream().allMatch(a -> a instanceof PirTerm.Const)) {
+            // Defence in depth behind the argument check: a constant of another universe would
+            // make an ill-formed list constant (the FLAT encoder writes elements by their own kind).
+            for (int i = 0; i < args.size(); i++) {
+                var value = ((PirTerm.Const) args.get(i)).value();
+                if (!value.type().equals(elemUni)) {
+                    throw CompilerTypeDiagnostics.nativeTypeMismatch("Builtins." + name + " argument " + (i + 1),
+                            constantType(value), elemTypeOf(listType), null);
+                }
+            }
             return new PirTerm.Const(new Constant.ListConst(elemUni,
                     args.stream().map(a -> ((PirTerm.Const) a).value()).toList()));
         }

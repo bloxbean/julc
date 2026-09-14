@@ -72,6 +72,8 @@ public class PirGenerator {
      */
     private boolean booleanReturnGuard = false;
     private boolean booleanReturnGuardActive = false; // true when inside a boolean method with guard enabled
+    /** The declared PIR return type of the method being generated (null in a lambda or a void method); ADR-047. */
+    private PirType currentReturnType;
     public PirGenerator(TypeResolver typeResolver, SymbolTable symbolTable) {
         this(typeResolver, symbolTable, null, TypeMethodRegistry.defaultRegistry(), null,
                 CompilationContext.pv11Defaults());
@@ -348,7 +350,10 @@ public class PirGenerator {
             symbolTable.define(param.getNameAsString(), pirType);
         }
 
+        var prevReturnType = this.currentReturnType;
+        this.currentReturnType = isVoid ? null : typeResolver.resolve(method.getType());
         PirTerm bodyTerm = generateBlock(body);
+        this.currentReturnType = prevReturnType;
         this.booleanReturnGuardActive = prevGuard;
         symbolTable.popScope();
 
@@ -391,6 +396,18 @@ public class PirGenerator {
         if (stmt instanceof ReturnStmt rs) {
             var result = rs.getExpression().map(this::generateExpression)
                     .orElse(new PirTerm.Const(Constant.unit()));
+            if (currentReturnType != null && rs.getExpression().isPresent()) {
+                // ADR-047: a native value cannot leave through a differently typed return, nor a
+                // byte string or Data through a natively typed one (the O7 rule for initializers).
+                var returnExpr = rs.getExpression().get();
+                var returnedType = resolveExpressionType(returnExpr);
+                if (returnedType instanceof PirType.DataType) returnedType = inferPirType(result);
+                if ((typeResolver.containsNativeOpaque(currentReturnType) || typeResolver.containsNativeOpaque(returnedType))
+                        && !currentReturnType.equals(returnedType)) {
+                    throw CompilerTypeDiagnostics.nativeTypeMismatch(
+                            "Return value", returnedType, currentReturnType, sourceLocation(returnExpr));
+                }
+            }
             recordPosition(result, rs);
             return applyBooleanReturnGuard(result, rs);
         }
@@ -1227,8 +1244,26 @@ public class PirGenerator {
         }
         if (funType.isPresent()) {
             PirTerm fn = new PirTerm.Var(resolvedName, funType.get());
-            for (var arg : args) {
-                fn = new PirTerm.App(fn, generateExpression(arg));
+            var paramTypes = new ArrayList<PirType>();
+            for (PirType t = funType.get(); t instanceof PirType.FunType ft; t = ft.returnType()) {
+                paramTypes.add(ft.paramType());
+            }
+            for (int i = 0; i < args.size(); i++) {
+                var arg = args.get(i);
+                var argPir = generateExpression(arg);
+                if (i < paramTypes.size()) {
+                    // ADR-047: a native value cannot enter a helper through a differently typed
+                    // parameter, nor a byte string, Data or a Data list through a native one.
+                    var paramType = paramTypes.get(i);
+                    var argType = resolveExpressionType(arg);
+                    if (argType instanceof PirType.DataType) argType = inferPirType(argPir);
+                    if ((typeResolver.containsNativeOpaque(paramType) || typeResolver.containsNativeOpaque(argType))
+                            && !paramType.equals(argType)) {
+                        throw CompilerTypeDiagnostics.nativeTypeMismatch(
+                                methodName + " argument " + (i + 1), argType, paramType, sourceLocation(arg));
+                    }
+                }
+                fn = new PirTerm.App(fn, argPir);
             }
             return fn;
         }
@@ -2169,6 +2204,17 @@ public class PirGenerator {
     }
 
     private PirTerm generateLambda(LambdaExpr le) {
+        // ADR-047: a return inside a lambda body is not the enclosing method's return.
+        var prevReturnType = this.currentReturnType;
+        this.currentReturnType = null;
+        try {
+            return generateLambdaBody(le);
+        } finally {
+            this.currentReturnType = prevReturnType;
+        }
+    }
+
+    private PirTerm generateLambdaBody(LambdaExpr le) {
         var params = le.getParameters();
 
         // Push lambda parameters into scope
@@ -2224,6 +2270,17 @@ public class PirGenerator {
      * @param wrapResultToData if true, wrap the lambda body result with wrapEncode (for map)
      */
     private PirTerm generateLambda(LambdaExpr le, java.util.List<PirType> expectedParamTypes, boolean wrapResultToData) {
+        // ADR-047: a return inside a lambda body is not the enclosing method's return.
+        var prevReturnType = this.currentReturnType;
+        this.currentReturnType = null;
+        try {
+            return generateLambdaBody(le, expectedParamTypes, wrapResultToData);
+        } finally {
+            this.currentReturnType = prevReturnType;
+        }
+    }
+
+    private PirTerm generateLambdaBody(LambdaExpr le, java.util.List<PirType> expectedParamTypes, boolean wrapResultToData) {
         var params = le.getParameters();
 
         symbolTable.pushScope();

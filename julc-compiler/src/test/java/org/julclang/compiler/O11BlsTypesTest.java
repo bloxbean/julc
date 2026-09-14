@@ -87,7 +87,7 @@ class O11BlsTypesTest {
                         var evaluated = evaluate(result.program(), input.args(), provider);
                         assertEquals(input.success(), evaluated.isSuccess(), inputLabel + " " + evaluated);
                         if (evaluated instanceof EvalResult.Success success) {
-                            assertEquals(Term.const_(Constant.bool(true)), success.resultTerm(), inputLabel);
+                            assertEquals(Term.const_(Constant.bool(input.value())), success.resultTerm(), inputLabel);
                         } else if (!provider.equals("Scalus")) {
                             var key = fixture.name() + "/" + input.name();
                             var prefix = level == OptimizationLevel.PV11_COSTED && COSTED_FAILURE_PREFIX.containsKey(key)
@@ -116,7 +116,11 @@ class O11BlsTypesTest {
         }
     }
 
-    /** A wrong group, a byte string, Data or a Data list where a typed value is required, and a typed value where Data is required. */
+    /**
+     * A wrong group, a byte string, Data or a Data list where a typed value is required, a typed
+     * value where Data is required, an ill-typed native list element, and the same-class helper
+     * parameter and return routes; the validator boundary; a lambda's own return is exempt.
+     */
     @Test
     void misuseIsRejectedAtCompileTimeWithTheNativeIsolationCodes() {
         record Bad(String name, String body, String code, String fragment) {}
@@ -146,7 +150,33 @@ class O11BlsTypesTest {
                 new Bad("G1 where Data is required", "static boolean m(byte[] dst, PlutusData d) { return Builtins.equalsData(Builtins.bls12_381_G1_hashToGroup(dst, dst), d); }",
                         "JULC0041", "G1"),
                 new Bad("G1 in a record", "record Box(JulcG1 p) {}\n static boolean m(byte[] dst) { var box = new Box(Builtins.bls12_381_G1_hashToGroup(dst, dst)); return true; }",
-                        "JULC0041", "requires Data"));
+                        "JULC0041", "requires Data"),
+                // G2 and Miller-result shapes
+                new Bad("bytes into g2Add", "static JulcG2 m(byte[] a, byte[] dst) { return BlsLib.g2Add(a, Builtins.bls12_381_G2_hashToGroup(a, dst)); }",
+                        "JULC0041", "requires G2"),
+                new Bad("G1 into G2 add", "static JulcG2 m(byte[] dst) { JulcG1 p = Builtins.bls12_381_G1_hashToGroup(dst, dst); JulcG2 q = Builtins.bls12_381_G2_hashToGroup(dst, dst); return Builtins.bls12_381_G2_add(q, p); }",
+                        "JULC0041", "requires G2"),
+                new Bad("G2 held as byte[]", "static byte[] m(byte[] dst) { byte[] q = Builtins.bls12_381_G2_hashToGroup(dst, dst); return q; }",
+                        "JULC0041", "G2"),
+                new Bad("Miller result at the boundary", "static boolean m(JulcMlResult r) { return true; }", "JULC0042", "MlResult"),
+                new Bad("G2 points at the boundary", "static boolean m(JulcG2Points ps) { return true; }", "JULC0042", "NativeList[G2]"),
+                // native list producers: element types
+                new Bad("bytes literal in scalars", "static JulcScalars m() { return Builtins.scalars(new byte[]{1}); }", "JULC0041", "requires Integer"),
+                new Bad("bytes variable in scalars", "static JulcScalars m(byte[] dst) { return Builtins.scalars(BigInteger.ONE, dst); }", "JULC0041", "requires Integer"),
+                new Bad("Data in scalars", "static JulcScalars m(PlutusData d) { return Builtins.scalars(d); }", "JULC0041", "requires Integer"),
+                new Bad("byte list into scalarsFromList", "static JulcScalars m(JulcList<byte[]> xs) { return Builtins.scalarsFromList(xs); }",
+                        "JULC0041", "received List[ByteString], but requires List[Integer]"),
+                new Bad("integer list into g1PointsFromCompressed", "static JulcG1Points m(JulcList<BigInteger> xs) { return Builtins.g1PointsFromCompressed(xs); }",
+                        "JULC0041", "received List[Integer], but requires List[ByteString]"),
+                // same-class helpers: parameters and returns
+                new Bad("G1 into a byte[] helper parameter", "static boolean h(byte[] b) { return true; }\n static boolean m(byte[] dst) { return h(Builtins.bls12_381_G1_hashToGroup(dst, dst)); }",
+                        "JULC0041", "h argument 1"),
+                new Bad("Data list into a native helper parameter", "static JulcG1 f(JulcScalars s, JulcG1Points ps) { return Builtins.bls12_381_G1_multiScalarMul(s, ps); }\n static JulcG1 m(JulcList<BigInteger> xs, byte[] dst) { return f(xs, Builtins.g1Points(Builtins.bls12_381_G1_hashToGroup(dst, dst))); }",
+                        "JULC0041", "received List[Integer], but requires NativeList[Integer]"),
+                new Bad("G1 returned as byte[]", "static byte[] m(byte[] dst) { return Builtins.bls12_381_G1_hashToGroup(dst, dst); }",
+                        "JULC0041", "Return value"),
+                new Bad("byte[] returned as G1 from a helper", "static JulcG1 h(byte[] b) { return b; }\n static boolean m(byte[] dst) { return BlsLib.g1Equal(h(dst), h(dst)); }",
+                        "JULC0041", "requires G1"));
         for (var bad : cases) {
             var error = assertThrows(CompilerException.class,
                     () -> new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(IMPORTS + "class Bad {\n" + bad.body() + "\n}\n", "m"),
@@ -155,6 +185,27 @@ class O11BlsTypesTest {
             assertEquals(bad.code(), diagnostic.code(), bad.name() + ": " + diagnostic.message());
             assertTrue(diagnostic.message().contains(bad.fragment()), bad.name() + ": " + diagnostic.message());
         }
+        // A validator entrypoint cannot take a point or a native list either (the strict boundary has no decoder for them).
+        var validator = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry()).compile(IMPORTS + """
+                @SpendingValidator
+                class BlsDatumValidator {
+                    @Entrypoint
+                    static boolean validate(JulcG1 datum, JulcScalars redeemer, ScriptContext context) {
+                        return true;
+                    }
+                }
+                """));
+        assertEquals("JULC0042", validator.diagnostics().getFirst().code(), validator.getMessage());
+        // A lambda's return is not the method's: a native-typed method may use a boolean lambda inside.
+        var lambdaInside = new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(IMPORTS + """
+                class LambdaInside {
+                    static JulcG1 m(JulcList<BigInteger> xs, byte[] dst) {
+                        JulcList<BigInteger> kept = xs.filter(x -> { return x.compareTo(BigInteger.ZERO) > 0; });
+                        return BlsLib.g1MultiScalarMul(Builtins.scalarsFromList(kept), Builtins.g1Points(Builtins.bls12_381_G1_hashToGroup(dst, dst)));
+                    }
+                }
+                """, "m");
+        assertFalse(lambdaInside.hasErrors(), lambdaInside.diagnostics().toString());
         // The typed values pass between user methods and out of compileMethod (a native constant result, as for JulcValue).
         var typed = new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(IMPORTS + """
                 class Good {
@@ -208,6 +259,7 @@ class O11BlsTypesTest {
         assertEquals(new LoweringRequirements(Set.of(DefaultFun.Bls12_381_G2_uncompress), Set.of(ProtocolCapability.BLS_CONSTANTS)),
                 registry.requirements(BUILTINS, "g2PointsFromCompressed"));
         assertEquals(LoweringRequirements.builtin(DefaultFun.Bls12_381_G1_multiScalarMul), registry.requirements(BUILTINS, "bls12_381_G1_multiScalarMul"));
+        assertEquals(LoweringRequirements.builtin(DefaultFun.Bls12_381_G2_multiScalarMul), registry.requirements(BUILTINS, "bls12_381_G2_multiScalarMul"));
 
         var pv10 = new CompilerTarget(LedgerEvaluationTarget.pv10(PlutusLanguage.PLUTUS_V3), UplcVersion.V1_1_0);
         var msm = FIXTURES.getFirst();

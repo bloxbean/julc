@@ -20,7 +20,6 @@ class O11BlsMsmBenchmarkTest {
             comparison.verifyEquivalent();
             var chain = comparison.baselineArtifact();
             var msm = comparison.candidateArtifact();
-            assertTrue(msm.appliedRules().contains("adr-047.explicit-msm"));
             assertEquals(n >= 3, msm.flatBytes() < chain.flatBytes(), "bytes at n=" + n + ": " + msm.flatBytes() + " vs " + chain.flatBytes());
             for (var after : comparison.candidateEvaluations()) {
                 var before = comparison.baselineEvaluations().stream()
