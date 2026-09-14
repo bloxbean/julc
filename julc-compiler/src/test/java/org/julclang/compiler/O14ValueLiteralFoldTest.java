@@ -10,13 +10,17 @@ import org.julclang.core.NativeValueSemantics;
 import org.julclang.core.PlutusData;
 import org.julclang.core.Program;
 import org.julclang.core.Term;
+import org.julclang.core.flat.FlatWriter;
 import org.julclang.core.flat.UplcFlatEncoder;
 import org.julclang.core.source.SourceLocation;
 import org.julclang.stdlib.StdlibRegistry;
 import org.julclang.vm.EvalOptions;
 import org.julclang.vm.EvalResult;
+import org.julclang.vm.LedgerEvaluationTarget;
 import org.julclang.vm.OptimizationCostProfile;
 import org.julclang.vm.OptimizationCostProfiles;
+import org.julclang.vm.PlutusLanguage;
+import org.julclang.vm.UplcVersion;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -83,7 +87,9 @@ class O14ValueLiteralFoldTest {
             Map.entry("TRACE_AROUND/run", Constant.integer(1)),
             Map.entry("ERROR_ARM/pass", Constant.integer(1)),
             Map.entry("MIXED_KEY/present", Constant.integer(1)),
-            Map.entry("MIXED_KEY/absent", Constant.integer(0)));
+            Map.entry("MIXED_KEY/absent", Constant.integer(0)),
+            Map.entry("UNUSED_PARAM/integer", Constant.integer(1)),
+            Map.entry("USER_WRAPPER/run", Constant.integer(3)));
 
     @Test
     void safeProfileFoldsLiteralCallsAndStaysObservationallyEquivalentOnEveryBackend() {
@@ -171,7 +177,7 @@ class O14ValueLiteralFoldTest {
                 entry(bytes(1), mapOf(entry(bytes(1), PlutusData.integer(5)), entry(bytes(2), PlutusData.integer(-7)), entry(bytes(3), PlutusData.integer(9)))),
                 entry(bytes(2), mapOf(entry(bytes(1), PlutusData.integer(1)), entry(bytes(2), PlutusData.integer(2)), entry(bytes(3), PlutusData.integer(3)))));
         var wideValue = NativeValueSemantics.unValueData(wide);
-        assertTrue(encoded(Term.const_(wideValue)) > encoded(Term.apply(Term.builtin(DefaultFun.UnValueData), Term.const_(Constant.data(wide)))));
+        assertTrue(bits(Term.const_(wideValue)) > bits(Term.apply(Term.builtin(DefaultFun.UnValueData), Term.const_(Constant.data(wide)))));
         var wideTerm = unValue(wide);
         assertSame(wideTerm, lower(wideTerm, OptimizationLevel.PV11_SAFE));
         assertEquivalent(wideTerm);
@@ -201,8 +207,9 @@ class O14ValueLiteralFoldTest {
 
     /**
      * Recognition: bare builtins and once-bound wrappers fold; a trace or a runtime variable in
-     * argument position, a name bound twice, and an unsaturated wrapper never fold. The folded
-     * constant carries the call's source position. The size objective is exact.
+     * argument position (used by the wrapper or not), a name bound twice, and an unsaturated
+     * wrapper never fold. The folded constant carries the call's source position. The size
+     * objective is exact in bits and measures the call site.
      */
     @Test
     void wrappersLiteralLocalsPositionsAndObjective() {
@@ -212,17 +219,43 @@ class O14ValueLiteralFoldTest {
         assertSame(lookup, lower(lookup, OptimizationLevel.BASELINE));
         assertSame(lookup, lowerWith(context(OptimizationLevel.PV11_SAFE, ValueLiteralFoldPass.RULE), lookup));
 
-        // A wrapper bound once: the lambda chain's parameters are substituted in order.
-        var wrapper = new PirTerm.Lam("q", new PirType.IntegerType(),
+        // A wrapper bound once whose body is the builtin over its parameters (the NativeValueLib
+        // shape): the call-site literals are substituted by position and the call folds.
+        var union = new PirTerm.Lam("a", DATA, new PirTerm.Lam("b", DATA,
+                app(builtin(DefaultFun.UnionValue), new PirTerm.Var("b", DATA), new PirTerm.Var("a", DATA))));
+        var viaWrapper = new PirTerm.Let("un", union, app(new PirTerm.Var("un", DATA), constant(single), constant(value(entry(P, T, 2)))));
+        var loweredWrapper = assertInstanceOf(PirTerm.Let.class, lower(viaWrapper, OptimizationLevel.PV11_SAFE));
+        assertEquals(new PirTerm.Const(value(entry(P, T, 7))), loweredWrapper.body());
+        assertEquivalent(viaWrapper);
+        // A wrapper carrying constants in its body: the call site `mk 5` is shorter than the
+        // literal it would become, so the objective keeps the call (the wrapper may stay live).
+        var baked = new PirTerm.Lam("q", new PirType.IntegerType(),
                 app(builtin(DefaultFun.InsertCoin), constant(Constant.byteString(P)), constant(Constant.byteString(T)),
                         new PirTerm.Var("q", new PirType.IntegerType()), constant(NativeValueSemantics.EMPTY)));
-        var viaWrapper = new PirTerm.Let("mk", wrapper, app(new PirTerm.Var("mk", DATA), constant(Constant.integer(5))));
-        var loweredWrapper = assertInstanceOf(PirTerm.Let.class, lower(viaWrapper, OptimizationLevel.PV11_SAFE));
-        assertEquals(new PirTerm.Const(single), loweredWrapper.body());
-        assertEquivalent(viaWrapper);
+        var viaBaked = new PirTerm.Let("mk", baked, app(new PirTerm.Var("mk", DATA), constant(Constant.integer(5))));
+        assertSame(viaBaked, lower(viaBaked, OptimizationLevel.PV11_SAFE));
+        assertTrue(bits(Term.const_(single)) > bits(Term.apply(Term.var(1), Term.const_(Constant.integer(5)))));
+        assertEquivalent(viaBaked);
+        // A parameter the body never uses: the strict application still evaluates its argument,
+        // so the chain is not a wrapper and an error, a trace or a runtime value there survives.
+        var unused = new PirTerm.Lam("x", DATA, new PirTerm.Lam("q", new PirType.IntegerType(),
+                app(builtin(DefaultFun.InsertCoin), constant(Constant.byteString(P)), constant(Constant.byteString(T)),
+                        new PirTerm.Var("q", new PirType.IntegerType()), constant(NativeValueSemantics.EMPTY))));
+        for (var dropped : List.of(new PirTerm.Error(DATA),
+                new PirTerm.Trace(constant(Constant.string("m")), constant(Constant.integer(0))),
+                new PirTerm.Var("y", DATA))) {
+            var call = new PirTerm.Let("mk", unused, app(new PirTerm.Var("mk", DATA), dropped, constant(Constant.integer(5))));
+            assertSame(call, lower(call, OptimizationLevel.PV11_SAFE), dropped.toString());
+            if (!(dropped instanceof PirTerm.Var)) assertEquivalent(call);
+        }
+        var unusedLiteral = new PirTerm.Let("mk", unused, app(new PirTerm.Var("mk", DATA), constant(Constant.integer(0)), constant(Constant.integer(5))));
+        assertSame(unusedLiteral, lower(unusedLiteral, OptimizationLevel.PV11_SAFE));
+        // A used parameter fed a non-literal blocks the fold too.
+        var usedRuntime = new PirTerm.Let("un", union, app(new PirTerm.Var("un", DATA), constant(single), new PirTerm.Var("y", DATA)));
+        assertSame(usedRuntime, lower(usedRuntime, OptimizationLevel.PV11_SAFE));
         // The same name bound twice is not a wrapper.
-        var shadowed = new PirTerm.Let("mk", wrapper, new PirTerm.Let("mk", constant(Constant.integer(1)),
-                app(new PirTerm.Var("mk", DATA), constant(Constant.integer(5)))));
+        var shadowed = new PirTerm.Let("un", union, new PirTerm.Let("un", constant(Constant.integer(1)),
+                app(new PirTerm.Var("un", DATA), constant(single), constant(single))));
         assertSame(shadowed, lower(shadowed, OptimizationLevel.PV11_SAFE));
         // Unsaturated: two of three arguments.
         var partial = app(builtin(DefaultFun.LookupCoin), constant(Constant.byteString(P)), constant(Constant.byteString(T)));
@@ -278,13 +311,13 @@ class O14ValueLiteralFoldTest {
         assertEquals(new PirTerm.Const(Constant.integer(5)), located.term());
         assertEquals(at, located.positions().get(located.term()));
 
-        // The objective: a fold fires exactly when the literal's encoding is not larger than the
-        // direct builtin application's; measured for the Data conversions across entry counts.
+        // The objective: a fold fires exactly when the literal's encoding is not longer, in bits,
+        // than the direct builtin application's; measured for the Data conversions across entry counts.
         var emptyToData = app(builtin(DefaultFun.ValueData), constant(NativeValueSemantics.EMPTY));
-        assertTrue(encoded(Term.const_(Constant.data(PlutusData.map()))) > encoded(Term.apply(Term.builtin(DefaultFun.ValueData), Term.const_(NativeValueSemantics.EMPTY))));
+        assertTrue(bits(Term.const_(Constant.data(PlutusData.map()))) > bits(Term.apply(Term.builtin(DefaultFun.ValueData), Term.const_(NativeValueSemantics.EMPTY))));
         assertSame(emptyToData, lower(emptyToData, OptimizationLevel.PV11_SAFE));
-        System.out.println("VALUE_LITERAL_OBJECTIVE empty valueData call=" + encoded(Term.apply(Term.builtin(DefaultFun.ValueData), Term.const_(NativeValueSemantics.EMPTY)))
-                + " literal=" + encoded(Term.const_(Constant.data(PlutusData.map()))));
+        System.out.println("VALUE_LITERAL_OBJECTIVE empty valueData call=" + bits(Term.apply(Term.builtin(DefaultFun.ValueData), Term.const_(NativeValueSemantics.EMPTY)))
+                + " literal=" + bits(Term.const_(Constant.data(PlutusData.map()))) + " (bits)");
         for (int tokens = 1; tokens <= 12; tokens++) {
             var entries = new ArrayList<Constant.ValueConst.TokenEntry>();
             for (int i = 0; i < tokens; i++) entries.add(new Constant.ValueConst.TokenEntry(new byte[]{(byte) i}, BigInteger.valueOf(1000 + i)));
@@ -292,18 +325,32 @@ class O14ValueLiteralFoldTest {
             var data = NativeValueSemantics.valueData(v);
             var toData = app(builtin(DefaultFun.ValueData), constant(v));
             var fromData = app(builtin(DefaultFun.UnValueData), constant(Constant.data(data)));
-            boolean foldsToData = encoded(Term.const_(Constant.data(data))) <= encoded(Term.apply(Term.builtin(DefaultFun.ValueData), Term.const_(v)));
-            boolean foldsFromData = encoded(Term.const_(v)) <= encoded(Term.apply(Term.builtin(DefaultFun.UnValueData), Term.const_(Constant.data(data))));
+            boolean foldsToData = bits(Term.const_(Constant.data(data))) <= bits(Term.apply(Term.builtin(DefaultFun.ValueData), Term.const_(v)));
+            boolean foldsFromData = bits(Term.const_(v)) <= bits(Term.apply(Term.builtin(DefaultFun.UnValueData), Term.const_(Constant.data(data))));
             assertEquals(foldsToData, lower(toData, OptimizationLevel.PV11_SAFE) instanceof PirTerm.Const, "valueData/" + tokens);
             assertEquals(foldsFromData, lower(fromData, OptimizationLevel.PV11_SAFE) instanceof PirTerm.Const, "unValueData/" + tokens);
             System.out.println("VALUE_LITERAL_OBJECTIVE tokens=" + tokens + " valueData=" + foldsToData + " unValueData=" + foldsFromData);
         }
     }
 
+    /** The target check runs before any lowering: a pre-PV11 target fails closed with JULC0031. */
+    @Test
+    void nonPv11TargetFailsClosedBeforeLowering() {
+        var pv10 = new CompilerTarget(LedgerEvaluationTarget.pv10(PlutusLanguage.PLUTUS_V3), UplcVersion.V1_1_0);
+        for (var fixture : List.of(FIXTURES.get(0), FIXTURES.get(1))) {
+            var error = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
+                    new CompilerOptions().setTarget(pv10)).compileMethod(fixture.source(), fixture.method()));
+            assertEquals("JULC0031", error.diagnostics().getFirst().code(), fixture.name());
+        }
+    }
+
     // --- helpers ---
 
-    private static int encoded(Term term) {
-        return UplcFlatEncoder.encodeProgram(Program.plutusV3(term)).length;
+    /** The FLAT bit length of a bare term (no program header, no padding). */
+    private static int bits(Term term) {
+        var writer = new FlatWriter();
+        new UplcFlatEncoder(writer).writeTerm(term);
+        return writer.bitLength();
     }
 
     private static PirTerm unValue(PlutusData data) {

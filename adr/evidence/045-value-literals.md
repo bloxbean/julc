@@ -60,6 +60,8 @@ are Value builtin applications in user code (bare or through a wrapper).
 | TRACE_AROUND | 2 → 0 | 55 → 24 | `4b973955…` → `7f696c38…` |
 | ERROR_ARM | 2 → 0 | 62 → 31 | `bef5360a…` → `ae064515…` |
 | MIXED_KEY (runtime key, literal union) | 4 → 1 | 57 → 40 | `d1a905a6…` → `e39e3ae1…` |
+| UNUSED_PARAM (helper with an unused parameter fed a runtime decode) | 2 → 2 | 51 → 51 | unchanged |
+| USER_WRAPPER (user wrapper over a bare builtin, every parameter used) | 4 → 1 | 61 → 6 | `94533d4b…` → `c64aea12…` |
 
 | Fixture | Input | CPU off → on | Memory off → on |
 |---|---|---:|---:|
@@ -97,6 +99,9 @@ are Value builtin applications in user code (bare or through a wrapper).
 | ERROR_ARM | guard (fail) | unchanged | unchanged |
 | MIXED_KEY | present (1) | 1,994,645 → 604,525 | 4,389 → 2,233 |
 | MIXED_KEY | absent (0) | 1,994,645 → 604,525 | 4,389 → 2,233 |
+| UNUSED_PARAM | integer (1) | unchanged | unchanged |
+| UNUSED_PARAM | bytes (fail in the unused argument's decode) | unchanged | unchanged |
+| USER_WRAPPER | run (3) | 1,789,059 → 16,100 | 3,257 → 200 |
 
 Notes. A folded method whose whole body is a literal costs the one constant step
 (16,100 CPU / 200 memory). The three `toData(empty)` fixtures keep one call because the
@@ -106,11 +111,15 @@ literal operands of that call folded, the failing path is cheaper by exactly tho
 
 ## Objective probe (`wrappersLiteralLocalsPositionsAndObjective`)
 
-`ValueData` of a one-policy literal folds for every entry count probed (1 to 12 tokens);
-`UnValueData` of the corresponding Data literal folds up to 5 tokens and stays from 6 on: a
-Value literal byte-aligns every byte string in FLAT, the CBOR Data does not. The pass's
-decision matches the encoder in every case. A two-policy, six-token canonical literal is
-decoded fine by the semantics and stays for size.
+Measured in bits of the bare term (no program header, no padding). `ValueData` of a
+one-policy literal folds for every entry count probed (1 to 12 tokens); `UnValueData` of the
+corresponding Data literal folds up to 4 tokens and stays from 5 on: a Value literal
+byte-aligns every byte string in FLAT, the CBOR Data does not. `ValueData` of the empty Value
+stays (40-bit literal against a 26-bit call). The pass's decision matches the encoder in
+every case. A two-policy, six-token canonical literal is decoded fine by the semantics and
+stays for size. A wrapper call is measured as the wrapper variable applied to the call-site
+literals: `mk 5` for `mk = λq. insertCoin(P, T, q, empty)` is shorter than the singleton
+literal, so it stays; the `NativeValueLib` shape (`un a b = unionValue(b, a)`) folds.
 
 ## Structural probes (same test)
 
@@ -120,8 +129,16 @@ decoded fine by the semantics and stays for size.
   unsorted or duplicate tokens, zero quantity, out-of-range quantity, non-integer quantity)
   stay and fail identically on three backends.
 - Bare `lookupCoin` on literals folds; `BASELINE` and the rule switch leave it.
-- A once-bound wrapper (`mk = λq. insertCoin(P, T, q, empty)`) applied to a literal folds;
-  the same name bound twice does not; an unsaturated call does not.
+- A once-bound wrapper whose body is the builtin over its parameters (`un a b =
+  unionValue(b, a)`, substituted by position) applied to literals folds; the same name bound
+  twice does not; an unsaturated call does not; a used parameter fed a runtime variable does
+  not.
+- A parameter the body never uses (`mk x q = insertCoin(P, T, q, empty)`) is not a wrapper:
+  `mk error 5`, `mk (trace "m" 0) 5`, `mk y 5` and `mk 0 5` all stay, and the error and the
+  trace are observed on three backends (the first review found this argument being dropped).
+- A pre-PV11 target fails closed with `JULC0031` before any lowering
+  (`nonPv11TargetFailsClosedBeforeLowering`); `NativeValueTypingTest` rejects a literal
+  assigned to `PlutusData` and a literal inside `equalsData` with `JULC0041`.
 - A literal local and a local aliasing it feed the calls below; a rebound name does not.
 - A `Trace`, an `Error` or a runtime variable in argument position blocks the fold.
 - Nested literal calls fold to a fixed point in one pass (`17`).
@@ -139,10 +156,54 @@ their exact text, and a negative quantity decoding as is.
 
 ## Benchmark (`O14ValueLiteralBenchmarkTest`, PV11_SAFE with O14 off → on, Java = Truffle)
 
-Reproduce with `./gradlew :julc-benchmark:optimizationEvidence`. Recorded in the pull request
-after the final run: `requires(minted)` (containment of runtime Data against a literal of one
-NFT plus two ADA; sufficient, insufficient, unsorted and non-map inputs) and `total()` (all
-literal, one integer constant).
+Reproduce with `./gradlew :julc-benchmark:optimizationEvidence`. `requires(minted)` checks
+runtime Data against a literal requirement of one NFT plus two ADA (sufficient,
+insufficient, unsorted and non-map inputs); `total()` is all literal. The requirement folds
+to one Value constant and every path, including the two failing decodes, saves exactly the
+two inserts and the union (1,438,120 CPU / 2,456 memory); the all-literal method is one
+integer constant.
+
+#### o14-value-literal-requirement
+
+Target: `plutus-v3-pv11-uplc-1.1.0`; cost profile: `cardano-node-11.0.1-plutus-v3-pv11` (`40ea9e0b7df77a7bd2cb7d4e4d9da040f8bee7ff0324a7cdb7e51702330e43a8`).
+
+Baseline script hash: `58d428180ad73cd7bc504930a2df7e579c27262a676bbbd5deceba57`; candidate script hash: `f62d0539fc6fed9259afb294fd756d835089ba624961a976b0c74635`.
+
+| Metric | Baseline | Candidate | Delta |
+|---|---:|---:|---:|
+| FLAT bytes | 81 | 62 | -19 |
+| UPLC term nodes | 37 | 14 | -23 |
+
+| Backend | Case | Outcome | CPU baseline | CPU candidate | CPU delta | Memory baseline | Memory candidate | Memory delta |
+|---|---|---|---:|---:|---:|---:|---:|---:|
+| java | sufficient | SUCCESS | 3237611 | 1799491 | -1438120 | 4257 | 1801 | -2456 |
+| java | insufficient | SUCCESS | 2388193 | 950073 | -1438120 | 4213 | 1757 | -2456 |
+| java | unsorted | FAILURE | 2542698 | 1104578 | -1438120 | 4156 | 1700 | -2456 |
+| java | not-a-map | FAILURE | 1775154 | 337034 | -1438120 | 4068 | 1612 | -2456 |
+| truffle | sufficient | SUCCESS | 3237611 | 1799491 | -1438120 | 4257 | 1801 | -2456 |
+| truffle | insufficient | SUCCESS | 2388193 | 950073 | -1438120 | 4213 | 1757 | -2456 |
+| truffle | unsorted | FAILURE | 2542698 | 1104578 | -1438120 | 4156 | 1700 | -2456 |
+| truffle | not-a-map | FAILURE | 1775154 | 337034 | -1438120 | 4068 | 1612 | -2456 |
+
+Applied candidate rules: `pv11.o14.value-literal-fold`, `dead-code-elimination`, `beta-reduce`, `eta-reduce`.
+
+#### o14-value-literal-only
+
+Target: `plutus-v3-pv11-uplc-1.1.0`; cost profile: `cardano-node-11.0.1-plutus-v3-pv11` (`40ea9e0b7df77a7bd2cb7d4e4d9da040f8bee7ff0324a7cdb7e51702330e43a8`).
+
+Baseline script hash: `215d83dd92f6ded4346a2c4d323e5d634db3dcea091b6af7c392ca3f`; candidate script hash: `0f005611a61713a69c8d11a2fda99afe7aeb4910c363d8e2a9767bcc`.
+
+| Metric | Baseline | Candidate | Delta |
+|---|---:|---:|---:|
+| FLAT bytes | 43 | 6 | -37 |
+| UPLC term nodes | 30 | 1 | -29 |
+
+| Backend | Case | Outcome | CPU baseline | CPU candidate | CPU delta | Memory baseline | Memory candidate | Memory delta |
+|---|---|---|---:|---:|---:|---:|---:|---:|
+| java | run | SUCCESS | 1789059 | 16100 | -1772959 | 3257 | 200 | -3057 |
+| truffle | run | SUCCESS | 1789059 | 16100 | -1772959 | 3257 | 200 | -3057 |
+
+Applied candidate rules: `pv11.o14.value-literal-fold`, `dead-code-elimination`, `beta-reduce`.
 
 ## Repository validation
 

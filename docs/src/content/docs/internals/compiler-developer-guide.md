@@ -220,9 +220,13 @@ wrapper whose body is that builtin over its parameters and constants (every
 `julc-core`, the same code `ValueBuiltins` runs in the VM: a call the semantics
 reject stays exactly as written, so failure text and failure point are
 untouched; a trace, an error or a runtime variable in argument position blocks
-the fold. Objective: the literal's FLAT encoding must not exceed the direct
-builtin application's (measured at fold time; `toData(empty)` and `fromData`
-of a Data literal with six or more tokens therefore stay). Gate: exact PV11
+the fold. A wrapper must use every parameter and every call-site argument must
+be a literal, used or not (the strict application evaluates them all).
+Objective: the literal's FLAT encoding must not be longer in bits than the
+term it replaces, the builtin spine or, for a wrapper call, the wrapper
+variable applied to the call-site literals (`toData(emptyValue())`,
+`fromData` of a Data literal with five or more tokens and a user wrapper that
+carries constants in its body therefore stay). Gate: exact PV11
 target, safe level, the capability, the switch; provenance
 `pv11.o14.value-literal-fold`. No program compiled before ADR-045 contains a
 Value or Data literal argument to these builtins, so the rule is additive.

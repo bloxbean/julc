@@ -1,7 +1,7 @@
 # ADR-045: Typed native Value literals and literal folding (O14)
 
 **Date:** 2026-09-13
-**Status:** Implemented and locally validated on `feat/119-value-literals` (stacked on ADR-044's `feat/120-projection-sharing`); independent agent reviews and advisor passes applied; maintainer review pending
+**Status:** Implemented and locally validated on `feat/119-value-literals` (stacked on ADR-044's `feat/120-projection-sharing`); two independent agent reviews applied (one blocking finding fixed); maintainer review pending
 **Issues:** [#119](https://github.com/bloxbean/julc/issues/119) (O14), research decision [#108](https://github.com/bloxbean/julc/issues/108), parent [#77](https://github.com/bloxbean/julc/issues/77)
 **Governing decisions:** ADR-032 O7/O14 (typed native Value boundary, literal folding without algebraic identities), ADR-042/044 (PIR-to-PIR rule placement, per-rule switches), ADR-036 (pass placement before UPLC generation), ADR-015 (strict typed boundaries)
 
@@ -48,7 +48,7 @@ Non-goals (recorded so they are not reintroduced without their own proof):
   equality). Each discards or reorders nothing today only because none is applied.
 - Folding the empty-Value idiom `unValueData(mapData(mkNilPairData()))` or any other Data
   constructor on constants. The generic constant folder runs at `BASELINE`; extending it
-  moves historical bytes. `NativeValueLib.empty()` is the replacement.
+  moves historical bytes. `Builtins.emptyValue()` is the replacement.
 - Inferring a Value from an arbitrary Data literal. A Data literal is decoded only by running
   the strict `UnValueData` semantics on it; a literal the builtin would reject is left as the
   call it is.
@@ -89,13 +89,17 @@ native Value.
 
 **Literal calls.** In PIR after generation, a *literal* is a `Const`, or a variable bound
 exactly once in the program by a `Let` whose value is a literal (a local such as
-`JulcValue base = singleton(...)` after its value has folded, or `JulcValue e = empty()`,
-which aliases the library's constant binding). A *literal call* is a saturated application
+`JulcValue base = Builtins.singletonValue(...)` after its value has folded, or
+`JulcValue f = base` aliasing such a local). A *literal call* is a saturated application
 of one of the seven builtins to literals, spelled as the bare builtin or through a *wrapper*:
-a variable bound exactly once to a lambda chain whose body is that builtin applied, in
-order, to the chain's parameters and constants. Every `NativeValueLib` method is exactly
-such a wrapper; the producers are bare builtin spines at the call site. A name bound twice
-anywhere is neither a wrapper nor a literal.
+a variable bound exactly once to a lambda chain, every parameter of which occurs in the
+body, whose body is that builtin applied, by position, to the chain's parameters and
+constants. Every `NativeValueLib` method is exactly such a wrapper; the producers are bare
+builtin spines at the call site. A name bound twice anywhere is neither a wrapper nor a
+literal. At a wrapper call site every argument must be a literal, whether or not the body
+uses it: the strict application evaluates them all, so an unused non-literal argument (a
+decode of runtime Data, a trace, an error) must keep running. The first review found the
+wrapper path substituting only the used arguments; both guards now hold.
 
 **The fold.** `ValueLiteralFoldPass` runs first among the PIR-to-PIR passes, bottom-up, to a
 fixed point. A literal call is replaced by `Const(result)` exactly when
@@ -117,20 +121,30 @@ blocks the fold, so trace order and failure points are untouched. Budgets: a lit
 constant step (16,100 CPU at the pinned profile); every fold removes at least one builtin
 evaluation and its applications, so CPU and memory never increase on any path.
 
-**Objective.** A fold fires only if the FLAT encoding of the literal is not larger than the
-encoding of the direct builtin application it replaces (both measured with the FLAT encoder
-at fold time). Value-to-Value, `LookupCoin` and `ValueContains` folds only remove
+**Objective.** A fold fires only if the FLAT encoding of the literal is not longer, in
+bits, than the encoding of the term it replaces, both measured with the FLAT encoder at fold
+time. For a bare builtin call the replaced term is the builtin spine over the literals,
+exactly what stands in the artifact. For a wrapper call it is the wrapper variable (at the
+smallest index) applied to the call-site literals: the shape that stays in the artifact when
+the wrapper remains live because another site uses it; if the optimiser inlines the wrapper
+instead, the artifact also loses the wrapper body, so this is the conservative bound. A
+consequence is that a user wrapper carrying constants in its body (`mk(q) =
+insertCoin(P, T, q, empty)`) rarely folds at `mk(5)`, since `mk 5` is shorter than the
+resulting literal; `NativeValueLib`'s wrappers carry no constants, and the producers inline
+the builtin spine, so the corpus shapes fold. Bits rather than bytes, so a sequence of folds
+cannot grow the artifact through rounding; only the artifact's final padding can differ, by
+at most seven bits. Value-to-Value, `LookupCoin` and `ValueContains` folds only remove
 applications and constant headers and always pass. The Data conversions can go either way:
 a Value literal byte-aligns every byte string in FLAT while a Data literal is one CBOR byte
-string, so `ValueData` of the empty Value (a 9-byte literal against a 7-byte call) and
-`UnValueData` of a Data literal with six or more tokens stay calls. Whole-artifact alignment
-can move the size by a byte either way around a fold; the tests assert that every fixture
-whose calls fold is strictly smaller.
+string, so `ValueData` of the empty Value (a 40-bit literal against a 26-bit call) and
+`UnValueData` of a Data literal with five or more tokens stay calls. The tests assert that
+every fixture whose calls fold is strictly smaller.
 
 **Additivity.** No program compiled before this ADR contains a Value literal or a Data
 literal argument to a Value builtin (there is no source route to either), so the rule cannot
 fire on it; the new producers are new API. Every earlier golden suite, the Blaster lock and
-the external example corpus are byte-identical with the rule enabled (evidence document).
+the external example corpus are byte-identical with the rule enabled (the census in the
+evidence document's repository-validation section).
 
 ## Decision
 
@@ -151,7 +165,7 @@ the external example corpus are byte-identical with the rule enabled (evidence d
   bytes; it also loses the wrapper and literal-local structure that PIR still has.
 - **Folding the empty-Value idiom** (`unValueData(mapData(mkNilPairData()))`). Sound and
   cheap, but it changes the bytes of every existing program that uses the idiom at the default
-  level; Wave 4 promises additivity. `empty()` replaces the idiom for new code.
+  level; Wave 4 promises additivity. `Builtins.emptyValue()` replaces the idiom for new code.
 - **A CPU objective instead of a size objective.** Folding `unValueData` of a large Data
   literal saves its runtime decode but grows the script; the preview keeps the conservative
   script-size objective, as O13 did, and records the trade-off as an open question.
@@ -230,19 +244,19 @@ identical.
 One milestone on `feat/119-value-literals`, stacked on ADR-044:
 
 1. Probes: Value constants round-trip FLAT and evaluate identically on Java, Truffle and
-   Scalus; every `NativeValueLib` wrapper is one builtin spine over its parameters in order;
+   Scalus; every `NativeValueLib` wrapper is one builtin spine over its parameters by position;
    `new byte[]{}` is a constant and `new byte[0]` is rejected by the subset; library methods
    are bound whether or not they are called (which moved the producers into `Builtins`).
 2. `NativeValueSemantics` with `ValueBuiltins` delegating; VM suites and conformance unchanged.
 3. Producers, the constant typing fix, the fold pass, the switch.
-4. Fixture matrix (27 fixtures × 4 levels × rule off/on × 3 VMs), direct-PIR probes,
+4. Fixture matrix (29 fixtures × 4 levels × rule off/on × 3 VMs), direct-PIR probes,
    semantics test, benchmark comparisons.
-5. Reviews and advisor passes; full build, Blaster lock check, publish, external examples
+5. Two independent agent reviews (the wrapper argument hole, the objective, docs); full build, Blaster lock check, publish, external examples
    (additivity census); stacked PR; release-plan update.
 
 ## Verification
 
-- `O14ValueLiteralFoldTest` (`pair-case-backends`): 27 fixtures at every level with the rule
+- `O14ValueLiteralFoldTest` (`pair-case-backends`): 29 fixtures at every level with the rule
   off and on; NONE/BASELINE byte-identical either way; provenance exactly where expected;
   Value builtin call sites counted before and after; strictly smaller bytes and a different
   hash when a fold fired, identical bytes otherwise; the expected result value of every
@@ -250,11 +264,19 @@ One milestone on `feat/119-value-literals`, stacked on ADR-044:
   and Scalus; CPU and memory never higher; compile-twice determinism; source maps carry the
   same folds. Direct-PIR probes: a canonical Data literal folds to exactly the VM's decoding,
   thirteen non-canonical literals stay and fail identically, a wide canonical literal stays
-  under the size objective, bare builtins and once-bound wrappers fold, shadowed names,
+  under the size objective, bare builtins and once-bound wrappers (parameters substituted by
+  position) fold, a wrapper carrying constants stays under the call-site objective, a chain
+  with an unused parameter is not a wrapper (an error, a trace, a runtime variable or a
+  literal in that position all stay, the error and trace observed), shadowed names,
   unsaturated calls, a trace, an error or a runtime variable in argument position block,
   literal locals and aliases feed calls, nested calls fold in one pass, failing literal calls
   (overflow, negative containment, long key) stay, positions move to the literal, the
-  objective decision matches the encoder for the Data conversions across entry counts.
+  objective decision matches the encoder (in bits) for the Data conversions across entry
+  counts; a pre-PV11 target fails closed with `JULC0031`. Fixtures `UNUSED_PARAM` (a helper
+  with an unused parameter fed a runtime decode: nothing folds, the decode still fails on
+  bad Data) and `USER_WRAPPER` (a user wrapper over a bare builtin folds like a library one).
+- `NativeValueTypingTest`: a literal assigned to `PlutusData` and a literal inside
+  `equalsData` are rejected with `JULC0041`.
 - `NativeValueSemanticsTest`: canonical ordering, replacement and removal, key and range
   checks only for non-zero quantities, total lookup, union add/cancel/overflow, containment
   and negative rejection on either side, scale and zero short-circuit, canonical `ValueData`
@@ -281,3 +303,9 @@ One milestone on `feat/119-value-literals`, stacked on ADR-044:
   are pruned to what the program reaches (a `NONE`/source-map byte change for every program
   that imports a library).
 - On-chain submission of an artifact with an embedded Value constant (pre-release gate).
+- The decompiler lifts a Value constant as an opaque constant (`UplcLifter.liftConstant` has
+  no `ValueConst` case); it does not fail, but a folded literal decompiles without structure.
+- The target registry accepts only the PV11 target today, so the producers' capability gate
+  is a second layer behind the target check (a pre-PV11 target fails closed with `JULC0031`
+  before any lowering, which is what the tests pin); the capability layer itself is defended
+  by `UplcTargetValidator` and the generic lowering-requirement tests, not by an O14 test.

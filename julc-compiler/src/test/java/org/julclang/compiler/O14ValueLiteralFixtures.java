@@ -234,6 +234,27 @@ final class O14ValueLiteralFixtures {
                     return NativeValueLib.lookupCoin(p, %s, NativeValueLib.union(Builtins.singletonValue(%s, %s, BigInteger.ONE), Builtins.lovelaceValue(BigInteger.TWO)));
                 }""".formatted(T, P, T));
 
+    /**
+     * 27: a user helper with a parameter it never uses, called with a runtime decode in that
+     * position: the decode must still run (and fail on non-integer Data), so nothing folds.
+     */
+    static final String UNUSED_PARAM = method("""
+                static JulcValue mk(BigInteger unused, BigInteger q) {
+                    return Builtins.singletonValue(%s, %s, q);
+                }
+                static BigInteger unusedParam(PlutusData d) {
+                    return NativeValueLib.lookupCoin(%s, %s, mk(Builtins.unIData(d), BigInteger.ONE));
+                }""".formatted(P, T, P, T));
+
+    /** 28: a user wrapper over a bare builtin with every parameter used folds like a library wrapper. */
+    static final String USER_WRAPPER = method("""
+                static JulcValue both(JulcValue a, JulcValue b) {
+                    return Builtins.unionValue(a, b);
+                }
+                static BigInteger userWrapper() {
+                    return NativeValueLib.lookupCoin(%s, %s, both(Builtins.singletonValue(%s, %s, BigInteger.ONE), Builtins.singletonValue(%s, %s, BigInteger.TWO)));
+                }""".formatted(P, T, P, T, P, T));
+
     static final PlutusData P_DATA = PlutusData.bytes(new byte[]{1, 2, 3});
     static final PlutusData T_DATA = PlutusData.bytes(new byte[]{9});
     static final PlutusData TRUE = PlutusData.constr(1);
@@ -286,7 +307,11 @@ final class O14ValueLiteralFixtures {
                     Input.fails("guard", TRUE))),
             new Fixture("MIXED_KEY", MIXED_KEY, "mixedKey", true, 4, 1, List.of(
                     Input.ok("present", P_DATA),
-                    Input.ok("absent", PlutusData.bytes(new byte[]{7})))));
+                    Input.ok("absent", PlutusData.bytes(new byte[]{7})))),
+            new Fixture("UNUSED_PARAM", UNUSED_PARAM, "unusedParam", false, 2, 2, List.of(
+                    Input.ok("integer", PlutusData.integer(3)),
+                    Input.fails("bytes", PlutusData.bytes(new byte[]{1})))),
+            new Fixture("USER_WRAPPER", USER_WRAPPER, "userWrapper", true, 4, 1, NONE));
 
     private O14ValueLiteralFixtures() {}
 }

@@ -20,7 +20,7 @@ At `pv11-safe` (the default) and `pv11-costed`, a call of `insertCoin`,
 are all literals (constants, or locals bound once to a literal) is folded at
 compile time into the Value, integer, boolean or Data it evaluates to, by the
 same code the VM runs. A requirement such as one NFT plus two ADA becomes one
-constant in the script (40 → 7 bytes and 1,075,863 → 16,100 CPU for a literal
+constant in the script (40 → 7 bytes and 883,863 → 16,100 CPU for a literal
 lookup); the runtime part of a check (`fromData(minted)`, `contains`) stays. A
 literal call the builtin would reject (a 33-byte key, an overflow, a negative
 quantity under `contains`) is left as written and fails at runtime with the

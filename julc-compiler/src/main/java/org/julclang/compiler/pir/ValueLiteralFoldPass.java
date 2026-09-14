@@ -7,8 +7,8 @@ import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
 import org.julclang.core.NativeValueSemantics;
 import org.julclang.core.PlutusData;
-import org.julclang.core.Program;
 import org.julclang.core.Term;
+import org.julclang.core.flat.FlatWriter;
 import org.julclang.core.flat.UplcFlatEncoder;
 import org.julclang.core.source.SourceLocation;
 import org.julclang.vm.ProtocolCapability;
@@ -31,26 +31,30 @@ import java.util.Set;
  * call</b> is a saturated application of one of {@code InsertCoin}, {@code LookupCoin},
  * {@code UnionValue}, {@code ValueContains}, {@code ScaleValue}, {@code ValueData} or
  * {@code UnValueData} to literals, spelled either as the bare builtin or through a
- * <b>wrapper</b>: a variable bound exactly once to a lambda chain whose body is that builtin
- * applied, in order, to the chain's parameters and to constants ({@code NativeValueLib}'s
- * methods are exactly such wrappers; the producers {@code Builtins.emptyValue},
- * {@code singletonValue} and {@code lovelaceValue} are intrinsics that inline the constant or
- * the bare {@code InsertCoin} spine at the call site).
+ * <b>wrapper</b>: a variable bound exactly once to a lambda chain, every parameter of which
+ * occurs in the body, whose body is that builtin applied, by position, to the chain's
+ * parameters and to constants ({@code NativeValueLib}'s methods are exactly such wrappers;
+ * the producers {@code Builtins.emptyValue}, {@code singletonValue} and
+ * {@code lovelaceValue} are intrinsics that inline the constant or the bare
+ * {@code InsertCoin} spine at the call site). Every argument at a wrapper call site must be a
+ * literal, used or not: the strict application evaluates them all.
  *
  * <p>A literal call is replaced by its result exactly when the pinned semantics
  * ({@link NativeValueSemantics}, the same code the VM runs) succeed on the literals and the
- * FLAT encoding of the result is not larger than the encoding of the direct builtin
- * application it replaces. A call the semantics reject is left exactly as written, so its
- * runtime failure text and failure point are untouched; a call with a non-literal argument
- * (a runtime key, a trace, an error) is never touched. Folding is bottom-up, so nested literal
- * calls fold to a fixed point, and a local bound to a folded literal feeds the calls below it.
- * No algebraic identity is applied: {@code lookupCoin(p, t, empty())} with a runtime key stays
- * a call.
+ * FLAT encoding of the result is not longer, in bits, than the encoding of the term it
+ * replaces (the builtin spine, or the wrapper variable applied to the call-site literals). A
+ * call the semantics reject is left exactly as written, so its runtime failure text and
+ * failure point are untouched; a call with a non-literal argument (a runtime key, a trace, an
+ * error) is never touched. Folding is bottom-up, so nested literal calls fold to a fixed
+ * point, and a local bound to a folded literal feeds the calls below it. No algebraic
+ * identity is applied: {@code lookupCoin(p, t, emptyValue())} with a runtime key stays a call.
  *
  * <p>Soundness: every argument of a folded call is a value, so no evaluation, trace or failure
  * is skipped; the result is what the builtin would compute at runtime, by the same code; a
  * wrapper applied to values is a fixed number of beta steps around that builtin. NONE and
- * BASELINE never run the pass. Rule {@value #RULE} is recorded when a fold fires.
+ * BASELINE never run the pass. Rule {@value #RULE} is recorded when a fold fires. The pass
+ * expects a closed term (every pipeline site hands it one): a free variable that happens to
+ * share its name with a once-bound literal elsewhere would be read as that literal.
  */
 public final class ValueLiteralFoldPass {
 
@@ -114,8 +118,8 @@ public final class ValueLiteralFoldPass {
         if (term instanceof PirTerm.Let let) {
             var value = fold(let.value());
             if (binderCounts.get(let.name()) == 1) {
-                // A local bound to a literal, or aliasing one (`JulcValue e = NativeValueLib.empty()`
-                // binds e to the library's constant binding), is a literal below.
+                // A local bound to a literal, or aliasing one (`JulcValue f = e` with `e` such a
+                // local), is a literal below.
                 var literal = literalOf(value);
                 if (literal != null) literals.put(let.name(), literal);
             }
@@ -139,6 +143,12 @@ public final class ValueLiteralFoldPass {
         } else if (spine.head() instanceof PirTerm.Var head && wrappers.containsKey(head.name())) {
             var wrapper = wrappers.get(head.name());
             if (spine.args().size() != wrapper.params().size()) return null;
+            // Every call-site argument is evaluated by the strict application whether or not
+            // the body uses it (a wrapper uses every parameter, but this guard does not rely on
+            // that): a non-literal anywhere in the spine blocks the fold.
+            for (var actual : spine.args()) {
+                if (literalOf(actual) == null) return null;
+            }
             fun = wrapper.fun();
             args = new ArrayList<>();
             for (var bodyArg : wrapper.bodyArgs()) {
@@ -157,7 +167,14 @@ public final class ValueLiteralFoldPass {
             constants.add(literal);
         }
         var result = evaluate(fun, constants);
-        if (result == null || !fitsObjective(fun, constants, result)) return null;
+        if (result == null) return null;
+        // The term this fold replaces: the bare builtin spine, or for a wrapper call the
+        // application of the wrapper variable to the call-site literals (the shape that stays
+        // in the artifact when the wrapper remains live; if the optimiser inlines the wrapper
+        // instead, the artifact loses its body as well, so this is the conservative bound).
+        Term replaced = spine.head() instanceof PirTerm.Builtin ? Term.builtin(fun) : Term.var(1);
+        for (var actual : spine.args()) replaced = Term.apply(replaced, Term.const_(literalOf(actual)));
+        if (!fitsObjective(replaced, result)) return null;
         applied = true;
         return new PirTerm.Const(result);
     }
@@ -191,18 +208,22 @@ public final class ValueLiteralFoldPass {
     }
 
     /**
-     * The artifact objective: the FLAT encoding of the literal must not be larger than the
-     * encoding of the direct builtin application it replaces (a Value-to-Value fold only
-     * removes applications and constant headers; a Data conversion swaps CBOR-in-FLAT for
-     * list structure and is measured). Alignment inside the whole artifact can move its size
-     * by a byte either way around a fold.
+     * The artifact objective: the FLAT encoding of the literal must not be longer, in bits,
+     * than the encoding of the term it replaces (a Value-to-Value fold only removes
+     * applications and constant headers; a Data conversion swaps CBOR-in-FLAT for list
+     * structure and is measured). Bits, not bytes, so that a sequence of folds cannot grow the
+     * artifact through rounding; the whole artifact's final padding can still differ by up to
+     * seven bits.
      */
-    private static boolean fitsObjective(DefaultFun fun, List<Constant> args, Constant result) {
-        Term before = Term.builtin(fun);
-        for (var arg : args) before = Term.apply(before, Term.const_(arg));
-        int beforeBytes = UplcFlatEncoder.encodeProgram(Program.plutusV3(before)).length;
-        int afterBytes = UplcFlatEncoder.encodeProgram(Program.plutusV3(Term.const_(result))).length;
-        return afterBytes <= beforeBytes;
+    private static boolean fitsObjective(Term replaced, Constant result) {
+        return bitLength(Term.const_(result)) <= bitLength(replaced);
+    }
+
+    /** The FLAT bit length of a term on its own (no program header, no padding). */
+    static int bitLength(Term term) {
+        var writer = new FlatWriter();
+        new UplcFlatEncoder(writer).writeTerm(term);
+        return writer.bitLength();
     }
 
     private static byte[] bytes(Constant c) {
@@ -241,11 +262,16 @@ public final class ValueLiteralFoldPass {
         }
         var sig = BuiltinSemantics.find(builtin.fun());
         if (sig == null || spine.args().size() != sig.valueArity()) return null;
+        var used = new java.util.HashSet<String>();
         for (var arg : spine.args()) {
-            boolean ok = arg instanceof PirTerm.Const
-                    || arg instanceof PirTerm.Var v && params.contains(v.name());
-            if (!ok) return null;
+            if (arg instanceof PirTerm.Var v && params.contains(v.name())) {
+                used.add(v.name());
+            } else if (!(arg instanceof PirTerm.Const)) {
+                return null;
+            }
         }
+        // A parameter the body never uses would let its argument vanish unexamined.
+        if (!used.containsAll(params)) return null;
         return new Wrapper(builtin.fun(), List.copyOf(params), List.copyOf(spine.args()));
     }
 
