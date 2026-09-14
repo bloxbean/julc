@@ -951,7 +951,9 @@ and issues [#106](https://github.com/bloxbean/julc/issues/106) through
   shared-library binding shapes have regressions.
 - Deferred O10 because the supported source subset has no typed native Array
   literal producer; untyped ListToArray/IndexArray matching cannot prove
-  representation or preserve index failures.
+  representation or preserve index failures. (Both were supplied by ADR-046:
+  `JulcArray.of` is the typed producer, and the fold works on typed PIR with
+  `ArraySemantics` shared with the VM.)
 - Deferred O14 because `JulcValue` is currently produced through partial
   `UnValueData`, not a native literal, and the optimizer has no shared pinned
   Value canonicalization/reference-semantic helper. (Both were supplied by
@@ -1044,7 +1046,7 @@ line after the initial review window (2026-08-29).
 | O7 | [#95](https://github.com/bloxbean/julc/issues/95) | typed native Value boundary completed |
 | O8 | [#102](https://github.com/bloxbean/julc/issues/102), [#114](https://github.com/bloxbean/julc/issues/114) | ADR-042 implemented: strict-prefix sharing of repeated `UnValueData` conversions of one variable at `PV11_SAFE` (`pv11.o8.value-sharing`), failure-text neutral; `ValueData` sinking and adjacent cancellation remain out of scope |
 | O9 | [#103](https://github.com/bloxbean/julc/issues/103), [#115](https://github.com/bloxbean/julc/issues/115) | ADR-043 implemented at `PV11_COSTED` only: a list variable indexed at two or more sites, or at a site inside a recursive binding (a loop body, an inlined list-operation callback or a recursive helper), is converted once with `ListToArray` and indexed with `IndexArray` (`pv11.o9.list-to-array`); failure contract on out-of-range indexes pinned; typing-trust exposure through unchecked casts documented; break-even derived from the pinned profile; default-level output unchanged |
-| O10 | [#106](https://github.com/bloxbean/julc/issues/106) | deferred: no typed native Array literal producer |
+| O10 | [#106](https://github.com/bloxbean/julc/issues/106), [#116](https://github.com/bloxbean/julc/issues/116) | ADR-046 implemented: `JulcArray.of(...)` as the typed array literal (the `JulcList.of` list literal converted, Data-encoded elements) and folding of `ListToArray` over a list literal, `LengthOfArray` and literal-index `IndexArray` over an array constant, plus the `get` decode over the produced element, at `PV11_SAFE` (`pv11.o10.array-literal-fold`) by the pinned `ArraySemantics` the VM shares; out-of-range indexes stay runtime failures; `MultiIndexArray` never emitted; additive for existing programs |
 | O11 | [#96](https://github.com/bloxbean/julc/issues/96) | deferred: native BLS group/list types required |
 | O12 | [#104](https://github.com/bloxbean/julc/issues/104), [#118](https://github.com/bloxbean/julc/issues/118) | decision: no additional implementation required; explicit API exists, ordinary pow/mod rewrite rejected |
 | O13 | [#107](https://github.com/bloxbean/julc/issues/107) | enabled at `PV11_SAFE` |

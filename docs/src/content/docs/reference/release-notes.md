@@ -3,6 +3,34 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+## Upcoming preview: array literals and literal folding (ADR-046)
+
+`JulcArray.of(a, b, ...)` writes a PV11 array down. On-chain it is
+`JulcList.of(a, b, ...).toArray()`: the elements are Data-encoded as the
+declared element type requires (declare it: `JulcArray<BigInteger> t =
+JulcArray.of(...)`) and the list is converted with `ListToArray`, so `get` and
+`length` behave exactly as on an array converted from a list.
+
+At `pv11-safe` (the default) and `pv11-costed`, an array whose elements are all
+literals (integers, byte strings, strings, booleans, nested list literals)
+becomes one UPLC array constant; `length()` on it folds to a constant and
+`get(i)` with a literal index folds to the element, decode included
+(`JulcArray.of(1, 2, 3).get(1)` is `2`: 42 → 6 bytes, 1,238,594 → 16,100 CPU).
+A runtime index keeps the access over the embedded constant (a three-entry fee
+table indexed by a runtime tier: 57 → 46 bytes and 1,435,338 → 625,598 CPU on
+every path, failing ones included). The same folds apply to `list.toArray()`
+and `JulcArray.fromList(list)` over a `JulcList.of` literal. An index outside
+the array, literal or runtime, fails at `IndexArray` with the same text as
+before. Nothing changes at `none`/`baseline`; the optimization report records
+`pv11.o10.array-literal-fold`, and the rule can be switched off with
+`CompilerOptions.disableOptimizationRule`.
+
+This change is additive: no program compiled before it contains an array
+constant, and no program in the example corpus converts a list literal to an
+array, so existing scripts keep their bytes and hashes at every level. A native
+Value cannot be an array element (`JULC0041`, as for every Data-backed
+container). Spell a negative literal element as `new BigInteger("-5")`.
+
 ## Upcoming preview: native Value literals and literal folding (ADR-045)
 
 `Builtins` gains three native Value literal producers on the PV11 target:
