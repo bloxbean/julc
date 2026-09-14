@@ -8,6 +8,7 @@ import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.pir.StdlibLookup;
 import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
+import org.julclang.core.DefaultUni;
 import org.julclang.vm.ProtocolCapability;
 
 import java.math.BigInteger;
@@ -137,6 +138,36 @@ public final class StdlibRegistry implements StdlibLookup {
             return Optional.of(builtinApp1(DefaultFun.ListToArray, result));
         }
 
+        // ADR-047: native lists for multi-scalar multiplication
+        if (isBuiltinsClass(className)) {
+            switch (methodName) {
+                case "scalars" -> { return Optional.of(nativeListLiteral("scalars", args, DefaultUni.INTEGER, SCALARS)); }
+                case "g1Points" -> { return Optional.of(nativeListLiteral("g1Points", args, DefaultUni.BLS12_381_G1, G1_POINTS)); }
+                case "g2Points" -> { return Optional.of(nativeListLiteral("g2Points", args, DefaultUni.BLS12_381_G2, G2_POINTS)); }
+                case "scalarsFromList" -> {
+                    requireArgs("Builtins.scalarsFromList", args, 1);
+                    requireDataListOf("Builtins.scalarsFromList", safeArgType(argTypes, 0), new PirType.IntegerType());
+                    return Optional.of(nativeListFromData("scalars", asUplcList(args.get(0), safeArgType(argTypes, 0)),
+                            DefaultUni.INTEGER, SCALARS, e -> builtinApp1(DefaultFun.UnIData, e)));
+                }
+                case "g1PointsFromCompressed" -> {
+                    requireArgs("Builtins.g1PointsFromCompressed", args, 1);
+                    requireDataListOf("Builtins.g1PointsFromCompressed", safeArgType(argTypes, 0), new PirType.ByteStringType());
+                    return Optional.of(nativeListFromData("g1Points", asUplcList(args.get(0), safeArgType(argTypes, 0)),
+                            DefaultUni.BLS12_381_G1, G1_POINTS,
+                            e -> builtinApp1(DefaultFun.Bls12_381_G1_uncompress, builtinApp1(DefaultFun.UnBData, e))));
+                }
+                case "g2PointsFromCompressed" -> {
+                    requireArgs("Builtins.g2PointsFromCompressed", args, 1);
+                    requireDataListOf("Builtins.g2PointsFromCompressed", safeArgType(argTypes, 0), new PirType.ByteStringType());
+                    return Optional.of(nativeListFromData("g2Points", asUplcList(args.get(0), safeArgType(argTypes, 0)),
+                            DefaultUni.BLS12_381_G2, G2_POINTS,
+                            e -> builtinApp1(DefaultFun.Bls12_381_G2_uncompress, builtinApp1(DefaultFun.UnBData, e))));
+                }
+                default -> { }
+            }
+        }
+
         // ListsLib.prepend(list, elem) — wrap elem to Data before MkCons
         if (isListsLibClass(className) && methodName.equals("prepend") && args.size() == 2) {
             var wrappedElem = PirHelpers.wrapEncode(args.get(1), safeArgType(argTypes, 1));
@@ -208,32 +239,63 @@ public final class StdlibRegistry implements StdlibLookup {
         return lookup(className, methodName, args);
     }
 
+    private static final PirType NATIVE_VALUE = new PirType.NativeValueType();
+    private static final PirType G1 = new PirType.NativeG1Type();
+    private static final PirType G2 = new PirType.NativeG2Type();
+    private static final PirType ML = new PirType.NativeMlResultType();
+    private static final PirType SCALARS = new PirType.NativeListType(new PirType.IntegerType());
+    private static final PirType G1_POINTS = new PirType.NativeListType(G1);
+    private static final PirType G2_POINTS = new PirType.NativeListType(G2);
+
+    /**
+     * The native type each argument of a {@code Builtins} method must have, or null where the
+     * argument must not be native (ADR-032 O7 for Values, ADR-047 for BLS points, Miller
+     * results and native lists). A method absent from the table accepts no native argument.
+     */
+    private static java.util.List<PirType> nativeArgumentSignature(String methodName) {
+        return switch (methodName) {
+            case "insertCoin" -> java.util.Arrays.asList(null, null, null, NATIVE_VALUE);
+            case "lookupCoin" -> java.util.Arrays.asList(null, null, NATIVE_VALUE);
+            case "unionValue", "valueContains" -> java.util.Arrays.asList(NATIVE_VALUE, NATIVE_VALUE);
+            case "valueData" -> java.util.Arrays.asList(NATIVE_VALUE);
+            case "scaleValue" -> java.util.Arrays.asList(null, NATIVE_VALUE);
+            case "bls12_381_G1_add", "bls12_381_G1_equal" -> java.util.Arrays.asList(G1, G1);
+            case "bls12_381_G1_neg", "bls12_381_G1_compress" -> java.util.Arrays.asList(G1);
+            case "bls12_381_G1_scalarMul" -> java.util.Arrays.asList(null, G1);
+            case "bls12_381_G2_add", "bls12_381_G2_equal" -> java.util.Arrays.asList(G2, G2);
+            case "bls12_381_G2_neg", "bls12_381_G2_compress" -> java.util.Arrays.asList(G2);
+            case "bls12_381_G2_scalarMul" -> java.util.Arrays.asList(null, G2);
+            case "bls12_381_millerLoop" -> java.util.Arrays.asList(G1, G2);
+            case "bls12_381_mulMlResult", "bls12_381_finalVerify" -> java.util.Arrays.asList(ML, ML);
+            case "bls12_381_G1_multiScalarMul" -> java.util.Arrays.asList(SCALARS, G1_POINTS);
+            case "bls12_381_G2_multiScalarMul" -> java.util.Arrays.asList(SCALARS, G2_POINTS);
+            default -> null;
+        };
+    }
+
     private static void validateNativeValueArguments(
             String className, String methodName, List<PirType> argTypes) {
-        if (!(className.equals("Builtins") || className.equals(PKG + "Builtins"))) {
+        if (!isBuiltinsClass(className)) {
             return;
         }
-        var requiredNativeIndexes = switch (methodName) {
-            case "insertCoin" -> java.util.Set.of(3);
-            case "lookupCoin" -> java.util.Set.of(2);
-            case "unionValue", "valueContains" -> java.util.Set.of(0, 1);
-            case "valueData" -> java.util.Set.of(0);
-            case "scaleValue" -> java.util.Set.of(1);
-            default -> java.util.Set.<Integer>of();
-        };
         var types = argTypes != null ? argTypes : List.<PirType>of();
+        // The variadic native lists: every element must be an integer, or a point of the group.
+        PirType every = switch (methodName) {
+            case "scalars" -> new PirType.IntegerType();
+            case "g1Points" -> G1;
+            case "g2Points" -> G2;
+            default -> null;
+        };
+        var signature = nativeArgumentSignature(methodName);
         for (int i = 0; i < types.size(); i++) {
             var actual = types.get(i);
-            if (requiredNativeIndexes.contains(i)
-                    && !(actual instanceof PirType.NativeValueType)) {
+            PirType expected = every != null ? every
+                    : signature != null && i < signature.size() ? signature.get(i) : null;
+            if (expected != null && !expected.equals(actual)) {
                 throw CompilerTypeDiagnostics.nativeTypeMismatch(
-                        "Builtins." + methodName + " argument " + (i + 1),
-                        actual,
-                        new PirType.NativeValueType(),
-                        null);
+                        "Builtins." + methodName + " argument " + (i + 1), actual, expected, null);
             }
-            if (!requiredNativeIndexes.contains(i)
-                    && PirType.containsNativeOpaque(actual)) {
+            if (expected == null && PirType.containsNativeOpaque(actual)) {
                 throw CompilerTypeDiagnostics.nativeTypeMismatch(
                         "Builtins." + methodName + " argument " + (i + 1),
                         actual,
@@ -241,6 +303,90 @@ public final class StdlibRegistry implements StdlibLookup {
                         null);
             }
         }
+    }
+
+    /** The PIR type of a constant, for the diagnostic on an ill-typed native list element. */
+    private static PirType constantType(Constant value) {
+        return switch (value) {
+            case Constant.IntegerConst _ -> new PirType.IntegerType();
+            case Constant.ByteStringConst _ -> new PirType.ByteStringType();
+            case Constant.StringConst _ -> new PirType.StringType();
+            case Constant.BoolConst _ -> new PirType.BoolType();
+            case Constant.UnitConst _ -> new PirType.UnitType();
+            case Constant.Bls12_381_G1Element _ -> G1;
+            case Constant.Bls12_381_G2Element _ -> G2;
+            case Constant.Bls12_381_MlResult _ -> ML;
+            case Constant.ValueConst _ -> NATIVE_VALUE;
+            default -> new PirType.DataType();
+        };
+    }
+
+    private static PirType elemTypeOf(PirType listType) {
+        return ((PirType.NativeListType) listType).elemType();
+    }
+
+    /**
+     * ADR-047: the Data list a converter decodes must carry the element the decode expects
+     * (integers for scalars, byte strings for compressed points) or untyped Data; any other
+     * statically known element type is rejected here instead of at the element's decode.
+     */
+    private static void requireDataListOf(String method, PirType actual, PirType elem) {
+        boolean ok = actual == null || actual instanceof PirType.DataType
+                || (actual instanceof PirType.ListType lt && (lt.elemType().equals(elem) || lt.elemType() instanceof PirType.DataType));
+        if (!ok) {
+            throw CompilerTypeDiagnostics.nativeTypeMismatch(method + " argument 1", actual, new PirType.ListType(elem), null);
+        }
+    }
+
+    private static boolean isBuiltinsClass(String className) {
+        return className.equals("Builtins") || className.equals(PKG + "Builtins");
+    }
+
+    /**
+     * A native list of the elements: a constant when every element is a constant, else the
+     * {@code MkCons} chain over the empty constant of the universe, bound once so that the
+     * expression carries its native type ({@code Var} types are what inference reads).
+     */
+    private static PirTerm nativeListLiteral(String name, List<PirTerm> args, DefaultUni elemUni, PirType listType) {
+        if (args.stream().allMatch(a -> a instanceof PirTerm.Const)) {
+            // Defence in depth behind the argument check: a constant of another universe would
+            // make an ill-formed list constant (the FLAT encoder writes elements by their own kind).
+            for (int i = 0; i < args.size(); i++) {
+                var value = ((PirTerm.Const) args.get(i)).value();
+                if (!value.type().equals(elemUni)) {
+                    throw CompilerTypeDiagnostics.nativeTypeMismatch("Builtins." + name + " argument " + (i + 1),
+                            constantType(value), elemTypeOf(listType), null);
+                }
+            }
+            return new PirTerm.Const(new Constant.ListConst(elemUni,
+                    args.stream().map(a -> ((PirTerm.Const) a).value()).toList()));
+        }
+        PirTerm result = new PirTerm.Const(new Constant.ListConst(elemUni, List.of()));
+        for (int i = args.size() - 1; i >= 0; i--) {
+            result = builtinApp2(DefaultFun.MkCons, args.get(i), result);
+        }
+        String bound = "__native_" + name;
+        return new PirTerm.Let(bound, result, new PirTerm.Var(bound, listType));
+    }
+
+    /**
+     * A native list built from a Data list by decoding each element in order:
+     * {@code go xs = if null xs then [] else mkCons (decode (head xs)) (go (tail xs))}.
+     */
+    private static PirTerm nativeListFromData(String name, PirTerm dataList, DefaultUni elemUni, PirType listType,
+                                              java.util.function.UnaryOperator<PirTerm> decode) {
+        var dataListType = new PirType.ListType(new PirType.DataType());
+        String go = "go__" + name, lst = "lst__" + name, bound = "__native_" + name;
+        var lstVar = new PirTerm.Var(lst, dataListType);
+        var goVar = new PirTerm.Var(go, new PirType.FunType(dataListType, listType));
+        var empty = new PirTerm.Const(new Constant.ListConst(elemUni, List.of()));
+        var head = decode.apply(builtinApp1(DefaultFun.HeadList, lstVar));
+        var rest = new PirTerm.App(goVar, builtinApp1(DefaultFun.TailList, lstVar));
+        var body = new PirTerm.IfThenElse(builtinApp1(DefaultFun.NullList, lstVar), empty,
+                builtinApp2(DefaultFun.MkCons, head, rest));
+        var loop = new PirTerm.LetRec(List.of(new PirTerm.Binding(go, new PirTerm.Lam(lst, dataListType, body))),
+                new PirTerm.App(goVar, dataList));
+        return new PirTerm.Let(bound, loop, new PirTerm.Var(bound, listType));
     }
 
     private static void rejectNativeDataArgument(String operation, PirType actual) {
@@ -663,6 +809,22 @@ public final class StdlibRegistry implements StdlibLookup {
                     new PirTerm.Const(Constant.byteString(new byte[0])), args.get(0),
                     new PirTerm.Const(new Constant.ValueConst(List.of())));
         }, literalRequirements);
+
+        // ADR-047 native lists for multi-scalar multiplication: built by the typed lookup (the
+        // elements need their types); these registrations carry the requirements.
+        reg.register(B, "scalars", args -> nativeListLiteral("scalars", args, DefaultUni.INTEGER, SCALARS));
+        reg.register(B, "scalarsFromList", args -> nativeListFromData("scalars", args.get(0), DefaultUni.INTEGER, SCALARS,
+                e -> builtinApp1(DefaultFun.UnIData, e)));
+        reg.register(B, "g1Points", args -> nativeListLiteral("g1Points", args, DefaultUni.BLS12_381_G1, G1_POINTS),
+                LoweringRequirements.capability(ProtocolCapability.BLS_CONSTANTS));
+        reg.register(B, "g1PointsFromCompressed", args -> nativeListFromData("g1Points", args.get(0), DefaultUni.BLS12_381_G1, G1_POINTS,
+                e -> builtinApp1(DefaultFun.Bls12_381_G1_uncompress, builtinApp1(DefaultFun.UnBData, e))),
+                new LoweringRequirements(Set.of(DefaultFun.Bls12_381_G1_uncompress), Set.of(ProtocolCapability.BLS_CONSTANTS)));
+        reg.register(B, "g2Points", args -> nativeListLiteral("g2Points", args, DefaultUni.BLS12_381_G2, G2_POINTS),
+                LoweringRequirements.capability(ProtocolCapability.BLS_CONSTANTS));
+        reg.register(B, "g2PointsFromCompressed", args -> nativeListFromData("g2Points", args.get(0), DefaultUni.BLS12_381_G2, G2_POINTS,
+                e -> builtinApp1(DefaultFun.Bls12_381_G2_uncompress, builtinApp1(DefaultFun.UnBData, e))),
+                new LoweringRequirements(Set.of(DefaultFun.Bls12_381_G2_uncompress), Set.of(ProtocolCapability.BLS_CONSTANTS)));
 
         // PV11 InsertCoin: 4-arg builtin (special case, not in tables)
         reg.register(B, "insertCoin", args -> {

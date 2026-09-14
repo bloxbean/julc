@@ -7,6 +7,12 @@ import org.julclang.core.types.JulcArrayList;
 import org.julclang.core.types.JulcAssocMap;
 import org.julclang.core.types.JulcList;
 import org.julclang.core.types.JulcMap;
+import org.julclang.core.types.JulcG1;
+import org.julclang.core.types.JulcG1Points;
+import org.julclang.core.types.JulcG2;
+import org.julclang.core.types.JulcG2Points;
+import org.julclang.core.types.JulcMlResult;
+import org.julclang.core.types.JulcScalars;
 import org.julclang.core.types.JulcValue;
 
 import java.math.BigInteger;
@@ -791,113 +797,151 @@ public final class Builtins {
     // These stubs are replaced by UPLC BLS12-381 builtins on-chain.
     // Off-chain (JVM), they throw UnsupportedOperationException — use the
     // Julc VM for off-chain evaluation of BLS operations.
+    // ADR-047: points, Miller results and the multi-scalar-multiplication lists are the
+    // opaque types JulcG1, JulcG2, JulcMlResult, JulcScalars, JulcG1Points and JulcG2Points;
+    // only compress/uncompress and hashToGroup cross between byte strings and points.
 
     // ---- G1 operations ----
 
     /** Add two BLS12-381 G1 elements. */
-    public static byte[] bls12_381_G1_add(byte[] a, byte[] b) {
+    public static JulcG1 bls12_381_G1_add(JulcG1 a, JulcG1 b) {
         throw new UnsupportedOperationException("BLS12-381 G1 add: on-chain only — use Julc VM for off-chain evaluation");
     }
 
     /** Negate a BLS12-381 G1 element. */
-    public static byte[] bls12_381_G1_neg(byte[] a) {
+    public static JulcG1 bls12_381_G1_neg(JulcG1 a) {
         throw new UnsupportedOperationException("BLS12-381 G1 neg: on-chain only — use Julc VM for off-chain evaluation");
     }
 
     /** Scalar multiplication of a BLS12-381 G1 element. */
-    public static byte[] bls12_381_G1_scalarMul(BigInteger scalar, byte[] g1) {
+    public static JulcG1 bls12_381_G1_scalarMul(BigInteger scalar, JulcG1 g1) {
         throw new UnsupportedOperationException("BLS12-381 G1 scalarMul: on-chain only — use Julc VM for off-chain evaluation");
     }
 
     /** Check equality of two BLS12-381 G1 elements. */
-    public static boolean bls12_381_G1_equal(byte[] a, byte[] b) {
+    public static boolean bls12_381_G1_equal(JulcG1 a, JulcG1 b) {
         throw new UnsupportedOperationException("BLS12-381 G1 equal: on-chain only — use Julc VM for off-chain evaluation");
     }
 
     /** Compress a BLS12-381 G1 element (uncompressed → 48 bytes compressed). */
-    public static byte[] bls12_381_G1_compress(byte[] g1) {
+    public static byte[] bls12_381_G1_compress(JulcG1 g1) {
         throw new UnsupportedOperationException("BLS12-381 G1 compress: on-chain only — use Julc VM for off-chain evaluation");
     }
 
     /** Uncompress a BLS12-381 G1 element (48 bytes compressed → uncompressed). */
-    public static byte[] bls12_381_G1_uncompress(byte[] compressed) {
+    public static JulcG1 bls12_381_G1_uncompress(byte[] compressed) {
         throw new UnsupportedOperationException("BLS12-381 G1 uncompress: on-chain only — use Julc VM for off-chain evaluation");
     }
 
     /** Hash a message to a BLS12-381 G1 element using the given DST. */
-    public static byte[] bls12_381_G1_hashToGroup(byte[] msg, byte[] dst) {
+    public static JulcG1 bls12_381_G1_hashToGroup(byte[] msg, byte[] dst) {
         throw new UnsupportedOperationException("BLS12-381 G1 hashToGroup: on-chain only — use Julc VM for off-chain evaluation");
     }
 
     // ---- G2 operations ----
 
     /** Add two BLS12-381 G2 elements. */
-    public static byte[] bls12_381_G2_add(byte[] a, byte[] b) {
+    public static JulcG2 bls12_381_G2_add(JulcG2 a, JulcG2 b) {
         throw new UnsupportedOperationException("BLS12-381 G2 add: on-chain only — use Julc VM for off-chain evaluation");
     }
 
     /** Negate a BLS12-381 G2 element. */
-    public static byte[] bls12_381_G2_neg(byte[] a) {
+    public static JulcG2 bls12_381_G2_neg(JulcG2 a) {
         throw new UnsupportedOperationException("BLS12-381 G2 neg: on-chain only — use Julc VM for off-chain evaluation");
     }
 
     /** Scalar multiplication of a BLS12-381 G2 element. */
-    public static byte[] bls12_381_G2_scalarMul(BigInteger scalar, byte[] g2) {
+    public static JulcG2 bls12_381_G2_scalarMul(BigInteger scalar, JulcG2 g2) {
         throw new UnsupportedOperationException("BLS12-381 G2 scalarMul: on-chain only — use Julc VM for off-chain evaluation");
     }
 
     /** Check equality of two BLS12-381 G2 elements. */
-    public static boolean bls12_381_G2_equal(byte[] a, byte[] b) {
+    public static boolean bls12_381_G2_equal(JulcG2 a, JulcG2 b) {
         throw new UnsupportedOperationException("BLS12-381 G2 equal: on-chain only — use Julc VM for off-chain evaluation");
     }
 
     /** Compress a BLS12-381 G2 element (uncompressed → 96 bytes compressed). */
-    public static byte[] bls12_381_G2_compress(byte[] g2) {
+    public static byte[] bls12_381_G2_compress(JulcG2 g2) {
         throw new UnsupportedOperationException("BLS12-381 G2 compress: on-chain only — use Julc VM for off-chain evaluation");
     }
 
     /** Uncompress a BLS12-381 G2 element (96 bytes compressed → uncompressed). */
-    public static byte[] bls12_381_G2_uncompress(byte[] compressed) {
+    public static JulcG2 bls12_381_G2_uncompress(byte[] compressed) {
         throw new UnsupportedOperationException("BLS12-381 G2 uncompress: on-chain only — use Julc VM for off-chain evaluation");
     }
 
     /** Hash a message to a BLS12-381 G2 element using the given DST. */
-    public static byte[] bls12_381_G2_hashToGroup(byte[] msg, byte[] dst) {
+    public static JulcG2 bls12_381_G2_hashToGroup(byte[] msg, byte[] dst) {
         throw new UnsupportedOperationException("BLS12-381 G2 hashToGroup: on-chain only — use Julc VM for off-chain evaluation");
     }
 
     // ---- Pairing operations ----
 
     /** Compute a BLS12-381 Miller loop pairing of a G1 and G2 element. */
-    public static byte[] bls12_381_millerLoop(byte[] g1, byte[] g2) {
+    public static JulcMlResult bls12_381_millerLoop(JulcG1 g1, JulcG2 g2) {
         throw new UnsupportedOperationException("BLS12-381 millerLoop: on-chain only — use Julc VM for off-chain evaluation");
     }
 
     /** Multiply two BLS12-381 Miller loop results. */
-    public static byte[] bls12_381_mulMlResult(byte[] a, byte[] b) {
+    public static JulcMlResult bls12_381_mulMlResult(JulcMlResult a, JulcMlResult b) {
         throw new UnsupportedOperationException("BLS12-381 mulMlResult: on-chain only — use Julc VM for off-chain evaluation");
     }
 
     /** Final verification of two BLS12-381 Miller loop results. Returns true if the pairing check passes. */
-    public static boolean bls12_381_finalVerify(byte[] a, byte[] b) {
+    public static boolean bls12_381_finalVerify(JulcMlResult a, JulcMlResult b) {
         throw new UnsupportedOperationException("BLS12-381 finalVerify: on-chain only — use Julc VM for off-chain evaluation");
     }
 
     // ---- Multi-Scalar Multiplication ----
 
+    // ---- Native lists for multi-scalar multiplication (ADR-047) ----
+
     /**
-     * Multi-scalar multiplication on BLS12-381 G1. Takes a list of scalars and
-     * a list of G1 elements. PV11 only (CIP-133).
+     * A native {@code list integer} of the given scalars (a constant when every scalar is a
+     * literal). The list a multi-scalar multiplication takes; a {@code JulcList<BigInteger>}
+     * is a Data list and is not accepted there.
      */
-    public static byte[] bls12_381_G1_multiScalarMul(PlutusData scalars, PlutusData points) {
-        throw new UnsupportedOperationException("BLS12-381 G1 multiScalarMul: on-chain only — use Julc VM for off-chain evaluation");
+    public static JulcScalars scalars(BigInteger... scalars) {
+        throw new UnsupportedOperationException("Builtins.scalars: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    /** A native {@code list integer} decoded from a Data list of integers, in order. */
+    public static JulcScalars scalarsFromList(JulcList<BigInteger> scalars) {
+        throw new UnsupportedOperationException("Builtins.scalarsFromList: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    /** A native {@code list bls12_381_G1_element} of the given points. */
+    public static JulcG1Points g1Points(JulcG1... points) {
+        throw new UnsupportedOperationException("Builtins.g1Points: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    /** A native {@code list bls12_381_G1_element} uncompressed from a Data list of 48-byte encodings, in order. */
+    public static JulcG1Points g1PointsFromCompressed(JulcList<byte[]> compressed) {
+        throw new UnsupportedOperationException("Builtins.g1PointsFromCompressed: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    /** A native {@code list bls12_381_G2_element} of the given points. */
+    public static JulcG2Points g2Points(JulcG2... points) {
+        throw new UnsupportedOperationException("Builtins.g2Points: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    /** A native {@code list bls12_381_G2_element} uncompressed from a Data list of 96-byte encodings, in order. */
+    public static JulcG2Points g2PointsFromCompressed(JulcList<byte[]> compressed) {
+        throw new UnsupportedOperationException("Builtins.g2PointsFromCompressed: on-chain only — use Julc VM for off-chain evaluation");
     }
 
     /**
-     * Multi-scalar multiplication on BLS12-381 G2. Takes a list of scalars and
-     * a list of G2 elements. PV11 only (CIP-133).
+     * Multi-scalar multiplication on BLS12-381 G1: {@code Σ scalars[i] · points[i]} over the
+     * shorter of the two lists (extra entries are ignored, an empty list gives the identity);
+     * every scalar must fit in 512 bytes, all of them are checked before any pair is used.
+     * PV11 only (CIP-133).
      */
-    public static byte[] bls12_381_G2_multiScalarMul(PlutusData scalars, PlutusData points) {
+    public static JulcG1 bls12_381_G1_multiScalarMul(JulcScalars scalars, JulcG1Points points) {
+        throw new UnsupportedOperationException("BLS12-381 G1 multiScalarMul: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    /** Multi-scalar multiplication on BLS12-381 G2, with the same semantics as the G1 form. PV11 only (CIP-133). */
+    public static JulcG2 bls12_381_G2_multiScalarMul(JulcScalars scalars, JulcG2Points points) {
         throw new UnsupportedOperationException("BLS12-381 G2 multiScalarMul: on-chain only — use Julc VM for off-chain evaluation");
     }
 

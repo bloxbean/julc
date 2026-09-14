@@ -208,7 +208,8 @@ public final class SchemaGenerator {
                 case PirType.NamedTypeRef ref -> namedReference(ref);
                 case PirType.UnitType _ -> Schema.constructor("Unit", 0, List.of());
                 case PirType.PairType _, PirType.ArrayType _, PirType.FunType _,
-                     PirType.NativeValueType _ ->
+                     PirType.NativeValueType _, PirType.NativeG1Type _, PirType.NativeG2Type _,
+                     PirType.NativeMlResultType _, PirType.NativeListType _ ->
                         throw new SchemaGenerationException(
                                 "Unsupported compiler boundary type " + type.getClass().getSimpleName());
             };
@@ -257,7 +258,8 @@ public final class SchemaGenerator {
                 case PirType.NamedTypeRef ref -> namedKey(ref, ref.name());
                 case PirType.UnitType _ -> "@julc:Unit";
                 case PirType.PairType _, PirType.ArrayType _, PirType.FunType _,
-                     PirType.NativeValueType _ ->
+                     PirType.NativeValueType _, PirType.NativeG1Type _, PirType.NativeG2Type _,
+                     PirType.NativeMlResultType _, PirType.NativeListType _ ->
                         throw new SchemaGenerationException(
                                 "Unsupported compiler boundary type " + type.getClass().getSimpleName());
             };

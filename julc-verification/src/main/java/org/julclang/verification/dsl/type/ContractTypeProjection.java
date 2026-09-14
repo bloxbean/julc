@@ -222,6 +222,10 @@ public final class ContractTypeProjection {
                 case PirType.PairType ignored -> unsupported("pair");
                 case PirType.ArrayType ignored -> unsupported("array");
                 case PirType.NativeValueType ignored -> unsupported("native value");
+                case PirType.NativeG1Type ignored -> unsupported("BLS G1 point");
+                case PirType.NativeG2Type ignored -> unsupported("BLS G2 point");
+                case PirType.NativeMlResultType ignored -> unsupported("BLS Miller result");
+                case PirType.NativeListType ignored -> unsupported("native list");
                 case PirType.FunType ignored -> unsupported("function");
             };
         }

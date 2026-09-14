@@ -220,6 +220,10 @@ public class LibraryMethodRegistry implements StdlibLookup {
             case PirType.StringType _ -> "String";
             case PirType.DataType _ -> "Data";
             case PirType.NativeValueType _ -> "NativeValue";
+            case PirType.NativeG1Type _ -> "G1";
+            case PirType.NativeG2Type _ -> "G2";
+            case PirType.NativeMlResultType _ -> "MlResult";
+            case PirType.NativeListType nl -> "NativeList[" + pirTypeName(nl.elemType()) + "]";
             case PirType.UnitType _ -> "Unit";
             case PirType.ListType lt -> "List[" + pirTypeName(lt.elemType()) + "]";
             case PirType.MapType mt -> "Map[" + pirTypeName(mt.keyType()) + "," + pirTypeName(mt.valueType()) + "]";

@@ -361,7 +361,14 @@ All imports are from `org.julclang.stdlib.lib.*`.
 
 ### BlsLib (Plutus V3)
 G1/G2 add/scale/neg, pairing, and `bls12_381_finalVerify` are available on
-PV10+; multi-scalar multiplication (MSM) requires PV11.
+PV10+; multi-scalar multiplication (MSM) requires PV11. Points and Miller-loop
+results are the opaque types `JulcG1`, `JulcG2`, `JulcMlResult`
+(`org.julclang.core.types`), never `byte[]`: only `g1Compress`/`g2Compress`
+give bytes and only `g1Uncompress`/`g2Uncompress` take them back. MSM takes
+the native lists from `Builtins.scalars(...)`/`g1Points(...)`/`g2Points(...)`
+or `Builtins.scalarsFromList(JulcList<BigInteger>)`/
+`g1PointsFromCompressed(JulcList<byte[]>)`. Declare BLS locals with the typed
+names or `var`; a `byte[]` local holding a point is `JULC0041`.
 
 ### NativeValueLib (PV11)
 Native Mary-era `Value` operations use opaque `JulcValue`. Convert explicitly

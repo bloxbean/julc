@@ -3,6 +3,44 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+## Upcoming preview: typed BLS12-381 values and multi-scalar multiplication (ADR-047)
+
+BLS12-381 values now have their own types: `JulcG1` and `JulcG2` for points,
+`JulcMlResult` for a Miller-loop result (all in `org.julclang.core.types`).
+Every `Builtins.bls12_381_*` method and every `BlsLib` method now takes and
+returns these types wherever it took or returned a point or a Miller-loop
+result as `byte[]`; only `g1Compress`/`g2Compress` produce bytes and only
+`g1Uncompress`/`g2Uncompress` consume them (messages, domain separation tags
+and scalars keep their `byte[]`/`BigInteger` types). A compressed byte string where a
+point is required, a G2 point where a G1 point is required, a point compared
+with `==` or placed in a datum, redeemer, record or list is rejected at compile
+time (`JULC0041`); a point at a validator or `compileMethod` boundary is
+`JULC0042`. Compress at the boundary and uncompress on the other side.
+
+Multi-scalar multiplication is now callable from source on the PV11 target:
+`BlsLib.g1MultiScalarMul(JulcScalars, JulcG1Points)` and the G2 form take the
+native lists built by `Builtins.scalars(...)`, `Builtins.g1Points(...)`,
+`Builtins.g2Points(...)` (literal or runtime elements) or decoded from Data
+lists by `Builtins.scalarsFromList(JulcList<BigInteger>)`,
+`Builtins.g1PointsFromCompressed(JulcList<byte[]>)` and the G2 form. Every
+scalar is validated first (512 bytes of two's complement), the lists are
+zipped to the shorter one, and the empty sum is the identity. On the pinned
+PV11 costs one MSM call is smaller than the manual `g1ScalarMul`/`g1Add` chain
+from three points and cheaper in CPU from seven (about 322 million to enter
+plus 25 million per point against 77 million per point); nothing rewrites one
+into the other. An element of the wrong type in `scalars(...)`, or a Data list
+of the wrong element type in a converter, is `JULC0041`.
+
+**Migration.** A local, helper parameter or return type that named a BLS value
+as `byte[]` no longer compiles (`JULC0041`, at the initializer, the helper
+call or the `return`): declare it as `JulcG1`/`JulcG2`/`JulcMlResult` or use
+`var`. Code that used `var` for BLS values compiles unchanged and keeps its
+bytes; the compressed encodings are still `byte[]`. The two
+`bls12_381_*_multiScalarMul` signatures changed from `PlutusData` to the typed
+lists (the old ones compiled but could not evaluate successfully).
+No program in the example corpus or the golden suites uses the BLS surface, so
+no existing script changes bytes or hash at any level.
+
 ## Upcoming preview: array literals and literal folding (ADR-046)
 
 `JulcArray.of(a, b, ...)` writes a PV11 array down. On-chain it is

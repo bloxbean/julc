@@ -378,6 +378,12 @@ public class TypeResolver {
             case "Boolean" -> new PirType.BoolType();
             case "PlutusData", "ConstrData", "MapData", "ListData", "IntData", "BytesData" -> new PirType.DataType();
             case "JulcValue" -> new PirType.NativeValueType();
+            case "JulcG1" -> new PirType.NativeG1Type();
+            case "JulcG2" -> new PirType.NativeG2Type();
+            case "JulcMlResult" -> new PirType.NativeMlResultType();
+            case "JulcScalars" -> new PirType.NativeListType(new PirType.IntegerType());
+            case "JulcG1Points" -> new PirType.NativeListType(new PirType.NativeG1Type());
+            case "JulcG2Points" -> new PirType.NativeListType(new PirType.NativeG2Type());
             case "List", "JulcList" -> {
                 PirType elemType = new PirType.DataType();
                 var listArgs = ct.getTypeArguments();
@@ -585,7 +591,7 @@ public class TypeResolver {
 
     private boolean containsNativeOpaque(
             PirType type, Set<String> activeNames, Set<PirType> activeTypes) {
-        if (type instanceof PirType.NativeValueType) return true;
+        if (PirType.isNativeOpaque(type)) return true;
         if (type instanceof PirType.NamedTypeRef ref) {
             if (!activeNames.add(ref.stableId())) return false;
             try {
