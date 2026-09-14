@@ -207,7 +207,24 @@ Applied candidate rules: `pv11.o14.value-literal-fold`, `dead-code-elimination`,
 
 ## Repository validation
 
-Recorded in the pull request after the final commit: full build, Blaster lock check,
-Maven-local publish, external `julc-examples` at the default and costed levels with the
-per-validator diff against the ADR-044 run (expected: 41 of 41 unchanged at both levels,
-the additivity census).
+Final commit `4e2961f0` (review fixes).
+
+- Full build (`./gradlew build --continue`): 10,924 tests, 0 failures, 0 errors, 530 skipped
+  (the pre-existing on-chain and DevKit-gated suites). The Java VM suite includes the
+  999-case `PlutusConformanceTest`, so the `ValueBuiltins` delegation to
+  `NativeValueSemantics` is conformance-checked in this run.
+- Blaster: `verification/blaster/scripts/prepare-artifacts.sh` completed and the regenerated
+  `verification/blaster/generated/artifact-lock.json` is identical to the committed one.
+- Published `0.1.0-pre17-4e2961f-SNAPSHOT` to Maven local.
+- External `julc-examples` (`../julc-examples`, resolved through
+  `adr/evidence/041-local-examples.init.gradle`, the examples' `build.gradle` untouched) at the
+  default level and at `pv11-costed`: 418 tests, 55 failures, 11 skipped in each run. Every
+  failure is an `InsufficientBalanceException` against the local Yaci DevKit, whose funded
+  accounts are exhausted and were not reset for this run: the same 52 `*IntegrationTest`
+  steps and three `EscrowBudgetComparisonTest` steps as the ADR-043 and ADR-044 runs.
+- **Additivity census.** 41 validators compiled at the default level and 41 at `pv11-costed`;
+  every one has the same size and hash as in the ADR-044 run at the same level (0 of 41 differ
+  at either level). The only default-versus-costed difference is ADR-043's
+  `LinkedListValidator` promotion, as before. No program in the corpus, in the in-repo example
+  module, in the Blaster fixtures or in any earlier golden suite contains a Value literal, and
+  the O8, O9 and O15 golden suites are byte-identical with the rule enabled.
