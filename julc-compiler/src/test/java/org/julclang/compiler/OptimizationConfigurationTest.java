@@ -134,7 +134,7 @@ class OptimizationConfigurationTest {
     @Test
     void individualPirRulesCanBeDisabledAndUnknownRuleIdsFailClosed() {
         assertEquals(List.of("pv11.o8.value-sharing", "pv11.o15.projection-sharing", "pv11.o9.list-to-array",
-                        "pv11.o14.value-literal-fold"),
+                        "pv11.o14.value-literal-fold", "pv11.o10.array-literal-fold"),
                 CompilationContext.switchableOptimizationRules());
 
         var unknown = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
