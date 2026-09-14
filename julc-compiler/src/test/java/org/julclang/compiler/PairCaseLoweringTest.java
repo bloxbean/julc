@@ -226,7 +226,7 @@ class PairCaseLoweringTest {
                             if (before instanceof EvalResult.Success b && after instanceof EvalResult.Success a) {
                                 assertEquals(b.resultTerm(), a.resultTerm(), label);
                             } else if (before instanceof EvalResult.Failure b && after instanceof EvalResult.Failure a) {
-                                assertEquals(b.error(), a.error(), label);
+                                CaseFailureEquivalence.assertFailureTextEquivalent(b, a, label);
                             }
                             if (provider.equals("Java")) javaResult = after;
                             if (provider.equals("Truffle")) assertEquals(javaResult.budgetConsumed(), after.budgetConsumed(), label);

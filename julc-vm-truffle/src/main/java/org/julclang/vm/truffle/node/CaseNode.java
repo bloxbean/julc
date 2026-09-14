@@ -12,6 +12,7 @@ import com.oracle.truffle.api.frame.Frame;
 import com.oracle.truffle.api.instrumentation.StandardTags.StatementTag;
 import com.oracle.truffle.api.instrumentation.Tag;
 
+import java.math.BigInteger;
 import java.util.List;
 
 /**
@@ -21,11 +22,14 @@ public final class CaseNode extends UplcNode {
 
     @Child private UplcNode scrutineeNode;
     @Children private final UplcNode[] branchNodes;
+    /** Branch count as an integer constant, so the hot integer range check allocates nothing. */
+    private final BigInteger branchCountValue;
 
     public CaseNode(Term sourceTerm, UplcNode scrutineeNode, UplcNode[] branchNodes) {
         super(sourceTerm);
         this.scrutineeNode = scrutineeNode;
         this.branchNodes = branchNodes;
+        this.branchCountValue = BigInteger.valueOf(branchNodes.length);
     }
 
     @Override
@@ -98,8 +102,15 @@ public final class CaseNode extends UplcNode {
                 validateMaxBranches("Unit", branchCount, 1);
                 yield new CaseDecomposition(0, new Object[0]);
             }
-            case Constant.IntegerConst ic ->
-                    new CaseDecomposition(ic.value().intValueExact(), new Object[0]);
+            case Constant.IntegerConst ic -> {
+                // Mirror CekMachine: check the full integer against the branch count before
+                // narrowing so tags beyond the int range fail as a machine error.
+                var value = ic.value();
+                if (value.signum() < 0 || value.compareTo(branchCountValue) >= 0) {
+                    throw throwTagOutOfRange(value);
+                }
+                yield new CaseDecomposition(value.intValue(), new Object[0]);
+            }
             case Constant.ListConst lc -> {
                 validateMaxBranches("List", branchCount, 2);
                 if (lc.values().isEmpty()) {
@@ -135,6 +146,11 @@ public final class CaseNode extends UplcNode {
 
     @TruffleBoundary
     private UplcRuntimeException throwTagOutOfRange(int tag) {
+        throw throwTagOutOfRange(BigInteger.valueOf(tag));
+    }
+
+    @TruffleBoundary
+    private UplcRuntimeException throwTagOutOfRange(BigInteger tag) {
         throw new UplcRuntimeException(
                 "Case: tag " + tag + " out of range for " + branchNodes.length + " branches",
                 getSourceTerm(), this);

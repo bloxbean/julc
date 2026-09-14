@@ -113,6 +113,16 @@ public final class PirFormatter {
                 }
                 sb.append(')');
             }
+            case PirTerm.IntegerCase c -> {
+                sb.append("(integer-case ");
+                formatTerm(c.scrutinee(), sb);
+                sb.append(" [");
+                for (int i = 0; i < c.branches().size(); i++) {
+                    if (i > 0) sb.append(", ");
+                    formatTerm(c.branches().get(i), sb);
+                }
+                sb.append("])");
+            }
             case PirTerm.PairMatch m -> {
                 sb.append("(pair-match ");
                 formatTerm(m.scrutinee(), sb);
@@ -232,6 +242,16 @@ public final class PirFormatter {
                     formatTermPretty(field, sb, indent);
                 }
                 sb.append(')');
+            }
+            case PirTerm.IntegerCase c -> {
+                sb.append("(integer-case ");
+                formatTerm(c.scrutinee(), sb);
+                sb.append(" [");
+                for (int i = 0; i < c.branches().size(); i++) {
+                    if (i > 0) sb.append(", ");
+                    formatTerm(c.branches().get(i), sb);
+                }
+                sb.append("])");
             }
             case PirTerm.PairMatch m -> {
                 sb.append("(pair-match ");

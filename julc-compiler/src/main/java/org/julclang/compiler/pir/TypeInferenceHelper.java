@@ -240,6 +240,13 @@ final class TypeInferenceHelper {
         if (term instanceof PirTerm.PairMatch m) {
             return m.body() instanceof PirTerm.Error error ? error.type() : inferPirType(m.body());
         }
+        if (term instanceof PirTerm.IntegerCase c) {
+            // Every branch produces the same result type; prefer a non-Error branch.
+            for (var branch : c.branches()) {
+                if (!(branch instanceof PirTerm.Error)) return inferPirType(branch);
+            }
+            return ((PirTerm.Error) c.branches().getFirst()).type();
+        }
         if (term instanceof PirTerm.ListMatch m) {
             // The guarded for-each producer uses a typed Error for unreachable nil.
             return m.nilBranch() instanceof PirTerm.Error error

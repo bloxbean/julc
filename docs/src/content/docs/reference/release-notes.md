@@ -3,6 +3,43 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+## Upcoming preview: integer Case dispatch for sealed-interface switches (ADR-041)
+
+`PV11_SAFE` (the default) and `PV11_COSTED` now dispatch every `switch` on a
+sealed interface with two or more constructors through one PV11 integer `Case`
+on the decoded constructor tag instead of an `equalsInteger` chain. Branch `i`
+runs for tag `i`; field decoding, branch bodies, traces and evaluation order are
+unchanged, and only the selected branch is evaluated. The dispatch cost is now
+flat instead of growing with the constructor's position: in the ADR-041
+fixtures a five-way switch selecting its last constructor saves about 710,000
+CPU and 33 FLAT bytes, and a two-way switch saves 116,000 to 265,000 CPU and 12
+bytes (8 bytes on the ADR-038 on-chain validator). Single-constructor
+switches and `instanceof` chains are untouched. The optimization report records
+`pv11.o5.case-integer`.
+
+Failure contract: a constructor tag outside `0..n-1` now fails at Case selection
+instead of reaching the chain's terminal `error`. Both fail at the same point
+with no branch effects and no traces; only the off-chain failure text and the
+failing path's budget differ. The strict typed boundary already rejects invalid
+tags on datum, redeemer and nested typed fields before user logic runs, so
+validators observe no change. The change is observable where no boundary runs:
+`JulcCompiler.compileMethod`, and therefore the testkit's `JulcEval` and
+`MethodEvaluator`, now report `Case: tag T out of range for N branches` (Scalus:
+`Case index T out of bounds for N branches`) for a sealed argument with an
+out-of-range constructor tag instead of `Error term encountered`; the same
+applies to direct-PIR consumers of `compilePirToProgram` and to sealed values a
+program casts from raw `PlutusData` without a typed boundary. Tests that assert
+on that failure text need updating. Both the Java and Truffle VMs now
+range-check integer Case scrutinees over the full integer domain before
+narrowing, so tags beyond the `int` range fail as the same machine error.
+
+Recompiling an eligible validator with a safe profile changes its script bytes
+and hash. `NONE`/`BASELINE` retain historical bytes; deployed scripts and ledger
+Data encodings are unchanged. The decompiler recovers the new dispatch as the
+same `DataMatch` HIR node. ADR-041 also closes the O6 unit Case question as
+rejected: JuLC emits no `ChooseUnit`, and a census of shipped artifacts shows no
+typed-unit statement population worth a new PIR surface.
+
 ## Upcoming preview: conditional `yield` in switch case blocks
 
 A `yield` inside an `if`/`else` branch of a switch-expression case block was
@@ -348,8 +385,9 @@ only when its untyped UPLC scrutinee is provably Boolean, leaving ambiguous SOP
 cases as switches.
 
 Array promotion/folding, native Value algebra, BLS fusion, broader list traversal
-rewrites beyond #110, pair/integer/unit Case rewrites, and general conversion
-sharing remain explicitly deferred:
+rewrites beyond #110, and general conversion sharing remain explicitly deferred
+(pair Case rewrites were later delivered by ADR-036/038, integer Case dispatch
+by ADR-041, and unit Case sequencing was rejected by ADR-041):
 the current compiler lacks the typed literal, representation, or use-analysis
 proof needed to preserve failures and strict evaluation. A future protocol
 target starts with ADR-032 rules disabled and enables each rule only after its

@@ -50,6 +50,11 @@ public class PatternMatchDesugarer {
 
     /**
      * Build a DataMatch from chained if/else instanceof checks.
+     * <p>
+     * Not used by {@code PirGenerator}, which lowers {@code instanceof} chains as explicit tag
+     * comparisons. Kept as public API; it fills every missing variant with the default branch,
+     * so any DataMatch it produces keeps the one-branch-per-constructor invariant that the
+     * ADR-041 integer Case dispatch relies on.
      */
     public PirTerm buildFromInstanceOfChain(PirTerm scrutinee, PirType.SumType sumType,
                                              List<InstanceOfBranch> branches, PirTerm defaultBranch) {

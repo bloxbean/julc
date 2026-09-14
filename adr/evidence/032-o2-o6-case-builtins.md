@@ -109,6 +109,10 @@ rewrite would guess both representation and sharing.
 
 ## O5 — Integer: semantically blocked and deferred
 
+> Superseded 2026-09-13 by ADR-041, which pins the failure contract for compiler-generated
+> sealed dispatch and enables `pv11.o5.case-integer` at `PV11_SAFE`; see
+> `adr/evidence/041-integer-case-dispatch.md`. The record below is the original research.
+
 A dense three-branch raw case is much smaller, but it is not observably
 equivalent to JuLC's explicit equality chain on invalid input:
 
@@ -136,6 +140,9 @@ need an explicit bounded, no-default operation whose failure contract is Case,
 not an optimization of existing Java behavior.
 
 ## O6 — Unit: promising experiment, deferred
+
+> Closed as rejected 2026-09-13 by ADR-041 after a census of shipped artifacts; see
+> `adr/evidence/041-integer-case-dispatch.md`.
 
 The typed raw experiment preserves a `Trace` continuation and improves the
 single legal Unit path.

@@ -192,6 +192,17 @@ public final class DataMatchRecognizer {
         }
         List<TagBranch> branches = new ArrayList<>();
         Term rest = body;
+        // ADR-041 O5: PV11_SAFE dispatch is a single integer Case on the tag binder, one
+        // branch per constructor in tag order. Any other tag fails at selection, which the
+        // reconstruction renders as the residual Builtins.error() of the equality chain.
+        if (body instanceof Term.Case c && c.branches().size() >= 2
+                && c.scrutinee() instanceof Term.Var v && v.name().index() == 2
+                && c.branches().stream().noneMatch(b -> b instanceof Term.Lam)) {
+            for (int i = 0; i < c.branches().size(); i++) {
+                branches.add(new TagBranch(BigInteger.valueOf(i), c.branches().get(i)));
+            }
+            return new ConstructorMatch(data, pair, tag, fields, branches, Term.error());
+        }
         while (true) {
             var conditional = tagConditional(rest);
             if (conditional == null) break;

@@ -20,6 +20,7 @@ import org.julclang.vm.java.trace.ExecutionTraceCollector;
 import org.julclang.vm.trace.BuiltinExecution;
 import org.julclang.vm.trace.ExecutionTraceEntry;
 
+import java.math.BigInteger;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
@@ -308,7 +309,8 @@ public final class CekMachine {
                                 "Case on builtin constants is not available for "
                                         + profile.target(), currentTerm);
                     }
-                    var decomposed = decomposeConstantForCase(vcon.constant(), cf.branches().size());
+                    var decomposed = decomposeConstantForCase(vcon.constant(), cf.branches().size(),
+                            currentTerm);
                     tag = decomposed.tag;
                     fields = decomposed.fields;
                 } else {
@@ -450,7 +452,12 @@ public final class CekMachine {
      * @param c the constant to decompose
      * @param branchCount the number of case branches (for validation)
      */
-    private static CaseDecomposition decomposeConstantForCase(Constant c, int branchCount) {
+    /**
+     * @param sourceTerm the term currently attributed for failures; at return phase this is
+     *                   the scrutinee term, matching the constructor-tag path above
+     */
+    private static CaseDecomposition decomposeConstantForCase(Constant c, int branchCount,
+            Term sourceTerm) {
         return switch (c) {
             case Constant.BoolConst bc -> {
                 validateMaxBranches("Bool", branchCount, 2);
@@ -460,8 +467,20 @@ public final class CekMachine {
                 validateMaxBranches("Unit", branchCount, 1);
                 yield new CaseDecomposition(0, List.of());
             }
-            case Constant.IntegerConst ic ->
-                    new CaseDecomposition(ic.value().intValueExact(), List.of());
+            case Constant.IntegerConst ic -> {
+                // Integer scrutinees select by value over an unbounded domain. Check the
+                // full value against the branch count before narrowing so tags beyond the
+                // int range fail as the same machine error as any other out-of-range tag
+                // instead of an ArithmeticException.
+                var value = ic.value();
+                if (value.signum() < 0
+                        || value.compareTo(BigInteger.valueOf(branchCount)) >= 0) {
+                    throw new CekEvaluationException(
+                            "Case: tag " + value + " out of range for " + branchCount
+                                    + " branches", sourceTerm);
+                }
+                yield new CaseDecomposition(value.intValue(), List.of());
+            }
             case Constant.ListConst lc -> {
                 validateMaxBranches("List", branchCount, 2);
                 if (lc.values().isEmpty()) {

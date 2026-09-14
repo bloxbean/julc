@@ -127,6 +127,12 @@ public final class JulcEval {
      * // On failure: "Evaluation failed: Error term encountered
      * //   at MyValidator.java:42 (Builtins.error())"
      * }</pre>
+     * <p>
+     * Methods are compiled without the validator's strict typed boundary, so a sealed-interface
+     * argument whose constructor tag is outside the declared variants reaches the switch
+     * dispatch. Under the default safe profile that fails at the PV11 integer Case selection
+     * with {@code "Case: tag T out of range for N branches"} (ADR-041); the legacy equality chain
+     * reported {@code "Error term encountered"}.
      */
     public JulcEval sourceMap() {
         this.sourceMapEnabled = true;

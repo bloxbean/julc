@@ -31,6 +31,7 @@ public class UplcGenerator {
 
     public static final String PV11_CASE_PAIR_RULE = "pv11.o4.case-pair";
     public static final String PV11_CASE_BOOL_RULE = "pv11.o2.case-bool";
+    public static final String PV11_CASE_INTEGER_RULE = "pv11.o5.case-integer";
 
     private final Deque<String> scope = new ArrayDeque<>();
 
@@ -170,6 +171,18 @@ public class UplcGenerator {
                                         Term.apply(ifBuiltin, generate(cond)),
                                         Term.delay(generate(thenBranch))),
                                 Term.delay(generate(elseBranch))));
+            }
+
+            case PirTerm.IntegerCase(var scrutinee, var branches) -> {
+                if (!integerCaseEnabled()) {
+                    throw new CompilerException("IntegerCase requires the PV11 safe lowering profile");
+                }
+                // Integer Case: branch i is selected for scrutinee value i; branches take no
+                // arguments and only the selected branch is evaluated (ADR-041 O5).
+                var scrutineeTerm = generate(scrutinee);
+                var branchTerms = new ArrayList<Term>(branches.size());
+                for (var branch : branches) branchTerms.add(generate(branch));
+                yield new Term.Case(scrutineeTerm, branchTerms);
             }
 
             case PirTerm.PairMatch(var scrutinee, _, var first, var second, var body) -> {
@@ -439,10 +452,19 @@ public class UplcGenerator {
         return generate(outerLetRecA);
     }
 
-    private boolean pairCaseEnabled() {
+    /** Shared O3/O4/O5 legality gate: exact PV11 target, safe profile, Case on builtin constants. */
+    private boolean pv11CaseOnBuiltinEnabled() {
         return context.target().equals(CompilerTarget.PLUTUS_V3_PV11)
                 && context.optimizationLevel().pv11SafeRulesEnabled()
                 && context.supports(ProtocolCapability.CASE_ON_BUILTIN_CONSTANTS);
+    }
+
+    private boolean pairCaseEnabled() {
+        return pv11CaseOnBuiltinEnabled();
+    }
+
+    private boolean integerCaseEnabled() {
+        return pv11CaseOnBuiltinEnabled();
     }
 
     /**
@@ -456,10 +478,23 @@ public class UplcGenerator {
         var tagName = "__match_tag";
         var fieldsName = "__match_fields";
 
-        // Build the dispatch chain: IfThenElse(tag==0, branch0, IfThenElse(tag==1, branch1, ...Error))
+        // Build the dispatch: under the PV11 safe profile a single integer Case selects the
+        // branch by tag (ADR-041 O5); otherwise the historical equality chain
+        // IfThenElse(tag==0, branch0, IfThenElse(tag==1, branch1, ...Error)).
         PirTerm dispatch;
         if (branches.size() == 1) {
             dispatch = buildBranchFieldExtraction(branches.get(0), fieldsName, dataName);
+        } else if (branches.size() >= 2 && integerCaseEnabled()) {
+            // Constructor tags are dense 0..n-1 by construction: buildDataMatch emits exactly one
+            // branch per constructor in tag order. Any other tag fails at selection, before any
+            // branch runs, which is the point the legacy chain reached its terminal Error.
+            context.recordOptimizationRule(PV11_CASE_INTEGER_RULE);
+            var bodies = new ArrayList<PirTerm>(branches.size());
+            for (var branch : branches) {
+                bodies.add(buildBranchFieldExtraction(branch, fieldsName, dataName));
+            }
+            dispatch = new PirTerm.IntegerCase(
+                    new PirTerm.Var(tagName, new PirType.IntegerType()), bodies);
         } else {
             dispatch = new PirTerm.Error(new PirType.UnitType());
             for (int i = branches.size() - 1; i >= 0; i--) {

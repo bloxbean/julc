@@ -116,6 +116,25 @@ class SwitchPairCasePirTest {
     }
 
     @Test
+    void legacyBinderExpansionStillDispatchesWithIntegerCase() {
+        // ADR-041: the integer Case applies inside the legacy __match_pair expansion too, since
+        // the dispatch is independent of the binder shape. O4 stays off, O5 is recorded.
+        var pair = new PirTerm.Var("__match_pair", DATA);
+        var term = new PirTerm.DataMatch(data(PlutusData.constr(1)),
+                List.of(branch(List.of(), new PirTerm.App(new PirTerm.Builtin(DefaultFun.FstPair), pair)),
+                        branch(List.of(), integer(42))));
+        for (var level : OptimizationLevel.values()) {
+            var context = context(level);
+            var generated = new UplcGenerator(context, null).generate(term);
+            assertFalse(context.optimizationReport().appliedRules().contains(UplcGenerator.PV11_CASE_PAIR_RULE));
+            assertEquals(level.pv11SafeRulesEnabled(),
+                    context.optimizationReport().appliedRules().contains(UplcGenerator.PV11_CASE_INTEGER_RULE), level.toString());
+            assertEquals(level.pv11SafeRulesEnabled(), generated.toString().contains("Case["), level.toString());
+        }
+        assertEquals(Term.const_(Constant.integer(42)), ((EvalResult.Success) equivalent(term)).resultTerm());
+    }
+
+    @Test
     void exactProfileProvenanceSourceMapsAndPublicPirEntryPoint() {
         var term = new PirTerm.DataMatch(data(PlutusData.constr(0, PlutusData.integer(7))),
                 List.of(branch(List.of("x"), var("x"))));

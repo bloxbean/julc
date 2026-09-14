@@ -176,7 +176,9 @@ class SwitchPairCaseLoweringTest {
         assertEquals(before.getClass(), after.getClass(), label);
         assertEquals(before.traces(), after.traces(), label);
         if (before instanceof EvalResult.Success b && after instanceof EvalResult.Success a) assertEquals(b.resultTerm(), a.resultTerm(), label);
-        if (before instanceof EvalResult.Failure b && after instanceof EvalResult.Failure a) assertEquals(b.error(), a.error(), label);
+        if (before instanceof EvalResult.Failure b && after instanceof EvalResult.Failure a) {
+            CaseFailureEquivalence.assertFailureTextEquivalent(b, a, label);
+        }
     }
 
     private static EvalResult evaluate(Program program, PlutusData redeemer, String provider) {

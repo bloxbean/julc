@@ -117,6 +117,27 @@ class ProtocolGatingTest {
     }
 
     @Test
+    void caseOnIntegerChecksFullValueBeforeNarrowing() {
+        // ADR-041: compiled sealed dispatch cases on decoded constructor tags, which are
+        // unbounded non-negative integers. Every out-of-range value, including ones beyond
+        // the int and long ranges, must fail as the same machine error, never as an
+        // ArithmeticException from narrowing.
+        var target = LedgerEvaluationTarget.pv11(PlutusLanguage.PLUTUS_V3);
+        var branches = List.of(Term.const_(Constant.integer(10)), Term.const_(Constant.integer(20)),
+                Term.const_(Constant.integer(30)));
+        for (var tag : List.of(BigInteger.valueOf(-1), BigInteger.valueOf(3), BigInteger.ONE.shiftLeft(40),
+                BigInteger.ONE.shiftLeft(64), BigInteger.ONE.shiftLeft(64).negate())) {
+            var program = Program.plutusV3(new Term.Case(Term.const_(Constant.integer(tag)), branches));
+            assertFailureContains(provider.evaluate(program, target, null),
+                    "Case: tag " + tag + " out of range for 3 branches");
+        }
+        for (int tag = 0; tag < 3; tag++) {
+            var program = Program.plutusV3(new Term.Case(Term.const_(Constant.integer(tag)), branches));
+            assertInteger(provider.evaluate(program, target, null), 10L * (tag + 1));
+        }
+    }
+
+    @Test
     void programVersionControlsConstrAndCaseSyntax() {
         var invalid = new Program(1, 0, 0, new Term.Constr(0, List.of()));
         var result = provider.evaluate(invalid,
