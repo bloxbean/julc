@@ -157,7 +157,9 @@ public final class ArrayLiteralFoldPass extends LiteralFoldPass {
                 && inner.argument() instanceof PirTerm.Const tag && produced.contains(tag)
                 && tag.value() instanceof Constant.IntegerConst t
                 && app.argument() instanceof PirTerm.Const one && one.value().equals(ONE)) {
-            return folded(Constant.bool(t.value().equals(BigInteger.ONE)));
+            var result = Constant.bool(t.value().equals(BigInteger.ONE));
+            var replaced = Term.apply(Term.apply(Term.builtin(DefaultFun.EqualsInteger), Term.const_(tag.value())), Term.const_(ONE));
+            return fitsObjective(replaced, result) ? folded(result) : null;
         }
         return null;
     }
@@ -218,9 +220,9 @@ public final class ArrayLiteralFoldPass extends LiteralFoldPass {
             }
             if (isBuiltin(app.function(), DefaultFun.ListData)) {
                 var nested = listLiteral(app.argument());
-                return nested == null ? null
-                        : Constant.data(PlutusData.list(nested.values().stream()
-                                .map(c -> ((Constant.DataConst) c).value()).toArray(PlutusData[]::new)));
+                if (nested == null || !nested.values().stream().allMatch(c -> c instanceof Constant.DataConst)) return null;
+                return Constant.data(PlutusData.list(nested.values().stream()
+                        .map(c -> ((Constant.DataConst) c).value()).toArray(PlutusData[]::new)));
             }
         }
         if (term instanceof PirTerm.IfThenElse ite && super.literalOf(ite.cond()) instanceof Constant.BoolConst b

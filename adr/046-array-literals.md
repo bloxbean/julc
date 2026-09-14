@@ -1,7 +1,7 @@
 # ADR-046: Typed array literals and literal folding (O10)
 
 **Date:** 2026-09-14
-**Status:** Implemented and locally validated on `feat/116-array-literals` (stacked on ADR-045's `feat/119-value-literals`); independent agent reviews applied; maintainer review pending
+**Status:** Implemented and locally validated on `feat/116-array-literals` (stacked on ADR-045's `feat/119-value-literals`); two independent agent reviews applied; maintainer review pending
 **Issues:** [#116](https://github.com/bloxbean/julc/issues/116) (O10), research decision [#106](https://github.com/bloxbean/julc/issues/106), parent [#77](https://github.com/bloxbean/julc/issues/77)
 **Governing decisions:** ADR-032 O10 (array constant folding, "static-cost" class, out-of-range indexes stay runtime failures, no fold beyond the size objective), ADR-043 (`JulcArray`'s element representation and the `IndexArray` failure contract), ADR-045 (the literal-fold machinery, its objective and additivity), ADR-036 (pass placement before UPLC generation), ADR-015 (strict typed boundaries)
 
@@ -35,13 +35,19 @@ Goals:
   constant into its length, and `IndexArray` of an array constant at a literal index into the
   element (and the decode `get` wraps around it, when the element has the expected shape), at
   the safe profile, with the VM's own code deciding results and failures.
-- Keep every program compiled today byte-identical at every level (Wave 4 is additive), and
-  keep an out-of-range index a runtime failure at the same point with the same text.
+- Keep every program in the censused corpus and every golden suite byte-identical at every
+  level (Wave 4 is additive for what ships today; a program elsewhere that already converts a
+  `JulcList.of` literal to an array does gain the constant), and keep an out-of-range index a
+  runtime failure at the same point with the same text.
 
 Non-goals (recorded so they are not reintroduced without their own proof):
 
 - A second, native element representation (`array integer`, `array bytestring`) behind the
-  same `JulcArray<T>` type. It would save one decode per access but split `JulcArray<T>` into
+  same `JulcArray<T>` type. This is a deliberate reading of #116's prerequisite "exact element
+  representation with no implicit Data wrapping": `JulcArray<T>` has only ever been an
+  `array data`, so the Data encoding of an element is the declared representation, not an
+  implicit one, and the literal adds no wrapping that `list.toArray()` did not already have.
+  The prerequisite is met by keeping one representation, not by introducing a native one. It would save one decode per access but split `JulcArray<T>` into
   two representations that the type system cannot tell apart at a use site, exactly the
   ambiguity ADR-032 O7 removed for Values; if wanted, it needs its own marker type and ADR.
 - `MultiIndexArray`: unreleased at PV11, never emitted (ADR-032, ADR-043).
@@ -64,7 +70,10 @@ conformance run unchanged; `ArraySemanticsTest` pins the texts).
 **The producer.** `JulcArray.of(a, b, ...)` (a static factory on the core interface, off-chain
 a `JulcArrayImpl`) lowers in `StdlibRegistry`'s typed lookup to
 `ListToArray(MkCons(wrapEncode(a), MkCons(wrapEncode(b), ... MkNilData ())))`: the list literal
-`JulcList.of` emits, converted. Its requirement is the `ListToArray` builtin (the PV11 target).
+`JulcList.of` emits, converted. Its requirement is the `ListToArray` builtin (the PV11 target),
+registered under the simple class name and served for the fully qualified one too (the
+registry's requirement lookup now falls back to the simple name, which also fixes
+`JulcArray.fromList`'s requirement under the qualified spelling).
 A native Value element is rejected by `wrapEncode` with `JULC0041`, as in every Data-backed
 container ("mixed-representation rejection"). The element representation is the one
 `JulcArray<T>` already has, so `get` and `length` are unchanged, and declaring the element
@@ -111,17 +120,21 @@ value the decode builtin returns on it. Failure: the only partial builtin in the
 never folded. Budgets never increase: a fold removes at least one builtin evaluation and its
 applications for one constant step.
 
-**Objective.** Array literals are always shorter than the chain they replace, decoded
-elements always shorter than the decode of their Data constant; the one measured case is a
-list decode of a produced element, which folds for lists of at most one element and stays
+**Objective.** Every fold in the pass, the Bool comparison included, is measured. Array
+literals are always shorter than the chain they replace (the chain holds the same constants
+plus a wrapping and a cons per element; probed for zero to eight elements), decoded elements
+always shorter than the decode of their Data constant; the one case that can go either way is
+a list decode of a produced element, which folds for lists of at most one element and stays
 from two on (each element of a `list data` constant is a separate FLAT byte string).
 
 **Additivity.** No program compiled before this ADR contains an array constant, and no
 program in the example corpus, the Blaster fixtures, the in-repo example module or any earlier
 golden suite converts a list literal to an array (census in the evidence document). The
-decode folds only ever see constants this pass produced. Every earlier golden suite, the
-Blaster lock and the external corpus are byte-identical with the rule enabled (evidence
-document, repository validation).
+decode folds only ever see constants this pass produced. A program outside the corpus that
+already spells `JulcList.of(...).toArray()` or `JulcArray.fromList(JulcList.of(...))` does
+change bytes at the safe profile (the `LOCAL_LIST` and `FROM_LIST` fixtures are that shape);
+the additivity claim is about the censused corpus and the golden suites, whose byte identity
+with the rule enabled the evidence document's repository-validation section records.
 
 ## Decision
 
@@ -168,9 +181,17 @@ document, repository validation).
 
 ## Compatibility and risks
 
-- **Hash impact.** None for existing programs (additivity). Programs that adopt
-  `JulcArray.of`, or convert a `JulcList.of` literal to an array, get an array constant at the
-  safe and costed profiles.
+- **Hash impact.** None for any program in the censused corpus or the golden suites. A
+  program elsewhere that already converts a `JulcList.of` literal to an array changes bytes and
+  hash at the safe and costed profiles (it gains the array constant); programs that adopt
+  `JulcArray.of` are new.
+- **Pass ordering.** The array fold runs before ADR-043's promotion, so a `ListToArray` that
+  promotion inserts at `PV11_COSTED` is never folded; reordering the pipeline would change
+  costed bytes and must be treated as a hash-moving change.
+- **Identity-keyed decode folds.** The produced-constant set is keyed by node identity and
+  relies on `remember` returning the original node for an equal rebuild; a refactor that
+  rebuilt equal nodes would silently stop the decode folds (a correctness-neutral loss, but a
+  byte change), which the fixture counts would catch.
 - **Target legality.** `JulcArray.of` requires `ListToArray` (PV11); a pre-PV11 target fails
   closed at the target check (`JULC0031`), the capability gate behind it is defended by
   `UplcTargetValidator`.
@@ -224,8 +245,10 @@ One milestone on `feat/116-array-literals`, stacked on ADR-045:
    literal reader and the produced-element decode folds; the switch.
 4. Fixture matrix (19 fixtures × 4 levels × rule off/on × 3 VMs), direct-PIR probes,
    semantics test, stdlib and typing tests, benchmark comparisons.
-5. Reviews; full build, Blaster lock check, publish, external examples (additivity census);
-   stacked PR; release-plan update.
+5. Two independent agent reviews (the Bool fold's objective check, the requirement key under
+   the qualified class name, an unchecked cast, failing-path budgets, `MultiIndexArray`
+   assertions, wording); full build, Blaster lock check, publish, external examples
+   (additivity census); stacked PR; release-plan update.
 
 ## Verification
 
@@ -257,6 +280,14 @@ One milestone on `feat/116-array-literals`, stacked on ADR-045:
   (ADR-044's rule over a new unit class).
 - Map elements (`JulcArray<JulcMap<...>>`) and negated integer literals are not read as
   literals; the access stays a runtime decode.
-- `var t = JulcArray.of(...)` infers a Data element type and `get` returns raw Data; the
-  declared element type is what drives the decode, as for `list.toArray()`.
+- `var t = JulcArray.of(...)` infers a Data element type and `get` returns raw Data while
+  javac types the local `JulcArray<BigInteger>`, a silent divergence the tests pin
+  (`varLocalOfAnArrayLiteralHasADataElementType`); the declared element type is what drives
+  the decode, as for `list.toArray()`. A diagnostic for `var` over a literal would need the
+  generator to know the element type of a static registry call.
+- Conservative gaps: a `ListToArray` that ADR-043's promotion inserts at `PV11_COSTED` runs
+  after this pass and is never folded; a decode reached through a `Let` alias of a produced
+  element (`PlutusData d = t.get(0); unIData(d)`) is not folded because the decode's argument
+  is a variable; the produced-constant set is not cleared between fixed-point rounds (it only
+  ever holds constants this pass made, so nothing is gained by clearing it).
 - On-chain submission of an artifact with an embedded array constant (pre-release gate).

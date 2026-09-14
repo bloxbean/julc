@@ -377,7 +377,9 @@ ListsLib provides list construction, traversal, searching, and higher-order func
 > and `JulcArray.fromList(list)` over a `JulcList.of` literal. A literal index
 > outside the array stays as written and fails at runtime with `IndexArray`'s
 > text, as before. Nothing changes at `none`/`baseline`; spell a negative
-> literal element as `new BigInteger("-5")`.
+> literal element as `new BigInteger("-5")`. Do not use `var` for the literal:
+> the compiler then types the elements as Data and `get` returns raw
+> `PlutusData`, although javac infers `JulcArray<BigInteger>`.
 
 ### Basic List Operations
 

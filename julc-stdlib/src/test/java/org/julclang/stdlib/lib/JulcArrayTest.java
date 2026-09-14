@@ -182,7 +182,7 @@ class JulcArrayTest {
             }
 
             @Test
-            void ofFactoryOfLiteralsFoldsToAConstantAtTheDefaultLevel() {
+            void ofFactoryOfLiteralsEvaluatesAtTheDefaultLevel() {
                 var eval = JulcEval.forSource("""
                         import org.julclang.core.types.JulcArray;
                         import java.math.BigInteger;

@@ -17,19 +17,25 @@ becomes one UPLC array constant; `length()` on it folds to a constant and
 `get(i)` with a literal index folds to the element, decode included
 (`JulcArray.of(1, 2, 3).get(1)` is `2`: 42 → 6 bytes, 1,238,594 → 16,100 CPU).
 A runtime index keeps the access over the embedded constant (a three-entry fee
-table indexed by a runtime tier: 57 → 46 bytes and 1,435,338 → 625,598 CPU on
-every path, failing ones included). The same folds apply to `list.toArray()`
+table indexed by a runtime tier: 57 → 46 bytes, 1,435,338 → 625,598 CPU on a
+valid tier and 809,740 CPU less on an invalid one, which fails exactly as
+before). The same folds apply to `list.toArray()`
 and `JulcArray.fromList(list)` over a `JulcList.of` literal. An index outside
 the array, literal or runtime, fails at `IndexArray` with the same text as
 before. Nothing changes at `none`/`baseline`; the optimization report records
 `pv11.o10.array-literal-fold`, and the rule can be switched off with
 `CompilerOptions.disableOptimizationRule`.
 
-This change is additive: no program compiled before it contains an array
-constant, and no program in the example corpus converts a list literal to an
-array, so existing scripts keep their bytes and hashes at every level. A native
-Value cannot be an array element (`JULC0041`, as for every Data-backed
-container). Spell a negative literal element as `new BigInteger("-5")`.
+This change is additive for the example corpus and every golden suite: no
+program there contains an array constant or converts a list literal to an
+array, so those scripts keep their bytes and hashes at every level. A program
+of your own that already spells `JulcList.of(...).toArray()` or
+`JulcArray.fromList(JulcList.of(...))` does change at `pv11-safe` (it gains the
+array constant). A native Value cannot be an array element (`JULC0041`, as for
+every Data-backed container). Spell a negative literal element as
+`new BigInteger("-5")`. Declare the element type: with `var t = JulcArray.of(...)`
+the compiler types the elements as Data and `t.get(i)` returns raw `PlutusData`
+even though javac infers `JulcArray<BigInteger>`.
 
 ## Upcoming preview: native Value literals and literal folding (ADR-045)
 

@@ -313,6 +313,11 @@ public final class StdlibRegistry implements StdlibLookup {
     @Override
     public LoweringRequirements requirements(String className, String methodName) {
         var registration = registry.get(className + "." + methodName);
+        if (registration == null && className.contains(".")) {
+            // Core types (JulcList, JulcArray) are registered under their simple names; the
+            // generator may ask with the fully qualified name.
+            registration = registry.get(className.substring(className.lastIndexOf('.') + 1) + "." + methodName);
+        }
         return registration != null
                 ? registration.requirements()
                 : LoweringRequirements.NONE;

@@ -29,8 +29,11 @@ are asserted equal; Scalus agrees on results, traces, failure text and budgets.
 
 `PV11_SAFE`, source maps off, rule off → on. Bytes and hashes; CPU/memory per input. Every
 row's failure text is identical with the rule off and on on all three backends: the failing
-builtin is `IndexArray` either way, over a constant either way. Call sites are `ListToArray`,
-`LengthOfArray` and `IndexArray` applications in user code.
+builtin is `IndexArray` either way (asserted by prefix on the Java VM for every failing array
+input), over a constant either way. Call sites are `ListToArray`, `LengthOfArray` and
+`IndexArray` applications in user code. No emitted program, folded or not, mentions
+`MultiIndexArray` (asserted per fixture and level). CPU and memory are asserted never higher
+on every path, failing ones included.
 
 | Fixture | Calls | Bytes | Hash off → on |
 |---|---:|---:|---|
@@ -115,6 +118,13 @@ its Data constant, so every other fold passes the objective.
   the literal.
 - A pre-PV11 target fails closed with `JULC0031` before any lowering
   (`nonPv11TargetFailsClosedBeforeLowering`).
+
+## The base-class extraction is neutral for ADR-045
+
+`O14ValueLiteralFoldTest` ran in the same Gradle invocation as the new suite; its 79
+`VALUE_LITERAL_*` measurement lines (bytes, hashes, CPU, memory, objective decisions) are
+byte-identical to the lines recorded for ADR-045 at `4e2961f0`, so moving the machinery into
+`LiteralFoldPass` changed nothing for the Value domain.
 
 ## Semantics (`ArraySemanticsTest`)
 

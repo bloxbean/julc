@@ -101,6 +101,9 @@ class O10ArrayLiteralFoldTest {
                 }
                 var mapped = compile(fixture, level, true);
                 assertEquals(expectRule, mapped.optimizationReport().appliedRules().contains(ArrayLiteralFoldPass.RULE), label + " maps");
+                // ADR-032: the unreleased MultiIndexArray is never emitted, folded or not.
+                assertFalse(mentions(off.program().term(), DefaultFun.MultiIndexArray), label);
+                assertFalse(mentions(on.program().term(), DefaultFun.MultiIndexArray), label);
                 for (var input : fixture.inputs()) {
                     EvalResult javaResult = null;
                     for (String provider : PROVIDERS) {
@@ -110,19 +113,24 @@ class O10ArrayLiteralFoldTest {
                         assertEquals(input.success(), before.isSuccess(), inputLabel + " " + before);
                         assertEquals(input.success(), after.isSuccess(), inputLabel + " " + after);
                         assertEquals(before.traces(), after.traces(), inputLabel);
+                        // A fold removes evaluation on every path, failing ones included.
+                        assertTrue(after.budgetConsumed().cpuSteps() <= before.budgetConsumed().cpuSteps(), inputLabel);
+                        assertTrue(after.budgetConsumed().memoryUnits() <= before.budgetConsumed().memoryUnits(), inputLabel);
                         if (before instanceof EvalResult.Success b) {
                             var a = assertInstanceOf(EvalResult.Success.class, after, inputLabel);
                             assertEquals(b.resultTerm(), a.resultTerm(), inputLabel);
                             var expected = EXPECTED.get(fixture.name() + "/" + input.name());
                             assertNotNull(expected, inputLabel + " has no expected value");
                             assertEquals(Term.const_(expected), a.resultTerm(), inputLabel);
-                            assertTrue(after.budgetConsumed().cpuSteps() <= before.budgetConsumed().cpuSteps(), inputLabel);
-                            assertTrue(after.budgetConsumed().memoryUnits() <= before.budgetConsumed().memoryUnits(), inputLabel);
                         } else {
                             var b = (EvalResult.Failure) before;
                             var a = assertInstanceOf(EvalResult.Failure.class, after, inputLabel);
                             // The array is a constant either way, so the failing builtin and its text are the same.
                             assertEquals(b.error(), a.error(), inputLabel);
+                            // Every failing array fixture fails at IndexArray (the error guard fixture at its error).
+                            if (provider.equals("Java") && !fixture.name().equals("ERROR_ARM")) {
+                                assertTrue(a.error().startsWith("IndexArray: index"), inputLabel + " " + a.error());
+                            }
                         }
                         if (provider.equals("Java")) javaResult = after;
                         if (!provider.equals("Java")) assertEquals(javaResult.budgetConsumed(), after.budgetConsumed(), inputLabel);
@@ -238,8 +246,54 @@ class O10ArrayLiteralFoldTest {
             assertEquals(folds, lower(access, OptimizationLevel.PV11_SAFE) instanceof PirTerm.Const, "unListData/" + items);
             System.out.println("ARRAY_LITERAL_OBJECTIVE items=" + items + " unListData=" + folds);
         }
-        // An array literal is always shorter than the list chain it replaces.
-        assertTrue(bits(Term.const_(array)) < bits(program(toArray)));
+        // An array literal is always shorter than the list chain it replaces: the chain holds the
+        // same constants plus a wrapping and a cons per element.
+        for (int n = 0; n <= 8; n++) {
+            PirTerm chain = nil();
+            var values = new ArrayList<Constant>();
+            for (int i = n - 1; i >= 0; i--) { chain = cons(intElement(1000 + i), chain); values.add(0, Constant.data(PlutusData.integer(1000 + i))); }
+            var literal = new Constant.ArrayConst(DATA_UNI, values);
+            assertTrue(bits(Term.const_(literal)) < bits(program(app(builtin(DefaultFun.ListToArray), chain))), "n=" + n);
+            assertEquals(new PirTerm.Const(literal), lower(app(builtin(DefaultFun.ListToArray), chain), OptimizationLevel.PV11_SAFE), "n=" + n);
+        }
+    }
+
+    /**
+     * Today's behaviour, pinned: a {@code var} local of {@code JulcArray.of(...)} has a Data
+     * element type for the compiler (javac says {@code JulcArray<BigInteger>}), so {@code get}
+     * returns the raw Data; declaring the element type is what makes {@code get} decode.
+     */
+    @Test
+    void varLocalOfAnArrayLiteralHasADataElementType() {
+        var source = O10ArrayLiteralFixtures.IMPORTS + """
+                class VarArray {
+                    static PlutusData raw() {
+                        var t = JulcArray.of(BigInteger.valueOf(7));
+                        return t.get(0);
+                    }
+                    static BigInteger typed() {
+                        JulcArray<BigInteger> t = JulcArray.of(BigInteger.valueOf(7));
+                        return t.get(0);
+                    }
+                }
+                """;
+        var raw = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setOptimizationLevel(OptimizationLevel.PV11_SAFE)).compileMethod(source, "raw");
+        assertEquals(Term.const_(Constant.data(PlutusData.integer(7))),
+                assertInstanceOf(EvalResult.Success.class, evaluate(raw.program(), List.of(), "Java")).resultTerm());
+        var typed = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setOptimizationLevel(OptimizationLevel.PV11_SAFE)).compileMethod(source, "typed");
+        assertEquals(Term.const_(Constant.integer(7)),
+                assertInstanceOf(EvalResult.Success.class, evaluate(typed.program(), List.of(), "Java")).resultTerm());
+    }
+
+    /** The producer's requirement is the PV11 builtin under both spellings of the class name. */
+    @Test
+    void arrayLiteralRequiresListToArrayUnderBothClassNames() {
+        var registry = StdlibRegistry.defaultRegistry();
+        for (var name : List.of("JulcArray", "org.julclang.core.types.JulcArray")) {
+            assertEquals(Set.of(DefaultFun.ListToArray), registry.requirements(name, "of").builtins(), name);
+            assertEquals(Set.of(DefaultFun.ListToArray), registry.requirements(name, "fromList").builtins(), name);
+        }
+        assertTrue(registry.requirements("org.julclang.core.types.JulcArray", "nothing").isEmpty());
     }
 
     /** The target check runs before any lowering: a pre-PV11 target fails closed with JULC0031. */
@@ -254,6 +308,20 @@ class O10ArrayLiteralFoldTest {
     }
 
     // --- helpers ---
+
+    /** Whether a UPLC term mentions the builtin anywhere. */
+    private static boolean mentions(Term term, DefaultFun fun) {
+        return switch (term) {
+            case Term.Builtin b -> b.fun() == fun;
+            case Term.Apply a -> mentions(a.function(), fun) || mentions(a.argument(), fun);
+            case Term.Lam l -> mentions(l.body(), fun);
+            case Term.Force f -> mentions(f.term(), fun);
+            case Term.Delay d -> mentions(d.term(), fun);
+            case Term.Constr c -> c.fields().stream().anyMatch(f -> mentions(f, fun));
+            case Term.Case c -> mentions(c.scrutinee(), fun) || c.branches().stream().anyMatch(b -> mentions(b, fun));
+            default -> false;
+        };
+    }
 
     private static int bits(Term term) {
         var writer = new FlatWriter();
