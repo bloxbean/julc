@@ -6,6 +6,7 @@ import org.julclang.compiler.resolve.SymbolTable;
 import org.julclang.compiler.resolve.TypeResolver;
 import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
+import org.julclang.core.DefaultUni;
 import com.github.javaparser.ast.expr.*;
 
 /**
@@ -209,6 +210,15 @@ final class TypeInferenceHelper {
                 case Constant.ByteStringConst _ -> new PirType.ByteStringType();
                 case Constant.UnitConst _ -> new PirType.UnitType();
                 case Constant.ValueConst _ -> new PirType.NativeValueType();
+                case Constant.Bls12_381_G1Element _ -> new PirType.NativeG1Type();
+                case Constant.Bls12_381_G2Element _ -> new PirType.NativeG2Type();
+                case Constant.Bls12_381_MlResult _ -> new PirType.NativeMlResultType();
+                case Constant.ListConst list when list.elemType() instanceof DefaultUni.Integer ->
+                        new PirType.NativeListType(new PirType.IntegerType());
+                case Constant.ListConst list when list.elemType() instanceof DefaultUni.Bls12_381_G1_Element ->
+                        new PirType.NativeListType(new PirType.NativeG1Type());
+                case Constant.ListConst list when list.elemType() instanceof DefaultUni.Bls12_381_G2_Element ->
+                        new PirType.NativeListType(new PirType.NativeG2Type());
                 default -> new PirType.DataType();
             };
         }
@@ -282,13 +292,14 @@ final class TypeInferenceHelper {
             case AppendByteString, SliceByteString, ConsByteString,
                  Sha2_256, Sha3_256, Blake2b_256, EncodeUtf8, UnBData,
                  IntegerToByteString,
-                 Bls12_381_G1_compress, Bls12_381_G2_compress,
-                 Bls12_381_G1_add, Bls12_381_G1_neg, Bls12_381_G1_scalarMul,
+                 Bls12_381_G1_compress, Bls12_381_G2_compress -> new PirType.ByteStringType();
+            case Bls12_381_G1_add, Bls12_381_G1_neg, Bls12_381_G1_scalarMul,
                  Bls12_381_G1_hashToGroup, Bls12_381_G1_uncompress,
-                 Bls12_381_G2_add, Bls12_381_G2_neg, Bls12_381_G2_scalarMul,
+                 Bls12_381_G1_multiScalarMul -> new PirType.NativeG1Type();
+            case Bls12_381_G2_add, Bls12_381_G2_neg, Bls12_381_G2_scalarMul,
                  Bls12_381_G2_hashToGroup, Bls12_381_G2_uncompress,
-                 Bls12_381_millerLoop, Bls12_381_mulMlResult,
-                 Bls12_381_G1_multiScalarMul, Bls12_381_G2_multiScalarMul -> new PirType.ByteStringType();
+                 Bls12_381_G2_multiScalarMul -> new PirType.NativeG2Type();
+            case Bls12_381_millerLoop, Bls12_381_mulMlResult -> new PirType.NativeMlResultType();
             case AppendString, DecodeUtf8 -> new PirType.StringType();
             case InsertCoin, UnionValue, UnValueData, ScaleValue ->
                     new PirType.NativeValueType();

@@ -139,7 +139,8 @@ public final class StrictBoundaryGenerator {
             case PirType.IntegerType _, PirType.ByteStringType _, PirType.StringType _,
                     PirType.BoolType _, PirType.UnitType _, PirType.DataType _ -> { }
             case PirType.PairType _, PirType.ArrayType _, PirType.FunType _,
-                    PirType.NativeValueType _ ->
+                    PirType.NativeValueType _, PirType.NativeG1Type _, PirType.NativeG2Type _,
+                    PirType.NativeMlResultType _, PirType.NativeListType _ ->
                     throw new IllegalArgumentException(
                             "Unsupported strict boundary type " + type.getClass().getSimpleName());
             case PirType.NamedTypeRef _ -> throw new IllegalStateException("Named type was not resolved");
@@ -172,7 +173,8 @@ public final class StrictBoundaryGenerator {
             case PirType.ListType list -> checkList(data, list.elemType(), nodeId);
             case PirType.MapType map -> checkMap(data, map.keyType(), map.valueType(), nodeId);
             case PirType.PairType _, PirType.ArrayType _, PirType.FunType _,
-                    PirType.NativeValueType _ ->
+                    PirType.NativeValueType _, PirType.NativeG1Type _, PirType.NativeG2Type _,
+                    PirType.NativeMlResultType _, PirType.NativeListType _ ->
                     throw new IllegalArgumentException(
                             "Unsupported strict boundary type " + type.getClass().getSimpleName());
             case PirType.NamedTypeRef _ -> throw new IllegalStateException("Named type was not resolved");

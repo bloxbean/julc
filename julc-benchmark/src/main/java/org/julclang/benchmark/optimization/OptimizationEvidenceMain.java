@@ -380,6 +380,10 @@ public final class OptimizationEvidenceMain {
         System.out.print(o10ArrayTableComparison().toMarkdown());
         System.out.println();
         System.out.print(o10ArrayLiteralOnlyComparison().toMarkdown());
+        for (int n = 1; n <= 8; n++) {
+            System.out.println();
+            System.out.print(o11MsmCrossoverComparison(n).toMarkdown());
+        }
         System.out.println();
         System.out.print(o12ExpModIdiomExperiment().toMarkdown());
         System.out.println();
@@ -729,6 +733,48 @@ public final class OptimizationEvidenceMain {
                                 OptimizationBenchmarkRunner.InputCase.of("run"))),
                 OptimizationLevel.PV11_SAFE,
                 "pv11.o10.array-literal-fold",
+                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+    }
+
+    private static final String O11_IMPORTS = """
+            import org.julclang.core.types.JulcG1;
+            import org.julclang.stdlib.Builtins;
+            import org.julclang.stdlib.lib.BlsLib;
+            import java.math.BigInteger;
+            """;
+
+    /**
+     * ADR-047 (O11): the compressed sum {@code s_1·P_1 + … + s_n·P_n} over {@code n} hashed G1
+     * points, written as the typed multi-scalar multiplication (candidate) and as the manual
+     * {@code g1ScalarMul}/{@code g1Add} chain (baseline), to measure where the one builtin
+     * call overtakes the chain on the pinned profile. Both programs hash the same points.
+     */
+    public static OptimizationBenchmarkRunner.Comparison o11MsmCrossoverComparison(int n) {
+        if (n < 1) throw new IllegalArgumentException("n must be positive");
+        var declarations = new StringBuilder();
+        var scalars = new StringBuilder();
+        var points = new StringBuilder();
+        String chain = "BlsLib.g1ScalarMul(BigInteger.valueOf(3), p0)";
+        for (int i = 0; i < n; i++) {
+            declarations.append("        JulcG1 p").append(i).append(" = Builtins.bls12_381_G1_hashToGroup(new byte[]{")
+                    .append(i + 1).append("}, dst);\n");
+            scalars.append(i > 0 ? ", " : "").append("BigInteger.valueOf(").append(3 + i).append(")");
+            points.append(i > 0 ? ", " : "").append("p").append(i);
+            if (i > 0) {
+                chain = "BlsLib.g1Add(" + chain + ", BlsLib.g1ScalarMul(BigInteger.valueOf(" + (3 + i) + "), p" + i + "))";
+            }
+        }
+        var msmSource = O11_IMPORTS + "class Msm {\n    static byte[] sum(byte[] dst) {\n" + declarations
+                + "        return BlsLib.g1Compress(BlsLib.g1MultiScalarMul(Builtins.scalars(" + scalars
+                + "), Builtins.g1Points(" + points + ")));\n    }\n}\n";
+        var chainSource = O11_IMPORTS + "class Chain {\n    static byte[] sum(byte[] dst) {\n" + declarations
+                + "        return BlsLib.g1Compress(" + chain + ");\n    }\n}\n";
+        var cases = List.of(OptimizationBenchmarkRunner.InputCase.of("empty-dst", PlutusData.bytes(new byte[]{})));
+        return OptimizationBenchmarkRunner.compareResearchFixturesWithJavaAndTruffle(
+                "o11-bls-msm-crossover-n" + n,
+                new OptimizationBenchmarkRunner.Fixture("o11-g1-chain-n" + n, chainSource, "sum", cases),
+                new OptimizationBenchmarkRunner.Fixture("o11-g1-msm-n" + n, msmSource, "sum", cases),
+                "adr-047.explicit-msm",
                 OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
     }
 
