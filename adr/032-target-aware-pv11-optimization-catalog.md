@@ -920,7 +920,13 @@ line through explicit, evidence-backed deferrals (2026-08-29). See
   deferred.)
 - Deferred O9 despite large valid-input gains because recursive List `get` and
   `IndexArray` expose different negative/out-of-range failure text and timing,
-  and no list use/escape analysis exists.
+  and no list use/escape analysis exists. (O9 was later delivered by ADR-043 at
+  `PV11_COSTED` only: a list *variable* indexed repeatedly is converted once and
+  its sites rewritten to `IndexArray`, with the out-of-range text change adopted
+  as a narrow failure contract and the break-even measured from the pinned
+  profile. The safe profile keeps the recursive `get`; a `DropList`-based `get`
+  lowering that dominates it at single sites is recorded there as a separate
+  decision.)
 - Retained the O11 BLS deferral: native group and native-list representations
   are prerequisites to any fusion.
 - Deferred O12 idiom recognition because ordinary `pow % modulus` differs from
@@ -1034,7 +1040,7 @@ line after the initial review window (2026-08-29).
 | O6 | [#101](https://github.com/bloxbean/julc/issues/101), [#113](https://github.com/bloxbean/julc/issues/113) | rejected by ADR-041: no `ChooseUnit` is emitted and no typed Unit statement surface exists; census of shipped artifacts shows negligible reachable gain |
 | O7 | [#95](https://github.com/bloxbean/julc/issues/95) | typed native Value boundary completed |
 | O8 | [#102](https://github.com/bloxbean/julc/issues/102), [#114](https://github.com/bloxbean/julc/issues/114) | ADR-042 implemented: strict-prefix sharing of repeated `UnValueData` conversions of one variable at `PV11_SAFE` (`pv11.o8.value-sharing`), failure-text neutral; `ValueData` sinking and adjacent cancellation remain out of scope |
-| O9 | [#103](https://github.com/bloxbean/julc/issues/103) | deferred: use/escape and failure proof required |
+| O9 | [#103](https://github.com/bloxbean/julc/issues/103), [#115](https://github.com/bloxbean/julc/issues/115) | ADR-043 implemented at `PV11_COSTED` only: a list variable indexed at two or more sites, or at a site inside a recursive binding (a loop body, an inlined list-operation callback or a recursive helper), is converted once with `ListToArray` and indexed with `IndexArray` (`pv11.o9.list-to-array`); failure contract on out-of-range indexes pinned; helper parameters and results carry call-site provenance, so nothing an unchecked cast or a callback's raw element can reach is promoted; break-even derived from the pinned profile; default-level output unchanged |
 | O10 | [#106](https://github.com/bloxbean/julc/issues/106) | deferred: no typed native Array literal producer |
 | O11 | [#96](https://github.com/bloxbean/julc/issues/96) | deferred: native BLS group/list types required |
 | O12 | [#104](https://github.com/bloxbean/julc/issues/104), [#118](https://github.com/bloxbean/julc/issues/118) | decision: no additional implementation required; explicit API exists, ordinary pow/mod rewrite rejected |

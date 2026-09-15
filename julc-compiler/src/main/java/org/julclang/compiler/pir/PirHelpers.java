@@ -48,6 +48,44 @@ public final class PirHelpers {
         };
     }
 
+    /**
+     * The recursive binding behind {@code JulcList.get}:
+     * {@code go_get(lst, idx) = if idx == 0 then HeadList(lst) else go_get(TailList(lst), idx - 1)}.
+     * Built once so that the lowering ({@link #recursiveListGet}) and the ADR-043 promotion pass
+     * that recognises it structurally cannot drift apart.
+     */
+    public static final PirTerm.Binding RECURSIVE_LIST_GET = recursiveListGetBinding();
+
+    private static PirTerm.Binding recursiveListGetBinding() {
+        var lstVar = new PirTerm.Var("lst_get", new PirType.ListType(new PirType.DataType()));
+        var idxVar = new PirTerm.Var("idx_get", new PirType.IntegerType());
+        var isZero = builtinApp2(DefaultFun.EqualsInteger, idxVar, new PirTerm.Const(Constant.integer(BigInteger.ZERO)));
+        var headExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), lstVar);
+        var tailExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), lstVar);
+        var decIdx = builtinApp2(DefaultFun.SubtractInteger, idxVar, new PirTerm.Const(Constant.integer(BigInteger.ONE)));
+        var recurse = new PirTerm.App(new PirTerm.App(recursiveListGetVar(), tailExpr), decIdx);
+        var body = new PirTerm.IfThenElse(isZero, headExpr, recurse);
+        var goBody = new PirTerm.Lam("lst_get", new PirType.ListType(new PirType.DataType()),
+                new PirTerm.Lam("idx_get", new PirType.IntegerType(), body));
+        return new PirTerm.Binding("go_get", goBody);
+    }
+
+    private static PirTerm.Var recursiveListGetVar() {
+        return new PirTerm.Var("go_get", new PirType.FunType(
+                new PirType.ListType(new PirType.DataType()),
+                new PirType.FunType(new PirType.IntegerType(), new PirType.DataType())));
+    }
+
+    /**
+     * {@code list.get(index)} as a per-site recursive traversal: O(index) {@code TailList} steps,
+     * failing with {@code HeadList: empty list} when {@code index} equals the length and
+     * {@code TailList: empty list} when it is negative or larger. Returns the raw element.
+     */
+    public static PirTerm recursiveListGet(PirTerm list, PirTerm index) {
+        return new PirTerm.LetRec(List.of(RECURSIVE_LIST_GET),
+                new PirTerm.App(new PirTerm.App(recursiveListGetVar(), list), index));
+    }
+
     static PirTerm builtinApp2(DefaultFun fun, PirTerm a, PirTerm b) {
         return new PirTerm.App(
                 new PirTerm.App(new PirTerm.Builtin(fun), a),

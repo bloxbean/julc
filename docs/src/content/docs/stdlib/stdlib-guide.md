@@ -353,6 +353,18 @@ class TracingValidator {
 
 ListsLib provides list construction, traversal, searching, and higher-order functions. In Plutus, lists are singly-linked (cons lists). Most operations are O(n).
 
+> **Indexing (ADR-043).** `list.get(i)` walks the list, so it costs about 683,000
+> CPU per index step at PV11 costs. When one list variable is indexed at two or
+> more sites, or inside a loop, either convert it yourself once with
+> `list.toArray()` and index the `JulcArray` (PV11 only, O(1) per access), or
+> compile at the opt-in `pv11-costed` level, where the compiler performs exactly
+> that rewrite automatically (`pv11.o9.list-to-array`), placing the conversion at
+> the innermost expression that contains every index site (for two sites in one
+> expression the output is byte-identical to the manual form written there). At `pv11-costed` an out-of-range index fails
+> at `IndexArray` with `IndexArray: index I out of bounds for array of size N`
+> instead of `HeadList`/`TailList: empty list`; the failure point is the same.
+> The default `pv11-safe` level leaves `get` as written.
+
 ### Basic List Operations
 
 ```java
@@ -1478,7 +1490,7 @@ The following features require protocol version 11 or later and will not work on
 
 - **Builtins.expModInteger()** — Modular exponentiation (tag 87, CIP-109)
 - **Builtins.dropList()** — Drop the first n elements from a list (tag 88, CIP-132)
-- **JulcArray\<T\>** — Immutable arrays with O(1) random access (tags 89-91, CIP-138)
+- **JulcArray\<T\>** — Immutable arrays with O(1) random access (tags 89-91, CIP-138); at the opt-in `pv11-costed` level the compiler also promotes a repeatedly indexed `JulcList` variable to an array automatically (ADR-043)
 - **BLS multi-scalar multiplication** — G1/G2 MSM operations (tags 92-93, CIP-133)
 - **NativeValueLib** — Native MaryEra Value operations (CIP-153)
 

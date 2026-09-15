@@ -409,29 +409,10 @@ public final class TypeMethodRegistry {
         reg.register("ListType", "get",
                 (scope, args, scopeType, argTypes) -> {
                     if (args.isEmpty()) throw new CompilerException("get() requires an index argument. Usage: list.get(0)");
-                    // LetRec pattern: go(lst, idx) = if idx == 0 then HeadList(lst) else go(TailList(lst), idx-1)
-                    var lstVar = new PirTerm.Var("lst_get", new PirType.ListType(new PirType.DataType()));
-                    var idxVar = new PirTerm.Var("idx_get", new PirType.IntegerType());
-                    var goVar = new PirTerm.Var("go_get", new PirType.FunType(
-                            new PirType.ListType(new PirType.DataType()),
-                            new PirType.FunType(new PirType.IntegerType(), new PirType.DataType())));
-
-                    var isZero = PirHelpers.builtinApp2(DefaultFun.EqualsInteger, idxVar,
-                            new PirTerm.Const(Constant.integer(BigInteger.ZERO)));
-                    var headExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.HeadList), lstVar);
-                    var tailExpr = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), lstVar);
-                    var decIdx = PirHelpers.builtinApp2(DefaultFun.SubtractInteger, idxVar,
-                            new PirTerm.Const(Constant.integer(BigInteger.ONE)));
-                    var recurse = new PirTerm.App(new PirTerm.App(goVar, tailExpr), decIdx);
-
-                    var body = new PirTerm.IfThenElse(isZero, headExpr, recurse);
-                    var goBody = new PirTerm.Lam("lst_get", new PirType.ListType(new PirType.DataType()),
-                            new PirTerm.Lam("idx_get", new PirType.IntegerType(), body));
-                    var binding = new PirTerm.Binding("go_get", goBody);
+                    // LetRec pattern: go(lst, idx) = if idx == 0 then HeadList(lst) else go(TailList(lst), idx-1).
+                    // The shape is shared with the ADR-043 (O9) promotion pass, which recognises it.
                     var lt = (PirType.ListType) scopeType;
-                    var raw = new PirTerm.LetRec(List.of(binding),
-                            new PirTerm.App(new PirTerm.App(goVar, scope), args.get(0)));
-                    return PirHelpers.wrapDecode(raw, lt.elemType());
+                    return PirHelpers.wrapDecode(PirHelpers.recursiveListGet(scope, args.get(0)), lt.elemType());
                 },
                 scopeType -> ((PirType.ListType) scopeType).elemType());
 

@@ -132,7 +132,10 @@ public final class JulcEval {
      * argument whose constructor tag is outside the declared variants reaches the switch
      * dispatch. Under the default safe profile that fails at the PV11 integer Case selection
      * with {@code "Case: tag T out of range for N branches"} (ADR-041); the legacy equality chain
-     * reported {@code "Error term encountered"}.
+     * reported {@code "Error term encountered"}. {@code JulcEval} always compiles at the default
+     * level, so it never shows the ADR-043 costed-level text ({@code "IndexArray: index I out of
+     * bounds for array of size N"} for an out-of-range {@code JulcList.get}); that text appears
+     * only where an artifact built at {@code pv11-costed} is evaluated.
      */
     public JulcEval sourceMap() {
         this.sourceMapEnabled = true;

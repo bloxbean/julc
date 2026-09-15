@@ -1,0 +1,565 @@
+# ADR-043: Cost-directed promotion of repeatedly indexed lists to arrays (O9)
+
+**Date:** 2026-09-13
+**Status:** Implemented and locally validated on `feat/115-list-to-array-promotion` (stacked on ADR-042's `feat/114-value-conversion-motion`); independent agent reviews and advisor passes applied; PR #144 review finding (helper parameters trusted by type) fixed by call-site provenance on 2026-09-15; maintainer review pending
+**Issues:** [#115](https://github.com/bloxbean/julc/issues/115) (O9), research decision [#103](https://github.com/bloxbean/julc/issues/103), parent [#77](https://github.com/bloxbean/julc/issues/77)
+**Governing decisions:** ADR-032 O9 (list-to-array promotion, "profile-cost" class), ADR-036 (PIR-to-PIR pass placement before UPLC generation), ADR-041 (narrow failure-contract precedent), ADR-042 (typed-PIR pass conventions)
+
+## Context and current behavior
+
+`JulcList.get(i)` is lowered per call site to a recursive traversal:
+
+```text
+(letrec go_get = (lam lst (lam idx
+    (if [[equalsInteger idx] 0] then [headList lst]
+                                else [[go_get [tailList lst]] [[subtractInteger idx] 1]])))
+ in [[go_get xs] i])
+```
+
+Under `cardano-node-11.0.1` PV11 costs at the safe profile one site costs
+620,227 CPU plus 683,204 CPU per index step (the list argument excluded), and each site
+carries its own fixpoint combinator and two-parameter lambda, about 60 FLAT bytes. A list that
+is indexed at several positions, or once per loop iteration with a growing index, pays that
+traversal every time: the WingRiders pool validator in `julc-examples` indexes `inputs`,
+`outputs` and the redeemer's `requestIndices` once each per request inside a `while` loop.
+
+PV11 arrays exist as a source feature: `list.toArray()` lowers to `ListToArray` and
+`JulcArray.get(i)` to `IndexArray`, whose cost is flat in the index (49,000 + 24,838·n CPU
+for the conversion of `n` elements, 312,010 CPU per indexed site). ADR-032 O9 asked for an
+automatic promotion of "one immutable list expression" before "repeated indexed access", gated
+by the pinned cost profile, and deferred it because the recursive `get` and `IndexArray` fail
+differently on out-of-range indexes and no list use/escape analysis existed. Research #103
+measured that valid results match and failure text differs.
+
+## Goals and non-goals
+
+Goals:
+
+- Promote a list *variable* that its scope indexes repeatedly to one `ListToArray` binding
+  and rewrite those sites to `IndexArray`, at `PV11_COSTED` only, with every result, trace
+  and failure point unchanged.
+- State the failure contract (out-of-range text) as narrowly as ADR-041 did, and say where a
+  validator can observe it.
+- Derive the break-even from the pinned profile by measurement and pin the loss on paths
+  that index less than assumed.
+- Produce, for the two-site shape, the same bytes as the hand-written `toArray()` form.
+- Keep `NONE`, `BASELINE` and `PV11_SAFE` (the default) byte-identical.
+
+Non-goals (recorded so they are not reintroduced without their own proof):
+
+- Enabling the rule at the safe profile. The loss on a path that converts but does not index
+  grows with the list length and no ledger list is statically bounded (see Cost).
+- Changing the `get` lowering itself. A `DropList`-based lowering was measured during this
+  work and is cheaper than the recursive form at every index (with the negative-index guard
+  it needs, from index one); it is recorded under Alternatives as a separate decision because
+  it changes the hash of every `get` site.
+- Promoting a list *expression* that is not a variable (`txInfo.outputs().get(i)` at several
+  sites re-evaluates the accessor chain per site). Sharing the accessor is O15's territory.
+- Promoting a single site outside a loop, per-path cost analysis, and `MultiIndexArray`
+  (unreleased; stays illegal at PV11).
+
+## Invariants and proof
+
+Definitions, for a binder of a variable `xs` (a `Let`, a lambda parameter, or a match field)
+and its scope `S`:
+
+- A **site** is exactly the lowering above with `xs` in list position, i.e.
+  `LetRec([go_get = G], [[go_get xs] i])` where `G` is the shared binding
+  `PirHelpers.RECURSIVE_LIST_GET`; the registry emits it through
+  `PirHelpers.recursiveListGet`, so the lowering and the recogniser cannot drift. Sites of a
+  *rebinding* of `xs` (an inner `Lam`, `Let`, `LetRec`, match binder or pattern variable named
+  `xs`) belong to that inner binding, not to this one. The element decoding around a site
+  (`unIData`, `unBData`, …, or nothing) is not part of the site and is kept.
+- The binding of `xs` is **eligible** when its scope holds at least two sites, or at least
+  one site inside a recursive binding value of a `LetRec` in the scope (a `while`/for-each
+  loop body, a list-operation callback, which the stdlib inlines into its recursion, or a
+  recursive helper). A single site under a plain lambda that is not recursive is not a repeat.
+  A `Let` binding is eligible only when its value is a list **by construction**
+  (`ListIndexPromotionPass.producesList`) under the environment of proven names at its
+  binder: a decode (`unListData`), a list builtin (`tailList`, `mkCons`, `dropList`, nil), a
+  proven variable, a full call of a method whose declared return type is a list and whose
+  result call-site provenance (below) proves, or a compound term whose result position is
+  one. Proven names are: list-typed parameters of the root term's own leading lambdas (the
+  program's contract with its caller; generated code binds Data-typed `__raw` parameters
+  there and decodes them in lets, so nothing is trusted at that boundary); parameters of a
+  **method** (the leading lambdas of every `Let`- or `LetRec`-bound value, which is how the
+  frontend binds methods, helpers, library methods and loops, read through the lets between
+  them) that call-site provenance proves; parameters of a lambda chain applied on the spot
+  (the validator wrapper applies the handler that way, under its method-binding lets), each
+  proven exactly when its argument produces a list, as a `Let` of the argument would be;
+  never a callback lambda's parameters, which the list-operation lowering applies to raw Data
+  elements; list-typed match fields (a list-typed match field is decoded with `unListData` by
+  the generator), list-match tails, and proven `Let`s; every other binder shadows the name out
+  of the set.
+  Whether a variable holds a list is therefore decided by how it was bound, never by the type
+  its uses carry: a cast from `PlutusData` to `JulcList` lowers to the Data-typed inner term,
+  so the local it binds is unproven, and so is every alias of it, including the post-loop
+  `let xs = xs` self-alias the loop lowering emits with the declared list type. A proven
+  self-alias is transparent: the sites below it belong to the outer binding.
+  Any other same-named binder (lambda parameter, `Let`, recursive binding, match field or
+  pattern variable, list-match head or tail, pair-match field) is a different binding.
+- **Call-site provenance.** A method's parameter `i` is proven while it is list-typed at every
+  binder of that method and every use of the method's name in the program is a call that
+  passes it a term that produces a list under the environment at the call; a call with fewer
+  arguments refutes every parameter it leaves unbound, and a use of the name that is not a
+  call (the method escaping as a value) refutes them all. A full call of a method produces a
+  list while the method's declared return type is a list (as before) and its chain's body
+  produces a list under the method's parameter environment. Both facts start optimistic and
+  are refuted over whole-term passes until nothing changes: the greatest fixpoint, so a
+  recursive helper or loop that hands its own parameter or its tail back to itself keeps the
+  proof its first call established, and mutual recursion through one `LetRec` is handled the
+  same way. It is sound because a value reaches a parameter only through a finite chain of
+  calls, each of which the fixpoint checked. Two binders with the same name and parameter
+  names share one record, so their facts are the conservative intersection; the rewrite finds
+  the record of a binder whose scope it has already rewritten by that key, which the rewrite
+  never changes. The analysis adds no promotion (a call result was already required to be
+  list-typed, and a parameter was trusted by its type); it only withdraws trust.
+- **Rewrite.** Allocate a fresh array variable `a` (`#array-N`); replace every site of this
+  binding by `[[indexArray a] i']`, where `i'` is the index with its own sites rewritten
+  recursively; and insert `let a = [listToArray xs]` at the **innermost sub-term of the
+  rewritten scope that contains every use of `a` and is evaluated at most once per evaluation
+  of the scope**: the walk descends through `Let` values and bodies, application function and
+  argument, conditions, branches, scrutinees, trace messages and bodies, constructor fields
+  and `LetRec` bodies, never into a recursive binding value, and into a lambda body only while
+  it is still inside the parameter chain that directly follows the binder (curried method
+  parameters, the validator wrapper's parameters and decode lets), which JuLC-generated code
+  applies in full and once. It never enters the scope of a binder that rebinds `xs`.
+
+**Soundness.** `ListToArray` is total and pure on a list value: for every runtime list it
+returns the array with the same elements in order, and it cannot trace, fail or observe
+anything. Its placement therefore changes only the budget. `IndexArray(a, i)` for `0 ≤ i < n`
+is element `i` of that array, which is exactly what `HeadList` after `i` `TailList` steps
+returns from the list: every rewritten site yields the same element, and the decoding around it
+is unchanged. Evaluation order at a site is unchanged too: the CEK machine evaluates the
+function position (`[go_get xs]`, a closure build; or `[indexArray a]`, a partial builtin)
+before the index, so the index expression, which may hold sites or fail, runs at the same
+point. For an index outside `0 ≤ i < n` both forms fail after the index is evaluated and before
+anything else runs, with no traces in between: the recursive form inside its traversal
+(`HeadList: empty list` when `i = n`, `TailList: empty list` when `i < 0` or `i > n`), the
+array form at the builtin. That difference is the failure contract below. Rebinding is
+respected (sites under a rebinding are neither counted nor rewritten), the fresh name cannot be
+captured, and the binding is well scoped: it is inserted below the binder of `xs` and above
+every use of `a`.
+
+**Typing trust.** The generator emits a site only for a `ListType` scope, but a `ListType`
+variable is not guaranteed to hold a UPLC list at run time: the frontend lowers a cast to
+`JulcList` as a no-op (only `JulcMap` casts insert `unMapData`), so the javac-legal
+`(JulcList<T>) (Object) d` binds a `JulcList` variable to whatever Data `d` holds, and a
+call passes such a value into a helper's list parameter unchecked. On every indexing path
+such a value already fails at every level (`HeadList: expected list`). Because sites are
+counted statically, the array binding can sit above a conditional or a loop whose body runs
+zero times, and on such a path the promoted program evaluates `ListToArray` where the
+original touched nothing: a success becomes a failure. This is **not** the ADR-042 class of
+assumption (that pass only shares a conversion that already ran first). The pass closes the
+direct case and every alias of it: whether a variable holds a list is decided by how it was
+bound, never by the type its uses carry, so a `Let` bound to a Data-typed term is unproven
+and so is every list-typed copy of it, including the `let xs = xs` the loop lowering emits
+after a loop with the declared list type (`CAST_LET`, `CAST_ALIAS` and `CAST_LOOP_ALIAS` keep
+their bytes). It also closes the indirect case, a value crossing a helper boundary into a
+list-typed parameter or back out through a list-typed result, by call-site provenance
+(Invariants): a helper's list-typed parameter is proven only when every call in the program
+passes it a list by construction, and a list-typed call result only when the helper's body
+produces one under that environment. The first implementation trusted helper parameters by
+their declared type and recorded the indirect case as reachable only through an unchecked
+cast; review of PR #144 showed that ordinary, well-typed Java reaches it with no cast at all.
+A list-typed callback parameter holds a raw Data element (below), and
+`groups.any(xs -> helper(xs, k))` passes it into `helper(JulcList<BigInteger> xs, BigInteger k)`,
+whose two conditional sites were promoted above the conditionals; with `k` on the
+never-indexing path a program that accepted at the safe level failed with
+`ListToArray: expected list, got …` at the costed level, on all three VMs, through
+`compileMethod` and through a spending validator with a valid typed redeemer. That exceeded
+the documented exception and is excluded now: the call from the callback refutes the
+parameter (`CALLBACK_HELPER`, `HELPER_CALLERS`), the cast flowing into a helper refutes it
+(`CAST_HELPER`), and the cast carried as a loop's single accumulator refutes the loop's
+parameter and with it the list-typed result the post-loop `let` is bound to
+(`CAST_LOOP_STATE`); all four keep their bytes at every level. A helper whose every caller
+passes a list still promotes inside the helper (`HELPER`; `ESCAPE` and `SHADOW` keep their
+promotions), and an entrypoint list the wrapper decodes and passes to the handler reaches a
+helper's sites as a proven list. A callback lambda's list-typed parameter is not trusted at
+all: the list-operation lowering applies callbacks to raw Data elements, so such a parameter
+holds Data whatever its type says, and sites on it (which fail at every level today) are left
+alone. The pass tells methods from callbacks by position: a lambda that is the value of a
+`Let` or `LetRec` binding is a method (the frontend binds methods, helpers, library methods
+and loops that way, and a lambda-typed local is rejected at compile time with
+`Unknown type: Function`), a lambda in argument position is a callback, and a lambda chain
+applied on the spot, possibly under the lets that wrap it (the wrapper applies the handler
+under its method bindings), binds each parameter as a `Let` of its argument would. What
+remains trusted is the root term's own list-typed parameters, which generated code never has
+(the wrapper's parameters are Data and are decoded by lets); a direct-PIR caller of
+`compilePirToProgram` owns that contract. Inserting `unListData` in `JulcList` casts like the
+`JulcMap` rule is no longer needed for this pass and stays an open question of its own.
+
+**Failure-text change.** Unlike ADR-042 and like ADR-041, one failure point changes its text.
+It is confined to promoted sites on out-of-range indexes and pinned on all three VMs.
+
+## Failure contract decision
+
+ADR-032 invariant 3 preserves failure semantics "unless a separately accepted
+language-semantic ADR changes the contract". This ADR is that decision, and it is deliberately
+narrow:
+
+> At `PV11_COSTED`, a promoted `JulcList.get(i)` with `i` outside `0 ≤ i < length` fails at the
+> `IndexArray` builtin instead of inside the recursive traversal. Both fail after `i` is
+> evaluated and before any further effect, so the failure point, the traces and every result
+> on other paths are identical. Off-chain, the Java and Truffle VMs report
+> `IndexArray: index I out of bounds for array of size N` (or
+> `IndexArray: index out of range: I` when `I` is beyond the machine integer range); Scalus
+> reports `Builtin error: IndexArray …, caused by … indexArray: index I out of bounds for
+> array of length N`. The recursive form reported `HeadList: empty list` (`I = N`) or
+> `TailList: empty list` (`I < 0`, `I > N`); Scalus `Builtin error: HeadList … head of empty
+> list` / `TailList … tail of empty list`.
+
+On-chain a failure is a failure; the ledger observes no text. The change is observable in
+off-chain failure text and in the budget of the failing path, which is smaller (the traversal
+up to the failure is gone; for `TWO` at indexes `7, 8` on eight elements 12,191,291 CPU
+becomes 1,727,989).
+
+**Reachability, stated for validators.** This is wider than ADR-041's. The strict typed
+boundary decodes an integer with a bare `unIData` (`StrictBoundaryGenerator.forceInteger`)
+and does not range-check it, so a redeemer- or datum-supplied index reaches `get` unchecked
+and a validator itself observes the new text off-chain
+(`validatorObservesTheIndexFailureContractThroughTheStrictBoundary` runs a `@SpendingValidator`
+through its boundary with indexes 8, 99 and −1 on all three VMs). Only consumers that select
+the costed level can see it: the Gradle plugin and annotation processor with
+`julc.optimization=pv11-costed` and a `costProfile`, `julc build --optimization pv11-costed`,
+direct `JulcCompiler`/`SourceDiscovery.compile` use with `CompilerOptions`, the MCP compile
+tools, and `julc eval` of an artifact built that way. The testkit's `JulcEval`, `MethodEvaluator`
+and `ValidatorTest` always compile at the default level and never show it. Nothing compiled at
+`pv11-safe` changes; the `JulcEval` javadoc and the release note say so. The test helper
+`IndexFailureEquivalence` accepts exactly this substitution, in the promoted direction, within
+one VM family's wording, and requires the new text to name the failing index and the array
+length.
+
+## Cost
+
+Measured on the Java VM (asserted equal to Truffle) under `cardano-node-11.0.1` PV11 costs at
+the safe profile, each constant as a program difference so shared sub-terms cancel:
+
+| Quantity | CPU | Memory |
+|---|---:|---:|
+| recursive `get` site at index `i`, with its `unIData` decode | 620,227 + 683,204·i | |
+| `ListToArray` of `n` elements | 49,000 + 24,838·n | 307 + n |
+| one `IndexArray` site with the same decode (312,010 without it) | 364,754 | |
+| the array binding (lambda, application, lookup) | 48,000 | 300 |
+
+Both site forms are measured with the element decode they carry in a program, so their
+difference, −255,473 CPU per site at index 0, is the in-program per-site delta. Whole-program
+check (the test asserts it exactly on a grid of five lengths and seven index sets with two,
+three and four sites): promoting `k` sites at indexes `I` on a list of `n` elements changes
+CPU by
+
+```text
+Δ(n, I) = 48,000 + 49,000 + 24,838·n + 364,754·k − Σ (620,227 + 683,204·i)
+        = 97,000 + 24,838·n − 255,473·k − 683,204·Σ I
+```
+
+so the promotion pays exactly when the traversal steps it removes outweigh the conversion of
+the whole list. Largest length that still saves CPU, per index set (computed from the same
+constants):
+
+| Sites (indexes) | Saves up to length |
+|---|---:|
+| (0, 0) | 16 |
+| (0, 1) | 44 |
+| (1, 2) | 99 |
+| (0, 7) | 209 |
+| (3, 7) | 291 |
+| (0, 1, 2) | 109 |
+| (1, 2, 3) | 191 |
+| (0, 1, 2, 3) | 202 |
+
+Because one traversal step costs 27 times the conversion of one element, any site at index one
+or more pays for the conversion of dozens of elements; only sets of index-0 sites on longer
+lists lose. Loops multiply the saving: the WingRiders-shaped benchmark with sixteen requests
+drops from 349,567,377 to 81,928,031 CPU.
+
+**Loss, stated plainly.** A path that converts and then evaluates fewer than two sites pays
+up to the conversion plus the binding, `97,000 + 24,838·n` CPU and `607 + n` memory per
+promoted list, minus 255,473 CPU for each site it does evaluate: an empty loop (`LOOP` with no
+requests, two lists of 8 and 0 elements: +392,704, exactly the bound), an untaken branch
+whose sibling holds the sites when both branches index (`EXCLUSIVE`, index 0, eight elements:
+295,704 − 255,473 = +40,231; sixty-four elements: +1,431,159), a loop that runs once on a long
+list (`LOOP`, one request on sixty-four elements: +614,320). A path on which the binding is
+not placed pays nothing (`BRANCH`'s tracing branch, `GUARDED`'s short-list branch:
+byte-identical budgets); a path that is below the binding but takes a sibling of every site
+pays the conversion. Two further cost shapes are stated rather than optimised: a list bound
+outside a helper and indexed inside it (a `@Param` list) is converted once per evaluation
+where the helper's lambda is bound, so every path pays it, including paths that never call
+the helper; and a loop-carried list (`cur = cur.tail()` with two sites per iteration) is
+re-bound and therefore re-converted on every iteration, an O(n) conversion of the shrinking
+list that only pays when the per-iteration break-even holds. The rule is therefore a
+costed-profile decision with an explicit assumption: a promoted list is indexed at least twice
+per evaluation, or its loop runs at least twice. The test pins the CPU and memory loss bounds
+from the measured profile rather than constants.
+
+## Decision
+
+1. Add `ListIndexPromotionPass` (`julc-compiler/pir`), a PIR-to-PIR pass with the rewrite
+   above, run after `ValueConversionSharingPass` and before `PairDestructuringPass` at all
+   three compiler entry points (`compile`, `compileMethod`, `compilePirToProgram`), threading
+   source positions through. Rule provenance `pv11.o9.list-to-array`. Gate: exact
+   `PLUTUS_V3_PV11` target, a level with the new `pv11CostedRulesEnabled()` (exactly the
+   levels that require a cost profile: `PV11_COSTED`), `ProtocolCapability.ARRAY_CONSTANTS`,
+   and both array builtins available on the resolved feature profile.
+2. Count sites statically: at least two sites, or one site under a recursive binding. Do not
+   require a second site on every path; the loop case is the point of the rule, and exclusive
+   branches with one site each are promoted above the conditional with the loss stated above.
+3. Place the binding at the innermost evaluated-once sub-term, descending through the
+   binder's parameter chain. This is what keeps paths outside the binding free and makes
+   the output byte-identical to a hand-written `toArray()` placed at that same innermost
+   sub-term (the `TWO`/`MANUAL` pair; a hand-written conversion placed higher, for example
+   at the top of `GUARDED`, produces different bytes for the same budget on indexing paths).
+8. Promote only proven bindings: a `Let` whose value is a list by construction under the
+   proven-name environment at its binder, a list-typed match field, a list-match tail, a
+   root parameter, a parameter of a lambda chain applied on the spot whose argument is proven,
+   or a method parameter that call-site provenance proves (never a callback lambda's).
+   Aliases inherit the proof of what they copy, so no cast local becomes promotable through
+   a copy or through the loop lowering's post-loop self-alias; a proven self-alias is
+   transparent so one conversion serves sites inside and after a loop. A list-typed call
+   result is proven only when the callee's body produces a list under its parameter
+   environment.
+4. Recognise the `get` shape structurally through the shared constant
+   `PirHelpers.RECURSIVE_LIST_GET`; the registry lowering builds from the same constant, and a
+   test pins that the emitted shape is the recognised one so a later change to the lowering
+   fails loudly instead of silently disabling the rule.
+5. Emit only `ListToArray` and `IndexArray`; never `MultiIndexArray`.
+6. Derive the break-even in the test from the pinned profile (constants and whole-program
+   fit) and publish the table above; no cost constant is typed into the compiler, and the
+   pass reads no cost parameters, because list lengths and indexes are run-time values.
+7. Adopt the failure contract above; pin it with `IndexFailureEquivalence` on Java, Truffle
+   and Scalus; document it in the release note and the `JulcEval` javadoc.
+
+The default level does not change: every artifact compiled at `PV11_SAFE` keeps its bytes and
+hash. The rule is the first costed-only rule; `pv11CostedRulesEnabled()` is the predicate
+future profile-cost rules should share.
+
+## Alternatives rejected
+
+- **Safe-profile enablement.** The loss on a converting, non-indexing path is
+  `97,000 + 24,838·n` CPU with `n` unbounded; ADR-032 forbids an unbounded loss at the safe
+  profile. Rejected by measurement.
+- **A `DropList`-based `get` lowering** (`headList(dropList(i, xs))`, PV11 only). Measured
+  by `O9DropListAlternativeTest` (Java VM, `compileMethod` programs with `BigInteger` indexes
+  on eight elements at the safe profile; the numbers below are the harness's output):
+  `xs.drop(i).head()` costs 843,382 + 1,957·i CPU, the same with a source-level
+  `i.compareTo(ZERO) < 0` guard 1,274,295 + 1,957·i (a lowering could emit the bare
+  `lessThanInteger` guard for about a third of that), while `xs.get(i)` costs
+  1,083,004 + 683,204·i; the three method programs are 31, 60 and 73 FLAT bytes. The
+  unguarded form is cheaper at every index; the guarded form is cheaper from index 1 on
+  (191,291 CPU dearer at index 0, 491,913 cheaper at index 1, one traversal step cheaper per
+  further index). It needs no use analysis, and it would move O9's break-even to
+  `Σ I > n + …` (still favouring the loop shape, rejecting most flat pairs).
+  The unguarded form is not a valid replacement: `DropList` treats a negative count as zero,
+  so `xs.drop(-1).head()` returns element 0 where `get(-1)` fails (the harness pins it). With
+  the guard, failure text differs only for `i < 0` (`TailList: empty list` becomes the guard's
+  error) and `i > n` (`TailList` becomes `HeadList: empty list`); `i = n` is unchanged. It is
+  **not** taken in this slice because it is outside #115's letter and changes the hash of
+  every validator with a `get` site at the safe profile (`rg -c '\.get\('` over
+  `julc-examples/src/main` counts 37 call sites); it is filed as a separate decision for the
+  maintainer.
+- **Path-sensitive counting** (a second site on every path). Never loses on exclusive
+  branches, but rejects the loop shape entirely, which is the largest measured gain.
+- **Compile-time break-even from the cost parameters.** The inequality needs `n` and the
+  indexes, which are run-time values, so numeric access to the profile buys nothing; the
+  profile enters through the measured table and the test that reproduces it.
+- **Binder placement without sinking.** Simpler, but every path through the binder's scope
+  would pay the conversion, including `BRANCH`'s tracing branch and `GUARDED`'s short-list
+  path, and the two-site output would not match the manual form.
+- **Trusting helper parameters and results by their declared type** (the first
+  implementation, reviewed on PR #144). Sound only under the unchecked-cast exception, which
+  ordinary Java escapes through a callback's raw element; replaced by call-site provenance,
+  which withdraws trust and never adds a promotion.
+- **Treating any lambda as a repeat.** A callback lambda passed to an unknown function may run
+  zero times; the stdlib's own list operations inline their callback into a recursive binding
+  and are covered by the loop rule (`CALLBACK` fixture).
+- **`MultiIndexArray`.** Unreleased at PV11; ADR-032 keeps it illegal.
+- **Promoting accessor expressions** (`h.items().get(2)`). The scope is an application, not a
+  variable; sharing the accessor first is O15.
+
+## Affected stages and modules
+
+- `julc-compiler`: new `pir/ListIndexPromotionPass`; `PirHelpers.RECURSIVE_LIST_GET` and
+  `recursiveListGet` (the registry's `ListType.get` now builds from them, byte-identical);
+  `OptimizationLevel.pv11CostedRulesEnabled()`; `JulcCompiler` wiring at the three pass sites.
+  No new PIR node, no `UplcGenerator` change, no VM change.
+- `julc-benchmark`: `OptimizationEvidenceMain.o9RequestLoopComparison`, `o9TwoSitesComparison`
+  and the manual control replace the BASELINE-only research experiment;
+  `OptimizationBenchmarkRunner.compare` gains an explicit baseline level so a costed rule is
+  measured against the safe profile; `O9ListIndexPromotionBenchmarkTest`.
+- Decompiler: unchanged. The promoted sites are plain builtin applications
+  (`ListIndexPromotionDecompileTest`).
+- Docs: ADR-032 audit row and Milestone 4 bullet, release notes, stdlib guide (`JulcList.get`
+  and `JulcArray`), compiler developer guide, `JulcEval` javadoc.
+
+## Compatibility and risks
+
+- **Hash impact.** Only `PV11_COSTED` output of programs with an eligible list binding
+  changes. No shipped artifact is built at that level (the Gradle plugin and annotation
+  processor default to `pv11-safe`), so the external example corpus is byte-identical at the
+  default; the evidence document records the default and the costed runs of `julc-examples`.
+- **Failure contract.** As above; confined to the costed level, pinned on all three VMs.
+- **Loss bound.** Stated above; measured from the profile in the test.
+- **Typing trust.** As above: closed by construction for direct casts, their aliases, and
+  every flow through a helper parameter, a helper result or a loop's state (`CAST_HELPER`,
+  `CAST_LOOP_STATE`, `CALLBACK_HELPER`, `HELPER_CALLERS` keep their bytes at every level).
+  Only the root term's own list-typed parameters remain trusted, which generated code never
+  has. Relative to the first (unmerged) implementation, the costed output changes in two
+  places: a helper reached by an unproven list no longer promotes, and a validator whose
+  entrypoint list parameter reaches a helper's sites now does (the handler's applied chain
+  previously stopped at the first method-binding let). Nothing shipped was built at that
+  level.
+- **Source maps.** Positions of a rewritten site map to the `IndexArray` application; the
+  binding takes the position of the sub-term it wraps. Source-map builds skip the UPLC
+  optimiser and are not the deployable artifact.
+- **Determinism.** Fresh names `#array-N` are allocated in traversal order; every fixture is
+  compiled twice and compared byte for byte.
+- **Direct PIR.** `compilePirToProgram` applies the same pass (ADR-036/038/042 promise).
+- **Scalus.** Supports both array builtins at PV11 with budgets equal to the Java VM on every
+  fixture input; its failure text embeds the failing term and is matched by pattern.
+
+## Measurements
+
+Java VM = Truffle (asserted), Scalus agrees on results, traces, failure class and budgets;
+`cardano-node-11.0.1` PV11 costs; source maps off; before = safe-profile output at `940dc65b`
+(ADR-042 head) captured into `optimization/o9-pre-change-bytes.txt`, which equals the costed
+output at that commit, so every delta is O9 alone. Full table in
+`adr/evidence/043-list-to-array-promotion.md`.
+
+| Fixture | Bytes | Path | CPU before → after | Δ CPU |
+|---|---:|---|---:|---:|
+| TWO (`xs.get(i) + xs.get(j)`) | 134 → 51 | 0, 1 on 8 | 2,748,387 → 1,849,941 | −898,446 |
+| TWO | | 7, 7 on 8 | 11,630,039 → 1,849,941 | −9,780,098 |
+| TWO | | 0, 63 on 64 | 45,107,035 → 3,240,869 | −41,866,166 |
+| MANUAL (`toArray()` by hand) | 51 → 51 | all | unchanged | same hash as TWO after |
+| LOOP (WingRiders shape, two lists) | 307 → 229 | three requests | 26,396,255 → 15,765,779 | −10,630,476 |
+| LOOP | | no requests | 3,061,156 → 3,453,860 | +392,704 |
+| LOOP | | one request, 64 elements | 8,334,441 → 8,948,761 | +614,320 |
+| EACH (site inside for-each) | 132 → 93 | three iterations | 5,631,859 → 5,161,144 | −470,715 |
+| EACH | | empty loop | 958,399 → 1,254,103 | +295,704 |
+| FIELD (record field, accessor site kept) | 192 → 109 | four elements | 5,352,135 → 4,354,337 | −997,798 |
+| BRANCH (sites in one branch) | 205 → 122 | indexing branch | 2,909,715 → 2,011,269 | −898,446 |
+| BRANCH | | tracing branch | 8,398,412 → 8,398,412 | 0 |
+| TRACE_BETWEEN | 135 → 52 | eight elements | 2,590,397 → 1,691,951 | −898,446, trace order kept |
+| GUARDED (sites behind a length check) | 190 → 107 | eight elements | 10,199,331 → 9,300,885 | −898,446 |
+| GUARDED | | short list | 1,914,954 → 1,914,954 | 0 |
+| ESCAPE (list also iterated by a helper) | 187 → 104 | three elements | 5,471,695 → 4,449,059 | −1,022,636 |
+| SHADOW (helper rebinds `xs`) | 188 → 105 | valid | 3,438,267 → 2,390,793 | −1,047,474 |
+| NESTED (`xs.get(xs.get(0))`) | 116 → 33 | valid | 2,189,691 → 1,167,055 | −1,022,636 |
+| EXCLUSIVE (one site per branch) | 136 → 53 | index 1 branch | 2,124,280 → 1,481,307 | −642,973 |
+| EXCLUSIVE | | index 0 branch, 8 elements | 1,441,076 → 1,481,307 | +40,231 |
+| EXCLUSIVE | | index 0 branch, 64 elements | 1,441,076 → 2,872,235 | +1,431,159 |
+| CALLBACK (site in `filter` callback) | 237 → 198 | three elements | 10,488,249 → 9,868,506 | −619,743 |
+| SINGLE (control) | 73 → 73 | all | unchanged | 0 |
+| CAST_LET (`(JulcList) (Object) d`, two sites) | 140 → 140 | all | unchanged (not a list by construction) | 0 |
+| CAST_HELPER (cast into a helper parameter) | 145 → 145 | all | unchanged (the call refutes the parameter) | 0 |
+| CAST_ALIAS (list-typed copy of the cast local) | 140 → 140 | all | unchanged (alias of an unproven variable) | 0 |
+| CAST_LOOP_ALIAS (cast local, a loop, then the lowering's `let xs = xs`) | 212 → 212 | all | unchanged (the self-alias inherits the missing proof) | 0 |
+| ALIAS (`ys = xs` of a parameter, two sites) | 137 → 51 | 0, 1 on 8 | 2,796,387 → 1,849,941 | −946,446 |
+| CAST_LOOP_STATE (cast local as a loop's accumulator) | 204 → 204 | all | unchanged (the loop's parameter and result are refuted) | 0 |
+| CALLBACK_HELPER (callback element into a helper, the PR #144 shape) | 206 → 206 | all | unchanged (the call from the callback refutes the parameter) | 0 |
+| HELPER_CALLERS (one decoded caller, one callback caller) | 328 → 328 | all | unchanged | 0 |
+| HELPER (every caller passes a decoded list; two sites inside the helper) | 150 → 67 | two lists of 8 at 1 | 5,247,650 → 3,450,758 | −1,796,892 |
+| HELPER | | two lists of 8 at 7 | 13,446,098 → 3,450,758 | −9,995,340 |
+| HELPER | | two lists of 64 at 0 | 3,881,242 → 6,232,614 | +2,351,372 (two conversions, exactly the bound) |
+
+Benchmark (`o9RequestLoopComparison`, sixteen inputs, seventeen outputs, `r` requests with
+descending indexes, safe → costed): 0: 3,263,089 → 4,373,743; 1: 9,535,017 → 9,220,886;
+2: 17,856,557 → 14,068,029; 4: 40,648,473 → 23,762,315; 8: 110,827,649 → 43,150,887;
+16: 349,567,377 → 81,928,031.
+
+Every out-of-range input fails at the same point with the documented substitution and a
+smaller budget; every other failure (an unpromoted accessor site, a helper's own site) keeps
+its exact text.
+
+## Implementation milestones
+
+One milestone, delivered on `feat/115-list-to-array-promotion` stacked on ADR-042:
+
+1. Goldens captured at `940dc65b` before any change; `OptimizationLevel.pv11CostedRulesEnabled`;
+   shared `get` shape in `PirHelpers`; the pass; wiring.
+2. Fixture matrix, direct-PIR probes and the cost-model fit on Java, Truffle and Scalus;
+   benchmark comparisons and manual control; decompiler check.
+3. Two independent agent reviews (pass legality and placement; tests, goldens, evidence,
+   docs), fixes folded in.
+4. Full build, Blaster lock check, Maven-local publish and external `julc-examples` runs at
+   the default level and at `pv11-costed` (WingRiders benchmark); stacked PR; release-plan
+   update; the `DropList` lowering filed as its own issue.
+5. PR #144 review: call-site provenance for method parameters and results (Invariants), the
+   `CALLBACK_HELPER`, `HELPER_CALLERS` and `HELPER` fixtures with goldens captured at the same
+   base commit (every earlier row reproduced byte-identically), `CAST_HELPER` and
+   `CAST_LOOP_STATE` re-pinned as untouched, the applied handler chain read through the
+   wrapper's lets.
+
+## Verification
+
+- `O9ListIndexPromotionTest` (`pair-case-backends`, Java/Truffle/Scalus): 23 fixtures × 4
+  levels × source maps off/on against the goldens; rule provenance; array-binding, surviving
+  and rewritten site counts on the emitted PIR; no `MultiIndexArray`; byte identity with the
+  manual `toArray()` form; every binding converts a variable and every rewritten site is an
+  `IndexArray` on such a binding; direct-PIR shapes (Let binding, parameter chain, exclusive
+  branches, callback lambdas single and paired, recursive binding, rebinding, match field,
+  crossed indexes, trace, error branch, post-loop self-alias, cast-typed versus decoded
+  `Let`); list-typed aliases (an unproven cast local self-aliased as the loop lowering does,
+  copied once and copied twice: untouched and succeeding on the non-indexing path; aliases of
+  a parameter, of a decode through two copies and of a list-match tail: promoted; copies of a
+  list-match head, a pattern variable, a non-list match field, a pair-match component and a
+  recursive binding that shadow a proven name: untouched; a callback lambda's list-typed
+  parameter: untouched, the same lambda as the root or as a recursive binding: promoted) and
+  the generated post-loop self-alias in `CAST_LOOP_ALIAS`; call-site provenance
+  (`helperParametersAndReturnsCarryCallSiteProvenance`: the review shape, mixed and proven
+  callers, an escaping method, results of unproven and proven arguments, under-application
+  with and without the supplied list, recursion and mutual recursion proven and refuted, a
+  tail-fed callee, a chain through a let, same-key binders merged and distinct keys; every
+  refuted shape returns the identical term and its never-indexing path returns −1 at both
+  levels on all three VMs) and the review's spending validator
+  (`callbackToHelperCompositionKeepsValidatorAcceptanceAtTheCostedLevel`: rule inert, costed
+  bytes equal safe bytes, acceptance and budget equal on all three VMs; the well-typed
+  counterpart with an entrypoint list promotes and shows only the documented substitution);
+  every rebinding binder kind (lambda, match field, pattern variable, list-match
+  tail, pair-match field, recursive binding) with a result that proves which list each site
+  read, and single-site variants that stay untouched; the cost model (constants and an exact
+  whole-program check with two, three and four sites) and the break-even table; `@Param` and
+  datum field validator shapes; the failure contract through the strict boundary with a
+  redeemer-supplied index on all three VMs; inertness below the costed level and without
+  repeats; per-input budget expectations (saves / pays within the measured CPU and memory
+  bounds / untouched / documented divergence); Truffle and Scalus budgets equal to Java on
+  every input.
+- `IndexFailureEquivalence`: the substitution, the index and the length in the new text.
+- `O9DropListAlternativeTest`: the reproducible harness for the `DropList` alternative.
+- `O9ListIndexPromotionBenchmarkTest`: safe versus costed on Java and Truffle for the request
+  loop (strictly cheaper from two requests up) and the two-site shape (byte identity with the
+  manual control).
+- `ListIndexPromotionDecompileTest`: promoted programs decompile as array builtin calls.
+- Existing suites: compiler, `pairCaseTest`, stdlib, testkit, decompiler, benchmark,
+  annotation processor, Gradle plugin; full build; Blaster lock unchanged (compiles at
+  `baseline`); external `julc-examples` against Maven local at the default level and at
+  `pv11-costed`.
+
+## Open questions
+
+- The `JulcList` cast lowering: casts from non-list terms could insert `unListData` as
+  `JulcMap` casts do (a safe-level byte change for programs that today fail on any index of
+  such a value). No longer needed for this pass, which trusts nothing such a cast can reach.
+- Callback parameters: the list-operation lowering applies a callback to its raw Data
+  elements and unwraps only primitive parameter types, so a `JulcList`-typed callback
+  parameter holds Data and any index of it fails at every level today. This pass never trusts
+  such a parameter; decoding list- and map-typed callback parameters in the frontend (as
+  primitives are) would make them lists by construction and promotable. A frontend change
+  with its own bytes, outside this ADR.
+- `map`/`filter` results are not recognised as lists: their `foldl` recursion is typed as
+  returning Data, so `let ys = xs.filter(…)` followed by repeated `ys.get` sites is not
+  promoted (fail-safe). Typing the list-operation builders' returns would enable it.
+- The `DropList`-based `get` lowering (Alternatives). If adopted, O9's break-even changes and
+  its single-site numbers become moot; the maintainer's call, filed as
+  [#143](https://github.com/bloxbean/julc/issues/143).
+- A loop-carried list (`cur = cur.tail()` with repeated sites per iteration) is re-converted
+  every iteration; declining to promote a binder whose value is an accumulator unpack inside a
+  recursive binding value would avoid the O(n²) shape at the cost of the per-iteration gain.
+- O15: repeated `txInfo.outputs().get(i)` through the accessor chain (the LinkedList example)
+  is not a variable and is not promoted; sharing the accessor result first would make it one.
+- HOF callbacks that are *not* inlined into a recursion (a lambda passed to a user function)
+  count as a single site; the stdlib inlines its own, so the corpus is covered.
+- A future profile-cost rule that needs the numeric profile at compile time would need the
+  V3 parameter-name map, which lives in `julc-vm-java`'s `CostModelParser`; this rule did not.
+- Rule provenance is recorded when the pass fires in dead helper code that DCE later removes,
+  as for every earlier rule.
