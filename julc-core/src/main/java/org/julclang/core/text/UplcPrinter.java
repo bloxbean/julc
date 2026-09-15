@@ -103,7 +103,7 @@ public final class UplcPrinter {
         }
     }
 
-    private static void printConstant(Constant constant, StringBuilder sb) {
+    static void printConstant(Constant constant, StringBuilder sb) {
         switch (constant) {
             case Constant.IntegerConst i -> {
                 sb.append("integer ");
