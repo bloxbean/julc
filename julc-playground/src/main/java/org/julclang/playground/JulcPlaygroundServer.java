@@ -126,6 +126,12 @@ public class JulcPlaygroundServer {
                 if (path.contains("..")) { ctx.status(400).result("Invalid path"); return; }
                 serveClasspathResource(ctx, "/static/assets/" + path);
             });
+            // In-browser (WebAssembly) engine, present when the frontend was built with -PwithWasm
+            app.get("/wasm/{path}", ctx -> {
+                String path = ctx.pathParam("path");
+                if (path.contains("..")) { ctx.status(400).result("Invalid path"); return; }
+                serveClasspathResource(ctx, "/static/wasm/" + path);
+            });
             app.get("/", ctx -> serveClasspathResource(ctx, "/static/index.html"));
         }
 
@@ -183,7 +189,8 @@ public class JulcPlaygroundServer {
             "woff", "font/woff",
             "woff2", "font/woff2",
             "svg", "image/svg+xml",
-            "png", "image/png"
+            "png", "image/png",
+            "wasm", "application/wasm"
     );
 
     private static void serveClasspathResource(io.javalin.http.Context ctx, String resourcePath) throws IOException {
