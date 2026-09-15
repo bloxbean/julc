@@ -1,7 +1,7 @@
 import { currentTransport } from './transport';
 
 // Requests go to the selected engine (REST server or in-browser WebAssembly); both use the same statuses and JSON.
-async function post<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
+export async function post<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
   const res = await currentTransport().request('POST', path, body, signal);
   if (res.status === 408) throw new Error('Request timed out. Please try with simpler code.');
   if (res.status === 429) throw new Error('Rate limit exceeded. Please slow down.');

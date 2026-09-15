@@ -9,8 +9,15 @@
   import EngineToggle from './lib/components/EngineToggle.svelte';
   import { isChecking, contractName, purpose, diagnostics } from './lib/stores/editor';
   import { engine, wasmStatus } from './lib/stores/engine';
+  import { mode } from './lib/stores/mode';
 
   let editorRef: Editor;
+
+  // The UPLC page (and its stores) load on first use and then stay mounted, like the Contract editor.
+  let UplcPage: any = null;
+  $: if ($mode === 'uplc' && !UplcPage) {
+    import('./lib/uplc/UplcPage.svelte').then((m) => (UplcPage = m.default));
+  }
 
   function handleExampleSelect(source: string) {
     editorRef?.setValue(source);
@@ -29,7 +36,13 @@
   <header class="toolbar">
     <div class="toolbar-left">
       <span class="logo">JuLC Playground</span>
-      {#if $contractName}
+      <div class="mode-tabs" role="tablist" aria-label="Playground mode">
+        <button role="tab" aria-selected={$mode === 'contract'} class:active={$mode === 'contract'} on:click={() => mode.set('contract')}
+          title="Write, compile and test a JuLC contract">Contract</button>
+        <button role="tab" aria-selected={$mode === 'uplc'} class:active={$mode === 'uplc'} on:click={() => mode.set('uplc')}
+          title="Inspect, evaluate and debug any compiled Plutus script">UPLC</button>
+      </div>
+      {#if $mode === 'contract' && $contractName}
         <span class="contract-info">
           {$contractName}
           {#if $purpose}
@@ -41,6 +54,8 @@
     <div class="toolbar-center">
       {#if $engine === 'wasm' && $wasmStatus === 'loading'}
         <span class="status"><span class="spinner"></span> Loading WebAssembly engine...</span>
+      {:else if $mode === 'uplc'}
+        <span class="status muted">Evaluate and debug any Plutus script</span>
       {:else if $isChecking}
         <span class="status"><span class="spinner"></span> Checking...</span>
       {:else if errorCount > 0}
@@ -53,12 +68,14 @@
     </div>
     <div class="toolbar-right">
       <EngineToggle />
-      <ExamplePicker onSelect={handleExampleSelect} />
+      {#if $mode === 'contract'}
+        <ExamplePicker onSelect={handleExampleSelect} />
+      {/if}
     </div>
   </header>
 
   <!-- Main layout -->
-  <div class="main">
+  <div class="main" hidden={$mode !== 'contract'}>
     <!-- Left: Editor + Diagnostics -->
     <div class="left-panel">
       <div class="editor-area">
@@ -82,6 +99,14 @@
       </div>
     </div>
   </div>
+
+  {#if UplcPage}
+    <div class="uplc" hidden={$mode !== 'uplc'}>
+      <svelte:component this={UplcPage} />
+    </div>
+  {:else if $mode === 'uplc'}
+    <div class="uplc-loading"><span class="spinner"></span> Loading…</div>
+  {/if}
 </div>
 
 <style>
@@ -154,6 +179,48 @@
   }
 
   .status.ok { color: var(--success); }
+  .status.muted { color: var(--text-muted); }
+
+  .mode-tabs {
+    display: inline-flex;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 2px;
+    gap: 2px;
+  }
+
+  .mode-tabs button {
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 12px;
+    padding: 3px 12px;
+    border-radius: 5px;
+  }
+
+  .mode-tabs button.active {
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+
+  .uplc {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .uplc-loading {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: var(--text-muted);
+  }
+
+  [hidden] { display: none !important; }
   .status.error { color: var(--error); }
   .status.warning { color: var(--warning); }
 
