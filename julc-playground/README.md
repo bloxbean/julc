@@ -29,6 +29,13 @@ julc-playground
 
 Then open http://localhost:8085 in your browser.
 
+## Engines
+
+Compilation and evaluation run on the playground server by default. Builds that include the WebAssembly engine
+also offer **Browser (WebAssembly)** in the toolbar's Engine selector, which runs the same compiler and VM inside
+the browser tab. BLS12-381 builtins are not available in the browser engine. See
+[BUILD_FROM_SOURCE.md](BUILD_FROM_SOURCE.md#in-browser-engine-webassembly).
+
 ## Configuration (optional)
 
 | Environment Variable        | Default | Description              |

@@ -12,6 +12,7 @@ application {
 
 dependencies {
     implementation project(':julc-jrl:julc-jrl-core')
+    implementation project(':julc-playground-core')
     implementation project(':julc-compiler')
     implementation project(':julc-core')
     implementation project(':julc-stdlib')
@@ -65,6 +66,7 @@ tasks.register('buildFrontend', Exec) {
         commandLine 'sh', '-c', 'npm run build'
     }
     inputs.dir(new File(frontendDir, 'src'))
+    inputs.dir(new File(frontendDir, 'public'))
     inputs.file(new File(frontendDir, 'index.html'))
     inputs.file(new File(frontendDir, 'vite.config.ts'))
     inputs.file(new File(frontendDir, 'package.json'))
@@ -73,6 +75,14 @@ tasks.register('buildFrontend', Exec) {
 
 if (project.hasProperty('withFrontend')) {
     processResources.dependsOn buildFrontend
+}
+
+// -PwithWasm: also build the in-browser (WebAssembly) engine into frontend/public/wasm before the frontend build.
+// Requires GraalVM with Web Image (-PgraalvmHome or GRAALVM_HOME); see BUILD_FROM_SOURCE.md.
+if (project.hasProperty('withWasm')) {
+    tasks.named('buildFrontend') {
+        dependsOn ':julc-playground-wasm:wasmBundle'
+    }
 }
 
 // --- Shadow JAR ---

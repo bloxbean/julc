@@ -1,0 +1,242 @@
+[
+  {
+    "name": "check-simple-spending",
+    "method": "POST",
+    "path": "/api/check",
+    "body": {
+      "source": "import java.math.BigInteger;\n\n@SpendingValidator\nclass SimpleSpending {\n    @Param static byte[] authorizedSigner;\n\n    @Entrypoint\n    static boolean validate(PlutusData datum, PlutusData redeemer, ScriptContext ctx) {\n        PlutusData txInfo = ContextsLib.getTxInfo(ctx);\n        return ContextsLib.signedBy(txInfo, authorizedSigner);\n    }\n}\n"
+    }
+  },
+  {
+    "name": "check-vesting",
+    "method": "POST",
+    "path": "/api/check",
+    "body": {
+      "source": "import java.math.BigInteger;\n\n@SpendingValidator\nclass VestingValidator {\n    record VestingDatum(PlutusData beneficiary, PlutusData deadline) {}\n\n    static boolean isPastDeadline(BigInteger currentTime, BigInteger deadline) {\n        return currentTime > deadline;\n    }\n\n    @Entrypoint\n    static boolean validate(VestingDatum datum, PlutusData redeemer, ScriptContext ctx) {\n        PlutusData txInfo = ContextsLib.getTxInfo(ctx);\n        PlutusData pkh = datum.beneficiary();\n        return ContextsLib.signedBy(txInfo, pkh);\n    }\n}\n"
+    }
+  },
+  {
+    "name": "check-blank",
+    "method": "POST",
+    "path": "/api/check",
+    "body": {
+      "source": ""
+    }
+  },
+  {
+    "name": "compile-simple-spending-blueprint",
+    "method": "POST",
+    "path": "/api/compile",
+    "body": {
+      "source": "import java.math.BigInteger;\n\n@SpendingValidator\nclass SimpleSpending {\n    @Param static byte[] authorizedSigner;\n\n    @Entrypoint\n    static boolean validate(PlutusData datum, PlutusData redeemer, ScriptContext ctx) {\n        PlutusData txInfo = ContextsLib.getTxInfo(ctx);\n        return ContextsLib.signedBy(txInfo, authorizedSigner);\n    }\n}\n",
+      "blueprint": true
+    }
+  },
+  {
+    "name": "compile-always-true-no-blueprint",
+    "method": "POST",
+    "path": "/api/compile",
+    "body": {
+      "source": "@SpendingValidator\nclass AlwaysTrue {\n    @Entrypoint\n    static boolean validate(PlutusData redeemer, ScriptContext ctx) {\n        return true;\n    }\n}\n",
+      "blueprint": false
+    }
+  },
+  {
+    "name": "compile-multi-validator-blueprint",
+    "method": "POST",
+    "path": "/api/compile",
+    "body": {
+      "source": "import org.julclang.stdlib.annotation.*;\nimport org.julclang.ledger.ScriptContext;\nimport java.math.BigInteger;\n@MultiValidator class MultiGate {\n    record Datum(BigInteger value) {}\n    record Spend(BigInteger value) {}\n    record Mint(byte[] tokenName) {}\n    @Entrypoint(purpose = Purpose.SPEND)\n    static boolean spend(Datum datum, Spend redeemer, ScriptContext ctx) {\n        return true;\n    }\n    @Entrypoint(purpose = Purpose.MINT)\n    static boolean mint(Mint redeemer, ScriptContext ctx) { return true; }\n}\n"
+    }
+  },
+  {
+    "name": "compile-with-library",
+    "method": "POST",
+    "path": "/api/compile",
+    "body": {
+      "source": "import java.math.BigInteger;\n\n@SpendingValidator\nclass UsesLibrary {\n    @Entrypoint\n    static boolean validate(PlutusData redeemer, ScriptContext ctx) {\n        return AmountRules.isPositive(BigInteger.valueOf(5));\n    }\n}\n",
+      "librarySource": "import java.math.BigInteger;\n\n@OnchainLibrary\nclass AmountRules {\n    static boolean isPositive(BigInteger amount) {\n        return amount > 0;\n    }\n}\n",
+      "blueprint": true
+    }
+  },
+  {
+    "name": "compile-error",
+    "method": "POST",
+    "path": "/api/compile",
+    "body": {
+      "source": "@SpendingValidator\nclass Broken {\n    @Entrypoint\n    static boolean validate(PlutusData redeemer, ScriptContext ctx) {\n        return undefinedThing;\n    }\n}\n",
+      "blueprint": true
+    }
+  },
+  {
+    "name": "evaluate-simple-spending-signed",
+    "method": "POST",
+    "path": "/api/evaluate",
+    "body": {
+      "source": "import java.math.BigInteger;\n\n@SpendingValidator\nclass SimpleSpending {\n    @Param static byte[] authorizedSigner;\n\n    @Entrypoint\n    static boolean validate(PlutusData datum, PlutusData redeemer, ScriptContext ctx) {\n        PlutusData txInfo = ContextsLib.getTxInfo(ctx);\n        return ContextsLib.signedBy(txInfo, authorizedSigner);\n    }\n}\n",
+      "paramValues": {
+        "authorizedSigner": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "scenario": {
+        "signers": [
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        ]
+      },
+      "datum": {}
+    }
+  },
+  {
+    "name": "evaluate-simple-spending-unsigned",
+    "method": "POST",
+    "path": "/api/evaluate",
+    "body": {
+      "source": "import java.math.BigInteger;\n\n@SpendingValidator\nclass SimpleSpending {\n    @Param static byte[] authorizedSigner;\n\n    @Entrypoint\n    static boolean validate(PlutusData datum, PlutusData redeemer, ScriptContext ctx) {\n        PlutusData txInfo = ContextsLib.getTxInfo(ctx);\n        return ContextsLib.signedBy(txInfo, authorizedSigner);\n    }\n}\n",
+      "paramValues": {
+        "authorizedSigner": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "scenario": {
+        "signers": [
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "datum": {}
+    }
+  },
+  {
+    "name": "evaluate-missing-param",
+    "method": "POST",
+    "path": "/api/evaluate",
+    "body": {
+      "source": "import java.math.BigInteger;\n\n@SpendingValidator\nclass SimpleSpending {\n    @Param static byte[] authorizedSigner;\n\n    @Entrypoint\n    static boolean validate(PlutusData datum, PlutusData redeemer, ScriptContext ctx) {\n        PlutusData txInfo = ContextsLib.getTxInfo(ctx);\n        return ContextsLib.signedBy(txInfo, authorizedSigner);\n    }\n}\n",
+      "paramValues": {
+        "other": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "scenario": {
+        "signers": [],
+        "validRangeAfter": null,
+        "validRangeBefore": null
+      },
+      "datum": {}
+    }
+  },
+  {
+    "name": "evaluate-vesting",
+    "method": "POST",
+    "path": "/api/evaluate",
+    "body": {
+      "source": "import java.math.BigInteger;\n\n@SpendingValidator\nclass VestingValidator {\n    record VestingDatum(PlutusData beneficiary, PlutusData deadline) {}\n\n    static boolean isPastDeadline(BigInteger currentTime, BigInteger deadline) {\n        return currentTime > deadline;\n    }\n\n    @Entrypoint\n    static boolean validate(VestingDatum datum, PlutusData redeemer, ScriptContext ctx) {\n        PlutusData txInfo = ContextsLib.getTxInfo(ctx);\n        PlutusData pkh = datum.beneficiary();\n        return ContextsLib.signedBy(txInfo, pkh);\n    }\n}\n",
+      "scenario": {
+        "signers": [
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        ]
+      },
+      "datum": {
+        "beneficiary": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "deadline": "1000"
+      }
+    }
+  },
+  {
+    "name": "evaluate-minting-policy",
+    "method": "POST",
+    "path": "/api/evaluate",
+    "body": {
+      "source": "import java.math.BigInteger;\n\n@MintingValidator\nclass MintingPolicy {\n    sealed interface Action {\n        record Mint(BigInteger amount) implements Action {}\n        record Burn(BigInteger amount) implements Action {}\n    }\n\n    static boolean validateMint(BigInteger amount) {\n        return amount > 0;\n    }\n\n    static boolean validateBurn(BigInteger amount) {\n        return amount < 0;\n    }\n\n    @Entrypoint\n    static boolean validate(PlutusData redeemer, ScriptContext ctx) {\n        BigInteger mintAmount = 1;\n        return validateMint(mintAmount);\n    }\n}\n",
+      "scenario": {
+        "signers": [],
+        "validRangeAfter": null,
+        "validRangeBefore": null
+      },
+      "datum": {}
+    }
+  },
+  {
+    "name": "evaluate-with-library",
+    "method": "POST",
+    "path": "/api/evaluate",
+    "body": {
+      "source": "import java.math.BigInteger;\n\n@SpendingValidator\nclass UsesLibrary {\n    @Entrypoint\n    static boolean validate(PlutusData redeemer, ScriptContext ctx) {\n        return AmountRules.isPositive(BigInteger.valueOf(5));\n    }\n}\n",
+      "librarySource": "import java.math.BigInteger;\n\n@OnchainLibrary\nclass AmountRules {\n    static boolean isPositive(BigInteger amount) {\n        return amount > 0;\n    }\n}\n",
+      "scenario": {
+        "signers": [],
+        "validRangeAfter": null,
+        "validRangeBefore": null
+      },
+      "datum": {}
+    }
+  },
+  {
+    "name": "evaluate-bls",
+    "method": "POST",
+    "path": "/api/evaluate",
+    "body": {
+      "source": "@SpendingValidator\nclass BlsCheck {\n    @Entrypoint\n    static boolean validate(PlutusData redeemer, ScriptContext ctx) {\n        byte[] msg = Builtins.integerToByteString(true, 4, 42);\n        byte[] point = Builtins.bls12_381_G1_compress(Builtins.bls12_381_G1_hashToGroup(msg, msg));\n        return Builtins.lengthOfByteString(point) == 48;\n    }\n}\n",
+      "scenario": {
+        "signers": [],
+        "validRangeAfter": null,
+        "validRangeBefore": null
+      },
+      "datum": {}
+    },
+    "wasm": "bls-unsupported"
+  },
+  {
+    "name": "eval-abs",
+    "method": "POST",
+    "path": "/api/eval",
+    "body": {
+      "expression": "MathLib.abs(-5)"
+    }
+  },
+  {
+    "name": "eval-hash",
+    "method": "POST",
+    "path": "/api/eval",
+    "body": {
+      "expression": "Builtins.sha2_256(Builtins.integerToByteString(true, 4, 42))"
+    }
+  },
+  {
+    "name": "eval-invalid",
+    "method": "POST",
+    "path": "/api/eval",
+    "body": {
+      "expression": "UnknownLib.foo(1)"
+    }
+  },
+  {
+    "name": "examples-list",
+    "method": "GET",
+    "path": "/api/examples"
+  },
+  {
+    "name": "examples-filter",
+    "method": "GET",
+    "path": "/api/examples?language=jrl"
+  },
+  {
+    "name": "examples-get",
+    "method": "GET",
+    "path": "/api/examples/VestingValidator.java"
+  },
+  {
+    "name": "examples-missing",
+    "method": "GET",
+    "path": "/api/examples/Nope.java"
+  },
+  {
+    "name": "scenarios-spending",
+    "method": "GET",
+    "path": "/api/scenarios/spending"
+  },
+  {
+    "name": "scenarios-minting",
+    "method": "GET",
+    "path": "/api/scenarios/minting"
+  },
+  {
+    "name": "scenarios-unknown",
+    "method": "GET",
+    "path": "/api/scenarios/unknown"
+  }
+]
