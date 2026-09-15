@@ -10,21 +10,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CostUseRewriteExperimentTest {
 
-    @Test
-    void explicitValueSharingIsEquivalentButRequiresDominanceAnalysis() {
-        var comparison = OptimizationEvidenceMain.o8ValueSharingExperiment();
-
-        comparison.verifyEquivalent();
-        assertTrue(comparison.candidateArtifact().flatBytes()
-                < comparison.baselineArtifact().flatBytes());
-        assertTrue(comparison.candidateEvaluations().stream()
-                .filter(result -> result.caseId().equals("valid"))
-                .allMatch(result -> result.budget().cpuSteps()
-                        < comparison.baselineEvaluations().stream()
-                                .filter(before -> before.backend().equals(result.backend())
-                                        && before.caseId().equals(result.caseId()))
-                                .findFirst().orElseThrow().budget().cpuSteps()));
-    }
+    // O8 value sharing graduated from research to a compiler rule in ADR-042; see
+    // O8ValueSharingBenchmarkTest for the BASELINE vs PV11_SAFE comparison.
 
     @Test
     void listToArrayValidResultsMatchButFailureTextDoesNot() {

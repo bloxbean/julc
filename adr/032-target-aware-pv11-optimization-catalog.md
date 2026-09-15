@@ -913,7 +913,11 @@ line through explicit, evidence-backed deferrals (2026-08-29). See
   modular-exponentiation source shapes with exact Java/Truffle PV11 budgets.
 - Deferred O8/O15 automatic conversion sharing because `UnValueData` is
   partial and JuLC has no typed dominance/use-analysis pass; explicit source
-  sharing is documented and equivalent.
+  sharing is documented and equivalent. (O8 was later delivered by ADR-042 as a
+  strict-prefix sharing pass on typed PIR: a repeated conversion is shared only
+  when it is already the first non-trivial evaluation of its scope, which needs
+  no dominance analysis and keeps every failure. O15's Data-side sharing remains
+  deferred.)
 - Deferred O9 despite large valid-input gains because recursive List `get` and
   `IndexArray` expose different negative/out-of-range failure text and timing,
   and no list use/escape analysis exists.
@@ -1029,7 +1033,7 @@ line after the initial review window (2026-08-29).
 | O5 | [#100](https://github.com/bloxbean/julc/issues/100), [#112](https://github.com/bloxbean/julc/issues/112) | ADR-041 implemented: compiler-generated sealed dispatch with two or more constructors lowers to one integer `Case` at `PV11_SAFE` (`pv11.o5.case-integer`); failure contract on malformed tags pinned; Java `int` switches remain unsupported |
 | O6 | [#101](https://github.com/bloxbean/julc/issues/101), [#113](https://github.com/bloxbean/julc/issues/113) | rejected by ADR-041: no `ChooseUnit` is emitted and no typed Unit statement surface exists; census of shipped artifacts shows negligible reachable gain |
 | O7 | [#95](https://github.com/bloxbean/julc/issues/95) | typed native Value boundary completed |
-| O8 | [#102](https://github.com/bloxbean/julc/issues/102) | deferred: partial conversion/use analysis |
+| O8 | [#102](https://github.com/bloxbean/julc/issues/102), [#114](https://github.com/bloxbean/julc/issues/114) | ADR-042 implemented: strict-prefix sharing of repeated `UnValueData` conversions of one variable at `PV11_SAFE` (`pv11.o8.value-sharing`), failure-text neutral; `ValueData` sinking and adjacent cancellation remain out of scope |
 | O9 | [#103](https://github.com/bloxbean/julc/issues/103) | deferred: use/escape and failure proof required |
 | O10 | [#106](https://github.com/bloxbean/julc/issues/106) | deferred: no typed native Array literal producer |
 | O11 | [#96](https://github.com/bloxbean/julc/issues/96) | deferred: native BLS group/list types required |
