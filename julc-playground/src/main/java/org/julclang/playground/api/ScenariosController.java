@@ -1,9 +1,7 @@
 package org.julclang.playground.api;
 
-import org.julclang.playground.scenario.ScenarioRegistry;
+import org.julclang.playground.service.PlaygroundService;
 import io.javalin.http.Context;
-
-import java.util.Map;
 
 /**
  * GET /api/scenarios/{purpose} — List test scenario templates for a given purpose.
@@ -11,13 +9,7 @@ import java.util.Map;
 public class ScenariosController {
 
     public void handle(Context ctx) {
-        String purpose = ctx.pathParam("purpose");
-        var scenarios = ScenarioRegistry.getScenarios(purpose);
-        if (scenarios.isEmpty()) {
-            ctx.json(Map.of("purpose", purpose.toUpperCase(), "scenarios", java.util.List.of(),
-                    "message", "No scenario templates available for purpose: " + purpose));
-            return;
-        }
-        ctx.json(Map.of("purpose", purpose.toUpperCase(), "scenarios", scenarios));
+        var result = PlaygroundService.scenarios(ctx.pathParam("purpose"));
+        ctx.status(result.status()).json(result.body());
     }
 }

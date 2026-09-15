@@ -1,0 +1,31 @@
+plugins {
+    id 'java-library'
+}
+
+description = 'julc-playground-core - transport-neutral playground services shared by the server and the WebAssembly engine'
+
+dependencies {
+    api project(':julc-compiler')
+    api project(':julc-core')
+    api project(':julc-vm')
+    implementation project(':julc-stdlib')
+    implementation project(':julc-ledger-api')
+    implementation project(':julc-vm-java')
+    implementation project(':julc-testkit')
+    implementation project(':julc-blueprint')
+
+    // JavaParser for Java contract metadata extraction
+    implementation 'com.github.javaparser:javaparser-core:3.26.3'
+
+    // Model records carry Jackson annotations; (de)serialization happens in the transports
+    api 'com.fasterxml.jackson.core:jackson-annotations:2.18.2'
+
+    constraints {
+        // julc-blueprint and julc-cardano-client-lib are built against the 0.7.x line; the playground
+        // runs blueprint generation and script hashing on cardano-client-lib 0.8.0-pre5, which also
+        // runs under GraalVM Web Image.
+        implementation('com.bloxbean.cardano:cardano-client-lib') {
+            version { strictly '0.8.0-pre5' }
+        }
+    }
+}
