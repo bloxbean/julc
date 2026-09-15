@@ -12,6 +12,7 @@ application {
 
 dependencies {
     implementation project(':julc-jrl:julc-jrl-core')
+    implementation project(':julc-playground-core')
     implementation project(':julc-compiler')
     implementation project(':julc-core')
     implementation project(':julc-stdlib')
