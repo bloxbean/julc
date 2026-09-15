@@ -29,6 +29,15 @@ public final class CekEnvironment {
         return new CekEnvironment(value, this);
     }
 
+    /** Number of bindings in this environment. */
+    public int size() {
+        int size = 0;
+        for (CekEnvironment current = this; current.head != null; current = current.tail) {
+            size++;
+        }
+        return size;
+    }
+
     /**
      * Look up a variable by De Bruijn index (1-based).
      *
