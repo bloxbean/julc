@@ -7,6 +7,8 @@ import org.julclang.core.source.SourceLocation;
 import org.julclang.vm.ProtocolCapability;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -33,15 +35,20 @@ import java.util.function.UnaryOperator;
  * the result of each rewritten site is the same element. Out-of-range indexes fail at the same
  * semantic point (after the index is evaluated, before anything else) but with the array
  * builtin's text instead of {@code HeadList: empty list} / {@code TailList: empty list}; this is
- * the ADR-043 failure contract. Only a binding proven to hold a list is promoted: a {@code Let}
- * whose value is a list by construction ({@link #producesList}, under the environment of
- * proven names at its binder, so an alias of an unproven variable stays unproven), a list-typed
- * parameter of a method lambda (never of a callback lambda, which the list operations apply to
- * raw Data elements) or a list-typed match field. Method parameters and list-typed call returns
- * are trusted, which javac guarantees unless a caller casts a non-list {@code PlutusData} to
- * {@code JulcList} through {@code Object} and passes it on, or carries it through a loop as
- * the loop's state. Such a value fails at the conversion on every path below the binding,
- * including paths that never index (ADR-043 "Typing trust").
+ * the ADR-043 failure contract. Only a binding proven to hold a list is promoted, and whether
+ * a binding holds a list is decided by how it was bound, never by the type its uses carry: a
+ * {@code Let} whose value is a list by construction ({@link #producesList}, under the
+ * environment of proven names at its binder, so an alias of an unproven variable stays
+ * unproven), a list-typed match field, a list-match tail, a list-typed parameter of the root
+ * term's own lambdas (the program's boundary with its caller), or a list-typed parameter of a
+ * method that every call site in the program passes a proven list ({@link Method}: the
+ * frontend binds every method, helper, library method and loop as a {@code Let}- or
+ * {@code LetRec}-bound lambda chain, and the pass carries provenance across those boundaries
+ * in both directions, so a parameter fed from a callback's raw Data element, from a cast local
+ * or from a loop's unproven state is never trusted, and a list-typed call result is proven only
+ * when the method's body produces a list under that parameter environment). A callback
+ * lambda's parameter is never trusted: the list operations apply callbacks to raw Data
+ * elements whatever the parameter's type says.
  *
  * <p>Gate: exact PV11 target, a level with {@link org.julclang.compiler.OptimizationLevel#pv11CostedRulesEnabled()},
  * {@link ProtocolCapability#ARRAY_CONSTANTS} and both array builtins available. The break-even
@@ -54,8 +61,11 @@ public final class ListIndexPromotionPass {
     private final CompilationContext context;
     private final IdentityHashMap<PirTerm, SourceLocation> positions = new IdentityHashMap<>();
     private final Set<String> names = new HashSet<>();
+    private final Map<MethodKey, Method> methods = new HashMap<>();
     private int nextName;
     private boolean applied;
+    private boolean analysing;
+    private boolean refuted;
 
     public ListIndexPromotionPass(CompilationContext context, Map<PirTerm, SourceLocation> positions) {
         this.context = context;
@@ -67,7 +77,9 @@ public final class ListIndexPromotionPass {
     public Result lower(PirTerm term) {
         if (!enabled()) return new Result(term, positions);
         collectNames(term);
-        var rewritten = rewrite(term, Set.of(), true);
+        var root = new Method(chain(term));
+        analyse(term, root);
+        var rewritten = rewrite(term, Map.of(), new Chain(root, 0));
         if (applied) context.recordOptimizationRule(RULE);
         return new Result(rewritten, positions);
     }
@@ -83,144 +95,381 @@ public final class ListIndexPromotionPass {
                 && profile.isBuiltinAvailable(DefaultFun.IndexArray);
     }
 
-    /**
-     * Pre-order over binders: promote each proven list binding in its own scope, then descend.
-     *
-     * <p>{@code proven} is the set of variables in scope that hold a UPLC list by construction:
-     * list-typed parameters of method lambdas and list-typed match fields (trusted; a match
-     * field of list type is decoded with {@code unListData} by the generator), list-match tails,
-     * and every {@code Let} whose value {@link #producesList produces a list} under the
-     * environment at its binder. Whether a variable is a list is decided by how it was bound,
-     * never by the type its uses carry: a cast from Data to JulcList lowers to the Data-typed
-     * inner term, so the local it binds is unproven, and so is every alias of it, including the
-     * {@code let xs = xs} the loop lowering emits after a loop with the declared list type. An
-     * unproven binding is left alone because converting it on a path that never indexes would
-     * turn a success into a failure. Any binder that is not a list by construction shadows the
-     * name out of the set.
-     *
-     * <p>{@code chain} is true while the walk is still on a method's parameter chain: the root
-     * term's leading lambdas (a compiled method, the validator wrapper) and the leading lambdas
-     * of every {@code Let}- or {@code LetRec}-bound value (the frontend binds every method,
-     * helper, library method and loop that way and passes lambda expressions straight to the
-     * call that consumes them), through the decode lets between them. Only such lambdas have
-     * list-typed parameters that hold lists: a callback lambda (an application argument,
-     * applied by a list operation to its raw Data elements) does not, so its parameters are
-     * never trusted whatever type they carry. A lambda applied on the spot
-     * ({@code [(lam x body) arg]}) binds {@code x} exactly as {@code let x = arg} would, so
-     * {@code x} is proven if and only if the argument produces a list.
-     */
-    private PirTerm rewrite(PirTerm term, Set<String> proven, boolean chain) {
-        var result = switch (term) {
-            case PirTerm.Let let -> {
-                boolean proves = producesList(let.value(), proven);
-                yield new PirTerm.Let(let.name(), rewrite(let.value(), proven, true),
-                        rewrite(proves ? promote(let.body(), let.name()) : let.body(),
-                                proves ? with(proven, let.name()) : without(proven, let.name()), chain));
-            }
-            case PirTerm.Lam lam -> {
-                boolean list = chain && lam.paramType() instanceof PirType.ListType;
-                yield new PirTerm.Lam(lam.param(), lam.paramType(),
-                        rewrite(list ? promote(lam.body(), lam.param()) : lam.body(),
-                                list ? with(proven, lam.param()) : without(proven, lam.param()), chain));
-            }
-            case PirTerm.App app when redexHead(app) != null -> {
-                var spine = new ArrayList<PirTerm.App>();   // outermost application first
-                PirTerm head = app;
-                while (head instanceof PirTerm.App node) { spine.add(node); head = node.function(); }
-                var arguments = new ArrayList<PirTerm>(spine.reversed().stream().map(PirTerm.App::argument).toList());
-                PirTerm rebuilt = rewriteRedex(head, arguments, 0, proven, proven);
-                for (int i = spine.size() - 1; i >= 0; i--) {
-                    var node = spine.get(i);
-                    rebuilt = remember(node, new PirTerm.App(rebuilt, rewrite(node.argument(), proven, false)));
-                }
-                yield rebuilt;
-            }
-            case PirTerm.LetRec rec -> {
-                var inner = without(proven, rec.bindings().stream().map(PirTerm.Binding::name).toList());
-                yield new PirTerm.LetRec(rec.bindings().stream()
-                        .map(b -> new PirTerm.Binding(b.name(), rewrite(b.value(), inner, true))).toList(),
-                        rewrite(rec.body(), inner, chain));
-            }
-            case PirTerm.DataMatch match -> new PirTerm.DataMatch(rewrite(match.scrutinee(), proven, false),
-                    match.branches().stream().map(branch -> {
-                        var body = branch.body();
-                        var inner = proven;
-                        for (int i = 0; i < branch.bindings().size(); i++) {
-                            String field = branch.bindings().get(i);
-                            if (branch.bindingTypes().get(i) instanceof PirType.ListType) {
-                                body = promote(body, field);
-                                inner = with(inner, field);
-                            } else {
-                                inner = without(inner, field);
-                            }
-                        }
-                        if (branch.patternVar() != null) inner = without(inner, branch.patternVar());
-                        return new PirTerm.MatchBranch(branch.constructorName(), branch.bindings(),
-                                branch.bindingTypes(), rewrite(body, inner, false), branch.patternVar());
-                    }).toList());
-            case PirTerm.ListMatch match -> new PirTerm.ListMatch(rewrite(match.scrutinee(), proven, false),
-                    match.headName(), match.tailName(), rewrite(match.nilBranch(), proven, false),
-                    rewrite(match.consBranch(), with(without(proven, match.headName()), match.tailName()), false));
-            case PirTerm.PairMatch match -> new PirTerm.PairMatch(rewrite(match.scrutinee(), proven, false),
-                    match.pairType(), match.firstName(), match.secondName(),
-                    rewrite(match.body(), without(proven, List.of(match.firstName(), match.secondName())), false));
-            default -> PirHelpers.mapChildren(term, child -> rewrite(child, proven, false));
-        };
-        return remember(term, result);
-    }
-
-    /** The lambda at the head of an application spine, or null when the head is not a lambda. */
-    private static PirTerm.Lam redexHead(PirTerm.App app) {
-        PirTerm head = app;
-        while (head instanceof PirTerm.App spine) head = spine.function();
-        return head instanceof PirTerm.Lam lam ? lam : null;
-    }
+    // --- provenance: what a name in scope is known to hold ---
 
     /**
-     * The head of a redex, its leading lambdas bound to the spine's arguments in order: each
-     * parameter is proven exactly when its argument (evaluated in the {@code outer} environment)
-     * produces a list, as a {@code Let} of that argument would be; lambdas left over after the
-     * arguments (a partial application) are a function value and trust nothing.
+     * What the pass knows about a name in scope. A name absent from the environment is bound
+     * (by a binder the pass cannot vouch for, or not at all) but holds nothing it can use.
      */
-    private PirTerm rewriteRedex(PirTerm function, List<PirTerm> arguments, int index, Set<String> proven, Set<String> outer) {
-        if (index < arguments.size() && function instanceof PirTerm.Lam lam) {
-            boolean proves = producesList(arguments.get(index), outer);
-            var body = proves ? promote(lam.body(), lam.param()) : lam.body();
-            var inner = proves ? with(proven, lam.param()) : without(proven, lam.param());
-            return remember(function, new PirTerm.Lam(lam.param(), lam.paramType(),
-                    rewriteRedex(body, arguments, index + 1, inner, outer)));
+    private sealed interface Binding {
+        /** A variable that holds a UPLC list by construction. */
+        record Proven() implements Binding {}
+
+        /** A method: the name of a {@code Let}- or {@code LetRec}-bound lambda chain. */
+        record Callable(Method method) implements Binding {}
+    }
+
+    private static final Binding PROVEN = new Binding.Proven();
+
+    /**
+     * The provenance of a method (a {@code Let}- or {@code LetRec}-bound lambda chain, or the
+     * root term's chain). Parameter {@code i} is proven while it is list-typed and every call
+     * site in the program passes it a term that {@link #producesList produces a list}; a call
+     * that supplies fewer arguments, or a use of the method's name that is not a call at all
+     * (the method escaping as a value), refutes every parameter it leaves unbound. The result is
+     * proven while the chain's body produces a list under that parameter environment. Both
+     * start optimistic and are refuted until nothing changes: a greatest fixpoint, so a
+     * recursive helper or loop that passes its own list parameter (or its tail) back to itself
+     * keeps the proof that its first call established, and a value can only ever reach a
+     * parameter through a finite chain of calls each of which the fixpoint has checked. The
+     * root term's parameters are its contract with the caller and are never refuted. Two
+     * binders with the same name and parameter names share one record, so their facts are the
+     * conservative intersection.
+     */
+    private static final class Method {
+        final boolean[] proven;
+        boolean returns = true;
+
+        Method(List<PirTerm.Lam> chain) {
+            proven = new boolean[chain.size()];
+            for (int i = 0; i < proven.length; i++) proven[i] = chain.get(i).paramType() instanceof PirType.ListType;
         }
-        return rewrite(function, proven, false);
+
+        /**
+         * A lambda applied on the spot: each parameter is proven exactly when its argument is.
+         * Its result is never followed, so nothing about it can change between iterations.
+         */
+        Method(boolean[] arguments) {
+            proven = arguments;
+            returns = false;
+        }
+
+        /** A binder met after the analysis that the analysis never saw: trusts nothing. */
+        static Method untrusted(List<PirTerm.Lam> chain) {
+            var method = new Method(chain);
+            Arrays.fill(method.proven, false);
+            method.returns = false;
+            return method;
+        }
+
+        boolean trusts(int index) {
+            return index < proven.length && proven[index];
+        }
     }
 
-    private static Set<String> with(Set<String> proven, String name) {
-        if (proven.contains(name)) return proven;
-        var extended = new HashSet<>(proven);
-        extended.add(name);
+    private record MethodKey(String name, List<String> params) {}
+
+    /**
+     * A position on a parameter chain: the next lambda met binds parameter {@code index} of
+     * {@code method}. A chain is walked through the lets and recursive bindings between its
+     * lambdas (the validator wrapper's decode lets and method bindings sit between the
+     * handler's parameters); a lambda beyond the chain's parameters (a partial application)
+     * is a function value and trusts nothing.
+     */
+    private record Chain(Method method, int index) {
+        Chain next() { return new Chain(method, index + 1); }
+
+        boolean trusts() { return method.trusts(index); }
+    }
+
+    /**
+     * The chain of a lambda applied on the spot ({@code [[(lam x (lam y body)) a] b]}, the
+     * lambdas possibly under lets): each parameter is bound exactly as {@code let x = a} would
+     * bind it, so it is proven if and only if its argument (evaluated in the environment of the
+     * application) produces a list.
+     */
+    private Chain redex(List<PirTerm> arguments, Map<String, Binding> env) {
+        var proven = new boolean[arguments.size()];
+        for (int i = 0; i < proven.length; i++) proven[i] = producesList(arguments.get(i), env);
+        return new Chain(new Method(proven), 0);
+    }
+
+    /**
+     * The leading lambdas of a bound value: the parameters a call applies, in order, read
+     * through the lets between them (the validator wrapper's decode lets, the array bindings
+     * this pass inserts) and through recursive-binding bodies. Empty when the value is not a
+     * function. Stable under this pass's own rewriting, so the rewrite finds the analysis's
+     * record for a binder whose scope has already been promoted.
+     */
+    private static List<PirTerm.Lam> chain(PirTerm value) {
+        var lams = new ArrayList<PirTerm.Lam>();
+        PirTerm term = value;
+        while (true) {
+            switch (term) {
+                case PirTerm.Lam lam -> { lams.add(lam); term = lam.body(); }
+                case PirTerm.Let let -> term = let.body();
+                case PirTerm.LetRec rec -> term = rec.body();
+                default -> { return lams; }
+            }
+        }
+    }
+
+    /** The method record of a bound value, or null when the value is not a function. */
+    private Method methodOf(String name, PirTerm value) {
+        var chain = chain(value);
+        if (chain.isEmpty()) return null;
+        var key = new MethodKey(name, chain.stream().map(PirTerm.Lam::param).toList());
+        var method = methods.get(key);
+        if (method == null) {
+            if (!analysing) return Method.untrusted(chain);
+            method = new Method(chain);
+            methods.put(key, method);
+            return method;
+        }
+        for (int i = 0; i < chain.size(); i++) {
+            if (!(chain.get(i).paramType() instanceof PirType.ListType)) refute(method, i);
+        }
+        return method;
+    }
+
+    private void refute(Method method, int index) {
+        if (method.proven[index]) {
+            method.proven[index] = false;
+            refuted = true;
+        }
+    }
+
+    private static Map<String, Binding> bind(Map<String, Binding> env, String name, Binding binding) {
+        if (binding.equals(env.get(name))) return env;
+        var extended = new HashMap<>(env);
+        extended.put(name, binding);
         return extended;
     }
 
-    private static Set<String> without(Set<String> proven, String name) {
-        return without(proven, List.of(name));
+    private static Map<String, Binding> unbind(Map<String, Binding> env, String name) {
+        return unbind(env, List.of(name));
     }
 
-    private static Set<String> without(Set<String> proven, List<String> names) {
-        if (names.stream().noneMatch(proven::contains)) return proven;
-        var reduced = new HashSet<>(proven);
+    private static Map<String, Binding> unbind(Map<String, Binding> env, List<String> names) {
+        if (names.stream().noneMatch(env::containsKey)) return env;
+        var reduced = new HashMap<>(env);
         names.forEach(reduced::remove);
         return reduced;
     }
 
+    /** The scope of a {@code Let}: its method record, else its proof, else nothing. */
+    private static Map<String, Binding> bindLet(Map<String, Binding> env, String name, Method method, boolean proves) {
+        if (method != null) return bind(env, name, new Binding.Callable(method));
+        return proves ? bind(env, name, PROVEN) : unbind(env, name);
+    }
+
+    /** The scope of a {@code LetRec}: every function-valued binding is a method, every other binding is opaque. */
+    private Map<String, Binding> bindRec(Map<String, Binding> env, PirTerm.LetRec rec) {
+        var inner = env;
+        for (var binding : rec.bindings()) {
+            var method = methodOf(binding.name(), binding.value());
+            inner = method != null ? bind(inner, binding.name(), new Binding.Callable(method)) : unbind(inner, binding.name());
+        }
+        return inner;
+    }
+
+    private static Chain chainOf(Map<String, Binding> env, String name) {
+        return env.get(name) instanceof Binding.Callable callable ? new Chain(callable.method(), 0) : null;
+    }
+
+    /** A match branch: a list-typed field is decoded with {@code unListData} by the generator; every other binder is opaque. */
+    private static Map<String, Binding> matchEnv(Map<String, Binding> env, PirTerm.MatchBranch branch) {
+        var inner = env;
+        for (int i = 0; i < branch.bindings().size(); i++) {
+            String field = branch.bindings().get(i);
+            inner = branch.bindingTypes().get(i) instanceof PirType.ListType ? bind(inner, field, PROVEN) : unbind(inner, field);
+        }
+        return branch.patternVar() != null ? unbind(inner, branch.patternVar()) : inner;
+    }
+
+    /** The cons branch of a list match: the tail is a list, the head is opaque. */
+    private static Map<String, Binding> consEnv(Map<String, Binding> env, PirTerm.ListMatch match) {
+        return bind(unbind(env, match.headName()), match.tailName(), PROVEN);
+    }
+
+    // --- analysis: refute method provenance until nothing changes ---
+
+    private void analyse(PirTerm term, Method root) {
+        analysing = true;
+        do {
+            refuted = false;
+            visit(term, Map.of(), new Chain(root, 0));
+        } while (refuted);
+        analysing = false;
+    }
+
     /**
-     * Whether a term evaluates to a UPLC list by construction under {@code proven}: a proven
-     * variable, a decode or list builtin, a call whose return type is a list, or a compound term
-     * whose result position is one. A bare Data-typed term (the lowering of a cast to
-     * {@code JulcList}) is not, and neither is a variable outside {@code proven}, whatever type
-     * its uses carry: an alias of an unproven variable is unproven.
+     * One pass over the term with the same binder discipline as {@link #rewrite}: every call
+     * of a method constrains the parameters it binds, every non-call use of a method's name
+     * constrains them all, and the chain's body (the first sub-term that is not a lambda, a let
+     * or a recursive binding) decides its result.
      */
-    static boolean producesList(PirTerm term, Set<String> proven) {
+    private void visit(PirTerm term, Map<String, Binding> env, Chain chain) {
+        var here = chain;
+        if (here != null && !(term instanceof PirTerm.Lam) && !(term instanceof PirTerm.Let) && !(term instanceof PirTerm.LetRec)) {
+            if (here.method().returns && !producesList(term, env)) {
+                here.method().returns = false;
+                refuted = true;
+            }
+            here = null;
+        }
+        var next = here;
+        switch (term) {
+            case PirTerm.Lam lam -> {
+                boolean list = next != null && next.trusts();
+                visit(lam.body(), list ? bind(env, lam.param(), PROVEN) : unbind(env, lam.param()),
+                        next == null ? null : next.next());
+            }
+            case PirTerm.Let let -> {
+                var method = methodOf(let.name(), let.value());
+                visit(let.value(), env, method == null ? null : new Chain(method, 0));
+                visit(let.body(), bindLet(env, let.name(), method, method == null && producesList(let.value(), env)), next);
+            }
+            case PirTerm.LetRec rec -> {
+                var inner = bindRec(env, rec);
+                rec.bindings().forEach(b -> visit(b.value(), inner, chainOf(inner, b.name())));
+                visit(rec.body(), inner, next);
+            }
+            case PirTerm.App app -> {
+                var arguments = new ArrayList<PirTerm>();
+                PirTerm head = app;
+                while (head instanceof PirTerm.App spine) { arguments.add(spine.argument()); head = spine.function(); }
+                var ordered = arguments.reversed();
+                if (head instanceof PirTerm.Var function) {
+                    if (env.get(function.name()) instanceof Binding.Callable callable) constrain(callable.method(), ordered, env);
+                } else {
+                    visit(head, env, chain(head).isEmpty() ? null : redex(ordered, env));
+                }
+                ordered.forEach(argument -> visit(argument, env, null));
+            }
+            case PirTerm.Var v -> {
+                if (env.get(v.name()) instanceof Binding.Callable callable) constrain(callable.method(), List.of(), env);
+            }
+            case PirTerm.DataMatch match -> {
+                visit(match.scrutinee(), env, null);
+                match.branches().forEach(branch -> visit(branch.body(), matchEnv(env, branch), null));
+            }
+            case PirTerm.ListMatch match -> {
+                visit(match.scrutinee(), env, null);
+                visit(match.nilBranch(), env, null);
+                visit(match.consBranch(), consEnv(env, match), null);
+            }
+            case PirTerm.PairMatch match -> {
+                visit(match.scrutinee(), env, null);
+                visit(match.body(), unbind(env, List.of(match.firstName(), match.secondName())), null);
+            }
+            default -> PirHelpers.mapChildren(term, child -> { visit(child, env, null); return child; });
+        }
+    }
+
+    /** A call with these arguments (evaluated in {@code env}) refutes every parameter it does not feed a proven list. */
+    private void constrain(Method method, List<PirTerm> arguments, Map<String, Binding> env) {
+        for (int i = 0; i < method.proven.length; i++) {
+            if (method.proven[i] && (i >= arguments.size() || !producesList(arguments.get(i), env))) refute(method, i);
+        }
+    }
+
+    // --- rewrite: promote every proven binding in its own scope ---
+
+    /**
+     * Pre-order over binders: promote each proven list binding in its own scope, then descend.
+     *
+     * <p>{@code env} is the lexical environment: the variables in scope that hold a UPLC list by
+     * construction (a list-typed match field, which the generator decodes with
+     * {@code unListData}; a list-match tail; every {@code Let} whose value
+     * {@link #producesList produces a list} under the environment at its binder; a parameter
+     * the analysis proved) and the methods in scope with their provenance. Whether a variable
+     * is a list is decided by how it was bound, never by the type its uses carry: a cast from
+     * Data to JulcList lowers to the Data-typed inner term, so the local it binds is unproven,
+     * and so is every alias of it, including the {@code let xs = xs} the loop lowering emits
+     * after a loop with the declared list type. An unproven binding is left alone because
+     * converting it on a path that never indexes would turn a success into a failure. Any
+     * binder that is not a list by construction shadows the name out of the environment.
+     *
+     * <p>{@code chain} is the position on a parameter chain while the walk is still on one: the
+     * root term's leading lambdas (a compiled method, the validator wrapper), the leading
+     * lambdas of every {@code Let}- or {@code LetRec}-bound value, and the leading lambdas of a
+     * lambda applied on the spot (the validator's handler), in every case through the lets and
+     * recursive bindings between them. A lambda met there binds the parameter the chain names
+     * and is trusted exactly when the analysis proved it (a method) or its argument produces a
+     * list (a redex, bound as {@code let x = arg} would bind it); a lambda met anywhere else (a
+     * callback in argument position, applied by a list operation to its raw Data elements) is
+     * never trusted whatever type it carries.
+     */
+    private PirTerm rewrite(PirTerm term, Map<String, Binding> env, Chain chain) {
+        var result = switch (term) {
+            case PirTerm.Let let -> {
+                var method = methodOf(let.name(), let.value());
+                boolean proves = method == null && producesList(let.value(), env);
+                yield new PirTerm.Let(let.name(), rewrite(let.value(), env, method == null ? null : new Chain(method, 0)),
+                        rewrite(proves ? promote(let.body(), let.name()) : let.body(),
+                                bindLet(env, let.name(), method, proves), chain));
+            }
+            case PirTerm.Lam lam -> {
+                boolean list = chain != null && chain.trusts();
+                yield new PirTerm.Lam(lam.param(), lam.paramType(),
+                        rewrite(list ? promote(lam.body(), lam.param()) : lam.body(),
+                                list ? bind(env, lam.param(), PROVEN) : unbind(env, lam.param()),
+                                chain == null ? null : chain.next()));
+            }
+            case PirTerm.App app when appliedChain(app) != null -> {
+                var spine = new ArrayList<PirTerm.App>();   // outermost application first
+                PirTerm head = app;
+                while (head instanceof PirTerm.App node) { spine.add(node); head = node.function(); }
+                var arguments = new ArrayList<PirTerm>(spine.reversed().stream().map(PirTerm.App::argument).toList());
+                PirTerm rebuilt = rewrite(head, env, redex(arguments, env));
+                for (int i = spine.size() - 1; i >= 0; i--) {
+                    var node = spine.get(i);
+                    rebuilt = remember(node, new PirTerm.App(rebuilt, rewrite(node.argument(), env, null)));
+                }
+                yield rebuilt;
+            }
+            case PirTerm.LetRec rec -> {
+                var inner = bindRec(env, rec);
+                yield new PirTerm.LetRec(rec.bindings().stream()
+                        .map(b -> new PirTerm.Binding(b.name(), rewrite(b.value(), inner, chainOf(inner, b.name())))).toList(),
+                        rewrite(rec.body(), inner, chain));
+            }
+            case PirTerm.DataMatch match -> new PirTerm.DataMatch(rewrite(match.scrutinee(), env, null),
+                    match.branches().stream().map(branch -> {
+                        var body = branch.body();
+                        for (int i = 0; i < branch.bindings().size(); i++) {
+                            if (branch.bindingTypes().get(i) instanceof PirType.ListType) {
+                                body = promote(body, branch.bindings().get(i));
+                            }
+                        }
+                        return new PirTerm.MatchBranch(branch.constructorName(), branch.bindings(),
+                                branch.bindingTypes(), rewrite(body, matchEnv(env, branch), null), branch.patternVar());
+                    }).toList());
+            case PirTerm.ListMatch match -> new PirTerm.ListMatch(rewrite(match.scrutinee(), env, null),
+                    match.headName(), match.tailName(), rewrite(match.nilBranch(), env, null),
+                    rewrite(match.consBranch(), consEnv(env, match), null));
+            case PirTerm.PairMatch match -> new PirTerm.PairMatch(rewrite(match.scrutinee(), env, null),
+                    match.pairType(), match.firstName(), match.secondName(),
+                    rewrite(match.body(), unbind(env, List.of(match.firstName(), match.secondName())), null));
+            default -> PirHelpers.mapChildren(term, child -> rewrite(child, env, null));
+        };
+        return remember(term, result);
+    }
+
+    /**
+     * The head of an application spine when it is a lambda chain applied on the spot (a lambda,
+     * possibly under the lets and recursive bindings that bind what it uses, as the validator
+     * wrapper applies the handler under its method bindings), else null.
+     */
+    private static PirTerm appliedChain(PirTerm.App app) {
+        PirTerm head = app;
+        while (head instanceof PirTerm.App spine) head = spine.function();
+        return chain(head).isEmpty() ? null : head;
+    }
+
+    /**
+     * Whether a term evaluates to a UPLC list by construction under {@code env}: a proven
+     * variable, a decode or list builtin, a full call of a method whose declared return type is
+     * a list and whose body the analysis proved to produce one, or a compound term whose result
+     * position is one. A bare Data-typed term (the lowering of a cast to {@code JulcList}) is
+     * not, and neither is a variable outside the proven set, whatever type its uses carry: an
+     * alias of an unproven variable is unproven. A lambda applied on the spot and a partial
+     * application are not followed.
+     */
+    boolean producesList(PirTerm term, Map<String, Binding> env) {
         return switch (term) {
-            case PirTerm.Var v -> proven.contains(v.name());
+            case PirTerm.Var v -> env.get(v.name()) instanceof Binding.Proven;
             case PirTerm.App app -> {
                 PirTerm head = app;
                 int arguments = 0;
@@ -232,6 +481,10 @@ public final class ListIndexPromotionPass {
                     };
                 }
                 if (head instanceof PirTerm.Var function) {
+                    if (!(env.get(function.name()) instanceof Binding.Callable callable)
+                            || callable.method().proven.length != arguments || !callable.method().returns) {
+                        yield false;
+                    }
                     PirType type = function.type();
                     for (int i = 0; i < arguments; i++) {
                         if (!(type instanceof PirType.FunType fun)) yield false;
@@ -239,34 +492,24 @@ public final class ListIndexPromotionPass {
                     }
                     yield type instanceof PirType.ListType;
                 }
-                yield producesList(head, proven) && arguments == 0;
+                yield false;
             }
-            case PirTerm.Let let -> producesList(let.body(),
-                    producesList(let.value(), proven) ? with(proven, let.name()) : without(proven, let.name()));
-            case PirTerm.LetRec rec -> producesList(rec.body(),
-                    without(proven, rec.bindings().stream().map(PirTerm.Binding::name).toList()));
-            case PirTerm.IfThenElse ite -> (ite.thenBranch() instanceof PirTerm.Error || producesList(ite.thenBranch(), proven))
-                    && (ite.elseBranch() instanceof PirTerm.Error || producesList(ite.elseBranch(), proven));
-            case PirTerm.Trace trace -> producesList(trace.body(), proven);
-            case PirTerm.ListMatch match -> {
-                var cons = with(without(proven, match.headName()), match.tailName());
-                yield (match.nilBranch() instanceof PirTerm.Error || producesList(match.nilBranch(), proven))
-                        && (match.consBranch() instanceof PirTerm.Error || producesList(match.consBranch(), cons));
+            case PirTerm.Let let -> {
+                var method = methodOf(let.name(), let.value());
+                yield producesList(let.body(), bindLet(env, let.name(), method, method == null && producesList(let.value(), env)));
             }
+            case PirTerm.LetRec rec -> producesList(rec.body(), bindRec(env, rec));
+            case PirTerm.IfThenElse ite -> (ite.thenBranch() instanceof PirTerm.Error || producesList(ite.thenBranch(), env))
+                    && (ite.elseBranch() instanceof PirTerm.Error || producesList(ite.elseBranch(), env));
+            case PirTerm.Trace trace -> producesList(trace.body(), env);
+            case PirTerm.ListMatch match -> (match.nilBranch() instanceof PirTerm.Error || producesList(match.nilBranch(), env))
+                    && (match.consBranch() instanceof PirTerm.Error || producesList(match.consBranch(), consEnv(env, match)));
             case PirTerm.PairMatch match -> producesList(match.body(),
-                    without(proven, List.of(match.firstName(), match.secondName())));
-            case PirTerm.DataMatch match -> match.branches().stream().allMatch(b -> {
-                if (b.body() instanceof PirTerm.Error) return true;
-                var inner = proven;
-                for (int i = 0; i < b.bindings().size(); i++) {
-                    inner = b.bindingTypes().get(i) instanceof PirType.ListType
-                            ? with(inner, b.bindings().get(i)) : without(inner, b.bindings().get(i));
-                }
-                if (b.patternVar() != null) inner = without(inner, b.patternVar());
-                return producesList(b.body(), inner);
-            });
+                    unbind(env, List.of(match.firstName(), match.secondName())));
+            case PirTerm.DataMatch match -> match.branches().stream().allMatch(b ->
+                    b.body() instanceof PirTerm.Error || producesList(b.body(), matchEnv(env, b)));
             case PirTerm.IntegerCase c -> c.branches().stream()
-                    .allMatch(b -> b instanceof PirTerm.Error || producesList(b, proven));
+                    .allMatch(b -> b instanceof PirTerm.Error || producesList(b, env));
             case PirTerm.Const _, PirTerm.Builtin _, PirTerm.Lam _, PirTerm.Error _, PirTerm.DataConstr _ -> false;
         };
     }

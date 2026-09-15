@@ -156,18 +156,25 @@ chain that directly follows the binder. Sites under a rebinding of the variable
 belong to the inner binding; the loop lowering's post-loop `let xs = xs`
 self-alias is transparent. Only a proven binding is promoted: a `Let` whose value
 is a list by construction under the proven-name environment at its binder
-(`producesList`: a decode, a list builtin, a proven variable or a list-typed
-call), a list-typed parameter of a method lambda (the root lambdas and the
-leading lambdas of `Let`/`LetRec`-bound values, never a callback's, which the
-list operations apply to raw Data elements) or a list-typed match field. A cast to `JulcList` lowers to
-its Data-typed inner term, so the local it binds is unproven and so is every
-alias of it, including the loop lowering's post-loop `let xs = xs`; method
-parameters, list-typed match fields and call returns are trusted. `ListToArray`
-is total and pure on a list, so placement is a budget decision; an out-of-range
-index fails at `IndexArray` instead of inside the traversal (the ADR-043 failure
-contract, costed profile only), and a trusted parameter that holds a non-list
-through an unchecked cast fails at the conversion on every path below the
-binding (the ADR-043 typing-trust exposure). Rule provenance is `pv11.o9.list-to-array`; NONE/BASELINE/PV11_SAFE keep
+(`producesList`: a decode, a list builtin, a proven variable or a full call of a
+list-returning method whose body the analysis proved), a list-typed match field,
+a list-match tail, a root parameter, a parameter of a lambda chain applied on the
+spot whose argument is proven (the validator handler under its method-binding
+lets), or a method parameter that call-site provenance proves. That analysis runs
+over the whole term before the rewrite: a parameter of a `Let`/`LetRec`-bound
+lambda chain is proven only while every use of the method's name is a call that
+passes it a list by construction (fewer arguments or a non-call use refute what
+they leave unbound), and a list-typed result only while the body produces a list
+under that environment; both start optimistic and are refuted to a greatest
+fixpoint, so recursive helpers and loops that hand their own list or its tail
+back to themselves keep their proof. A callback lambda's parameter is never
+trusted: the list operations apply callbacks to raw Data elements. A cast to
+`JulcList` lowers to its Data-typed inner term, so the local it binds is unproven
+and so is every alias of it, including the loop lowering's post-loop
+`let xs = xs`, and so is every helper parameter or result such a value reaches.
+`ListToArray` is total and pure on a list, so placement is a budget decision; an
+out-of-range index fails at `IndexArray` instead of inside the traversal (the
+ADR-043 failure contract, costed profile only). Rule provenance is `pv11.o9.list-to-array`; NONE/BASELINE/PV11_SAFE keep
 their bytes, and `MultiIndexArray` is never emitted.
 
 ADR-041 replaces the tag dispatch itself under the same gate. When a `DataMatch`

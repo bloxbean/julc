@@ -7,11 +7,12 @@ are asserted equal to Java, Scalus agrees on result, traces, failure class and b
 ## Provenance
 
 - Base commit `940dc65b` (ADR-042 head, `feat/114-value-conversion-motion`).
-- Goldens `julc-compiler/src/test/resources/optimization/o9-pre-change-bytes.txt`: 20
-  fixtures × 4 levels × source maps off/on = 160 rows, captured from a detached worktree at
+- Goldens `julc-compiler/src/test/resources/optimization/o9-pre-change-bytes.txt`: 23
+  fixtures × 4 levels × source maps off/on = 184 rows, captured from a detached worktree at
   the base commit with the final fixture sources (`O9ListIndexFixtures`) and a throwaway
   printing test (the cast, alias and loop-state fixtures were captured the same way after the
-  reviews; on each later capture every earlier row was reproduced byte-identically). At the
+  reviews, and the `CALLBACK_HELPER`, `HELPER_CALLERS` and `HELPER` fixtures after the PR #144
+  review; on each later capture every earlier row was reproduced byte-identically). At the
   base, `PV11_COSTED` rows equal `PV11_SAFE` rows for every fixture (no costed-only rule
   existed), so the costed "before" is the safe output.
 - Tests: `O9ListIndexPromotionTest` (`:julc-compiler:pairCaseTest`, Java/Truffle/Scalus),
@@ -104,8 +105,8 @@ length.
 | SINGLE | 73 → 73 | e4216b39… (unchanged) | all | unchanged | unchanged |
 | CAST_LET | 140 → 140 | f40226bf… (unchanged) | int-data-no-index / list-data-no-index | 701,510 / 3,734 | 701,510 / 3,734 |
 | | | | list-data-index (fails) | 1,152,660 `HeadList: expected list, got VCon(Data[])` | same text |
-| CAST_HELPER | 145 → 62 | 24c835ca… → 7db985e0… | int-data-no-index / list-data-no-index | success 0 | `ListToArray: expected list, got …` (documented exposure) |
-| | | | list-data-index | `HeadList: expected list, …` | `ListToArray: expected list, …` |
+| CAST_HELPER | 145 → 145 | 24c835ca… (unchanged: the call with the cast local refutes the helper's parameter) | int-data-no-index / list-data-no-index | 797,510 / 4,334 | 797,510 / 4,334 |
+| | | | list-data-index (fails) | 1,248,660 `HeadList: expected list, got VCon(Data[])` | same text |
 | CAST_ALIAS | 140 → 140 | f40226bf… (unchanged; the optimiser inlines the alias, so the artifact is CAST_LET's) | int-data-no-index / list-data-no-index | 701,510 / 3,734 | 701,510 / 3,734 |
 | | | | list-data-index (fails) | 1,152,660 `HeadList: expected list, got VCon(Data[])` | same text |
 | CAST_LOOP_ALIAS | 212 → 212 | 04ce36bb… (unchanged) | int-data-no-index / list-data-no-index | 2,986,646 / 15,130 | 2,986,646 / 15,130 |
@@ -118,16 +119,28 @@ length.
 | | | | neg-first (fails) | 6,867,149 `TailList` | 1,347,235 `IndexArray: index -1 … size 8` |
 | | | | empty (fails) | 1,355,004 `HeadList` | 1,148,531 `IndexArray: index 0 … size 0` |
 | | | | huge (fails) | 7,503,376 `TailList` | 1,727,989 `IndexArray: index 1099511627776 … size 8` |
-| CAST_LOOP_STATE | 204 → 121 | 767cef35… → 8439158b… | int-data-empty-loop-no-index | success 0 | `ListToArray: expected list, got VCon(Data[])` (documented exposure through the loop's result) |
-| | | | list-data-empty-loop-index | `HeadList: expected list, got VCon(Data[])` | `ListToArray: expected list, got VCon(Data[])` |
-| | | | int-data-loop (fails in the loop body, before the conversion) | 1,653,615 `MkCons: expected list, got VCon(Data[])` | same text, 1,653,615 |
+| CAST_LOOP_STATE | 204 → 204 | 767cef35… (unchanged: the initial call refutes the loop's parameter, and its result with it) | int-data-empty-loop-no-index | 1,393,876 / 7,498 | 1,393,876 / 7,498 |
+| | | | list-data-empty-loop-index (fails) | 1,845,026 `HeadList: expected list, got VCon(Data[])` | same text |
+| | | | int-data-loop (fails in the loop body) | 1,653,615 `MkCons: expected list, got VCon(Data[])` | same text |
+| CALLBACK_HELPER (the PR #144 review shape) | 206 → 206 | 3eaa1e66… (unchanged: the call from the callback refutes the parameter) | no-index (`[[10, 20]]`, k = 0) | 2,081,122 / 10,394 | 2,081,122 / 10,394 |
+| | | | no-groups | 953,210 / 5,396 | 953,210 / 5,396 |
+| | | | index-data-element (fails: the callback element is Data) | 2,088,176 `HeadList: expected list, got VCon(Data[])` | same text |
+| HELPER_CALLERS | 328 → 328 | f922b505… (unchanged: one refuting caller is enough) | direct-1 / direct-2 / direct-0-no-groups | 6,364,932 / 10,365,138 / 2,724,369 | identical |
+| | | | direct-out-of-range (fails at the helper's own site) | 2,420,063 `HeadList: empty list` | same text |
+| HELPER (positive control: every caller passes a decoded list) | 150 → 67 | 8cf34374… → 00ea9e7e… | eight-1 | 5,247,650 / 24,132 | 3,450,758 / 10,888 |
+| | | | eight-7 | 13,446,098 / 58,152 | 3,450,758 / 10,888 |
+| | | | sixty-four-0 (two conversions of 64, two index-0 sites each) | 3,881,242 / 18,462 | 6,232,614 / 11,000 (+2,351,372 = 2 × (97,000 + 24,838·64 − 2·255,473), exactly the model) |
+| | | | eight-8 (fails) | 6,969,825 `HeadList` | 1,544,424 `IndexArray: index 8 … size 8` |
+| | | | second-list-short (fails at the second call) | 9,217,204 `TailList` | 2,697,816 `IndexArray: index 7 … size 2` |
+| | | | empty (fails) | 1,504,193 `HeadList` | 1,345,720 `IndexArray: index 0 … size 0` |
 
 Per-input budget expectations asserted: `SAVES` paths strictly cheaper in CPU and no higher in
 memory; `PAYS` paths within `Σ (49,000 + 24,838·n + 48,000)` CPU and `Σ (307 + n + 300)`
 memory over the lists converted on that path; `UNTOUCHED` paths byte-identical budgets;
-failing paths compared on text only; `DIVERGES_AT_CONVERSION` paths (the cast exposure) fail
-at `ListToArray` on Java and Truffle and fail on Scalus. Truffle and Scalus budgets are
-asserted equal to Java on every input.
+failing paths compared on text only. Truffle and Scalus budgets are asserted equal to Java
+on every input. No input diverges any more: the earlier `DIVERGES_AT_CONVERSION` expectation
+(the typing-trust exposure through a helper or a loop's state) was removed with the PR #144
+fix, and the two fixtures that carried it are now untouched at every level.
 
 ## Benchmark (`O9ListIndexPromotionBenchmarkTest`, safe → costed, Java = Truffle)
 
@@ -178,6 +191,29 @@ and the control is identical between the safe and costed profiles.
   identical lambda as the root term or as a recursive binding promotes (result 10). The
   `CAST_LOOP_ALIAS` fixture's safe PIR holds exactly one list-typed `let xs = xs` after the
   loop and two recursive sites, so its byte identity at the costed level rests on the rule.
+- Call-site provenance (`helperParametersAndReturnsCarryCallSiteProvenance`, direct PIR, the
+  PR #144 fix): the review shape (a callback's list-typed parameter passed into a helper), one
+  proven caller plus one callback caller, and a helper passed as a value are untouched
+  (`assertSame`) and return −1 on the never-indexing path at both levels on all three VMs
+  (−2 for the mixed pair); a helper whose two callers both pass decoded lists promotes once
+  inside the helper (20); a list-typed result carries its argument's proof (`id d` untouched,
+  `id list` promoted, 10); under-application refutes the parameters it leaves unbound
+  (`pick false` then `g d`: untouched, −1) and keeps the supplied one (`pick list` then
+  `g true`: promoted, 10); a recursive helper fed its own tail keeps its proof (promoted, 30)
+  and is refuted by a Data entry call (untouched, −1); mutual recursion through one `LetRec`
+  proves both (two arrays, 30) or refutes both (−1), and a callee fed only `tailList` keeps its
+  proof while its caller's own list is refuted (one array, −1); a chain read through a let
+  between its lambdas counts both parameters (promoted, 10); two binders under one name and
+  parameter list share one record (untouched, 10) while distinct parameter names do not (one
+  array, 10).
+- The review's spending validator (`callbackToHelperCompositionKeepsValidatorAcceptanceAtTheCostedLevel`):
+  `Input(groups, mode)` redeemer, `input.groups().any(xs -> helper(xs, mode))` with a helper
+  that indexes twice behind conditionals. Rule inert at the costed level, costed bytes equal
+  safe bytes, and with `[[10, 20]]` at mode 0 both levels accept with the same budget on
+  Java, Truffle and Scalus. The well-typed counterpart (`JulcList<BigInteger> xs` redeemer
+  passed to the same helper) promotes one array with no recursive site left, accepts `[0, 0]`
+  at both levels, and fails `[0]` with `HeadList: empty list` at the safe level and
+  `IndexArray: index 1 out of bounds for array of size 1` at the costed level.
 - Every rebinding binder kind inside a promoted scope (`everyRebindingBinderKindIsOpaqueToTheOuterBinding`):
   lambda parameter (17), match field (17), match pattern variable (both levels fail at the
   inner site with `HeadList: expected list, got VCon(Data[])`), list-match tail (19),
@@ -220,7 +256,18 @@ cost depends on how the comparison is lowered.
 
 ## Repository validation
 
-Two rounds. Round one at commit `1301298` (the pass with the proven-name environment, the
+Three rounds. Round three (2026-09-15, uncommitted at the time of writing) follows the PR #144
+review fix (call-site provenance): `:julc-compiler:test` 1,618 tests, `:julc-compiler:pairCaseTest`
+49 tests (`O9ListIndexPromotionTest` 12, all 23 fixtures at 4 levels × source maps off/on on
+Java, Truffle and Scalus), `:julc-decompiler:test` 108, `:julc-benchmark:test` 128, all with
+`--rerun`, 0 failures; every fixture that promoted before the fix reproduces the hash in the
+table above, and the four fixtures that carry an unproven list into a helper or a loop
+(`CAST_HELPER`, `CAST_LOOP_STATE`, `CALLBACK_HELPER`, `HELPER_CALLERS`) are byte-identical to
+their goldens at every level. The pass is gated off below the costed level before the analysis
+runs, so the default-level corpus and the Blaster lock (compiled at `baseline`) are unaffected
+by construction and were not re-run in this round. The two earlier rounds:
+
+ Round one at commit `1301298` (the pass with the proven-name environment, the
 alias fixtures, goldens and docs). Round two at `d6d44b6`, after the callback-parameter rule,
 the applied-lambda rule and the `CAST_LOOP_STATE` fixture: Blaster, full build, publish and
 the costed examples run again; the default-level examples run was not repeated because the

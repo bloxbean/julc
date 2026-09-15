@@ -25,13 +25,7 @@ final class O9ListIndexFixtures {
         /** The array binding is not on this path: the budget must be identical. */
         UNTOUCHED,
         /** The input fails; budgets are not compared. */
-        FAILS,
-        /**
-         * Documented divergence (ADR-043 "Typing trust"): the list variable holds a non-list, so
-         * the costed program fails at {@code ListToArray} where the golden program succeeded or
-         * failed later at a site.
-         */
-        DIVERGES_AT_CONVERSION
+        FAILS
     }
 
     /**
@@ -56,10 +50,6 @@ final class O9ListIndexFixtures {
         /** Fails, but at an unpromoted site: the failure text must be identical before and after. */
         static Input failsElsewhere(String name, PlutusData... args) {
             return new Input(name, List.of(args), false, null, null, Path.FAILS, List.of());
-        }
-        /** The costed program fails at the conversion; {@code success} is the golden program's outcome. */
-        static Input divergesAtConversion(String name, boolean goldenSucceeds, PlutusData... args) {
-            return new Input(name, List.of(args), goldenSucceeds, null, null, Path.DIVERGES_AT_CONVERSION, List.of());
         }
         @Override
         public String toString() { return name; }
@@ -256,9 +246,11 @@ final class O9ListIndexFixtures {
             """;
 
     /**
-     * 15: the residual exposure. The cast lie flows into a helper's list parameter, which is
-     * trusted; the helper promotes and converts above its first conditional, so the path that
-     * never indexes now fails at the conversion (ADR-043 "Typing trust", pinned as documented).
+     * 15: the cast lie flows into a helper's list parameter. The parameter is proven only if
+     * every call site passes a list by construction; this one passes the unproven cast local,
+     * so the helper's pair stays recursive and the path that never indexes keeps succeeding at
+     * every level (before call-site provenance the helper converted above its first conditional
+     * and that path failed at the conversion).
      */
     static final String CAST_HELPER = IMPORTS + """
             class CastHelper {
@@ -323,11 +315,13 @@ final class O9ListIndexFixtures {
             """;
 
     /**
-     * 19: the residual exposure through a loop. The cast local is the loop's single accumulator,
-     * so after the loop it is bound to the loop call, whose list-typed return is trusted; with
-     * no iterations the call returns the cast Data unchanged, and the post-loop pair promotes
-     * above the conditionals (ADR-043 "Typing trust", pinned as documented). With iterations
-     * the loop body's {@code prepend} fails on the Data at every level, before the conversion.
+     * 19: the cast lie carried through a loop. The cast local is the loop's single accumulator,
+     * so after the loop it is bound to the loop call, whose declared return type is a list; the
+     * loop's parameter is refuted by its initial call with the cast local, its body returns
+     * that parameter, so the call result is unproven too and the post-loop pair stays
+     * recursive: with no iterations the call returns the cast Data unchanged and the
+     * never-indexing path keeps succeeding at every level. With iterations the loop body's
+     * {@code prepend} fails on the Data at every level.
      */
     static final String CAST_LOOP_STATE = IMPORTS + """
             class CastLoopState {
@@ -353,6 +347,70 @@ final class O9ListIndexFixtures {
                 static BigInteger alias(JulcList<BigInteger> xs, BigInteger i, BigInteger j) {
                     JulcList<BigInteger> ys = xs;
                     return ys.get(i).add(ys.get(j));
+                }
+            }
+            """;
+
+    /**
+     * 20: the composition found in review (PR #144). A list-typed callback parameter holds a
+     * raw Data element, and ordinary well-typed Java passes it into a helper's list parameter;
+     * the helper indexes twice behind conditionals. Call-site provenance refutes the parameter,
+     * so the never-indexing path keeps succeeding at every level, and an indexing path fails
+     * identically at every level (the callback parameter is Data, which no level can index).
+     */
+    static final String CALLBACK_HELPER = IMPORTS + """
+            class CallbackHelper {
+                static boolean helper(JulcList<BigInteger> xs, BigInteger k) {
+                    if (k.equals(BigInteger.ONE)) {
+                        return xs.get(0).equals(BigInteger.ZERO);
+                    }
+                    if (k.equals(BigInteger.TWO)) {
+                        return xs.get(1).equals(BigInteger.ZERO);
+                    }
+                    return true;
+                }
+                static boolean callbackHelper(JulcList<JulcList<BigInteger>> groups, BigInteger k) {
+                    return groups.any(xs -> helper(xs, k));
+                }
+            }
+            """;
+
+    /**
+     * 21: one proven caller is not enough. The helper is called directly with the method's own
+     * decoded list and from a callback with the callback's raw element; the second call
+     * refutes the parameter, so the helper's pair stays recursive on both paths and its own
+     * out-of-range failure keeps its text.
+     */
+    static final String HELPER_CALLERS = IMPORTS + """
+            class HelperCallers {
+                static BigInteger pick(JulcList<BigInteger> xs, BigInteger k) {
+                    if (k.equals(BigInteger.ONE)) {
+                        return xs.get(0);
+                    }
+                    if (k.equals(BigInteger.TWO)) {
+                        return xs.get(1);
+                    }
+                    return BigInteger.ZERO;
+                }
+                static BigInteger helperCallers(JulcList<BigInteger> ys, JulcList<JulcList<BigInteger>> groups, BigInteger k) {
+                    BigInteger direct = pick(ys, k);
+                    return direct.add(BigInteger.valueOf(groups.filter(xs -> pick(xs, BigInteger.ZERO).equals(BigInteger.ZERO)).size()));
+                }
+            }
+            """;
+
+    /**
+     * 22: the positive control for call-site provenance. Every call of the helper passes a
+     * decoded list (two direct calls with the method's own parameters), so the helper's pair
+     * promotes inside the helper and each call converts the list it receives.
+     */
+    static final String HELPER = IMPORTS + """
+            class Helper {
+                static BigInteger pick(JulcList<BigInteger> xs, BigInteger k) {
+                    return xs.get(k).add(xs.get(0));
+                }
+                static BigInteger helper(JulcList<BigInteger> xs, JulcList<BigInteger> ys, BigInteger k) {
+                    return pick(xs, k).add(pick(ys, k));
                 }
             }
             """;
@@ -467,10 +525,10 @@ final class O9ListIndexFixtures {
                     Input.untouched("int-data-no-index", PlutusData.integer(5), i(3)),
                     Input.untouched("list-data-no-index", ints(1, 2), i(3)),
                     Input.failsElsewhere("list-data-index", ints(1, 2), i(1)))),
-            new Fixture("CAST_HELPER", CAST_HELPER, "castHelper", true, 1, 0, List.of(
-                    Input.divergesAtConversion("int-data-no-index", true, PlutusData.integer(5), i(3)),
-                    Input.divergesAtConversion("list-data-no-index", true, ints(1, 2), i(3)),
-                    Input.divergesAtConversion("list-data-index", false, ints(1, 2), i(1)))),
+            new Fixture("CAST_HELPER", CAST_HELPER, "castHelper", false, 0, 2, List.of(
+                    Input.untouched("int-data-no-index", PlutusData.integer(5), i(3)),
+                    Input.untouched("list-data-no-index", ints(1, 2), i(3)),
+                    Input.failsElsewhere("list-data-index", ints(1, 2), i(1)))),
             new Fixture("CAST_ALIAS", CAST_ALIAS, "castAlias", false, 0, 2, List.of(
                     Input.untouched("int-data-no-index", PlutusData.integer(5), i(3)),
                     Input.untouched("list-data-no-index", ints(1, 2), i(3)),
@@ -481,10 +539,26 @@ final class O9ListIndexFixtures {
                     Input.untouched("int-data-empty-loop", PlutusData.integer(5), EMPTY, i(3)),
                     Input.failsElsewhere("list-data-index", ints(1, 2), ints(1, 2), i(1)))),
             new Fixture("ALIAS", ALIAS, "alias", true, 1, 0, TWO_INPUTS),
-            new Fixture("CAST_LOOP_STATE", CAST_LOOP_STATE, "castLoopState", true, 1, 0, List.of(
-                    Input.divergesAtConversion("int-data-empty-loop-no-index", true, PlutusData.integer(5), EMPTY, i(3)),
-                    Input.divergesAtConversion("list-data-empty-loop-index", false, ints(1, 2), EMPTY, i(1)),
-                    Input.failsElsewhere("int-data-loop", PlutusData.integer(5), ints(1), i(3)))));
+            new Fixture("CAST_LOOP_STATE", CAST_LOOP_STATE, "castLoopState", false, 0, 2, List.of(
+                    Input.untouched("int-data-empty-loop-no-index", PlutusData.integer(5), EMPTY, i(3)),
+                    Input.failsElsewhere("list-data-empty-loop-index", ints(1, 2), EMPTY, i(1)),
+                    Input.failsElsewhere("int-data-loop", PlutusData.integer(5), ints(1), i(3)))),
+            new Fixture("CALLBACK_HELPER", CALLBACK_HELPER, "callbackHelper", false, 0, 2, List.of(
+                    Input.untouched("no-index", PlutusData.list(ints(10, 20)), i(0)),
+                    Input.untouched("no-groups", PlutusData.list(), i(1)),
+                    Input.failsElsewhere("index-data-element", PlutusData.list(ints(10, 20)), i(1)))),
+            new Fixture("HELPER_CALLERS", HELPER_CALLERS, "helperCallers", false, 0, 2, List.of(
+                    Input.untouched("direct-1", ints(5, 6), PlutusData.list(ints(1)), i(1)),
+                    Input.untouched("direct-2", ints(5, 6), PlutusData.list(ints(1), ints(2)), i(2)),
+                    Input.untouched("direct-0-no-groups", ints(5, 6), PlutusData.list(), i(0)),
+                    Input.failsElsewhere("direct-out-of-range", ints(5), PlutusData.list(ints(1)), i(2)))),
+            new Fixture("HELPER", HELPER, "helper", true, 1, 0, List.of(
+                    Input.saves("eight-1", EIGHT, EIGHT, i(1)),
+                    Input.saves("eight-7", EIGHT, EIGHT, i(7)),
+                    Input.pays("sixty-four-0", List.of(64, 64), tens(64), tens(64), i(0)),
+                    Input.outOfRange("eight-8", 8, 8, EIGHT, EIGHT, i(8)),
+                    Input.outOfRange("second-list-short", 7, 2, EIGHT, tens(2), i(7)),
+                    Input.outOfRange("empty", 0, 0, EMPTY, EIGHT, i(0)))));
 
     private O9ListIndexFixtures() {}
 }

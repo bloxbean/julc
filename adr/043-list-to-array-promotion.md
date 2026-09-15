@@ -1,7 +1,7 @@
 # ADR-043: Cost-directed promotion of repeatedly indexed lists to arrays (O9)
 
 **Date:** 2026-09-13
-**Status:** Implemented and locally validated on `feat/115-list-to-array-promotion` (stacked on ADR-042's `feat/114-value-conversion-motion`); independent agent reviews and advisor passes applied; maintainer review pending
+**Status:** Implemented and locally validated on `feat/115-list-to-array-promotion` (stacked on ADR-042's `feat/114-value-conversion-motion`); independent agent reviews and advisor passes applied; PR #144 review finding (helper parameters trusted by type) fixed by call-site provenance on 2026-09-15; maintainer review pending
 **Issues:** [#115](https://github.com/bloxbean/julc/issues/115) (O9), research decision [#103](https://github.com/bloxbean/julc/issues/103), parent [#77](https://github.com/bloxbean/julc/issues/77)
 **Governing decisions:** ADR-032 O9 (list-to-array promotion, "profile-cost" class), ADR-036 (PIR-to-PIR pass placement before UPLC generation), ADR-041 (narrow failure-contract precedent), ADR-042 (typed-PIR pass conventions)
 
@@ -77,15 +77,20 @@ and its scope `S`:
   A `Let` binding is eligible only when its value is a list **by construction**
   (`ListIndexPromotionPass.producesList`) under the environment of proven names at its
   binder: a decode (`unListData`), a list builtin (`tailList`, `mkCons`, `dropList`, nil), a
-  proven variable, a call whose return type is a list, or a compound term whose result
-  position is one. Proven names are list-typed parameters of **method** lambdas (the root
-  term's leading lambdas and the leading lambdas of every `Let`- or `LetRec`-bound value,
-  which is how the frontend binds methods, helpers, library methods and loops, through the
-  decode lets between them; never a callback lambda's parameters, which the list-operation
-  lowering applies to raw Data elements; a lambda applied on the spot binds its parameter as a
-  `Let` of the argument would), list-typed match fields (trusted, see Typing trust; a
-  list-typed match field is decoded with `unListData` by the generator), list-match tails, and
-  proven `Let`s; every other binder shadows the name out of the set.
+  proven variable, a full call of a method whose declared return type is a list and whose
+  result call-site provenance (below) proves, or a compound term whose result position is
+  one. Proven names are: list-typed parameters of the root term's own leading lambdas (the
+  program's contract with its caller; generated code binds Data-typed `__raw` parameters
+  there and decodes them in lets, so nothing is trusted at that boundary); parameters of a
+  **method** (the leading lambdas of every `Let`- or `LetRec`-bound value, which is how the
+  frontend binds methods, helpers, library methods and loops, read through the lets between
+  them) that call-site provenance proves; parameters of a lambda chain applied on the spot
+  (the validator wrapper applies the handler that way, under its method-binding lets), each
+  proven exactly when its argument produces a list, as a `Let` of the argument would be;
+  never a callback lambda's parameters, which the list-operation lowering applies to raw Data
+  elements; list-typed match fields (a list-typed match field is decoded with `unListData` by
+  the generator), list-match tails, and proven `Let`s; every other binder shadows the name out
+  of the set.
   Whether a variable holds a list is therefore decided by how it was bound, never by the type
   its uses carry: a cast from `PlutusData` to `JulcList` lowers to the Data-typed inner term,
   so the local it binds is unproven, and so is every alias of it, including the post-loop
@@ -93,6 +98,22 @@ and its scope `S`:
   self-alias is transparent: the sites below it belong to the outer binding.
   Any other same-named binder (lambda parameter, `Let`, recursive binding, match field or
   pattern variable, list-match head or tail, pair-match field) is a different binding.
+- **Call-site provenance.** A method's parameter `i` is proven while it is list-typed at every
+  binder of that method and every use of the method's name in the program is a call that
+  passes it a term that produces a list under the environment at the call; a call with fewer
+  arguments refutes every parameter it leaves unbound, and a use of the name that is not a
+  call (the method escaping as a value) refutes them all. A full call of a method produces a
+  list while the method's declared return type is a list (as before) and its chain's body
+  produces a list under the method's parameter environment. Both facts start optimistic and
+  are refuted over whole-term passes until nothing changes: the greatest fixpoint, so a
+  recursive helper or loop that hands its own parameter or its tail back to itself keeps the
+  proof its first call established, and mutual recursion through one `LetRec` is handled the
+  same way. It is sound because a value reaches a parameter only through a finite chain of
+  calls, each of which the fixpoint checked. Two binders with the same name and parameter
+  names share one record, so their facts are the conservative intersection; the rewrite finds
+  the record of a binder whose scope it has already rewritten by that key, which the rewrite
+  never changes. The analysis adds no promotion (a call result was already required to be
+  list-typed, and a parameter was trusted by its type); it only withdraws trust.
 - **Rewrite.** Allocate a fresh array variable `a` (`#array-N`); replace every site of this
   binding by `[[indexArray a] i']`, where `i'` is the index with its own sites rewritten
   recursively; and insert `let a = [listToArray xs]` at the **innermost sub-term of the
@@ -134,26 +155,39 @@ direct case and every alias of it: whether a variable holds a list is decided by
 bound, never by the type its uses carry, so a `Let` bound to a Data-typed term is unproven
 and so is every list-typed copy of it, including the `let xs = xs` the loop lowering emits
 after a loop with the declared list type (`CAST_LET`, `CAST_ALIAS` and `CAST_LOOP_ALIAS` keep
-their bytes). It leaves the indirect one, a lie crossing a helper boundary into a trusted
-list-typed parameter or back out through a list-typed return (`CAST_HELPER`: on the
-never-indexing path the safe program returns 0 and the costed program fails with
-`ListToArray: expected list, got …`; `CAST_LOOP_STATE`: the cast local carried as a loop's
-single accumulator is bound after the loop to the loop call, whose list-typed return is
-trusted, and with no iterations that call returns the Data unchanged), pinned as documented
-behaviour. A callback lambda's list-typed parameter is not trusted at all: the list-operation
-lowering applies callbacks to raw Data elements, so such a parameter holds Data whatever its
-type says, and sites on it (which fail at every level today) are left alone. The pass tells
-methods from callbacks by position: a lambda that is the value of a `Let` or `LetRec` binding
-is a method (the frontend binds methods, helpers, library methods and loops that way, and a
-lambda-typed local is rejected at compile time with `Unknown type: Function`), a lambda in
-argument position is a callback, and a lambda applied on the spot binds its parameter as a
-`Let` of the argument would. It is
-reachable only through an unchecked cast from a non-list `PlutusData`, which Java itself
-would reject at the cast with a `ClassCastException`, or through the JavaParser-only entry
-points (`compileMethod`, source-level `JulcEval`) with a mistyped helper argument that javac
-would reject. Recorded as a costed-only contract for the maintainer's decision; the
-alternatives (inserting `unListData` in `JulcList` casts like the `JulcMap` rule, or
-call-site provenance for helper parameters) are open questions.
+their bytes). It also closes the indirect case, a value crossing a helper boundary into a
+list-typed parameter or back out through a list-typed result, by call-site provenance
+(Invariants): a helper's list-typed parameter is proven only when every call in the program
+passes it a list by construction, and a list-typed call result only when the helper's body
+produces one under that environment. The first implementation trusted helper parameters by
+their declared type and recorded the indirect case as reachable only through an unchecked
+cast; review of PR #144 showed that ordinary, well-typed Java reaches it with no cast at all.
+A list-typed callback parameter holds a raw Data element (below), and
+`groups.any(xs -> helper(xs, k))` passes it into `helper(JulcList<BigInteger> xs, BigInteger k)`,
+whose two conditional sites were promoted above the conditionals; with `k` on the
+never-indexing path a program that accepted at the safe level failed with
+`ListToArray: expected list, got …` at the costed level, on all three VMs, through
+`compileMethod` and through a spending validator with a valid typed redeemer. That exceeded
+the documented exception and is excluded now: the call from the callback refutes the
+parameter (`CALLBACK_HELPER`, `HELPER_CALLERS`), the cast flowing into a helper refutes it
+(`CAST_HELPER`), and the cast carried as a loop's single accumulator refutes the loop's
+parameter and with it the list-typed result the post-loop `let` is bound to
+(`CAST_LOOP_STATE`); all four keep their bytes at every level. A helper whose every caller
+passes a list still promotes inside the helper (`HELPER`; `ESCAPE` and `SHADOW` keep their
+promotions), and an entrypoint list the wrapper decodes and passes to the handler reaches a
+helper's sites as a proven list. A callback lambda's list-typed parameter is not trusted at
+all: the list-operation lowering applies callbacks to raw Data elements, so such a parameter
+holds Data whatever its type says, and sites on it (which fail at every level today) are left
+alone. The pass tells methods from callbacks by position: a lambda that is the value of a
+`Let` or `LetRec` binding is a method (the frontend binds methods, helpers, library methods
+and loops that way, and a lambda-typed local is rejected at compile time with
+`Unknown type: Function`), a lambda in argument position is a callback, and a lambda chain
+applied on the spot, possibly under the lets that wrap it (the wrapper applies the handler
+under its method bindings), binds each parameter as a `Let` of its argument would. What
+remains trusted is the root term's own list-typed parameters, which generated code never has
+(the wrapper's parameters are Data and are decoded by lets); a direct-PIR caller of
+`compilePirToProgram` owns that contract. Inserting `unListData` in `JulcList` casts like the
+`JulcMap` rule is no longer needed for this pass and stays an open question of its own.
 
 **Failure-text change.** Unlike ADR-042 and like ADR-041, one failure point changes its text.
 It is confined to promoted sites on out-of-range indexes and pinned on all three VMs.
@@ -276,11 +310,14 @@ from the measured profile rather than constants.
    sub-term (the `TWO`/`MANUAL` pair; a hand-written conversion placed higher, for example
    at the top of `GUARDED`, produces different bytes for the same budget on indexing paths).
 8. Promote only proven bindings: a `Let` whose value is a list by construction under the
-   proven-name environment at its binder, a list-typed parameter of a method lambda (never of
-   a callback lambda) or a list-typed match field.
+   proven-name environment at its binder, a list-typed match field, a list-match tail, a
+   root parameter, a parameter of a lambda chain applied on the spot whose argument is proven,
+   or a method parameter that call-site provenance proves (never a callback lambda's).
    Aliases inherit the proof of what they copy, so no cast local becomes promotable through
    a copy or through the loop lowering's post-loop self-alias; a proven self-alias is
-   transparent so one conversion serves sites inside and after a loop.
+   transparent so one conversion serves sites inside and after a loop. A list-typed call
+   result is proven only when the callee's body produces a list under its parameter
+   environment.
 4. Recognise the `get` shape structurally through the shared constant
    `PirHelpers.RECURSIVE_LIST_GET`; the registry lowering builds from the same constant, and a
    test pins that the emitted shape is the recognised one so a later change to the lowering
@@ -328,6 +365,10 @@ future profile-cost rules should share.
 - **Binder placement without sinking.** Simpler, but every path through the binder's scope
   would pay the conversion, including `BRANCH`'s tracing branch and `GUARDED`'s short-list
   path, and the two-site output would not match the manual form.
+- **Trusting helper parameters and results by their declared type** (the first
+  implementation, reviewed on PR #144). Sound only under the unchecked-cast exception, which
+  ordinary Java escapes through a callback's raw element; replaced by call-site provenance,
+  which withdraws trust and never adds a promotion.
 - **Treating any lambda as a repeat.** A callback lambda passed to an unknown function may run
   zero times; the stdlib's own list operations inline their callback into a recursive binding
   and are covered by the loop rule (`CALLBACK` fixture).
@@ -358,13 +399,15 @@ future profile-cost rules should share.
   default; the evidence document records the default and the costed runs of `julc-examples`.
 - **Failure contract.** As above; confined to the costed level, pinned on all three VMs.
 - **Loss bound.** Stated above; measured from the profile in the test.
-- **Typing trust.** As above: a `JulcList` variable bound through an unchecked cast from a
-  non-list `PlutusData` can, at the costed level only, fail at the conversion on a path that
-  never indexes. Direct `Let` bindings of such casts and every alias of them (user-written
-  or the loop lowering's post-loop self-alias) are excluded by construction, and callback
-  parameters are never trusted; the indirect case through a helper parameter or return, or
-  through a loop's state, is pinned (`CAST_HELPER`, `CAST_LOOP_STATE`) and left to the
-  maintainer's decision.
+- **Typing trust.** As above: closed by construction for direct casts, their aliases, and
+  every flow through a helper parameter, a helper result or a loop's state (`CAST_HELPER`,
+  `CAST_LOOP_STATE`, `CALLBACK_HELPER`, `HELPER_CALLERS` keep their bytes at every level).
+  Only the root term's own list-typed parameters remain trusted, which generated code never
+  has. Relative to the first (unmerged) implementation, the costed output changes in two
+  places: a helper reached by an unproven list no longer promotes, and a validator whose
+  entrypoint list parameter reaches a helper's sites now does (the handler's applied chain
+  previously stopped at the first method-binding let). Nothing shipped was built at that
+  level.
 - **Source maps.** Positions of a rewritten site map to the `IndexArray` application; the
   binding takes the position of the sub-term it wraps. Source-map builds skip the UPLC
   optimiser and are not the deployable artifact.
@@ -408,11 +451,16 @@ output at that commit, so every delta is O9 alone. Full table in
 | CALLBACK (site in `filter` callback) | 237 → 198 | three elements | 10,488,249 → 9,868,506 | −619,743 |
 | SINGLE (control) | 73 → 73 | all | unchanged | 0 |
 | CAST_LET (`(JulcList) (Object) d`, two sites) | 140 → 140 | all | unchanged (not a list by construction) | 0 |
-| CAST_HELPER (cast into a helper parameter) | 145 → 62 | never-indexing path, non-list | success 0 → `ListToArray` failure | documented exposure |
+| CAST_HELPER (cast into a helper parameter) | 145 → 145 | all | unchanged (the call refutes the parameter) | 0 |
 | CAST_ALIAS (list-typed copy of the cast local) | 140 → 140 | all | unchanged (alias of an unproven variable) | 0 |
 | CAST_LOOP_ALIAS (cast local, a loop, then the lowering's `let xs = xs`) | 212 → 212 | all | unchanged (the self-alias inherits the missing proof) | 0 |
 | ALIAS (`ys = xs` of a parameter, two sites) | 137 → 51 | 0, 1 on 8 | 2,796,387 → 1,849,941 | −946,446 |
-| CAST_LOOP_STATE (cast local as a loop's accumulator) | 204 → 121 | empty loop, never-indexing path, non-list | success 0 → `ListToArray` failure | documented exposure |
+| CAST_LOOP_STATE (cast local as a loop's accumulator) | 204 → 204 | all | unchanged (the loop's parameter and result are refuted) | 0 |
+| CALLBACK_HELPER (callback element into a helper, the PR #144 shape) | 206 → 206 | all | unchanged (the call from the callback refutes the parameter) | 0 |
+| HELPER_CALLERS (one decoded caller, one callback caller) | 328 → 328 | all | unchanged | 0 |
+| HELPER (every caller passes a decoded list; two sites inside the helper) | 150 → 67 | two lists of 8 at 1 | 5,247,650 → 3,450,758 | −1,796,892 |
+| HELPER | | two lists of 8 at 7 | 13,446,098 → 3,450,758 | −9,995,340 |
+| HELPER | | two lists of 64 at 0 | 3,881,242 → 6,232,614 | +2,351,372 (two conversions, exactly the bound) |
 
 Benchmark (`o9RequestLoopComparison`, sixteen inputs, seventeen outputs, `r` requests with
 descending indexes, safe → costed): 0: 3,263,089 → 4,373,743; 1: 9,535,017 → 9,220,886;
@@ -436,10 +484,15 @@ One milestone, delivered on `feat/115-list-to-array-promotion` stacked on ADR-04
 4. Full build, Blaster lock check, Maven-local publish and external `julc-examples` runs at
    the default level and at `pv11-costed` (WingRiders benchmark); stacked PR; release-plan
    update; the `DropList` lowering filed as its own issue.
+5. PR #144 review: call-site provenance for method parameters and results (Invariants), the
+   `CALLBACK_HELPER`, `HELPER_CALLERS` and `HELPER` fixtures with goldens captured at the same
+   base commit (every earlier row reproduced byte-identically), `CAST_HELPER` and
+   `CAST_LOOP_STATE` re-pinned as untouched, the applied handler chain read through the
+   wrapper's lets.
 
 ## Verification
 
-- `O9ListIndexPromotionTest` (`pair-case-backends`, Java/Truffle/Scalus): 20 fixtures × 4
+- `O9ListIndexPromotionTest` (`pair-case-backends`, Java/Truffle/Scalus): 23 fixtures × 4
   levels × source maps off/on against the goldens; rule provenance; array-binding, surviving
   and rewritten site counts on the emitted PIR; no `MultiIndexArray`; byte identity with the
   manual `toArray()` form; every binding converts a variable and every rewritten site is an
@@ -452,7 +505,17 @@ One milestone, delivered on `feat/115-list-to-array-promotion` stacked on ADR-04
   list-match head, a pattern variable, a non-list match field, a pair-match component and a
   recursive binding that shadow a proven name: untouched; a callback lambda's list-typed
   parameter: untouched, the same lambda as the root or as a recursive binding: promoted) and
-  the generated post-loop self-alias in `CAST_LOOP_ALIAS`; every rebinding binder kind (lambda, match field, pattern variable, list-match
+  the generated post-loop self-alias in `CAST_LOOP_ALIAS`; call-site provenance
+  (`helperParametersAndReturnsCarryCallSiteProvenance`: the review shape, mixed and proven
+  callers, an escaping method, results of unproven and proven arguments, under-application
+  with and without the supplied list, recursion and mutual recursion proven and refuted, a
+  tail-fed callee, a chain through a let, same-key binders merged and distinct keys; every
+  refuted shape returns the identical term and its never-indexing path returns −1 at both
+  levels on all three VMs) and the review's spending validator
+  (`callbackToHelperCompositionKeepsValidatorAcceptanceAtTheCostedLevel`: rule inert, costed
+  bytes equal safe bytes, acceptance and budget equal on all three VMs; the well-typed
+  counterpart with an entrypoint list promotes and shows only the documented substitution);
+  every rebinding binder kind (lambda, match field, pattern variable, list-match
   tail, pair-match field, recursive binding) with a result that proves which list each site
   read, and single-site variants that stay untouched; the cost model (constants and an exact
   whole-program check with two, three and four sites) and the break-even table; `@Param` and
@@ -474,10 +537,9 @@ One milestone, delivered on `feat/115-list-to-array-promotion` stacked on ADR-04
 
 ## Open questions
 
-- The typing-trust exposure (Invariants): keep it as a documented costed-only contract, make
-  `JulcList` casts from non-list terms insert `unListData` as `JulcMap` casts do (a safe-level
-  byte change for programs that today fail on any index of such a value), or gate helper
-  parameters and loop results on call-site provenance. The maintainer's call.
+- The `JulcList` cast lowering: casts from non-list terms could insert `unListData` as
+  `JulcMap` casts do (a safe-level byte change for programs that today fail on any index of
+  such a value). No longer needed for this pass, which trusts nothing such a cast can reach.
 - Callback parameters: the list-operation lowering applies a callback to its raw Data
   elements and unwraps only primitive parameter types, so a `JulcList`-typed callback
   parameter holds Data and any index of it fails at every level today. This pass never trusts
