@@ -15,6 +15,7 @@ import org.julclang.playground.api.EvaluateController;
 import org.julclang.playground.api.ExamplesController;
 import org.julclang.playground.api.ExpressionEvalController;
 import org.julclang.playground.api.ScenariosController;
+import org.julclang.playground.api.UplcController;
 import org.julclang.playground.sandbox.CompilationSandbox;
 import org.julclang.stdlib.StdlibRegistry;
 import org.junit.jupiter.api.AfterAll;
@@ -43,7 +44,12 @@ class PlaygroundDispatcherTest {
         var compiler = new JulcCompiler(StdlibRegistry.defaultRegistry());
         var libraries = LibrarySourceResolver.scanClasspathSources(JulcCompiler.class.getClassLoader());
         var examples = new ExamplesController();
+        var uplc = new UplcController(SANDBOX);
         return Javalin.create()
+                .post("/api/uplc/decode", uplc::decode)
+                .post("/api/uplc/decompile", uplc::decompile)
+                .post("/api/uplc/evaluate", uplc::evaluate)
+                .post("/api/uplc/debug", uplc::debug)
                 .post("/api/check", new CheckController()::handle)
                 .post("/api/compile", new CompileController(compiler, SANDBOX, libraries)::handle)
                 .post("/api/evaluate", new EvaluateController(compiler, SANDBOX, libraries)::handle)

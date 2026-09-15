@@ -8,10 +8,12 @@ import org.julclang.playground.model.CheckRequest;
 import org.julclang.playground.model.CompileRequest;
 import org.julclang.playground.model.EvalExpressionRequest;
 import org.julclang.playground.model.EvaluateRequest;
+import org.julclang.playground.model.UplcModels;
 import org.julclang.playground.repl.PlaygroundEvaluator;
 import org.julclang.playground.service.ExampleCatalog;
 import org.julclang.playground.service.PlaygroundService;
 import org.julclang.playground.service.ServiceResult;
+import org.julclang.playground.uplc.UplcToolsService;
 import org.julclang.stdlib.StdlibRegistry;
 import org.julclang.vm.JulcVm;
 import org.julclang.vm.java.JavaVmProvider;
@@ -36,6 +38,7 @@ public final class PlaygroundDispatcher {
     private final PlaygroundService service;
     private final PlaygroundEvaluator evaluator;
     private final ExampleCatalog examples;
+    private final UplcToolsService uplc = new UplcToolsService();
 
     PlaygroundDispatcher(PlaygroundService service, PlaygroundEvaluator evaluator, ExampleCatalog examples) {
         this.service = service;
@@ -86,6 +89,10 @@ public final class PlaygroundDispatcher {
                 case "/api/evaluate" -> service.evaluate(mapper.readValue(body, EvaluateRequest.class));
                 case "/api/eval" -> PlaygroundService.evalExpression(evaluator,
                         mapper.readValue(body, EvalExpressionRequest.class));
+                case "/api/uplc/decode" -> uplc.decode(mapper.readValue(body, UplcModels.DecodeRequest.class));
+                case "/api/uplc/decompile" -> uplc.decompile(mapper.readValue(body, UplcModels.DecompileRequest.class));
+                case "/api/uplc/evaluate" -> uplc.evaluate(mapper.readValue(body, UplcModels.EvaluateRequest.class));
+                case "/api/uplc/debug" -> uplc.debug(mapper.readValue(body, UplcModels.DebugRequest.class));
                 default -> notFound(method, path);
             };
         }
