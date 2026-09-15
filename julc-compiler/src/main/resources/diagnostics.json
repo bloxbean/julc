@@ -493,6 +493,17 @@
       "template": "Method parameter {0} has opaque type {1}, which cannot be decoded from a Plutus Data argument",
       "summary": "compileMethod and validator inputs are Data-encoded; a native evaluator value has no implicit Data representation.",
       "fix": "Accept PlutusData or a ledger type at the external boundary and call the explicit native conversion inside the method."
+    },
+    {
+      "code": "JULC0043",
+      "constant": "UNKNOWN_OPTIMIZATION_RULE",
+      "status": "emitted",
+      "title": "Unknown optimization rule in the disabled-rule set",
+      "category": "CONFIG",
+      "severity": "error",
+      "template": "Optimization rule {0} cannot be disabled. Rules that can be disabled: {1}",
+      "summary": "Only the PIR-to-PIR sharing and promotion passes accept a per-rule switch; the identifier must match one of their rule ids exactly, so a typo never silently leaves the rule enabled.",
+      "fix": "Use one of the listed rule identifiers exactly as reported in the optimization report, or lower the optimization level to disable a whole class of rules."
     }
   ]
 }

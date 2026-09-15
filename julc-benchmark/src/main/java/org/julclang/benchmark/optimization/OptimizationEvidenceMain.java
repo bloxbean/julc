@@ -150,6 +150,49 @@ public final class OptimizationEvidenceMain {
             }
             """;
 
+    private static final String O15_IMPORTS = """
+            import org.julclang.core.PlutusData;
+            import org.julclang.ledger.TxInfo;
+            import java.math.BigInteger;
+            """;
+    /** ADR-044 (O15): the corpus shape, one record field projected on every path. */
+    private static final String O15_REPEATED_SOURCE = O15_IMPORTS + """
+            class ProjectionSharingRepeated {
+                record Box(BigInteger amount, byte[] owner) {}
+                static BigInteger repeated(Box b, BigInteger limit) {
+                    if (b.amount().compareTo(limit) > 0) {
+                        return b.amount().subtract(limit);
+                    }
+                    return b.amount().add(limit);
+                }
+            }
+            """;
+    /** The hand-written binding; kept in its own class so no dead method carries rule provenance. */
+    private static final String O15_MANUAL_SOURCE = O15_IMPORTS + """
+            class ProjectionSharingManual {
+                record Box(BigInteger amount, byte[] owner) {}
+                static BigInteger manual(Box b, BigInteger limit) {
+                    BigInteger amount = b.amount();
+                    if (amount.compareTo(limit) > 0) {
+                        return amount.subtract(limit);
+                    }
+                    return amount.add(limit);
+                }
+            }
+            """;
+    /** The validator shape: {@code outputs} twice (shared as one chain), {@code fee} once per branch (shared prefix). */
+    private static final String O15_LEDGER_SOURCE = O15_IMPORTS + """
+            class ProjectionSharingLedger {
+                static BigInteger ledger(TxInfo txInfo) {
+                    if (txInfo.outputs().isEmpty()) {
+                        return txInfo.fee();
+                    }
+                    BigInteger count = BigInteger.valueOf(txInfo.outputs().size());
+                    return count.add(txInfo.fee());
+                }
+            }
+            """;
+
     private static final String O12_EXP_MOD_SOURCE = """
             import org.julclang.stdlib.lib.MathLib;
             import java.math.BigInteger;
@@ -268,6 +311,12 @@ public final class OptimizationEvidenceMain {
         System.out.print(o9TwoSitesComparison().toMarkdown());
         System.out.println();
         System.out.print(o9ManualArrayControlComparison().toMarkdown());
+        System.out.println();
+        System.out.print(o15ProjectionSharingComparison().toMarkdown());
+        System.out.println();
+        System.out.print(o15ManualBindingControlComparison().toMarkdown());
+        System.out.println();
+        System.out.print(o15LedgerProjectionComparison().toMarkdown());
         System.out.println();
         System.out.print(o12ExpModIdiomExperiment().toMarkdown());
         System.out.println();
@@ -522,6 +571,62 @@ public final class OptimizationEvidenceMain {
                 OptimizationLevel.PV11_SAFE,
                 OptimizationLevel.PV11_COSTED,
                 OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+    }
+
+    /** ADR-044 (O15): PV11_SAFE with projection sharing off versus on, so the delta is O15 alone. */
+    public static OptimizationBenchmarkRunner.Comparison o15ProjectionSharingComparison() {
+        return OptimizationBenchmarkRunner.compareRuleWithJavaAndTruffle(
+                new OptimizationBenchmarkRunner.Fixture(
+                        "o15-projection-sharing", O15_REPEATED_SOURCE, "repeated", o15BoxCases()),
+                OptimizationLevel.PV11_SAFE,
+                "pv11.o15.projection-sharing",
+                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+    }
+
+    /** The manual binding control: {@code manual} carries no O15 rule with the switch off or on. */
+    public static OptimizationBenchmarkRunner.Comparison o15ManualBindingControlComparison() {
+        return OptimizationBenchmarkRunner.compareRuleWithJavaAndTruffle(
+                new OptimizationBenchmarkRunner.Fixture(
+                        "o15-projection-manual-control", O15_MANUAL_SOURCE, "manual", o15BoxCases()),
+                OptimizationLevel.PV11_SAFE,
+                "pv11.o15.projection-sharing",
+                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+    }
+
+    /** The ledger shape: a shared chain plus a shared fields prefix over a {@code TxInfo}. */
+    public static OptimizationBenchmarkRunner.Comparison o15LedgerProjectionComparison() {
+        return OptimizationBenchmarkRunner.compareRuleWithJavaAndTruffle(
+                new OptimizationBenchmarkRunner.Fixture(
+                        "o15-projection-ledger", O15_LEDGER_SOURCE, "ledger", List.of(
+                                OptimizationBenchmarkRunner.InputCase.of("two-outputs",
+                                        txInfoData(PlutusData.constr(0), PlutusData.constr(0))),
+                                OptimizationBenchmarkRunner.InputCase.of("no-outputs", txInfoData()),
+                                OptimizationBenchmarkRunner.InputCase.of("not-a-record", PlutusData.integer(1)))),
+                OptimizationLevel.PV11_SAFE,
+                "pv11.o15.projection-sharing",
+                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+    }
+
+    private static List<OptimizationBenchmarkRunner.InputCase> o15BoxCases() {
+        var box = PlutusData.constr(0, PlutusData.integer(7), PlutusData.bytes(new byte[28]));
+        return List.of(
+                OptimizationBenchmarkRunner.InputCase.of("above", box, PlutusData.integer(5)),
+                OptimizationBenchmarkRunner.InputCase.of("below", box, PlutusData.integer(10)),
+                OptimizationBenchmarkRunner.InputCase.of("not-a-record", PlutusData.integer(1), PlutusData.integer(5)),
+                OptimizationBenchmarkRunner.InputCase.of("bad-amount",
+                        PlutusData.constr(0, PlutusData.bytes(new byte[1]), PlutusData.bytes(new byte[28])), PlutusData.integer(5)));
+    }
+
+    /** A V3 {@code TxInfo} with the given outputs, fee 2,000,000 and empty everything else. */
+    private static PlutusData txInfoData(PlutusData... outputs) {
+        var trueValue = PlutusData.constr(1);
+        var lower = PlutusData.constr(0, PlutusData.constr(0), trueValue);
+        var upper = PlutusData.constr(0, PlutusData.constr(2), trueValue);
+        return PlutusData.constr(0,
+                PlutusData.list(), PlutusData.list(), PlutusData.list(outputs), PlutusData.integer(2_000_000),
+                PlutusData.map(), PlutusData.list(), PlutusData.map(), PlutusData.constr(0, lower, upper),
+                PlutusData.list(), PlutusData.map(), PlutusData.map(), PlutusData.bytes(new byte[32]),
+                PlutusData.map(), PlutusData.list(), PlutusData.constr(1), PlutusData.constr(1));
     }
 
     /** The manual array control: PV11_SAFE and PV11_COSTED of {@code manualArray} carry no O9 rule. */

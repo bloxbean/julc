@@ -2,7 +2,10 @@ package org.julclang.compiler;
 
 import org.julclang.vm.OptimizationCostProfile;
 
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Consumer;
 
 /**
@@ -17,6 +20,7 @@ public class CompilerOptions {
     private CompilerTarget target = CompilerTarget.PLUTUS_V3_PV11;
     private OptimizationLevel optimizationLevel = OptimizationLevel.DEFAULT;
     private OptimizationCostProfile optimizationCostProfile;
+    private final Set<String> disabledOptimizationRules = new LinkedHashSet<>();
     private Consumer<String> logger = System.out::println;
 
     /**
@@ -60,6 +64,26 @@ public class CompilerOptions {
 
     public OptimizationCostProfile getOptimizationCostProfile() {
         return optimizationCostProfile;
+    }
+
+    /**
+     * Keep one optimization rule off at every level, identified by the id it reports in the
+     * optimization report (for example {@code pv11.o8.value-sharing}). Only the PIR-to-PIR
+     * passes listed by {@link CompilationContext#switchableOptimizationRules()} can be switched
+     * off individually; any other identifier fails when compilation begins rather than being
+     * ignored. The switch exists so that each rule can be reviewed, measured and, if necessary,
+     * excluded on its own (ADR-044); the level remains the supported way to choose a rollout.
+     */
+    public CompilerOptions disableOptimizationRule(String ruleId) {
+        Objects.requireNonNull(ruleId, "ruleId");
+        if (ruleId.isBlank()) throw new IllegalArgumentException("ruleId must not be blank");
+        disabledOptimizationRules.add(ruleId);
+        return this;
+    }
+
+    /** The rule ids passed to {@link #disableOptimizationRule(String)}, in insertion order. */
+    public Set<String> getDisabledOptimizationRules() {
+        return Collections.unmodifiableSet(disabledOptimizationRules);
     }
 
     public CompilerOptions setVerbose(boolean verbose) {

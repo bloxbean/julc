@@ -87,7 +87,8 @@ public final class ListIndexPromotionPass {
     private boolean enabled() {
         if (!context.target().equals(CompilerTarget.PLUTUS_V3_PV11)
                 || !context.optimizationLevel().pv11CostedRulesEnabled()
-                || !context.supports(ProtocolCapability.ARRAY_CONSTANTS)) {
+                || !context.supports(ProtocolCapability.ARRAY_CONSTANTS)
+                || !context.ruleEnabled(RULE)) {
             return false;
         }
         var profile = context.resolvedTarget().featureProfile();

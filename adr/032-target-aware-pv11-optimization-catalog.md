@@ -916,8 +916,9 @@ line through explicit, evidence-backed deferrals (2026-08-29). See
   sharing is documented and equivalent. (O8 was later delivered by ADR-042 as a
   strict-prefix sharing pass on typed PIR: a repeated conversion is shared only
   when it is already the first non-trivial evaluation of its scope, which needs
-  no dominance analysis and keeps every failure. O15's Data-side sharing remains
-  deferred.)
+  no dominance analysis and keeps every failure. ADR-044 then extended the same
+  pass to record field projections and the fields prefix, the Data-side shapes
+  the example corpus repeats most; `ValuesLib` computations stay unshared.)
 - Deferred O9 despite large valid-input gains because recursive List `get` and
   `IndexArray` expose different negative/out-of-range failure text and timing,
   and no list use/escape analysis exists. (O9 was later delivered by ADR-043 at
@@ -1046,7 +1047,7 @@ line after the initial review window (2026-08-29).
 | O12 | [#104](https://github.com/bloxbean/julc/issues/104), [#118](https://github.com/bloxbean/julc/issues/118) | decision: no additional implementation required; explicit API exists, ordinary pow/mod rewrite rejected |
 | O13 | [#107](https://github.com/bloxbean/julc/issues/107) | enabled at `PV11_SAFE` |
 | O14 | [#108](https://github.com/bloxbean/julc/issues/108) | deferred: literal producer/reference semantics required |
-| O15 | [#105](https://github.com/bloxbean/julc/issues/105) | deferred: typed dominance/use analysis required |
+| O15 | [#105](https://github.com/bloxbean/julc/issues/105), [#120](https://github.com/bloxbean/julc/issues/120) | ADR-044 implemented: the ADR-042 leading rule over a closed class of record field projections and the fields prefix at `PV11_SAFE` (`pv11.o15.projection-sharing`), failure-text neutral, no dominance analysis; each PIR rule independently switchable; general CSE remains out of scope |
 
 ## Verification strategy
 

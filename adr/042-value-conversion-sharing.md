@@ -274,5 +274,11 @@ One milestone, delivered on `feat/114-value-conversion-motion` stacked on ADR-04
   loop-shape proof and is left open.
 - O15 Data-side sharing (`ValuesLib` repeats) is where the shipped corpus has repeated work;
   it needs its own ADR because `ValuesLib` failure and canonicalisation differ from native.
+  (ADR-044 generalised this pass to record field projections and the fields prefix, the
+  Data-side shapes the corpus repeats most, and made every PIR rule individually
+  switchable; `ValuesLib` computations remain unshared.)
 - Rule provenance is recorded when the pass fires anywhere, including in a helper that dead
   code elimination later removes; this matches every earlier rule and is noted, not changed.
+  (ADR-044 changed this for the sharing pass: units inside a lambda binding the live program
+  never references are neither counted nor rewritten, so an uncalled helper records nothing;
+  a live helper the optimiser later inlines still does.)
