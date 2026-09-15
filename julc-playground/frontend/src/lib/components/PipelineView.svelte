@@ -1,6 +1,16 @@
 <script lang="ts">
-  import { pirText, uplcText, blueprintJson, compileResult, isCompiling, source, librarySource, diagnostics } from '../stores/editor';
+  import { pirText, uplcText, blueprintJson, compileResult, isCompiling, source, librarySource, diagnostics, purpose } from '../stores/editor';
   import { api } from '../api/client';
+  import { mode } from '../stores/mode';
+
+  async function openInUplc() {
+    const code = $compileResult?.compiledCode;
+    if (!code) return;
+    const { openScript } = await import('../uplc/store');
+    const { purposeFromContract } = await import('../uplc/mock');
+    openScript(code, purposeFromContract($purpose));
+    mode.set('uplc');
+  }
 
   let activeTab: 'pir' | 'uplc' | 'compiled' | 'blueprint' = 'pir';
   let generateBlueprint = true;
@@ -76,6 +86,9 @@
     {:else if activeTab === 'compiled'}
       {#if $compileResult?.compiledCode}
         <div class="compiled-section">
+          <button class="secondary open-uplc" on:click={openInUplc} title="Evaluate and debug this script against a mock transaction">
+            Open in UPLC evaluator →
+          </button>
           <div class="compiled-field">
             <span class="compiled-label">Script Hash</span>
             <pre class="compiled-value">{$compileResult.scriptHash}</pre>
@@ -193,6 +206,12 @@
     white-space: pre-wrap;
     word-break: break-all;
     margin: 0;
+  }
+
+  .open-uplc {
+    align-self: flex-start;
+    font-size: 11px;
+    padding: 4px 10px;
   }
 
   .compiled-section {
