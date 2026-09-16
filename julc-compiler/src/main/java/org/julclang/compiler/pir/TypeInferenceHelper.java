@@ -1,12 +1,17 @@
 package org.julclang.compiler.pir;
 
 import org.julclang.compiler.CompilerException;
+import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.resolve.LibraryMethodRegistry;
 import org.julclang.compiler.resolve.SymbolTable;
 import org.julclang.compiler.resolve.TypeResolver;
 import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
+import org.julclang.core.source.SourceLocation;
 import com.github.javaparser.ast.expr.*;
+import java.util.List;
+import java.util.LinkedHashSet;
+import java.util.ArrayList;
 
 /**
  * Read-only type inference utilities for PIR generation.
@@ -101,6 +106,23 @@ final class TypeInferenceHelper {
             return new PirType.DataType();
         }
 
+        // JulcArray.of(a, b, ...): the element type the elements resolve to, when every element
+        // resolves to the same one (javac's inference for a `var` local or a chained access);
+        // otherwise unknown here, and the declaration reads the encodings of the generated
+        // literal (ADR-046).
+        if (scopeExpr instanceof NameExpr ne && methodName.equals("of") && isJulcArray(ne.getNameAsString())) {
+            PirType common = null;
+            for (var arg : mce.getArguments()) {
+                var argType = typeResolver.resolveNamed(resolveExpressionType(arg));
+                if (argType instanceof PirType.DataType || (common != null && !common.equals(argType))) {
+                    common = null;
+                    break;
+                }
+                common = argType;
+            }
+            if (common != null) return new PirType.ArrayType(common);
+        }
+
         // If scope is a variable with RecordType, return the field type
         if (scopeExpr instanceof NameExpr ne && mce.getArguments().isEmpty()) {
             var fieldType = resolveRecordFieldType(ne.getNameAsString(), methodName);
@@ -187,6 +209,16 @@ final class TypeInferenceHelper {
      */
     PirType inferType(com.github.javaparser.ast.type.Type declType, PirTerm initValue,
                        Expression initExpr) {
+        return inferType(declType, initValue, initExpr, null);
+    }
+
+    /**
+     * As {@link #inferType(com.github.javaparser.ast.type.Type, PirTerm, Expression)};
+     * {@code location} names the declaration in the diagnostic raised when {@code var} cannot
+     * give an array literal a single element type.
+     */
+    PirType inferType(com.github.javaparser.ast.type.Type declType, PirTerm initValue,
+                       Expression initExpr, SourceLocation location) {
         if (!(declType instanceof com.github.javaparser.ast.type.VarType)) {
             return typeResolver.resolve(declType);
         }
@@ -194,7 +226,88 @@ final class TypeInferenceHelper {
         if (!(exprType instanceof PirType.DataType)) {
             return exprType;
         }
+        // `var a = JulcArray.of(...)`: javac types the local by its elements (ADR-046). Elements
+        // of different types would need a common supertype the subset cannot represent, and the
+        // access needs one element type for its decode: fail closed rather than type them Data.
+        var elementTypes = arrayLiteralElementTypes(initValue);
+        if (elementTypes.isPresent() && new LinkedHashSet<>(elementTypes.get()).size() > 1) {
+            throw CompilerTypeDiagnostics.arrayLiteralElementTypesDiffer(elementTypes.get(), location);
+        }
         return inferPirType(initValue);
+    }
+
+    /**
+     * The types the elements of an array literal were encoded with: {@code ListToArray} over the
+     * {@code MkCons} chain {@code JulcArray.of} emits, each element read back from the encoding
+     * {@link PirHelpers#wrapEncode} chose for its type ({@code IData} integer, {@code BData}
+     * bytes, {@code BData(EncodeUtf8)} string, the Bool conditional, {@code ListData} over a
+     * nested list literal its element type, {@code MapData} a Data map, a typed variable or a
+     * record literal its own type, any other Data element Data). Empty when the term is not
+     * such a literal.
+     */
+    java.util.Optional<List<PirType>> arrayLiteralElementTypes(PirTerm term) {
+        if (term instanceof PirTerm.App app && app.function() instanceof PirTerm.Builtin b
+                && b.fun() == DefaultFun.ListToArray) {
+            return listLiteralElementTypes(app.argument());
+        }
+        return java.util.Optional.empty();
+    }
+
+    /** The element types of a {@code MkCons} chain over encoded elements; empty when not one. */
+    private java.util.Optional<List<PirType>> listLiteralElementTypes(PirTerm chain) {
+        var types = new ArrayList<PirType>();
+        PirTerm current = chain;
+        while (true) {
+            if (current instanceof PirTerm.App nil && nil.function() instanceof PirTerm.Builtin nb
+                    && nb.fun() == DefaultFun.MkNilData) {
+                return java.util.Optional.of(types);
+            }
+            if (current instanceof PirTerm.App cons && cons.function() instanceof PirTerm.App head
+                    && head.function() instanceof PirTerm.Builtin cb && cb.fun() == DefaultFun.MkCons) {
+                types.add(encodedElementType(head.argument()));
+                current = cons.argument();
+                continue;
+            }
+            return java.util.Optional.empty();
+        }
+    }
+
+    private PirType encodedElementType(PirTerm element) {
+        if (element instanceof PirTerm.App app && app.function() instanceof PirTerm.Builtin b) {
+            switch (b.fun()) {
+                case IData -> { return new PirType.IntegerType(); }
+                case BData -> {
+                    return app.argument() instanceof PirTerm.App inner
+                            && inner.function() instanceof PirTerm.Builtin ib && ib.fun() == DefaultFun.EncodeUtf8
+                            ? new PirType.StringType() : new PirType.ByteStringType();
+                }
+                case ListData -> {
+                    var nested = listLiteralElementTypes(app.argument());
+                    if (nested.isPresent()) {
+                        var distinct = new LinkedHashSet<>(nested.get());
+                        return new PirType.ListType(distinct.size() == 1 ? distinct.iterator().next() : new PirType.DataType());
+                    }
+                    return new PirType.ListType(new PirType.DataType());
+                }
+                case MapData -> { return new PirType.MapType(new PirType.DataType(), new PirType.DataType()); }
+                default -> { }
+            }
+        }
+        if (element instanceof PirTerm.IfThenElse ite && isConstrData(ite.thenBranch()) && isConstrData(ite.elseBranch())) {
+            return new PirType.BoolType();
+        }
+        if (element instanceof PirTerm.Var v && !(v.type() instanceof PirType.DataType)) {
+            return typeResolver.resolveNamed(v.type());
+        }
+        if (element instanceof PirTerm.DataConstr constr) {
+            return typeResolver.resolveNamed(constr.dataType());
+        }
+        return new PirType.DataType();
+    }
+
+    private static boolean isConstrData(PirTerm term) {
+        return term instanceof PirTerm.App app && app.function() instanceof PirTerm.App head
+                && head.function() instanceof PirTerm.Builtin b && b.fun() == DefaultFun.ConstrData;
     }
 
     /**
@@ -213,6 +326,12 @@ final class TypeInferenceHelper {
             };
         }
         if (term instanceof PirTerm.App app) {
+            // An array literal carries its element type in its elements' encodings (ADR-046).
+            var elementTypes = arrayLiteralElementTypes(term);
+            if (elementTypes.isPresent()) {
+                var distinct = new LinkedHashSet<>(elementTypes.get());
+                return new PirType.ArrayType(distinct.size() == 1 ? distinct.iterator().next() : new PirType.DataType());
+            }
             PirTerm fn = app.function();
             if (fn instanceof PirTerm.Builtin b) {
                 if (b.fun() == DefaultFun.FstPair
@@ -298,6 +417,10 @@ final class TypeInferenceHelper {
             case ListToArray -> new PirType.ArrayType(new PirType.DataType());
             default -> new PirType.DataType();
         };
+    }
+
+    private boolean isJulcArray(String name) {
+        return name.equals("JulcArray") || "org.julclang.core.types.JulcArray".equals(typeResolver.resolveClassName(name));
     }
 
     /** Find a LibraryMethodRegistry within a StdlibLookup chain. */

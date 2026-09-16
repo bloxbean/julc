@@ -152,13 +152,14 @@
     {
       "code": "JULC0012",
       "constant": "TYPE_RESOLUTION_FAILED",
-      "status": "planned",
+      "status": "emitted",
       "title": "Cannot resolve type",
       "category": "TYPE",
       "severity": "error",
       "template": "Cannot resolve type: {0}",
       "summary": "The compiler could not resolve a type reference. The class may not be on the classpath, may not be a registered ledger/stdlib type, or may not be a valid on-chain type.",
-      "fix": "Ensure the type is imported and is one of: a record, sealed interface, ledger type, JulcList/JulcMap/Optional/Tuple, or primitive (BigInteger, byte[], boolean, String)."
+      "fix": "Ensure the type is imported and is one of: a record, sealed interface, ledger type, JulcList/JulcMap/Optional/Tuple, or primitive (BigInteger, byte[], boolean, String).",
+      "example": "var a = JulcArray.of(BigInteger.ONE, new byte[]{1}); // elements of different types under var: declare JulcArray<T>"
     },
     {
       "code": "JULC0013",

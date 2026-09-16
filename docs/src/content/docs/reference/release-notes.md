@@ -33,9 +33,9 @@ of your own that already spells `JulcList.of(...).toArray()` or
 `JulcArray.fromList(JulcList.of(...))` does change at `pv11-safe` (it gains the
 array constant). A native Value cannot be an array element (`JULC0041`, as for
 every Data-backed container). Spell a negative literal element as
-`new BigInteger("-5")`. Declare the element type: with `var t = JulcArray.of(...)`
-the compiler types the elements as Data and `t.get(i)` returns raw `PlutusData`
-even though javac infers `JulcArray<BigInteger>`.
+`new BigInteger("-5")`. `var t = JulcArray.of(...)` infers the element type from
+the elements, as javac does; elements of different types under `var` are rejected
+with `JULC0012` (declare `JulcArray<T>`).
 
 ## Upcoming preview: native Value literals and literal folding (ADR-045)
 

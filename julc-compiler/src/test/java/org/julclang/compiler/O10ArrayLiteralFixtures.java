@@ -2,7 +2,10 @@ package org.julclang.compiler;
 
 import org.julclang.core.PlutusData;
 
+import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 /**
  * ADR-046 (O10) fixtures: {@code compileMethod} sources built from {@code JulcArray.of},
@@ -201,6 +204,60 @@ final class O10ArrayLiteralFixtures {
                     return at(JulcArray.of(BigInteger.ONE, BigInteger.TWO), BigInteger.ONE);
                 }""");
 
+    /** {@code new byte[]{1, 1, ...}} of the given length. */
+    static String bytesLiteral(int length) {
+        return "new byte[]{" + IntStream.range(0, length).mapToObj(i -> "1").collect(Collectors.joining(", ")) + "}";
+    }
+
+    static final String B32 = bytesLiteral(32);
+    static final String B256 = bytesLiteral(256);
+    /** The bytes of {@link #B256}, once and twice. */
+    static final byte[] B32_BYTES = new byte[32];
+    static final byte[] B256_BYTES = new byte[256];
+    static final byte[] B256_TWICE = new byte[512];
+    static { Arrays.fill(B32_BYTES, (byte) 1); Arrays.fill(B256_BYTES, (byte) 1); Arrays.fill(B256_TWICE, (byte) 1); }
+
+    /**
+     * 19: a 256-byte local shared by both elements of the literal and by a runtime use: the
+     * conversion would copy it twice into an array constant while the local stays live, so
+     * nothing folds (the review's reproducer: 306 → 825 bytes when the list literal was
+     * measured as its expanded constant).
+     */
+    static final String SHARED_ELEMENT = method("""
+                static byte[] sharedElement(BigInteger i) {
+                    byte[] b = %s;
+                    JulcArray<byte[]> a = JulcArray.of(b, b);
+                    return Builtins.appendByteString(a.get(i), b);
+                }""".formatted(B256));
+
+    /** 20: the local's only uses are the two elements: the array would hold two copies against the one binding that dies, so the conversion stays. */
+    static final String SHARED_ELEMENT_ONCE = method("""
+                static byte[] sharedElementOnce() {
+                    byte[] b = %s;
+                    JulcArray<byte[]> a = JulcArray.of(b, b);
+                    return a.get(0);
+                }""".formatted(B256));
+
+    /** 21: a 32-byte local used once, as the single element: it dies with the conversion, is credited, and everything folds. */
+    static final String ELEMENT_ONCE = method("""
+                static byte[] elementOnce() {
+                    byte[] b = %s;
+                    JulcArray<byte[]> a = JulcArray.of(b);
+                    return a.get(0);
+                }""".formatted(B32));
+
+    /**
+     * 22: the same with the 256-byte local: credited, but the array constant (the element as
+     * CBOR Data) is longer than the raw byte-string constant plus its wrapping, so the
+     * objective keeps the conversion (measured in the direct-PIR objective probe).
+     */
+    static final String WIDE_ELEMENT_ONCE = method("""
+                static byte[] wideElementOnce() {
+                    byte[] b = %s;
+                    JulcArray<byte[]> a = JulcArray.of(b);
+                    return a.get(0);
+                }""".formatted(B256));
+
     static final PlutusData TRUE = PlutusData.constr(1);
     static final PlutusData FALSE = PlutusData.constr(0);
     private static final List<Input> NONE = List.of(Input.ok("run"));
@@ -234,7 +291,14 @@ final class O10ArrayLiteralFixtures {
                     Input.ok("pass", FALSE),
                     Input.fails("guard", TRUE))),
             new Fixture("TWO_ARRAYS", TWO_ARRAYS, "twoArrays", true, 4, 0, NONE),
-            new Fixture("HELPER_GET", HELPER_GET, "helperGet", true, 2, 1, NONE));
+            new Fixture("HELPER_GET", HELPER_GET, "helperGet", true, 2, 1, NONE),
+            new Fixture("SHARED_ELEMENT", SHARED_ELEMENT, "sharedElement", false, 2, 2, List.of(
+                    Input.ok("first", PlutusData.integer(0)),
+                    Input.ok("second", PlutusData.integer(1)),
+                    Input.fails("past-the-end", PlutusData.integer(2)))),
+            new Fixture("SHARED_ELEMENT_ONCE", SHARED_ELEMENT_ONCE, "sharedElementOnce", false, 2, 2, NONE),
+            new Fixture("ELEMENT_ONCE", ELEMENT_ONCE, "elementOnce", true, 2, 0, NONE),
+            new Fixture("WIDE_ELEMENT_ONCE", WIDE_ELEMENT_ONCE, "wideElementOnce", false, 2, 2, NONE));
 
     private O10ArrayLiteralFixtures() {}
 }

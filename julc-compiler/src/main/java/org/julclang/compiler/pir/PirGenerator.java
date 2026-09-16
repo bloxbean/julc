@@ -405,7 +405,7 @@ public class PirGenerator {
                         () -> new CompilerException("Variable must be initialized: " + name
                                 + ". Hint: On-chain variables need initial values, e.g. var " + name + " = BigInteger.ZERO;"));
                 var value = generateExpression(initExpr);
-                var pirType = inferType(decl.getType(), value, initExpr);
+                var pirType = typeInference.inferType(decl.getType(), value, initExpr, sourceLocation(initExpr));
                 var initializerType = resolveExpressionType(initExpr);
                 if (initializerType instanceof PirType.DataType) {
                     initializerType = inferPirType(value);

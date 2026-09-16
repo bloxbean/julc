@@ -205,9 +205,9 @@ public abstract class LiteralFoldPass {
         // wrapper call the wrapper variable (the shape that stays when the wrapper remains live;
         // if the optimiser inlines the wrapper instead, the artifact loses its body as well, so
         // this is the conservative bound), applied to the call-site arguments. A constant
-        // argument stands there as itself (a domain's further literal shapes, such as a list
-        // literal chain, are measured as the constant they denote, which is not longer than the
-        // chain). A literal local stands there as a variable reference, and its literal lives
+        // argument stands there as itself; a domain's further literal shapes (a list literal
+        // chain) are measured structurally, each nested variable as a reference (see measure).
+        // A literal local stands there as a variable reference, and its literal lives
         // once in its binding: when the local is bound directly to a literal term (not an
         // alias) and this call consumes every remaining occurrence of it, the binding dies with
         // the fold (the optimiser drops it: constants and the literal shapes are pure), so the
@@ -218,25 +218,54 @@ public abstract class LiteralFoldPass {
         // reference, and `v`'s constant stays as long as `v` has any other occurrence, the alias
         // binding itself included.
         var consumed = new HashMap<String, Integer>();
-        for (var actual : spine.args()) {
-            if (actual instanceof PirTerm.Var v) consumed.merge(v.name(), 1, Integer::sum);
-        }
+        for (var actual : spine.args()) countVariables(actual, consumed);
         Term replaced = spine.head() instanceof PirTerm.Builtin ? Term.builtin(fun) : Term.var(1);
-        var measuredAsConstant = new HashSet<String>();
-        for (var actual : spine.args()) {
-            Term measure;
-            if (actual instanceof PirTerm.Var v) {
-                boolean dies = creditableBindings.contains(v.name())
-                        && consumed.get(v.name()).equals(remainingUses.getOrDefault(v.name(), 0));
-                measure = dies && measuredAsConstant.add(v.name()) ? Term.const_(literalOf(actual)) : Term.var(1);
-            } else {
-                measure = Term.const_(literalOf(actual));
-            }
-            replaced = Term.apply(replaced, measure);
-        }
+        var credited = new HashSet<String>();
+        for (var actual : spine.args()) replaced = Term.apply(replaced, measure(actual, consumed, credited));
         if (!fitsObjective(replaced, result)) return null;
         consumed.forEach((name, uses) -> remainingUses.merge(name, -uses, Integer::sum));
         return folded(result);
+    }
+
+    /** Variable occurrences in an argument as it stands; a domain's literal shape may nest them. */
+    private static void countVariables(PirTerm term, Map<String, Integer> counts) {
+        if (term instanceof PirTerm.Var v) counts.merge(v.name(), 1, Integer::sum);
+        PirHelpers.mapChildren(term, child -> { countVariables(child, counts); return child; });
+    }
+
+    /**
+     * A term whose FLAT encoding is not longer than the argument's own, as the argument stands
+     * in the artifact: a constant as itself; a variable as a reference at the smallest index,
+     * or, the first time this call meets a creditable local whose every remaining occurrence
+     * the call consumes, as the constant its binding denotes (the binding dies with the fold);
+     * a builtin as itself; an application as the application of its parts' measures; any other
+     * node of a literal shape (the Bool encoding's conditional) as its children's measures
+     * applied in sequence, which drops the node's own tags and so never measures long. A
+     * shared local nested in a list literal is therefore a reference, not a copy of its
+     * constant (ADR-046's review found `JulcArray.of(b, b)` over a live 256-byte `b` measured
+     * as two copies and approved).
+     */
+    private Term measure(PirTerm term, Map<String, Integer> consumed, Set<String> credited) {
+        return switch (term) {
+            case PirTerm.Const c -> Term.const_(c.value());
+            case PirTerm.Var v -> {
+                boolean dies = creditableBindings.contains(v.name())
+                        && consumed.get(v.name()).equals(remainingUses.getOrDefault(v.name(), 0));
+                yield dies && credited.add(v.name()) ? Term.const_(literals.get(v.name())) : Term.var(1);
+            }
+            case PirTerm.Builtin b -> Term.builtin(b.fun());
+            case PirTerm.App a -> Term.apply(measure(a.function(), consumed, credited), measure(a.argument(), consumed, credited));
+            default -> {
+                var children = new ArrayList<PirTerm>();
+                PirHelpers.mapChildren(term, child -> { children.add(child); return child; });
+                Term measured = null;
+                for (var child : children) {
+                    var part = measure(child, consumed, credited);
+                    measured = measured == null ? part : Term.apply(measured, part);
+                }
+                yield measured == null ? Term.error() : measured;
+            }
+        };
     }
 
     /** A folded constant: marks the rule as applied and lets a domain track the node. */
