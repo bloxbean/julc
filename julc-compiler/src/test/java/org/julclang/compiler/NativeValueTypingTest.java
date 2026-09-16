@@ -194,6 +194,29 @@ class NativeValueTypingTest {
         assertEquals("JULC0042", error.diagnostics().getFirst().code());
     }
 
+    /** ADR-045: a Value literal is a native Value for the isolation checks, never Data. */
+    @Test
+    void rejectsLiteralValueWhereDataIsRequired() {
+        var assigned = assertCompileError(IMPORTS + """
+                class LiteralAsData {
+                    static boolean bad() {
+                        PlutusData value = Builtins.emptyValue();
+                        return true;
+                    }
+                }
+                """, "bad");
+        assertEquals("JULC0041", assigned.diagnostics().getFirst().code());
+
+        var dataOperation = assertCompileError(IMPORTS + """
+                class LiteralInDataOperation {
+                    static boolean bad(PlutusData data) {
+                        return Builtins.equalsData(Builtins.singletonValue(new byte[]{1}, new byte[]{2}, BigInteger.ONE), data);
+                    }
+                }
+                """, "bad");
+        assertEquals("JULC0041", dataOperation.diagnostics().getFirst().code());
+    }
+
     private static CompileResult compile(String source, String method) {
         return new JulcCompiler(StdlibRegistry.defaultRegistry())
                 .compileMethod(source, method);

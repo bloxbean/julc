@@ -954,7 +954,9 @@ and issues [#106](https://github.com/bloxbean/julc/issues/106) through
   representation or preserve index failures.
 - Deferred O14 because `JulcValue` is currently produced through partial
   `UnValueData`, not a native literal, and the optimizer has no shared pinned
-  Value canonicalization/reference-semantic helper.
+  Value canonicalization/reference-semantic helper. (Both were supplied by
+  ADR-045: `NativeValueSemantics` in `julc-core` is shared by the VM and the
+  fold, and `Builtins.emptyValue/singletonValue/lovelaceValue` are the typed producers.)
 - Added a validator-like aggregate fixture combining O1, O2, and O13 with
   accepted, rejected, boundary, and malformed inputs. Java and Truffle report
   identical outcomes/failures/traces; every measured row has equal or lower
@@ -1046,7 +1048,7 @@ line after the initial review window (2026-08-29).
 | O11 | [#96](https://github.com/bloxbean/julc/issues/96) | deferred: native BLS group/list types required |
 | O12 | [#104](https://github.com/bloxbean/julc/issues/104), [#118](https://github.com/bloxbean/julc/issues/118) | decision: no additional implementation required; explicit API exists, ordinary pow/mod rewrite rejected |
 | O13 | [#107](https://github.com/bloxbean/julc/issues/107) | enabled at `PV11_SAFE` |
-| O14 | [#108](https://github.com/bloxbean/julc/issues/108) | deferred: literal producer/reference semantics required |
+| O14 | [#108](https://github.com/bloxbean/julc/issues/108), [#119](https://github.com/bloxbean/julc/issues/119) | ADR-045 implemented: typed literal producers (`Builtins.emptyValue/singletonValue/lovelaceValue`, a UPLC Value constant and `InsertCoin` into it) and folding of all-literal calls of the seven Value builtins at `PV11_SAFE` (`pv11.o14.value-literal-fold`) by the pinned `NativeValueSemantics` the VM shares, under a script-size objective; failing literal calls stay; no algebraic identities; additive for existing programs |
 | O15 | [#105](https://github.com/bloxbean/julc/issues/105), [#120](https://github.com/bloxbean/julc/issues/120) | ADR-044 implemented: the ADR-042 leading rule over a closed class of record field projections and the fields prefix at `PV11_SAFE` (`pv11.o15.projection-sharing`), failure-text neutral, no dominance analysis; each PIR rule independently switchable; general CSE remains out of scope |
 
 ## Verification strategy

@@ -585,7 +585,8 @@ public class JulcCompiler {
                     new PirTerm.Let(pf.name, decoded, wrappedTerm));
         }
 
-        var sharing = new ValueConversionSharingPass(context, pirGenerator.getPirPositions()).lower(wrappedTerm);
+        var folding = new ValueLiteralFoldPass(context, pirGenerator.getPirPositions()).lower(wrappedTerm);
+        var sharing = new ValueConversionSharingPass(context, folding.positions()).lower(folding.term());
         var promotion = new ListIndexPromotionPass(context, sharing.positions()).lower(sharing.term());
         var pairLowering = new PairDestructuringPass(context, promotion.positions()).lower(promotion.term());
         wrappedTerm = pairLowering.term();
@@ -728,7 +729,8 @@ public class JulcCompiler {
     public Program compilePirToProgram(PirTerm pirTerm) {
         var context = beginCompilation();
         var uplcGenerator = new UplcGenerator(context, null);
-        var shared = new ValueConversionSharingPass(context, null).lower(pirTerm).term();
+        var folded = new ValueLiteralFoldPass(context, null).lower(pirTerm).term();
+        var shared = new ValueConversionSharingPass(context, null).lower(folded).term();
         var promoted = new ListIndexPromotionPass(context, null).lower(shared).term();
         var uplcTerm = uplcGenerator.generate(new PairDestructuringPass(context, null).lower(promoted).term());
         var program = createProgram(context, uplcTerm);
@@ -965,7 +967,8 @@ public class JulcCompiler {
                     new PirTerm.Let(pf.name, decoded, body));
         }
 
-        var sharing = new ValueConversionSharingPass(context, pirGenerator.getPirPositions()).lower(body);
+        var folding = new ValueLiteralFoldPass(context, pirGenerator.getPirPositions()).lower(body);
+        var sharing = new ValueConversionSharingPass(context, folding.positions()).lower(folding.term());
         var promotion = new ListIndexPromotionPass(context, sharing.positions()).lower(sharing.term());
         var pairLowering = new PairDestructuringPass(context, promotion.positions()).lower(promotion.term());
         body = pairLowering.term();

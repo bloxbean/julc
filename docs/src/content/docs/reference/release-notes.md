@@ -3,6 +3,40 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+## Upcoming preview: native Value literals and literal folding (ADR-045)
+
+`Builtins` gains three native Value literal producers on the PV11 target:
+`emptyValue()` (a UPLC Value constant), `singletonValue(policyId, tokenName,
+quantity)` and `lovelaceValue(quantity)` (inserts into the empty Value, with
+`insertCoin`'s rules: a zero quantity yields the empty Value, a non-zero
+quantity needs keys of at most 32 bytes and a quantity in the signed 128-bit
+range). They replace the `unValueData(mapData(mkNilPairData()))` idiom for new
+code; the idiom keeps working and keeps its bytes. They are intrinsics rather
+than `NativeValueLib` methods so that programs which do not call them keep
+their bytes at every level.
+
+At `pv11-safe` (the default) and `pv11-costed`, a call of `insertCoin`,
+`lookupCoin`, `union`, `contains`, `scale`, `toData` or `fromData` whose arguments
+are all literals (constants, or locals bound once to a literal) is folded at
+compile time into the Value, integer, boolean or Data it evaluates to, by the
+same code the VM runs. A requirement such as one NFT plus two ADA becomes one
+constant in the script (40 → 7 bytes and 883,863 → 16,100 CPU for a literal
+lookup); the runtime part of a check (`fromData(minted)`, `contains`) stays. A
+literal call the builtin would reject (a 33-byte key, an overflow, a negative
+quantity under `contains`) is left as written and fails at runtime with the
+same text. No algebraic identity is applied and nothing changes at
+`none`/`baseline`. The fold only fires when the literal is not larger than the
+call it replaces as it stands in the script, so `toData(Builtins.emptyValue())`
+stays a call and a literal local shared by several calls is never copied into
+them (the calls stay, the local keeps its one constant). The optimization report
+records `pv11.o14.value-literal-fold`, and the rule can be switched off with
+`CompilerOptions.disableOptimizationRule`.
+
+This change is additive: no program compiled before it contains a Value
+literal, so existing scripts keep their bytes and hashes at every level.
+Spell a negative literal quantity as `new BigInteger("-5")`
+(`BigInteger.valueOf(-5)` compiles to a runtime subtraction).
+
 ## Upcoming preview: automatic sharing of repeated record field projections (ADR-044)
 
 `PV11_SAFE` (the default) and `PV11_COSTED` now share a repeated projection of

@@ -986,6 +986,30 @@ public final class Builtins {
         throw new UnsupportedOperationException("Builtins.scaleValue: on-chain only — use Julc VM for off-chain evaluation");
     }
 
+    /**
+     * The empty native Value as a literal constant (ADR-045). Lowers to a UPLC Value constant,
+     * not to a conversion, so it costs one constant and needs the PV11 Value constant capability.
+     * PV11 only.
+     */
+    public static JulcValue emptyValue() {
+        throw new UnsupportedOperationException("Builtins.emptyValue: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    /**
+     * A native Value holding exactly {@code quantity} of one token (ADR-045): {@code insertCoin}
+     * into the empty Value, with the builtin's rules (a zero quantity yields the empty Value; a
+     * non-zero quantity needs keys of at most 32 bytes and a quantity in the signed 128-bit
+     * range). PV11 only.
+     */
+    public static JulcValue singletonValue(byte[] policyId, byte[] tokenName, BigInteger quantity) {
+        throw new UnsupportedOperationException("Builtins.singletonValue: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
+    /** A native Value holding exactly {@code quantity} lovelace (the empty policy and token name). PV11 only. */
+    public static JulcValue lovelaceValue(BigInteger quantity) {
+        throw new UnsupportedOperationException("Builtins.lovelaceValue: on-chain only — use Julc VM for off-chain evaluation");
+    }
+
     // =========================================================================
     // Object-accepting overloads for IDE + off-chain compatibility
     // =========================================================================

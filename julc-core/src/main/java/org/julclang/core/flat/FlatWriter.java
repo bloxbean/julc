@@ -186,6 +186,11 @@ public final class FlatWriter {
 
     // --- Result ---
 
+    /** The number of bits written so far, including a partial final byte. */
+    public int bitLength() {
+        return nextPtr * 8 + usedBits;
+    }
+
     /**
      * Finalize and return the encoded bytes.
      * Flushes any remaining partial byte.
