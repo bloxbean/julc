@@ -66,6 +66,15 @@ class O10ArrayLiteralFoldTest {
             Map.entry("NESTED_LIST/run", Constant.integer(1)),
             Map.entry("EMPTY/run", Constant.integer(0)),
             Map.entry("LOCAL_LIST/run", Constant.integer(3)),
+            Map.entry("LOCAL_LIST_ONCE/run", Constant.integer(3)),
+            Map.entry("SHARED_ELEMENT/first", Constant.byteString(O10ArrayLiteralFixtures.B256_TWICE)),
+            Map.entry("SHARED_ELEMENT/second", Constant.byteString(O10ArrayLiteralFixtures.B256_TWICE)),
+            Map.entry("SHARED_ELEMENT_ONCE/run", Constant.byteString(O10ArrayLiteralFixtures.B256_BYTES)),
+            Map.entry("ELEMENT_ONCE/run", Constant.byteString(O10ArrayLiteralFixtures.B32_BYTES)),
+            Map.entry("WIDE_ELEMENT_ONCE/run", Constant.byteString(O10ArrayLiteralFixtures.B256_BYTES)),
+            Map.entry("SHARED_LIST_ELEMENT/first", Constant.byteString(O10ArrayLiteralFixtures.B256_TWICE)),
+            Map.entry("SHARED_LIST_ELEMENT/second", Constant.byteString(O10ArrayLiteralFixtures.B256_TWICE)),
+            Map.entry("LIST_ELEMENT_ONCE/run", Constant.byteString(O10ArrayLiteralFixtures.B32_BYTES)),
             Map.entry("FROM_LIST/run", Constant.integer(2)),
             Map.entry("RUNTIME_ELEMENT/five", Constant.integer(6)),
             Map.entry("TRACE_AROUND/run", Constant.integer(3)),
@@ -168,6 +177,62 @@ class O10ArrayLiteralFoldTest {
         var viaLocal = new PirTerm.Let("xs", list, app(builtin(DefaultFun.LengthOfArray), app(builtin(DefaultFun.ListToArray), new PirTerm.Var("xs", DATA))));
         assertEquals(new PirTerm.Const(Constant.integer(2)), assertInstanceOf(PirTerm.Let.class, lower(viaLocal, OptimizationLevel.PV11_SAFE)).body());
         assertEquivalent(viaLocal);
+        // A local nested in the list literal stands at the call site as a reference, not as a copy
+        // of its constant (the review's finding): shared with a runtime use it blocks the
+        // conversion; used twice inside the literal it still blocks (the array would hold two
+        // copies against the one binding that dies); used once it is credited and the conversion folds.
+        var bytesType = new PirType.ByteStringType();
+        var wide = constant(Constant.byteString(new byte[64]));
+        var sharedElements = new PirTerm.Lam("i", INT, new PirTerm.Let("b", wide,
+                app(builtin(DefaultFun.AppendByteString),
+                        app(builtin(DefaultFun.UnBData), app(builtin(DefaultFun.IndexArray),
+                                app(builtin(DefaultFun.ListToArray), cons(app(builtin(DefaultFun.BData), new PirTerm.Var("b", bytesType)),
+                                        cons(app(builtin(DefaultFun.BData), new PirTerm.Var("b", bytesType)), nil()))),
+                                new PirTerm.Var("i", INT))),
+                        new PirTerm.Var("b", bytesType))));
+        assertSame(sharedElements, lower(sharedElements, OptimizationLevel.PV11_SAFE));
+        var twiceInside = new PirTerm.Let("b", wide, app(builtin(DefaultFun.ListToArray),
+                cons(app(builtin(DefaultFun.BData), new PirTerm.Var("b", bytesType)), cons(app(builtin(DefaultFun.BData), new PirTerm.Var("b", bytesType)), nil()))));
+        assertSame(twiceInside, lower(twiceInside, OptimizationLevel.PV11_SAFE));
+        assertEquivalent(twiceInside);
+        var onceInside = new PirTerm.Let("b", wide, app(builtin(DefaultFun.LengthOfArray), app(builtin(DefaultFun.ListToArray),
+                cons(app(builtin(DefaultFun.BData), new PirTerm.Var("b", bytesType)), nil()))));
+        assertEquals(new PirTerm.Const(Constant.integer(1)), assertInstanceOf(PirTerm.Let.class, lower(onceInside, OptimizationLevel.PV11_SAFE)).body());
+        assertEquivalent(onceInside);
+        // Through a list local: the local dies with the conversion, but what its binding holds is
+        // measured as it stands, so two references to a live `b` are two references (the second
+        // review round found the dying local credited as its expanded constant); with `b` used
+        // only there, both die, `b` is credited once and the conversion folds.
+        var listType = new PirType.ListType(DATA);
+        var throughList = new PirTerm.Lam("i", INT, new PirTerm.Let("b", wide, new PirTerm.Let("xs",
+                cons(app(builtin(DefaultFun.BData), new PirTerm.Var("b", bytesType)), cons(app(builtin(DefaultFun.BData), new PirTerm.Var("b", bytesType)), nil())),
+                app(builtin(DefaultFun.AppendByteString),
+                        app(builtin(DefaultFun.UnBData), app(builtin(DefaultFun.IndexArray),
+                                app(builtin(DefaultFun.ListToArray), new PirTerm.Var("xs", listType)), new PirTerm.Var("i", INT))),
+                        new PirTerm.Var("b", bytesType)))));
+        assertSame(throughList, lower(throughList, OptimizationLevel.PV11_SAFE));
+        var throughListOnce = new PirTerm.Let("b", wide, new PirTerm.Let("xs",
+                cons(app(builtin(DefaultFun.BData), new PirTerm.Var("b", bytesType)), nil()),
+                app(builtin(DefaultFun.LengthOfArray), app(builtin(DefaultFun.ListToArray), new PirTerm.Var("xs", listType)))));
+        assertEquals(new PirTerm.Const(Constant.integer(1)),
+                assertInstanceOf(PirTerm.Let.class, assertInstanceOf(PirTerm.Let.class, lower(throughListOnce, OptimizationLevel.PV11_SAFE)).body()).body());
+        assertEquivalent(throughListOnce);
+        // The objective over a credited single-element literal, by element width: the array
+        // constant carries the element as CBOR Data (a header per element, chunked in FLAT) while
+        // the chain carries the raw constant plus its wrapping; the decision matches the encoder.
+        for (int width : List.of(1, 32, 64, 128, 200, 255, 256, 512)) {
+            var element = Constant.byteString(new byte[width]);
+            var chain = cons(app(builtin(DefaultFun.BData), constant(element)), nil());
+            var conversion = new PirTerm.Let("b", constant(element), app(builtin(DefaultFun.ListToArray),
+                    cons(app(builtin(DefaultFun.BData), new PirTerm.Var("b", bytesType)), nil())));
+            var arrayConst = new Constant.ArrayConst(DATA_UNI, List.of(Constant.data(PlutusData.bytes(new byte[width]))));
+            var chainBits = bits(Term.apply(Term.builtin(DefaultFun.ListToArray), Term.apply(Term.apply(Term.builtin(DefaultFun.MkCons),
+                    Term.apply(Term.builtin(DefaultFun.BData), Term.const_(element))), Term.apply(Term.builtin(DefaultFun.MkNilData), Term.const_(Constant.unit())))));
+            boolean fits = bits(Term.const_(arrayConst)) <= chainBits;
+            assertEquals(fits, assertInstanceOf(PirTerm.Let.class, lower(conversion, OptimizationLevel.PV11_SAFE)).body() instanceof PirTerm.Const, "width " + width);
+            assertEquals(fits, lower(app(builtin(DefaultFun.ListToArray), chain), OptimizationLevel.PV11_SAFE) instanceof PirTerm.Const, "bare width " + width);
+            System.out.println("ARRAY_LITERAL_OBJECTIVE bytes element width=" + width + " array=" + bits(Term.const_(arrayConst)) + " chain=" + chainBits + " folds=" + fits + " (bits)");
+        }
         var runtime = new PirTerm.Lam("v", INT, app(builtin(DefaultFun.ListToArray),
                 cons(app(builtin(DefaultFun.IData), new PirTerm.Var("v", INT)), nil())));
         assertSame(runtime, lower(runtime, OptimizationLevel.PV11_SAFE));
@@ -259,30 +324,119 @@ class O10ArrayLiteralFoldTest {
     }
 
     /**
-     * Today's behaviour, pinned: a {@code var} local of {@code JulcArray.of(...)} has a Data
-     * element type for the compiler (javac says {@code JulcArray<BigInteger>}), so {@code get}
-     * returns the raw Data; declaring the element type is what makes {@code get} decode.
+     * `var` infers the element type of an array literal from its elements' source types, as
+     * javac does (recorded by the generator, not read back from the encodings: a user's
+     * `Builtins.iData(x)` element stays Data, the second review round; a nested list literal
+     * keeps its own element type, the third; through a chained access on the literal itself,
+     * the fourth): the
+     * access decodes and the value is usable as its Java type, on every level and through a
+     * chained access. Elements of different types (javac would infer a common supertype the
+     * subset cannot represent) are rejected with JULC0012; the explicit declaration and the
+     * empty literal are unchanged. The first version typed the elements as Data, so
+     * `increment(a.get(0))` compiled and failed at runtime (the maintainer's review).
      */
     @Test
-    void varLocalOfAnArrayLiteralHasADataElementType() {
+    void varLocalOfAnArrayLiteralInfersTheElementType() {
         var source = O10ArrayLiteralFixtures.IMPORTS + """
                 class VarArray {
-                    static PlutusData raw() {
-                        var t = JulcArray.of(BigInteger.valueOf(7));
-                        return t.get(0);
+                    static BigInteger increment(BigInteger x) {
+                        return x.add(BigInteger.ONE);
+                    }
+                    static BigInteger inferred() {
+                        var a = JulcArray.of(BigInteger.valueOf(7));
+                        return increment(a.get(0));
+                    }
+                    static boolean strings() {
+                        var s = JulcArray.of("ab", "cde");
+                        return s.get(1).equals("cde");
+                    }
+                    static boolean bools() {
+                        var f = JulcArray.of(true, false);
+                        return f.get(0) && !f.get(1);
+                    }
+                    static BigInteger nested() {
+                        var rows = JulcArray.of(JulcList.of(BigInteger.ONE, BigInteger.TWO), JulcList.of(BigInteger.valueOf(3)));
+                        return increment(rows.get(1).get(0));
+                    }
+                    static BigInteger doublyNested() {
+                        var cube = JulcArray.of(JulcList.of(JulcList.of(BigInteger.valueOf(5))));
+                        return increment(cube.get(0).get(0).get(0));
+                    }
+                    static BigInteger nestedData() {
+                        var rows = JulcArray.of(JulcList.of(Builtins.iData(BigInteger.valueOf(9))));
+                        return extract(rows.get(0).get(0));
+                    }
+                    static BigInteger chainedNested() {
+                        return increment(JulcArray.of(JulcList.of(BigInteger.ONE)).get(0).get(0));
+                    }
+                    static BigInteger chainedNestedData() {
+                        return extract(JulcArray.of(JulcList.of(Builtins.iData(BigInteger.valueOf(9)))).get(0).get(0));
+                    }
+                    static BigInteger extract(PlutusData d) {
+                        return Builtins.unIData(d);
+                    }
+                    static BigInteger dataElements() {
+                        var a = JulcArray.of(Builtins.iData(BigInteger.valueOf(7)));
+                        return extract(a.get(0));
                     }
                     static BigInteger typed() {
                         JulcArray<BigInteger> t = JulcArray.of(BigInteger.valueOf(7));
                         return t.get(0);
                     }
+                    static BigInteger chained(BigInteger x) {
+                        return JulcArray.of(x, BigInteger.ONE).get(0).add(BigInteger.ONE);
+                    }
+                    static BigInteger emptyLength() {
+                        var e = JulcArray.of();
+                        return BigInteger.valueOf(e.length());
+                    }
                 }
                 """;
-        var raw = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setOptimizationLevel(OptimizationLevel.PV11_SAFE)).compileMethod(source, "raw");
-        assertEquals(Term.const_(Constant.data(PlutusData.integer(7))),
-                assertInstanceOf(EvalResult.Success.class, evaluate(raw.program(), List.of(), "Java")).resultTerm());
-        var typed = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions().setOptimizationLevel(OptimizationLevel.PV11_SAFE)).compileMethod(source, "typed");
-        assertEquals(Term.const_(Constant.integer(7)),
-                assertInstanceOf(EvalResult.Success.class, evaluate(typed.program(), List.of(), "Java")).resultTerm());
+        // compileMethod compiles the whole class, so the rejected shape lives in its own class.
+        var mixedSource = O10ArrayLiteralFixtures.IMPORTS + """
+                class MixedArray {
+                    static PlutusData mixed() {
+                        var m = JulcArray.of(BigInteger.ONE, new byte[]{1});
+                        return m.get(0);
+                    }
+                }
+                """;
+        var mixedNestedSource = O10ArrayLiteralFixtures.IMPORTS + """
+                class MixedNestedArray {
+                    static PlutusData mixedNested() {
+                        var m = JulcArray.of(JulcList.of(BigInteger.ONE), JulcList.of(new byte[]{1}));
+                        return m.get(0).get(0);
+                    }
+                }
+                """;
+        for (var level : OptimizationLevel.values()) {
+            assertEquals(Term.const_(Constant.integer(8)), result(source, "inferred", level, List.of()), level.toString());
+            assertEquals(Term.const_(Constant.bool(true)), result(source, "strings", level, List.of()), level.toString());
+            assertEquals(Term.const_(Constant.bool(true)), result(source, "bools", level, List.of()), level.toString());
+            assertEquals(Term.const_(Constant.integer(4)), result(source, "nested", level, List.of()), level.toString());
+            assertEquals(Term.const_(Constant.integer(6)), result(source, "doublyNested", level, List.of()), level.toString());
+            assertEquals(Term.const_(Constant.integer(9)), result(source, "nestedData", level, List.of()), level.toString());
+            assertEquals(Term.const_(Constant.integer(2)), result(source, "chainedNested", level, List.of()), level.toString());
+            assertEquals(Term.const_(Constant.integer(9)), result(source, "chainedNestedData", level, List.of()), level.toString());
+            assertEquals(Term.const_(Constant.integer(7)), result(source, "dataElements", level, List.of()), level.toString());
+            assertEquals(Term.const_(Constant.integer(7)), result(source, "typed", level, List.of()), level.toString());
+            assertEquals(Term.const_(Constant.integer(6)), result(source, "chained", level, List.of(PlutusData.integer(5))), level.toString());
+            assertEquals(Term.const_(Constant.integer(0)), result(source, "emptyLength", level, List.of()), level.toString());
+        }
+        var mixed = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
+                new CompilerOptions().setOptimizationCostProfile(PROFILE)).compileMethod(mixedSource, "mixed"));
+        assertEquals("JULC0012", mixed.diagnostics().getFirst().code());
+        assertTrue(mixed.getMessage().contains("JulcArray<T>"), mixed.getMessage());
+        var mixedNested = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
+                new CompilerOptions().setOptimizationCostProfile(PROFILE)).compileMethod(mixedNestedSource, "mixedNested"));
+        assertEquals("JULC0012", mixedNested.diagnostics().getFirst().code());
+    }
+
+    private static Term result(String source, String method, OptimizationLevel level, List<PlutusData> args) {
+        var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry(),
+                new CompilerOptions().setOptimizationLevel(level).setOptimizationCostProfile(PROFILE)).compileMethod(source, method);
+        assertFalse(compiled.hasErrors(), compiled.diagnostics().toString());
+        return assertInstanceOf(EvalResult.Success.class, evaluate(compiled.program(), args, "Java")).resultTerm();
     }
 
     /** The producer's requirement is the PV11 builtin under both spellings of the class name. */

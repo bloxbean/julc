@@ -1,7 +1,7 @@
 # ADR-046: Typed array literals and literal folding (O10)
 
 **Date:** 2026-09-14
-**Status:** Implemented and locally validated on `feat/116-array-literals` (stacked on ADR-045's `feat/119-value-literals`); two independent agent reviews applied; maintainer review pending
+**Status:** Implemented and locally validated on `feat/116-array-literals` (PR #149 against `main`, rebased by merge after ADR-045 merged; the corrected call-site objective of ADR-045's second review applies to this domain through `LiteralFoldPass`: `LOCAL_LIST` no longer folds, `LOCAL_LIST_ONCE` added); two independent agent reviews and the maintainer's review of the merged head applied (`var` element-type inference with `JULC0012` for mixed elements; structural measure of list literals); merge pending
 **Issues:** [#116](https://github.com/bloxbean/julc/issues/116) (O10), research decision [#106](https://github.com/bloxbean/julc/issues/106), parent [#77](https://github.com/bloxbean/julc/issues/77)
 **Governing decisions:** ADR-032 O10 (array constant folding, "static-cost" class, out-of-range indexes stay runtime failures, no fold beyond the size objective), ADR-043 (`JulcArray`'s element representation and the `IndexArray` failure contract), ADR-045 (the literal-fold machinery, its objective and additivity), ADR-036 (pass placement before UPLC generation), ADR-015 (strict typed boundaries)
 
@@ -92,7 +92,12 @@ as it does for ADR-045 (spell `new BigInteger("-5")`).
 
 **The fold.** In the domain `ListToArray`, `LengthOfArray`, `IndexArray`, a saturated call
 over literals is replaced by its result when `ArraySemantics` succeeds and the result's FLAT
-encoding is not longer, in bits, than the term it replaces (ADR-045's objective). A call the
+encoding is not longer, in bits, than the term it replaces (ADR-045's objective in its
+call-site form: a constant counts as itself, a list literal chain as it stands, each nested
+variable a reference, a literal local as a variable reference unless the call consumes every
+remaining occurrence of a local bound directly to a literal, in which case it counts as the
+term its binding holds measured the same way, and an alias never as the constant it
+names). A call the
 semantics reject (an out-of-range or over-wide literal index) stays exactly as written and
 fails at runtime with the builtin's text; a runtime index keeps the access and embeds the
 array constant. Rule `pv11.o10.array-literal-fold`; gate: exact PV11 target,
@@ -121,18 +126,43 @@ never folded. Budgets never increase: a fold removes at least one builtin evalua
 applications for one constant step.
 
 **Objective.** Every fold in the pass, the Bool comparison included, is measured. Array
-literals are always shorter than the chain they replace (the chain holds the same constants
-plus a wrapping and a cons per element; probed for zero to eight elements), decoded elements
+literals of small elements are shorter than the chain they replace (the chain holds the same
+constants plus a wrapping and a cons per element; probed for zero to eight elements), but an
+array constant carries each element as CBOR Data, chunked in FLAT, so a wide byte-string
+element outgrows its raw constant plus wrapping: a single byte-string element folds up to
+128 bytes and stays from 200 bytes on (probed at 1, 32, 64, 128, 200, 255, 256 and 512
+bytes; the decision matches the encoder at every width; fixtures `ELEMENT_ONCE` and
+`WIDE_ELEMENT_ONCE`). Decoded elements are
 always shorter than the decode of their Data constant; the one case that can go either way is
 a list decode of a produced element, which folds for lists of at most one element and stays
-from two on (each element of a `list data` constant is a separate FLAT byte string).
+from two on (each element of a `list data` constant is a separate FLAT byte string). A
+literal local is measured as a reference at the call site (ADR-045's second review
+established the measure; this pass inherits it through `LiteralFoldPass`), so a list local
+that stays live elsewhere is never copied into an array constant: `LOCAL_LIST` stays whole
+(91 bytes either way) while its once-used twin `LOCAL_LIST_ONCE` folds to one constant
+(48 → 6). A local whose only remaining occurrences the call consumes dies with the fold (the
+optimiser drops the binding; list literal chains are pure) and is credited, once, with the
+term its binding holds, measured the same way: a constant as itself, a list literal chain as
+it stands with each nested variable a reference or a dying local in turn (a dead binding
+takes its own variable occurrences with it, so the set of dying locals is a fixed point).
+Nothing is ever measured as an expanded `list data` constant: the review's second round
+found the dying list local of `xs = JulcList.of(b, b); a = xs.toArray()` credited as its
+expanded constant beside a live 256-byte `b`, 309 → 845 bytes (`SHARED_LIST_ELEMENT` now
+stays; `LIST_ELEMENT_ONCE`, where `b` and `xs` both die, folds). The review found the expanded measure counting a shared 256-byte local
+twice for `JulcArray.of(b, b)` beside a runtime use of `b` and approving the copy (306 →
+825 bytes with identical results); `SHARED_ELEMENT` pins that the conversion now stays
+(306 bytes either way), `SHARED_ELEMENT_ONCE` that two elements over one dying binding
+still stay (the array would hold two copies against one), `ELEMENT_ONCE` that a once-used
+element is credited and folds.
 
 **Additivity.** No program compiled before this ADR contains an array constant, and no
 program in the example corpus, the Blaster fixtures, the in-repo example module or any earlier
 golden suite converts a list literal to an array (census in the evidence document). The
 decode folds only ever see constants this pass produced. A program outside the corpus that
 already spells `JulcList.of(...).toArray()` or `JulcArray.fromList(JulcList.of(...))` does
-change bytes at the safe profile (the `LOCAL_LIST` and `FROM_LIST` fixtures are that shape);
+change bytes at the safe profile (the `LOCAL_LIST_ONCE` and `FROM_LIST` fixtures are that
+shape; `LOCAL_LIST`, whose list local stays live for `size()`, is left as written, since the
+conversion would copy the list into an array constant beside the chain);
 the additivity claim is about the censused corpus and the golden suites, whose byte identity
 with the rule enabled the evidence document's repository-validation section records.
 
@@ -223,7 +253,8 @@ Java. Full table in `adr/evidence/046-array-literals.md`.
 | STRING (`s.get(1).equals("cde")`) | 58 → 23 | 1,260,219 → 129,100 |
 | BOOL (`if (f.get(1))`) | 75 → 13 | 1,592,357 → 96,100 |
 | NESTED_LIST (`rows.get(1).size()`) | 107 → 61 | 3,044,746 → 1,374,987 |
-| LOCAL_LIST (`xs.toArray()`, `xs` still walked) | 91 → 80 | 3,406,644 → 2,895,214 |
+| LOCAL_LIST (`xs.toArray()`, `xs` still walked by `size()`: stays) | 91 → 91 | unchanged |
+| LOCAL_LIST_ONCE (`xs.toArray()`, the list's only use) | 48 → 6 | 1,592,057 → 16,100 |
 | FROM_LIST (`JulcArray.fromList(JulcList.of(1, 2)).length()`) | 28 → 6 | 881,224 → 16,100 |
 | TWO_ARRAYS (`a.get(0).add(b.get(1))`) | 66 → 6 | 2,129,298 → 16,100 |
 | HELPER_GET (constant passed to a helper, access stays) | 40 → 31 | 1,110,095 → 572,854 |
@@ -243,16 +274,31 @@ One milestone on `feat/116-array-literals`, stacked on ADR-045:
 2. `ArraySemantics` with `ArrayBuiltins` delegating; `JulcArray.of`; the registry lowering.
 3. `LiteralFoldPass` extracted from ADR-045's pass; `ArrayLiteralFoldPass` with the list
    literal reader and the produced-element decode folds; the switch.
-4. Fixture matrix (19 fixtures × 4 levels × rule off/on × 3 VMs), direct-PIR probes,
+4. Fixture matrix (26 fixtures × 4 levels × rule off/on × 3 VMs), direct-PIR probes,
    semantics test, stdlib and typing tests, benchmark comparisons.
 5. Two independent agent reviews (the Bool fold's objective check, the requirement key under
    the qualified class name, an unchecked cast, failing-path budgets, `MultiIndexArray`
    assertions, wording); full build, Blaster lock check, publish, external examples
    (additivity census); stacked PR; release-plan update.
+6. The maintainer's review of the merged head, two rounds. Round one (P1: `var a =
+   JulcArray.of(...)` typed the elements Data and the access failed at runtime; P2: a list
+   literal measured as its expanded constant approved copying a shared 256-byte local, 306 →
+   825 bytes): element-type inference with `JULC0012` for mixed elements, the structural
+   measure in `LiteralFoldPass`, fixtures `SHARED_ELEMENT`, `SHARED_ELEMENT_ONCE`,
+   `ELEMENT_ONCE`, `WIDE_ELEMENT_ONCE`, the element-width probe, docs. Round two (P1: the
+   encodings cannot tell a wrapped integer from a user's `Builtins.iData(x)`, so a Data element
+   was decoded; P2: a dying list local was credited as its expanded constant, 309 → 845 bytes):
+   the generator records the arguments' source types on the lowered literal, the credit is
+   dependency-aware (a dying local measured as the term its binding holds), fixtures
+   `SHARED_LIST_ELEMENT` and `LIST_ELEMENT_ONCE`, the `dataElements` case. Round three (a
+   nested `JulcList.of` element typed `JulcList<PlutusData>` under `var`): list literals
+   record their element types too, read for array-literal elements only. Round four (the
+   same through a chained access on the literal): the declared result type of a dispatched
+   access is kept with the term it produces.
 
 ## Verification
 
-- `O10ArrayLiteralFoldTest` (`pair-case-backends`): 19 fixtures at every level with the rule
+- `O10ArrayLiteralFoldTest` (`pair-case-backends`): 26 fixtures at every level with the rule
   off and on; NONE/BASELINE byte-identical either way; provenance exactly where expected;
   array builtin call sites counted before and after; strictly smaller bytes and a different
   hash when a fold fired, identical bytes otherwise; the expected result of every successful
@@ -280,11 +326,32 @@ One milestone on `feat/116-array-literals`, stacked on ADR-045:
   (ADR-044's rule over a new unit class).
 - Map elements (`JulcArray<JulcMap<...>>`) and negated integer literals are not read as
   literals; the access stays a runtime decode.
-- `var t = JulcArray.of(...)` infers a Data element type and `get` returns raw Data while
-  javac types the local `JulcArray<BigInteger>`, a silent divergence the tests pin
-  (`varLocalOfAnArrayLiteralHasADataElementType`); the declared element type is what drives
-  the decode, as for `list.toArray()`. A diagnostic for `var` over a literal would need the
-  generator to know the element type of a static registry call.
+- `var t = JulcArray.of(...)` infers the element type from the elements, as javac does: the
+  generator records the arguments' source types (the types `wrapEncode` encoded them with) on
+  the lowered literal, and `TypeInferenceHelper` types the local and a chained access from
+  that record. The encodings are not read back: `IData(x)` is also what a user's
+  `Builtins.iData(x)` lowers to, so shape inference would decode a Data element (the review's
+  second round). Elements of different types (javac would infer a common supertype the
+  subset cannot represent) are rejected with `JULC0012` (the review found the first version
+  typing the elements as Data, so `increment(a.get(0))` failed at runtime;
+  `varLocalOfAnArrayLiteralInfersTheElementType` pins integer, string, boolean, nested-list
+  and Data elements, the explicit declaration, a chained access and the empty literal). An
+  empty literal under `var` has Data elements (`length()` works, any access fails at runtime
+  as it would for the typed empty array). A nested `JulcList.of(...)` element keeps its Java
+  type: the generator records a list literal's source element types at its own lowering and
+  reads them when the literal is an element of an array literal (recursively), so `var rows =
+  JulcArray.of(JulcList.of(1))` is `JulcArray<JulcList<BigInteger>>` and
+  `increment(rows.get(0).get(0))` returns 2 (the review's third round found it returning Data;
+  `nested`, `doublyNested`, `nestedData` and the rejected `mixedNested` pin it). The same
+  holds through a chained access on the literal itself,
+  `JulcArray.of(JulcList.of(1)).get(0).get(0)`: the generator keeps the type the registry
+  declares for a dispatched access with the term it produces, so the next access in the chain
+  is typed by it and not by the structure of the lowering (the fourth round found the
+  intermediate `get` re-inferred as `JulcList<PlutusData>`; `chainedNested` and
+  `chainedNestedData` pin it). Only the
+  array literal reads those records: a `var` local of a bare `JulcList.of(...)` keeps the
+  existing `JulcList<PlutusData>` typing, since retyping it would change every such local and
+  every lambda over an inline list literal in existing programs, a decision of its own.
 - Conservative gaps: a `ListToArray` that ADR-043's promotion inserts at `PV11_COSTED` runs
   after this pass and is never folded; a decode reached through a `Let` alias of a produced
   element (`PlutusData d = t.get(0); unIData(d)`) is not folded because the decode's argument

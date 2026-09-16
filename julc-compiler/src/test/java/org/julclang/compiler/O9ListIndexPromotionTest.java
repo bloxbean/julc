@@ -34,7 +34,6 @@ import java.util.function.UnaryOperator;
 
 import static org.julclang.compiler.O9ListIndexFixtures.EIGHT;
 import static org.julclang.compiler.O9ListIndexFixtures.FIXTURES;
-import static org.julclang.compiler.O9ListIndexFixtures.Path;
 import static org.julclang.compiler.O9ListIndexFixtures.ints;
 import static org.julclang.compiler.O9ListIndexFixtures.tens;
 import static org.junit.jupiter.api.Assertions.*;
@@ -99,16 +98,6 @@ class O9ListIndexPromotionTest {
                             var before = evaluate(old, input.args(), provider);
                             var after = evaluate(program, input.args(), provider);
                             assertEquals(input.success(), before.isSuccess(), inputLabel + " " + before);
-                            if (expectRule && input.path() == Path.DIVERGES_AT_CONVERSION) {
-                                // The documented typing-trust exposure: a trusted list parameter
-                                // holding a non-list fails at the conversion on every path below
-                                // the binding, including one that never indexes.
-                                var failure = assertInstanceOf(EvalResult.Failure.class, after, inputLabel);
-                                if (!provider.equals("Scalus")) assertTrue(failure.error().startsWith("ListToArray:"), inputLabel + " " + failure.error());
-                                if (provider.equals("Java")) javaResult = after;
-                                if (provider.equals("Truffle")) assertEquals(javaResult.budgetConsumed(), after.budgetConsumed(), inputLabel);
-                                continue;
-                            }
                             assertEquals(input.success(), after.isSuccess(), inputLabel + " " + after);
                             assertEquals(before.getClass(), after.getClass(), inputLabel);
                             assertEquals(before.traces(), after.traces(), inputLabel);
@@ -167,7 +156,7 @@ class O9ListIndexPromotionTest {
                         + "the array conversion bound " + memoryBound + ": " + before.memoryUnits() + " -> " + after.memoryUnits());
             }
             case UNTOUCHED -> assertEquals(before, after, label + ": path without the array binding changed budget");
-            case FAILS, DIVERGES_AT_CONVERSION -> { }
+            case FAILS -> { }
         }
     }
 
@@ -583,6 +572,198 @@ class O9ListIndexPromotionTest {
                 }
             }
         }
+    }
+
+    /**
+     * Provenance crosses helper boundaries in both directions (the PR #144 review finding: a
+     * callback's raw Data element passed through a helper's list parameter reached a promoted
+     * pair, and a well-typed program that never indexed changed from acceptance to a
+     * {@code ListToArray} failure at the costed level). A method's list-typed parameter is
+     * proven only when every call in the program passes it a list by construction; a call with
+     * fewer arguments, or a use of the method as a value, refutes what it leaves unbound; a
+     * list-typed call result is proven only when the body produces a list under that parameter
+     * environment. A recursive helper keeps the proof its first call established, mutual
+     * recursion through a two-binding {@code LetRec} too, and a chain read through a let
+     * between its lambdas still counts both parameters. Two binders under one name and
+     * parameter list share the conservative intersection. Every refuted shape returns the
+     * identical term object and its never-indexing path returns −1 at both levels on all three
+     * VMs; every proven shape promotes and computes the same result at both levels.
+     */
+    @Test
+    void helperParametersAndReturnsCarryCallSiteProvenance() {
+        var xs = new PirTerm.Var("xs", LIST_INT);
+        var ys = new PirTerm.Var("ys", LIST_INT);
+        var d = new PirTerm.Var("d", DATA);
+        var flag = new PirTerm.Var("flag", new PirType.BoolType());
+        var i = new PirTerm.Var("i", INT);
+        var pair = add(get(xs, 0), get(xs, 1));
+        var five = new PirTerm.Const(Constant.data(PlutusData.integer(5)));
+        var eight = list(EIGHT);
+        var minusOne = new PirTerm.Const(Constant.integer(-1));
+        var helperType = new PirType.FunType(LIST_INT, INT);
+        var helper = new PirTerm.Var("helper", helperType);
+        var callbackType = new PirType.FunType(helperType, INT);
+        var f = new PirTerm.Var("f", callbackType);
+        UnaryOperator<PirTerm> behindFlag = body -> new PirTerm.IfThenElse(flag, body, minusOne);
+        // helper = λxs. if flag then xs[0] + xs[1] else −1; applyToData = λcb. cb (data 5)
+        var guardedHelper = new PirTerm.Lam("xs", LIST_INT, behindFlag.apply(pair));
+        var applyToData = new PirTerm.Let("d", five, new PirTerm.Lam("cb", helperType, new PirTerm.App(new PirTerm.Var("cb", helperType), d)));
+        UnaryOperator<PirTerm> scope = body -> new PirTerm.Let("helper", guardedHelper, new PirTerm.Let("f", applyToData, body));
+        UnaryOperator<PirTerm> flagOff = body -> new PirTerm.Let("flag", new PirTerm.Const(Constant.bool(false)), body);
+        UnaryOperator<PirTerm> flagOn = body -> new PirTerm.Let("flag", new PirTerm.Const(Constant.bool(true)), body);
+        var callbackIntoHelper = new PirTerm.Lam("ys", LIST_INT, new PirTerm.App(helper, ys));
+        var idType = new PirType.FunType(LIST_INT, LIST_INT);
+        var id = new PirTerm.Var("id", idType);
+        UnaryOperator<PirTerm> withId = body -> new PirTerm.Let("id", new PirTerm.Lam("xs", LIST_INT, xs), body);
+        var pairOnYs = add(get(ys, 0), get(ys, 1));
+        var pickType = new PirType.FunType(new PirType.BoolType(), helperType);
+        var pick = new PirTerm.Var("pick", pickType);
+        var g = new PirTerm.Var("g", helperType);
+        var goType = new PirType.FunType(LIST_INT, new PirType.FunType(INT, INT));
+        var go = new PirTerm.Var("go", goType);
+        var a = new PirTerm.Var("a", goType);
+        var b = new PirTerm.Var("b", goType);
+        var tail = new PirTerm.App(new PirTerm.Builtin(DefaultFun.TailList), xs);
+        var decrement = app2(DefaultFun.SubtractInteger, i, new PirTerm.Const(Constant.integer(1)));
+        var atZero = app2(DefaultFun.EqualsInteger, i, new PirTerm.Const(Constant.integer(0)));
+        UnaryOperator<PirTerm> recursive = next -> new PirTerm.Lam("xs", LIST_INT, new PirTerm.Lam("i", INT,
+                new PirTerm.IfThenElse(atZero, behindFlag.apply(pair), next)));
+        var chainWithLet = new PirTerm.Lam("xs", LIST_INT, new PirTerm.Let("n", new PirTerm.Const(Constant.integer(1)),
+                new PirTerm.Lam("k", INT, new PirTerm.IfThenElse(app2(DefaultFun.EqualsInteger, new PirTerm.Var("k", INT), new PirTerm.Var("n", INT)), pair, minusOne))));
+        var twoParamType = new PirType.FunType(LIST_INT, new PirType.FunType(INT, INT));
+
+        record Case(String name, PirTerm term, int arrays, long result) {}
+        var cases = List.of(
+                // The review shape: the callback's parameter is raw Data, so the helper's parameter is refuted.
+                new Case("callback-into-helper", flagOff.apply(scope.apply(new PirTerm.App(f, callbackIntoHelper))), 0, -1),
+                // One proven caller and one refuting caller: refuted.
+                new Case("mixed-callers", flagOff.apply(scope.apply(add(new PirTerm.App(helper, eight), new PirTerm.App(f, callbackIntoHelper)))), 0, -2),
+                // Every caller passes a decoded list: promoted inside the helper, converted per call.
+                new Case("proven-callers", flagOn.apply(scope.apply(add(new PirTerm.App(helper, eight), new PirTerm.App(helper, eight)))), 1, 20),
+                // The method escapes as a value: every parameter refuted.
+                new Case("escaping-helper", flagOff.apply(scope.apply(new PirTerm.App(f, helper))), 0, -1),
+                // A list-typed result is proven only when the argument that flows through it is: id d is not, id list is.
+                new Case("return-of-unproven", flagOff.apply(withId.apply(new PirTerm.Let("d", five,
+                        new PirTerm.Let("ys", new PirTerm.App(id, d), behindFlag.apply(pairOnYs))))), 0, -1),
+                new Case("return-of-proven", flagOn.apply(withId.apply(new PirTerm.Let("ys", new PirTerm.App(id, eight), behindFlag.apply(pairOnYs)))), 1, 10),
+                // Under-application: the supplied argument keeps its proof, the parameters left unbound trust nothing.
+                new Case("partial-unbound", flagOff.apply(new PirTerm.Let("pick", new PirTerm.Lam("b", new PirType.BoolType(), new PirTerm.Lam("xs", LIST_INT,
+                        new PirTerm.IfThenElse(new PirTerm.Var("b", new PirType.BoolType()), pair, minusOne))),
+                        new PirTerm.Let("g", new PirTerm.App(pick, new PirTerm.Const(Constant.bool(false))),
+                                new PirTerm.Let("d", five, new PirTerm.App(g, d))))), 0, -1),
+                new Case("partial-supplied", flagOn.apply(new PirTerm.Let("pick", new PirTerm.Lam("xs", LIST_INT, new PirTerm.Lam("b", new PirType.BoolType(),
+                        new PirTerm.IfThenElse(new PirTerm.Var("b", new PirType.BoolType()), pair, minusOne))),
+                        new PirTerm.Let("g", new PirTerm.App(new PirTerm.Var("pick", new PirType.FunType(LIST_INT, new PirType.FunType(new PirType.BoolType(), INT))), eight),
+                                new PirTerm.App(new PirTerm.Var("g", new PirType.FunType(new PirType.BoolType(), INT)), new PirTerm.Const(Constant.bool(true)))))), 1, 10),
+                // A recursive helper that passes its own tail back keeps the proof of its first call.
+                new Case("recursion-proven", flagOn.apply(new PirTerm.LetRec(List.of(new PirTerm.Binding("go", recursive.apply(new PirTerm.App(new PirTerm.App(go, tail), decrement)))),
+                        new PirTerm.App(new PirTerm.App(go, eight), new PirTerm.Const(Constant.integer(1))))), 1, 30),
+                new Case("recursion-refuted", flagOff.apply(new PirTerm.Let("d", five, new PirTerm.LetRec(List.of(new PirTerm.Binding("go", recursive.apply(new PirTerm.App(new PirTerm.App(go, tail), decrement)))),
+                        new PirTerm.App(new PirTerm.App(go, d), new PirTerm.Const(Constant.integer(0)))))), 0, -1),
+                // Mutual recursion through one LetRec (a hands its list to b, b hands the tail back
+                // to a): both helpers proven from a proven entry call, both refuted from a refuted one.
+                new Case("mutual-proven", flagOn.apply(new PirTerm.LetRec(List.of(
+                        new PirTerm.Binding("a", recursive.apply(new PirTerm.App(new PirTerm.App(b, xs), decrement))),
+                        new PirTerm.Binding("b", recursive.apply(new PirTerm.App(new PirTerm.App(a, tail), decrement)))),
+                        new PirTerm.App(new PirTerm.App(a, eight), new PirTerm.Const(Constant.integer(2))))), 2, 30),
+                new Case("mutual-refuted", flagOff.apply(new PirTerm.Let("d", five, new PirTerm.LetRec(List.of(
+                        new PirTerm.Binding("a", recursive.apply(new PirTerm.App(new PirTerm.App(b, xs), decrement))),
+                        new PirTerm.Binding("b", recursive.apply(new PirTerm.App(new PirTerm.App(a, tail), decrement)))),
+                        new PirTerm.App(new PirTerm.App(a, d), new PirTerm.Const(Constant.integer(0)))))), 0, -1),
+                // A helper fed only a tail keeps its proof even when its caller's own list is refuted:
+                // tailList of a non-list fails before the callee runs, so whenever the callee runs its argument is a list.
+                new Case("tail-fed-callee", flagOff.apply(new PirTerm.Let("d", five, new PirTerm.LetRec(List.of(
+                        new PirTerm.Binding("a", recursive.apply(new PirTerm.App(new PirTerm.App(b, tail), decrement))),
+                        new PirTerm.Binding("b", recursive.apply(new PirTerm.App(new PirTerm.App(a, xs), decrement)))),
+                        new PirTerm.App(new PirTerm.App(a, d), new PirTerm.Const(Constant.integer(0)))))), 1, -1),
+                // A let between the chain's lambdas (the wrapper's decode lets): both parameters count.
+                new Case("chain-through-let", new PirTerm.Let("helper", chainWithLet,
+                        new PirTerm.App(new PirTerm.App(new PirTerm.Var("helper", twoParamType), eight), new PirTerm.Const(Constant.integer(1)))), 1, 10),
+                // Two binders under the same name and parameter list share one record: the refuting caller of one refutes both.
+                new Case("same-key-merged", flagOn.apply(new PirTerm.Let("d", five, new PirTerm.IfThenElse(new PirTerm.Const(Constant.bool(false)),
+                        new PirTerm.Let("helper", guardedHelper, new PirTerm.App(helper, d)),
+                        new PirTerm.Let("helper", guardedHelper, new PirTerm.App(helper, eight))))), 0, 10),
+                new Case("distinct-keys", flagOn.apply(new PirTerm.Let("d", five, new PirTerm.IfThenElse(new PirTerm.Const(Constant.bool(false)),
+                        new PirTerm.Let("helper", guardedHelper, new PirTerm.App(helper, d)),
+                        new PirTerm.Let("helper", new PirTerm.Lam("ys", LIST_INT, behindFlag.apply(pairOnYs)), new PirTerm.App(helper, eight))))), 1, 10));
+        for (var c : cases) {
+            var lowered = lower(c.term(), OptimizationLevel.PV11_COSTED);
+            assertEquals(c.arrays(), countArrayBindings(lowered), c.name());
+            if (c.arrays() == 0) assertSame(c.term(), lowered, c.name());
+            assertEquals(c.result(), integerResult(c.term(), c.arrays()), c.name());
+        }
+    }
+
+    /**
+     * The PR #144 review finding end to end: a spending validator whose entry point passes a
+     * callback's element (raw Data under a {@code JulcList} type) into a helper that indexes
+     * twice behind conditionals. With a valid typed redeemer whose mode never indexes, the
+     * validator must accept at the costed level exactly as at the safe level, on all three VMs,
+     * and the costed artifact must be the safe artifact byte for byte. The well-typed
+     * counterpart, an entrypoint list the wrapper decodes and passes to the same helper, still
+     * promotes and shows only the documented out-of-range substitution.
+     */
+    @Test
+    void callbackToHelperCompositionKeepsValidatorAcceptanceAtTheCostedLevel() {
+        var helper = """
+                    static boolean helper(JulcList<BigInteger> xs, BigInteger k) {
+                        if (k.equals(BigInteger.ONE)) return xs.get(0).equals(BigInteger.ZERO);
+                        if (k.equals(BigInteger.TWO)) return xs.get(1).equals(BigInteger.ZERO);
+                        return true;
+                    }
+                """;
+        var viaCallback = O9ListIndexFixtures.IMPORTS + """
+                import org.julclang.ledger.*;
+                @SpendingValidator class CallbackValidator {
+                    record Input(JulcList<JulcList<BigInteger>> groups, BigInteger mode) {}
+                """ + helper + """
+                    @Entrypoint static boolean validate(PlutusData datum, Input input, ScriptContext ctx) {
+                        BigInteger mode = input.mode();
+                        return input.groups().any(xs -> helper(xs, mode));
+                    }
+                }
+                """;
+        var safe = compileValidator(viaCallback, OptimizationLevel.PV11_SAFE);
+        var costed = compileValidator(viaCallback, OptimizationLevel.PV11_COSTED);
+        assertFalse(costed.optimizationReport().appliedRules().contains(ListIndexPromotionPass.RULE));
+        assertArrayEquals(UplcFlatEncoder.encodeProgram(safe.program()), UplcFlatEncoder.encodeProgram(costed.program()));
+        var neverIndexes = spendingContext(PlutusData.constr(0, PlutusData.list(ints(10, 20)), PlutusData.integer(0)));
+        for (String provider : PROVIDERS) {
+            var before = assertInstanceOf(EvalResult.Success.class, evaluate(safe.program(), List.of(neverIndexes), provider), provider);
+            var after = assertInstanceOf(EvalResult.Success.class, evaluate(costed.program(), List.of(neverIndexes), provider), provider);
+            assertEquals(before.budgetConsumed(), after.budgetConsumed(), provider);
+        }
+
+        var typed = O9ListIndexFixtures.IMPORTS + """
+                import org.julclang.ledger.*;
+                @SpendingValidator class TypedValidator {
+                """ + helper + """
+                    @Entrypoint static boolean validate(PlutusData datum, JulcList<BigInteger> xs, ScriptContext ctx) {
+                        return helper(xs, BigInteger.ONE) && helper(xs, BigInteger.TWO);
+                    }
+                }
+                """;
+        var typedSafe = compileValidator(typed, OptimizationLevel.PV11_SAFE);
+        var typedCosted = compileValidator(typed, OptimizationLevel.PV11_COSTED);
+        assertTrue(typedCosted.optimizationReport().appliedRules().contains(ListIndexPromotionPass.RULE));
+        assertEquals(1, countArrayBindings(typedCosted.pirTerm()));
+        assertEquals(0, countRecursiveGets(typedCosted.pirTerm()));
+        for (String provider : PROVIDERS) {
+            var zeros = spendingContext(ints(0, 0));
+            assertInstanceOf(EvalResult.Success.class, evaluate(typedSafe.program(), List.of(zeros), provider), provider);
+            assertInstanceOf(EvalResult.Success.class, evaluate(typedCosted.program(), List.of(zeros), provider), provider);
+            var one = spendingContext(ints(0));
+            var b = assertInstanceOf(EvalResult.Failure.class, evaluate(typedSafe.program(), List.of(one), provider), provider);
+            var a = assertInstanceOf(EvalResult.Failure.class, evaluate(typedCosted.program(), List.of(one), provider), provider);
+            IndexFailureEquivalence.assertPromotedFailure(b, a, 1, 1, provider);
+        }
+    }
+
+    /** A V3 spending script context: {@code [txInfo, redeemer, Spending(txOutRef, NoDatum)]}. */
+    private static PlutusData spendingContext(PlutusData redeemer) {
+        var spending = PlutusData.constr(1, PlutusData.constr(0, PlutusData.bytes(new byte[32]), PlutusData.integer(0)),
+                PlutusData.constr(0, PlutusData.integer(0)));
+        return PlutusData.constr(0, PlutusData.integer(0), redeemer, spending);
     }
 
     private static CompileResult compileValidator(String source, OptimizationLevel level) {

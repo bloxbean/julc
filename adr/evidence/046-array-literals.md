@@ -49,7 +49,14 @@ on every path, failing ones included.
 | NESTED_LIST (list decode folded to a list constant) | 2 → 0 | 107 → 61 | `01db4a31…` → `a9d7798e…` |
 | EMPTY | 2 → 0 | 14 → 6 | `28d9fe5c…` → `8cf91b7d…` |
 | EMPTY_GET (fails) | 2 → 1 | 21 → 16 | `e51933ad…` → `ebc1e702…` |
-| LOCAL_LIST (list local stays live) | 2 → 0 | 91 → 80 | `559b4b90…` → `99da1997…` |
+| LOCAL_LIST (list local shared with `size()`: the conversion would copy it, nothing folds) | 2 → 2 | 91 → 91 | unchanged |
+| LOCAL_LIST_ONCE (list local used only by the conversion) | 3 → 0 | 48 → 6 | `c08b55f8…` → `c64aea12…` |
+| SHARED_ELEMENT (256-byte local as both elements and in a runtime use: nothing folds) | 2 → 2 | 306 → 306 | unchanged |
+| SHARED_ELEMENT_ONCE (256-byte local as both elements only: the array would hold two copies) | 2 → 2 | 296 → 296 | unchanged |
+| ELEMENT_ONCE (32-byte local as the single element, used once) | 2 → 0 | 62 → 40 | `3f253f1c…` → `608154b5…` |
+| WIDE_ELEMENT_ONCE (256-byte local as the single element: the Data element outgrows the constant) | 2 → 2 | 287 → 287 | unchanged |
+| SHARED_LIST_ELEMENT (256-byte local as both elements of a list local converted to an array, and in a runtime use) | 2 → 2 | 309 → 309 | unchanged |
+| LIST_ELEMENT_ONCE (32-byte local as the single element of a list local converted once) | 2 → 0 | 64 → 40 | `5f1b5345…` → `608154b5…` (= ELEMENT_ONCE) |
 | FROM_LIST | 2 → 0 | 28 → 6 | `d09f7cf0…` → `16d9e796…` (= GET_LITERAL) |
 | RUNTIME_ELEMENT (runtime element, nothing literal) | 3 → 3 | 53 → 53 | unchanged |
 | TRACE_AROUND | 2 → 0 | 56 → 22 | `1a46c088…` → `cd7b2304…` |
@@ -75,7 +82,16 @@ on every path, failing ones included.
 | NESTED_LIST | run (1) | 3,044,746 → 1,374,987 | 12,119 → 6,230 |
 | EMPTY | run (0) | 432,226 → 16,100 | 1,349 → 200 |
 | EMPTY_GET | run (fail) | 528,353 → 392,110 | 1,971 → 1,132 |
-| LOCAL_LIST | run (3) | 3,406,644 → 2,895,214 | 13,463 → 12,090 |
+| LOCAL_LIST | run (3) | unchanged | unchanged |
+| LOCAL_LIST_ONCE | run (3) | 1,592,057 → 16,100 | 5,099 → 200 |
+| SHARED_ELEMENT | first, second (512 bytes) | unchanged (1,326,077) | unchanged (5,529) |
+| SHARED_ELEMENT | past-the-end (fail) | unchanged | unchanged |
+| SHARED_ELEMENT_ONCE | run (256 bytes) | unchanged | unchanged |
+| ELEMENT_ONCE | run (32 bytes) | 784,878 → 16,100 | 2,868 → 200 |
+| WIDE_ELEMENT_ONCE | run (256 bytes) | unchanged (784,878) | unchanged (2,868) |
+| SHARED_LIST_ELEMENT | first, second (512 bytes) | unchanged (1,374,077) | unchanged (5,829) |
+| SHARED_LIST_ELEMENT | past-the-end (fail) | unchanged | unchanged |
+| LIST_ELEMENT_ONCE | run (32 bytes) | 832,878 → 16,100 | 3,168 → 200 |
 | FROM_LIST | run (2) | 881,224 → 16,100 | 2,879 → 200 |
 | RUNTIME_ELEMENT | five (6) | unchanged | unchanged |
 | TRACE_AROUND | run (3, trace "table") | 1,426,092 → 251,598 | 5,230 → 1,332 |
@@ -87,8 +103,10 @@ on every path, failing ones included.
 Notes. A method whose whole body folds costs the one constant step (16,100 CPU / 200 memory).
 The runtime-index fixture embeds the array constant and keeps the access: every path,
 including the three failing ones, saves the list construction and its conversion
-(809,740 CPU). `LOCAL_LIST` keeps the `MkCons` chain because `xs.size()` still walks the
-list; only the array is a constant. `HELPER_GET` passes the array constant to a helper whose
+(809,740 CPU). `LOCAL_LIST` is left as written: `xs.size()` still walks the list, so the
+conversion would copy the list into an array constant beside the chain (ADR-045's call-site
+objective, inherited through `LiteralFoldPass`); `LOCAL_LIST_ONCE`, where the conversion is
+the list's only use, folds to one constant. `HELPER_GET` passes the array constant to a helper whose
 body is the decoded access, which is not a wrapper (the decode sits between the builtin and
 the parameters), so the access stays. `ERROR_ARM` on the guard path never reaches the table
 and is byte-for-byte the same cost.
@@ -104,7 +122,8 @@ its Data constant, so every other fold passes the objective.
 
 ## Structural probes (same test)
 
-- `ListToArray` of a bare list literal and of a once-bound local holding one fold; a runtime
+- `ListToArray` of a bare list literal and of a once-bound local holding one (its only use)
+  fold; a local still used elsewhere is measured as a reference and is not copied; a runtime
   element blocks; every `wrapEncode` element form (bytes, UTF-8 string, boolean, nested list,
   Data constant) reads to the Data the runtime would build.
 - `LengthOfArray` and an in-range `IndexArray` on an array literal fold; indexes 2 (past the
@@ -179,6 +198,81 @@ Baseline script hash: `7445b6190e15ad49743f3142eccd640914cfc729490655a06b177b3f`
 | truffle | run | SUCCESS | 1683685 | 16100 | -1667585 | 5110 | 200 | -4910 |
 
 Applied candidate rules: `pv11.o10.array-literal-fold`, `constant-fold`, `dead-code-elimination`, `beta-reduce`.
+
+## Rebase onto ADR-045's corrected objective, and the review of the merged head
+
+`main` (`bc7c8199`, ADR-045 merged with its review fixes `af4bdd8d`) was merged into the
+branch after ADR-044 and ADR-045 landed. Two conflicts: the ADR-032 catalog rows (main's O9
+row and this branch's O10 row are both kept) and `ValueLiteralFoldPass`, whose machinery this
+branch had moved into `LiteralFoldPass`; the domain class keeps its thin form and the fix is
+ported into the base (`remainingUses` counted per fixpoint iteration and reduced by the uses a
+fold consumes; `creditableBindings` = once-bound locals whose value is a literal term, not an
+alias; a `Var` argument measured as a reference unless this call consumes every remaining
+occurrence of a creditable local, then as the constant the binding denotes, once).
+
+- Element type under `var` (the maintainer's review of the merged head, P1): `var a =
+  JulcArray.of(BigInteger.valueOf(7)); increment(a.get(0))` compiled without a diagnostic
+  and failed at runtime with `AddInteger: expected integer, got Data` at every level, since
+  the local was typed `JulcArray<PlutusData>`. The generator now records the arguments' source
+  types on the lowered `JulcArray.of(...)` term and `TypeInferenceHelper` types the local and a
+  chained access from that record (`JulcArray.of(...)` also resolves to `JulcArray<T>` at the
+  expression level when every element resolves to the same type). A first version read the
+  types back from the encodings; the review's second round showed `var a =
+  JulcArray.of(Builtins.iData(BigInteger.valueOf(7))); extract(a.get(0))` failing with
+  `UnIData: expected data, got Integer`, since `IData(x)` is also a user's `Builtins.iData(x)`.
+  The third round found a nested `JulcList.of(...)` element typed `JulcList<PlutusData>` under
+  `var` (`increment(rows.get(0).get(0))` failed at runtime): `JulcList.of(...)` now records its
+  element types at its own lowering and an array literal reads them for its list-literal
+  elements, recursively, so `var rows = JulcArray.of(JulcList.of(BigInteger.ONE))` is
+  `JulcArray<JulcList<BigInteger>>`; a bare `var xs = JulcList.of(...)` keeps its existing
+  typing. The fourth round found the same shape failing through a chained access on the
+  literal (`JulcArray.of(JulcList.of(BigInteger.ONE)).get(0).get(0)`): the intermediate `get`
+  was dispatched with the right type but its result was re-inferred from its lowering
+  (`UnListData`) as `JulcList<PlutusData>`; the generator now keeps the registry's declared
+  result type with every dispatched term, and the next access is typed by it (`chainedNested`
+  returns 2, `chainedNestedData` 9). Elements of different types under `var` raise `JULC0012` naming the types and the fix
+  (`varLocalOfAnArrayLiteralInfersTheElementType`: integer, string, boolean, nested, doubly
+  nested and nested-Data elements, Data elements, the explicit declaration, a chained access,
+  the empty literal, the mixed and mixed-nested rejections, on every level).
+- Structural measure (the maintainer's review of the merged head): a list literal is measured
+  as it stands, each nested variable as a reference or, once, as the constant of a creditable
+  local whose every remaining occurrence the call consumes. The reviewer's reproducer (a
+  256-byte `b` as both elements of `JulcArray.of(b, b)` and in `appendByteString(a.get(i), b)`)
+  grew from 306 to 825 bytes under the expanded-constant measure and now stays at 306
+  (`SHARED_ELEMENT`); `SHARED_ELEMENT_ONCE` (296 → 296), `ELEMENT_ONCE` (62 → 40) and
+  `WIDE_ELEMENT_ONCE` (287 → 287) bound the rule; direct-PIR probes cover the same three
+  shapes with a 64-byte local. The review's second round found a dying *list local* still
+  credited as its expanded constant: `xs = JulcList.of(b, b); a = xs.toArray()` beside a
+  runtime `b` grew from 309 to 845 bytes. The credit is now dependency-aware: a dying local is
+  measured as the term its binding holds, its own variables as references or dying locals in
+  turn (a fixed point over the bindings the fold removes), so `SHARED_LIST_ELEMENT` stays at
+  309 while `LIST_ELEMENT_ONCE` (`b` and `xs` both die) folds 64 → 40; the direct-PIR probes
+  `throughList` (stays) and `throughListOnce` (folds to `1`) pin the same shapes. Element-width probe (single byte-string element, credited
+  local): array/chain bits 57/113 at 1 byte, 313/361 at 32, 569/617 at 64, 1,113/1,129 at
+  128 (fold), 1,713/1,705 at 200, 2,169/2,145 at 255, 2,177/2,161 at 256, 4,297/4,217 at 512
+  (stay); the pass's decision matches the encoder at every width, bare or through the local.
+- Mutation checks for the review's findings: with the list literal measured as its expanded
+  constant again, `SHARED_ELEMENT` folds (the rule fires where none is expected) and the direct
+  probe over the 64-byte local folds; with the element types not recorded on the literal, the
+  `var` test fails on its first shape (the access is not even dispatched on the untyped
+  scope); with a dying local credited as its expanded constant again, `SHARED_LIST_ELEMENT`
+  folds and the `throughList` probe folds; with the nested-literal refinement skipped, the `var`
+  test fails on `nested`; with the dispatch result types not recorded, it fails on
+  `chainedNested`. All restored, all suites pass.
+- Consequence for this domain: `LOCAL_LIST` (its list local is still walked by `size()`) no
+  longer folds — the conversion would copy the list into an array constant beside the chain —
+  and stays at 91 bytes with an unchanged hash; `LOCAL_LIST_ONCE` (the conversion is the
+  list's only use) folds completely, 48 → 6 bytes, 1,592,057 → 16,100 CPU. The direct-PIR
+  probe `let xs = ⟨list literal⟩ in lengthOfArray(listToArray(xs))` still folds to `2`, since
+  `xs` is credited when its only occurrence is consumed. Every other fixture keeps its bytes,
+  hash and budgets.
+- Rerun on the merged tree with all four review rounds' fixes: `:julc-compiler:check` 1,620
+  tests + 63 `pairCaseTest` (the O10 and O14 suites among them), 0 failures,
+  `verifyDiagnosticCodes` passed; `O10ArrayLiteralBenchmarkTest` and
+  `O14ValueLiteralBenchmarkTest` 4/4; the whole `julc-stdlib` suite 411/411 and
+  `julc-testkit` 193/193 (dispatch result types are now recorded for every typed access,
+  so every compiled source in those suites exercises the change); the in-repo
+  `julc-examples` module 81/81.
 
 ## Repository validation
 

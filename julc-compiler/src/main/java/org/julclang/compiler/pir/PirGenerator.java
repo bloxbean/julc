@@ -422,7 +422,7 @@ public class PirGenerator {
                         () -> new CompilerException("Variable must be initialized: " + name
                                 + ". Hint: On-chain variables need initial values, e.g. var " + name + " = BigInteger.ZERO;"));
                 var value = generateExpression(initExpr);
-                var pirType = inferType(decl.getType(), value, initExpr);
+                var pirType = typeInference.inferType(decl.getType(), value, initExpr, sourceLocation(initExpr));
                 var initializerType = resolveExpressionType(initExpr);
                 if (initializerType instanceof PirType.DataType) {
                     initializerType = inferPirType(value);
@@ -1134,6 +1134,18 @@ public class PirGenerator {
         if (result.isPresent()) {
             context.logf("Resolved stdlib: %s.%s", className, methodName);
             checkCrossLibraryTypeWarnings(className, methodName, mce, argPirTypes);
+            // JulcArray.of(...): keep the elements' source types with the literal, so a `var` local
+            // or a chained access is typed as javac types it (ADR-046); the encodings alone cannot
+            // tell a wrapped integer from a user's Builtins.iData(...). A JulcList.of(...) literal
+            // records its element types too, read only when it is an element of an array literal,
+            // so nested literals keep their Java types (JulcArray<JulcList<BigInteger>>).
+            if (methodName.equals("of")) {
+                if (className.equals("JulcArray") || resolvedClassName.equals("org.julclang.core.types.JulcArray")) {
+                    typeInference.recordArrayLiteral(result.get(), typeInference.literalElementTypes(argPirTypes, compiledArgs));
+                } else if (className.equals("JulcList") || resolvedClassName.equals("org.julclang.core.types.JulcList")) {
+                    typeInference.recordListLiteral(result.get(), typeInference.literalElementTypes(argPirTypes, compiledArgs));
+                }
+            }
             return result.get();
         }
         return null;
@@ -1210,7 +1222,14 @@ public class PirGenerator {
                     typeMethodRegistry.requirements(context, scopeType, methodName), mce);
             var registryResult = typeMethodRegistry.dispatch(
                     context, scope, methodName, compiledArgs, scopeType, argPirTypes);
-            if (registryResult.isPresent()) return registryResult.get();
+            if (registryResult.isPresent()) {
+                // Keep the declared result type with the term, so a further access chained on this
+                // expression is typed by it rather than by the structure of the lowering (ADR-046:
+                // `JulcArray.of(JulcList.of(1)).get(0).get(0)` keeps the nested element type).
+                typeMethodRegistry.resolveReturnType(scopeType, methodName)
+                        .ifPresent(type -> typeInference.recordTermType(registryResult.get(), type));
+                return registryResult.get();
+            }
 
             // Auto-recognize toPlutusData() — encode value as Data
             if (methodName.equals("toPlutusData") && args.isEmpty()) {

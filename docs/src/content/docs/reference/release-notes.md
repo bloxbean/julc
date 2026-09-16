@@ -71,9 +71,9 @@ of your own that already spells `JulcList.of(...).toArray()` or
 `JulcArray.fromList(JulcList.of(...))` does change at `pv11-safe` (it gains the
 array constant). A native Value cannot be an array element (`JULC0041`, as for
 every Data-backed container). Spell a negative literal element as
-`new BigInteger("-5")`. Declare the element type: with `var t = JulcArray.of(...)`
-the compiler types the elements as Data and `t.get(i)` returns raw `PlutusData`
-even though javac infers `JulcArray<BigInteger>`.
+`new BigInteger("-5")`. `var t = JulcArray.of(...)` infers the element type from
+the elements, as javac does; elements of different types under `var` are rejected
+with `JULC0012` (declare `JulcArray<T>`).
 
 ## Upcoming preview: native Value literals and literal folding (ADR-045)
 
@@ -98,7 +98,9 @@ literal call the builtin would reject (a 33-byte key, an overflow, a negative
 quantity under `contains`) is left as written and fails at runtime with the
 same text. No algebraic identity is applied and nothing changes at
 `none`/`baseline`. The fold only fires when the literal is not larger than the
-call it replaces, so `toData(Builtins.emptyValue())` stays a call. The optimization report
+call it replaces as it stands in the script, so `toData(Builtins.emptyValue())`
+stays a call and a literal local shared by several calls is never copied into
+them (the calls stay, the local keeps its one constant). The optimization report
 records `pv11.o14.value-literal-fold`, and the rule can be switched off with
 `CompilerOptions.disableOptimizationRule`.
 
@@ -203,15 +205,18 @@ show it. On-chain a failure is a failure. Tests that assert on that text under
 the costed profile need updating; nothing changes at the default level.
 `MultiIndexArray` remains illegal at PV11.
 
-One typing caveat, also costed-only: a `JulcList` variable that actually holds a
-non-list (only possible through an unchecked cast such as
-`(JulcList<T>) (Object) somePlutusData`, which Java itself would reject at the
-cast) fails at the array conversion on every path below the binding, including a
-path that never indexes, once the value has crossed a helper boundary through a
-list-typed parameter or return or has been carried through a loop as its state.
-A `JulcList` local bound to such a cast, and every alias of it, is never
-promoted, and a callback lambda's list-typed parameter is never promoted either.
-Well-typed programs are unaffected.
+A `JulcList` variable is promoted only when the compiler can prove it holds a
+list on every path: a value decoded at the typed boundary, a list built by a list
+operation, a helper parameter that every call in the program passes such a list,
+or a helper result whose body returns one. A local bound to an unchecked cast
+such as `(JulcList<T>) (Object) somePlutusData`, every alias of it, a callback
+lambda's list-typed parameter (which holds the raw element), and any helper
+parameter or result such a value can reach are never promoted, so a program that
+never indexes on some path keeps accepting on that path at the costed level. An
+earlier preview build trusted helper parameters by their declared type; review
+showed that a callback's element passed into a helper could then turn acceptance
+into a `ListToArray` failure. That is fixed, and no released artifact was built
+at the costed level.
 
 ## Upcoming preview: automatic sharing of repeated native Value conversions (ADR-042)
 

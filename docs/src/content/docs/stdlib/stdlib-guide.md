@@ -367,8 +367,9 @@ ListsLib provides list construction, traversal, searching, and higher-order func
 
 > **Array literals (ADR-046).** `JulcArray.of(a, b, c)` writes an array down:
 > on-chain it is `JulcList.of(a, b, c).toArray()`, with the same Data-encoded
-> element representation every `JulcArray<T>` has, so declare the element type
-> (`JulcArray<BigInteger> fees = JulcArray.of(...)`) and `get` decodes it. At
+> element representation every `JulcArray<T>` has; `get` decodes by the element
+> type, declared (`JulcArray<BigInteger> fees = JulcArray.of(...)`) or inferred
+> from the elements under `var` (elements of different types are rejected). At
 > the default `pv11-safe` level an array whose elements are all literals
 > (integers, byte strings, strings, booleans, nested list literals) becomes one
 > UPLC array constant, `length()` on it becomes a constant, and `get(i)` with a
@@ -1470,7 +1471,9 @@ return NativeValueLib.contains(NativeValueLib.fromData(minted), required);
 > non-zero quantity, an overflowing union or scale, a negative quantity under
 > `contains`) is left as written and fails at runtime exactly as before. Nothing is
 > folded at `none`/`baseline`, and no algebraic identity is applied: `scale(1, v)`
-> or `union(v, empty())` with a runtime `v` stay calls. Spell a negative literal
+> or `union(v, empty())` with a runtime `v` stay calls. A fold never grows the
+> script: a literal local that several calls share keeps its one constant, and a
+> call that would copy that constant into its own site stays a call. Spell a negative literal
 > quantity as `new BigInteger("-5")`; `BigInteger.valueOf(-5)` is a runtime
 > subtraction, not a constant.
 
