@@ -1,7 +1,7 @@
 # ADR-046: Typed array literals and literal folding (O10)
 
 **Date:** 2026-09-14
-**Status:** Implemented and locally validated on `feat/116-array-literals` (stacked on ADR-045's `feat/119-value-literals`); two independent agent reviews applied; maintainer review pending
+**Status:** Implemented and locally validated on `feat/116-array-literals` (PR #149 against `main`, rebased by merge after ADR-045 merged; the corrected call-site objective of ADR-045's second review applies to this domain through `LiteralFoldPass`: `LOCAL_LIST` no longer folds, `LOCAL_LIST_ONCE` added); two independent agent reviews applied; maintainer review pending
 **Issues:** [#116](https://github.com/bloxbean/julc/issues/116) (O10), research decision [#106](https://github.com/bloxbean/julc/issues/106), parent [#77](https://github.com/bloxbean/julc/issues/77)
 **Governing decisions:** ADR-032 O10 (array constant folding, "static-cost" class, out-of-range indexes stay runtime failures, no fold beyond the size objective), ADR-043 (`JulcArray`'s element representation and the `IndexArray` failure contract), ADR-045 (the literal-fold machinery, its objective and additivity), ADR-036 (pass placement before UPLC generation), ADR-015 (strict typed boundaries)
 
@@ -92,7 +92,10 @@ as it does for ADR-045 (spell `new BigInteger("-5")`).
 
 **The fold.** In the domain `ListToArray`, `LengthOfArray`, `IndexArray`, a saturated call
 over literals is replaced by its result when `ArraySemantics` succeeds and the result's FLAT
-encoding is not longer, in bits, than the term it replaces (ADR-045's objective). A call the
+encoding is not longer, in bits, than the term it replaces (ADR-045's objective in its
+call-site form: a constant counts as itself, a list literal chain as the constant it denotes,
+a literal local as a variable reference unless the call consumes every remaining occurrence
+of a local bound directly to a literal, and an alias never as the constant it names). A call the
 semantics reject (an out-of-range or over-wide literal index) stays exactly as written and
 fails at runtime with the builtin's text; a runtime index keeps the access and embeds the
 array constant. Rule `pv11.o10.array-literal-fold`; gate: exact PV11 target,
@@ -125,14 +128,23 @@ literals are always shorter than the chain they replace (the chain holds the sam
 plus a wrapping and a cons per element; probed for zero to eight elements), decoded elements
 always shorter than the decode of their Data constant; the one case that can go either way is
 a list decode of a produced element, which folds for lists of at most one element and stays
-from two on (each element of a `list data` constant is a separate FLAT byte string).
+from two on (each element of a `list data` constant is a separate FLAT byte string). A
+literal local is measured as a reference at the call site (ADR-045's second review
+established the measure; this pass inherits it through `LiteralFoldPass`), so a list local
+that stays live elsewhere is never copied into an array constant: `LOCAL_LIST` stays whole
+(91 bytes either way) while its once-used twin `LOCAL_LIST_ONCE` folds to one constant
+(48 → 6). A local whose only remaining occurrences the call consumes is credited with the
+constant its binding denotes, since the binding dies and the optimiser drops it (list
+literal chains are pure).
 
 **Additivity.** No program compiled before this ADR contains an array constant, and no
 program in the example corpus, the Blaster fixtures, the in-repo example module or any earlier
 golden suite converts a list literal to an array (census in the evidence document). The
 decode folds only ever see constants this pass produced. A program outside the corpus that
 already spells `JulcList.of(...).toArray()` or `JulcArray.fromList(JulcList.of(...))` does
-change bytes at the safe profile (the `LOCAL_LIST` and `FROM_LIST` fixtures are that shape);
+change bytes at the safe profile (the `LOCAL_LIST_ONCE` and `FROM_LIST` fixtures are that
+shape; `LOCAL_LIST`, whose list local stays live for `size()`, is left as written, since the
+conversion would copy the list into an array constant beside the chain);
 the additivity claim is about the censused corpus and the golden suites, whose byte identity
 with the rule enabled the evidence document's repository-validation section records.
 
@@ -223,7 +235,8 @@ Java. Full table in `adr/evidence/046-array-literals.md`.
 | STRING (`s.get(1).equals("cde")`) | 58 → 23 | 1,260,219 → 129,100 |
 | BOOL (`if (f.get(1))`) | 75 → 13 | 1,592,357 → 96,100 |
 | NESTED_LIST (`rows.get(1).size()`) | 107 → 61 | 3,044,746 → 1,374,987 |
-| LOCAL_LIST (`xs.toArray()`, `xs` still walked) | 91 → 80 | 3,406,644 → 2,895,214 |
+| LOCAL_LIST (`xs.toArray()`, `xs` still walked by `size()`: stays) | 91 → 91 | unchanged |
+| LOCAL_LIST_ONCE (`xs.toArray()`, the list's only use) | 48 → 6 | 1,592,057 → 16,100 |
 | FROM_LIST (`JulcArray.fromList(JulcList.of(1, 2)).length()`) | 28 → 6 | 881,224 → 16,100 |
 | TWO_ARRAYS (`a.get(0).add(b.get(1))`) | 66 → 6 | 2,129,298 → 16,100 |
 | HELPER_GET (constant passed to a helper, access stays) | 40 → 31 | 1,110,095 → 572,854 |
@@ -243,7 +256,7 @@ One milestone on `feat/116-array-literals`, stacked on ADR-045:
 2. `ArraySemantics` with `ArrayBuiltins` delegating; `JulcArray.of`; the registry lowering.
 3. `LiteralFoldPass` extracted from ADR-045's pass; `ArrayLiteralFoldPass` with the list
    literal reader and the produced-element decode folds; the switch.
-4. Fixture matrix (19 fixtures × 4 levels × rule off/on × 3 VMs), direct-PIR probes,
+4. Fixture matrix (20 fixtures × 4 levels × rule off/on × 3 VMs), direct-PIR probes,
    semantics test, stdlib and typing tests, benchmark comparisons.
 5. Two independent agent reviews (the Bool fold's objective check, the requirement key under
    the qualified class name, an unchecked cast, failing-path budgets, `MultiIndexArray`
@@ -252,7 +265,7 @@ One milestone on `feat/116-array-literals`, stacked on ADR-045:
 
 ## Verification
 
-- `O10ArrayLiteralFoldTest` (`pair-case-backends`): 19 fixtures at every level with the rule
+- `O10ArrayLiteralFoldTest` (`pair-case-backends`): 20 fixtures at every level with the rule
   off and on; NONE/BASELINE byte-identical either way; provenance exactly where expected;
   array builtin call sites counted before and after; strictly smaller bytes and a different
   hash when a fold fired, identical bytes otherwise; the expected result of every successful
