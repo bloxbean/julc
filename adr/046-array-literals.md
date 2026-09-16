@@ -138,12 +138,15 @@ literal local is measured as a reference at the call site (ADR-045's second revi
 established the measure; this pass inherits it through `LiteralFoldPass`), so a list local
 that stays live elsewhere is never copied into an array constant: `LOCAL_LIST` stays whole
 (91 bytes either way) while its once-used twin `LOCAL_LIST_ONCE` folds to one constant
-(48 → 6). A local whose only remaining occurrences the call consumes is credited with the
-constant its binding denotes, since the binding dies and the optimiser drops it (list
-literal chains are pure). The measure is structural: a list literal is measured as it
-stands, each nested variable as a reference (or as its constant, once, when the call
-consumes every remaining occurrence of that creditable local), not as the expanded `list
-data` constant. The review found the expanded measure counting a shared 256-byte local
+(48 → 6). A local whose only remaining occurrences the call consumes dies with the fold (the
+optimiser drops the binding; list literal chains are pure) and is credited, once, with the
+term its binding holds, measured the same way: a constant as itself, a list literal chain as
+it stands with each nested variable a reference or a dying local in turn (a dead binding
+takes its own variable occurrences with it, so the set of dying locals is a fixed point).
+Nothing is ever measured as an expanded `list data` constant: the review's second round
+found the dying list local of `xs = JulcList.of(b, b); a = xs.toArray()` credited as its
+expanded constant beside a live 256-byte `b`, 309 → 845 bytes (`SHARED_LIST_ELEMENT` now
+stays; `LIST_ELEMENT_ONCE`, where `b` and `xs` both die, folds). The review found the expanded measure counting a shared 256-byte local
 twice for `JulcArray.of(b, b)` beside a runtime use of `b` and approving the copy (306 →
 825 bytes with identical results); `SHARED_ELEMENT` pins that the conversion now stays
 (306 bytes either way), `SHARED_ELEMENT_ONCE` that two elements over one dying binding
@@ -269,22 +272,27 @@ One milestone on `feat/116-array-literals`, stacked on ADR-045:
 2. `ArraySemantics` with `ArrayBuiltins` delegating; `JulcArray.of`; the registry lowering.
 3. `LiteralFoldPass` extracted from ADR-045's pass; `ArrayLiteralFoldPass` with the list
    literal reader and the produced-element decode folds; the switch.
-4. Fixture matrix (24 fixtures × 4 levels × rule off/on × 3 VMs), direct-PIR probes,
+4. Fixture matrix (26 fixtures × 4 levels × rule off/on × 3 VMs), direct-PIR probes,
    semantics test, stdlib and typing tests, benchmark comparisons.
 5. Two independent agent reviews (the Bool fold's objective check, the requirement key under
    the qualified class name, an unchecked cast, failing-path budgets, `MultiIndexArray`
    assertions, wording); full build, Blaster lock check, publish, external examples
    (additivity census); stacked PR; release-plan update.
-6. The maintainer's review of the merged head (P1: `var a = JulcArray.of(...)` typed the
-   elements Data and the access failed at runtime; P2: a list literal measured as its expanded
-   constant approved copying a shared 256-byte local, 306 → 825 bytes): element-type
-   inference from the literal's encodings with `JULC0012` for mixed elements, the structural
+6. The maintainer's review of the merged head, two rounds. Round one (P1: `var a =
+   JulcArray.of(...)` typed the elements Data and the access failed at runtime; P2: a list
+   literal measured as its expanded constant approved copying a shared 256-byte local, 306 →
+   825 bytes): element-type inference with `JULC0012` for mixed elements, the structural
    measure in `LiteralFoldPass`, fixtures `SHARED_ELEMENT`, `SHARED_ELEMENT_ONCE`,
-   `ELEMENT_ONCE`, `WIDE_ELEMENT_ONCE`, the element-width probe, docs.
+   `ELEMENT_ONCE`, `WIDE_ELEMENT_ONCE`, the element-width probe, docs. Round two (P1: the
+   encodings cannot tell a wrapped integer from a user's `Builtins.iData(x)`, so a Data element
+   was decoded; P2: a dying list local was credited as its expanded constant, 309 → 845 bytes):
+   the generator records the arguments' source types on the lowered literal, the credit is
+   dependency-aware (a dying local measured as the term its binding holds), fixtures
+   `SHARED_LIST_ELEMENT` and `LIST_ELEMENT_ONCE`, the `dataElements` case.
 
 ## Verification
 
-- `O10ArrayLiteralFoldTest` (`pair-case-backends`): 24 fixtures at every level with the rule
+- `O10ArrayLiteralFoldTest` (`pair-case-backends`): 26 fixtures at every level with the rule
   off and on; NONE/BASELINE byte-identical either way; provenance exactly where expected;
   array builtin call sites counted before and after; strictly smaller bytes and a different
   hash when a fold fired, identical bytes otherwise; the expected result of every successful
@@ -313,14 +321,23 @@ One milestone on `feat/116-array-literals`, stacked on ADR-045:
 - Map elements (`JulcArray<JulcMap<...>>`) and negated integer literals are not read as
   literals; the access stays a runtime decode.
 - `var t = JulcArray.of(...)` infers the element type from the elements, as javac does: the
-  generated literal carries each element's encoding (`IData`, `BData`, `BData(EncodeUtf8)`,
-  the Bool conditional, `ListData`, `MapData`, a typed variable or record literal), and
-  `TypeInferenceHelper` reads it back for the local and for a chained access; elements of
-  different types (javac would infer a common supertype the subset cannot represent) are
-  rejected with `JULC0012` (the review found the first version typing the elements as Data,
-  so `increment(a.get(0))` failed at runtime; `varLocalOfAnArrayLiteralInfersTheElementType`
-  pins the inference). An empty literal under `var` has Data elements (`length()` works, any
-  access fails at runtime as it would for the typed empty array).
+  generator records the arguments' source types (the types `wrapEncode` encoded them with) on
+  the lowered literal, and `TypeInferenceHelper` types the local and a chained access from
+  that record. The encodings are not read back: `IData(x)` is also what a user's
+  `Builtins.iData(x)` lowers to, so shape inference would decode a Data element (the review's
+  second round). Elements of different types (javac would infer a common supertype the
+  subset cannot represent) are rejected with `JULC0012` (the review found the first version
+  typing the elements as Data, so `increment(a.get(0))` failed at runtime;
+  `varLocalOfAnArrayLiteralInfersTheElementType` pins integer, string, boolean, nested-list
+  and Data elements, the explicit declaration, a chained access and the empty literal). An
+  empty literal under `var` has Data elements (`length()` works, any access fails at runtime
+  as it would for the typed empty array). A nested `JulcList.of(...)` element keeps the list
+  literal's own type under `var`, `JulcList<PlutusData>` (the existing `JulcList.of`
+  convention: its elements come back as Data), so `var rows = JulcArray.of(JulcList.of(1))`
+  yields Data from `rows.get(0).get(0)` where javac would say `BigInteger`; declare
+  `JulcArray<JulcList<BigInteger>>` for decoded elements. Recording source types for
+  `JulcList.of` as for `JulcArray.of` would retype every existing `var xs = JulcList.of(...)`
+  local and is left for its own decision.
 - Conservative gaps: a `ListToArray` that ADR-043's promotion inserts at `PV11_COSTED` runs
   after this pass and is never folded; a decode reached through a `Let` alias of a produced
   element (`PlutusData d = t.get(0); unIData(d)`) is not folded because the decode's argument

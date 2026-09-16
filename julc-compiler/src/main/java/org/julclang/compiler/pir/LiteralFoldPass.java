@@ -42,7 +42,8 @@ import java.util.Set;
  * its binding carries. A local bound directly to a literal term (a constant, or a domain's
  * literal shape) whose every remaining occurrence the call consumes dies with the fold (the
  * UPLC optimiser's dead-code elimination drops the binding), so its first occurrence in the
- * call counts as the constant the binding denotes; a local that stays
+ * call counts as the term its binding holds, measured the same way (a list local over a shared
+ * constant is a chain of references, not an expanded constant); a local that stays
  * live elsewhere is only a reference here, and folding through it would copy its constant
  * into the call site. An alias ({@code Let w = Var v}) is never credited: its binding holds
  * a reference, and the constant it names stays as long as {@code v} has any other
@@ -78,9 +79,10 @@ public abstract class LiteralFoldPass {
     private final Map<String, Integer> remainingUses = new HashMap<>();
     /**
      * Literals bound directly to a literal term (a constant, or a domain's literal shape such as a
-     * list literal chain), not through an alias: the only bindings a fold may be credited with.
+     * list literal chain), not through an alias, with that term: the only bindings a fold may be
+     * credited with, measured as the term stands.
      */
-    private final Set<String> creditableBindings = new HashSet<>();
+    private final Map<String, PirTerm> creditableBindings = new HashMap<>();
     private boolean applied;
 
     LiteralFoldPass(CompilationContext context, Map<PirTerm, SourceLocation> positions) {
@@ -129,7 +131,7 @@ public abstract class LiteralFoldPass {
                 if (wrapper != null) wrappers.put(name, wrapper);
                 if (value instanceof PirTerm.Const c) {
                     literals.put(name, c.value());
-                    creditableBindings.add(name);
+                    creditableBindings.put(name, value);
                 }
             });
             rewritten = fold(rewritten);
@@ -148,7 +150,7 @@ public abstract class LiteralFoldPass {
                 var literal = literalOf(value);
                 if (literal != null) {
                     literals.put(let.name(), literal);
-                    if (!(value instanceof PirTerm.Var)) creditableBindings.add(let.name());
+                    if (!(value instanceof PirTerm.Var)) creditableBindings.put(let.name(), value);
                 }
             }
             var body = fold(let.body());
@@ -217,14 +219,41 @@ public abstract class LiteralFoldPass {
         // site; so is an alias (`Let w = Var v`) whether or not it dies: its binding holds a
         // reference, and `v`'s constant stays as long as `v` has any other occurrence, the alias
         // binding itself included.
-        var consumed = new HashMap<String, Integer>();
-        for (var actual : spine.args()) countVariables(actual, consumed);
+        var spineUses = new HashMap<String, Integer>();
+        for (var actual : spine.args()) countVariables(actual, spineUses);
+        var dying = dyingLocals(spineUses);
         Term replaced = spine.head() instanceof PirTerm.Builtin ? Term.builtin(fun) : Term.var(1);
         var credited = new HashSet<String>();
-        for (var actual : spine.args()) replaced = Term.apply(replaced, measure(actual, consumed, credited));
+        for (var actual : spine.args()) replaced = Term.apply(replaced, measure(actual, dying, credited));
         if (!fitsObjective(replaced, result)) return null;
-        consumed.forEach((name, uses) -> remainingUses.merge(name, -uses, Integer::sum));
+        // Only the spine's own occurrences leave the term now; a dying binding stays until the
+        // optimiser drops it, so its occurrences keep counting (conservatively) for later folds.
+        spineUses.forEach((name, uses) -> remainingUses.merge(name, -uses, Integer::sum));
         return folded(result);
+    }
+
+    /**
+     * The creditable locals that die with this fold: those whose every remaining occurrence the
+     * fold removes, directly in the spine or inside the binding of another dying local (a dead
+     * binding is dropped by the optimiser together with the variables it holds), to a fixed point.
+     */
+    private Set<String> dyingLocals(Map<String, Integer> spineUses) {
+        var consumed = new HashMap<>(spineUses);
+        var dying = new HashSet<String>();
+        boolean changed = true;
+        while (changed) {
+            changed = false;
+            for (var name : List.copyOf(consumed.keySet())) {
+                var value = creditableBindings.get(name);
+                if (value == null || dying.contains(name)) continue;
+                if (consumed.get(name).equals(remainingUses.getOrDefault(name, 0))) {
+                    dying.add(name);
+                    countVariables(value, consumed);
+                    changed = true;
+                }
+            }
+        }
+        return dying;
     }
 
     /** Variable occurrences in an argument as it stands; a domain's literal shape may nest them. */
@@ -236,8 +265,10 @@ public abstract class LiteralFoldPass {
     /**
      * A term whose FLAT encoding is not longer than the argument's own, as the argument stands
      * in the artifact: a constant as itself; a variable as a reference at the smallest index,
-     * or, the first time this call meets a creditable local whose every remaining occurrence
-     * the call consumes, as the constant its binding denotes (the binding dies with the fold);
+     * or, the first time this call meets a dying local, as the measure of the term its binding
+     * holds (the binding dies with the fold, and its own variables are references or dying locals
+     * in turn: a list local over a shared constant is measured as a chain of references, not as
+     * the expanded constant);
      * a builtin as itself; an application as the application of its parts' measures; any other
      * node of a literal shape (the Bool encoding's conditional) as its children's measures
      * applied in sequence, which drops the node's own tags and so never measures long. A
@@ -245,22 +276,19 @@ public abstract class LiteralFoldPass {
      * constant (ADR-046's review found `JulcArray.of(b, b)` over a live 256-byte `b` measured
      * as two copies and approved).
      */
-    private Term measure(PirTerm term, Map<String, Integer> consumed, Set<String> credited) {
+    private Term measure(PirTerm term, Set<String> dying, Set<String> credited) {
         return switch (term) {
             case PirTerm.Const c -> Term.const_(c.value());
-            case PirTerm.Var v -> {
-                boolean dies = creditableBindings.contains(v.name())
-                        && consumed.get(v.name()).equals(remainingUses.getOrDefault(v.name(), 0));
-                yield dies && credited.add(v.name()) ? Term.const_(literals.get(v.name())) : Term.var(1);
-            }
+            case PirTerm.Var v -> dying.contains(v.name()) && credited.add(v.name())
+                    ? measure(creditableBindings.get(v.name()), dying, credited) : Term.var(1);
             case PirTerm.Builtin b -> Term.builtin(b.fun());
-            case PirTerm.App a -> Term.apply(measure(a.function(), consumed, credited), measure(a.argument(), consumed, credited));
+            case PirTerm.App a -> Term.apply(measure(a.function(), dying, credited), measure(a.argument(), dying, credited));
             default -> {
                 var children = new ArrayList<PirTerm>();
                 PirHelpers.mapChildren(term, child -> { children.add(child); return child; });
                 Term measured = null;
                 for (var child : children) {
-                    var part = measure(child, consumed, credited);
+                    var part = measure(child, dying, credited);
                     measured = measured == null ? part : Term.apply(measured, part);
                 }
                 yield measured == null ? Term.error() : measured;

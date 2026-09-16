@@ -247,6 +247,29 @@ final class O10ArrayLiteralFixtures {
                 }""".formatted(B32));
 
     /**
+     * 23: the 256-byte local shared by both elements of a list local converted to an array and
+     * used at runtime (the review's second reproducer, 309 → 845 bytes when the dying list local
+     * was credited as its expanded constant): the list local dies with the conversion but holds
+     * two references to the live `b`, so the conversion stays.
+     */
+    static final String SHARED_LIST_ELEMENT = method("""
+                static byte[] sharedListElement(BigInteger i) {
+                    byte[] b = %s;
+                    JulcList<byte[]> xs = JulcList.of(b, b);
+                    JulcArray<byte[]> a = xs.toArray();
+                    return Builtins.appendByteString(a.get(i), b);
+                }""".formatted(B256));
+
+    /** 24: a 32-byte local as the single element of a list local converted once: both die with the conversion, both are credited, everything folds. */
+    static final String LIST_ELEMENT_ONCE = method("""
+                static byte[] listElementOnce() {
+                    byte[] b = %s;
+                    JulcList<byte[]> xs = JulcList.of(b);
+                    JulcArray<byte[]> a = xs.toArray();
+                    return a.get(0);
+                }""".formatted(B32));
+
+    /**
      * 22: the same with the 256-byte local: credited, but the array constant (the element as
      * CBOR Data) is longer than the raw byte-string constant plus its wrapping, so the
      * objective keeps the conversion (measured in the direct-PIR objective probe).
@@ -298,7 +321,12 @@ final class O10ArrayLiteralFixtures {
                     Input.fails("past-the-end", PlutusData.integer(2)))),
             new Fixture("SHARED_ELEMENT_ONCE", SHARED_ELEMENT_ONCE, "sharedElementOnce", false, 2, 2, NONE),
             new Fixture("ELEMENT_ONCE", ELEMENT_ONCE, "elementOnce", true, 2, 0, NONE),
-            new Fixture("WIDE_ELEMENT_ONCE", WIDE_ELEMENT_ONCE, "wideElementOnce", false, 2, 2, NONE));
+            new Fixture("WIDE_ELEMENT_ONCE", WIDE_ELEMENT_ONCE, "wideElementOnce", false, 2, 2, NONE),
+            new Fixture("SHARED_LIST_ELEMENT", SHARED_LIST_ELEMENT, "sharedListElement", false, 2, 2, List.of(
+                    Input.ok("first", PlutusData.integer(0)),
+                    Input.ok("second", PlutusData.integer(1)),
+                    Input.fails("past-the-end", PlutusData.integer(2)))),
+            new Fixture("LIST_ELEMENT_ONCE", LIST_ELEMENT_ONCE, "listElementOnce", true, 2, 0, NONE));
 
     private O10ArrayLiteralFixtures() {}
 }

@@ -72,6 +72,9 @@ class O10ArrayLiteralFoldTest {
             Map.entry("SHARED_ELEMENT_ONCE/run", Constant.byteString(O10ArrayLiteralFixtures.B256_BYTES)),
             Map.entry("ELEMENT_ONCE/run", Constant.byteString(O10ArrayLiteralFixtures.B32_BYTES)),
             Map.entry("WIDE_ELEMENT_ONCE/run", Constant.byteString(O10ArrayLiteralFixtures.B256_BYTES)),
+            Map.entry("SHARED_LIST_ELEMENT/first", Constant.byteString(O10ArrayLiteralFixtures.B256_TWICE)),
+            Map.entry("SHARED_LIST_ELEMENT/second", Constant.byteString(O10ArrayLiteralFixtures.B256_TWICE)),
+            Map.entry("LIST_ELEMENT_ONCE/run", Constant.byteString(O10ArrayLiteralFixtures.B32_BYTES)),
             Map.entry("FROM_LIST/run", Constant.integer(2)),
             Map.entry("RUNTIME_ELEMENT/five", Constant.integer(6)),
             Map.entry("TRACE_AROUND/run", Constant.integer(3)),
@@ -196,6 +199,24 @@ class O10ArrayLiteralFoldTest {
                 cons(app(builtin(DefaultFun.BData), new PirTerm.Var("b", bytesType)), nil()))));
         assertEquals(new PirTerm.Const(Constant.integer(1)), assertInstanceOf(PirTerm.Let.class, lower(onceInside, OptimizationLevel.PV11_SAFE)).body());
         assertEquivalent(onceInside);
+        // Through a list local: the local dies with the conversion, but what its binding holds is
+        // measured as it stands, so two references to a live `b` are two references (the second
+        // review round found the dying local credited as its expanded constant); with `b` used
+        // only there, both die, `b` is credited once and the conversion folds.
+        var listType = new PirType.ListType(DATA);
+        var throughList = new PirTerm.Lam("i", INT, new PirTerm.Let("b", wide, new PirTerm.Let("xs",
+                cons(app(builtin(DefaultFun.BData), new PirTerm.Var("b", bytesType)), cons(app(builtin(DefaultFun.BData), new PirTerm.Var("b", bytesType)), nil())),
+                app(builtin(DefaultFun.AppendByteString),
+                        app(builtin(DefaultFun.UnBData), app(builtin(DefaultFun.IndexArray),
+                                app(builtin(DefaultFun.ListToArray), new PirTerm.Var("xs", listType)), new PirTerm.Var("i", INT))),
+                        new PirTerm.Var("b", bytesType)))));
+        assertSame(throughList, lower(throughList, OptimizationLevel.PV11_SAFE));
+        var throughListOnce = new PirTerm.Let("b", wide, new PirTerm.Let("xs",
+                cons(app(builtin(DefaultFun.BData), new PirTerm.Var("b", bytesType)), nil()),
+                app(builtin(DefaultFun.LengthOfArray), app(builtin(DefaultFun.ListToArray), new PirTerm.Var("xs", listType)))));
+        assertEquals(new PirTerm.Const(Constant.integer(1)),
+                assertInstanceOf(PirTerm.Let.class, assertInstanceOf(PirTerm.Let.class, lower(throughListOnce, OptimizationLevel.PV11_SAFE)).body()).body());
+        assertEquivalent(throughListOnce);
         // The objective over a credited single-element literal, by element width: the array
         // constant carries the element as CBOR Data (a header per element, chunked in FLAT) while
         // the chain carries the raw constant plus its wrapping; the decision matches the encoder.
@@ -303,7 +324,9 @@ class O10ArrayLiteralFoldTest {
     }
 
     /**
-     * `var` infers the element type of an array literal from its elements, as javac does: the
+     * `var` infers the element type of an array literal from its elements' source types, as
+     * javac does (recorded by the generator, not read back from the encodings: a user's
+     * `Builtins.iData(x)` element stays Data, the second review round): the
      * access decodes and the value is usable as its Java type, on every level and through a
      * chained access. Elements of different types (javac would infer a common supertype the
      * subset cannot represent) are rejected with JULC0012; the explicit declaration and the
@@ -329,9 +352,18 @@ class O10ArrayLiteralFoldTest {
                         var f = JulcArray.of(true, false);
                         return f.get(0) && !f.get(1);
                     }
-                    static BigInteger nested() {
+                    static PlutusData nested() {
+                        // a list literal's own type under var is JulcList<PlutusData> (the existing
+                        // JulcList.of convention), so the element comes back as Data
                         var rows = JulcArray.of(JulcList.of(BigInteger.ONE, BigInteger.TWO), JulcList.of(BigInteger.valueOf(3)));
                         return rows.get(1).get(0);
+                    }
+                    static BigInteger extract(PlutusData d) {
+                        return Builtins.unIData(d);
+                    }
+                    static BigInteger dataElements() {
+                        var a = JulcArray.of(Builtins.iData(BigInteger.valueOf(7)));
+                        return extract(a.get(0));
                     }
                     static BigInteger typed() {
                         JulcArray<BigInteger> t = JulcArray.of(BigInteger.valueOf(7));
@@ -359,7 +391,8 @@ class O10ArrayLiteralFoldTest {
             assertEquals(Term.const_(Constant.integer(8)), result(source, "inferred", level, List.of()), level.toString());
             assertEquals(Term.const_(Constant.bool(true)), result(source, "strings", level, List.of()), level.toString());
             assertEquals(Term.const_(Constant.bool(true)), result(source, "bools", level, List.of()), level.toString());
-            assertEquals(Term.const_(Constant.integer(3)), result(source, "nested", level, List.of()), level.toString());
+            assertEquals(Term.const_(Constant.data(PlutusData.integer(3))), result(source, "nested", level, List.of()), level.toString());
+            assertEquals(Term.const_(Constant.integer(7)), result(source, "dataElements", level, List.of()), level.toString());
             assertEquals(Term.const_(Constant.integer(7)), result(source, "typed", level, List.of()), level.toString());
             assertEquals(Term.const_(Constant.integer(6)), result(source, "chained", level, List.of(PlutusData.integer(5))), level.toString());
             assertEquals(Term.const_(Constant.integer(0)), result(source, "emptyLength", level, List.of()), level.toString());

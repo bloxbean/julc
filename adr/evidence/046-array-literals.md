@@ -55,6 +55,8 @@ on every path, failing ones included.
 | SHARED_ELEMENT_ONCE (256-byte local as both elements only: the array would hold two copies) | 2 → 2 | 296 → 296 | unchanged |
 | ELEMENT_ONCE (32-byte local as the single element, used once) | 2 → 0 | 62 → 40 | `3f253f1c…` → `608154b5…` |
 | WIDE_ELEMENT_ONCE (256-byte local as the single element: the Data element outgrows the constant) | 2 → 2 | 287 → 287 | unchanged |
+| SHARED_LIST_ELEMENT (256-byte local as both elements of a list local converted to an array, and in a runtime use) | 2 → 2 | 309 → 309 | unchanged |
+| LIST_ELEMENT_ONCE (32-byte local as the single element of a list local converted once) | 2 → 0 | 64 → 40 | `5f1b5345…` → `608154b5…` (= ELEMENT_ONCE) |
 | FROM_LIST | 2 → 0 | 28 → 6 | `d09f7cf0…` → `16d9e796…` (= GET_LITERAL) |
 | RUNTIME_ELEMENT (runtime element, nothing literal) | 3 → 3 | 53 → 53 | unchanged |
 | TRACE_AROUND | 2 → 0 | 56 → 22 | `1a46c088…` → `cd7b2304…` |
@@ -87,6 +89,9 @@ on every path, failing ones included.
 | SHARED_ELEMENT_ONCE | run (256 bytes) | unchanged | unchanged |
 | ELEMENT_ONCE | run (32 bytes) | 784,878 → 16,100 | 2,868 → 200 |
 | WIDE_ELEMENT_ONCE | run (256 bytes) | unchanged (784,878) | unchanged (2,868) |
+| SHARED_LIST_ELEMENT | first, second (512 bytes) | unchanged (1,374,077) | unchanged (5,829) |
+| SHARED_LIST_ELEMENT | past-the-end (fail) | unchanged | unchanged |
+| LIST_ELEMENT_ONCE | run (32 bytes) | 832,878 → 16,100 | 3,168 → 200 |
 | FROM_LIST | run (2) | 881,224 → 16,100 | 2,879 → 200 |
 | RUNTIME_ELEMENT | five (6) | unchanged | unchanged |
 | TRACE_AROUND | run (3, trace "table") | 1,426,092 → 251,598 | 5,230 → 1,332 |
@@ -208,14 +213,16 @@ occurrence of a creditable local, then as the constant the binding denotes, once
 - Element type under `var` (the maintainer's review of the merged head, P1): `var a =
   JulcArray.of(BigInteger.valueOf(7)); increment(a.get(0))` compiled without a diagnostic
   and failed at runtime with `AddInteger: expected integer, got Data` at every level, since
-  the local was typed `JulcArray<PlutusData>`. `TypeInferenceHelper` now reads the element
-  type back from the encodings the generated literal carries (`IData`, `BData`,
-  `BData(EncodeUtf8)`, the Bool conditional, `ListData` over a nested literal, `MapData`, a
-  typed variable or record literal), and `JulcArray.of(...)` resolves to `JulcArray<T>` at
-  the expression level when every element resolves to the same type (chained access).
+  the local was typed `JulcArray<PlutusData>`. The generator now records the arguments' source
+  types on the lowered `JulcArray.of(...)` term and `TypeInferenceHelper` types the local and a
+  chained access from that record (`JulcArray.of(...)` also resolves to `JulcArray<T>` at the
+  expression level when every element resolves to the same type). A first version read the
+  types back from the encodings; the review's second round showed `var a =
+  JulcArray.of(Builtins.iData(BigInteger.valueOf(7))); extract(a.get(0))` failing with
+  `UnIData: expected data, got Integer`, since `IData(x)` is also a user's `Builtins.iData(x)`.
   Elements of different types under `var` raise `JULC0012` naming the types and the fix
-  (`varLocalOfAnArrayLiteralInfersTheElementType`: integer, string, boolean and nested-list
-  elements, the explicit declaration, a chained access, the empty literal, the mixed
+  (`varLocalOfAnArrayLiteralInfersTheElementType`: integer, string, boolean, nested-list and
+  Data elements, the explicit declaration, a chained access, the empty literal, the mixed
   rejection, on every level).
 - Structural measure (the maintainer's review of the merged head): a list literal is measured
   as it stands, each nested variable as a reference or, once, as the constant of a creditable
@@ -224,14 +231,22 @@ occurrence of a creditable local, then as the constant the binding denotes, once
   grew from 306 to 825 bytes under the expanded-constant measure and now stays at 306
   (`SHARED_ELEMENT`); `SHARED_ELEMENT_ONCE` (296 → 296), `ELEMENT_ONCE` (62 → 40) and
   `WIDE_ELEMENT_ONCE` (287 → 287) bound the rule; direct-PIR probes cover the same three
-  shapes with a 64-byte local. Element-width probe (single byte-string element, credited
+  shapes with a 64-byte local. The review's second round found a dying *list local* still
+  credited as its expanded constant: `xs = JulcList.of(b, b); a = xs.toArray()` beside a
+  runtime `b` grew from 309 to 845 bytes. The credit is now dependency-aware: a dying local is
+  measured as the term its binding holds, its own variables as references or dying locals in
+  turn (a fixed point over the bindings the fold removes), so `SHARED_LIST_ELEMENT` stays at
+  309 while `LIST_ELEMENT_ONCE` (`b` and `xs` both die) folds 64 → 40; the direct-PIR probes
+  `throughList` (stays) and `throughListOnce` (folds to `1`) pin the same shapes. Element-width probe (single byte-string element, credited
   local): array/chain bits 57/113 at 1 byte, 313/361 at 32, 569/617 at 64, 1,113/1,129 at
   128 (fold), 1,713/1,705 at 200, 2,169/2,145 at 255, 2,177/2,161 at 256, 4,297/4,217 at 512
   (stay); the pass's decision matches the encoder at every width, bare or through the local.
-- Mutation checks for the review's two findings: with the list literal measured as its
-  expanded constant again, `SHARED_ELEMENT` folds (the rule fires where none is expected) and
-  the direct probe over the 64-byte local folds; with the element-type inference disabled, the
-  `var` test fails on its first shape. Both restored, both suites pass.
+- Mutation checks for the review's findings: with the list literal measured as its expanded
+  constant again, `SHARED_ELEMENT` folds (the rule fires where none is expected) and the direct
+  probe over the 64-byte local folds; with the element types not recorded on the literal, the
+  `var` test fails on its first shape (the access is not even dispatched on the untyped
+  scope); with a dying local credited as its expanded constant again, `SHARED_LIST_ELEMENT`
+  folds and the `throughList` probe folds. All restored, all suites pass.
 - Consequence for this domain: `LOCAL_LIST` (its list local is still walked by `size()`) no
   longer folds — the conversion would copy the list into an array constant beside the chain —
   and stays at 91 bytes with an unchanged hash; `LOCAL_LIST_ONCE` (the conversion is the
@@ -239,7 +254,7 @@ occurrence of a creditable local, then as the constant the binding denotes, once
   probe `let xs = ⟨list literal⟩ in lengthOfArray(listToArray(xs))` still folds to `2`, since
   `xs` is credited when its only occurrence is consumed. Every other fixture keeps its bytes,
   hash and budgets.
-- Rerun on the merged tree with the review fixes: `:julc-compiler:check` 1,620 tests + 63
+- Rerun on the merged tree with both review rounds' fixes: `:julc-compiler:check` 1,620 tests + 63
   `pairCaseTest` (the O10 and O14 suites among them), 0 failures, `verifyDiagnosticCodes`
   passed; `O10ArrayLiteralBenchmarkTest` and `O14ValueLiteralBenchmarkTest` 4/4;
   `NativeValueLibTest` 22/22; the in-repo `julc-examples` module 81/81.

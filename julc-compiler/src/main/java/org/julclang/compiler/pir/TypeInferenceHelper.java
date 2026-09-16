@@ -10,8 +10,8 @@ import org.julclang.core.DefaultFun;
 import org.julclang.core.source.SourceLocation;
 import com.github.javaparser.ast.expr.*;
 import java.util.List;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
-import java.util.ArrayList;
 
 /**
  * Read-only type inference utilities for PIR generation.
@@ -25,6 +25,8 @@ final class TypeInferenceHelper {
     private final TypeResolver typeResolver;
     private final StdlibLookup stdlibLookup;
     private final TypeMethodRegistry typeMethodRegistry;
+    /** Lowered {@code JulcArray.of(...)} terms and the source types of their elements (ADR-046). */
+    private final IdentityHashMap<PirTerm, List<PirType>> arrayLiterals = new IdentityHashMap<>();
 
     TypeInferenceHelper(SymbolTable symbolTable, TypeResolver typeResolver,
                         StdlibLookup stdlibLookup, TypeMethodRegistry typeMethodRegistry) {
@@ -226,9 +228,10 @@ final class TypeInferenceHelper {
         if (!(exprType instanceof PirType.DataType)) {
             return exprType;
         }
-        // `var a = JulcArray.of(...)`: javac types the local by its elements (ADR-046). Elements
-        // of different types would need a common supertype the subset cannot represent, and the
-        // access needs one element type for its decode: fail closed rather than type them Data.
+        // `var a = JulcArray.of(...)`: javac types the local by its elements (ADR-046); the
+        // generator recorded their source types on the lowered literal. Elements of different
+        // types would need a common supertype the subset cannot represent, and the access needs
+        // one element type for its decode: fail closed rather than type them Data.
         var elementTypes = arrayLiteralElementTypes(initValue);
         if (elementTypes.isPresent() && new LinkedHashSet<>(elementTypes.get()).size() > 1) {
             throw CompilerTypeDiagnostics.arrayLiteralElementTypesDiffer(elementTypes.get(), location);
@@ -237,77 +240,20 @@ final class TypeInferenceHelper {
     }
 
     /**
-     * The types the elements of an array literal were encoded with: {@code ListToArray} over the
-     * {@code MkCons} chain {@code JulcArray.of} emits, each element read back from the encoding
-     * {@link PirHelpers#wrapEncode} chose for its type ({@code IData} integer, {@code BData}
-     * bytes, {@code BData(EncodeUtf8)} string, the Bool conditional, {@code ListData} over a
-     * nested list literal its element type, {@code MapData} a Data map, a typed variable or a
-     * record literal its own type, any other Data element Data). Empty when the term is not
-     * such a literal.
+     * The element types of an array literal ({@code JulcArray.of(...)}) as the generator lowered
+     * it: the source types of its arguments, recorded by {@link #recordArrayLiteral} on the
+     * lowered term. They are the types {@link PirHelpers#wrapEncode} encoded the elements with,
+     * so an access typed by them decodes exactly what was encoded; the encodings themselves are
+     * not read back, since {@code IData(x)} is also what a user's {@code Builtins.iData(x)}
+     * lowers to. Empty when the term is not a recorded literal.
      */
     java.util.Optional<List<PirType>> arrayLiteralElementTypes(PirTerm term) {
-        if (term instanceof PirTerm.App app && app.function() instanceof PirTerm.Builtin b
-                && b.fun() == DefaultFun.ListToArray) {
-            return listLiteralElementTypes(app.argument());
-        }
-        return java.util.Optional.empty();
+        return java.util.Optional.ofNullable(arrayLiterals.get(term));
     }
 
-    /** The element types of a {@code MkCons} chain over encoded elements; empty when not one. */
-    private java.util.Optional<List<PirType>> listLiteralElementTypes(PirTerm chain) {
-        var types = new ArrayList<PirType>();
-        PirTerm current = chain;
-        while (true) {
-            if (current instanceof PirTerm.App nil && nil.function() instanceof PirTerm.Builtin nb
-                    && nb.fun() == DefaultFun.MkNilData) {
-                return java.util.Optional.of(types);
-            }
-            if (current instanceof PirTerm.App cons && cons.function() instanceof PirTerm.App head
-                    && head.function() instanceof PirTerm.Builtin cb && cb.fun() == DefaultFun.MkCons) {
-                types.add(encodedElementType(head.argument()));
-                current = cons.argument();
-                continue;
-            }
-            return java.util.Optional.empty();
-        }
-    }
-
-    private PirType encodedElementType(PirTerm element) {
-        if (element instanceof PirTerm.App app && app.function() instanceof PirTerm.Builtin b) {
-            switch (b.fun()) {
-                case IData -> { return new PirType.IntegerType(); }
-                case BData -> {
-                    return app.argument() instanceof PirTerm.App inner
-                            && inner.function() instanceof PirTerm.Builtin ib && ib.fun() == DefaultFun.EncodeUtf8
-                            ? new PirType.StringType() : new PirType.ByteStringType();
-                }
-                case ListData -> {
-                    var nested = listLiteralElementTypes(app.argument());
-                    if (nested.isPresent()) {
-                        var distinct = new LinkedHashSet<>(nested.get());
-                        return new PirType.ListType(distinct.size() == 1 ? distinct.iterator().next() : new PirType.DataType());
-                    }
-                    return new PirType.ListType(new PirType.DataType());
-                }
-                case MapData -> { return new PirType.MapType(new PirType.DataType(), new PirType.DataType()); }
-                default -> { }
-            }
-        }
-        if (element instanceof PirTerm.IfThenElse ite && isConstrData(ite.thenBranch()) && isConstrData(ite.elseBranch())) {
-            return new PirType.BoolType();
-        }
-        if (element instanceof PirTerm.Var v && !(v.type() instanceof PirType.DataType)) {
-            return typeResolver.resolveNamed(v.type());
-        }
-        if (element instanceof PirTerm.DataConstr constr) {
-            return typeResolver.resolveNamed(constr.dataType());
-        }
-        return new PirType.DataType();
-    }
-
-    private static boolean isConstrData(PirTerm term) {
-        return term instanceof PirTerm.App app && app.function() instanceof PirTerm.App head
-                && head.function() instanceof PirTerm.Builtin b && b.fun() == DefaultFun.ConstrData;
+    /** Record the source element types of a lowered {@code JulcArray.of(...)} term (identity). */
+    void recordArrayLiteral(PirTerm term, List<PirType> elementTypes) {
+        arrayLiterals.put(term, List.copyOf(elementTypes));
     }
 
     /**
@@ -326,7 +272,7 @@ final class TypeInferenceHelper {
             };
         }
         if (term instanceof PirTerm.App app) {
-            // An array literal carries its element type in its elements' encodings (ADR-046).
+            // An array literal is typed by the source types of its elements (ADR-046).
             var elementTypes = arrayLiteralElementTypes(term);
             if (elementTypes.isPresent()) {
                 var distinct = new LinkedHashSet<>(elementTypes.get());

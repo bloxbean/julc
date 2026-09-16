@@ -1117,6 +1117,13 @@ public class PirGenerator {
         if (result.isPresent()) {
             context.logf("Resolved stdlib: %s.%s", className, methodName);
             checkCrossLibraryTypeWarnings(className, methodName, mce, argPirTypes);
+            // JulcArray.of(...): keep the elements' source types with the literal, so a `var` local
+            // or a chained access is typed as javac types it (ADR-046); the encodings alone cannot
+            // tell a wrapped integer from a user's Builtins.iData(...).
+            if (methodName.equals("of")
+                    && (className.equals("JulcArray") || resolvedClassName.equals("org.julclang.core.types.JulcArray"))) {
+                typeInference.recordArrayLiteral(result.get(), argPirTypes);
+            }
             return result.get();
         }
         return null;
