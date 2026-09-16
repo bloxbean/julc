@@ -36,6 +36,14 @@ final class TypeInferenceHelper {
      * typing (a change of that convention is a decision of its own).
      */
     private final IdentityHashMap<PirTerm, List<PirType>> listLiterals = new IdentityHashMap<>();
+    /**
+     * Terms the generator produced by a typed dispatch, with the type the registry declares for
+     * that dispatch: what a chained access on an expression scope is typed by, so that
+     * {@code JulcArray.of(JulcList.of(1)).get(0).get(0)} keeps the nested element type through
+     * the intermediate access (the structural fallback would see {@code UnListData} and say
+     * {@code JulcList<PlutusData>}).
+     */
+    private final IdentityHashMap<PirTerm, PirType> termTypes = new IdentityHashMap<>();
 
     TypeInferenceHelper(SymbolTable symbolTable, TypeResolver typeResolver,
                         StdlibLookup stdlibLookup, TypeMethodRegistry typeMethodRegistry) {
@@ -265,6 +273,11 @@ final class TypeInferenceHelper {
         arrayLiterals.put(term, List.copyOf(elementTypes));
     }
 
+    /** Record the type the registry declares for a term produced by a typed dispatch (identity). */
+    void recordTermType(PirTerm term, PirType type) {
+        termTypes.put(term, type);
+    }
+
     /** Record the source element types of a lowered {@code JulcList.of(...)} term (identity). */
     void recordListLiteral(PirTerm term, List<PirType> elementTypes) {
         listLiterals.put(term, List.copyOf(elementTypes));
@@ -293,6 +306,9 @@ final class TypeInferenceHelper {
      * Infer the PirType of a PIR term by structural analysis.
      */
     PirType inferPirType(PirTerm term) {
+        // A term produced by a typed dispatch carries the type the registry declared for it.
+        var recorded = termTypes.get(term);
+        if (recorded != null) return recorded;
         if (term instanceof PirTerm.Const c) {
             return switch (c.value()) {
                 case Constant.IntegerConst _ -> new PirType.IntegerType();

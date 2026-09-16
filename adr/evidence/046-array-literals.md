@@ -225,7 +225,12 @@ occurrence of a creditable local, then as the constant the binding denotes, once
   element types at its own lowering and an array literal reads them for its list-literal
   elements, recursively, so `var rows = JulcArray.of(JulcList.of(BigInteger.ONE))` is
   `JulcArray<JulcList<BigInteger>>`; a bare `var xs = JulcList.of(...)` keeps its existing
-  typing. Elements of different types under `var` raise `JULC0012` naming the types and the fix
+  typing. The fourth round found the same shape failing through a chained access on the
+  literal (`JulcArray.of(JulcList.of(BigInteger.ONE)).get(0).get(0)`): the intermediate `get`
+  was dispatched with the right type but its result was re-inferred from its lowering
+  (`UnListData`) as `JulcList<PlutusData>`; the generator now keeps the registry's declared
+  result type with every dispatched term, and the next access is typed by it (`chainedNested`
+  returns 2, `chainedNestedData` 9). Elements of different types under `var` raise `JULC0012` naming the types and the fix
   (`varLocalOfAnArrayLiteralInfersTheElementType`: integer, string, boolean, nested, doubly
   nested and nested-Data elements, Data elements, the explicit declaration, a chained access,
   the empty literal, the mixed and mixed-nested rejections, on every level).
@@ -252,7 +257,8 @@ occurrence of a creditable local, then as the constant the binding denotes, once
   `var` test fails on its first shape (the access is not even dispatched on the untyped
   scope); with a dying local credited as its expanded constant again, `SHARED_LIST_ELEMENT`
   folds and the `throughList` probe folds; with the nested-literal refinement skipped, the `var`
-  test fails on `nested`. All restored, all suites pass.
+  test fails on `nested`; with the dispatch result types not recorded, it fails on
+  `chainedNested`. All restored, all suites pass.
 - Consequence for this domain: `LOCAL_LIST` (its list local is still walked by `size()`) no
   longer folds — the conversion would copy the list into an array constant beside the chain —
   and stays at 91 bytes with an unchanged hash; `LOCAL_LIST_ONCE` (the conversion is the
@@ -260,10 +266,13 @@ occurrence of a creditable local, then as the constant the binding denotes, once
   probe `let xs = ⟨list literal⟩ in lengthOfArray(listToArray(xs))` still folds to `2`, since
   `xs` is credited when its only occurrence is consumed. Every other fixture keeps its bytes,
   hash and budgets.
-- Rerun on the merged tree with both review rounds' fixes: `:julc-compiler:check` 1,620 tests + 63
-  `pairCaseTest` (the O10 and O14 suites among them), 0 failures, `verifyDiagnosticCodes`
-  passed; `O10ArrayLiteralBenchmarkTest` and `O14ValueLiteralBenchmarkTest` 4/4;
-  `NativeValueLibTest` 22/22; the in-repo `julc-examples` module 81/81.
+- Rerun on the merged tree with all four review rounds' fixes: `:julc-compiler:check` 1,620
+  tests + 63 `pairCaseTest` (the O10 and O14 suites among them), 0 failures,
+  `verifyDiagnosticCodes` passed; `O10ArrayLiteralBenchmarkTest` and
+  `O14ValueLiteralBenchmarkTest` 4/4; the whole `julc-stdlib` suite 411/411 and
+  `julc-testkit` 193/193 (dispatch result types are now recorded for every typed access,
+  so every compiled source in those suites exercises the change); the in-repo
+  `julc-examples` module 81/81.
 
 ## Repository validation
 

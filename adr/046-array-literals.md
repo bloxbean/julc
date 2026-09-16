@@ -290,7 +290,9 @@ One milestone on `feat/116-array-literals`, stacked on ADR-045:
    dependency-aware (a dying local measured as the term its binding holds), fixtures
    `SHARED_LIST_ELEMENT` and `LIST_ELEMENT_ONCE`, the `dataElements` case. Round three (a
    nested `JulcList.of` element typed `JulcList<PlutusData>` under `var`): list literals
-   record their element types too, read for array-literal elements only.
+   record their element types too, read for array-literal elements only. Round four (the
+   same through a chained access on the literal): the declared result type of a dispatched
+   access is kept with the term it produces.
 
 ## Verification
 
@@ -338,7 +340,13 @@ One milestone on `feat/116-array-literals`, stacked on ADR-045:
   reads them when the literal is an element of an array literal (recursively), so `var rows =
   JulcArray.of(JulcList.of(1))` is `JulcArray<JulcList<BigInteger>>` and
   `increment(rows.get(0).get(0))` returns 2 (the review's third round found it returning Data;
-  `nested`, `doublyNested`, `nestedData` and the rejected `mixedNested` pin it). Only the
+  `nested`, `doublyNested`, `nestedData` and the rejected `mixedNested` pin it). The same
+  holds through a chained access on the literal itself,
+  `JulcArray.of(JulcList.of(1)).get(0).get(0)`: the generator keeps the type the registry
+  declares for a dispatched access with the term it produces, so the next access in the chain
+  is typed by it and not by the structure of the lowering (the fourth round found the
+  intermediate `get` re-inferred as `JulcList<PlutusData>`; `chainedNested` and
+  `chainedNestedData` pin it). Only the
   array literal reads those records: a `var` local of a bare `JulcList.of(...)` keeps the
   existing `JulcList<PlutusData>` typing, since retyping it would change every such local and
   every lambda over an inline list literal in existing programs, a decision of its own.

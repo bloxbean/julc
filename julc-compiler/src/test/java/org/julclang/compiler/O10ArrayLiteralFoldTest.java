@@ -327,7 +327,8 @@ class O10ArrayLiteralFoldTest {
      * `var` infers the element type of an array literal from its elements' source types, as
      * javac does (recorded by the generator, not read back from the encodings: a user's
      * `Builtins.iData(x)` element stays Data, the second review round; a nested list literal
-     * keeps its own element type, the third): the
+     * keeps its own element type, the third; through a chained access on the literal itself,
+     * the fourth): the
      * access decodes and the value is usable as its Java type, on every level and through a
      * chained access. Elements of different types (javac would infer a common supertype the
      * subset cannot represent) are rejected with JULC0012; the explicit declaration and the
@@ -364,6 +365,12 @@ class O10ArrayLiteralFoldTest {
                     static BigInteger nestedData() {
                         var rows = JulcArray.of(JulcList.of(Builtins.iData(BigInteger.valueOf(9))));
                         return extract(rows.get(0).get(0));
+                    }
+                    static BigInteger chainedNested() {
+                        return increment(JulcArray.of(JulcList.of(BigInteger.ONE)).get(0).get(0));
+                    }
+                    static BigInteger chainedNestedData() {
+                        return extract(JulcArray.of(JulcList.of(Builtins.iData(BigInteger.valueOf(9)))).get(0).get(0));
                     }
                     static BigInteger extract(PlutusData d) {
                         return Builtins.unIData(d);
@@ -409,6 +416,8 @@ class O10ArrayLiteralFoldTest {
             assertEquals(Term.const_(Constant.integer(4)), result(source, "nested", level, List.of()), level.toString());
             assertEquals(Term.const_(Constant.integer(6)), result(source, "doublyNested", level, List.of()), level.toString());
             assertEquals(Term.const_(Constant.integer(9)), result(source, "nestedData", level, List.of()), level.toString());
+            assertEquals(Term.const_(Constant.integer(2)), result(source, "chainedNested", level, List.of()), level.toString());
+            assertEquals(Term.const_(Constant.integer(9)), result(source, "chainedNestedData", level, List.of()), level.toString());
             assertEquals(Term.const_(Constant.integer(7)), result(source, "dataElements", level, List.of()), level.toString());
             assertEquals(Term.const_(Constant.integer(7)), result(source, "typed", level, List.of()), level.toString());
             assertEquals(Term.const_(Constant.integer(6)), result(source, "chained", level, List.of(PlutusData.integer(5))), level.toString());

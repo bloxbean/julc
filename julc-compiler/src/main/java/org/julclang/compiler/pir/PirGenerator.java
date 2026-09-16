@@ -1205,7 +1205,14 @@ public class PirGenerator {
                     typeMethodRegistry.requirements(context, scopeType, methodName), mce);
             var registryResult = typeMethodRegistry.dispatch(
                     context, scope, methodName, compiledArgs, scopeType, argPirTypes);
-            if (registryResult.isPresent()) return registryResult.get();
+            if (registryResult.isPresent()) {
+                // Keep the declared result type with the term, so a further access chained on this
+                // expression is typed by it rather than by the structure of the lowering (ADR-046:
+                // `JulcArray.of(JulcList.of(1)).get(0).get(0)` keeps the nested element type).
+                typeMethodRegistry.resolveReturnType(scopeType, methodName)
+                        .ifPresent(type -> typeInference.recordTermType(registryResult.get(), type));
+                return registryResult.get();
+            }
 
             // Auto-recognize toPlutusData() — encode value as Data
             if (methodName.equals("toPlutusData") && args.isEmpty()) {
