@@ -93,9 +93,11 @@ as it does for ADR-045 (spell `new BigInteger("-5")`).
 **The fold.** In the domain `ListToArray`, `LengthOfArray`, `IndexArray`, a saturated call
 over literals is replaced by its result when `ArraySemantics` succeeds and the result's FLAT
 encoding is not longer, in bits, than the term it replaces (ADR-045's objective in its
-call-site form: a constant counts as itself, a list literal chain as the constant it denotes,
-a literal local as a variable reference unless the call consumes every remaining occurrence
-of a local bound directly to a literal, and an alias never as the constant it names). A call the
+call-site form: a constant counts as itself, a list literal chain as it stands, each nested
+variable a reference, a literal local as a variable reference unless the call consumes every
+remaining occurrence of a local bound directly to a literal, in which case it counts as the
+term its binding holds measured the same way, and an alias never as the constant it
+names). A call the
 semantics reject (an out-of-range or over-wide literal index) stays exactly as written and
 fails at runtime with the builtin's text; a runtime index keeps the access and embeds the
 array constant. Rule `pv11.o10.array-literal-fold`; gate: exact PV11 target,
