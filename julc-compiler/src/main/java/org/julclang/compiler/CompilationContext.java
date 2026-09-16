@@ -3,6 +3,7 @@ package org.julclang.compiler;
 import org.julclang.compiler.error.CompilerDiagnostic;
 import org.julclang.compiler.pir.ListIndexPromotionPass;
 import org.julclang.compiler.pir.ValueConversionSharingPass;
+import org.julclang.compiler.pir.ValueLiteralFoldPass;
 import org.julclang.vm.OptimizationCostProfile;
 import org.julclang.vm.ProtocolCapability;
 
@@ -31,7 +32,8 @@ public final class CompilationContext {
     private static final Set<String> SWITCHABLE_OPTIMIZATION_RULES = Set.of(
             ValueConversionSharingPass.RULE,
             ValueConversionSharingPass.PROJECTION_RULE,
-            ListIndexPromotionPass.RULE);
+            ListIndexPromotionPass.RULE,
+            ValueLiteralFoldPass.RULE);
 
     private final ResolvedCompilerTarget resolvedTarget;
     private final boolean verbose;
@@ -96,7 +98,8 @@ public final class CompilationContext {
         return List.of(
                 ValueConversionSharingPass.RULE,
                 ValueConversionSharingPass.PROJECTION_RULE,
-                ListIndexPromotionPass.RULE);
+                ListIndexPromotionPass.RULE,
+                ValueLiteralFoldPass.RULE);
     }
 
     /**

@@ -193,6 +193,36 @@ public final class OptimizationEvidenceMain {
             }
             """;
 
+    private static final String O14_IMPORTS = """
+            import org.julclang.core.PlutusData;
+            import org.julclang.core.types.JulcValue;
+            import org.julclang.stdlib.Builtins;
+            import org.julclang.stdlib.lib.NativeValueLib;
+            import java.math.BigInteger;
+            """;
+    /** ADR-045 (O14): a minting requirement built from the typed literal producers and checked against runtime Data. */
+    private static final String O14_REQUIREMENT_SOURCE = O14_IMPORTS + """
+            class ValueLiteralRequirement {
+                static boolean requires(PlutusData minted) {
+                    JulcValue required = NativeValueLib.union(
+                            Builtins.singletonValue(
+                                    new byte[]{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28},
+                                    new byte[]{78, 70, 84}, BigInteger.ONE),
+                            Builtins.lovelaceValue(BigInteger.valueOf(2000000)));
+                    return NativeValueLib.contains(NativeValueLib.fromData(minted), required);
+                }
+            }
+            """;
+    /** All-literal: the whole method folds to one integer constant. */
+    private static final String O14_LITERAL_ONLY_SOURCE = O14_IMPORTS + """
+            class ValueLiteralOnly {
+                static BigInteger total() {
+                    return NativeValueLib.lookupCoin(new byte[]{}, new byte[]{},
+                            NativeValueLib.union(Builtins.lovelaceValue(BigInteger.valueOf(5)), Builtins.lovelaceValue(BigInteger.valueOf(7))));
+                }
+            }
+            """;
+
     private static final String O12_EXP_MOD_SOURCE = """
             import org.julclang.stdlib.lib.MathLib;
             import java.math.BigInteger;
@@ -317,6 +347,10 @@ public final class OptimizationEvidenceMain {
         System.out.print(o15ManualBindingControlComparison().toMarkdown());
         System.out.println();
         System.out.print(o15LedgerProjectionComparison().toMarkdown());
+        System.out.println();
+        System.out.print(o14LiteralRequirementComparison().toMarkdown());
+        System.out.println();
+        System.out.print(o14LiteralOnlyComparison().toMarkdown());
         System.out.println();
         System.out.print(o12ExpModIdiomExperiment().toMarkdown());
         System.out.println();
@@ -604,6 +638,43 @@ public final class OptimizationEvidenceMain {
                                 OptimizationBenchmarkRunner.InputCase.of("not-a-record", PlutusData.integer(1)))),
                 OptimizationLevel.PV11_SAFE,
                 "pv11.o15.projection-sharing",
+                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+    }
+
+    /** ADR-045 (O14): PV11_SAFE with the literal fold off versus on, so the delta is O14 alone. */
+    public static OptimizationBenchmarkRunner.Comparison o14LiteralRequirementComparison() {
+        var policy = new byte[28];
+        for (int i = 0; i < 28; i++) policy[i] = (byte) (i + 1);
+        var nft = new byte[]{78, 70, 84};
+        var ada = PlutusData.bytes(new byte[]{});
+        var sufficient = PlutusData.map(
+                new PlutusData.Pair(ada, PlutusData.map(new PlutusData.Pair(ada, PlutusData.integer(2_000_000)))),
+                new PlutusData.Pair(PlutusData.bytes(policy), PlutusData.map(new PlutusData.Pair(PlutusData.bytes(nft), PlutusData.integer(1)))));
+        var insufficient = PlutusData.map(
+                new PlutusData.Pair(ada, PlutusData.map(new PlutusData.Pair(ada, PlutusData.integer(2_000_000)))));
+        var unsorted = PlutusData.map(
+                new PlutusData.Pair(PlutusData.bytes(policy), PlutusData.map(new PlutusData.Pair(PlutusData.bytes(nft), PlutusData.integer(1)))),
+                new PlutusData.Pair(ada, PlutusData.map(new PlutusData.Pair(ada, PlutusData.integer(2_000_000)))));
+        return OptimizationBenchmarkRunner.compareRuleWithJavaAndTruffle(
+                new OptimizationBenchmarkRunner.Fixture(
+                        "o14-value-literal-requirement", O14_REQUIREMENT_SOURCE, "requires", List.of(
+                                OptimizationBenchmarkRunner.InputCase.of("sufficient", sufficient),
+                                OptimizationBenchmarkRunner.InputCase.of("insufficient", insufficient),
+                                OptimizationBenchmarkRunner.InputCase.of("unsorted", unsorted),
+                                OptimizationBenchmarkRunner.InputCase.of("not-a-map", PlutusData.integer(1)))),
+                OptimizationLevel.PV11_SAFE,
+                "pv11.o14.value-literal-fold",
+                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+    }
+
+    /** The all-literal method: one constant after the fold. */
+    public static OptimizationBenchmarkRunner.Comparison o14LiteralOnlyComparison() {
+        return OptimizationBenchmarkRunner.compareRuleWithJavaAndTruffle(
+                new OptimizationBenchmarkRunner.Fixture(
+                        "o14-value-literal-only", O14_LITERAL_ONLY_SOURCE, "total", List.of(
+                                OptimizationBenchmarkRunner.InputCase.of("run"))),
+                OptimizationLevel.PV11_SAFE,
+                "pv11.o14.value-literal-fold",
                 OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
     }
 

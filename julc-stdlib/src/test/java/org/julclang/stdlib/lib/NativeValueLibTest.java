@@ -183,6 +183,71 @@ class NativeValueLibTest {
         }
     }
 
+    /** ADR-045: the literal producers, evaluated through the VM at the default level. */
+    @Nested
+    class Literals {
+
+        private static final String LIB_IMPORTS =
+                "import org.julclang.stdlib.Builtins;\n"
+                + "import org.julclang.stdlib.lib.NativeValueLib;\n"
+                + "import org.julclang.core.PlutusData;\n"
+                + "import org.julclang.core.types.JulcValue;\n"
+                + "import java.math.BigInteger;\n";
+
+        private static String libSrc(String body) {
+            return LIB_IMPORTS + "class T {\n" + body + "\n}\n";
+        }
+
+        @Test
+        void emptyValueHoldsNothing() {
+            var eval = JulcEval.forSource(libSrc(
+                    "static BigInteger test(byte[] policy, byte[] token) {"
+                    + "  return NativeValueLib.lookupCoin(policy, token, Builtins.emptyValue());"
+                    + "}"));
+            assertEquals(0, eval.call("test", new byte[]{1}, new byte[]{2}).asLong());
+        }
+
+        @Test
+        void singletonValueHoldsExactlyOneToken() {
+            var eval = JulcEval.forSource(libSrc(
+                    "static BigInteger test(byte[] policy, byte[] token, byte[] other) {"
+                    + "  JulcValue v = Builtins.singletonValue(policy, token, BigInteger.valueOf(100));"
+                    + "  return NativeValueLib.lookupCoin(policy, token, v).subtract(NativeValueLib.lookupCoin(policy, other, v));"
+                    + "}"));
+            assertEquals(100, eval.call("test", new byte[]{1}, new byte[]{2}, new byte[]{3}).asLong());
+        }
+
+        @Test
+        void lovelaceValueUsesTheEmptyPolicyAndTokenName() {
+            var eval = JulcEval.forSource(libSrc(
+                    "static BigInteger test() {"
+                    + "  JulcValue v = NativeValueLib.union(Builtins.lovelaceValue(BigInteger.valueOf(5)), Builtins.lovelaceValue(BigInteger.valueOf(7)));"
+                    + "  return NativeValueLib.lookupCoin(new byte[]{}, new byte[]{}, v);"
+                    + "}"));
+            assertEquals(12, eval.call("test").asLong());
+        }
+
+        @Test
+        void zeroQuantitySingletonIsEmptyEvenForALongKey() {
+            var eval = JulcEval.forSource(libSrc(
+                    "static boolean test(byte[] longKey) {"
+                    + "  JulcValue v = Builtins.singletonValue(longKey, longKey, BigInteger.ZERO);"
+                    + "  return NativeValueLib.contains(Builtins.emptyValue(), v);"
+                    + "}"));
+            assertTrue(eval.call("test", new byte[33]).asBoolean());
+        }
+
+        @Test
+        void nonZeroQuantityWithALongKeyFailsLikeInsertCoin() {
+            var eval = JulcEval.forSource(libSrc(
+                    "static BigInteger test(byte[] longKey) {"
+                    + "  JulcValue v = Builtins.singletonValue(longKey, longKey, BigInteger.ONE);"
+                    + "  return NativeValueLib.lookupCoin(longKey, longKey, v);"
+                    + "}"));
+            assertThrows(RuntimeException.class, () -> eval.call("test", new byte[33]));
+        }
+    }
+
     @Nested
     class NativeValueLibWrappers {
 
