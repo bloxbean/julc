@@ -36,8 +36,20 @@ import java.util.Set;
  *
  * <p>A literal call is replaced by its result exactly when the domain's semantics succeed on
  * the literals and the FLAT encoding of the result is not longer, in bits, than the encoding
- * of the term it replaces (the builtin spine, or the wrapper variable applied to the call-site
- * literals). A call the semantics reject is left exactly as written, so its runtime failure
+ * of the term it replaces, measured as it stands in the artifact: the builtin (or the wrapper
+ * variable, at the smallest index) applied to the call-site arguments, where a constant
+ * counts as itself and a literal local counts as a variable reference, not as the constant
+ * its binding carries. A local bound directly to a literal term (a constant, or a domain's
+ * literal shape) whose every remaining occurrence the call consumes dies with the fold (the
+ * UPLC optimiser's dead-code elimination drops the binding), so its first occurrence in the
+ * call counts as the constant the binding denotes; a local that stays
+ * live elsewhere is only a reference here, and folding through it would copy its constant
+ * into the call site. An alias ({@code Let w = Var v}) is never credited: its binding holds
+ * a reference, and the constant it names stays as long as {@code v} has any other
+ * occurrence, the alias binding itself included (ADR-045's second review found the guard
+ * measuring every local as its constant, then crediting a dying alias with the constant it
+ * names; either lets a shared local grow the artifact). A call the semantics reject is left
+ * exactly as written, so its runtime failure
  * text and failure point are untouched; a call with a non-literal argument (a runtime value, a
  * trace, an error) is never touched. Folding is bottom-up and runs to a fixed point, so nested
  * literal calls fold and a local bound to a folded literal feeds the calls below it.
@@ -62,6 +74,13 @@ public abstract class LiteralFoldPass {
     private final Map<String, PirTerm> letValues = new HashMap<>();
     private final Map<String, Wrapper> wrappers = new HashMap<>();
     private final Map<String, Constant> literals = new HashMap<>();
+    /** Occurrences of each variable still standing in the term; a fold removes the ones it consumes. */
+    private final Map<String, Integer> remainingUses = new HashMap<>();
+    /**
+     * Literals bound directly to a literal term (a constant, or a domain's literal shape such as a
+     * list literal chain), not through an alias: the only bindings a fold may be credited with.
+     */
+    private final Set<String> creditableBindings = new HashSet<>();
     private boolean applied;
 
     LiteralFoldPass(CompilationContext context, Map<PirTerm, SourceLocation> positions) {
@@ -101,12 +120,17 @@ public abstract class LiteralFoldPass {
             letValues.clear();
             wrappers.clear();
             literals.clear();
+            remainingUses.clear();
+            creditableBindings.clear();
             collectBinders(rewritten);
             letValues.forEach((name, value) -> {
                 if (binderCounts.get(name) != 1) return;
                 var wrapper = wrapperOf(value);
                 if (wrapper != null) wrappers.put(name, wrapper);
-                if (value instanceof PirTerm.Const c) literals.put(name, c.value());
+                if (value instanceof PirTerm.Const c) {
+                    literals.put(name, c.value());
+                    creditableBindings.add(name);
+                }
             });
             rewritten = fold(rewritten);
         } while (rewritten != previous);
@@ -119,9 +143,13 @@ public abstract class LiteralFoldPass {
         if (term instanceof PirTerm.Let let) {
             var value = fold(let.value());
             if (binderCounts.get(let.name()) == 1) {
-                // A local bound to a literal, or aliasing one, is a literal below.
+                // A local bound to a literal, or aliasing one, is a literal below; only the
+                // former may be credited to a fold that consumes its last occurrence.
                 var literal = literalOf(value);
-                if (literal != null) literals.put(let.name(), literal);
+                if (literal != null) {
+                    literals.put(let.name(), literal);
+                    if (!(value instanceof PirTerm.Var)) creditableBindings.add(let.name());
+                }
             }
             var body = fold(let.body());
             return remember(term, new PirTerm.Let(let.name(), value, body));
@@ -173,13 +201,41 @@ public abstract class LiteralFoldPass {
         }
         var result = evaluate(fun, constants);
         if (result == null) return null;
-        // The term this fold replaces: the bare builtin spine, or for a wrapper call the
-        // application of the wrapper variable to the call-site literals (the shape that stays
-        // in the artifact when the wrapper remains live; if the optimiser inlines the wrapper
-        // instead, the artifact loses its body as well, so this is the conservative bound).
+        // The term this fold replaces, as it stands in the artifact: the bare builtin, or for a
+        // wrapper call the wrapper variable (the shape that stays when the wrapper remains live;
+        // if the optimiser inlines the wrapper instead, the artifact loses its body as well, so
+        // this is the conservative bound), applied to the call-site arguments. A constant
+        // argument stands there as itself (a domain's further literal shapes, such as a list
+        // literal chain, are measured as the constant they denote, which is not longer than the
+        // chain). A literal local stands there as a variable reference, and its literal lives
+        // once in its binding: when the local is bound directly to a literal term (not an
+        // alias) and this call consumes every remaining occurrence of it, the binding dies with
+        // the fold (the optimiser drops it: constants and the literal shapes are pure), so the
+        // first occurrence is measured as the constant the binding denotes and any further
+        // occurrence in the same call as a reference. A local that stays live elsewhere
+        // is measured as a reference only, since folding would copy its constant into the call
+        // site; so is an alias (`Let w = Var v`) whether or not it dies: its binding holds a
+        // reference, and `v`'s constant stays as long as `v` has any other occurrence, the alias
+        // binding itself included.
+        var consumed = new HashMap<String, Integer>();
+        for (var actual : spine.args()) {
+            if (actual instanceof PirTerm.Var v) consumed.merge(v.name(), 1, Integer::sum);
+        }
         Term replaced = spine.head() instanceof PirTerm.Builtin ? Term.builtin(fun) : Term.var(1);
-        for (var actual : spine.args()) replaced = Term.apply(replaced, Term.const_(literalOf(actual)));
+        var measuredAsConstant = new HashSet<String>();
+        for (var actual : spine.args()) {
+            Term measure;
+            if (actual instanceof PirTerm.Var v) {
+                boolean dies = creditableBindings.contains(v.name())
+                        && consumed.get(v.name()).equals(remainingUses.getOrDefault(v.name(), 0));
+                measure = dies && measuredAsConstant.add(v.name()) ? Term.const_(literalOf(actual)) : Term.var(1);
+            } else {
+                measure = Term.const_(literalOf(actual));
+            }
+            replaced = Term.apply(replaced, measure);
+        }
         if (!fitsObjective(replaced, result)) return null;
+        consumed.forEach((name, uses) -> remainingUses.merge(name, -uses, Integer::sum));
         return folded(result);
     }
 
@@ -262,6 +318,7 @@ public abstract class LiteralFoldPass {
 
     private void collectBinders(PirTerm term) {
         switch (term) {
+            case PirTerm.Var v -> remainingUses.merge(v.name(), 1, Integer::sum);
             case PirTerm.Lam l -> bind(l.param());
             case PirTerm.Let l -> { bind(l.name()); letValues.putIfAbsent(l.name(), l.value()); }
             case PirTerm.LetRec r -> r.bindings().forEach(b -> bind(b.name()));

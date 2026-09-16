@@ -66,6 +66,7 @@ class O10ArrayLiteralFoldTest {
             Map.entry("NESTED_LIST/run", Constant.integer(1)),
             Map.entry("EMPTY/run", Constant.integer(0)),
             Map.entry("LOCAL_LIST/run", Constant.integer(3)),
+            Map.entry("LOCAL_LIST_ONCE/run", Constant.integer(3)),
             Map.entry("FROM_LIST/run", Constant.integer(2)),
             Map.entry("RUNTIME_ELEMENT/five", Constant.integer(6)),
             Map.entry("TRACE_AROUND/run", Constant.integer(3)),

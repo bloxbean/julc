@@ -34,6 +34,8 @@ import java.util.function.Consumer;
 
 import static org.julclang.compiler.O14ValueLiteralFixtures.FIXTURES;
 import static org.julclang.compiler.O14ValueLiteralFixtures.MAX_QUANTITY;
+import static org.julclang.compiler.O14ValueLiteralFixtures.P32_BYTES;
+import static org.julclang.compiler.O14ValueLiteralFixtures.valueData;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -89,7 +91,14 @@ class O14ValueLiteralFoldTest {
             Map.entry("MIXED_KEY/present", Constant.integer(1)),
             Map.entry("MIXED_KEY/absent", Constant.integer(0)),
             Map.entry("UNUSED_PARAM/integer", Constant.integer(1)),
-            Map.entry("USER_WRAPPER/run", Constant.integer(3)));
+            Map.entry("USER_WRAPPER/run", Constant.integer(3)),
+            Map.entry("SHARED_LITERAL/one", Constant.data(valueData(P32_BYTES, T, 6))),
+            Map.entry("SHARED_LITERAL/zero", Constant.data(valueData(P32_BYTES, T, 5))),
+            Map.entry("SHARED_LITERAL/cancel", Constant.data(PlutusData.map())),
+            Map.entry("SHARED_LITERAL_ONLY/run", Constant.data(valueData(P32_BYTES, T, 5))),
+            Map.entry("SHARED_ALIAS/one", Constant.data(valueData(P32_BYTES, T, 6))),
+            Map.entry("SHARED_ALIAS/zero", Constant.data(valueData(P32_BYTES, T, 5))),
+            Map.entry("SHARED_ALIAS/cancel", Constant.data(PlutusData.map())));
 
     @Test
     void safeProfileFoldsLiteralCallsAndStaysObservationallyEquivalentOnEveryBackend() {
@@ -261,15 +270,67 @@ class O14ValueLiteralFoldTest {
         var partial = app(builtin(DefaultFun.LookupCoin), constant(Constant.byteString(P)), constant(Constant.byteString(T)));
         assertSame(partial, lower(partial, OptimizationLevel.PV11_SAFE));
 
-        // A literal local, and a local aliasing a literal, feed the calls below.
+        // A literal local, and a local aliasing a literal, feed the calls below: a lookup through
+        // the alias folds (an integer is shorter than the call). A Value-sized result through the
+        // alias does not: an alias is never credited with the constant it names, and `v` keeps an
+        // occurrence in the alias binding, so `unionValue(v, w)` is measured over two references.
+        var viaAlias = new PirTerm.Let("v", constant(single), new PirTerm.Let("w", new PirTerm.Var("v", DATA),
+                app(builtin(DefaultFun.LookupCoin), constant(Constant.byteString(P)), constant(Constant.byteString(T)), new PirTerm.Var("w", DATA))));
+        var loweredAlias = assertInstanceOf(PirTerm.Let.class, lower(viaAlias, OptimizationLevel.PV11_SAFE));
+        assertEquals(new PirTerm.Const(Constant.integer(5)), assertInstanceOf(PirTerm.Let.class, loweredAlias.body()).body());
+        assertEquivalent(viaAlias);
         var local = new PirTerm.Let("v", constant(single), new PirTerm.Let("w", new PirTerm.Var("v", DATA),
                 app(builtin(DefaultFun.UnionValue), new PirTerm.Var("v", DATA), new PirTerm.Var("w", DATA))));
-        var loweredLocal = assertInstanceOf(PirTerm.Let.class, lower(local, OptimizationLevel.PV11_SAFE));
-        assertEquals(new PirTerm.Const(value(entry(P, T, 10))), assertInstanceOf(PirTerm.Let.class, loweredLocal.body()).body());
+        assertSame(local, lower(local, OptimizationLevel.PV11_SAFE));
         assertEquivalent(local);
         var rebound = new PirTerm.Let("v", constant(single), new PirTerm.Let("v", constant(Constant.integer(1)),
                 app(builtin(DefaultFun.ScaleValue), constant(Constant.integer(2)), new PirTerm.Var("v", DATA))));
         assertSame(rebound, lower(rebound, OptimizationLevel.PV11_SAFE));
+
+        // A literal local shared by two literal calls stands at each site as a reference, not as
+        // its constant: folding either call would copy the 32-byte key into the call site while
+        // the binding stays live for the other, so both stay (the second review's finding).
+        var wideKey = value(entry(new byte[32], T, 1));
+        var shared = new PirTerm.Let("v", constant(wideKey),
+                app(builtin(DefaultFun.UnionValue),
+                        app(builtin(DefaultFun.ScaleValue), constant(Constant.integer(2)), new PirTerm.Var("v", DATA)),
+                        app(builtin(DefaultFun.ScaleValue), constant(Constant.integer(3)), new PirTerm.Var("v", DATA))));
+        assertSame(shared, lower(shared, OptimizationLevel.PV11_SAFE));
+        var scaleOfReference = Term.apply(Term.apply(Term.builtin(DefaultFun.ScaleValue), Term.const_(Constant.integer(2))), Term.var(1));
+        var scaleOfConstant = Term.apply(Term.apply(Term.builtin(DefaultFun.ScaleValue), Term.const_(Constant.integer(2))), Term.const_(wideKey));
+        var scaled = Term.const_(NativeValueSemantics.scaleValue(BigInteger.TWO, wideKey));
+        assertTrue(bits(scaled) > bits(scaleOfReference));
+        assertTrue(bits(scaled) <= bits(scaleOfConstant), "the measure the second review found approved the copy");
+        System.out.println("VALUE_LITERAL_OBJECTIVE shared local: scaled literal=" + bits(scaled) + " scaleValue 2 v (reference)="
+                + bits(scaleOfReference) + " scaleValue 2 <constant>=" + bits(scaleOfConstant) + " (bits)");
+        assertEquivalent(shared);
+        // Beside a runtime use of the local the literal call stays as well.
+        var runtimeBeside = new PirTerm.Lam("n", new PirType.IntegerType(), new PirTerm.Let("v", constant(wideKey),
+                app(builtin(DefaultFun.UnionValue),
+                        app(builtin(DefaultFun.ScaleValue), new PirTerm.Var("n", new PirType.IntegerType()), new PirTerm.Var("v", DATA)),
+                        app(builtin(DefaultFun.ScaleValue), constant(Constant.integer(2)), new PirTerm.Var("v", DATA)))));
+        assertSame(runtimeBeside, lower(runtimeBeside, OptimizationLevel.PV11_SAFE));
+        // One call consuming every use of the local (here both) dies with it: the local is
+        // measured as its constant once, the call folds, the dead binding is left to the optimiser.
+        var consumedTwice = new PirTerm.Let("v", constant(wideKey),
+                app(builtin(DefaultFun.UnionValue), new PirTerm.Var("v", DATA), new PirTerm.Var("v", DATA)));
+        assertEquals(new PirTerm.Const(value(entry(new byte[32], T, 2))),
+                assertInstanceOf(PirTerm.Let.class, lower(consumedTwice, OptimizationLevel.PV11_SAFE)).body());
+        assertEquivalent(consumedTwice);
+        // The second review's alias case: the alias dies with its call but only its reference
+        // binding disappears; `v` stays live for the other call, so nothing may copy its constant.
+        var aliasBeside = new PirTerm.Let("v", constant(wideKey), new PirTerm.Let("w", new PirTerm.Var("v", DATA),
+                app(builtin(DefaultFun.UnionValue),
+                        app(builtin(DefaultFun.ScaleValue), constant(Constant.integer(2)), new PirTerm.Var("w", DATA)),
+                        app(builtin(DefaultFun.ScaleValue), constant(Constant.integer(3)), new PirTerm.Var("v", DATA)))));
+        assertSame(aliasBeside, lower(aliasBeside, OptimizationLevel.PV11_SAFE));
+        assertEquivalent(aliasBeside);
+        // An alias whose original has no other use is not credited either (the alias binding
+        // keeps `v` occurring until the optimiser drops both): the documented conservative bound.
+        var aliasOnly = new PirTerm.Let("v", constant(wideKey), new PirTerm.Let("w", new PirTerm.Var("v", DATA),
+                app(builtin(DefaultFun.ScaleValue), constant(Constant.integer(2)), new PirTerm.Var("w", DATA))));
+        assertSame(aliasOnly, lower(aliasOnly, OptimizationLevel.PV11_SAFE));
+        assertEquivalent(aliasOnly);
 
         // A trace, an error or a runtime variable in argument position blocks the fold.
         var traced = app(builtin(DefaultFun.LookupCoin), constant(Constant.byteString(P)), constant(Constant.byteString(T)),

@@ -39,8 +39,12 @@ import static org.junit.jupiter.api.Assertions.*;
  * compared with the golden bytes captured at the base commit
  * ({@code optimization/o8-pre-change-bytes.txt}): NONE/BASELINE and non-sharing fixtures stay
  * byte-identical, and the safe profile is observationally equivalent on Java, Truffle and
- * Scalus for every input, including the exact failure text, and never more expensive on any
- * successful path. Direct-PIR cases pin the legality predicate shape by shape.
+ * Scalus for every input, including the exact failure text. Budget is bounded, not
+ * preserved: a successful path that reaches a second occurrence saves a whole conversion,
+ * while one that reaches only the leading occurrence pays at most the binding (one lambda,
+ * one application and one variable lookup) per shared binding, which is the bound asserted
+ * on Java and Truffle (ADR-042, Cost). Direct-PIR cases pin the legality predicate shape by
+ * shape.
  */
 @Tag("pair-case-backends")
 class O8ValueSharingTest {

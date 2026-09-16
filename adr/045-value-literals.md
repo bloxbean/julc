@@ -1,7 +1,7 @@
 # ADR-045: Typed native Value literals and literal folding (O14)
 
 **Date:** 2026-09-13
-**Status:** Implemented and locally validated on `feat/119-value-literals` (stacked on ADR-044's `feat/120-projection-sharing`); two independent agent reviews applied (one blocking finding fixed); maintainer review pending
+**Status:** Implemented and locally validated on `feat/119-value-literals` (PR #148 against `main` since ADR-044 merged); three independent reviews applied (the wrapper argument hole and the objective's measure of a shared literal local fixed); maintainer merge pending
 **Issues:** [#119](https://github.com/bloxbean/julc/issues/119) (O14), research decision [#108](https://github.com/bloxbean/julc/issues/108), parent [#77](https://github.com/bloxbean/julc/issues/77)
 **Governing decisions:** ADR-032 O7/O14 (typed native Value boundary, literal folding without algebraic identities), ADR-042/044 (PIR-to-PIR rule placement, per-rule switches), ADR-036 (pass placement before UPLC generation), ADR-015 (strict typed boundaries)
 
@@ -123,11 +123,29 @@ evaluation and its applications, so CPU and memory never increase on any path.
 
 **Objective.** A fold fires only if the FLAT encoding of the literal is not longer, in
 bits, than the encoding of the term it replaces, both measured with the FLAT encoder at fold
-time. For a bare builtin call the replaced term is the builtin spine over the literals,
-exactly what stands in the artifact. For a wrapper call it is the wrapper variable (at the
-smallest index) applied to the call-site literals: the shape that stays in the artifact when
-the wrapper remains live because another site uses it; if the optimiser inlines the wrapper
-instead, the artifact also loses the wrapper body, so this is the conservative bound. A
+time, and the replaced term is measured as it stands in the artifact. Its head is the
+builtin for a bare call or, for a wrapper call, the wrapper variable (at the smallest
+index): the shape that stays in the artifact when the wrapper remains live because another
+site uses it; if the optimiser inlines the wrapper instead, the artifact also loses the
+wrapper body, so this is the conservative bound. Its arguments are the call-site arguments:
+a constant counts as itself; a literal local counts as a variable reference (at the smallest
+index), because its constant stands once in its `Let` binding and not at the call site.
+When a local bound directly to a constant has every remaining occurrence consumed by the
+call, the binding dies with the fold and the UPLC optimiser's dead-code elimination drops it
+(the optimiser runs at every level the pass runs), so the first occurrence of that local in
+the call counts as its constant and any further occurrence as a reference. A local that
+stays live elsewhere counts as a reference only: folding through it would copy its constant
+into the call site, once per site. An alias (`JulcValue w = v`) is never credited: its
+binding holds a reference, and the constant it names stays as long as `v` has any other
+occurrence, the alias binding itself included; a lookup through an alias still folds, a
+Value-sized result through one stays. The second review found the guard counting every
+local as its constant, which approved exactly those copies (a singleton with 32-byte keys
+shared by two literal `scale` calls and a runtime one grew from 128 to 243 bytes at the
+default level with identical results), and then the first fix crediting a dying alias with
+the constant it names (the same shape through `alias = v` grew from 128 to 185). Fixtures
+`SHARED_LITERAL`, `SHARED_LITERAL_ONLY` and `SHARED_ALIAS` pin the corrected measure (the
+producer folds into the binding, the calls stay), and every fixture asserts that a fold
+never produces a larger artifact. A
 consequence is that a user wrapper carrying constants in its body (`mk(q) =
 insertCoin(P, T, q, empty)`) rarely folds at `mk(5)`, since `mk 5` is shorter than the
 resulting literal; `NativeValueLib`'s wrappers carry no constants, and the producers inline
@@ -233,6 +251,7 @@ Java. Full table in `adr/evidence/045-value-literals.md`.
 | RUNTIME_VALUE (`contains(fromData(d), singletonValue(...))`) | 33 → 27 | 1,870,371 → 1,385,447 (holds) |
 | MIXED_KEY (runtime key against a literal union) | 57 → 40 | 1,994,645 → 604,525 |
 | UNION_CANCEL (`toData(empty)` stays under the objective) | 48 → 9 | 1,487,220 → 97,100 |
+| SHARED_LITERAL (32-byte-key local shared by two literal `scale` calls and a runtime one: producer folds, calls stay) | 97 → 91 | 2,925,202 → 2,440,278 |
 | RUNTIME_QUANTITY / EMPTY_LOOKUP (nothing literal) | unchanged | unchanged |
 
 Benchmark shape (`requires(minted)`: containment of runtime Data against a literal
@@ -250,14 +269,18 @@ One milestone on `feat/119-value-literals`, stacked on ADR-044:
    are bound whether or not they are called (which moved the producers into `Builtins`).
 2. `NativeValueSemantics` with `ValueBuiltins` delegating; VM suites and conformance unchanged.
 3. Producers, the constant typing fix, the fold pass, the switch.
-4. Fixture matrix (29 fixtures × 4 levels × rule off/on × 3 VMs), direct-PIR probes,
+4. Fixture matrix (32 fixtures × 4 levels × rule off/on × 3 VMs), direct-PIR probes,
    semantics test, benchmark comparisons.
 5. Two independent agent reviews (the wrapper argument hole, the objective, docs); full build, Blaster lock check, publish, external examples
    (additivity census); stacked PR; release-plan update.
+6. Second independent review of the PR, two rounds (the objective counting a literal local
+   as its constant; then a dying alias credited with the constant it names): the call-site
+   measure above, the `SHARED_LITERAL` and `SHARED_ALIAS` fixtures and direct-PIR probes,
+   docs; compiler and benchmark suites rerun.
 
 ## Verification
 
-- `O14ValueLiteralFoldTest` (`pair-case-backends`): 29 fixtures at every level with the rule
+- `O14ValueLiteralFoldTest` (`pair-case-backends`): 32 fixtures at every level with the rule
   off and on; NONE/BASELINE byte-identical either way; provenance exactly where expected;
   Value builtin call sites counted before and after; strictly smaller bytes and a different
   hash when a fold fired, identical bytes otherwise; the expected result value of every
@@ -270,7 +293,11 @@ One milestone on `feat/119-value-literals`, stacked on ADR-044:
   with an unused parameter is not a wrapper (an error, a trace, a runtime variable or a
   literal in that position all stay, the error and trace observed), shadowed names,
   unsaturated calls, a trace, an error or a runtime variable in argument position block,
-  literal locals and aliases feed calls, nested calls fold in one pass, failing literal calls
+  literal locals and aliases feed calls, a local shared by two literal calls or beside a
+  runtime use is not copied into either (both calls stay) while one call consuming every
+  use of it folds, an alias is never credited with the constant it names (a lookup through
+  it folds, a Value-sized result through it stays, with or without other uses of the
+  original), nested calls fold in one pass, failing literal calls
   (overflow, negative containment, long key) stay, positions move to the literal, the
   objective decision matches the encoder (in bits) for the Data conversions across entry
   counts; a pre-PV11 target fails closed with `JULC0031`. Fixtures `UNUSED_PARAM` (a helper

@@ -127,12 +127,27 @@ final class O10ArrayLiteralFixtures {
                     return e.get(0);
                 }""");
 
-    /** 12: a list literal bound to a local that stays live is still an array literal for {@code toArray}. */
+    /**
+     * 12: a once-bound list local converted to an array and still used afterwards: the
+     * conversion would copy the list into an array constant while the list stays live, so
+     * the call-site objective (ADR-045, second review) keeps it and nothing folds.
+     */
     static final String LOCAL_LIST = method("""
                 static BigInteger localList() {
                     JulcList<BigInteger> xs = JulcList.of(BigInteger.ONE, BigInteger.TWO);
                     JulcArray<BigInteger> a = xs.toArray();
                     return a.get(0).add(BigInteger.valueOf(xs.size()));
+                }""");
+
+    /**
+     * 12b: the list local's only use is the conversion: the local dies with the fold, so it is
+     * credited and the conversion, the access and the decode all fold.
+     */
+    static final String LOCAL_LIST_ONCE = method("""
+                static BigInteger localListOnce() {
+                    JulcList<BigInteger> xs = JulcList.of(BigInteger.ONE, BigInteger.TWO);
+                    JulcArray<BigInteger> a = xs.toArray();
+                    return a.get(0).add(a.get(1));
                 }""");
 
     /** 13: {@code JulcArray.fromList} of a list literal. */
@@ -209,7 +224,8 @@ final class O10ArrayLiteralFixtures {
             new Fixture("NESTED_LIST", NESTED_LIST, "nestedList", true, 2, 0, NONE),
             new Fixture("EMPTY", EMPTY, "empty", true, 2, 0, NONE),
             new Fixture("EMPTY_GET", EMPTY_GET, "emptyGet", true, 2, 1, FAILS),
-            new Fixture("LOCAL_LIST", LOCAL_LIST, "localList", true, 2, 0, NONE),
+            new Fixture("LOCAL_LIST", LOCAL_LIST, "localList", false, 2, 2, NONE),
+            new Fixture("LOCAL_LIST_ONCE", LOCAL_LIST_ONCE, "localListOnce", true, 3, 0, NONE),
             new Fixture("FROM_LIST", FROM_LIST, "fromList", true, 2, 0, NONE),
             new Fixture("RUNTIME_ELEMENT", RUNTIME_ELEMENT, "runtimeElement", false, 3, 3, List.of(
                     Input.ok("five", PlutusData.integer(5)))),

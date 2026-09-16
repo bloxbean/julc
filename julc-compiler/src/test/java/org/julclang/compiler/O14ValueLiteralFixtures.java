@@ -3,6 +3,7 @@ package org.julclang.compiler;
 import org.julclang.core.PlutusData;
 
 import java.math.BigInteger;
+import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -255,6 +256,48 @@ final class O14ValueLiteralFixtures {
                     return NativeValueLib.lookupCoin(%s, %s, both(Builtins.singletonValue(%s, %s, BigInteger.ONE), Builtins.singletonValue(%s, %s, BigInteger.TWO)));
                 }""".formatted(P, T, P, T, P, T));
 
+    /**
+     * 29: a literal local with 32-byte keys shared by two literal calls and a runtime one: the
+     * producer folds into the binding, the calls stay. Each call stands in the artifact as a
+     * reference to the local, so folding it would copy the keys into the call site while the
+     * binding stays live for the others (the second review found the guard measuring the
+     * local as its constant and the artifact growing from 128 to 243 bytes).
+     */
+    static final String SHARED_LITERAL = method("""
+                static PlutusData sharedLiteral(BigInteger n) {
+                    JulcValue v = Builtins.singletonValue(%s, %s, BigInteger.ONE);
+                    JulcValue a = NativeValueLib.scale(BigInteger.TWO, v);
+                    JulcValue b = NativeValueLib.scale(BigInteger.valueOf(3), v);
+                    return NativeValueLib.toData(NativeValueLib.union(NativeValueLib.scale(n, v), NativeValueLib.union(a, b)));
+                }""".formatted(P32, T));
+
+    /** 30: the same local shared by two literal calls only: neither may copy it, so both stay and the local stays bound once. */
+    static final String SHARED_LITERAL_ONLY = method("""
+                static PlutusData sharedLiteralOnly() {
+                    JulcValue v = Builtins.singletonValue(%s, %s, BigInteger.ONE);
+                    JulcValue a = NativeValueLib.scale(BigInteger.TWO, v);
+                    JulcValue b = NativeValueLib.scale(BigInteger.valueOf(3), v);
+                    return NativeValueLib.toData(NativeValueLib.union(a, b));
+                }""".formatted(P32, T));
+
+    /**
+     * 31: the second review's alias case: `alias = v` dies with its one call, but only its
+     * reference binding disappears; `v` stays live for the other calls, so the call may not
+     * copy the constant (the first fix credited the dying alias with it: 128 → 185 bytes).
+     */
+    static final String SHARED_ALIAS = method("""
+                static PlutusData sharedAlias(BigInteger n) {
+                    JulcValue v = Builtins.singletonValue(%s, %s, BigInteger.ONE);
+                    JulcValue alias = v;
+                    JulcValue a = NativeValueLib.scale(BigInteger.TWO, alias);
+                    JulcValue b = NativeValueLib.scale(BigInteger.valueOf(3), v);
+                    return NativeValueLib.toData(NativeValueLib.union(NativeValueLib.scale(n, v), NativeValueLib.union(a, b)));
+                }""".formatted(P32, T));
+
+    /** The bytes of {@link #P32}. */
+    static final byte[] P32_BYTES = new byte[32];
+    static { Arrays.fill(P32_BYTES, (byte) 1); }
+
     static final PlutusData P_DATA = PlutusData.bytes(new byte[]{1, 2, 3});
     static final PlutusData T_DATA = PlutusData.bytes(new byte[]{9});
     static final PlutusData TRUE = PlutusData.constr(1);
@@ -311,7 +354,16 @@ final class O14ValueLiteralFixtures {
             new Fixture("UNUSED_PARAM", UNUSED_PARAM, "unusedParam", false, 2, 2, List.of(
                     Input.ok("integer", PlutusData.integer(3)),
                     Input.fails("bytes", PlutusData.bytes(new byte[]{1})))),
-            new Fixture("USER_WRAPPER", USER_WRAPPER, "userWrapper", true, 4, 1, NONE));
+            new Fixture("USER_WRAPPER", USER_WRAPPER, "userWrapper", true, 4, 1, NONE),
+            new Fixture("SHARED_LITERAL", SHARED_LITERAL, "sharedLiteral", true, 7, 6, List.of(
+                    Input.ok("one", PlutusData.integer(1)),
+                    Input.ok("zero", PlutusData.integer(0)),
+                    Input.ok("cancel", PlutusData.integer(-5)))),
+            new Fixture("SHARED_LITERAL_ONLY", SHARED_LITERAL_ONLY, "sharedLiteralOnly", true, 5, 4, NONE),
+            new Fixture("SHARED_ALIAS", SHARED_ALIAS, "sharedAlias", true, 7, 6, List.of(
+                    Input.ok("one", PlutusData.integer(1)),
+                    Input.ok("zero", PlutusData.integer(0)),
+                    Input.ok("cancel", PlutusData.integer(-5)))));
 
     private O14ValueLiteralFixtures() {}
 }
