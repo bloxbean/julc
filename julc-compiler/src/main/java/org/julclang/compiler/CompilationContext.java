@@ -1,6 +1,7 @@
 package org.julclang.compiler;
 
 import org.julclang.compiler.error.CompilerDiagnostic;
+import org.julclang.compiler.pir.ArrayLiteralFoldPass;
 import org.julclang.compiler.pir.ListIndexPromotionPass;
 import org.julclang.compiler.pir.ValueConversionSharingPass;
 import org.julclang.compiler.pir.ValueLiteralFoldPass;
@@ -33,7 +34,8 @@ public final class CompilationContext {
             ValueConversionSharingPass.RULE,
             ValueConversionSharingPass.PROJECTION_RULE,
             ListIndexPromotionPass.RULE,
-            ValueLiteralFoldPass.RULE);
+            ValueLiteralFoldPass.RULE,
+            ArrayLiteralFoldPass.RULE);
 
     private final ResolvedCompilerTarget resolvedTarget;
     private final boolean verbose;
@@ -99,7 +101,8 @@ public final class CompilationContext {
                 ValueConversionSharingPass.RULE,
                 ValueConversionSharingPass.PROJECTION_RULE,
                 ListIndexPromotionPass.RULE,
-                ValueLiteralFoldPass.RULE);
+                ValueLiteralFoldPass.RULE,
+                ArrayLiteralFoldPass.RULE);
     }
 
     /**

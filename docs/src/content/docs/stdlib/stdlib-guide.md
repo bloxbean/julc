@@ -365,6 +365,23 @@ ListsLib provides list construction, traversal, searching, and higher-order func
 > instead of `HeadList`/`TailList: empty list`; the failure point is the same.
 > The default `pv11-safe` level leaves `get` as written.
 
+> **Array literals (ADR-046).** `JulcArray.of(a, b, c)` writes an array down:
+> on-chain it is `JulcList.of(a, b, c).toArray()`, with the same Data-encoded
+> element representation every `JulcArray<T>` has; `get` decodes by the element
+> type, declared (`JulcArray<BigInteger> fees = JulcArray.of(...)`) or inferred
+> from the elements under `var` (elements of different types are rejected). At
+> the default `pv11-safe` level an array whose elements are all literals
+> (integers, byte strings, strings, booleans, nested list literals) becomes one
+> UPLC array constant, `length()` on it becomes a constant, and `get(i)` with a
+> literal index becomes the element; `get(i)` with a runtime index keeps the
+> access over the embedded constant. The same folds apply to `list.toArray()`
+> and `JulcArray.fromList(list)` over a `JulcList.of` literal. A literal index
+> outside the array stays as written and fails at runtime with `IndexArray`'s
+> text, as before. Nothing changes at `none`/`baseline`; spell a negative
+> literal element as `new BigInteger("-5")`. Do not use `var` for the literal:
+> the compiler then types the elements as Data and `get` returns raw
+> `PlutusData`, although javac infers `JulcArray<BigInteger>`.
+
 ### Basic List Operations
 
 ```java
@@ -1538,7 +1555,7 @@ The following features require protocol version 11 or later and will not work on
 
 - **Builtins.expModInteger()** — Modular exponentiation (tag 87, CIP-109)
 - **Builtins.dropList()** — Drop the first n elements from a list (tag 88, CIP-132)
-- **JulcArray\<T\>** — Immutable arrays with O(1) random access (tags 89-91, CIP-138); at the opt-in `pv11-costed` level the compiler also promotes a repeatedly indexed `JulcList` variable to an array automatically (ADR-043)
+- **JulcArray\<T\>** — Immutable arrays with O(1) random access (tags 89-91, CIP-138); `JulcArray.of(...)` writes one down and folds to an array constant at `pv11-safe` (ADR-046); at the opt-in `pv11-costed` level the compiler also promotes a repeatedly indexed `JulcList` variable to an array automatically (ADR-043)
 - **BLS multi-scalar multiplication** — G1/G2 MSM operations (tags 92-93, CIP-133)
 - **NativeValueLib** — Native MaryEra Value operations (CIP-153)
 

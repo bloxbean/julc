@@ -28,4 +28,19 @@ public interface JulcArray<T> {
         for (T elem : list) elements.add(elem);
         return new JulcArrayImpl<>(elements);
     }
+
+    /**
+     * Create an array from the given elements (ADR-046).
+     * <p>
+     * On-chain this is {@code JulcList.of(elements).toArray()}: each element is Data-encoded
+     * as the declared element type requires and the list is converted with
+     * {@code ListToArray}. At the default {@code pv11-safe} level an array whose elements are
+     * all literals becomes one UPLC array constant, and a {@code get} or {@code length} on it
+     * with a literal index folds to its result. Declare the element type
+     * ({@code JulcArray<BigInteger> t = JulcArray.of(...)}) so that {@code get} decodes it.
+     */
+    @SafeVarargs
+    static <T> JulcArray<T> of(T... elements) {
+        return new JulcArrayImpl<>(java.util.List.of(elements));
+    }
 }

@@ -223,6 +223,31 @@ public final class OptimizationEvidenceMain {
             }
             """;
 
+    private static final String O10_IMPORTS = """
+            import org.julclang.core.types.JulcArray;
+            import java.math.BigInteger;
+            """;
+    /** ADR-046 (O10): a literal fee table indexed by a runtime tier. */
+    private static final String O10_TABLE_SOURCE = O10_IMPORTS + """
+            class ArrayLiteralTable {
+                static BigInteger fee(BigInteger tier) {
+                    JulcArray<BigInteger> fees = JulcArray.of(
+                            BigInteger.valueOf(1000000), BigInteger.valueOf(2000000), BigInteger.valueOf(5000000));
+                    return fees.get(tier);
+                }
+            }
+            """;
+    /** All literal: the access folds to one integer constant. */
+    private static final String O10_LITERAL_ONLY_SOURCE = O10_IMPORTS + """
+            class ArrayLiteralOnly {
+                static BigInteger middle() {
+                    JulcArray<BigInteger> fees = JulcArray.of(
+                            BigInteger.valueOf(1000000), BigInteger.valueOf(2000000), BigInteger.valueOf(5000000));
+                    return fees.get(1).add(BigInteger.valueOf(fees.length()));
+                }
+            }
+            """;
+
     private static final String O12_EXP_MOD_SOURCE = """
             import org.julclang.stdlib.lib.MathLib;
             import java.math.BigInteger;
@@ -351,6 +376,10 @@ public final class OptimizationEvidenceMain {
         System.out.print(o14LiteralRequirementComparison().toMarkdown());
         System.out.println();
         System.out.print(o14LiteralOnlyComparison().toMarkdown());
+        System.out.println();
+        System.out.print(o10ArrayTableComparison().toMarkdown());
+        System.out.println();
+        System.out.print(o10ArrayLiteralOnlyComparison().toMarkdown());
         System.out.println();
         System.out.print(o12ExpModIdiomExperiment().toMarkdown());
         System.out.println();
@@ -675,6 +704,31 @@ public final class OptimizationEvidenceMain {
                                 OptimizationBenchmarkRunner.InputCase.of("run"))),
                 OptimizationLevel.PV11_SAFE,
                 "pv11.o14.value-literal-fold",
+                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+    }
+
+    /** ADR-046 (O10): PV11_SAFE with the array literal fold off versus on, so the delta is O10 alone. */
+    public static OptimizationBenchmarkRunner.Comparison o10ArrayTableComparison() {
+        return OptimizationBenchmarkRunner.compareRuleWithJavaAndTruffle(
+                new OptimizationBenchmarkRunner.Fixture(
+                        "o10-array-literal-table", O10_TABLE_SOURCE, "fee", List.of(
+                                OptimizationBenchmarkRunner.InputCase.of("tier-0", PlutusData.integer(0)),
+                                OptimizationBenchmarkRunner.InputCase.of("tier-2", PlutusData.integer(2)),
+                                OptimizationBenchmarkRunner.InputCase.of("tier-3", PlutusData.integer(3)),
+                                OptimizationBenchmarkRunner.InputCase.of("negative", PlutusData.integer(-1)))),
+                OptimizationLevel.PV11_SAFE,
+                "pv11.o10.array-literal-fold",
+                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+    }
+
+    /** The all-literal method: one constant after the fold. */
+    public static OptimizationBenchmarkRunner.Comparison o10ArrayLiteralOnlyComparison() {
+        return OptimizationBenchmarkRunner.compareRuleWithJavaAndTruffle(
+                new OptimizationBenchmarkRunner.Fixture(
+                        "o10-array-literal-only", O10_LITERAL_ONLY_SOURCE, "middle", List.of(
+                                OptimizationBenchmarkRunner.InputCase.of("run"))),
+                OptimizationLevel.PV11_SAFE,
+                "pv11.o10.array-literal-fold",
                 OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
     }
 

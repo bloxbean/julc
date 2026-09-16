@@ -206,7 +206,8 @@ evidence document's repository-validation section).
 - `julc-stdlib`: `Builtins.emptyValue/singletonValue/lovelaceValue` and their
   `StdlibRegistry` intrinsics with the capability and builtin requirements;
   `NativeValueLib` unchanged.
-- `julc-compiler`: `ValueLiteralFoldPass` (new), pipeline placement in `JulcCompiler`
+- `julc-compiler`: `ValueLiteralFoldPass` (new; ADR-046 later moved its machinery into the
+  abstract `LiteralFoldPass` and added the array domain), pipeline placement in `JulcCompiler`
   (three sites, first among the PIR passes), `TypeInferenceHelper` constant typing,
   `CompilationContext` switchable rule list.
 - `julc-benchmark`: `OptimizationEvidenceMain` O14 comparisons, `O14ValueLiteralBenchmarkTest`.

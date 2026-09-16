@@ -6,6 +6,9 @@ import org.julclang.compiler.pir.PirType;
 import org.julclang.compiler.resolve.LibraryMethodRegistry;
 import org.julclang.core.source.SourceLocation;
 
+import java.util.List;
+import java.util.stream.Collectors;
+
 /** Stable diagnostics for correctness-critical compiler type boundaries. */
 public final class CompilerTypeDiagnostics {
 
@@ -32,6 +35,22 @@ public final class CompilerTypeDiagnostics {
         var info = DiagnosticCodes.NATIVE_TYPE_AT_DATA_BOUNDARY;
         var message = info.format(
                 parameterName, LibraryMethodRegistry.pirTypeName(type));
+        return exception(info.code(), info.level(), info.fix(), message, location);
+    }
+
+    /**
+     * JULC0012: {@code var a = JulcArray.of(...)} whose elements have different types. javac
+     * would type the local by a common supertype the on-chain subset cannot represent, and the
+     * access needs one element type to choose its decode.
+     */
+    public static CompilerException arrayLiteralElementTypesDiffer(
+            List<PirType> elementTypes,
+            SourceLocation location) {
+        var info = DiagnosticCodes.TYPE_RESOLUTION_FAILED;
+        var names = elementTypes.stream().map(LibraryMethodRegistry::pirTypeName).distinct()
+                .collect(Collectors.joining(", "));
+        var message = info.format("the element type of JulcArray.of(...) under var: the elements have different types ("
+                + names + "). Declare the array type, JulcArray<T> a = JulcArray.of(...)");
         return exception(info.code(), info.level(), info.fix(), message, location);
     }
 

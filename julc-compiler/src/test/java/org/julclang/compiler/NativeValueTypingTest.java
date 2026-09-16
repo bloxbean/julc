@@ -215,6 +215,18 @@ class NativeValueTypingTest {
                 }
                 """, "bad");
         assertEquals("JULC0041", dataOperation.diagnostics().getFirst().code());
+
+        // ADR-046: an array literal is a Data-backed container, so a native Value cannot be an element.
+        var arrayElement = assertCompileError(IMPORTS + """
+                import org.julclang.core.types.JulcArray;
+                class LiteralInArray {
+                    static boolean bad() {
+                        JulcArray<PlutusData> values = JulcArray.of(Builtins.emptyValue());
+                        return true;
+                    }
+                }
+                """, "bad");
+        assertEquals("JULC0041", arrayElement.diagnostics().getFirst().code());
     }
 
     private static CompileResult compile(String source, String method) {

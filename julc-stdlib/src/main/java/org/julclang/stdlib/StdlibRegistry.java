@@ -127,6 +127,16 @@ public final class StdlibRegistry implements StdlibLookup {
             return Optional.of(result);
         }
 
+        // JulcArray.of(a, b, ...) — the list literal converted with ListToArray (ADR-046)
+        if (isJulcArrayClass(className) && methodName.equals("of")) {
+            PirTerm result = builtinApp1(DefaultFun.MkNilData, new PirTerm.Const(Constant.unit()));
+            for (int i = args.size() - 1; i >= 0; i--) {
+                var wrapped = PirHelpers.wrapEncode(args.get(i), safeArgType(argTypes, i));
+                result = builtinApp2(DefaultFun.MkCons, wrapped, result);
+            }
+            return Optional.of(builtinApp1(DefaultFun.ListToArray, result));
+        }
+
         // ListsLib.prepend(list, elem) — wrap elem to Data before MkCons
         if (isListsLibClass(className) && methodName.equals("prepend") && args.size() == 2) {
             var wrappedElem = PirHelpers.wrapEncode(args.get(1), safeArgType(argTypes, 1));
@@ -257,6 +267,11 @@ public final class StdlibRegistry implements StdlibLookup {
                 || className.equals("org.julclang.core.types.JulcList");
     }
 
+    private static boolean isJulcArrayClass(String className) {
+        return className.equals("JulcArray")
+                || className.equals("org.julclang.core.types.JulcArray");
+    }
+
     private static PirType safeArgType(List<PirType> argTypes, int index) {
         return (argTypes != null && argTypes.size() > index) ? argTypes.get(index) : new PirType.DataType();
     }
@@ -298,6 +313,11 @@ public final class StdlibRegistry implements StdlibLookup {
     @Override
     public LoweringRequirements requirements(String className, String methodName) {
         var registration = registry.get(className + "." + methodName);
+        if (registration == null && className.contains(".")) {
+            // Core types (JulcList, JulcArray) are registered under their simple names; the
+            // generator may ask with the fully qualified name.
+            registration = registry.get(className.substring(className.lastIndexOf('.') + 1) + "." + methodName);
+        }
         return registration != null
                 ? registration.requirements()
                 : LoweringRequirements.NONE;
@@ -789,6 +809,15 @@ public final class StdlibRegistry implements StdlibLookup {
         reg.register("JulcArray", "fromList", args -> {
             requireArgs("JulcArray.fromList", args, 1);
             return builtinApp1(DefaultFun.ListToArray, args.get(0));
+        }, LoweringRequirements.builtin(DefaultFun.ListToArray));
+        // JulcArray.of(a, b, ...) is built by the typed lookup (the elements need their types);
+        // this registration carries its target requirement.
+        reg.register("JulcArray", "of", args -> {
+            PirTerm result = builtinApp1(DefaultFun.MkNilData, new PirTerm.Const(Constant.unit()));
+            for (int i = args.size() - 1; i >= 0; i--) {
+                result = builtinApp2(DefaultFun.MkCons, args.get(i), result);
+            }
+            return builtinApp1(DefaultFun.ListToArray, result);
         }, LoweringRequirements.builtin(DefaultFun.ListToArray));
     }
 

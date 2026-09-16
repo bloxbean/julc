@@ -1,12 +1,18 @@
 package org.julclang.compiler.pir;
 
 import org.julclang.compiler.CompilerException;
+import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.resolve.LibraryMethodRegistry;
 import org.julclang.compiler.resolve.SymbolTable;
 import org.julclang.compiler.resolve.TypeResolver;
 import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
+import org.julclang.core.source.SourceLocation;
 import com.github.javaparser.ast.expr.*;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.IdentityHashMap;
+import java.util.LinkedHashSet;
 
 /**
  * Read-only type inference utilities for PIR generation.
@@ -20,6 +26,24 @@ final class TypeInferenceHelper {
     private final TypeResolver typeResolver;
     private final StdlibLookup stdlibLookup;
     private final TypeMethodRegistry typeMethodRegistry;
+    /** Lowered {@code JulcArray.of(...)} terms and the source types of their elements (ADR-046). */
+    private final IdentityHashMap<PirTerm, List<PirType>> arrayLiterals = new IdentityHashMap<>();
+    /**
+     * Lowered {@code JulcList.of(...)} terms and the source types of their elements: read only to
+     * type a list literal that is an element of an array literal, so that {@code var rows =
+     * JulcArray.of(JulcList.of(1))} is {@code JulcArray<JulcList<BigInteger>>} as javac types it.
+     * A {@code var} local of a bare list literal keeps its existing {@code JulcList<PlutusData>}
+     * typing (a change of that convention is a decision of its own).
+     */
+    private final IdentityHashMap<PirTerm, List<PirType>> listLiterals = new IdentityHashMap<>();
+    /**
+     * Terms the generator produced by a typed dispatch, with the type the registry declares for
+     * that dispatch: what a chained access on an expression scope is typed by, so that
+     * {@code JulcArray.of(JulcList.of(1)).get(0).get(0)} keeps the nested element type through
+     * the intermediate access (the structural fallback would see {@code UnListData} and say
+     * {@code JulcList<PlutusData>}).
+     */
+    private final IdentityHashMap<PirTerm, PirType> termTypes = new IdentityHashMap<>();
 
     TypeInferenceHelper(SymbolTable symbolTable, TypeResolver typeResolver,
                         StdlibLookup stdlibLookup, TypeMethodRegistry typeMethodRegistry) {
@@ -99,6 +123,23 @@ final class TypeInferenceHelper {
         // toPlutusData() always returns DataType
         if (methodName.equals("toPlutusData") && mce.getArguments().isEmpty()) {
             return new PirType.DataType();
+        }
+
+        // JulcArray.of(a, b, ...): the element type the elements resolve to, when every element
+        // resolves to the same one (javac's inference for a `var` local or a chained access);
+        // otherwise unknown here, and the declaration reads the encodings of the generated
+        // literal (ADR-046).
+        if (scopeExpr instanceof NameExpr ne && methodName.equals("of") && isJulcArray(ne.getNameAsString())) {
+            PirType common = null;
+            for (var arg : mce.getArguments()) {
+                var argType = typeResolver.resolveNamed(resolveExpressionType(arg));
+                if (argType instanceof PirType.DataType || (common != null && !common.equals(argType))) {
+                    common = null;
+                    break;
+                }
+                common = argType;
+            }
+            if (common != null) return new PirType.ArrayType(common);
         }
 
         // If scope is a variable with RecordType, return the field type
@@ -187,6 +228,16 @@ final class TypeInferenceHelper {
      */
     PirType inferType(com.github.javaparser.ast.type.Type declType, PirTerm initValue,
                        Expression initExpr) {
+        return inferType(declType, initValue, initExpr, null);
+    }
+
+    /**
+     * As {@link #inferType(com.github.javaparser.ast.type.Type, PirTerm, Expression)};
+     * {@code location} names the declaration in the diagnostic raised when {@code var} cannot
+     * give an array literal a single element type.
+     */
+    PirType inferType(com.github.javaparser.ast.type.Type declType, PirTerm initValue,
+                       Expression initExpr, SourceLocation location) {
         if (!(declType instanceof com.github.javaparser.ast.type.VarType)) {
             return typeResolver.resolve(declType);
         }
@@ -194,13 +245,70 @@ final class TypeInferenceHelper {
         if (!(exprType instanceof PirType.DataType)) {
             return exprType;
         }
+        // `var a = JulcArray.of(...)`: javac types the local by its elements (ADR-046); the
+        // generator recorded their source types on the lowered literal. Elements of different
+        // types would need a common supertype the subset cannot represent, and the access needs
+        // one element type for its decode: fail closed rather than type them Data.
+        var elementTypes = arrayLiteralElementTypes(initValue);
+        if (elementTypes.isPresent() && new LinkedHashSet<>(elementTypes.get()).size() > 1) {
+            throw CompilerTypeDiagnostics.arrayLiteralElementTypesDiffer(elementTypes.get(), location);
+        }
         return inferPirType(initValue);
+    }
+
+    /**
+     * The element types of an array literal ({@code JulcArray.of(...)}) as the generator lowered
+     * it: the source types of its arguments, recorded by {@link #recordArrayLiteral} on the
+     * lowered term. They are the types {@link PirHelpers#wrapEncode} encoded the elements with,
+     * so an access typed by them decodes exactly what was encoded; the encodings themselves are
+     * not read back, since {@code IData(x)} is also what a user's {@code Builtins.iData(x)}
+     * lowers to. Empty when the term is not a recorded literal.
+     */
+    java.util.Optional<List<PirType>> arrayLiteralElementTypes(PirTerm term) {
+        return java.util.Optional.ofNullable(arrayLiterals.get(term));
+    }
+
+    /** Record the source element types of a lowered {@code JulcArray.of(...)} term (identity). */
+    void recordArrayLiteral(PirTerm term, List<PirType> elementTypes) {
+        arrayLiterals.put(term, List.copyOf(elementTypes));
+    }
+
+    /** Record the type the registry declares for a term produced by a typed dispatch (identity). */
+    void recordTermType(PirTerm term, PirType type) {
+        termTypes.put(term, type);
+    }
+
+    /** Record the source element types of a lowered {@code JulcList.of(...)} term (identity). */
+    void recordListLiteral(PirTerm term, List<PirType> elementTypes) {
+        listLiterals.put(term, List.copyOf(elementTypes));
+    }
+
+    /**
+     * The source types of a literal's arguments, each list literal among them typed by its own
+     * recorded elements ({@code JulcList<T>} rather than the {@code JulcList<PlutusData>} the
+     * expression resolves to), recursively, so nested literals keep their Java types.
+     */
+    List<PirType> literalElementTypes(List<PirType> argTypes, List<PirTerm> args) {
+        var types = new ArrayList<PirType>(argTypes.size());
+        for (int i = 0; i < argTypes.size(); i++) {
+            var recorded = i < args.size() ? listLiterals.get(args.get(i)) : null;
+            if (recorded != null && argTypes.get(i) instanceof PirType.ListType) {
+                var distinct = new LinkedHashSet<>(recorded);
+                types.add(new PirType.ListType(distinct.size() == 1 ? distinct.iterator().next() : new PirType.DataType()));
+            } else {
+                types.add(argTypes.get(i));
+            }
+        }
+        return types;
     }
 
     /**
      * Infer the PirType of a PIR term by structural analysis.
      */
     PirType inferPirType(PirTerm term) {
+        // A term produced by a typed dispatch carries the type the registry declared for it.
+        var recorded = termTypes.get(term);
+        if (recorded != null) return recorded;
         if (term instanceof PirTerm.Const c) {
             return switch (c.value()) {
                 case Constant.IntegerConst _ -> new PirType.IntegerType();
@@ -213,6 +321,12 @@ final class TypeInferenceHelper {
             };
         }
         if (term instanceof PirTerm.App app) {
+            // An array literal is typed by the source types of its elements (ADR-046).
+            var elementTypes = arrayLiteralElementTypes(term);
+            if (elementTypes.isPresent()) {
+                var distinct = new LinkedHashSet<>(elementTypes.get());
+                return new PirType.ArrayType(distinct.size() == 1 ? distinct.iterator().next() : new PirType.DataType());
+            }
             PirTerm fn = app.function();
             if (fn instanceof PirTerm.Builtin b) {
                 if (b.fun() == DefaultFun.FstPair
@@ -298,6 +412,10 @@ final class TypeInferenceHelper {
             case ListToArray -> new PirType.ArrayType(new PirType.DataType());
             default -> new PirType.DataType();
         };
+    }
+
+    private boolean isJulcArray(String name) {
+        return name.equals("JulcArray") || "org.julclang.core.types.JulcArray".equals(typeResolver.resolveClassName(name));
     }
 
     /** Find a LibraryMethodRegistry within a StdlibLookup chain. */

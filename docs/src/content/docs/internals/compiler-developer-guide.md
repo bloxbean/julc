@@ -214,7 +214,8 @@ list and promotes `b.items().get(i)` sites at the costed profile that it could
 not reach before.
 
 ADR-045 (O14) adds `ValueLiteralFoldPass`, which runs first among the PIR-to-PIR
-passes. `Builtins.emptyValue()` lowers to a UPLC Value constant, typed
+passes (its machinery is the abstract `LiteralFoldPass`, shared with ADR-046's
+`ArrayLiteralFoldPass` below). `Builtins.emptyValue()` lowers to a UPLC Value constant, typed
 `NativeValueType`, gated by the `VALUE_CONSTANTS` capability;
 `Builtins.singletonValue(...)` and `lovelaceValue(...)` inline `InsertCoin` into
 it (intrinsics, so a program that does not call them is unchanged: a library
@@ -245,10 +246,28 @@ target, safe level, the capability, the switch; provenance
 `pv11.o14.value-literal-fold`. No program compiled before ADR-045 contains a
 Value or Data literal argument to these builtins, so the rule is additive.
 
+ADR-046 (O10) adds `ArrayLiteralFoldPass`, the second domain of `LiteralFoldPass`,
+run right after the Value domain. `JulcArray.of(a, b, ...)` lowers in the
+registry to `ListToArray` over the `JulcList.of` list literal (`MkCons` over
+`wrapEncode`d elements; `ListToArray` is the requirement, PV11 only). The pass
+reads a list literal whose elements are constants wrapped exactly as
+`wrapEncode` wraps them (or a once-bound local holding one) to a `list data`
+constant and folds `ListToArray` of it to an array constant, `LengthOfArray` of
+an array constant to its length and `IndexArray` at a literal index to the
+element, by `ArraySemantics` in `julc-core` (shared with the VM's
+`ArrayBuiltins`); an out-of-range literal index stays and fails at runtime with
+the builtin's text. Because `get` wraps the access in a decode, the pass also
+folds `UnIData`/`UnBData`/`UnListData`/`UnMapData`/`UnConstrData`/`FstPair`/
+`DecodeUtf8` and the Bool form's `EqualsInteger` **only over constants it
+produced** (an identity set), never over a Data constant that was in the
+program already; a mismatched element keeps its decode. Gate: exact PV11
+target, safe level, the `ARRAY_CONSTANTS` capability, the switch; provenance
+`pv11.o10.array-literal-fold`; additive for existing programs.
+
 Each PIR-to-PIR rule can be switched off on its own:
 `CompilerOptions.disableOptimizationRule(id)` for `pv11.o8.value-sharing`,
-`pv11.o15.projection-sharing`, `pv11.o9.list-to-array` and
-`pv11.o14.value-literal-fold`
+`pv11.o15.projection-sharing`, `pv11.o9.list-to-array`,
+`pv11.o14.value-literal-fold` and `pv11.o10.array-literal-fold`
 (`CompilationContext.switchableOptimizationRules()`); any other identifier
 fails with `JULC0043` before compilation, and the rules implemented inside
 `UplcGenerator`/`UplcOptimizer` are selected by the level only. The switch
