@@ -1379,7 +1379,9 @@ return NativeValueLib.contains(NativeValueLib.fromData(minted), required);
 > non-zero quantity, an overflowing union or scale, a negative quantity under
 > `contains`) is left as written and fails at runtime exactly as before. Nothing is
 > folded at `none`/`baseline`, and no algebraic identity is applied: `scale(1, v)`
-> or `union(v, empty())` with a runtime `v` stay calls. Spell a negative literal
+> or `union(v, empty())` with a runtime `v` stay calls. A fold never grows the
+> script: a literal local that several calls share keeps its one constant, and a
+> call that would copy that constant into its own site stays a call. Spell a negative literal
 > quantity as `new BigInteger("-5")`; `BigInteger.valueOf(-5)` is a runtime
 > subtraction, not a constant.
 

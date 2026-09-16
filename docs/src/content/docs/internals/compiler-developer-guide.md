@@ -223,10 +223,17 @@ untouched; a trace, an error or a runtime variable in argument position blocks
 the fold. A wrapper must use every parameter and every call-site argument must
 be a literal, used or not (the strict application evaluates them all).
 Objective: the literal's FLAT encoding must not be longer in bits than the
-term it replaces, the builtin spine or, for a wrapper call, the wrapper
-variable applied to the call-site literals (`toData(emptyValue())`,
-`fromData` of a Data literal with five or more tokens and a user wrapper that
-carries constants in its body therefore stay). Gate: exact PV11
+term it replaces, measured as it stands in the artifact: the builtin or, for
+a wrapper call, the wrapper variable, applied to the call-site arguments, a
+constant counting as itself and a literal local as a variable reference (its
+constant lives once in its binding). A local bound directly to a constant
+whose every remaining occurrence the call consumes dies with the fold and the
+optimizer drops its binding, so it counts as its constant once; a local still
+used elsewhere, and an alias of a local (its binding holds only a reference),
+count as a reference, so a call that would copy the constant stays (`toData(emptyValue())`,
+`fromData` of a Data literal with five or more tokens, a user wrapper that
+carries constants in its body and a literal `scale` of a local shared with
+another call therefore stay). Gate: exact PV11
 target, safe level, the capability, the switch; provenance
 `pv11.o14.value-literal-fold`. No program compiled before ADR-045 contains a
 Value or Data literal argument to these builtins, so the rule is additive.

@@ -62,6 +62,9 @@ are Value builtin applications in user code (bare or through a wrapper).
 | MIXED_KEY (runtime key, literal union) | 4 → 1 | 57 → 40 | `d1a905a6…` → `e39e3ae1…` |
 | UNUSED_PARAM (helper with an unused parameter fed a runtime decode) | 2 → 2 | 51 → 51 | unchanged |
 | USER_WRAPPER (user wrapper over a bare builtin, every parameter used) | 4 → 1 | 61 → 6 | `94533d4b…` → `c64aea12…` |
+| SHARED_LITERAL (32-byte-key local shared by two literal `scale` calls and a runtime one: the producer folds, the calls stay) | 7 → 6 | 97 → 91 | `01a6c8f8…` → `b5b6b170…` |
+| SHARED_LITERAL_ONLY (the local shared by two literal `scale` calls only: both stay) | 5 → 4 | 79 → 72 | `6e00823b…` → `fda8e66f…` |
+| SHARED_ALIAS (SHARED_LITERAL with `alias = v` feeding one `scale`: the alias is not credited, the calls stay) | 7 → 6 | 97 → 91 | `01a6c8f8…` → `b5b6b170…` (= SHARED_LITERAL: the optimiser inlines the alias either way) |
 
 | Fixture | Input | CPU off → on | Memory off → on |
 |---|---|---:|---:|
@@ -102,6 +105,13 @@ are Value builtin applications in user code (bare or through a wrapper).
 | UNUSED_PARAM | integer (1) | unchanged | unchanged |
 | UNUSED_PARAM | bytes (fail in the unused argument's decode) | unchanged | unchanged |
 | USER_WRAPPER | run (3) | 1,789,059 → 16,100 | 3,257 → 200 |
+| SHARED_LITERAL | one (quantity 6) | 2,925,202 → 2,440,278 | 6,432 → 5,587 |
+| SHARED_LITERAL | zero (quantity 5) | 2,753,080 → 2,268,156 | 6,411 → 5,566 |
+| SHARED_LITERAL | cancel (`Map []`) | 2,887,043 → 2,402,119 | 6,410 → 5,565 |
+| SHARED_LITERAL_ONLY | run (quantity 5) | 1,917,609 → 1,432,685 | 4,101 → 3,256 |
+| SHARED_ALIAS | one (quantity 6) | 2,925,202 → 2,440,278 | 6,432 → 5,587 |
+| SHARED_ALIAS | zero (quantity 5) | 2,753,080 → 2,268,156 | 6,411 → 5,566 |
+| SHARED_ALIAS | cancel (`Map []`) | 2,887,043 → 2,402,119 | 6,410 → 5,565 |
 
 Notes. A folded method whose whole body is a literal costs the one constant step
 (16,100 CPU / 200 memory). The three `toData(empty)` fixtures keep one call because the
@@ -119,7 +129,20 @@ stays (40-bit literal against a 26-bit call). The pass's decision matches the en
 every case. A two-policy, six-token canonical literal is decoded fine by the semantics and
 stays for size. A wrapper call is measured as the wrapper variable applied to the call-site
 literals: `mk 5` for `mk = λq. insertCoin(P, T, q, empty)` is shorter than the singleton
-literal, so it stays; the `NativeValueLib` shape (`un a b = unionValue(b, a)`) folds.
+literal, so it stays; the `NativeValueLib` shape (`un a b = unionValue(b, a)`) folds. A
+literal local is measured as a variable reference at the call site (its constant stands once
+in its binding), except that a call consuming every remaining use of the local counts it as
+that constant once, since the binding dies with the fold: `let v = ⟨32-byte-key singleton⟩ in
+unionValue(scaleValue(2, v), scaleValue(3, v))` stays whole (the scaled literal is 330 bits,
+`scaleValue 2 v` measured with `v` as a reference 49 bits, so the call stays; measured with
+`v` as its constant, the measure the review found, the spine is 370 bits and the copy was
+approved), the same beside a
+runtime `scaleValue(n, v)`, while `unionValue(v, v)` folds (both uses consumed; the constant
+counted once, the second occurrence as a reference). The second review found the guard
+counting every local as its constant, which approved copying the constant into each call
+site while the binding stayed live: its reproducer (a singleton with 32-byte policy and token
+keys, `scale(2, v)`, `scale(3, v)` and `scale(n, v)`) grew from 128 to 243 bytes at the
+default level with identical results on every input.
 
 ## Structural probes (same test)
 
@@ -139,7 +162,14 @@ literal, so it stays; the `NativeValueLib` shape (`un a b = unionValue(b, a)`) f
 - A pre-PV11 target fails closed with `JULC0031` before any lowering
   (`nonPv11TargetFailsClosedBeforeLowering`); `NativeValueTypingTest` rejects a literal
   assigned to `PlutusData` and a literal inside `equalsData` with `JULC0041`.
-- A literal local and a local aliasing it feed the calls below; a rebound name does not.
+- A literal local and a local aliasing it feed the calls below (a lookup through the alias
+  folds); a rebound name does not. A local shared by two literal calls, or by a literal call
+  and a runtime one, is not copied into either (both calls stay); one call consuming every
+  occurrence of a local bound directly to its constant folds. An alias is never credited
+  with the constant it names: `unionValue(v, w)` with `w = v` stays, `scaleValue(2, w)`
+  beside `scaleValue(3, v)` stays, and `scaleValue(2, w)` with no other use of `v` stays
+  (the alias binding keeps `v` occurring until the optimiser drops both: the conservative
+  bound).
 - A `Trace`, an `Error` or a runtime variable in argument position blocks the fold.
 - Nested literal calls fold to a fixed point in one pass (`17`).
 - Failing literal calls stay: union overflow, negative containment, a 33-byte key.
@@ -228,3 +258,45 @@ Final commit `4e2961f0` (review fixes).
   `LinkedListValidator` promotion, as before. No program in the corpus, in the in-repo example
   module, in the Blaster fixtures or in any earlier golden suite contains a Value literal, and
   the O8, O9 and O15 golden suites are byte-identical with the rule enabled.
+
+## Second review: the objective's measure of a shared literal local
+
+The maintainer's independent review of PR #148 at `e51edda4` found the size guard counting
+a literal local as the constant its binding carries, so a fold through a local that other
+calls still use passed the objective while copying the constant into the call site. The
+reproducer (a singleton with 32-byte policy and token keys shared by `scale(2, v)`,
+`scale(3, v)` and a runtime `scale(n, v)`) grew from 128 to 243 FLAT bytes at the default
+level with identical results on every input. Fix: the replaced term is measured as it
+stands in the artifact (a literal local as a variable reference, or as its constant once
+when the local is bound directly to that constant and the call consumes every remaining
+occurrence of it; `ValueLiteralFoldPass` counts variable occurrences per fixpoint iteration
+and subtracts the ones each fold removes). The review's second round found the first fix
+crediting a dying *alias* (`JulcValue alias = v; scale(2, alias)`) with `v`'s constant
+although only the alias's reference binding disappears and `v` stays live for the other
+calls: the original reproducer was fixed (128 → 122 bytes) but its alias variant still grew
+(128 → 185). An alias is now never credited (`constantBindings` holds only locals bound
+directly to a constant).
+
+- Fixtures `SHARED_LITERAL` (the reviewer's shape, 32-byte policy, 1-byte token, inputs
+  `1`, `0` and the cancelling `-5`), `SHARED_LITERAL_ONLY` (no runtime use) and
+  `SHARED_ALIAS` (the alias variant): the producer folds into the binding, every `scale` and
+  `union` call stays, 97 → 91, 79 → 72 and 97 → 91 bytes, budgets lower on every input
+  (table above). `LOCAL_LITERAL` and `ALIAS_LOCAL` keep their bytes and hashes exactly: a
+  call that consumes every occurrence of a local bound to its constant still folds
+  (`ALIAS_LOCAL`'s `e = emptyValue()` is such a local, not an alias).
+- Direct-PIR probes: `let v = ⟨32-byte-key singleton⟩ in unionValue(scaleValue(2, v),
+  scaleValue(3, v))` stays whole; the same beside a runtime `scaleValue(n, v)` stays;
+  `unionValue(v, v)` folds; with `w = v`, `scaleValue(2, w)` beside `scaleValue(3, v)` stays,
+  `scaleValue(2, w)` alone stays, `unionValue(v, w)` stays and `lookupCoin(P, T, w)` folds;
+  the measured bits are recorded in the objective probe above.
+- Mutation checks: with the original guard restored (`git stash` of the pass file only) the
+  suite fails on `SHARED_LITERAL` (4 call sites left instead of 6: both `scale` calls folded)
+  and on the direct probe (the union folded to a constant). With the first fix's rule
+  restored (the `constantBindings` conjunct removed, so a dying alias is credited) it fails on
+  `SHARED_ALIAS` (5 call sites left instead of 6: the `scale` through the alias folded) and
+  on the `unionValue(v, w)` probe (folded). With the final rule it passes.
+- Rerun on the fixed tree: `:julc-compiler:check` 1,620 tests + 56 `pairCaseTest` (the O14
+  suite among them), 0 failures, `verifyDiagnosticCodes` passed; `O14ValueLiteralBenchmarkTest`
+  2/2; `NativeValueLibTest` 22/22.
+- The ADR's objective paragraph, the compiler developer guide, the stdlib guide note and the
+  release note now describe the call-site measure.

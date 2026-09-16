@@ -17,6 +17,7 @@ import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -42,7 +43,18 @@ import java.util.Set;
  * <p>A literal call is replaced by its result exactly when the pinned semantics
  * ({@link NativeValueSemantics}, the same code the VM runs) succeed on the literals and the
  * FLAT encoding of the result is not longer, in bits, than the encoding of the term it
- * replaces (the builtin spine, or the wrapper variable applied to the call-site literals). A
+ * replaces, measured as it stands in the artifact: the builtin (or the wrapper variable, at
+ * the smallest index) applied to the call-site arguments, where a constant counts as itself
+ * and a literal local counts as a variable reference, not as the constant its binding
+ * carries. A local bound directly to a constant whose every remaining occurrence the call
+ * consumes dies with the fold (the UPLC optimiser's dead-code elimination drops the
+ * binding), so its first occurrence in the call counts as that constant; a local that stays
+ * live elsewhere is only a reference here, and folding through it would copy its constant
+ * into the call site. An alias ({@code Let w = Var v}) is never credited: its binding holds
+ * a reference, and the constant it names stays as long as {@code v} has any other
+ * occurrence, the alias binding itself included (the second review found the guard
+ * measuring every local as its constant, then crediting a dying alias with the constant it
+ * names; either lets a shared local grow the artifact). A
  * call the semantics reject is left exactly as written, so its runtime failure text and
  * failure point are untouched; a call with a non-literal argument (a runtime key, a trace, an
  * error) is never touched. Folding is bottom-up, so nested literal calls fold to a fixed
@@ -76,6 +88,10 @@ public final class ValueLiteralFoldPass {
     private final Map<String, PirTerm> letValues = new HashMap<>();
     private final Map<String, Wrapper> wrappers = new HashMap<>();
     private final Map<String, Constant> literals = new HashMap<>();
+    /** Occurrences of each variable still standing in the term; a fold removes the ones it consumes. */
+    private final Map<String, Integer> remainingUses = new HashMap<>();
+    /** Literals bound directly to their constant (not aliases): the only bindings a fold may be credited with. */
+    private final Set<String> constantBindings = new HashSet<>();
     private boolean applied;
 
     public ValueLiteralFoldPass(CompilationContext context, Map<PirTerm, SourceLocation> positions) {
@@ -100,12 +116,17 @@ public final class ValueLiteralFoldPass {
             letValues.clear();
             wrappers.clear();
             literals.clear();
+            remainingUses.clear();
+            constantBindings.clear();
             collectBinders(rewritten);
             letValues.forEach((name, value) -> {
                 if (binderCounts.get(name) != 1) return;
                 var wrapper = wrapperOf(value);
                 if (wrapper != null) wrappers.put(name, wrapper);
-                if (value instanceof PirTerm.Const c) literals.put(name, c.value());
+                if (value instanceof PirTerm.Const c) {
+                    literals.put(name, c.value());
+                    constantBindings.add(name);
+                }
             });
             rewritten = fold(rewritten);
         } while (rewritten != previous);
@@ -122,6 +143,7 @@ public final class ValueLiteralFoldPass {
                 // local), is a literal below.
                 var literal = literalOf(value);
                 if (literal != null) literals.put(let.name(), literal);
+                if (value instanceof PirTerm.Const) constantBindings.add(let.name());
             }
             var body = fold(let.body());
             return remember(term, new PirTerm.Let(let.name(), value, body));
@@ -168,13 +190,38 @@ public final class ValueLiteralFoldPass {
         }
         var result = evaluate(fun, constants);
         if (result == null) return null;
-        // The term this fold replaces: the bare builtin spine, or for a wrapper call the
-        // application of the wrapper variable to the call-site literals (the shape that stays
-        // in the artifact when the wrapper remains live; if the optimiser inlines the wrapper
-        // instead, the artifact loses its body as well, so this is the conservative bound).
+        // The term this fold replaces, as it stands in the artifact: the bare builtin, or for a
+        // wrapper call the wrapper variable (the shape that stays when the wrapper remains live;
+        // if the optimiser inlines the wrapper instead, the artifact loses its body as well, so
+        // this is the conservative bound), applied to the call-site arguments. A constant
+        // argument stands there as itself. A literal local stands there as a variable
+        // reference, and its constant lives once in its binding: when the local is bound
+        // directly to that constant and this call consumes every remaining occurrence of it,
+        // the binding dies with the fold (the optimiser drops it), so the first occurrence is
+        // measured as that constant and any further occurrence in the same call as a
+        // reference. A local that stays live elsewhere is measured as a reference only, since
+        // folding would copy its constant into the call site; so is an alias (`Let w = Var v`)
+        // whether or not it dies: its binding holds a reference, and `v`'s constant stays as
+        // long as `v` has any other occurrence, the alias binding itself included.
+        var consumed = new HashMap<String, Integer>();
+        for (var actual : spine.args()) {
+            if (actual instanceof PirTerm.Var v) consumed.merge(v.name(), 1, Integer::sum);
+        }
         Term replaced = spine.head() instanceof PirTerm.Builtin ? Term.builtin(fun) : Term.var(1);
-        for (var actual : spine.args()) replaced = Term.apply(replaced, Term.const_(literalOf(actual)));
+        var measuredAsConstant = new HashSet<String>();
+        for (var actual : spine.args()) {
+            Term measure;
+            if (actual instanceof PirTerm.Var v) {
+                boolean dies = constantBindings.contains(v.name())
+                        && consumed.get(v.name()).equals(remainingUses.getOrDefault(v.name(), 0));
+                measure = dies && measuredAsConstant.add(v.name()) ? Term.const_(literalOf(actual)) : Term.var(1);
+            } else {
+                measure = Term.const_(literalOf(actual));
+            }
+            replaced = Term.apply(replaced, measure);
+        }
         if (!fitsObjective(replaced, result)) return null;
+        consumed.forEach((name, uses) -> remainingUses.merge(name, -uses, Integer::sum));
         applied = true;
         return new PirTerm.Const(result);
     }
@@ -262,7 +309,7 @@ public final class ValueLiteralFoldPass {
         }
         var sig = BuiltinSemantics.find(builtin.fun());
         if (sig == null || spine.args().size() != sig.valueArity()) return null;
-        var used = new java.util.HashSet<String>();
+        var used = new HashSet<String>();
         for (var arg : spine.args()) {
             if (arg instanceof PirTerm.Var v && params.contains(v.name())) {
                 used.add(v.name());
@@ -289,6 +336,7 @@ public final class ValueLiteralFoldPass {
 
     private void collectBinders(PirTerm term) {
         switch (term) {
+            case PirTerm.Var v -> remainingUses.merge(v.name(), 1, Integer::sum);
             case PirTerm.Lam l -> bind(l.param());
             case PirTerm.Let l -> { bind(l.name()); letValues.putIfAbsent(l.name(), l.value()); }
             case PirTerm.LetRec r -> r.bindings().forEach(b -> bind(b.name()));

@@ -26,7 +26,9 @@ literal call the builtin would reject (a 33-byte key, an overflow, a negative
 quantity under `contains`) is left as written and fails at runtime with the
 same text. No algebraic identity is applied and nothing changes at
 `none`/`baseline`. The fold only fires when the literal is not larger than the
-call it replaces, so `toData(Builtins.emptyValue())` stays a call. The optimization report
+call it replaces as it stands in the script, so `toData(Builtins.emptyValue())`
+stays a call and a literal local shared by several calls is never copied into
+them (the calls stay, the local keeps its one constant). The optimization report
 records `pv11.o14.value-literal-fold`, and the rule can be switched off with
 `CompilerOptions.disableOptimizationRule`.
 
