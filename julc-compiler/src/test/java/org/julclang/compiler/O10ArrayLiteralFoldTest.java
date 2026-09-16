@@ -326,7 +326,8 @@ class O10ArrayLiteralFoldTest {
     /**
      * `var` infers the element type of an array literal from its elements' source types, as
      * javac does (recorded by the generator, not read back from the encodings: a user's
-     * `Builtins.iData(x)` element stays Data, the second review round): the
+     * `Builtins.iData(x)` element stays Data, the second review round; a nested list literal
+     * keeps its own element type, the third): the
      * access decodes and the value is usable as its Java type, on every level and through a
      * chained access. Elements of different types (javac would infer a common supertype the
      * subset cannot represent) are rejected with JULC0012; the explicit declaration and the
@@ -352,11 +353,17 @@ class O10ArrayLiteralFoldTest {
                         var f = JulcArray.of(true, false);
                         return f.get(0) && !f.get(1);
                     }
-                    static PlutusData nested() {
-                        // a list literal's own type under var is JulcList<PlutusData> (the existing
-                        // JulcList.of convention), so the element comes back as Data
+                    static BigInteger nested() {
                         var rows = JulcArray.of(JulcList.of(BigInteger.ONE, BigInteger.TWO), JulcList.of(BigInteger.valueOf(3)));
-                        return rows.get(1).get(0);
+                        return increment(rows.get(1).get(0));
+                    }
+                    static BigInteger doublyNested() {
+                        var cube = JulcArray.of(JulcList.of(JulcList.of(BigInteger.valueOf(5))));
+                        return increment(cube.get(0).get(0).get(0));
+                    }
+                    static BigInteger nestedData() {
+                        var rows = JulcArray.of(JulcList.of(Builtins.iData(BigInteger.valueOf(9))));
+                        return extract(rows.get(0).get(0));
                     }
                     static BigInteger extract(PlutusData d) {
                         return Builtins.unIData(d);
@@ -387,11 +394,21 @@ class O10ArrayLiteralFoldTest {
                     }
                 }
                 """;
+        var mixedNestedSource = O10ArrayLiteralFixtures.IMPORTS + """
+                class MixedNestedArray {
+                    static PlutusData mixedNested() {
+                        var m = JulcArray.of(JulcList.of(BigInteger.ONE), JulcList.of(new byte[]{1}));
+                        return m.get(0).get(0);
+                    }
+                }
+                """;
         for (var level : OptimizationLevel.values()) {
             assertEquals(Term.const_(Constant.integer(8)), result(source, "inferred", level, List.of()), level.toString());
             assertEquals(Term.const_(Constant.bool(true)), result(source, "strings", level, List.of()), level.toString());
             assertEquals(Term.const_(Constant.bool(true)), result(source, "bools", level, List.of()), level.toString());
-            assertEquals(Term.const_(Constant.data(PlutusData.integer(3))), result(source, "nested", level, List.of()), level.toString());
+            assertEquals(Term.const_(Constant.integer(4)), result(source, "nested", level, List.of()), level.toString());
+            assertEquals(Term.const_(Constant.integer(6)), result(source, "doublyNested", level, List.of()), level.toString());
+            assertEquals(Term.const_(Constant.integer(9)), result(source, "nestedData", level, List.of()), level.toString());
             assertEquals(Term.const_(Constant.integer(7)), result(source, "dataElements", level, List.of()), level.toString());
             assertEquals(Term.const_(Constant.integer(7)), result(source, "typed", level, List.of()), level.toString());
             assertEquals(Term.const_(Constant.integer(6)), result(source, "chained", level, List.of(PlutusData.integer(5))), level.toString());
@@ -401,6 +418,9 @@ class O10ArrayLiteralFoldTest {
                 new CompilerOptions().setOptimizationCostProfile(PROFILE)).compileMethod(mixedSource, "mixed"));
         assertEquals("JULC0012", mixed.diagnostics().getFirst().code());
         assertTrue(mixed.getMessage().contains("JulcArray<T>"), mixed.getMessage());
+        var mixedNested = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry(),
+                new CompilerOptions().setOptimizationCostProfile(PROFILE)).compileMethod(mixedNestedSource, "mixedNested"));
+        assertEquals("JULC0012", mixedNested.diagnostics().getFirst().code());
     }
 
     private static Term result(String source, String method, OptimizationLevel level, List<PlutusData> args) {

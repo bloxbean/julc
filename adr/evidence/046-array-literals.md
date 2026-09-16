@@ -220,10 +220,15 @@ occurrence of a creditable local, then as the constant the binding denotes, once
   types back from the encodings; the review's second round showed `var a =
   JulcArray.of(Builtins.iData(BigInteger.valueOf(7))); extract(a.get(0))` failing with
   `UnIData: expected data, got Integer`, since `IData(x)` is also a user's `Builtins.iData(x)`.
-  Elements of different types under `var` raise `JULC0012` naming the types and the fix
-  (`varLocalOfAnArrayLiteralInfersTheElementType`: integer, string, boolean, nested-list and
-  Data elements, the explicit declaration, a chained access, the empty literal, the mixed
-  rejection, on every level).
+  The third round found a nested `JulcList.of(...)` element typed `JulcList<PlutusData>` under
+  `var` (`increment(rows.get(0).get(0))` failed at runtime): `JulcList.of(...)` now records its
+  element types at its own lowering and an array literal reads them for its list-literal
+  elements, recursively, so `var rows = JulcArray.of(JulcList.of(BigInteger.ONE))` is
+  `JulcArray<JulcList<BigInteger>>`; a bare `var xs = JulcList.of(...)` keeps its existing
+  typing. Elements of different types under `var` raise `JULC0012` naming the types and the fix
+  (`varLocalOfAnArrayLiteralInfersTheElementType`: integer, string, boolean, nested, doubly
+  nested and nested-Data elements, Data elements, the explicit declaration, a chained access,
+  the empty literal, the mixed and mixed-nested rejections, on every level).
 - Structural measure (the maintainer's review of the merged head): a list literal is measured
   as it stands, each nested variable as a reference or, once, as the constant of a creditable
   local whose every remaining occurrence the call consumes. The reviewer's reproducer (a
@@ -246,7 +251,8 @@ occurrence of a creditable local, then as the constant the binding denotes, once
   probe over the 64-byte local folds; with the element types not recorded on the literal, the
   `var` test fails on its first shape (the access is not even dispatched on the untyped
   scope); with a dying local credited as its expanded constant again, `SHARED_LIST_ELEMENT`
-  folds and the `throughList` probe folds. All restored, all suites pass.
+  folds and the `throughList` probe folds; with the nested-literal refinement skipped, the `var`
+  test fails on `nested`. All restored, all suites pass.
 - Consequence for this domain: `LOCAL_LIST` (its list local is still walked by `size()`) no
   longer folds — the conversion would copy the list into an array constant beside the chain —
   and stays at 91 bytes with an unchanged hash; `LOCAL_LIST_ONCE` (the conversion is the

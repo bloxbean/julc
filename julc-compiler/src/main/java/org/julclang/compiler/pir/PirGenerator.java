@@ -1119,10 +1119,15 @@ public class PirGenerator {
             checkCrossLibraryTypeWarnings(className, methodName, mce, argPirTypes);
             // JulcArray.of(...): keep the elements' source types with the literal, so a `var` local
             // or a chained access is typed as javac types it (ADR-046); the encodings alone cannot
-            // tell a wrapped integer from a user's Builtins.iData(...).
-            if (methodName.equals("of")
-                    && (className.equals("JulcArray") || resolvedClassName.equals("org.julclang.core.types.JulcArray"))) {
-                typeInference.recordArrayLiteral(result.get(), argPirTypes);
+            // tell a wrapped integer from a user's Builtins.iData(...). A JulcList.of(...) literal
+            // records its element types too, read only when it is an element of an array literal,
+            // so nested literals keep their Java types (JulcArray<JulcList<BigInteger>>).
+            if (methodName.equals("of")) {
+                if (className.equals("JulcArray") || resolvedClassName.equals("org.julclang.core.types.JulcArray")) {
+                    typeInference.recordArrayLiteral(result.get(), typeInference.literalElementTypes(argPirTypes, compiledArgs));
+                } else if (className.equals("JulcList") || resolvedClassName.equals("org.julclang.core.types.JulcList")) {
+                    typeInference.recordListLiteral(result.get(), typeInference.literalElementTypes(argPirTypes, compiledArgs));
+                }
             }
             return result.get();
         }

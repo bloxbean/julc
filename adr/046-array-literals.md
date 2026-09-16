@@ -288,7 +288,9 @@ One milestone on `feat/116-array-literals`, stacked on ADR-045:
    was decoded; P2: a dying list local was credited as its expanded constant, 309 → 845 bytes):
    the generator records the arguments' source types on the lowered literal, the credit is
    dependency-aware (a dying local measured as the term its binding holds), fixtures
-   `SHARED_LIST_ELEMENT` and `LIST_ELEMENT_ONCE`, the `dataElements` case.
+   `SHARED_LIST_ELEMENT` and `LIST_ELEMENT_ONCE`, the `dataElements` case. Round three (a
+   nested `JulcList.of` element typed `JulcList<PlutusData>` under `var`): list literals
+   record their element types too, read for array-literal elements only.
 
 ## Verification
 
@@ -331,13 +333,15 @@ One milestone on `feat/116-array-literals`, stacked on ADR-045:
   `varLocalOfAnArrayLiteralInfersTheElementType` pins integer, string, boolean, nested-list
   and Data elements, the explicit declaration, a chained access and the empty literal). An
   empty literal under `var` has Data elements (`length()` works, any access fails at runtime
-  as it would for the typed empty array). A nested `JulcList.of(...)` element keeps the list
-  literal's own type under `var`, `JulcList<PlutusData>` (the existing `JulcList.of`
-  convention: its elements come back as Data), so `var rows = JulcArray.of(JulcList.of(1))`
-  yields Data from `rows.get(0).get(0)` where javac would say `BigInteger`; declare
-  `JulcArray<JulcList<BigInteger>>` for decoded elements. Recording source types for
-  `JulcList.of` as for `JulcArray.of` would retype every existing `var xs = JulcList.of(...)`
-  local and is left for its own decision.
+  as it would for the typed empty array). A nested `JulcList.of(...)` element keeps its Java
+  type: the generator records a list literal's source element types at its own lowering and
+  reads them when the literal is an element of an array literal (recursively), so `var rows =
+  JulcArray.of(JulcList.of(1))` is `JulcArray<JulcList<BigInteger>>` and
+  `increment(rows.get(0).get(0))` returns 2 (the review's third round found it returning Data;
+  `nested`, `doublyNested`, `nestedData` and the rejected `mixedNested` pin it). Only the
+  array literal reads those records: a `var` local of a bare `JulcList.of(...)` keeps the
+  existing `JulcList<PlutusData>` typing, since retyping it would change every such local and
+  every lambda over an inline list literal in existing programs, a decision of its own.
 - Conservative gaps: a `ListToArray` that ADR-043's promotion inserts at `PV11_COSTED` runs
   after this pass and is never folded; a decode reached through a `Let` alias of a produced
   element (`PlutusData d = t.get(0); unIData(d)`) is not folded because the decode's argument

@@ -10,6 +10,7 @@ import org.julclang.core.DefaultFun;
 import org.julclang.core.source.SourceLocation;
 import com.github.javaparser.ast.expr.*;
 import java.util.List;
+import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 
@@ -27,6 +28,14 @@ final class TypeInferenceHelper {
     private final TypeMethodRegistry typeMethodRegistry;
     /** Lowered {@code JulcArray.of(...)} terms and the source types of their elements (ADR-046). */
     private final IdentityHashMap<PirTerm, List<PirType>> arrayLiterals = new IdentityHashMap<>();
+    /**
+     * Lowered {@code JulcList.of(...)} terms and the source types of their elements: read only to
+     * type a list literal that is an element of an array literal, so that {@code var rows =
+     * JulcArray.of(JulcList.of(1))} is {@code JulcArray<JulcList<BigInteger>>} as javac types it.
+     * A {@code var} local of a bare list literal keeps its existing {@code JulcList<PlutusData>}
+     * typing (a change of that convention is a decision of its own).
+     */
+    private final IdentityHashMap<PirTerm, List<PirType>> listLiterals = new IdentityHashMap<>();
 
     TypeInferenceHelper(SymbolTable symbolTable, TypeResolver typeResolver,
                         StdlibLookup stdlibLookup, TypeMethodRegistry typeMethodRegistry) {
@@ -254,6 +263,30 @@ final class TypeInferenceHelper {
     /** Record the source element types of a lowered {@code JulcArray.of(...)} term (identity). */
     void recordArrayLiteral(PirTerm term, List<PirType> elementTypes) {
         arrayLiterals.put(term, List.copyOf(elementTypes));
+    }
+
+    /** Record the source element types of a lowered {@code JulcList.of(...)} term (identity). */
+    void recordListLiteral(PirTerm term, List<PirType> elementTypes) {
+        listLiterals.put(term, List.copyOf(elementTypes));
+    }
+
+    /**
+     * The source types of a literal's arguments, each list literal among them typed by its own
+     * recorded elements ({@code JulcList<T>} rather than the {@code JulcList<PlutusData>} the
+     * expression resolves to), recursively, so nested literals keep their Java types.
+     */
+    List<PirType> literalElementTypes(List<PirType> argTypes, List<PirTerm> args) {
+        var types = new ArrayList<PirType>(argTypes.size());
+        for (int i = 0; i < argTypes.size(); i++) {
+            var recorded = i < args.size() ? listLiterals.get(args.get(i)) : null;
+            if (recorded != null && argTypes.get(i) instanceof PirType.ListType) {
+                var distinct = new LinkedHashSet<>(recorded);
+                types.add(new PirType.ListType(distinct.size() == 1 ? distinct.iterator().next() : new PirType.DataType()));
+            } else {
+                types.add(argTypes.get(i));
+            }
+        }
+        return types;
     }
 
     /**
