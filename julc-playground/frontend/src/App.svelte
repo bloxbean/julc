@@ -6,7 +6,9 @@
   import TestPanel from './lib/components/TestPanel.svelte';
   import EvalPanel from './lib/components/EvalPanel.svelte';
   import ExamplePicker from './lib/components/ExamplePicker.svelte';
+  import EngineToggle from './lib/components/EngineToggle.svelte';
   import { isChecking, contractName, purpose, diagnostics } from './lib/stores/editor';
+  import { engine, wasmStatus } from './lib/stores/engine';
 
   let editorRef: Editor;
 
@@ -37,7 +39,9 @@
       {/if}
     </div>
     <div class="toolbar-center">
-      {#if $isChecking}
+      {#if $engine === 'wasm' && $wasmStatus === 'loading'}
+        <span class="status"><span class="spinner"></span> Loading WebAssembly engine...</span>
+      {:else if $isChecking}
         <span class="status"><span class="spinner"></span> Checking...</span>
       {:else if errorCount > 0}
         <span class="status error">{errorCount} error{errorCount > 1 ? 's' : ''}</span>
@@ -48,6 +52,7 @@
       {/if}
     </div>
     <div class="toolbar-right">
+      <EngineToggle />
       <ExamplePicker onSelect={handleExampleSelect} />
     </div>
   </header>

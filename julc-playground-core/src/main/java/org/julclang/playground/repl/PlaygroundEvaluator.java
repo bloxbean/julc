@@ -49,10 +49,21 @@ public final class PlaygroundEvaluator {
     private final Map<String, LibrarySource> libraryPool;
 
     public PlaygroundEvaluator() {
-        this.compiler = new JulcCompiler(StdlibRegistry.defaultRegistry());
-        this.vm = JulcVm.create();
-        this.libraryPool = LibrarySourceResolver.scanClasspathSources(
-                PlaygroundEvaluator.class.getClassLoader());
+        this(new JulcCompiler(StdlibRegistry.defaultRegistry()), JulcVm.create(),
+                LibrarySourceResolver.scanClasspathSources(PlaygroundEvaluator.class.getClassLoader()));
+    }
+
+    /**
+     * Create an evaluator that shares an already configured compiler, VM and stdlib source pool.
+     *
+     * @param compiler    compiler created with the stdlib registry
+     * @param vm          VM used for evaluation
+     * @param libraryPool stdlib sources available for resolution
+     */
+    public PlaygroundEvaluator(JulcCompiler compiler, JulcVm vm, Map<String, LibrarySource> libraryPool) {
+        this.compiler = compiler;
+        this.vm = vm;
+        this.libraryPool = libraryPool;
     }
 
     public record EvalExpressionResult(
