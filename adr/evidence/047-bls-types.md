@@ -278,6 +278,14 @@ in the inner `else`; accepted otherwise).
 
 ## Repository validation
 
+At the review-round-three commit `58d71eb3`: `julc-core` 693, `julc-compiler` 1,623 (with
+`LoopBlockAssignmentTest` 3) plus the gated `pairCaseTest` 67, `julc-stdlib` 411,
+`julc-blueprint` 26, `julc-testkit` 193, the in-repo `julc-examples` 81 and
+`O11BlsMsmBenchmarkTest` 1: 3,095 tests, 0 failures, 0 errors. The two reviewer shapes of
+round three (a nested block assigning a G2 to a G1 accumulator; `undeclared = ...` in a loop)
+compiled and evaluated at `d8e51a2e` and are rejected at `58d71eb3`; the integer nested-block
+loop that summed to zero sums correctly.
+
 At the review-round-two commit `f39ee64c` (on the branch merged with `main` at `291dc62d`,
 after ADR-046's four review rounds): `julc-core` 693, `julc-compiler` 1,620 plus the gated
 `pairCaseTest` 67 (`O11BlsTypesTest` 4 with the 18 fixtures and 50 misuse shapes),
