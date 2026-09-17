@@ -286,6 +286,28 @@ pins the reviewer's reproducer (30 over `[1, 2, 3]`), the same with several accu
 local referenced after its block (`Undefined variable: t`) and the rejected declare-and-break
 shape.
 
+Round five (the reviewer's re-check of `1b441293`): the round-four lowering of a declaring
+block, as a value yielding the accumulator(s), carried only the accumulator(s) out: an update
+to a loop-body local declared before the block (`step = step.add(delta)`) was lost, and a
+valid program summed 0 instead of 1 per element. The block is now lowered the way its
+semantics read: its statements spliced into the body (so every enclosing update and a `break`
+behave as without braces) with its own declarations renamed apart first (so nothing it
+declares can capture or be reached after it); the round-four rejection of a block that both
+declares and breaks is gone with the value lowering. `LoopBlockAssignmentTest` asserts, for
+six shapes (an enclosing local updated, a class constant shadowed, several accumulators, a
+`break` inside a declaring block, nested declaring blocks, several accumulators with a
+`break`), that the block form compiles to the bytes of its hand-flattened form at all four
+levels, evaluates to the pinned value, and compiles with source maps; and pins a `while` loop
+over block locals inside a block, a lambda reading a block local, and a block local that
+shadows the class constant and is itself reassigned. Diagnostics keep the source name
+(`Variable 'p' initializer ...` for a renamed `p'1`).
+
+The same probe run found the `if`-branch analogue on `main` (a worktree at `5d9340ad`, whose
+tree equals `origin/main`): `BigInteger step = ZERO; if (c) { step = step.add(ONE); } acc =
+acc.add(step);` loses the update (0 for 3; if/else 0 for 6; with two accumulators 3 for 33;
+in a `while` loop 0 for 3). It predates this branch and is not changed by it; it is recorded
+in the ADR as open.
+
 The temporary probes (deleted before the commit) also confirmed the retained residual that a
 `switch` expression is typed Data (`g1Compress(switch ...)` is rejected as `received Data,
 but requires G1` whether the arms agree or not) and that a nested conditional and a

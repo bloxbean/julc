@@ -1551,12 +1551,12 @@ public class PirGenerator {
 
     /** {@link #checkNativeBoundary} for a local's initializer against its declared or inferred type. */
     void checkNativeInitializer(String name, Expression initExpr, PirTerm value, PirType declared) {
-        checkNativeBoundary("Variable '" + name + "' initializer", expressionType(initExpr, value), declared, initExpr);
+        checkNativeBoundary("Variable '" + LoopBodyGenerator.sourceName(name) + "' initializer", expressionType(initExpr, value), declared, initExpr);
     }
 
     /** {@link #checkNativeBoundary} for an assignment to a loop accumulator or a loop-body local. */
     void checkNativeAssignment(String name, Expression valueExpr, PirTerm value, PirType target) {
-        checkNativeBoundary("Assignment to '" + name + "'", expressionType(valueExpr, value), target, valueExpr);
+        checkNativeBoundary("Assignment to '" + LoopBodyGenerator.sourceName(name) + "'", expressionType(valueExpr, value), target, valueExpr);
     }
 
     private void rejectNativeDataConstruction(String typeName, PirType type, Node source) {

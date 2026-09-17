@@ -183,18 +183,21 @@ programs importing `BlsLib` are unchanged.
   against the declared type (`Assignment to 'acc' received G2, but requires G1`); a native
   accumulator among several is rejected earlier, at the Data pack of the multi-accumulator
   loop (`Data encoding received G1, but requires Data`), so a point or a native list is
-  carried by a loop of its own. A bare nested block inside a loop body runs its statements
-  in sequence with the rest, and its declarations end with it: a block that declares nothing
-  is spliced into the body; a block that declares a variable is lowered as a term of its own
-  in a symbol-table scope of its own, yielding the accumulator(s) at its end as an `if`
-  branch does, and that value is bound around the statements after the block, so the
-  block's bindings never enclose them and a name the block shadows (a class constant
-  redeclared as a block local) resolves to the outer binding again; a block that both
-  declares a variable and contains `break` is rejected. Before the review the block was
-  delegated to the generic statement generator, which lowered an accumulator assignment to
-  its right-hand side and dropped the update (`for (x : xs) { { acc = acc.add(x); } }` summed
-  to zero: a miscompile of valid Java, fixed for every loop kind and pinned by
-  `LoopBlockAssignmentTest`). An assignment the loop body generators do not bind is
+  carried by a loop of its own. A bare nested block inside a loop body is lowered as its
+  statements spliced into the body with the block's own declarations renamed apart first.
+  The only thing such a block does in Java is end the scope of its declarations; a fresh name
+  (`amount'1`: legal in UPLC, impossible in Java) can neither capture a later reference to a
+  name the block shadowed (a class constant redeclared as a block local) nor be referenced
+  after the block, while every update the block makes to an enclosing variable (an
+  accumulator, a loop-body local) and a `break` inside it behave as if the braces were
+  absent. The lowering is that of the braceless body byte for byte, which
+  `LoopBlockAssignmentTest` asserts at every level for six shapes. Before the review the
+  block was delegated to the generic statement generator, which lowered an accumulator
+  assignment to its right-hand side and dropped the update (`for (x : xs) { { acc =
+  acc.add(x); } }` summed to zero: a miscompile of valid Java); two intermediate lowerings of
+  the review were also wrong (splicing without renaming leaked the block's locals; lowering
+  the block as a value, the way an `if` branch is, carried only the accumulator out) and are
+  recorded in the evidence. An assignment the loop body generators do not bind is
   rejected rather than dropped: in
   expression position (`g2Compress(acc = ...)`), inside a statement delegated to the
   generic generator, or to a name with no declaration in scope (`Assignment to undeclared
@@ -208,9 +211,16 @@ programs importing `BlsLib` are unchanged.
   users), and none for a BLS program that compiles under both APIs (the types erase, no
   library method was added). The loop-body fixes of the review (above) change only programs
   that were miscompiled or accepted with an update dropped: a loop body assigning inside a
-  bare nested block now compiles to the intended sum (a block that declares nothing lowers
-  to the same term as the braceless body), and an assignment in expression position or to
-  an undeclared name is rejected.
+  bare nested block now compiles to the bytes of its braceless body, and an assignment in
+  expression position or to an undeclared name is rejected.
+- **Open, outside this ADR: updates to a loop-body local inside an `if` branch.** Found
+  while fixing the block lowering and reproduced on `main` (tree `5d9340ad`): inside a loop,
+  `BigInteger step = ZERO; if (c) { step = step.add(ONE); } acc = acc.add(step);` compiles
+  and the update to `step` is lost (0 instead of 3 over three elements; for-each and while,
+  one or several accumulators). An `if` branch is lowered as a value that yields the
+  accumulator(s) only. It is a pre-existing miscompile of valid Java, independent of BLS and
+  of this change, and needs a decision of its own (a join point taking the assigned locals,
+  or an explicit rejection); accumulators declared before the loop are not affected.
 - **Generated names in the converters.** The decoding loop of `scalarsFromList`,
   `g1PointsFromCompressed` and `g2PointsFromCompressed` is bound under a fixed name
   (`go__scalars`, `go__g1Points`, `go__g2Points`); the caller's list is applied to the loop

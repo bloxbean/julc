@@ -285,13 +285,12 @@ native comparison to initializers, same-class helper arguments, `return`
 expressions against the declared return type (a lambda's own `return` is
 exempt), the `else` branch of a conditional against its `then` branch, and,
 through `LoopBodyGenerator`, declarations inside a loop body and assignments to
-accumulators and loop-body locals (a bare nested block that declares nothing is
-spliced into the loop body, one that declares a variable is lowered in a scope
-of its own with its accumulator value bound after it, as an `if` branch is; an
-assignment the loop body generators do not bind, in expression position or to
-an undeclared name, is rejected by the expression generator rather than lowered
-to its right-hand side), so no route inside a class launders a point into
-`byte[]` or Data. The native lists for `bls12_381_G1_multiScalarMul` and
+accumulators and loop-body locals (a bare nested block is spliced into the loop
+body with its own declarations renamed apart, which is the lowering of the
+braceless body byte for byte; an assignment the loop body generators do not
+bind, in expression position or to an undeclared name, is rejected by the
+expression generator rather than lowered to its right-hand side), so no route
+inside a class launders a point into `byte[]` or Data. The native lists for `bls12_381_G1_multiScalarMul` and
 its G2 form come only from the `Builtins` intrinsics `scalars`/`g1Points`/
 `g2Points` (a list constant when every element is a constant, else `MkCons`
 over the empty native list constant, bound once so inference reads the list
