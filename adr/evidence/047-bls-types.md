@@ -258,6 +258,17 @@ in the inner `else`; accepted otherwise).
 
 ## Repository validation
 
+At the review-round-two commit `f39ee64c` (on the branch merged with `main` at `291dc62d`,
+after ADR-046's four review rounds): `julc-core` 693, `julc-compiler` 1,620 plus the gated
+`pairCaseTest` 67 (`O11BlsTypesTest` 4 with the 18 fixtures and 50 misuse shapes),
+`julc-stdlib` 411, `julc-blueprint` 26 and `O11BlsMsmBenchmarkTest` 1: 0 failures, 0 errors.
+The three reviewer reproducers (`converterMustNotCaptureSourceName`,
+`conditionalMustNotHideWrongGroup`, `loopLocalMustNotHideWrongGroup`) failed at `291dc62d`
+and pass at `f39ee64c`; the MSM crossover is unchanged (bytes from three points, CPU from
+seven). The full build, the additivity probe and the external `julc-examples` run below were
+not repeated for this round: no lowering outside the three converters changed, and the
+converter fixtures keep their sizes and budgets.
+
 At the final commit `5de83694` (implementation `3a45a967`, review fixes `2583e42b`, documentation
 `840589fa`/`5de83694`); the same gate at `840589fa`, before the review fixes, gave identical
 results:
