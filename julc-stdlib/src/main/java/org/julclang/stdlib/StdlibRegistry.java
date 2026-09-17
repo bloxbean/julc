@@ -372,6 +372,11 @@ public final class StdlibRegistry implements StdlibLookup {
     /**
      * A native list built from a Data list by decoding each element in order:
      * {@code go xs = if null xs then [] else mkCons (decode (head xs)) (go (tail xs))}.
+     * <p>
+     * The caller's list expression is applied <em>outside</em> the {@code LetRec} that binds
+     * {@code go}: the generated names are not hygienic, and a user variable of the same name
+     * referenced by the argument (a parameter called {@code go__scalars}) must resolve to the
+     * user's binding, not to the loop (PR #150 review).
      */
     private static PirTerm nativeListFromData(String name, PirTerm dataList, DefaultUni elemUni, PirType listType,
                                               java.util.function.UnaryOperator<PirTerm> decode) {
@@ -384,9 +389,8 @@ public final class StdlibRegistry implements StdlibLookup {
         var rest = new PirTerm.App(goVar, builtinApp1(DefaultFun.TailList, lstVar));
         var body = new PirTerm.IfThenElse(builtinApp1(DefaultFun.NullList, lstVar), empty,
                 builtinApp2(DefaultFun.MkCons, head, rest));
-        var loop = new PirTerm.LetRec(List.of(new PirTerm.Binding(go, new PirTerm.Lam(lst, dataListType, body))),
-                new PirTerm.App(goVar, dataList));
-        return new PirTerm.Let(bound, loop, new PirTerm.Var(bound, listType));
+        var loop = new PirTerm.LetRec(List.of(new PirTerm.Binding(go, new PirTerm.Lam(lst, dataListType, body))), goVar);
+        return new PirTerm.Let(bound, new PirTerm.App(loop, dataList), new PirTerm.Var(bound, listType));
     }
 
     private static void rejectNativeDataArgument(String operation, PirType actual) {

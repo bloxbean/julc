@@ -171,8 +171,19 @@ programs importing `BlsLib` are unchanged.
   ones compiled but could not evaluate successfully (the builtins reject Data lists).
 - **Isolation coverage and residuals.** Compile-time isolation is enforced at `Builtins`
   and library call sites, variable initializers, record construction, containers, `==`, the
-  boundaries, and now same-class helper arguments and `return` expressions. Inherited from
-  ADR-032 O7 and unchanged here: a cast (`(JulcG1) data`) is trusted and fails in the CEK;
+  boundaries, same-class helper arguments and `return` expressions, and (PR #150 review) the
+  branches of a conditional expression, loop-local declarations and loop assignments. One
+  check, `PirGenerator.checkNativeBoundary`, serves every site: a native type on either side
+  of a boundary requires the two types to be equal. A conditional is typed by its `then`
+  branch, so its `else` branch is checked against that type (`Conditional else branch
+  received G2, but requires G1`), in both orders and for native/Data, native/bytes,
+  scalar-list/point-list and native-list/Data-list pairs; a declaration inside a loop body
+  (plain, nested or break-aware) is checked as an ordinary initializer; an assignment to an
+  accumulator (the loop's only one, or before a `break`) or to a loop-body local is checked
+  against the declared type (`Assignment to 'acc' received G2, but requires G1`); a native
+  accumulator among several is rejected earlier, at the Data pack of the multi-accumulator
+  loop (`Data encoding received G1, but requires Data`), so a point or a native list is
+  carried by a loop of its own. Inherited from ADR-032 O7 and unchanged here: a cast (`(JulcG1) data`) is trusted and fails in the CEK;
   a `switch` expression's inferred type is Data, so a native-typed local, argument or return
   fed by one is rejected as a mismatch (spell the switch as a helper method); an instance call
   on a native receiver (`p.equals(q)`) fails as an unbound variable rather than with a native
@@ -181,6 +192,14 @@ programs importing `BlsLib` are unchanged.
 - **Hash impact.** None for any program in the censused corpus or the golden suites (no BLS
   users), and none for a BLS program that compiles under both APIs (the types erase, no
   library method was added).
+- **Generated names in the converters.** The decoding loop of `scalarsFromList`,
+  `g1PointsFromCompressed` and `g2PointsFromCompressed` is bound under a fixed name
+  (`go__scalars`, `go__g1Points`, `go__g2Points`); the caller's list is applied to the loop
+  *outside* that binding, so a user variable of the same name referenced by the argument
+  resolves to the user's binding (PR #150 review: the first shape captured it, and a parameter
+  named `go__scalars` made the converter receive the loop itself). The `NAME_CAPTURE` fixture
+  pins all three converters with same-named parameters, locals and free variables in the
+  argument expression.
 - **Boundary.** A native BLS value cannot cross `compileMethod`, a validator entrypoint, a
   datum, a redeemer, a record or a Data list (`JULC0042`/`JULC0041`); compress to `byte[]`
   and uncompress on the other side, or send the compressed points in a `JulcList<byte[]>`
@@ -235,7 +254,7 @@ One milestone on `feat/117-bls-types`, stacked on ADR-046:
    all three VMs); G2; pairing; the diagnostics for every misuse shape; census of the corpus.
 2. The markers, the PIR types, the resolver, inference, the boundary and schema exclusions.
 3. The retyped `Builtins`/`BlsLib`, the producers, the signature table in the registry.
-4. Fixture matrix (16 fixtures, 31 inputs, 4 levels, 3 VMs), the diagnostics test, the
+4. Fixture matrix (18 fixtures, 34 inputs, 4 levels, 3 VMs), the diagnostics test, the
    producer-shape test, the requirements test, the crossover benchmark.
 5. Two independent agent reviews (element typing of `scalars` and the converters, the
    same-class helper and return routes, a `false`-valued fixture, the validator boundary,

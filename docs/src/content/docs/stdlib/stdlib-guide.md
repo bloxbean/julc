@@ -1283,7 +1283,9 @@ native lists `JulcScalars`, `JulcG1Points` and `JulcG2Points` (all in
 and not `PlutusData`: the compiler rejects a compressed byte string where a
 point is required, a G2 point where a G1 point is required, a `JulcList` where
 a native list is required, and a point in a datum, redeemer, record, list or
-`==` (`JULC0041`), or at a validator/`compileMethod` boundary (`JULC0042`).
+`==` (`JULC0041`), or at a validator/`compileMethod` boundary (`JULC0042`); the
+check applies at initializers, helper arguments, `return`, both branches of a
+conditional, and declarations and assignments inside loops.
 Only `g1Compress`/`g2Compress` turn a point into bytes and only
 `g1Uncompress`/`g2Uncompress` turn bytes back into a point.
 

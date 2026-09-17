@@ -280,16 +280,21 @@ and `validateNativeValueArguments` rejects anything else at compile time with
 the expected type in the message (`requires G1`, `requires
 NativeList[Integer]`); the variadic producers check every element
 (`requires Integer` for `scalars`), the converters check the Data list's
-static element type, and `PirGenerator` applies the same native comparison to
-same-class helper arguments and to `return` expressions against the declared
-return type (a lambda's own `return` is exempt), so no route inside a class
-launders a point into `byte[]` or Data. The native lists for `bls12_381_G1_multiScalarMul` and
+static element type, and `PirGenerator.checkNativeBoundary` applies the same
+native comparison to initializers, same-class helper arguments, `return`
+expressions against the declared return type (a lambda's own `return` is
+exempt), the `else` branch of a conditional against its `then` branch, and,
+through `LoopBodyGenerator`, declarations inside a loop body and assignments to
+accumulators and loop-body locals, so no route inside a class launders a point
+into `byte[]` or Data. The native lists for `bls12_381_G1_multiScalarMul` and
 its G2 form come only from the `Builtins` intrinsics `scalars`/`g1Points`/
 `g2Points` (a list constant when every element is a constant, else `MkCons`
 over the empty native list constant, bound once so inference reads the list
 type off the `Var`) and `scalarsFromList`/`g1PointsFromCompressed`/
-`g2PointsFromCompressed` (a `LetRec` over the Data list decoding each element
-with `UnIData`, or `UnBData` then `uncompress`); no Data encoder can appear
+`g2PointsFromCompressed` (a `LetRec` decoding loop applied to the Data list
+outside the loop's own binding, so a user variable named like the loop is never
+captured, decoding each element with `UnIData`, or `UnBData` then
+`uncompress`); no Data encoder can appear
 between an element and its list. MSM semantics are the VM's: all scalars
 validated first, zip to the shorter list, empty sum is the identity. No
 fusion of `scalarMul`/`add` chains exists (the crossover is seven points on

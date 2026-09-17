@@ -400,13 +400,7 @@ public class PirGenerator {
                 // ADR-047: a native value cannot leave through a differently typed return, nor a
                 // byte string or Data through a natively typed one (the O7 rule for initializers).
                 var returnExpr = rs.getExpression().get();
-                var returnedType = resolveExpressionType(returnExpr);
-                if (returnedType instanceof PirType.DataType) returnedType = inferPirType(result);
-                if ((typeResolver.containsNativeOpaque(currentReturnType) || typeResolver.containsNativeOpaque(returnedType))
-                        && !currentReturnType.equals(returnedType)) {
-                    throw CompilerTypeDiagnostics.nativeTypeMismatch(
-                            "Return value", returnedType, currentReturnType, sourceLocation(returnExpr));
-                }
+                checkNativeBoundary("Return value", expressionType(returnExpr, result), currentReturnType, returnExpr);
             }
             recordPosition(result, rs);
             return applyBooleanReturnGuard(result, rs);
@@ -423,19 +417,7 @@ public class PirGenerator {
                                 + ". Hint: On-chain variables need initial values, e.g. var " + name + " = BigInteger.ZERO;"));
                 var value = generateExpression(initExpr);
                 var pirType = typeInference.inferType(decl.getType(), value, initExpr, sourceLocation(initExpr));
-                var initializerType = resolveExpressionType(initExpr);
-                if (initializerType instanceof PirType.DataType) {
-                    initializerType = inferPirType(value);
-                }
-                if ((typeResolver.containsNativeOpaque(pirType)
-                        || typeResolver.containsNativeOpaque(initializerType))
-                        && !pirType.equals(initializerType)) {
-                    throw CompilerTypeDiagnostics.nativeTypeMismatch(
-                            "Variable '" + name + "' initializer",
-                            initializerType,
-                            pirType,
-                            sourceLocation(initExpr));
-                }
+                checkNativeInitializer(name, initExpr, value, pirType);
                 symbolTable.define(name, pirType);
                 var body = generateStatements(stmts, index + 1, cont);
                 return new PirTerm.Let(name, value, body);
@@ -826,10 +808,15 @@ public class PirGenerator {
         }
         if (expr instanceof ConditionalExpr ce) {
             // Ternary: cond ? then : else
-            var result = new PirTerm.IfThenElse(
-                    generateExpression(ce.getCondition()),
-                    generateExpression(ce.getThenExpr()),
-                    generateExpression(ce.getElseExpr()));
+            var condition = generateExpression(ce.getCondition());
+            var thenTerm = generateExpression(ce.getThenExpr());
+            var elseTerm = generateExpression(ce.getElseExpr());
+            // ADR-047: the conditional is typed by its then branch, so where a native type is in
+            // play the else branch must carry the same type; otherwise a G2 point reaches a G1
+            // slot through the branch inference never looked at (PR #150 review).
+            checkNativeBoundary("Conditional else branch", expressionType(ce.getElseExpr(), elseTerm),
+                    expressionType(ce.getThenExpr(), thenTerm), ce.getElseExpr());
+            var result = new PirTerm.IfThenElse(condition, thenTerm, elseTerm);
             recordPosition(result, ce);
             return result;
         }
@@ -1273,14 +1260,7 @@ public class PirGenerator {
                 if (i < paramTypes.size()) {
                     // ADR-047: a native value cannot enter a helper through a differently typed
                     // parameter, nor a byte string, Data or a Data list through a native one.
-                    var paramType = paramTypes.get(i);
-                    var argType = resolveExpressionType(arg);
-                    if (argType instanceof PirType.DataType) argType = inferPirType(argPir);
-                    if ((typeResolver.containsNativeOpaque(paramType) || typeResolver.containsNativeOpaque(argType))
-                            && !paramType.equals(argType)) {
-                        throw CompilerTypeDiagnostics.nativeTypeMismatch(
-                                methodName + " argument " + (i + 1), argType, paramType, sourceLocation(arg));
-                    }
+                    checkNativeBoundary(methodName + " argument " + (i + 1), expressionType(arg, argPir), paramTypes.get(i), arg);
                 }
                 fn = new PirTerm.App(fn, argPir);
             }
@@ -1547,6 +1527,38 @@ public class PirGenerator {
         throw enrichedError("Cannot construct non-record type: " + typeName,
                 "Only record types can be constructed on-chain. Define " + typeName + " as a record.",
                 oce);
+    }
+
+    /**
+     * The type an expression carries at a boundary: the Java type where the AST names one,
+     * else the type of the lowered term (a producer's native list, a {@code var} local).
+     */
+    PirType expressionType(Expression expr, PirTerm lowered) {
+        var type = resolveExpressionType(expr);
+        return type instanceof PirType.DataType ? inferPirType(lowered) : type;
+    }
+
+    /**
+     * ADR-047 (the ADR-032 O7 rule): a native value never crosses a differently typed
+     * boundary, and a byte string, Data or a Data list never crosses a natively typed one.
+     * Every boundary the generator lowers goes through this one check: initializers, returns,
+     * helper arguments, conditional branches, loop-local declarations and loop assignments.
+     */
+    void checkNativeBoundary(String what, PirType actual, PirType expected, Node source) {
+        if ((typeResolver.containsNativeOpaque(expected) || typeResolver.containsNativeOpaque(actual))
+                && !expected.equals(actual)) {
+            throw CompilerTypeDiagnostics.nativeTypeMismatch(what, actual, expected, sourceLocation(source));
+        }
+    }
+
+    /** {@link #checkNativeBoundary} for a local's initializer against its declared or inferred type. */
+    void checkNativeInitializer(String name, Expression initExpr, PirTerm value, PirType declared) {
+        checkNativeBoundary("Variable '" + name + "' initializer", expressionType(initExpr, value), declared, initExpr);
+    }
+
+    /** {@link #checkNativeBoundary} for an assignment to a loop accumulator or a loop-body local. */
+    void checkNativeAssignment(String name, Expression valueExpr, PirTerm value, PirType target) {
+        checkNativeBoundary("Assignment to '" + name + "'", expressionType(valueExpr, value), target, valueExpr);
     }
 
     private void rejectNativeDataConstruction(String typeName, PirType type, Node source) {
@@ -2414,7 +2426,7 @@ public class PirGenerator {
 
     PirType inferType(com.github.javaparser.ast.type.Type declType, PirTerm initValue,
                        Expression initExpr) {
-        return typeInference.inferType(declType, initValue, initExpr);
+        return typeInference.inferType(declType, initValue, initExpr, sourceLocation(initExpr));
     }
 
     private PirType inferPirType(PirTerm term) {

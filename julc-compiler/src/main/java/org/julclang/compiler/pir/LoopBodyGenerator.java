@@ -125,13 +125,13 @@ final class LoopBodyGenerator {
             if (es.getExpression() instanceof AssignExpr ae
                     && ae.getTarget() instanceof NameExpr ne
                     && ne.getNameAsString().equals(accName)) {
-                var value = gen.generateExpression(ae.getValue());
+                var value = assigned(ae, accType);
                 var rest = generateSingleAccStatements(stmts, index + 1, accName, accType);
                 return new PirTerm.Let(accName, value, rest);
             }
             if (es.getExpression() instanceof AssignExpr ae
                     && ae.getTarget() instanceof NameExpr ne) {
-                var value = gen.generateExpression(ae.getValue());
+                var value = assigned(ae, symbolTable.lookup(ne.getNameAsString()).orElse(null));
                 var rest = generateSingleAccStatements(stmts, index + 1, accName, accType);
                 return new PirTerm.Let(ne.getNameAsString(), value, rest);
             }
@@ -197,7 +197,7 @@ final class LoopBodyGenerator {
             if (es.getExpression() instanceof AssignExpr ae
                     && ae.getTarget() instanceof NameExpr ne
                     && ne.getNameAsString().equals(accName)) {
-                var value = gen.generateExpression(ae.getValue());
+                var value = assigned(ae, accType);
                 if (index + 1 < stmts.size() && stmts.get(index + 1) instanceof BreakStmt) {
                     return value;
                 }
@@ -288,13 +288,13 @@ final class LoopBodyGenerator {
             if (es.getExpression() instanceof AssignExpr ae
                     && ae.getTarget() instanceof NameExpr ne
                     && accNames.contains(ne.getNameAsString())) {
-                var value = gen.generateExpression(ae.getValue());
+                var value = assigned(ae, accTypes.get(accNames.indexOf(ne.getNameAsString())));
                 var rest = generateMultiAccStatements(stmts, index + 1, accNames, accTypes);
                 return new PirTerm.Let(ne.getNameAsString(), value, rest);
             }
             if (es.getExpression() instanceof AssignExpr ae
                     && ae.getTarget() instanceof NameExpr ne) {
-                var value = gen.generateExpression(ae.getValue());
+                var value = assigned(ae, symbolTable.lookup(ne.getNameAsString()).orElse(null));
                 var rest = generateMultiAccStatements(stmts, index + 1, accNames, accTypes);
                 return new PirTerm.Let(ne.getNameAsString(), value, rest);
             }
@@ -356,7 +356,7 @@ final class LoopBodyGenerator {
             if (es.getExpression() instanceof AssignExpr ae
                     && ae.getTarget() instanceof NameExpr ne
                     && accNames.contains(ne.getNameAsString())) {
-                var value = gen.generateExpression(ae.getValue());
+                var value = assigned(ae, accTypes.get(accNames.indexOf(ne.getNameAsString())));
                 if (index + 1 < stmts.size() && stmts.get(index + 1) instanceof BreakStmt) {
                     var rest = packAccumulators(accNames, accTypes);
                     return new PirTerm.Let(ne.getNameAsString(), value, rest);
@@ -366,7 +366,7 @@ final class LoopBodyGenerator {
             }
             if (es.getExpression() instanceof AssignExpr ae
                     && ae.getTarget() instanceof NameExpr ne) {
-                var value = gen.generateExpression(ae.getValue());
+                var value = assigned(ae, symbolTable.lookup(ne.getNameAsString()).orElse(null));
                 var rest = generateMultiAccBreakAwareStmts(stmts, index + 1, accNames, accTypes, continueFn);
                 return new PirTerm.Let(ne.getNameAsString(), value, rest);
             }
@@ -503,6 +503,18 @@ final class LoopBodyGenerator {
 
     // ===== Shared helpers =====
 
+    /**
+     * Lower an assignment's value and check it against the target's type: an accumulator or a
+     * loop-body local keeps the type it was declared with (ADR-047 isolation, PR #150 review).
+     */
+    private PirTerm assigned(AssignExpr ae, PirType target) {
+        var value = gen.generateExpression(ae.getValue());
+        if (target != null) {
+            gen.checkNativeAssignment(((NameExpr) ae.getTarget()).getNameAsString(), ae.getValue(), value, target);
+        }
+        return value;
+    }
+
     /** Compile a variable declaration and continue with the provided continuation. */
     private PirTerm compileVarDeclThenContinue(VariableDeclarationExpr vde,
                                                 List<Statement> stmts, int index,
@@ -514,6 +526,7 @@ final class LoopBodyGenerator {
                         + ". Hint: On-chain variables need initial values, e.g. var " + name + " = BigInteger.ZERO;"));
         var value = gen.generateExpression(initExpr);
         var pirType = gen.inferType(decl.getType(), value, initExpr);
+        gen.checkNativeInitializer(name, initExpr, value, pirType);
         symbolTable.define(name, pirType);
         var rest = continuation.apply(stmts, index + 1);
         return new PirTerm.Let(name, value, rest);

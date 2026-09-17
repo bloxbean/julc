@@ -34,7 +34,11 @@ of the wrong element type in a converter, is `JULC0041`.
 **Migration.** A local, helper parameter or return type that named a BLS value
 as `byte[]` no longer compiles (`JULC0041`, at the initializer, the helper
 call or the `return`): declare it as `JulcG1`/`JulcG2`/`JulcMlResult` or use
-`var`. Code that used `var` for BLS values compiles unchanged and keeps its
+`var`. The same check covers the two branches of a conditional (`b ? p : q`
+with a G2 `q` where a G1 is required), declarations inside a loop body and
+assignments to a loop accumulator or a loop-body local; a native accumulator
+must be its loop's only accumulator (a multi-accumulator loop packs its
+accumulators as Data). Code that used `var` for BLS values compiles unchanged and keeps its
 bytes; the compressed encodings are still `byte[]`. The two
 `bls12_381_*_multiScalarMul` signatures changed from `PlutusData` to the typed
 lists (the old ones compiled but could not evaluate successfully).

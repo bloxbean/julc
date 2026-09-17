@@ -23,7 +23,7 @@ BLS builtin.
 
 ## Fixture matrix (`O11BlsTypesTest.typedBlsProgramsAgreeWithTheirManualChainsOnEveryBackend`)
 
-16 fixtures × 4 levels × 3 VMs, 31 inputs. Every successful path returns the pinned boolean
+18 fixtures × 4 levels × 3 VMs, 34 inputs. Every successful path returns the pinned boolean
 (`true` where the typed program agrees with its manual chain, `false` for the disagreeing
 pair of `NOT_EQUAL`); every failing path fails on all three VMs with the pinned text on Java
 and Truffle. Budgets at `PV11_SAFE`, Java VM:
@@ -61,6 +61,9 @@ and Truffle. Budgets at `PV11_SAFE`, Java VM:
 | EMPTY_CONVERTERS | both-empty | 801,083,594 | 13,866 | true |
 | NEGATIVE_LITERAL | run | 477,463,339 | 4,937 | true |
 | NESTED_PRODUCERS | three | 1,253,270,040 | 21,603 | true |
+| BRANCHES | first | 1,008,865,828 | 56,176 | true |
+| BRANCHES | second | 1,036,640,861 | 67,793 | true |
+| NAME_CAPTURE | three | 1,627,590,416 | 30,733 | true |
 
 At `PV11_COSTED` the two chain-side failures `FROM_LISTS/one-scalar` and
 `POINTS_FROM_DATA/empty` fail as `IndexArray: index 1 out of bounds for array of size 1` and
@@ -73,21 +76,29 @@ Artifacts at `PV11_SAFE` (bytes, script hash prefix):
 | Fixture | Bytes | Hash |
 |---|---:|---|
 | MSM_VS_CHAIN | 76 | `4abd25cfa03c3bc0…` |
-| FROM_LISTS | 287 | `b9e33218b5ef97eb…` |
-| POINTS_FROM_DATA | 192 | `69edbff0a3ceada4…` |
+| FROM_LISTS | 287 | `4990aa7afcbfc219…` |
+| POINTS_FROM_DATA | 192 | `9e05dbd628e91cff…` |
 | EMPTY_AND_UNEVEN | 116 | `be12ab2626f9e739…` |
 | SCALAR_BOUND | 62 | `97a22b611176fec2…` |
 | SCALAR_BEYOND_ZIP | 63 | `9ac2c9abc92dcd40…` |
-| G2_MSM | 135 | `3d5efd0a100c8a8b…` |
+| G2_MSM | 135 | `5ec465197e8ebafb…` |
 | PAIRING | 84 | `93cbaa387b450864…` |
 | HELPERS | 52 | `7c3baf78717df138…` |
 | ROUND_TRIP | 59 | `baeb454ca380944b…` |
 | TRACE_ORDER | 101 | `961db7bacf1dba33…` |
 | VAR_LOCALS | 42 | `24bffdb3f2696e80…` |
 | NOT_EQUAL | 56 | `fca6f0020e970d4c…` |
-| EMPTY_CONVERTERS | 182 | `2c92f970d549cd84…` |
+| EMPTY_CONVERTERS | 182 | `3a5a446d62766a8c…` |
 | NEGATIVE_LITERAL | 52 | `a38724ab836cc109…` |
-| NESTED_PRODUCERS | 199 | `153565db3fed18cd…` |
+| NESTED_PRODUCERS | 199 | `62402cd2884bc5f6…` |
+| BRANCHES | 516 | `feb4bb460b2befef…` |
+| NAME_CAPTURE | 296 | `d89f15933208c256…` |
+
+The PR #150 review fix to the converters (the caller's list applied outside the decoding
+loop's binding) moved the hashes of the five fixtures that use a converter (`FROM_LISTS`,
+`POINTS_FROM_DATA`, `G2_MSM`, `EMPTY_CONVERTERS`, `NESTED_PRODUCERS`): the argument now sits
+under one lambda fewer, so its de Bruijn indices differ. Their sizes and every budget above
+are unchanged from the `5de83694` run.
 
 ## Diagnostics (`misuseIsRejectedAtCompileTimeWithTheNativeIsolationCodes`)
 
@@ -121,6 +132,25 @@ Artifacts at `PV11_SAFE` (bytes, script hash prefix):
 | a `JulcList<BigInteger>` into a helper's `JulcScalars` parameter | JULC0041 | `received List[Integer], but requires NativeList[Integer]` |
 | `static byte[] m(...) { return hashToGroup(...); }` | JULC0041 | `Return value` |
 | `static JulcG1 h(byte[] b) { return b; }` | JULC0041 | `requires G1` |
+| `b ? p : q` into `g1Compress` (G2 in the else branch; PR #150 review) | JULC0041 | `Conditional else branch received G2, but requires G1` |
+| `b ? q : p` into `g1Compress` | JULC0041 | `Conditional else branch received G1, but requires G2` |
+| `b ? p : d` with `PlutusData d` | JULC0041 | `Conditional else branch received Data, but requires G1` |
+| `b ? d : p` | JULC0041 | `Conditional else branch received G1, but requires Data` |
+| `b ? p : dst` with `byte[] dst` | JULC0041 | `Conditional else branch received ByteString, but requires G1` |
+| `b ? s : ps` as the scalars of MSM | JULC0041 | `Conditional else branch received NativeList[G1], but requires NativeList[Integer]` |
+| `b ? ps : s` as the points of MSM | JULC0041 | `Conditional else branch received NativeList[Integer], but requires NativeList[G1]` |
+| `b ? s : xs` with `JulcList<BigInteger> xs` | JULC0041 | `Conditional else branch received List[Integer], but requires NativeList[Integer]` |
+| `JulcG1 r = b ? p : q` | JULC0041 | `Conditional else branch received G2, but requires G1` |
+| `JulcG1 p = g2HashToGroup(...)` in a loop body (PR #150 review) | JULC0041 | `Variable 'p' initializer received G2, but requires G1` |
+| the same in a nested loop | JULC0041 | `Variable 'p' initializer received G2, but requires G1` |
+| the same in a break-aware loop | JULC0041 | `Variable 'p' initializer received G2, but requires G1` |
+| `JulcG1 p = dst` in a loop body | JULC0041 | `Variable 'p' initializer received ByteString, but requires G1` |
+| `acc = g2HashToGroup(...)` for a `JulcG1` accumulator (PR #150 review) | JULC0041 | `Assignment to 'acc' received G2, but requires G1` |
+| the same with a second accumulator (rejected at the Data pack of the multi-accumulator loop) | JULC0041 | `Data encoding received G1, but requires Data` |
+| the same before a `break` | JULC0041 | `Assignment to 'acc' received G2, but requires G1` |
+| the same with a second accumulator, before a `break` (the pack again) | JULC0041 | `Data encoding received G1, but requires Data` |
+| `p = g2HashToGroup(...)` for a loop-body `JulcG1 p` | JULC0041 | `Assignment to 'p' received G2, but requires G1` |
+| `acc = dst` for a `JulcG1` accumulator | JULC0041 | `Assignment to 'acc' received ByteString, but requires G1` |
 
 A `@SpendingValidator` entrypoint with a `JulcG1` datum and a `JulcScalars` redeemer is
 `JULC0042`. A native-typed method whose body uses a block lambda with its own `return`
@@ -196,6 +226,35 @@ with the new fixtures, the old MSM signatures compiled but could not evaluate, t
 conformance ids). Recorded residuals: casts, `switch` expressions typed as Data, instance
 calls on native receivers, the `requires Data` wording for non-native slots (all inherited
 from O7).
+
+## Review fixes (PR #150)
+
+Three findings, each reproduced on Java at every level before the fix and pinned after it:
+
+1. The converters bound the caller's list inside the `LetRec` of their decoding loop, so a
+   user variable named like the loop (`go__scalars`) was captured: `scalarsFromList(go__scalars)`
+   with a parameter of that name failed with `NullList: expected list, got VLam`. The list
+   is now applied to the loop outside the binding; `NAME_CAPTURE` pins all three converters
+   with same-named parameters, locals and free variables in the argument expression.
+2. A conditional was typed by its `then` branch alone, so `g1Compress(b ? p : q)` with a G2
+   `q` compiled and failed in the CEK on the `else` path. The generator now checks the `else`
+   branch against the `then` type wherever a native type is involved (nine shapes in the
+   diagnostics table: both orders, native/Data, native/bytes, scalar list/point list, native
+   list/Data list, and a conditional as an initializer); `BRANCHES` evaluates agreeing
+   branches on both paths.
+3. A declaration inside a loop body bypassed the initializer check, and a loop assignment had
+   none: `JulcG1 p = g2HashToGroup(...)` in a `for` body and `acc = g2HashToGroup(...)` for a
+   `JulcG1` accumulator compiled. Both now go through the one boundary check the other sites
+   use (`PirGenerator.checkNativeBoundary`); plain, nested, break-aware and no-accumulator
+   loops and single accumulators, before a `break` and loop-body locals are pinned. A native
+   accumulator among several was already rejected at the multi-accumulator loop's Data pack
+   and stays so.
+
+The temporary probes (deleted before the commit) also confirmed the retained residual that a
+`switch` expression is typed Data (`g1Compress(switch ...)` is rejected as `received Data,
+but requires G1` whether the arms agree or not) and that a nested conditional and a
+conditional whose branches are both `byte[]` behave as intended (rejected where a G2 hides
+in the inner `else`; accepted otherwise).
 
 ## Repository validation
 

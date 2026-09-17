@@ -229,6 +229,66 @@ final class O11BlsTypesFixtures {
                     return BlsLib.g1Equal(outer, BlsLib.g1Add(BlsLib.g1ScalarMul(BigInteger.TWO, p), again));
                 }""");
 
+    /**
+     * 17: the boundaries the isolation check covers, with agreeing types: both branches of a
+     * conditional (a point, a native list), a loop-local declaration, a loop-body local
+     * reassigned, an accumulator reassigned in a loop and before a {@code break} (PR #150
+     * review). A native accumulator is always the loop's only one: a multi-accumulator loop
+     * packs its accumulators as Data, which rejects a point at the pack.
+     */
+    static final String BRANCHES = method("""
+                static boolean branches(JulcList<BigInteger> xs, byte[] dst, boolean flag) {
+                    JulcG1 p = Builtins.bls12_381_G1_hashToGroup(new byte[]{1}, dst);
+                    JulcG1 q = Builtins.bls12_381_G1_hashToGroup(new byte[]{2}, dst);
+                    JulcG1 chosen = flag ? p : q;
+                    JulcScalars s = flag ? Builtins.scalars(BigInteger.TWO) : Builtins.scalarsFromList(xs);
+                    BigInteger k = flag ? BigInteger.TWO : xs.get(0);
+                    JulcG1 acc = p;
+                    for (var x : xs) {
+                        JulcG1 step = BlsLib.g1ScalarMul(x, chosen);
+                        step = BlsLib.g1Add(step, step);
+                        acc = BlsLib.g1Add(acc, step);
+                    }
+                    BigInteger total = BigInteger.ZERO;
+                    for (var x : xs) {
+                        total = total.add(x);
+                    }
+                    JulcG1 sum = p;
+                    for (var x : xs) {
+                        sum = BlsLib.g1Add(sum, BlsLib.g1ScalarMul(x, chosen));
+                    }
+                    JulcG1 first = p;
+                    for (var x : xs) {
+                        if (x.equals(BigInteger.ONE)) {
+                            first = BlsLib.g1Add(first, chosen);
+                            break;
+                        }
+                    }
+                    JulcG1 msm = BlsLib.g1MultiScalarMul(s, Builtins.g1Points(chosen));
+                    return BlsLib.g1Equal(acc, BlsLib.g1Add(p, BlsLib.g1ScalarMul(total.multiply(BigInteger.TWO), chosen)))
+                            && BlsLib.g1Equal(sum, BlsLib.g1Add(p, BlsLib.g1ScalarMul(total, chosen)))
+                            && BlsLib.g1Equal(first, BlsLib.g1Add(p, chosen))
+                            && BlsLib.g1Equal(msm, BlsLib.g1ScalarMul(k, chosen));
+                }""");
+
+    /**
+     * 18: the converters' generated names ({@code go__scalars}, {@code lst__g1Points},
+     * {@code __native_scalars}) are not hygienic; a user binding of the same name, in the
+     * argument expression or around the call, must resolve to the user's value (PR #150 review).
+     */
+    static final String NAME_CAPTURE = method("""
+                static boolean nameCapture(JulcList<BigInteger> go__scalars, byte[] dst) {
+                    JulcG1 go__g1Points = Builtins.bls12_381_G1_hashToGroup(new byte[]{1}, dst);
+                    JulcG2 go__g2Points = Builtins.bls12_381_G2_hashToGroup(new byte[]{2}, dst);
+                    JulcList<byte[]> lst__g1Points = JulcList.of(BlsLib.g1Compress(go__g1Points));
+                    BigInteger __native_scalars = go__scalars.get(0);
+                    JulcScalars s = Builtins.scalarsFromList(go__scalars);
+                    JulcG1Points ps = Builtins.g1PointsFromCompressed(lst__g1Points);
+                    JulcG2Points qs = Builtins.g2PointsFromCompressed(JulcList.of(BlsLib.g2Compress(go__g2Points)));
+                    return BlsLib.g1Equal(BlsLib.g1MultiScalarMul(s, ps), BlsLib.g1ScalarMul(__native_scalars, go__g1Points))
+                            && BlsLib.g2Equal(BlsLib.g2MultiScalarMul(s, qs), BlsLib.g2ScalarMul(__native_scalars, go__g2Points));
+                }""");
+
     private static final List<Input> RUN = List.of(Input.ok("run", DST));
 
     static final List<Fixture> FIXTURES = List.of(
@@ -270,5 +330,10 @@ final class O11BlsTypesFixtures {
                     Input.ok("both-empty", PlutusData.list(), PlutusData.list(), DST))),
             new Fixture("NEGATIVE_LITERAL", NEGATIVE_LITERAL, "negativeLiteral", RUN),
             new Fixture("NESTED_PRODUCERS", NESTED_PRODUCERS, "nestedProducers", List.of(
+                    Input.ok("three", integers(3), DST))),
+            new Fixture("BRANCHES", BRANCHES, "branches", List.of(
+                    Input.ok("first", integers(1, 3), DST, PlutusData.constr(1)),
+                    Input.ok("second", integers(1, 3), DST, PlutusData.constr(0)))),
+            new Fixture("NAME_CAPTURE", NAME_CAPTURE, "nameCapture", List.of(
                     Input.ok("three", integers(3), DST))));
 }
