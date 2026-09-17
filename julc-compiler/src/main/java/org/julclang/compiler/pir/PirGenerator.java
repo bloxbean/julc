@@ -72,6 +72,8 @@ public class PirGenerator {
      */
     private boolean booleanReturnGuard = false;
     private boolean booleanReturnGuardActive = false; // true when inside a boolean method with guard enabled
+    /** The declared PIR return type of the method being generated (null in a lambda or a void method); ADR-047. */
+    private PirType currentReturnType;
     public PirGenerator(TypeResolver typeResolver, SymbolTable symbolTable) {
         this(typeResolver, symbolTable, null, TypeMethodRegistry.defaultRegistry(), null,
                 CompilationContext.pv11Defaults());
@@ -348,7 +350,10 @@ public class PirGenerator {
             symbolTable.define(param.getNameAsString(), pirType);
         }
 
+        var prevReturnType = this.currentReturnType;
+        this.currentReturnType = isVoid ? null : typeResolver.resolve(method.getType());
         PirTerm bodyTerm = generateBlock(body);
+        this.currentReturnType = prevReturnType;
         this.booleanReturnGuardActive = prevGuard;
         symbolTable.popScope();
 
@@ -391,6 +396,12 @@ public class PirGenerator {
         if (stmt instanceof ReturnStmt rs) {
             var result = rs.getExpression().map(this::generateExpression)
                     .orElse(new PirTerm.Const(Constant.unit()));
+            if (currentReturnType != null && rs.getExpression().isPresent()) {
+                // ADR-047: a native value cannot leave through a differently typed return, nor a
+                // byte string or Data through a natively typed one (the O7 rule for initializers).
+                var returnExpr = rs.getExpression().get();
+                checkNativeBoundary("Return value", expressionType(returnExpr, result), currentReturnType, returnExpr);
+            }
             recordPosition(result, rs);
             return applyBooleanReturnGuard(result, rs);
         }
@@ -406,32 +417,13 @@ public class PirGenerator {
                                 + ". Hint: On-chain variables need initial values, e.g. var " + name + " = BigInteger.ZERO;"));
                 var value = generateExpression(initExpr);
                 var pirType = typeInference.inferType(decl.getType(), value, initExpr, sourceLocation(initExpr));
-                var initializerType = resolveExpressionType(initExpr);
-                if (initializerType instanceof PirType.DataType) {
-                    initializerType = inferPirType(value);
-                }
-                if ((typeResolver.containsNativeOpaque(pirType)
-                        || typeResolver.containsNativeOpaque(initializerType))
-                        && !pirType.equals(initializerType)) {
-                    throw CompilerTypeDiagnostics.nativeTypeMismatch(
-                            "Variable '" + name + "' initializer",
-                            initializerType,
-                            pirType,
-                            sourceLocation(initExpr));
-                }
+                checkNativeInitializer(name, initExpr, value, pirType);
                 symbolTable.define(name, pirType);
                 var body = generateStatements(stmts, index + 1, cont);
                 return new PirTerm.Let(name, value, body);
             }
-            // Accumulator assignment in for-each fold: return value as the new accumulator
-            if (forEachAccumulatorVar != null
-                    && es.getExpression() instanceof AssignExpr ae
-                    && ae.getTarget() instanceof NameExpr ne
-                    && ne.getNameAsString().equals(forEachAccumulatorVar)
-                    && index + 1 >= stmts.size()) {
-                return generateExpression(ae.getValue());
-            }
-            // Non-declaration expression statement: evaluate and continue
+            // Non-declaration expression statement: evaluate and continue (an assignment is
+            // rejected by generateExpression: the loop body generators bind every supported one)
             var expr = generateExpression(es.getExpression());
             var rest = generateStatements(stmts, index + 1, cont);
             return new PirTerm.Let("_", expr, rest);
@@ -809,10 +801,15 @@ public class PirGenerator {
         }
         if (expr instanceof ConditionalExpr ce) {
             // Ternary: cond ? then : else
-            var result = new PirTerm.IfThenElse(
-                    generateExpression(ce.getCondition()),
-                    generateExpression(ce.getThenExpr()),
-                    generateExpression(ce.getElseExpr()));
+            var condition = generateExpression(ce.getCondition());
+            var thenTerm = generateExpression(ce.getThenExpr());
+            var elseTerm = generateExpression(ce.getElseExpr());
+            // ADR-047: the conditional is typed by its then branch, so where a native type is in
+            // play the else branch must carry the same type; otherwise a G2 point reaches a G1
+            // slot through the branch inference never looked at (PR #150 review).
+            checkNativeBoundary("Conditional else branch", expressionType(ce.getElseExpr(), elseTerm),
+                    expressionType(ce.getThenExpr(), thenTerm), ce.getElseExpr());
+            var result = new PirTerm.IfThenElse(condition, thenTerm, elseTerm);
             recordPosition(result, ce);
             return result;
         }
@@ -858,12 +855,17 @@ public class PirGenerator {
             }
             return new PirTerm.Const(Constant.byteString(bytes));
         }
-        if (expr instanceof AssignExpr ae && ae.getTarget() instanceof NameExpr ne) {
-            var name = ne.getNameAsString();
-            if ((forEachAccumulatorVar != null && name.equals(forEachAccumulatorVar))
-                    || multiAccVars.contains(name)) {
-                return generateExpression(ae.getValue());
-            }
+        if (expr instanceof AssignExpr ae && (forEachAccumulatorVar != null || !multiAccVars.isEmpty())) {
+            // PR #150 review: inside a loop, every supported assignment is bound by the loop body
+            // generators before the expression generator sees it. One that reaches here (in
+            // expression position, or inside a statement delegated to the generic generator)
+            // cannot be honored, so it is rejected instead of lowered to its right-hand side
+            // with the update dropped.
+            var target = ae.getTarget() instanceof NameExpr ne ? "'" + ne.getNameAsString() + "'" : "this target";
+            throw enrichedError("Assignment to " + target + " is not supported at this position",
+                    "Inside a loop, assign an accumulator or a loop-body local as a statement directly in the loop body"
+                            + " or in an if/else branch of it; an assignment inside another expression or statement is not supported.",
+                    expr);
         }
         String suggestion;
         if (expr instanceof AssignExpr) {
@@ -1246,8 +1248,19 @@ public class PirGenerator {
         }
         if (funType.isPresent()) {
             PirTerm fn = new PirTerm.Var(resolvedName, funType.get());
-            for (var arg : args) {
-                fn = new PirTerm.App(fn, generateExpression(arg));
+            var paramTypes = new ArrayList<PirType>();
+            for (PirType t = funType.get(); t instanceof PirType.FunType ft; t = ft.returnType()) {
+                paramTypes.add(ft.paramType());
+            }
+            for (int i = 0; i < args.size(); i++) {
+                var arg = args.get(i);
+                var argPir = generateExpression(arg);
+                if (i < paramTypes.size()) {
+                    // ADR-047: a native value cannot enter a helper through a differently typed
+                    // parameter, nor a byte string, Data or a Data list through a native one.
+                    checkNativeBoundary(methodName + " argument " + (i + 1), expressionType(arg, argPir), paramTypes.get(i), arg);
+                }
+                fn = new PirTerm.App(fn, argPir);
             }
             return fn;
         }
@@ -1512,6 +1525,38 @@ public class PirGenerator {
         throw enrichedError("Cannot construct non-record type: " + typeName,
                 "Only record types can be constructed on-chain. Define " + typeName + " as a record.",
                 oce);
+    }
+
+    /**
+     * The type an expression carries at a boundary: the Java type where the AST names one,
+     * else the type of the lowered term (a producer's native list, a {@code var} local).
+     */
+    PirType expressionType(Expression expr, PirTerm lowered) {
+        var type = resolveExpressionType(expr);
+        return type instanceof PirType.DataType ? inferPirType(lowered) : type;
+    }
+
+    /**
+     * ADR-047 (the ADR-032 O7 rule): a native value never crosses a differently typed
+     * boundary, and a byte string, Data or a Data list never crosses a natively typed one.
+     * Every boundary the generator lowers goes through this one check: initializers, returns,
+     * helper arguments, conditional branches, loop-local declarations and loop assignments.
+     */
+    void checkNativeBoundary(String what, PirType actual, PirType expected, Node source) {
+        if ((typeResolver.containsNativeOpaque(expected) || typeResolver.containsNativeOpaque(actual))
+                && !expected.equals(actual)) {
+            throw CompilerTypeDiagnostics.nativeTypeMismatch(what, actual, expected, sourceLocation(source));
+        }
+    }
+
+    /** {@link #checkNativeBoundary} for a local's initializer against its declared or inferred type. */
+    void checkNativeInitializer(String name, Expression initExpr, PirTerm value, PirType declared) {
+        checkNativeBoundary("Variable '" + LoopBodyGenerator.sourceName(name) + "' initializer", expressionType(initExpr, value), declared, initExpr);
+    }
+
+    /** {@link #checkNativeBoundary} for an assignment to a loop accumulator or a loop-body local. */
+    void checkNativeAssignment(String name, Expression valueExpr, PirTerm value, PirType target) {
+        checkNativeBoundary("Assignment to '" + LoopBodyGenerator.sourceName(name) + "'", expressionType(valueExpr, value), target, valueExpr);
     }
 
     private void rejectNativeDataConstruction(String typeName, PirType type, Node source) {
@@ -2188,6 +2233,17 @@ public class PirGenerator {
     }
 
     private PirTerm generateLambda(LambdaExpr le) {
+        // ADR-047: a return inside a lambda body is not the enclosing method's return.
+        var prevReturnType = this.currentReturnType;
+        this.currentReturnType = null;
+        try {
+            return generateLambdaBody(le);
+        } finally {
+            this.currentReturnType = prevReturnType;
+        }
+    }
+
+    private PirTerm generateLambdaBody(LambdaExpr le) {
         var params = le.getParameters();
 
         // Push lambda parameters into scope
@@ -2243,6 +2299,17 @@ public class PirGenerator {
      * @param wrapResultToData if true, wrap the lambda body result with wrapEncode (for map)
      */
     private PirTerm generateLambda(LambdaExpr le, java.util.List<PirType> expectedParamTypes, boolean wrapResultToData) {
+        // ADR-047: a return inside a lambda body is not the enclosing method's return.
+        var prevReturnType = this.currentReturnType;
+        this.currentReturnType = null;
+        try {
+            return generateLambdaBody(le, expectedParamTypes, wrapResultToData);
+        } finally {
+            this.currentReturnType = prevReturnType;
+        }
+    }
+
+    private PirTerm generateLambdaBody(LambdaExpr le, java.util.List<PirType> expectedParamTypes, boolean wrapResultToData) {
         var params = le.getParameters();
 
         symbolTable.pushScope();
@@ -2357,7 +2424,7 @@ public class PirGenerator {
 
     PirType inferType(com.github.javaparser.ast.type.Type declType, PirTerm initValue,
                        Expression initExpr) {
-        return typeInference.inferType(declType, initValue, initExpr);
+        return typeInference.inferType(declType, initValue, initExpr, sourceLocation(initExpr));
     }
 
     private PirType inferPirType(PirTerm term) {

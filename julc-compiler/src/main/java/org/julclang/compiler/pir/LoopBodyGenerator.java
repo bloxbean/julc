@@ -4,6 +4,7 @@ import org.julclang.compiler.CompilerException;
 import org.julclang.compiler.resolve.SymbolTable;
 import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
+import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.expr.*;
 import com.github.javaparser.ast.stmt.*;
 
@@ -22,6 +23,8 @@ final class LoopBodyGenerator {
 
     private final PirGenerator gen;
     private final SymbolTable symbolTable;
+    /** Numbers the fresh names of block locals (deterministic per compilation; names never reach the bytes). */
+    private int blockLocalCounter;
 
     LoopBodyGenerator(PirGenerator gen, SymbolTable symbolTable) {
         this.gen = gen;
@@ -120,18 +123,21 @@ final class LoopBodyGenerator {
             return new PirTerm.Var(accName, accType);
         }
         var stmt = stmts.get(index);
+        if (stmt instanceof BlockStmt bs) {
+            return withBlockSpliced(stmts, index, bs, body -> generateSingleAccStatements(body, 0, accName, accType));
+        }
 
         if (stmt instanceof ExpressionStmt es) {
             if (es.getExpression() instanceof AssignExpr ae
                     && ae.getTarget() instanceof NameExpr ne
                     && ne.getNameAsString().equals(accName)) {
-                var value = gen.generateExpression(ae.getValue());
+                var value = assigned(ae, accType);
                 var rest = generateSingleAccStatements(stmts, index + 1, accName, accType);
                 return new PirTerm.Let(accName, value, rest);
             }
             if (es.getExpression() instanceof AssignExpr ae
                     && ae.getTarget() instanceof NameExpr ne) {
-                var value = gen.generateExpression(ae.getValue());
+                var value = assigned(ae, symbolTable.lookup(ne.getNameAsString()).orElse(null));
                 var rest = generateSingleAccStatements(stmts, index + 1, accName, accType);
                 return new PirTerm.Let(ne.getNameAsString(), value, rest);
             }
@@ -189,6 +195,9 @@ final class LoopBodyGenerator {
             return continueFn.apply(new PirTerm.Var(accName, accType));
         }
         var stmt = stmts.get(index);
+        if (stmt instanceof BlockStmt bs) {
+            return withBlockSpliced(stmts, index, bs, body -> generateBreakAwareStatements(body, 0, accName, accType, continueFn));
+        }
 
         if (stmt instanceof BreakStmt) {
             return new PirTerm.Var(accName, accType);
@@ -197,7 +206,7 @@ final class LoopBodyGenerator {
             if (es.getExpression() instanceof AssignExpr ae
                     && ae.getTarget() instanceof NameExpr ne
                     && ne.getNameAsString().equals(accName)) {
-                var value = gen.generateExpression(ae.getValue());
+                var value = assigned(ae, accType);
                 if (index + 1 < stmts.size() && stmts.get(index + 1) instanceof BreakStmt) {
                     return value;
                 }
@@ -283,18 +292,21 @@ final class LoopBodyGenerator {
             return packAccumulators(accNames, accTypes);
         }
         var stmt = stmts.get(index);
+        if (stmt instanceof BlockStmt bs) {
+            return withBlockSpliced(stmts, index, bs, body -> generateMultiAccStatements(body, 0, accNames, accTypes));
+        }
 
         if (stmt instanceof ExpressionStmt es) {
             if (es.getExpression() instanceof AssignExpr ae
                     && ae.getTarget() instanceof NameExpr ne
                     && accNames.contains(ne.getNameAsString())) {
-                var value = gen.generateExpression(ae.getValue());
+                var value = assigned(ae, accTypes.get(accNames.indexOf(ne.getNameAsString())));
                 var rest = generateMultiAccStatements(stmts, index + 1, accNames, accTypes);
                 return new PirTerm.Let(ne.getNameAsString(), value, rest);
             }
             if (es.getExpression() instanceof AssignExpr ae
                     && ae.getTarget() instanceof NameExpr ne) {
-                var value = gen.generateExpression(ae.getValue());
+                var value = assigned(ae, symbolTable.lookup(ne.getNameAsString()).orElse(null));
                 var rest = generateMultiAccStatements(stmts, index + 1, accNames, accTypes);
                 return new PirTerm.Let(ne.getNameAsString(), value, rest);
             }
@@ -348,6 +360,9 @@ final class LoopBodyGenerator {
             return continueFn.apply(packAccumulators(accNames, accTypes));
         }
         var stmt = stmts.get(index);
+        if (stmt instanceof BlockStmt bs) {
+            return withBlockSpliced(stmts, index, bs, body -> generateMultiAccBreakAwareStmts(body, 0, accNames, accTypes, continueFn));
+        }
 
         if (stmt instanceof BreakStmt) {
             return packAccumulators(accNames, accTypes);
@@ -356,7 +371,7 @@ final class LoopBodyGenerator {
             if (es.getExpression() instanceof AssignExpr ae
                     && ae.getTarget() instanceof NameExpr ne
                     && accNames.contains(ne.getNameAsString())) {
-                var value = gen.generateExpression(ae.getValue());
+                var value = assigned(ae, accTypes.get(accNames.indexOf(ne.getNameAsString())));
                 if (index + 1 < stmts.size() && stmts.get(index + 1) instanceof BreakStmt) {
                     var rest = packAccumulators(accNames, accTypes);
                     return new PirTerm.Let(ne.getNameAsString(), value, rest);
@@ -366,7 +381,7 @@ final class LoopBodyGenerator {
             }
             if (es.getExpression() instanceof AssignExpr ae
                     && ae.getTarget() instanceof NameExpr ne) {
-                var value = gen.generateExpression(ae.getValue());
+                var value = assigned(ae, symbolTable.lookup(ne.getNameAsString()).orElse(null));
                 var rest = generateMultiAccBreakAwareStmts(stmts, index + 1, accNames, accTypes, continueFn);
                 return new PirTerm.Let(ne.getNameAsString(), value, rest);
             }
@@ -503,6 +518,116 @@ final class LoopBodyGenerator {
 
     // ===== Shared helpers =====
 
+    // ===== Bare nested blocks =====
+    //
+    // The only thing a bare block does in Java is end the scope of its own declarations; its
+    // statements otherwise run in sequence with the statements after it, and every update it
+    // makes to an enclosing variable (an accumulator, a loop-body local) and a break inside it
+    // behave as if the braces were absent. It is therefore lowered as its statements spliced
+    // into the enclosing list, with its own declarations renamed apart first: a fresh name can
+    // neither capture a later reference to a name the block shadowed (a class constant
+    // redeclared as a block local) nor be referenced after the block. The lowering is that of
+    // the braceless body, byte for byte (PR #150 review: delegating the block to the generic
+    // statement generator dropped the updates it contained; splicing without renaming leaked
+    // its locals; lowering it as a value carried only the accumulator out).
+
+    /** Generate the enclosing list with the block's statements in the block's place. */
+    private PirTerm withBlockSpliced(List<Statement> stmts, int index, BlockStmt block,
+                                     Function<List<Statement>, PirTerm> generate) {
+        var renamed = renamedApart(block);
+        if (renamed == block) {
+            return generate.apply(spliced(stmts, index, block));
+        }
+        // The copy stands where the block stands while it is generated, so that lookups of an
+        // enclosing node (the method of a nested while loop) still succeed, and leaves after.
+        block.getParentNode().ifPresent(renamed::setParentNode);
+        try {
+            return generate.apply(spliced(stmts, index, renamed));
+        } finally {
+            renamed.setParentNode(null);
+        }
+    }
+
+    /** The statements of a bare nested block followed by the statements after it. */
+    private static List<Statement> spliced(List<Statement> stmts, int index, BlockStmt block) {
+        var out = new ArrayList<Statement>(block.getStatements());
+        out.addAll(stmts.subList(index + 1, stmts.size()));
+        return out;
+    }
+
+    /**
+     * A copy of the block in which each variable the block itself declares, and every
+     * reference to it after its declaration, carries a fresh name; the block itself when it
+     * declares nothing. Declarations deeper inside (an if branch, a nested block or loop) are
+     * left alone: those are lowered as terms of their own, or renamed when their block is
+     * spliced in turn. An initializer is renamed before its own variable is added, and a
+     * lambda whose parameter has the name is skipped, as Java scoping has it.
+     */
+    private BlockStmt renamedApart(BlockStmt block) {
+        boolean declares = block.getStatements().stream().anyMatch(
+                s -> s instanceof ExpressionStmt es && es.getExpression() instanceof VariableDeclarationExpr);
+        if (!declares) return block;
+        var copy = block.clone();
+        var renames = new HashMap<String, String>();
+        for (var stmt : copy.getStatements()) {
+            if (stmt instanceof ExpressionStmt es && es.getExpression() instanceof VariableDeclarationExpr vde) {
+                for (var declarator : vde.getVariables()) {
+                    declarator.getInitializer().ifPresent(init -> rename(init, renames));
+                    String fresh = declarator.getNameAsString() + BLOCK_LOCAL_MARK + (++blockLocalCounter);
+                    renames.put(declarator.getNameAsString(), fresh);
+                    declarator.setName(fresh);
+                }
+            } else {
+                rename(stmt, renames);
+            }
+        }
+        return copy;
+    }
+
+    private static void rename(Node node, Map<String, String> renames) {
+        if (renames.isEmpty()) return;
+        if (node instanceof NameExpr ne) {
+            var fresh = renames.get(ne.getNameAsString());
+            if (fresh != null) ne.setName(fresh);
+            return;
+        }
+        var visible = renames;
+        if (node instanceof LambdaExpr le
+                && le.getParameters().stream().anyMatch(p -> renames.containsKey(p.getNameAsString()))) {
+            visible = new HashMap<>(renames);
+            for (var parameter : le.getParameters()) visible.remove(parameter.getNameAsString());
+        }
+        for (var child : List.copyOf(node.getChildNodes())) rename(child, visible);
+    }
+
+    /**
+     * Marks the fresh name of a block local: legal in a UPLC name, impossible in a Java
+     * identifier, so no source name can collide with one.
+     */
+    private static final String BLOCK_LOCAL_MARK = "'";
+
+    /** The name as the source wrote it, for diagnostics. */
+    static String sourceName(String name) {
+        int mark = name.indexOf(BLOCK_LOCAL_MARK);
+        return mark < 0 ? name : name.substring(0, mark);
+    }
+
+    /**
+     * Lower an assignment's value and check it against the target's type: an accumulator or a
+     * loop-body local keeps the type it was declared with (ADR-047 isolation, PR #150 review).
+     * A target with no declaration in scope is an error, not a fresh binding.
+     */
+    private PirTerm assigned(AssignExpr ae, PirType target) {
+        var name = ((NameExpr) ae.getTarget()).getNameAsString();
+        if (target == null) {
+            throw gen.enrichedError("Assignment to undeclared variable '" + sourceName(name) + "'",
+                    "Declare the variable before assigning it: before the loop for an accumulator, in the loop body for a local.", ae);
+        }
+        var value = gen.generateExpression(ae.getValue());
+        gen.checkNativeAssignment(name, ae.getValue(), value, target);
+        return value;
+    }
+
     /** Compile a variable declaration and continue with the provided continuation. */
     private PirTerm compileVarDeclThenContinue(VariableDeclarationExpr vde,
                                                 List<Statement> stmts, int index,
@@ -510,10 +635,11 @@ final class LoopBodyGenerator {
         var decl = vde.getVariable(0);
         var name = decl.getNameAsString();
         var initExpr = decl.getInitializer().orElseThrow(
-                () -> new CompilerException("Variable must be initialized: " + name
-                        + ". Hint: On-chain variables need initial values, e.g. var " + name + " = BigInteger.ZERO;"));
+                () -> new CompilerException("Variable must be initialized: " + sourceName(name)
+                        + ". Hint: On-chain variables need initial values, e.g. var " + sourceName(name) + " = BigInteger.ZERO;"));
         var value = gen.generateExpression(initExpr);
         var pirType = gen.inferType(decl.getType(), value, initExpr);
+        gen.checkNativeInitializer(name, initExpr, value, pirType);
         symbolTable.define(name, pirType);
         var rest = continuation.apply(stmts, index + 1);
         return new PirTerm.Let(name, value, rest);

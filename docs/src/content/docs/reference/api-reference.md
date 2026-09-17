@@ -661,8 +661,14 @@ Note: `sha2_256`, `sha3_256`, `blake2b_256`, `blake2b_224`, `keccak_256`, and `v
 
 ### BlsLib
 
-BLS12-381 elliptic curve operations. Base curve and pairing methods are available
-on PV10+; multi-scalar multiplication requires PV11. See
+BLS12-381 elliptic curve operations over the typed values `JulcG1`, `JulcG2`
+and `JulcMlResult` (`org.julclang.core.types`; opaque, never `byte[]` or
+`PlutusData`). Base curve and pairing methods are available on PV10+;
+multi-scalar multiplication requires PV11 and takes the native lists
+`JulcScalars` and `JulcG1Points`/`JulcG2Points` built by `Builtins.scalars`,
+`Builtins.g1Points`/`g2Points` or decoded from Data lists by
+`Builtins.scalarsFromList` and `Builtins.g1PointsFromCompressed`/
+`g2PointsFromCompressed` (ADR-047). See
 [Standard Library Guide](/stdlib/stdlib-guide/#blslib----bls12-381-curve-operations)
 for full documentation.
 
@@ -678,8 +684,8 @@ for full documentation.
 | `millerLoop(g1, g2)` | G1, G2 | Compute Miller loop pairing |
 | `mulMlResult(a, b)` | ML, ML | Multiply two Miller loop results |
 | `finalVerify(a, b)` | ML, ML | Final pairing verification |
-| `g1MultiScalarMul(scalars, points)` | List, List | Multi-scalar multiplication on G1 (PV11 only) |
-| `g2MultiScalarMul(scalars, points)` | List, List | Multi-scalar multiplication on G2 (PV11 only) |
+| `g1MultiScalarMul(scalars, points)` | JulcScalars, JulcG1Points | Multi-scalar multiplication on G1 (PV11 only) |
+| `g2MultiScalarMul(scalars, points)` | JulcScalars, JulcG2Points | Multi-scalar multiplication on G2 (PV11 only) |
 
 ### NativeValueLib (PV11)
 
