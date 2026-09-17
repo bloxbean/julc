@@ -38,7 +38,10 @@ call or the `return`): declare it as `JulcG1`/`JulcG2`/`JulcMlResult` or use
 with a G2 `q` where a G1 is required), declarations inside a loop body and
 assignments to a loop accumulator or a loop-body local; a native accumulator
 must be its loop's only accumulator (a multi-accumulator loop packs its
-accumulators as Data). Code that used `var` for BLS values compiles unchanged and keeps its
+accumulators as Data). Two loop-body shapes that compiled with their update
+silently dropped are handled: an assignment inside a bare nested block now
+updates the accumulator, and an assignment in expression position or to an
+undeclared variable is rejected. Code that used `var` for BLS values compiles unchanged and keeps its
 bytes; the compressed encodings are still `byte[]`. The two
 `bls12_381_*_multiScalarMul` signatures changed from `PlutusData` to the typed
 lists (the old ones compiled but could not evaluate successfully).

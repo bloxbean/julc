@@ -250,6 +250,26 @@ Three findings, each reproduced on Java at every level before the fix and pinned
    accumulator among several was already rejected at the multi-accumulator loop's Data pack
    and stays so.
 
+Round three (the reviewer's re-check of `d8e51a2e`) found two assignment paths that still
+bypassed the check, both pre-existing:
+
+- A bare nested block in a loop body was delegated to the generic statement generator,
+  which lowered an accumulator assignment to its right-hand side and dropped the update:
+  `{ acc = Builtins.bls12_381_G2_hashToGroup(...); }` compiled and evaluated `true` with `acc`
+  unchanged, and `for (x : xs) { { acc = acc.add(x); } }` summed to zero. The block is now
+  spliced into the loop body for every loop kind (single- and multi-accumulator, break-aware),
+  so the assignment is bound and checked (`Assignment to 'acc' received G2, but requires G1`).
+  `LoopBlockAssignmentTest` pins the sums (6, 12 and 18 for one accumulator; 63, 3 and 32 with
+  several, a `break` and an `if`), and `BRANCHES` carries a nested block: its bytes, hash and
+  budgets are unchanged, the spliced body lowering to the same term as the braceless one.
+- An assignment in expression position (`g2Compress(acc = ...)`) or to an undeclared name
+  reached the expression generator, which returned the right-hand side for an accumulator
+  name and otherwise let a `Let` bind a fresh variable. Both are rejected now (`Assignment to
+  'acc' is not supported at this position`, `Assignment to undeclared variable 'undeclared'`)
+  and the two legacy accumulator paths in `PirGenerator` (the last-statement assignment
+  returning its value, the expression-level accumulator assignment) are removed; outside a
+  loop the existing `Unsupported expression: AssignExpr` diagnostic stands.
+
 The temporary probes (deleted before the commit) also confirmed the retained residual that a
 `switch` expression is typed Data (`g1Compress(switch ...)` is rejected as `received Data,
 but requires G1` whether the arms agree or not) and that a nested conditional and a

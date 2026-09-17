@@ -232,9 +232,9 @@ final class O11BlsTypesFixtures {
     /**
      * 17: the boundaries the isolation check covers, with agreeing types: both branches of a
      * conditional (a point, a native list), a loop-local declaration, a loop-body local
-     * reassigned, an accumulator reassigned in a loop and before a {@code break} (PR #150
-     * review). A native accumulator is always the loop's only one: a multi-accumulator loop
-     * packs its accumulators as Data, which rejects a point at the pack.
+     * reassigned, an accumulator reassigned in a loop (inside a bare nested block) and before
+     * a {@code break} (PR #150 review). A native accumulator is always the loop's only one: a
+     * multi-accumulator loop packs its accumulators as Data, which rejects a point at the pack.
      */
     static final String BRANCHES = method("""
                 static boolean branches(JulcList<BigInteger> xs, byte[] dst, boolean flag) {
@@ -255,7 +255,9 @@ final class O11BlsTypesFixtures {
                     }
                     JulcG1 sum = p;
                     for (var x : xs) {
-                        sum = BlsLib.g1Add(sum, BlsLib.g1ScalarMul(x, chosen));
+                        {
+                            sum = BlsLib.g1Add(sum, BlsLib.g1ScalarMul(x, chosen));
+                        }
                     }
                     JulcG1 first = p;
                     for (var x : xs) {

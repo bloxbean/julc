@@ -219,7 +219,12 @@ class O11BlsTypesTest {
                 new Bad("G2 assigned to a loop-body G1 local", "static boolean m(JulcList<BigInteger> xs, byte[] dst) { boolean ok = true; for (var x : xs) { JulcG1 p = Builtins.bls12_381_G1_hashToGroup(dst, dst); p = Builtins.bls12_381_G2_hashToGroup(dst, dst); ok = BlsLib.g1Equal(p, p); } return ok; }",
                         "JULC0041", "Assignment to 'p' received G2, but requires G1"),
                 new Bad("bytes assigned to a G1 accumulator", "static boolean m(JulcList<BigInteger> xs, byte[] dst) { JulcG1 acc = Builtins.bls12_381_G1_hashToGroup(dst, dst); for (var x : xs) { acc = dst; } return BlsLib.g1Equal(acc, acc); }",
-                        "JULC0041", "Assignment to 'acc' received ByteString, but requires G1"));
+                        "JULC0041", "Assignment to 'acc' received ByteString, but requires G1"),
+                // a bare nested block in the loop body is spliced into it (PR #150 review round three)
+                new Bad("G2 assigned to a G1 accumulator inside a nested block", "static boolean m(JulcList<BigInteger> xs, byte[] dst) { JulcG1 acc = Builtins.bls12_381_G1_hashToGroup(dst, dst); for (var x : xs) { { acc = Builtins.bls12_381_G2_hashToGroup(dst, dst); } } return BlsLib.g1Equal(acc, acc); }",
+                        "JULC0041", "Assignment to 'acc' received G2, but requires G1"),
+                new Bad("G2 into a loop-local G1 declaration inside a nested block", "static boolean m(JulcList<BigInteger> xs, byte[] dst) { boolean ok = true; for (var x : xs) { { JulcG1 p = Builtins.bls12_381_G2_hashToGroup(dst, dst); ok = BlsLib.g1Equal(p, p); } } return ok; }",
+                        "JULC0041", "Variable 'p' initializer received G2, but requires G1"));
         for (var bad : cases) {
             var error = assertThrows(CompilerException.class,
                     () -> new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(IMPORTS + "class Bad {\n" + bad.body() + "\n}\n", "m"),
@@ -228,6 +233,35 @@ class O11BlsTypesTest {
             assertEquals(bad.code(), diagnostic.code(), bad.name() + ": " + diagnostic.message());
             assertTrue(diagnostic.message().contains(bad.fragment()), bad.name() + ": " + diagnostic.message());
         }
+        // An assignment the loop body generators do not bind is rejected, never lowered to its right-hand side
+        // with the update dropped: in expression position, and to a target with no declaration in scope
+        // (PR #150 review round three).
+        var inExpression = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(IMPORTS + """
+                class InExpression {
+                    static boolean m(JulcList<BigInteger> xs, byte[] dst) {
+                        JulcG1 acc = Builtins.bls12_381_G1_hashToGroup(dst, dst);
+                        for (var x : xs) {
+                            acc = BlsLib.g1Neg(acc);
+                            BlsLib.g2Compress(acc = Builtins.bls12_381_G2_hashToGroup(dst, dst));
+                        }
+                        return BlsLib.g1Equal(acc, acc);
+                    }
+                }
+                """, "m"));
+        assertTrue(inExpression.getMessage().contains("Assignment to 'acc' is not supported at this position"), inExpression.getMessage());
+        var undeclared = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry()).compileMethod(IMPORTS + """
+                class Undeclared {
+                    static boolean m(JulcList<BigInteger> xs, byte[] dst) {
+                        boolean ok = true;
+                        for (var x : xs) {
+                            undeclared = Builtins.bls12_381_G2_hashToGroup(dst, dst);
+                            ok = true;
+                        }
+                        return ok;
+                    }
+                }
+                """, "m"));
+        assertTrue(undeclared.getMessage().contains("Assignment to undeclared variable 'undeclared'"), undeclared.getMessage());
         // A validator entrypoint cannot take a point or a native list either (the strict boundary has no decoder for them).
         var validator = assertThrows(CompilerException.class, () -> new JulcCompiler(StdlibRegistry.defaultRegistry()).compile(IMPORTS + """
                 @SpendingValidator

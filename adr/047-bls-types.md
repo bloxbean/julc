@@ -183,7 +183,16 @@ programs importing `BlsLib` are unchanged.
   against the declared type (`Assignment to 'acc' received G2, but requires G1`); a native
   accumulator among several is rejected earlier, at the Data pack of the multi-accumulator
   loop (`Data encoding received G1, but requires Data`), so a point or a native list is
-  carried by a loop of its own. Inherited from ADR-032 O7 and unchanged here: a cast (`(JulcG1) data`) is trusted and fails in the CEK;
+  carried by a loop of its own. A bare nested block inside a loop body is spliced into the
+  body (its statements run in sequence with the rest), so an assignment inside it is bound
+  and checked like one outside it; before this round the block was delegated to the generic
+  statement generator, which lowered an accumulator assignment to its right-hand side and
+  dropped the update (`for (x : xs) { { acc = acc.add(x); } }` summed to zero: a miscompile
+  of valid Java, fixed for every loop kind and pinned by `LoopBlockAssignmentTest`). An
+  assignment the loop body generators do not bind is rejected rather than dropped: in
+  expression position (`g2Compress(acc = ...)`), inside a statement delegated to the
+  generic generator, or to a name with no declaration in scope (`Assignment to undeclared
+  variable 'x'`). Inherited from ADR-032 O7 and unchanged here: a cast (`(JulcG1) data`) is trusted and fails in the CEK;
   a `switch` expression's inferred type is Data, so a native-typed local, argument or return
   fed by one is rejected as a mismatch (spell the switch as a helper method); an instance call
   on a native receiver (`p.equals(q)`) fails as an unbound variable rather than with a native
@@ -191,7 +200,11 @@ programs importing `BlsLib` are unchanged.
   expected type even where the slot is `byte[]` or `BigInteger`.
 - **Hash impact.** None for any program in the censused corpus or the golden suites (no BLS
   users), and none for a BLS program that compiles under both APIs (the types erase, no
-  library method was added).
+  library method was added). The loop-body fixes of the review (above) change only programs
+  that were miscompiled or accepted with an update dropped: a loop body assigning inside a
+  bare nested block now compiles to the intended sum (the spliced body lowers to the same
+  term as the braceless one), and an assignment in expression position or to an undeclared
+  name is rejected.
 - **Generated names in the converters.** The decoding loop of `scalarsFromList`,
   `g1PointsFromCompressed` and `g2PointsFromCompressed` is bound under a fixed name
   (`go__scalars`, `go__g1Points`, `go__g2Points`); the caller's list is applied to the loop

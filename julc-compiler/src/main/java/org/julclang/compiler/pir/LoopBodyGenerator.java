@@ -120,6 +120,9 @@ final class LoopBodyGenerator {
             return new PirTerm.Var(accName, accType);
         }
         var stmt = stmts.get(index);
+        if (stmt instanceof BlockStmt bs) {
+            return generateSingleAccStatements(spliced(stmts, index, bs), 0, accName, accType);
+        }
 
         if (stmt instanceof ExpressionStmt es) {
             if (es.getExpression() instanceof AssignExpr ae
@@ -189,6 +192,9 @@ final class LoopBodyGenerator {
             return continueFn.apply(new PirTerm.Var(accName, accType));
         }
         var stmt = stmts.get(index);
+        if (stmt instanceof BlockStmt bs) {
+            return generateBreakAwareStatements(spliced(stmts, index, bs), 0, accName, accType, continueFn);
+        }
 
         if (stmt instanceof BreakStmt) {
             return new PirTerm.Var(accName, accType);
@@ -283,6 +289,9 @@ final class LoopBodyGenerator {
             return packAccumulators(accNames, accTypes);
         }
         var stmt = stmts.get(index);
+        if (stmt instanceof BlockStmt bs) {
+            return generateMultiAccStatements(spliced(stmts, index, bs), 0, accNames, accTypes);
+        }
 
         if (stmt instanceof ExpressionStmt es) {
             if (es.getExpression() instanceof AssignExpr ae
@@ -348,6 +357,9 @@ final class LoopBodyGenerator {
             return continueFn.apply(packAccumulators(accNames, accTypes));
         }
         var stmt = stmts.get(index);
+        if (stmt instanceof BlockStmt bs) {
+            return generateMultiAccBreakAwareStmts(spliced(stmts, index, bs), 0, accNames, accTypes, continueFn);
+        }
 
         if (stmt instanceof BreakStmt) {
             return packAccumulators(accNames, accTypes);
@@ -504,14 +516,30 @@ final class LoopBodyGenerator {
     // ===== Shared helpers =====
 
     /**
+     * A bare nested block in a loop body runs its statements in sequence with the statements
+     * after it: the block's statements are spliced into the body's list, so an accumulator
+     * update inside the block is bound like one outside it (PR #150 review: delegating the
+     * block to the generic statement generator dropped the updates it contained).
+     */
+    private static List<Statement> spliced(List<Statement> stmts, int index, BlockStmt block) {
+        var out = new ArrayList<Statement>(block.getStatements());
+        out.addAll(stmts.subList(index + 1, stmts.size()));
+        return out;
+    }
+
+    /**
      * Lower an assignment's value and check it against the target's type: an accumulator or a
      * loop-body local keeps the type it was declared with (ADR-047 isolation, PR #150 review).
+     * A target with no declaration in scope is an error, not a fresh binding.
      */
     private PirTerm assigned(AssignExpr ae, PirType target) {
-        var value = gen.generateExpression(ae.getValue());
-        if (target != null) {
-            gen.checkNativeAssignment(((NameExpr) ae.getTarget()).getNameAsString(), ae.getValue(), value, target);
+        var name = ((NameExpr) ae.getTarget()).getNameAsString();
+        if (target == null) {
+            throw gen.enrichedError("Assignment to undeclared variable '" + name + "'",
+                    "Declare the variable before assigning it: before the loop for an accumulator, in the loop body for a local.", ae);
         }
+        var value = gen.generateExpression(ae.getValue());
+        gen.checkNativeAssignment(name, ae.getValue(), value, target);
         return value;
     }
 

@@ -422,15 +422,8 @@ public class PirGenerator {
                 var body = generateStatements(stmts, index + 1, cont);
                 return new PirTerm.Let(name, value, body);
             }
-            // Accumulator assignment in for-each fold: return value as the new accumulator
-            if (forEachAccumulatorVar != null
-                    && es.getExpression() instanceof AssignExpr ae
-                    && ae.getTarget() instanceof NameExpr ne
-                    && ne.getNameAsString().equals(forEachAccumulatorVar)
-                    && index + 1 >= stmts.size()) {
-                return generateExpression(ae.getValue());
-            }
-            // Non-declaration expression statement: evaluate and continue
+            // Non-declaration expression statement: evaluate and continue (an assignment is
+            // rejected by generateExpression: the loop body generators bind every supported one)
             var expr = generateExpression(es.getExpression());
             var rest = generateStatements(stmts, index + 1, cont);
             return new PirTerm.Let("_", expr, rest);
@@ -862,12 +855,17 @@ public class PirGenerator {
             }
             return new PirTerm.Const(Constant.byteString(bytes));
         }
-        if (expr instanceof AssignExpr ae && ae.getTarget() instanceof NameExpr ne) {
-            var name = ne.getNameAsString();
-            if ((forEachAccumulatorVar != null && name.equals(forEachAccumulatorVar))
-                    || multiAccVars.contains(name)) {
-                return generateExpression(ae.getValue());
-            }
+        if (expr instanceof AssignExpr ae && (forEachAccumulatorVar != null || !multiAccVars.isEmpty())) {
+            // PR #150 review: inside a loop, every supported assignment is bound by the loop body
+            // generators before the expression generator sees it. One that reaches here (in
+            // expression position, or inside a statement delegated to the generic generator)
+            // cannot be honored, so it is rejected instead of lowered to its right-hand side
+            // with the update dropped.
+            var target = ae.getTarget() instanceof NameExpr ne ? "'" + ne.getNameAsString() + "'" : "this target";
+            throw enrichedError("Assignment to " + target + " is not supported at this position",
+                    "Inside a loop, assign an accumulator or a loop-body local as a statement directly in the loop body"
+                            + " or in an if/else branch of it; an assignment inside another expression or statement is not supported.",
+                    expr);
         }
         String suggestion;
         if (expr instanceof AssignExpr) {
