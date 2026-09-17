@@ -316,6 +316,13 @@ in the inner `else`; accepted otherwise).
 
 ## Repository validation
 
+At the review-round-five commit `107c073e`: `julc-core` 693, `julc-compiler` 1,626 (with
+`LoopBlockAssignmentTest` 6) plus the gated `pairCaseTest` 67, `julc-stdlib` 411,
+`julc-blueprint` 26, `julc-testkit` 193, the in-repo `julc-examples` 81 and
+`O11BlsMsmBenchmarkTest` 1: 3,098 tests, 0 failures, 0 errors. The reviewer's
+enclosing-local reproducer evaluates to 0 per element at `1b441293` and to 1 at `107c073e`; the
+round-four shadowing reproducer still evaluates to 10.
+
 At the review-round-four commit `323a380e`: `julc-core` 693, `julc-compiler` 1,624 (with
 `LoopBlockAssignmentTest` 4) plus the gated `pairCaseTest` 67, `julc-stdlib` 411,
 `julc-blueprint` 26, `julc-testkit` 193, the in-repo `julc-examples` 81 and
