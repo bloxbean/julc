@@ -9,6 +9,7 @@ import com.github.javaparser.ast.stmt.*;
 
 import java.util.*;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 /**
  * Compiles loop body statements to PIR terms for single-accumulator,
@@ -121,7 +122,12 @@ final class LoopBodyGenerator {
         }
         var stmt = stmts.get(index);
         if (stmt instanceof BlockStmt bs) {
-            return generateSingleAccStatements(spliced(stmts, index, bs), 0, accName, accType);
+            if (declaresNothing(bs)) {
+                return generateSingleAccStatements(spliced(stmts, index, bs), 0, accName, accType);
+            }
+            var blockTerm = scoped(() -> generateSingleAccBody(bs, accName, accType));
+            var rest = generateSingleAccStatements(stmts, index + 1, accName, accType);
+            return new PirTerm.Let(accName, blockTerm, rest);
         }
 
         if (stmt instanceof ExpressionStmt es) {
@@ -193,7 +199,13 @@ final class LoopBodyGenerator {
         }
         var stmt = stmts.get(index);
         if (stmt instanceof BlockStmt bs) {
-            return generateBreakAwareStatements(spliced(stmts, index, bs), 0, accName, accType, continueFn);
+            if (declaresNothing(bs)) {
+                return generateBreakAwareStatements(spliced(stmts, index, bs), 0, accName, accType, continueFn);
+            }
+            rejectBreakInDeclaringBlock(bs);
+            var blockTerm = scoped(() -> generateSingleAccBody(bs, accName, accType));
+            var rest = generateBreakAwareStatements(stmts, index + 1, accName, accType, continueFn);
+            return new PirTerm.Let(accName, blockTerm, rest);
         }
 
         if (stmt instanceof BreakStmt) {
@@ -290,7 +302,12 @@ final class LoopBodyGenerator {
         }
         var stmt = stmts.get(index);
         if (stmt instanceof BlockStmt bs) {
-            return generateMultiAccStatements(spliced(stmts, index, bs), 0, accNames, accTypes);
+            if (declaresNothing(bs)) {
+                return generateMultiAccStatements(spliced(stmts, index, bs), 0, accNames, accTypes);
+            }
+            var blockTerm = scoped(() -> generateMultiAccBody(bs, accNames, accTypes));
+            var rest = generateMultiAccStatements(stmts, index + 1, accNames, accTypes);
+            return unpackAccumulators(blockTerm, accNames, accTypes, rest);
         }
 
         if (stmt instanceof ExpressionStmt es) {
@@ -358,7 +375,13 @@ final class LoopBodyGenerator {
         }
         var stmt = stmts.get(index);
         if (stmt instanceof BlockStmt bs) {
-            return generateMultiAccBreakAwareStmts(spliced(stmts, index, bs), 0, accNames, accTypes, continueFn);
+            if (declaresNothing(bs)) {
+                return generateMultiAccBreakAwareStmts(spliced(stmts, index, bs), 0, accNames, accTypes, continueFn);
+            }
+            rejectBreakInDeclaringBlock(bs);
+            var blockTerm = scoped(() -> generateMultiAccBody(bs, accNames, accTypes));
+            var rest = generateMultiAccBreakAwareStmts(stmts, index + 1, accNames, accTypes, continueFn);
+            return unpackAccumulators(blockTerm, accNames, accTypes, rest);
         }
 
         if (stmt instanceof BreakStmt) {
@@ -515,16 +538,58 @@ final class LoopBodyGenerator {
 
     // ===== Shared helpers =====
 
-    /**
-     * A bare nested block in a loop body runs its statements in sequence with the statements
-     * after it: the block's statements are spliced into the body's list, so an accumulator
-     * update inside the block is bound like one outside it (PR #150 review: delegating the
-     * block to the generic statement generator dropped the updates it contained).
-     */
+    // ===== Bare nested blocks =====
+    //
+    // A bare nested block in a loop body runs its statements in sequence with the statements
+    // after it, and its declarations end with it (PR #150 review: delegating the block to the
+    // generic statement generator dropped the accumulator updates it contained). A block that
+    // declares nothing is scope-neutral, so its statements are spliced into the body's list. A
+    // block that declares a variable is generated as a term of its own, in a symbol-table scope
+    // of its own, that yields the accumulator(s) at its end (as an if branch is), and that
+    // value is bound to the accumulator(s) around the statements after the block: the block's
+    // bindings never enclose those statements, so a name the block shadows (a class constant
+    // redeclared as a block local) resolves to the outer binding again after the block.
+
+    /** The statements of a bare nested block followed by the statements after it. */
     private static List<Statement> spliced(List<Statement> stmts, int index, BlockStmt block) {
         var out = new ArrayList<Statement>(block.getStatements());
         out.addAll(stmts.subList(index + 1, stmts.size()));
         return out;
+    }
+
+    /**
+     * True when the statement declares no variable at any level the loop body generators
+     * lower themselves (a plain statement, a {@code break}, an if/else or a nested block of
+     * such); anything else is treated as declaring, which only costs the scoped lowering.
+     */
+    private boolean declaresNothing(Statement stmt) {
+        if (stmt instanceof ExpressionStmt es) return !(es.getExpression() instanceof VariableDeclarationExpr);
+        if (stmt instanceof BlockStmt bs) return bs.getStatements().stream().allMatch(this::declaresNothing);
+        if (stmt instanceof IfStmt is) {
+            return declaresNothing(is.getThenStmt()) && is.getElseStmt().map(this::declaresNothing).orElse(true);
+        }
+        return stmt instanceof BreakStmt;
+    }
+
+    /** Generate a term in a symbol-table scope of its own: the declarations it makes end with it. */
+    private PirTerm scoped(Supplier<PirTerm> body) {
+        symbolTable.pushScope();
+        try {
+            return body.get();
+        } finally {
+            symbolTable.popScope();
+        }
+    }
+
+    /**
+     * A block that declares a variable is lowered without a continuation (its value is the
+     * accumulator), so a {@code break} inside it has nowhere to go; the shape is rejected.
+     */
+    private void rejectBreakInDeclaringBlock(BlockStmt block) {
+        if (containsBreak(block)) {
+            throw gen.enrichedError("A nested block that declares a variable and contains break is not supported",
+                    "Move the declaration out of the block, or the break into the enclosing if/else.", block);
+        }
     }
 
     /**

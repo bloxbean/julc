@@ -30,6 +30,7 @@ class LoopBlockAssignmentTest {
             import org.julclang.stdlib.lib.ContextsLib;
             import java.math.BigInteger;
             class Loops {
+                static final BigInteger amount = BigInteger.TEN;
             """;
 
     private static final List<PlutusData> ONE_TWO_THREE = List.of(PlutusData.list(
@@ -110,6 +111,108 @@ class LoopBlockAssignmentTest {
                     return sum.multiply(BigInteger.TEN).add(count);
                 }
                 """, ONE_TWO_THREE));
+    }
+
+    /**
+     * A block's declarations end with the block (PR #150 review round four: splicing the
+     * statements let a block-local {@code amount} shadow the class constant {@code amount} in
+     * the statements after the block, so a valid program summed 1 instead of 10 per element).
+     */
+    @Test
+    void blockLocalsEndWithTheBlock() {
+        // The reviewer's reproducer: the class constant, not the block local, after the block.
+        assertEquals(30, evaluate("""
+                static BigInteger m(JulcList<BigInteger> xs) {
+                    BigInteger acc = BigInteger.ZERO;
+                    for (var x : xs) {
+                        {
+                            BigInteger amount = BigInteger.ONE;
+                            ContextsLib.trace("inner");
+                        }
+                        acc = acc.add(amount);
+                    }
+                    return acc;
+                }
+                """, ONE_TWO_THREE));
+        // The same with several accumulators, and in a break-aware loop (the block itself does not break).
+        assertEquals(30 * 10 + 3, evaluate("""
+                static BigInteger m(JulcList<BigInteger> xs) {
+                    BigInteger sum = BigInteger.ZERO;
+                    BigInteger count = BigInteger.ZERO;
+                    for (var x : xs) {
+                        {
+                            BigInteger amount = BigInteger.ONE;
+                            sum = sum.add(amount);
+                            count = count.add(amount);
+                        }
+                        sum = sum.add(amount).subtract(BigInteger.ONE);
+                    }
+                    return sum.multiply(BigInteger.TEN).add(count);
+                }
+                """, ONE_TWO_THREE));
+        assertEquals(20, evaluate("""
+                static BigInteger m(JulcList<BigInteger> xs) {
+                    BigInteger acc = BigInteger.ZERO;
+                    for (var x : xs) {
+                        {
+                            BigInteger amount = BigInteger.ONE;
+                            ContextsLib.trace("inner");
+                        }
+                        acc = acc.add(amount);
+                        if (x.equals(BigInteger.TWO)) {
+                            break;
+                        }
+                    }
+                    return acc;
+                }
+                """, ONE_TWO_THREE));
+        // A block-local's value still reaches the accumulator, and the name is free again after the block.
+        assertEquals(18, evaluate("""
+                static BigInteger m(JulcList<BigInteger> xs) {
+                    BigInteger acc = BigInteger.ZERO;
+                    for (var x : xs) {
+                        {
+                            BigInteger t = x;
+                            acc = acc.add(t);
+                        }
+                        BigInteger t = x.add(x);
+                        acc = acc.add(t);
+                    }
+                    return acc;
+                }
+                """, ONE_TWO_THREE));
+        // A block-local referenced after its block is undefined, as javac says.
+        var escaped = assertThrows(CompilerException.class, () -> compile("""
+                static BigInteger m(JulcList<BigInteger> xs) {
+                    BigInteger acc = BigInteger.ZERO;
+                    for (var x : xs) {
+                        {
+                            BigInteger t = x;
+                        }
+                        acc = acc.add(t);
+                    }
+                    return acc;
+                }
+                """));
+        assertTrue(escaped.getMessage().contains("Undefined variable: t"), escaped.getMessage());
+        // A block that both declares a variable and breaks is rejected; one that only breaks is fine (above).
+        var declaresAndBreaks = assertThrows(CompilerException.class, () -> compile("""
+                static BigInteger m(JulcList<BigInteger> xs) {
+                    BigInteger acc = BigInteger.ZERO;
+                    for (var x : xs) {
+                        if (x.equals(BigInteger.TWO)) {
+                            {
+                                BigInteger t = x;
+                                acc = acc.add(t);
+                                break;
+                            }
+                        }
+                        acc = acc.add(x);
+                    }
+                    return acc;
+                }
+                """));
+        assertTrue(declaresAndBreaks.getMessage().contains("declares a variable and contains break"), declaresAndBreaks.getMessage());
     }
 
     @Test

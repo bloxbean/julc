@@ -257,11 +257,12 @@ bypassed the check, both pre-existing:
   which lowered an accumulator assignment to its right-hand side and dropped the update:
   `{ acc = Builtins.bls12_381_G2_hashToGroup(...); }` compiled and evaluated `true` with `acc`
   unchanged, and `for (x : xs) { { acc = acc.add(x); } }` summed to zero. The block is now
-  spliced into the loop body for every loop kind (single- and multi-accumulator, break-aware),
-  so the assignment is bound and checked (`Assignment to 'acc' received G2, but requires G1`).
+  part of the loop body for every loop kind (single- and multi-accumulator, break-aware), so
+  the assignment is bound and checked (`Assignment to 'acc' received G2, but requires G1`).
   `LoopBlockAssignmentTest` pins the sums (6, 12 and 18 for one accumulator; 63, 3 and 32 with
   several, a `break` and an `if`), and `BRANCHES` carries a nested block: its bytes, hash and
-  budgets are unchanged, the spliced body lowering to the same term as the braceless one.
+  budgets are unchanged, a block that declares nothing lowering to the same term as the
+  braceless body.
 - An assignment in expression position (`g2Compress(acc = ...)`) or to an undeclared name
   reached the expression generator, which returned the right-hand side for an accumulator
   name and otherwise let a `Let` bind a fresh variable. Both are rejected now (`Assignment to
@@ -269,6 +270,21 @@ bypassed the check, both pre-existing:
   and the two legacy accumulator paths in `PirGenerator` (the last-statement assignment
   returning its value, the expression-level accumulator assignment) are removed; outside a
   loop the existing `Unsupported expression: AssignExpr` diagnostic stands.
+
+Round four (the reviewer's re-check of `03aef207`): the round-three lowering spliced every
+nested block into the body, which removed the block's lexical boundary: a block-local
+`amount` shadowing the class constant `amount` stayed bound in the statements after the
+block, and a valid program summed 1 instead of 10 per element. The lowering now
+distinguishes the two cases: a block that declares nothing is spliced (scope-neutral); a
+block that declares a variable is generated in a symbol-table scope of its own as a term
+that yields the accumulator(s), and that value is bound around the statements after it (the
+`if`-branch construction), so the block's bindings never enclose them; a block that both
+declares a variable and contains `break` is rejected (`A nested block that declares a
+variable and contains break is not supported`). `LoopBlockAssignmentTest.blockLocalsEndWithTheBlock`
+pins the reviewer's reproducer (30 over `[1, 2, 3]`), the same with several accumulators
+(303) and in a break-aware loop (20), a block local redeclared after its block (18), a block
+local referenced after its block (`Undefined variable: t`) and the rejected declare-and-break
+shape.
 
 The temporary probes (deleted before the commit) also confirmed the retained residual that a
 `switch` expression is typed Data (`g1Compress(switch ...)` is rejected as `received Data,

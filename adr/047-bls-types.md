@@ -183,13 +183,19 @@ programs importing `BlsLib` are unchanged.
   against the declared type (`Assignment to 'acc' received G2, but requires G1`); a native
   accumulator among several is rejected earlier, at the Data pack of the multi-accumulator
   loop (`Data encoding received G1, but requires Data`), so a point or a native list is
-  carried by a loop of its own. A bare nested block inside a loop body is spliced into the
-  body (its statements run in sequence with the rest), so an assignment inside it is bound
-  and checked like one outside it; before this round the block was delegated to the generic
-  statement generator, which lowered an accumulator assignment to its right-hand side and
-  dropped the update (`for (x : xs) { { acc = acc.add(x); } }` summed to zero: a miscompile
-  of valid Java, fixed for every loop kind and pinned by `LoopBlockAssignmentTest`). An
-  assignment the loop body generators do not bind is rejected rather than dropped: in
+  carried by a loop of its own. A bare nested block inside a loop body runs its statements
+  in sequence with the rest, and its declarations end with it: a block that declares nothing
+  is spliced into the body; a block that declares a variable is lowered as a term of its own
+  in a symbol-table scope of its own, yielding the accumulator(s) at its end as an `if`
+  branch does, and that value is bound around the statements after the block, so the
+  block's bindings never enclose them and a name the block shadows (a class constant
+  redeclared as a block local) resolves to the outer binding again; a block that both
+  declares a variable and contains `break` is rejected. Before the review the block was
+  delegated to the generic statement generator, which lowered an accumulator assignment to
+  its right-hand side and dropped the update (`for (x : xs) { { acc = acc.add(x); } }` summed
+  to zero: a miscompile of valid Java, fixed for every loop kind and pinned by
+  `LoopBlockAssignmentTest`). An assignment the loop body generators do not bind is
+  rejected rather than dropped: in
   expression position (`g2Compress(acc = ...)`), inside a statement delegated to the
   generic generator, or to a name with no declaration in scope (`Assignment to undeclared
   variable 'x'`). Inherited from ADR-032 O7 and unchanged here: a cast (`(JulcG1) data`) is trusted and fails in the CEK;
@@ -202,9 +208,9 @@ programs importing `BlsLib` are unchanged.
   users), and none for a BLS program that compiles under both APIs (the types erase, no
   library method was added). The loop-body fixes of the review (above) change only programs
   that were miscompiled or accepted with an update dropped: a loop body assigning inside a
-  bare nested block now compiles to the intended sum (the spliced body lowers to the same
-  term as the braceless one), and an assignment in expression position or to an undeclared
-  name is rejected.
+  bare nested block now compiles to the intended sum (a block that declares nothing lowers
+  to the same term as the braceless body), and an assignment in expression position or to
+  an undeclared name is rejected.
 - **Generated names in the converters.** The decoding loop of `scalarsFromList`,
   `g1PointsFromCompressed` and `g2PointsFromCompressed` is bound under a fixed name
   (`go__scalars`, `go__g1Points`, `go__g2Points`); the caller's list is applied to the loop
