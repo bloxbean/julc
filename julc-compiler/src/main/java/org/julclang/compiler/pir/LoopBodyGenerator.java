@@ -33,6 +33,69 @@ final class LoopBodyGenerator {
 
     // ===== AST inspection =====
 
+    /**
+     * #155: an if joins only the loop's accumulators, not its body-local bindings.
+     * Reject updates that would cross such a join, before any PIR is emitted. This is
+     * deliberately conservative: even a dead update or an always-taken branch is rejected.
+     * Bare blocks do not introduce a join. A nested loop owns its own locals; enclosing
+     * locals are its accumulators, but still cannot escape an enclosing if's join.
+     */
+    void validateConditionalLocalUpdates(Statement body, Set<String> locals) {
+        validateConditionalLocalUpdates(body, new HashSet<>(locals), new HashSet<>());
+    }
+
+    private void validateConditionalLocalUpdates(Node stmt, Set<String> locals,
+                                                   Set<String> conditionalLocals) {
+        if (stmt instanceof BlockStmt block) {
+            var blockLocals = new HashSet<>(locals);
+            var blockConditionalLocals = new HashSet<>(conditionalLocals);
+            for (var child : block.getStatements()) {
+                validateConditionalLocalUpdates(child, blockLocals, blockConditionalLocals);
+            }
+        } else if (stmt instanceof ExpressionStmt expression) {
+            validateConditionalLocalUpdates(expression.getExpression(), locals, conditionalLocals);
+        } else if (stmt instanceof VariableDeclarationExpr declaration) {
+            for (var variable : declaration.getVariables()) {
+                variable.getInitializer().ifPresent(initializer ->
+                        validateConditionalLocalUpdates(initializer, locals, conditionalLocals));
+                locals.add(variable.getNameAsString());
+                conditionalLocals.remove(variable.getNameAsString());
+            }
+        } else if (stmt instanceof AssignExpr assignment
+                && assignment.getTarget() instanceof NameExpr name
+                && conditionalLocals.contains(name.getNameAsString())) {
+            throw gen.enrichedError("Conditional update to loop-body local '"
+                            + sourceName(name.getNameAsString()) + "' is not supported",
+                    "An if/else branch carries only loop accumulators out of the branch. "
+                            + "Use a conditional initializer (condition ? value : otherValue), "
+                            + "or declare the variable before the loop so it is an accumulator "
+                            + "(reset it each iteration if needed).", assignment);
+        } else if (stmt instanceof IfStmt branch) {
+            validateConditionalLocalUpdates(branch.getCondition(), locals, conditionalLocals);
+            var crossingJoin = new HashSet<>(conditionalLocals);
+            crossingJoin.addAll(locals);
+            validateConditionalLocalUpdates(branch.getThenStmt(), new HashSet<>(locals), new HashSet<>(crossingJoin));
+            branch.getElseStmt().ifPresent(other ->
+                    validateConditionalLocalUpdates(other, new HashSet<>(locals), new HashSet<>(crossingJoin)));
+        } else if (stmt instanceof ForEachStmt loop) {
+            validateConditionalLocalUpdates(loop.getIterable(), locals, conditionalLocals);
+            var innerLocals = new HashSet<String>();
+            loop.getVariable().getVariables().forEach(v -> innerLocals.add(v.getNameAsString()));
+            validateConditionalLocalUpdates(loop.getBody(), innerLocals, new HashSet<>(conditionalLocals));
+        } else if (stmt instanceof WhileStmt loop) {
+            validateConditionalLocalUpdates(loop.getCondition(), locals, conditionalLocals);
+            validateConditionalLocalUpdates(loop.getBody(), new HashSet<>(), new HashSet<>(conditionalLocals));
+        } else if (!(stmt instanceof LambdaExpr)) {
+            // Expressions can contain statements: a switch arm can contain a nested loop
+            // which binds assignments itself, bypassing the generic expression diagnostic.
+            // Preserve enclosing restrictions through these nodes; siblings do not share locals.
+            for (var child : stmt.getChildNodes()) {
+                validateConditionalLocalUpdates(child, new HashSet<>(locals), new HashSet<>(conditionalLocals));
+            }
+        }
+        // Lambdas have independent scope; their own loops are checked at their lowering entry.
+    }
+
     boolean containsBreak(Statement stmt) {
         if (stmt instanceof BreakStmt) return true;
         if (stmt instanceof WhileStmt || stmt instanceof ForEachStmt) return false;
