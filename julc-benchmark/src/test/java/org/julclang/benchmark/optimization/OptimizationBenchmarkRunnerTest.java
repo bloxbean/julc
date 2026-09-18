@@ -9,6 +9,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class OptimizationBenchmarkRunnerTest {
 
@@ -30,7 +31,7 @@ class OptimizationBenchmarkRunnerTest {
         var comparison = OptimizationBenchmarkRunner.compare(
                 fixture,
                 OptimizationLevel.PV11_SAFE,
-                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11,
+                OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1,
                 List.of(OptimizationBenchmarkRunner.Backend.javaVm()));
 
         comparison.verifyEquivalent();
@@ -40,12 +41,15 @@ class OptimizationBenchmarkRunnerTest {
                 comparison.candidateArtifact().scriptHash());
         assertEquals(comparison.baselineEvaluations().getFirst().budget(),
                 comparison.candidateEvaluations().getFirst().budget());
-        assertEquals("cardano-node-11.0.1-plutus-v3-pv11",
+        assertEquals("plutus-v3-pv11-costs-v1",
                 comparison.candidateArtifact().costProfileId());
+        assertThrows(NullPointerException.class, () -> OptimizationBenchmarkRunner.compare(
+                fixture, OptimizationLevel.PV11_COSTED, null,
+                List.of(OptimizationBenchmarkRunner.Backend.javaVm())));
         var markdown = comparison.toMarkdown();
         assertTrue(markdown.contains("| FLAT bytes |"));
         assertTrue(markdown.contains("| java | forty-one | SUCCESS |"));
         assertTrue(markdown.contains(
-                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11_PARAMETER_HASH));
+                OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1_PARAMETER_HASH));
     }
 }

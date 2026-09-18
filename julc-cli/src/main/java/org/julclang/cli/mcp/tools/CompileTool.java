@@ -79,7 +79,7 @@ public final class CompileTool {
                     },
                     "costProfile": {
                       "type": "string",
-                      "description": "Exact pinned cost profile ID; required by pv11-costed."
+                      "description": "Optional compatibility profile ID, e.g. plutus-v3-pv11-costs-v1. Validated but unused by compilation; does not configure evaluation."
                     },
                     "includeUplc": {
                       "type": "boolean",
@@ -227,6 +227,7 @@ public final class CompileTool {
         var report = result.optimizationReport();
         var rendered = new LinkedHashMap<String, Object>();
         rendered.put("level", report.level().profileId());
+        rendered.put("compilerVersion", report.compilerVersion());
         if (report.costProfileId() != null) {
             rendered.put("costProfile", report.costProfileId());
             rendered.put("costProfileHash", report.costParameterHash());

@@ -141,8 +141,8 @@ on `VALUE_CONSTANTS` instead of `CASE_ON_BUILTIN_CONSTANTS`; rule provenance is
 
 `ListIndexPromotionPass` (ADR-043, O9) runs between the two passes above and is
 the first costed-only rule: its gate is the exact PV11 target,
-`OptimizationLevel.pv11CostedRulesEnabled()` (exactly the levels that require a
-cost profile), `ARRAY_CONSTANTS`, and both array builtins on the resolved feature
+`OptimizationLevel.pv11CostedRulesEnabled()` (the opt-in `PV11_COSTED` level,
+independent of cost profiles), `ARRAY_CONSTANTS`, and both array builtins on the resolved feature
 profile. For a `Let`, lambda-parameter or match-field binding of a list variable
 whose scope holds the recursive `JulcList.get` lowering
 (`PirHelpers.recursiveListGet`, recognised structurally through the shared

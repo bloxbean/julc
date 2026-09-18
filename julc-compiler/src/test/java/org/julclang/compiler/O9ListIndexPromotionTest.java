@@ -18,8 +18,6 @@ import org.julclang.stdlib.StdlibRegistry;
 import org.julclang.vm.EvalOptions;
 import org.julclang.vm.EvalResult;
 import org.julclang.vm.ExBudget;
-import org.julclang.vm.OptimizationCostProfile;
-import org.julclang.vm.OptimizationCostProfiles;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -52,7 +50,6 @@ import static org.junit.jupiter.api.Assertions.*;
 @Tag("pair-case-backends")
 class O9ListIndexPromotionTest {
 
-    private static final OptimizationCostProfile PROFILE = OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11;
     private static final PirType INT = new PirType.IntegerType();
     private static final PirType DATA = new PirType.DataType();
     private static final PirType LIST_INT = new PirType.ListType(INT);
@@ -768,7 +765,7 @@ class O9ListIndexPromotionTest {
 
     private static CompileResult compileValidator(String source, OptimizationLevel level) {
         var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()
-                .setOptimizationLevel(level).setOptimizationCostProfile(PROFILE)).compileWithDetails(source);
+                .setOptimizationLevel(level)).compileWithDetails(source);
         assertFalse(compiled.hasErrors(), level + " " + compiled.diagnostics());
         return compiled;
     }
@@ -845,7 +842,7 @@ class O9ListIndexPromotionTest {
                 """;
         for (var level : OptimizationLevel.values()) {
             var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()
-                    .setOptimizationLevel(level).setOptimizationCostProfile(PROFILE))
+                    .setOptimizationLevel(level))
                     .compileWithDetails(validator);
             assertFalse(compiled.hasErrors(), level + " " + compiled.diagnostics());
             assertEquals(Set.of(), PirSubstitution.collectFreeVarNames(compiled.pirTerm()), level.toString());
@@ -1058,11 +1055,11 @@ class O9ListIndexPromotionTest {
     }
 
     private static CompilationContext context(OptimizationLevel level) {
-        return CompilationContext.resolve(new CompilerOptions().setOptimizationLevel(level).setOptimizationCostProfile(PROFILE));
+        return CompilationContext.resolve(new CompilerOptions().setOptimizationLevel(level));
     }
 
     private static Program compileDirect(PirTerm term, OptimizationLevel level) {
-        return new JulcCompiler(null, new CompilerOptions().setOptimizationLevel(level).setOptimizationCostProfile(PROFILE))
+        return new JulcCompiler(null, new CompilerOptions().setOptimizationLevel(level))
                 .compilePirToProgram(term);
     }
 
@@ -1145,7 +1142,7 @@ class O9ListIndexPromotionTest {
      */
     static CompileResult compile(String source, String method, OptimizationLevel level, boolean maps) {
         return new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()
-                .setOptimizationLevel(level).setSourceMapEnabled(maps).setOptimizationCostProfile(PROFILE)
+                .setOptimizationLevel(level).setSourceMapEnabled(maps)
                 .disableOptimizationRule(ValueConversionSharingPass.PROJECTION_RULE))
                 .compileMethod(source, method);
     }

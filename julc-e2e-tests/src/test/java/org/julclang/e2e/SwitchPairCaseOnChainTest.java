@@ -73,7 +73,7 @@ class SwitchPairCaseOnChainTest extends E2ETestBase {
         var params = new DefaultProtocolParamsSupplier(backendService.getEpochService()).getProtocolParams();
         assertEquals(11, params.getProtocolMajorVer());
         assertEquals(0, params.getProtocolMinorVer());
-        assertArrayEquals(OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11.costModelParameters(),
+        assertArrayEquals(OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1.costModelParameters(),
                 CostModelUtil.getCostModelFromProtocolParams(params, Language.PLUTUS_V3).orElseThrow().getCosts());
         var options = new CompilerOptions().setOptimizationLevel(level);
         var compiled = new JulcCompiler(stdlib, options).compile(SOURCE);

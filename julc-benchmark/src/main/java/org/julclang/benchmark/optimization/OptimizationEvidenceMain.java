@@ -398,7 +398,7 @@ public final class OptimizationEvidenceMain {
         return OptimizationBenchmarkRunner.compareWithJavaAndTruffle(
                 o1DropListFixture(),
                 OptimizationLevel.PV11_SAFE,
-                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+                OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1);
     }
 
     public static OptimizationBenchmarkRunner.Comparison o1DropListComposedComparison() {
@@ -413,7 +413,7 @@ public final class OptimizationEvidenceMain {
                                 input("over-then-one", sampleList(), 5, 1),
                                 input("negative-then-one", sampleList(), -1, 1))),
                 OptimizationLevel.PV11_SAFE,
-                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+                OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1);
     }
 
     /** Bounded semantic matrix; intentionally omitted from release-note output. */
@@ -433,7 +433,7 @@ public final class OptimizationEvidenceMain {
                         "drop",
                         cases),
                 OptimizationLevel.PV11_SAFE,
-                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+                OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1);
     }
 
     /**
@@ -464,7 +464,7 @@ public final class OptimizationEvidenceMain {
                                         "malformed-data", PlutusData.integer(1),
                                         PlutusData.bytes(policy), PlutusData.bytes(token)))),
                 OptimizationLevel.PV11_SAFE,
-                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+                OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1);
     }
 
     public static OptimizationBenchmarkRunner.Comparison o2CaseBoolComparison() {
@@ -481,7 +481,7 @@ public final class OptimizationEvidenceMain {
                                 boolInput("true-selected-error", true, 1),
                                 boolInput("false-selected-error", false, 2))),
                 OptimizationLevel.PV11_SAFE,
-                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+                OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1);
     }
 
     public static OptimizationBenchmarkRunner.Comparison o3CaseListExperiment() {
@@ -506,7 +506,7 @@ public final class OptimizationEvidenceMain {
                         termInput("singleton", integerList(7)),
                         termInput("three", integerList(7, 8, 9))),
                 "pv11.o3.case-list-research",
-                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+                OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1);
     }
 
     public static OptimizationBenchmarkRunner.Comparison o4CasePairExperiment() {
@@ -530,7 +530,7 @@ public final class OptimizationEvidenceMain {
                         termInput("negative", Term.const_(new Constant.PairConst(
                                 Constant.integer(-5), Constant.integer(2))))),
                 "pv11.o4.case-pair-research",
-                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+                OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1);
     }
 
     public static OptimizationBenchmarkRunner.Comparison o5CaseIntegerExperiment() {
@@ -559,7 +559,7 @@ public final class OptimizationEvidenceMain {
                         termInput("two", Term.const_(Constant.integer(2))),
                         termInput("out-of-range", Term.const_(Constant.integer(3)))),
                 "pv11.o5.case-integer-research",
-                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+                OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1);
     }
 
     public static OptimizationBenchmarkRunner.Comparison o6CaseUnitExperiment() {
@@ -578,7 +578,7 @@ public final class OptimizationEvidenceMain {
                 candidate,
                 List.of(termInput("unit", Term.const_(Constant.unit()))),
                 "pv11.o6.case-unit-research",
-                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+                OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1);
     }
 
     /**
@@ -592,7 +592,7 @@ public final class OptimizationEvidenceMain {
                 new OptimizationBenchmarkRunner.Fixture(
                         "o8-native-value-sharing", O8_REPEATED_SOURCE, "repeated", o8Cases()),
                 OptimizationLevel.PV11_SAFE,
-                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+                OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1);
     }
 
     /** The manual-sharing control: BASELINE and PV11_SAFE of {@code shared} carry no O8 rule. */
@@ -601,7 +601,7 @@ public final class OptimizationEvidenceMain {
                 new OptimizationBenchmarkRunner.Fixture(
                         "o8-native-value-shared-control", O8_SHARED_SOURCE, "shared", o8Cases()),
                 OptimizationLevel.PV11_SAFE,
-                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+                OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1);
     }
 
     private static List<OptimizationBenchmarkRunner.InputCase> o8Cases() {
@@ -627,7 +627,7 @@ public final class OptimizationEvidenceMain {
                         "o9-list-index-request-loop", O9_REQUEST_LOOP_SOURCE, "requests", o9LoopCases()),
                 OptimizationLevel.PV11_SAFE,
                 OptimizationLevel.PV11_COSTED,
-                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+                OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1);
     }
 
     /** Two sites on one list: the costed program must be the manual array program byte for byte. */
@@ -637,7 +637,7 @@ public final class OptimizationEvidenceMain {
                         "o9-list-index-two-sites", O9_TWO_SITES_SOURCE, "twoSites", o9TwoSiteCases()),
                 OptimizationLevel.PV11_SAFE,
                 OptimizationLevel.PV11_COSTED,
-                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+                OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1);
     }
 
     /** ADR-044 (O15): PV11_SAFE with projection sharing off versus on, so the delta is O15 alone. */
@@ -647,7 +647,7 @@ public final class OptimizationEvidenceMain {
                         "o15-projection-sharing", O15_REPEATED_SOURCE, "repeated", o15BoxCases()),
                 OptimizationLevel.PV11_SAFE,
                 "pv11.o15.projection-sharing",
-                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+                OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1);
     }
 
     /** The manual binding control: {@code manual} carries no O15 rule with the switch off or on. */
@@ -657,7 +657,7 @@ public final class OptimizationEvidenceMain {
                         "o15-projection-manual-control", O15_MANUAL_SOURCE, "manual", o15BoxCases()),
                 OptimizationLevel.PV11_SAFE,
                 "pv11.o15.projection-sharing",
-                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+                OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1);
     }
 
     /** The ledger shape: a shared chain plus a shared fields prefix over a {@code TxInfo}. */
@@ -671,7 +671,7 @@ public final class OptimizationEvidenceMain {
                                 OptimizationBenchmarkRunner.InputCase.of("not-a-record", PlutusData.integer(1)))),
                 OptimizationLevel.PV11_SAFE,
                 "pv11.o15.projection-sharing",
-                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+                OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1);
     }
 
     /** ADR-045 (O14): PV11_SAFE with the literal fold off versus on, so the delta is O14 alone. */
@@ -697,7 +697,7 @@ public final class OptimizationEvidenceMain {
                                 OptimizationBenchmarkRunner.InputCase.of("not-a-map", PlutusData.integer(1)))),
                 OptimizationLevel.PV11_SAFE,
                 "pv11.o14.value-literal-fold",
-                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+                OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1);
     }
 
     /** The all-literal method: one constant after the fold. */
@@ -708,7 +708,7 @@ public final class OptimizationEvidenceMain {
                                 OptimizationBenchmarkRunner.InputCase.of("run"))),
                 OptimizationLevel.PV11_SAFE,
                 "pv11.o14.value-literal-fold",
-                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+                OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1);
     }
 
     /** ADR-046 (O10): PV11_SAFE with the array literal fold off versus on, so the delta is O10 alone. */
@@ -722,7 +722,7 @@ public final class OptimizationEvidenceMain {
                                 OptimizationBenchmarkRunner.InputCase.of("negative", PlutusData.integer(-1)))),
                 OptimizationLevel.PV11_SAFE,
                 "pv11.o10.array-literal-fold",
-                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+                OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1);
     }
 
     /** The all-literal method: one constant after the fold. */
@@ -733,7 +733,7 @@ public final class OptimizationEvidenceMain {
                                 OptimizationBenchmarkRunner.InputCase.of("run"))),
                 OptimizationLevel.PV11_SAFE,
                 "pv11.o10.array-literal-fold",
-                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+                OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1);
     }
 
     private static final String O11_IMPORTS = """
@@ -775,7 +775,7 @@ public final class OptimizationEvidenceMain {
                 new OptimizationBenchmarkRunner.Fixture("o11-g1-chain-n" + n, chainSource, "sum", cases),
                 new OptimizationBenchmarkRunner.Fixture("o11-g1-msm-n" + n, msmSource, "sum", cases),
                 "adr-047.explicit-msm",
-                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+                OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1);
     }
 
     private static List<OptimizationBenchmarkRunner.InputCase> o15BoxCases() {
@@ -807,7 +807,7 @@ public final class OptimizationEvidenceMain {
                         "o9-list-index-manual-array-control", O9_MANUAL_ARRAY_SOURCE, "manualArray", o9TwoSiteCases()),
                 OptimizationLevel.PV11_SAFE,
                 OptimizationLevel.PV11_COSTED,
-                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+                OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1);
     }
 
     private static List<OptimizationBenchmarkRunner.InputCase> o9LoopCases() {
@@ -842,7 +842,7 @@ public final class OptimizationEvidenceMain {
                 new OptimizationBenchmarkRunner.Fixture(
                         "o12-exp-mod", O12_EXP_MOD_SOURCE, "explicitExpMod", cases),
                 "pv11.o12.exp-mod-idiom-research",
-                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+                OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1);
     }
 
     public static OptimizationBenchmarkRunner.Comparison o13ExpModLiteralComparison() {
@@ -853,7 +853,7 @@ public final class OptimizationEvidenceMain {
                         "literals",
                         List.of(OptimizationBenchmarkRunner.InputCase.of("literal-suite"))),
                 OptimizationLevel.PV11_SAFE,
-                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+                OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1);
     }
 
     public static OptimizationBenchmarkRunner.Comparison o13ExpModInvalidLiteralComparison() {
@@ -864,7 +864,7 @@ public final class OptimizationEvidenceMain {
                         "zeroModulus",
                         List.of(OptimizationBenchmarkRunner.InputCase.of("zero-modulus"))),
                 OptimizationLevel.PV11_SAFE,
-                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+                OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1);
     }
 
     /** Failure matrix is checked in tests but omitted from release-note output. */
@@ -882,7 +882,7 @@ public final class OptimizationEvidenceMain {
                                 OptimizationBenchmarkRunner.InputCase.of(
                                         "non-invertible", PlutusData.integer(2)))),
                 OptimizationLevel.PV11_SAFE,
-                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+                OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1);
     }
 
     public static OptimizationBenchmarkRunner.Comparison aggregatePv11SafeComparison() {
@@ -902,7 +902,7 @@ public final class OptimizationEvidenceMain {
                                 input("malformed-head", PlutusData.list(
                                         PlutusData.bytes(new byte[] {1})), 0, 5))),
                 OptimizationLevel.PV11_SAFE,
-                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+                OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1);
     }
 
     static OptimizationBenchmarkRunner.Fixture o1DropListFixture() {

@@ -82,7 +82,7 @@ public class JulcExtension {
         return optimization;
     }
 
-    /** Exact pinned cost-profile ID. Required only by cost-directed levels. */
+    /** Optional compatibility ID (e.g. plutus-v3-pv11-costs-v1); unused by compilation. */
     public Property<String> getCostProfile() {
         return costProfile;
     }

@@ -139,7 +139,7 @@ class EvaluateToolTest {
     }
 
     @Test
-    void rejects_costed_optimization_without_profile() {
+    void accepts_costed_optimization_without_profile() {
         var req = new McpSchema.CallToolRequest("julc_evaluate", Map.of(
                 "source", "class X { static long x() { return 1; } }",
                 "method", "x",
@@ -147,11 +147,7 @@ class EvaluateToolTest {
         var res = EvaluateTool.handle(req, jsonMapper);
         @SuppressWarnings("unchecked")
         var body = (Map<String, Object>) res.structuredContent();
-        @SuppressWarnings("unchecked")
-        var diagnostics = (List<Map<String, Object>>) body.get("diagnostics");
-        assertEquals(Boolean.FALSE, body.get("ok"));
-        assertTrue(diagnostics.stream().anyMatch(
-                diagnostic -> "JULC0037".equals(diagnostic.get("code"))));
+        assertEquals(Boolean.TRUE, body.get("ok"), body.toString());
     }
 
     @Test

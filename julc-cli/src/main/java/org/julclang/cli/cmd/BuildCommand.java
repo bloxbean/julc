@@ -55,7 +55,7 @@ public class BuildCommand implements Callable<Integer> {
     private String optimizationProfile;
 
     @Option(names = "--cost-profile",
-            description = "Exact pinned cost profile ID; required by pv11-costed")
+            description = "Optional compatibility profile ID (e.g. plutus-v3-pv11-costs-v1); unused by compilation")
     private String costProfile;
 
     @Override

@@ -101,9 +101,10 @@ public class JulcCompiler {
     private CompilationContext beginCompilation() {
         var context = CompilationContext.resolve(options);
         context.logf("Compiler target: %s", context.target().profileId());
+        context.logf("Compiler version: %s", CompilerVersion.VERSION);
         context.logf("Optimization level: %s", context.optimizationLevel());
         if (context.optimizationCostProfile() != null) {
-            context.logf("Optimization cost profile: %s (sha256=%s)",
+            context.logf("Configured compatibility cost profile (unused by compilation): %s (sha256=%s)",
                     context.optimizationCostProfile().profileId(),
                     context.optimizationCostProfile().parameterHash());
         }

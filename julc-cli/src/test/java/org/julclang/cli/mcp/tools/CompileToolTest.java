@@ -6,6 +6,7 @@ import io.modelcontextprotocol.spec.McpSchema;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.ServiceLoader;
@@ -200,6 +201,29 @@ class CompileToolTest {
         @SuppressWarnings("unchecked")
         var optimization = (Map<String, Object>) body.get("optimization");
         assertEquals("pv11-safe", optimization.get("level"));
+        assertFalse(((String) optimization.get("compilerVersion")).isBlank());
+        assertFalse(optimization.containsKey("costProfile"));
+        assertFalse(optimization.containsKey("costProfileHash"));
+
+        String expectedUplc = null;
+        for (var profileId : List.of("", "plutus-v3-pv11-costs-v1", "cardano-node-11.0.1-plutus-v3-pv11")) {
+            var args = new HashMap<String, Object>();
+            args.put("source", src);
+            args.put("optimization", "pv11-costed");
+            args.put("includeUplc", true);
+            if (!profileId.isEmpty()) args.put("costProfile", profileId);
+            var costed = CompileTool.handle(new McpSchema.CallToolRequest("julc_compile", args), jsonMapper);
+            @SuppressWarnings("unchecked")
+            var costedBody = (Map<String, Object>) costed.structuredContent();
+            assertEquals(Boolean.TRUE, costedBody.get("ok"), costedBody.toString());
+            @SuppressWarnings("unchecked")
+            var report = (Map<String, Object>) costedBody.get("optimization");
+            assertEquals("pv11-costed", report.get("level"));
+            assertFalse(report.containsKey("costProfile"));
+            assertFalse(report.containsKey("costProfileHash"));
+            if (expectedUplc == null) expectedUplc = (String) costedBody.get("uplc");
+            assertEquals(expectedUplc, costedBody.get("uplc"));
+        }
     }
 
     @Test

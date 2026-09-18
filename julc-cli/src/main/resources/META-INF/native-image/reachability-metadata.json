@@ -419,6 +419,8 @@
     {"glob": "META-INF/services/*"},
     {"glob": "diagnostics.json"},
     {"glob": "julc-version.properties"},
+    {"glob": "org/julclang/compiler/version.properties"},
+    {"glob": "cost-model/plutus-v3-pv11-costs-v1.params"},
     {"glob": "META-INF/julc/verification/**"},
     {"glob": "org/julclang/verification/reviewed-raw-data-adapters-v1.json"},
     {"glob": "META-INF/julc/wrappers/**"}

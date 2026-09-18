@@ -17,6 +17,84 @@
 
 ## Context
 
+### Policy amendment — issue #153 (2026-09-18)
+
+This amendment supersedes the original blanket `PV11_COSTED` profile requirement
+and the original node-version-based identity below. Optimization selection and
+numeric cost-model selection are independent. No currently shipped compiler
+rule reads numeric cost parameters. O9 is an opt-in structural heuristic,
+supported by pinned benchmark evidence, not a compile-time profitability
+calculation. Its eligibility, placement, failure contract and rollout level
+remain governed by ADR-043.
+
+The canonical immutable snapshot is `plutus-v3-pv11-costs-v1`. Its neutral Java
+constants, target, bundled parameters and integrity hash live in `julc-vm`.
+The exact upstream mapping belongs to the documentation
+[profile catalog](../docs/src/content/docs/reference/cost-model-profiles.md).
+The previous ID and Java constants remain deprecated compatibility aliases to
+the same object; they do not define a second snapshot. No moving alias or
+implicit compiler profile is introduced. Existing public `source()` and its
+constructor remain compatible, but bundled source metadata is neutral.
+
+#### Consumer audit and ownership
+
+| Consumer | Reads numeric parameters? | Policy |
+|---|---|---|
+| `OptimizationConfiguration`, `CompilerOptions`, `CompilationContext` | No | Accept and validate optional legacy configuration; no mandatory profile |
+| PIR O9 `ListIndexPromotionPass` | No | Structural eligibility; `pv11-costed` stays opt-in |
+| Other shipped PIR/UPLC passes | No | Target, semantic and structural/size checks only |
+| `OptimizationReport`, compiler logging, CLI/MCP/Gradle/AP | No | Do not attribute unused profiles to code generation |
+| `OptimizationBenchmarkRunner`, evidence mains | Yes, via VM configuration | Require an explicit immutable profile; report evaluation ID/hash independently |
+| Compiler cross-backend/exact-budget tests, benchmark conformance and on-chain comparison tests | Yes, via VM configuration | Keep explicitly pinned arrays and exact-budget assertions |
+| `JulcVm` / VM providers | Yes | Caller supplies parameters and target; existing local defaults are unchanged |
+| `JulcTransactionEvaluator` | Yes | Obtain parameters from the caller's `ProtocolParamsSupplier`; no named JuLC profile required |
+
+Compilation provenance records compiler version, target, level and applied rules.
+`OptimizationReport.compilerVersion()` exposes the distribution's build identity
+without changing the record's existing components or constructor; MCP output and
+verbose compiler logs include it. Serializers should record this accessor along
+with `CompileResult.target()` and the optimization fields.
+Its cost-profile fields describe an actual numeric dependency and are absent for
+all current rules, even if an optional profile was configured. Benchmark
+provenance separately records the model actually used for evaluation. A future
+numeric profitability rule must explicitly require and record its model at the
+consumer, with missing-profile tests; adding one requires a design update.
+No hypothetical consumer is implemented for this amendment.
+
+Invariants: identical generated UPLC/FLAT and script hashes with an absent,
+canonical or legacy optional profile; identical source maps, results, traces,
+failure behavior and evaluation budgets under the same evaluator model; unchanged
+default `pv11-safe`; unchanged 350 parameters and canonical SHA-256; unknown IDs
+and explicit target mismatches still fail closed. The network's active model
+determines on-chain costs, independently of compiler configuration.
+
+Affected modules/stages: `julc-vm` registry/resource; compiler configuration and
+reporting (no lowering changes); CLI/MCP, Gradle and annotation-processor options;
+benchmark compilation/reporting; associated tests and public documentation.
+
+Rejected alternatives: retaining a mandatory unused compiler option misstates
+the dependency; silently choosing a default compiler model does the same;
+renaming `pv11-costed` introduces an unnecessary compatibility break; removing
+legacy APIs breaks callers; a moving profile alias prevents reproducibility.
+
+Delivery: update this policy and ADR-043; implement registry compatibility and
+independent gates/reporting; update tooling/docs; run focused resolution,
+configuration and O9 semantic/golden suites, pinned benchmark tests, affected
+module tests and the full build. Review the final diff against the invariants.
+The main risks are inadvertently disabling O9 when removing its shared gate,
+losing benchmark pinning, and misleading provenance; each has a regression test.
+There are no unresolved policy questions for this amendment.
+
+Validation on `fix/153-cost-profile-consumers` (2026-09-18): focused registry and
+configuration tests passed; O9's complete cross-backend suite compiles without a
+profile and passes on Java/Truffle/Scalus; canonical/legacy/absent profile builds
+have equal programs, FLAT bytes and indexed source maps; pinned O9 benchmark
+and budget tests pass. All affected-module suites and
+`./gradlew build -PskipSigning=true` passed. The renamed parameter resource was
+also compared numerically against the pre-change file and its SHA-256 reproduced
+unchanged. External DevKit tests remain explicitly opt-in and were not run;
+runtime evaluation configuration and the lowering algorithm were not changed.
+
 PV11 makes fourteen Batch 6 builtins available to Plutus V3 and enables
 `Case` over selected builtin constant types. JuLC already exposes and evaluates
 the builtins, but most high-level Java operations still lower to pre-PV11
@@ -87,8 +165,9 @@ Every implemented rule must preserve:
    smaller or because its builtin exists.
 8. **Post-pass validation.** Final UPLC is checked against ADR-031 after all
    rewrites.
-9. **No hidden cost assumptions.** Input-size-dependent profitability uses an
-   explicit cost profile, not `protocol >= 11`.
+9. **No hidden cost assumptions.** Numeric profitability calculations require an
+   explicit cost profile, not `protocol >= 11`. Structural heuristics document
+   their assumptions and benchmark reference model without requiring a compiler model.
 10. **Script-hash transparency.** Every shipped rewrite documents whether it
     changes generated script bytes and hashes.
 
@@ -99,8 +178,9 @@ Every implemented rule must preserve:
 ADR-032 does not add or rename a compiler target. The compiler target remains
 `plutus-v3-pv11-uplc-1.1.0` and continues to answer only whether generated UPLC
 is legal. Optimizer rollout is selected independently through
-`OptimizationLevel`; cost-directed rules additionally require a named,
-immutable `OptimizationCostProfile`.
+`OptimizationLevel`; only rules that actually calculate profitability from
+numeric parameters additionally require an immutable `OptimizationCostProfile`.
+No current compiler rule does so.
 
 This separation is permanent. A future protocol target receives explicit rule
 support and a separately pinned cost profile rather than inheriting whatever
@@ -132,9 +212,9 @@ public record OptimizationCostProfile(
         long[] costModelParameters) {}
 ```
 
-The initial profile is pinned to the node 11.0.1 V3/PV11 cost model used by the
-conformance suite. Its exact source and parameter hash are recorded in test
-fixtures and build provenance.
+The initial profile is `plutus-v3-pv11-costs-v1`, the V3/PV11 snapshot used by
+the conformance suite. Its exact upstream source is in the documentation catalog;
+its identity and parameter hash are recorded where evaluation consumes it.
 
 Rules are classified as:
 
@@ -143,11 +223,14 @@ Rules are classified as:
 - **static-cost:** profitability decided from compile-time literal sizes;
 - **profile-cost:** profitability depends on a pinned cost model and static
   analysis;
+- **structural heuristic:** opt-in shape/use analysis supported by pinned
+  benchmark evidence, without a numeric cost-model input to compilation (O9);
 - **research:** no rule is enabled until semantics and cost boundaries are
   established.
 
-If no optimization cost profile is supplied, only approved legality-only rules
-may run. The compiler never invents live network parameters.
+Without a compiler cost profile, approved legality-only, static-size/literal
+rules and opt-in structural heuristics may run. The compiler never invents
+live network parameters. Numeric consumers must enforce their own requirements.
 
 ## PV11 feature inventory
 
@@ -416,8 +499,8 @@ list.get(i1), list.get(i2), ...
   encoding;
 - use/escape analysis proves the array can be shared;
 - index failure behavior matches the current `JulcList.get` contract;
-- the explicit cost profile shows a benefit for the static use count and any
-  known list/index bounds.
+- the structural eligibility and cost trade-offs are documented in ADR-043;
+  pinned measurements support the rule but do not influence compilation.
 
 **Ineligible by default**
 
@@ -427,8 +510,8 @@ list.get(i1), list.get(i2), ...
 - lists escaping into code that expects list representation;
 - transformations relying on unreleased `MultiIndexArray`.
 
-**Classification:** profile-cost, requiring PIR use-count/escape analysis and
-cost-derived break-even tests.
+**Classification:** structural heuristic, requiring PIR use/provenance analysis
+and independently pinned break-even tests (ADR-043; #153 amendment).
 
 ### O10. Array constant folding and simplification
 
@@ -614,7 +697,7 @@ Compiler optimization configuration uses these public levels:
 NONE          no optimizer rewrites; target validation still runs
 BASELINE      existing sound optimizer passes
 PV11_SAFE     reviewed target-legal rules that are not input-size dependent
-PV11_COSTED   PV11_SAFE plus rules using an explicit OptimizationCostProfile
+PV11_COSTED   PV11_SAFE plus opt-in structural heuristics backed by benchmarks
 ```
 
 Initial rollout rules and completed review window:
@@ -624,7 +707,7 @@ Initial rollout rules and completed review window:
   review window, preserving ADR-031 script bytes while the rules were opt-in;
 - new direct lowerings began opt-in because they change generated script
   hashes;
-- profile-cost rules are never enabled without a named cost profile;
+- numeric profile-cost consumers require a model; structural O9 does not;
 - source-map compilation may disable UPLC motion as today, but target
   validation remains active and typed lowerings must maintain source mapping;
 - release notes list every newly default-enabled rule and representative hash
@@ -641,8 +724,8 @@ Default-promotion decision after the review window:
   tools consume the same named default and are regression-tested against it;
 - the promotion changes only newly compiled artifacts. Existing deployed
   scripts are unaffected;
-- `PV11_COSTED` remains explicit and still requires a named cost profile. No
-  cost-profile-dependent rule becomes default through this decision.
+- `PV11_COSTED` remains explicit, without a mandatory compiler cost profile.
+  No opt-in rule becomes default through this decision.
 
 ## Measurement policy
 
