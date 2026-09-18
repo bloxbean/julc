@@ -76,7 +76,10 @@ configuration remain accepted for compatibility. Each accepts the canonical ID
 errors, but these options do not configure evaluation or affect generated code.
 
 Compilation reports record compiler version, target (on `CompileResult`), level
-and applied rules. Cost identity/hash fields are absent when no numeric model
+and applied rules. IDE/development builds with missing, unfiltered or unreadable
+version metadata report `dev`; version metadata never gates compilation. Gradle
+builds verify that the reported version matches the actual project version.
+Cost identity/hash fields are absent when no numeric model
 was consumed, including when an unused optional profile was supplied. Benchmark
 reports retain evaluation identity/hash independently. A future compiler rule
 that calculates numeric profitability must declare its consumer-specific model

@@ -192,6 +192,10 @@ tasks.named('processResources') {
     }
 }
 
+tasks.withType(Test).configureEach {
+    systemProperty 'julc.test.expectedCompilerVersion', project.version.toString()
+}
+
 publishing {
     publications {
         mavenJava(MavenPublication) {

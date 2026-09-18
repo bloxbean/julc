@@ -3,7 +3,7 @@ package org.julclang.compiler;
 import java.io.IOException;
 import java.util.Properties;
 
-/** Build identity used by compilation provenance. */
+/** Build identity used by compilation provenance; raw IDE resources identify a dev build. */
 final class CompilerVersion {
     static final String VERSION = load();
 
@@ -12,17 +12,19 @@ final class CompilerVersion {
     private static String load() {
         try (var input = CompilerVersion.class.getResourceAsStream("version.properties")) {
             if (input == null) {
-                throw new IllegalStateException("Missing compiler version resource");
+                return "dev";
             }
             var properties = new Properties();
             properties.load(input);
             var version = properties.getProperty("version");
             if (version == null || version.isBlank() || version.equals("@julcVersion@")) {
-                throw new IllegalStateException("Missing compiler build version");
+                return "dev";
             }
             return version;
-        } catch (IOException e) {
-            throw new IllegalStateException("Cannot read compiler build version", e);
+        } catch (IOException | IllegalArgumentException e) {
+            // Version metadata must not prevent compilation. Properties.load can also
+            // reject malformed Unicode escapes in an IDE-supplied resource.
+            return "dev";
         }
     }
 }

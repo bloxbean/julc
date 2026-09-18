@@ -14,7 +14,7 @@ The immutable evaluation snapshot is now named `plutus-v3-pv11-costs-v1`, with
 neutral Java constants `OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1` (and
 `_ID`/`_PARAMETER_HASH`). The old ID remains accepted and the old constants are
 deprecated aliases to the same snapshot. The parameters and hash are unchanged.
-See the [profile catalog](./cost-model-profiles.md) for the exact upstream mapping.
+See the [profile catalog](/reference/cost-model-profiles/) for the exact upstream mapping.
 
 Optional compiler profile settings remain accepted and validated for compatibility,
 but no longer appear as dependencies in compilation reports. Reports now also
