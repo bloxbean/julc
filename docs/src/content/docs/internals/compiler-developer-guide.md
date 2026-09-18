@@ -937,6 +937,14 @@ someCall();
 
 Loops are transformed into recursive `LetRec` patterns by `LoopDesugarer`. The desugarer assigns unique names to each loop function (`loop__forEach__0`, `loop__while__1`, etc.) to support nesting.
 
+Before choosing a lowering path, `LoopBodyGenerator.validateConditionalLocalUpdates`
+checks lexical scopes (ADR-048, #155). An `if` returns only the loop's accumulators,
+so an assignment to a loop-body local declared outside that branch is rejected
+with a source location and rewrite hints. Bare blocks do not introduce joins;
+nested loops have their own locals but retain enclosing conditional restrictions.
+The check emits no PIR and mutates neither AST nor compiler state. A general
+join-point lowering for these locals remains future work.
+
 ### 9.1 For-Each Loops
 
 **5 compilation paths** based on accumulator count and break usage:

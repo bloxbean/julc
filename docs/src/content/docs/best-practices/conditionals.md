@@ -66,6 +66,40 @@ an `else`: when `b > 0`, execution continues after the outer `if`.
 Four or more nesting levels are also supported. Deep nesting is mainly a readability
 concern; it is not necessary to add artificial `else` branches for the compiler.
 
+## Conditional loop state
+
+An `if` inside a loop carries updates to **accumulators declared before that loop**.
+It does not carry updates to locals declared in the loop body outside the branch.
+The latter pattern is rejected (#155), even for constant conditions or unused updates:
+
+```java
+for (var x : xs) {
+    BigInteger step = BigInteger.ZERO;
+    if (x.compareTo(BigInteger.ZERO) > 0) {
+        step = BigInteger.ONE; // rejected: conditional update to a loop-body local
+    }
+    acc = acc.add(step);
+}
+```
+
+Prefer an initializer that computes the conditional value:
+
+```java
+for (var x : xs) {
+    BigInteger step = x.compareTo(BigInteger.ZERO) > 0
+            ? BigInteger.ONE : BigInteger.ZERO;
+    acc = acc.add(step);
+}
+```
+
+Alternatively declare `step` before the loop, making it an accumulator; reset it
+at the start of each iteration if needed to preserve its original lifetime.
+Existing accumulator type restrictions still apply: native BLS values cannot be
+packed with other accumulators. Straight-line updates inside bare blocks and
+updates to a local declared within the same branch remain subject to their existing
+support rules. This restriction also applies to `while`, nested branches and
+loops with `break`.
+
 ## Prefer guard clauses for validation rules
 
 A validator often checks several independent rules. A linear sequence is usually the

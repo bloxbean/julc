@@ -863,8 +863,9 @@ public class PirGenerator {
             // with the update dropped.
             var target = ae.getTarget() instanceof NameExpr ne ? "'" + ne.getNameAsString() + "'" : "this target";
             throw enrichedError("Assignment to " + target + " is not supported at this position",
-                    "Inside a loop, assign an accumulator or a loop-body local as a statement directly in the loop body"
-                            + " or in an if/else branch of it; an assignment inside another expression or statement is not supported.",
+                    "Inside a loop, assign an accumulator or a loop-body local as a statement directly in the loop body. "
+                            + "In an if/else branch, assign an accumulator or a local declared within that branch; "
+                            + "an assignment inside another expression or statement is not supported.",
                     expr);
         }
         String suggestion;
@@ -1571,6 +1572,8 @@ public class PirGenerator {
 
     PirTerm generateForEachStmt(ForEachStmt fes, List<Statement> followingStmts, int followingIndex,
             Supplier<PirTerm> cont) {
+        loopBody.validateConditionalLocalUpdates(fes.getBody(),
+                Set.of(fes.getVariable().getVariable(0).getNameAsString()));
         if (containsReturn(fes.getBody())) {
             throw enrichedError(
                     "'return' is not supported inside for-each loop body",
@@ -1873,6 +1876,7 @@ public class PirGenerator {
 
     PirTerm generateWhileStmt(WhileStmt ws, List<Statement> followingStmts, int followingIndex,
             Supplier<PirTerm> cont) {
+        loopBody.validateConditionalLocalUpdates(ws.getBody(), Set.of());
         if (containsReturn(ws.getBody())) {
             throw enrichedError(
                     "'return' is not supported inside while loop body",
