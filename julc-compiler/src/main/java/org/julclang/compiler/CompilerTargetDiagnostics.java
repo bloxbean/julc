@@ -69,6 +69,8 @@ public final class CompilerTargetDiagnostics {
         return exception(info, message, null);
     }
 
+    /** @deprecated Retained for compatibility; no current compiler level requires a profile. */
+    @Deprecated(forRemoval = false)
     public static CompilerException missingOptimizationCostProfile(
             OptimizationLevel optimizationLevel) {
         var info = DiagnosticCodes.MISSING_OPTIMIZATION_COST_PROFILE;

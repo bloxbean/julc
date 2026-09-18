@@ -154,6 +154,12 @@ pre-optimization lowering. See the
 [release notes](docs/src/content/docs/reference/release-notes.md) for the
 enabled rules, configuration options, measured costs, and hash migration.
 
+Compilation requires no cost model, including at the opt-in `pv11-costed` level.
+Benchmarks pin `plutus-v3-pv11-costs-v1`; transaction evaluation uses parameters
+supplied by the caller or integration. See the
+[cost model profile catalog](docs/src/content/docs/reference/cost-model-profiles.md)
+for the immutable snapshot, compatibility aliases and provenance policy.
+
 For direct annotation-processor configuration, pass
 `-Ajulc.target=plutus-v3-pv11-uplc-1.1.0`. Supporting a later protocol version
 will add a separately pinned compiler target and feature matrix; it will not

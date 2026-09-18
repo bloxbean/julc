@@ -4,11 +4,11 @@ import java.util.Arrays;
 import java.util.Objects;
 
 /**
- * Immutable, reproducible cost-model input for compiler profitability decisions.
+ * Immutable cost-model snapshot for reproducible evaluation and benchmarks.
  *
  * <p>This type carries provenance and opaque ledger parameters. VM backends own
- * parameter interpretation; compiler optimization rules must only use a profile
- * through a separately reviewed cost analysis.
+ * parameter interpretation. Current compiler rules do not consume these parameters.
+ * A future numeric profitability rule requires a separately reviewed cost analysis.
  */
 public final class OptimizationCostProfile {
 
@@ -43,6 +43,7 @@ public final class OptimizationCostProfile {
         return target;
     }
 
+    /** Descriptive origin; bundled profiles use a neutral identity with upstream mapping in docs. */
     public String source() {
         return source;
     }

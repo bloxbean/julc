@@ -3,6 +3,26 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+## Upcoming preview: independent compiler and evaluation costs (#153)
+
+`pv11-costed` now needs no compiler cost profile. Its list-to-array rule uses
+structural eligibility; its transformations and the default `pv11-safe` level
+are unchanged. Omitting an optional profile preserves generated script bytes,
+hashes and source maps.
+
+The immutable evaluation snapshot is now named `plutus-v3-pv11-costs-v1`, with
+neutral Java constants `OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1` (and
+`_ID`/`_PARAMETER_HASH`). The old ID remains accepted and the old constants are
+deprecated aliases to the same snapshot. The parameters and hash are unchanged.
+See the [profile catalog](/reference/cost-model-profiles/) for the exact upstream mapping.
+
+Optional compiler profile settings remain accepted and validated for compatibility,
+but no longer appear as dependencies in compilation reports. Reports now also
+carry the compiler build version; target, optimization level and applied rules
+remain available. Benchmark reports independently retain the model actually
+used for evaluation. Runtime callers continue supplying cost parameters through
+the VM API or `ProtocolParamsSupplier`; no named profile is required there.
+
 ## Upcoming preview: typed BLS12-381 values and multi-scalar multiplication (ADR-047)
 
 BLS12-381 values now have their own types: `JulcG1` and `JulcG2` for points,
@@ -170,8 +190,8 @@ and the Gradle plugin and CLI do not expose the switch.
 
 ## Upcoming preview: list-to-array promotion at `pv11-costed` (ADR-043)
 
-`PV11_COSTED` (opt-in; `julc { optimization = 'pv11-costed' }` with a pinned
-cost profile) now converts a `JulcList` variable that its scope indexes at two
+`PV11_COSTED` (opt-in; `julc { optimization = 'pv11-costed' }`, no cost profile
+required) now converts a `JulcList` variable that its scope indexes at two
 or more `get` sites, or at a `get` site inside a loop body, to a PV11 array once
 (`ListToArray`) and rewrites those sites to `IndexArray`. Every other use of the
 list (for-each, `size`, `head`, passing it to a helper) is untouched, the array
@@ -607,7 +627,7 @@ configure one explicit cost profile on both VMs rather than treating Scalus's
 version-dependent built-in default as ledger evidence.
 
 Measurements use the immutable
-`cardano-node-11.0.1-plutus-v3-pv11` cost profile (parameter SHA-256
+`plutus-v3-pv11-costs-v1` cost profile (parameter SHA-256
 `40ea9e0b7df77a7bd2cb7d4e4d9da040f8bee7ff0324a7cdb7e51702330e43a8`).
 Java and Truffle produced identical results, failures, traces, and ledger
 budgets for these fixtures:

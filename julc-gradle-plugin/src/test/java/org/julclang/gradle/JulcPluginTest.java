@@ -10,6 +10,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.jar.JarFile;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -118,19 +119,28 @@ class JulcPluginTest {
 
     @Test
     void optimizerPropertiesAreExactAndReported() throws IOException {
-        Files.writeString(buildFile, """
+        writeAlwaysTrueValidator();
+        for (var profileOption : List.of("", "costProfile = 'plutus-v3-pv11-costs-v1'",
+                "costProfile = 'cardano-node-11.0.1-plutus-v3-pv11'")) {
+            Files.writeString(buildFile, """
                 plugins {
                     id 'org.julclang.julc'
                 }
                 julc {
                     optimization = 'pv11-costed'
-                    costProfile = 'cardano-node-11.0.1-plutus-v3-pv11'
+                    %s
                 }
-                """);
-        writeAlwaysTrueValidator();
+                """.formatted(profileOption));
+            var result = createRunner("compileJulc").build();
+            assertTrue(result.getOutput().contains("optimization: pv11-costed"));
+        }
 
-        var result = createRunner("compileJulc").build();
-        assertTrue(result.getOutput().contains("optimization: pv11-costed"));
+        Files.writeString(buildFile, """
+                plugins { id 'org.julclang.julc' }
+                julc { optimization = 'pv11-costed'; costProfile = 'latest' }
+                """);
+        assertTrue(createRunner("compileJulc").buildAndFail().getOutput()
+                .contains("Optimization cost profile latest is not supported"));
 
         Files.writeString(buildFile, """
                 plugins { id 'org.julclang.julc' }

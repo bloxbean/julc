@@ -18,7 +18,7 @@ public final class CompilerTestVm {
     }
 
     private static JulcVm configure(JulcVm vm) {
-        var profile = OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11;
+        var profile = OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1;
         vm.setCostModelParams(profile.costModelParameters(), profile.target());
         return vm;
     }

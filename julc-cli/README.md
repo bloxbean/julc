@@ -103,9 +103,12 @@ the no-option default automatically.
 Optimization rollout is selected independently with `--optimization`. Its
 default is `pv11-safe`, which enables the reviewed ADR-032 rules. Select
 `baseline` explicitly to reproduce the pre-ADR-032 generated program. The
-`pv11-costed` level additionally requires an exact `--cost-profile`; this
-release pins `cardano-node-11.0.1-plutus-v3-pv11`. All identifiers are
-case-sensitive and fail closed.
+`pv11-costed` level needs no cost profile: its list-to-array rule is structural.
+The optional `--cost-profile plutus-v3-pv11-costs-v1` remains accepted for
+compatibility, but does not affect compilation or configure evaluation. The
+legacy ID is also accepted. All identifiers are case-sensitive and fail closed.
+See the [cost model catalog](../docs/src/content/docs/reference/cost-model-profiles.md)
+for pinned benchmark models and caller-supplied evaluation costs.
 
 ## Documentation
 

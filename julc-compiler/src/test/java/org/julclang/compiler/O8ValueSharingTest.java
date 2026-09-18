@@ -393,7 +393,7 @@ class O8ValueSharingTest {
         for (var level : OptimizationLevel.values()) {
             var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()
                     .setOptimizationLevel(level)
-                    .setOptimizationCostProfile(OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11))
+                    .setOptimizationCostProfile(OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1))
                     .compileWithDetails(validator);
             assertFalse(compiled.hasErrors(), level + " " + compiled.diagnostics());
             assertEquals(level.pv11SafeRulesEnabled() ? 1 : 2, countConversions(compiled.pirTerm()), level.toString());
@@ -569,7 +569,7 @@ class O8ValueSharingTest {
     static CompileResult compile(String source, String method, OptimizationLevel level, boolean maps) {
         return new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()
                 .setOptimizationLevel(level).setSourceMapEnabled(maps)
-                .setOptimizationCostProfile(OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11))
+                .setOptimizationCostProfile(OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1))
                 .compileMethod(source, method);
     }
 

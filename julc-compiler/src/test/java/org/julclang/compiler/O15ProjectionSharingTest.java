@@ -55,7 +55,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @Tag("pair-case-backends")
 class O15ProjectionSharingTest {
 
-    private static final OptimizationCostProfile PROFILE = OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11;
+    private static final OptimizationCostProfile PROFILE = OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1;
     private static final PirType DATA = new PirType.DataType();
     private static final PirType INT = new PirType.IntegerType();
     private static final List<String> PROVIDERS = List.of("Java", "Truffle", "Scalus");

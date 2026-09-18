@@ -8,7 +8,10 @@ ADR-032 compiler-lowering comparisons use
 `OptimizationBenchmarkRunner`, not JMH throughput measurements. A fixture is
 compiled at `baseline` and a candidate level, then both programs are evaluated
 with identical inputs and the pinned
-`cardano-node-11.0.1-plutus-v3-pv11` parameters. The comparison fails on any
+`plutus-v3-pv11-costs-v1` parameters. Compilation itself uses no cost profile;
+the runner requires the pinned model for evaluation and records it independently
+of compiler provenance. See the [profile catalog](../docs/src/content/docs/reference/cost-model-profiles.md)
+for its exact upstream source and hash. The comparison fails on any
 result, failure, or trace-order difference and records FLAT bytes, script hash,
 UPLC structure, CPU, memory, backend, applied-rule IDs, and the cost-parameter
 hash. `Comparison.toMarkdown()` produces the deterministic tables used in
