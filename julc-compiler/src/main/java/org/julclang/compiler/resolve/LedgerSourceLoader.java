@@ -34,6 +34,12 @@ public final class LedgerSourceLoader {
      * @throws CompilerException if sources cannot be loaded or parsed
      */
     public static List<CompilationUnit> loadLedgerSources(ClassLoader classLoader) {
+        return loadLedgerSources(classLoader, StaticJavaParser::parse);
+    }
+
+    /** Parse with an invocation-local parser, without mutating StaticJavaParser configuration. */
+    public static List<CompilationUnit> loadLedgerSources(
+            ClassLoader classLoader, java.util.function.Function<String, CompilationUnit> parser) {
         var indexUrl = classLoader.getResource(INDEX_FILE);
         if (indexUrl == null) {
             throw new CompilerException(
@@ -61,7 +67,7 @@ public final class LedgerSourceLoader {
             }
             try (var stream = sourceUrl.openStream()) {
                 var source = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
-                cus.add(StaticJavaParser.parse(source));
+                cus.add(parser.apply(source));
             } catch (IOException e) {
                 throw new CompilerException("Failed to read ledger source " + fileName + ": " + e.getMessage());
             }
