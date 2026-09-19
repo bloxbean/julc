@@ -23,9 +23,18 @@ Eager recursive values remain rejected. Stable definition order determines the
 decomposition, so compilation is deterministic. Lexical substitution remains
 capture-avoiding and respects every PIR binder.
 
-The existing single- and two-binding paths are unchanged. Java frontend method
-ordering and Java source-language acceptance are unchanged. Generated output for
-programs without larger mutual groups must remain identical.
+The single- and two-binding decomposition strategies are unchanged. Shared
+substitution now alpha-renames binders that would capture a free variable in its
+replacement. This also corrects the existing two-binding path for shadowing
+programs that previously compiled incorrectly. Java frontend method ordering and
+Java source-language acceptance are unchanged; unaffected programs retain their
+existing output.
+
+Fresh names are invocation-local and deterministic. Before renaming, reserve all
+variable and binder names from both the source and replacement. Rename bound
+occurrences with their original types and lexical scopes, including simultaneous
+LetRec scope, match branch fields and pattern variables. Ordinary Let values,
+match scrutinees and list nil branches retain their outer scopes.
 
 Repeated inner projections can increase script size and runtime work. This first
 general implementation favors a small correctness-preserving extension over a

@@ -384,6 +384,54 @@ class NeutralBackendTest {
                 PirLinker.link(definitions, apply(new PirTerm.Var("f", unaryInt), integer(4))), 41);
     }
 
+    @Test
+    void recursiveGroupsPreserveOuterCapturesUnderShadowingParameters() {
+        for (var level : List.of(OptimizationLevel.NONE, OptimizationLevel.BASELINE, OptimizationLevel.PV11_SAFE)) {
+            for (int size : List.of(2, 3, 4)) {
+                var function = new PirType.FunType(INT, INT);
+                var definitions = new LinkedHashMap<String, PirTerm>();
+                definitions.put("x", integer(42));
+                definitions.put(
+                        "f",
+                        new PirTerm.Lam(
+                                "x",
+                                INT,
+                                apply(new PirTerm.Var("g", function), new PirTerm.Var("x", INT))));
+                var n = new PirTerm.Var("n", INT);
+                definitions.put(
+                        "g",
+                        new PirTerm.Lam(
+                                "n",
+                                INT,
+                                new PirTerm.IfThenElse(
+                                        equalsInteger(n, integer(0)),
+                                        new PirTerm.Var("x", INT),
+                                        apply(
+                                                new PirTerm.Var(size == 2 ? "f" : "h", function),
+                                                subtractOne(n)))));
+                if (size >= 3)
+                    definitions.put("h", recursiveStep(size == 3 ? "f" : "j", function, 99));
+                if (size == 4) definitions.put("j", recursiveStep("f", function, 100));
+                var term =
+                        PirLinker.link(
+                                definitions, apply(new PirTerm.Var("f", function), integer(0)));
+                var result =
+                        new CompilerBackend()
+                                .compile(
+                                        input(term, INT, FrontendProgram.Purpose.FUNCTION),
+                                        new CompilerOptions().setOptimizationLevel(level));
+                var evaluated =
+                        assertInstanceOf(
+                                EvalResult.Success.class,
+                                CompilerTestVm.pv11().evaluate(result.program()));
+                assertEquals(
+                        new Term.Const(Constant.integer(42)),
+                        evaluated.resultTerm(),
+                        "group size " + size + " at " + level);
+            }
+        }
+    }
+
     private static PirTerm apply(PirTerm function, PirTerm... arguments) {
         for (var argument : arguments) function = new PirTerm.App(function, argument);
         return function;
