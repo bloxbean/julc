@@ -14,6 +14,7 @@ import java.util.*;
 
 class NeutralBackendTest {
     private static final PirType INT = new PirType.IntegerType();
+    private static final PirType BOOL = new PirType.BoolType();
 
     private static PirTerm integer(long n) {
         return new PirTerm.Const(Constant.integer(n));
@@ -169,7 +170,7 @@ class NeutralBackendTest {
                         new JavaLibraryProvider(
                                 List.of(
                                         "class Ordinary { public static long answer() { return 42;"
-                                            + " } }"),
+                                                + " } }"),
                                 null,
                                 new CompilerOptions()));
     }
@@ -294,34 +295,128 @@ class NeutralBackendTest {
     }
 
     @Test
-    void largerRecursiveGroupsFailExplicitly() {
+    void linksAndEvaluatesThreeFunctionRecursiveGroup() {
         var function = new PirType.FunType(INT, INT);
         var definitions = new LinkedHashMap<String, PirTerm>();
+        definitions.put("f", recursiveStep("g", function, 10));
+        definitions.put("g", recursiveStep("h", function, 20));
+        definitions.put("h", recursiveStep("f", function, 30));
+        evaluatesTo(
+                PirLinker.link(
+                        definitions, new PirTerm.App(new PirTerm.Var("f", function), integer(3))),
+                10);
+    }
+
+    @Test
+    void linksFourRecursiveFunctionsWithDifferentSignatures() {
+        var unaryInt = new PirType.FunType(INT, INT);
+        var binaryInt = new PirType.FunType(INT, unaryInt);
+        var predicate = new PirType.FunType(INT, BOOL);
+        var definitions = new LinkedHashMap<String, PirTerm>();
+
+        var fArgument = new PirTerm.Var("n", INT);
         definitions.put(
                 "f",
                 new PirTerm.Lam(
-                        "x",
+                        "n",
                         INT,
-                        new PirTerm.App(
-                                new PirTerm.Var("g", function), new PirTerm.Var("x", INT))));
+                        new PirTerm.IfThenElse(
+                                equalsInteger(fArgument, integer(0)),
+                                integer(10),
+                                apply(
+                                        new PirTerm.Var("g", binaryInt),
+                                        subtractOne(fArgument),
+                                        integer(1)))));
+
+        var gArgument = new PirTerm.Var("n", INT);
+        var extra = new PirTerm.Var("extra", INT);
         definitions.put(
                 "g",
                 new PirTerm.Lam(
-                        "x",
+                        "n",
                         INT,
-                        new PirTerm.App(
-                                new PirTerm.Var("h", function), new PirTerm.Var("x", INT))));
+                        new PirTerm.Lam(
+                                "extra",
+                                INT,
+                                new PirTerm.IfThenElse(
+                                        equalsInteger(gArgument, integer(0)),
+                                        add(integer(20), extra),
+                                        add(
+                                                apply(
+                                                        new PirTerm.Var("h", unaryInt),
+                                                        subtractOne(gArgument)),
+                                                extra)))));
+
+        var hArgument = new PirTerm.Var("n", INT);
         definitions.put(
                 "h",
                 new PirTerm.Lam(
-                        "x",
+                        "n",
                         INT,
-                        new PirTerm.App(
-                                new PirTerm.Var("f", function), new PirTerm.Var("x", INT))));
-        var error =
-                assertThrows(
-                        IllegalArgumentException.class,
-                        () -> PirLinker.link(definitions, integer(0)));
-        assertTrue(error.getMessage().contains("larger than two"));
+                        new PirTerm.IfThenElse(
+                                equalsInteger(hArgument, integer(0)),
+                                integer(30),
+                                new PirTerm.IfThenElse(
+                                        apply(
+                                                new PirTerm.Var("p", predicate),
+                                                subtractOne(hArgument)),
+                                        integer(40),
+                                        apply(
+                                                new PirTerm.Var("f", unaryInt),
+                                                subtractOne(hArgument))))));
+
+        var pArgument = new PirTerm.Var("n", INT);
+        definitions.put(
+                "p",
+                new PirTerm.Lam(
+                        "n",
+                        INT,
+                        new PirTerm.IfThenElse(
+                                equalsInteger(pArgument, integer(0)),
+                                new PirTerm.Const(Constant.bool(true)),
+                                equalsInteger(
+                                        apply(
+                                                new PirTerm.Var("h", unaryInt),
+                                                subtractOne(pArgument)),
+                                        integer(30)))));
+
+        evaluatesTo(
+                PirLinker.link(definitions, apply(new PirTerm.Var("f", unaryInt), integer(4))), 41);
+    }
+
+    private static PirTerm apply(PirTerm function, PirTerm... arguments) {
+        for (var argument : arguments) function = new PirTerm.App(function, argument);
+        return function;
+    }
+
+    private static PirTerm add(PirTerm left, PirTerm right) {
+        return apply(new PirTerm.Builtin(DefaultFun.AddInteger), left, right);
+    }
+
+    private static PirTerm subtractOne(PirTerm value) {
+        return apply(new PirTerm.Builtin(DefaultFun.SubtractInteger), value, integer(1));
+    }
+
+    private static PirTerm equalsInteger(PirTerm left, PirTerm right) {
+        return apply(new PirTerm.Builtin(DefaultFun.EqualsInteger), left, right);
+    }
+
+    private static PirTerm recursiveStep(String next, PirType function, long base) {
+        var x = new PirTerm.Var("x", INT);
+        var zero =
+                new PirTerm.App(
+                        new PirTerm.App(new PirTerm.Builtin(DefaultFun.EqualsInteger), x),
+                        integer(0));
+        var decrement =
+                new PirTerm.App(
+                        new PirTerm.App(new PirTerm.Builtin(DefaultFun.SubtractInteger), x),
+                        integer(1));
+        return new PirTerm.Lam(
+                "x",
+                INT,
+                new PirTerm.IfThenElse(
+                        zero,
+                        integer(base),
+                        new PirTerm.App(new PirTerm.Var(next, function), decrement)));
     }
 }
