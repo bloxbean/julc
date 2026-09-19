@@ -1,5 +1,6 @@
 package org.julclang.compiler;
 
+import org.julclang.compiler.backend.PirBackend;
 import org.julclang.compiler.codegen.ValidatorWrapper;
 import org.julclang.compiler.codegen.StrictBoundaryGenerator;
 import org.julclang.compiler.codegen.StrictRecordEntrypoint;
@@ -585,46 +586,12 @@ public class JulcCompiler {
                     new PirTerm.Let(pf.name, decoded, wrappedTerm));
         }
 
-        var values = new ValueLiteralFoldPass(context, pirGenerator.getPirPositions()).lower(wrappedTerm);
-        var folding = new ArrayLiteralFoldPass(context, values.positions()).lower(values.term());
-        var sharing = new ValueConversionSharingPass(context, folding.positions()).lower(folding.term());
-        var promotion = new ListIndexPromotionPass(context, sharing.positions()).lower(sharing.term());
-        var pairLowering = new PairDestructuringPass(context, promotion.positions()).lower(promotion.term());
-        wrappedTerm = pairLowering.term();
-
-        // 17. Capture PIR if details requested
-        PirTerm capturedPir = captureDetails ? wrappedTerm : null;
-
-        // 18. Lower to UPLC (with source map support)
-        var uplcGenerator = context.isSourceMapEnabled()
-                ? new UplcGenerator(context, pairLowering.positions())
-                : new UplcGenerator(context, null);
-        var uplcTerm = uplcGenerator.generate(wrappedTerm);
-
-        // 19. Optimize UPLC (skip when source maps enabled to preserve Term identity)
-        SourceMap sourceMap = null;
-        var producingStage = "UPLC lowering";
-        if (context.isSourceMapEnabled()) {
-            sourceMap = SourceMap.of(uplcGenerator.getUplcPositions());
-            context.logf("Source map generated: %d entries (optimization skipped)", sourceMap.size());
-        } else {
-            var optimizer = new UplcOptimizer(context);
-            var optimization = optimizer.optimizeWithReport(uplcTerm);
-            uplcTerm = optimization.term();
-            context.recordOptimizationRules(optimization.appliedPasses());
-            producingStage = optimizerStage(optimization);
-            context.log("UPLC optimization complete");
-        }
-
-        // 20. Capture UPLC if details requested
-        Term capturedUplc = captureDetails ? uplcTerm : null;
-
-        // 21. Create Program
-        var program = createProgram(context, uplcTerm);
-        UplcTargetValidator.validate(
-                program,
-                context,
-                producingStage);
+        var lowered = PirBackend.lower(
+                wrappedTerm, context, pirGenerator.getPirPositions(), true);
+        var program = lowered.program();
+        PirTerm capturedPir = captureDetails ? lowered.pir() : null;
+        Term capturedUplc = captureDetails ? program.term() : null;
+        SourceMap sourceMap = lowered.sourceMap();
 
         // 22. Build ParamInfo list
         var paramInfos = paramFields.stream()
