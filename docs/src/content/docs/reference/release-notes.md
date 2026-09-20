@@ -16,7 +16,17 @@ declaring it inside the branch when its value is only needed there.
 Switch-expression arms also reject updates to enclosing variables, including
 updates made by nested loops to either body locals or outer accumulators, with
 or without an enclosing `if`. Declare the accumulator inside the arm and yield
-its result instead. A separate known miscompile—method-level `if` around a loop
+its result instead. This conservative rule also rejects previously correct code
+that updated an enclosing variable but consumed the update only via `yield` inside
+the arm; move the accumulator declaration into the arm to preserve that behavior.
+
+Reassignment of a switch case-pattern binding is also rejected (#162), even if
+the arm only yields the record itself. Previously field projections could read
+the original record after reassignment. Copy the binding to a fresh arm-local
+accumulator instead. Supported `instanceof` binding reassignment is unchanged.
+
+A separate known miscompile—an `if` outside a loop body, at method level or inside
+a switch arm, around a loop
 losing updates read after the branch—is tracked in [#161](https://github.com/bloxbean/julc/issues/161)
 and is not fixed here.
 

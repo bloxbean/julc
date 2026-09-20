@@ -1,7 +1,7 @@
 # ADR-048: Fail closed on updates lost across conditional and switch boundaries
 
 **Status:** Implemented; PR #157 targets `main` after #156 merged; reviewer-requested revisions applied, final maintainer approval pending
-**Issue:** [#155](https://github.com/bloxbean/julc/issues/155)
+**Issues:** [#155](https://github.com/bloxbean/julc/issues/155), [#162](https://github.com/bloxbean/julc/issues/162)
 
 ## Context and current behavior
 
@@ -67,18 +67,24 @@ Replacing `step` with outer accumulator `acc` in the arm is rejected too.
 The supported rewrite is `BigInteger step = switch (...) { ... }`, declaring a
 fresh accumulator inside the arm and yielding it after the loop.
 
-The method-level `if` around a loop remains separate: [#161](https://github.com/bloxbean/julc/issues/161)
+An `if` outside a loop body (at method level or inside a switch arm) around a loop remains separate: [#161](https://github.com/bloxbean/julc/issues/161)
 tracks an enclosing accumulator update lost when read after the branch. This ADR
 does not fix it; user guidance explicitly warns about that known miscompile.
 
 Review regression testing also found [#162](https://github.com/bloxbean/julc/issues/162):
 reassigning a switch case-pattern variable can leave its field projections pointing
 at the original record. It reproduces on the previous jar and is not a boundary
-escape. The guard does not fix that lowering; docs warn against it and the positive
-suite checks copying the case binding to a fresh arm-local accumulator instead.
+escape. Round two resolves it by rejecting reassignment of switch case-pattern
+bindings, rather than rewriting cached projections. The pattern names are tracked
+separately from ordinary arm-owned locals. Rebinding is rejected even if only the
+record itself is yielded (a previously correct shape). Copy the case binding to a
+fresh arm-local accumulator instead; the positive suite evaluates that workaround.
 An `instanceof` binding introduced inside the arm is recognized in its then-branch
 only; a positive regression prevents incorrectly rejecting that supported pattern,
 and negative tests prevent the binding leaking into its else or following statements.
+This is deliberately **not** a general immutable-pattern-binding policy: working
+`instanceof` mutation is preserved. Rejecting all pattern bindings would expand the
+source-subset contract beyond the demonstrated case-projection correctness defect.
 
 ## Alternatives
 
@@ -108,8 +114,10 @@ The latter remains subject to existing accumulator type restrictions (native
 values cannot be Data-packed with other accumulators).
 When a value is needed only in an if branch, declaring it in that branch is a
 third remedy. General body-local reassignment in the single-accumulator break-aware
-path remains unsupported; the documentation states this instead of promising
-universal straight-line reassignment support.
+path remains limited. An if whose branches contain no break uses normal lowering,
+so declaration and reassignment within that branch can work even when another
+statement makes the enclosing loop break-aware. A positive regression pins this
+exception; the docs no longer claim moving a declaration into a branch never helps.
 
 The main risks are over-rejection across scopes and missing a conditional enclosing
 a nested loop. Tests pin both. Validation does not mutate AST or compiler state,
@@ -152,6 +160,17 @@ evaluations (13 fixtures, four levels, three inputs, three backends). Docs built
 all 33 pages and the new rules anchor/troubleshooting link resolved. Independent
 review's then-branch pattern-scope finding was fixed; no remaining blockers were
 reported for this scoped change. Native-image and external DevKit tests were not run.
+
+Round-two validation: the full build passed again (218 actionable tasks), with
+1,641 compiler tests and 68 cross-backend tests, zero failures/errors/skips.
+The focused suite now contains 632 rejection checks (79 shapes, four levels,
+source maps off/on) and 504 supported evaluations (14 fixtures, four levels,
+three inputs and three backends). This includes case-pattern field-read and
+record-yield rejection, the copy-to-local workaround, unchanged instanceof
+reassignment, and a non-breaking branch-local update in a break-aware loop.
+The docs build passed for all 33 pages. Independent review found no blocker in
+the narrow case-binding guard. The #161 warning remains explicit; no native-image
+or external DevKit validation was performed.
 
 ## Open questions
 

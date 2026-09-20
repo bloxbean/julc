@@ -121,7 +121,8 @@ for (var x : xs) {
   switch-expression arm.
 - `break`-aware support is narrower: the single-accumulator path does not support
   general straight-line reassignment of other body locals. Use an initializer for
-  those locals; moving a declaration into a branch does not remove this limitation.
+  those locals. A branch-local declaration and reassignment can still work in an
+  `if` whose branches contain no `break`, because it uses the normal body lowering.
 - Loops with no detected accumulator use the generic statement path and do not
   support general body-local reassignment either; prefer initializers.
 - Multiple accumulators must be Data-encodable; native BLS values cannot be packed
@@ -156,15 +157,17 @@ BigInteger step = switch (action) {
 The restriction includes outer-loop accumulators, not just loop-body locals, and
 does not require an enclosing `if`. Nested switch arms introduce their own boundary.
 
-Another known limitation ([#162](https://github.com/bloxbean/julc/issues/162)):
-do not reassign the case-pattern variable itself (`case Only p -> ... p = ...`).
-Later field reads can still use the original record. Copy it to a fresh arm-local
-accumulator and update that copy instead. This pre-existing projection bug is not
-fixed by the switch-boundary guard.
+Reassigning a case-pattern variable itself (`case Only p -> ... p = ...`) is now
+rejected ([#162](https://github.com/bloxbean/julc/issues/162)): cached field reads
+could otherwise use the original record. Copy it to a fresh arm-local accumulator
+and update that copy instead. This is conservative even if you yield the record
+without reading its fields. It does not prohibit otherwise-supported reassignment
+of an `instanceof` binding; those bindings use a different lowering path.
 
-### Known limitation: an if around a loop
+### Known limitation: an if outside a loop body
 
-Do not rely on a loop inside a method-level `if` updating an enclosing accumulator
+Do not rely on a loop inside an `if` outside a loop body—at method level or inside
+a switch-expression arm—updating an enclosing accumulator
 read after that branch: this still silently loses the update ([#161](https://github.com/bloxbean/julc/issues/161)),
 and is **not fixed by #157**. For example:
 
@@ -175,6 +178,10 @@ if (xs.size().compareTo(BigInteger.ZERO) > 0) {
 }
 return total; // [1, 2, 3]: expected 6, currently returns 0
 ```
+
+The same bug occurs when this fragment is inside a switch arm and ends with
+`yield total` rather than `return total`. Declaring `total` inside the arm does
+not make updates survive an intervening `if`.
 
 For this example, remove the empty-list check: an empty for-each already runs zero
 iterations. Do not remove a condition that changes the intended behavior. This is

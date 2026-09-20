@@ -56,7 +56,25 @@ BigInteger step = switch (action) {
 ```
 
 Do not declare `local` outside the arm and expect the loop to update it there.
-For the separate method-level `if`/loop miscompile, see [#161](https://github.com/bloxbean/julc/issues/161).
+For the separate `if`/loop miscompile outside a loop body (at method level or in a
+switch arm), see [#161](https://github.com/bloxbean/julc/issues/161).
+
+### `Reassignment of switch case-pattern variable '<name>' is not supported`
+
+Updating a case-pattern binding could leave field projections pointing at its
+original record (#162). Reassignment is now rejected, including when only the
+record is yielded. Copy the binding to a fresh arm-local accumulator:
+
+```java
+case Only p -> {
+    Only local = p;
+    for (var y : xs) { local = new Only(y); }
+    yield local.value();
+}
+```
+
+For `[1, 2, 3]`, this yields `3`; assigning to `p` instead is a compile-time error.
+Otherwise-supported `instanceof` binding reassignment is unaffected.
 
 ### 1.1 `Method must have a body: <name>`
 

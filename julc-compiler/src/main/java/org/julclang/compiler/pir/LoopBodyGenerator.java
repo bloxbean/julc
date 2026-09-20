@@ -104,24 +104,33 @@ final class LoopBodyGenerator {
             for (var label : entry.getLabels()) {
                 label.findAll(TypePatternExpr.class).forEach(pattern -> declaredInArm.add(pattern.getNameAsString()));
             }
+            var caseBindings = Set.copyOf(declaredInArm);
             for (var statement : entry.getStatements()) {
-                validateSwitchArmUpdates(statement, declaredInArm);
+                validateSwitchArmUpdates(statement, declaredInArm, caseBindings);
             }
         }
     }
 
-    private void validateSwitchArmUpdates(Node node, Set<String> declaredInArm) {
+    private void validateSwitchArmUpdates(Node node, Set<String> declaredInArm, Set<String> caseBindings) {
         if (node instanceof LambdaExpr) return; // Independent scope; captures are effectively final in Java.
         if (node instanceof BlockStmt block) {
             var blockLocals = new HashSet<>(declaredInArm);
-            for (var statement : block.getStatements()) validateSwitchArmUpdates(statement, blockLocals);
+            for (var statement : block.getStatements()) validateSwitchArmUpdates(statement, blockLocals, caseBindings);
         } else if (node instanceof ExpressionStmt expression) {
-            validateSwitchArmUpdates(expression.getExpression(), declaredInArm);
+            validateSwitchArmUpdates(expression.getExpression(), declaredInArm, caseBindings);
         } else if (node instanceof VariableDeclarationExpr declaration) {
             for (var variable : declaration.getVariables()) {
-                variable.getInitializer().ifPresent(initializer -> validateSwitchArmUpdates(initializer, declaredInArm));
+                variable.getInitializer().ifPresent(initializer -> validateSwitchArmUpdates(initializer, declaredInArm, caseBindings));
                 declaredInArm.add(variable.getNameAsString());
             }
+        } else if (node instanceof AssignExpr assignment && assignment.getTarget() instanceof NameExpr name
+                && caseBindings.contains(name.getNameAsString())) {
+            // #162: cached case-field projections still refer to the original record.
+            // Reject rebinding even if this particular use only yields the record itself.
+            throw gen.enrichedError("Reassignment of switch case-pattern variable '"
+                            + sourceName(name.getNameAsString()) + "' is not supported",
+                    "Copy the pattern variable to a fresh local accumulator inside the arm, "
+                            + "update that local, and yield its result instead.", assignment);
         } else if (node instanceof AssignExpr assignment && assignment.getTarget() instanceof NameExpr name
                 && !declaredInArm.contains(name.getNameAsString())) {
             throw gen.enrichedError("Switch-expression arm cannot update enclosing variable '"
@@ -130,25 +139,25 @@ final class LoopBodyGenerator {
                             + "yield its result, and use the switch value outside the arm instead of mutating an enclosing variable.",
                     assignment);
         } else if (node instanceof IfStmt branch) {
-            validateSwitchArmUpdates(branch.getCondition(), declaredInArm);
+            validateSwitchArmUpdates(branch.getCondition(), declaredInArm, caseBindings);
             var thenLocals = new HashSet<>(declaredInArm);
             if (branch.getCondition() instanceof InstanceOfExpr condition
                     && condition.getPattern().orElse(null) instanceof TypePatternExpr pattern) {
                 thenLocals.add(pattern.getNameAsString());
             }
-            validateSwitchArmUpdates(branch.getThenStmt(), thenLocals);
-            branch.getElseStmt().ifPresent(other -> validateSwitchArmUpdates(other, new HashSet<>(declaredInArm)));
+            validateSwitchArmUpdates(branch.getThenStmt(), thenLocals, caseBindings);
+            branch.getElseStmt().ifPresent(other -> validateSwitchArmUpdates(other, new HashSet<>(declaredInArm), caseBindings));
         } else if (node instanceof ForEachStmt loop) {
-            validateSwitchArmUpdates(loop.getIterable(), declaredInArm);
+            validateSwitchArmUpdates(loop.getIterable(), declaredInArm, caseBindings);
             var loopLocals = new HashSet<>(declaredInArm);
             loop.getVariable().getVariables().forEach(variable -> loopLocals.add(variable.getNameAsString()));
-            validateSwitchArmUpdates(loop.getBody(), loopLocals);
+            validateSwitchArmUpdates(loop.getBody(), loopLocals, caseBindings);
         } else if (node instanceof SwitchExpr nested) {
-            validateSwitchArmUpdates(nested.getSelector(), declaredInArm);
+            validateSwitchArmUpdates(nested.getSelector(), declaredInArm, caseBindings);
             validateSwitchExpressionUpdates(nested); // A second value boundary, including for outer-arm locals.
         } else {
             for (var child : node.getChildNodes()) {
-                validateSwitchArmUpdates(child, new HashSet<>(declaredInArm));
+                validateSwitchArmUpdates(child, new HashSet<>(declaredInArm), caseBindings);
             }
         }
     }

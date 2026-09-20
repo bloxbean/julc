@@ -449,9 +449,9 @@ Any type supported by the compiler can be used as a loop accumulator:
 | Variable declaration inside loop | Supported | Local vars are scoped to the iteration |
 | `if` updates a body local declared outside the branch | Rejected | Use a conditional initializer, a pre-loop accumulator, or a branch-local declaration |
 | Switch arm updates a variable declared outside the arm | Rejected | Includes updates through nested loops; declare inside the arm and yield the result |
-| General body-local reassignment in single-accumulator loops with `break` | Not supported | Prefer an initializer; accumulator assignments remain supported |
-| Method-level `if` wraps a loop updating a variable read after the branch | Known miscompile | See [#161](https://github.com/bloxbean/julc/issues/161); not fixed by #157 |
-| Loop reassigns a switch case-pattern variable, then reads its fields | Known miscompile | See [#162](https://github.com/bloxbean/julc/issues/162); copy to a fresh arm-local accumulator instead |
+| General body-local reassignment in single-accumulator loops with `break` | Limited | Prefer an initializer; branch-local updates in an if with no break in either branch use normal lowering |
+| `if` outside a loop body (method level or switch arm) wraps a loop updating a variable read after the branch | Known miscompile | See [#161](https://github.com/bloxbean/julc/issues/161); not fixed by #157 |
+| Reassignment of a switch case-pattern variable | Rejected | See [#162](https://github.com/bloxbean/julc/issues/162); copy to a fresh arm-local accumulator instead |
 
 See [loop-local assignment rules](/best-practices/conditionals/#loop-local-assignment-rules)
 for scope boundaries and examples of safe rewrites.

@@ -949,8 +949,10 @@ join-point lowering for these locals remains future work.
 only assign variables it owns, because a switch exports its yielded value rather
 than enclosing variable rebindings. The check applies even without an enclosing
 loop or `if`; nested switch arms start a new boundary. Branch-local pattern
-bindings are scoped to their valid branch. This does not fix the separate
-method-level if/loop bug (#161) or stale case-pattern field projections (#162).
+bindings are scoped to their valid branch. Switch case-pattern reassignment is
+rejected (#162) to avoid stale cached field projections; this does not change
+supported `instanceof` bindings. The separate if/loop bug (#161), outside the
+specialized loop-body lowering at method level or inside switch arms, remains open.
 
 ### 9.1 For-Each Loops
 

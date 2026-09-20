@@ -150,6 +150,32 @@ class LoopConditionalLocalTest {
         }
     }
 
+    @Test
+    void casePatternReassignmentFailsClosedEvenWhenOnlyTheRecordIsYielded() {
+        for (String update : List.of(
+                "p = new WithValue(BigInteger.ONE);",
+                "for (var y : xs) { p = new WithValue(y); }",
+                "while (p.value().compareTo(BigInteger.TEN) < 0) { p = new WithValue(BigInteger.TEN); }",
+                "for (var y : xs) { { p = new WithValue(y); } if (y.equals(BigInteger.TWO)) { break; } }",
+                "for (var y : xs) { if (y.compareTo(BigInteger.ZERO) > 0) { p = new WithValue(y); } }",
+                "for (var y : xs) { for (var z : xs) { p = new WithValue(z); } }")) {
+            for (boolean yieldRecord : List.of(false, true)) {
+                var source = method("PatternAction action = new WithValue(BigInteger.valueOf(7)); "
+                        + (yieldRecord ? "WithValue result = " : "return ")
+                        + "switch (action) { case WithValue p -> { " + update
+                        + (yieldRecord ? " yield p; } }; return result.value();" : " yield p.value(); } };"));
+                for (var level : OptimizationLevel.values()) {
+                    for (boolean maps : List.of(false, true)) {
+                        var error = assertThrows(CompilerException.class, () -> compile(source, level, maps));
+                        assertTrue(error.getMessage().contains("Reassignment of switch case-pattern variable 'p' is not supported"), error.getMessage());
+                        assertTrue(error.getMessage().contains("fresh local accumulator"), error.getMessage());
+                        assertTrue(error.getMessage().matches("(?s).*Loops\\.java:\\d+:\\d+:.*"), error.getMessage());
+                    }
+                }
+            }
+        }
+    }
+
     private static void assertSourceRejected(String source, String name) {
         for (var level : OptimizationLevel.values()) {
             var error = assertThrows(CompilerException.class, () -> compile(source, level), level + ": " + source);
@@ -166,6 +192,17 @@ class LoopConditionalLocalTest {
     private record Supported(String name, String body, long positive, long mixed) {}
 
     private static final List<Supported> SUPPORTED = List.of(
+            new Supported("branch local in non-breaking branch of break-aware loop", """
+                    BigInteger acc = BigInteger.ZERO;
+                    for (var x : xs) {
+                        if (x.compareTo(BigInteger.ZERO) > 0) {
+                            BigInteger step = BigInteger.ZERO;
+                            step = step.add(x);
+                            acc = acc.add(step);
+                        }
+                        if (x.equals(BigInteger.TWO)) { break; }
+                    } return acc;
+                    """, 3, 2),
             new Supported("switch arm owns instanceof pattern binding", """
                     PatternAction action = new WithValue(BigInteger.ZERO);
                     return switch (action) { case WithValue v -> {
