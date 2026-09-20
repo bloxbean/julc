@@ -56,8 +56,9 @@ BigInteger step = switch (action) {
 ```
 
 Do not declare `local` outside the arm and expect the loop to update it there.
-For the separate `if`/loop miscompile outside a loop body (at method level or in a
-switch arm), see [#161](https://github.com/bloxbean/julc/issues/161).
+Loops inside an `if` at method level or in a switch arm now preserve their
+accumulator updates after the branch (#161). If using an older compiler affected
+by this bug, upgrade and recompile; script hashes and budgets may change.
 
 ### `Reassignment of switch case-pattern variable '<name>' is not supported`
 

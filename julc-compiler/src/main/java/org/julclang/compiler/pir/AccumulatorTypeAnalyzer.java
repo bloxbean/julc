@@ -400,6 +400,55 @@ final class AccumulatorTypeAnalyzer {
         return new ArrayList<>(accNames);
     }
 
+    /** Enclosing bindings that statement-level loops can update across an if boundary. */
+    static List<String> detectBranchAccumulators(IfStmt branch,
+                                                 Function<String, Optional<PirType>> typeLookup) {
+        var names = new LinkedHashSet<String>();
+        collectBranchAccumulators(branch, new HashSet<>(), false, typeLookup, names);
+        return List.copyOf(names);
+    }
+
+    private static void collectBranchAccumulators(Statement stmt, Set<String> locals, boolean inLoop,
+                                                  Function<String, Optional<PirType>> typeLookup,
+                                                  Set<String> names) {
+        switch (stmt) {
+            case BlockStmt block -> {
+                var scope = new HashSet<>(locals);
+                for (var child : block.getStatements()) {
+                    collectBranchAccumulators(child, scope, inLoop, typeLookup, names);
+                }
+            }
+            case IfStmt branch -> {
+                var thenLocals = new HashSet<>(locals);
+                if (branch.getCondition() instanceof InstanceOfExpr ioe
+                        && ioe.getPattern().orElse(null) instanceof TypePatternExpr pattern) {
+                    thenLocals.add(pattern.getNameAsString());
+                }
+                collectBranchAccumulators(branch.getThenStmt(), thenLocals, inLoop, typeLookup, names);
+                branch.getElseStmt().ifPresent(other -> collectBranchAccumulators(
+                        other, new HashSet<>(locals), inLoop, typeLookup, names));
+            }
+            case ForEachStmt loop -> {
+                var scope = new HashSet<>(locals);
+                loop.getVariable().getVariables().forEach(v -> scope.add(v.getNameAsString()));
+                collectBranchAccumulators(loop.getBody(), scope, true, typeLookup, names);
+            }
+            case WhileStmt loop -> collectBranchAccumulators(
+                    loop.getBody(), new HashSet<>(locals), true, typeLookup, names);
+            case ExpressionStmt expression -> {
+                if (expression.getExpression() instanceof VariableDeclarationExpr declaration) {
+                    declaration.getVariables().forEach(v -> locals.add(v.getNameAsString()));
+                } else if (inLoop && expression.getExpression() instanceof AssignExpr assignment
+                        && assignment.getTarget() instanceof NameExpr target) {
+                    var name = target.getNameAsString();
+                    if (!locals.contains(name) && typeLookup.apply(name).isPresent()) names.add(name);
+                }
+                // Expression-owned loops (switch arms/lambdas) cannot export rebindings.
+            }
+            default -> { }
+        }
+    }
+
     /**
      * Collect accumulator assignments from statement list.
      *

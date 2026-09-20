@@ -164,28 +164,29 @@ and update that copy instead. This is conservative even if you yield the record
 without reading its fields. It does not prohibit otherwise-supported reassignment
 of an `instanceof` binding; those bindings use a different lowering path.
 
-### Known limitation: an if outside a loop body
+### Loops inside an if outside a loop body
 
-Do not rely on a loop inside an `if` outside a loop body—at method level or inside
-a switch-expression arm—updating an enclosing accumulator
-read after that branch: this still silently loses the update ([#161](https://github.com/bloxbean/julc/issues/161)),
-and is **not fixed by #157**. For example:
+A loop inside an `if` at method level or inside a switch-expression arm preserves
+its accumulator updates for statements after the branch. This fixes
+[#161](https://github.com/bloxbean/julc/issues/161), separately from #157's
+restrictions on loop-body locals and switch boundaries. For example:
 
 ```java
 BigInteger total = BigInteger.ZERO;
 if (xs.size().compareTo(BigInteger.ZERO) > 0) {
     for (var x : xs) { total = total.add(x); }
 }
-return total; // [1, 2, 3]: expected 6, currently returns 0
+return total; // [1, 2, 3]: returns 6; empty input: returns 0
 ```
 
-The same bug occurs when this fragment is inside a switch arm and ends with
-`yield total` rather than `return total`. Declaring `total` inside the arm does
-not make updates survive an intervening `if`.
+This also works inside a switch arm with an arm-local `total` and `yield total`.
+Untaken branches preserve the previous value; for-each/while, nested branches,
+multiple accumulators and break retain their existing loop semantics.
 
-For this example, remove the empty-list check: an empty for-each already runs zero
-iterations. Do not remove a condition that changes the intended behavior. This is
-not a blanket ban on branch-local loops whose results are explicitly returned.
+The empty-list check above is optional because an empty for-each runs zero
+iterations. Keep conditions that affect intended behavior. Recompile affected
+scripts and reassess their hashes and budgets; previously deployed scripts are
+not repaired by upgrading the compiler.
 
 ## Prefer guard clauses for validation rules
 
