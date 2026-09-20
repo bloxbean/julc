@@ -95,7 +95,7 @@ public final class EvaluateTool {
                     "method": { "type": "string", "description": "Name of the static method to compile and evaluate." },
                     "target": { "type": "string", "description": "Exact compiler target profile ID. Defaults to plutus-v3-pv11-uplc-1.1.0." },
                     "optimization": { "type": "string", "description": "Exact optimizer rollout ID. Defaults to pv11-safe." },
-                    "costProfile": { "type": "string", "description": "Exact pinned cost profile ID; required by pv11-costed." },
+                    "costProfile": { "type": "string", "description": "Optional compatibility profile ID, e.g. plutus-v3-pv11-costs-v1. Validated but unused by compilation; does not configure evaluation." },
                     "args": {
                       "type": "array",
                       "description": "Arguments to apply. Each is a PlutusData JSON shape: {int:n}, {bytes:'0x..'}, {string:'..'}, {bool:b}, {unit:true}, {constr:{tag:int,fields:[..]}}, {list:[..]}, or {map:[{key,value}]}.",

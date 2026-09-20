@@ -297,13 +297,20 @@ class JulcAnnotationProcessorTest {
                 }
                 """;
 
-        var success = compileWithProcessorAndOptions(
-                source, "OptimizationValidator", List.of(
-                        "-Ajulc.optimization=pv11-costed",
-                        "-Ajulc.costProfile=cardano-node-11.0.1-plutus-v3-pv11"));
-        assertTrue(success.success(), success.diagnostics().toString());
-        assertTrue(success.diagnostics().stream().anyMatch(diagnostic ->
-                diagnostic.getMessage(null).contains("optimization: pv11-costed")));
+        for (var options : List.of(
+                List.of("-Ajulc.optimization=pv11-costed"),
+                List.of("-Ajulc.optimization=pv11-costed", "-Ajulc.costProfile=plutus-v3-pv11-costs-v1"),
+                List.of("-Ajulc.optimization=pv11-costed", "-Ajulc.costProfile=cardano-node-11.0.1-plutus-v3-pv11"))) {
+            var success = compileWithProcessorAndOptions(source, "OptimizationValidator", options);
+            assertTrue(success.success(), success.diagnostics().toString());
+            assertTrue(success.diagnostics().stream().anyMatch(diagnostic ->
+                    diagnostic.getMessage(null).contains("optimization: pv11-costed")));
+        }
+
+        var unknown = compileWithProcessorAndOptions(source, "OptimizationValidator",
+                List.of("-Ajulc.optimization=pv11-costed", "-Ajulc.costProfile=latest"));
+        assertFalse(unknown.success());
+        assertTrue(unknown.diagnostics().stream().anyMatch(d -> d.getMessage(null).contains("not supported")));
 
         var failure = compileWithProcessorAndOptions(
                 source, "OptimizationValidator", List.of(

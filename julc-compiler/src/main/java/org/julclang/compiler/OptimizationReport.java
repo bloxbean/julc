@@ -5,7 +5,11 @@ import org.julclang.vm.OptimizationCostProfile;
 import java.util.List;
 import java.util.Objects;
 
-/** Deterministic optimization provenance retained with a compilation result. */
+/**
+ * Deterministic optimization provenance retained with a compilation result.
+ * Cost identity/hash describe an actual numeric dependency, not an unused option.
+ * Both are absent for every currently shipped compiler rule.
+ */
 public record OptimizationReport(
         OptimizationLevel level,
         String costProfileId,
@@ -19,6 +23,11 @@ public record OptimizationReport(
             throw new IllegalArgumentException(
                     "costProfileId and costParameterHash must both be present or absent");
         }
+    }
+
+    /** Build version of the compiler distribution producing this report. */
+    public String compilerVersion() {
+        return CompilerVersion.VERSION;
     }
 
     public static OptimizationReport baseline() {

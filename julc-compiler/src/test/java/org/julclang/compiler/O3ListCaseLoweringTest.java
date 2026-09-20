@@ -247,8 +247,6 @@ class O3ListCaseLoweringTest {
 
     private static CompileResult compile(String method, OptimizationLevel level, boolean maps) {
         var options = new CompilerOptions().setOptimizationLevel(level).setSourceMapEnabled(maps);
-        if (level.costProfileRequired()) options.setOptimizationCostProfile(
-                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
         return new JulcCompiler(StdlibRegistry.defaultRegistry(), options).compileMethod(SOURCE, method);
     }
 

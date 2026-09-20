@@ -187,9 +187,13 @@ tasks.named('check') {
 tasks.named('processResources') {
     filteringCharset = 'UTF-8'
     inputs.property('julcVersion', project.version)
-    filesMatching('diagnostics.json') {
+    filesMatching(['diagnostics.json', 'org/julclang/compiler/version.properties']) {
         filter { line -> line.replace('@julcVersion@', project.version.toString()) }
     }
+}
+
+tasks.withType(Test).configureEach {
+    systemProperty 'julc.test.expectedCompilerVersion', project.version.toString()
 }
 
 publishing {

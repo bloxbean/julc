@@ -147,7 +147,7 @@ public final class DiagnosticCodes {
             CompilerDiagnostic.Level.ERROR,
             "CONFIG",
             "Optimization level {0} requires an explicit pinned optimization cost profile",
-            "Select a supported named optimization cost profile, or use BASELINE/PV11_SAFE when cost-directed rules are not required.");
+            "Current compilation needs no cost profile. Configure cost parameters on the evaluator for budget measurements.");
 
     public static final DiagnosticInfo MUTUAL_RECURSION_TOO_LARGE = new DiagnosticInfo(
             "JULC0023",
@@ -323,7 +323,7 @@ public final class DiagnosticCodes {
             CompilerDiagnostic.Level.ERROR,
             "CONFIG",
             "Optimization cost profile {0} is not supported. Supported profiles: {1}",
-            "Select one of the listed cost profiles. Do not substitute live node parameters or a profile from another protocol version.");
+            "Omit the unused compiler profile or select a listed ID, such as plutus-v3-pv11-costs-v1. Supply runtime cost parameters separately to the evaluator.");
 
     public static final DiagnosticInfo UNSUPPORTED_OPTIMIZATION_LEVEL = new DiagnosticInfo(
             "JULC0039",

@@ -22,6 +22,8 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class OptimizationConfigurationTest {
@@ -70,21 +72,47 @@ class OptimizationConfigurationTest {
     }
 
     @Test
-    void costedLevelRequiresExactPinnedProfile() {
-        var missing = assertThrows(CompilerException.class,
-                () -> compile(OptimizationLevel.PV11_COSTED, null));
-        assertEquals("JULC0037", missing.diagnostics().getFirst().code());
+    void allLevelsCompileWithoutCostProfilesAndDoNotReportUnusedDependencies() {
+        for (var level : OptimizationLevel.values()) {
+            var absent = compile(level, null);
+            var supplied = compile(level, OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1);
+            assertArrayEquals(UplcFlatEncoder.encodeProgram(absent.program()),
+                    UplcFlatEncoder.encodeProgram(supplied.program()));
+            assertEquals(absent.optimizationReport(), supplied.optimizationReport());
+            assertNull(supplied.optimizationReport().costProfileId());
+            assertNull(supplied.optimizationReport().costParameterHash());
+            assertFalse(supplied.optimizationReport().compilerVersion().isBlank());
+            assertFalse(supplied.optimizationReport().compilerVersion().contains("@"));
+        }
+    }
 
-        var profile = OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11;
-        var result = compile(OptimizationLevel.PV11_COSTED, profile);
-        assertEquals(profile.profileId(), result.optimizationReport().costProfileId());
-        assertEquals(profile.parameterHash(),
-                result.optimizationReport().costParameterHash());
+    @Test
+    void canonicalAndLegacyOptionsPreserveO9ArtifactsAndSourceMaps() {
+        var fixture = O9ListIndexFixtures.FIXTURES.getFirst();
+        for (boolean maps : List.of(false, true)) {
+            var options = new CompilerOptions().setOptimizationLevel(OptimizationLevel.PV11_COSTED)
+                    .setSourceMapEnabled(maps);
+            var absent = new JulcCompiler(StdlibRegistry.defaultRegistry(), options)
+                    .compileMethod(fixture.source(), fixture.method());
+            assertFalse(absent.hasErrors(), absent.diagnostics().toString());
+            assertTrue(absent.optimizationReport().appliedRules().contains("pv11.o9.list-to-array"));
+            for (var id : List.of("plutus-v3-pv11-costs-v1", "cardano-node-11.0.1-plutus-v3-pv11")) {
+                var supplied = new JulcCompiler(StdlibRegistry.defaultRegistry(),
+                        OptimizationConfiguration.apply(new CompilerOptions().setSourceMapEnabled(maps),
+                                "pv11-costed", id)).compileMethod(fixture.source(), fixture.method());
+                assertEquals(absent.program(), supplied.program());
+                assertArrayEquals(UplcFlatEncoder.encodeProgram(absent.program()),
+                        UplcFlatEncoder.encodeProgram(supplied.program()));
+                assertEquals(absent.optimizationReport(), supplied.optimizationReport());
+                if (maps) assertEquals(absent.sourceMap().toIndexed(absent.program().term()),
+                        supplied.sourceMap().toIndexed(supplied.program().term()));
+            }
+        }
     }
 
     @Test
     void mismatchedProfileFailsBeforeCompilation() {
-        var pinned = OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11;
+        var pinned = OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1;
         var mismatched = new OptimizationCostProfile(
                 "synthetic-v2-pv11",
                 LedgerEvaluationTarget.pv11(PlutusLanguage.PLUTUS_V2),

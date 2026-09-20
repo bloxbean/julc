@@ -1,6 +1,5 @@
-# cardano-node 11.0.1 / plutus 1.63.0.0
-# commit f92b7d7d82622a26caf456a6be33859f697e2cfc
-# builtinCostModelE.json + cekMachineCostsE.json in V3 ParamName order
+# plutus-v3-pv11-costs-v1, canonical V3 parameter order
+# Upstream mapping: docs/src/content/docs/reference/cost-model-profiles.md
 100788
 420
 1

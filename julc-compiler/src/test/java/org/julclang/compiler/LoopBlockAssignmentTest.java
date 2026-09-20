@@ -370,7 +370,7 @@ class LoopBlockAssignmentTest {
 
     private static byte[] flat(String body, OptimizationLevel level, boolean sourceMaps) {
         var options = new CompilerOptions().setOptimizationLevel(level).setSourceMapEnabled(sourceMaps)
-                .setOptimizationCostProfile(OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+                .setOptimizationCostProfile(OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1);
         var result = new JulcCompiler(StdlibRegistry.defaultRegistry(), options).compileMethod(HEADER + body + "}\n", "m");
         assertFalse(result.hasErrors(), result.diagnostics().toString());
         return UplcFlatEncoder.encodeProgram(result.program());

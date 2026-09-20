@@ -32,7 +32,7 @@ class PinnedPv11CostModelTest {
     @Test
     void defaultsMatchCardanoNode1101PlutusV3Pv11Exactly() throws IOException {
         var expected = readParams(
-                "/cost-model/cardano-node-11.0.1-plutus-v3-pv11.params");
+                "/cost-model/plutus-v3-pv11-costs-v1.params");
 
         assertArrayEquals(expected, CostModelParser.defaultToFlatArray(11));
 
