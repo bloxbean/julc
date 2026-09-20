@@ -15,6 +15,67 @@ source code.
 These errors are emitted during PIR (Plutus Intermediate Representation) generation,
 when the compiler translates Java AST nodes into UPLC-compatible terms.
 
+### `Conditional update to loop-body local '<name>' is not supported`
+
+An `if`/`else` inside a loop updates a local declared in the loop body outside
+that branch. The branch carries only loop accumulators out; the old lowering
+silently lost this local's update. Even constant conditions and unused updates
+are rejected.
+
+```java
+// Rejected inside a loop:
+BigInteger step = BigInteger.ZERO;
+if (positive) { step = BigInteger.ONE; }
+acc = acc.add(step);
+
+// Use a conditional initializer:
+BigInteger step = positive ? BigInteger.ONE : BigInteger.ZERO;
+acc = acc.add(step);
+```
+
+Alternatively, declare the variable before the loop as an accumulator (reset it
+each iteration when needed), or declare it inside the branch if its value is
+only used there. Existing break-aware and native-accumulator restrictions still
+apply; see [the full rules](/best-practices/conditionals/#loop-local-assignment-rules).
+
+### `Switch-expression arm cannot update enclosing variable '<name>'`
+
+A switch exports only its yielded result, not assignments to enclosing variables.
+A nested loop inside an arm does not change this rule. It applies to outer
+accumulators as well as loop-body locals, with or without an enclosing `if`.
+
+```java
+// Correct: the accumulator belongs to the arm and its result is explicitly yielded.
+BigInteger step = switch (action) {
+    case Only o -> {
+        BigInteger local = BigInteger.ZERO;
+        for (var y : xs) { local = local.add(y); }
+        yield local;
+    }
+};
+```
+
+Do not declare `local` outside the arm and expect the loop to update it there.
+For the separate `if`/loop miscompile outside a loop body (at method level or in a
+switch arm), see [#161](https://github.com/bloxbean/julc/issues/161).
+
+### `Reassignment of switch case-pattern variable '<name>' is not supported`
+
+Updating a case-pattern binding could leave field projections pointing at its
+original record (#162). Reassignment is now rejected, including when only the
+record is yielded. Copy the binding to a fresh arm-local accumulator:
+
+```java
+case Only p -> {
+    Only local = p;
+    for (var y : xs) { local = new Only(y); }
+    yield local.value();
+}
+```
+
+For `[1, 2, 3]`, this yields `3`; assigning to `p` instead is a compile-time error.
+Otherwise-supported `instanceof` binding reassignment is unaffected.
+
 ### 1.1 `Method must have a body: <name>`
 
 **Cause:** An abstract or interface method was encountered where the compiler
