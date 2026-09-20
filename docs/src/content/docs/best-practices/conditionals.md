@@ -94,11 +94,91 @@ for (var x : xs) {
 
 Alternatively declare `step` before the loop, making it an accumulator; reset it
 at the start of each iteration if needed to preserve its original lifetime.
-Existing accumulator type restrictions still apply: native BLS values cannot be
-packed with other accumulators. Straight-line updates inside bare blocks and
-updates to a local declared within the same branch remain subject to their existing
-support rules. This restriction also applies to `while`, nested branches and
-loops with `break`.
+If the value is only needed inside the branch, declare it there instead:
+
+```java
+for (var x : xs) {
+    if (x.compareTo(BigInteger.ZERO) > 0) {
+        BigInteger step = BigInteger.ZERO;
+        step = step.add(x);
+        acc = acc.add(step);
+    }
+}
+```
+
+### Loop-local assignment rules
+
+- Locals must be initialized at declaration. Outside supported loop paths,
+  ordinary reassignment is not supported.
+- In an accumulator-carrying loop without `break`, a local may be reassigned as a direct statement in
+  its scope, including a bare nested block. Bare braces do not create a value join.
+- An `if`/`else` may update that loop's accumulators. It may also contain
+  straight-line updates to locals declared in the same branch; it may not update
+  a loop-body local declared outside that branch. Another nested `if` introduces
+  the same restriction again, even for constant conditions or dead updates.
+- A local declared before a nested loop may be an accumulator of that nested loop.
+  This does not let its updates escape an enclosing `if` of the outer loop or a
+  switch-expression arm.
+- `break`-aware support is narrower: the single-accumulator path does not support
+  general straight-line reassignment of other body locals. Use an initializer for
+  those locals; moving a declaration into a branch does not remove this limitation.
+- Loops with no detected accumulator use the generic statement path and do not
+  support general body-local reassignment either; prefer initializers.
+- Multiple accumulators must be Data-encodable; native BLS values cannot be packed
+  with other accumulators. These restrictions apply to both for-each and while.
+
+### Switch expressions export values, not variable updates
+
+An arm cannot mutate a variable declared outside it, even through a nested loop:
+
+```java
+BigInteger step = BigInteger.ZERO;
+BigInteger ignored = switch (action) {
+    case Only o -> {
+        for (var y : xs) { step = step.add(y); } // rejected
+        yield BigInteger.ZERO;
+    }
+};
+```
+
+Instead, declare the accumulator in the arm and yield its result:
+
+```java
+BigInteger step = switch (action) {
+    case Only o -> {
+        BigInteger local = BigInteger.ZERO;
+        for (var y : xs) { local = local.add(y); }
+        yield local;
+    }
+};
+```
+
+The restriction includes outer-loop accumulators, not just loop-body locals, and
+does not require an enclosing `if`. Nested switch arms introduce their own boundary.
+
+Another known limitation ([#162](https://github.com/bloxbean/julc/issues/162)):
+do not reassign the case-pattern variable itself (`case Only p -> ... p = ...`).
+Later field reads can still use the original record. Copy it to a fresh arm-local
+accumulator and update that copy instead. This pre-existing projection bug is not
+fixed by the switch-boundary guard.
+
+### Known limitation: an if around a loop
+
+Do not rely on a loop inside a method-level `if` updating an enclosing accumulator
+read after that branch: this still silently loses the update ([#161](https://github.com/bloxbean/julc/issues/161)),
+and is **not fixed by #157**. For example:
+
+```java
+BigInteger total = BigInteger.ZERO;
+if (xs.size().compareTo(BigInteger.ZERO) > 0) {
+    for (var x : xs) { total = total.add(x); }
+}
+return total; // [1, 2, 3]: expected 6, currently returns 0
+```
+
+For this example, remove the empty-list check: an empty for-each already runs zero
+iterations. Do not remove a condition that changes the intended behavior. This is
+not a blanket ban on branch-local loops whose results are explicitly returned.
 
 ## Prefer guard clauses for validation rules
 

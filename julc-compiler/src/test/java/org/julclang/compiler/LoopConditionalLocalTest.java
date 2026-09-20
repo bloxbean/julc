@@ -23,6 +23,8 @@ class LoopConditionalLocalTest {
             class Loops {
                 sealed interface Action permits Only {}
                 record Only() implements Action {}
+                sealed interface PatternAction permits WithValue {}
+                record WithValue(BigInteger value) implements PatternAction {}
             """;
 
     private static String method(String body) {
@@ -88,7 +90,7 @@ class LoopConditionalLocalTest {
     }
 
     @Test
-    void switchExpressionCannotHideNestedLoopUpdates() {
+    void enclosingIfRestrictionSurvivesSwitchExpressionTraversal() {
         var update = "switch (action) { case Only o -> { for (var y : xs) { step = step.add(y); } yield BigInteger.ZERO; } }";
         for (String expressionUse : List.of(
                 "BigInteger ignored = " + update + ";",
@@ -101,12 +103,60 @@ class LoopConditionalLocalTest {
         }
     }
 
+    @Test
+    void switchArmsCannotMutateEnclosingLocalsOrAccumulatorsWithoutAnIf() {
+        for (String target : List.of("step", "acc")) {
+            for (String loop : List.of(
+                    "for (var y : xs) { " + target + " = " + target + ".add(y); }",
+                    "while (" + target + ".compareTo(BigInteger.TEN) < 0) { " + target + " = " + target + ".add(BigInteger.ONE); }",
+                    "for (var y : xs) { " + target + " = " + target + ".add(y); if (y.equals(BigInteger.TWO)) { break; } }")) {
+                for (boolean enclosingLoop : List.of(false, true)) {
+                    String body = "BigInteger acc = BigInteger.ZERO; " + (enclosingLoop ? "for (var x : xs) { " : "")
+                            + "BigInteger step = BigInteger.ZERO; BigInteger ignored = switch (action) { case Only o -> { "
+                            + loop + " yield BigInteger.ZERO; } }; acc = acc.add(step); "
+                            + (enclosingLoop ? "} " : "") + "return acc;";
+                    assertSwitchRejected(body, target);
+                }
+            }
+        }
+        // An inner switch also cannot update an accumulator declared in an outer arm.
+        assertSwitchRejected("""
+                return switch (action) { case Only o -> {
+                    BigInteger step = BigInteger.ZERO;
+                    BigInteger ignored = switch (action) { case Only p -> {
+                        for (var y : xs) { step = step.add(y); }
+                        yield BigInteger.ZERO;
+                    } };
+                    yield step;
+                } };
+                """, "step");
+        for (String invalidScope : List.of(
+                "if (action instanceof Only p) {} else { for (var y : xs) { p = new Only(); } }",
+                "if (action instanceof Only p) {} for (var y : xs) { p = new Only(); }")) {
+            assertSwitchRejected("return switch (action) { case Only o -> { " + invalidScope
+                    + " yield BigInteger.ZERO; } };", "p");
+        }
+    }
+
+    private static void assertSwitchRejected(String body, String name) {
+        String source = HEADER + "static BigInteger m(JulcList<BigInteger> xs, Action action) { " + body + " } }";
+        for (var level : OptimizationLevel.values()) {
+            for (boolean sourceMaps : List.of(false, true)) {
+                var error = assertThrows(CompilerException.class, () -> compile(source, level, sourceMaps));
+                assertTrue(error.getMessage().contains("Switch-expression arm cannot update enclosing variable '" + name + "'"), error.getMessage());
+                assertTrue(error.getMessage().contains("yield its result"), error.getMessage());
+                assertTrue(error.getMessage().matches("(?s).*Loops\\.java:\\d+:\\d+:.*"), error.getMessage());
+            }
+        }
+    }
+
     private static void assertSourceRejected(String source, String name) {
         for (var level : OptimizationLevel.values()) {
             var error = assertThrows(CompilerException.class, () -> compile(source, level), level + ": " + source);
             assertTrue(error.getMessage().contains("Conditional update to loop-body local '" + name + "'"), error.getMessage());
             assertTrue(error.getMessage().contains("conditional initializer"), error.getMessage());
             assertTrue(error.getMessage().contains("before the loop"), error.getMessage());
+            assertTrue(error.getMessage().contains("declare it inside the branch"), error.getMessage());
             assertTrue(error.getMessage().matches("(?s).*Loops\\.java:\\d+:\\d+:.*"), error.getMessage());
             var mapped = assertThrows(CompilerException.class, () -> compile(source, level, true));
             assertEquals(error.getMessage(), mapped.getMessage());
@@ -116,6 +166,35 @@ class LoopConditionalLocalTest {
     private record Supported(String name, String body, long positive, long mixed) {}
 
     private static final List<Supported> SUPPORTED = List.of(
+            new Supported("switch arm owns instanceof pattern binding", """
+                    PatternAction action = new WithValue(BigInteger.ZERO);
+                    return switch (action) { case WithValue v -> {
+                        if (action instanceof WithValue p) {
+                            for (var y : xs) { p = new WithValue(y); }
+                            yield p.value();
+                        } else { yield BigInteger.ZERO; }
+                    } };
+                    """, 3, 2),
+            new Supported("switch arm copies case pattern into a local accumulator", """
+                    PatternAction action = new WithValue(BigInteger.ZERO);
+                    return switch (action) { case WithValue p -> {
+                        WithValue local = p;
+                        for (var y : xs) { local = new WithValue(y); }
+                        yield local.value();
+                    } };
+                    """, 3, 2),
+            new Supported("switch arm owns and yields its accumulator", """
+                    Action action = new Only();
+                    BigInteger acc = BigInteger.ZERO;
+                    for (var x : xs) {
+                        BigInteger step = switch (action) { case Only o -> {
+                            BigInteger local = BigInteger.ZERO;
+                            for (var y : xs) { local = local.add(y); }
+                            yield local;
+                        } };
+                        acc = acc.add(step);
+                    } return acc;
+                    """, 18, 3),
             new Supported("conditional initializer", """
                     BigInteger acc = BigInteger.ZERO;
                     for (var x : xs) {

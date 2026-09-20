@@ -1,6 +1,6 @@
-# ADR-048: Fail closed on conditional updates to loop-body locals
+# ADR-048: Fail closed on updates lost across conditional and switch boundaries
 
-**Status:** Implemented and locally validated; independent agent review applied; maintainer review pending
+**Status:** Implemented; PR #157 targets `main` after #156 merged; reviewer-requested revisions applied, final maintainer approval pending
 **Issue:** [#155](https://github.com/bloxbean/julc/issues/155)
 
 ## Context and current behavior
@@ -39,6 +39,47 @@ which binds its own assignments. Conditions, initializers and iterable expressio
 must not hide an enclosing conditional restriction. Lambda bodies have their own
 scope; their loops are checked when lowered.
 
+Review clarification: that traversal only preserves an **enclosing if's**
+restriction. A switch arm without an if can independently lose updates to a
+loop-body local **or a pre-loop accumulator**. Therefore every `generateSwitchExpr`
+entry also validates each arm before generating PIR: assignment targets must be
+declared inside that arm. Bare blocks and branches preserve lexical scope,
+for-each and pattern bindings belong to their proper scopes, nested loops may
+update arm-local accumulators, and a nested switch starts another value boundary.
+This deliberately rejects even an enclosing-variable update consumed only within
+the arm. Use an arm-local accumulator and explicitly yield the result instead.
+
+For example, inside an outer loop over `[1, 2, 3]`:
+
+```java
+BigInteger step = BigInteger.ZERO;
+BigInteger ignored = switch (action) {
+    case Only o -> {
+        for (var y : xs) { step = step.add(y); }
+        yield BigInteger.ZERO;
+    }
+};
+acc = acc.add(step); // previously produced total 0 rather than 18
+```
+
+The nested loop assignment is now rejected even without an enclosing `if`.
+Replacing `step` with outer accumulator `acc` in the arm is rejected too.
+The supported rewrite is `BigInteger step = switch (...) { ... }`, declaring a
+fresh accumulator inside the arm and yielding it after the loop.
+
+The method-level `if` around a loop remains separate: [#161](https://github.com/bloxbean/julc/issues/161)
+tracks an enclosing accumulator update lost when read after the branch. This ADR
+does not fix it; user guidance explicitly warns about that known miscompile.
+
+Review regression testing also found [#162](https://github.com/bloxbean/julc/issues/162):
+reassigning a switch case-pattern variable can leave its field projections pointing
+at the original record. It reproduces on the previous jar and is not a boundary
+escape. The guard does not fix that lowering; docs warn against it and the positive
+suite checks copying the case binding to a fresh arm-local accumulator instead.
+An `instanceof` binding introduced inside the arm is recognized in its then-branch
+only; a positive regression prevents incorrectly rejecting that supported pattern,
+and negative tests prevent the binding leaking into its else or following statements.
+
 ## Alternatives
 
 - **Join points passing updated locals:** the eventual general solution, but it
@@ -53,8 +94,8 @@ scope; their loops are checked when lowered.
 
 ## Affected stages and modules
 
-Only `julc-compiler` source-to-PIR validation (`PirGenerator` loop entry points and
-`LoopBodyGenerator` lexical check), compiler tests, and documentation. No optimizer,
+Only `julc-compiler` source-to-PIR validation (`PirGenerator` loop and switch entry points and
+`LoopBodyGenerator` lexical checks), compiler tests, and documentation. No optimizer,
 VM, ledger encoding, cost model or public Java API changes.
 
 ## Compatibility and risks
@@ -65,6 +106,10 @@ Use `BigInteger step = condition ? value : otherValue;`, or declare `step` befor
 the loop and reset it each iteration when the original local lifetime requires it.
 The latter remains subject to existing accumulator type restrictions (native
 values cannot be Data-packed with other accumulators).
+When a value is needed only in an if branch, declaring it in that branch is a
+third remedy. General body-local reassignment in the single-accumulator break-aware
+path remains unsupported; the documentation states this instead of promising
+universal straight-line reassignment support.
 
 The main risks are over-rejection across scopes and missing a conditional enclosing
 a nested loop. Tests pin both. Validation does not mutate AST or compiler state,
@@ -75,7 +120,7 @@ so an accepted program takes exactly its previous lowering path.
 One milestone: reproduce the wrong result, add the guard and actionable diagnostic,
 test rejected shapes at all levels, test accepted workarounds/scopes across Java,
 Truffle and Scalus, run full compiler/cross-backend and repository builds,
-then independent review before opening the stacked PR.
+then independent review. PR #157 originally stacked on #156 and now targets main.
 
 `LoopConditionalLocalTest` covers both loops, one/several accumulators, break/no-break,
 then/else/nested branches, bare blocks, nested loops, native locals, iteration
@@ -84,7 +129,7 @@ inputs at every level and compilation determinism. `LoopBlockAssignmentTest`
 continues to pin bare-block/braceless byte equality. Scalus uses its existing
 non-protocol-aware evaluation route, not a claim of PV11 certification.
 
-Final validation: `./gradlew build -PskipSigning=true` passed (218 actionable
+Initial PR validation (before the switch-boundary review revision): `./gradlew build -PskipSigning=true` passed (218 actionable
 tasks), including 1,639 compiler tests and 68 cross-backend tests, with no failures.
 The new suite performs 416 rejection checks (52 shapes, four levels, source maps
 off/on) and 360 supported-case evaluations (10 fixtures, four levels, three inputs,
@@ -94,8 +139,19 @@ and target anchor were verified. Native CLI and external DevKit tests were not r
 Independent review found a switch-expression initializer containing a nested loop
 could bypass the initial statement-only guard (0 instead of 18 on the review probe).
 Expression traversal and regressions for initializers, conditions and iterables
-close that route; the second review found no remaining blockers. This evidence
+closed that route **under an enclosing if only**; the second review found no remaining blockers in that scope.
+Subsequent review reproduced the no-if switch boundary escape, prompting the
+dedicated arm-ownership check above. This evidence
 does not establish general mutable-capture or unrelated loop-lowering correctness.
+
+Review-revision validation: `./gradlew build -PskipSigning=true` passed again
+(218 actionable tasks), including 1,640 compiler tests and 68 cross-backend tests
+with zero failures/errors/skips. The expanded regression suite performs 536
+rejection checks (67 shapes, four levels, source maps off/on) and 468 supported
+evaluations (13 fixtures, four levels, three inputs, three backends). Docs built
+all 33 pages and the new rules anchor/troubleshooting link resolved. Independent
+review's then-branch pattern-scope finding was fixed; no remaining blockers were
+reported for this scoped change. Native-image and external DevKit tests were not run.
 
 ## Open questions
 

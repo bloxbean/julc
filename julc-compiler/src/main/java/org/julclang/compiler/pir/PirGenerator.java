@@ -2063,6 +2063,7 @@ public class PirGenerator {
     }
 
     private PirTerm generateSwitchExpr(SwitchExpr se) {
+        loopBody.validateSwitchExpressionUpdates(se);
         var selector = generateExpression(se.getSelector());
         // Determine the sum type from the selector's type
         var selectorType = inferPirType(selector);

@@ -69,7 +69,8 @@ final class LoopBodyGenerator {
                     "An if/else branch carries only loop accumulators out of the branch. "
                             + "Use a conditional initializer (condition ? value : otherValue), "
                             + "or declare the variable before the loop so it is an accumulator "
-                            + "(reset it each iteration if needed).", assignment);
+                            + "(reset it each iteration if needed), or declare it inside the branch "
+                            + "if its value is only needed there.", assignment);
         } else if (stmt instanceof IfStmt branch) {
             validateConditionalLocalUpdates(branch.getCondition(), locals, conditionalLocals);
             var crossingJoin = new HashSet<>(conditionalLocals);
@@ -94,6 +95,62 @@ final class LoopBodyGenerator {
             }
         }
         // Lambdas have independent scope; their own loops are checked at their lowering entry.
+    }
+
+    /** A switch arm exports only its yielded value, never rebindings of enclosing variables. */
+    void validateSwitchExpressionUpdates(SwitchExpr expression) {
+        for (var entry : expression.getEntries()) {
+            var declaredInArm = new HashSet<String>();
+            for (var label : entry.getLabels()) {
+                label.findAll(TypePatternExpr.class).forEach(pattern -> declaredInArm.add(pattern.getNameAsString()));
+            }
+            for (var statement : entry.getStatements()) {
+                validateSwitchArmUpdates(statement, declaredInArm);
+            }
+        }
+    }
+
+    private void validateSwitchArmUpdates(Node node, Set<String> declaredInArm) {
+        if (node instanceof LambdaExpr) return; // Independent scope; captures are effectively final in Java.
+        if (node instanceof BlockStmt block) {
+            var blockLocals = new HashSet<>(declaredInArm);
+            for (var statement : block.getStatements()) validateSwitchArmUpdates(statement, blockLocals);
+        } else if (node instanceof ExpressionStmt expression) {
+            validateSwitchArmUpdates(expression.getExpression(), declaredInArm);
+        } else if (node instanceof VariableDeclarationExpr declaration) {
+            for (var variable : declaration.getVariables()) {
+                variable.getInitializer().ifPresent(initializer -> validateSwitchArmUpdates(initializer, declaredInArm));
+                declaredInArm.add(variable.getNameAsString());
+            }
+        } else if (node instanceof AssignExpr assignment && assignment.getTarget() instanceof NameExpr name
+                && !declaredInArm.contains(name.getNameAsString())) {
+            throw gen.enrichedError("Switch-expression arm cannot update enclosing variable '"
+                            + sourceName(name.getNameAsString()) + "'",
+                    "A switch expression exports only its yielded value. Declare an accumulator inside the arm, "
+                            + "yield its result, and use the switch value outside the arm instead of mutating an enclosing variable.",
+                    assignment);
+        } else if (node instanceof IfStmt branch) {
+            validateSwitchArmUpdates(branch.getCondition(), declaredInArm);
+            var thenLocals = new HashSet<>(declaredInArm);
+            if (branch.getCondition() instanceof InstanceOfExpr condition
+                    && condition.getPattern().orElse(null) instanceof TypePatternExpr pattern) {
+                thenLocals.add(pattern.getNameAsString());
+            }
+            validateSwitchArmUpdates(branch.getThenStmt(), thenLocals);
+            branch.getElseStmt().ifPresent(other -> validateSwitchArmUpdates(other, new HashSet<>(declaredInArm)));
+        } else if (node instanceof ForEachStmt loop) {
+            validateSwitchArmUpdates(loop.getIterable(), declaredInArm);
+            var loopLocals = new HashSet<>(declaredInArm);
+            loop.getVariable().getVariables().forEach(variable -> loopLocals.add(variable.getNameAsString()));
+            validateSwitchArmUpdates(loop.getBody(), loopLocals);
+        } else if (node instanceof SwitchExpr nested) {
+            validateSwitchArmUpdates(nested.getSelector(), declaredInArm);
+            validateSwitchExpressionUpdates(nested); // A second value boundary, including for outer-arm locals.
+        } else {
+            for (var child : node.getChildNodes()) {
+                validateSwitchArmUpdates(child, new HashSet<>(declaredInArm));
+            }
+        }
     }
 
     boolean containsBreak(Statement stmt) {
