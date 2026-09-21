@@ -17,6 +17,11 @@ internally to protect join arguments when a local shadows a class field updated
 by the other branch, and to prevent capture in the existing inline return/yield
 lowering. Diagnostics display the original source names.
 
+One compile-time restriction remains: when the switch expression is itself inside
+an outer loop body, the existing loop-local guard still rejects an arm-local
+accumulator updated by a loop inside an `if`. This conservative rejection is a
+separate follow-up; it does not silently produce a stale result.
+
 Recompiled sources with loop-containing branches or affected name captures may
 change script bytes, hashes,
 size and execution budgets at **all optimization levels**, including NONE and

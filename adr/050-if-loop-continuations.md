@@ -101,6 +101,14 @@ conditionals retain their existing strategy.
 General loop-body local mutation remains governed by ADR-048. No broader source
 control-flow redesign or liveness optimization is included.
 
+ADR-048's outer-loop guard still traverses switch-expression arms. When a switch
+is inside an outer loop body, it rejects an arm-local accumulator updated by a
+loop inside an `if`, even though this ADR's lowering can handle the arm. Confirmed
+at `53034e4c` at every optimization level; the same arm outside the outer loop
+compiles. This conservative rejection is a separate follow-up, not a wrong-result
+bug. Any relaxation must retain selector validation, switch-arm ownership checks
+and the restrictions for actual nested loop bodies.
+
 ## Historical analysis
 
 This is a missed case, not a regression introduced by the recent conditional fixes.
@@ -173,13 +181,15 @@ to the untouched field value on the then path and updated field value on the els
 path, on Java, Truffle and Scalus. Reusing the existing renamer also protects the
 unchanged inline early-exit path; no second renaming implementation is introduced.
 
-The reviewer separately reported all 58 external validators byte-identical to
-`c24016ff` for the initial inline revision, with only aggregate-blueprint compiler
-version metadata differing. Their source scan found no affected guarded-loop
-shape in those validators or the seven Blaster fixtures. Their external suite
-had a DevKit setup HTTP 500, then passed the affected test on rerun. This is
-reviewer-supplied evidence for that earlier revision, not a fresh external/devnet
-test of the shared-join revision.
+The reviewer confirmed all 58 external validators byte-identical between the base
+compiler and the shared-join revision at `53034e4c`, with only aggregate-blueprint
+compiler version metadata differing. This comparison used an isolated copy of the
+examples built sequentially with each compiler; earlier in-place comparisons were
+discarded because concurrent Gradle builds contaminated their outputs. This is
+reviewer-supplied compile-only evidence for the shared-join revision, not a fresh
+DevKit run. Their source scan found no affected guarded-loop shape in the external
+validators or the seven Blaster fixtures. The earlier external test run's DevKit
+setup HTTP 500 and successful rerun remain evidence for that earlier run only.
 
 ADR-050 avoids the ADR-049 allocation in the open playground debugger PR #154.
 

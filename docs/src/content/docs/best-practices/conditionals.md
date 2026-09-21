@@ -180,6 +180,9 @@ return total; // [1, 2, 3]: returns 6; empty input: returns 0
 ```
 
 This also works inside a switch arm with an arm-local `total` and `yield total`.
+Exception: if that switch expression is inside an outer loop body, the existing
+loop-local guard still rejects this guarded inner-loop pattern. This is a
+compile-time restriction pending a separate follow-up, not a silently lost update.
 Untaken branches preserve the previous value; for-each/while, nested branches,
 multiple accumulators and break retain their existing loop semantics.
 
