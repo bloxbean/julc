@@ -1,6 +1,6 @@
-# ADR-048: Experimental language-neutral compiler backend
+# ADR-056: Experimental language-neutral compiler backend
 
-Status: Proposed
+Status: Implemented on `feat/compiler-backend-api`; maintainer review pending
 
 ## Context and goals
 
@@ -22,7 +22,10 @@ arity/result shape, then applies the existing validator wrapper exactly once.
 `julc-strict-v1` uses existing strict datum/redeemer decoding. Context remains the
 existing ledger-supplied Data representation. Producers must not pre-wrap terms.
 
-`PirLinker` links insertion-ordered definition maps through dependency SCCs.
+`PirLinker` accepts a `SequencedMap` and links its encounter-ordered definitions through
+dependency SCCs. That encounter order is the strict evaluation order; unordered maps are
+excluded from the API so generated behavior and bytes cannot depend on unspecified map iteration.
+Graph traversal visits dependency edges directly in `O(V + E)` time.
 Self recursion and two-function mutual recursion are supported; eager recursive
 values and larger groups fail explicitly. Supplied definitions are strict; callers
 must select their desired dependency closure before linking.
