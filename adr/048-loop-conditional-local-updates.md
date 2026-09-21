@@ -34,9 +34,13 @@ remain local to their branch. Nested loops start a fresh set of loop locals:
 enclosing locals are accumulators of the inner loop, not its body locals. However,
 an enclosing conditional's restriction remains active across the nested loop.
 Each loop's iteration variable is included as a body-local binding. Expression
-children are traversed too: a switch-expression arm may contain a nested loop
-which binds its own assignments. Conditions, initializers and iterable expressions
-must not hide an enclosing conditional restriction. Lambda bodies have their own
+children are traversed too, but a switch expression is a value boundary: the loop
+guard visits its selector, not its arms. The dedicated arm-ownership guard below
+rejects enclosing-variable updates; loops inside arms validate their own bodies
+when lowered. This permits ADR-050's guarded arm-local accumulators even inside
+an outer loop, without treating arm-local conditionals as outer-loop joins.
+Conditions, initializers and iterable expressions must not hide an enclosing
+conditional restriction. Lambda bodies have their own
 scope; their loops are checked when lowered.
 
 Review clarification: that traversal only preserves an **enclosing if's**
@@ -122,6 +126,16 @@ exception; the docs no longer claim moving a declaration into a branch never hel
 The main risks are over-rejection across scopes and missing a conditional enclosing
 a nested loop. Tests pin both. Validation does not mutate AST or compiler state,
 so an accepted program takes exactly its previous lowering path.
+
+The follow-up stacked on PR #164 removes only the over-rejection of guarded
+arm-local loop accumulators. The overlapping traversal predates ADR-050 (present
+in `c00e6956`); the shared-join change did not introduce it. Previously accepted
+programs retain their lowering. Invalid enclosing-variable updates inside switch
+arms now consistently report the switch-arm ownership diagnostic rather than,
+in some enclosing-if contexts, the loop-local diagnostic. Skipping the entire
+switch would miss selector mutations; traversing its arms as outer-loop statements
+would keep rejecting valid ADR-050 joins. Selector-only traversal reuses the
+existing validators without duplicating ownership analysis or adding PIR.
 
 ## Milestone and verification strategy
 

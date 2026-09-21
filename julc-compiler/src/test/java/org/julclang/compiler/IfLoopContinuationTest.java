@@ -105,6 +105,69 @@ class IfLoopContinuationTest {
 
     private record Fixture(String body, long taken, long untaken) {}
 
+    @Test
+    void switchArmGuardedLoopsInsideOuterLoopsOnJava() {
+        checkSwitchArmInOuterLoop("Java");
+    }
+
+    @Test
+    @Tag("pair-case-backends")
+    void switchArmGuardedLoopsInsideOuterLoopsOnOtherBackends() {
+        checkSwitchArmInOuterLoop("Truffle");
+        checkSwitchArmInOuterLoop("Scalus");
+    }
+
+    private static void checkSwitchArmInOuterLoop(String backend) {
+        for (boolean outerWhile : List.of(false, true)) {
+            for (boolean innerWhile : List.of(false, true)) {
+                for (boolean nestedSwitch : List.of(false, true)) {
+                    String inner = innerWhile
+                            ? "BigInteger j = BigInteger.ZERO; while (j.compareTo(xs.size()) < 0) { "
+                                + "local = local.add(xs.get(j)); j = j.add(BigInteger.ONE); }"
+                            : "for (var y : xs) { local = local.add(y); }";
+                    String arm = "BigInteger local = BigInteger.ZERO; "
+                            + "if (o.value().signum() > 0) { " + inner + " } "
+                            + "ContextsLib.trace(\"arm\"); yield local;";
+                    String value = "switch (action) { case Only o -> { " + arm
+                            + " } case Other o -> BigInteger.ZERO; }";
+                    if (nestedSwitch) {
+                        value = "switch (action) { case Only p -> { yield " + value
+                                + "; } case Other p -> BigInteger.ZERO; }";
+                    }
+                    String body = "Action action = mode.signum() < 0 ? new Other() : new Only(mode); "
+                            + "BigInteger acc = BigInteger.ZERO; BigInteger i = BigInteger.ZERO; "
+                            + (outerWhile ? "while (i.compareTo(xs.size()) < 0) { " : "for (var x : xs) { ")
+                            + "BigInteger step = " + value + "; "
+                            + "ContextsLib.trace(\"after\"); acc = acc.add(step); i = i.add(BigInteger.ONE); "
+                            + "} return acc;";
+                    for (var level : OptimizationLevel.values()) {
+                        var src = source(body, false);
+                        var compiled = compile(src, level);
+                        assertArrayEquals(UplcFlatEncoder.encodeProgram(compiled.program()),
+                                UplcFlatEncoder.encodeProgram(compile(src, level).program()));
+                        var inputs = List.of(PlutusData.list(),
+                                PlutusData.list(PlutusData.integer(1), PlutusData.integer(2), PlutusData.integer(3)),
+                                PlutusData.list(PlutusData.integer(-1), PlutusData.integer(0), PlutusData.integer(2)));
+                        for (int n = 0; n < inputs.size(); n++) {
+                            for (long mode : List.of(-1L, 0L, 1L)) {
+                                String label = backend + "/" + level + "/" + outerWhile + "/" + innerWhile
+                                        + "/" + nestedSwitch + "/" + n + "/" + mode;
+                                var result = evaluate(backend, compiled, inputs.get(n), mode);
+                                var success = assertInstanceOf(EvalResult.Success.class, result, label);
+                                long expected = mode <= 0 || n == 0 ? 0 : n == 1 ? 18 : 3;
+                                assertEquals(Term.const_(Constant.integer(expected)), success.resultTerm(), label);
+                                var traces = n == 0 ? List.of() : mode < 0
+                                        ? List.of("after", "after", "after")
+                                        : List.of("arm", "after", "arm", "after", "arm", "after");
+                                assertEquals(traces, result.traces(), label);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private static final List<Fixture> COMPOSED = List.of(
             new Fixture("""
                     BigInteger total = BigInteger.ZERO;
