@@ -191,7 +191,7 @@ DevKit run. Their source scan found no affected guarded-loop shape in the extern
 validators or the seven Blaster fixtures. The earlier external test run's DevKit
 setup HTTP 500 and successful rerun remain evidence for that earlier run only.
 
-ADR-050 avoids the ADR-049 allocation in the open playground debugger PR #154.
+ADR-050 avoids the ADR-055 allocation in the open playground debugger PR #154.
 
 Fresh shared-join validation: `./gradlew build -PskipSigning=true` passed (218
 actionable tasks), with 1,649 compiler tests and 69 cross-backend tests, zero

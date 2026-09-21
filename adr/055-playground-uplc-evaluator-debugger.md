@@ -1,11 +1,11 @@
-# ADR-049: UPLC evaluator and debugger in the playground
+# ADR-055: UPLC evaluator and debugger in the playground
 
-- Status: Implemented on `feat/playground-uplc-debugger` (stacked on ADR-048, `feat/playground-wasm`); independent review pending
+- Status: Implemented on `feat/playground-uplc-debugger` (stacked on ADR-054, `feat/playground-wasm`); independent review pending
 - Date: 2026-09-16
 
 ## Context / Problem
 
-The playground (ADR-048) compiles and tests JuLC source on the server or in the browser. Developers also need to
+The playground (ADR-054) compiles and tests JuLC source on the server or in the browser. Developers also need to
 work with scripts they did not write in JuLC, or already compiled: a validator from another language, a script
 found on chain, a blueprint from another project. Today they cannot use the playground to:
 
@@ -39,7 +39,7 @@ Goals:
   - Line, trace and builtin breakpoints.
   - The current term highlighted in the UPLC view.
   - Environment (with names matching the UPLC view), continuation frames and budget per step.
-- Everything runs in the browser engine (no backend) and on the server, with identical JSON (ADR-048 invariant 1).
+- Everything runs in the browser engine (no backend) and on the server, with identical JSON (ADR-054 invariant 1).
 
 Non-goals:
 
@@ -128,7 +128,7 @@ Non-goals:
    - `POST /api/uplc/{decode,decompile,evaluate,debug}` is served by `PlaygroundDispatcher` (browser engine) and by
      `UplcController` (server, inside `CompilationSandbox` with the existing rate limiters).
    - A Web Image substitution makes `BlsConstantValidator.getInstance()` return null, so UPLC text parsing does not
-     pull native BLS into the image. BLS evaluation keeps the ADR-048 message.
+     pull native BLS into the image. BLS evaluation keeps the ADR-054 message.
 6. **Frontend**
    - A **Contract | UPLC** mode switch; the UPLC page is loaded lazily and stays mounted.
    - **Script bar:** paste area, examples, "From Contract", detail chips (wrapping, language override, version,
@@ -180,7 +180,7 @@ changes.
 - Existing playground routes and JSON are unchanged. The Contract mode is the default; `?mode=uplc` opens the new
   page.
 - `julc-playground-core` now depends on `julc-decompiler`, `julc-cardano-client-lib`, BouncyCastle and
-  Jackson. cardano-client-lib stays pinned to 0.8.0-pre5 (ADR-048).
+  Jackson. cardano-client-lib stays pinned to 0.8.0-pre5 (ADR-054).
 
 ## Risks
 

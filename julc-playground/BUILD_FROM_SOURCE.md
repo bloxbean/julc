@@ -138,7 +138,7 @@ The UPLC tab uses four endpoints, served by both engines with the same JSON:
 | `POST /api/uplc/debug` | Stateless step debugger: `timeline`, `goto`, `continue`, `over`, `out` with breakpoints |
 
 The logic lives in `julc-playground-core` (`org.julclang.playground.uplc`) and uses the stepping API of the CEK
-machine (`JavaVmProvider.startStepping`). See [ADR-049](../adr/049-playground-uplc-evaluator-debugger.md). The UPLC
+machine (`JavaVmProvider.startStepping`). See [ADR-055](../adr/055-playground-uplc-evaluator-debugger.md). The UPLC
 requests are part of the parity fixtures above.
 
 ### Known limitations of the browser engine
