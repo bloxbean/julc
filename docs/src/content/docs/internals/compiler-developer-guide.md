@@ -1094,6 +1094,13 @@ switch (credential) {
 
 ### UPLC Lowering of DataMatch
 
+Field bindings use `PirHelpers.wrapDecode`, the same Data-to-native codec as
+ordinary record access (ADR-051, #166). This includes Bool and String, not only
+Integer/ByteString/List/Map. The selected arm strictly decodes its bound fields
+in order before executing its body; unselected arms remain unevaluated. Keep this
+codec shared: a cached pattern-field binding must have its declared runtime type.
+This decoding is not a substitute for strict typed-boundary validation.
+
 `UplcGenerator` lowers `DataMatch` to:
 
 ```
