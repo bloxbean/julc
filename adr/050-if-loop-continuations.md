@@ -101,13 +101,13 @@ conditionals retain their existing strategy.
 General loop-body local mutation remains governed by ADR-048. No broader source
 control-flow redesign or liveness optimization is included.
 
-ADR-048's outer-loop guard still traverses switch-expression arms. When a switch
-is inside an outer loop body, it rejects an arm-local accumulator updated by a
-loop inside an `if`, even though this ADR's lowering can handle the arm. Confirmed
-at `53034e4c` at every optimization level; the same arm outside the outer loop
-compiles. This conservative rejection is a separate follow-up, not a wrong-result
-bug. Any relaxation must retain selector validation, switch-arm ownership checks
-and the restrictions for actual nested loop bodies.
+The follow-up to PR #164 resolves ADR-048's validation overlap: its outer-loop
+guard visits switch selectors but leaves arms to the dedicated ownership guard
+and each nested loop's own validation. Arm-local accumulators updated by guarded
+loops now work inside an outer loop too. At `53034e4c` this shape was conservatively
+rejected, not miscompiled. No join lowering changes are needed. Enclosing-variable
+updates, case-pattern reassignments and conditional updates to actual loop-body
+locals remain rejected. ADR-048 records the refined traversal boundary.
 
 ## Historical analysis
 
@@ -199,3 +199,19 @@ failures/errors/skips in those suites. Stdlib, testkit, annotation processor,
 in-repository examples and other build checks passed. `npm run build` built all
 33 documentation pages; `git diff --check` passed. External DevKit and native-image
 checks were not run for this revision.
+
+## Switch-arm validation follow-up to PR #164
+
+The new outer-loop/switch-arm reproducer fails on the parent with the loop-local
+diagnostic before the selector-only validation change. Added coverage performs
+936 VM evaluations across all four optimization levels and Java/Truffle/Scalus:
+both loop forms, nested switches, taken/untaken guards, both variants, empty and
+mixed input, inner/outer breaks, trace order and deterministic compilation.
+Negative cases preserve selector restrictions, enclosing-variable ownership and
+checks on actual inner-loop locals, including with source maps enabled.
+
+`./gradlew build -PskipSigning=true` passed (218 actionable tasks): 1,651 compiler
+tests, 70 cross-backend tests, 411 stdlib tests, 193 testkit tests and 81 in-repository
+example tests, with no failures/errors/skips in those suites. Documentation built
+all 33 pages and diff checks passed. No fresh external corpus, DevKit or native-image
+validation is claimed. The production diff changes validation only, not lowering.

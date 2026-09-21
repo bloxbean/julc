@@ -17,10 +17,13 @@ internally to protect join arguments when a local shadows a class field updated
 by the other branch, and to prevent capture in the existing inline return/yield
 lowering. Diagnostics display the original source names.
 
-One compile-time restriction remains: when the switch expression is itself inside
-an outer loop body, the existing loop-local guard still rejects an arm-local
-accumulator updated by a loop inside an `if`. This conservative rejection is a
-separate follow-up; it does not silently produce a stale result.
+The validation follow-up also accepts this pattern when the switch expression
+is inside an outer loop body. Previously the outer-loop guard conservatively
+rejected arm-local guarded-loop updates. It now validates the selector and leaves
+arm bodies to their ownership guard and nested loops' own checks. Switch arms
+still cannot update enclosing variables, and conditional updates to actual
+loop-body locals remain unsupported. This validation-only change adds no lowering
+or encoding change for previously accepted programs.
 
 Recompiled sources with loop-containing branches or affected name captures may
 change script bytes, hashes,

@@ -976,12 +976,11 @@ at every optimization level.
 
 ### 9.1 For-Each Loops
 
-Known validation overlap: ADR-048's outer-loop guard still traverses switch arms.
-If a switch expression appears in an outer loop body, it can therefore reject an
-arm-local accumulator updated by a guarded inner loop even though ADR-050 can
-lower that arm correctly. This fails compilation, not evaluation. A separate
-follow-up must respect the switch value boundary while preserving selector checks,
-arm ownership checks, and validation of actual nested loop bodies.
+ADR-048's outer-loop guard traverses a switch expression's selector, not its arms.
+The dedicated arm-ownership check prevents enclosing-variable updates; each loop
+inside an arm still validates its own body. Arm-local conditionals therefore use
+ADR-050's continuation lowering even when the switch is inside an outer loop,
+without weakening restrictions on actual loop-body locals.
 
 **5 compilation paths** based on accumulator count and break usage:
 

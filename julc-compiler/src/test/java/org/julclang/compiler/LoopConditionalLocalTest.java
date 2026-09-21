@@ -90,16 +90,50 @@ class LoopConditionalLocalTest {
     }
 
     @Test
-    void enclosingIfRestrictionSurvivesSwitchExpressionTraversal() {
+    void switchOwnershipRejectsEnclosingUpdatesInEveryExpressionPosition() {
         var update = "switch (action) { case Only o -> { for (var y : xs) { step = step.add(y); } yield BigInteger.ZERO; } }";
         for (String expressionUse : List.of(
                 "BigInteger ignored = " + update + ";",
                 "if ((" + update + ").equals(BigInteger.ZERO)) { acc = acc.add(x); }",
                 "while ((" + update + ").compareTo(BigInteger.ZERO) > 0) { acc = acc.add(x); break; }",
                 "for (var y : ((" + update + ").equals(BigInteger.ZERO) ? xs : xs)) { acc = acc.add(y); }")) {
-            assertSourceRejected(HEADER + "static BigInteger m(JulcList<BigInteger> xs, Action action) { "
-                    + "BigInteger acc = BigInteger.ZERO; for (var x : xs) { BigInteger step = BigInteger.ZERO; "
-                    + "if (true) { " + expressionUse + " } acc = acc.add(step); } return acc; } }", "step");
+            assertSwitchRejected("BigInteger acc = BigInteger.ZERO; for (var x : xs) { BigInteger step = BigInteger.ZERO; "
+                    + "if (true) { " + expressionUse + " } acc = acc.add(step); } return acc;", "step");
+        }
+    }
+
+    @Test
+    void switchBoundaryStillChecksSelectorsAndActualNestedLoopBodies() {
+        assertRejected("""
+                Action action = new Only();
+                BigInteger acc = BigInteger.ZERO;
+                for (var x : xs) {
+                    Action local = action;
+                    if (true) {
+                        BigInteger step = switch (local = action) { case Only o -> BigInteger.ONE; };
+                        acc = acc.add(step);
+                    }
+                }
+                return acc;
+                """, "local");
+        for (String loop : List.of("for (var y : xs)", "while (true)")) {
+            assertRejected("""
+                    Action action = new Only();
+                    BigInteger acc = BigInteger.ZERO;
+                    for (var x : xs) {
+                        BigInteger step = switch (action) { case Only o -> {
+                            BigInteger local = BigInteger.ZERO;
+                            %s {
+                                BigInteger bodyLocal = BigInteger.ZERO;
+                                if (true) { bodyLocal = BigInteger.ONE; }
+                                local = local.add(bodyLocal);
+                            }
+                            yield local;
+                        } };
+                        acc = acc.add(step);
+                    }
+                    return acc;
+                    """.formatted(loop), "bodyLocal");
         }
     }
 
@@ -108,6 +142,7 @@ class LoopConditionalLocalTest {
         for (String target : List.of("step", "acc")) {
             for (String loop : List.of(
                     "for (var y : xs) { " + target + " = " + target + ".add(y); }",
+                    "if (true) { for (var y : xs) { " + target + " = " + target + ".add(y); } }",
                     "while (" + target + ".compareTo(BigInteger.TEN) < 0) { " + target + " = " + target + ".add(BigInteger.ONE); }",
                     "for (var y : xs) { " + target + " = " + target + ".add(y); if (y.equals(BigInteger.TWO)) { break; } }")) {
                 for (boolean enclosingLoop : List.of(false, true)) {
@@ -192,6 +227,42 @@ class LoopConditionalLocalTest {
     private record Supported(String name, String body, long positive, long mixed) {}
 
     private static final List<Supported> SUPPORTED = List.of(
+            new Supported("guarded switch arm with an inner break", """
+                    Action action = new Only();
+                    BigInteger acc = BigInteger.ZERO;
+                    for (var x : xs) {
+                        if (x.signum() > 0) {
+                            BigInteger step = switch (action) { case Only o -> {
+                                BigInteger local = BigInteger.ZERO;
+                                if (x.signum() > 0) {
+                                    for (var y : xs) {
+                                        local = local.add(y);
+                                        if (y.equals(BigInteger.TWO)) { break; }
+                                    }
+                                }
+                                yield local;
+                            } };
+                            acc = acc.add(step);
+                        }
+                    }
+                    return acc;
+                    """, 9, 1),
+            new Supported("arm-local while join with break in outer loop", """
+                    Action action = new Only();
+                    BigInteger acc = BigInteger.ZERO;
+                    for (var x : xs) {
+                        BigInteger step = switch (action) { case Only o -> {
+                            BigInteger local = BigInteger.ZERO;
+                            if (x.signum() > 0) {
+                                while (local.compareTo(x) < 0) { local = local.add(BigInteger.ONE); }
+                            }
+                            yield local;
+                        } };
+                        acc = acc.add(step);
+                        if (x.equals(BigInteger.TWO)) { break; }
+                    }
+                    return acc;
+                    """, 3, 2),
             new Supported("branch local in non-breaking branch of break-aware loop", """
                     BigInteger acc = BigInteger.ZERO;
                     for (var x : xs) {

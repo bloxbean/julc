@@ -87,10 +87,13 @@ final class LoopBodyGenerator {
         } else if (stmt instanceof WhileStmt loop) {
             validateConditionalLocalUpdates(loop.getCondition(), locals, conditionalLocals);
             validateConditionalLocalUpdates(loop.getBody(), new HashSet<>(), new HashSet<>(conditionalLocals));
+        } else if (stmt instanceof SwitchExpr expression) {
+            // Arms export only their yielded value, not enclosing bindings. Their ownership
+            // guard runs in generateSwitchExpr; each nested loop validates its own body.
+            // Arm-local ifs use normal continuation lowering, not this loop's joins.
+            validateConditionalLocalUpdates(expression.getSelector(), locals, conditionalLocals);
         } else if (!(stmt instanceof LambdaExpr)) {
-            // Expressions can contain statements: a switch arm can contain a nested loop
-            // which binds assignments itself, bypassing the generic expression diagnostic.
-            // Preserve enclosing restrictions through these nodes; siblings do not share locals.
+            // Preserve enclosing restrictions through expressions; siblings do not share locals.
             for (var child : stmt.getChildNodes()) {
                 validateConditionalLocalUpdates(child, new HashSet<>(locals), new HashSet<>(conditionalLocals));
             }

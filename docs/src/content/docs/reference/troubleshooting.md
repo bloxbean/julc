@@ -59,10 +59,11 @@ Do not declare `local` outside the arm and expect the loop to update it there.
 Loops inside an `if` at method level or in a switch arm now preserve their
 accumulator updates after the branch (#161). If using an older compiler affected
 by this bug, upgrade and recompile; script hashes and budgets may change.
-An exception remains when the switch expression is inside an outer loop body:
-the existing guard still rejects an arm-local accumulator updated by a loop
-inside an `if` as a conditional loop-body local update. This restriction is
-pending a separate follow-up.
+This includes a switch expression inside an outer loop body: declare the
+accumulator inside the arm, update it with the guarded loop, and yield its result.
+Older versions may conservatively reject this composition as a conditional
+loop-body local update. Updates to variables declared outside the arm, or to
+actual loop-body locals across an `if`, remain rejected.
 
 ### `Reassignment of switch case-pattern variable '<name>' is not supported`
 
