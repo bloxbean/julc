@@ -9,6 +9,7 @@ import com.github.javaparser.ast.expr.*;
 import com.github.javaparser.ast.stmt.*;
 
 import java.util.*;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 
 /**
@@ -663,15 +664,34 @@ final class LoopBodyGenerator {
     /** Generate the enclosing list with the block's statements in the block's place. */
     private PirTerm withBlockSpliced(List<Statement> stmts, int index, BlockStmt block,
                                      Function<List<Statement>, PirTerm> generate) {
+        return withLocalsRenamed(block, renamed -> generate.apply(spliced(stmts, index, renamed)));
+    }
+
+    /** Keep block locals from capturing a continuation embedded after the block's work. */
+    PirTerm withLocalsRenamed(BlockStmt block, Function<BlockStmt, PirTerm> generate) {
         var renamed = renamedApart(block);
         if (renamed == block) {
-            return generate.apply(spliced(stmts, index, block));
+            return generate.apply(block);
         }
         // The copy stands where the block stands while it is generated, so that lookups of an
         // enclosing node (the method of a nested while loop) still succeed, and leaves after.
         block.getParentNode().ifPresent(renamed::setParentNode);
         try {
-            return generate.apply(spliced(stmts, index, renamed));
+            return generate.apply(renamed);
+        } finally {
+            renamed.setParentNode(null);
+        }
+    }
+
+    /** Rename a pattern binding's references, but not method names or the continuation. */
+    PirTerm withBindingRenamed(Statement branch, String name,
+                              BiFunction<String, Statement, PirTerm> generate) {
+        String fresh = name + BLOCK_LOCAL_MARK + (++blockLocalCounter);
+        var renamed = branch.clone();
+        rename(renamed, Map.of(name, fresh));
+        branch.getParentNode().ifPresent(renamed::setParentNode);
+        try {
+            return generate.apply(fresh, renamed);
         } finally {
             renamed.setParentNode(null);
         }

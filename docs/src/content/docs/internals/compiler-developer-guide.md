@@ -951,10 +951,37 @@ than enclosing variable rebindings. The check applies even without an enclosing
 loop or `if`; nested switch arms start a new boundary. Branch-local pattern
 bindings are scoped to their valid branch. Switch case-pattern reassignment is
 rejected (#162) to avoid stale cached field projections; this does not change
-supported `instanceof` bindings. The separate if/loop bug (#161), outside the
-specialized loop-body lowering at method level or inside switch arms, remains open.
+supported `instanceof` bindings.
+
+Outside specialized loop-body lowering, `generateIfStmt` uses its existing
+return/yield continuation path for branches containing statement-level loops
+(ADR-050, #161). The continuation is generated in the enclosing scope and bound
+once as a join lambda before the conditional. Its parameters are the source-order
+union of enclosing accumulators updated by statement-level loops in either branch;
+lexical analysis excludes branch/loop locals and pattern/iteration bindings.
+Each falling-through branch calls it under its final accumulator bindings; an
+unchanged path passes incoming values. Zero-accumulator joins take a unit argument
+so the continuation is not evaluated before the branch. Parameters retain native
+representations without Data packing. Sequential guarded loops therefore grow
+linearly in serialized size rather than duplicating the entire tail at each if.
+Branch locals and instanceof pattern bindings reuse the existing deterministic
+local renaming so they cannot capture join arguments (for example, a branch local
+shadowing a class field that the other branch updates). It also protects the
+existing inline return/yield continuation path. Diagnostics use source names.
+Nested branches propagate the continuation; loops inside expressions belong to
+their own switch/lambda boundary. No new PIR node is introduced.
+Branches without owned exits or statement-level loops keep their
+sequencing shape. Recompiling affected sources can change bytes, hashes and costs
+at every optimization level.
 
 ### 9.1 For-Each Loops
+
+Known validation overlap: ADR-048's outer-loop guard still traverses switch arms.
+If a switch expression appears in an outer loop body, it can therefore reject an
+arm-local accumulator updated by a guarded inner loop even though ADR-050 can
+lower that arm correctly. This fails compilation, not evaluation. A separate
+follow-up must respect the switch value boundary while preserving selector checks,
+arm ownership checks, and validation of actual nested loop bodies.
 
 **5 compilation paths** based on accumulator count and break usage:
 

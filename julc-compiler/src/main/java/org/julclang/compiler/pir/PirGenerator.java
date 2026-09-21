@@ -45,6 +45,7 @@ public class PirGenerator {
     private final CompilationContext context;
     private final List<CompilerDiagnostic> collectedErrors = new ArrayList<>();
     private final LoopDesugarer loopDesugarer;
+    private int ifJoinCounter;
 
     /** PIR term → Java source location. Only populated when source maps are enabled. */
     private final IdentityHashMap<PirTerm, SourceLocation> pirPositions = new IdentityHashMap<>();
@@ -412,9 +413,10 @@ public class PirGenerator {
             if (es.getExpression() instanceof VariableDeclarationExpr vde) {
                 var decl = vde.getVariable(0);
                 var name = decl.getNameAsString();
+                var sourceName = LoopBodyGenerator.sourceName(name);
                 var initExpr = decl.getInitializer().orElseThrow(
-                        () -> new CompilerException("Variable must be initialized: " + name
-                                + ". Hint: On-chain variables need initial values, e.g. var " + name + " = BigInteger.ZERO;"));
+                        () -> new CompilerException("Variable must be initialized: " + sourceName
+                                + ". Hint: On-chain variables need initial values, e.g. var " + sourceName + " = BigInteger.ZERO;"));
                 var value = generateExpression(initExpr);
                 var pirType = typeInference.inferType(decl.getType(), value, initExpr, sourceLocation(initExpr));
                 checkNativeInitializer(name, initExpr, value, pirType);
@@ -466,35 +468,71 @@ public class PirGenerator {
         // the old `if (cond) { return X; } rest` fallthrough optimization and fixes the
         // miscompilation where `Let("_if", ifExpr, rest)` discarded a branch's exit value
         // and ran `rest` unconditionally.
-        if (thenExits || elseExits) {
+        // A nested loop also needs the continuation inside its final accumulator bindings
+        // (#161). Discarding the branch value would leave `rest` reading the old state.
+        boolean containsLoop = containsStatementLoop(is.getThenStmt())
+                || is.getElseStmt().map(PirGenerator::containsStatementLoop).orElse(false);
+        if (thenExits || elseExits || containsLoop) {
             // Generate the after-if term eagerly in the CURRENT scope (not a branch scope),
-            // so names in it cannot resolve against branch-local variables. Both branches
-            // share the same term instance; only branches that actually fall through embed it.
+            // so names in it cannot resolve against branch-local variables. Only branches
+            // that actually fall through run it (through a shared join for loop branches).
             symbolTable.pushScope();
             var afterIfTerm = generateStatements(followingStmts, followingIndex + 1, cont);
             symbolTable.popScope();
-            Supplier<PirTerm> afterIf = () -> afterIfTerm;
+
+            // Serialize the tail once for loop-bearing branches (ADR-050). Inlining it
+            // twice makes N sequential guarded loops grow as 2^N. The lambda closes
+            // over unaffected bindings; only escaping loop accumulators are arguments.
+            String joinName = null;
+            PirTerm joinBody = null;
+            PirTerm fallThrough = afterIfTerm;
+            if (containsLoop) {
+                joinName = "#if-join-" + (++ifJoinCounter);
+                var accumulators = AccumulatorTypeAnalyzer.detectBranchAccumulators(is, symbolTable::lookup);
+                joinBody = afterIfTerm;
+                PirType joinType = inferPirType(afterIfTerm);
+                for (int i = accumulators.size() - 1; i >= 0; i--) {
+                    String name = accumulators.get(i);
+                    var type = symbolTable.require(name);
+                    joinBody = new PirTerm.Lam(name, type, joinBody);
+                    joinType = new PirType.FunType(type, joinType);
+                }
+                if (accumulators.isEmpty()) {
+                    joinBody = new PirTerm.Lam("#unit", new PirType.UnitType(), joinBody);
+                    joinType = new PirType.FunType(new PirType.UnitType(), joinType);
+                }
+                fallThrough = new PirTerm.Var(joinName, joinType);
+                for (String name : accumulators) {
+                    fallThrough = new PirTerm.App(fallThrough, new PirTerm.Var(name, symbolTable.require(name)));
+                }
+                if (accumulators.isEmpty()) {
+                    fallThrough = new PirTerm.App(fallThrough, new PirTerm.Const(Constant.unit()));
+                }
+            }
+            PirTerm branchContinuation = fallThrough;
+            Supplier<PirTerm> afterIf = () -> branchContinuation;
 
             PirTerm result;
             if (is.getCondition() instanceof InstanceOfExpr ioe && ioe.getPattern().isPresent()
                     && ioe.getPattern().get() instanceof TypePatternExpr tpe) {
                 var elseTerm = is.getElseStmt()
                         .map(e -> generateBranchWithCont(e, afterIf))
-                        .orElse(afterIfTerm);
+                        .orElse(branchContinuation);
                 result = generateInstanceOfIfCps(ioe, tpe, is.getThenStmt(), elseTerm, afterIf);
             } else {
                 var cond = generateExpression(is.getCondition());
                 var thenTerm = generateBranchWithCont(is.getThenStmt(), afterIf);
                 var elseTerm = is.getElseStmt()
                         .map(e -> generateBranchWithCont(e, afterIf))
-                        .orElse(afterIfTerm);
+                        .orElse(branchContinuation);
                 result = new PirTerm.IfThenElse(cond, thenTerm, elseTerm);
             }
+            if (joinBody != null) result = new PirTerm.Let(joinName, joinBody, result);
             recordPosition(result, is);
             return result;
         }
 
-        // No `return`/`yield` anywhere in the branches: evaluate the if for effect and
+        // No owned `return`/`yield` or statement-level loop: evaluate the if for effect and
         // continue (legacy shape, preserved for generated-code stability).
         PirTerm ifExpr;
         if (is.getCondition() instanceof InstanceOfExpr ioe && ioe.getPattern().isPresent()
@@ -526,10 +564,14 @@ public class PirGenerator {
      */
     private PirTerm generateBranchWithCont(Statement branch, Supplier<PirTerm> cont) {
         if (branch instanceof BlockStmt block) {
-            symbolTable.pushScope();
-            var result = generateStatements(block.getStatements(), 0, cont);
-            symbolTable.popScope();
-            return result;
+            return loopBody.withLocalsRenamed(block, renamed -> {
+                symbolTable.pushScope();
+                try {
+                    return generateStatements(renamed.getStatements(), 0, cont);
+                } finally {
+                    symbolTable.popScope();
+                }
+            });
         }
         return generateStatements(List.of(branch), 0, cont);
     }
@@ -565,6 +607,18 @@ public class PirGenerator {
 
     private static boolean isEarlyExit(Statement stmt) {
         return stmt instanceof ReturnStmt || stmt instanceof YieldStmt;
+    }
+
+    /** Loops in expressions (switch arms, lambdas) belong to their own value boundary. */
+    private static boolean containsStatementLoop(Statement stmt) {
+        return switch (stmt) {
+            case ForEachStmt ignored -> true;
+            case WhileStmt ignored -> true;
+            case BlockStmt block -> block.getStatements().stream().anyMatch(PirGenerator::containsStatementLoop);
+            case IfStmt branch -> containsStatementLoop(branch.getThenStmt())
+                    || branch.getElseStmt().map(PirGenerator::containsStatementLoop).orElse(false);
+            default -> false;
+        };
     }
 
     /**
@@ -658,16 +712,18 @@ public class PirGenerator {
     private PirTerm generateInstanceOfIfCps(InstanceOfExpr ioe, TypePatternExpr tpe,
             Statement thenStmt, PirTerm elseTerm, Supplier<PirTerm> cont) {
         var condTerm = generateInstanceOf(ioe);
-
-        var varName = tpe.getName().asString();
         var varType = typeResolver.resolve(tpe.getType());
-
-        symbolTable.pushScope();
-        symbolTable.define(varName, varType);
         var scrutineeTerm = generateExpression(ioe.getExpression());
-        var thenBody = generateBranchWithCont(thenStmt, cont);
-        var thenTerm = new PirTerm.Let(varName, scrutineeTerm, thenBody);
-        symbolTable.popScope();
+        var thenTerm = loopBody.withBindingRenamed(thenStmt, tpe.getName().asString(), (varName, renamed) -> {
+            symbolTable.pushScope();
+            try {
+                symbolTable.define(varName, varType);
+                var thenBody = generateBranchWithCont(renamed, cont);
+                return new PirTerm.Let(varName, scrutineeTerm, thenBody);
+            } finally {
+                symbolTable.popScope();
+            }
+        });
 
         return new PirTerm.IfThenElse(condTerm, thenTerm, elseTerm);
     }
@@ -766,8 +822,9 @@ public class PirGenerator {
             var name = ne.getNameAsString();
             var optType = symbolTable.lookup(name);
             if (optType.isEmpty()) {
-                collectError("Undefined variable: " + name, "Check spelling, or add an import if '" + name + "' is a type", ne);
-                throw new CompilerException("Undefined variable: " + name);
+                var sourceName = LoopBodyGenerator.sourceName(name);
+                collectError("Undefined variable: " + sourceName, "Check spelling, or add an import if '" + sourceName + "' is a type", ne);
+                throw new CompilerException("Undefined variable: " + sourceName);
             }
             return new PirTerm.Var(name, optType.get());
         }
@@ -861,7 +918,7 @@ public class PirGenerator {
             // expression position, or inside a statement delegated to the generic generator)
             // cannot be honored, so it is rejected instead of lowered to its right-hand side
             // with the update dropped.
-            var target = ae.getTarget() instanceof NameExpr ne ? "'" + ne.getNameAsString() + "'" : "this target";
+            var target = ae.getTarget() instanceof NameExpr ne ? "'" + LoopBodyGenerator.sourceName(ne.getNameAsString()) + "'" : "this target";
             throw enrichedError("Assignment to " + target + " is not supported at this position",
                     "Inside a loop, assign an accumulator or a loop-body local as a statement directly in the loop body. "
                             + "In an if/else branch, assign an accumulator or a local declared within that branch; "

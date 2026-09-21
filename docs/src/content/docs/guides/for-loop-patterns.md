@@ -450,7 +450,7 @@ Any type supported by the compiler can be used as a loop accumulator:
 | `if` updates a body local declared outside the branch | Rejected | Use a conditional initializer, a pre-loop accumulator, or a branch-local declaration |
 | Switch arm updates a variable declared outside the arm | Rejected | Includes updates through nested loops; declare inside the arm and yield the result |
 | General body-local reassignment in single-accumulator loops with `break` | Limited | Prefer an initializer; branch-local updates in an if with no break in either branch use normal lowering |
-| `if` outside a loop body (method level or switch arm) wraps a loop updating a variable read after the branch | Known miscompile | See [#161](https://github.com/bloxbean/julc/issues/161); not fixed by #157 |
+| `if` outside a loop body (method level or switch arm) wraps a loop updating a variable read after the branch | Supported (#161 fix), with an outer-loop exception | Updated accumulators reach following statements; switch-arm accumulators must belong to that arm. If that switch is inside an outer loop body, the existing guard still rejects this pattern |
 | Reassignment of a switch case-pattern variable | Rejected | See [#162](https://github.com/bloxbean/julc/issues/162); copy to a fresh arm-local accumulator instead |
 
 See [loop-local assignment rules](/best-practices/conditionals/#loop-local-assignment-rules)

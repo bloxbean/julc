@@ -69,7 +69,7 @@ fresh accumulator inside the arm and yielding it after the loop.
 
 An `if` outside a loop body (at method level or inside a switch arm) around a loop remains separate: [#161](https://github.com/bloxbean/julc/issues/161)
 tracks an enclosing accumulator update lost when read after the branch. This ADR
-does not fix it; user guidance explicitly warns about that known miscompile.
+does not fix it; ADR-050 now addresses that separate lowering path.
 
 Review regression testing also found [#162](https://github.com/bloxbean/julc/issues/162):
 reassigning a switch case-pattern variable can leave its field projections pointing
