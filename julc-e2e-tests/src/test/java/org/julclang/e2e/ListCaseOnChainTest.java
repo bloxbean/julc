@@ -64,8 +64,7 @@ class ListCaseOnChainTest extends E2ETestBase {
     @Override
     @BeforeAll
     void setUp() {
-        assertNotNull(System.getenv("JULC_E2E_CARDANO_CONTAINER"),
-                "Set JULC_E2E_CARDANO_CONTAINER to the running developer DevKit container");
+        HaskellScriptCost.requireConfigured();
         super.setUp();
     }
 
@@ -154,13 +153,13 @@ class ListCaseOnChainTest extends E2ETestBase {
                         String failure = i == 0 ? "Error term encountered" : i == 1 ? "UnListData" : "UnIData";
                         assertTrue(rejectedLocal.getResponse().contains("Script evaluation failed"), rejectedLocal.getResponse());
                         assertTrue(rejectedLocal.getResponse().contains(failure), rejectedLocal.getResponse());
-                        assertTrue(rejectedBackend.getResponse().contains("EvaluationFailure"), rejectedBackend.getResponse());
-                        assertTrue(rejectedBackend.getResponse().contains(i == 0 ? "Error evaluated" : failure), rejectedBackend.getResponse());
                         var rejectedHaskell = HaskellScriptCost.evaluate(rejectedBytes);
                         assertNotEquals(0, rejectedHaskell.exitCode(), rejectedHaskell.output());
                         assertTrue(rejectedHaskell.output().contains("Script evaluation error:"), rejectedHaskell.output());
                         String cause = i == 0 ? "Caused by: (error)"
                                 : i == 1 ? "Caused by: [ (builtin unListData)" : "Caused by: [ (builtin unIData)";
+                        HaskellScriptCost.assertBackendFailure(rejectedBackend.getResponse(),
+                                i == 0 ? "Error evaluated" : failure, cause);
                         assertTrue(rejectedHaskell.output().contains(cause), rejectedHaskell.output());
                         System.out.printf("LIST_CASE_REJECTED %s case=%d java/backend/haskell=%s%n", level, i, failure);
                     }
@@ -185,17 +184,6 @@ class ListCaseOnChainTest extends E2ETestBase {
             System.out.printf("LIST_CASE_CONFIRMED %s %s cpu=%s mem=%s lock=%s spend=%s%n",
                     level, scenario.name(), budget.getSteps(), budget.getMem(), lock.getValue(), submitted.getValue());
         }
-    }
-
-    private Utxo exactUtxo(String address, String hash) throws Exception {
-        for (int attempt = 0; attempt < 10; attempt++) {
-            var result = backendService.getUtxoService().getUtxos(address, 100, 1);
-            assertTrue(result.isSuccessful(), result.getResponse());
-            var match = result.getValue().stream().filter(u -> hash.equals(u.getTxHash())).findFirst();
-            if (match.isPresent()) return match.get();
-            Thread.sleep(1000);
-        }
-        throw new AssertionError("Missing exact script UTXO for " + hash);
     }
 
     private static int listCaseSites(Term term) {
