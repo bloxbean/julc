@@ -95,6 +95,30 @@ class SteppingEvaluationTest {
     }
 
     @Test
+    void inspectedFramesCannotMutateEvaluationState() {
+        var program = Program.plutusV3(Term.constr(0,
+                Term.const_(Constant.integer(1)), Term.const_(Constant.integer(2))));
+        var evaluation = provider.startStepping(program, V3, List.of(), null, EvalOptions.DEFAULT);
+
+        assertTrue(evaluation.step()); // Constr: push its frame and compute the first field
+        assertTrue(evaluation.step()); // Const: return the first field to that frame
+        var frame = assertInstanceOf(CekFrame.ConstrFrame.class,
+                evaluation.machine().frames(1).getFirst());
+
+        assertThrows(UnsupportedOperationException.class,
+                () -> frame.evaluatedFields().add(new CekValue.VCon(Constant.integer(99))));
+        assertThrows(UnsupportedOperationException.class,
+                () -> evaluation.machine().frames(1).clear());
+        assertThrows(IllegalArgumentException.class, () -> evaluation.machine().frames(-1));
+
+        while (evaluation.step()) {
+            // Complete the same machine after inspection.
+        }
+        assertSameResult(provider.evaluate(program, V3, null, EvalOptions.DEFAULT),
+                evaluation.result(), "inspection is read-only");
+    }
+
+    @Test
     void failureRecordsTheFailedTermAndTraces() {
         // (force [(force (builtin trace)) (con string "before") (delay (error))])
         Term error = Term.error();

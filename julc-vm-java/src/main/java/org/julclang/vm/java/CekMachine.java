@@ -227,12 +227,15 @@ public final class CekMachine {
 
     /** Up to {@code max} continuation frames, innermost first. */
     public List<CekFrame> frames(int max) {
+        if (max < 0) {
+            throw new IllegalArgumentException("max must be non-negative: " + max);
+        }
         var frames = new ArrayList<CekFrame>(Math.min(max, stack.size()));
         var iterator = stack.iterator();
         while (iterator.hasNext() && frames.size() < max) {
             frames.add(iterator.next());
         }
-        return frames;
+        return List.copyOf(frames);
     }
 
     /** Number of trace messages emitted so far (without copying them). */
