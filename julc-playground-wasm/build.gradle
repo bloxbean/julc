@@ -36,15 +36,40 @@ def wasmImageDir = layout.buildDirectory.dir('wasm-image')
 def wasmBundleDir = layout.buildDirectory.dir('wasm-bundle')
 def frontendWasmDir = project(':julc-playground').file('frontend/public/wasm')
 def graalvmHome = providers.gradleProperty('graalvmHome').orElse(providers.environmentVariable('GRAALVM_HOME'))
+// GraalVM release line the engine is built and released with (ADR-054). Web Image is preview technology whose
+// output differs between release lines, so the build refuses any other line unless told otherwise:
+//   ./gradlew :julc-playground-wasm:wasmBundle -PwasmGraalvmVersion=25.0
+def wasmGraalvmVersion = providers.gradleProperty('wasmGraalvmVersion').orElse('25.3')
 def fileOps = project.services.get(FileSystemOperations)
+
+// A GraalVM installation names its release line in <home>/release as GRAALVM_VERSION (for example 25.3.4.1).
+// `native-image --version` reports the JDK version instead (25.0.4.1 for that same build), which cannot tell the
+// 25.3 innovation line from the 25.0 LTS line.
+def graalvmVersionOf = { File home ->
+    def release = new File(home, 'release')
+    def line = release.isFile() ? release.readLines('UTF-8').find { it.startsWith('GRAALVM_VERSION=') } : null
+    if (line == null) {
+        throw new GradleException("${home} is not a GraalVM installation: GRAALVM_VERSION not found in ${release}")
+    }
+    line.substring('GRAALVM_VERSION='.length()).replace('"', '').trim()
+}
 
 def resolveNativeImage = {
     if (!graalvmHome.isPresent()) {
         throw new GradleException('Set -PgraalvmHome=<GraalVM home> or GRAALVM_HOME to build the WebAssembly image.')
     }
-    def nativeImage = new File(graalvmHome.get(), 'bin/native-image')
+    def home = new File(graalvmHome.get())
+    def nativeImage = new File(home, 'bin/native-image')
     if (!nativeImage.canExecute()) {
         throw new GradleException("native-image not found at ${nativeImage}")
+    }
+    def expected = wasmGraalvmVersion.get()
+    def actual = graalvmVersionOf(home)
+    if (actual != expected && !actual.startsWith(expected + '.')) {
+        def actualLine = actual.tokenize('.').take(2).join('.')
+        throw new GradleException("The WebAssembly engine is built with GraalVM ${expected}, but ${home} is GraalVM "
+                + "${actual}. Install GraalVM ${expected} with Web Image (see julc-playground/BUILD_FROM_SOURCE.md) "
+                + "or pass -PwasmGraalvmVersion=${actualLine} to build with this installation anyway.")
     }
     nativeImage
 }
@@ -58,6 +83,7 @@ tasks.register('wasmImage', Exec) {
     inputs.files(runtimeClasspath)
     inputs.file(jarFile)
     inputs.property('graalvmHome', graalvmHome.orElse(''))
+    inputs.property('wasmGraalvmVersion', wasmGraalvmVersion)
     outputs.dir(wasmImageDir)
     doFirst {
         def outDir = wasmImageDir.get().asFile

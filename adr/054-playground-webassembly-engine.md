@@ -83,9 +83,21 @@ Non-goals:
    - Engine files are content-addressed (`julc-playground-<sha256 prefix>.js[.wasm]`, recorded in `engine.json`); the
      frontend build embeds the version and starts `playground-worker.js?engine=<version>`. Static hosts cache by
      URL, so a redeploy cannot combine a cached launcher with a new module.
-5. **julc.dev.** `docs-deploy.yml` builds and verifies the engine (`wasmSmoke`, GraalVM 25 from `setup-java`,
-   Binaryen 132), builds the static playground and publishes it with the documentation at `/playground/`. The
+5. **Release and julc.dev.** The engine is platform-independent, so `native-image-release.yml` builds and verifies
+   it once in a `playground-wasm` job (`wasmSmoke`, GraalVM 25.3 from `graalvm/setup-graalvm`, Binaryen 132) and
+   attaches three assets to the GitHub release: `julc-playground-engine-<version>.tar.gz` (launcher, module and
+   `engine.json`), `julc-playground-static-<version>.tar.gz` (the complete static playground) and
+   `julc-playground-wasm-<version>-SHA256SUMS.txt`. The playground native-image jobs download the engine artifact
+   into `frontend/public/wasm` before their frontend build, so every server binary serves it at `/wasm/` while those
+   jobs keep the GraalVM they already use; only the engine job needs 25.3. `docs-deploy.yml` downloads the static
+   bundle of the release named in `docs/playground-release`, verifies its checksum and publishes it with the
+   documentation at `/playground/`. It needs neither GraalVM, Binaryen nor Gradle, and julc.dev runs the same
+   compiler bytes users install; updating the playground means bumping that file and pushing a `dv*` tag. The
    Starlight sidebar links to it; `astro dev` rewrites `/playground/` to its `index.html` for local previews.
+   `native-image-dev.yml` mirrors the job and uploads the same bundles as workflow artifacts.
+   The wasm build reads `GRAALVM_VERSION` from `<GRAALVM_HOME>/release` and refuses any line other than 25.3
+   (`-PwasmGraalvmVersion` overrides it); `native-image --version` cannot tell the lines apart because it reports
+   the JDK version.
 6. **cardano-client-lib.** The playground modules pin `cardano-client-lib` to `0.8.0-pre5` with a strict constraint.
    `julc-blueprint` and `julc-cardano-client-lib` still compile against 0.7.x. Blueprint and script-hash tests and
    the parity fixtures pass on 0.8.0-pre5 on both engines.
@@ -102,12 +114,16 @@ Non-goals:
   and the failure would be an internal error rather than an evaluation failure.
 - **Build WebAssembly in the default build.** Rejected: it needs a GraalVM with Web Image plus Binaryen, which the
   default toolchain and CI do not provide.
+- **Build the engine inside `docs-deploy.yml`.** The initial implementation; replaced after review. It tied the
+  documentation deploy to the Web Image toolchain, built the engine from whatever commit carried the docs tag
+  rather than from a release, and would have built it again for every consumer.
 
 ## Affected modules
 
 `julc-playground` (controllers, server routes, build, frontend), new `julc-playground-core`, new
 `julc-playground-wasm`, `settings.gradle`, root `build.gradle` (non-publishable list), `docs/` (sidebar link,
-dev rewrite) and `.github/workflows/docs-deploy.yml`. No compiler, VM, stdlib or
+dev rewrite, `playground-release` pin), `.github/workflows/native-image-release.yml`,
+`.github/workflows/native-image-dev.yml` and `.github/workflows/docs-deploy.yml`. No compiler, VM, stdlib or
 ledger module changes.
 
 ## Compatibility
@@ -145,7 +161,8 @@ ledger module changes.
   the dispatcher; also routing, 404, malformed body.
 - `:julc-playground-wasm:wasmSmoke`: the same fixtures in Node.js against the WebAssembly engine are identical to
   the JVM, except the BLS fixture, which must fail with the documented message. Verified with images built by
-  GraalVM 25.0.2 and 25.3.4.1; the JS bridge only uses Web Image API present in both.
+  GraalVM 25.0.2 and 25.3.4.1; the JS bridge only uses Web Image API present in both. Releases build with 25.3
+  only: the build refuses 25.0.2 with the version message unless `-PwasmGraalvmVersion=25.0` is passed.
 - Browser (Chrome 153), same UI flow on both engines:
   - Results are identical for check, compile (hash, size, CBOR, UPLC, PIR, blueprint), Quick Eval, and Run Test
     with a matching and a non-matching signer.

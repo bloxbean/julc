@@ -79,7 +79,13 @@ browser engine is the same Java code (`julc-playground-core`) compiled to WebAss
 
 Additional prerequisites (only for the WebAssembly build):
 
-- **GraalVM for JDK 25 with Web Image** (`native-image --tool:svm-wasm`; tested with 25.0.2 and 25.3.4.1), passed as `-PgraalvmHome=<path>` or `GRAALVM_HOME`
+- **GraalVM 25.3 with Web Image** (`native-image --tool:svm-wasm`), passed as `-PgraalvmHome=<path>` or `GRAALVM_HOME`.
+  This is the 25.3 *innovation* release (`GRAALVM_VERSION="25.3.x"` in its `release` file; it reports JDK 25.0.4.x
+  in `java -version`). Download Oracle GraalVM 25.3 from [graalvm.org/downloads](https://www.graalvm.org/downloads/)
+  or the `graal-25.3.x` release of [graalvm-ce-builds](https://github.com/graalvm/graalvm-ce-builds/releases); the
+  GitHub action for it is `graalvm/setup-graalvm@v1` with `version: '25.3'` (`actions/setup-java` only resolves the
+  25.0 LTS line). The build checks the line and refuses others; 25.0.2 also produces a working engine, so
+  `-PwasmGraalvmVersion=25.0` allows it for local experiments, but releases are built with 25.3 only.
 - **Binaryen** (`wasm-opt`) on `PATH`
 - Run Gradle itself with your usual JDK 25; GraalVM is only used for the image build
 
@@ -110,9 +116,24 @@ npm run build:static        # output: frontend/dist-static/
 `dist-static/` uses relative paths and can be served from any static host or sub-path. Its engine is fixed to
 WebAssembly (`.env.static`: `VITE_ENGINES=wasm`).
 
+### Release assets and julc.dev
+
+The engine is platform-independent, so it is built once per release. The `playground-wasm` job in
+`.github/workflows/native-image-release.yml` runs `wasmSmoke` and `npm run build:static` with GraalVM 25.3 and
+attaches three assets to the GitHub release (the other native-image jobs keep their usual GraalVM and download the
+engine from this job, so every `julc-playground` binary serves it at `/wasm/`):
+
+| Asset | Contents |
+|-------|----------|
+| `julc-playground-engine-<version>.tar.gz` | `engine.json`, `julc-playground-<sha>.js`, `julc-playground-<sha>.js.wasm`: drop into any host's `wasm/` directory |
+| `julc-playground-static-<version>.tar.gz` | the complete static playground (`dist-static/`): unpack under any path, no backend needed |
+| `julc-playground-wasm-<version>-SHA256SUMS.txt` | checksums of both archives (`sha256sum --check`) |
+
 The documentation site publishes it at [julc.dev/playground/](https://julc.dev/playground/):
-`.github/workflows/docs-deploy.yml` runs `wasmSmoke` (builds the engine and checks it against the JVM), then
-`npm run build:static`, and copies `dist-static/` to `docs/dist/playground/`. To preview it with `npm run dev` in
+`.github/workflows/docs-deploy.yml` downloads the static bundle of the release named in `docs/playground-release`,
+verifies its checksum and copies it to `docs/dist/playground/`. To publish a newer playground, bump that file to a
+release that carries the assets and push a `dv*` tag. `.github/workflows/native-image-dev.yml` produces the same
+bundles as workflow artifacts for testing before a release. To preview the playground with `npm run dev` in
 `docs/`, copy `dist-static/` to `docs/public/playground/` (ignored by git).
 
 ### Engine parity tests
