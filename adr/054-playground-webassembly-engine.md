@@ -1,4 +1,4 @@
-# ADR-048: In-browser (WebAssembly) engine for the playground
+# ADR-054: In-browser (WebAssembly) engine for the playground
 
 - Status: Implemented on `feat/playground-wasm`; independent review pending
 - Date: 2026-09-15
