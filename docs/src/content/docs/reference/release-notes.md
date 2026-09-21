@@ -3,6 +3,26 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+## Upcoming preview: decode boolean and String switch fields (#166)
+
+Switch case-pattern access such as `case Sum s -> s.enabled() ? ONE : ZERO`
+now decodes a boolean record field to native Bool. Previously the cached field
+remained raw Data and evaluation failed. String fields had the same missing decode.
+DataMatch field extraction now reuses the shared decoder used by other field-access
+paths rather than maintaining a separate incomplete type table (ADR-051).
+
+This is separate from the loop/switch validation fixes. Constructor encodings,
+branch selection, field order and #162's rejection of case-pattern reassignment
+are unchanged. Only the selected arm's bound fields are decoded, strictly before
+its body; malformed Bool/String fields can now fail there even when unused.
+The existing decoder's permissive Bool tag handling is unchanged; this is not a
+new strict Data-validation boundary.
+
+Recompiling affected switches changes script bytes, hashes and budgets at **all
+optimization levels**, including NONE and BASELINE. Recompile and reassess affected
+scripts before deployment. Existing deployed scripts and ledger encodings do not
+change; switches without these field types retain their existing decoding.
+
 ## Upcoming preview: preserve loop state across enclosing branches (#161)
 
 A loop inside an `if` at method level or inside a switch-expression arm now

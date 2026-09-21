@@ -6,6 +6,7 @@ import org.julclang.compiler.CompilationContext;
 import org.julclang.compiler.CompilerTarget;
 import org.julclang.compiler.CompilerTargetDiagnostics;
 import org.julclang.compiler.pir.PirSubstitution;
+import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.core.Constant;
@@ -538,7 +539,7 @@ public class UplcGenerator {
 
     /**
      * Build PIR for extracting fields from a Data list and binding them in the branch body.
-     * HeadList/TailList for extraction, UnIData/UnBData for decoding.
+     * HeadList/TailList for extraction; the shared typed decoder for field values.
      */
     private PirTerm buildBranchFieldExtraction(PirTerm.MatchBranch branch, String fieldsName, String dataName) {
         var bindings = branch.bindings();
@@ -556,7 +557,7 @@ public class UplcGenerator {
 
                 // Decode field: UnIData(HeadList(fields)) for Integer, etc.
                 var headExpr = pirApp1(DefaultFun.HeadList, listRef);
-                var decodedExpr = pirWrapDecode(headExpr, bindingTypes.get(j));
+                var decodedExpr = PirHelpers.wrapDecode(headExpr, bindingTypes.get(j));
                 lets.add(new PirTerm.Let(bindings.get(j), decodedExpr, null)); // body filled later
 
                 if (j + 1 < bindings.size()) {
@@ -584,17 +585,6 @@ public class UplcGenerator {
     /** Create a PIR Builtin application with 1 arg. */
     private static PirTerm pirApp1(DefaultFun fun, PirTerm arg) {
         return new PirTerm.App(new PirTerm.Builtin(fun), arg);
-    }
-
-    /** Wrap a PIR Data value with the appropriate decoding based on type. */
-    private static PirTerm pirWrapDecode(PirTerm data, PirType type) {
-        return switch (type) {
-            case PirType.IntegerType _ -> pirApp1(DefaultFun.UnIData, data);
-            case PirType.ByteStringType _ -> pirApp1(DefaultFun.UnBData, data);
-            case PirType.ListType _ -> pirApp1(DefaultFun.UnListData, data);
-            case PirType.MapType _ -> pirApp1(DefaultFun.UnMapData, data);
-            default -> data; // DataType, RecordType, SumType etc. — already Data
-        };
     }
 
     private int deBruijnIndex(String name) {
