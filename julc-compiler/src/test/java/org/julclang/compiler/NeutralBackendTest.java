@@ -111,7 +111,9 @@ class NeutralBackendTest {
 
     @Test
     void preservesStrictUnusedDefinitions() {
-        var linked = PirLinker.link(Map.of("bad", new PirTerm.Error(INT)), integer(42));
+        var definitions = new LinkedHashMap<String, PirTerm>();
+        definitions.put("bad", new PirTerm.Error(INT));
+        var linked = PirLinker.link(definitions, integer(42));
         var result =
                 new CompilerBackend()
                         .compile(
@@ -122,9 +124,28 @@ class NeutralBackendTest {
 
     @Test
     void rejectsEagerRecursiveValues() {
+        var definitions = new LinkedHashMap<String, PirTerm>();
+        definitions.put("x", new PirTerm.Var("x", INT));
         assertThrows(
                 IllegalArgumentException.class,
-                () -> PirLinker.link(Map.of("x", new PirTerm.Var("x", INT)), integer(0)));
+                () -> PirLinker.link(definitions, integer(0)));
+    }
+
+    @Test
+    void preservesSequencedDefinitionEvaluationOrder() {
+        var definitions = new LinkedHashMap<String, PirTerm>();
+        definitions.put("first", new PirTerm.Trace(
+                new PirTerm.Const(Constant.string("first")), integer(1)));
+        definitions.put("second", new PirTerm.Trace(
+                new PirTerm.Const(Constant.string("second")), integer(2)));
+        var compiled = new CompilerBackend().compile(
+                input(PirLinker.link(definitions, integer(42)), INT,
+                        FrontendProgram.Purpose.FUNCTION),
+                new CompilerOptions());
+
+        var evaluated = assertInstanceOf(EvalResult.Success.class,
+                CompilerTestVm.pv11().evaluate(compiled.program()));
+        assertEquals(List.of("first", "second"), evaluated.traces());
     }
 
     @Test

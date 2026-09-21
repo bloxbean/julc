@@ -4,16 +4,23 @@ import org.julclang.compiler.pir.PirTerm;
 
 import java.util.*;
 
-/** Deterministic dependency-SCC linking; unrelated definitions never enlarge a recursive group. */
+/**
+ * Deterministic dependency-SCC linking; unrelated definitions never enlarge a recursive group.
+ * Definition encounter order is the strict evaluation order, so callers must supply a
+ * {@link SequencedMap} rather than an unordered map.
+ */
 public final class PirLinker {
     private PirLinker() {}
 
-    public static PirTerm link(Map<String, PirTerm> definitions, PirTerm root) {
+    public static PirTerm link(SequencedMap<String, PirTerm> definitions, PirTerm root) {
+        Objects.requireNonNull(definitions, "definitions");
+        Objects.requireNonNull(root, "root");
+        var orderedDefinitions = new LinkedHashMap<>(definitions);
         var edges = new LinkedHashMap<String, Set<String>>();
-        definitions.forEach(
+        orderedDefinitions.forEach(
                 (name, term) -> {
                     var free = new LinkedHashSet<>(PirClosure.freeVariables(term));
-                    free.retainAll(definitions.keySet());
+                    free.retainAll(orderedDefinitions.keySet());
                     edges.put(name, free);
                 });
         var groups = new ArrayList<List<String>>();
@@ -21,7 +28,7 @@ public final class PirLinker {
         var low = new HashMap<String, Integer>();
         var stack = new ArrayDeque<String>();
         var active = new HashSet<String>();
-        for (String name : definitions.keySet())
+        for (String name : orderedDefinitions.keySet())
             if (!index.containsKey(name)) visit(name, edges, index, low, stack, active, groups);
         PirTerm result = root;
         for (int i = groups.size() - 1; i >= 0; i--) {
@@ -29,9 +36,9 @@ public final class PirLinker {
             if (group.size() == 1 && !edges.get(group.getFirst()).contains(group.getFirst()))
                 result =
                         new PirTerm.Let(
-                                group.getFirst(), definitions.get(group.getFirst()), result);
+                                group.getFirst(), orderedDefinitions.get(group.getFirst()), result);
             else {
-                if (group.stream().anyMatch(n -> !(definitions.get(n) instanceof PirTerm.Lam)))
+                if (group.stream().anyMatch(n -> !(orderedDefinitions.get(n) instanceof PirTerm.Lam)))
                     throw new IllegalArgumentException(
                             "Recursive PIR definitions must be functions: " + group);
                 if (group.size() > 2)
@@ -42,7 +49,7 @@ public final class PirLinker {
                 result =
                         new PirTerm.LetRec(
                                 group.stream()
-                                        .map(n -> new PirTerm.Binding(n, definitions.get(n)))
+                                        .map(n -> new PirTerm.Binding(n, orderedDefinitions.get(n)))
                                         .toList(),
                                 result);
             }
@@ -63,13 +70,12 @@ public final class PirLinker {
         low.put(n, ix.get(n));
         stack.push(n);
         active.add(n);
-        for (String v : es.keySet())
-            if (es.get(n).contains(v)) {
-                if (!ix.containsKey(v)) {
-                    visit(v, es, ix, low, stack, active, groups);
-                    low.put(n, Math.min(low.get(n), low.get(v)));
-                } else if (active.contains(v)) low.put(n, Math.min(low.get(n), ix.get(v)));
-            }
+        for (String v : es.get(n)) {
+            if (!ix.containsKey(v)) {
+                visit(v, es, ix, low, stack, active, groups);
+                low.put(n, Math.min(low.get(n), low.get(v)));
+            } else if (active.contains(v)) low.put(n, Math.min(low.get(n), ix.get(v)));
+        }
         if (low.get(n).equals(ix.get(n))) {
             var members = new HashSet<String>();
             String v;
