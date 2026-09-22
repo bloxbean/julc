@@ -57,6 +57,7 @@ public class JulcPlaygroundServer {
         var examplesController = new ExamplesController();
         var scenariosController = new ScenariosController();
         var expressionEvalController = new ExpressionEvalController(sandbox);
+        var uplcController = new UplcController(sandbox);
 
         String corsOrigins = System.getenv("JULC_CORS_ORIGINS");
 
@@ -94,12 +95,20 @@ public class JulcPlaygroundServer {
         app.before("/api/evaluate", compileLimiter.middleware());
         app.before("/api/eval", compileLimiter.middleware());
         app.before("/api/check", checkLimiter.middleware());
+        app.before("/api/uplc/decode", checkLimiter.middleware());
+        app.before("/api/uplc/decompile", compileLimiter.middleware());
+        app.before("/api/uplc/evaluate", compileLimiter.middleware());
+        app.before("/api/uplc/debug", checkLimiter.middleware());
 
         // API routes
         app.post("/api/check", checkController::handle);
         app.post("/api/compile", compileController::handle);
         app.post("/api/evaluate", evaluateController::handle);
         app.post("/api/eval", expressionEvalController::handle);
+        app.post("/api/uplc/decode", uplcController::decode);
+        app.post("/api/uplc/decompile", uplcController::decompile);
+        app.post("/api/uplc/evaluate", uplcController::evaluate);
+        app.post("/api/uplc/debug", uplcController::debug);
         app.get("/api/examples", examplesController::list);
         app.get("/api/examples/{name}", examplesController::get);
         app.get("/api/scenarios/{purpose}", scenariosController::handle);

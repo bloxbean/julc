@@ -147,6 +147,21 @@ bundles as workflow artifacts for testing before a release. To preview the playg
 
 `wasmSmoke` needs Node.js 22+ (it passes `--experimental-wasm-exnref`).
 
+### UPLC tools API
+
+The UPLC tab uses four endpoints, served by both engines with the same JSON:
+
+| Endpoint | Purpose |
+|----------|---------|
+| `POST /api/uplc/decode` | Decode a script (hex, blueprint, envelope or UPLC text), apply parameters, return details and pretty UPLC |
+| `POST /api/uplc/decompile` | Decompiled Java preview |
+| `POST /api/uplc/evaluate` | Evaluate against a mock transaction; returns status, budget, traces and the script context |
+| `POST /api/uplc/debug` | Stateless step debugger: `timeline`, `goto`, `continue`, `over`, `out` with breakpoints |
+
+The logic lives in `julc-playground-core` (`org.julclang.playground.uplc`) and uses the stepping API of the CEK
+machine (`JavaVmProvider.startStepping`). See [ADR-055](../adr/055-playground-uplc-evaluator-debugger.md). The UPLC
+requests are part of the parity fixtures above.
+
 ### Known limitations of the browser engine
 
 - **BLS12-381 builtins are not supported.** They use the native blst library; evaluation fails with
