@@ -12,6 +12,9 @@ public/ai/examples.json
 public/ai/starter-pack.md
 public/ai/index.md
 
+# Static playground (WebAssembly engine) copied from julc-playground/frontend/dist-static
+public/playground/
+
 # dependencies
 node_modules/
 

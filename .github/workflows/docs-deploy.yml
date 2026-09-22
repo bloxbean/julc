@@ -24,6 +24,33 @@ jobs:
           cache: npm
           cache-dependency-path: "./docs/package-lock.json"
 
+      # --- Playground (julc.dev/playground/) ---
+      # The static playground (frontend + WebAssembly engine, ADR-054) is built and verified once per julc release
+      # by native-image-release.yml and attached to the GitHub release. The site publishes the release named in
+      # docs/playground-release, so julc.dev runs the same compiler bytes users install, and this job needs neither
+      # GraalVM, Binaryen nor Gradle. To update the playground, bump that file and push a dv* tag.
+      - name: Download playground from the julc release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG=$(tr -d '[:space:]' < docs/playground-release)
+          VERSION="${TAG#v}"
+          echo "Playground release: $TAG"
+          mkdir -p "$RUNNER_TEMP/playground/site"
+          cd "$RUNNER_TEMP/playground"
+          # gh fails when no asset matches, so a release without a playground bundle stops the deploy.
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern "julc-playground-static-${VERSION}.tar.gz" \
+            --pattern "julc-playground-wasm-${VERSION}-SHA256SUMS.txt"
+          sha256sum --check --ignore-missing "julc-playground-wasm-${VERSION}-SHA256SUMS.txt"
+          tar xzf "julc-playground-static-${VERSION}.tar.gz" -C site
+          test -f site/index.html
+          echo "Engine version: $(jq -r .version site/wasm/engine.json)"
+
+      # --- Documentation site ---
+
       - name: Install dependencies
         run: |
           cd docs
@@ -35,6 +62,9 @@ jobs:
         run: |
           cd docs
           npm run build
+
+      - name: Add playground to website
+        run: cp -R "$RUNNER_TEMP/playground/site" docs/dist/playground
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4

@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { source, diagnostics, isChecking, updateFromCheck, librarySource, editorTab } from '../stores/editor';
   import { api } from '../api/client';
+  import { engine } from '../stores/engine';
   import type * as Monaco from 'monaco-editor';
 
   let editorContainer: HTMLDivElement;
@@ -84,7 +85,15 @@
       setLibSrc(val);
     });
 
-    unsubs = [unsubSource, unsubTab, unsubLib];
+    // Re-check with the newly selected engine
+    let lastEngine = $engine;
+    const unsubEngine = engine.subscribe(kind => {
+      if (kind === lastEngine) return;
+      lastEngine = kind;
+      checkSource($source);
+    });
+
+    unsubs = [unsubSource, unsubTab, unsubLib, unsubEngine];
 
     // Initial check
     checkSource($source);

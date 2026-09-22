@@ -1,0 +1,179 @@
+import groovy.json.JsonSlurper
+
+import java.security.MessageDigest
+
+plugins {
+    id 'java-library'
+}
+
+description = 'julc-playground-wasm - in-browser (GraalVM Web Image) engine for the JuLC playground'
+
+dependencies {
+    implementation project(':julc-playground-core')
+    implementation project(':julc-stdlib')
+    implementation project(':julc-vm-java')
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
+    // cardano-client-lib and the JSON schema validator log through SLF4J; stay silent in the browser console.
+    runtimeOnly 'org.slf4j:slf4j-nop:2.0.17'
+
+    // Provided by GraalVM at image build time; never on the image class path.
+    compileOnly 'org.graalvm.sdk:webimage-preview:25.3.4.1'
+    compileOnly 'org.graalvm.nativeimage:svm:25.0.4.1'
+
+    testImplementation project(':julc-playground')
+    testImplementation 'io.javalin:javalin-testtools:6.7.0'
+    testImplementation 'com.squareup.okhttp3:okhttp:4.12.0'
+}
+
+// --- WebAssembly image (opt-in: requires GraalVM with Web Image support and Binaryen on PATH) ---
+//
+//   ./gradlew :julc-playground-wasm:wasmBundle -PgraalvmHome=/path/to/graalvm
+//
+// GraalVM resolution: -PgraalvmHome, then $GRAALVM_HOME.
+
+def wasmImageName = 'julc-playground'
+def wasmImageDir = layout.buildDirectory.dir('wasm-image')
+def wasmBundleDir = layout.buildDirectory.dir('wasm-bundle')
+def frontendWasmDir = project(':julc-playground').file('frontend/public/wasm')
+def graalvmHome = providers.gradleProperty('graalvmHome').orElse(providers.environmentVariable('GRAALVM_HOME'))
+// GraalVM release line the engine is built and released with (ADR-054). Web Image is preview technology whose
+// output differs between release lines, so the build refuses any other line unless told otherwise:
+//   ./gradlew :julc-playground-wasm:wasmBundle -PwasmGraalvmVersion=25.0
+def wasmGraalvmVersion = providers.gradleProperty('wasmGraalvmVersion').orElse('25.3')
+def fileOps = project.services.get(FileSystemOperations)
+
+// A GraalVM installation names its release line in <home>/release as GRAALVM_VERSION (for example 25.3.4.1).
+// `native-image --version` reports the JDK version instead (25.0.4.1 for that same build), which cannot tell the
+// 25.3 innovation line from the 25.0 LTS line.
+def graalvmVersionOf = { File home ->
+    def release = new File(home, 'release')
+    def line = release.isFile() ? release.readLines('UTF-8').find { it.startsWith('GRAALVM_VERSION=') } : null
+    if (line == null) {
+        throw new GradleException("${home} is not a GraalVM installation: GRAALVM_VERSION not found in ${release}")
+    }
+    line.substring('GRAALVM_VERSION='.length()).replace('"', '').trim()
+}
+
+def resolveNativeImage = {
+    if (!graalvmHome.isPresent()) {
+        throw new GradleException('Set -PgraalvmHome=<GraalVM home> or GRAALVM_HOME to build the WebAssembly image.')
+    }
+    def home = new File(graalvmHome.get())
+    def nativeImage = new File(home, 'bin/native-image')
+    if (!nativeImage.canExecute()) {
+        throw new GradleException("native-image not found at ${nativeImage}")
+    }
+    def expected = wasmGraalvmVersion.get()
+    def actual = graalvmVersionOf(home)
+    if (actual != expected && !actual.startsWith(expected + '.')) {
+        def actualLine = actual.tokenize('.').take(2).join('.')
+        throw new GradleException("The WebAssembly engine is built with GraalVM ${expected}, but ${home} is GraalVM "
+                + "${actual}. Install GraalVM ${expected} with Web Image (see julc-playground/BUILD_FROM_SOURCE.md) "
+                + "or pass -PwasmGraalvmVersion=${actualLine} to build with this installation anyway.")
+    }
+    nativeImage
+}
+
+tasks.register('wasmImage', Exec) {
+    description = 'Compiles the playground engine to WebAssembly with GraalVM Web Image.'
+    group = 'build'
+    dependsOn tasks.named('jar')
+    def runtimeClasspath = sourceSets.main.runtimeClasspath
+    def jarFile = tasks.named('jar').flatMap { it.archiveFile }
+    inputs.files(runtimeClasspath)
+    inputs.file(jarFile)
+    inputs.property('graalvmHome', graalvmHome.orElse(''))
+    inputs.property('wasmGraalvmVersion', wasmGraalvmVersion)
+    outputs.dir(wasmImageDir)
+    doFirst {
+        def outDir = wasmImageDir.get().asFile
+        fileOps.delete { delete outDir }
+        outDir.mkdirs()
+        def classpath = ([jarFile.get().asFile] + runtimeClasspath.files.findAll { it.name.endsWith('.jar') })
+                .collect { it.absolutePath }.join(File.pathSeparator)
+        executable resolveNativeImage().absolutePath
+        args '--tool:svm-wasm',
+                '-cp', classpath,
+                '-o', new File(outDir, wasmImageName).absolutePath,
+                '-H:+ReportExceptionStackTraces',
+                'org.julclang.playground.wasm.PlaygroundWasm'
+    }
+    doLast {
+        // The text-format debug output is several hundred MB and not needed at runtime.
+        fileOps.delete { delete new File(wasmImageDir.get().asFile, "${wasmImageName}.js.wat") }
+    }
+}
+
+tasks.register('wasmBundle') {
+    description = 'Prepares the WebAssembly engine for the playground frontend (frontend/public/wasm).'
+    group = 'build'
+    dependsOn tasks.named('wasmImage')
+    inputs.dir(wasmImageDir)
+    outputs.dir(wasmBundleDir)
+    doLast {
+        def image = wasmImageDir.get().asFile
+        def bundle = wasmBundleDir.get().asFile
+        fileOps.delete { delete bundle }
+        bundle.mkdirs()
+
+        // The generated launcher loads "<script>.wasm" next to the running script. Inside a Web Worker that is the
+        // worker script, so let the worker choose the module URL.
+        def launcher = new File(image, "${wasmImageName}.js").getText('UTF-8')
+        def anchor = 'const config = new GraalVM.Config();'
+        if (launcher.count(anchor) != 1) {
+            throw new GradleException("Unexpected Web Image launcher: '${anchor}' not found exactly once")
+        }
+        launcher = launcher.replace(anchor,
+                anchor + '\nif (globalThis.JULC_PLAYGROUND_WASM_PATH) config.wasm_path = globalThis.JULC_PLAYGROUND_WASM_PATH;')
+        def launcherBytes = launcher.getBytes('UTF-8')
+        def moduleBytes = new File(image, "${wasmImageName}.js.wasm").bytes
+
+        // Content-addressed file names: static hosts (e.g. GitHub Pages) cache by URL, so a redeploy must never pair a
+        // cached launcher with a new module. The frontend build embeds the version from engine.json.
+        def digest = MessageDigest.getInstance('SHA-256')
+        digest.update(launcherBytes)
+        digest.update(moduleBytes)
+        def version = digest.digest().encodeHex().toString().substring(0, 12)
+        new File(bundle, "${wasmImageName}-${version}.js").bytes = launcherBytes
+        new File(bundle, "${wasmImageName}-${version}.js.wasm").bytes = moduleBytes
+        new File(bundle, 'engine.json').setText(
+                "{\"version\": \"${version}\", \"launcher\": \"${wasmImageName}-${version}.js\"}\n", 'UTF-8')
+
+        fileOps.delete {
+            delete((frontendWasmDir.listFiles() ?: []).findAll { it.name.startsWith(wasmImageName) || it.name == 'engine.json' })
+        }
+        fileOps.copy {
+            from bundle
+            into frontendWasmDir
+        }
+        logger.lifecycle("WebAssembly engine ${version}: ${bundle} -> ${frontendWasmDir}")
+    }
+}
+
+tasks.register('wasmParityExpected', JavaExec) {
+    description = 'Runs the parity request fixtures through the JVM dispatcher (expected results for wasmSmoke).'
+    group = 'verification'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.julclang.playground.wasm.ParityFixtures'
+    def out = layout.buildDirectory.file('wasm-parity/expected.json')
+    args file('src/test/resources/parity-requests.json').absolutePath, out.get().asFile.absolutePath
+    outputs.file(out)
+    outputs.upToDateWhen { false }
+}
+
+tasks.register('wasmSmoke', Exec) {
+    description = 'Runs the parity request fixtures against the WebAssembly engine in Node.js and compares with the JVM.'
+    group = 'verification'
+    dependsOn tasks.named('wasmBundle'), tasks.named('wasmParityExpected')
+    outputs.upToDateWhen { false }
+    def smokeScript = file('src/test/js/wasm-smoke.mjs')
+    def requests = file('src/test/resources/parity-requests.json')
+    def expected = layout.buildDirectory.file('wasm-parity/expected.json')
+    executable 'node'
+    doFirst {
+        def bundle = wasmBundleDir.get().asFile
+        def engine = new JsonSlurper().parse(new File(bundle, 'engine.json'))
+        args '--experimental-wasm-exnref', smokeScript.absolutePath, new File(bundle, engine.launcher).absolutePath,
+                requests.absolutePath, expected.get().asFile.absolutePath
+    }
+}
