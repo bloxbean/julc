@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - **JDK 25+** (GraalVM recommended for native image)
-- **Node.js 20+** and **npm** (for frontend build only)
+- **Node.js 22+** for repository-wide builds and Wasm JavaScript tests; **npm** for the frontend build
 
 ## Backend Only (no frontend)
 
@@ -146,6 +146,9 @@ bundles as workflow artifacts for testing before a release. To preview the playg
 ./gradlew :julc-wasm:wasmSmoke -PgraalvmHome=/path/to/graalvm # Node.js: WebAssembly == JVM
 ```
 
+The repository-wide `build` and `:julc-wasm:test` tasks require Node.js 22+ for the
+JavaScript codec and REST adapter tests. Run `:julc-wasm:jsTest` to run just those
+tests. Both `wasmSmokeFull` and `wasmSmokeVm` also depend on `jsTest`.
 `wasmSmoke` needs Node.js 22+ (it passes `--experimental-wasm-exnref`).
 
 ### Standalone JavaScript API

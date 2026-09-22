@@ -10,10 +10,13 @@ Both variants exclude BLS12-381 evaluation. Language is inferred by `ScriptDecod
 unless overridden; protocol defaults to 11. Each evaluation/debug session gets a
 private cost-model configuration. Long integers cross the SDK boundary as `bigint`.
 
-Build and verify with GraalVM 25.3 Web Image, Binaryen and Node 22+:
+The repository-wide `build` and this module's `test` task require Node.js 22+ for
+JavaScript codec/adapter tests. No Cardano node is needed. Image verification
+additionally needs GraalVM 25.3 Web Image and Binaryen:
 
 ```sh
 ./gradlew :julc-wasm:test
+./gradlew :julc-wasm:jsTest # Node 22+
 ./gradlew :julc-wasm:wasmSmoke -PgraalvmHome=/path/to/graalvm
 ```
 
@@ -27,7 +30,9 @@ See the [build guide](../julc-playground/BUILD_FROM_SOURCE.md#standalone-javascr
 for an example. A timeout terminates the worker and invalidates all its sessions;
 individual session `close()` calls do not affect other sessions.
 
-The normal build tests JSON fidelity, generic integer positions and HTTP parity.
+The normal JVM build tests JSON fidelity, generic integer positions and HTTP parity.
+JavaScript codec/adapter tests run as part of `test` and are mandatory dependencies
+of both Wasm smokes; they are never silently skipped. Build CI installs Node.js 22.
 `wasmSmoke` additionally checks the actual compiled images through real Node workers,
 including a fixed benchmark/conformance corpus, parameterized decoding and session
 lifecycle. Release CI requires both smokes; passing them is evidence, not proof of

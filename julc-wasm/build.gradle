@@ -180,7 +180,7 @@ tasks.register('vmToolsJar', Jar) {
     }
     tasks.register("wasmSmoke${suffix}", Exec) {
         group = 'verification'
-        dependsOn "wasmBundle${suffix}", 'wasmParityExpected', 'vmParityExpected', ':julc-playground:exportCatalogue'
+        dependsOn "wasmBundle${suffix}", 'wasmParityExpected', 'vmParityExpected', 'jsTest', ':julc-playground:exportCatalogue'
         outputs.upToDateWhen { false }
         executable 'node'
         doFirst {
@@ -203,6 +203,8 @@ tasks.register('wasmParityExpected', JavaExec) {
     outputs.upToDateWhen { false }
 }
 tasks.register('jsTest', Exec) {
+    group = 'verification'
+    description = 'Run JavaScript codec and REST adapter tests (requires Node 22+).'
     commandLine 'node', '--test', 'src/test/js/codec.test.mjs'
 }
 tasks.register('vmParityExpected', JavaExec) {

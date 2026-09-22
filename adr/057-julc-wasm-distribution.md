@@ -616,6 +616,9 @@ and direct interop marshalling remain deferred, as planned.
 
 ## Verification strategy
 
+- Repository-wide `build` and `:julc-wasm:test` require Node.js 22+ for JavaScript
+  codec/adapter tests. Build CI installs Node.js 22 explicitly. Both Wasm smoke
+  tasks also require these tests; missing Node fails rather than silently skipping.
 - Parity: the 39 request fixtures through the Javalin controllers and through the
   typed API plus `RestAdapter` produce equal `{status, body}` envelopes, including the
   failure fixtures with their budgets and spans; the Node smoke repeats this on the
@@ -670,6 +673,9 @@ and direct interop marshalling remain deferred, as planned.
 
 ## Revision history
 
+- Review follow-up: document the accepted Node.js build dependency and pin Node 22
+  in build CI, add adapter-level REST rounding assertions above `2^53`, and correct
+  the obsolete bundle-task comment. No Cardano node is required.
 - Implementation: module split, both images, typed SDK and declarations, static
   catalogue, worker adapter, request-local cost configuration, release workflow and
   validation gates added. Actual marshalling and session lifecycle are documented

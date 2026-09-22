@@ -1,7 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import '../../main/resources/julc-runtime.js';
+import '../../main/js/rest-adapter.js';
 const {encode, decode, dataText, legacy} = globalThis.JulcRuntime;
+
+test('REST adapter reproduces JSON number rounding above 2^53 without changing typed results', () => {
+  const exact = (1n << 53n) + 1n;
+  const body = {success: false, budgetCpu: exact, budgetMem: (1n << 63n) - 1n, traces: []};
+  const api = {__schemas: {'compiler.evaluate': {}}, compiler: {evaluate: () => body}};
+  const adapter = new JulcRestAdapter(api);
+  assert.deepEqual(adapter.request('POST', '/api/evaluate', {}), {
+    status: 200,
+    body: JSON.parse('{"success":false,"budgetCpu":9007199254740993,"budgetMem":9223372036854775807,"traces":[]}'),
+  });
+  assert.equal(body.budgetCpu, exact);
+  assert.equal(typeof body.budgetMem, 'bigint');
+});
 
 test('long positions, collections and arrays stay exact', () => {
   for (const n of [(1n << 53n) - 1n, (1n << 53n) + 1n, -(1n << 63n), (1n << 63n) - 1n]) {
