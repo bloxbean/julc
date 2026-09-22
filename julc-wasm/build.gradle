@@ -1,0 +1,226 @@
+import groovy.json.JsonSlurper
+
+import java.security.MessageDigest
+
+plugins {
+    id 'java-library'
+}
+
+description = 'julc-wasm - in-browser (GraalVM Web Image) engine for the JuLC playground'
+
+dependencies {
+    implementation project(':julc-tools')
+    implementation project(':julc-stdlib')
+    implementation project(':julc-vm-java')
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
+    // cardano-client-lib and the JSON schema validator log through SLF4J; stay silent in the browser console.
+    runtimeOnly 'org.slf4j:slf4j-nop:2.0.17'
+
+    // Provided by GraalVM at image build time; never on the image class path.
+    compileOnly 'org.graalvm.sdk:webimage-preview:25.3.4.1'
+    compileOnly 'org.graalvm.nativeimage:svm:25.0.4.1'
+
+    testImplementation project(':julc-playground')
+    testImplementation 'io.javalin:javalin-testtools:6.7.0'
+    testImplementation 'com.squareup.okhttp3:okhttp:4.12.0'
+}
+
+// --- WebAssembly image (opt-in: requires GraalVM with Web Image support and Binaryen on PATH) ---
+//
+//   ./gradlew :julc-wasm:wasmBundle -PgraalvmHome=/path/to/graalvm
+//
+// GraalVM resolution: -PgraalvmHome, then $GRAALVM_HOME.
+
+def frontendWasmDir = project(':julc-playground').file('frontend/public/wasm')
+def graalvmHome = providers.gradleProperty('graalvmHome').orElse(providers.environmentVariable('GRAALVM_HOME'))
+// GraalVM release line the engine is built and released with (ADR-054). Web Image is preview technology whose
+// output differs between release lines, so the build refuses any other line unless told otherwise:
+//   ./gradlew :julc-wasm:wasmBundle -PwasmGraalvmVersion=25.0
+def wasmGraalvmVersion = providers.gradleProperty('wasmGraalvmVersion').orElse('25.3')
+def fileOps = project.services.get(FileSystemOperations)
+
+// A GraalVM installation names its release line in <home>/release as GRAALVM_VERSION (for example 25.3.4.1).
+// `native-image --version` reports the JDK version instead (25.0.4.1 for that same build), which cannot tell the
+// 25.3 innovation line from the 25.0 LTS line.
+def graalvmVersionOf = { File home ->
+    def release = new File(home, 'release')
+    def line = release.isFile() ? release.readLines('UTF-8').find { it.startsWith('GRAALVM_VERSION=') } : null
+    if (line == null) {
+        throw new GradleException("${home} is not a GraalVM installation: GRAALVM_VERSION not found in ${release}")
+    }
+    line.substring('GRAALVM_VERSION='.length()).replace('"', '').trim()
+}
+
+def resolveNativeImage = {
+    if (!graalvmHome.isPresent()) {
+        throw new GradleException('Set -PgraalvmHome=<GraalVM home> or GRAALVM_HOME to build the WebAssembly image.')
+    }
+    def home = new File(graalvmHome.get())
+    def nativeImage = new File(home, 'bin/native-image')
+    if (!nativeImage.canExecute()) {
+        throw new GradleException("native-image not found at ${nativeImage}")
+    }
+    def expected = wasmGraalvmVersion.get()
+    def actual = graalvmVersionOf(home)
+    if (actual != expected && !actual.startsWith(expected + '.')) {
+        def actualLine = actual.tokenize('.').take(2).join('.')
+        throw new GradleException("The WebAssembly engine is built with GraalVM ${expected}, but ${home} is GraalVM "
+                + "${actual}. Install GraalVM ${expected} with Web Image (see julc-playground/BUILD_FROM_SOURCE.md) "
+                + "or pass -PwasmGraalvmVersion=${actualLine} to build with this installation anyway.")
+    }
+    nativeImage
+}
+
+
+def versionResources = layout.buildDirectory.dir('version-resources')
+tasks.register('wasmVersion') {
+    inputs.property('version', project.version.toString())
+    outputs.dir(versionResources)
+    doLast {
+        def dir = versionResources.get().asFile
+        dir.mkdirs()
+        new File(dir, 'julc-wasm-version.properties').text = "version=${project.version}\n"
+    }
+}
+sourceSets.main.resources.srcDir(versionResources)
+tasks.named('processResources') { dependsOn 'wasmVersion' }
+
+// Strip full-toolchain reflection roots from the VM's copy of julc-tools. The
+// per-variant metadata in julc-wasm explicitly registers its reachable API records.
+tasks.register('vmToolsJar', Jar) {
+    dependsOn ':julc-tools:classes'
+    from project(':julc-tools').sourceSets.main.output
+    exclude 'META-INF/native-image/**'
+    archiveBaseName = 'julc-tools-vm'
+    archiveClassifier = 'wasm'
+}
+
+['Full', 'Vm'].each { suffix ->
+    def vmOnly = suffix == 'Vm'
+    def variant = vmOnly ? 'vm' : 'full'
+    def name = vmOnly ? 'julc-vm' : 'julc'
+    def imageDir = layout.buildDirectory.dir("wasm-image-${variant}")
+    def bundleDir = layout.buildDirectory.dir("wasm-bundle-${variant}")
+    tasks.register("wasmImage${suffix}", Exec) {
+        group = 'build'
+        dependsOn 'jar', 'vmToolsJar'
+        def cp = sourceSets.main.runtimeClasspath
+        inputs.files(cp)
+        inputs.file(tasks.named('jar').flatMap { it.archiveFile })
+        inputs.property('graalvmHome', graalvmHome.orElse(''))
+        inputs.property('graalvmVersion', wasmGraalvmVersion)
+        outputs.dir(imageDir)
+        doFirst {
+            def dir = imageDir.get().asFile
+            fileOps.delete { delete dir }
+            dir.mkdirs()
+            def files = cp.files.findAll { it.name.endsWith('.jar') }
+            if (vmOnly) {
+                files = files.findAll { f ->
+                    ['julc-core-', 'julc-vm-', 'julc-bls-', 'cbor-', 'bcprov-', 'jackson-', 'slf4j-']
+                            .any { f.name.startsWith(it) }
+                }
+                files += tasks.named('vmToolsJar').get().archiveFile.get().asFile
+            }
+            files = [tasks.named('jar').get().archiveFile.get().asFile] + files
+            executable resolveNativeImage().absolutePath
+            args '--tool:svm-wasm', '-cp', files.collect { it.absolutePath }.join(File.pathSeparator),
+                    '-o', new File(dir, name).absolutePath, '-H:+ReportExceptionStackTraces',
+                    '-H:+PrintAnalysisCallTree', '-H:PrintAnalysisCallTreeType=CSV'
+            if (vmOnly) {
+                ['com.bloxbean.cardano.*', 'org.julclang.compiler.*', 'org.julclang.decompiler.*',
+                 'com.github.javaparser.*'].each { args "-H:AbortOnTypeReachable=${it}" }
+            }
+            args vmOnly ? 'org.julclang.wasm.JulcVmWasm' : 'org.julclang.wasm.JulcWasm'
+        }
+        doLast { fileOps.delete { delete new File(imageDir.get().asFile, "${name}.js.wat") } }
+    }
+    tasks.register("wasmBundle${suffix}") {
+        group = 'build'
+        dependsOn "wasmImage${suffix}", 'typeScriptDeclarations'
+        inputs.dir(imageDir)
+        inputs.dir('src/main/js')
+        outputs.dir(bundleDir)
+        doLast {
+            def image = imageDir.get().asFile
+            def bundle = bundleDir.get().asFile
+            fileOps.delete { delete bundle }
+            bundle.mkdirs()
+            def launcher = new File(image, "${name}.js").getText('UTF-8')
+            def anchor = 'const config = new GraalVM.Config();'
+            if (launcher.count(anchor) != 1) throw new GradleException('Web Image launcher anchor changed')
+            launcher = launcher.replace(anchor,
+                    anchor + '\nif (globalThis.JULC_WASM_PATH) config.wasm_path = globalThis.JULC_WASM_PATH;')
+            def moduleBytes = new File(image, "${name}.js.wasm").bytes
+            def digest = MessageDigest.getInstance('SHA-256')
+            digest.update(launcher.getBytes('UTF-8'))
+            digest.update(moduleBytes)
+            fileTree('src/main/js').files.sort { it.name }.each { digest.update(it.bytes) }
+            def hash = digest.digest().encodeHex().toString().substring(0, 12)
+            new File(bundle, "${name}-${hash}.js").text = launcher
+            new File(bundle, "${name}-${hash}.js.wasm").bytes = moduleBytes
+            new File(bundle, 'engine.json').text = groovy.json.JsonOutput.toJson([
+                    version: hash, launcher: "${name}-${hash}.js", variant: variant,
+                    api: 0, julcVersion: project.version.toString()]) + '\n'
+            fileOps.copy { from 'src/main/js'; into bundle }
+            fileOps.copy { from layout.buildDirectory.dir('declarations'); into bundle }
+            fileOps.copy { from 'src/main/resources/julc-runtime.js'; into bundle }
+            if (!vmOnly) {
+                fileOps.delete {
+                    delete((frontendWasmDir.listFiles() ?: []).findAll {
+                        it.name == 'engine.json' || it.name == 'julc-runtime.js' ||
+                        it.name == 'julc-worker.js' || it.name == 'julc-wasm.js' ||
+                        it.name == 'rest-adapter.js' || it.name.matches('julc(-playground)?-[0-9a-f]{12}\\.js(\\.wasm)?')
+                    })
+                }
+                fileOps.copy { from bundle; into frontendWasmDir }
+            }
+            logger.lifecycle("${variant} image: ${moduleBytes.length} bytes; bundle ${bundle}")
+        }
+    }
+    tasks.register("wasmSmoke${suffix}", Exec) {
+        group = 'verification'
+        dependsOn "wasmBundle${suffix}", 'wasmParityExpected', 'vmParityExpected', ':julc-playground:exportCatalogue'
+        outputs.upToDateWhen { false }
+        executable 'node'
+        doFirst {
+            args '--experimental-wasm-exnref', file('src/test/js/wasm-smoke.mjs').absolutePath,
+                    bundleDir.get().asFile.absolutePath, variant,
+                    file('src/test/resources/parity-requests.json').absolutePath,
+                    layout.buildDirectory.file('wasm-parity/expected.json').get().asFile.absolutePath,
+                    new File(frontendWasmDir, 'catalogue.json').absolutePath,
+                    layout.buildDirectory.file('wasm-parity/vm.json').get().asFile.absolutePath
+        }
+    }
+}
+tasks.register('wasmBundle') { dependsOn 'wasmBundleFull', 'wasmBundleVm' }
+tasks.register('wasmSmoke') { dependsOn 'wasmSmokeFull', 'wasmSmokeVm' }
+tasks.register('wasmParityExpected', JavaExec) {
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.julclang.wasm.ParityFixtures'
+    args file('src/test/resources/parity-requests.json').absolutePath,
+            layout.buildDirectory.file('wasm-parity/expected.json').get().asFile.absolutePath
+    outputs.upToDateWhen { false }
+}
+tasks.register('jsTest', Exec) {
+    commandLine 'node', '--test', 'src/test/js/codec.test.mjs'
+}
+tasks.register('vmParityExpected', JavaExec) {
+    dependsOn 'testClasses', 'wasmParityExpected'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'org.julclang.wasm.VmParityFixtures'
+    args rootProject.projectDir.absolutePath,
+            layout.buildDirectory.file('wasm-parity/vm.json').get().asFile.absolutePath
+    outputs.upToDateWhen { false }
+}
+tasks.named('test') { dependsOn 'jsTest' }
+tasks.register('typeScriptDeclarations', JavaExec) {
+    dependsOn 'classes'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'org.julclang.wasm.TypeScriptDeclarations'
+    args rootProject.projectDir.absolutePath,
+            layout.buildDirectory.file('declarations/julc-models.d.ts').get().asFile.absolutePath
+    inputs.dir(project(':julc-tools').file('src/main/java/org/julclang/tools/model'))
+    outputs.dir(layout.buildDirectory.dir('declarations'))
+}
+tasks.named('test') { dependsOn 'typeScriptDeclarations' }

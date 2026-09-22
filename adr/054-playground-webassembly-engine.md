@@ -3,6 +3,11 @@
 - Status: Implemented on `feat/playground-wasm`; independent review pending
 - Date: 2026-09-15
 
+Distribution update: [ADR-057](057-julc-wasm-distribution.md) replaces the playground-specific
+image with `julc-wasm` (full and VM-only variants), moves shared services to `julc-tools`,
+and preserves this ADR's REST contract through the worker adapter. The description below
+records the original design; current build commands are in the playground build guide.
+
 ## Context / Problem
 
 The JuLC playground (`julc-playground`) is a Svelte + Monaco frontend backed by a Javalin server. Every check,

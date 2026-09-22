@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 
-// Version of the WebAssembly engine in public/wasm (written by :julc-playground-wasm:wasmBundle); empty when absent.
+// Version of the WebAssembly engine in public/wasm (written by :julc-wasm:wasmBundleFull); empty when absent.
 function wasmEngineVersion(): string {
   try {
     return JSON.parse(readFileSync(new URL('./public/wasm/engine.json', import.meta.url), 'utf8')).version ?? '';

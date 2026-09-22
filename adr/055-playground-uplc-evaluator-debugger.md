@@ -3,6 +3,10 @@
 - Status: Implemented on `feat/playground-uplc-debugger` (stacked on ADR-054, `feat/playground-wasm`); independent review pending
 - Date: 2026-09-16
 
+Distribution update: [ADR-057](057-julc-wasm-distribution.md) moves these services to
+`julc-tools` and introduces raw-argument evaluation and worker-local session descriptors.
+The playground keeps this ADR's stateless REST debug contract through an adapter.
+
 ## Context / Problem
 
 The playground (ADR-054) compiles and tests JuLC source on the server or in the browser. Developers also need to

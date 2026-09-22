@@ -73,8 +73,8 @@ java -jar julc-playground/build/libs/julc-playground.jar
 ## In-Browser Engine (WebAssembly)
 
 The playground can run checks, compilation, evaluation and Quick Eval either on the server or in the browser. The
-browser engine is the same Java code (`julc-playground-core`) compiled to WebAssembly with GraalVM Web Image
-(`julc-playground-wasm`) and runs in a Web Worker. Users pick it with the **Engine** selector in the toolbar
+browser engine is the same Java code (`julc-tools`) compiled to WebAssembly with GraalVM Web Image
+(`julc-wasm`) and runs in a Web Worker. Users pick it with the **Engine** selector in the toolbar
 (or `?engine=wasm` in the URL); the choice is remembered in the browser.
 
 Additional prerequisites (only for the WebAssembly build):
@@ -96,9 +96,9 @@ Build the server with both engines:
 java -jar julc-playground/build/libs/julc-playground.jar
 ```
 
-`-PwithWasm` runs `:julc-playground-wasm:wasmBundle`, which writes the engine to `frontend/public/wasm/`: the launcher
-and module under content-addressed names (`julc-playground-<version>.js`, `julc-playground-<version>.js.wasm`, about
-19 MB) and `engine.json`. The frontend build embeds that version, so a redeploy can never pair a cached launcher with
+`-PwithWasm` runs `:julc-wasm:wasmBundleFull`, which writes the full engine to `frontend/public/wasm/`: the launcher
+and module under content-addressed names (`julc-<hash>.js`, `julc-<hash>.js.wasm`), the SDK, worker,
+REST adapter, TypeScript declarations and `engine.json`. The frontend build embeds that version, so a redeploy cannot pair a cached launcher with
 a new module. Without the engine the selector still offers the browser engine, reports that it is unavailable, and
 falls back to the server.
 
@@ -107,7 +107,7 @@ falls back to the server.
 The browser engine makes a server unnecessary. After `wasmBundle`, build a static site:
 
 ```bash
-./gradlew :julc-playground-wasm:wasmBundle -PgraalvmHome=/path/to/graalvm
+./gradlew :julc-wasm:wasmBundle :julc-playground:exportCatalogue -PgraalvmHome=/path/to/graalvm
 cd julc-playground/frontend
 npm install
 npm run build:static        # output: frontend/dist-static/
@@ -118,16 +118,17 @@ WebAssembly (`.env.static`: `VITE_ENGINES=wasm`).
 
 ### Release assets and julc.dev
 
-The engine is platform-independent, so it is built once per release. The `playground-wasm` job in
-`.github/workflows/native-image-release.yml` runs `wasmSmoke` and `npm run build:static` with GraalVM 25.3 and
-attaches three assets to the GitHub release (the other native-image jobs keep their usual GraalVM and download the
+The images are platform-independent, so they are built once per release. The `wasm` job in
+`.github/workflows/native-image-release.yml` runs both variants' `wasmSmoke` and `npm run build:static` with GraalVM 25.3 and
+attaches four assets to the GitHub release (the other native-image jobs keep their usual GraalVM and download the
 engine from this job, so every `julc-playground` binary serves it at `/wasm/`):
 
 | Asset | Contents |
 |-------|----------|
-| `julc-playground-engine-<version>.tar.gz` | `engine.json`, `julc-playground-<sha>.js`, `julc-playground-<sha>.js.wasm`: drop into any host's `wasm/` directory |
+| `julc-wasm-<version>.tar.gz` | full toolchain, SDK and declarations; serve the directory together |
+| `julc-vm-wasm-<version>.tar.gz` | VM-only build; no compiler, decompiler, JavaParser or Cardano Client Lib reachability |
 | `julc-playground-static-<version>.tar.gz` | the complete static playground (`dist-static/`): unpack under any path, no backend needed |
-| `julc-playground-wasm-<version>-SHA256SUMS.txt` | checksums of both archives (`sha256sum --check`) |
+| `julc-wasm-<version>-SHA256SUMS.txt` | checksums of all three archives (`sha256sum --check`) |
 
 The documentation site publishes it at [julc.dev/playground/](https://julc.dev/playground/):
 `.github/workflows/docs-deploy.yml` downloads the static bundle of the release named in `docs/playground-release`,
@@ -138,14 +139,40 @@ bundles as workflow artifacts for testing before a release. To preview the playg
 
 ### Engine parity tests
 
-`julc-playground-wasm` contains the parity fixtures (`src/test/resources/parity-requests.json`):
+`julc-wasm` contains the parity fixtures (`src/test/resources/parity-requests.json`):
 
 ```bash
-./gradlew :julc-playground-wasm:test                                     # JVM: dispatcher == REST controllers
-./gradlew :julc-playground-wasm:wasmSmoke -PgraalvmHome=/path/to/graalvm # Node.js: WebAssembly == JVM
+./gradlew :julc-wasm:test                                     # JVM: dispatcher == REST controllers
+./gradlew :julc-wasm:wasmSmoke -PgraalvmHome=/path/to/graalvm # Node.js: WebAssembly == JVM
 ```
 
 `wasmSmoke` needs Node.js 22+ (it passes `--experimental-wasm-exnref`).
+
+### Standalone JavaScript API
+
+Serve either extracted bundle over HTTP, then import its Promise-based SDK:
+
+```javascript
+import {createJulc, isFullClient} from './wasm/julc-wasm.js';
+const julc = await createJulc({baseUrl: new URL('./wasm/', location.href)});
+try {
+  const result = await julc.vm.evaluate({
+    script: {script: '(program 1.1.0 (lam x x))'},
+    args: [{int: 9007199254740993n}],
+  });
+  console.log(result.status, result.cpu, result.target);
+  // compiler and mock-transaction helpers exist only in the full bundle.
+  if (isFullClient(julc)) console.log(await julc.uplc.defaultTransaction());
+} finally { julc.dispose(); }
+```
+
+Java `long`/`BigInteger` positions are JavaScript `bigint`, including budgets and debug steps.
+Plutus Data accepts text `{format, value}` or structured objects with bigint integer/tag fields.
+Evaluation failure is a result; request/service errors reject with `code`, `status`, and `body`.
+`vm.debug(request)` returns a worker-bound session with `step`, `goto`, `continue`, `over`, `out`,
+`snapshot`, `close`, and `isOpen`. Closing a session does not dispose its client.
+See [ADR-057](../adr/057-julc-wasm-distribution.md) for target resolution and the approved
+JSON constructor-tag overflow correction. This remains experimental software.
 
 ### UPLC tools API
 
@@ -158,7 +185,7 @@ The UPLC tab uses four endpoints, served by both engines with the same JSON:
 | `POST /api/uplc/evaluate` | Evaluate against a mock transaction; returns status, budget, traces and the script context |
 | `POST /api/uplc/debug` | Stateless step debugger: `timeline`, `goto`, `continue`, `over`, `out` with breakpoints |
 
-The logic lives in `julc-playground-core` (`org.julclang.playground.uplc`) and uses the stepping API of the CEK
+The logic lives in `julc-tools` (`org.julclang.tools.uplc`) and uses the stepping API of the CEK
 machine (`JavaVmProvider.startStepping`). See [ADR-055](../adr/055-playground-uplc-evaluator-debugger.md). The UPLC
 requests are part of the parity fixtures above.
 

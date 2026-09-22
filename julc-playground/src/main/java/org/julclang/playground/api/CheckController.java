@@ -1,7 +1,7 @@
 package org.julclang.playground.api;
 
-import org.julclang.playground.model.CheckRequest;
-import org.julclang.playground.service.PlaygroundService;
+import org.julclang.tools.model.CheckRequest;
+import org.julclang.tools.service.ToolsService;
 import io.javalin.http.Context;
 
 /**
@@ -12,7 +12,7 @@ public class CheckController {
 
     public void handle(Context ctx) {
         var req = ctx.bodyAsClass(CheckRequest.class);
-        var result = PlaygroundService.check(req);
+        var result = ToolsService.check(req);
         ctx.status(result.status()).json(result.body());
     }
 }

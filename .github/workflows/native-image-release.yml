@@ -119,13 +119,13 @@ jobs:
         files: julc-${{ steps.version.outputs.version }}-${{ matrix.label }}.zip
 
 
-  # The browser engine (julc-playground-core compiled to WebAssembly, ADR-054) is platform-independent, so it is
+  # The browser engine (julc-tools compiled to WebAssembly, ADR-054) is platform-independent, so it is
   # built and verified once here and reused everywhere: the playground native images bundle it, the GitHub release
   # carries it, and docs-deploy.yml publishes the static playground from the release asset.
-  playground-wasm:
+  wasm:
     needs: validate
     runs-on: ubuntu-22.04
-    name: Build Playground WebAssembly engine
+    name: Build JuLC WebAssembly distributions
 
     steps:
     - uses: actions/checkout@v4
@@ -172,7 +172,7 @@ jobs:
     # Builds the engine (build/wasm-bundle, also copied to frontend/public/wasm) and checks the parity fixtures
     # against the JVM in Node.js. A mismatch fails the release.
     - name: Build and verify engine
-      run: ./gradlew :julc-playground-wasm:wasmSmoke -PskipSigning=true --no-daemon --stacktrace
+      run: ./gradlew :julc-wasm:wasmSmoke -PskipSigning=true --no-daemon --stacktrace
       shell: bash
 
     - name: Build static playground
@@ -186,21 +186,23 @@ jobs:
       shell: bash
       run: |
         VERSION="${{ steps.version.outputs.version }}"
-        echo "Engine version: $(jq -r .version julc-playground-wasm/build/wasm-bundle/engine.json)"
+        echo "Engine version: $(jq -r .version julc-wasm/build/wasm-bundle-full/engine.json)"
         # Engine only: launcher, module and engine.json under content-addressed names.
-        tar czf "julc-playground-engine-${VERSION}.tar.gz" -C julc-playground-wasm/build/wasm-bundle .
+        tar czf "julc-wasm-${VERSION}.tar.gz" -C julc-wasm/build/wasm-bundle-full .
+        tar czf "julc-vm-wasm-${VERSION}.tar.gz" -C julc-wasm/build/wasm-bundle-vm .
         # Complete static playground (frontend + engine, relative paths): serve it from any path, no backend needed.
         tar czf "julc-playground-static-${VERSION}.tar.gz" -C julc-playground/frontend/dist-static .
-        sha256sum "julc-playground-engine-${VERSION}.tar.gz" "julc-playground-static-${VERSION}.tar.gz" \
-          > "julc-playground-wasm-${VERSION}-SHA256SUMS.txt"
-        cat "julc-playground-wasm-${VERSION}-SHA256SUMS.txt"
+        sha256sum "julc-wasm-${VERSION}.tar.gz" "julc-vm-wasm-${VERSION}.tar.gz" "julc-playground-static-${VERSION}.tar.gz" \
+          > "julc-wasm-${VERSION}-SHA256SUMS.txt"
+        cat "julc-wasm-${VERSION}-SHA256SUMS.txt"
+        wc -c julc-wasm/build/wasm-bundle-{full,vm}/*.wasm >> "$GITHUB_STEP_SUMMARY"
 
     # Picked up by the native-image-playground jobs on every platform, so none of them needs Web Image.
     - name: Upload engine artifact
       uses: actions/upload-artifact@v4
       with:
-        name: julc-playground-engine
-        path: julc-playground-wasm/build/wasm-bundle/
+        name: julc-wasm-full
+        path: julc-wasm/build/wasm-bundle-full/
         if-no-files-found: error
 
     - name: Upload to GitHub Release
@@ -208,12 +210,13 @@ jobs:
       uses: softprops/action-gh-release@v2
       with:
         files: |
-          julc-playground-engine-${{ steps.version.outputs.version }}.tar.gz
+          julc-wasm-${{ steps.version.outputs.version }}.tar.gz
+          julc-vm-wasm-${{ steps.version.outputs.version }}.tar.gz
           julc-playground-static-${{ steps.version.outputs.version }}.tar.gz
-          julc-playground-wasm-${{ steps.version.outputs.version }}-SHA256SUMS.txt
+          julc-wasm-${{ steps.version.outputs.version }}-SHA256SUMS.txt
 
   native-image-playground:
-    needs: [validate, playground-wasm]
+    needs: [validate, wasm]
     strategy:
       fail-fast: false
       matrix:
@@ -267,7 +270,7 @@ jobs:
     - name: Add browser engine to the frontend
       uses: actions/download-artifact@v4
       with:
-        name: julc-playground-engine
+        name: julc-wasm-full
         path: julc-playground/frontend/public/wasm
 
     - name: Build native image

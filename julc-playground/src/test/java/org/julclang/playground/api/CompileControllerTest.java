@@ -1,9 +1,11 @@
 package org.julclang.playground.api;
 
+import org.julclang.tools.api.InputValidator;
+
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.LibrarySource;
-import org.julclang.playground.model.CompileRequest;
-import org.julclang.playground.model.CompileResponse;
+import org.julclang.tools.model.CompileRequest;
+import org.julclang.tools.model.CompileResponse;
 import org.julclang.playground.sandbox.CompilationSandbox;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.javalin.Javalin;

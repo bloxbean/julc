@@ -5,6 +5,11 @@ src/main/resources/static/
 frontend/public/wasm/julc-playground-*.js
 frontend/public/wasm/julc-playground-*.js.wasm
 frontend/public/wasm/engine.json
+frontend/public/wasm/julc-*.js
+frontend/public/wasm/julc-*.js.wasm
+frontend/public/wasm/julc-*.d.ts
+frontend/public/wasm/rest-adapter.js
+frontend/public/wasm/catalogue.json
 
 # Static (WebAssembly-only) frontend build
 frontend/dist-static/

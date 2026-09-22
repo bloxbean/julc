@@ -1,13 +1,50 @@
 {
   "reflection": [
-    {"type": "java.lang.Thread", "allPublicMethods": true},
-    {"type": "java.lang.Thread$Builder$OfVirtual", "allPublicMethods": true},
-    {"type": "org.julclang.vm.java.JavaVmProvider"}
+    {
+      "type": "java.lang.Thread",
+      "allPublicMethods": true
+    },
+    {
+      "type": "java.lang.Thread$Builder$OfVirtual",
+      "allPublicMethods": true
+    },
+    {
+      "type": "org.julclang.vm.java.JavaVmProvider"
+    },
+    {
+      "type": "org.julclang.playground.model.ExampleDto",
+      "allDeclaredFields": true,
+      "allDeclaredMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "org.julclang.playground.model.ScenarioDto",
+      "allDeclaredFields": true,
+      "allDeclaredMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "org.julclang.playground.model.ScenariosResponse",
+      "allDeclaredFields": true,
+      "allDeclaredMethods": true,
+      "allDeclaredConstructors": true
+    }
   ],
   "resources": [
-    {"glob": "static/**"},
-    {"glob": "META-INF/services/*"},
-    {"glob": "META-INF/julc/stdlib-sources.zip"},
-    {"glob": "META-INF/julc/wrappers/**"}
+    {
+      "glob": "static/**"
+    },
+    {
+      "glob": "META-INF/services/*"
+    },
+    {
+      "glob": "META-INF/julc/stdlib-sources.zip"
+    },
+    {
+      "glob": "META-INF/julc/wrappers/**"
+    },
+    {
+      "glob": "examples/**"
+    }
   ]
 }

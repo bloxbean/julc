@@ -43,8 +43,14 @@ jobs:
           # gh fails when no asset matches, so a release without a playground bundle stops the deploy.
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
             --pattern "julc-playground-static-${VERSION}.tar.gz" \
-            --pattern "julc-playground-wasm-${VERSION}-SHA256SUMS.txt"
-          sha256sum --check --ignore-missing "julc-playground-wasm-${VERSION}-SHA256SUMS.txt"
+            --pattern "*-SHA256SUMS.txt"
+          # Both the pre17 and ADR-057 names are supported. Select only the manifest
+          # that actually names our archive; unrelated release checksums do not count.
+          ARCHIVE="julc-playground-static-${VERSION}.tar.gz"
+          awk -v archive="$ARCHIVE" '$2 == archive || $2 == "*" archive {print}' \
+            ./*-SHA256SUMS.txt > playground.sha256
+          test "$(wc -l < playground.sha256 | tr -d ' ')" = 1
+          sha256sum --check playground.sha256
           tar xzf "julc-playground-static-${VERSION}.tar.gz" -C site
           test -f site/index.html
           echo "Engine version: $(jq -r .version site/wasm/engine.json)"
