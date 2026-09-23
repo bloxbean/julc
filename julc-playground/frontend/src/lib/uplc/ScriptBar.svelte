@@ -52,7 +52,7 @@
         {#each EXAMPLES as example, i}<option value={i} title={example.description}>{example.name}</option>{/each}
       </select>
       <button type="button" class="secondary" disabled={!$compileResult?.compiledCode} on:click={fromContract}
-        title={$compileResult?.compiledCode ? 'Load the script compiled in the Contract tab' : 'Compile a contract in the Contract tab first'}>From Contract</button>
+        title={$compileResult?.compiledCode ? 'Load the last successfully compiled script from the Contract tab. Apply any script parameters using + Params before evaluation.' : 'Compile a contract in the Contract tab first'}>Load compiled contract</button>
     </div>
   </div>
 
@@ -116,7 +116,7 @@
     background: var(--bg-primary); color: var(--text-secondary); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; word-break: break-all;
   }
   .script:focus { outline: none; border-color: var(--accent); color: var(--text-primary); }
-  .actions { display: flex; flex-direction: column; gap: 6px; width: 150px; }
+  .actions { display: flex; flex-direction: column; gap: 6px; width: 170px; flex-shrink: 0; }
   .actions select, .actions button { font-size: 12px; width: 100%; }
   .actions button:disabled { opacity: 0.5; cursor: not-allowed; }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }

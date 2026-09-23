@@ -47,6 +47,7 @@ const SECTIONS = [
       'guides/source-maps.md',
       'guides/strict-data-boundaries.md',
       'guides/purpose-indexed-blueprints.md',
+      'guides/javascript-wasm.md',
     ],
   },
   {

@@ -63,6 +63,7 @@ export default defineConfig({
             { label: 'Source Maps', slug: 'guides/source-maps' },
             { label: 'Strict Data Boundaries', slug: 'guides/strict-data-boundaries' },
             { label: 'Multi-validator Blueprints', slug: 'guides/purpose-indexed-blueprints' },
+            { label: 'JavaScript & WebAssembly', slug: 'guides/javascript-wasm', badge: { text: 'Experimental', variant: 'caution' } },
           ],
         },
         {

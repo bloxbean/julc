@@ -3,6 +3,9 @@
 Experimental, worker-isolated JavaScript access to the existing JuLC toolchain and
 Java VM. Governed by [ADR-057](../adr/057-julc-wasm-distribution.md).
 
+For release downloads, a copy-paste HTML demo and the API reference, see the
+[JavaScript & WebAssembly guide](../docs/src/content/docs/guides/javascript-wasm.md).
+
 - **Full:** compilation, Run Test, Quick Eval, decompilation, mock transactions, VM and debugger.
 - **VM:** decoding, parameter application, hashing, pretty printing, raw-argument evaluation and debugging.
 

@@ -1,5 +1,6 @@
 <script lang="ts">
   import './app.css';
+  import julcLogo from '../../../docs/public/logo.png';
   import Editor from './lib/components/Editor.svelte';
   import DiagnosticsPanel from './lib/components/DiagnosticsPanel.svelte';
   import PipelineView from './lib/components/PipelineView.svelte';
@@ -35,12 +36,18 @@
   <!-- Toolbar -->
   <header class="toolbar">
     <div class="toolbar-left">
-      <span class="logo">JuLC Playground</span>
+      <div class="brand">
+        <a class="site-title" href="https://julc.dev" target="_blank" rel="noopener noreferrer" aria-label="JuLC documentation (opens in a new tab)">
+          <img src={julcLogo} alt="" class="site-logo" width="28" height="28" />
+          <span translate="no">JuLC</span>
+        </a>
+        <span class="product-name">Playground</span>
+      </div>
       <div class="mode-tabs" role="tablist" aria-label="Playground mode">
         <button role="tab" aria-selected={$mode === 'contract'} class:active={$mode === 'contract'} on:click={() => mode.set('contract')}
           title="Write, compile and test a JuLC contract">Contract</button>
         <button role="tab" aria-selected={$mode === 'uplc'} class:active={$mode === 'uplc'} on:click={() => mode.set('uplc')}
-          title="Inspect, evaluate and debug any compiled Plutus script">UPLC</button>
+          title="Inspect, evaluate and debug any compiled Plutus script">UPLC / Debugger</button>
       </div>
       {#if $mode === 'contract' && $contractName}
         <span class="contract-info">
@@ -125,20 +132,47 @@
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
-    height: 44px;
+    min-height: 64px;
+    gap: 12px;
+    flex-wrap: wrap;
   }
 
   .toolbar-left {
     display: flex;
     align-items: center;
     gap: 12px;
+    flex-wrap: wrap;
   }
 
-  .logo {
-    font-weight: 700;
-    font-size: 15px;
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .site-title {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-weight: 600;
+    font-size: 24px;
     color: var(--accent);
-    letter-spacing: -0.3px;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+
+  .site-logo {
+    width: 28px;
+    height: 28px;
+    border-radius: 0.2rem;
+    flex: none;
+  }
+
+  .product-name {
+    font-size: 13px;
+    color: var(--text-secondary);
+    border-left: 1px solid var(--border);
+    padding-left: 12px;
   }
 
   .contract-info {
@@ -160,9 +194,7 @@
   }
 
   .toolbar-center {
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
+    margin-inline: auto;
   }
 
   .toolbar-right {

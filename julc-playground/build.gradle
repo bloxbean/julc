@@ -67,6 +67,8 @@ tasks.register('buildFrontend', Exec) {
         commandLine 'sh', '-c', 'npm run build'
     }
     inputs.dir(new File(frontendDir, 'src'))
+    // The playground shares the docsite's JuLC brand asset.
+    inputs.file(rootProject.file('docs/public/logo.png'))
     inputs.dir(new File(frontendDir, 'public'))
     inputs.file(new File(frontendDir, 'index.html'))
     inputs.file(new File(frontendDir, 'vite.config.ts'))
