@@ -2,18 +2,20 @@ package org.julclang.wasm;
 
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.LibrarySourceResolver;
+import org.julclang.stdlib.StdlibRegistry;
+import org.julclang.tools.debug.SourceDebugService;
 import org.julclang.tools.model.CheckRequest;
 import org.julclang.tools.model.CompileRequest;
 import org.julclang.tools.model.EvalExpressionRequest;
 import org.julclang.tools.model.EvaluateRequest;
 import org.julclang.tools.model.MockTransaction;
+import org.julclang.tools.model.SourceDebugModels;
 import org.julclang.tools.model.UplcModels;
 import org.julclang.tools.model.VmModels;
 import org.julclang.tools.repl.ExpressionEvaluator;
 import org.julclang.tools.service.ServiceResult;
 import org.julclang.tools.service.ToolsService;
 import org.julclang.tools.uplc.UplcToolsService;
-import org.julclang.stdlib.StdlibRegistry;
 import org.julclang.vm.JulcVm;
 import org.julclang.vm.java.JavaVmProvider;
 
@@ -36,6 +38,7 @@ public final class FullApi {
         var service = new ToolsService(compiler, libraries, () -> vm);
         var evaluator = new ExpressionEvaluator(compiler, vm, libraries);
         var uplc = new UplcToolsService();
+        var sourceDebug = new SourceDebugService(libraries);
         api.add("compiler.check", CheckRequest.class, ToolsService::check);
         api.add("compiler.compile", CompileRequest.class, service::compile);
         api.add("compiler.evaluate", EvaluateRequest.class, service::evaluate);
@@ -43,6 +46,9 @@ public final class FullApi {
         api.add("uplc.decompile", UplcModels.DecompileRequest.class, uplc::decompile);
         api.add("uplc.evaluateTransaction", TransactionRequest.class, r -> transaction(r, vmApi, false));
         api.add("uplc.debugTransaction", TransactionRequest.class, r -> transaction(r, vmApi, true));
+        api.add("sourceDebug.open", SourceDebugModels.OpenRequest.class, sourceDebug::open);
+        api.add("sourceDebug.act", SourceDebugModels.ActionRequest.class, sourceDebug::act);
+        api.add("sourceDebug.close", SourceDebugModels.CloseRequest.class, sourceDebug::close);
     }
 
     private static ServiceResult<?> transaction(TransactionRequest r, VmApi vm, boolean debug) {

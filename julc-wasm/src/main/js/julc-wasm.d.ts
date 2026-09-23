@@ -25,6 +25,17 @@ export interface DebugSession extends ResolvedTarget {
   snapshot(): Promise<DebugReply>;
   close(): Promise<{closed: boolean}>;
 }
+export type SourceDebugSession = M.SourceDebugModels_OpenResponse & {
+  sessionId: string;
+  isOpen(): boolean;
+  step(): Promise<M.SourceDebugModels_ActionResponse>;
+  goto(step: bigint): Promise<M.SourceDebugModels_ActionResponse>;
+  continue(breakpoints?: Input<M.UplcModels_Breakpoints>): Promise<M.SourceDebugModels_ActionResponse>;
+  over(breakpoints?: Input<M.UplcModels_Breakpoints>): Promise<M.SourceDebugModels_ActionResponse>;
+  out(breakpoints?: Input<M.UplcModels_Breakpoints>): Promise<M.SourceDebugModels_ActionResponse>;
+  snapshot(): Promise<M.SourceDebugModels_ActionResponse>;
+  close(): Promise<{closed: boolean}>;
+};
 export interface Features {api: 0; variant: 'full' | 'vm'; groups: string[]; defaultProtocol: 11; bls: false;}
 export interface JulcError extends Error {code: string; status: number; body: unknown;}
 export interface VmClient {
@@ -51,6 +62,9 @@ export interface FullClient extends VmClient {
     defaultTransaction(request?: {purpose?: 'spend' | 'mint' | 'reward' | 'certify' | 'vote' | 'propose'; scriptHash?: string}): Promise<Input<M.MockTransaction>>;
     evaluateTransaction(request: TransactionRequest): Promise<Evaluation | M.UplcModels_EvaluateResponse>;
     debugTransaction(request: TransactionRequest): Promise<DebugSession | M.UplcModels_DebugResponse>;
+  };
+  sourceDebug: {
+    open(request: Input<M.SourceDebugModels_OpenRequest>): Promise<SourceDebugSession | M.SourceDebugModels_OpenResponse>;
   };
 }
 export interface Manifest {api: 0; version: string; launcher: string; variant: 'full' | 'vm'; julcVersion: string;}

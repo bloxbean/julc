@@ -49,3 +49,27 @@ test('explicit script hashes remain script credentials in transaction templates'
   assert.equal(defaultTransaction({purpose: 'propose', scriptHash}).proposals[0].guardrail, scriptHash);
   assert.throws(() => defaultTransaction({scriptHash: 'abcd'}), /28-byte/);
 });
+
+test('source-debug REST routes retain the session and convert exact step values', () => {
+  let opened, acted, closed;
+  const api = {
+    __schemas: {
+      'sourceDebug.open': {source: 'string', maxCpu: 'long'},
+      'sourceDebug.act': {sessionId: 'string', action: 'string', step: 'long'},
+      'sourceDebug.close': {sessionId: 'string'},
+    },
+    sourceDebug: {
+      open: request => (opened = request, {ok: true, sessionId: 'source-1', snapshot: {step: 0n}}),
+      act: request => (acted = request, {ok: true, snapshot: {step: request.step}}),
+      close: request => (closed = request, {closed: true}),
+    },
+  };
+  const adapter = new JulcRestAdapter(api);
+  assert.equal(adapter.request('POST', '/api/source-debug/open', {source: 'class V {}', maxCpu: '42'}).body.sessionId, 'source-1');
+  assert.equal(opened.maxCpu, 42n);
+  assert.equal(adapter.request('POST', '/api/source-debug/act', {sessionId: 'source-1', action: 'goto', step: '9007199254740993'}).body.snapshot.step,
+    JSON.parse('9007199254740993'));
+  assert.equal(acted.step, 9007199254740993n);
+  assert.deepEqual(adapter.request('POST', '/api/source-debug/close', {sessionId: 'source-1'}).body, {closed: true});
+  assert.equal(closed.sessionId, 'source-1');
+});

@@ -6,7 +6,8 @@ Java VM. Governed by [ADR-057](../adr/057-julc-wasm-distribution.md).
 For release downloads, a copy-paste HTML demo and the API reference, see the
 [JavaScript & WebAssembly guide](../docs/src/content/docs/guides/javascript-wasm.md).
 
-- **Full:** compilation, Run Test, Quick Eval, decompilation, mock transactions, VM and debugger.
+- **Full:** compilation, Run Test, Quick Eval, decompilation, mock transactions, VM, UPLC debugger and the
+  experimental Java-source debugger described by ADR-058.
 - **VM:** decoding, parameter application, hashing, pretty printing, raw-argument evaluation and debugging.
 
 Both variants exclude BLS12-381 evaluation. Language is inferred by `ScriptDecoder`

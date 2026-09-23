@@ -1,6 +1,8 @@
 # ADR-058: Experimental Java-source debugging in the playground
 
-**Status:** Proposed implementation design; no debugger feature implemented yet.
+**Status:** Milestone 1 implementation is in progress on the stacked branch;
+independent review and full WebAssembly image validation remain pending. Milestone 2
+(typed Java locals) remains proposed.
 The developer approved a separate, visibly labeled source-debug compilation whose
 script bytes, hash and budget may differ from normal compilation (2026-09-23).
 **Parent:** ADR-057, PR #169 (`feat/julc-wasm-distribution`).

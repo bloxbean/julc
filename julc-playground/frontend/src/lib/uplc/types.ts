@@ -40,6 +40,7 @@ export interface MockTransaction {
 export interface ScriptInput { script: string; params: DataInput[]; language: string; validator?: string }
 
 export interface Span { startLine: number; startColumn: number; endLine: number; endColumn: number }
+export interface JavaLocation { fileName: string | null; line: number; column: number; fragment: string | null }
 
 export interface ScriptInfo {
   inputFormat: string;
@@ -79,7 +80,7 @@ export interface EvaluateResponse {
   language: string | null;
 }
 
-export interface Breakpoints { lines: number[]; onTrace: boolean; onError: boolean; builtins: string[] }
+export interface Breakpoints { lines: number[]; onTrace: boolean; onError: boolean; builtins: string[]; javaLines: number[] }
 
 export interface Timeline {
   totalSteps: number;
@@ -98,6 +99,7 @@ export interface Snapshot {
   step: number;
   phase: 'compute' | 'return' | 'done' | 'failed';
   span: Span | null;
+  javaLocation: JavaLocation | null;
   termKind: string | null;
   value: string | null;
   environment: EnvEntry[];
@@ -115,5 +117,21 @@ export interface Snapshot {
 }
 
 export interface DebugResponse { ok: boolean; error: string | null; timeline: Timeline | null; snapshot: Snapshot | null }
+
+export interface SourceDebugParam { name: string; type: string }
+export interface SourceDebugOpenResponse extends DebugResponse {
+  sessionId: string | null;
+  source: string | null;
+  uplcText: string | null;
+  compiledCode: string | null;
+  scriptHash: string | null;
+  scriptSizeBytes: number;
+  params: SourceDebugParam[];
+  diagnostics: import('../api/client').Diagnostic[];
+  executableJavaLines: number[];
+  target: { language: string | null; protocol: number | null } | null;
+  costModelId: string | null;
+  warning: string;
+}
 
 export type DebugAction = 'timeline' | 'goto' | 'continue' | 'over' | 'out';

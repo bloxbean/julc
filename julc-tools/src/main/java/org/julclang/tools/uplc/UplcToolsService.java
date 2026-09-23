@@ -7,6 +7,8 @@ import org.julclang.tools.model.VmModels.CostModel;
 import org.julclang.core.DefaultFun;
 import org.julclang.core.Term;
 import org.julclang.core.cbor.PlutusDataCborEncoder;
+import org.julclang.core.source.SourceLocation;
+import org.julclang.core.source.SourceMap;
 import org.julclang.core.text.UplcParseException;
 import org.julclang.core.text.UplcPrettyPrinter;
 import org.julclang.core.text.UplcPrinter;
@@ -24,6 +26,7 @@ import org.julclang.tools.model.UplcModels.EnvEntry;
 import org.julclang.tools.model.UplcModels.EvaluateRequest;
 import org.julclang.tools.model.UplcModels.EvaluateResponse;
 import org.julclang.tools.model.UplcModels.Frame;
+import org.julclang.tools.model.UplcModels.JavaLocation;
 import org.julclang.tools.model.UplcModels.ScriptInfo;
 import org.julclang.tools.model.UplcModels.ScriptInput;
 import org.julclang.tools.model.UplcModels.Snapshot;
@@ -44,6 +47,7 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * Tools for compiled scripts: decode and format, decompile, evaluate against a mock transaction, and step through
@@ -179,8 +183,30 @@ public final class UplcToolsService {
     }
 
     public synchronized ServiceResult<DebugResponse> open(Prepared prepared, boolean timeline) {
-        session = new Session(null, prepared);
+        return open(prepared, timeline, null);
+    }
+
+    /** Open a session whose exact decoded term tree is associated with Java source locations. */
+    public synchronized ServiceResult<DebugResponse> open(Prepared prepared, boolean timeline, SourceMap sourceMap) {
+        session = new Session(null, prepared, sourceMap);
         return act(timeline ? "timeline" : "goto", 0L, null);
+    }
+
+    /** Java lines with at least one executable term in the currently open session. */
+    public synchronized List<Integer> executableJavaLines() {
+        if (session == null || session.sourceMap == null) return List.of();
+        var lines = new TreeSet<Integer>();
+        for (Term term : session.pretty.terms()) {
+            SourceLocation location = session.sourceMap.lookup(term);
+            if (location != null && location.line() > 0) lines.add(location.line());
+        }
+        return List.copyOf(lines);
+    }
+
+    /** Pretty-printed UPLC whose spans are used by this session. */
+    public synchronized String uplcText() {
+        if (session == null) throw new IllegalStateException("Debug session is closed");
+        return session.pretty.text();
     }
 
     public synchronized ServiceResult<DebugResponse> act(String action, Long step, Breakpoints points) {
@@ -201,10 +227,14 @@ public final class UplcToolsService {
         var breakpoints = new BreakpointSet(session, points);
         Snapshot snapshot = switch (action) {
             case "timeline" -> {
+                session.clearBreakpoint();
                 session.timeline();
                 yield session.moveTo(0, "step");
             }
-            case "goto" -> session.moveTo(from, "step");
+            case "goto" -> {
+                session.clearBreakpoint();
+                yield session.moveTo(from, "step");
+            }
             case "continue" -> session.run(from, breakpoints, Mode.CONTINUE);
             case "over" -> session.run(from, breakpoints, Mode.OVER);
             case "out" -> session.run(from, breakpoints, Mode.OUT);
@@ -239,17 +269,25 @@ public final class UplcToolsService {
         private final SessionKey key;
         private final Prepared prepared;
         private final UplcPrettyPrinter.PrettyUplc pretty;
+        private final SourceMap sourceMap;
         private final Map<Term, Term> parents = new IdentityHashMap<>();
         private final Set<Integer> lineHeads = new HashSet<>();
         private Timeline timeline;
         private SteppingEvaluation evaluation;
         private long previousCpu;
         private long previousMem;
+        private long lastBreakpointStep = -1;
+        private Term lastBreakpointTerm;
 
         Session(SessionKey key, Prepared prepared) {
+            this(key, prepared, null);
+        }
+
+        Session(SessionKey key, Prepared prepared, SourceMap sourceMap) {
             this.key = key;
             this.prepared = prepared;
             this.pretty = UplcPrettyPrinter.print(prepared.decoded().program(), PRINT_OPTIONS);
+            this.sourceMap = sourceMap;
             for (Term term : pretty.terms()) {
                 for (Term child : children(term)) parents.putIfAbsent(child, term);
             }
@@ -309,6 +347,14 @@ public final class UplcToolsService {
             moveTo(from, "step");
             if (evaluation.isFinished()) return snapshot("end");
             CekMachine machine = evaluation.machine();
+            String initialHit = breakpoints.hit(machine, machine.traceCount());
+            if (initialHit != null && (evaluation.steps() != lastBreakpointStep
+                    || machine.currentTerm() != lastBreakpointTerm)) {
+                rememberBreakpoint(machine);
+                return snapshot(initialHit);
+            }
+            lastBreakpointStep = -1;
+            lastBreakpointTerm = null;
             int depth = machine.stackDepth();
             boolean startedComputing = machine.isComputing();
             long limit = evaluation.steps() + MAX_DEBUG_STEPS;
@@ -319,7 +365,10 @@ public final class UplcToolsService {
                     return snapshot(evaluation.result().isSuccess() ? "end" : "error");
                 }
                 String hit = breakpoints.hit(machine, traces);
-                if (hit != null) return snapshot(hit);
+                if (hit != null) {
+                    rememberBreakpoint(machine);
+                    return snapshot(hit);
+                }
                 switch (mode) {
                     case OVER -> {
                         if (!startedComputing || (!machine.isComputing() && machine.stackDepth() <= depth)) {
@@ -336,9 +385,19 @@ public final class UplcToolsService {
             }
         }
 
+        private void rememberBreakpoint(CekMachine machine) {
+            lastBreakpointStep = evaluation.steps();
+            lastBreakpointTerm = machine.currentTerm();
+        }
+
+        private void clearBreakpoint() {
+            lastBreakpointStep = -1;
+            lastBreakpointTerm = null;
+        }
+
         private SteppingEvaluation start() {
             return prepared.provider().startStepping(prepared.decoded().program(), prepared.target(), prepared.args(),
-                    prepared.budget(), EvalOptions.DEFAULT);
+                    prepared.budget(), sourceMap == null ? EvalOptions.DEFAULT : EvalOptions.DEFAULT.withSourceMap(sourceMap));
         }
 
         private void stepOnce() {
@@ -363,7 +422,7 @@ public final class UplcToolsService {
             long cpuDelta = evaluation.steps() == 0 ? 0 : cpu - previousCpu;
             long memDelta = evaluation.steps() == 0 ? 0 : mem - previousMem;
             if (machine == null) {
-                return new Snapshot(0, "failed", null, null, null, List.of(), List.of(), 0, cpu, mem, 0, 0,
+                return new Snapshot(0, "failed", null, null, null, null, List.of(), List.of(), 0, cpu, mem, 0, 0,
                         List.of(), true, statusOf(result), errorOf(result), stopReason);
             }
 
@@ -399,10 +458,17 @@ public final class UplcToolsService {
             for (CekFrame frame : machine.frames(FRAME_LIMIT)) {
                 frames.add(frame(frame));
             }
-            return new Snapshot(evaluation.steps(), phase, span(pretty, focus),
+            return new Snapshot(evaluation.steps(), phase, span(pretty, focus), javaLocation(focus),
                     focus == null ? null : focus.getClass().getSimpleName().toLowerCase(), value, environment, frames,
                     machine.stackDepth(), cpu, mem, cpuDelta, memDelta, machine.getTraces(), result != null,
                     result == null ? null : statusOf(result), errorOf(result), stopReason);
+        }
+
+        private JavaLocation javaLocation(Term term) {
+            if (sourceMap == null || term == null) return null;
+            SourceLocation location = sourceMap.lookup(term);
+            return location == null ? null : new JavaLocation(location.fileName(), location.line(),
+                    location.column(), location.fragment());
         }
 
         private Frame frame(CekFrame frame) {
@@ -437,17 +503,26 @@ public final class UplcToolsService {
             int id = pretty.idOf(term);
             return id >= 0 && lineHeads.contains(id) && lines.contains(pretty.spans().get(id).startLine());
         }
+
+        boolean isJavaLine(Term term, Set<Integer> lines) {
+            if (sourceMap == null || term == null) return false;
+            SourceLocation location = sourceMap.lookup(term);
+            return location != null && lines.contains(location.line());
+        }
     }
 
     private static final class BreakpointSet {
         private final Session session;
         private final Set<Integer> lines;
+        private final Set<Integer> javaLines;
         private final boolean onTrace;
         private final Set<String> builtins;
 
         BreakpointSet(Session session, Breakpoints breakpoints) {
             this.session = session;
             this.lines = breakpoints == null || breakpoints.lines() == null ? Set.of() : Set.copyOf(breakpoints.lines());
+            this.javaLines = breakpoints == null || breakpoints.javaLines() == null
+                    ? Set.of() : Set.copyOf(breakpoints.javaLines());
             this.onTrace = breakpoints != null && Boolean.TRUE.equals(breakpoints.onTrace());
             this.builtins = breakpoints == null || breakpoints.builtins() == null ? Set.of() : Set.copyOf(breakpoints.builtins());
         }
@@ -456,6 +531,7 @@ public final class UplcToolsService {
             if (onTrace && machine.traceCount() > tracesBefore) return "trace";
             if (!machine.isComputing()) return null;
             Term term = machine.currentTerm();
+            if (!javaLines.isEmpty() && session.isJavaLine(term, javaLines)) return "javaBreakpoint";
             if (!lines.isEmpty() && session.isLineHead(term, lines)) return "breakpoint";
             if (term instanceof Term.Builtin b && builtins.contains(builtinName(b.fun()))) return "builtin";
             return null;

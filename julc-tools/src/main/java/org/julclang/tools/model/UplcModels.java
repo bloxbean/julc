@@ -75,8 +75,18 @@ public final class UplcModels {
      * @param onTrace  stop after a trace message
      * @param onError  stop at an evaluation error (the last step)
      * @param builtins stop before computing these builtins
+     * @param javaLines stop before computing an exactly mapped Java source line in a source-debug session
      */
-    public record Breakpoints(List<Integer> lines, Boolean onTrace, Boolean onError, List<String> builtins) {}
+    public record Breakpoints(List<Integer> lines, Boolean onTrace, Boolean onError, List<String> builtins,
+                              List<Integer> javaLines) {
+        /** Backward-compatible UPLC-only breakpoint request. */
+        public Breakpoints(List<Integer> lines, Boolean onTrace, Boolean onError, List<String> builtins) {
+            this(lines, onTrace, onError, builtins, null);
+        }
+    }
+
+    /** Exact Java source location attached to the current UPLC term, when available. */
+    public record JavaLocation(String fileName, int line, int column, String fragment) {}
 
     /**
      * @param action {@code timeline} (run to the end and report where traces and errors happen), {@code goto}
@@ -100,12 +110,22 @@ public final class UplcModels {
      * @param phase      {@code compute | return | done | failed}
      * @param span       the term being computed (compute phase), or the failed term
      * @param value      the value being returned (return phase) or the result
-     * @param stopReason why a continue/over/out stopped: {@code breakpoint | trace | error | end | limit | step}
+     * @param stopReason why a continue/over/out stopped:
+     *                   {@code breakpoint | javaBreakpoint | trace | error | end | limit | step}
      */
-    public record Snapshot(long step, String phase, Span span, String termKind, String value,
+    public record Snapshot(long step, String phase, Span span, JavaLocation javaLocation, String termKind, String value,
                            List<EnvEntry> environment, List<Frame> frames, int stackDepth, long cpu, long mem,
                            long cpuDelta, long memDelta, List<String> traces, boolean finished, String status,
-                           String error, String stopReason) {}
+                           String error, String stopReason) {
+        /** Backward-compatible snapshot without Java source metadata. */
+        public Snapshot(long step, String phase, Span span, String termKind, String value,
+                        List<EnvEntry> environment, List<Frame> frames, int stackDepth, long cpu, long mem,
+                        long cpuDelta, long memDelta, List<String> traces, boolean finished, String status,
+                        String error, String stopReason) {
+            this(step, phase, span, null, termKind, value, environment, frames, stackDepth, cpu, mem,
+                    cpuDelta, memDelta, traces, finished, status, error, stopReason);
+        }
+    }
 
     public record DebugResponse(boolean ok, String error, Timeline timeline, Snapshot snapshot) {}
 }

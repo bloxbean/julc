@@ -40,6 +40,8 @@ class ApiTest {
         assertTrue(result.at("/body/result").asText().contains("18446744073709551617"));
         assertFalse(JsMarshalling.JSON.readTree(vm.schemas()).has("compiler.compile"));
         assertTrue(JsMarshalling.JSON.readTree(full.schemas()).has("compiler.compile"));
+        assertFalse(JsMarshalling.JSON.readTree(vm.schemas()).has("sourceDebug.open"));
+        assertTrue(JsMarshalling.JSON.readTree(full.schemas()).has("sourceDebug.open"));
         assertNotNull(JsMarshalling.schema(VmModels.Request.class));
     }
 }

@@ -2,7 +2,7 @@
   import { formatNumber } from './mock';
   import {
     breakpoints, debugBack, debugContinue, debugGoto, debugOut, debugOver, debugRestart, debugState, debugStep,
-    decodeState, peekSpan, startDebug, stopDebug,
+    decodeState, peekSpan, sourceDebugState, startDebug, stopDebug,
   } from './store';
   import type { Span } from './types';
 
@@ -22,7 +22,7 @@
   $: pct = (n: number) => (total > 0 ? (n / total) * 100 : 0);
 
   const REASONS: Record<string, string> = {
-    step: 'Paused', breakpoint: 'Breakpoint', trace: 'Trace emitted', builtin: 'Builtin breakpoint', end: 'Finished', error: 'Stopped at error', limit: 'Step limit reached',
+    step: 'Paused', breakpoint: 'UPLC breakpoint', javaBreakpoint: 'Java breakpoint', trace: 'Trace emitted', builtin: 'Builtin breakpoint', end: 'Finished', error: 'Stopped at error', limit: 'Step limit reached',
   };
   const PHASES: Record<string, string> = {
     compute: 'Computing term', return: 'Returning value', done: 'Evaluation finished', failed: 'Evaluation failed',
@@ -116,7 +116,7 @@
       </section>
 
       <section class="pane">
-        <h4>Environment <span class="count">{s?.environment.length ?? 0}</span>
+        <h4>{$sourceDebugState.response?.ok ? 'UPLC environment' : 'Environment'} <span class="count">{s?.environment.length ?? 0}</span>
           <input type="text" class="filter" placeholder="filter" bind:value={envFilter} />
         </h4>
         {#if env.length}
@@ -163,6 +163,11 @@
             Lines {$breakpoints.lines.join(', ')} <button type="button" class="link" on:click={() => ($breakpoints = { ...$breakpoints, lines: [] })}>clear</button>
           {:else}<span class="muted">Click the UPLC gutter to add line breakpoints</span>{/if}
         </div>
+        {#if ($breakpoints.javaLines ?? []).length}
+          <div class="bp-lines">Java lines {$breakpoints.javaLines.join(', ')}
+            <button type="button" class="link" on:click={() => ($breakpoints = { ...$breakpoints, javaLines: [] })}>clear</button>
+          </div>
+        {/if}
         <div class="bp-builtins">
           {#each $breakpoints.builtins as b}
             <span class="chip">{b} <button type="button" on:click={() => ($breakpoints = { ...$breakpoints, builtins: $breakpoints.builtins.filter((x) => x !== b) })}>×</button></span>
@@ -189,7 +194,7 @@
   .buttons button.stop { color: var(--error); }
   .position { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--text-secondary); }
   .reason { font-size: 11px; padding: 1px 8px; border-radius: 10px; background: var(--bg-surface); }
-  .reason.breakpoint, .reason.builtin { background: rgba(243, 139, 168, 0.18); color: var(--error); }
+  .reason.breakpoint, .reason.javaBreakpoint, .reason.builtin { background: rgba(243, 139, 168, 0.18); color: var(--error); }
   .reason.trace { background: rgba(250, 179, 135, 0.18); color: var(--warning); }
   .reason.error { background: var(--error); color: var(--bg-primary); }
   .reason.end { background: rgba(166, 227, 161, 0.18); color: var(--success); }

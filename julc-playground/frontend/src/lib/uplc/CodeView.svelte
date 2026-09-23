@@ -12,6 +12,9 @@
   export let peekSpan: Span | null = null;
   export let breakpointLines: number[] = [];
   export let onToggleBreakpoint: ((line: number) => void) | null = null;
+  export let breakpointResolvedLines: number[] | null = null;
+  export let readOnly = true;
+  export let onChange: ((value: string) => void) | null = null;
 
   let container: HTMLDivElement;
   let monaco: typeof Monaco;
@@ -25,8 +28,8 @@
       value: text,
       language,
       theme: 'uplc-dark',
-      readOnly: true,
-      domReadOnly: true,
+      readOnly,
+      domReadOnly: readOnly,
       fontSize: 13,
       fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
       minimap: { enabled: text.length > 4000 },
@@ -48,6 +51,7 @@
         onToggleBreakpoint(e.target.position.lineNumber);
       }
     });
+    editor.onDidChangeModelContent(() => onChange?.(editor!.getValue()));
     updateDecorations();
   });
 
@@ -58,7 +62,7 @@
     editor.updateOptions({ minimap: { enabled: text.length > 4000 } });
   }
   $: if (editor && monaco) monaco.editor.setModelLanguage(editor.getModel()!, language);
-  $: currentSpan, failedSpan, peekSpan, breakpointLines, updateDecorations();
+  $: currentSpan, failedSpan, peekSpan, breakpointLines, breakpointResolvedLines, updateDecorations();
   $: if (editor && currentSpan) reveal(currentSpan);
   $: if (editor && peekSpan) reveal(peekSpan);
   $: if (editor && failedSpan && !currentSpan) reveal(failedSpan);
@@ -75,7 +79,11 @@
     if (!editor || !monaco || !decorations) return;
     const list: Monaco.editor.IModelDeltaDecoration[] = [];
     for (const line of breakpointLines) {
-      list.push({ range: new monaco.Range(line, 1, line, 1), options: { glyphMarginClassName: 'uplc-breakpoint', stickiness: 1 } });
+      const resolved = breakpointResolvedLines == null || breakpointResolvedLines.includes(line);
+      list.push({ range: new monaco.Range(line, 1, line, 1), options: {
+        glyphMarginClassName: resolved ? 'uplc-breakpoint' : 'uplc-breakpoint-unbound', stickiness: 1,
+        glyphMarginHoverMessage: { value: resolved ? 'Breakpoint' : 'Unbound: no executable JuLC term is mapped to this line' },
+      } });
     }
     if (failedSpan) {
       highlight(list, failedSpan, 'uplc-failed');
@@ -108,6 +116,7 @@
 <style>
   .code-view { width: 100%; height: 100%; }
   :global(.uplc-breakpoint) { background: var(--error); border-radius: 50%; width: 10px !important; height: 10px !important; margin: 4px 0 0 6px; }
+  :global(.uplc-breakpoint-unbound) { border: 2px solid var(--text-muted); border-radius: 50%; width: 10px !important; height: 10px !important; margin: 2px 0 0 4px; }
   :global(.uplc-current-glyph)::after { content: '▶'; color: var(--warning); font-size: 11px; margin-left: 5px; }
   :global(.uplc-current-line) { background: rgba(250, 179, 135, 0.08); }
   :global(.uplc-current-term) { background: rgba(250, 179, 135, 0.28); border-radius: 2px; }

@@ -46,14 +46,14 @@ export async function createJulc({baseUrl = new URL('.', import.meta.url), manif
       catch (error) { clearTimeout(timer); pending.delete(id); reject(error); }
     });
   }
-  function proxy(descriptor) {
+  function proxy(descriptor, group = 'debug') {
     if (!descriptor.sessionId) return descriptor;
     const state = {open: true, step: descriptor.snapshot.step}; sessions.add(state);
     const result = {...descriptor, isOpen: () => state.open && !disposed};
     const act = async (action, step = state.step, breakpoints) => {
       if (!result.isOpen()) throw closedError();
       let value;
-      try { value = await send({method: 'debug.act', body: {sessionId: descriptor.sessionId, action, step, breakpoints}}); }
+      try { value = await send({method: group + '.act', body: {sessionId: descriptor.sessionId, action, step, breakpoints}}); }
       catch (error) {
         if (error.status === 404) { state.open = false; sessions.delete(state); }
         throw error;
@@ -69,7 +69,7 @@ export async function createJulc({baseUrl = new URL('.', import.meta.url), manif
     result.snapshot = () => act('goto');
     result.close = async () => {
       if (!result.isOpen()) throw closedError();
-      try { return await send({method: 'debug.close', body: {sessionId: descriptor.sessionId}}); }
+      try { return await send({method: group + '.close', body: {sessionId: descriptor.sessionId}}); }
       finally { state.open = false; sessions.delete(state); }
     };
     return result;
@@ -80,7 +80,8 @@ export async function createJulc({baseUrl = new URL('.', import.meta.url), manif
     const [group, name] = method.split('.'); api[group] ??= {};
     api[group][name] = async (body = {}) => {
       const result = await send({method, body});
-      return method === 'vm.debug' || method === 'uplc.debugTransaction' ? proxy(result) : result;
+      if (method === 'vm.debug' || method === 'uplc.debugTransaction') return proxy(result);
+      return method === 'sourceDebug.open' ? proxy(result, 'sourceDebug') : result;
     };
   }
   if (api.uplc) api.uplc.defaultTransaction = body => send({method: 'uplc.defaultTransaction', body});

@@ -5,6 +5,8 @@
     '/api/evaluate': 'compiler.evaluate', '/api/eval': 'compiler.evalExpression',
     '/api/uplc/decode': 'vm.decode', '/api/uplc/decompile': 'uplc.decompile',
     '/api/uplc/evaluate': 'uplc.evaluateTransaction', '/api/uplc/debug': 'uplc.debugTransaction',
+    '/api/source-debug/open': 'sourceDebug.open', '/api/source-debug/act': 'sourceDebug.act',
+    '/api/source-debug/close': 'sourceDebug.close',
   };
   function typed(value, schema) {
     if (value == null) return value;
@@ -57,6 +59,7 @@
         } else {
           result = this.api[group][name](typed(request, this.api.__schemas[operation]));
         }
+        if (path.startsWith('/api/source-debug/')) return ok(JulcRuntime.legacy(result));
         const {target: resolvedTarget, costModelId, sessionId, ...rest} = result;
         return ok(JulcRuntime.legacy(rest));
       } catch (error) {
