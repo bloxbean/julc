@@ -1,4 +1,4 @@
-// Types of the UPLC tools API (/api/uplc/*). They mirror julc-playground-core's MockTransaction and UplcModels.
+// Types of the REST UPLC tools API (/api/uplc/*). They mirror julc-tools' MockTransaction and UplcModels.
 
 export type DataFormat = 'auto' | 'uplc' | 'json' | 'cbor';
 export interface DataInput { format: DataFormat; value: string }

@@ -28,7 +28,11 @@ const REQUEST_TIMEOUT_MS = 30_000;
 const LOAD_TIMEOUT_MS = 120_000;
 // The engine files are content-addressed (see wasmBundle); the version is fixed when the frontend is built.
 const WASM_ENGINE = __JULC_WASM_ENGINE__;
-const WORKER_URL = `${import.meta.env.BASE_URL}wasm/playground-worker.js?engine=${encodeURIComponent(WASM_ENGINE)}`;
+const ENGINE_BASE = new URL(`${import.meta.env.BASE_URL}wasm/`, location.href);
+interface EngineClient {
+  rest(method: string, path: string, body: string | null): Promise<{status: number; body: unknown}>;
+  dispose(): void;
+}
 
 const REASONS: Record<number, string> = { 400: 'Bad Request', 404: 'Not Found', 408: 'Request Timeout', 422: 'Unprocessable Entity', 500: 'Internal Server Error' };
 
@@ -57,8 +61,8 @@ function response(status: number, body: unknown, statusText?: string): Transport
  * server's 30 s limit terminates the worker (it restarts on the next request).
  */
 class WasmTransport implements Transport {
-  private worker: Worker | null = null;
-  private ready: Promise<Worker> | null = null;
+  private worker: EngineClient | null = null;
+  private ready: Promise<EngineClient> | null = null;
   private queue: Pending[] = [];
   private inFlight: Pending | null = null;
   private timer: ReturnType<typeof setTimeout> | undefined;
@@ -92,7 +96,7 @@ class WasmTransport implements Transport {
     });
   }
 
-  private start(): Promise<Worker> {
+  private start(): Promise<EngineClient> {
     if (this.ready) return this.ready;
     wasmStatus.set('loading');
     wasmError.set(null);
@@ -102,37 +106,29 @@ class WasmTransport implements Transport {
       wasmStatus.set('error');
       return Promise.reject(new Error(message));
     }
-    this.ready = new Promise<Worker>((resolve, reject) => {
-      const worker = new Worker(WORKER_URL);
-      const loadTimer = setTimeout(() => fail(`timed out after ${LOAD_TIMEOUT_MS / 1000} s`), LOAD_TIMEOUT_MS);
-      const fail = (message: string) => {
-        clearTimeout(loadTimer);
-        worker.terminate();
+    this.ready = (async () => {
+      try {
+        const sdkUrl = new URL('julc-wasm.js?engine=' + encodeURIComponent(WASM_ENGINE), ENGINE_BASE).href;
+        const [{createJulc}, manifest, catalogue] = await Promise.all([
+          import(/* @vite-ignore */ sdkUrl),
+          fetch(new URL('engine.json?engine=' + encodeURIComponent(WASM_ENGINE), ENGINE_BASE)).then(r => r.json()),
+          fetch(new URL('catalogue.json?engine=' + encodeURIComponent(WASM_ENGINE), ENGINE_BASE)).then(r => r.json()),
+        ]);
+        if (manifest.version !== WASM_ENGINE) throw new Error('Engine version does not match this frontend; reload the page');
+        const client = await createJulc({baseUrl: ENGINE_BASE, manifest, catalogue,
+          timeoutMs: REQUEST_TIMEOUT_MS, loadTimeoutMs: LOAD_TIMEOUT_MS});
+        this.worker = client;
+        wasmStatus.set('ready');
+        return client as EngineClient;
+      } catch (e) {
         this.worker = null;
         this.ready = null;
-        // Set the message first: status subscribers read it synchronously.
-        wasmError.set(`WebAssembly engine failed to load: ${message}`);
+        const message = 'WebAssembly engine failed to load: ' + String(e);
+        wasmError.set(message);
         wasmStatus.set('error');
-        reject(new Error(`WebAssembly engine failed to load: ${message}`));
-      };
-      worker.onmessage = (event) => {
-        const data = event.data;
-        if (data.type === 'ready') {
-          clearTimeout(loadTimer);
-          this.worker = worker;
-          worker.onmessage = (e) => this.onResponse(e.data);
-          worker.onerror = (e) => this.onCrash(e.message || 'worker error');
-          wasmStatus.set('ready');
-          resolve(worker);
-        } else if (data.type === 'error') {
-          fail(data.message);
-        }
-      };
-      worker.onerror = (e) => {
-        e.preventDefault();
-        fail(e.message || `could not start ${WORKER_URL}`);
-      };
-    });
+        throw new Error(message);
+      }
+    })();
     return this.ready;
   }
 
@@ -140,7 +136,7 @@ class WasmTransport implements Transport {
     if (this.inFlight || this.queue.length === 0) return;
     const next = this.queue.shift()!;
     this.inFlight = next;
-    let worker: Worker;
+    let worker: EngineClient;
     try {
       worker = await this.start();
     } catch (e) {
@@ -155,7 +151,13 @@ class WasmTransport implements Transport {
       return;
     }
     this.timer = setTimeout(() => this.onTimeout(), REQUEST_TIMEOUT_MS);
-    worker.postMessage({ id: next.id, method: next.method, path: next.path, body: next.body });
+    worker.rest(next.method, next.path, next.body).then(envelope =>
+      this.onResponse({id: next.id, response: JSON.stringify(envelope)})
+    ).catch((error: {status?: number; message?: string}) => {
+      if (this.inFlight?.id !== next.id) return;
+      if (error.status === 408) this.onTimeout();
+      else this.onCrash(error.message || String(error));
+    });
   }
 
   private onResponse(data: { id: number; response?: string; error?: string }) {
@@ -195,7 +197,7 @@ class WasmTransport implements Transport {
 
   private restart() {
     clearTimeout(this.timer);
-    this.worker?.terminate();
+    this.worker?.dispose();
     this.worker = null;
     this.ready = null;
     this.inFlight = null;

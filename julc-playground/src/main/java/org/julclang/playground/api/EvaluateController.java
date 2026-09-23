@@ -1,12 +1,14 @@
 package org.julclang.playground.api;
 
+import org.julclang.tools.api.InputValidator;
+
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.LibrarySource;
-import org.julclang.playground.model.DiagnosticDto;
-import org.julclang.playground.model.EvaluateRequest;
-import org.julclang.playground.model.EvaluateResponse;
+import org.julclang.tools.model.DiagnosticDto;
+import org.julclang.tools.model.EvaluateRequest;
+import org.julclang.tools.model.EvaluateResponse;
 import org.julclang.playground.sandbox.CompilationSandbox;
-import org.julclang.playground.service.PlaygroundService;
+import org.julclang.tools.service.ToolsService;
 import org.julclang.vm.JulcVm;
 import io.javalin.http.Context;
 import org.slf4j.Logger;
@@ -22,17 +24,17 @@ public class EvaluateController {
 
     private static final Logger log = LoggerFactory.getLogger(EvaluateController.class);
 
-    private final PlaygroundService service;
+    private final ToolsService service;
     private final CompilationSandbox sandbox;
 
     public EvaluateController(JulcCompiler julcCompiler, CompilationSandbox sandbox, Map<String, LibrarySource> cachedLibSources) {
-        this.service = new PlaygroundService(julcCompiler, cachedLibSources, JulcVm::create);
+        this.service = new ToolsService(julcCompiler, cachedLibSources, JulcVm::create);
         this.sandbox = sandbox;
     }
 
     public void handle(Context ctx) {
         var req = ctx.bodyAsClass(EvaluateRequest.class);
-        var invalid = PlaygroundService.validateEvaluate(req);
+        var invalid = ToolsService.validateEvaluate(req);
         if (invalid != null) {
             ctx.status(invalid.status()).json(invalid.body());
             return;

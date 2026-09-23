@@ -332,6 +332,7 @@ compatibility cross-check. See
 ## Requirements
 
 - **Java 25+**
+- **Node.js 22+** when building/testing this repository (JavaScript codec tests; no Cardano node required)
 - **Gradle 9+**
 
 ## Documentation

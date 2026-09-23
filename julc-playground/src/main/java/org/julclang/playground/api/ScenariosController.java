@@ -1,6 +1,8 @@
 package org.julclang.playground.api;
 
-import org.julclang.playground.service.PlaygroundService;
+import org.julclang.playground.scenario.ScenarioRegistry;
+
+import org.julclang.tools.service.ToolsService;
 import io.javalin.http.Context;
 
 /**
@@ -9,7 +11,7 @@ import io.javalin.http.Context;
 public class ScenariosController {
 
     public void handle(Context ctx) {
-        var result = PlaygroundService.scenarios(ctx.pathParam("purpose"));
+        var result = ScenarioRegistry.scenarios(ctx.pathParam("purpose"));
         ctx.status(result.status()).json(result.body());
     }
 }

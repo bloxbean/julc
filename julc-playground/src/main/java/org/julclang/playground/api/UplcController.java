@@ -1,16 +1,16 @@
 package org.julclang.playground.api;
 
-import org.julclang.playground.model.UplcModels.DebugRequest;
-import org.julclang.playground.model.UplcModels.DebugResponse;
-import org.julclang.playground.model.UplcModels.DecodeRequest;
-import org.julclang.playground.model.UplcModels.DecodeResponse;
-import org.julclang.playground.model.UplcModels.DecompileRequest;
-import org.julclang.playground.model.UplcModels.DecompileResponse;
-import org.julclang.playground.model.UplcModels.EvaluateRequest;
-import org.julclang.playground.model.UplcModels.EvaluateResponse;
+import org.julclang.tools.model.UplcModels.DebugRequest;
+import org.julclang.tools.model.UplcModels.DebugResponse;
+import org.julclang.tools.model.UplcModels.DecodeRequest;
+import org.julclang.tools.model.UplcModels.DecodeResponse;
+import org.julclang.tools.model.UplcModels.DecompileRequest;
+import org.julclang.tools.model.UplcModels.DecompileResponse;
+import org.julclang.tools.model.UplcModels.EvaluateRequest;
+import org.julclang.tools.model.UplcModels.EvaluateResponse;
 import org.julclang.playground.sandbox.CompilationSandbox;
-import org.julclang.playground.service.ServiceResult;
-import org.julclang.playground.uplc.UplcToolsService;
+import org.julclang.tools.service.ServiceResult;
+import org.julclang.tools.uplc.UplcToolsService;
 import io.javalin.http.Context;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
