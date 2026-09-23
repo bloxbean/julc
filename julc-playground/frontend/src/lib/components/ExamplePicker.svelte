@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onDestroy } from 'svelte';
   import { api, type ExampleItem } from '../api/client';
+  import { engine } from '../stores/engine';
 
   export let onSelect: (source: string) => void;
 
@@ -8,14 +9,19 @@
   let selected = '';
   let loadError = false;
 
-  onMount(async () => {
+  async function loadExamples() {
+    loadError = false;
     try {
       allExamples = await api.examples();
     } catch {
       allExamples = [];
       loadError = true;
     }
-  });
+  }
+
+  // Load on mount and again whenever the engine changes.
+  const unsubEngine = engine.subscribe(() => loadExamples());
+  onDestroy(unsubEngine);
 
   async function handleChange() {
     if (!selected) return;

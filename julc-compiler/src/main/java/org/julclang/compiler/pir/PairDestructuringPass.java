@@ -2,6 +2,7 @@ package org.julclang.compiler.pir;
 
 import org.julclang.compiler.CompilationContext;
 import org.julclang.compiler.CompilerTarget;
+import org.julclang.compiler.debug.PirDebugProvenance;
 import org.julclang.core.DefaultFun;
 import org.julclang.core.source.SourceLocation;
 import org.julclang.vm.ProtocolCapability;
@@ -21,9 +22,16 @@ public final class PairDestructuringPass {
     private final IdentityHashMap<PirTerm, SourceLocation> positions = new IdentityHashMap<>();
     private final Set<String> names = new HashSet<>();
     private int nextName;
+    private final PirDebugProvenance debugProvenance;
 
     public PairDestructuringPass(CompilationContext context, Map<PirTerm, SourceLocation> positions) {
+        this(context, positions, null);
+    }
+
+    public PairDestructuringPass(CompilationContext context, Map<PirTerm, SourceLocation> positions,
+                                 PirDebugProvenance debugProvenance) {
         this.context = context;
+        this.debugProvenance = debugProvenance;
         if (positions != null) this.positions.putAll(positions);
     }
 
@@ -137,6 +145,7 @@ public final class PairDestructuringPass {
         if (original.equals(replacement)) return original;
         var location = positions.get(original);
         if (location != null) positions.put(replacement, location);
+        if (debugProvenance != null) debugProvenance.transfer(original, replacement, "pv11.o4.case-pair");
         return replacement;
     }
 

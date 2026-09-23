@@ -71,9 +71,43 @@ public class JavaVmProvider implements JulcVmProvider {
         return evaluateInternal(applyArgs(program, args), target, budget, options);
     }
 
+    /**
+     * Start a stepwise evaluation of a program applied to arguments, for debuggers and tools that inspect the CEK
+     * machine between transitions. It uses the same protocol profile, validation, cost model and result mapping as
+     * {@link #evaluateWithArgs(Program, LedgerEvaluationTarget, List, ExBudget, EvalOptions)}, so stepping to the end
+     * produces the same {@link EvalResult}.
+     */
+    public SteppingEvaluation startStepping(Program program, LedgerEvaluationTarget target,
+                                            List<PlutusData> args, ExBudget budget, EvalOptions options) {
+        Program applied = applyArgs(program, args);
+        var prepared = prepare(applied, target, budget, options);
+        if (prepared.failure() != null) {
+            return SteppingEvaluation.finished(prepared.failure());
+        }
+        return SteppingEvaluation.start(prepared.machine(), prepared.costTracker(), applied.term());
+    }
+
     private EvalResult evaluateInternal(Program program, LedgerEvaluationTarget target,
                                         ExBudget budget,
                                         EvalOptions options) {
+        var prepared = prepare(program, target, budget, options);
+        if (prepared.failure() != null) {
+            return prepared.failure();
+        }
+        var costTracker = prepared.costTracker();
+        var machine = prepared.machine();
+        try {
+            CekValue result = machine.evaluate(program.term());
+            return successOf(result, costTracker, machine);
+        } catch (Exception e) {
+            return failureOf(e, costTracker, machine);
+        }
+    }
+
+    private record Prepared(CostTracker costTracker, CekMachine machine, EvalResult failure) {}
+
+    private Prepared prepare(Program program, LedgerEvaluationTarget target, ExBudget budget,
+                             EvalOptions options) {
         ProtocolFeatureProfile profile;
         ConfiguredCostModel configured;
         try {
@@ -87,7 +121,7 @@ public class JavaVmProvider implements JulcVmProvider {
                                 + " but evaluation requested " + target);
             }
         } catch (RuntimeException e) {
-            return new EvalResult.Failure(messageOf(e), ExBudget.ZERO, List.of());
+            return new Prepared(null, null, new EvalResult.Failure(messageOf(e), ExBudget.ZERO, List.of()));
         }
 
         MachineCosts mc;
@@ -102,22 +136,28 @@ public class JavaVmProvider implements JulcVmProvider {
         var costTracker = new CostTracker(mc, bcm, profile, budget);
         var machine = new CekMachine(costTracker, profile,
                 options.sourceMap(), options.tracingEnabled(), options.builtinTraceEnabled());
-        try {
-            CekValue result = machine.evaluate(program.term());
-            Term resultTerm = ValueConverter.toTerm(result);
-            return new EvalResult.Success(resultTerm, costTracker.consumed(), machine.getTraces(),
-                    machine.getExecutionTrace(), machine.getBuiltinTrace());
-        } catch (BudgetExhaustedException e) {
+        return new Prepared(costTracker, machine, null);
+    }
+
+    static EvalResult successOf(CekValue result, CostTracker costTracker, CekMachine machine) {
+        Term resultTerm = ValueConverter.toTerm(result);
+        return new EvalResult.Success(resultTerm, costTracker.consumed(), machine.getTraces(),
+                machine.getExecutionTrace(), machine.getBuiltinTrace());
+    }
+
+    static EvalResult failureOf(Exception e, CostTracker costTracker, CekMachine machine) {
+        if (e instanceof BudgetExhaustedException budget) {
             return new EvalResult.BudgetExhausted(costTracker.consumed(), machine.getTraces(),
-                    e.failedTerm(), machine.getExecutionTrace(), machine.getBuiltinTrace());
-        } catch (CekEvaluationException e) {
-            String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
-            return new EvalResult.Failure(errorMsg, costTracker.consumed(), machine.getTraces(),
-                    e.failedTerm(), machine.getExecutionTrace(), machine.getBuiltinTrace());
-        } catch (Exception e) {
-            return new EvalResult.Failure(messageOf(e), costTracker.consumed(), machine.getTraces(),
-                    null, machine.getExecutionTrace(), machine.getBuiltinTrace());
+                    budget.failedTerm(), machine.getExecutionTrace(), machine.getBuiltinTrace());
         }
+        if (e instanceof CekEvaluationException evaluation) {
+            String errorMsg = evaluation.getMessage() != null
+                    ? evaluation.getMessage() : evaluation.getClass().getSimpleName();
+            return new EvalResult.Failure(errorMsg, costTracker.consumed(), machine.getTraces(),
+                    evaluation.failedTerm(), machine.getExecutionTrace(), machine.getBuiltinTrace());
+        }
+        return new EvalResult.Failure(messageOf(e), costTracker.consumed(), machine.getTraces(),
+                null, machine.getExecutionTrace(), machine.getBuiltinTrace());
     }
 
     /**

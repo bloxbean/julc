@@ -2,6 +2,7 @@ package org.julclang.compiler.pir;
 
 import org.julclang.compiler.CompilationContext;
 import org.julclang.compiler.CompilerTarget;
+import org.julclang.compiler.debug.PirDebugProvenance;
 import org.julclang.core.BuiltinSemantics;
 import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
@@ -135,9 +136,16 @@ public final class ValueConversionSharingPass {
     private boolean changed;
     private boolean valueApplied;
     private boolean projectionApplied;
+    private final PirDebugProvenance debugProvenance;
 
     public ValueConversionSharingPass(CompilationContext context, Map<PirTerm, SourceLocation> positions) {
+        this(context, positions, null);
+    }
+
+    public ValueConversionSharingPass(CompilationContext context, Map<PirTerm, SourceLocation> positions,
+                                      PirDebugProvenance debugProvenance) {
         this.context = context;
+        this.debugProvenance = debugProvenance;
         if (positions != null) this.positions.putAll(positions);
     }
 
@@ -555,6 +563,7 @@ public final class ValueConversionSharingPass {
         if (original.equals(replacement)) return original;
         var location = positions.get(original);
         if (location != null) positions.put(replacement, location);
+        if (debugProvenance != null) debugProvenance.transfer(original, replacement, RULE);
         return replacement;
     }
 }

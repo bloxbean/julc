@@ -2,6 +2,7 @@ package org.julclang.compiler.pir;
 
 import org.julclang.compiler.CompilationContext;
 import org.julclang.compiler.CompilerTarget;
+import org.julclang.compiler.debug.PirDebugProvenance;
 import org.julclang.core.DefaultFun;
 import org.julclang.core.source.SourceLocation;
 import org.julclang.vm.ProtocolCapability;
@@ -67,9 +68,16 @@ public final class ListIndexPromotionPass {
     private boolean applied;
     private boolean analysing;
     private boolean refuted;
+    private final PirDebugProvenance debugProvenance;
 
     public ListIndexPromotionPass(CompilationContext context, Map<PirTerm, SourceLocation> positions) {
+        this(context, positions, null);
+    }
+
+    public ListIndexPromotionPass(CompilationContext context, Map<PirTerm, SourceLocation> positions,
+                                  PirDebugProvenance debugProvenance) {
         this.context = context;
+        this.debugProvenance = debugProvenance;
         if (positions != null) this.positions.putAll(positions);
     }
 
@@ -774,6 +782,7 @@ public final class ListIndexPromotionPass {
         if (original.equals(replacement)) return original;
         var location = positions.get(original);
         if (location != null) positions.put(replacement, location);
+        if (debugProvenance != null) debugProvenance.transfer(original, replacement, RULE);
         return replacement;
     }
 }

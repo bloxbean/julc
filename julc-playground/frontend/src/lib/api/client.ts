@@ -1,22 +1,19 @@
-const BASE = import.meta.env.VITE_API_URL || '';
+import { currentTransport, type Transport } from './transport';
 
-async function post<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-    signal,
-  });
+// Requests go to the selected engine (REST server or in-browser WebAssembly); both use the same statuses and JSON.
+export async function post<T>(path: string, body: unknown, signal?: AbortSignal,
+                              transport: Transport = currentTransport()): Promise<T> {
+  const res = await transport.request('POST', path, body, signal);
   if (res.status === 408) throw new Error('Request timed out. Please try with simpler code.');
   if (res.status === 429) throw new Error('Rate limit exceeded. Please slow down.');
-  if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-  return res.json();
+  if (res.status < 200 || res.status > 299) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+  return res.json() as Promise<T>;
 }
 
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`);
-  if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-  return res.json();
+  const res = await currentTransport().request('GET', path);
+  if (res.status < 200 || res.status > 299) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+  return res.json() as Promise<T>;
 }
 
 export interface Diagnostic {

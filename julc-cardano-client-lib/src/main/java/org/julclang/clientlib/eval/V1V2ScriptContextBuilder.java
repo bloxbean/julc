@@ -26,9 +26,21 @@ import java.util.List;
  *   <li>Certifying(cert) = Constr 3 [cert] (no index, unlike V3)</li>
  * </ul>
  */
-final class V1V2ScriptContextBuilder {
+public final class V1V2ScriptContextBuilder {
 
     private V1V2ScriptContextBuilder() {}
+
+    /**
+     * Build a V1 or V2 ScriptContext as raw PlutusData from a V3 {@link TxInfo}.
+     *
+     * @param language PLUTUS_V1 or PLUTUS_V2
+     * @param txInfo   the V3 TxInfo (fields will be down-converted)
+     * @param purpose  the V3 ScriptPurpose (Voting and Proposing do not exist before V3)
+     * @return the script context as PlutusData
+     */
+    public static PlutusData build(PlutusLanguage language, TxInfo txInfo, ScriptPurpose purpose) {
+        return build(language, txInfo, purpose, null);
+    }
 
     /**
      * Build a V1 or V2 ScriptContext as raw PlutusData.

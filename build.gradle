@@ -44,7 +44,7 @@ nmcpAggregation {
 // Modules that are applications, test harnesses or aggregators rather than
 // published libraries. Declared here, not inside `subprojects`, because the
 // Central deployment scope below is derived from it.
-def nonPublishable = ['julc-examples', 'julc-e2e-tests', 'julc-plugin-test', 'julc-analyzer-cli', 'julc-benchmark', 'julc-cli', 'julc-playground', 'julc-jrl']
+def nonPublishable = ['julc-examples', 'julc-e2e-tests', 'julc-plugin-test', 'julc-analyzer-cli', 'julc-benchmark', 'julc-cli', 'julc-playground', 'julc-tools', 'julc-wasm', 'julc-jrl']
 
 subprojects {
     def commit_id = getCheckedOutGitCommitHash()

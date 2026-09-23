@@ -1,7 +1,7 @@
 # ADR-046: Typed array literals and literal folding (O10)
 
 **Date:** 2026-09-14
-**Status:** Implemented and locally validated on `feat/116-array-literals` (PR #149 against `main`, rebased by merge after ADR-045 merged; the corrected call-site objective of ADR-045's second review applies to this domain through `LiteralFoldPass`: `LOCAL_LIST` no longer folds, `LOCAL_LIST_ONCE` added); two independent agent reviews and the maintainer's review of the merged head applied (`var` element-type inference with `JULC0012` for mixed elements; structural measure of list literals); merge pending
+**Status:** Merged in PR #149; Array-constant node acceptance and pinned-budget regressions recorded in ADR-052 evidence. The reviewed call-site objective remains `LOCAL_LIST_ONCE`, not `LOCAL_LIST`.
 **Issues:** [#116](https://github.com/bloxbean/julc/issues/116) (O10), research decision [#106](https://github.com/bloxbean/julc/issues/106), parent [#77](https://github.com/bloxbean/julc/issues/77)
 **Governing decisions:** ADR-032 O10 (array constant folding, "static-cost" class, out-of-range indexes stay runtime failures, no fold beyond the size objective), ADR-043 (`JulcArray`'s element representation and the `IndexArray` failure contract), ADR-045 (the literal-fold machinery, its objective and additivity), ADR-036 (pass placement before UPLC generation), ADR-015 (strict typed boundaries)
 
@@ -232,9 +232,10 @@ with the rule enabled the evidence document's repository-validation section reco
   `LiteralFoldPass` (abstract; `ValueLiteralFoldPass.RULE` unchanged); additive.
 - **Scalus.** Decodes array constants from FLAT and agrees with Java and Truffle on results,
   budgets and failure outcomes for every fixture.
-- **On-chain.** No artifact with an embedded array constant has been submitted to a node in
-  this repository yet; the pre-release on-chain gate should include one (with ADR-045's Value
-  constant).
+- **On-chain.** Safe/costed embedded Array constants with runtime indexing have been
+  evaluated by Java, backend and direct Haskell and confirmed on the developer PV11 node,
+  with a baseline list-to-array control. Bounds failures, hash/size/budget pins and
+  transaction evidence are recorded in [ADR-052 evidence](evidence/052-pre17-release-gates.md).
 
 ## Measurements
 

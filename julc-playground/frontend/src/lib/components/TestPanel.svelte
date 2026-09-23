@@ -5,6 +5,7 @@
     purpose, evalResult, isEvaluating, contractName, librarySource
   } from '../stores/editor';
   import { api, type ScenarioItem } from '../api/client';
+  import { engine } from '../stores/engine';
   import BudgetMeter from './BudgetMeter.svelte';
 
   let paramValues: Record<string, string> = {};
@@ -18,9 +19,9 @@
   let scenarios: ScenarioItem[] = [];
   let selectedScenario = '';
 
-  // React to purpose changes
+  // React to purpose (and engine) changes
   $: if ($purpose) {
-    loadScenarios($purpose);
+    loadScenarios($purpose, $engine);
   }
 
   // Reset form when contract changes
@@ -37,7 +38,7 @@
 
   let scenarioError = false;
 
-  async function loadScenarios(p: string) {
+  async function loadScenarios(p: string, _engine?: string) {
     scenarioError = false;
     try {
       const res = await api.scenarios(p);

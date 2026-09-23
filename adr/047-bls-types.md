@@ -1,7 +1,7 @@
 # ADR-047: Typed BLS12-381 values, native scalar and point lists, and explicit multi-scalar multiplication (O11)
 
 **Date:** 2026-09-14
-**Status:** Implemented and locally validated on `feat/117-bls-types` (stacked on ADR-046's `feat/116-array-literals`); independent agent reviews applied; maintainer review pending
+**Status:** Merged in PR #150; G1/G2 native point-list constant and MSM node acceptance and pinned-budget regressions recorded in ADR-052 evidence
 **Issues:** [#117](https://github.com/bloxbean/julc/issues/117) (O11), research decision [#96](https://github.com/bloxbean/julc/issues/96), parent [#77](https://github.com/bloxbean/julc/issues/77)
 **Governing decisions:** ADR-032 O11 (a typed BLS API before any fusion; never fuse over `byte[]`/`PlutusData`), the O11 deferral evidence (`adr/evidence/032-o11-bls-msm-deferral.md`), ADR-032 O7 (the opaque native-type discipline this ADR reuses), ADR-045/046 (intrinsic producers keep library bindings additive)
 
@@ -248,8 +248,11 @@ programs importing `BlsLib` are unchanged.
   `JulcValue`) and its result is a native constant the VM returns; the testkit's Java-value
   extraction does not know these constants. Validators return `boolean`, so this is a
   test-harness matter only.
-- **On-chain.** No artifact with a BLS constant or an MSM call has been submitted to a node
-  in this repository yet; the pre-release on-chain gate should include one.
+- **On-chain.** G1/G2 MSM artifacts using source-lowered empty typed native point-list
+  constants have been evaluated by Java, backend and direct Haskell and confirmed on the
+  developer PV11 node at baseline, safe and costed levels. These do not claim individual
+  embedded point literals. Scalar failures, hash/size/budget pins and transaction evidence
+  are recorded in [ADR-052 evidence](evidence/052-pre17-release-gates.md).
 
 ## Measurements
 

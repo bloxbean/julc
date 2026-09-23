@@ -6,6 +6,7 @@ import org.julclang.compiler.CompilerTargetDiagnostics;
 import org.julclang.compiler.LoweringRequirements;
 import org.julclang.compiler.desugar.LoopDesugarer;
 import org.julclang.compiler.desugar.PatternMatchDesugarer;
+import org.julclang.compiler.debug.DebugMetadataCollector;
 import org.julclang.compiler.error.CompilerDiagnostic;
 import org.julclang.compiler.resolve.SymbolTable;
 import org.julclang.compiler.resolve.TypeResolver;
@@ -43,6 +44,7 @@ public class PirGenerator {
     private final LoopBodyGenerator loopBody;
     private final String libraryClassName; // non-null when compiling library class methods
     private final CompilationContext context;
+    private final DebugMetadataCollector debugMetadata;
     private final List<CompilerDiagnostic> collectedErrors = new ArrayList<>();
     private final LoopDesugarer loopDesugarer;
     private int ifJoinCounter;
@@ -108,12 +110,20 @@ public class PirGenerator {
     private PirGenerator(TypeResolver typeResolver, SymbolTable symbolTable,
                          StdlibLookup stdlibLookup, TypeMethodRegistry typeMethodRegistry,
                          String libraryClassName, CompilationContext context) {
+        this(typeResolver, symbolTable, stdlibLookup, typeMethodRegistry, libraryClassName, context, null);
+    }
+
+    private PirGenerator(TypeResolver typeResolver, SymbolTable symbolTable,
+                         StdlibLookup stdlibLookup, TypeMethodRegistry typeMethodRegistry,
+                         String libraryClassName, CompilationContext context,
+                         DebugMetadataCollector debugMetadata) {
         this.typeResolver = typeResolver;
         this.symbolTable = symbolTable;
         this.stdlibLookup = stdlibLookup;
         this.typeMethodRegistry = typeMethodRegistry;
         this.libraryClassName = libraryClassName;
         this.context = Objects.requireNonNull(context, "context");
+        this.debugMetadata = debugMetadata;
         this.loopDesugarer = new LoopDesugarer(
                 context.target().equals(CompilerTarget.PLUTUS_V3_PV11)
                         && context.optimizationLevel().pv11SafeRulesEnabled()
@@ -133,6 +143,19 @@ public class PirGenerator {
         return new PirGenerator(
                 typeResolver, symbolTable, stdlibLookup, typeMethodRegistry,
                 libraryClassName, context);
+    }
+
+    /** Create the opt-in generator that records declaration-to-PIR binder identities. */
+    public static PirGenerator forDebugCompilation(
+            TypeResolver typeResolver,
+            SymbolTable symbolTable,
+            StdlibLookup stdlibLookup,
+            TypeMethodRegistry typeMethodRegistry,
+            String libraryClassName,
+            CompilationContext context,
+            DebugMetadataCollector debugMetadata) {
+        return new PirGenerator(typeResolver, symbolTable, stdlibLookup, typeMethodRegistry,
+                libraryClassName, context, Objects.requireNonNull(debugMetadata, "debugMetadata"));
     }
 
     /**
@@ -363,7 +386,9 @@ public class PirGenerator {
         for (int i = params.size() - 1; i >= 0; i--) {
             var param = params.get(i);
             var pirType = typeResolver.resolve(param.getType());
-            result = new PirTerm.Lam(param.getNameAsString(), pirType, result);
+            var lambda = new PirTerm.Lam(param.getNameAsString(), pirType, result);
+            if (debugMetadata != null) debugMetadata.associate(param, lambda, pirType);
+            result = lambda;
         }
         recordPosition(result, method);
         return result;
@@ -422,7 +447,9 @@ public class PirGenerator {
                 checkNativeInitializer(name, initExpr, value, pirType);
                 symbolTable.define(name, pirType);
                 var body = generateStatements(stmts, index + 1, cont);
-                return new PirTerm.Let(name, value, body);
+                var let = new PirTerm.Let(name, value, body);
+                if (debugMetadata != null) debugMetadata.associate(decl, let, pirType);
+                return let;
             }
             // Non-declaration expression statement: evaluate and continue (an assignment is
             // rejected by generateExpression: the loop body generators bind every supported one)
@@ -2334,7 +2361,9 @@ public class PirGenerator {
         for (int i = params.size() - 1; i >= 0; i--) {
             var param = params.get(i);
             var pirType = typeResolver.resolve(param.getType());
-            result = new PirTerm.Lam(param.getNameAsString(), pirType, result);
+            var lambda = new PirTerm.Lam(param.getNameAsString(), pirType, result);
+            if (debugMetadata != null) debugMetadata.associate(param, lambda, pirType);
+            result = lambda;
         }
 
         // Zero-parameter lambda: \_ -> body
@@ -2449,7 +2478,16 @@ public class PirGenerator {
         for (int i = params.size() - 1; i >= 0; i--) {
             var param = params.get(i);
             var lamType = needsUnwrap.get(i) ? new PirType.DataType() : resolvedTypes.get(i);
-            result = new PirTerm.Lam(param.getNameAsString(), lamType, result);
+            var lambda = new PirTerm.Lam(param.getNameAsString(), lamType, result);
+            // Inferred primitive HOF parameters are only Java-visible after the generated decode Let.
+            // Until that inner binder is separately proven, keep them explicitly unsupported.
+            if (debugMetadata != null && !needsUnwrap.get(i)) {
+                debugMetadata.associate(param, lambda, resolvedTypes.get(i));
+            } else if (debugMetadata != null) {
+                debugMetadata.markUnsupported(param,
+                        "generated HOF parameter decoding is not identity-proven");
+            }
+            result = lambda;
         }
 
         if (params.isEmpty()) {

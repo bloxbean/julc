@@ -12,7 +12,10 @@ Java frontend provide two consumers for a shared pipeline.
 ## Decision and affected stages
 
 Extract `PirBackend` inside `julc-compiler`. Preserve `JulcCompiler` public APIs,
-metadata, pass order, logging and source-map behavior. Add `FrontendProgram` and
+metadata, pass order, logging, source-map behavior and Java-locals debug provenance
+(ADR-058): the debug compile threads its provenance through the same passes and
+receives the generator's exact binder and position bookkeeping; neutral producers
+supply none. Add `FrontendProgram` and
 `CompilerBackend` for specialized, closed, unwrapped PIR with explicit FUNCTION,
 SPEND and MINT profiles. No Java AST crosses this entrypoint.
 

@@ -1,7 +1,9 @@
 package org.julclang.playground.api;
 
-import org.julclang.playground.model.CheckRequest;
-import org.julclang.playground.model.CheckResponse;
+import org.julclang.tools.api.InputValidator;
+
+import org.julclang.tools.model.CheckRequest;
+import org.julclang.tools.model.CheckResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.javalin.Javalin;
 import io.javalin.testtools.JavalinTest;

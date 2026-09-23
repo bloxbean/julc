@@ -37,7 +37,12 @@ public sealed interface CekFrame {
      */
     record ConstrFrame(long tag, List<CekValue> evaluatedFields,
                        List<org.julclang.core.Term> remainingTerms,
-                       CekEnvironment env) implements CekFrame {}
+                       CekEnvironment env) implements CekFrame {
+        public ConstrFrame {
+            evaluatedFields = List.copyOf(evaluatedFields);
+            remainingTerms = List.copyOf(remainingTerms);
+        }
+    }
 
     /**
      * Case expression — waiting for scrutinee to evaluate to a Constr.
@@ -46,5 +51,9 @@ public sealed interface CekFrame {
      * @param env      the environment for the branches
      */
     record CaseFrame(List<org.julclang.core.Term> branches,
-                     CekEnvironment env) implements CekFrame {}
+                     CekEnvironment env) implements CekFrame {
+        public CaseFrame {
+            branches = List.copyOf(branches);
+        }
+    }
 }

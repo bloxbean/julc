@@ -22,6 +22,11 @@ jobs:
         java-version: '25'
         distribution: 'temurin'
 
+    - name: Set up Node.js for JavaScript codec tests
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v4
 

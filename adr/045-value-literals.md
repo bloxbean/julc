@@ -1,7 +1,7 @@
 # ADR-045: Typed native Value literals and literal folding (O14)
 
 **Date:** 2026-09-13
-**Status:** Implemented and locally validated on `feat/119-value-literals` (PR #148 against `main` since ADR-044 merged); three independent reviews applied (the wrapper argument hole and the objective's measure of a shared literal local fixed); maintainer merge pending
+**Status:** Merged in PR #148; Value-constant node acceptance and pinned-budget regressions recorded in ADR-052 evidence
 **Issues:** [#119](https://github.com/bloxbean/julc/issues/119) (O14), research decision [#108](https://github.com/bloxbean/julc/issues/108), parent [#77](https://github.com/bloxbean/julc/issues/77)
 **Governing decisions:** ADR-032 O7/O14 (typed native Value boundary, literal folding without algebraic identities), ADR-042/044 (PIR-to-PIR rule placement, per-rule switches), ADR-036 (pass placement before UPLC generation), ADR-015 (strict typed boundaries)
 
@@ -227,8 +227,10 @@ evidence document's repository-validation section).
 - **Scalus.** Scalus decodes Value constants from FLAT and agrees with Java and Truffle on
   results and budgets for every fixture; the encoding is also pinned by the FLAT round trip
   and the conformance vectors that spell Value constants in program text.
-- **On-chain.** No artifact with an embedded Value constant has been submitted to a node in
-  this repository yet; the pre-release on-chain gate should include one.
+- **On-chain.** Embedded Value constants have been evaluated by Java, backend and direct
+  Haskell and confirmed on the developer PV11 node at baseline, safe and costed levels.
+  The safe/costed fixtures require a nonempty folded literal. Hash/size/budget pins and
+  transaction evidence are recorded in [ADR-052 evidence](evidence/052-pre17-release-gates.md).
 
 ## Measurements
 

@@ -1,6 +1,8 @@
 package org.julclang.playground.scenario;
 
 import org.julclang.playground.model.ScenarioDto;
+import org.julclang.playground.model.ScenariosResponse;
+import org.julclang.tools.service.ServiceResult;
 
 import java.util.List;
 import java.util.Map;
@@ -70,5 +72,14 @@ public final class ScenarioRegistry {
 
     public static Map<String, List<ScenarioDto>> getAllScenarios() {
         return SCENARIOS;
+    }
+
+    public static ServiceResult<ScenariosResponse> scenarios(String purpose) {
+        var scenarios = getScenarios(purpose);
+        if (scenarios.isEmpty()) {
+            return ServiceResult.ok(new ScenariosResponse(purpose.toUpperCase(), List.of(),
+                    "No scenario templates available for purpose: " + purpose));
+        }
+        return ServiceResult.ok(new ScenariosResponse(purpose.toUpperCase(), scenarios, null));
     }
 }

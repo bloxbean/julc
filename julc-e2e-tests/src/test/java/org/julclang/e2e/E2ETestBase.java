@@ -1,6 +1,7 @@
 package org.julclang.e2e;
 
 import com.bloxbean.cardano.client.api.model.Result;
+import com.bloxbean.cardano.client.api.model.Utxo;
 import com.bloxbean.cardano.client.backend.api.BackendService;
 import com.bloxbean.cardano.client.backend.blockfrost.service.BFBackendService;
 import com.bloxbean.cardano.client.common.model.Networks;
@@ -20,6 +21,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Base class for E2E integration tests against Yaci Devkit.
@@ -111,6 +113,17 @@ abstract class E2ETestBase {
             Thread.sleep(2000);
         }
         throw new RuntimeException("Transaction not confirmed within timeout: " + txHash);
+    }
+
+    protected Utxo exactUtxo(String address, String hash) throws Exception {
+        for (int attempt = 0; attempt < 10; attempt++) {
+            var result = backendService.getUtxoService().getUtxos(address, 100, 1);
+            assertTrue(result.isSuccessful(), result.getResponse());
+            var match = result.getValue().stream().filter(u -> hash.equals(u.getTxHash())).findFirst();
+            if (match.isPresent()) return match.get();
+            Thread.sleep(1000);
+        }
+        throw new AssertionError("Missing exact script UTXO for " + hash);
     }
 
     private boolean isYaciReachable() {

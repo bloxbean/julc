@@ -3,6 +3,19 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+## Upcoming preview: release regression gates and profile freeze (#121)
+
+The proposed pre17 [hash-stability policy](/reference/hash-stability/) freezes
+existing optimization profiles, with explicit, reviewed exceptions for correctness
+fixes. It distinguishes script-hash changes from network execution-cost changes.
+
+Developer-node gates now support an explicitly configured native Haskell CLI/socket
+as well as an existing DevKit container. New Value/Array and G1/G2 MSM regressions
+pin script hashes, sizes and execution budgets and check confirmed node spends.
+Normal builds run only the offline regressions; node tests remain opt-in.
+This test/documentation change does not alter compiler output or deployed scripts.
+The documentation build dependencies are also updated to resolve known advisories.
+
 ## Upcoming preview: decode boolean and String switch fields (#166)
 
 Switch case-pattern access such as `case Sum s -> s.enabled() ? ONE : ZERO`

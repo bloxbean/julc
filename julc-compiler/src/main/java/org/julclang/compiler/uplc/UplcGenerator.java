@@ -5,6 +5,7 @@ import org.julclang.compiler.CompilerTypeDiagnostics;
 import org.julclang.compiler.CompilationContext;
 import org.julclang.compiler.CompilerTarget;
 import org.julclang.compiler.CompilerTargetDiagnostics;
+import org.julclang.compiler.debug.PirDebugProvenance;
 import org.julclang.compiler.pir.PirSubstitution;
 import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
@@ -44,6 +45,9 @@ public class UplcGenerator {
 
     /** UPLC term → source location (built during generation). */
     private final IdentityHashMap<Term, SourceLocation> uplcPositions = new IdentityHashMap<>();
+    private final IdentityHashMap<Term, SourceLocation> exactUplcPositions = new IdentityHashMap<>();
+    private final IdentityHashMap<Term.Lam, PirDebugProvenance.Association> emittedBinders = new IdentityHashMap<>();
+    private final PirDebugProvenance debugProvenance;
 
     /** Stack of inherited source locations for propagation to inner terms. */
     private final Deque<SourceLocation> locationStack = new ArrayDeque<>();
@@ -65,8 +69,17 @@ public class UplcGenerator {
     public UplcGenerator(
             CompilationContext context,
             Map<PirTerm, SourceLocation> pirPositions) {
+        this(context, pirPositions, null);
+    }
+
+    /** Opt-in lowering with exact Java declaration binder bookkeeping. */
+    public UplcGenerator(
+            CompilationContext context,
+            Map<PirTerm, SourceLocation> pirPositions,
+            PirDebugProvenance debugProvenance) {
         this.context = Objects.requireNonNull(context, "context");
         this.pirPositions = pirPositions != null ? pirPositions : Map.of();
+        this.debugProvenance = debugProvenance;
     }
 
     /**
@@ -77,6 +90,14 @@ public class UplcGenerator {
         return uplcPositions;
     }
 
+    public IdentityHashMap<Term, SourceLocation> getExactUplcPositions() {
+        return new IdentityHashMap<>(exactUplcPositions);
+    }
+
+    public IdentityHashMap<Term.Lam, PirDebugProvenance.Association> getEmittedBinders() {
+        return new IdentityHashMap<>(emittedBinders);
+    }
+
     public Term generate(PirTerm pir) {
         var term = generateCore(pir);
         // Record source position: check if this PIR term has a direct mapping,
@@ -85,6 +106,7 @@ public class UplcGenerator {
             var loc = pirPositions.get(pir);
             if (loc != null) {
                 uplcPositions.put(term, loc);
+                exactUplcPositions.put(term, loc);
             } else if (!locationStack.isEmpty() && !uplcPositions.containsKey(term)) {
                 // Propagate parent location to inner terms that lack their own
                 uplcPositions.put(term, locationStack.peek());
@@ -128,7 +150,9 @@ public class UplcGenerator {
                 scope.push(param);
                 var bodyTerm = generate(body);
                 scope.pop();
-                yield Term.lam(param, bodyTerm);
+                var lambda = new Term.Lam(param, bodyTerm);
+                recordBinder(pir, lambda);
+                yield lambda;
             }
 
             case PirTerm.App(var function, var argument) -> {
@@ -149,7 +173,9 @@ public class UplcGenerator {
                 scope.push(name);
                 var bodyTerm = generate(body);
                 scope.pop();
-                yield Term.apply(Term.lam(name, bodyTerm), valTerm);
+                var lambda = new Term.Lam(name, bodyTerm);
+                recordBinder(pir, lambda);
+                yield Term.apply(lambda, valTerm);
             }
 
             case PirTerm.LetRec letRec -> generateLetRec(letRec);
@@ -594,6 +620,12 @@ public class UplcGenerator {
             index++;
         }
         throw new CompilerException("Unbound variable: " + name);
+    }
+
+    private void recordBinder(PirTerm pir, Term.Lam lambda) {
+        if (debugProvenance == null) return;
+        var association = debugProvenance.association(pir);
+        if (association != null) emittedBinders.put(lambda, association);
     }
 
     /**
