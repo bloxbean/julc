@@ -9,6 +9,7 @@ import com.github.javaparser.ast.expr.*;
 import com.github.javaparser.ast.stmt.*;
 
 import java.util.*;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 
 /**
@@ -32,6 +33,138 @@ final class LoopBodyGenerator {
     }
 
     // ===== AST inspection =====
+
+    /**
+     * #155: an if joins only the loop's accumulators, not its body-local bindings.
+     * Reject updates that would cross such a join, before any PIR is emitted. This is
+     * deliberately conservative: even a dead update or an always-taken branch is rejected.
+     * Bare blocks do not introduce a join. A nested loop owns its own locals; enclosing
+     * locals are its accumulators, but still cannot escape an enclosing if's join.
+     */
+    void validateConditionalLocalUpdates(Statement body, Set<String> locals) {
+        validateConditionalLocalUpdates(body, new HashSet<>(locals), new HashSet<>());
+    }
+
+    private void validateConditionalLocalUpdates(Node stmt, Set<String> locals,
+                                                   Set<String> conditionalLocals) {
+        if (stmt instanceof BlockStmt block) {
+            var blockLocals = new HashSet<>(locals);
+            var blockConditionalLocals = new HashSet<>(conditionalLocals);
+            for (var child : block.getStatements()) {
+                validateConditionalLocalUpdates(child, blockLocals, blockConditionalLocals);
+            }
+        } else if (stmt instanceof ExpressionStmt expression) {
+            validateConditionalLocalUpdates(expression.getExpression(), locals, conditionalLocals);
+        } else if (stmt instanceof VariableDeclarationExpr declaration) {
+            for (var variable : declaration.getVariables()) {
+                variable.getInitializer().ifPresent(initializer ->
+                        validateConditionalLocalUpdates(initializer, locals, conditionalLocals));
+                locals.add(variable.getNameAsString());
+                conditionalLocals.remove(variable.getNameAsString());
+            }
+        } else if (stmt instanceof AssignExpr assignment
+                && assignment.getTarget() instanceof NameExpr name
+                && conditionalLocals.contains(name.getNameAsString())) {
+            throw gen.enrichedError("Conditional update to loop-body local '"
+                            + sourceName(name.getNameAsString()) + "' is not supported",
+                    "An if/else branch carries only loop accumulators out of the branch. "
+                            + "Use a conditional initializer (condition ? value : otherValue), "
+                            + "or declare the variable before the loop so it is an accumulator "
+                            + "(reset it each iteration if needed), or declare it inside the branch "
+                            + "if its value is only needed there.", assignment);
+        } else if (stmt instanceof IfStmt branch) {
+            validateConditionalLocalUpdates(branch.getCondition(), locals, conditionalLocals);
+            var crossingJoin = new HashSet<>(conditionalLocals);
+            crossingJoin.addAll(locals);
+            validateConditionalLocalUpdates(branch.getThenStmt(), new HashSet<>(locals), new HashSet<>(crossingJoin));
+            branch.getElseStmt().ifPresent(other ->
+                    validateConditionalLocalUpdates(other, new HashSet<>(locals), new HashSet<>(crossingJoin)));
+        } else if (stmt instanceof ForEachStmt loop) {
+            validateConditionalLocalUpdates(loop.getIterable(), locals, conditionalLocals);
+            var innerLocals = new HashSet<String>();
+            loop.getVariable().getVariables().forEach(v -> innerLocals.add(v.getNameAsString()));
+            validateConditionalLocalUpdates(loop.getBody(), innerLocals, new HashSet<>(conditionalLocals));
+        } else if (stmt instanceof WhileStmt loop) {
+            validateConditionalLocalUpdates(loop.getCondition(), locals, conditionalLocals);
+            validateConditionalLocalUpdates(loop.getBody(), new HashSet<>(), new HashSet<>(conditionalLocals));
+        } else if (stmt instanceof SwitchExpr expression) {
+            // Arms export only their yielded value, not enclosing bindings. Their ownership
+            // guard runs in generateSwitchExpr; each nested loop validates its own body.
+            // Arm-local ifs use normal continuation lowering, not this loop's joins.
+            validateConditionalLocalUpdates(expression.getSelector(), locals, conditionalLocals);
+        } else if (!(stmt instanceof LambdaExpr)) {
+            // Preserve enclosing restrictions through expressions; siblings do not share locals.
+            for (var child : stmt.getChildNodes()) {
+                validateConditionalLocalUpdates(child, new HashSet<>(locals), new HashSet<>(conditionalLocals));
+            }
+        }
+        // Lambdas have independent scope; their own loops are checked at their lowering entry.
+    }
+
+    /** A switch arm exports only its yielded value, never rebindings of enclosing variables. */
+    void validateSwitchExpressionUpdates(SwitchExpr expression) {
+        for (var entry : expression.getEntries()) {
+            var declaredInArm = new HashSet<String>();
+            for (var label : entry.getLabels()) {
+                label.findAll(TypePatternExpr.class).forEach(pattern -> declaredInArm.add(pattern.getNameAsString()));
+            }
+            var caseBindings = Set.copyOf(declaredInArm);
+            for (var statement : entry.getStatements()) {
+                validateSwitchArmUpdates(statement, declaredInArm, caseBindings);
+            }
+        }
+    }
+
+    private void validateSwitchArmUpdates(Node node, Set<String> declaredInArm, Set<String> caseBindings) {
+        if (node instanceof LambdaExpr) return; // Independent scope; captures are effectively final in Java.
+        if (node instanceof BlockStmt block) {
+            var blockLocals = new HashSet<>(declaredInArm);
+            for (var statement : block.getStatements()) validateSwitchArmUpdates(statement, blockLocals, caseBindings);
+        } else if (node instanceof ExpressionStmt expression) {
+            validateSwitchArmUpdates(expression.getExpression(), declaredInArm, caseBindings);
+        } else if (node instanceof VariableDeclarationExpr declaration) {
+            for (var variable : declaration.getVariables()) {
+                variable.getInitializer().ifPresent(initializer -> validateSwitchArmUpdates(initializer, declaredInArm, caseBindings));
+                declaredInArm.add(variable.getNameAsString());
+            }
+        } else if (node instanceof AssignExpr assignment && assignment.getTarget() instanceof NameExpr name
+                && caseBindings.contains(name.getNameAsString())) {
+            // #162: cached case-field projections still refer to the original record.
+            // Reject rebinding even if this particular use only yields the record itself.
+            throw gen.enrichedError("Reassignment of switch case-pattern variable '"
+                            + sourceName(name.getNameAsString()) + "' is not supported",
+                    "Copy the pattern variable to a fresh local accumulator inside the arm, "
+                            + "update that local, and yield its result instead.", assignment);
+        } else if (node instanceof AssignExpr assignment && assignment.getTarget() instanceof NameExpr name
+                && !declaredInArm.contains(name.getNameAsString())) {
+            throw gen.enrichedError("Switch-expression arm cannot update enclosing variable '"
+                            + sourceName(name.getNameAsString()) + "'",
+                    "A switch expression exports only its yielded value. Declare an accumulator inside the arm, "
+                            + "yield its result, and use the switch value outside the arm instead of mutating an enclosing variable.",
+                    assignment);
+        } else if (node instanceof IfStmt branch) {
+            validateSwitchArmUpdates(branch.getCondition(), declaredInArm, caseBindings);
+            var thenLocals = new HashSet<>(declaredInArm);
+            if (branch.getCondition() instanceof InstanceOfExpr condition
+                    && condition.getPattern().orElse(null) instanceof TypePatternExpr pattern) {
+                thenLocals.add(pattern.getNameAsString());
+            }
+            validateSwitchArmUpdates(branch.getThenStmt(), thenLocals, caseBindings);
+            branch.getElseStmt().ifPresent(other -> validateSwitchArmUpdates(other, new HashSet<>(declaredInArm), caseBindings));
+        } else if (node instanceof ForEachStmt loop) {
+            validateSwitchArmUpdates(loop.getIterable(), declaredInArm, caseBindings);
+            var loopLocals = new HashSet<>(declaredInArm);
+            loop.getVariable().getVariables().forEach(variable -> loopLocals.add(variable.getNameAsString()));
+            validateSwitchArmUpdates(loop.getBody(), loopLocals, caseBindings);
+        } else if (node instanceof SwitchExpr nested) {
+            validateSwitchArmUpdates(nested.getSelector(), declaredInArm, caseBindings);
+            validateSwitchExpressionUpdates(nested); // A second value boundary, including for outer-arm locals.
+        } else {
+            for (var child : node.getChildNodes()) {
+                validateSwitchArmUpdates(child, new HashSet<>(declaredInArm), caseBindings);
+            }
+        }
+    }
 
     boolean containsBreak(Statement stmt) {
         if (stmt instanceof BreakStmt) return true;
@@ -534,15 +667,34 @@ final class LoopBodyGenerator {
     /** Generate the enclosing list with the block's statements in the block's place. */
     private PirTerm withBlockSpliced(List<Statement> stmts, int index, BlockStmt block,
                                      Function<List<Statement>, PirTerm> generate) {
+        return withLocalsRenamed(block, renamed -> generate.apply(spliced(stmts, index, renamed)));
+    }
+
+    /** Keep block locals from capturing a continuation embedded after the block's work. */
+    PirTerm withLocalsRenamed(BlockStmt block, Function<BlockStmt, PirTerm> generate) {
         var renamed = renamedApart(block);
         if (renamed == block) {
-            return generate.apply(spliced(stmts, index, block));
+            return generate.apply(block);
         }
         // The copy stands where the block stands while it is generated, so that lookups of an
         // enclosing node (the method of a nested while loop) still succeed, and leaves after.
         block.getParentNode().ifPresent(renamed::setParentNode);
         try {
-            return generate.apply(spliced(stmts, index, renamed));
+            return generate.apply(renamed);
+        } finally {
+            renamed.setParentNode(null);
+        }
+    }
+
+    /** Rename a pattern binding's references, but not method names or the continuation. */
+    PirTerm withBindingRenamed(Statement branch, String name,
+                              BiFunction<String, Statement, PirTerm> generate) {
+        String fresh = name + BLOCK_LOCAL_MARK + (++blockLocalCounter);
+        var renamed = branch.clone();
+        rename(renamed, Map.of(name, fresh));
+        branch.getParentNode().ifPresent(renamed::setParentNode);
+        try {
+            return generate.apply(fresh, renamed);
         } finally {
             renamed.setParentNode(null);
         }

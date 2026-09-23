@@ -3,6 +3,123 @@ title: "Release Notes"
 description: "JuLC release notes and migration guidance"
 ---
 
+## Upcoming preview: release regression gates and profile freeze (#121)
+
+The proposed pre17 [hash-stability policy](/reference/hash-stability/) freezes
+existing optimization profiles, with explicit, reviewed exceptions for correctness
+fixes. It distinguishes script-hash changes from network execution-cost changes.
+
+Developer-node gates now support an explicitly configured native Haskell CLI/socket
+as well as an existing DevKit container. New Value/Array and G1/G2 MSM regressions
+pin script hashes, sizes and execution budgets and check confirmed node spends.
+Normal builds run only the offline regressions; node tests remain opt-in.
+This test/documentation change does not alter compiler output or deployed scripts.
+The documentation build dependencies are also updated to resolve known advisories.
+
+## Upcoming preview: decode boolean and String switch fields (#166)
+
+Switch case-pattern access such as `case Sum s -> s.enabled() ? ONE : ZERO`
+now decodes a boolean record field to native Bool. Previously the cached field
+remained raw Data and evaluation failed. String fields had the same missing decode.
+DataMatch field extraction now reuses the shared decoder used by other field-access
+paths rather than maintaining a separate incomplete type table (ADR-051).
+
+This is separate from the loop/switch validation fixes. Constructor encodings,
+branch selection, field order and #162's rejection of case-pattern reassignment
+are unchanged. Only the selected arm's bound fields are decoded, strictly before
+its body; malformed Bool/String fields can now fail there even when unused.
+The existing decoder's permissive Bool tag handling is unchanged; this is not a
+new strict Data-validation boundary.
+
+Recompiling affected switches changes script bytes, hashes and budgets at **all
+optimization levels**, including NONE and BASELINE. Recompile and reassess affected
+scripts before deployment. Existing deployed scripts and ledger encodings do not
+change; switches without these field types retain their existing decoding.
+
+## Upcoming preview: preserve loop state across enclosing branches (#161)
+
+A loop inside an `if` at method level or inside a switch-expression arm now
+preserves its accumulator updates for statements following the branch. Previously
+`total = 0; if (condition) { for (...) { total = total.add(x); } } return total;`
+could silently return 0. The fix reuses existing continuation lowering with a
+shared join lambda for loop-containing branches, including
+for while loops, nested branches, multiple accumulators and break. Conditions and
+branches keep their evaluation order; early return/yield still short-circuit.
+Continuation-bearing branches also rename local and instanceof pattern bindings
+internally to protect join arguments when a local shadows a class field updated
+by the other branch, and to prevent capture in the existing inline return/yield
+lowering. Diagnostics display the original source names.
+
+The validation follow-up also accepts this pattern when the switch expression
+is inside an outer loop body. Previously the outer-loop guard conservatively
+rejected arm-local guarded-loop updates. It now validates the selector and leaves
+arm bodies to their ownership guard and nested loops' own checks. Switch arms
+still cannot update enclosing variables, and conditional updates to actual
+loop-body locals remain unsupported. This validation-only change adds no lowering
+or encoding change for previously accepted programs.
+
+Recompiled sources with loop-containing branches or affected name captures may
+change script bytes, hashes,
+size and execution budgets at **all optimization levels**, including NONE and
+BASELINE. The following code is bound once outside the branches: sequential
+guarded loops grow linearly instead of exponentially duplicating their tails.
+Join calls add execution overhead; reassess budgets as well as size. Recompile and
+reassess affected scripts before deployment; existing deployed scripts do not
+change. Public APIs, ledger encoding and the restrictions below remain unchanged.
+
+This was a missed case in the older discarded-result path: #79 added continuations
+for returns and #137 extended them to yields. #157 explicitly left this case open.
+
+## Upcoming preview: reject lost conditional loop-local updates (#155)
+
+The compiler now rejects assignments inside an `if`/`else` branch to a variable
+declared in the loop body outside that branch. Previously the update could be
+silently lost. This applies to for-each and while loops at every optimization
+level, including nested and break-aware forms. The diagnostic identifies the
+variable and source location, and suggests a conditional initializer, moving
+the declaration before the loop (resetting it each iteration if necessary), or
+declaring it inside the branch when its value is only needed there.
+
+Switch-expression arms also reject updates to enclosing variables, including
+updates made by nested loops to either body locals or outer accumulators, with
+or without an enclosing `if`. Declare the accumulator inside the arm and yield
+its result instead. This conservative rule also rejects previously correct code
+that updated an enclosing variable but consumed the update only via `yield` inside
+the arm; move the accumulator declaration into the arm to preserve that behavior.
+
+Reassignment of a switch case-pattern binding is also rejected (#162), even if
+the arm only yields the record itself. Previously field projections could read
+the original record after reassignment. Copy the binding to a fresh arm-local
+accumulator instead. Supported `instanceof` binding reassignment is unchanged.
+
+The separate enclosing-if/loop miscompile is fixed by #161, described above.
+
+This is a conservative restriction, including constant conditions and dead updates.
+This validation alone preserves accepted programs' generated bytes; the separate
+#161 lowering fix may change them. Existing deployed scripts are
+unchanged. See [conditional loop state](/best-practices/conditionals/#conditional-loop-state)
+for supported patterns.
+
+## Upcoming preview: independent compiler and evaluation costs (#153)
+
+`pv11-costed` now needs no compiler cost profile. Its list-to-array rule uses
+structural eligibility; its transformations and the default `pv11-safe` level
+are unchanged. Omitting an optional profile preserves generated script bytes,
+hashes and source maps.
+
+The immutable evaluation snapshot is now named `plutus-v3-pv11-costs-v1`, with
+neutral Java constants `OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1` (and
+`_ID`/`_PARAMETER_HASH`). The old ID remains accepted and the old constants are
+deprecated aliases to the same snapshot. The parameters and hash are unchanged.
+See the [profile catalog](/reference/cost-model-profiles/) for the exact upstream mapping.
+
+Optional compiler profile settings remain accepted and validated for compatibility,
+but no longer appear as dependencies in compilation reports. Reports now also
+carry the compiler build version; target, optimization level and applied rules
+remain available. Benchmark reports independently retain the model actually
+used for evaluation. Runtime callers continue supplying cost parameters through
+the VM API or `ProtocolParamsSupplier`; no named profile is required there.
+
 ## Upcoming preview: typed BLS12-381 values and multi-scalar multiplication (ADR-047)
 
 BLS12-381 values now have their own types: `JulcG1` and `JulcG2` for points,
@@ -170,8 +287,8 @@ and the Gradle plugin and CLI do not expose the switch.
 
 ## Upcoming preview: list-to-array promotion at `pv11-costed` (ADR-043)
 
-`PV11_COSTED` (opt-in; `julc { optimization = 'pv11-costed' }` with a pinned
-cost profile) now converts a `JulcList` variable that its scope indexes at two
+`PV11_COSTED` (opt-in; `julc { optimization = 'pv11-costed' }`, no cost profile
+required) now converts a `JulcList` variable that its scope indexes at two
 or more `get` sites, or at a `get` site inside a loop body, to a PV11 array once
 (`ListToArray`) and rewrites those sites to `IndexArray`. Every other use of the
 list (for-each, `size`, `head`, passing it to a helper) is untouched, the array
@@ -607,7 +724,7 @@ configure one explicit cost profile on both VMs rather than treating Scalus's
 version-dependent built-in default as ledger evidence.
 
 Measurements use the immutable
-`cardano-node-11.0.1-plutus-v3-pv11` cost profile (parameter SHA-256
+`plutus-v3-pv11-costs-v1` cost profile (parameter SHA-256
 `40ea9e0b7df77a7bd2cb7d4e4d9da040f8bee7ff0324a7cdb7e51702330e43a8`).
 Java and Truffle produced identical results, failures, traces, and ledger
 budgets for these fixtures:

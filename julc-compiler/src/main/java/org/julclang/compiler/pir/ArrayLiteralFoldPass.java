@@ -1,6 +1,7 @@
 package org.julclang.compiler.pir;
 
 import org.julclang.compiler.CompilationContext;
+import org.julclang.compiler.debug.PirDebugProvenance;
 import org.julclang.core.ArraySemantics;
 import org.julclang.core.Constant;
 import org.julclang.core.DefaultFun;
@@ -61,6 +62,11 @@ public final class ArrayLiteralFoldPass extends LiteralFoldPass {
 
     public ArrayLiteralFoldPass(CompilationContext context, Map<PirTerm, SourceLocation> positions) {
         super(context, positions);
+    }
+
+    public ArrayLiteralFoldPass(CompilationContext context, Map<PirTerm, SourceLocation> positions,
+                                PirDebugProvenance debugProvenance) {
+        super(context, positions, debugProvenance);
     }
 
     @Override

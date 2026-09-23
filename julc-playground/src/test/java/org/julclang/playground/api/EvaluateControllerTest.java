@@ -2,9 +2,9 @@ package org.julclang.playground.api;
 
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.LibrarySource;
-import org.julclang.playground.model.EvaluateRequest;
-import org.julclang.playground.model.EvaluateResponse;
-import org.julclang.playground.model.ScenarioOverrides;
+import org.julclang.tools.model.EvaluateRequest;
+import org.julclang.tools.model.EvaluateResponse;
+import org.julclang.tools.model.ScenarioOverrides;
 import org.julclang.playground.sandbox.CompilationSandbox;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.javalin.Javalin;

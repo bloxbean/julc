@@ -66,6 +66,131 @@ an `else`: when `b > 0`, execution continues after the outer `if`.
 Four or more nesting levels are also supported. Deep nesting is mainly a readability
 concern; it is not necessary to add artificial `else` branches for the compiler.
 
+## Conditional loop state
+
+An `if` inside a loop carries updates to **accumulators declared before that loop**.
+It does not carry updates to locals declared in the loop body outside the branch.
+The latter pattern is rejected (#155), even for constant conditions or unused updates:
+
+```java
+for (var x : xs) {
+    BigInteger step = BigInteger.ZERO;
+    if (x.compareTo(BigInteger.ZERO) > 0) {
+        step = BigInteger.ONE; // rejected: conditional update to a loop-body local
+    }
+    acc = acc.add(step);
+}
+```
+
+Prefer an initializer that computes the conditional value:
+
+```java
+for (var x : xs) {
+    BigInteger step = x.compareTo(BigInteger.ZERO) > 0
+            ? BigInteger.ONE : BigInteger.ZERO;
+    acc = acc.add(step);
+}
+```
+
+Alternatively declare `step` before the loop, making it an accumulator; reset it
+at the start of each iteration if needed to preserve its original lifetime.
+If the value is only needed inside the branch, declare it there instead:
+
+```java
+for (var x : xs) {
+    if (x.compareTo(BigInteger.ZERO) > 0) {
+        BigInteger step = BigInteger.ZERO;
+        step = step.add(x);
+        acc = acc.add(step);
+    }
+}
+```
+
+### Loop-local assignment rules
+
+- Locals must be initialized at declaration. Outside supported loop paths,
+  ordinary reassignment is not supported.
+- In an accumulator-carrying loop without `break`, a local may be reassigned as a direct statement in
+  its scope, including a bare nested block. Bare braces do not create a value join.
+- An `if`/`else` may update that loop's accumulators. It may also contain
+  straight-line updates to locals declared in the same branch; it may not update
+  a loop-body local declared outside that branch. Another nested `if` introduces
+  the same restriction again, even for constant conditions or dead updates.
+- A local declared before a nested loop may be an accumulator of that nested loop.
+  This does not let its updates escape an enclosing `if` of the outer loop or a
+  switch-expression arm.
+- `break`-aware support is narrower: the single-accumulator path does not support
+  general straight-line reassignment of other body locals. Use an initializer for
+  those locals. A branch-local declaration and reassignment can still work in an
+  `if` whose branches contain no `break`, because it uses the normal body lowering.
+- Loops with no detected accumulator use the generic statement path and do not
+  support general body-local reassignment either; prefer initializers.
+- Multiple accumulators must be Data-encodable; native BLS values cannot be packed
+  with other accumulators. These restrictions apply to both for-each and while.
+
+### Switch expressions export values, not variable updates
+
+An arm cannot mutate a variable declared outside it, even through a nested loop:
+
+```java
+BigInteger step = BigInteger.ZERO;
+BigInteger ignored = switch (action) {
+    case Only o -> {
+        for (var y : xs) { step = step.add(y); } // rejected
+        yield BigInteger.ZERO;
+    }
+};
+```
+
+Instead, declare the accumulator in the arm and yield its result:
+
+```java
+BigInteger step = switch (action) {
+    case Only o -> {
+        BigInteger local = BigInteger.ZERO;
+        for (var y : xs) { local = local.add(y); }
+        yield local;
+    }
+};
+```
+
+The restriction includes outer-loop accumulators, not just loop-body locals, and
+does not require an enclosing `if`. Nested switch arms introduce their own boundary.
+
+Reassigning a case-pattern variable itself (`case Only p -> ... p = ...`) is now
+rejected ([#162](https://github.com/bloxbean/julc/issues/162)): cached field reads
+could otherwise use the original record. Copy it to a fresh arm-local accumulator
+and update that copy instead. This is conservative even if you yield the record
+without reading its fields. It does not prohibit otherwise-supported reassignment
+of an `instanceof` binding; those bindings use a different lowering path.
+
+### Loops inside an if outside a loop body
+
+A loop inside an `if` at method level or inside a switch-expression arm preserves
+its accumulator updates for statements after the branch. This fixes
+[#161](https://github.com/bloxbean/julc/issues/161), separately from #157's
+restrictions on loop-body locals and switch boundaries. For example:
+
+```java
+BigInteger total = BigInteger.ZERO;
+if (xs.size().compareTo(BigInteger.ZERO) > 0) {
+    for (var x : xs) { total = total.add(x); }
+}
+return total; // [1, 2, 3]: returns 6; empty input: returns 0
+```
+
+This also works inside a switch arm with an arm-local `total` and `yield total`.
+The switch expression may itself be inside an outer loop: the arm yields its
+result, and the outer loop consumes that value. The arm still cannot update
+variables declared outside it.
+Untaken branches preserve the previous value; for-each/while, nested branches,
+multiple accumulators and break retain their existing loop semantics.
+
+The empty-list check above is optional because an empty for-each runs zero
+iterations. Keep conditions that affect intended behavior. Recompile affected
+scripts and reassess their hashes and budgets; previously deployed scripts are
+not repaired by upgrading the compiler.
+
 ## Prefer guard clauses for validation rules
 
 A validator often checks several independent rules. A linear sequence is usually the

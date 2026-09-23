@@ -47,6 +47,7 @@ const SECTIONS = [
       'guides/source-maps.md',
       'guides/strict-data-boundaries.md',
       'guides/purpose-indexed-blueprints.md',
+      'guides/javascript-wasm.md',
     ],
   },
   {
@@ -74,6 +75,7 @@ const SECTIONS = [
     files: [
       'reference/api-reference.md',
       'reference/release-notes.md',
+      'reference/cost-model-profiles.md',
       'reference/library-developer-guide.md',
       'reference/examples.mdx',
       'reference/troubleshooting.md',

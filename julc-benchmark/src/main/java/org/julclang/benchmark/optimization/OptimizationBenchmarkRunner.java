@@ -100,6 +100,7 @@ public final class OptimizationBenchmarkRunner {
         }
     }
 
+    /** Artifact properties plus the independently selected evaluation model identity. */
     public record ArtifactMeasurement(
             OptimizationLevel level,
             String targetId,
@@ -184,7 +185,7 @@ public final class OptimizationBenchmarkRunner {
             var after = candidateArtifact;
             var markdown = new StringBuilder()
                     .append("### ").append(fixtureId).append("\n\n")
-                    .append("Target: `").append(after.targetId()).append("`; cost profile: `")
+                    .append("Target: `").append(after.targetId()).append("`; evaluation cost profile: `")
                     .append(after.costProfileId()).append("` (`")
                     .append(after.costParameterHash()).append("`).\n\n")
                     .append("Baseline script hash: `").append(before.scriptHash())
@@ -283,8 +284,8 @@ public final class OptimizationBenchmarkRunner {
         backends = List.copyOf(backends);
         if (backends.isEmpty()) throw new IllegalArgumentException("backends must not be empty");
 
-        var baseline = compile(fixture, baselineLevel, costProfile, baselineTuning);
-        var candidate = compile(fixture, candidateLevel, costProfile, candidateTuning);
+        var baseline = compile(fixture, baselineLevel, baselineTuning);
+        var candidate = compile(fixture, candidateLevel, candidateTuning);
         var baselineEvals = evaluate(fixture, baseline, costProfile, backends);
         var candidateEvals = evaluate(fixture, candidate, costProfile, backends);
 
@@ -328,9 +329,10 @@ public final class OptimizationBenchmarkRunner {
             OptimizationCostProfile costProfile) {
         requireText(fixtureId, "fixtureId");
         requireText(candidateRule, "candidateRule");
+        Objects.requireNonNull(costProfile, "costProfile");
         requireMatchingInputs(baselineFixture.cases(), candidateFixture.cases());
-        var baseline = compile(baselineFixture, OptimizationLevel.BASELINE, costProfile, options -> { });
-        var candidate = compile(candidateFixture, OptimizationLevel.BASELINE, costProfile, options -> { });
+        var baseline = compile(baselineFixture, OptimizationLevel.BASELINE, options -> { });
+        var candidate = compile(candidateFixture, OptimizationLevel.BASELINE, options -> { });
         var backends = List.of(Backend.javaVm(), Backend.truffleVm());
         var candidateArtifact = measureArtifact(candidate, costProfile);
         candidateArtifact = new ArtifactMeasurement(
@@ -388,6 +390,7 @@ public final class OptimizationBenchmarkRunner {
             String candidateRule,
             OptimizationCostProfile costProfile,
             boolean requireEquivalent) {
+        Objects.requireNonNull(costProfile, "costProfile");
         requireText(fixtureId, "fixtureId");
         Objects.requireNonNull(baselineTemplate, "baselineTemplate");
         Objects.requireNonNull(candidateTemplate, "candidateTemplate");
@@ -413,12 +416,8 @@ public final class OptimizationBenchmarkRunner {
     private static CompileResult compile(
             Fixture fixture,
             OptimizationLevel level,
-            OptimizationCostProfile costProfile,
             Consumer<CompilerOptions> tuning) {
         var options = new CompilerOptions().setOptimizationLevel(level);
-        if (level.costProfileRequired()) {
-            options.setOptimizationCostProfile(costProfile);
-        }
         tuning.accept(options);
         return new JulcCompiler(StdlibRegistry.defaultRegistry(), options)
                 .compileMethod(fixture.javaSource(), fixture.methodName());

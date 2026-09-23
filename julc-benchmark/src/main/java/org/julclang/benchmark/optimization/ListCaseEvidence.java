@@ -152,7 +152,7 @@ public final class ListCaseEvidence {
         return OptimizationBenchmarkRunner.compareWithJavaAndTruffle(
                 new OptimizationBenchmarkRunner.Fixture("o3-for-each-" + method, sourceFor(method), method, inputs),
                 OptimizationLevel.PV11_SAFE,
-                OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+                OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1);
     }
 
     // Keep each measured artifact independent. In particular, unrelated recursive

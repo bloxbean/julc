@@ -17,7 +17,7 @@ public enum OptimizationLevel {
     /** Baseline plus reviewed PV11 rules that do not depend on input-size costs. */
     PV11_SAFE("pv11-safe", true, true, false),
 
-    /** PV11_SAFE plus rules justified by an explicit pinned cost profile. */
+    /** PV11_SAFE plus opt-in structural rules supported by pinned benchmark evidence. */
     PV11_COSTED("pv11-costed", true, true, true);
 
     /** Default rollout selected when a public compiler entry point omits the level. */
@@ -29,17 +29,17 @@ public enum OptimizationLevel {
     private final String profileId;
     private final boolean baselineOptimizerEnabled;
     private final boolean pv11SafeRulesEnabled;
-    private final boolean costProfileRequired;
+    private final boolean pv11CostedRulesEnabled;
 
     OptimizationLevel(
             String profileId,
             boolean baselineOptimizerEnabled,
             boolean pv11SafeRulesEnabled,
-            boolean costProfileRequired) {
+            boolean pv11CostedRulesEnabled) {
         this.profileId = profileId;
         this.baselineOptimizerEnabled = baselineOptimizerEnabled;
         this.pv11SafeRulesEnabled = pv11SafeRulesEnabled;
-        this.costProfileRequired = costProfileRequired;
+        this.pv11CostedRulesEnabled = pv11CostedRulesEnabled;
     }
 
     /** Stable, exact identifier used by public compiler entry points. */
@@ -69,15 +69,20 @@ public enum OptimizationLevel {
         return pv11SafeRulesEnabled;
     }
 
+    /**
+     * @deprecated No current level requires numeric costs. Future numeric consumers must
+     * require their profile individually, independently of rollout selection.
+     */
+    @Deprecated(forRemoval = false)
     public boolean costProfileRequired() {
-        return costProfileRequired;
+        return false;
     }
 
     /**
-     * Whether rules justified only by a pinned cost profile (ADR-032 "profile-cost" class,
-     * ADR-043 O9) are enabled. Exactly the levels that require a cost profile.
+     * Whether opt-in structural rules (ADR-043 O9) are enabled. Their benchmark
+     * evidence uses pinned costs, but compilation does not read a cost model.
      */
     public boolean pv11CostedRulesEnabled() {
-        return costProfileRequired;
+        return pv11CostedRulesEnabled;
     }
 }

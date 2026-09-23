@@ -4,6 +4,7 @@ import org.julclang.compiler.backend.PirBackend;
 import org.julclang.compiler.codegen.ValidatorWrapper;
 import org.julclang.compiler.codegen.StrictBoundaryGenerator;
 import org.julclang.compiler.codegen.StrictRecordEntrypoint;
+import org.julclang.compiler.debug.DebugMetadataCollector;
 import org.julclang.compiler.error.CompilerDiagnostic;
 import org.julclang.compiler.error.DiagnosticInfo;
 import org.julclang.compiler.pir.*;
@@ -24,6 +25,7 @@ import org.julclang.core.Program;
 import org.julclang.core.Term;
 import org.julclang.core.source.SourceLocation;
 import org.julclang.core.source.SourceMap;
+import org.julclang.core.debug.DebugMetadata;
 import com.github.javaparser.ParserConfiguration;
 import com.github.javaparser.StaticJavaParser;
 import com.github.javaparser.ast.CompilationUnit;
@@ -60,10 +62,11 @@ public class JulcCompiler {
     }
 
     private record ParamField(String name, PirType pirType, String javaType,
-                              SourceLocation sourceLocation) {}
+                              SourceLocation sourceLocation, Node declaration) {}
     private record StaticField(String name, PirType pirType, com.github.javaparser.ast.expr.Expression initExpr) {}
     private record CompiledStaticField(String name, PirTerm initPir) {}
-    private record CompilationOutcome(CompileResult compileResult, ContractSchema contractSchema) {}
+    private record CompilationOutcome(CompileResult compileResult, ContractSchema contractSchema,
+                                      DebugMetadata debugMetadata) {}
 
     /** Typed Data subtypes that must not be used with @Param. */
     private static final Set<String> BANNED_PARAM_TYPES = Set.of(
@@ -102,9 +105,10 @@ public class JulcCompiler {
     private CompilationContext beginCompilation() {
         var context = CompilationContext.resolve(options);
         context.logf("Compiler target: %s", context.target().profileId());
+        context.logf("Compiler version: %s", CompilerVersion.VERSION);
         context.logf("Optimization level: %s", context.optimizationLevel());
         if (context.optimizationCostProfile() != null) {
-            context.logf("Optimization cost profile: %s (sha256=%s)",
+            context.logf("Configured compatibility cost profile (unused by compilation): %s (sha256=%s)",
                     context.optimizationCostProfile().profileId(),
                     context.optimizationCostProfile().parameterHash());
         }
@@ -144,6 +148,30 @@ public class JulcCompiler {
      */
     public CompileResult compileWithDetails(String validatorSource, List<String> librarySources) {
         return doCompile(validatorSource, librarySources, true, beginCompilation());
+    }
+
+    /**
+     * Compile the source-debug artifact with optional binding metadata collection.
+     * This operation is deliberately separate from every normal/source-map compile API.
+     */
+    public DebugCompileResult compileForDebug(String validatorSource, List<String> librarySources) {
+        if (!options.isSourceMapEnabled()) {
+            throw new IllegalStateException("Java locals metadata requires source-map compilation");
+        }
+        var outcome = doCompileOutcome(
+                validatorSource, librarySources, true, false, beginCompilation(), true);
+        if (outcome.debugMetadata() == null) {
+            throw new IllegalStateException("Java locals metadata was not collected");
+        }
+        return new DebugCompileResult(outcome.compileResult(), outcome.debugMetadata());
+    }
+
+    /** Compile a source-debug artifact with classpath-discovered libraries. */
+    public DebugCompileResult compileForDebug(String validatorSource) {
+        var availableLibs = LibrarySourceResolver.scanClasspathSources(JulcCompiler.class.getClassLoader());
+        var resolvedLibs = availableLibs.isEmpty() ? List.<String>of()
+                : LibrarySourceResolver.resolve(validatorSource, availableLibs);
+        return compileForDebug(validatorSource, resolvedLibs);
     }
 
     /**
@@ -217,6 +245,17 @@ public class JulcCompiler {
             boolean captureDetails,
             boolean captureContractSchema,
             CompilationContext context) {
+        return doCompileOutcome(validatorSource, librarySources, captureDetails,
+                captureContractSchema, context, false);
+    }
+
+    private CompilationOutcome doCompileOutcome(
+            String validatorSource,
+            List<String> librarySources,
+            boolean captureDetails,
+            boolean captureContractSchema,
+            CompilationContext context,
+            boolean collectDebugMetadata) {
         StaticJavaParser.getParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
 
         // 1. Parse all sources
@@ -228,8 +267,20 @@ public class JulcCompiler {
             libraryCus.add(parseSource(librarySources.get(i), "library[" + i + "]"));
         }
 
+        DebugMetadataCollector debugMetadata = null;
+        if (collectDebugMetadata) {
+            var inputs = new ArrayList<DebugMetadataCollector.SourceInput>();
+            inputs.add(new DebugMetadataCollector.SourceInput("validator", sourceUri(validatorCu, "validator.java"),
+                    validatorSource, validatorCu));
+            for (int i = 0; i < libraryCus.size(); i++) {
+                inputs.add(new DebugMetadataCollector.SourceInput("library-" + i,
+                        sourceUri(libraryCus.get(i), "library-" + i + ".java"),
+                        librarySources.get(i), libraryCus.get(i)));
+            }
+            debugMetadata = new DebugMetadataCollector(inputs);
+        }
         return doCompileFromCus(
-                validatorCu, libraryCus, captureDetails, captureContractSchema, context);
+                validatorCu, libraryCus, captureDetails, captureContractSchema, context, debugMetadata);
     }
 
     private CompilationOutcome doCompileFromCus(
@@ -238,6 +289,16 @@ public class JulcCompiler {
             boolean captureDetails,
             boolean captureContractSchema,
             CompilationContext context) {
+        return doCompileFromCus(validatorCu, libraryCus, captureDetails, captureContractSchema, context, null);
+    }
+
+    private CompilationOutcome doCompileFromCus(
+            CompilationUnit validatorCu,
+            List<CompilationUnit> libraryCus,
+            boolean captureDetails,
+            boolean captureContractSchema,
+            CompilationContext context,
+            DebugMetadataCollector debugMetadata) {
         // 2. Validate subset on all compilation units
         var subsetValidator = new SubsetValidator();
         var diagnostics = context.diagnosticBuffer();
@@ -374,8 +435,11 @@ public class JulcCompiler {
         }
 
         // 11. Generate PIR for helper methods
-        var pirGenerator = PirGenerator.forCompilation(typeResolver, symbolTable, effectiveLookup,
-                TypeMethodRegistry.defaultRegistry(), null, context);
+        var pirGenerator = debugMetadata == null
+                ? PirGenerator.forCompilation(typeResolver, symbolTable, effectiveLookup,
+                        TypeMethodRegistry.defaultRegistry(), null, context)
+                : PirGenerator.forDebugCompilation(typeResolver, symbolTable, effectiveLookup,
+                        TypeMethodRegistry.defaultRegistry(), null, context, debugMetadata);
 
         // 11b. Compile static field initializers
         var compiledStaticFields = new ArrayList<CompiledStaticField>();
@@ -582,12 +646,16 @@ public class JulcCompiler {
             var rawName = pf.name + "__raw";
             var decoded = PirHelpers.wrapDecode(
                     new PirTerm.Var(rawName, new PirType.DataType()), pf.pirType);
-            wrappedTerm = new PirTerm.Lam(rawName, new PirType.DataType(),
-                    new PirTerm.Let(pf.name, decoded, wrappedTerm));
+            var decodedBinding = new PirTerm.Let(pf.name, decoded, wrappedTerm);
+            if (debugMetadata != null) {
+                debugMetadata.associate(pf.declaration(), decodedBinding, pf.pirType());
+            }
+            wrappedTerm = new PirTerm.Lam(rawName, new PirType.DataType(), decodedBinding);
         }
 
+        var provenance = debugMetadata == null ? null : debugMetadata.provenance();
         var lowered = PirBackend.lower(
-                wrappedTerm, context, pirGenerator.getPirPositions(), true);
+                wrappedTerm, context, pirGenerator.getPirPositions(), true, provenance);
         var program = lowered.program();
         PirTerm capturedPir = captureDetails ? lowered.pir() : null;
         Term capturedUplc = captureDetails ? program.term() : null;
@@ -606,7 +674,10 @@ public class JulcCompiler {
                         paramFields, typeResolver, validatorClass)
                 : null;
         context.logf("Compilation complete: %s", result.scriptSizeFormatted());
-        return new CompilationOutcome(result, contractSchema);
+        DebugMetadata completedMetadata = debugMetadata == null ? null
+                : debugMetadata.finish(result, options, lowered.debug().emittedBinders(),
+                        lowered.debug().exactUplcPositions());
+        return new CompilationOutcome(result, contractSchema, completedMetadata);
     }
 
     /**
@@ -1124,6 +1195,10 @@ public class JulcCompiler {
         }
     }
 
+    private static String sourceUri(CompilationUnit unit, String fallback) {
+        return unit.getStorage().map(storage -> storage.getPath().toString()).orElse(fallback);
+    }
+
     /**
      * Wrap a StdlibLookup with identity handlers for @NewType .of() calls.
      */
@@ -1504,7 +1579,7 @@ public class JulcCompiler {
                 for (var variable : field.getVariables()) {
                     var name = variable.getNameAsString();
                     var pirType = typeResolver.resolve(field.getCommonType());
-                    result.add(new ParamField(name, pirType, javaType, sourceLocation(variable)));
+                    result.add(new ParamField(name, pirType, javaType, sourceLocation(variable), variable));
                 }
             }
         }

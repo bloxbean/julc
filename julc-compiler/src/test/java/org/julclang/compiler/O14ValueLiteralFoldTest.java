@@ -50,7 +50,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @Tag("pair-case-backends")
 class O14ValueLiteralFoldTest {
 
-    private static final OptimizationCostProfile PROFILE = OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11;
+    private static final OptimizationCostProfile PROFILE = OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1;
     private static final List<String> PROVIDERS = List.of("Java", "Truffle", "Scalus");
     private static final String LIB = "org.julclang.stdlib.lib.NativeValueLib.";
     private static final Set<DefaultFun> VALUE_BUILTINS = Set.of(

@@ -1,7 +1,7 @@
 # ADR-047: Typed BLS12-381 values, native scalar and point lists, and explicit multi-scalar multiplication (O11)
 
 **Date:** 2026-09-14
-**Status:** Implemented and locally validated on `feat/117-bls-types` (stacked on ADR-046's `feat/116-array-literals`); independent agent reviews applied; maintainer review pending
+**Status:** Merged in PR #150; G1/G2 native point-list constant and MSM node acceptance and pinned-budget regressions recorded in ADR-052 evidence
 **Issues:** [#117](https://github.com/bloxbean/julc/issues/117) (O11), research decision [#96](https://github.com/bloxbean/julc/issues/96), parent [#77](https://github.com/bloxbean/julc/issues/77)
 **Governing decisions:** ADR-032 O11 (a typed BLS API before any fusion; never fuse over `byte[]`/`PlutusData`), the O11 deferral evidence (`adr/evidence/032-o11-bls-msm-deferral.md`), ADR-032 O7 (the opaque native-type discipline this ADR reuses), ADR-045/046 (intrinsic producers keep library bindings additive)
 
@@ -213,14 +213,14 @@ programs importing `BlsLib` are unchanged.
   that were miscompiled or accepted with an update dropped: a loop body assigning inside a
   bare nested block now compiles to the bytes of its braceless body, and an assignment in
   expression position or to an undeclared name is rejected.
-- **Open, outside this ADR: updates to a loop-body local inside an `if` branch.** Found
+- **Resolved by ADR-048 (#155): updates to a loop-body local inside an `if` branch.** Found
   while fixing the block lowering and reproduced on `main` (tree `5d9340ad`): inside a loop,
   `BigInteger step = ZERO; if (c) { step = step.add(ONE); } acc = acc.add(step);` compiles
   and the update to `step` is lost (0 instead of 3 over three elements; for-each and while,
   one or several accumulators). An `if` branch is lowered as a value that yields the
   accumulator(s) only. It is a pre-existing miscompile of valid Java, independent of BLS and
-  of this change, and needs a decision of its own (a join point taking the assigned locals,
-  or an explicit rejection); accumulators declared before the loop are not affected.
+  of this change, and is now rejected explicitly by ADR-048. Join points taking the
+  assigned locals remain a future design; accumulators declared before the loop are not affected.
 - **Generated names in the converters.** The decoding loop of `scalarsFromList`,
   `g1PointsFromCompressed` and `g2PointsFromCompressed` is bound under a fixed name
   (`go__scalars`, `go__g1Points`, `go__g2Points`); the caller's list is applied to the loop
@@ -248,8 +248,11 @@ programs importing `BlsLib` are unchanged.
   `JulcValue`) and its result is a native constant the VM returns; the testkit's Java-value
   extraction does not know these constants. Validators return `boolean`, so this is a
   test-harness matter only.
-- **On-chain.** No artifact with a BLS constant or an MSM call has been submitted to a node
-  in this repository yet; the pre-release on-chain gate should include one.
+- **On-chain.** G1/G2 MSM artifacts using source-lowered empty typed native point-list
+  constants have been evaluated by Java, backend and direct Haskell and confirmed on the
+  developer PV11 node at baseline, safe and costed levels. These do not claim individual
+  embedded point literals. Scalar failures, hash/size/budget pins and transaction evidence
+  are recorded in [ADR-052 evidence](evidence/052-pre17-release-gates.md).
 
 ## Measurements
 

@@ -11,6 +11,7 @@ If you find a bug or have a feature request, please [open a GitHub issue](https:
 ## Prerequisites
 
 - **Java 25+** (Temurin recommended)
+- **Node.js 22+** for the JavaScript codec tests included in `./gradlew build` (not a Cardano node)
 - **Gradle 9+**
 - **Git**
 - **Optional**: [Yaci Devkit](https://github.com/bloxbean/yaci-devkit) for end-to-end tests (must be started externally; admin API runs on port 10000)

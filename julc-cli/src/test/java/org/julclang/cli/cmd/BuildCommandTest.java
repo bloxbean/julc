@@ -38,7 +38,7 @@ class BuildCommandTest {
     }
 
     @Test
-    void optimizerSelectionIsExactAndCostedRequiresPinnedProfile(@TempDir Path tempDir)
+    void optimizerSelectionIsExactAndCostedNeedsNoProfile(@TempDir Path tempDir)
             throws Exception {
         Path project = tempDir.resolve("optimization-build");
         ProjectScaffolder.scaffold(project, "optimization-build");
@@ -47,12 +47,21 @@ class BuildCommandTest {
                 project.toString(), "--optimization", "pv11-safe"));
         assertEquals(1, new CommandLine(new BuildCommand()).execute(
                 project.toString(), "--optimization", "PV11_SAFE"));
-        assertEquals(1, new CommandLine(new BuildCommand()).execute(
+        assertEquals(0, new CommandLine(new BuildCommand()).execute(
                 project.toString(), "--optimization", "pv11-costed"));
+        var artifact = ProjectLayout.plutusDir(project).resolve("AlwaysSucceeds.compiledCode.hex");
+        var expected = Files.readString(artifact);
+        assertEquals(0, new CommandLine(new BuildCommand()).execute(
+                project.toString(), "--optimization", "pv11-costed",
+                "--cost-profile", "plutus-v3-pv11-costs-v1"));
+        assertEquals(expected, Files.readString(artifact));
         assertEquals(0, new CommandLine(new BuildCommand()).execute(
                 project.toString(),
                 "--optimization", "pv11-costed",
                 "--cost-profile", "cardano-node-11.0.1-plutus-v3-pv11"));
+        assertEquals(expected, Files.readString(artifact));
+        assertEquals(1, new CommandLine(new BuildCommand()).execute(
+                project.toString(), "--optimization", "pv11-costed", "--cost-profile", "latest"));
     }
 
     @Test

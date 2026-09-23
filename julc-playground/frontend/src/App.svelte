@@ -1,14 +1,24 @@
 <script lang="ts">
   import './app.css';
+  import julcLogo from '../../../docs/public/logo.png';
   import Editor from './lib/components/Editor.svelte';
   import DiagnosticsPanel from './lib/components/DiagnosticsPanel.svelte';
   import PipelineView from './lib/components/PipelineView.svelte';
   import TestPanel from './lib/components/TestPanel.svelte';
   import EvalPanel from './lib/components/EvalPanel.svelte';
   import ExamplePicker from './lib/components/ExamplePicker.svelte';
+  import EngineToggle from './lib/components/EngineToggle.svelte';
   import { isChecking, contractName, purpose, diagnostics } from './lib/stores/editor';
+  import { engine, wasmStatus } from './lib/stores/engine';
+  import { mode } from './lib/stores/mode';
 
   let editorRef: Editor;
+
+  // The UPLC page (and its stores) load on first use and then stay mounted, like the Contract editor.
+  let UplcPage: any = null;
+  $: if ($mode === 'uplc' && !UplcPage) {
+    import('./lib/uplc/UplcPage.svelte').then((m) => (UplcPage = m.default));
+  }
 
   function handleExampleSelect(source: string) {
     editorRef?.setValue(source);
@@ -26,8 +36,20 @@
   <!-- Toolbar -->
   <header class="toolbar">
     <div class="toolbar-left">
-      <span class="logo">JuLC Playground</span>
-      {#if $contractName}
+      <div class="brand">
+        <a class="site-title" href="https://julc.dev" target="_blank" rel="noopener noreferrer" aria-label="JuLC documentation (opens in a new tab)">
+          <img src={julcLogo} alt="" class="site-logo" width="28" height="28" />
+          <span translate="no">JuLC</span>
+        </a>
+        <span class="product-name">Playground</span>
+      </div>
+      <div class="mode-tabs" role="tablist" aria-label="Playground mode">
+        <button role="tab" aria-selected={$mode === 'contract'} class:active={$mode === 'contract'} on:click={() => mode.set('contract')}
+          title="Write, compile and test a JuLC contract">Contract</button>
+        <button role="tab" aria-selected={$mode === 'uplc'} class:active={$mode === 'uplc'} on:click={() => mode.set('uplc')}
+          title="Inspect, evaluate and debug any compiled Plutus script">UPLC / Debugger</button>
+      </div>
+      {#if $mode === 'contract' && $contractName}
         <span class="contract-info">
           {$contractName}
           {#if $purpose}
@@ -37,7 +59,11 @@
       {/if}
     </div>
     <div class="toolbar-center">
-      {#if $isChecking}
+      {#if $engine === 'wasm' && $wasmStatus === 'loading'}
+        <span class="status"><span class="spinner"></span> Loading WebAssembly engine...</span>
+      {:else if $mode === 'uplc'}
+        <span class="status muted">Evaluate and debug any Plutus script</span>
+      {:else if $isChecking}
         <span class="status"><span class="spinner"></span> Checking...</span>
       {:else if errorCount > 0}
         <span class="status error">{errorCount} error{errorCount > 1 ? 's' : ''}</span>
@@ -48,12 +74,15 @@
       {/if}
     </div>
     <div class="toolbar-right">
-      <ExamplePicker onSelect={handleExampleSelect} />
+      <EngineToggle />
+      {#if $mode === 'contract'}
+        <ExamplePicker onSelect={handleExampleSelect} />
+      {/if}
     </div>
   </header>
 
   <!-- Main layout -->
-  <div class="main">
+  <div class="main" hidden={$mode !== 'contract'}>
     <!-- Left: Editor + Diagnostics -->
     <div class="left-panel">
       <div class="editor-area">
@@ -77,6 +106,14 @@
       </div>
     </div>
   </div>
+
+  {#if UplcPage}
+    <div class="uplc" hidden={$mode !== 'uplc'}>
+      <svelte:component this={UplcPage} />
+    </div>
+  {:else if $mode === 'uplc'}
+    <div class="uplc-loading"><span class="spinner"></span> Loading…</div>
+  {/if}
 </div>
 
 <style>
@@ -95,20 +132,47 @@
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
-    height: 44px;
+    min-height: 64px;
+    gap: 12px;
+    flex-wrap: wrap;
   }
 
   .toolbar-left {
     display: flex;
     align-items: center;
     gap: 12px;
+    flex-wrap: wrap;
   }
 
-  .logo {
-    font-weight: 700;
-    font-size: 15px;
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .site-title {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-weight: 600;
+    font-size: 24px;
     color: var(--accent);
-    letter-spacing: -0.3px;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+
+  .site-logo {
+    width: 28px;
+    height: 28px;
+    border-radius: 0.2rem;
+    flex: none;
+  }
+
+  .product-name {
+    font-size: 13px;
+    color: var(--text-secondary);
+    border-left: 1px solid var(--border);
+    padding-left: 12px;
   }
 
   .contract-info {
@@ -130,9 +194,7 @@
   }
 
   .toolbar-center {
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
+    margin-inline: auto;
   }
 
   .toolbar-right {
@@ -149,6 +211,48 @@
   }
 
   .status.ok { color: var(--success); }
+  .status.muted { color: var(--text-muted); }
+
+  .mode-tabs {
+    display: inline-flex;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 2px;
+    gap: 2px;
+  }
+
+  .mode-tabs button {
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 12px;
+    padding: 3px 12px;
+    border-radius: 5px;
+  }
+
+  .mode-tabs button.active {
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+
+  .uplc {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .uplc-loading {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: var(--text-muted);
+  }
+
+  [hidden] { display: none !important; }
   .status.error { color: var(--error); }
   .status.warning { color: var(--warning); }
 

@@ -12,6 +12,7 @@ application {
 
 dependencies {
     implementation project(':julc-jrl:julc-jrl-core')
+    implementation project(':julc-tools')
     implementation project(':julc-compiler')
     implementation project(':julc-core')
     implementation project(':julc-stdlib')
@@ -58,6 +59,7 @@ tasks.register('npmInstall', Exec) {
 
 tasks.register('buildFrontend', Exec) {
     dependsOn 'npmInstall'
+    dependsOn 'exportCatalogue'
     workingDir frontendDir
     if (isWindows) {
         commandLine 'cmd', '/c', 'npm', 'run', 'build'
@@ -65,14 +67,55 @@ tasks.register('buildFrontend', Exec) {
         commandLine 'sh', '-c', 'npm run build'
     }
     inputs.dir(new File(frontendDir, 'src'))
+    // The playground shares the docsite's JuLC brand asset.
+    inputs.file(rootProject.file('docs/public/logo.png'))
+    inputs.dir(new File(frontendDir, 'public'))
     inputs.file(new File(frontendDir, 'index.html'))
     inputs.file(new File(frontendDir, 'vite.config.ts'))
     inputs.file(new File(frontendDir, 'package.json'))
     outputs.dir(file('src/main/resources/static'))
 }
 
+tasks.register('testFrontendStore', Exec) {
+    workingDir frontendDir
+    if (isWindows) {
+        commandLine 'cmd', '/c', 'npm', 'run', 'test:store'
+    } else {
+        commandLine 'sh', '-c', 'npm run test:store'
+    }
+    inputs.file(new File(frontendDir, 'package.json'))
+    inputs.file(new File(frontendDir, 'src/lib/uplc/locals-identity.js'))
+    inputs.file(new File(frontendDir, 'src/lib/uplc/store-locals-identity.test.mjs'))
+}
+
+tasks.named('test') {
+    dependsOn 'testFrontendStore'
+}
+
 if (project.hasProperty('withFrontend')) {
     processResources.dependsOn buildFrontend
+}
+tasks.named('processResources') { mustRunAfter 'buildFrontend' }
+tasks.named('buildFrontend') { mustRunAfter ':julc-wasm:wasmBundleFull' }
+
+// -PwithWasm: also build the in-browser (WebAssembly) engine into frontend/public/wasm before the frontend build.
+// Requires GraalVM with Web Image (-PgraalvmHome or GRAALVM_HOME); see BUILD_FROM_SOURCE.md.
+if (project.hasProperty('withWasm')) {
+    tasks.named('buildFrontend') {
+        dependsOn ':julc-wasm:wasmBundleFull'
+    }
+}
+
+tasks.register('exportCatalogue', JavaExec) {
+    dependsOn 'compileJava'
+    classpath = files(sourceSets.main.output.classesDirs, sourceSets.main.resources.srcDirs,
+            configurations.runtimeClasspath)
+    mainClass = 'org.julclang.playground.service.CatalogueExport'
+    def catalogue = file('frontend/public/wasm/catalogue.json')
+    args catalogue.absolutePath
+    inputs.files(sourceSets.main.output.classesDirs)
+    inputs.dir('src/main/resources/examples')
+    outputs.file(catalogue)
 }
 
 // --- Shadow JAR ---

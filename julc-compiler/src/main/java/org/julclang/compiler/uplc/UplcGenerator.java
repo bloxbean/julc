@@ -1,11 +1,13 @@
 package org.julclang.compiler.uplc;
 
-import org.julclang.compiler.CompilationContext;
 import org.julclang.compiler.CompilerException;
+import org.julclang.compiler.CompilerTypeDiagnostics;
+import org.julclang.compiler.CompilationContext;
 import org.julclang.compiler.CompilerTarget;
 import org.julclang.compiler.CompilerTargetDiagnostics;
-import org.julclang.compiler.CompilerTypeDiagnostics;
+import org.julclang.compiler.debug.PirDebugProvenance;
 import org.julclang.compiler.pir.PirSubstitution;
+import org.julclang.compiler.pir.PirHelpers;
 import org.julclang.compiler.pir.PirTerm;
 import org.julclang.compiler.pir.PirType;
 import org.julclang.core.Constant;
@@ -18,11 +20,12 @@ import java.math.BigInteger;
 import java.util.*;
 
 /**
- * Translates PIR terms to UPLC terms. Performs type erasure and De Bruijn index computation.
- *
- * <p>When source map generation is enabled (via {@code pirPositions}), the generator propagates
- * source locations from PIR terms to their outermost UPLC terms, building an {@link
- * IdentityHashMap} for runtime error location tracking.
+ * Translates PIR terms to UPLC terms.
+ * Performs type erasure and De Bruijn index computation.
+ * <p>
+ * When source map generation is enabled (via {@code pirPositions}), the generator
+ * propagates source locations from PIR terms to their outermost UPLC terms,
+ * building an {@link IdentityHashMap} for runtime error location tracking.
  */
 public class UplcGenerator {
 
@@ -42,6 +45,9 @@ public class UplcGenerator {
 
     /** UPLC term → source location (built during generation). */
     private final IdentityHashMap<Term, SourceLocation> uplcPositions = new IdentityHashMap<>();
+    private final IdentityHashMap<Term, SourceLocation> exactUplcPositions = new IdentityHashMap<>();
+    private final IdentityHashMap<Term.Lam, PirDebugProvenance.Association> emittedBinders = new IdentityHashMap<>();
+    private final PirDebugProvenance debugProvenance;
 
     /** Stack of inherited source locations for propagation to inner terms. */
     private final Deque<SourceLocation> locationStack = new ArrayDeque<>();
@@ -60,17 +66,36 @@ public class UplcGenerator {
     }
 
     /** Create a target-aware UPLC generator with optional source positions. */
-    public UplcGenerator(CompilationContext context, Map<PirTerm, SourceLocation> pirPositions) {
+    public UplcGenerator(
+            CompilationContext context,
+            Map<PirTerm, SourceLocation> pirPositions) {
+        this(context, pirPositions, null);
+    }
+
+    /** Opt-in lowering with exact Java declaration binder bookkeeping. */
+    public UplcGenerator(
+            CompilationContext context,
+            Map<PirTerm, SourceLocation> pirPositions,
+            PirDebugProvenance debugProvenance) {
         this.context = Objects.requireNonNull(context, "context");
         this.pirPositions = pirPositions != null ? pirPositions : Map.of();
+        this.debugProvenance = debugProvenance;
     }
 
     /**
-     * Get the UPLC term → source location map built during generation. Only populated when
-     * pirPositions was provided.
+     * Get the UPLC term → source location map built during generation.
+     * Only populated when pirPositions was provided.
      */
     public IdentityHashMap<Term, SourceLocation> getUplcPositions() {
         return uplcPositions;
+    }
+
+    public IdentityHashMap<Term, SourceLocation> getExactUplcPositions() {
+        return new IdentityHashMap<>(exactUplcPositions);
+    }
+
+    public IdentityHashMap<Term.Lam, PirDebugProvenance.Association> getEmittedBinders() {
+        return new IdentityHashMap<>(emittedBinders);
     }
 
     public Term generate(PirTerm pir) {
@@ -81,6 +106,7 @@ public class UplcGenerator {
             var loc = pirPositions.get(pir);
             if (loc != null) {
                 uplcPositions.put(term, loc);
+                exactUplcPositions.put(term, loc);
             } else if (!locationStack.isEmpty() && !uplcPositions.containsKey(term)) {
                 // Propagate parent location to inner terms that lack their own
                 uplcPositions.put(term, locationStack.peek());
@@ -124,7 +150,9 @@ public class UplcGenerator {
                 scope.push(param);
                 var bodyTerm = generate(body);
                 scope.pop();
-                yield Term.lam(param, bodyTerm);
+                var lambda = new Term.Lam(param, bodyTerm);
+                recordBinder(pir, lambda);
+                yield lambda;
             }
 
             case PirTerm.App(var function, var argument) -> {
@@ -133,7 +161,8 @@ public class UplcGenerator {
                     // For MVP, field access on Data-typed values is just passed through
                     // The ValidatorWrapper/DataCodecGenerator handles the actual field extraction
                     yield Term.apply(
-                            Term.var(deBruijnIndex(name.substring(1))), generate(argument));
+                            Term.var(deBruijnIndex(name.substring(1))),
+                            generate(argument));
                 }
                 yield Term.apply(generate(function), generate(argument));
             }
@@ -144,7 +173,9 @@ public class UplcGenerator {
                 scope.push(name);
                 var bodyTerm = generate(body);
                 scope.pop();
-                yield Term.apply(Term.lam(name, bodyTerm), valTerm);
+                var lambda = new Term.Lam(name, bodyTerm);
+                recordBinder(pir, lambda);
+                yield Term.apply(lambda, valTerm);
             }
 
             case PirTerm.LetRec letRec -> generateLetRec(letRec);
@@ -156,10 +187,10 @@ public class UplcGenerator {
                     // Case Bool branch order is False (0), then True (1).
                     // Case evaluates the scrutinee once and only the selected branch.
                     yield new Term.Case(
-                            generate(cond), List.of(generate(elseBranch), generate(thenBranch)));
+                            generate(cond),
+                            List.of(generate(elseBranch), generate(thenBranch)));
                 }
-                // Force(Apply(Apply(Apply(Force(Builtin(IfThenElse)), cond), Delay(then)),
-                // Delay(else)))
+                // Force(Apply(Apply(Apply(Force(Builtin(IfThenElse)), cond), Delay(then)), Delay(else)))
                 var ifBuiltin = Term.force(Term.builtin(DefaultFun.IfThenElse));
                 yield Term.force(
                         Term.apply(
@@ -171,8 +202,7 @@ public class UplcGenerator {
 
             case PirTerm.IntegerCase(var scrutinee, var branches) -> {
                 if (!integerCaseEnabled()) {
-                    throw new CompilerException(
-                            "IntegerCase requires the PV11 safe lowering profile");
+                    throw new CompilerException("IntegerCase requires the PV11 safe lowering profile");
                 }
                 // Integer Case: branch i is selected for scrutinee value i; branches take no
                 // arguments and only the selected branch is evaluated (ADR-041 O5).
@@ -184,8 +214,7 @@ public class UplcGenerator {
 
             case PirTerm.PairMatch(var scrutinee, _, var first, var second, var body) -> {
                 if (!pairCaseEnabled()) {
-                    throw new CompilerException(
-                            "PairMatch requires the PV11 safe lowering profile");
+                    throw new CompilerException("PairMatch requires the PV11 safe lowering profile");
                 }
                 context.recordOptimizationRule(PV11_CASE_PAIR_RULE);
                 var pairTerm = generate(scrutinee);
@@ -205,8 +234,7 @@ public class UplcGenerator {
                 if (!context.target().equals(CompilerTarget.PLUTUS_V3_PV11)
                         || !context.optimizationLevel().pv11SafeRulesEnabled()
                         || !context.supports(ProtocolCapability.CASE_ON_BUILTIN_CONSTANTS)) {
-                    throw new CompilerException(
-                            "ListMatch requires the PV11 safe lowering profile");
+                    throw new CompilerException("ListMatch requires the PV11 safe lowering profile");
                 }
                 context.recordOptimizationRule(PV11_CASE_LIST_RULE);
                 var listTerm = generate(scrutinee);
@@ -221,8 +249,8 @@ public class UplcGenerator {
                     scope.pop();
                 }
                 // List Case: h::t selects branch 0 (applied to h then t); [] selects branch 1.
-                yield new Term.Case(
-                        listTerm, List.of(Term.lam(head, Term.lam(tail, consTerm)), nilTerm));
+                yield new Term.Case(listTerm,
+                        List.of(Term.lam(head, Term.lam(tail, consTerm)), nilTerm));
             }
 
             case PirTerm.DataConstr(var tag, var dataType, var fields) -> {
@@ -230,30 +258,25 @@ public class UplcGenerator {
                 var fieldTypes = getFieldTypes(dataType, tag);
 
                 // Build the Data list from right to left: MkCons(last, MkNilData())
-                Term fieldList =
-                        Term.apply(
-                                wrapForces(Term.builtin(DefaultFun.MkNilData), 0),
-                                Term.const_(Constant.unit()));
+                Term fieldList = Term.apply(
+                        wrapForces(Term.builtin(DefaultFun.MkNilData), 0),
+                        Term.const_(Constant.unit()));
                 for (int i = fields.size() - 1; i >= 0; i--) {
                     var fieldTerm = generate(fields.get(i));
                     // Wrap with Data encoding based on field type
                     if (i < fieldTypes.size()) {
                         fieldTerm = wrapDataEncode(fieldTerm, fieldTypes.get(i));
                     }
-                    fieldList =
+                    fieldList = Term.apply(
                             Term.apply(
-                                    Term.apply(
-                                            wrapForces(
-                                                    Term.builtin(DefaultFun.MkCons),
-                                                    forceCount(DefaultFun.MkCons)),
-                                            fieldTerm),
-                                    fieldList);
+                                    wrapForces(Term.builtin(DefaultFun.MkCons), forceCount(DefaultFun.MkCons)),
+                                    fieldTerm),
+                            fieldList);
                 }
 
                 // ConstrData(tag, fieldList)
                 yield Term.apply(
-                        Term.apply(
-                                Term.builtin(DefaultFun.ConstrData),
+                        Term.apply(Term.builtin(DefaultFun.ConstrData),
                                 Term.const_(Constant.integer(BigInteger.valueOf(tag)))),
                         fieldList);
             }
@@ -269,7 +292,9 @@ public class UplcGenerator {
                 // Trace is polymorphic (1 Force), so: Force(Builtin(Trace))
                 // Unlike IfThenElse, Trace evaluates its second arg eagerly (no Delay/Force needed)
                 var traceBuiltin = Term.force(Term.builtin(DefaultFun.Trace));
-                yield Term.apply(Term.apply(traceBuiltin, generate(message)), generate(body));
+                yield Term.apply(
+                        Term.apply(traceBuiltin, generate(message)),
+                        generate(body));
             }
         };
     }
@@ -292,8 +317,8 @@ public class UplcGenerator {
             //   Lam("x", Apply(Var(2), Lam("v", Apply(Apply(Var(2), Var(2)), Var(1))))),
             //   Lam("x", Apply(Var(2), Lam("v", Apply(Apply(Var(2), Var(2)), Var(1)))))))
 
-            var innerBody =
-                    Term.lam("v", Term.apply(Term.apply(Term.var(2), Term.var(2)), Term.var(1)));
+            var innerBody = Term.lam("v",
+                    Term.apply(Term.apply(Term.var(2), Term.var(2)), Term.var(1)));
             var branch = Term.lam("x", Term.apply(Term.var(2), innerBody));
             var fix = Term.lam("f", Term.apply(branch, branch));
 
@@ -321,10 +346,11 @@ public class UplcGenerator {
 
     /**
      * Handle multi-binding LetRec by analyzing dependencies between bindings.
-     *
-     * <p>Strategy: 1. Build a dependency graph (which bindings reference which others) 2. If
-     * bindings can be topologically sorted (no mutual cycles), nest them as single-binding
-     * LetRec/Let 3. Decompose mutual cycles recursively with Bekic's theorem
+     * <p>
+     * Strategy:
+     * 1. Build a dependency graph (which bindings reference which others)
+     * 2. If bindings can be topologically sorted (no mutual cycles), nest them as single-binding LetRec/Let
+     * 3. Decompose mutual cycles recursively with Bekic's theorem
      */
     private Term generateMultiBindingLetRec(PirTerm.LetRec letRec) {
         var bindings = letRec.bindings();
@@ -353,8 +379,7 @@ public class UplcGenerator {
         // Try topological sort (handle non-mutual case)
         var sorted = topologicalSort(deps);
         if (sorted != null) {
-            // No mutual cycles — nest single-binding LetRec (for self-recursive) or Let
-            // (non-recursive)
+            // No mutual cycles — nest single-binding LetRec (for self-recursive) or Let (non-recursive)
             PirTerm result = letRec.body();
             // Process in reverse topological order (last dependency first → innermost binding)
             for (int i = sorted.size() - 1; i >= 0; i--) {
@@ -406,9 +431,9 @@ public class UplcGenerator {
     }
 
     /**
-     * Topological sort of bindings based on their inter-dependencies. Returns null if a cycle is
-     * detected (mutual recursion). Returns sorted list in dependency order (first has no deps, last
-     * depends on earlier ones).
+     * Topological sort of bindings based on their inter-dependencies.
+     * Returns null if a cycle is detected (mutual recursion).
+     * Returns sorted list in dependency order (first has no deps, last depends on earlier ones).
      */
     private List<String> topologicalSort(Map<String, Set<String>> deps) {
         var result = new ArrayList<String>();
@@ -425,12 +450,8 @@ public class UplcGenerator {
         return result;
     }
 
-    private boolean topoVisit(
-            String name,
-            Map<String, Set<String>> deps,
-            Set<String> visited,
-            Set<String> inProgress,
-            List<String> result) {
+    private boolean topoVisit(String name, Map<String, Set<String>> deps,
+                              Set<String> visited, Set<String> inProgress, List<String> result) {
         if (inProgress.contains(name)) return false; // cycle
         if (visited.contains(name)) return true;
         inProgress.add(name);
@@ -444,20 +465,21 @@ public class UplcGenerator {
     }
 
     /**
-     * Apply Bekic's theorem to decompose 2-binding mutual recursion into nested single-binding
-     * LetRecs.
-     *
-     * <p>Given: LetRec([A = bodyA, B = bodyB], mainBody)
-     *
-     * <p>Produces: LetRec([A = bodyA[B := LetRec([B = bodyB[A := Var(A)]], Var(B))]], Let(B,
-     * LetRec([B = bodyB[A := Var(A)]], Var(B)), mainBody))
-     *
-     * <p>Where bodyA[B := ...] means substitute all free occurrences of B in bodyA with the inner
-     * LetRec. Inside the inner LetRec for B, self-references to B work via Z-combinator, and
-     * references to A resolve to the outer LetRec's binding.
+     * Apply Bekic's theorem to decompose 2-binding mutual recursion into nested single-binding LetRecs.
+     * <p>
+     * Given: LetRec([A = bodyA, B = bodyB], mainBody)
+     * <p>
+     * Produces:
+     *   LetRec([A = bodyA[B := LetRec([B = bodyB[A := Var(A)]], Var(B))]],
+     *     Let(B, LetRec([B = bodyB[A := Var(A)]], Var(B)),
+     *       mainBody))
+     * <p>
+     * Where bodyA[B := ...] means substitute all free occurrences of B in bodyA with the inner LetRec.
+     * Inside the inner LetRec for B, self-references to B work via Z-combinator,
+     * and references to A resolve to the outer LetRec's binding.
      */
-    private Term generateBekicLetRec(
-            PirTerm.Binding bindingA, PirTerm.Binding bindingB, PirTerm mainBody) {
+    private Term generateBekicLetRec(PirTerm.Binding bindingA, PirTerm.Binding bindingB,
+                                      PirTerm mainBody) {
         var nameA = bindingA.name();
         var nameB = bindingB.name();
         var bodyA = bindingA.value();
@@ -465,28 +487,24 @@ public class UplcGenerator {
 
         // Inner LetRec for B: LetRec([B = bodyB], Var(B))
         // Inside bodyB, references to A are free (will be captured by outer LetRec)
-        var innerLetRecB =
-                new PirTerm.LetRec(
-                        List.of(new PirTerm.Binding(nameB, bodyB)),
-                        new PirTerm.Var(nameB, new PirType.DataType()));
+        var innerLetRecB = new PirTerm.LetRec(
+                List.of(new PirTerm.Binding(nameB, bodyB)),
+                new PirTerm.Var(nameB, new PirType.DataType()));
 
         // Substitute B in bodyA with the inner LetRec
         var bodyASubstituted = PirSubstitution.substitute(bodyA, nameB, innerLetRecB);
 
         // Outer LetRec for A: LetRec([A = bodyA'], ...)
         // where bodyA' has B replaced by the inner LetRec
-        var outerLetRecA =
-                new PirTerm.LetRec(
-                        List.of(new PirTerm.Binding(nameA, bodyASubstituted)),
-                        // After binding A, define B and then evaluate mainBody
-                        new PirTerm.Let(nameB, innerLetRecB, mainBody));
+        var outerLetRecA = new PirTerm.LetRec(
+                List.of(new PirTerm.Binding(nameA, bodyASubstituted)),
+                // After binding A, define B and then evaluate mainBody
+                new PirTerm.Let(nameB, innerLetRecB, mainBody));
 
         return generate(outerLetRecA);
     }
 
-    /**
-     * Shared O3/O4/O5 legality gate: exact PV11 target, safe profile, Case on builtin constants.
-     */
+    /** Shared O3/O4/O5 legality gate: exact PV11 target, safe profile, Case on builtin constants. */
     private boolean pv11CaseOnBuiltinEnabled() {
         return context.target().equals(CompilerTarget.PLUTUS_V3_PV11)
                 && context.optimizationLevel().pv11SafeRulesEnabled()
@@ -502,9 +520,9 @@ public class UplcGenerator {
     }
 
     /**
-     * Expand DataMatch with branch-local field extraction and unchanged tag dispatch. ADR-038 uses
-     * typed pair destructuring under the O4 gate; other profiles retain the historical
-     * UnConstrData/FstPair/SndPair expansion.
+     * Expand DataMatch with branch-local field extraction and unchanged tag dispatch.
+     * ADR-038 uses typed pair destructuring under the O4 gate; other profiles retain
+     * the historical UnConstrData/FstPair/SndPair expansion.
      */
     private Term generateDataMatch(PirTerm scrutinee, List<PirTerm.MatchBranch> branches) {
         var dataName = "__match_data";
@@ -527,19 +545,16 @@ public class UplcGenerator {
             for (var branch : branches) {
                 bodies.add(buildBranchFieldExtraction(branch, fieldsName, dataName));
             }
-            dispatch =
-                    new PirTerm.IntegerCase(
-                            new PirTerm.Var(tagName, new PirType.IntegerType()), bodies);
+            dispatch = new PirTerm.IntegerCase(
+                    new PirTerm.Var(tagName, new PirType.IntegerType()), bodies);
         } else {
             dispatch = new PirTerm.Error(new PirType.UnitType());
             for (int i = branches.size() - 1; i >= 0; i--) {
                 var branchBody = buildBranchFieldExtraction(branches.get(i), fieldsName, dataName);
-                var tagCheck =
-                        new PirTerm.App(
-                                new PirTerm.App(
-                                        new PirTerm.Builtin(DefaultFun.EqualsInteger),
-                                        new PirTerm.Var(tagName, new PirType.IntegerType())),
-                                new PirTerm.Const(Constant.integer(BigInteger.valueOf(i))));
+                var tagCheck = new PirTerm.App(
+                        new PirTerm.App(new PirTerm.Builtin(DefaultFun.EqualsInteger),
+                                new PirTerm.Var(tagName, new PirType.IntegerType())),
+                        new PirTerm.Const(Constant.integer(BigInteger.valueOf(i))));
                 dispatch = new PirTerm.IfThenElse(tagCheck, branchBody, dispatch);
             }
         }
@@ -552,49 +567,32 @@ public class UplcGenerator {
         var dataVar = new PirTerm.Var(dataName, new PirType.DataType());
         // Direct PIR can reference this historical internal binder. Removing it in
         // that case would change lexical binding, so retain the old expansion.
-        if (pairCaseEnabled()
-                && !PirSubstitution.collectFreeVarNames(dispatch).contains(pairName)) {
+        if (pairCaseEnabled() && !PirSubstitution.collectFreeVarNames(dispatch).contains(pairName)) {
             // ADR-038: successful UnConstrData proves the native pair by construction.
             // Keep data strict and once-bound, and decoding inside the unchanged dispatch.
-            var pairType =
-                    new PirType.PairType(
-                            new PirType.IntegerType(),
-                            new PirType.ListType(new PirType.DataType()));
-            return generate(
-                    new PirTerm.Let(
-                            dataName,
-                            scrutinee,
-                            new PirTerm.PairMatch(
-                                    pirApp1(DefaultFun.UnConstrData, dataVar),
-                                    pairType,
-                                    tagName,
-                                    fieldsName,
-                                    dispatch)));
+            var pairType = new PirType.PairType(new PirType.IntegerType(),
+                    new PirType.ListType(new PirType.DataType()));
+            return generate(new PirTerm.Let(dataName, scrutinee,
+                    new PirTerm.PairMatch(pirApp1(DefaultFun.UnConstrData, dataVar),
+                            pairType, tagName, fieldsName, dispatch)));
         }
         var pairVar = new PirTerm.Var(pairName, new PirType.DataType());
-        var matchPir =
-                new PirTerm.Let(
-                        dataName,
-                        scrutinee,
-                        new PirTerm.Let(
-                                pairName,
-                                pirApp1(DefaultFun.UnConstrData, dataVar),
-                                new PirTerm.Let(
-                                        tagName,
-                                        pirApp1(DefaultFun.FstPair, pairVar),
-                                        new PirTerm.Let(
-                                                fieldsName,
-                                                pirApp1(DefaultFun.SndPair, pairVar),
-                                                dispatch))));
+        var matchPir = new PirTerm.Let(dataName, scrutinee,
+                new PirTerm.Let(pairName,
+                        pirApp1(DefaultFun.UnConstrData, dataVar),
+                        new PirTerm.Let(tagName,
+                                pirApp1(DefaultFun.FstPair, pairVar),
+                                new PirTerm.Let(fieldsName,
+                                        pirApp1(DefaultFun.SndPair, pairVar),
+                                        dispatch))));
         return generate(matchPir);
     }
 
     /**
      * Build PIR for extracting fields from a Data list and binding them in the branch body.
-     * HeadList/TailList for extraction, UnIData/UnBData for decoding.
+     * HeadList/TailList for extraction; the shared typed decoder for field values.
      */
-    private PirTerm buildBranchFieldExtraction(
-            PirTerm.MatchBranch branch, String fieldsName, String dataName) {
+    private PirTerm buildBranchFieldExtraction(PirTerm.MatchBranch branch, String fieldsName, String dataName) {
         var bindings = branch.bindings();
         var bindingTypes = branch.bindingTypes();
 
@@ -610,7 +608,7 @@ public class UplcGenerator {
 
                 // Decode field: UnIData(HeadList(fields)) for Integer, etc.
                 var headExpr = pirApp1(DefaultFun.HeadList, listRef);
-                var decodedExpr = pirWrapDecode(headExpr, bindingTypes.get(j));
+                var decodedExpr = PirHelpers.wrapDecode(headExpr, bindingTypes.get(j));
                 lets.add(new PirTerm.Let(bindings.get(j), decodedExpr, null)); // body filled later
 
                 if (j + 1 < bindings.size()) {
@@ -628,11 +626,8 @@ public class UplcGenerator {
 
         // If pattern variable exists, wrap with Let binding to the scrutinee data
         if (branch.patternVar() != null && dataName != null) {
-            result =
-                    new PirTerm.Let(
-                            branch.patternVar(),
-                            new PirTerm.Var(dataName, new PirType.DataType()),
-                            result);
+            result = new PirTerm.Let(branch.patternVar(),
+                    new PirTerm.Var(dataName, new PirType.DataType()), result);
         }
 
         return result;
@@ -641,17 +636,6 @@ public class UplcGenerator {
     /** Create a PIR Builtin application with 1 arg. */
     private static PirTerm pirApp1(DefaultFun fun, PirTerm arg) {
         return new PirTerm.App(new PirTerm.Builtin(fun), arg);
-    }
-
-    /** Wrap a PIR Data value with the appropriate decoding based on type. */
-    private static PirTerm pirWrapDecode(PirTerm data, PirType type) {
-        return switch (type) {
-            case PirType.IntegerType _ -> pirApp1(DefaultFun.UnIData, data);
-            case PirType.ByteStringType _ -> pirApp1(DefaultFun.UnBData, data);
-            case PirType.ListType _ -> pirApp1(DefaultFun.UnListData, data);
-            case PirType.MapType _ -> pirApp1(DefaultFun.UnMapData, data);
-            default -> data; // DataType, RecordType, SumType etc. — already Data
-        };
     }
 
     private int deBruijnIndex(String name) {
@@ -663,35 +647,32 @@ public class UplcGenerator {
         throw new CompilerException("Unbound variable: " + name);
     }
 
-    /** Get the number of Force wrappers needed for a polymorphic builtin. */
+    private void recordBinder(PirTerm pir, Term.Lam lambda) {
+        if (debugProvenance == null) return;
+        var association = debugProvenance.association(pir);
+        if (association != null) emittedBinders.put(lambda, association);
+    }
+
+    /**
+     * Get the number of Force wrappers needed for a polymorphic builtin.
+     */
     static int forceCount(DefaultFun fun) {
         return switch (fun) {
             // 2 Forces (2 type variables: ∀ a b)
             case FstPair, SndPair, ChooseList -> 2;
             // 1 Force (1 type variable: ∀ a)
-            case IfThenElse,
-                    ChooseUnit,
-                    Trace,
-                    ChooseData,
-                    MkCons,
-                    HeadList,
-                    TailList,
-                    NullList,
-                    DropList,
-                    LengthOfArray,
-                    ListToArray,
-                    IndexArray,
-                    MultiIndexArray ->
-                    1;
+            case IfThenElse, ChooseUnit, Trace, ChooseData,
+                 MkCons, HeadList, TailList, NullList,
+                 DropList, LengthOfArray, ListToArray, IndexArray, MultiIndexArray -> 1;
             // 0 Forces (monomorphic)
             default -> 0;
         };
     }
 
     /**
-     * Enforce the current compiler's Plutus V3/PV11 target at the final common lowering boundary.
-     * This catches direct PIR, public Builtins calls, library wrappers, and every JulcCompiler
-     * entry point.
+     * Enforce the current compiler's Plutus V3/PV11 target at the final
+     * common lowering boundary. This catches direct PIR, public Builtins calls,
+     * library wrappers, and every JulcCompiler entry point.
      */
     private Term generateBuiltin(DefaultFun fun) {
         if (!context.resolvedTarget().featureProfile().isBuiltinAvailable(fun)) {
@@ -712,7 +693,9 @@ public class UplcGenerator {
         return term;
     }
 
-    /** Get the PIR types of fields for a DataConstr's data type. */
+    /**
+     * Get the PIR types of fields for a DataConstr's data type.
+     */
     private static List<PirType> getFieldTypes(PirType dataType, int tag) {
         if (dataType instanceof PirType.RecordType rt) {
             return rt.fields().stream().map(PirType.Field::type).toList();
@@ -728,15 +711,13 @@ public class UplcGenerator {
     }
 
     /**
-     * Wrap a UPLC term with the appropriate Data encoding based on PIR type. Integer → IData,
-     * ByteString → BData, List → ListData, Map → MapData, etc.
+     * Wrap a UPLC term with the appropriate Data encoding based on PIR type.
+     * Integer → IData, ByteString → BData, List → ListData, Map → MapData, etc.
      */
     private Term wrapDataEncode(Term value, PirType type) {
         if (PirType.containsNativeOpaque(type)) {
             throw CompilerTypeDiagnostics.nativeTypeMismatch(
-                    "UPLC Data construction",
-                    type,
-                    new PirType.DataType(),
+                    "UPLC Data construction", type, new PirType.DataType(),
                     currentSourceLocation());
         }
         return switch (type) {
@@ -746,40 +727,27 @@ public class UplcGenerator {
             case PirType.MapType _ -> Term.apply(Term.builtin(DefaultFun.MapData), value);
             case PirType.BoolType _ -> {
                 // Bool: True → ConstrData(1,[]), False → ConstrData(0,[])
-                var nilData =
-                        Term.apply(
-                                wrapForces(Term.builtin(DefaultFun.MkNilData), 0),
-                                Term.const_(Constant.unit()));
+                var nilData = Term.apply(
+                        wrapForces(Term.builtin(DefaultFun.MkNilData), 0),
+                        Term.const_(Constant.unit()));
                 var ifThenElse = wrapForces(Term.builtin(DefaultFun.IfThenElse), 1);
                 yield Term.force(
                         Term.apply(
                                 Term.apply(
                                         Term.apply(ifThenElse, value),
-                                        Term.delay(
-                                                Term.apply(
-                                                        Term.apply(
-                                                                Term.builtin(DefaultFun.ConstrData),
-                                                                Term.const_(
-                                                                        Constant.integer(
-                                                                                BigInteger.ONE))),
-                                                        nilData))),
-                                Term.delay(
-                                        Term.apply(
-                                                Term.apply(
-                                                        Term.builtin(DefaultFun.ConstrData),
-                                                        Term.const_(
-                                                                Constant.integer(BigInteger.ZERO))),
-                                                nilData))));
+                                        Term.delay(Term.apply(
+                                                Term.apply(Term.builtin(DefaultFun.ConstrData),
+                                                        Term.const_(Constant.integer(BigInteger.ONE))),
+                                                nilData))),
+                                Term.delay(Term.apply(
+                                        Term.apply(Term.builtin(DefaultFun.ConstrData),
+                                                Term.const_(Constant.integer(BigInteger.ZERO))),
+                                        nilData))));
             }
-            case PirType.StringType _ ->
-                    Term.apply(
-                            Term.builtin(DefaultFun.BData),
-                            Term.apply(Term.builtin(DefaultFun.EncodeUtf8), value));
-            case PirType.DataType _,
-                    PirType.RecordType _,
-                    PirType.SumType _,
-                    PirType.NamedTypeRef _ ->
-                    value; // Already Data
+            case PirType.StringType _ -> Term.apply(Term.builtin(DefaultFun.BData),
+                    Term.apply(Term.builtin(DefaultFun.EncodeUtf8), value));
+            case PirType.DataType _, PirType.RecordType _, PirType.SumType _,
+                    PirType.NamedTypeRef _ -> value; // Already Data
             default -> value; // Pass through for unknown types
         };
     }

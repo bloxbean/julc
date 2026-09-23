@@ -52,7 +52,9 @@ public class CompilerOptions {
     }
 
     /**
-     * Select a pinned cost profile for {@link OptimizationLevel#PV11_COSTED}.
+     * Retain an optional pinned profile for configuration compatibility.
+     * Current compiler rules do not read its numeric parameters; it is not required
+     * by any optimization level and does not configure runtime evaluation.
      * Supplying a profile does not enable cost-directed rules by itself.
      */
     public CompilerOptions setOptimizationCostProfile(

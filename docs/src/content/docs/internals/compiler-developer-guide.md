@@ -141,8 +141,8 @@ on `VALUE_CONSTANTS` instead of `CASE_ON_BUILTIN_CONSTANTS`; rule provenance is
 
 `ListIndexPromotionPass` (ADR-043, O9) runs between the two passes above and is
 the first costed-only rule: its gate is the exact PV11 target,
-`OptimizationLevel.pv11CostedRulesEnabled()` (exactly the levels that require a
-cost profile), `ARRAY_CONSTANTS`, and both array builtins on the resolved feature
+`OptimizationLevel.pv11CostedRulesEnabled()` (the opt-in `PV11_COSTED` level,
+independent of cost profiles), `ARRAY_CONSTANTS`, and both array builtins on the resolved feature
 profile. For a `Let`, lambda-parameter or match-field binding of a list variable
 whose scope holds the recursive `JulcList.get` lowering
 (`PirHelpers.recursiveListGet`, recognised structurally through the shared
@@ -937,7 +937,50 @@ someCall();
 
 Loops are transformed into recursive `LetRec` patterns by `LoopDesugarer`. The desugarer assigns unique names to each loop function (`loop__forEach__0`, `loop__while__1`, etc.) to support nesting.
 
+Before choosing a lowering path, `LoopBodyGenerator.validateConditionalLocalUpdates`
+checks lexical scopes (ADR-048, #155). An `if` returns only the loop's accumulators,
+so an assignment to a loop-body local declared outside that branch is rejected
+with a source location and rewrite hints. Bare blocks do not introduce joins;
+nested loops have their own locals but retain enclosing conditional restrictions.
+The check emits no PIR and mutates neither AST nor compiler state. A general
+join-point lowering for these locals remains future work.
+
+`generateSwitchExpr` also calls `validateSwitchExpressionUpdates`: each arm may
+only assign variables it owns, because a switch exports its yielded value rather
+than enclosing variable rebindings. The check applies even without an enclosing
+loop or `if`; nested switch arms start a new boundary. Branch-local pattern
+bindings are scoped to their valid branch. Switch case-pattern reassignment is
+rejected (#162) to avoid stale cached field projections; this does not change
+supported `instanceof` bindings.
+
+Outside specialized loop-body lowering, `generateIfStmt` uses its existing
+return/yield continuation path for branches containing statement-level loops
+(ADR-050, #161). The continuation is generated in the enclosing scope and bound
+once as a join lambda before the conditional. Its parameters are the source-order
+union of enclosing accumulators updated by statement-level loops in either branch;
+lexical analysis excludes branch/loop locals and pattern/iteration bindings.
+Each falling-through branch calls it under its final accumulator bindings; an
+unchanged path passes incoming values. Zero-accumulator joins take a unit argument
+so the continuation is not evaluated before the branch. Parameters retain native
+representations without Data packing. Sequential guarded loops therefore grow
+linearly in serialized size rather than duplicating the entire tail at each if.
+Branch locals and instanceof pattern bindings reuse the existing deterministic
+local renaming so they cannot capture join arguments (for example, a branch local
+shadowing a class field that the other branch updates). It also protects the
+existing inline return/yield continuation path. Diagnostics use source names.
+Nested branches propagate the continuation; loops inside expressions belong to
+their own switch/lambda boundary. No new PIR node is introduced.
+Branches without owned exits or statement-level loops keep their
+sequencing shape. Recompiling affected sources can change bytes, hashes and costs
+at every optimization level.
+
 ### 9.1 For-Each Loops
+
+ADR-048's outer-loop guard traverses a switch expression's selector, not its arms.
+The dedicated arm-ownership check prevents enclosing-variable updates; each loop
+inside an arm still validates its own body. Arm-local conditionals therefore use
+ADR-050's continuation lowering even when the switch is inside an outer loop,
+without weakening restrictions on actual loop-body locals.
 
 **5 compilation paths** based on accumulator count and break usage:
 
@@ -1050,6 +1093,13 @@ switch (credential) {
 5. Build `DataMatch(scrutinee, orderedBranches)`
 
 ### UPLC Lowering of DataMatch
+
+Field bindings use `PirHelpers.wrapDecode`, the same Data-to-native codec as
+ordinary record access (ADR-051, #166). This includes Bool and String, not only
+Integer/ByteString/List/Map. The selected arm strictly decodes its bound fields
+in order before executing its body; unselected arms remain unevaluated. Keep this
+codec shared: a cached pattern-field binding must have its declared runtime type.
+This decoding is not a substitute for strict typed-boundary validation.
 
 `UplcGenerator` lowers `DataMatch` to:
 

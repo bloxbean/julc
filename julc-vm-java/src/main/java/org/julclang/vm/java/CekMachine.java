@@ -117,17 +117,7 @@ public final class CekMachine {
      * @throws CekEvaluationException on evaluation error
      */
     public CekValue evaluate(Term term) {
-        this.currentTerm = term;
-        this.currentEnv = CekEnvironment.EMPTY;
-        this.currentValue = null;
-        this.inComputePhase = true;
-        this.stack.clear();
-        this.traces.clear();
-
-        if (costTracker != null) {
-            costTracker.chargeMachineStep(StepKind.STARTUP);
-        }
-
+        start(term);
         try {
             while (true) {
                 if (inComputePhase) {
@@ -147,6 +137,110 @@ public final class CekMachine {
             }
             throw e;
         }
+    }
+
+    // === Stepwise evaluation ===
+
+    /**
+     * Reset the machine to evaluate {@code term} one transition at a time with {@link #step()}. The initial state and
+     * the startup charge are the same as for {@link #evaluate(Term)}.
+     *
+     * @throws org.julclang.vm.java.cost.BudgetExhaustedException if the budget does not cover the startup cost
+     */
+    public void start(Term term) {
+        this.currentTerm = term;
+        this.currentEnv = CekEnvironment.EMPTY;
+        this.currentValue = null;
+        this.inComputePhase = true;
+        this.stack.clear();
+        this.traces.clear();
+
+        if (costTracker != null) {
+            costTracker.chargeMachineStep(StepKind.STARTUP);
+        }
+    }
+
+    /**
+     * Perform one machine transition: compute the current term, or return the current value to the top frame.
+     * Repeating {@code step()} until it returns {@code false} is equivalent to {@link #evaluate(Term)}.
+     *
+     * @return {@code true} while more transitions remain, {@code false} once {@link #result()} is available
+     * @throws CekEvaluationException on evaluation error, with the same failed term as {@link #evaluate(Term)}
+     */
+    public boolean step() {
+        if (isDone()) {
+            return false;
+        }
+        try {
+            if (inComputePhase) {
+                compute();
+            } else {
+                returnValue();
+            }
+        } catch (org.julclang.vm.java.cost.BudgetExhaustedException e) {
+            if (e.failedTerm() == null && currentTerm != null) {
+                throw new org.julclang.vm.java.cost.BudgetExhaustedException(
+                        e.getMessage(), currentTerm);
+            }
+            throw e;
+        }
+        return !isDone();
+    }
+
+    /** Whether the machine holds its final value (the stack is empty in the return phase). */
+    public boolean isDone() {
+        return !inComputePhase && stack.isEmpty();
+    }
+
+    /** The final value of a stepwise evaluation. */
+    public CekValue result() {
+        if (!isDone() || currentValue == null) {
+            throw new IllegalStateException("Evaluation has not finished");
+        }
+        return currentValue;
+    }
+
+    /** Whether the next transition computes {@link #currentTerm()} (otherwise it returns {@link #currentValue()}). */
+    public boolean isComputing() {
+        return inComputePhase;
+    }
+
+    /** The term being computed; meaningful in the compute phase. */
+    public Term currentTerm() {
+        return currentTerm;
+    }
+
+    /** The environment of {@link #currentTerm()}; meaningful in the compute phase. */
+    public CekEnvironment currentEnvironment() {
+        return currentEnv;
+    }
+
+    /** The value being returned; meaningful in the return phase. */
+    public CekValue currentValue() {
+        return currentValue;
+    }
+
+    /** Number of continuation frames. */
+    public int stackDepth() {
+        return stack.size();
+    }
+
+    /** Up to {@code max} continuation frames, innermost first. */
+    public List<CekFrame> frames(int max) {
+        if (max < 0) {
+            throw new IllegalArgumentException("max must be non-negative: " + max);
+        }
+        var frames = new ArrayList<CekFrame>(Math.min(max, stack.size()));
+        var iterator = stack.iterator();
+        while (iterator.hasNext() && frames.size() < max) {
+            frames.add(iterator.next());
+        }
+        return List.copyOf(frames);
+    }
+
+    /** Number of trace messages emitted so far (without copying them). */
+    public int traceCount() {
+        return traces.size();
     }
 
     /** Get trace messages collected during evaluation. */

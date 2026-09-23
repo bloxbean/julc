@@ -1,49 +1,37 @@
-# Starlight Starter Kit: Basics
+# JuLC documentation
 
-[![Built with Starlight](https://astro.badg.es/v2/built-with-starlight/tiny.svg)](https://starlight.astro.build)
+Static Astro/Starlight site deployed to GitHub Pages by `docs-deploy.yml`.
+Use Node **22.19.0 or newer** (the resolved `undici` dependency requires it).
+CI uses the latest Node 22 patch. Install the reviewed lockfile, not floating dependencies:
 
-```
-npm create astro@latest -- --template starlight
-```
-
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
-
-## 🚀 Project Structure
-
-Inside of your Astro + Starlight project, you'll see the following folders and files:
-
-```
-.
-├── public/
-├── src/
-│   ├── assets/
-│   ├── content/
-│   │   └── docs/
-│   └── content.config.ts
-├── astro.config.mjs
-├── package.json
-└── tsconfig.json
+```sh
+cd docs
+npm ci
+npm run build
+npm audit
 ```
 
-Starlight looks for `.md` or `.mdx` files in the `src/content/docs/` directory. Each file is exposed as a route based on its file name.
+`npm run dev` starts the local development server; `npm run preview` previews `dist/`.
+Pages live in `src/content/docs/`; sidebar/base URL configuration is in `astro.config.mjs`.
+The build can include validators from a sibling `julc-examples` checkout (or
+`JULC_EXAMPLES_DIR`); record that checkout when comparing generated catalogs.
 
-Images can be added to `src/assets/` and embedded in Markdown with a relative link.
+## Dependency advisories
 
-Static assets, like favicons, can be placed in the `public/` directory.
+The September 2026 release-gate update replaces the vulnerable Astro 6 dependency tree
+with Astro 7.3.3, matching Starlight/Svelte integrations, and sharp 0.35.4. A clean
+lockfile install and static build passed; `npm audit` reported zero advisories at the
+time of validation. This is a point-in-time check, not a guarantee against unknown bugs.
 
-## 🧞 Commands
+This site has no SSR adapter or deployed Node server. Server-route advisories therefore
+have a different exposure than in an SSR application, but build-time image processing
+and the local development server still matter. In particular, the published
+[AVIF/libheif advisory](https://github.com/withastro/astro/security/advisories/GHSA-26w7-cxv4-gfx2)
+can affect optimization of untrusted images; static deployment is not sufficient mitigation.
+The patched dependencies are used rather than suppressing audit findings or applying
+`--force`/`--legacy-peer-deps`. Do not expose the development server to untrusted networks.
 
-All commands are run from the root of the project, from a terminal:
-
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `npm install`             | Installs dependencies                            |
-| `npm run dev`             | Starts local dev server at `localhost:4321`      |
-| `npm run build`           | Build your production site to `./dist/`          |
-| `npm run preview`         | Preview your build locally, before deploying     |
-| `npm run astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `npm run astro -- --help` | Get help using the Astro CLI                     |
-
-## 👀 Want to learn more?
-
-Check out [Starlight’s docs](https://starlight.astro.build/), read [the Astro documentation](https://docs.astro.build), or jump into the [Astro Discord server](https://astro.build/chat).
+See [release-gate evidence](../adr/evidence/052-pre17-release-gates.md) for versions,
+audit totals and validation scope. Future dependency refreshes should use compatible
+integrations, a clean `npm ci`, a full site build, and a fresh audit. Follow the repository
+security policy for previously undisclosed vulnerabilities.

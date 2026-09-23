@@ -35,7 +35,7 @@ class ExpModDecisionGateTest {
             for (var level : List.of(OptimizationLevel.PV11_SAFE, OptimizationLevel.PV11_COSTED)) {
                 var comparison = OptimizationBenchmarkRunner.compareWithJavaAndTruffle(
                         new OptimizationBenchmarkRunner.Fixture("expmod-decision", source, "run", cases),
-                        level, OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11);
+                        level, OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1);
                 comparison.verifyEquivalent(); // Includes exact failure text and trace order for each backend.
                 assertEquals(explicit, comparison.candidateArtifact().termMetrics().builtins()
                         .containsKey(DefaultFun.ExpModInteger));

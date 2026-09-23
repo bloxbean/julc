@@ -71,9 +71,6 @@ public final class CompilationContext {
         var resolvedTarget = CompilerTargetRegistry.resolve(effectiveOptions.getTarget());
         var optimizationLevel = effectiveOptions.getOptimizationLevel();
         var costProfile = effectiveOptions.getOptimizationCostProfile();
-        if (optimizationLevel.costProfileRequired() && costProfile == null) {
-            throw CompilerTargetDiagnostics.missingOptimizationCostProfile(optimizationLevel);
-        }
         if (costProfile != null
                 && !costProfile.target().equals(resolvedTarget.target().ledgerTarget())) {
             throw CompilerTargetDiagnostics.optimizationCostProfileTargetMismatch(
@@ -158,7 +155,7 @@ public final class CompilationContext {
     public OptimizationReport optimizationReport() {
         return OptimizationReport.of(
                 optimizationLevel,
-                optimizationCostProfile,
+                null, // No current compiler rule consumes numeric cost parameters (ADR-032 #153).
                 List.copyOf(appliedOptimizationRules));
     }
 

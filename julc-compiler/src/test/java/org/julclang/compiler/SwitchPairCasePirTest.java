@@ -193,7 +193,7 @@ class SwitchPairCasePirTest {
                 : vm.evaluate(program, CompilerTarget.PLUTUS_V3_PV11.ledgerTarget(), null, EvalOptions.DEFAULT);
     }
     private static CompilerOptions options(OptimizationLevel level) { return new CompilerOptions().setOptimizationLevel(level)
-            .setOptimizationCostProfile(OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11); }
+            .setOptimizationCostProfile(OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1); }
     private static CompilationContext context(OptimizationLevel level) { return CompilationContext.resolve(options(level)); }
     private static PirTerm.MatchBranch branch(List<String> names, PirTerm body) {
         return new PirTerm.MatchBranch("A", names, names.stream().map(_ -> INT).toList(), body);

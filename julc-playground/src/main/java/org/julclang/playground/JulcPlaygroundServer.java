@@ -57,6 +57,8 @@ public class JulcPlaygroundServer {
         var examplesController = new ExamplesController();
         var scenariosController = new ScenariosController();
         var expressionEvalController = new ExpressionEvalController(sandbox);
+        var uplcController = new UplcController(sandbox);
+        var sourceDebugController = new SourceDebugController(sandbox, cachedLibSources);
 
         String corsOrigins = System.getenv("JULC_CORS_ORIGINS");
 
@@ -94,12 +96,29 @@ public class JulcPlaygroundServer {
         app.before("/api/evaluate", compileLimiter.middleware());
         app.before("/api/eval", compileLimiter.middleware());
         app.before("/api/check", checkLimiter.middleware());
+        app.before("/api/uplc/decode", checkLimiter.middleware());
+        app.before("/api/uplc/decompile", compileLimiter.middleware());
+        app.before("/api/uplc/evaluate", compileLimiter.middleware());
+        app.before("/api/uplc/debug", checkLimiter.middleware());
+        app.before("/api/source-debug/open", compileLimiter.middleware());
+        app.before("/api/source-debug/act", checkLimiter.middleware());
+        app.before("/api/source-debug/locals", checkLimiter.middleware());
+        app.before("/api/source-debug/children", checkLimiter.middleware());
 
         // API routes
         app.post("/api/check", checkController::handle);
         app.post("/api/compile", compileController::handle);
         app.post("/api/evaluate", evaluateController::handle);
         app.post("/api/eval", expressionEvalController::handle);
+        app.post("/api/uplc/decode", uplcController::decode);
+        app.post("/api/uplc/decompile", uplcController::decompile);
+        app.post("/api/uplc/evaluate", uplcController::evaluate);
+        app.post("/api/uplc/debug", uplcController::debug);
+        app.post("/api/source-debug/open", sourceDebugController::open);
+        app.post("/api/source-debug/act", sourceDebugController::act);
+        app.post("/api/source-debug/locals", sourceDebugController::locals);
+        app.post("/api/source-debug/children", sourceDebugController::children);
+        app.post("/api/source-debug/close", sourceDebugController::close);
         app.get("/api/examples", examplesController::list);
         app.get("/api/examples/{name}", examplesController::get);
         app.get("/api/scenarios/{purpose}", scenariosController::handle);
@@ -125,6 +144,12 @@ public class JulcPlaygroundServer {
                 String path = ctx.pathParam("path");
                 if (path.contains("..")) { ctx.status(400).result("Invalid path"); return; }
                 serveClasspathResource(ctx, "/static/assets/" + path);
+            });
+            // In-browser (WebAssembly) engine, present when the frontend was built with -PwithWasm
+            app.get("/wasm/{path}", ctx -> {
+                String path = ctx.pathParam("path");
+                if (path.contains("..")) { ctx.status(400).result("Invalid path"); return; }
+                serveClasspathResource(ctx, "/static/wasm/" + path);
             });
             app.get("/", ctx -> serveClasspathResource(ctx, "/static/index.html"));
         }
@@ -183,7 +208,8 @@ public class JulcPlaygroundServer {
             "woff", "font/woff",
             "woff2", "font/woff2",
             "svg", "image/svg+xml",
-            "png", "image/png"
+            "png", "image/png",
+            "wasm", "application/wasm"
     );
 
     private static void serveClasspathResource(io.javalin.http.Context ctx, String resourcePath) throws IOException {

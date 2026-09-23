@@ -5,6 +5,27 @@ import svelte from '@astrojs/svelte';
 import tailwindcss from '@tailwindcss/vite';
 import llmsIntegration from './scripts/llms-integration.mjs';
 
+// The playground is a standalone static app copied into public/playground/ (see julc-playground/BUILD_FROM_SOURCE.md).
+// GitHub Pages serves /playground/ as index.html; the dev server does not, so rewrite it during `astro dev`.
+const playgroundDevIndex = {
+  name: 'julc-playground-dev-index',
+  configureServer(server) {
+    server.middlewares.use((req, res, next) => {
+      const [path, query] = (req.url ?? '').split('?');
+      const suffix = query ? `?${query}` : '';
+      if (path === '/playground') {
+        // The app uses relative asset paths, so it must be loaded from the directory URL.
+        res.statusCode = 302;
+        res.setHeader('Location', `/playground/${suffix}`);
+        res.end();
+        return;
+      }
+      if (path === '/playground/') req.url = `/playground/index.html${suffix}`;
+      next();
+    });
+  },
+};
+
 export default defineConfig({
   site: 'https://julc.dev',
   integrations: [
@@ -25,6 +46,7 @@ export default defineConfig({
         { label: 'Overview', slug: 'overview' },
         { label: 'Write Your First Contract', slug: 'first-contract' },
         { label: 'Getting Started', slug: 'getting-started' },
+        { label: 'Playground', link: '/playground/', badge: { text: 'Browser', variant: 'tip' } },
         {
           label: 'AI Agents',
           items: [
@@ -41,6 +63,7 @@ export default defineConfig({
             { label: 'Source Maps', slug: 'guides/source-maps' },
             { label: 'Strict Data Boundaries', slug: 'guides/strict-data-boundaries' },
             { label: 'Multi-validator Blueprints', slug: 'guides/purpose-indexed-blueprints' },
+            { label: 'JavaScript & WebAssembly', slug: 'guides/javascript-wasm', badge: { text: 'Experimental', variant: 'caution' } },
           ],
         },
         {
@@ -73,6 +96,8 @@ export default defineConfig({
           items: [
             { label: 'API Reference', slug: 'reference/api-reference' },
             { label: 'Release Notes', slug: 'reference/release-notes' },
+            { label: 'Cost Model Profiles', slug: 'reference/cost-model-profiles' },
+            { label: 'Hash and Cost Stability', slug: 'reference/hash-stability' },
             { label: 'Library Developer Guide', slug: 'reference/library-developer-guide' },
             { label: 'Examples', slug: 'reference/examples' },
             { label: 'Troubleshooting', slug: 'reference/troubleshooting' },
@@ -100,6 +125,6 @@ export default defineConfig({
     llmsIntegration(),
   ],
   vite: {
-    plugins: [tailwindcss()],
+    plugins: [tailwindcss(), playgroundDevIndex],
   },
 });

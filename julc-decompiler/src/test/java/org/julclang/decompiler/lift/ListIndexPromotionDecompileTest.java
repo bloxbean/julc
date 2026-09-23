@@ -10,7 +10,6 @@ import org.julclang.core.flat.UplcFlatEncoder;
 import org.julclang.decompiler.DecompileOptions;
 import org.julclang.decompiler.JulcDecompiler;
 import org.julclang.stdlib.StdlibRegistry;
-import org.julclang.vm.OptimizationCostProfiles;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -45,8 +44,7 @@ class ListIndexPromotionDecompileTest {
         for (int k = 0; k < levels.size(); k++) {
             var level = levels.get(k);
             var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()
-                    .setOptimizationLevel(level)
-                    .setOptimizationCostProfile(OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11))
+                    .setOptimizationLevel(level))
                     .compileMethod(source, "two");
             assertFalse(compiled.hasErrors(), compiled.diagnostics().toString());
             var program = UplcFlatDecoder.decodeProgram(UplcFlatEncoder.encodeProgram(compiled.program()));

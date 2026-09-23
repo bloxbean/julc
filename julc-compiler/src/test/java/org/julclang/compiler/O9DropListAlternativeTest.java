@@ -6,7 +6,6 @@ import org.julclang.core.flat.UplcFlatEncoder;
 import org.julclang.stdlib.StdlibRegistry;
 import org.julclang.vm.EvalOptions;
 import org.julclang.vm.EvalResult;
-import org.julclang.vm.OptimizationCostProfiles;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -91,8 +90,7 @@ class O9DropListAlternativeTest {
 
     private static Program compile(String method) {
         var compiled = new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()
-                .setOptimizationLevel(OptimizationLevel.PV11_SAFE)
-                .setOptimizationCostProfile(OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11))
+                .setOptimizationLevel(OptimizationLevel.PV11_SAFE))
                 .compileMethod(SOURCE, method);
         assertFalse(compiled.hasErrors(), compiled.diagnostics().toString());
         return compiled.program();

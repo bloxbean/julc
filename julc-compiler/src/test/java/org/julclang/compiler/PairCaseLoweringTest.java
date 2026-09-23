@@ -267,6 +267,6 @@ class PairCaseLoweringTest {
     static CompileResult compile(String source, OptimizationLevel level, boolean maps) {
         return new JulcCompiler(StdlibRegistry.defaultRegistry(), new CompilerOptions()
                 .setOptimizationLevel(level).setSourceMapEnabled(maps)
-                .setOptimizationCostProfile(OptimizationCostProfiles.CARDANO_NODE_11_0_1_PLUTUS_V3_PV11)).compile(source);
+                .setOptimizationCostProfile(OptimizationCostProfiles.PLUTUS_V3_PV11_COSTS_V1)).compile(source);
     }
 }

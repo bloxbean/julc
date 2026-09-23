@@ -445,8 +445,16 @@ Any type supported by the compiler can be used as a loop accumulator:
 | `break` outside loops | Rejected | Compile-time error |
 | Nested loops | Supported | While-in-while, for-each-in-for-each, mixed |
 | For-each on MapType | Supported | Elements are PairType with `.key()`/`.value()` |
-| Accumulator reassignment outside if | Supported | `acc = expr;` at any statement position |
+| Accumulator reassignment outside if | Supported | Direct loop-body statements; not arbitrary expression positions |
 | Variable declaration inside loop | Supported | Local vars are scoped to the iteration |
+| `if` updates a body local declared outside the branch | Rejected | Use a conditional initializer, a pre-loop accumulator, or a branch-local declaration |
+| Switch arm updates a variable declared outside the arm | Rejected | Includes updates through nested loops; declare inside the arm and yield the result |
+| General body-local reassignment in single-accumulator loops with `break` | Limited | Prefer an initializer; branch-local updates in an if with no break in either branch use normal lowering |
+| `if` at method level or inside a switch arm wraps a loop updating a variable read after the branch | Supported (#161 fix) | Updated accumulators reach following statements; switch-arm accumulators must belong to that arm. This also works when the switch is inside an outer loop body; yield the arm's result and consume it in the outer loop |
+| Reassignment of a switch case-pattern variable | Rejected | See [#162](https://github.com/bloxbean/julc/issues/162); copy to a fresh arm-local accumulator instead |
+
+See [loop-local assignment rules](/best-practices/conditionals/#loop-local-assignment-rules)
+for scope boundaries and examples of safe rewrites.
 
 ### Workaround for `continue`
 
