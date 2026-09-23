@@ -3,6 +3,13 @@ import { writable } from 'svelte/store';
 /** Where playground requests run: the REST backend or the WebAssembly build of the same Java code. */
 export type EngineKind = 'server' | 'wasm';
 export type WasmStatus = 'idle' | 'loading' | 'ready' | 'error';
+export interface WasmFeatures {
+  api: number;
+  variant: 'full' | 'vm';
+  groups: string[];
+  defaultProtocol: number;
+  bls: boolean;
+}
 
 const STORAGE_KEY = 'julc.playground.engine';
 const ALL_ENGINES: EngineKind[] = ['server', 'wasm'];
@@ -53,3 +60,4 @@ engine.subscribe((value) => {
 
 export const wasmStatus = writable<WasmStatus>('idle');
 export const wasmError = writable<string | null>(null);
+export const wasmFeatures = writable<WasmFeatures | null>(null);

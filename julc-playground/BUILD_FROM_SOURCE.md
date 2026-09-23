@@ -114,7 +114,10 @@ npm run build:static        # output: frontend/dist-static/
 ```
 
 `dist-static/` uses relative paths and can be served from any static host or sub-path. Its engine is fixed to
-WebAssembly (`.env.static`: `VITE_ENGINES=wasm`).
+WebAssembly (`.env.static`: `VITE_ENGINES=wasm`). The build validates that `public/wasm/engine.json` belongs to a
+full engine from this source-debug-capable API. It fails rather than packaging a new frontend over an older engine.
+If the check fails, rerun `:julc-wasm:wasmBundleFull` or use the complete `julc-playground-static-<version>.tar.gz`
+artifact; do not copy only the frontend files or only the `wasm/` directory from different builds.
 
 ### Release assets and julc.dev
 
@@ -179,7 +182,7 @@ JSON constructor-tag overflow correction. This remains experimental software.
 
 ### UPLC tools API
 
-The UPLC tab uses four endpoints, served by both engines with the same JSON:
+The UPLC / Debugger tab uses these endpoints, served by both engines with the same JSON:
 
 | Endpoint | Purpose |
 |----------|---------|
@@ -187,10 +190,18 @@ The UPLC tab uses four endpoints, served by both engines with the same JSON:
 | `POST /api/uplc/decompile` | Decompiled Java preview |
 | `POST /api/uplc/evaluate` | Evaluate against a mock transaction; returns status, budget, traces and the script context |
 | `POST /api/uplc/debug` | Stateless step debugger: `timeline`, `goto`, `continue`, `over`, `out` with breakpoints |
+| `POST /api/source-debug/open` | Full engine only: compile an explicit unoptimized Java source-debug artifact and open its bound session |
+| `POST /api/source-debug/act` | Act on that source-debug session with UPLC and/or Java-line breakpoints |
+| `POST /api/source-debug/close` | Close the source-debug session |
 
 The logic lives in `julc-tools` (`org.julclang.tools.uplc`) and uses the stepping API of the CEK
 machine (`JavaVmProvider.startStepping`). See [ADR-055](../adr/055-playground-uplc-evaluator-debugger.md). The UPLC
-requests are part of the parity fixtures above.
+and Java views in a source-debug session highlight locations attached to the same
+term. The UI labels the artifact clearly because source maps currently disable the
+UPLC optimizer, so bytes, hash and budget may differ from a normal build. Environment
+values are still UPLC-level; Java names/types/scopes are not guessed. See
+[ADR-058](../adr/058-playground-java-source-debugger.md).
+Server and browser requests are covered by the same transport-level tests.
 
 ### Known limitations of the browser engine
 
@@ -210,3 +221,9 @@ On macOS with Homebrew, ensure `/usr/local/bin` (Intel) or `/opt/homebrew/bin` (
 **Frontend not updating**
 
 The frontend build output goes to `src/main/resources/static/`. If you see stale content, rebuild with `-PwithFrontend` or run `npm run build` manually in the `frontend/` directory.
+
+**`Endpoint POST /api/source-debug/open not found` in a static playground**
+
+The Java-source-debug UI and the copied WebAssembly engine are from different builds. Replace the entire static
+playground with one `julc-playground-static-<version>.tar.gz` artifact, or rebuild `wasmBundleFull` and then
+`build:static`. Delete or synchronize the destination first so stale content-addressed assets are not retained.

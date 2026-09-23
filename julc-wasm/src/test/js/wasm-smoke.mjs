@@ -6,7 +6,7 @@ import path from 'node:path';
 
 const [bundle, variant, requestsFile, expectedFile, catalogueFile, vmFile] = process.argv.slice(2);
 const baseUrl = pathToFileURL(path.resolve(bundle) + '/');
-const {createJulc} = await import(new URL('julc-wasm.js', baseUrl));
+const {createJulc, isFullClient} = await import(new URL('julc-wasm.js', baseUrl));
 await import(new URL('julc-runtime.js', baseUrl));
 const manifest = JSON.parse(readFileSync(new URL('engine.json', baseUrl)));
 const catalogue = JSON.parse(readFileSync(catalogueFile));
@@ -21,6 +21,12 @@ const started = performance.now();
 const api = await createJulc({baseUrl, manifest, catalogue, workerFactory});
 console.log(`${variant} worker ready in ${Math.round(performance.now() - started)} ms`);
 try {
+  const expectedGroups = variant === 'full'
+    ? ['vm', 'debug', 'compiler', 'uplc', 'sourceDebug', 'sourceDebugLocals']
+    : ['vm', 'debug'];
+  assert.deepEqual(manifest.groups, expectedGroups);
+  assert.deepEqual(api.features().groups, expectedGroups);
+  assert.equal(isFullClient(api), variant === 'full');
   if (variant === 'full') {
     const requests = JSON.parse(readFileSync(requestsFile));
     const expected = new Map(JSON.parse(readFileSync(expectedFile)).map(r => [r.name, r]));
@@ -85,6 +91,45 @@ try {
       assert.equal(implicit.ok, true, purpose);
       assert.deepEqual(explicit, implicit, purpose + ' explicit script credential');
     }
+    const sourceSession = await api.sourceDebug.open({
+      source: `import java.math.BigInteger;
+
+@SpendingValidator
+class WasmSourceDebugSmoke {
+  @Entrypoint
+  static boolean validate(PlutusData redeemer, ScriptContext ctx) {
+    BigInteger exact = BigInteger.valueOf(9007199254740993L);
+    return exact.compareTo(BigInteger.ZERO) > 0;
+  }
+}`,
+      transaction: await api.uplc.defaultTransaction({purpose: 'spend'}),
+      locals: true,
+    });
+    assert.equal(sourceSession.ok, true, sourceSession.error);
+    assert.ok(sourceSession.sessionId);
+    assert.ok(sourceSession.executableJavaLines.length > 0);
+    assert.equal(sourceSession.localsCapability.available, true);
+    let observedExact = false;
+    for (let step = 0n; step <= sourceSession.timeline.totalSteps && !observedExact; step++) {
+      if (step > 0n) {
+        const sourceStep = await sourceSession.goto(step);
+        assert.equal(sourceStep.ok, true, sourceStep.error);
+        assert.equal(typeof sourceStep.snapshot.step, 'bigint');
+      }
+      const locals = await sourceSession.locals();
+      assert.equal(locals.ok, true, locals.error);
+      const exact = locals.scopes.flatMap(scope => scope.variables)
+        .find(variable => variable.name === 'exact' && variable.value);
+      if (exact) {
+        assert.equal(exact.value.summary, '9007199254740993');
+        observedExact = true;
+      }
+    }
+    assert.equal(observedExact, true, 'the real full image must expose the exact Java local');
+    await sourceSession.close();
+    assert.equal(sourceSession.isOpen(), false);
+    await assert.rejects(sourceSession.locals(), error => error.status === 404);
+    console.log('ok Java source-debug locals session');
   }
   const session = await api.vm.debug(request);
   assert.equal(session.isOpen(), true);

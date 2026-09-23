@@ -25,6 +25,12 @@ public sealed interface Constant {
     record ByteStringConst(byte[] value) implements Constant {
         public ByteStringConst { Objects.requireNonNull(value); value = value.clone(); }
         public byte[] value() { return value.clone(); }
+        /** Bounded debugger/diagnostic access without copying the complete constant. */
+        public byte[] prefix(int maximumBytes) {
+            if (maximumBytes < 0) throw new IllegalArgumentException("maximumBytes must be non-negative");
+            return Arrays.copyOf(value, Math.min(maximumBytes, value.length));
+        }
+        public int size() { return value.length; }
         @Override public DefaultUni type() { return DefaultUni.BYTESTRING; }
         @Override public boolean equals(Object o) {
             return o instanceof ByteStringConst other && Arrays.equals(this.value, other.value);

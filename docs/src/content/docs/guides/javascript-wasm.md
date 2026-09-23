@@ -211,6 +211,9 @@ console.log('Can compile:', isFullClient(julc));
 Each client owns one worker. Use `await` for operations; `version()`, `features()`,
 `dispose()` and a debug session's `isOpen()` are synchronous. A disposed or timed-out
 client cannot be reused: create a new client and reopen any debug sessions.
+For a current full bundle, `features().groups` includes `sourceDebug`; the VM bundle
+does not. Treat a missing expected capability as a bundle/version mismatch rather
+than invoking an endpoint optimistically.
 
 Advanced `createJulc` options are `manifest` (an already-loaded `engine.json`),
 `workerFactory` (custom worker creation), and `catalogue` (the playground adapter's
@@ -294,6 +297,43 @@ Purposes are `spend`, `mint`, `reward`, `certify`, `vote`, and `propose`. An exp
 `protocolVersion` field; new applications should use `target.protocol`, not both.
 The VM-only bundle has neither the `compiler` nor the `uplc` group.
 
+### Java-source debugger — full variant only
+
+`sourceDebug.open` compiles a separate source-debug artifact and returns a worker-bound
+session with the same stepping methods listed below. Its request accepts `source`,
+optional `librarySource`, source parameters in declaration order, a mock `transaction`,
+`target`, `costModel`, `maxCpu`, and `maxMem`. The result includes the captured source,
+generated UPLC, compiled code, hash, size, executable Java lines, diagnostics, timeline,
+and initial snapshot.
+
+This is deliberately a different build from `compiler.compile`: the UPLC optimizer is
+disabled to retain exact source locations. Its bytes, hash and execution budget may
+differ from normal compilation. Do not deploy that artifact or use its budget as an
+estimate for a normally compiled contract.
+
+Breakpoints accept `javaLines` in addition to formatted-UPLC `lines`. A snapshot's
+`javaLocation` and UPLC `span` refer to the same current term when both exist. Source-map
+coverage is partial, so a Java breakpoint can be unbound. Environment entries remain
+the **UPLC environment** in this milestone; reliable Java names, types and lexical
+scopes require separate versioned debug metadata and are not inferred or guessed.
+
+```javascript
+const transaction = await julc.uplc.defaultTransaction({purpose: 'spend'});
+const session = await julc.sourceDebug.open({
+  source: javaSource,
+  params: [],
+  transaction,
+  target: {language: 'PlutusV3', protocol: 11}
+});
+if (!session.ok) throw new Error(session.error);
+try {
+  const paused = await session.continue({javaLines: [12]});
+  console.log(paused.snapshot.javaLocation, paused.snapshot.span);
+} finally {
+  await session.close();
+}
+```
+
 ### Client and session methods
 
 | Method | Purpose |
@@ -313,10 +353,12 @@ The VM-only bundle has neither the `compiler` nor the `uplc` group.
 | `session.isOpen()` | Synchronous local session-lifetime check. |
 
 Session actions return `{ok, error, timeline, snapshot, target, costModelId}`.
-`timeline` may be `null`. Breakpoints accept `lines` (number array), `builtins`
-(name array), `onTrace` and `onError`. Snapshot fields include step, phase, source
-span in formatted UPLC, environment, frames, CPU/memory, traces and terminal status.
-This is UPLC debugging, not Java-source-level debugging.
+`timeline` may be `null`. Breakpoints accept `lines` (formatted-UPLC number array),
+`javaLines` (Java number array for a source-debug session), `builtins` (name array),
+`onTrace` and `onError`. Snapshot fields include step, phase, source span in formatted
+UPLC, optional exact Java location, environment, frames, CPU/memory, traces and
+terminal status. Ordinary `vm.debug` and `uplc.debugTransaction` sessions have no
+Java-source association.
 
 The runtime also exposes the low-level `debug.act({sessionId, action, step,
 breakpoints})` and `debug.close({sessionId})` protocol. Actions include `timeline`,
@@ -466,7 +508,9 @@ but it can exceed the worker's request timeout.
   setup. Serve JavaScript with a JavaScript MIME type and `.wasm` as
   `application/wasm`. Avoid SPA fallback pages being served instead of missing assets.
 - Deploy the complete bundle together. Hashed launcher/module names protect their
-  pairing, but do not mix an SDK, manifest, or worker from different releases.
+  pairing, but do not mix an SDK, manifest, worker, or playground frontend from
+  different releases/builds. `engine.json` and `features()` expose the supported
+  groups so a host can reject a stale engine before invoking an unavailable method.
 - Strict Content Security Policies must allow the worker, Wasm compilation and the
   generated/runtime JavaScript bootstrap (which currently uses dynamic evaluation).
   Review this with your application's security policy rather than disabling CSP globally.

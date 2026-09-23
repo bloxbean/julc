@@ -6,6 +6,7 @@
   import MockTxEditor from './MockTxEditor.svelte';
   import ResultPanel from './ResultPanel.svelte';
   import ScriptBar from './ScriptBar.svelte';
+  import SourceDebugView from './SourceDebugView.svelte';
   import StatsView from './StatsView.svelte';
   import {
     breakpoints, debugBack, debugContinue, debugOut, debugOver, debugState, debugStep, decodeState, decompile,
@@ -79,7 +80,8 @@
     <div class="viewer">
       <div class="tabs">
         <button type="button" class:active={$viewTab === 'uplc'} on:click={() => viewTab.set('uplc')}>UPLC</button>
-        <button type="button" class:active={$viewTab === 'java'} on:click={() => viewTab.set('java')}>Java <span class="tag">decompiled</span></button>
+        <button type="button" class:active={$viewTab === 'source'} on:click={() => viewTab.set('source')}>Java Source <span class="tag">experimental</span></button>
+        <button type="button" class:active={$viewTab === 'java'} on:click={() => viewTab.set('java')}>Decompiled</button>
         <button type="button" class:active={$viewTab === 'stats'} on:click={() => viewTab.set('stats')}>Details</button>
         <span class="spacer"></span>
         {#if $viewTab === 'uplc' && $breakpoints.lines.length}
@@ -89,7 +91,9 @@
         {/if}
       </div>
       <div class="view-body">
-        {#if !decoded}
+        {#if $viewTab === 'source'}
+          <SourceDebugView />
+        {:else if !decoded}
           <div class="placeholder">
             {#if $decodeState.loading}<span class="spinner"></span> Decoding…
             {:else if $decodeState.error}<div class="error">{$decodeState.error}</div>

@@ -1,5 +1,9 @@
 /** Create an isolated Promise-based JuLC client. Each client owns one worker. */
-export function isFullClient(client) { return client.features().variant === 'full'; }
+export function isFullClient(client) {
+  const features = client.features();
+  return features.variant === 'full' && features.groups.includes('compiler')
+    && features.groups.includes('sourceDebug');
+}
 export async function createJulc({baseUrl = new URL('.', import.meta.url), manifest, catalogue,
   workerFactory = url => new Worker(url), timeoutMs = 30000, loadTimeoutMs = 120000} = {}) {
   const base = new URL(baseUrl, import.meta.url);
@@ -35,6 +39,15 @@ export async function createJulc({baseUrl = new URL('.', import.meta.url), manif
   try { worker.postMessage({type: 'init', base: base.href, manifest, catalogue}); }
   catch (error) { dispose(error); }
   const info = await ready;
+  if (Array.isArray(manifest.groups)) {
+    const declared = [...manifest.groups].sort();
+    const actual = [...info.features.groups].sort();
+    if (JSON.stringify(declared) !== JSON.stringify(actual)) {
+      const error = new Error('JuLC engine capabilities do not match its manifest');
+      dispose(error);
+      throw error;
+    }
+  }
   function send(payload) {
     if (disposed) return Promise.reject(closedError());
     return new Promise((resolve, reject) => {
@@ -46,19 +59,21 @@ export async function createJulc({baseUrl = new URL('.', import.meta.url), manif
       catch (error) { clearTimeout(timer); pending.delete(id); reject(error); }
     });
   }
-  function proxy(descriptor) {
+  function proxy(descriptor, group = 'debug') {
     if (!descriptor.sessionId) return descriptor;
-    const state = {open: true, step: descriptor.snapshot.step}; sessions.add(state);
+    const state = {open: true, step: descriptor.snapshot.step,
+      generation: descriptor.snapshot.stopGeneration}; sessions.add(state);
     const result = {...descriptor, isOpen: () => state.open && !disposed};
     const act = async (action, step = state.step, breakpoints) => {
       if (!result.isOpen()) throw closedError();
       let value;
-      try { value = await send({method: 'debug.act', body: {sessionId: descriptor.sessionId, action, step, breakpoints}}); }
+      try { value = await send({method: group + '.act', body: {sessionId: descriptor.sessionId, action, step, breakpoints}}); }
       catch (error) {
         if (error.status === 404) { state.open = false; sessions.delete(state); }
         throw error;
       }
       if (value.snapshot) state.step = value.snapshot.step;
+      if (value.snapshot?.stopGeneration != null) state.generation = value.snapshot.stopGeneration;
       return value;
     };
     result.step = () => act('goto', state.step + 1n);
@@ -67,9 +82,17 @@ export async function createJulc({baseUrl = new URL('.', import.meta.url), manif
     result.over = breakpoints => act('over', state.step, breakpoints);
     result.out = breakpoints => act('out', state.step, breakpoints);
     result.snapshot = () => act('goto');
+    if (group === 'sourceDebug') {
+      result.locals = () => send({method: 'sourceDebug.locals', body: {
+        sessionId: descriptor.sessionId, stopGeneration: state.generation,
+      }});
+      result.children = (handle, start = 0, count = 50) => send({method: 'sourceDebug.children', body: {
+        sessionId: descriptor.sessionId, stopGeneration: state.generation, handle, start, count,
+      }});
+    }
     result.close = async () => {
       if (!result.isOpen()) throw closedError();
-      try { return await send({method: 'debug.close', body: {sessionId: descriptor.sessionId}}); }
+      try { return await send({method: group + '.close', body: {sessionId: descriptor.sessionId}}); }
       finally { state.open = false; sessions.delete(state); }
     };
     return result;
@@ -80,7 +103,8 @@ export async function createJulc({baseUrl = new URL('.', import.meta.url), manif
     const [group, name] = method.split('.'); api[group] ??= {};
     api[group][name] = async (body = {}) => {
       const result = await send({method, body});
-      return method === 'vm.debug' || method === 'uplc.debugTransaction' ? proxy(result) : result;
+      if (method === 'vm.debug' || method === 'uplc.debugTransaction') return proxy(result);
+      return method === 'sourceDebug.open' ? proxy(result, 'sourceDebug') : result;
     };
   }
   if (api.uplc) api.uplc.defaultTransaction = body => send({method: 'uplc.defaultTransaction', body});

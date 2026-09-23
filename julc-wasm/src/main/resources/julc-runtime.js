@@ -89,7 +89,8 @@
   }
   function install(invoke, schemas, variant, version) {
     const api = { version: () => version, features: () => ({
-      api: 0, variant, groups: variant === 'full' ? ['vm', 'debug', 'compiler', 'uplc'] : ['vm', 'debug'],
+      api: 0, variant,
+      groups: variant === 'full' ? ['vm', 'debug', 'compiler', 'uplc', 'sourceDebug', 'sourceDebugLocals'] : ['vm', 'debug'],
       defaultProtocol: 11, bls: false,
     }) };
     for (const [method, schema] of Object.entries(schemas)) {

@@ -140,6 +140,14 @@ public sealed interface PlutusData {
             return value.clone();
         }
 
+        /** Bounded debugger/diagnostic access without copying the complete byte string. */
+        public byte[] prefix(int maximumBytes) {
+            if (maximumBytes < 0) throw new IllegalArgumentException("maximumBytes must be non-negative");
+            return Arrays.copyOf(value, Math.min(maximumBytes, value.length));
+        }
+
+        public int size() { return value.length; }
+
         @Override
         public boolean equals(Object o) {
             return o instanceof BytesData other && Arrays.equals(this.value, other.value);

@@ -40,6 +40,7 @@ export interface MockTransaction {
 export interface ScriptInput { script: string; params: DataInput[]; language: string; validator?: string }
 
 export interface Span { startLine: number; startColumn: number; endLine: number; endColumn: number }
+export interface JavaLocation { fileName: string | null; line: number; column: number; fragment: string | null }
 
 export interface ScriptInfo {
   inputFormat: string;
@@ -79,7 +80,7 @@ export interface EvaluateResponse {
   language: string | null;
 }
 
-export interface Breakpoints { lines: number[]; onTrace: boolean; onError: boolean; builtins: string[] }
+export interface Breakpoints { lines: number[]; onTrace: boolean; onError: boolean; builtins: string[]; javaLines: number[] }
 
 export interface Timeline {
   totalSteps: number;
@@ -98,6 +99,7 @@ export interface Snapshot {
   step: number;
   phase: 'compute' | 'return' | 'done' | 'failed';
   span: Span | null;
+  javaLocation: JavaLocation | null;
   termKind: string | null;
   value: string | null;
   environment: EnvEntry[];
@@ -112,8 +114,47 @@ export interface Snapshot {
   status: string | null;
   error: string | null;
   stopReason: string;
+  stopGeneration: number | null;
+  localsAvailability: 'available' | 'unavailable' | 'unsupported' | null;
 }
 
 export interface DebugResponse { ok: boolean; error: string | null; timeline: Timeline | null; snapshot: Snapshot | null }
+
+export interface SourceDebugParam { name: string; type: string }
+export interface SourceDebugOpenResponse extends DebugResponse {
+  sessionId: string | null;
+  source: string | null;
+  uplcText: string | null;
+  compiledCode: string | null;
+  scriptHash: string | null;
+  scriptSizeBytes: number;
+  params: SourceDebugParam[];
+  diagnostics: import('../api/client').Diagnostic[];
+  executableJavaLines: number[];
+  target: { language: string | null; protocol: number | null } | null;
+  costModelId: string | null;
+  warning: string;
+  localsCapability: { available: boolean; schema: string; layouts: string[]; unavailableReason: string | null } | null;
+}
+
+export interface JavaDebugValue {
+  kind: string; summary: string; typeId: string; layoutId: string; availability: string;
+  truncated: boolean; truncationReason: string | null; childCount: number | null; childrenHandle: string | null;
+}
+export interface JavaLocalValue {
+  bindingId: string; name: string; declaredType: string; resolvedType: string; shadowed: boolean;
+  availability: string; reason: string | null; declaration: {
+    sourceId: string; startUtf16: number; endUtf16: number; startLine: number; startColumn: number;
+    endLine: number; endColumn: number;
+  }; value: JavaDebugValue | null;
+}
+export interface JavaLocalsResponse {
+  ok: boolean; error: string | null; stopGeneration: number; availability: string; reason: string | null;
+  scopes: { id: string; kind: string; variables: JavaLocalValue[] }[];
+}
+export interface JavaChildrenResponse {
+  ok: boolean; error: string | null; stopGeneration: number; handle: string; start: number;
+  nextStart: number | null; children: { name: string; value: JavaDebugValue }[];
+}
 
 export type DebugAction = 'timeline' | 'goto' | 'continue' | 'over' | 'out';

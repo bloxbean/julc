@@ -25,7 +25,21 @@ export interface DebugSession extends ResolvedTarget {
   snapshot(): Promise<DebugReply>;
   close(): Promise<{closed: boolean}>;
 }
-export interface Features {api: 0; variant: 'full' | 'vm'; groups: string[]; defaultProtocol: 11; bls: false;}
+export type SourceDebugSession = M.SourceDebugModels_OpenResponse & {
+  sessionId: string;
+  isOpen(): boolean;
+  step(): Promise<M.SourceDebugModels_ActionResponse>;
+  goto(step: bigint): Promise<M.SourceDebugModels_ActionResponse>;
+  continue(breakpoints?: Input<M.UplcModels_Breakpoints>): Promise<M.SourceDebugModels_ActionResponse>;
+  over(breakpoints?: Input<M.UplcModels_Breakpoints>): Promise<M.SourceDebugModels_ActionResponse>;
+  out(breakpoints?: Input<M.UplcModels_Breakpoints>): Promise<M.SourceDebugModels_ActionResponse>;
+  snapshot(): Promise<M.SourceDebugModels_ActionResponse>;
+  close(): Promise<{closed: boolean}>;
+  locals(): Promise<M.SourceDebugModels_LocalsResponse>;
+  children(handle: string, start?: number, count?: number): Promise<M.SourceDebugModels_ChildrenResponse>;
+};
+export type FeatureGroup = 'vm' | 'debug' | 'compiler' | 'uplc' | 'sourceDebug' | 'sourceDebugLocals';
+export interface Features {api: 0; variant: 'full' | 'vm'; groups: FeatureGroup[]; defaultProtocol: 11; bls: false;}
 export interface JulcError extends Error {code: string; status: number; body: unknown;}
 export interface VmClient {
   version(): string;
@@ -52,8 +66,18 @@ export interface FullClient extends VmClient {
     evaluateTransaction(request: TransactionRequest): Promise<Evaluation | M.UplcModels_EvaluateResponse>;
     debugTransaction(request: TransactionRequest): Promise<DebugSession | M.UplcModels_DebugResponse>;
   };
+  sourceDebug: {
+    open(request: Input<M.SourceDebugModels_OpenRequest>): Promise<SourceDebugSession | M.SourceDebugModels_OpenResponse>;
+  };
 }
-export interface Manifest {api: 0; version: string; launcher: string; variant: 'full' | 'vm'; julcVersion: string;}
+export interface Manifest {
+  api: 0;
+  version: string;
+  launcher: string;
+  variant: 'full' | 'vm';
+  groups?: FeatureGroup[];
+  julcVersion: string;
+}
 export interface Options {
   baseUrl?: URL | string;
   manifest?: Manifest;

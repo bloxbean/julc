@@ -3,6 +3,7 @@ package org.julclang.compiler;
 import org.julclang.compiler.codegen.ValidatorWrapper;
 import org.julclang.compiler.codegen.StrictBoundaryGenerator;
 import org.julclang.compiler.codegen.StrictRecordEntrypoint;
+import org.julclang.compiler.debug.DebugMetadataCollector;
 import org.julclang.compiler.error.CompilerDiagnostic;
 import org.julclang.compiler.error.DiagnosticInfo;
 import org.julclang.compiler.pir.*;
@@ -23,6 +24,7 @@ import org.julclang.core.Program;
 import org.julclang.core.Term;
 import org.julclang.core.source.SourceLocation;
 import org.julclang.core.source.SourceMap;
+import org.julclang.core.debug.DebugMetadata;
 import com.github.javaparser.ParserConfiguration;
 import com.github.javaparser.StaticJavaParser;
 import com.github.javaparser.ast.CompilationUnit;
@@ -59,10 +61,11 @@ public class JulcCompiler {
     }
 
     private record ParamField(String name, PirType pirType, String javaType,
-                              SourceLocation sourceLocation) {}
+                              SourceLocation sourceLocation, Node declaration) {}
     private record StaticField(String name, PirType pirType, com.github.javaparser.ast.expr.Expression initExpr) {}
     private record CompiledStaticField(String name, PirTerm initPir) {}
-    private record CompilationOutcome(CompileResult compileResult, ContractSchema contractSchema) {}
+    private record CompilationOutcome(CompileResult compileResult, ContractSchema contractSchema,
+                                      DebugMetadata debugMetadata) {}
 
     /** Typed Data subtypes that must not be used with @Param. */
     private static final Set<String> BANNED_PARAM_TYPES = Set.of(
@@ -147,6 +150,30 @@ public class JulcCompiler {
     }
 
     /**
+     * Compile the source-debug artifact with optional binding metadata collection.
+     * This operation is deliberately separate from every normal/source-map compile API.
+     */
+    public DebugCompileResult compileForDebug(String validatorSource, List<String> librarySources) {
+        if (!options.isSourceMapEnabled()) {
+            throw new IllegalStateException("Java locals metadata requires source-map compilation");
+        }
+        var outcome = doCompileOutcome(
+                validatorSource, librarySources, true, false, beginCompilation(), true);
+        if (outcome.debugMetadata() == null) {
+            throw new IllegalStateException("Java locals metadata was not collected");
+        }
+        return new DebugCompileResult(outcome.compileResult(), outcome.debugMetadata());
+    }
+
+    /** Compile a source-debug artifact with classpath-discovered libraries. */
+    public DebugCompileResult compileForDebug(String validatorSource) {
+        var availableLibs = LibrarySourceResolver.scanClasspathSources(JulcCompiler.class.getClassLoader());
+        var resolvedLibs = availableLibs.isEmpty() ? List.<String>of()
+                : LibrarySourceResolver.resolve(validatorSource, availableLibs);
+        return compileForDebug(validatorSource, resolvedLibs);
+    }
+
+    /**
      * Compile a validator with library sources to a UPLC Program.
      *
      * @param validatorSource the validator Java source (must contain a validator annotation)
@@ -217,6 +244,17 @@ public class JulcCompiler {
             boolean captureDetails,
             boolean captureContractSchema,
             CompilationContext context) {
+        return doCompileOutcome(validatorSource, librarySources, captureDetails,
+                captureContractSchema, context, false);
+    }
+
+    private CompilationOutcome doCompileOutcome(
+            String validatorSource,
+            List<String> librarySources,
+            boolean captureDetails,
+            boolean captureContractSchema,
+            CompilationContext context,
+            boolean collectDebugMetadata) {
         StaticJavaParser.getParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
 
         // 1. Parse all sources
@@ -228,8 +266,20 @@ public class JulcCompiler {
             libraryCus.add(parseSource(librarySources.get(i), "library[" + i + "]"));
         }
 
+        DebugMetadataCollector debugMetadata = null;
+        if (collectDebugMetadata) {
+            var inputs = new ArrayList<DebugMetadataCollector.SourceInput>();
+            inputs.add(new DebugMetadataCollector.SourceInput("validator", sourceUri(validatorCu, "validator.java"),
+                    validatorSource, validatorCu));
+            for (int i = 0; i < libraryCus.size(); i++) {
+                inputs.add(new DebugMetadataCollector.SourceInput("library-" + i,
+                        sourceUri(libraryCus.get(i), "library-" + i + ".java"),
+                        librarySources.get(i), libraryCus.get(i)));
+            }
+            debugMetadata = new DebugMetadataCollector(inputs);
+        }
         return doCompileFromCus(
-                validatorCu, libraryCus, captureDetails, captureContractSchema, context);
+                validatorCu, libraryCus, captureDetails, captureContractSchema, context, debugMetadata);
     }
 
     private CompilationOutcome doCompileFromCus(
@@ -238,6 +288,16 @@ public class JulcCompiler {
             boolean captureDetails,
             boolean captureContractSchema,
             CompilationContext context) {
+        return doCompileFromCus(validatorCu, libraryCus, captureDetails, captureContractSchema, context, null);
+    }
+
+    private CompilationOutcome doCompileFromCus(
+            CompilationUnit validatorCu,
+            List<CompilationUnit> libraryCus,
+            boolean captureDetails,
+            boolean captureContractSchema,
+            CompilationContext context,
+            DebugMetadataCollector debugMetadata) {
         // 2. Validate subset on all compilation units
         var subsetValidator = new SubsetValidator();
         var diagnostics = context.diagnosticBuffer();
@@ -374,8 +434,11 @@ public class JulcCompiler {
         }
 
         // 11. Generate PIR for helper methods
-        var pirGenerator = PirGenerator.forCompilation(typeResolver, symbolTable, effectiveLookup,
-                TypeMethodRegistry.defaultRegistry(), null, context);
+        var pirGenerator = debugMetadata == null
+                ? PirGenerator.forCompilation(typeResolver, symbolTable, effectiveLookup,
+                        TypeMethodRegistry.defaultRegistry(), null, context)
+                : PirGenerator.forDebugCompilation(typeResolver, symbolTable, effectiveLookup,
+                        TypeMethodRegistry.defaultRegistry(), null, context, debugMetadata);
 
         // 11b. Compile static field initializers
         var compiledStaticFields = new ArrayList<CompiledStaticField>();
@@ -582,15 +645,19 @@ public class JulcCompiler {
             var rawName = pf.name + "__raw";
             var decoded = PirHelpers.wrapDecode(
                     new PirTerm.Var(rawName, new PirType.DataType()), pf.pirType);
-            wrappedTerm = new PirTerm.Lam(rawName, new PirType.DataType(),
-                    new PirTerm.Let(pf.name, decoded, wrappedTerm));
+            var decodedBinding = new PirTerm.Let(pf.name, decoded, wrappedTerm);
+            if (debugMetadata != null) {
+                debugMetadata.associate(pf.declaration(), decodedBinding, pf.pirType());
+            }
+            wrappedTerm = new PirTerm.Lam(rawName, new PirType.DataType(), decodedBinding);
         }
 
-        var values = new ValueLiteralFoldPass(context, pirGenerator.getPirPositions()).lower(wrappedTerm);
-        var folding = new ArrayLiteralFoldPass(context, values.positions()).lower(values.term());
-        var sharing = new ValueConversionSharingPass(context, folding.positions()).lower(folding.term());
-        var promotion = new ListIndexPromotionPass(context, sharing.positions()).lower(sharing.term());
-        var pairLowering = new PairDestructuringPass(context, promotion.positions()).lower(promotion.term());
+        var provenance = debugMetadata == null ? null : debugMetadata.provenance();
+        var values = new ValueLiteralFoldPass(context, pirGenerator.getPirPositions(), provenance).lower(wrappedTerm);
+        var folding = new ArrayLiteralFoldPass(context, values.positions(), provenance).lower(values.term());
+        var sharing = new ValueConversionSharingPass(context, folding.positions(), provenance).lower(folding.term());
+        var promotion = new ListIndexPromotionPass(context, sharing.positions(), provenance).lower(sharing.term());
+        var pairLowering = new PairDestructuringPass(context, promotion.positions(), provenance).lower(promotion.term());
         wrappedTerm = pairLowering.term();
 
         // 17. Capture PIR if details requested
@@ -598,7 +665,7 @@ public class JulcCompiler {
 
         // 18. Lower to UPLC (with source map support)
         var uplcGenerator = context.isSourceMapEnabled()
-                ? new UplcGenerator(context, pairLowering.positions())
+                ? new UplcGenerator(context, pairLowering.positions(), provenance)
                 : new UplcGenerator(context, null);
         var uplcTerm = uplcGenerator.generate(wrappedTerm);
 
@@ -640,7 +707,10 @@ public class JulcCompiler {
                         paramFields, typeResolver, validatorClass)
                 : null;
         context.logf("Compilation complete: %s", result.scriptSizeFormatted());
-        return new CompilationOutcome(result, contractSchema);
+        DebugMetadata completedMetadata = debugMetadata == null ? null
+                : debugMetadata.finish(result, options, uplcGenerator.getEmittedBinders(),
+                        uplcGenerator.getExactUplcPositions());
+        return new CompilationOutcome(result, contractSchema, completedMetadata);
     }
 
     /**
@@ -1158,6 +1228,10 @@ public class JulcCompiler {
         }
     }
 
+    private static String sourceUri(CompilationUnit unit, String fallback) {
+        return unit.getStorage().map(storage -> storage.getPath().toString()).orElse(fallback);
+    }
+
     /**
      * Wrap a StdlibLookup with identity handlers for @NewType .of() calls.
      */
@@ -1538,7 +1612,7 @@ public class JulcCompiler {
                 for (var variable : field.getVariables()) {
                     var name = variable.getNameAsString();
                     var pirType = typeResolver.resolve(field.getCommonType());
-                    result.add(new ParamField(name, pirType, javaType, sourceLocation(variable)));
+                    result.add(new ParamField(name, pirType, javaType, sourceLocation(variable), variable));
                 }
             }
         }

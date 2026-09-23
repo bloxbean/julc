@@ -1,9 +1,12 @@
 package org.julclang.wasm;
 
+import org.julclang.tools.model.SourceDebugModels;
 import org.julclang.tools.model.VmModels;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigInteger;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -40,6 +43,32 @@ class ApiTest {
         assertTrue(result.at("/body/result").asText().contains("18446744073709551617"));
         assertFalse(JsMarshalling.JSON.readTree(vm.schemas()).has("compiler.compile"));
         assertTrue(JsMarshalling.JSON.readTree(full.schemas()).has("compiler.compile"));
+        var vmSchemas = JsMarshalling.JSON.readTree(vm.schemas());
+        var fullSchemas = JsMarshalling.JSON.readTree(full.schemas());
+        assertFalse(vmSchemas.has("sourceDebug.open"));
+        assertFalse(vmSchemas.has("sourceDebug.locals"));
+        assertTrue(fullSchemas.has("sourceDebug.open"));
+        assertTrue(fullSchemas.has("sourceDebug.locals"));
+        assertTrue(fullSchemas.has("sourceDebug.children"));
         assertNotNull(JsMarshalling.schema(VmModels.Request.class));
+    }
+
+    @Test
+    void sourceDebugRecordsAreRegisteredForNativeImageReflection() throws Exception {
+        var resource = ApiTest.class.getResourceAsStream(
+                "/META-INF/native-image/org.julclang/julc-wasm/reachability-metadata.json");
+        assertNotNull(resource);
+        try (resource) {
+            var metadata = JsMarshalling.JSON.readTree(resource);
+            var registered = new HashSet<String>();
+            metadata.path("reflection").forEach(entry -> registered.add(entry.path("type").asText()));
+            var missing = Arrays.stream(SourceDebugModels.class.getDeclaredClasses())
+                    .filter(Class::isRecord)
+                    .map(Class::getName)
+                    .filter(type -> !registered.contains(type))
+                    .sorted()
+                    .toList();
+            assertEquals(List.of(), missing, "Source-debug records missing from native-image reflection metadata");
+        }
     }
 }

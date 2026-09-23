@@ -1,22 +1,23 @@
 package org.julclang.wasm;
 
-import org.julclang.playground.scenario.ScenarioRegistry;
-
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.julclang.compiler.JulcCompiler;
 import org.julclang.compiler.LibrarySourceResolver;
+import org.julclang.playground.scenario.ScenarioRegistry;
+import org.julclang.playground.service.ExampleCatalog;
+import org.julclang.stdlib.StdlibRegistry;
+import org.julclang.tools.debug.SourceDebugService;
 import org.julclang.tools.model.CheckRequest;
 import org.julclang.tools.model.CompileRequest;
 import org.julclang.tools.model.EvalExpressionRequest;
 import org.julclang.tools.model.EvaluateRequest;
+import org.julclang.tools.model.SourceDebugModels;
 import org.julclang.tools.model.UplcModels;
 import org.julclang.tools.repl.ExpressionEvaluator;
-import org.julclang.playground.service.ExampleCatalog;
-import org.julclang.tools.service.ToolsService;
 import org.julclang.tools.service.ServiceResult;
+import org.julclang.tools.service.ToolsService;
 import org.julclang.tools.uplc.UplcToolsService;
-import org.julclang.stdlib.StdlibRegistry;
 import org.julclang.vm.JulcVm;
 import org.julclang.vm.java.JavaVmProvider;
 
@@ -41,11 +42,14 @@ public final class PlaygroundDispatcher {
     private final ExpressionEvaluator evaluator;
     private final ExampleCatalog examples;
     private final UplcToolsService uplc = new UplcToolsService();
+    private final SourceDebugService sourceDebug;
 
-    PlaygroundDispatcher(ToolsService service, ExpressionEvaluator evaluator, ExampleCatalog examples) {
+    PlaygroundDispatcher(ToolsService service, ExpressionEvaluator evaluator, ExampleCatalog examples,
+                         SourceDebugService sourceDebug) {
         this.service = service;
         this.evaluator = evaluator;
         this.examples = examples;
+        this.sourceDebug = sourceDebug;
     }
 
     /** Creates a dispatcher that shares one compiler, stdlib source pool and Java VM across all operations. */
@@ -56,7 +60,8 @@ public final class PlaygroundDispatcher {
         return new PlaygroundDispatcher(
                 new ToolsService(compiler, libraries, () -> vm),
                 new ExpressionEvaluator(compiler, vm, libraries),
-                new ExampleCatalog());
+                new ExampleCatalog(),
+                new SourceDebugService(libraries));
     }
 
     /**
@@ -95,6 +100,16 @@ public final class PlaygroundDispatcher {
                 case "/api/uplc/decompile" -> uplc.decompile(mapper.readValue(body, UplcModels.DecompileRequest.class));
                 case "/api/uplc/evaluate" -> uplc.evaluate(mapper.readValue(body, UplcModels.EvaluateRequest.class));
                 case "/api/uplc/debug" -> uplc.debug(mapper.readValue(body, UplcModels.DebugRequest.class));
+                case "/api/source-debug/open" -> sourceDebug.open(
+                        mapper.readValue(body, SourceDebugModels.OpenRequest.class));
+                case "/api/source-debug/act" -> sourceDebug.act(
+                        mapper.readValue(body, SourceDebugModels.ActionRequest.class));
+                case "/api/source-debug/locals" -> sourceDebug.locals(
+                        mapper.readValue(body, SourceDebugModels.LocalsRequest.class));
+                case "/api/source-debug/children" -> sourceDebug.children(
+                        mapper.readValue(body, SourceDebugModels.ChildrenRequest.class));
+                case "/api/source-debug/close" -> sourceDebug.close(
+                        mapper.readValue(body, SourceDebugModels.CloseRequest.class));
                 default -> notFound(method, path);
             };
         }

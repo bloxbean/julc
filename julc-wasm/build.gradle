@@ -156,12 +156,16 @@ tasks.register('vmToolsJar', Jar) {
             digest.update(launcher.getBytes('UTF-8'))
             digest.update(moduleBytes)
             fileTree('src/main/js').files.sort { it.name }.each { digest.update(it.bytes) }
+            digest.update(file('src/main/resources/julc-runtime.js').bytes)
+            def groups = vmOnly ? ['vm', 'debug'] : ['vm', 'debug', 'compiler', 'uplc', 'sourceDebug', 'sourceDebugLocals']
+            digest.update(variant.getBytes('UTF-8'))
+            digest.update(groups.join(',').getBytes('UTF-8'))
             def hash = digest.digest().encodeHex().toString().substring(0, 12)
             new File(bundle, "${name}-${hash}.js").text = launcher
             new File(bundle, "${name}-${hash}.js.wasm").bytes = moduleBytes
             new File(bundle, 'engine.json').text = groovy.json.JsonOutput.toJson([
                     version: hash, launcher: "${name}-${hash}.js", variant: variant,
-                    api: 0, julcVersion: project.version.toString()]) + '\n'
+                    api: 0, groups: groups, julcVersion: project.version.toString()]) + '\n'
             fileOps.copy { from 'src/main/js'; into bundle }
             fileOps.copy { from layout.buildDirectory.dir('declarations'); into bundle }
             fileOps.copy { from 'src/main/resources/julc-runtime.js'; into bundle }
