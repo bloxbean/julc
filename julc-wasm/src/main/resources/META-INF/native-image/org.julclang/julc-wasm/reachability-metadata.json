@@ -211,6 +211,66 @@
       "allDeclaredConstructors": true
     },
     {
+      "type": "org.julclang.tools.model.SourceDebugModels$LocalsCapability",
+      "allDeclaredFields": true,
+      "allDeclaredMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "org.julclang.tools.model.SourceDebugModels$LocalsRequest",
+      "allDeclaredFields": true,
+      "allDeclaredMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "org.julclang.tools.model.SourceDebugModels$ChildrenRequest",
+      "allDeclaredFields": true,
+      "allDeclaredMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "org.julclang.tools.model.SourceDebugModels$LocalsResponse",
+      "allDeclaredFields": true,
+      "allDeclaredMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "org.julclang.tools.model.SourceDebugModels$ChildrenResponse",
+      "allDeclaredFields": true,
+      "allDeclaredMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "org.julclang.tools.model.SourceDebugModels$ScopeValue",
+      "allDeclaredFields": true,
+      "allDeclaredMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "org.julclang.tools.model.SourceDebugModels$LocalValue",
+      "allDeclaredFields": true,
+      "allDeclaredMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "org.julclang.tools.model.SourceDebugModels$SourceRange",
+      "allDeclaredFields": true,
+      "allDeclaredMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "org.julclang.tools.model.SourceDebugModels$DebugValue",
+      "allDeclaredFields": true,
+      "allDeclaredMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
+      "type": "org.julclang.tools.model.SourceDebugModels$ChildValue",
+      "allDeclaredFields": true,
+      "allDeclaredMethods": true,
+      "allDeclaredConstructors": true
+    },
+    {
       "type": "org.julclang.tools.model.SourceDebugModels$CloseRequest",
       "allDeclaredFields": true,
       "allDeclaredMethods": true,
