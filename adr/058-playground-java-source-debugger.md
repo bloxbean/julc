@@ -3,8 +3,9 @@
 **Status:** Milestone 1 is implemented on the stacked branch and has passed the
 full/VM GraalVM Web Image, reachability and cross-platform playground build gates.
 Milestone 2 is implemented for the explicit scalar/raw-Data coverage described
-below and has completed an independent agent correctness review. A fresh real Web
-Image/reachability run and human review remain pending.
+below and has completed an independent agent correctness review plus fresh full/VM
+GraalVM Web Image, reachability and cross-platform playground gates. Human review
+remains pending.
 The developer approved a separate, visibly labeled source-debug compilation whose
 script bytes, hash and budget may differ from normal compilation (2026-09-23).
 **Parent:** ADR-057, PR #169 (`feat/julc-wasm-distribution`).
