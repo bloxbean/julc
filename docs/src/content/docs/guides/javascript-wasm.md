@@ -211,6 +211,9 @@ console.log('Can compile:', isFullClient(julc));
 Each client owns one worker. Use `await` for operations; `version()`, `features()`,
 `dispose()` and a debug session's `isOpen()` are synchronous. A disposed or timed-out
 client cannot be reused: create a new client and reopen any debug sessions.
+For a current full bundle, `features().groups` includes `sourceDebug`; the VM bundle
+does not. Treat a missing expected capability as a bundle/version mismatch rather
+than invoking an endpoint optimistically.
 
 Advanced `createJulc` options are `manifest` (an already-loaded `engine.json`),
 `workerFactory` (custom worker creation), and `catalogue` (the playground adapter's
@@ -505,7 +508,9 @@ but it can exceed the worker's request timeout.
   setup. Serve JavaScript with a JavaScript MIME type and `.wasm` as
   `application/wasm`. Avoid SPA fallback pages being served instead of missing assets.
 - Deploy the complete bundle together. Hashed launcher/module names protect their
-  pairing, but do not mix an SDK, manifest, or worker from different releases.
+  pairing, but do not mix an SDK, manifest, worker, or playground frontend from
+  different releases/builds. `engine.json` and `features()` expose the supported
+  groups so a host can reject a stale engine before invoking an unavailable method.
 - Strict Content Security Policies must allow the worker, Wasm compilation and the
   generated/runtime JavaScript bootstrap (which currently uses dynamic evaluation).
   Review this with your application's security policy rather than disabling CSP globally.

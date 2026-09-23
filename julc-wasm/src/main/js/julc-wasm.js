@@ -1,5 +1,9 @@
 /** Create an isolated Promise-based JuLC client. Each client owns one worker. */
-export function isFullClient(client) { return client.features().variant === 'full'; }
+export function isFullClient(client) {
+  const features = client.features();
+  return features.variant === 'full' && features.groups.includes('compiler')
+    && features.groups.includes('sourceDebug');
+}
 export async function createJulc({baseUrl = new URL('.', import.meta.url), manifest, catalogue,
   workerFactory = url => new Worker(url), timeoutMs = 30000, loadTimeoutMs = 120000} = {}) {
   const base = new URL(baseUrl, import.meta.url);
@@ -35,6 +39,15 @@ export async function createJulc({baseUrl = new URL('.', import.meta.url), manif
   try { worker.postMessage({type: 'init', base: base.href, manifest, catalogue}); }
   catch (error) { dispose(error); }
   const info = await ready;
+  if (Array.isArray(manifest.groups)) {
+    const declared = [...manifest.groups].sort();
+    const actual = [...info.features.groups].sort();
+    if (JSON.stringify(declared) !== JSON.stringify(actual)) {
+      const error = new Error('JuLC engine capabilities do not match its manifest');
+      dispose(error);
+      throw error;
+    }
+  }
   function send(payload) {
     if (disposed) return Promise.reject(closedError());
     return new Promise((resolve, reject) => {

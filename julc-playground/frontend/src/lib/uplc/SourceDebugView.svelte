@@ -9,6 +9,7 @@
     sourceDebugSource, sourceDebugState, toggleJavaBreakpointLine, useSourceDebugCode,
   } from './store';
   import { librarySource as contractLibrary, purpose as contractPurpose, source as contractSource } from '../stores/editor';
+  import { engine, wasmError, wasmFeatures, wasmStatus } from '../stores/engine';
   import type { PurposeType, Span } from './types';
 
   $: location = $debugState.active && !$debugState.stale ? $debugState.snapshot?.javaLocation ?? null : null;
@@ -20,6 +21,10 @@
   } satisfies Span : null;
   $: executableLines = $sourceDebugState.response?.executableJavaLines ?? [];
   $: unbound = ($breakpoints.javaLines ?? []).filter((line) => !executableLines.includes(line));
+  $: wasmSourceDebugReady = $engine !== 'wasm'
+    || ($wasmStatus === 'ready' && !!$wasmFeatures?.groups.includes('sourceDebug'));
+  $: wasmSourceDebugUnsupported = $engine === 'wasm' && $wasmStatus === 'ready' && !!$wasmFeatures
+    && !$wasmFeatures?.groups.includes('sourceDebug');
 
   function purpose(value: string | null): PurposeType | null {
     return ({ SPENDING: 'spend', MINTING: 'mint', WITHDRAW: 'reward', CERTIFYING: 'certify',
@@ -53,7 +58,8 @@
     <button type="button" class="secondary" on:click={useContract}>Use Contract source</button>
     <span class="spacer"></span>
     {#if $sourceDebugState.response?.ok && $sourceDebugState.stale}<span class="stale">Changed — recompile required</span>{/if}
-    <button type="button" class="primary" disabled={$sourceDebugState.loading || !$sourceDebugSource.trim()}
+    <button type="button" class="primary"
+      disabled={$sourceDebugState.loading || !$sourceDebugSource.trim() || !wasmSourceDebugReady}
       on:click={compileSourceDebug}>
       {#if $sourceDebugState.loading}<span class="spinner"></span>{/if}
       Compile &amp; start debugging
@@ -64,6 +70,15 @@
     <strong>Experimental source-debug build.</strong> The UPLC optimizer is disabled. Script bytes, hash and
     execution budget may differ from normal compilation; do not use this budget as a normal-build estimate.
   </div>
+
+  {#if wasmSourceDebugUnsupported}
+    <div class="message error">
+      This WebAssembly engine predates Java source debugging. Rebuild the full engine from this checkout or copy
+      the complete matching static-playground artifact; do not combine a new UI with an older wasm directory.
+    </div>
+  {:else if $engine === 'wasm' && $wasmStatus === 'error' && $wasmError}
+    <div class="message error">{$wasmError}</div>
+  {/if}
 
   {#if $sourceDebugState.error}<div class="message error">{$sourceDebugState.error}</div>{/if}
   {#if $sourceDebugState.response?.diagnostics?.length}

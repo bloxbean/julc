@@ -73,3 +73,11 @@ test('source-debug REST routes retain the session and convert exact step values'
   assert.deepEqual(adapter.request('POST', '/api/source-debug/close', {sessionId: 'source-1'}).body, {closed: true});
   assert.equal(closed.sessionId, 'source-1');
 });
+
+test('capabilities advertise source debugging only in the full image', () => {
+  const invoke = () => JSON.stringify({status: 200, body: {}, integers: []});
+  const full = JulcRuntime.install(invoke, {'uplc.defaultTransaction': {}}, 'full', 'test');
+  const vm = JulcRuntime.install(invoke, {}, 'vm', 'test');
+  assert.deepEqual(full.features().groups, ['vm', 'debug', 'compiler', 'uplc', 'sourceDebug']);
+  assert.deepEqual(vm.features().groups, ['vm', 'debug']);
+});

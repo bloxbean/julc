@@ -27,7 +27,10 @@ additionally needs GraalVM 25.3 Web Image and Binaryen:
 Bundles are in `build/wasm-bundle-full` and `build/wasm-bundle-vm`. Serve each directory
 together; `julc-wasm.js` exports `createJulc` and `isFullClient`, and the `.d.ts` files
 describe the Promise API. The generated model declarations are derived from Java
-records during a normal build. The low-level `globalThis.julc` inside the worker is
+records during a normal build. `engine.json` and `features()` advertise the same
+method groups; the full image includes `sourceDebug`, while the VM image does not.
+Do not combine an SDK, manifest, frontend or engine from different builds. The
+low-level `globalThis.julc` inside the worker is
 synchronous; applications should use the SDK and call `dispose()` when finished.
 
 See the [build guide](../julc-playground/BUILD_FROM_SOURCE.md#standalone-javascript-api)

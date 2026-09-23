@@ -36,7 +36,8 @@ export type SourceDebugSession = M.SourceDebugModels_OpenResponse & {
   snapshot(): Promise<M.SourceDebugModels_ActionResponse>;
   close(): Promise<{closed: boolean}>;
 };
-export interface Features {api: 0; variant: 'full' | 'vm'; groups: string[]; defaultProtocol: 11; bls: false;}
+export type FeatureGroup = 'vm' | 'debug' | 'compiler' | 'uplc' | 'sourceDebug';
+export interface Features {api: 0; variant: 'full' | 'vm'; groups: FeatureGroup[]; defaultProtocol: 11; bls: false;}
 export interface JulcError extends Error {code: string; status: number; body: unknown;}
 export interface VmClient {
   version(): string;
@@ -67,7 +68,14 @@ export interface FullClient extends VmClient {
     open(request: Input<M.SourceDebugModels_OpenRequest>): Promise<SourceDebugSession | M.SourceDebugModels_OpenResponse>;
   };
 }
-export interface Manifest {api: 0; version: string; launcher: string; variant: 'full' | 'vm'; julcVersion: string;}
+export interface Manifest {
+  api: 0;
+  version: string;
+  launcher: string;
+  variant: 'full' | 'vm';
+  groups?: FeatureGroup[];
+  julcVersion: string;
+}
 export interface Options {
   baseUrl?: URL | string;
   manifest?: Manifest;

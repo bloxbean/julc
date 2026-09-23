@@ -114,7 +114,10 @@ npm run build:static        # output: frontend/dist-static/
 ```
 
 `dist-static/` uses relative paths and can be served from any static host or sub-path. Its engine is fixed to
-WebAssembly (`.env.static`: `VITE_ENGINES=wasm`).
+WebAssembly (`.env.static`: `VITE_ENGINES=wasm`). The build validates that `public/wasm/engine.json` belongs to a
+full engine from this source-debug-capable API. It fails rather than packaging a new frontend over an older engine.
+If the check fails, rerun `:julc-wasm:wasmBundleFull` or use the complete `julc-playground-static-<version>.tar.gz`
+artifact; do not copy only the frontend files or only the `wasm/` directory from different builds.
 
 ### Release assets and julc.dev
 
@@ -218,3 +221,9 @@ On macOS with Homebrew, ensure `/usr/local/bin` (Intel) or `/opt/homebrew/bin` (
 **Frontend not updating**
 
 The frontend build output goes to `src/main/resources/static/`. If you see stale content, rebuild with `-PwithFrontend` or run `npm run build` manually in the `frontend/` directory.
+
+**`Endpoint POST /api/source-debug/open not found` in a static playground**
+
+The Java-source-debug UI and the copied WebAssembly engine are from different builds. Replace the entire static
+playground with one `julc-playground-static-<version>.tar.gz` artifact, or rebuild `wasmBundleFull` and then
+`build:static`. Delete or synchronize the destination first so stale content-addressed assets are not retained.

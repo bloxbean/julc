@@ -1,8 +1,8 @@
 # ADR-058: Experimental Java-source debugging in the playground
 
-**Status:** Milestone 1 implementation is in progress on the stacked branch;
-independent review and full WebAssembly image validation remain pending. Milestone 2
-(typed Java locals) remains proposed.
+**Status:** Milestone 1 is implemented on the stacked branch and has passed the
+full/VM GraalVM Web Image, reachability and cross-platform playground build gates;
+independent review remains pending. Milestone 2 (typed Java locals) remains proposed.
 The developer approved a separate, visibly labeled source-debug compilation whose
 script bytes, hash and budget may differ from normal compilation (2026-09-23).
 **Parent:** ADR-057, PR #169 (`feat/julc-wasm-distribution`).
@@ -203,6 +203,9 @@ compilation does not collect it.
 All existing public operations retain their behavior. New source-debug requests
 are opt-in and full-image only. Unsupported/older engines show an actionable
 capability message; they must not silently debug unrelated CBOR without mappings.
+The full engine advertises a `sourceDebug` capability in both `engine.json` and
+`features()`. Static builds fail if the copied engine lacks it, preventing a new
+frontend from being packaged with an older generated Wasm directory.
 No change to the established source-map file format is required for milestone 1.
 Any later metadata schema must be versioned and leave existing readers supported.
 

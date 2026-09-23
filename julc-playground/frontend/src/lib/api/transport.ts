@@ -1,5 +1,5 @@
 import { get } from 'svelte/store';
-import { availableEngines, engine, wasmError, wasmStatus } from '../stores/engine';
+import { availableEngines, engine, wasmError, wasmFeatures, wasmStatus, type WasmFeatures } from '../stores/engine';
 
 export interface TransportResponse {
   status: number;
@@ -31,10 +31,21 @@ const WASM_ENGINE = __JULC_WASM_ENGINE__;
 const ENGINE_BASE = new URL(`${import.meta.env.BASE_URL}wasm/`, location.href);
 interface EngineClient {
   rest(method: string, path: string, body: string | null): Promise<{status: number; body: unknown}>;
+  features(): WasmFeatures;
   dispose(): void;
 }
 
-const REASONS: Record<number, string> = { 400: 'Bad Request', 404: 'Not Found', 408: 'Request Timeout', 422: 'Unprocessable Entity', 500: 'Internal Server Error' };
+const SOURCE_DEBUG_INCOMPATIBLE = 'This WebAssembly engine predates Java source debugging. Rebuild the full '
+  + 'engine from this checkout or copy the complete matching static-playground artifact.';
+
+const REASONS: Record<number, string> = {
+  400: 'Bad Request',
+  404: 'Not Found',
+  408: 'Request Timeout',
+  409: 'Conflict',
+  422: 'Unprocessable Entity',
+  500: 'Internal Server Error',
+};
 
 interface Pending {
   id: number;
@@ -118,11 +129,13 @@ class WasmTransport implements Transport {
         const client = await createJulc({baseUrl: ENGINE_BASE, manifest, catalogue,
           timeoutMs: REQUEST_TIMEOUT_MS, loadTimeoutMs: LOAD_TIMEOUT_MS});
         this.worker = client;
+        wasmFeatures.set(client.features());
         wasmStatus.set('ready');
         return client as EngineClient;
       } catch (e) {
         this.worker = null;
         this.ready = null;
+        wasmFeatures.set(null);
         const message = 'WebAssembly engine failed to load: ' + String(e);
         wasmError.set(message);
         wasmStatus.set('error');
@@ -147,6 +160,12 @@ class WasmTransport implements Transport {
     }
     if (next.signal?.aborted) {
       this.inFlight = null;
+      this.pump();
+      return;
+    }
+    if (next.path.startsWith('/api/source-debug/') && !worker.features().groups.includes('sourceDebug')) {
+      this.inFlight = null;
+      next.resolve(response(409, { error: SOURCE_DEBUG_INCOMPATIBLE }));
       this.pump();
       return;
     }
