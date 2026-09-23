@@ -36,6 +36,11 @@ occurrences with their original types and lexical scopes, including simultaneous
 LetRec scope, match branch fields and pattern variables. Ordinary Let values,
 match scrutinees and list nil branches retain their outer scopes.
 
+Source maps and Java-locals debug provenance (ADR-058) are keyed by PIR node
+identity, so variable occurrences that are not renamed keep their identity. Only a
+renamed occurrence loses its source position; that happens only where the previous
+lowering captured a variable and compiled incorrectly.
+
 Repeated inner projections can increase script size and runtime work. This first
 general implementation favors a small correctness-preserving extension over a
 new tuple-of-functions runtime representation. Measure groups of increasing size

@@ -182,7 +182,12 @@ public final class PirSubstitution {
             return switch (term) {
                 case PirTerm.Var(var name, var type) -> {
                     used.add(name);
-                    yield new PirTerm.Var(scope.getOrDefault(name, name), type);
+                    // Keep unrenamed occurrences identical: source maps and Java debug
+                    // provenance are keyed by PIR node identity.
+                    var renamed = scope.get(name);
+                    yield renamed == null || renamed.equals(name)
+                            ? term
+                            : new PirTerm.Var(renamed, type);
                 }
                 case PirTerm.Const _, PirTerm.Builtin _, PirTerm.Error _ -> term;
                 case PirTerm.Lam(var name, var type, var body) -> {

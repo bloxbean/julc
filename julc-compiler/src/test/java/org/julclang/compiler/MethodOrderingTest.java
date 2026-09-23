@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Test;
 
 import java.math.BigInteger;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -220,6 +221,80 @@ class MethodOrderingTest {
         var result = new JulcCompiler().compile(source);
         assertNotNull(result.program());
         assertFalse(result.hasErrors());
+    }
+
+    @Test
+    void twoWayMutualRecursionDoesNotCaptureShadowedTopLevelNames() {
+        // pong's local LIMIT must not capture ping's reference to the static LIMIT
+        // when ping is substituted into pong (Bekic decomposition).
+        var source = """
+            import java.math.BigInteger;
+
+            class CaptureProbe {
+                static final BigInteger LIMIT = 1000;
+
+                static BigInteger ping(BigInteger n) {
+                    BigInteger other = 1;
+                    if (n == 0) { return LIMIT + other; } else { return pong(n - 1); }
+                }
+
+                static BigInteger pong(BigInteger n) {
+                    BigInteger LIMIT = 7;
+                    if (n == 0) { return LIMIT; } else { return ping(n - 1); }
+                }
+
+                static BigInteger entry(BigInteger n) {
+                    return pong(n);
+                }
+            }
+            """;
+        var program = new JulcCompiler().compileMethod(source, "entry").program();
+        long[][] cases = {{0, 7}, {1, 1001}, {2, 7}, {3, 1001}};
+        for (var c : cases) {
+            var term = new Term.Apply(program.term(),
+                    new Term.Const(new Constant.DataConst(new PlutusData.IntData(BigInteger.valueOf(c[0])))));
+            assertEquals(BigInteger.valueOf(c[1]), evalInteger(term), "entry(" + c[0] + ")");
+        }
+    }
+
+    @Test
+    void twoWayMutualRecursionKeepsSourcePositionsOfVariableReferences() {
+        // Source maps and Java debug breakpoints are keyed by PIR node identity. The Bekic
+        // substitution rewrites one method of the pair; variable references it does not
+        // rename must keep their identity, so `return doubled;` stays mapped.
+        var source = """
+            import java.math.BigInteger;
+
+            @SpendingValidator
+            class MyValidator {
+                static BigInteger sumA(BigInteger depth, BigInteger acc0) {
+                    BigInteger acc = acc0;
+                    BigInteger i = 0;
+                    while (i < depth) { acc = acc + i; i = i + 1; }
+                    if (depth == 0) { return acc; } else { return sumB(depth - 1, acc); }
+                }
+
+                static BigInteger sumB(BigInteger depth, BigInteger acc0) {
+                    BigInteger doubled = acc0 * 2;
+                    if (depth == 0) { return doubled; } else { return sumA(depth - 1, doubled + 1); }
+                }
+
+                @Entrypoint
+                static boolean validate(BigInteger redeemer, BigInteger ctx) {
+                    BigInteger total = sumA(redeemer, 0);
+                    return total > 0;
+                }
+            }
+            """;
+        var lines = source.lines().toList();
+        int line = 1;
+        while (!lines.get(line - 1).contains("return doubled;")) line++;
+        var result = new JulcCompiler(null, new CompilerOptions().setSourceMapEnabled(true)).compile(source);
+        assertFalse(result.hasErrors());
+        var mappedLines = result.sourceMap().toIndexed(result.program().term()).values().stream()
+                .map(location -> location.line())
+                .collect(Collectors.toSet());
+        assertTrue(mappedLines.contains(line), "no source position for line " + line + ": return doubled;");
     }
 
     @Test

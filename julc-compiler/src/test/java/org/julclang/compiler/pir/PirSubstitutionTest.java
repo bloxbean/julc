@@ -85,4 +85,21 @@ class PirSubstitutionTest {
         assertEquals(v(name), result.bindings().getFirst().value());
         assertEquals(new PirTerm.App(v("x"), v(name)), result.body());
     }
+
+    @Test
+    void unrenamedOccurrencesKeepTheirIdentity() {
+        var kept = v("y");
+        var shadowing = v("x");
+        var term =
+                new PirTerm.Lam(
+                        "x",
+                        INT,
+                        new PirTerm.App(new PirTerm.App(v("target"), kept), shadowing));
+        var result = (PirTerm.Lam) PirSubstitution.substitute(term, "target", v("x"));
+        var outer = (PirTerm.App) result.body();
+        var inner = (PirTerm.App) outer.function();
+        assertSame(kept, inner.argument(), "source positions are keyed by node identity");
+        assertNotEquals("x", result.param());
+        assertEquals(v(result.param()), outer.argument());
+    }
 }
