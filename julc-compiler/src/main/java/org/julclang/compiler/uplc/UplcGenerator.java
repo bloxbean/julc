@@ -350,8 +350,7 @@ public class UplcGenerator {
      * Strategy:
      * 1. Build a dependency graph (which bindings reference which others)
      * 2. If bindings can be topologically sorted (no mutual cycles), nest them as single-binding LetRec/Let
-     * 3. If exactly 2 bindings form a mutual cycle, apply Bekic's theorem
-     * 4. If cycle has >2 bindings, throw an error (not yet supported)
+     * 3. Decompose mutual cycles recursively with Bekic's theorem
      */
     private Term generateMultiBindingLetRec(PirTerm.LetRec letRec) {
         var bindings = letRec.bindings();
@@ -395,14 +394,40 @@ public class UplcGenerator {
             return generate(result);
         }
 
-        // Mutual cycle detected — try Bekic's theorem for 2-binding case
+        // Mutual cycle detected — use the direct two-binding form or recursively
+        // decompose a larger group into smaller fixed points.
         if (bindings.size() == 2) {
             return generateBekicLetRec(bindings.get(0), bindings.get(1), letRec.body());
         }
+        return generate(decomposeBekic(bindings, letRec.body()));
+    }
 
-        // >2 mutual bindings: not yet supported
-        throw new CompilerException("Mutually recursive bindings with more than 2 participants not yet supported: "
-                + String.join(", ", bindingNames));
+    /**
+     * Recursively apply Bekic decomposition to an insertion-ordered mutual group. Each projection
+     * of the inner fixed point is shared by a strict binding in the resulting body. Function-only
+     * producer validation remains responsible for ensuring that tying the recursive environment is
+     * non-eager.
+     */
+    private PirTerm decomposeBekic(List<PirTerm.Binding> bindings, PirTerm body) {
+        if (bindings.size() <= 2) return new PirTerm.LetRec(bindings, body);
+        var outer = bindings.getFirst();
+        var inner = List.copyOf(bindings.subList(1, bindings.size()));
+        PirTerm outerValue = outer.value();
+        for (var binding : inner) {
+            var projection =
+                    new PirTerm.LetRec(
+                            inner, new PirTerm.Var(binding.name(), new PirType.DataType()));
+            outerValue = PirSubstitution.substitute(outerValue, binding.name(), projection);
+        }
+        PirTerm result = body;
+        for (int i = inner.size() - 1; i >= 0; i--) {
+            var binding = inner.get(i);
+            var projection =
+                    new PirTerm.LetRec(
+                            inner, new PirTerm.Var(binding.name(), new PirType.DataType()));
+            result = new PirTerm.Let(binding.name(), projection, result);
+        }
+        return new PirTerm.LetRec(List.of(new PirTerm.Binding(outer.name(), outerValue)), result);
     }
 
     /**

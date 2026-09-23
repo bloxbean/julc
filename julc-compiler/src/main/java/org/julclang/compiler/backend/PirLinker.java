@@ -41,11 +41,6 @@ public final class PirLinker {
                 if (group.stream().anyMatch(n -> !(orderedDefinitions.get(n) instanceof PirTerm.Lam)))
                     throw new IllegalArgumentException(
                             "Recursive PIR definitions must be functions: " + group);
-                if (group.size() > 2)
-                    throw new IllegalArgumentException(
-                            "Recursive groups larger than two functions require a backend"
-                                + " extension: "
-                                    + group);
                 result =
                         new PirTerm.LetRec(
                                 group.stream()
